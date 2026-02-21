@@ -1,0 +1,32 @@
+# Ralph Global Configuration
+# Override per-project via ~/.ralph/projects/<hash>/config.yml
+
+default_provider: claude
+default_mode: plan-build-review
+max_iterations: 50
+worktree_default: true
+
+# Stuck detection: skip task after N consecutive failures
+max_stuck: 3
+
+# Remote backup: push to GitHub after each commit
+backup_enabled: false
+
+# Default models per provider
+models:
+  claude: opus
+  codex: gpt-5.3-codex
+  gemini: gemini-3-pro-preview
+  copilot: gpt-5.3-codex
+
+# Retry/fallback models
+retry_models:
+  copilot: claude-sonnet-4.6
+  gemini: null  # fallback: no explicit model flag
+
+# Round-robin provider order (when provider=round-robin)
+round_robin_order:
+  - claude
+  - codex
+  - gemini
+  - copilot
