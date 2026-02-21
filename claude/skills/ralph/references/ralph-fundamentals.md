@@ -17,9 +17,9 @@ The loop continuously feeds a prompt file to an AI coding CLI. The agent complet
 </what_is_ralph>
 
 <three_phases>
-## Three Phases, Three Prompts, One Loop
+## The Cycle: Plan, Build x3, Review
 
-Ralph uses three distinct operational modes that cycle in the loop:
+Ralph uses three distinct operational modes that cycle in a 5-step pattern (plan → build → build → build → review). The 1:3:1 ratio ensures real build progress between planning and review phases:
 
 ### Phase 1: Planning Mode
 

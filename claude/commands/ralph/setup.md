@@ -32,7 +32,9 @@ Check if `~/.ralph/projects/<hash>/config.yml` already exists.
 
 ## Step 3: Gather Project Context
 
-Ask the user using AskUserQuestion (batch into 2-3 questions):
+Ask the user using AskUserQuestion (batch questions — use up to 4 at a time):
+
+**Batch 1 (up to 4 questions):**
 
 **Question 1:** "What programming language/framework is this project using?"
 - Options: Node.js/TypeScript, Python, Go, Rust, .NET/C#, Other
@@ -49,13 +51,31 @@ Ask the user using AskUserQuestion (batch into 2-3 questions):
 - Option 3: No specs yet — I'll create them as I go
 - Option 4: Custom paths — I'll specify
 
+**Question 4:** "Which providers do you want to enable?" (multiSelect: true)
+- Option 1: **Claude** — claude CLI (opus)
+- Option 2: **Codex** — codex CLI (gpt-5.3-codex)
+- Option 3: **Gemini** — gemini CLI (gemini-3-pro-preview)
+- Option 4: **Copilot** — copilot CLI (gpt-5.3-codex)
+
 If custom validation or custom spec paths selected, ask follow-up questions.
 
-**Question 4:** "Which provider should Ralph use by default?"
-- Option 1: **Claude** (Recommended) — Most capable for complex tasks
-- Option 2: **Codex** — Fast, good for straightforward tasks
-- Option 3: **Round-robin** — Cycle through multiple providers
-- Option 4: **Other** — gemini or copilot
+**Batch 2 (provider config — only if 2+ providers selected):**
+
+**Question 5:** "Which provider should be the default (or use round-robin)?"
+- Option 1: **Round-robin** (Recommended) — Cycle through all enabled providers
+- Options 2-N: One option per enabled provider (e.g., "Claude only", "Codex only")
+
+**Question 6:** "Customize models for enabled providers?"
+- Option 1: **Use defaults** (Recommended) — opus, gpt-5.3-codex, gemini-3-pro-preview
+- Option 2: **Customize** — I'll specify models per provider
+
+If "Customize" selected, ask a follow-up for each enabled provider:
+- "Model for Claude?" — opus (default), sonnet, haiku
+- "Model for Codex?" — gpt-5.3-codex (default), gpt-5.2-codex, gpt-5-codex-mini
+- "Model for Gemini?" — gemini-3-pro-preview (default), gemini-2.5-pro, gemini-2.5-flash
+- "Model for Copilot?" — gpt-5.3-codex (default), claude-sonnet-4.6, GPT-5.2
+
+If only 1 provider selected, skip batch 2 — use that provider as default with its default model.
 
 ## Step 4: Generate Validation Commands
 
@@ -94,7 +114,7 @@ Create directory `~/.ralph/projects/<hash>/` and write `config.yml`:
 project_name: <name>
 project_root: <absolute-path>
 language: <detected>
-provider: <selected>
+provider: <selected>  # claude, codex, gemini, copilot, or round-robin
 mode: plan-build-review
 spec_files: <selected-paths>
 validation_commands: |
@@ -103,6 +123,25 @@ safety_rules: |
   - Never delete the project directory or run destructive commands
   - Tests must run in isolated temp directories when testing file generation
   - Never push to remote without explicit user approval
+
+# Enabled providers and their models
+enabled_providers:
+  - claude
+  - codex
+  # - gemini   (commented out = disabled)
+  # - copilot  (commented out = disabled)
+
+models:
+  claude: opus
+  codex: gpt-5.3-codex
+  gemini: gemini-3-pro-preview
+  copilot: gpt-5.3-codex
+
+# Round-robin order (only enabled providers, in this order)
+round_robin_order:
+  - claude
+  - codex
+
 created_at: <timestamp>
 ```
 
@@ -128,8 +167,9 @@ Ralph configured for <project-name>!
   Config: ~/.ralph/projects/<hash>/config.yml
   Prompts: ~/.ralph/projects/<hash>/prompts/
 
-  Provider: <selected>
-  Mode: plan-build-review
+  Provider: <selected> (e.g., round-robin or claude)
+  Enabled:  claude (opus), codex (gpt-5.3-codex)
+  Mode:     plan-build-review (plan -> build x3 -> review)
   Validation: <commands summary>
 
 Next steps:

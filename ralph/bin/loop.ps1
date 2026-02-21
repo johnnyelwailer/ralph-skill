@@ -7,7 +7,7 @@
 #   build              - building only (implement tasks from TODO)
 #   review             - review only (audit last build against quality gates)
 #   plan-build         - alternating: plan -> build -> plan -> build -> ...
-#   plan-build-review  - full cycle: plan -> build -> review -> ... (DEFAULT)
+#   plan-build-review  - full cycle: plan -> build x3 -> review -> ... (DEFAULT)
 #
 # Providers:
 #   claude, codex, gemini, copilot, round-robin
@@ -98,11 +98,14 @@ function Resolve-IterationMode {
         if ($IterationNumber % 2 -eq 1) { return 'plan' } else { return 'build' }
     }
     if ($Mode -eq 'plan-build-review') {
-        $phase = ($IterationNumber - 1) % 3
+        # 5-step cycle: plan -> build -> build -> build -> review
+        $phase = ($IterationNumber - 1) % 5
         switch ($phase) {
             0 { return 'plan' }
             1 { return 'build' }
-            2 { return 'review' }
+            2 { return 'build' }
+            3 { return 'build' }
+            4 { return 'review' }
         }
     }
     return $Mode
@@ -578,7 +581,7 @@ if ($Mode -eq 'plan-build') {
     Write-Host "Mode cycle: plan -> build -> plan -> build -> ..."
 }
 if ($Mode -eq 'plan-build-review') {
-    Write-Host "Mode cycle: plan -> build -> review -> ..."
+    Write-Host "Mode cycle: plan -> build -> build -> build -> review -> ..."
 }
 Write-Host "Max iterations: $MaxIterations"
 Write-Host "Stuck threshold: $MaxStuck"

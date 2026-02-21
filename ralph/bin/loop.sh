@@ -7,7 +7,7 @@
 #   build              - building only (implement tasks from TODO)
 #   review             - review only (audit last build against quality gates)
 #   plan-build         - alternating: plan -> build -> plan -> build -> ...
-#   plan-build-review  - full cycle: plan -> build -> review -> ... (DEFAULT)
+#   plan-build-review  - full cycle: plan -> build x3 -> review -> ... (DEFAULT)
 #
 # Providers:
 #   claude, codex, gemini, copilot, round-robin
@@ -135,11 +135,12 @@ resolve_iteration_mode() {
             if (( iteration % 2 == 1 )); then echo "plan"; else echo "build"; fi
             ;;
         plan-build-review)
-            local phase=$(( (iteration - 1) % 3 ))
+            # 5-step cycle: plan -> build -> build -> build -> review
+            local phase=$(( (iteration - 1) % 5 ))
             case $phase in
                 0) echo "plan" ;;
-                1) echo "build" ;;
-                2) echo "review" ;;
+                1|2|3) echo "build" ;;
+                4) echo "review" ;;
             esac
             ;;
         *)

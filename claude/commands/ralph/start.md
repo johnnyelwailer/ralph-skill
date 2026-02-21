@@ -90,6 +90,8 @@ Determine the loop script based on OS:
 
 Build the command:
 
+Read the project config to get `enabled_providers`, `models`, and `round_robin_order`. Pass these to the loop script.
+
 **PowerShell:**
 ```powershell
 & ~/.ralph/bin/loop.ps1 `
@@ -98,6 +100,8 @@ Build the command:
   -WorkDir "<work-directory>" `
   -Mode <mode> `
   -Provider <provider> `
+  -RoundRobinProviders <enabled-providers-csv> `
+  -ClaudeModel <model> -CodexModel <model> -GeminiModel <model> -CopilotModel <model> `
   -MaxIterations <max>
 ```
 
@@ -109,8 +113,12 @@ Build the command:
   --work-dir "<work-directory>" \
   --mode <mode> \
   --provider <provider> \
+  --round-robin "<enabled-providers-csv>" \
+  --claude-model <model> --codex-model <model> --gemini-model <model> --copilot-model <model> \
   --max-iterations <max>
 ```
+
+Only pass model flags for enabled providers. The round-robin list should only contain enabled providers.
 
 Launch the loop as a background process. Capture the PID and update `active.json`.
 

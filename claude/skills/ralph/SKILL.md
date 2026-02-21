@@ -18,11 +18,13 @@ The loop feeds a prompt file to an AI coding agent, the agent completes one task
 
 **The Ralph Wiggum Technique is deterministically bad in an undeterministic world.** Ralph solves context accumulation by starting each iteration with fresh context — the core insight behind Geoffrey's approach.
 
-### Three Phases, Three Prompts, One Loop
+### The Cycle: Plan, Build x3, Review
 
-1. **Planning Phase**: Gap analysis (specs vs code) outputs prioritized TODO list — no implementation, no commits
-2. **Building Phase**: Picks tasks from plan, implements, runs tests (backpressure), commits
-3. **Review Phase**: Critically audits the last build iteration against 5 quality gates — the adversarial critic that catches shallow tests, spec deviations, and coverage gaps
+Each cycle runs 5 iterations: one plan, three builds, one review. This ratio gives Ralph enough build momentum to make real progress between planning and critique phases.
+
+1. **Planning Phase** (1x): Gap analysis (specs vs code) outputs prioritized TODO list — no implementation, no commits
+2. **Building Phase** (3x): Picks tasks from plan, implements, runs tests (backpressure), commits — three consecutive iterations for real progress
+3. **Review Phase** (1x): Critically audits the build iterations against 5 quality gates — the adversarial critic that catches shallow tests, spec deviations, and coverage gaps
 4. **Observation Phase** (yours): You sit on the loop, not in it — engineer the setup and environment that allows Ralph to succeed
 
 ### Key Principles
