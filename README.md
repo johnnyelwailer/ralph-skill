@@ -16,8 +16,14 @@ Aloop is an iterative coding loop: feed a prompt to an AI coding agent, the agen
 |-------------|---------|-------|
 | **PowerShell** | 7.x (`pwsh`) | Required to run `install.ps1` and `loop.ps1`. Install: `winget install Microsoft.PowerShell` or https://aka.ms/pscore6 |
 | **Git** | any recent | Must be on `$PATH`. Required for commits, branches, and worktree isolation. |
-| **Node.js + npm** | 18 LTS | Required only to install provider CLIs via `npm install -g`. Install: `winget install OpenJS.NodeJS.LTS` or https://nodejs.org |
+| **Node.js + npm** | 22 LTS | Required to install provider CLIs and run the local CLI/dashboard development tooling. Prefer a version manager: Windows (`nvm-windows` or `fnm`), macOS/Linux (`nvm` or `fnm`). |
 | **At least one provider CLI** | — | `claude`, `codex`, `gemini`, or `copilot` — see [Provider CLIs](#provider-clis) below |
+
+Use an LTS flow when setting up Node.js:
+
+```bash
+nvm install --lts && nvm use --lts
+```
 
 ### Provider CLIs
 

@@ -7,7 +7,7 @@
 - [x] [review] Gate 3: Raise branch coverage for touched implementation modules to >=80% (>=90% for new modules); current summary still reports low branch coverage (`project.ts` 63.73%), so missing branches must be covered with focused tests. (P0)
 
 ### Up Next
-- [ ] Update prerequisites to Node.js 22 LTS guidance in `README.md` (version-manager-first: `nvm-windows`/`fnm` on Windows, `nvm`/`fnm` on macOS/Linux, with `nvm install --lts && nvm use --lts`) to match the spec baseline. (P0)
+- [x] Update prerequisites to Node.js 22 LTS guidance in `README.md` (version-manager-first: `nvm-windows`/`fnm` on Windows, `nvm`/`fnm` on macOS/Linux, with `nvm install --lts && nvm use --lts`) to match the spec baseline. (P0)
 - [ ] Add `engines.node` for Node 22 LTS in applicable `package.json` files (`<skill>/cli/package.json`, `<skill>/cli/dashboard/package.json`) to enforce runtime/tooling compatibility. (P0)
 - [ ] Serve dashboard root as a self-contained HTML payload from `dashboard.ts` (inline JS/CSS) while preserving `/api/*` and `/events`; current server still serves asset files from `dist/dashboard`. (P1)
 - [ ] Close remaining dashboard E2E contract gaps in Playwright: add stop-confirm interaction and verify log-view autoscroll behavior. (P1)
