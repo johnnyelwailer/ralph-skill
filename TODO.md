@@ -3,6 +3,7 @@
 ## Current Phase: CLI/dashboard contract implementation and spec parity
 
 ### In Progress
+- [ ] [review] Gate 4/5: Build iteration incomplete; `dashboard.ts`, `index.ts`, and `SPEC.md` have uncommitted implementation changes in working tree (priority: critical)
 - [ ] [review] Gate 1: `dashboard.ts` missing `/api/steer`, `/api/stop` endpoints and `active.json` watch (priority: critical)
 - [ ] [review] Gate 1: `App.tsx` uses hardcoded data; must implement SSE connection and `/api/state` fetch (priority: critical)
 - [ ] [review] Gate 1: `App.tsx` Docs view is a placeholder; must implement markdown viewer for session docs (priority: high)
