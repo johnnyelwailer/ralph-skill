@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@radix-ui/react-tabs": "^1.1.2",
-    "aloop-cli": "file:..",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "marked": "^15.0.7",

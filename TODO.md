@@ -6,7 +6,6 @@
 - [ ] None.
 
 ### Up Next
-- [ ] Remove unused dashboard dependency `"aloop-cli": "file:.."` from `<skill>/cli/dashboard/package.json` and keep build/tests green. (P0)
 - [ ] Update prerequisite docs to Node.js 22.x (latest LTS) and add version-manager-first guidance (`nvm-windows`/`fnm` on Windows; `nvm`/`fnm` on macOS/Linux) including `nvm install --lts && nvm use --lts`. (P0)
 - [ ] Add `engines.node` constraints targeting Node.js 22 LTS in applicable repository `package.json` files and validate scripts still run. (P0)
 - [ ] Serve dashboard as a self-contained HTML response (inlined JS/CSS) from `dashboard.ts` while preserving current `/api/*` and `/events` behavior. (P1)
@@ -16,6 +15,7 @@
 - [ ] Migrate dashboard workspace from Tailwind CSS 3 to Tailwind CSS 4 while preserving existing shadcn component behavior. (P2)
 
 ### Completed
+- [x] Remove unused dashboard dependency `"aloop-cli": "file:.."` from `<skill>/cli/dashboard/package.json` and kept build/tests green.
 - [x] [review] Expanded branch-coverage evidence beyond `project.ts` with focused tests for installer stale cleanup, CLI auto-install branches, VS Code prompt skip/install branches, and dashboard error paths.
 - [x] Fixed runtime install path mismatch so installer output includes `~/.aloop/cli/dist/index.js` for loop launcher compatibility.
 - [x] Added Playwright E2E foundation in `<skill>/cli/dashboard/` (`@playwright/test`, config, `test:e2e`, and `webServer` startup against real dashboard server).
