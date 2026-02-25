@@ -14,6 +14,7 @@ param(
     [string[]]$EnabledProviders,
     [string[]]$RoundRobinOrder,
     [string[]]$SpecFiles,
+    [string[]]$ReferenceFiles,
     [string[]]$ValidationCommands,
     [string[]]$SafetyRules,
     [string]$Mode = 'plan-build-review'
@@ -344,6 +345,45 @@ function Discover-SpecCandidates {
     return @($found)
 }
 
+function Discover-ReferenceCandidates {
+    param(
+        [string]$Root,
+        [string[]]$SpecCandidates
+    )
+
+    $ordered = @(
+        'SPEC.md',
+        'README.md',
+        'RESEARCH.md',
+        'REVIEW_LOG.md',
+        'AGENTS.md',
+        'CONTRIBUTING.md',
+        'docs/architecture.md',
+        'docs/design.md',
+        'docs/adr'
+    )
+
+    $excluded = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($spec in $SpecCandidates) {
+        if (-not [string]::IsNullOrWhiteSpace($spec)) {
+            [void]$excluded.Add($spec.Replace('\', '/'))
+        }
+    }
+
+    $found = New-Object System.Collections.Generic.List[string]
+    foreach ($relative in $ordered) {
+        $absolute = Join-Path $Root $relative
+        if (-not (Test-Path $absolute)) { continue }
+        $normalized = $relative.Replace('\', '/').TrimStart('./')
+        if ($excluded.Contains($normalized)) { continue }
+        if (-not $found.Contains($normalized)) {
+            $found.Add($normalized)
+        }
+    }
+
+    return @($found)
+}
+
 function Get-ContextFiles {
     param([string]$Root)
 
@@ -393,6 +433,7 @@ function New-DiscoveryResult {
     $models = Get-DefaultModelMap
     $existing = Get-ExistingProjectConfig -ProjectHash $projectHash
 
+    $specCandidates = [string[]](Discover-SpecCandidates -Root $resolvedRoot)
     return [ordered]@{
         project = [ordered]@{
             root = $resolvedRoot
@@ -412,7 +453,8 @@ function New-DiscoveryResult {
             language_confidence = $languageDetection.confidence
             language_signals = $languageDetection.signals
             validation_presets = $validationPresets
-            spec_candidates = [string[]](Discover-SpecCandidates -Root $resolvedRoot)
+            spec_candidates = $specCandidates
+            reference_candidates = [string[]](Discover-ReferenceCandidates -Root $resolvedRoot -SpecCandidates $specCandidates)
             context_files = (Get-ContextFiles -Root $resolvedRoot)
         }
         providers = [ordered]@{
@@ -466,6 +508,7 @@ function Write-ProjectConfigAndPrompts {
         [string[]]$SelectedEnabledProviders,
         [string[]]$SelectedRoundRobinOrder,
         [string[]]$SelectedSpecFiles,
+        [string[]]$SelectedReferenceFiles,
         [string[]]$SelectedValidationCommands,
         [string[]]$SelectedSafetyRules,
         [string]$SelectedMode
@@ -510,6 +553,11 @@ function Write-ProjectConfigAndPrompts {
         $specFiles = @($Discovery.context.spec_candidates | Select-Object -First 1)
     }
 
+    $references = Normalize-List -Items $SelectedReferenceFiles
+    if ($references.Count -eq 0) {
+        $references = @($Discovery.context.reference_candidates)
+    }
+
     $validation = Normalize-List -Items $SelectedValidationCommands
     if ($validation.Count -eq 0) {
         $validation = @($Discovery.context.validation_presets.full)
@@ -532,6 +580,10 @@ function Write-ProjectConfigAndPrompts {
     $lines.Add('spec_files:')
     foreach ($spec in $specFiles) {
         $lines.Add("  - $(ConvertTo-YamlSafe $spec)")
+    }
+    $lines.Add('reference_files:')
+    foreach ($reference in $references) {
+        $lines.Add("  - $(ConvertTo-YamlSafe $reference)")
     }
     $lines.Add('validation_commands: |')
     foreach ($cmd in $validation) {
@@ -567,6 +619,7 @@ function Write-ProjectConfigAndPrompts {
     Set-Content -Path $configPath -Encoding utf8 -Value $lines
 
     $specInline = ($specFiles -join ', ')
+    $referenceInline = ($references -join ', ')
     $validationBlock = ($validation | ForEach-Object { "- $_" }) -join [Environment]::NewLine
     $safetyBlock = ($safety | ForEach-Object { "- $_" }) -join [Environment]::NewLine
     $providerHints = Resolve-ProviderHints -SelectedProvider $SelectedProvider
@@ -580,7 +633,7 @@ function Write-ProjectConfigAndPrompts {
 
         $content = Get-Content -Raw -Path $templatePath
         $content = $content.Replace('{{SPEC_FILES}}', $specInline)
-        $content = $content.Replace('{{REFERENCE_FILES}}', '')
+        $content = $content.Replace('{{REFERENCE_FILES}}', $referenceInline)
         $content = $content.Replace('{{VALIDATION_COMMANDS}}', $validationBlock)
         $content = $content.Replace('{{SAFETY_RULES}}', $safetyBlock)
         $content = $content.Replace('{{PROVIDER_HINTS}}', $providerHints)
@@ -607,6 +660,7 @@ if ($Command -eq 'discover') {
         Write-Host "Detected language: $($discovery.context.detected_language) ($($discovery.context.language_confidence))"
         Write-Host "Providers installed: $($discovery.providers.installed -join ', ')"
         Write-Host "Spec candidates: $($discovery.context.spec_candidates -join ', ')"
+        Write-Host "Reference candidates: $($discovery.context.reference_candidates -join ', ')"
     }
     exit 0
 }
@@ -621,6 +675,7 @@ $scaffold = Write-ProjectConfigAndPrompts `
     -SelectedEnabledProviders $EnabledProviders `
     -SelectedRoundRobinOrder $RoundRobinOrder `
     -SelectedSpecFiles $SpecFiles `
+    -SelectedReferenceFiles $ReferenceFiles `
     -SelectedValidationCommands $ValidationCommands `
     -SelectedSafetyRules $SafetyRules `
     -SelectedMode $Mode
