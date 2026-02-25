@@ -5,6 +5,8 @@
 ### In Progress
 - [x] [review] Gate 2: Make `<skill>/cli/src/commands/dashboard.test.ts` oversized-body test deterministic (no `fetch failed` fallback) so it only passes on explicit `400` + `"Request body too large"` API behavior; this prevents transport-level false positives. (P0)
 - [x] [review] Gate 3: Raise branch coverage for touched implementation modules to >=80% (>=90% for new modules); current summary still reports low branch coverage (`project.ts` 63.73%), so missing branches must be covered with focused tests. (P0)
+- [ ] [review] Gate 3: `coverage/coverage-summary.json` still reports only `project.ts` with branch coverage `63.73%` and no branch report for touched implementation `ralph/cli/src/commands/dashboard.ts`; generate fresh branch coverage and add targeted tests until each touched implementation module is >=80% branches (>=90% for new modules). (P0)
+- [ ] [review] Gate 5: `install.tests.ps1` currently fails 3 assertions (`covers CLI check branch when npm is unavailable`, `skips VS Code prompt install when no VS Code user directory exists`, `installs prompts for VS Code stable and skips VS Code Insiders when absent`) because expected strings use em-dash text while installer output emits ASCII hyphen; align assertions or installer messages so the full suite passes. (P0)
 
 ### Up Next
 - [x] Update prerequisites to Node.js 22 LTS guidance in `README.md` (version-manager-first: `nvm-windows`/`fnm` on Windows, `nvm`/`fnm` on macOS/Linux, with `nvm install --lts && nvm use --lts`) to match the spec baseline. (P0)
