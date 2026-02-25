@@ -30,9 +30,10 @@ param(
 
     [string[]]$RoundRobinProviders = @('claude', 'codex', 'gemini', 'copilot'),
 
+    # Model defaults — keep in sync with ~/.ralph/config.yml (source of truth)
     [string]$ClaudeModel = 'opus',
     [string]$CodexModel = 'gpt-5.3-codex',
-    [string]$GeminiModel = 'gemini-3-pro-preview',
+    [string]$GeminiModel = 'gemini-3.1-pro-preview',
     [string]$CopilotModel = 'gpt-5.3-codex',
     [string]$CopilotRetryModel = 'claude-sonnet-4.6',
 

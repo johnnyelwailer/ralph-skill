@@ -1,6 +1,6 @@
-# Ralph — Global Claude Code Skill
+# Ralph — Autonomous AI Coding Loop
 
-Ralph is Geoffrey Huntley's autonomous AI coding methodology, packaged as a global Claude Code skill. It runs plan-build-review loops with multi-provider support, backpressure validation, and stuck detection.
+Ralph is Geoffrey Huntley's autonomous AI coding methodology, packaged as an installable skill for Claude Code, Codex CLI, and GitHub Copilot (VS Code). It runs plan-build-review loops with multi-provider support, backpressure validation, and stuck detection.
 
 ## What is Ralph?
 
@@ -10,11 +10,41 @@ Ralph is an iterative coding loop: feed a prompt to an AI coding agent, the agen
 2. **Build** — Picks one task, implements, validates, commits
 3. **Review** — Audits the last build against 5 quality gates
 
+## Multi-Provider Support
+
+Ralph works with any of these AI coding agents — mix and match, or let them take turns:
+
+| Provider | CLI | Autonomous Flag | Commands |
+|----------|-----|-----------------|----------|
+| Claude Code | `claude` | `--dangerously-skip-permissions --print` | `/ralph:setup`, `/ralph:start`, etc. |
+| Codex CLI | `codex` | `--dangerously-bypass-approvals-and-sandbox` | `/ralph:setup`, `/ralph:start`, etc. |
+| GH Copilot (VS Code) | `copilot` | `--yolo` | skill only (no slash commands) |
+| Gemini | `gemini` | `--yolo` | — |
+
+**Round-robin mode** cycles through providers each iteration for diversity — e.g. Claude plans, Codex builds, Gemini reviews.
+
+```powershell
+# Single provider
+.\loop.ps1 -Provider claude
+
+# Explicit round-robin
+.\loop.ps1 -Provider round-robin -RoundRobinProviders claude,codex,gemini
+
+# Per-provider model override
+.\loop.ps1 -Provider codex -CodexModel gpt-5.3-codex
+```
+
 ## Installation
 
 ```powershell
-# From this repo
+# Interactive — choose which harnesses to install into
 ./install.ps1
+
+# Install all harnesses at once
+./install.ps1 -All
+
+# Pre-select specific harnesses
+./install.ps1 -Harnesses claude,codex
 
 # Force overwrite existing files
 ./install.ps1 -Force
@@ -23,14 +53,20 @@ Ralph is an iterative coding loop: feed a prompt to an AI coding agent, the agen
 ./install.ps1 -DryRun
 ```
 
-This copies files to:
-- `~/.claude/skills/ralph/` — Methodology knowledge (always loaded)
-- `~/.claude/commands/ralph/` — 4 slash commands
-- `~/.ralph/` — Runtime config, loop scripts, templates
+### What gets installed where
+
+| Harness | Skill | Commands |
+|---------|-------|----------|
+| Claude Code | `~/.claude/skills/ralph/` | `~/.claude/commands/ralph/` (4 slash commands) |
+| Codex CLI | `~/.codex/skills/ralph/` | `~/.codex/commands/ralph/` (4 slash commands) |
+| GH Copilot (VS Code) | `~/.copilot/skills/ralph/` | — (uses `.prompt.md` instead) |
+| Agents (generic) | `~/.agents/skills/ralph/` | — |
+
+The Ralph runtime (loop scripts, config, templates) always goes to `~/.ralph/`.
 
 ## Usage
 
-In any project with Claude Code:
+In any project with Claude Code or Codex:
 
 ```
 /ralph:setup     Configure Ralph for the current project
@@ -39,21 +75,27 @@ In any project with Claude Code:
 /ralph:stop      Stop a loop
 ```
 
+GH Copilot users invoke the skill via `/ralph` (slash command from SKILL.md) or let Copilot load it automatically based on context.
+
 ## Architecture
 
 ```
-~/.claude/
+~/.claude/   (or ~/.codex/)
   skills/ralph/
     SKILL.md                    # Background knowledge (auto-loaded)
     references/                 # 4 methodology reference files
-  commands/ralph/
+  commands/ralph/               # Claude + Codex only
     setup.md                    # /ralph:setup — configure project
     start.md                    # /ralph:start — launch loop
     status.md                   # /ralph:status — check sessions
     stop.md                     # /ralph:stop — stop loop
 
+~/.copilot/
+  skills/ralph/
+    SKILL.md                    # Same skill, no commands dir
+
 ~/.ralph/
-  config.yml                   # Global defaults
+  config.yml                   # Global defaults (providers, models)
   bin/
     loop.ps1                   # PowerShell loop (Windows)
     loop.sh                    # Bash loop (macOS/Linux)
@@ -70,7 +112,8 @@ In any project with Claude Code:
 
 ## Key Features
 
-- **Multi-provider**: Claude, Codex, Gemini, Copilot — or round-robin
+- **Multi-provider**: Claude, Codex, Gemini, Copilot — single provider or round-robin
+- **Multi-harness install**: One installer, choose Claude Code / Codex / Copilot / Agents
 - **Plan-build-review cycle**: Three distinct mindsets per iteration
 - **Backpressure**: Tests/types/lints gate every commit
 - **Stuck detection**: Auto-skip tasks after N consecutive failures
@@ -80,13 +123,4 @@ In any project with Claude Code:
 
 ## Development
 
-This repo (`D:\Hive\ralph-skill\`) is the development/backup location. Edit files here, then run `install.ps1` to deploy. The installed files in `~/.claude/` and `~/.ralph/` are the live copies.
-
-## Providers
-
-| Provider | CLI | Autonomous Flag |
-|----------|-----|-----------------|
-| Claude | `claude` | `--dangerously-skip-permissions --print` |
-| Codex | `codex` | `--dangerously-bypass-approvals-and-sandbox` |
-| Gemini | `gemini` | `--yolo` |
-| Copilot | `copilot` | `--yolo` |
+This repo is the development/source location. Edit files here, then run `install.ps1` to deploy to the live harness directories.

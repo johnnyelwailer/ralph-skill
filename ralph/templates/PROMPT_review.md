@@ -10,14 +10,16 @@ Audit the last build iteration's changes against 5 quality gates. Write actionab
 
 0a. Study specification files: {{SPEC_FILES}}
 0b. Study @TODO.md to understand what was just built (look for recently completed tasks)
+0c. Study @REVIEW_LOG.md to see your prior review history (if the file exists)
 {{REFERENCE_FILES}}
 
 1. Read the git log to identify files changed in the last build commit(s)
 2. Audit every changed file against the 5 gates below
 3. If any gate fails, write `[review]` fix tasks to TODO.md (see Rejection Flow)
-4. If all gates pass, add a review-approved note
-5. Commit the TODO.md update (if any)
-6. Exit
+4. If all gates pass, add a review-approved note to TODO.md
+5. Append your review entry to REVIEW_LOG.md (see Review Log below)
+6. Commit the updated files (TODO.md, REVIEW_LOG.md)
+7. Exit
 
 ## The 5 Gates
 
@@ -57,7 +59,7 @@ Audit the last build iteration's changes against 5 quality gates. Write actionab
 
 - No dead code — unused imports, unreachable branches, commented-out code
 - No leftover TODO/FIXME comments (unless referencing a tracked task)
-- No copy-paste duplication
+- No copy-paste duplication — check both within a file and across sibling files for patterns the new code may have copied from existing code
 - No over-engineering — code does what's required, nothing more
 
 ### Gate 5: Integration Sanity
@@ -77,7 +79,8 @@ When ANY gate fails:
    - [ ] [review] Gate 3: branch coverage for Y is 62% — add tests for Z edge cases (priority: high)
    ```
 3. `[review]` tasks are **highest priority** — the next build iteration picks them up before any new work.
-4. Commit with message: `chore(review): flag N issues from review iteration`
+4. Append your review entry to REVIEW_LOG.md.
+5. Commit both files with message: `chore(review): FAIL — N findings`
 
 ## Approval Flow
 
@@ -86,14 +89,54 @@ When ALL gates pass:
 1. Cite **at least one concrete observation** — "everything looks good" without specifics is itself a failure
 2. Good observations: "Gate 2: test X line 47-52 tests malformed input with 3 variants — thorough"
 3. Add a brief note to the most recent TODO.md completed task: `[reviewed: gates 1-5 pass]`
-4. Commit with message: `chore(review): approve — gates 1-5 pass`
+4. Append your review entry to REVIEW_LOG.md.
+5. Commit both files with message: `chore(review): PASS — gates 1-5 pass`
+
+## Review Log — REVIEW_LOG.md
+
+`REVIEW_LOG.md` is the reviewer's **own persistent log** — it survives across iterations even when the plan agent regenerates TODO.md. It is for the review agent's eyes: tracking what was reviewed, what was found, and whether prior findings were resolved.
+
+**Actionable items for other agents still go into TODO.md** as `[review]` tasks (see Rejection Flow above). The review log is your notebook, not the task queue.
+
+### Format
+
+Append a new entry for each review iteration. Do NOT overwrite previous entries — the file is append-only.
+
+```markdown
+# Review Log
+
+## Review — 2026-02-24 08:30 — commit a1b2c3d..f4e5d6a
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** src/adapters/gemini.ts, tests/unit/gemini-adapter.test.ts
+
+- Gate 2: `gemini-adapter.test.ts:47` — toBeDefined() instead of exact value check
+- Gate 3: `gemini.ts:mergeSettings` — 62% branch coverage (empty settings, malformed JSON untested)
+
+---
+
+## Review — 2026-02-24 12:15 — commit f4e5d6a..b7c8d9e
+
+**Verdict: PASS** (1 observation)
+**Scope:** src/adapters/gemini.ts, tests/unit/gemini-adapter.test.ts
+
+All prior findings resolved. Gate 2: tests now assert exact `model.name` — thorough.
+```
+
+### Rules for the log
+
+- **Append only** — never delete or modify previous entries
+- **Each entry has**: date, commit range reviewed, verdict (PASS/FAIL), scope, findings summary
+- **On FAIL**: note how many `[review]` tasks were written to TODO.md
+- **On PASS**: verify that prior findings from the log are actually resolved in the code (not just removed from TODO.md)
 
 {{PROVIDER_HINTS}}
 
 ## Rules
 
-- **ONE review per iteration.** Review only the most recent build iteration's work.
-- **Never implement code.** Your only output is TODO.md updates and review notes.
+- **Review only what changed.** Review only the most recent build iterations work, SINCE LAST REVIEW (multiple build iterations may have passed since last review, if no review has happened yet, review ALL).
+- **Never implement code.** Your outputs are `[review]` tasks in TODO.md + your own review log entry in REVIEW_LOG.md.
+- **Never create commits** other than TODO.md + REVIEW_LOG.md updates.
 - **Be adversarial.** Assume the builder took shortcuts.
 - **Be specific.** "Tests are shallow" is not actionable. Name the test, the line, and the fix.
 - **Follow the spec.** The spec is the source of truth, not the TODO description.

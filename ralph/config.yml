@@ -13,16 +13,20 @@ max_stuck: 3
 backup_enabled: false
 
 # Default models per provider
+# KEEP CURRENT: Update these when new model versions release.
+# This file is the single source of truth for default model IDs.
+# Loop scripts and setup commands inherit from here.
+# Last updated: 2026-02-21
 models:
-  claude: opus
-  codex: gpt-5.3-codex
-  gemini: gemini-3-pro-preview
-  copilot: gpt-5.3-codex
+  claude: opus               # Claude Opus 4.6 (latest)
+  codex: gpt-5.3-codex       # OpenAI Codex (latest)
+  gemini: gemini-3.1-pro-preview  # Gemini Pro 3.1 Preview (latest, NOT GA)
+  copilot: gpt-5.3-codex     # Copilot default (latest)
 
 # Retry/fallback models
 retry_models:
-  copilot: claude-sonnet-4.6
-  gemini: null  # fallback: no explicit model flag
+  copilot: claude-sonnet-4.6  # Claude Sonnet 4.6 (fallback)
+  gemini: null                 # fallback: no explicit model flag
 
 # Round-robin provider order (when provider=round-robin)
 round_robin_order:

@@ -52,10 +52,12 @@ Ask the user using AskUserQuestion (batch questions — use up to 4 at a time):
 - Option 4: Custom paths — I'll specify
 
 **Question 4:** "Which providers do you want to enable?" (multiSelect: true)
-- Option 1: **Claude** — claude CLI (opus)
-- Option 2: **Codex** — codex CLI (gpt-5.3-codex)
-- Option 3: **Gemini** — gemini CLI (gemini-3-pro-preview)
-- Option 4: **Copilot** — copilot CLI (gpt-5.3-codex)
+Read `~/.ralph/config.yml` to get current default model IDs per provider.
+Show each provider with its current default model from config:
+- Option 1: **Claude** — claude CLI ([claude model from config])
+- Option 2: **Codex** — codex CLI ([codex model from config])
+- Option 3: **Gemini** — gemini CLI ([gemini model from config])
+- Option 4: **Copilot** — copilot CLI ([copilot model from config])
 
 If custom validation or custom spec paths selected, ask follow-up questions.
 
@@ -66,14 +68,20 @@ If custom validation or custom spec paths selected, ask follow-up questions.
 - Options 2-N: One option per enabled provider (e.g., "Claude only", "Codex only")
 
 **Question 6:** "Customize models for enabled providers?"
-- Option 1: **Use defaults** (Recommended) — opus, gpt-5.3-codex, gemini-3-pro-preview
+- Option 1: **Use defaults** (Recommended) — opus, gpt-5.3-codex, gemini-3.1-pro-preview
 - Option 2: **Customize** — I'll specify models per provider
 
-If "Customize" selected, ask a follow-up for each enabled provider:
-- "Model for Claude?" — opus (default), sonnet, haiku
-- "Model for Codex?" — gpt-5.3-codex (default), gpt-5.2-codex, gpt-5-codex-mini
-- "Model for Gemini?" — gemini-3-pro-preview (default), gemini-2.5-pro, gemini-2.5-flash
-- "Model for Copilot?" — gpt-5.3-codex (default), claude-sonnet-4.6, GPT-5.2
+If "Customize" selected, ask a follow-up for each enabled provider.
+Read `~/.ralph/config.yml` to get the current default model IDs (source of truth).
+Present the default from config as the first option, plus known alternatives:
+- "Model for Claude?" — [default from config] (default), sonnet, haiku
+- "Model for Codex?" — [default from config] (default), plus known alternatives
+- "Model for Gemini?" — [default from config] (default), plus known alternatives
+- "Model for Copilot?" — [default from config] (default), plus known alternatives
+
+The model IDs in config.yml are kept current with the latest available models.
+Do NOT hardcode model IDs here — always read from config.yml so updates
+propagate automatically.
 
 If only 1 provider selected, skip batch 2 — use that provider as default with its default model.
 
@@ -134,7 +142,7 @@ enabled_providers:
 models:
   claude: opus
   codex: gpt-5.3-codex
-  gemini: gemini-3-pro-preview
+  gemini: gemini-3.1-pro-preview
   copilot: gpt-5.3-codex
 
 # Round-robin order (only enabled providers, in this order)

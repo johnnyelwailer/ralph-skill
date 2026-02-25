@@ -101,7 +101,7 @@ Ralph supports four AI coding providers:
 |----------|-----|-----------------|-----------------|
 | Claude | `claude` | `--dangerously-skip-permissions --print` | `--model opus` |
 | Codex | `codex` | `--dangerously-bypass-approvals-and-sandbox` | `-m gpt-5.3-codex` |
-| Gemini | `gemini` | `--yolo` | `-m gemini-3-pro-preview` |
+| Gemini | `gemini` | `--yolo` | `-m gemini-3.1-pro-preview` |
 | Copilot | `copilot` | `--yolo` | `--model gpt-5.3-codex` |
 
 ### Round-Robin Mode
