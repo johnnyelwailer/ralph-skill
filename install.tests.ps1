@@ -254,3 +254,82 @@ Describe 'Stale directory cleanup' {
         $scriptContent | Should -Match '\.agents\\commands\\aloop'
     }
 }
+
+# ============================================================================
+# 5. Behavioral execution coverage for key installer branches
+# ============================================================================
+Describe 'Installer behavioral branches' {
+    BeforeAll {
+        $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("aloop-install-tests-" + [guid]::NewGuid().ToString('N'))
+        $testHome = Join-Path $tempRoot 'home'
+        $testAppData = Join-Path $tempRoot 'appdata'
+        New-Item -ItemType Directory -Path $testHome -Force | Out-Null
+        New-Item -ItemType Directory -Path $testAppData -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $testAppData 'Code\User') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $testAppData 'Code - Insiders\User') -Force | Out-Null
+
+        function Invoke-InstallerIsolated {
+            param(
+                [string[]]$InstallerArgs,
+                [string]$HomePath = $testHome,
+                [string]$AppDataPath = $testAppData
+            )
+
+            $previousHome = $env:HOME
+            $previousUserProfile = $env:USERPROFILE
+            $previousAppData = $env:APPDATA
+            try {
+                $env:HOME = $HomePath
+                $env:USERPROFILE = $HomePath
+                $env:APPDATA = $AppDataPath
+                return (& pwsh -NoProfile -File $scriptPath @InstallerArgs 2>&1 | Out-String)
+            } finally {
+                $env:HOME = $previousHome
+                $env:USERPROFILE = $previousUserProfile
+                $env:APPDATA = $previousAppData
+            }
+        }
+    }
+
+    AfterAll {
+        if (Test-Path $tempRoot) {
+            Remove-Item -Recurse -Force $tempRoot
+        }
+    }
+
+    It 'supports -DryRun path and reports dry-run mode in summary' {
+        $output = Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-DryRun')
+
+        $output | Should -Match 'Mode: DRY RUN'
+        $output | Should -Match '\[DRY RUN\]'
+        (Test-Path (Join-Path $testHome '.aloop\projects')) | Should -BeFalse
+        (Test-Path (Join-Path $testHome '.aloop\sessions')) | Should -BeFalse
+    }
+
+    It 'supports -Force path and creates runtime/config targets' {
+        $output = Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-Force')
+
+        $output | Should -Match 'Mode: FORCE'
+        (Join-Path $testHome '.aloop\config.yml') | Should -Exist
+        (Join-Path $testHome '.aloop\bin\loop.ps1') | Should -Exist
+        (Join-Path $testHome '.aloop\templates\PROMPT_plan.md') | Should -Exist
+        (Join-Path $testHome '.aloop\projects') | Should -Exist
+        (Join-Path $testHome '.aloop\sessions') | Should -Exist
+    }
+
+    It 'copies commands only for harnesses where HasCommands is true' {
+        Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-Force') | Out-Null
+
+        (Join-Path $testHome ".claude\commands\$skillName\setup.md") | Should -Exist
+        (Join-Path $testHome ".codex\commands\$skillName\setup.md") | Should -Exist
+        (Join-Path $testHome '.copilot\commands') | Should -Not -Exist
+        (Join-Path $testHome '.agents\commands') | Should -Not -Exist
+    }
+
+    It 'covers no-harness summary variant for unknown harness values' {
+        $output = Invoke-InstallerIsolated -InstallerArgs @('-Harnesses', 'unknown', '-SkipCliCheck', '-DryRun')
+
+        $output | Should -Match 'WARNING: Unknown harness'
+        $output | Should -Match 'No harnesses selected\. Skipping skill/command installation\.'
+    }
+}

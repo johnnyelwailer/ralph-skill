@@ -4,17 +4,17 @@
 
 ### In Progress
 
-### Up Next
-
-- [ ] **Add/expand tests for uninstall contract and naming invariants** — there is good `install.ps1` coverage but no equivalent uninstaller regression suite. Add focused tests for harness path targets (`$skillName`), VS Code prompt glob (`aloop-*`), and runtime removal target (`~/.aloop/`). (priority: high — prevents cleanup regressions)
-
 - [ ] **Add missing Copilot steer prompt file and wire command surface parity** — `copilot/prompts/$skillName-steer.prompt.md` is missing, so only four Copilot prompts exist. Add the fifth prompt (`name: aloop-steer`) and update any prompt-count assertions/docs accordingly. (priority: high — spec requires 5 Copilot prompts)
+
+### Up Next
 
 - [ ] **Normalize Claude/Codex command naming in docs/prompts to `/$skillName:*` contract** — command docs and README currently instruct `/aloop:*` for Claude/Codex, but spec requires `/$skillName:*` (Copilot remains `/aloop-*`). Update command markdown + README examples to remove this user-facing mismatch. (priority: high — command contract clarity)
 
-- [ ] [review] **Add branch-coverage evidence for touched installer paths** — current plan still lacks explicit >=80% touched-file branch coverage evidence for installer logic branches (HasCommands, runtime copy paths, summary variants, dry-run/force paths). (priority: medium — review gate closure)
+- [ ] **Add/expand tests for uninstall contract and naming invariants** — there is good `install.ps1` coverage but no equivalent uninstaller regression suite. Add focused tests for harness path targets (`$skillName`), VS Code prompt glob (`aloop-*`), and runtime removal target (`~/.aloop/`). (priority: high — prevents cleanup regressions)
 
 - [ ] **`loop.sh`: add agent-summary noise filtering parity with `loop.ps1`** — bash loop still lacks the PowerShell summary filter (`Show-AgentSummary` equivalent), so raw provider output remains noisy. Port filtering and concise tail summary behavior. (priority: medium — operator UX)
+
+- [x] [review] **Add branch-coverage evidence for touched installer paths** — current plan still lacks explicit >=80% touched-file branch coverage evidence for installer logic branches (HasCommands, runtime copy paths, summary variants, dry-run/force paths). (priority: medium — review gate closure)
 
 - [ ] **Deduplicate `Show-CheckboxMenu` helper across install/uninstall** — function is duplicated in both scripts; move to shared module/script and source it from both to reduce drift risk. (priority: low — maintainability)
 
