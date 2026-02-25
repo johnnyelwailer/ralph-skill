@@ -3,6 +3,7 @@
 ## Current Phase: Dashboard spec hardening and contract alignment
 
 ### In Progress
+- [ ] [review] Gate 3: `ralph/cli/src/commands/dashboard.ts` branch coverage is 77.12% (<80% required) — add tests for uncovered branches in utility/read-error paths and SSE error handling (`readTextFile`/`readLogTail` catches, `sendToClients` failure cleanup, `/events` initial-state error path). (priority: high)
 - [x] Align steering contract to workdir across command/prompt/skill docs and spec references (replace session-dir STEERING guidance with workdir guidance). (P0)
 
 ### Up Next
