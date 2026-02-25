@@ -88,11 +88,13 @@ All runtime state installs to `~/.aloop/`, independent of harness selection.
 ```
 ~/.aloop/
   config.yml                     # Global defaults (provider, model, modes)
+  cli/
+    dist/
+      index.js                   # Bundled CLI entry (resolve/discover/scaffold/dashboard)
   bin/
     loop.ps1                     # PowerShell loop (Windows / macOS / Linux)
     loop.sh                      # Bash loop (macOS / Linux)
     setup-discovery.ps1          # Discovery + scaffold for setup command
-    monitor.mjs                  # Live progress dashboard (Node.js HTTP server)
   templates/
     PROMPT_plan.md               # Plan template with {{variables}}
     PROMPT_build.md              # Build template
@@ -106,6 +108,14 @@ All runtime state installs to `~/.aloop/`, independent of harness selection.
   active.json                    # Registry of running sessions
   history.json                   # Completed sessions (last 100, managed by uninstaller)
 ```
+
+### CLI Monorepo Build Contract
+
+- CLI implementation (including dashboard) lives in `aloop/cli/` TypeScript sources.
+- Source layout includes `src/index.ts` and command modules (`resolve`, `discover`, `scaffold`, `dashboard`).
+- Build step bundles output to `aloop/cli/dist/` for installation under `~/.aloop/cli/dist/`.
+- Runtime execution uses the installed bundle (`node ~/.aloop/cli/dist/index.js`).
+- Zero runtime npm dependencies; dev/build dependencies are allowed.
 
 ### Template Variables
 
@@ -124,8 +134,8 @@ Resolved during `/ralph:setup` (or `/aloop-setup`) into per-project prompts:
 Self-contained Node.js HTTP server for real-time monitoring of running sessions.
 
 ### Architecture
-- **Runtime**: Single-file `monitor.mjs` in `~/.aloop/bin/`.
-- **Dependencies**: Zero npm dependencies (uses Node.js built-ins: `http`, `fs`, `path`, `crypto`).
+- **Runtime**: TypeScript monorepo CLI source under `aloop/cli/src/`, including `commands/dashboard.ts`; built output is invoked via `aloop dashboard` (or alias `aloop monitor`).
+- **Dependencies**: Zero runtime npm dependencies; dev/build dependencies are allowed.
 - **Data Source**: Watches `status.json`, `log.jsonl`, `active.json`, and work-dir documents via `fs.watch`.
 - **Transport**: Server-Sent Events (SSE) for live push to browser.
 - **Frontend**: Single self-contained HTML response with inline CSS/JS.
@@ -141,9 +151,9 @@ Self-contained Node.js HTTP server for real-time monitoring of running sessions.
 3.  **Right: Content Area**: Renders the selected navigation view.
 
 ### Integration
-- **Lifecycle**: Launched automatically by `loop.ps1` / `loop.sh` in the background on an available port.
+- **Lifecycle**: Launched automatically by `loop.ps1` / `loop.sh` by starting the CLI dashboard subcommand in the background on an available port.
 - **Discovery**: URL printed to CLI upon launch and included in the `/ralph:start` prompt output.
-- **Installer**: `install.ps1` deploys `monitor.mjs` to `~/.aloop/bin/`.
+- **Installer**: `install.ps1` deploys bundled CLI output to `~/.aloop/cli/dist/`; the `aloop` shim runs `node ~/.aloop/cli/dist/index.js`.
 
 ### Project Working Files
 
@@ -166,6 +176,7 @@ Created in the project work directory (or worktree):
 | `claude/commands/$skillName/` | `~/.<harness>/commands/$skillName/` | Only `claude` and `codex` (`HasCommands = $true`) |
 | `copilot/prompts/` | `%APPDATA%\Code{,-Insiders}\User\prompts\` | Auto-detected VS Code installations |
 | `$skillName/config.yml` | `~/.aloop/config.yml` | Always |
+| `$skillName/cli/dist/` | `~/.aloop/cli/dist/` | Always (built TS CLI bundle) |
 | `$skillName/bin/` | `~/.aloop/bin/` | Always |
 | `$skillName/templates/` | `~/.aloop/templates/` | Always |
 

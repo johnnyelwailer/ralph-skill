@@ -1,31 +1,39 @@
 # Project TODO
 
-## Current Phase: Command contract alignment and regression coverage
+## Current Phase: Spec compliance & Dashboard implementation
 
 ### In Progress
 
-- [x] **Normalize Claude/Codex command naming to `/$skillName:*` across user-facing docs** — README, Claude command files, and skill reference docs still instruct `/aloop:*`; spec requires `/$skillName:*` for Claude/Codex (Copilot remains `/aloop-*`). (priority: high — command contract correctness)
+- [ ] **Fix VS Code prompt uninstall glob mismatch** — `uninstall.ps1` looks for `aloop-*.prompt.md` but they are installed as `ralph-*.prompt.md` (via `copilot/prompts/ralph-*.prompt.md`); align uninstaller to target `$skillName-*.prompt.md` correctly. (priority: critical — uninstall correctness)
 
 ### Up Next
 
-- [ ] **Feature: Live Progress Dashboard** — Implement a self-contained Node.js HTTP server for real-time browser-based monitoring. (priority: high — major feature)
-    - [ ] **Implement `monitor.mjs` core** — Zero-dep HTTP server with SSE transport and `fs.watch` integration.
-    - [ ] **Develop Dashboard UI** — Three-column layout with Session List, Nav, and Content Area (Inline CSS/JS).
-    - [ ] **Implement core views** — Progress (timeline), Docs (markdown viewer), and Log (raw stream).
-    - [ ] **Implement Actions** — Steer (POST `/api/steer`) and Stop (POST `/api/stop`) functionality.
-    - [ ] **Integrate with runtime** — Launch from `loop.ps1`/`loop.sh` and deploy via `install.ps1`.
+- [~] **Implement `monitor.mjs` runtime server** — superseded by steering: dashboard must be implemented as a TypeScript CLI subcommand in a monorepo build (not standalone `.mjs`).
 
-- [ ] **Align installer summary text with 4-template runtime contract** — `install.ps1` copies `PROMPT_steer.md` but summary output still lists only `PROMPT_{plan,build,review}.md`; update summary/help text to reflect actual runtime layout. (priority: high — avoids operator confusion)
+- [ ] **Set up TypeScript monorepo foundation for CLI** — add `ralph/cli/` TS workspace structure (`src/`, `tsconfig.json`, `package.json`) with build/bundle scripts and zero runtime dependencies. (priority: high — prerequisite for all CLI/dashboard work)
 
-- [ ] **Add/expand tests for uninstall contract and naming invariants** — there is good `install.ps1` coverage but no equivalent uninstaller regression suite. Add focused tests for harness path targets (`$skillName`), VS Code prompt glob (`aloop-*`), and runtime removal target (`~/.aloop/`). (priority: high — prevents cleanup regressions)
+- [ ] **Migrate core CLI commands to TypeScript build output** — implement CLI entry/subcommand routing and move resolve/discover/scaffold command implementation to TS sources with bundled `dist` output. (priority: high — supersedes prior `.mjs` CLI direction)
 
-- [ ] **`loop.sh`: add agent-summary noise filtering parity with `loop.ps1`** — bash loop still lacks the PowerShell summary filter (`Show-AgentSummary` equivalent), so raw provider output remains noisy. Port filtering and concise tail summary behavior. (priority: medium — operator UX)
+- [ ] **Implement dashboard as CLI subcommand (`aloop dashboard`/`aloop monitor`)** — port the existing dashboard feature spec (layout, SSE, views, steer/stop actions) into TS CLI command module and include it in bundle output. (priority: high — core spec feature, new tech direction)
 
-- [ ] **Deduplicate `Show-CheckboxMenu` helper across install/uninstall** — function is duplicated in both scripts; move to shared module/script and source it from both to reduce drift risk. (priority: low — maintainability)
+- [ ] **Wire dashboard into `loop.ps1`** — launch CLI dashboard subcommand in background, capture/display URL, and ensure graceful shutdown. (priority: high — required integration)
+
+- [ ] **Wire dashboard into `loop.sh`** — port CLI dashboard subcommand launch and lifecycle management to Bash loop. (priority: high — required integration)
+
+- [ ] **`loop.sh`: add agent-summary filtering parity with `loop.ps1`** — port `Show-AgentSummary` logic to Bash so output is clean and concise for operators. (priority: medium — usability parity)
+
+- [ ] **Align setup commands with "scaffold reality"** — update `claude/commands/ralph/setup.md` and `copilot/prompts/ralph-setup.prompt.md` (Step 8) to include `PROMPT_steer.md` in the list of scaffolded files. (priority: high — correctness)
+
+- [ ] **Update installer summary and README architecture** — update `install.ps1` summary to include the bundled CLI dashboard/runtime (`~/.aloop/cli/dist`) and `PROMPT_steer.md`. Fix `README.md` paths to use `$skillName/` instead of `aloop/` to match actual deployment. (priority: high — contract clarity)
+
+- [ ] **Add uninstaller regression tests** — create `uninstall.tests.ps1` verifying cleanup of `$skillName` harness targets, VS Code prompt files, and `~/.aloop/` runtime root. (priority: high — prevent cleanup regressions)
+
+- [ ] **Deduplicate `Show-CheckboxMenu` helper** — move the interactive menu function to a shared script and source it in both `install.ps1` and `uninstall.ps1`. (priority: low — maintainability)
 
 ### Completed
 
 - [x] **Add missing Copilot steer prompt file and wire command surface parity** — `copilot/prompts/$skillName-steer.prompt.md` now exists (`name: aloop-steer`) and prompt-count checks include all five prompts. (priority: high)
+- [x] **Normalize Claude/Codex command naming to `/$skillName:*` across user-facing docs** — command surface now consistently documents `/setup`, `/start`, `/status`, `/stop`, `/steer` under `/$skillName:*` for CLI harnesses. (priority: high)
 - [x] [review] **Add branch-coverage evidence for touched installer paths** — behavioral tests in `install.tests.ps1` cover HasCommands, runtime copy paths, summary variants, and dry-run/force paths. (priority: medium)
 - [x] **Fix `uninstall.ps1` harness target mismatch (`aloop` vs installer `$skillName`)** — uninstaller currently removes `~/.{claude,codex,copilot,agents}/.../aloop` while installer deploys to `.../$skillName` (`ra`+`lph`). Switch uninstall harness paths to `$skillName`-based targets per spec while keeping VS Code prompt glob `aloop-*.prompt.md`. (priority: critical — current uninstall misses installed harness assets)
 - [x] **Fix install path/source drift (legacy vs canonical naming)** — installer now maps from existing repo sources (`claude/skills/$skillName`, `claude/commands/$skillName`, `$skillName/{config.yml,bin,templates}`) and no longer depends on missing legacy paths.
