@@ -162,19 +162,28 @@ function extractPid(meta: unknown): number | null {
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
+  let tooLarge = false;
 
   await new Promise<void>((resolve, reject) => {
     request.on('data', (chunk) => {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (tooLarge) {
+        return;
+      }
       size += buffer.length;
       if (size > MAX_BODY_BYTES) {
-        reject(new Error(`Request body too large (max ${MAX_BODY_BYTES} bytes).`));
-        request.destroy();
+        tooLarge = true;
         return;
       }
       chunks.push(buffer);
     });
-    request.on('end', () => resolve());
+    request.on('end', () => {
+      if (tooLarge) {
+        reject(new Error(`Request body too large (max ${MAX_BODY_BYTES} bytes).`));
+        return;
+      }
+      resolve();
+    });
     request.on('error', (error) => reject(error));
   });
 

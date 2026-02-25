@@ -1,19 +1,19 @@
 # Project TODO
 
-## Current Phase: Spec parity hardening
+## Current Phase: Spec parity hardening (dashboard/runtime contract)
 
 ### In Progress
-- [ ] [review] Gate 2: `ralph/cli/src/commands/dashboard.test.ts:164` ("POST /api/steer rejects oversized request bodies") currently passes when `fetch` throws (`assert.match(..., /fetch failed/i)` at line 183), which can hide server crashes; rewrite to require deterministic API behavior (explicit `400` + `"Request body too large"` payload) and fail on transport errors. (priority: high)
-- [ ] [review] Gate 3: branch-coverage evidence still fails thresholds — `coverage/coverage-summary.json:1-2` reports only `project.ts` with `branches.pct = 63.73` and no >=80% per touched implementation module; generate/update branch coverage for this iteration and raise all touched implementation files to >=80% branches (>=90% for any new modules), adding tests for each uncovered branch. (priority: high)
+- [x] [review] Gate 2: Make `<skill>/cli/src/commands/dashboard.test.ts` oversized-body test deterministic (no `fetch failed` fallback) so it only passes on explicit `400` + `"Request body too large"` API behavior; this prevents transport-level false positives. (P0)
+- [ ] [review] Gate 3: Raise branch coverage for touched implementation modules to >=80% (>=90% for new modules); current summary still reports low branch coverage (`project.ts` 63.73%), so missing branches must be covered with focused tests. (P0)
 
 ### Up Next
-- [ ] Update prerequisite docs to Node.js 22.x (latest LTS) and add version-manager-first guidance (`nvm-windows`/`fnm` on Windows; `nvm`/`fnm` on macOS/Linux) including `nvm install --lts && nvm use --lts`. (P0)
-- [ ] Add `engines.node` constraints targeting Node.js 22 LTS in applicable repository `package.json` files and validate scripts still run. (P0)
-- [ ] Serve dashboard as a self-contained HTML response (inlined JS/CSS) from `dashboard.ts` while preserving current `/api/*` and `/events` behavior. (P1)
-- [ ] Close remaining Dashboard E2E contract gaps: add stop-confirm interaction and log autoscroll assertions to Playwright suite. (P1)
-- [ ] Harden docs markdown rendering against unsafe HTML and add regression tests for markdown safety plus `{{REFERENCE_FILES}}` scaffold substitution behavior. (P1)
-- [ ] Add `playwright-report/` and `test-results/` to repo `.gitignore` per Playwright artifact contract. (P2)
-- [ ] Migrate dashboard workspace from Tailwind CSS 3 to Tailwind CSS 4 while preserving existing shadcn component behavior. (P2)
+- [ ] Update prerequisites to Node.js 22 LTS guidance in `README.md` (version-manager-first: `nvm-windows`/`fnm` on Windows, `nvm`/`fnm` on macOS/Linux, with `nvm install --lts && nvm use --lts`) to match the spec baseline. (P0)
+- [ ] Add `engines.node` for Node 22 LTS in applicable `package.json` files (`<skill>/cli/package.json`, `<skill>/cli/dashboard/package.json`) to enforce runtime/tooling compatibility. (P0)
+- [ ] Serve dashboard root as a self-contained HTML payload from `dashboard.ts` (inline JS/CSS) while preserving `/api/*` and `/events`; current server still serves asset files from `dist/dashboard`. (P1)
+- [ ] Close remaining dashboard E2E contract gaps in Playwright: add stop-confirm interaction and verify log-view autoscroll behavior. (P1)
+- [ ] Harden Docs markdown rendering against unsafe HTML in `dashboard/src/App.tsx` and add regression tests for markdown safety; keep `{{REFERENCE_FILES}}` scaffold substitution coverage intact. (P1)
+- [ ] Add `playwright-report/` and `test-results/` to root `.gitignore` to satisfy Playwright artifact ignore requirements. (P2)
+- [ ] Migrate dashboard workspace from Tailwind CSS 3 (`tailwindcss@^3.4.14`) to Tailwind CSS 4 while preserving existing shadcn component behavior. (P2)
 
 ### Completed
 - [x] Remove unused dashboard dependency `"aloop-cli": "file:.."` from `<skill>/cli/dashboard/package.json` and kept build/tests green.

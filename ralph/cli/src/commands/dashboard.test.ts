@@ -166,25 +166,15 @@ test('POST /api/steer rejects oversized request bodies', async () => {
 
   try {
     const oversizedInstruction = 'x'.repeat(70 * 1024);
-    let sawOversizeRejection = false;
+    const response = await fetch(`${fixture.handle.url}/api/steer`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ instruction: oversizedInstruction }),
+    });
 
-    try {
-      const response = await fetch(`${fixture.handle.url}/api/steer`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ instruction: oversizedInstruction }),
-      });
-
-      assert.equal(response.status, 400);
-      const payload = (await response.json()) as { error: string };
-      assert.match(payload.error, /Request body too large/);
-      sawOversizeRejection = true;
-    } catch (error) {
-      assert.match((error as Error).message, /fetch failed/i);
-      sawOversizeRejection = true;
-    }
-
-    assert.equal(sawOversizeRejection, true);
+    assert.equal(response.status, 400);
+    const payload = (await response.json()) as { error: string };
+    assert.match(payload.error, /Invalid request body: Request body too large/);
   } finally {
     await fixture.handle.close();
   }
