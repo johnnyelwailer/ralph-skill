@@ -6,113 +6,99 @@ agent: agent
 
 Configure Ralph for the current project. Detect the project, gather configuration from the user, and create project-specific config and prompts in `~/.ralph/projects/<hash>/`.
 
-## Step 1: Detect Project
+## Step 1: Run scripted discovery (required)
 
-Detect the current project:
-1. Find the git root of the current working directory (or use cwd if not a git repo)
-2. Compute a project hash from the absolute path (use a short hash: first 8 chars of SHA-256)
-3. Determine the project name from the directory name
+Do NOT do manual shell probing and do NOT use ad-hoc bash snippets for setup discovery.
+Run exactly this script first:
 
-Display: "Setting up Ralph for: <project-name> (<project-root>)"
+`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command discover -Output json`
 
-## Step 2: Check Existing Setup
+Use its JSON output as the source of truth for:
+- project root/name/hash
+- existing Ralph config path + existence
+- detected language + confidence
+- validation presets
+- spec candidates
+- context files (`TODO.md`, `RESEARCH.md`, `REVIEW_LOG.md`, `STEERING.md`)
+- installed/missing providers + default models
 
-Check if `~/.ralph/projects/<hash>/config.yml` already exists.
-- If yes, ask: "Ralph is already configured for this project. Reconfigure? (yes/no)"
-- If no, continue
+Display a concise summary: `Setting up Ralph for: <project-name> (<project-root>)`
 
-## Step 3: Gather Project Context
+## Step 2: Be conversation-aware before asking questions
 
-Ask the user (batch questions — up to 4 at a time):
+Assume setup may be invoked inside an ongoing conversation.
 
-**Question 1:** "What programming language/framework is this project using?"
-Options: Node.js/TypeScript, Python, Go, Rust, .NET/C#, Other
+Before asking anything, summarize what is already known from:
+1. Discovery JSON
+2. Existing project files/context (`TODO.md`, `RESEARCH.md`, `REVIEW_LOG.md`)
+3. Current conversation context provided by the user
 
-**Question 2:** "What validation commands should Ralph run as backpressure?"
-- Tests only — `npm test` / `pytest` / `go test ./...` / etc.
-- Tests + type checking
-- Full validation — Tests, type checking, linting, builds
-- Custom — I'll specify the commands
+Then ask only delta questions. Do NOT ask questions that discovery/context already answered with high confidence.
 
-**Question 3:** "Where are your specification/requirement files?"
-- Single spec file (e.g., `SPEC.md`, `README.md`)
-- Directory of specs (e.g., `specs/`, `docs/`)
-- No specs yet — I'll create them as I go
-- Custom paths — I'll specify
+## Step 3: Existing setup behavior
 
-**Question 4:** "Which providers do you want to enable?" (multi-select)
-Read `~/.ralph/config.yml` to get current default model IDs per provider.
-- Claude — claude CLI
-- Codex — codex CLI
-- Gemini — gemini CLI
-- Copilot — copilot CLI
+If discovery says `config_exists=true`, ask:
+- `Keep current config and patch only missing fields, or fully reconfigure?`
 
-If 2+ providers selected, also ask:
-- "Which provider should be the default (or use round-robin)?"
-- "Customize models for enabled providers?" (use defaults from config.yml)
+Default to **patch** when possible.
 
-## Step 4: Generate Validation Commands
+## Step 4: Interview phase (requirements/spec only)
 
-Based on language and validation level:
+This phase is interview-only. Do NOT prepare loop runtime yet.
 
-**Node.js/TypeScript:**
-- Tests only: `npx vitest run` or `npm test`
-- Tests + types: `npx tsc --noEmit && npx vitest run`
-- Full: `npx tsc --noEmit && npx eslint src/ && npx vitest run`
+Ask only spec/context questions needed to align on work:
+- Desired outcome
+- Scope / non-goals
+- Constraints
+- Acceptance criteria
+- Risks
 
-**Python:** `pytest` / `mypy . && pytest` / `mypy . && ruff check . && pytest`
+Language question is allowed only if detection confidence is low.
 
-**Go:** `go test ./...` / `go vet ./... && go test ./...` / `go vet ./... && golangci-lint run && go test ./...`
+## Step 5: Spec-first interview (default when spec is missing/weak)
 
-**.NET/C#:** `dotnet test` / `dotnet build && dotnet test`
+Do NOT primarily ask for a spec file path.
 
-**Rust:** `cargo test` / `cargo clippy -- -D warnings && cargo test`
+If no clear spec exists (or user prefers to refine it live), interview the user to create or update `SPEC.md` directly in repo. Use concise questions:
+- Problem / desired outcome
+- In-scope and out-of-scope
+- Constraints (tech, timeline, compatibility)
+- Acceptance criteria / definition of done
+- Risks or non-goals
 
-## Step 5: Create Project Config
+If spec candidates exist, propose them as references and ask whether to include them in `spec_files`.
 
-Create `~/.ralph/projects/<hash>/config.yml`:
+## Step 6: Explicit go-ahead gate (required)
 
-```yaml
-project_name: <name>
-project_root: <absolute-path>
-language: <detected>
-provider: <selected>  # claude, codex, gemini, copilot, or round-robin
-mode: plan-build-review
-spec_files: <selected-paths>
-validation_commands: |
-  <generated-commands>
-safety_rules: |
-  - Never delete the project directory or run destructive commands
-  - Never push to remote without explicit user approval
+After the interview/spec alignment, ask:
+- `Proceed to prepare Ralph loop config now? (yes/no)`
 
-enabled_providers:
-  - claude
-  - codex
+If **no**:
+- stop after summarizing the agreed spec/interview output
+- do not ask provider/run details
+- do not scaffold config/prompts
 
-models:
-  claude: opus
-  codex: gpt-5.3-codex
-  gemini: gemini-3.1-pro-preview
-  copilot: gpt-5.3-codex
+If **yes**:
+- continue to Step 7
 
-round_robin_order:
-  - claude
-  - codex
+## Step 7: Collect run details (only after go-ahead)
 
-created_at: <timestamp>
-```
+Ask only now:
+1. Validation level (tests only / tests+types / full / custom)
+2. Provider selection from installed providers (multi-select)
+3. Default provider vs round-robin (only when 2+ providers selected)
 
-## Step 6: Generate Project-Specific Prompts
+## Step 8: Use script to scaffold config + prompts (required)
 
-Read `~/.ralph/templates/PROMPT_{plan,build,review}.md` and substitute:
-- `{{SPEC_FILES}}` → spec paths from config
-- `{{VALIDATION_COMMANDS}}` → concrete validation commands
-- `{{SAFETY_RULES}}` → safety rules
-- `{{PROVIDER_HINTS}}` → provider-specific hints
+After collecting final choices, call:
 
-Write resolved prompts to `~/.ralph/projects/<hash>/prompts/PROMPT_{plan,build,review}.md`.
+`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command scaffold -Output json -Provider <provider> -EnabledProviders <csv-or-list> -RoundRobinOrder <csv-or-list> -Language <language> -SpecFiles <list> -ValidationCommands <list>`
 
-## Step 7: Confirm Setup
+This script must be used to write:
+- `~/.ralph/projects/<hash>/config.yml`
+- `~/.ralph/projects/<hash>/prompts/PROMPT_{plan,build,review}.md`
+
+## Step 9: Confirm setup
 
 Display:
 ```
@@ -121,10 +107,11 @@ Ralph configured for <project-name>!
   Config:     ~/.ralph/projects/<hash>/config.yml
   Prompts:    ~/.ralph/projects/<hash>/prompts/
   Provider:   <selected>
-  Enabled:    claude (opus), codex (gpt-5.3-codex)
+  Enabled:    <provider+model list>
   Validation: <commands summary>
+  Spec files: <selected spec files>
 
 Next: /ralph-start to launch a loop
 ```
 
-> Note: If `~/.ralph/templates/` doesn't exist, warn the user to run the install script from https://github.com/johnnyelwailer/ralph-skill
+> If `~/.ralph/templates/` is missing, stop and ask the user to run `./install.ps1` first.

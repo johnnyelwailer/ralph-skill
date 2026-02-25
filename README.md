@@ -152,6 +152,10 @@ In VS Code (stable or Insiders) with GitHub Copilot, type `/` and select:
 
 The skill (`~/.copilot/skills/ralph/`) is also loaded automatically by Copilot based on context.
 
+`/ralph:setup` and `/ralph-setup` are discovery-first and interview-first: they use `~/.ralph/bin/setup-discovery.ps1` to auto-detect repo context (project root/hash, language, validation presets, providers, existing Ralph config), run a spec/context interview first, and ask loop run details only after explicit user go-ahead.
+
+When no strong spec exists, setup defaults to a short interview to create/refine `SPEC.md` instead of forcing a spec-path-first workflow.
+
 ## Architecture
 
 ```
@@ -182,6 +186,7 @@ The skill (`~/.copilot/skills/ralph/`) is also loaded automatically by Copilot b
   bin/
     loop.ps1                   # PowerShell loop (Windows / macOS / Linux)
     loop.sh                    # Bash loop (macOS / Linux)
+    setup-discovery.ps1        # Discovery + scaffold script for /ralph:setup
   templates/
     PROMPT_plan.md             # Plan template with {{variables}}
     PROMPT_build.md            # Build template
