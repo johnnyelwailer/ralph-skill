@@ -176,8 +176,8 @@ Describe 'Harness definitions' {
         It 'templates copy into $aloopDir' {
             $scriptContent | Should -Match 'Join-Path \$aloopDir "templates"'
         }
-        It 'cli copies into $aloopDir' {
-            $scriptContent | Should -Match 'Join-Path \$aloopDir "cli"'
+        It 'cli copies into $aloopDir\cli\dist' {
+            $scriptContent | Should -Match 'Join-Path \$aloopDir "cli\\dist"'
         }
     }
 }
@@ -224,6 +224,12 @@ Describe 'Post-install summary and usage text' {
             $line = $scriptLines | Where-Object { $_ -match 'CLI:' -and $_ -match 'cli' }
             $line | Should -Not -BeNullOrEmpty
             $line | Should -Match '\$aloopDir\\cli\\'
+        }
+
+        It 'Entry line references $aloopDir\cli\dist\index.js' {
+            $line = $scriptLines | Where-Object { $_ -match 'Entry:' -and $_ -match 'index\.js' }
+            $line | Should -Not -BeNullOrEmpty
+            $line | Should -Match '\$aloopDir\\cli\\dist\\index\.js'
         }
     }
 
@@ -333,6 +339,7 @@ Describe 'Installer behavioral branches' {
         (Join-Path $testHome '.aloop\bin\loop.ps1') | Should -Exist
         (Join-Path $testHome '.aloop\templates\PROMPT_plan.md') | Should -Exist
         (Join-Path $testHome '.aloop\cli') | Should -Exist
+        (Join-Path $testHome '.aloop\cli\dist\index.js') | Should -Exist
         (Join-Path $testHome '.aloop\projects') | Should -Exist
         (Join-Path $testHome '.aloop\sessions') | Should -Exist
     }

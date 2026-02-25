@@ -522,7 +522,7 @@ Write-Host ""
 Write-Host "Installing CLI and dashboard..." -ForegroundColor White
 Copy-TreeItem `
     -Source (Join-Path $scriptDir "$skillName\cli\dist") `
-    -Destination (Join-Path $aloopDir "cli") `
+    -Destination (Join-Path $aloopDir "cli\dist") `
     -Label "cli"
 
 # --- Create runtime directories ---
@@ -570,6 +570,7 @@ Write-Host "  Commands:  ~/.{claude|codex}/commands/$skillName/  (setup, start, 
 Write-Host "  Prompts:   %APPDATA%\Code{,-Insiders}\User\prompts\  (aloop-*.prompt.md)"
 Write-Host "  Config:    $aloopDir\config.yml"
 Write-Host "  CLI:       $aloopDir\cli\  (dashboard, resolve, discover, scaffold)"
+Write-Host "  Entry:     $aloopDir\cli\dist\index.js"
 Write-Host "  Scripts:   $aloopDir\bin\  (loop.ps1, loop.sh)"
 Write-Host "  Templates: $aloopDir\templates\ (PROMPT_plan.md, PROMPT_build.md, PROMPT_review.md)"
 Write-Host ""

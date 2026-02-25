@@ -1,25 +1,21 @@
 # Project TODO
 
-## Current Phase: Contract parity and dashboard completion
+## Current Phase: Installer + dashboard spec parity
 
 ### In Progress
-- [ ] [review] Gate 2: Add frontend tests for markdown Docs rendering in `ralph/cli/dashboard/src/App.tsx` (around lines 345-359). Current iteration added `marked.parse(...)` + `dangerouslySetInnerHTML` with no assertions for rendered markdown output, empty-doc fallback, or malicious HTML handling. Add tests that assert exact rendered HTML/text outcomes and unsafe-content behavior. (priority: high)
-- [ ] [review] Gate 2: Add coverage for new `setup-discovery.ps1` reference-file paths (`Discover-ReferenceCandidates`, `-ReferenceFiles` scaffold parameter, and `{{REFERENCE_FILES}}` substitution at lines ~348-679). Current build added behavior without direct script tests, so regressions in discovery/scaffold wiring are not caught. (priority: high)
-- [ ] [review] Gate 3: Enforce branch coverage thresholds for touched files. Current recorded summary (`coverage/coverage-summary.json`) shows only `ralph/cli/src/commands/project.ts` at 63.73% branch coverage and does not report `ralph/cli/dashboard/src/App.tsx` or `ralph/bin/setup-discovery.ps1`, so this iteration cannot demonstrate >=80% branch coverage for modified files. Add/adjust coverage jobs and tests to meet gate thresholds with per-file proof. (priority: high)
-- [ ] [review] Gate 4: Remove unintended workspace dependency `\"aloop-cli\": \"file:..\"` from `ralph/cli/dashboard/package.json` (line 14) unless explicitly required and justified. It was introduced with markdown work but is unused by dashboard runtime code and increases coupling/lockfile noise. (priority: medium)
-- [ ] [review] Gate 4: Harden docs markdown rendering against injection in `ralph/cli/dashboard/src/App.tsx` lines ~345-359. Rendering raw `marked` HTML through `dangerouslySetInnerHTML` without sanitization permits unsafe markup from repo docs. Add sanitization or safe markdown rendering mode plus regression tests. (priority: high)
+- [x] Fix runtime install path mismatch: ensure installer output contains `~/.aloop/cli/dist/index.js` so loop launchers (`loop.ps1` / `loop.sh`) can reliably start the dashboard CLI. (P0)
 
 ### Up Next
-- [x] Implement markdown rendering for Docs view using `marked` or `react-markdown` instead of raw `<pre>` text. (P1)
-- [ ] Make dashboard frontend delivery self-contained per spec (single served HTML with inlined CSS/JS) and adjust server asset loading accordingly. (P1)
-- [ ] Add Playwright E2E tooling in the dashboard workspace (`@playwright/test`, config with `webServer`, and `test:e2e` scripts). (P1)
-- [ ] Add fixture-backed Playwright scenarios for layout, SSE updates/reconnect, session list/status, progress timeline badges, docs markdown rendering, log stream behavior, steer side effects, stop flow, and nav switching. (P1)
-- [ ] Verify dashboard server branch coverage and add focused tests until review gate target is met (read-error branches, SSE client cleanup, and `/events` initial-state error path). (P1)
-- [ ] Migrate dashboard workspace to Tailwind CSS 4 and current shadcn expectations from spec. (P2)
-- [ ] Consolidate duplicated provider/model default literals into shared constants consumed by discovery/scaffold and loop entrypoints. (P2)
-- [ ] Update repo ignore/cleanup for generated artifacts (`playwright-report/`, `test-results/`) and stop tracking transient test output files. (P2)
+- [ ] Add Playwright E2E foundation in `<skill>/cli/dashboard/` (`@playwright/test`, config, and `test:e2e` script using the real dashboard server via `webServer`). (P1)
+- [ ] Add first fixture-backed Playwright specs for the required flows: initial render, session list/status, progress view, docs markdown render, log view, steer write side effect, stop flow, nav switching, and SSE reconnect behavior. (P1)
+- [ ] Deliver dashboard frontend as a self-contained HTML response (inline JS/CSS) and update `dashboard.ts` asset serving to match spec. (P1)
+- [ ] Remove unused `"aloop-cli": "file:.."` from dashboard dependencies unless a concrete runtime/build use is added. (P1)
+- [ ] Add focused tests for docs markdown safety (unsafe HTML handling) and setup-discovery `{{REFERENCE_FILES}}` wiring to prevent regressions in recently changed paths. (P1)
+- [ ] Migrate dashboard workspace to Tailwind CSS 4 while keeping existing shadcn component behavior stable. (P2)
+- [ ] Add `playwright-report/` and `test-results/` to `.gitignore` (repo root) per dashboard E2E artifact contract. (P2)
 
 ### Completed
+- [x] Implement markdown rendering for Docs view using `marked` or `react-markdown` instead of raw `<pre>` text. (P1)
 - [x] Align README and command/prompt docs with canonical install paths and naming (`skills/$skillName`, `commands/$skillName`, slash command vs Copilot prompt forms) to remove remaining spec drift. (P0)
 - [x] Bring setup discovery/scaffold parity with spec: include `reference_candidates` in discovery output, persist `reference_files` in project config, and substitute `{{REFERENCE_FILES}}` in generated prompts.
 - [x] Added canonical `SPEC.md`.
