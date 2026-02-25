@@ -100,16 +100,16 @@ $cliToolDefs = @(
         Id         = 'copilot'
         Name       = 'GitHub Copilot CLI'
         Command    = 'copilot'
-        NpmPackage = '@githubnext/github-copilot-cli'
+        NpmPackage = '@github/copilot'
         Auth       = @(
-            'Option A — GitHub CLI extension (recommended):'
-            '  winget install GitHub.cli  (or: https://cli.github.com)'
-            '  gh auth login'
-            '  gh extension install github/gh-copilot'
-            'Option B — legacy standalone npm package:'
-            '  npm install -g @githubnext/github-copilot-cli'
-            '  github-copilot-cli auth'
-            'Requires a GitHub account with an active Copilot subscription'
+            'npm install -g @github/copilot'
+            'Or via WinGet (Windows):  winget install GitHub.Copilot'
+            'Or via Homebrew (macOS/Linux):  brew install copilot-cli'
+            'Then run: copilot  → use /login to authenticate'
+            'Or set $env:GH_TOKEN / $env:GITHUB_TOKEN to a fine-grained PAT'
+            '  with "Copilot Requests" permission enabled'
+            'Requires an active GitHub Copilot subscription'
+            'Docs: https://www.npmjs.com/package/@github/copilot'
         )
     }
 )

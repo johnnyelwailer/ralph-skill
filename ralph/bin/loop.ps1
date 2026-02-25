@@ -125,8 +125,8 @@ function Assert-ProviderInstalled {
 
 function Assert-CopilotAuth {
     param([string]$CopilotOutputText)
-    if ($CopilotOutputText -match 'No authentication information found|Failed to log in to github\.com|run the ''/login'' command|gh auth login') {
-        throw "copilot is not authenticated. Run 'copilot' then '/login', or run 'gh auth login'."
+    if ($CopilotOutputText -match 'No authentication information found|Failed to log in to github\.com|run the ''/login'' command|not logged in') {
+        throw "copilot is not authenticated. Run 'copilot' then use the /login slash command."
     }
 }
 
