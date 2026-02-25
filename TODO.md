@@ -4,6 +4,8 @@
 
 ### In Progress
 - [x] Fix runtime install path mismatch: ensure installer output contains `~/.aloop/cli/dist/index.js` so loop launchers (`loop.ps1` / `loop.sh`) can reliably start the dashboard CLI. (P0)
+- [ ] [review] Gate 3: branch coverage evidence is missing for changed files (`install.ps1`, `ralph/cli/dashboard/e2e/smoke.spec.ts`, `ralph/cli/dashboard/playwright.config.ts`), and existing `coverage/coverage-summary.json` reports only `ralph/cli/src/commands/project.ts` at 63.73% branches; add coverage reporting for touched files and raise each touched file to >=80% branch coverage (new modules >=90%), including installer branches for stale-dir cleanup, CLI auto-install selection/missing-npm paths, VS Code-not-installed prompt path, and Unix chmod path. (priority: high)
+- [ ] [review] Gate 4: `ralph/cli/dashboard/package.json` still carries unused dependency `"aloop-cli": "file:.."`; remove it (or add concrete runtime/build usage with tests) to eliminate dead configuration. (priority: high)
 
 ### Up Next
 - [x] Add Playwright E2E foundation in `<skill>/cli/dashboard/` (`@playwright/test`, config, and `test:e2e` script using the real dashboard server via `webServer`). (P1)
