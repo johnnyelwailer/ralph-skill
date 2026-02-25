@@ -4,6 +4,10 @@
 
 ### In Progress
 
+- [ ] [review] Gate 2: `$skillName/cli/src/commands/project.test.ts:308-314` (`workspace functions handle default parameters`) uses `assert.ok(result.project.root)` plus an empty `catch` around `scaffoldWorkspace()`; replace with concrete assertions (exact root path + `assert.rejects` on missing templates) so failures cannot be masked (priority: high).
+- [ ] [review] Gate 2: `$skillName/cli/src/commands/project.test.ts:320-381` (`command wrappers support json and text output`) has shallow checks (`assert.ok(logs.length > 0)`, `assert.ok(scafJson.config_path)`) and another swallowed default-call failure; assert exact JSON/text fields for each wrapper and verify the default scaffold error path explicitly (priority: high).
+- [ ] [review] Gate 3: branch coverage for touched `$skillName/cli/src/index.ts` is `0%` (`npx c8 --reporter=text --all --include='src/commands/*.ts' --include='src/index.ts' tsx --test src/**/*.test.ts`); add CLI entrypoint tests that execute command registration/parse branches to reach >=80% branch coverage for this touched file (priority: high).
+
 ### Up Next
 - [ ] Extend `$skillName/cli/src/commands/dashboard.ts` with `POST /api/steer` and `POST /api/stop` handlers and explicit error responses (priority: critical; required dashboard controls per SPEC).
 - [ ] Expand dashboard state loading/watch coverage in `dashboard.ts` to include `active.json`, `history.json`, and session `meta.json` expected by the session list UX (priority: high; current state only reads per-session status/log/docs).
