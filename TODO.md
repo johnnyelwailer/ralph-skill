@@ -3,11 +3,16 @@
 ## Current Phase: CLI/dashboard contract implementation and spec parity
 
 ### In Progress
+- [ ] [review] Gate 1: `dashboard.ts` missing `/api/steer`, `/api/stop` endpoints and `active.json` watch (priority: critical)
+- [ ] [review] Gate 1: `App.tsx` uses hardcoded data; must implement SSE connection and `/api/state` fetch (priority: critical)
+- [ ] [review] Gate 1: `App.tsx` Docs view is a placeholder; must implement markdown viewer for session docs (priority: high)
+- [ ] [review] Gate 2/3: CLI and Dashboard have 0% test coverage; implement Vitest or Jest suite for server and frontend (priority: critical)
+- [ ] [review] Gate 4: `dashboard.ts` is missing robust error handling for file system operations (priority: medium)
 - [x] Create `aloop/cli/` TypeScript workspace skeleton (`src/`, `commands/`, build config) and add a minimal entrypoint for `resolve/discover/scaffold/dashboard`. (priority: critical - prerequisite for all dashboard runtime work)
 
 ### Up Next
 - [x] Build dashboard frontend workspace at `aloop/cli/dashboard/` (React + Tailwind 4 + shadcn/ui) with `Progress`, `Docs`, `Log`, `Steer`, and `Stop` views. (priority: high - required by SPEC dashboard architecture)
-- [ ] Implement `commands/dashboard.ts` server with SSE and file-watch updates for `status.json`, `log.jsonl`, and work-dir docs. (priority: high - required live progress behavior)
+- [x] Implement `commands/dashboard.ts` server with SSE and file-watch updates for `status.json`, `log.jsonl`, and work-dir docs. (priority: high - required live progress behavior)
 - [ ] Add CLI build pipeline (`vite build` for dashboard assets + `esbuild`/`tsc` for server) to produce installable output under `aloop/cli/dist`. (priority: high - needed for runtime deployment contract)
 - [ ] Update `install.ps1` to deploy CLI bundle from `aloop/cli/dist` into `~/.aloop/cli/` and include CLI runtime paths in install summary. (priority: high - installer/runtime contract gap)
 - [ ] Launch and manage dashboard process from `aloop/bin/loop.ps1` (startup, URL output, cleanup on exit). (priority: high - Windows runtime integration)
