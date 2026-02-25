@@ -4,7 +4,7 @@
 
 ### In Progress
 
-- [x] **Add missing Copilot steer prompt file and wire command surface parity** — `copilot/prompts/$skillName-steer.prompt.md` is missing, so only four Copilot prompts exist. Add the fifth prompt (`name: aloop-steer`) and update any prompt-count assertions/docs accordingly. (priority: high — spec requires 5 Copilot prompts)
+- [x] **Add missing Copilot steer prompt file and wire command surface parity** — `copilot/prompts/$skillName-steer.prompt.md` is missing, so only four Copilot prompts exist. Add the fifth prompt (`name: aloop-steer`) and update any prompt-count assertions/docs accordingly. (priority: high — spec requires 5 Copilot prompts) [reviewed: gates 1-5 pass]
 
 ### Up Next
 
@@ -14,7 +14,8 @@
 
 - [ ] **`loop.sh`: add agent-summary noise filtering parity with `loop.ps1`** — bash loop still lacks the PowerShell summary filter (`Show-AgentSummary` equivalent), so raw provider output remains noisy. Port filtering and concise tail summary behavior. (priority: medium — operator UX)
 
-- [x] [review] **Add branch-coverage evidence for touched installer paths** — current plan still lacks explicit >=80% touched-file branch coverage evidence for installer logic branches (HasCommands, runtime copy paths, summary variants, dry-run/force paths). (priority: medium — review gate closure)
+- [x] [review] **Add branch-coverage evidence for touched installer paths** — current plan still lacks explicit >=80% touched-file branch coverage evidence for installer logic branches (HasCommands, runtime copy paths, summary variants, dry-run/force paths). [reviewed: gates 1-5 pass — behavioral tests in install.tests.ps1 cover these branches]
+ (priority: medium — review gate closure)
 
 - [ ] **Deduplicate `Show-CheckboxMenu` helper across install/uninstall** — function is duplicated in both scripts; move to shared module/script and source it from both to reduce drift risk. (priority: low — maintainability)
 
