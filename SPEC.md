@@ -92,6 +92,7 @@ All runtime state installs to `~/.aloop/`, independent of harness selection.
     loop.ps1                     # PowerShell loop (Windows / macOS / Linux)
     loop.sh                      # Bash loop (macOS / Linux)
     setup-discovery.ps1          # Discovery + scaffold for setup command
+    monitor.mjs                  # Live progress dashboard (Node.js HTTP server)
   templates/
     PROMPT_plan.md               # Plan template with {{variables}}
     PROMPT_build.md              # Build template
@@ -117,6 +118,32 @@ Resolved during `/ralph:setup` (or `/aloop-setup`) into per-project prompts:
 | `{{VALIDATION_COMMANDS}}` | Backpressure commands (e.g. `npm test && npm run type-check`) |
 | `{{SAFETY_RULES}}` | Project safety constraints |
 | `{{PROVIDER_HINTS}}` | Provider-specific guidance |
+
+## Live Progress Dashboard
+
+Self-contained Node.js HTTP server for real-time monitoring of running sessions.
+
+### Architecture
+- **Runtime**: Single-file `monitor.mjs` in `~/.aloop/bin/`.
+- **Dependencies**: Zero npm dependencies (uses Node.js built-ins: `http`, `fs`, `path`, `crypto`).
+- **Data Source**: Watches `status.json`, `log.jsonl`, `active.json`, and work-dir documents via `fs.watch`.
+- **Transport**: Server-Sent Events (SSE) for live push to browser.
+- **Frontend**: Single self-contained HTML response with inline CSS/JS.
+
+### Dashboard Layout (Three-Column)
+1.  **Left: Session List**: Active and recent sessions from `active.json`. Shows name, status (running/complete/stuck), elapsed time, and iteration count.
+2.  **Center: Vertical Nav**:
+    - **Progress** (Default): Session header and iteration timeline.
+    - **Docs**: Markdown document viewer (TODO.md, SPEC.md, etc.).
+    - **Log**: Raw log stream from `log.jsonl`.
+    - **Steer**: Interface to submit steering instructions (writes `STEERING.md` via `/api/steer`).
+    - **Stop**: Graceful session stop via `/api/stop`.
+3.  **Right: Content Area**: Renders the selected navigation view.
+
+### Integration
+- **Lifecycle**: Launched automatically by `loop.ps1` / `loop.sh` in the background on an available port.
+- **Discovery**: URL printed to CLI upon launch and included in the `/ralph:start` prompt output.
+- **Installer**: `install.ps1` deploys `monitor.mjs` to `~/.aloop/bin/`.
 
 ### Project Working Files
 

@@ -8,6 +8,13 @@
 
 ### Up Next
 
+- [ ] **Feature: Live Progress Dashboard** — Implement a self-contained Node.js HTTP server for real-time browser-based monitoring. (priority: high — major feature)
+    - [ ] **Implement `monitor.mjs` core** — Zero-dep HTTP server with SSE transport and `fs.watch` integration.
+    - [ ] **Develop Dashboard UI** — Three-column layout with Session List, Nav, and Content Area (Inline CSS/JS).
+    - [ ] **Implement core views** — Progress (timeline), Docs (markdown viewer), and Log (raw stream).
+    - [ ] **Implement Actions** — Steer (POST `/api/steer`) and Stop (POST `/api/stop`) functionality.
+    - [ ] **Integrate with runtime** — Launch from `loop.ps1`/`loop.sh` and deploy via `install.ps1`.
+
 - [ ] **Align installer summary text with 4-template runtime contract** — `install.ps1` copies `PROMPT_steer.md` but summary output still lists only `PROMPT_{plan,build,review}.md`; update summary/help text to reflect actual runtime layout. (priority: high — avoids operator confusion)
 
 - [ ] **Add/expand tests for uninstall contract and naming invariants** — there is good `install.ps1` coverage but no equivalent uninstaller regression suite. Add focused tests for harness path targets (`$skillName`), VS Code prompt glob (`aloop-*`), and runtime removal target (`~/.aloop/`). (priority: high — prevents cleanup regressions)
