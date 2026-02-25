@@ -4,11 +4,7 @@
 
 ### In Progress
 
-- [x] **setup-discovery.ps1: scaffold must copy PROMPT_steer.md** — The scaffold function (line 574) only generates plan/build/review prompts. The steer template is never copied to `~/.aloop/projects/<hash>/prompts/`, so when `start.md` copies prompts to the session directory, `PROMPT_steer.md` is missing. The loop detects `STEERING.md` but warns "PROMPT_steer.md is missing" and skips steering entirely. Fix: add `'steer'` to the `@('plan', 'build', 'review')` foreach loop, but note the steer template has no project-specific variables to substitute (no `{{VALIDATION_COMMANDS}}` etc.), so it can be a straight copy from `~/.aloop/templates/PROMPT_steer.md`. (priority: critical — steering is completely broken)
-
-- [x] **loop.sh: round-robin should filter to installed providers** — `loop.ps1` (lines 612-628) gracefully filters the round-robin list to only installed CLIs and warns about missing ones. `loop.sh` (line 507) hard-fails with `assert_provider_installed` for every provider in the list, so specifying `--round-robin claude,codex,gemini,copilot` on a machine missing gemini kills the entire loop. Fix: port the filter-and-warn logic from loop.ps1 to loop.sh. This was fixed in loop.ps1 per commit `3bf1431` but never ported to the bash version. (priority: high — breaks round-robin on partial installs)
-
-- [x] **loop.sh: add copilot auth assertion** — `loop.ps1` has `Assert-CopilotAuth` (line 126-131) that checks copilot output for auth failure strings (`No authentication information found`, `Failed to log in`, etc.) and throws a hard error. `loop.sh` has no equivalent — copilot auth failures silently pass as successful iterations. Fix: add an `assert_copilot_auth` function in loop.sh that greps the output for the same patterns. (priority: high — silent auth failures waste iterations)
+_(none)_
 
 ### Up Next
 
@@ -20,4 +16,6 @@
 
 ### Completed
 
-_(none yet)_
+- [x] **setup-discovery.ps1: scaffold must copy PROMPT_steer.md** [reviewed: gates 1-5 pass — steer template correctly processed through full substitution loop including {{SPEC_FILES}} and {{PROVIDER_HINTS}} placeholders]
+- [x] **loop.sh: round-robin should filter to installed providers** [reviewed: gates 1-5 pass — faithful port of PS1 filter-and-warn logic with identical warn/error/reassign semantics]
+- [x] **loop.sh: add copilot auth assertion** [reviewed: gates 1-5 pass — assert_copilot_auth matches all 4 PS1 auth-failure patterns; temp-file capture covers both early-return and normal-exit cleanup paths]
