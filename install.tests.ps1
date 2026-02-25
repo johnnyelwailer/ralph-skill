@@ -12,6 +12,7 @@ BeforeAll {
     $scriptPath    = Join-Path $repoRoot 'install.ps1'
     $scriptContent = Get-Content $scriptPath -Raw
     $scriptLines   = Get-Content $scriptPath
+    $pwshPath      = (Get-Command pwsh -ErrorAction Stop).Source
 
     # Construct skillName identically to install.ps1 (avoids the literal in this file)
     $skillName = ('ra' + 'lph')
@@ -297,21 +298,25 @@ Describe 'Installer behavioral branches' {
             param(
                 [string[]]$InstallerArgs,
                 [string]$HomePath = $testHome,
-                [string]$AppDataPath = $testAppData
+                [string]$AppDataPath = $testAppData,
+                [string]$PathValue = $env:PATH
             )
 
             $previousHome = $env:HOME
             $previousUserProfile = $env:USERPROFILE
             $previousAppData = $env:APPDATA
+            $previousPath = $env:PATH
             try {
                 $env:HOME = $HomePath
                 $env:USERPROFILE = $HomePath
                 $env:APPDATA = $AppDataPath
-                return (& pwsh -NoProfile -File $scriptPath @InstallerArgs 2>&1 | Out-String)
+                $env:PATH = $PathValue
+                return (& $pwshPath -NoProfile -File $scriptPath @InstallerArgs 2>&1 | Out-String)
             } finally {
                 $env:HOME = $previousHome
                 $env:USERPROFILE = $previousUserProfile
                 $env:APPDATA = $previousAppData
+                $env:PATH = $previousPath
             }
         }
     }
@@ -358,5 +363,63 @@ Describe 'Installer behavioral branches' {
 
         $output | Should -Match 'WARNING: Unknown harness'
         $output | Should -Match 'No harnesses selected\. Skipping skill/command installation\.'
+    }
+
+    It 'removes stale non-command harness command directories during install' {
+        $staleCopilot = Join-Path $testHome '.copilot\commands\aloop'
+        $staleAgents = Join-Path $testHome '.agents\commands\aloop'
+        New-Item -ItemType Directory -Path $staleCopilot -Force | Out-Null
+        New-Item -ItemType Directory -Path $staleAgents -Force | Out-Null
+        Set-Content -Path (Join-Path $staleCopilot 'stale.txt') -Value 'x'
+        Set-Content -Path (Join-Path $staleAgents 'stale.txt') -Value 'x'
+
+        Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-Force') | Out-Null
+
+        (Test-Path $staleCopilot) | Should -BeFalse
+        (Test-Path $staleAgents) | Should -BeFalse
+        (Test-Path (Join-Path $testHome '.copilot\commands')) | Should -BeFalse
+        (Test-Path (Join-Path $testHome '.agents\commands')) | Should -BeFalse
+    }
+
+    It 'covers CLI check branch when npm is unavailable' {
+        $pathWithoutTools = Join-Path $tempRoot 'path-without-tools'
+        New-Item -ItemType Directory -Path $pathWithoutTools -Force | Out-Null
+
+        $output = Invoke-InstallerIsolated -InstallerArgs @('-All', '-DryRun') -PathValue $pathWithoutTools
+
+        $output | Should -Match '\[MISSING\]'
+        $output | Should -Match 'npm not found — cannot auto-install'
+    }
+
+    It 'covers CLI auto-install dry-run branch when npm is available' {
+        $fakeNpmPath = Join-Path $tempRoot 'fake-npm'
+        New-Item -ItemType Directory -Path $fakeNpmPath -Force | Out-Null
+        Set-Content -Path (Join-Path $fakeNpmPath 'npm.cmd') -Value "@echo off`r`nexit /b 0"
+
+        $output = Invoke-InstallerIsolated -InstallerArgs @('-All', '-DryRun') -PathValue $fakeNpmPath
+
+        $output | Should -Match '\[DRY RUN\] npm install -g'
+    }
+
+    It 'skips VS Code prompt install when no VS Code user directory exists' {
+        $appDataWithoutVsCode = Join-Path $tempRoot 'appdata-no-vscode'
+        New-Item -ItemType Directory -Path $appDataWithoutVsCode -Force | Out-Null
+
+        $output = Invoke-InstallerIsolated -InstallerArgs @('-Harnesses', 'copilot', '-SkipCliCheck', '-Force') -AppDataPath $appDataWithoutVsCode
+
+        $output | Should -Match 'No VS Code installation found — skipped \.prompt\.md files\.'
+        (Test-Path (Join-Path $appDataWithoutVsCode 'Code\User\prompts')) | Should -BeFalse
+        (Test-Path (Join-Path $appDataWithoutVsCode 'Code - Insiders\User\prompts')) | Should -BeFalse
+    }
+
+    It 'installs prompts for VS Code stable and skips VS Code Insiders when absent' {
+        $appDataStableOnly = Join-Path $tempRoot 'appdata-stable-only'
+        New-Item -ItemType Directory -Path (Join-Path $appDataStableOnly 'Code\User') -Force | Out-Null
+
+        $output = Invoke-InstallerIsolated -InstallerArgs @('-Harnesses', 'copilot', '-SkipCliCheck', '-Force') -AppDataPath $appDataStableOnly
+
+        (Join-Path $appDataStableOnly 'Code\User\prompts\aloop-setup.prompt.md') | Should -Exist
+        (Test-Path (Join-Path $appDataStableOnly 'Code - Insiders\User\prompts\aloop-setup.prompt.md')) | Should -BeFalse
+        $output | Should -Match '\[VS Code Insiders\] not installed — skipping'
     }
 }

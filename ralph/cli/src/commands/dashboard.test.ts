@@ -121,6 +121,24 @@ test('POST /api/steer validates input and writes STEERING.md', async () => {
   }
 });
 
+test('API method guards return 405 for /api/steer and /api/stop', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const steerResponse = await fetch(`${fixture.handle.url}/api/steer`, {
+      method: 'GET',
+    });
+    assert.equal(steerResponse.status, 405);
+
+    const stopResponse = await fetch(`${fixture.handle.url}/api/stop`, {
+      method: 'GET',
+    });
+    assert.equal(stopResponse.status, 405);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test('POST /api/stop validates payload and reports missing pid', async () => {
   const fixture = await createServerFixture();
 
@@ -138,6 +156,35 @@ test('POST /api/stop validates payload and reports missing pid', async () => {
       body: JSON.stringify({}),
     });
     assert.equal(missingPidResponse.status, 409);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('POST /api/steer rejects oversized request bodies', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const oversizedInstruction = 'x'.repeat(70 * 1024);
+    let sawOversizeRejection = false;
+
+    try {
+      const response = await fetch(`${fixture.handle.url}/api/steer`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ instruction: oversizedInstruction }),
+      });
+
+      assert.equal(response.status, 400);
+      const payload = (await response.json()) as { error: string };
+      assert.match(payload.error, /Request body too large/);
+      sawOversizeRejection = true;
+    } catch (error) {
+      assert.match((error as Error).message, /fetch failed/i);
+      sawOversizeRejection = true;
+    }
+
+    assert.equal(sawOversizeRejection, true);
   } finally {
     await fixture.handle.close();
   }

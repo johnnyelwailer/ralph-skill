@@ -1,39 +1,27 @@
 # Project TODO
 
-## Current Phase: Installer + dashboard spec parity
+## Current Phase: Spec parity hardening
 
 ### In Progress
-- [x] Fix runtime install path mismatch: ensure installer output contains `~/.aloop/cli/dist/index.js` so loop launchers (`loop.ps1` / `loop.sh`) can reliably start the dashboard CLI. (P0)
-- [ ] [review] Gate 3: branch coverage evidence is missing for changed files (`install.ps1`, `ralph/cli/dashboard/e2e/smoke.spec.ts`, `ralph/cli/dashboard/playwright.config.ts`), and existing `coverage/coverage-summary.json` reports only `ralph/cli/src/commands/project.ts` at 63.73% branches; add coverage reporting for touched files and raise each touched file to >=80% branch coverage (new modules >=90%), including installer branches for stale-dir cleanup, CLI auto-install selection/missing-npm paths, VS Code-not-installed prompt path, and Unix chmod path. (priority: high)
-- [ ] [review] Gate 4: `ralph/cli/dashboard/package.json` still carries unused dependency `"aloop-cli": "file:.."`; remove it (or add concrete runtime/build usage with tests) to eliminate dead configuration. (priority: high)
+- [ ] None.
 
 ### Up Next
-- [x] Add Playwright E2E foundation in `<skill>/cli/dashboard/` (`@playwright/test`, config, and `test:e2e` script using the real dashboard server via `webServer`). (P1)
-- [x] Add first fixture-backed Playwright specs for the required flows: initial render, session list/status, progress view, docs markdown render, log view, steer write side effect, stop flow, nav switching, and SSE reconnect behavior. (P1)
-- [ ] Refresh Node prerequisite docs to latest LTS (22.x / latest LTS wording), replacing outdated Node 18 references in README and related docs. (P0)
-- [ ] Update prerequisite install guidance to recommend version managers (`nvm-windows`/`fnm` on Windows, `nvm`/`fnm` on macOS/Linux) and include `nvm install --lts && nvm use --lts` example flow. (P0)
-- [ ] Audit `package.json` files and set/add `engines.node` to Node.js 22 LTS (or latest LTS equivalent) where applicable. (P0)
-- [ ] Deliver dashboard frontend as a self-contained HTML response (inline JS/CSS) and update `dashboard.ts` asset serving to match spec. (P1)
-- [ ] Remove unused `"aloop-cli": "file:.."` from dashboard dependencies unless a concrete runtime/build use is added. (P1)
-- [ ] Add focused tests for docs markdown safety (unsafe HTML handling) and setup-discovery `{{REFERENCE_FILES}}` wiring to prevent regressions in recently changed paths. (P1)
-- [ ] Migrate dashboard workspace to Tailwind CSS 4 while keeping existing shadcn component behavior stable. (P2)
-- [ ] Add `playwright-report/` and `test-results/` to `.gitignore` (repo root) per dashboard E2E artifact contract. (P2)
+- [ ] Remove unused dashboard dependency `"aloop-cli": "file:.."` from `<skill>/cli/dashboard/package.json` and keep build/tests green. (P0)
+- [ ] Update prerequisite docs to Node.js 22.x (latest LTS) and add version-manager-first guidance (`nvm-windows`/`fnm` on Windows; `nvm`/`fnm` on macOS/Linux) including `nvm install --lts && nvm use --lts`. (P0)
+- [ ] Add `engines.node` constraints targeting Node.js 22 LTS in applicable repository `package.json` files and validate scripts still run. (P0)
+- [ ] Serve dashboard as a self-contained HTML response (inlined JS/CSS) from `dashboard.ts` while preserving current `/api/*` and `/events` behavior. (P1)
+- [ ] Close remaining Dashboard E2E contract gaps: add stop-confirm interaction and log autoscroll assertions to Playwright suite. (P1)
+- [ ] Harden docs markdown rendering against unsafe HTML and add regression tests for markdown safety plus `{{REFERENCE_FILES}}` scaffold substitution behavior. (P1)
+- [ ] Add `playwright-report/` and `test-results/` to repo `.gitignore` per Playwright artifact contract. (P2)
+- [ ] Migrate dashboard workspace from Tailwind CSS 3 to Tailwind CSS 4 while preserving existing shadcn component behavior. (P2)
 
 ### Completed
-- [x] Implement markdown rendering for Docs view using `marked` or `react-markdown` instead of raw `<pre>` text. (P1)
-- [x] Align README and command/prompt docs with canonical install paths and naming (`skills/$skillName`, `commands/$skillName`, slash command vs Copilot prompt forms) to remove remaining spec drift. (P0)
-- [x] Bring setup discovery/scaffold parity with spec: include `reference_candidates` in discovery output, persist `reference_files` in project config, and substitute `{{REFERENCE_FILES}}` in generated prompts.
-- [x] Added canonical `SPEC.md`.
-- [x] Added all five Copilot prompt files.
-- [x] Implemented `resolve`, `discover`, and `scaffold` CLI commands.
-- [x] Implemented CLI build pipeline (`dist/index.js` plus dashboard assets).
-- [x] Implemented dashboard APIs for steering and stop controls.
-- [x] Updated installer runtime mapping for CLI distribution deployment.
-- [x] Added installer test coverage (`install.tests.ps1`).
-- [x] Added `PROMPT_steer.md` support in setup scaffolding.
-- [x] Added initial dashboard server and frontend skeleton.
-- [x] Expanded dashboard state to include active and recent sessions from runtime state files.
-- [x] Integrated dashboard auto-launch into loop runtimes with URL output.
-- [x] Added heartbeat SSE events, guarded state publish failures, and deterministic shutdown handling in dashboard runtime.
-- [x] Replaced dashboard frontend placeholders with live state wiring (`/api/state` and `/events`).
-- [x] Aligned steering behavior to write `STEERING.md` in the work directory across docs and runtime handling.
+- [x] [review] Expanded branch-coverage evidence beyond `project.ts` with focused tests for installer stale cleanup, CLI auto-install branches, VS Code prompt skip/install branches, and dashboard error paths.
+- [x] Fixed runtime install path mismatch so installer output includes `~/.aloop/cli/dist/index.js` for loop launcher compatibility.
+- [x] Added Playwright E2E foundation in `<skill>/cli/dashboard/` (`@playwright/test`, config, `test:e2e`, and `webServer` startup against real dashboard server).
+- [x] Added fixture-backed Playwright coverage for initial render, session list/status, progress view, docs rendering, log view, steering write, stop flow, navigation switching, and SSE reconnect/state refresh.
+- [x] Implemented markdown docs rendering in dashboard via `marked` instead of raw text-only output.
+- [x] Aligned README and command/prompt docs with canonical harness install paths and command/prompt naming.
+- [x] Added discovery/scaffold parity for `reference_candidates`, persisted `reference_files`, and `{{REFERENCE_FILES}}` prompt substitution.
+- [x] Implemented CLI commands (`resolve`, `discover`, `scaffold`, `dashboard`) with runtime build output at `<skill>/cli/dist/index.js`.
+- [x] Implemented dashboard APIs for steering (`/api/steer`) and stop control (`/api/stop`) with runtime loop integration and auto-launch URL output.
