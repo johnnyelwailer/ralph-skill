@@ -11,10 +11,13 @@ type SessionStatus = Record<string, unknown>;
 interface DashboardState {
   sessionDir: string;
   workdir: string;
+  runtimeDir: string;
   updatedAt: string;
   status: SessionStatus | null;
   log: string;
   docs: Record<string, string>;
+  activeSessions: unknown[];
+  recentSessions: unknown[];
 }
 
 interface SessionSummary {
@@ -50,6 +53,16 @@ function readNumberLike(source: Record<string, unknown>, keys: string[], fallbac
     }
   }
   return fallback;
+}
+
+function toSessionSummary(source: Record<string, unknown>, fallbackName: string): SessionSummary {
+  return {
+    id: readString(source, ['session_id', 'id'], fallbackName),
+    name: readString(source, ['project_name', 'name', 'session_name'], fallbackName),
+    status: readString(source, ['state', 'status'], 'unknown'),
+    elapsed: readString(source, ['elapsed', 'elapsed_time', 'duration'], '--'),
+    iterations: readNumberLike(source, ['iteration', 'iterations'], '--'),
+  };
 }
 
 export function App() {
@@ -123,11 +136,11 @@ export function App() {
   }, [selectedDoc]);
 
   const sessions = useMemo<SessionSummary[]>(() => {
-    if (!state || !isRecord(state.status)) {
+    if (!state) {
       return [
         {
           id: 'current',
-          name: state?.workdir ?? 'Current workspace',
+          name: 'Current workspace',
           status: 'unknown',
           elapsed: '--',
           iterations: '--',
@@ -135,14 +148,35 @@ export function App() {
       ];
     }
 
-    const source = state.status;
+    const active = (state.activeSessions ?? [])
+      .filter(isRecord)
+      .map((entry, index) => ({
+        ...toSessionSummary(entry, `Active session ${index + 1}`),
+      }));
+    const recent = (state.recentSessions ?? [])
+      .filter(isRecord)
+      .slice(-5)
+      .reverse()
+      .map((entry, index) => ({
+        ...toSessionSummary(entry, `Recent session ${index + 1}`),
+      }));
+
+    const combined = [...active, ...recent];
+    if (combined.length > 0) {
+      return combined;
+    }
+
+    if (isRecord(state.status)) {
+      return [toSessionSummary(state.status, state.workdir)];
+    }
+
     return [
       {
-        id: readString(source, ['session_id', 'id'], 'current'),
-        name: readString(source, ['branch', 'name', 'session_name'], state.workdir),
-        status: readString(source, ['state', 'status'], 'unknown'),
-        elapsed: readString(source, ['elapsed', 'elapsed_time'], '--'),
-        iterations: readNumberLike(source, ['iteration', 'iterations'], '--'),
+        id: 'current',
+        name: state.workdir,
+        status: 'unknown',
+        elapsed: '--',
+        iterations: '--',
       },
     ];
   }, [state]);

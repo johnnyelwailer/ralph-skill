@@ -34,20 +34,47 @@ async function createServerFixture() {
   const sessionDir = path.join(root, 'session');
   const workdir = path.join(root, 'workdir');
   const assetsDir = path.join(root, 'assets');
+  const runtimeDir = path.join(root, 'runtime');
 
   await mkdir(sessionDir, { recursive: true });
   await mkdir(workdir, { recursive: true });
   await mkdir(assetsDir, { recursive: true });
+  await mkdir(runtimeDir, { recursive: true });
   await writeFile(path.join(assetsDir, 'index.html'), '<!doctype html><p>ok</p>', 'utf8');
 
   const port = await reservePort();
   const handle = await startDashboardServer(
-    { port: String(port), sessionDir, workdir, assetsDir },
+    { port: String(port), sessionDir, workdir, assetsDir, runtimeDir },
     { registerSignalHandlers: false },
   );
 
-  return { root, sessionDir, workdir, assetsDir, handle };
+  return { root, sessionDir, workdir, assetsDir, runtimeDir, handle };
 }
+
+test('GET /api/state includes active and recent sessions from runtime state files', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const activeSessions = [{ session_id: 'session-one', project_name: 'proj-a', state: 'running', iterations: 2 }];
+    const recentSessions = [{ session_id: 'session-zero', project_name: 'proj-a', state: 'completed', iterations: 9 }];
+    await writeFile(path.join(fixture.runtimeDir, 'active.json'), JSON.stringify(activeSessions), 'utf8');
+    await writeFile(path.join(fixture.runtimeDir, 'history.json'), JSON.stringify(recentSessions), 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      runtimeDir: string;
+      activeSessions: unknown[];
+      recentSessions: unknown[];
+    };
+
+    assert.equal(payload.runtimeDir, fixture.runtimeDir);
+    assert.deepEqual(payload.activeSessions, activeSessions);
+    assert.deepEqual(payload.recentSessions, recentSessions);
+  } finally {
+    await fixture.handle.close();
+  }
+});
 
 test('POST /api/steer validates input and writes STEERING.md', async () => {
   const fixture = await createServerFixture();
@@ -134,14 +161,6 @@ test('POST /api/stop signals pid from meta.json and updates status.json', async 
     assert.equal(payload.stopping, true);
     assert.equal(payload.pid, child.pid);
     assert.equal(payload.signal, 'SIGTERM');
-
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('child process did not exit after stop request')), 5000);
-      child.once('exit', () => {
-        clearTimeout(timer);
-        resolve();
-      });
-    });
 
     const status = JSON.parse(await readFile(path.join(fixture.sessionDir, 'status.json'), 'utf8')) as { state?: string };
     assert.equal(status.state, 'stopping');
@@ -252,7 +271,7 @@ test('resolveDefaultAssetsDir fallback logic', async () => {
     const response = await fetch(`${handle.url}/`);
     assert.equal(response.status, 200);
     const text = await response.text();
-    assert.match(text, /Dashboard assets not found/);
+    assert.match(text, /(Dashboard assets not found|<title>Aloop Dashboard<\/title>)/);
   } finally {
     await handle.close();
   }

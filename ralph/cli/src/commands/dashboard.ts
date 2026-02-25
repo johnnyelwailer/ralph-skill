@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { watch, type FSWatcher } from 'node:fs';
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 interface DashboardOptions {
@@ -8,15 +9,19 @@ interface DashboardOptions {
   sessionDir?: string;
   workdir?: string;
   assetsDir?: string;
+  runtimeDir?: string;
 }
 
 interface DashboardState {
   sessionDir: string;
   workdir: string;
+  runtimeDir: string;
   updatedAt: string;
   status: unknown | null;
   log: string;
   docs: Record<string, string>;
+  activeSessions: unknown[];
+  recentSessions: unknown[];
 }
 
 interface DashboardServerHandle {
@@ -48,6 +53,11 @@ async function readJsonFile(filePath: string): Promise<unknown | null> {
   } catch {
     return null;
   }
+}
+
+async function readJsonArrayFile(filePath: string): Promise<unknown[]> {
+  const value = await readJsonFile(filePath);
+  return Array.isArray(value) ? value : [];
 }
 
 async function readTextFile(filePath: string): Promise<string> {
@@ -195,21 +205,30 @@ export async function startDashboardServer(
   const sessionDir = path.resolve(options.sessionDir ?? process.cwd());
   const workdir = path.resolve(options.workdir ?? process.cwd());
   const assetsDir = path.resolve(options.assetsDir ?? (await resolveDefaultAssetsDir()));
+  const runtimeDir = path.resolve(options.runtimeDir ?? path.join(os.homedir(), '.aloop'));
 
   const statusPath = path.join(sessionDir, 'status.json');
   const logPath = path.join(sessionDir, 'log.jsonl');
   const metaPath = path.join(sessionDir, 'meta.json');
+  const activeSessionsPath = path.join(runtimeDir, 'active.json');
+  const recentSessionsPath = path.join(runtimeDir, 'history.json');
   const steeringPath = path.join(workdir, 'STEERING.md');
   const docPaths = DOC_FILES.map((name) => path.join(workdir, name));
-  const watchedFiles = new Set([statusPath, logPath, ...docPaths].map((value) => path.normalize(value).toLowerCase()));
+  const watchedFiles = new Set(
+    [statusPath, logPath, activeSessionsPath, recentSessionsPath, ...docPaths].map((value) =>
+      path.normalize(value).toLowerCase(),
+    ),
+  );
 
   const clients = new Set<ServerResponse>();
   const watchers = new Map<string, FSWatcher>();
 
   const loadState = async (): Promise<DashboardState> => {
-    const [status, log, docsEntries] = await Promise.all([
+    const [status, log, activeSessions, recentSessions, docsEntries] = await Promise.all([
       readJsonFile(statusPath),
       readLogTail(logPath),
+      readJsonArrayFile(activeSessionsPath),
+      readJsonArrayFile(recentSessionsPath),
       Promise.all(
         DOC_FILES.map(async (docFile) => {
           const content = await readTextFile(path.join(workdir, docFile));
@@ -221,10 +240,13 @@ export async function startDashboardServer(
     return {
       sessionDir,
       workdir,
+      runtimeDir,
       updatedAt: new Date().toISOString(),
       status,
       log,
       docs: Object.fromEntries(docsEntries),
+      activeSessions,
+      recentSessions,
     };
   };
 
@@ -247,7 +269,7 @@ export async function startDashboardServer(
     }, 75);
   };
 
-  const watchPaths = [sessionDir, workdir];
+  const watchPaths = [sessionDir, workdir, runtimeDir];
   for (const target of watchPaths) {
     try {
       const watcher = watch(target, (_eventType, filename) => {
