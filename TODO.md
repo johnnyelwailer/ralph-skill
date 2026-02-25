@@ -8,7 +8,7 @@
 
 ### Up Next
 
-- [ ] **Add canonical `SPEC.md` for this repo** — planning prompts require `SPEC.md`, but it is missing at repo root. Create/curate a concise spec that defines canonical naming, supported harnesses, command/prompt surface (including steering), and runtime layout expected by installer/uninstaller/scripts. (priority: high — planning quality and consistency)
+- [x] **Add canonical `SPEC.md` for this repo** — planning prompts require `SPEC.md`, but it is missing at repo root. Create/curate a concise spec that defines canonical naming, supported harnesses, command/prompt surface (including steering), and runtime layout expected by installer/uninstaller/scripts. (priority: high — planning quality and consistency)
 
 - [ ] **Align `uninstall.ps1` with canonical install targets** — ensure uninstall removes the same skill/command/runtime/prompt assets that install deploys after path/name normalization, including command naming and runtime root. (priority: high — prevents orphaned installs and mismatched cleanup)
 
