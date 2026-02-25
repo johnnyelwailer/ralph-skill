@@ -4,7 +4,10 @@
   "description": "Aloop CLI for dashboard and project orchestration",
   "main": "dist/index.js",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js",
+    "build": "npm run clean && npm run build:dashboard && npm run build:server",
+    "build:dashboard": "npm --prefix dashboard run build -- --outDir ../dist/dashboard --emptyOutDir",
+    "build:server": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "tsx src/index.ts",
     "type-check": "tsc --noEmit"
   },
