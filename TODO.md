@@ -8,7 +8,7 @@
 
 - [x] **loop.sh: round-robin should filter to installed providers** — `loop.ps1` (lines 612-628) gracefully filters the round-robin list to only installed CLIs and warns about missing ones. `loop.sh` (line 507) hard-fails with `assert_provider_installed` for every provider in the list, so specifying `--round-robin claude,codex,gemini,copilot` on a machine missing gemini kills the entire loop. Fix: port the filter-and-warn logic from loop.ps1 to loop.sh. This was fixed in loop.ps1 per commit `3bf1431` but never ported to the bash version. (priority: high — breaks round-robin on partial installs)
 
-- [ ] **loop.sh: add copilot auth assertion** — `loop.ps1` has `Assert-CopilotAuth` (line 126-131) that checks copilot output for auth failure strings (`No authentication information found`, `Failed to log in`, etc.) and throws a hard error. `loop.sh` has no equivalent — copilot auth failures silently pass as successful iterations. Fix: add an `assert_copilot_auth` function in loop.sh that greps the output for the same patterns. (priority: high — silent auth failures waste iterations)
+- [x] **loop.sh: add copilot auth assertion** — `loop.ps1` has `Assert-CopilotAuth` (line 126-131) that checks copilot output for auth failure strings (`No authentication information found`, `Failed to log in`, etc.) and throws a hard error. `loop.sh` has no equivalent — copilot auth failures silently pass as successful iterations. Fix: add an `assert_copilot_auth` function in loop.sh that greps the output for the same patterns. (priority: high — silent auth failures waste iterations)
 
 ### Up Next
 

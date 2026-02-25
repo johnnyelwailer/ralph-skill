@@ -162,6 +162,13 @@ assert_provider_installed() {
     fi
 }
 
+assert_copilot_auth() {
+    if echo "$1" | grep -Eiq "No authentication information found|Failed to log in to github\.com|run the '/login' command|not logged in"; then
+        echo "copilot is not authenticated. Run 'copilot' then use the /login slash command." >&2
+        return 1
+    fi
+}
+
 write_status() {
     local iteration=$1 phase=$2 provider=$3 stuck_count=$4 state=${5:-running}
     cat > "$STATUS_FILE" << EOF
@@ -216,15 +223,24 @@ invoke_provider() {
             fi
             ;;
         copilot)
-            if ! copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw"; then
+            local copilot_output_file
+            copilot_output_file=$(mktemp)
+            if ! copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
                 echo "Copilot --model $COPILOT_MODEL failed. Retrying with $COPILOT_RETRY_MODEL." >&2
-                if ! copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw"; then
+                if ! copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
                     echo "Copilot retry failed. Trying without explicit model." >&2
-                    if ! copilot --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw"; then
+                    if ! copilot --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
                         echo "copilot failed" >&2
+                        rm -f "$copilot_output_file"
                         return 1
                     fi
                 fi
+            fi
+            local copilot_output_text
+            copilot_output_text=$(cat "$copilot_output_file")
+            rm -f "$copilot_output_file"
+            if ! assert_copilot_auth "$copilot_output_text"; then
+                return 1
             fi
             ;;
         *)
