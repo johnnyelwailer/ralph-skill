@@ -238,55 +238,60 @@ function Show-CheckboxMenu {
     for ($i = 0; $i -lt [Math]::Min($InitialState.Count, $count); $i++) {
         $checked[$i] = $InitialState[$i]
     }
-    $cursor = 0
+    $cursor     = 0
+    $esc        = [char]27
+    $menuHeight = $count + 1  # item rows + hint row
 
     Write-Host $Prompt -ForegroundColor White
     Write-Host ""
-    $menuTop = [Console]::CursorTop
-
-    # Render is a scriptblock so it can read $cursor/$checked/$menuTop from the
-    # enclosing function scope via PowerShell dynamic scoping (& invocation).
-    $render = {
-        [Console]::SetCursorPosition(0, $menuTop)
-        $w = try { [Math]::Max([Console]::WindowWidth - 1, 40) } catch { 79 }
-
-        for ($i = 0; $i -lt $count; $i++) {
-            $box  = if ($checked[$i]) { '[x]' } else { '[ ]' }
-            $mark = if ($i -eq $cursor) { '>' } else { ' ' }
-            $sub  = if (($SubTexts.Count -gt $i) -and $SubTexts[$i]) { "  — $($SubTexts[$i])" } else { '' }
-            $line = "  $mark $box  $($Items[$i])$sub"
-            $line = $line.PadRight($w)
-            if ($line.Length -gt $w) { $line = $line.Substring(0, $w) }
-
-            if ($i -eq $cursor) {
-                [Console]::BackgroundColor = [ConsoleColor]::DarkBlue
-                [Console]::ForegroundColor = [ConsoleColor]::White
-            } elseif ($checked[$i]) {
-                [Console]::ForegroundColor = [ConsoleColor]::Green
-            } else {
-                [Console]::ForegroundColor = [ConsoleColor]::Gray
-            }
-            [Console]::Write($line)
-            [Console]::ResetColor()
-            [Console]::WriteLine()
-        }
-
-        $hint = "  [↑↓] move   [Space] toggle   [A] all/none   [Enter] confirm   [Esc] cancel"
-        $hint = $hint.PadRight($w)
-        if ($hint.Length -gt $w) { $hint = $hint.Substring(0, $w) }
-        [Console]::ForegroundColor = [ConsoleColor]::DarkGray
-        [Console]::Write($hint)
-        [Console]::ResetColor()
-        [Console]::WriteLine()
-    }
 
     [Console]::CursorVisible = $false
     try {
-        & $render
+        $firstDraw = $true
         $done      = $false
         $cancelled = $false
 
-        while (-not $done) {
+        while ($true) {
+            # On re-draws move cursor back up to overwrite the previous menu.
+            # ESC[nA moves up n lines — relative, so it works regardless of scroll position.
+            if (-not $firstDraw) {
+                [Console]::Write("${esc}[$($menuHeight)A")
+            }
+            $firstDraw = $false
+
+            $w = try { [Math]::Max([Console]::WindowWidth - 1, 40) } catch { 79 }
+
+            for ($i = 0; $i -lt $count; $i++) {
+                $box  = if ($checked[$i]) { '[x]' } else { '[ ]' }
+                $mark = if ($i -eq $cursor) { '>' } else { ' ' }
+                $sub  = if (($SubTexts.Count -gt $i) -and $SubTexts[$i]) { "  — $($SubTexts[$i])" } else { '' }
+                $line = "  $mark $box  $($Items[$i])$sub"
+                $line = $line.PadRight($w)
+                if ($line.Length -gt $w) { $line = $line.Substring(0, $w) }
+
+                if ($i -eq $cursor) {
+                    [Console]::BackgroundColor = [ConsoleColor]::DarkBlue
+                    [Console]::ForegroundColor = [ConsoleColor]::White
+                } elseif ($checked[$i]) {
+                    [Console]::ForegroundColor = [ConsoleColor]::Green
+                } else {
+                    [Console]::ForegroundColor = [ConsoleColor]::Gray
+                }
+                [Console]::Write($line)
+                [Console]::ResetColor()
+                [Console]::WriteLine()
+            }
+
+            $hint = "  [↑↓] move   [Space] toggle   [A] all/none   [Enter] confirm   [Esc] cancel"
+            $hint = $hint.PadRight($w)
+            if ($hint.Length -gt $w) { $hint = $hint.Substring(0, $w) }
+            [Console]::ForegroundColor = [ConsoleColor]::DarkGray
+            [Console]::Write($hint)
+            [Console]::ResetColor()
+            [Console]::WriteLine()
+
+            if ($done) { break }
+
             $key = [Console]::ReadKey($true)
 
             if     ($key.Key -eq [ConsoleKey]::UpArrow)   { $cursor = if ($cursor -gt 0)            { $cursor - 1 } else { $count - 1 } }
@@ -298,11 +303,8 @@ function Show-CheckboxMenu {
                 $anyUnchecked = $checked -contains $false
                 for ($j = 0; $j -lt $count; $j++) { $checked[$j] = $anyUnchecked }
             }
-
-            if (-not $done) { & $render }
         }
 
-        [Console]::SetCursorPosition(0, $menuTop + $count + 1)
         Write-Host ""
         if ($cancelled) { return $null }
         return ,$checked
