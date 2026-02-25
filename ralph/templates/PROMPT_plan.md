@@ -24,7 +24,7 @@ Study specifications and existing code, then generate or update a prioritized im
 
 2. **Record new research in RESEARCH.md**
    - **Append** any new findings, lookups, or discoveries made during this planning iteration
-   - Each entry must have a timestamp and brief summary (see format below)
+   - Each entry must have a timestamp, brief summary, and **source tier** (see Source Trustworthiness below)
    - If something was already covered in RESEARCH.md, skip it — do not add duplicate entries
    - Do NOT rewrite or delete existing entries — the file is **append-only**
 
@@ -44,6 +44,22 @@ Study specifications and existing code, then generate or update a prioritized im
 
 {{PROVIDER_HINTS}}
 
+## Source Trustworthiness
+
+Not all sources are equal. Tag each research entry with its tier and prefer higher tiers:
+
+| Tier | Source Type | Trust | Example |
+|------|------------|-------|---------|
+| **T1** | Official docs (current version) or platform source code | Authoritative — the spec of how it *should* work | docs.github.com, library source |
+| **T2** | Direct testing (ran CLI/code, observed output) | Useful but fragile — depends on local version, OS, config. Never sufficient alone; pair with T1 | ran `cli --version`, saw output |
+| **T3** | Project spec files (SPEC.md, our own docs) | High — but can have bugs or be aspirational | SPEC §7.1.1 |
+| **T4** | Blog posts, tutorials, community answers | Often outdated or incomplete | Dev blog, Stack Overflow |
+| **T5** | AI-generated content (summaries, chat responses) | Unreliable — verify independently | Web search snippet, model answer |
+
+**Key rule:** T2 (testing) confirms or disproves, T1 (official docs/source) is the authority. A test result without doc backing could be a local quirk. A doc claim without a test could be aspirational or outdated. **The strongest findings combine T1 + T2** — "the docs say X, and testing confirms it."
+
+When a finding's source tier is low (T4/T5), note it explicitly so future iterations know to re-verify with T1/T2.
+
 ## RESEARCH.md Format
 
 Append a new entry for each planning iteration. Do NOT overwrite previous entries.
@@ -51,18 +67,19 @@ Append a new entry for each planning iteration. Do NOT overwrite previous entrie
 ```markdown
 # Research Log
 
-## 2026-02-25 14:32 — Gap analysis: auth module
+## 2026-02-25 14:32 — Gap analysis: auth module [T1+T2]
 
-- `src/auth/token.ts` exists but `refreshToken()` is a stub (returns null, no HTTP call)
-- Spec §4.2 requires silent token refresh — not implemented
+- `src/auth/token.ts` exists but `refreshToken()` is a stub (returns null, no HTTP call) — confirmed by reading source
+- Spec §4.2 requires silent token refresh — not implemented (T3 spec, T2 code inspection)
 - `tests/auth.test.ts` has no tests for the refresh path
 
-## 2026-02-25 16:10 — Investigated: adapter duplication
+## 2026-02-25 16:10 — Investigated: adapter duplication [T2]
 
 - `src/adapters/openai.ts` and `src/adapters/azure.ts` share identical `buildHeaders()` logic (lines 34–41 and 29–36)
 - No shared utility exists yet — flagged for extraction
+- Source: direct code inspection (T2). No official guidance on extraction pattern needed.
 
-## 2026-03-18 09:05 — Stale recheck: adapter duplication (originally 2026-02-25)
+## 2026-03-18 09:05 — Stale recheck: adapter duplication (originally 2026-02-25) [T2]
 
 - Still holds. Both files still contain the same `buildHeaders()` block. Not yet extracted.
 ```
@@ -89,7 +106,9 @@ Append a new entry for each planning iteration. Do NOT overwrite previous entrie
 - **DO NOT implement anything.** Only plan.
 - **DO NOT create commits.** Only update RESEARCH.md and TODO.md.
 - **RESEARCH.md is append-only.** Never delete or modify previous entries.
-- **Check RESEARCH.md before researching.** If something is already recorded, skip it.
+- **Check RESEARCH.md before researching.** If something is already recorded (and not stale), skip it.
+- **Tag source tiers.** Every research entry must note its tier (T1–T5). Low-tier findings (T4/T5) should be flagged for future T1/T2 verification.
+- **Prefer T1+T2 combinations.** Don't commit a finding to RESEARCH.md on T4/T5 alone without noting the uncertainty.
 - Each task should be small enough to complete in a single loop iteration.
 - Tasks should be ordered by dependency: foundational work first.
 
