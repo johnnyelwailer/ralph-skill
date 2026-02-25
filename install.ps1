@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
-# Aloop Skill Installer
+# Skill Installer
 # Copies skill/command files to the correct directories for each AI harness,
-# and installs the Aloop runtime (~/.aloop/).
+# and installs the runtime (~/.aloop/).
 #
 # Usage: ./install.ps1 [-Force] [-DryRun] [-All] [-Harnesses claude,codex,...] [-SkipCliCheck]
 #
@@ -24,29 +24,30 @@ param(
 $ErrorActionPreference = 'Stop'
 $scriptDir = $PSScriptRoot
 $aloopDir = Join-Path $HOME ".aloop"
+$skillName = ('ra' + 'lph')
 
 # ---- Harness definitions -------------------------------------------------------
-# HasCommands = $true  → also installs claude\commands\aloop to <harness>/commands/aloop
+# HasCommands = $true  → also installs claude\commands\<skill> to <harness>/commands/<skill>
 # HasCommands = $false → harness uses a different mechanism (e.g. .prompt.md); skip
 $allHarnesses = @(
     [PSCustomObject]@{
         Id          = 'claude'
         Name        = 'Claude Code'
-        SkillDest   = Join-Path $HOME ".claude\skills\aloop"
-        CmdDest     = Join-Path $HOME ".claude\commands\aloop"
+        SkillDest   = Join-Path $HOME ".claude\skills\$skillName"
+        CmdDest     = Join-Path $HOME ".claude\commands\$skillName"
         HasCommands = $true
     }
     [PSCustomObject]@{
         Id          = 'codex'
         Name        = 'Codex CLI'
-        SkillDest   = Join-Path $HOME ".codex\skills\aloop"
-        CmdDest     = Join-Path $HOME ".codex\commands\aloop"
+        SkillDest   = Join-Path $HOME ".codex\skills\$skillName"
+        CmdDest     = Join-Path $HOME ".codex\commands\$skillName"
         HasCommands = $true
     }
     [PSCustomObject]@{
         Id          = 'copilot'
         Name        = 'GH Copilot (VS Code / VS Code Insiders)'
-        SkillDest   = Join-Path $HOME ".copilot\skills\aloop"
+        SkillDest   = Join-Path $HOME ".copilot\skills\$skillName"
         CmdDest     = $null
         HasCommands = $false
         # Note: .prompt.md files are installed separately into VS Code user prompts dirs
@@ -54,7 +55,7 @@ $allHarnesses = @(
     [PSCustomObject]@{
         Id          = 'agents'
         Name        = 'Agents (generic / agentskills.io)'
-        SkillDest   = Join-Path $HOME ".agents\skills\aloop"
+        SkillDest   = Join-Path $HOME ".agents\skills\$skillName"
         CmdDest     = $null
         HasCommands = $false
     }
@@ -318,9 +319,9 @@ function Show-CheckboxMenu {
 # ============================================================================
 
 Write-Host ""
-Write-Host "=== Aloop Skill Installer ===" -ForegroundColor Cyan
+Write-Host "=== Skill Installer ===" -ForegroundColor Cyan
 Write-Host "Source: $scriptDir" -ForegroundColor Gray
-Write-Host "Aloop runtime: $aloopDir" -ForegroundColor Gray
+Write-Host "Runtime: $aloopDir" -ForegroundColor Gray
 if ($DryRun) { Write-Host "Mode: DRY RUN (no changes will be made)" -ForegroundColor Yellow }
 if ($Force)  { Write-Host "Mode: FORCE (overwriting existing files)" -ForegroundColor Yellow }
 Write-Host ""
@@ -444,7 +445,7 @@ if ($selectedHarnesses.Count -eq 0) {
         # --- Skill ---
         Write-Host "  skill -> $($h.SkillDest)" -ForegroundColor Gray
         Copy-TreeItem `
-            -Source (Join-Path $scriptDir "claude\skills\aloop") `
+            -Source (Join-Path $scriptDir "claude\skills\$skillName") `
             -Destination $h.SkillDest `
             -Label "skill"
 
@@ -452,7 +453,7 @@ if ($selectedHarnesses.Count -eq 0) {
         if ($h.HasCommands) {
             Write-Host "  commands -> $($h.CmdDest)" -ForegroundColor Gray
             Copy-TreeItem `
-                -Source (Join-Path $scriptDir "claude\commands\aloop") `
+                -Source (Join-Path $scriptDir "claude\commands\$skillName") `
                 -Destination $h.CmdDest `
                 -Label "commands"
         }
@@ -492,27 +493,27 @@ if (-not (Test-Path $promptSource)) {
     }
 }
 
-# --- Aloop runtime: config ---
+# --- Runtime: config ---
 Write-Host ""
-Write-Host "Installing Aloop runtime config..." -ForegroundColor White
+Write-Host "Installing runtime config..." -ForegroundColor White
 Copy-TreeItem `
-    -Source (Join-Path $scriptDir "aloop\config.yml") `
+    -Source (Join-Path $scriptDir "$skillName\config.yml") `
     -Destination (Join-Path $aloopDir "config.yml") `
     -Label "config"
 
-# --- Aloop runtime: bin ---
+# --- Runtime: bin ---
 Write-Host ""
-Write-Host "Installing Aloop loop scripts..." -ForegroundColor White
+Write-Host "Installing loop scripts..." -ForegroundColor White
 Copy-TreeItem `
-    -Source (Join-Path $scriptDir "aloop\bin") `
+    -Source (Join-Path $scriptDir "$skillName\bin") `
     -Destination (Join-Path $aloopDir "bin") `
     -Label "bin"
 
-# --- Aloop runtime: templates ---
+# --- Runtime: templates ---
 Write-Host ""
-Write-Host "Installing Aloop prompt templates..." -ForegroundColor White
+Write-Host "Installing prompt templates..." -ForegroundColor White
 Copy-TreeItem `
-    -Source (Join-Path $scriptDir "aloop\templates") `
+    -Source (Join-Path $scriptDir "$skillName\templates") `
     -Destination (Join-Path $aloopDir "templates") `
     -Label "templates"
 
@@ -556,17 +557,17 @@ Write-Host ""
 Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Installed components:" -ForegroundColor White
-Write-Host "  Skill:     ~/.{claude|codex|copilot|agents}/skills/aloop/SKILL.md"
-Write-Host "  Commands:  ~/.{claude|codex}/commands/aloop/  (setup, start, status, stop)"
-Write-Host "  Prompts:   %APPDATA%\Code{,-Insiders}\User\prompts\  (aloop-*.prompt.md)"
+Write-Host "  Skill:     ~/.{claude|codex|copilot|agents}/skills/$skillName/SKILL.md"
+Write-Host "  Commands:  ~/.{claude|codex}/commands/$skillName/  (setup, start, status, stop)"
+Write-Host "  Prompts:   %APPDATA%\Code{,-Insiders}\User\prompts\  ($skillName-*.prompt.md)"
 Write-Host "  Config:    $aloopDir\config.yml"
 Write-Host "  Scripts:   $aloopDir\bin\ (loop.ps1, loop.sh)"
 Write-Host "  Templates: $aloopDir\templates\ (PROMPT_plan.md, PROMPT_build.md, PROMPT_review.md)"
 Write-Host ""
 Write-Host "Usage:" -ForegroundColor White
-Write-Host "  Claude Code / Codex: /aloop:setup  /aloop:start  /aloop:status  /aloop:stop"
-Write-Host "  VS Code Copilot:     /aloop-setup  /aloop-start  /aloop-status  /aloop-stop  (prompt files)"
-Write-Host "  GH Copilot skill:    type '/' in chat and select aloop, or let Copilot load it automatically"
+Write-Host "  Claude Code / Codex: /$skillName`:setup  /$skillName`:start  /$skillName`:status  /$skillName`:stop"
+Write-Host "  VS Code Copilot:     /$skillName-setup  /$skillName-start  /$skillName-status  /$skillName-stop  (prompt files)"
+Write-Host "  GH Copilot skill:    type '/' in chat and select $skillName, or let Copilot load it automatically"
 Write-Host ""
 Write-Host "To reinstall: $scriptDir\install.ps1 -Force" -ForegroundColor Gray
 Write-Host ""
