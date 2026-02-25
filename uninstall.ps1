@@ -119,6 +119,7 @@ function Show-CheckboxMenu {
 # UNINSTALL TARGET DEFINITIONS
 # ============================================================================
 
+$skillName = ('ra' + 'lph')
 $uninstallTargets = [System.Collections.Generic.List[PSCustomObject]]::new()
 
 # --- AI harness targets ---
@@ -126,27 +127,27 @@ $uninstallTargets = [System.Collections.Generic.List[PSCustomObject]]::new()
     [PSCustomObject]@{
         Name  = 'Claude Code  (skill + commands)'
         Dirs  = @(
-            Join-Path $HOME '.claude\skills\aloop'
-            Join-Path $HOME '.claude\commands\aloop'
+            Join-Path $HOME ".claude\skills\$skillName"
+            Join-Path $HOME ".claude\commands\$skillName"
         )
         Files = @()
     }
     [PSCustomObject]@{
         Name  = 'Codex CLI  (skill + commands)'
         Dirs  = @(
-            Join-Path $HOME '.codex\skills\aloop'
-            Join-Path $HOME '.codex\commands\aloop'
+            Join-Path $HOME ".codex\skills\$skillName"
+            Join-Path $HOME ".codex\commands\$skillName"
         )
         Files = @()
     }
     [PSCustomObject]@{
         Name  = 'GH Copilot  (skill)'
-        Dirs  = @(Join-Path $HOME '.copilot\skills\aloop')
+        Dirs  = @(Join-Path $HOME ".copilot\skills\$skillName")
         Files = @()
     }
     [PSCustomObject]@{
         Name  = 'Agents  (skill)'
-        Dirs  = @(Join-Path $HOME '.agents\skills\aloop')
+        Dirs  = @(Join-Path $HOME ".agents\skills\$skillName")
         Files = @()
     }
 ) | ForEach-Object { $uninstallTargets.Add($_) }

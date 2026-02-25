@@ -1,28 +1,30 @@
 # Project TODO
 
-## Current Phase: Installer/runtime parity and command-surface alignment
+## Current Phase: Canonical naming and uninstall/prompt parity
 
 ### In Progress
 
-- [x] **Fix install path/source drift (legacy vs canonical naming)** — `install.ps1` currently copies from non-existent `claude\skills\aloop`, `claude\commands\aloop`, and `aloop\...` runtime paths, while this repo contains the canonical skill/command/runtime tree. Update source paths, destination folders, and install summary text so a dry run no longer reports "Source not found" for core assets. (priority: critical — installer currently cannot deploy skill/runtime files)
-- [x] [review] Gate 1: `install.ps1` post-install surface text violates `SPEC.md` command/prompt contract — lines 561-562 and 568-569 advertise 4 commands and `/$skillName-*` Copilot prompts, but spec requires 5 commands including steer and Copilot `/aloop-*` prompt names; update summary/usage output to match spec exactly. (priority: high)
-- [x] [review] Gate 2: no tests were added for the installer path/name changes in `install.ps1` (copy sources and user-facing command/prompt text), so regressions in command surface mapping are unguarded; add focused tests that assert exact destination/source mappings and exact summary/usage strings for both Claude/Codex and Copilot. (priority: high)
-- [ ] [review] Gate 3: changed module `install.ps1` has no branch-coverage evidence and currently cannot meet the >=80% touched-file threshold; add/enable branch coverage reporting and cover the new/changed branches (HasCommands true/false harness handling, runtime source mapping, and post-install output variants) to >=80%. (priority: high)
-
 ### Up Next
 
-- [x] **Add canonical `SPEC.md` for this repo** — planning prompts require `SPEC.md`, but it is missing at repo root. Create/curate a concise spec that defines canonical naming, supported harnesses, command/prompt surface (including steering), and runtime layout expected by installer/uninstaller/scripts. (priority: high — planning quality and consistency)
+- [ ] **Add/expand tests for uninstall contract and naming invariants** — there is good `install.ps1` coverage but no equivalent uninstaller regression suite. Add focused tests for harness path targets (`$skillName`), VS Code prompt glob (`aloop-*`), and runtime removal target (`~/.aloop/`). (priority: high — prevents cleanup regressions)
 
-- [ ] **Align `uninstall.ps1` with canonical install targets** — ensure uninstall removes the same skill/command/runtime/prompt assets that install deploys after path/name normalization, including command naming and runtime root. (priority: high — prevents orphaned installs and mismatched cleanup)
+- [ ] **Add missing Copilot steer prompt file and wire command surface parity** — `copilot/prompts/$skillName-steer.prompt.md` is missing, so only four Copilot prompts exist. Add the fifth prompt (`name: aloop-steer`) and update any prompt-count assertions/docs accordingly. (priority: high — spec requires 5 Copilot prompts)
 
-- [ ] **Copilot parity: add steering prompt command** — Copilot prompt set has setup/start/status/stop prompt files only. Add an equivalent steer prompt and update installer/help output to list the fifth prompt command. (priority: medium — feature parity)
+- [ ] **Normalize Claude/Codex command naming in docs/prompts to `/$skillName:*` contract** — command docs and README currently instruct `/aloop:*` for Claude/Codex, but spec requires `/$skillName:*` (Copilot remains `/aloop-*`). Update command markdown + README examples to remove this user-facing mismatch. (priority: high — command contract clarity)
 
-- [ ] **`loop.sh`: add agent summary noise filtering parity with `loop.ps1`** — port `Show-AgentSummary` behavior (ANSI stripping, noise-pattern filtering, last meaningful lines) so bash loop output matches PowerShell readability. (priority: medium — operator UX)
+- [ ] [review] **Add branch-coverage evidence for touched installer paths** — current plan still lacks explicit >=80% touched-file branch coverage evidence for installer logic branches (HasCommands, runtime copy paths, summary variants, dry-run/force paths). (priority: medium — review gate closure)
 
-- [ ] **Consolidate duplicated `Show-CheckboxMenu` UI helper** — extract shared function from `install.ps1` and `uninstall.ps1` into a single module and dot-source it from both scripts. (priority: low — maintainability)
+- [ ] **`loop.sh`: add agent-summary noise filtering parity with `loop.ps1`** — bash loop still lacks the PowerShell summary filter (`Show-AgentSummary` equivalent), so raw provider output remains noisy. Port filtering and concise tail summary behavior. (priority: medium — operator UX)
+
+- [ ] **Deduplicate `Show-CheckboxMenu` helper across install/uninstall** — function is duplicated in both scripts; move to shared module/script and source it from both to reduce drift risk. (priority: low — maintainability)
 
 ### Completed
 
+- [x] **Fix `uninstall.ps1` harness target mismatch (`aloop` vs installer `$skillName`)** — uninstaller currently removes `~/.{claude,codex,copilot,agents}/.../aloop` while installer deploys to `.../$skillName` (`ra`+`lph`). Switch uninstall harness paths to `$skillName`-based targets per spec while keeping VS Code prompt glob `aloop-*.prompt.md`. (priority: critical — current uninstall misses installed harness assets)
+- [x] **Fix install path/source drift (legacy vs canonical naming)** — installer now maps from existing repo sources (`claude/skills/$skillName`, `claude/commands/$skillName`, `$skillName/{config.yml,bin,templates}`) and no longer depends on missing legacy paths.
+- [x] [review] **Align `install.ps1` summary/usage text with 5-command contract** — installer output now lists `setup,start,status,stop,steer` and Copilot `aloop-*` prompt naming.
+- [x] [review] **Add focused installer mapping/output tests (`install.tests.ps1`)** — tests now cover source/destination mapping, harness command capability flags, runtime roots, and summary/usage surface.
+- [x] **Add canonical `SPEC.md` at repo root** — project now has explicit naming, harness, command/prompt, installer/uninstaller, and runtime contracts.
 - [x] **`setup-discovery.ps1`: scaffold copies `PROMPT_steer.md` through full substitution loop**
 - [x] **`loop.sh`: round-robin provider list filters to installed providers with warnings/errors**
 - [x] **`loop.sh`: Copilot auth assertion detects common unauthenticated states**
