@@ -116,7 +116,7 @@ After decisions are finalized, run:
 
 This script writes:
 - `~/.ralph/projects/<hash>/config.yml`
-- `~/.ralph/projects/<hash>/prompts/PROMPT_{plan,build,review}.md`
+- `~/.ralph/projects/<hash>/prompts/PROMPT_{plan,build,review,steer}.md`
 
 If `RuntimeScope=project-local`, scaffold writes config/prompts under `<project-root>/.ralph/`, hydrates loop assets there once, and ensures `<project-root>/.gitignore` contains `.ralph/`.
 

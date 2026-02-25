@@ -41,6 +41,7 @@ Check if the user provided arguments after `/ralph:start`:
 1. Generate a session ID: `<project-name>-<timestamp>` (e.g., `my-app-20260221-143052`)
 2. Create session directory: `<runtime_root>/sessions/<session-id>/`
 3. Copy prompts from `<config-dir>/prompts/` to `<runtime_root>/sessions/<session-id>/prompts/`
+   - If `PROMPT_steer.md` is not present in `<config-dir>/prompts/`, copy it from `<runtime_root>/templates/PROMPT_steer.md` as a fallback — steering requires it
 4. Write `<runtime_root>/sessions/<session-id>/meta.json`:
    ```json
    {
