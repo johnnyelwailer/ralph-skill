@@ -7,7 +7,7 @@
 - [x] [review] Add CLI entrypoint coverage for `$skillName/cli/src/index.ts` command registration/parse branches; current coverage is 0% branch for this touched file (`npx c8 --reporter=text --all --include='src/commands/*.ts' --include='src/index.ts' tsx --test src/**/*.test.ts`) (priority: high).
 
 ### Up Next
-- [ ] Implement `POST /api/steer` and `POST /api/stop` in `$skillName/cli/src/commands/dashboard.ts` with explicit validation and error responses (priority: critical; required dashboard controls).
+- [x] Implement `POST /api/steer` and `POST /api/stop` in `$skillName/cli/src/commands/dashboard.ts` with explicit validation and error responses (priority: critical; required dashboard controls).
 - [ ] Expand dashboard state model/loading in `$skillName/cli/src/commands/dashboard.ts` to include `active.json`, `history.json`, and session `meta.json` (priority: high; required session list contract).
 - [ ] Replace placeholder UI in `$skillName/cli/dashboard/src/App.tsx` with real `/api/state` + SSE-driven session/progress/log views, wired steer/stop actions, and selected-session behavior (priority: high).
 - [ ] Implement Docs tab markdown rendering (`marked` or `react-markdown`) in dashboard frontend and render real document content from API state (priority: high).
@@ -27,3 +27,5 @@
 - [x] Added installer tests in `install.tests.ps1` for path mapping, harness command support, stale cleanup targets, and dry-run/force behavior.
 - [x] Updated setup discovery scaffolding to include `PROMPT_steer.md` in generated prompt sets.
 - [x] Added initial dashboard server/frontend skeleton with `/api/state`, `/events` SSE stream, and a basic UI shell.
+
+
