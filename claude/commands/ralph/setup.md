@@ -125,8 +125,8 @@ Aloop configured for <project-name>!
   Spec files: <selected spec files>
 
 Next steps:
-  /aloop:start          Launch a Aloop loop
-  /aloop:start --plan   Run planning mode only
+  /$skillName:start          Launch a Aloop loop
+  /$skillName:start --plan   Run planning mode only
 ```
 
 </process>

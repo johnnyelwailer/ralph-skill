@@ -63,8 +63,8 @@ Aloop works with any of these AI coding agents — mix and match, or let them ta
 
 | Provider | CLI | Autonomous flag | Slash commands |
 |----------|-----|-----------------|----------------|
-| Claude Code | `claude` | `--dangerously-skip-permissions --print` | `/aloop:setup`, `/aloop:start`, etc. |
-| Codex CLI | `codex` | `--dangerously-bypass-approvals-and-sandbox` | `/aloop:setup`, `/aloop:start`, etc. |
+| Claude Code | `claude` | `--dangerously-skip-permissions --print` | `/$skillName:setup`, `/$skillName:start`, etc. |
+| Codex CLI | `codex` | `--dangerously-bypass-approvals-and-sandbox` | `/$skillName:setup`, `/$skillName:start`, etc. |
 | GitHub Copilot | `copilot` | `--yolo` | skill only (no slash commands) |
 | Gemini CLI | `gemini` | `--yolo` | — |
 
@@ -134,11 +134,11 @@ The Aloop runtime always goes to `~/.aloop/` regardless of harness selection.
 In any project with Claude Code or Codex:
 
 ```
-/aloop:setup     Configure Aloop for the current project
-/aloop:start     Launch a loop
-/aloop:status    Check running sessions
-/aloop:stop      Stop a loop
-/aloop:steer     Send a live steering instruction to a running loop
+/$skillName:setup     Configure Aloop for the current project
+/$skillName:start     Launch a loop
+/$skillName:status    Check running sessions
+/$skillName:stop      Stop a loop
+/$skillName:steer     Send a live steering instruction to a running loop
 ```
 
 In VS Code (stable or Insiders) with GitHub Copilot, type `/` and select:
@@ -153,7 +153,7 @@ In VS Code (stable or Insiders) with GitHub Copilot, type `/` and select:
 
 The skill (`~/.copilot/skills/aloop/`) is also loaded automatically by Copilot based on context.
 
-`/aloop:setup` and `/aloop-setup` are discovery-first and interview-first: they use `~/.aloop/bin/setup-discovery.ps1` to auto-detect repo context (project root/hash, language, validation presets, providers, existing Aloop config), run a spec/context interview first, and ask loop run details only after explicit user go-ahead.
+`/$skillName:setup` and `/aloop-setup` are discovery-first and interview-first: they use `~/.aloop/bin/setup-discovery.ps1` to auto-detect repo context (project root/hash, language, validation presets, providers, existing Aloop config), run a spec/context interview first, and ask loop run details only after explicit user go-ahead.
 
 When no strong spec exists, setup defaults to a short interview to create/refine `SPEC.md` instead of forcing a spec-path-first workflow.
 
@@ -165,11 +165,11 @@ When no strong spec exists, setup defaults to a short interview to create/refine
     SKILL.md                    # Background knowledge (auto-loaded)
     references/                 # 4 methodology reference files
   commands/aloop/               # Claude + Codex only
-    setup.md                    # /aloop:setup — configure project
-    start.md                    # /aloop:start — launch loop
-    status.md                   # /aloop:status — check sessions
-    stop.md                     # /aloop:stop — stop loop
-    steer.md                    # /aloop:steer — live steering
+    setup.md                    # /$skillName:setup — configure project
+    start.md                    # /$skillName:start — launch loop
+    status.md                   # /$skillName:status — check sessions
+    stop.md                     # /$skillName:stop — stop loop
+    steer.md                    # /$skillName:steer — live steering
 
 ~/.copilot/
   skills/aloop/
@@ -188,7 +188,7 @@ When no strong spec exists, setup defaults to a short interview to create/refine
   bin/
     loop.ps1                   # PowerShell loop (Windows / macOS / Linux)
     loop.sh                    # Bash loop (macOS / Linux)
-    setup-discovery.ps1        # Discovery + scaffold script for /aloop:setup
+    setup-discovery.ps1        # Discovery + scaffold script for /$skillName:setup
   templates/
     PROMPT_plan.md             # Plan template with {{variables}}
     PROMPT_build.md            # Build template
@@ -214,7 +214,7 @@ When no strong spec exists, setup defaults to a short interview to create/refine
 - **Plan-build-review cycle**: Three distinct mindsets per iteration (plan → build × 3 → review)
 - **Backpressure**: Tests/types/lints gate every commit
 - **Stuck detection**: Auto-skip tasks after N consecutive failures
-- **Live steering**: Send mid-flight direction changes via `/aloop:steer` — loop picks up `STEERING.md` at the next iteration boundary, invokes a spec-update agent, force-replans, then resumes
+- **Live steering**: Send mid-flight direction changes via `/$skillName:steer` — loop picks up `STEERING.md` at the next iteration boundary, invokes a spec-update agent, force-replans, then resumes
 - **Persistent research log**: Planner appends timestamped findings to `RESEARCH.md` (append-only) — survives TODO regenerations, prevents re-researching already-investigated topics across runs
 - **Review log**: Persistent `REVIEW_LOG.md` tracks every review verdict and resolved findings across iterations
 - **Worktree isolation**: Loops run on separate git branches

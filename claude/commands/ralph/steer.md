@@ -14,7 +14,7 @@ Send a live steering instruction to a running Aloop session. Analyse loop state,
 
 ## Step 1: Find the Active Session
 
-Read `~/.aloop/active.json`. If no active sessions, display: "No active Aloop sessions. Start one with `/aloop:start` first." and stop.
+Read `~/.aloop/active.json`. If no active sessions, display: "No active Aloop sessions. Start one with `/$skillName:start` first." and stop.
 
 If multiple sessions exist, ask using AskUserQuestion:
 - "Which session do you want to steer?" (list session IDs with project names)

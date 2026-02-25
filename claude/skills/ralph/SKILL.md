@@ -45,7 +45,7 @@ Each cycle runs 5 iterations: one plan, three builds, one review. This ratio giv
 
 **Stuck Detection**: When Aloop fails on the same task N times in a row, the task is automatically marked as blocked and skipped so the loop can continue making progress.
 
-**Live Steering**: While the loop runs, you can redirect it mid-flight without stopping it. Use `/aloop:steer` to tell the host agent what to change — it interviews you, reads current loop state, and drops a structured `STEERING.md` (with commit SHA + timestamp) into the session directory. At the next iteration boundary the loop detects it, invokes a spec-update agent that applies the changes to specs and TODO.md, then forces a re-plan before resuming normal cycles.
+**Live Steering**: While the loop runs, you can redirect it mid-flight without stopping it. Use `/$skillName:steer` to tell the host agent what to change — it interviews you, reads current loop state, and drops a structured `STEERING.md` (with commit SHA + timestamp) into the session directory. At the next iteration boundary the loop detects it, invokes a spec-update agent that applies the changes to specs and TODO.md, then forces a re-plan before resuming normal cycles.
 
 **Worktree Isolation**: By default, Aloop loops run on a separate git worktree to keep your main branch clean while development progresses.
 </essential_principles>
@@ -62,7 +62,7 @@ All Aloop runtime state lives in `~/.aloop/`, not in your project repository:
 - `~/.aloop/sessions/<id>/` — Per-session state, logs, and reports
 - `~/.aloop/active.json` — Registry of running sessions
 
-Use `/aloop:setup` to configure a project, `/aloop:start` to launch a loop, `/aloop:status` to check progress, and `/aloop:stop` to end a loop.
+Use `/$skillName:setup` to configure a project, `/$skillName:start` to launch a loop, `/$skillName:status` to check progress, and `/$skillName:stop` to end a loop.
 </infrastructure>
 
 <reference_index>
@@ -79,7 +79,7 @@ All in `references/`:
 <success_criteria>
 Skill is successful when:
 - User understands Aloop methodology (plan-build-review loop)
-- User can configure and run Aloop loops via /aloop commands
+- User can configure and run Aloop loops via /$skillName commands
 - User knows where Aloop state lives (~/.aloop/)
 - User understands backpressure, stuck detection, and observation roles
 </success_criteria>

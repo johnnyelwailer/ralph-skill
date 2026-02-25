@@ -18,13 +18,13 @@ Launch a Aloop loop for the current project. Create a session, optionally set up
 1. Find the git root of the current working directory
 2. Compute the project hash (first 8 chars of SHA-256 of absolute path)
 3. Check if `~/.aloop/projects/<hash>/config.yml` exists
-4. If not found, tell the user: "No Aloop configuration found for this project. Run `/aloop:setup` first."
+4. If not found, tell the user: "No Aloop configuration found for this project. Run `/$skillName:setup` first."
 
 Read the project config to get provider, mode, validation commands, etc.
 
 ## Step 2: Parse Arguments
 
-Check if the user provided arguments after `/aloop:start`:
+Check if the user provided arguments after `/$skillName:start`:
 - `--plan` → override mode to `plan`
 - `--build` → override mode to `build`
 - `--review` → override mode to `review`
@@ -136,8 +136,8 @@ Aloop loop started!
   Prompts: ~/.aloop/sessions/<session-id>/prompts/
 
 Monitor:
-  /aloop:status         Check progress
-  /aloop:stop           Stop the loop
+  /$skillName:status         Check progress
+  /$skillName:stop           Stop the loop
 
 Session logs:
   ~/.aloop/sessions/<session-id>/log.jsonl
