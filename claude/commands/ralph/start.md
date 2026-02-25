@@ -17,10 +17,13 @@ Launch a Ralph loop for the current project. Create a session, optionally set up
 
 1. Find the git root of the current working directory
 2. Compute the project hash (first 8 chars of SHA-256 of absolute path)
-3. Check if `~/.ralph/projects/<hash>/config.yml` exists
+3. Resolve config path in this order:
+  - `<project-root>/.ralph/config.yml` (project-local runtime)
+  - `~/.ralph/projects/<hash>/config.yml` (global runtime)
 4. If not found, tell the user: "No Ralph configuration found for this project. Run `/ralph:setup` first."
 
 Read the project config to get provider, mode, validation commands, etc.
+Read `runtime_scope` and `runtime_root` from config. If missing, default to `runtime_scope=global` and `runtime_root=~/.ralph`.
 
 ## Step 2: Parse Arguments
 
@@ -36,9 +39,9 @@ Check if the user provided arguments after `/ralph:start`:
 ## Step 3: Create Session
 
 1. Generate a session ID: `<project-name>-<timestamp>` (e.g., `my-app-20260221-143052`)
-2. Create session directory: `~/.ralph/sessions/<session-id>/`
-3. Copy prompts from `~/.ralph/projects/<hash>/prompts/` to `~/.ralph/sessions/<session-id>/prompts/`
-4. Write `~/.ralph/sessions/<session-id>/meta.json`:
+2. Create session directory: `<runtime_root>/sessions/<session-id>/`
+3. Copy prompts from `<config-dir>/prompts/` to `<runtime_root>/sessions/<session-id>/prompts/`
+4. Write `<runtime_root>/sessions/<session-id>/meta.json`:
    ```json
    {
      "session_id": "<id>",
@@ -61,7 +64,7 @@ Unless `--in-place` was specified:
 1. Create a branch name: `ralph/<session-id>`
 2. Create a git worktree:
    ```bash
-   git worktree add ~/.ralph/sessions/<session-id>/worktree -b ralph/<session-id>
+  git worktree add <runtime_root>/sessions/<session-id>/worktree -b ralph/<session-id>
    ```
 3. The work directory for the loop is the worktree path
 
@@ -69,7 +72,7 @@ If `--in-place`, the work directory is the project root itself.
 
 ## Step 5: Register Active Session
 
-Read `~/.ralph/active.json` (create if doesn't exist as `[]`).
+Read `<runtime_root>/active.json` (create if doesn't exist as `[]`).
 Add the new session:
 ```json
 {
@@ -80,13 +83,13 @@ Add the new session:
   "started_at": "<timestamp>"
 }
 ```
-Write back to `~/.ralph/active.json`.
+Write back to `<runtime_root>/active.json`.
 
 ## Step 6: Launch Loop
 
 Determine the loop script based on OS:
-- Windows/PowerShell: `~/.ralph/bin/loop.ps1`
-- macOS/Linux: `~/.ralph/bin/loop.sh`
+- Windows/PowerShell: `<runtime_root>/bin/loop.ps1`
+- macOS/Linux: `<runtime_root>/bin/loop.sh`
 
 Build the command:
 
@@ -94,9 +97,9 @@ Read the project config to get `enabled_providers`, `models`, and `round_robin_o
 
 **PowerShell:**
 ```powershell
-& ~/.ralph/bin/loop.ps1 `
-  -PromptsDir "~/.ralph/sessions/<session-id>/prompts" `
-  -SessionDir "~/.ralph/sessions/<session-id>" `
+& <runtime_root>/bin/loop.ps1 `
+  -PromptsDir "<runtime_root>/sessions/<session-id>/prompts" `
+  -SessionDir "<runtime_root>/sessions/<session-id>" `
   -WorkDir "<work-directory>" `
   -Mode <mode> `
   -Provider <provider> `
@@ -107,9 +110,9 @@ Read the project config to get `enabled_providers`, `models`, and `round_robin_o
 
 **Bash:**
 ```bash
-~/.ralph/bin/loop.sh \
-  --prompts-dir "~/.ralph/sessions/<session-id>/prompts" \
-  --session-dir "~/.ralph/sessions/<session-id>" \
+<runtime_root>/bin/loop.sh \
+  --prompts-dir "<runtime_root>/sessions/<session-id>/prompts" \
+  --session-dir "<runtime_root>/sessions/<session-id>" \
   --work-dir "<work-directory>" \
   --mode <mode> \
   --provider <provider> \
@@ -133,15 +136,16 @@ Ralph loop started!
   Mode: <mode>
   Provider: <provider>
   Work directory: <work-dir>
-  Prompts: ~/.ralph/sessions/<session-id>/prompts/
+  Prompts: <runtime_root>/sessions/<session-id>/prompts/
+  Runtime root: <runtime_root>
 
 Monitor:
   /ralph:status         Check progress
   /ralph:stop           Stop the loop
 
 Session logs:
-  ~/.ralph/sessions/<session-id>/log.jsonl
-  ~/.ralph/sessions/<session-id>/status.json
+  <runtime_root>/sessions/<session-id>/log.jsonl
+  <runtime_root>/sessions/<session-id>/status.json
 ```
 
 </process>

@@ -14,7 +14,8 @@ Stop a running Ralph loop session.
 
 ## Step 1: Identify Session to Stop
 
-Read `~/.ralph/active.json` to find active sessions.
+Resolve runtime root from current project config (`<project-root>/.ralph/config.yml` first, then `~/.ralph/projects/<hash>/config.yml`).
+Read `<runtime_root>/active.json` to find active sessions.
 
 If no active sessions: display "No active Ralph sessions to stop."
 
@@ -26,7 +27,7 @@ If multiple active sessions: ask the user which one to stop using AskUserQuestio
 
 ## Step 2: Stop the Process
 
-1. Read `~/.ralph/sessions/<session-id>/meta.json` for session details
+1. Read `<runtime_root>/sessions/<session-id>/meta.json` for session details
 2. If PID is recorded in `active.json`:
    - On Unix/macOS: `kill $PID` (SIGTERM for graceful shutdown)
    - On Windows: `Stop-Process -Id $PID` or `taskkill /PID $PID`
@@ -34,13 +35,13 @@ If multiple active sessions: ask the user which one to stop using AskUserQuestio
 
 ## Step 3: Update State
 
-1. Update `~/.ralph/sessions/<session-id>/status.json`:
+1. Update `<runtime_root>/sessions/<session-id>/status.json`:
    - Set `state` to `stopped`
    - Update `updated_at`
 
-2. Remove the session from `~/.ralph/active.json`
+2. Remove the session from `<runtime_root>/active.json`
 
-3. Add to `~/.ralph/history.json` (create if doesn't exist):
+3. Add to `<runtime_root>/history.json` (create if doesn't exist):
    ```json
    {
      "session_id": "<id>",
@@ -67,10 +68,10 @@ Ralph session stopped: <session-id>
 
   Project: <project-name>
   Iterations completed: <count>
-  Session directory: ~/.ralph/sessions/<session-id>/
+  Session directory: <runtime_root>/sessions/<session-id>/
 
 The session report (if generated) is at:
-  ~/.ralph/sessions/<session-id>/report.md
+  <runtime_root>/sessions/<session-id>/report.md
 ```
 
 </process>

@@ -11,8 +11,14 @@ Launch a Ralph loop for the current project. Create a session, optionally set up
 
 1. Find the git root of the current working directory
 2. Compute the project hash (first 8 chars of SHA-256 of absolute path)
-3. Check if `~/.ralph/projects/<hash>/config.yml` exists
+3. Resolve config path in this order:
+  - `<project-root>/.ralph/config.yml` (project-local runtime)
+  - `~/.ralph/projects/<hash>/config.yml` (global runtime)
 4. If not found: "No Ralph configuration found for this project. Run `/ralph-setup` first."
+
+Read `runtime_scope` and `runtime_root` from config. If missing, default to:
+- `runtime_scope=global`
+- `runtime_root=~/.ralph`
 
 ## Step 2: Parse Arguments
 
@@ -28,9 +34,9 @@ Check for arguments passed after invoking this prompt:
 ## Step 3: Create Session
 
 1. Generate session ID: `<project-name>-<timestamp>` (e.g., `my-app-20260221-143052`)
-2. Create `~/.ralph/sessions/<session-id>/`
-3. Copy prompts from `~/.ralph/projects/<hash>/prompts/` to `~/.ralph/sessions/<session-id>/prompts/`
-4. Write `~/.ralph/sessions/<session-id>/meta.json`:
+2. Create `<runtime_root>/sessions/<session-id>/`
+3. Copy prompts from `<config-dir>/prompts/` to `<runtime_root>/sessions/<session-id>/prompts/`
+4. Write `<runtime_root>/sessions/<session-id>/meta.json`:
    ```json
    {
      "session_id": "<id>",
@@ -49,26 +55,26 @@ Check for arguments passed after invoking this prompt:
 
 Unless `--in-place`:
 1. Create branch: `ralph/<session-id>`
-2. Run: `git worktree add ~/.ralph/sessions/<session-id>/worktree -b ralph/<session-id>`
+2. Run: `git worktree add <runtime_root>/sessions/<session-id>/worktree -b ralph/<session-id>`
 3. Work directory = worktree path
 
 If `--in-place`, work directory = project root.
 
 ## Step 5: Register Active Session
 
-Read `~/.ralph/active.json` (create as `[]` if missing). Add the new session entry. Write back.
+Read `<runtime_root>/active.json` (create as `[]` if missing). Add the new session entry. Write back.
 
 ## Step 6: Launch Loop
 
-Determine script: `~/.ralph/bin/loop.ps1` (Windows) or `~/.ralph/bin/loop.sh` (macOS/Linux).
+Determine script: `<runtime_root>/bin/loop.ps1` (Windows) or `<runtime_root>/bin/loop.sh` (macOS/Linux).
 
 Read `enabled_providers`, `models`, and `round_robin_order` from project config and pass to loop.
 
 **PowerShell:**
 ```powershell
-& ~/.ralph/bin/loop.ps1 `
-  -PromptsDir "~/.ralph/sessions/<session-id>/prompts" `
-  -SessionDir "~/.ralph/sessions/<session-id>" `
+& <runtime_root>/bin/loop.ps1 `
+  -PromptsDir "<runtime_root>/sessions/<session-id>/prompts" `
+  -SessionDir "<runtime_root>/sessions/<session-id>" `
   -WorkDir "<work-directory>" `
   -Mode <mode> -Provider <provider> `
   -RoundRobinProviders <enabled-csv> `
@@ -78,9 +84,9 @@ Read `enabled_providers`, `models`, and `round_robin_order` from project config 
 
 **Bash:**
 ```bash
-~/.ralph/bin/loop.sh \
-  --prompts-dir ~/.ralph/sessions/<session-id>/prompts \
-  --session-dir ~/.ralph/sessions/<session-id> \
+<runtime_root>/bin/loop.sh \
+  --prompts-dir <runtime_root>/sessions/<session-id>/prompts \
+  --session-dir <runtime_root>/sessions/<session-id> \
   --work-dir <work-directory> \
   --mode <mode> --provider <provider> \
   --round-robin <enabled-csv> \
@@ -104,4 +110,6 @@ Ralph loop started!
 Monitor:  /ralph-status
 Stop:     /ralph-stop
 Logs:     ~/.ralph/sessions/<session-id>/log.jsonl
+
+Display runtime root in confirmation (e.g., `Runtime root: <runtime_root>`).
 ```

@@ -46,6 +46,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Unset CLAUDECODE to allow launching provider CLIs from inside a Claude Code session
+$env:CLAUDECODE = $null
+
 # ============================================================================
 # VALIDATION
 # ============================================================================
@@ -125,7 +128,7 @@ function Assert-ProviderInstalled {
 
 function Assert-CopilotAuth {
     param([string]$CopilotOutputText)
-    if ($CopilotOutputText -match 'No authentication information found|Failed to log in to github\.com|run the ''/login'' command|not logged in') {
+    if ($CopilotOutputText -match 'No authentication information found|Failed to log in to github\.com|run the ''/login'' command') {
         throw "copilot is not authenticated. Run 'copilot' then use the /login slash command."
     }
 }
@@ -164,21 +167,19 @@ function Invoke-Provider {
         }
         'copilot' {
             & copilot --model $CopilotModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
-            $outputText = ($output | Out-String)
             if ($LASTEXITCODE -ne 0) {
                 Write-Warning "Copilot --model $CopilotModel failed (exit $LASTEXITCODE). Retrying with --model $CopilotRetryModel."
                 & copilot --model $CopilotRetryModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
-                $outputText = ($output | Out-String)
                 if ($LASTEXITCODE -ne 0) {
                     Write-Warning "Copilot --model $CopilotRetryModel failed (exit $LASTEXITCODE). Retrying without explicit model."
                     & copilot --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
-                    $outputText = ($output | Out-String)
                 }
                 if ($LASTEXITCODE -ne 0) {
+                    # Check auth patterns only on failure to give a better error message
+                    Assert-CopilotAuth -CopilotOutputText ($output | Out-String)
                     throw "copilot exited with code $LASTEXITCODE"
                 }
             }
-            Assert-CopilotAuth -CopilotOutputText $outputText
             return $output
         }
         default {

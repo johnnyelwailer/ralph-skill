@@ -15,22 +15,22 @@ Configure Ralph for the current project. Detect the project, gather configuratio
 
 <process>
 
-## Step 1: Run scripted discovery first (required)
+## Step 1: Run project-scope discovery first (required)
 
 Do NOT perform ad-hoc shell probing. Do NOT compose custom bash discovery pipelines.
+Before explicit user go-ahead, do not read files outside the current project root.
 
 Run this command first:
 
-`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command discover -Output json`
+`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command discover -Scope project -Output json`
 
 Treat the JSON output as source of truth for:
 - project root/name/hash
-- existing setup (`config_exists`, config path, templates path)
 - language guess + confidence
 - validation presets
 - spec candidates
 - context files (`TODO.md`, `RESEARCH.md`, `REVIEW_LOG.md`, `STEERING.md`)
-- installed/missing providers + default models
+- installed/missing providers
 
 Show: "Setting up Ralph for: <project-name> (<project-root>)"
 
@@ -47,7 +47,10 @@ Do NOT repeat questions answered by discovery or earlier messages in the same co
 
 ## Step 3: Existing config behavior
 
-If `config_exists=true`, ask:
+In interview phase, treat external config checks as deferred.
+Do not inspect `~/.ralph/projects/*` yet.
+
+After go-ahead and full-scope discovery, if `config_exists=true`, ask:
 - "Patch existing setup (recommended) or fully reconfigure?"
 
 Default to patching unless user explicitly requests full reset.
@@ -97,16 +100,25 @@ Ask only now:
 1. Validation level (tests only / tests+types / full / custom)
 2. Enabled providers (from installed list)
 3. Default provider vs round-robin (only if 2+ enabled)
+4. Runtime storage mode:
+  - `global` (default): keep runtime/session state in `~/.ralph/`
+  - `project-local`: store runtime/session state in `<project-root>/.ralph/`
+
+Now it is allowed to read outside project root for runtime preparation. Re-run discovery in full scope:
+
+`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command discover -Scope full -Output json`
 
 ## Step 8: Use scaffold script to write config and prompts (required)
 
 After decisions are finalized, run:
 
-`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command scaffold -Output json -Provider <provider> -EnabledProviders <csv-or-list> -RoundRobinOrder <csv-or-list> -Language <language> -SpecFiles <list> -ValidationCommands <list>`
+`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command scaffold -Output json -RuntimeScope <global|project-local> -Provider <provider> -EnabledProviders <csv-or-list> -RoundRobinOrder <csv-or-list> -Language <language> -SpecFiles <list> -ValidationCommands <list>`
 
 This script writes:
 - `~/.ralph/projects/<hash>/config.yml`
 - `~/.ralph/projects/<hash>/prompts/PROMPT_{plan,build,review}.md`
+
+If `RuntimeScope=project-local`, scaffold writes config/prompts under `<project-root>/.ralph/`, hydrates loop assets there once, and ensures `<project-root>/.gitignore` contains `.ralph/`.
 
 ## Step 9: Confirm setup
 
@@ -123,6 +135,7 @@ Ralph configured for <project-name>!
   Mode:     plan-build-review (plan -> build x3 -> review)
   Validation: <commands summary>
   Spec files: <selected spec files>
+  Runtime:  <global|project-local> (<resolved runtime root>)
 
 Next steps:
   /ralph:start          Launch a Ralph loop

@@ -8,13 +8,14 @@ Display the status of all running Ralph sessions and recent history.
 
 ## Step 1: Read Active Sessions
 
-Read `~/.ralph/active.json`. If missing or empty: "No active Ralph sessions."
+Resolve runtime root from current project config (`<project-root>/.ralph/config.yml` first, then `~/.ralph/projects/<hash>/config.yml`).
+Read `<runtime_root>/active.json`. If missing or empty: "No active Ralph sessions."
 
 ## Step 2: Display Each Session
 
 For each session in `active.json`:
-1. Read `~/.ralph/sessions/<session-id>/status.json`
-2. Read `~/.ralph/sessions/<session-id>/meta.json`
+1. Read `<runtime_root>/sessions/<session-id>/status.json`
+2. Read `<runtime_root>/sessions/<session-id>/meta.json`
 3. Check if the PID is still running (if available)
 
 Display:
@@ -43,7 +44,7 @@ Current project (my-app):
 
 ## Step 4: Show Recent History
 
-If `~/.ralph/history.json` exists, show last 5 completed sessions:
+If `<runtime_root>/history.json` exists, show last 5 completed sessions:
 ```
 Recent History:
   my-app-20260220-100000   | completed    | 23 iterations | 45m
@@ -51,3 +52,5 @@ Recent History:
 ```
 
 > Note: If `status.json` is stale (>10 min old with state=running), mark session as "stale" and clean it from `active.json` if PID is dead.
+
+Show runtime root in output for clarity.

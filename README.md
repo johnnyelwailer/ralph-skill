@@ -156,6 +156,12 @@ The skill (`~/.copilot/skills/ralph/`) is also loaded automatically by Copilot b
 
 When no strong spec exists, setup defaults to a short interview to create/refine `SPEC.md` instead of forcing a spec-path-first workflow.
 
+Runtime storage is configurable during setup:
+- `global` (default): runtime/session state under `~/.ralph/`
+- `project-local`: runtime/session state under `<project-root>/.ralph/`
+
+When `project-local` is selected, setup ensures `<project-root>/.gitignore` includes `.ralph/`.
+
 ## Architecture
 
 ```
@@ -217,6 +223,7 @@ When no strong spec exists, setup defaults to a short interview to create/refine
 - **Review log**: Persistent `REVIEW_LOG.md` tracks every review verdict and resolved findings across iterations
 - **Worktree isolation**: Loops run on separate git branches
 - **Session tracking**: Status, logs, and reports per session
+- **Configurable runtime state**: Choose global (`~/.ralph/`) or project-local (`<project-root>/.ralph/`) storage at setup time
 - **Minimal repo footprint**: Runtime/session state is in `~/.ralph/`; project working files are `TODO.md`, `RESEARCH.md`, `REVIEW_LOG.md` (and temporary `STEERING.md` while steering is being processed)
 
 ## Development
