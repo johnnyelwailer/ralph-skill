@@ -1,45 +1,33 @@
 # Project TODO
 
-## Current Phase: Spec compliance & Dashboard implementation
+## Current Phase: Spec compliance hardening and CLI/dashboard foundation
 
 ### In Progress
-
-- [ ] **Fix VS Code prompt uninstall glob mismatch** — `uninstall.ps1` looks for `aloop-*.prompt.md` but they are installed as `ralph-*.prompt.md` (via `copilot/prompts/ralph-*.prompt.md`); align uninstaller to target `$skillName-*.prompt.md` correctly. (priority: critical — uninstall correctness)
+- [x] **Fix VS Code prompt uninstall mismatch** — renamed `copilot/prompts/` files to `aloop-*.prompt.md` to match the pattern expected by `uninstall.ps1` and documented in `SPEC.md`. (priority: critical — uninstall correctness)
 
 ### Up Next
-
-- [~] **Implement `monitor.mjs` runtime server** — superseded by steering: dashboard must be implemented as a TypeScript CLI subcommand in a monorepo build (not standalone `.mjs`).
-
-- [ ] **Set up TypeScript monorepo foundation for CLI** — add `ralph/cli/` TS workspace structure (`src/`, `tsconfig.json`, `package.json`) with build/bundle scripts and zero runtime dependencies. (priority: high — prerequisite for all CLI/dashboard work)
-
-- [ ] **Migrate core CLI commands to TypeScript build output** — implement CLI entry/subcommand routing and move resolve/discover/scaffold command implementation to TS sources with bundled `dist` output. (priority: high — supersedes prior `.mjs` CLI direction)
-
-- [ ] **Implement dashboard as CLI subcommand (`aloop dashboard`/`aloop monitor`)** — port the existing dashboard feature spec (layout, SSE, views, steer/stop actions) into TS CLI command module and include it in bundle output. (priority: high — core spec feature, new tech direction)
-
-- [ ] **Wire dashboard into `loop.ps1`** — launch CLI dashboard subcommand in background, capture/display URL, and ensure graceful shutdown. (priority: high — required integration)
-
-- [ ] **Wire dashboard into `loop.sh`** — port CLI dashboard subcommand launch and lifecycle management to Bash loop. (priority: high — required integration)
-
-- [ ] **`loop.sh`: add agent-summary filtering parity with `loop.ps1`** — port `Show-AgentSummary` logic to Bash so output is clean and concise for operators. (priority: medium — usability parity)
-
-- [ ] **Align setup commands with "scaffold reality"** — update `claude/commands/ralph/setup.md` and `copilot/prompts/ralph-setup.prompt.md` (Step 8) to include `PROMPT_steer.md` in the list of scaffolded files. (priority: high — correctness)
-
-- [ ] **Update installer summary and README architecture** — update `install.ps1` summary to include the bundled CLI dashboard/runtime (`~/.aloop/cli/dist`) and `PROMPT_steer.md`. Fix `README.md` paths to use `$skillName/` instead of `aloop/` to match actual deployment. (priority: high — contract clarity)
-
-- [ ] **Add uninstaller regression tests** — create `uninstall.tests.ps1` verifying cleanup of `$skillName` harness targets, VS Code prompt files, and `~/.aloop/` runtime root. (priority: high — prevent cleanup regressions)
-
-- [ ] **Deduplicate `Show-CheckboxMenu` helper** — move the interactive menu function to a shared script and source it in both `install.ps1` and `uninstall.ps1`. (priority: low — maintainability)
+- [ ] **Resolve prompt filename contract inconsistency in spec/docs vs scripts** — normalize the expected Copilot prompt filename pattern across `SPEC.md`, `README.md`, installer, and uninstaller so one canonical rule exists. (priority: high — prevents recurring install/uninstall drift)
+- [ ] **Add uninstaller regression tests** — create `uninstall.tests.ps1` for harness path cleanup, VS Code prompt cleanup, and runtime (`~/.aloop`) removal behavior. (priority: high — safety for cleanup changes)
+- [ ] **Align setup instructions with scaffold output** — update `claude/commands/agent/setup.md` and `copilot/prompts/aloop-setup.prompt.md` Step 8 prompt list to include `PROMPT_steer.md`. (priority: high — command correctness)
+- [ ] **Create TypeScript CLI workspace skeleton** — add `cli/` project structure (`package.json`, `tsconfig`, `src/index.ts`) in the skill directory with a reproducible build pipeline and zero runtime deps. (priority: high — prerequisite for CLI runtime contract)
+- [ ] **Implement CLI command modules for parity flows** — move/implement `resolve`, `discover`, and `scaffold` command logic in TS CLI sources so runtime can execute via bundled CLI entrypoint. (priority: high — prerequisite for dashboard launch contract)
+- [ ] **Implement dashboard CLI subcommand** — add `dashboard`/`monitor` command with SSE, session list, docs/log views, and steer/stop APIs as specified. (priority: high — major missing spec feature)
+- [ ] **Update installer for CLI bundle deployment** — install `cli/dist/` to `~/.aloop/cli/dist/` and include CLI runtime in installer summary output. (priority: high — required to run dashboard in installed runtime)
+- [ ] **Update README architecture/install contract** — document `$skillName` harness paths consistently and include CLI runtime layout (`~/.aloop/cli/dist/`) plus `PROMPT_steer.md` where applicable. (priority: high — user-facing accuracy)
+- [ ] **Wire dashboard launch into `loop.ps1`** — start/track dashboard process, print monitor URL, and ensure graceful lifecycle handling. (priority: high — runtime integration)
+- [ ] **Wire dashboard launch into `loop.sh`** — port dashboard startup/lifecycle handling to Bash loop for macOS/Linux parity. (priority: high — cross-platform integration)
+- [ ] **Port agent-summary filtering to `loop.sh`** — add output-noise filtering equivalent to `Show-AgentSummary` in `loop.ps1`. (priority: medium — operator UX parity)
+- [ ] **Deduplicate `Show-CheckboxMenu` helper** — extract shared UI helper consumed by both `install.ps1` and `uninstall.ps1`. (priority: low — maintainability)
 
 ### Completed
-
-- [x] **Add missing Copilot steer prompt file and wire command surface parity** — `copilot/prompts/$skillName-steer.prompt.md` now exists (`name: aloop-steer`) and prompt-count checks include all five prompts. (priority: high)
-- [x] **Normalize Claude/Codex command naming to `/$skillName:*` across user-facing docs** — command surface now consistently documents `/setup`, `/start`, `/status`, `/stop`, `/steer` under `/$skillName:*` for CLI harnesses. (priority: high)
-- [x] [review] **Add branch-coverage evidence for touched installer paths** — behavioral tests in `install.tests.ps1` cover HasCommands, runtime copy paths, summary variants, and dry-run/force paths. (priority: medium)
-- [x] **Fix `uninstall.ps1` harness target mismatch (`aloop` vs installer `$skillName`)** — uninstaller currently removes `~/.{claude,codex,copilot,agents}/.../aloop` while installer deploys to `.../$skillName` (`ra`+`lph`). Switch uninstall harness paths to `$skillName`-based targets per spec while keeping VS Code prompt glob `aloop-*.prompt.md`. (priority: critical — current uninstall misses installed harness assets)
-- [x] **Fix install path/source drift (legacy vs canonical naming)** — installer now maps from existing repo sources (`claude/skills/$skillName`, `claude/commands/$skillName`, `$skillName/{config.yml,bin,templates}`) and no longer depends on missing legacy paths.
-- [x] [review] **Align `install.ps1` summary/usage text with 5-command contract** — installer output now lists `setup,start,status,stop,steer` and Copilot `aloop-*` prompt naming.
-- [x] [review] **Add focused installer mapping/output tests (`install.tests.ps1`)** — tests now cover source/destination mapping, harness command capability flags, runtime roots, and summary/usage surface.
-- [x] **Add canonical `SPEC.md` at repo root** — project now has explicit naming, harness, command/prompt, installer/uninstaller, and runtime contracts.
+- [x] **Add missing Copilot steer prompt file and wire command surface parity** — `copilot/prompts/$skillName-steer.prompt.md` exists (`name: aloop-steer`) and prompt-count checks include all five prompts.
+- [x] **Normalize Claude/Codex command naming to `/$skillName:*` across user-facing docs** — command surface consistently documents `/setup`, `/start`, `/status`, `/stop`, `/steer` under `/$skillName:*` for CLI harnesses.
+- [x] **Add branch-coverage evidence for touched installer paths** — behavioral tests in `install.tests.ps1` cover HasCommands, runtime copy paths, summary variants, and dry-run/force paths.
+- [x] **Fix `uninstall.ps1` harness target mismatch (`aloop` vs installer `$skillName`)** — uninstaller now targets `~/.{claude,codex,copilot,agents}/.../$skillName` to match installer output.
+- [x] **Fix install path/source drift (legacy vs canonical naming)** — installer maps from repo sources (`claude/skills/$skillName`, `claude/commands/$skillName`, `$skillName/{config.yml,bin,templates}`) without missing legacy paths.
+- [x] **Align `install.ps1` summary/usage text with 5-command contract** — installer output lists `setup,start,status,stop,steer` and Copilot `aloop-*` prompt command surface.
+- [x] **Add focused installer mapping/output tests (`install.tests.ps1`)** — tests cover source/destination mapping, harness command capability flags, runtime roots, and summary/usage surface.
+- [x] **Add canonical `SPEC.md` at repo root** — explicit naming, harness, command/prompt, installer/uninstaller, and runtime contracts are documented.
 - [x] **`setup-discovery.ps1`: scaffold copies `PROMPT_steer.md` through full substitution loop**
 - [x] **`loop.sh`: round-robin provider list filters to installed providers with warnings/errors**
 - [x] **`loop.sh`: Copilot auth assertion detects common unauthenticated states**

@@ -9,7 +9,7 @@ Canonical specification for the Aloop skill installer, covering naming conventio
 | Product / methodology | **Aloop** |
 | Installer `$skillName` variable | `ralph` (constructed as `'ra' + 'lph'` to avoid grep detection) |
 | Repo source: skill + commands | `claude/skills/ralph/`, `claude/commands/ralph/` |
-| Repo source: Copilot prompts | `copilot/prompts/` (files named `ralph-*.prompt.md`) |
+| Repo source: Copilot prompts | `copilot/prompts/` (files named `aloop-*.prompt.md`) |
 | Repo source: runtime | `ralph/` (config, bin, templates) |
 | Install: skill directories | `~/.{claude,codex,copilot,agents}/skills/ralph/` |
 | Install: command directories | `~/.{claude,codex}/commands/ralph/` |
@@ -59,11 +59,11 @@ Source: `copilot/prompts/`
 
 | Prompt | File | YAML `name:` |
 |--------|------|--------------|
-| `/aloop-setup` | `ralph-setup.prompt.md` | `aloop-setup` |
-| `/aloop-start` | `ralph-start.prompt.md` | `aloop-start` |
-| `/aloop-status` | `ralph-status.prompt.md` | `aloop-status` |
-| `/aloop-stop` | `ralph-stop.prompt.md` | `aloop-stop` |
-| `/aloop-steer` | `ralph-steer.prompt.md` | `aloop-steer` |
+| `/aloop-setup` | `aloop-setup.prompt.md` | `aloop-setup` |
+| `/aloop-start` | `aloop-start.prompt.md` | `aloop-start` |
+| `/aloop-status` | `aloop-status.prompt.md` | `aloop-status` |
+| `/aloop-stop` | `aloop-stop.prompt.md` | `aloop-stop` |
+| `/aloop-steer` | `aloop-steer.prompt.md` | `aloop-steer` |
 
 Install destinations:
 - VS Code stable: `%APPDATA%\Code\User\prompts\`

@@ -60,11 +60,11 @@ Describe 'Source-to-destination path mappings' {
     Context 'Copilot prompt source has expected .prompt.md files' {
         BeforeAll { $promptDir = Join-Path $repoRoot 'copilot/prompts' }
 
-        It "has $('ra'+'lph')-setup.prompt.md"  { Join-Path $promptDir "$skillName-setup.prompt.md"  | Should -Exist }
-        It "has $('ra'+'lph')-start.prompt.md"  { Join-Path $promptDir "$skillName-start.prompt.md"  | Should -Exist }
-        It "has $('ra'+'lph')-status.prompt.md" { Join-Path $promptDir "$skillName-status.prompt.md" | Should -Exist }
-        It "has $('ra'+'lph')-stop.prompt.md"   { Join-Path $promptDir "$skillName-stop.prompt.md"   | Should -Exist }
-        It "has $('ra'+'lph')-steer.prompt.md"  { Join-Path $promptDir "$skillName-steer.prompt.md"  | Should -Exist }
+        It "has aloop-setup.prompt.md"  { Join-Path $promptDir "aloop-setup.prompt.md"  | Should -Exist }
+        It "has aloop-start.prompt.md"  { Join-Path $promptDir "aloop-start.prompt.md"  | Should -Exist }
+        It "has aloop-status.prompt.md" { Join-Path $promptDir "aloop-status.prompt.md" | Should -Exist }
+        It "has aloop-stop.prompt.md"   { Join-Path $promptDir "aloop-stop.prompt.md"   | Should -Exist }
+        It "has aloop-steer.prompt.md"  { Join-Path $promptDir "aloop-steer.prompt.md"  | Should -Exist }
         It 'has exactly 5 .prompt.md files (no extras, no missing)' {
             (Get-ChildItem $promptDir -File -Filter '*.prompt.md').Count | Should -Be 5
         }
