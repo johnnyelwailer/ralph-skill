@@ -5,7 +5,7 @@
 ### In Progress
 
 ### Up Next
-- [ ] Implement markdown rendering for Docs view using `marked` or `react-markdown` instead of raw `<pre>` text. (P1)
+- [x] Implement markdown rendering for Docs view using `marked` or `react-markdown` instead of raw `<pre>` text. (P1)
 - [ ] Make dashboard frontend delivery self-contained per spec (single served HTML with inlined CSS/JS) and adjust server asset loading accordingly. (P1)
 - [ ] Add Playwright E2E tooling in the dashboard workspace (`@playwright/test`, config with `webServer`, and `test:e2e` scripts). (P1)
 - [ ] Add fixture-backed Playwright scenarios for layout, SSE updates/reconnect, session list/status, progress timeline badges, docs markdown rendering, log stream behavior, steer side effects, stop flow, and nav switching. (P1)

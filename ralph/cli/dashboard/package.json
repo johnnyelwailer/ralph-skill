@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@radix-ui/react-tabs": "^1.1.2",
+    "aloop-cli": "file:..",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "marked": "^15.0.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^2.5.2"

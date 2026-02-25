@@ -3465,10 +3465,12 @@ async function scaffoldCommand(options = {}) {
 var import_node_http = require("node:http");
 var import_node_fs2 = require("node:fs");
 var import_node_fs3 = require("node:fs");
+var import_node_os2 = __toESM(require("node:os"));
 var import_node_path2 = __toESM(require("node:path"));
 var DOC_FILES = ["TODO.md", "SPEC.md", "RESEARCH.md", "REVIEW_LOG.md", "STEERING.md"];
 var MAX_LOG_BYTES = 128 * 1024;
 var MAX_BODY_BYTES = 64 * 1024;
+var DEFAULT_HEARTBEAT_INTERVAL_MS = 15e3;
 function parsePort(value) {
   const port = Number.parseInt(value, 10);
   if (!Number.isFinite(port) || port < 1 || port > 65535) {
@@ -3486,6 +3488,10 @@ async function readJsonFile(filePath) {
   } catch {
     return null;
   }
+}
+async function readJsonArrayFile(filePath) {
+  const value = await readJsonFile(filePath);
+  return Array.isArray(value) ? value : [];
 }
 async function readTextFile(filePath) {
   try {
@@ -3611,22 +3617,32 @@ function buildSteeringDocument(instruction, affectsCompletedWork, commit) {
 }
 async function startDashboardServer(options, runtimeOptions = {}) {
   const registerSignalHandlers = runtimeOptions.registerSignalHandlers ?? true;
+  const heartbeatIntervalMs = Math.max(250, runtimeOptions.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS);
   const port = parsePort(options.port);
   const sessionDir = import_node_path2.default.resolve(options.sessionDir ?? process.cwd());
   const workdir = import_node_path2.default.resolve(options.workdir ?? process.cwd());
   const assetsDir = import_node_path2.default.resolve(options.assetsDir ?? await resolveDefaultAssetsDir());
+  const runtimeDir = import_node_path2.default.resolve(options.runtimeDir ?? import_node_path2.default.join(import_node_os2.default.homedir(), ".aloop"));
   const statusPath = import_node_path2.default.join(sessionDir, "status.json");
   const logPath = import_node_path2.default.join(sessionDir, "log.jsonl");
   const metaPath = import_node_path2.default.join(sessionDir, "meta.json");
+  const activeSessionsPath = import_node_path2.default.join(runtimeDir, "active.json");
+  const recentSessionsPath = import_node_path2.default.join(runtimeDir, "history.json");
   const steeringPath = import_node_path2.default.join(workdir, "STEERING.md");
   const docPaths = DOC_FILES.map((name) => import_node_path2.default.join(workdir, name));
-  const watchedFiles = new Set([statusPath, logPath, ...docPaths].map((value) => import_node_path2.default.normalize(value).toLowerCase()));
+  const watchedFiles = new Set(
+    [statusPath, logPath, activeSessionsPath, recentSessionsPath, ...docPaths].map(
+      (value) => import_node_path2.default.normalize(value).toLowerCase()
+    )
+  );
   const clients = /* @__PURE__ */ new Set();
   const watchers = /* @__PURE__ */ new Map();
   const loadState = async () => {
-    const [status, log, docsEntries] = await Promise.all([
+    const [status, log, activeSessions, recentSessions, docsEntries] = await Promise.all([
       readJsonFile(statusPath),
       readLogTail(logPath),
+      readJsonArrayFile(activeSessionsPath),
+      readJsonArrayFile(recentSessionsPath),
       Promise.all(
         DOC_FILES.map(async (docFile) => {
           const content = await readTextFile(import_node_path2.default.join(workdir, docFile));
@@ -3637,18 +3653,35 @@ async function startDashboardServer(options, runtimeOptions = {}) {
     return {
       sessionDir,
       workdir,
+      runtimeDir,
       updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
       status,
       log,
-      docs: Object.fromEntries(docsEntries)
+      docs: Object.fromEntries(docsEntries),
+      activeSessions,
+      recentSessions
     };
   };
   let publishPending = false;
+  let publishTimer = null;
+  const sendToClients = (event, payload) => {
+    for (const client of clients) {
+      try {
+        sendSseEvent(client, event, payload);
+      } catch {
+        clients.delete(client);
+        client.destroy();
+      }
+    }
+  };
   const publishState = async () => {
     publishPending = false;
-    const statePayload = toStateEventPayload(await loadState());
-    for (const client of clients) {
-      sendSseEvent(client, "state", statePayload);
+    publishTimer = null;
+    try {
+      const statePayload = toStateEventPayload(await loadState());
+      sendToClients("state", statePayload);
+    } catch (error) {
+      console.warn(`dashboard: failed to publish state: ${error.message}`);
     }
   };
   const schedulePublish = () => {
@@ -3656,11 +3689,16 @@ async function startDashboardServer(options, runtimeOptions = {}) {
       return;
     }
     publishPending = true;
-    setTimeout(() => {
+    publishTimer = setTimeout(() => {
       void publishState();
     }, 75);
   };
-  const watchPaths = [sessionDir, workdir];
+  const heartbeatTimer = setInterval(() => {
+    const heartbeatPayload = JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+    sendToClients("heartbeat", heartbeatPayload);
+  }, heartbeatIntervalMs);
+  heartbeatTimer.unref();
+  const watchPaths = [sessionDir, workdir, runtimeDir];
   for (const target of watchPaths) {
     try {
       const watcher = (0, import_node_fs2.watch)(target, (_eventType, filename) => {
@@ -3693,7 +3731,15 @@ async function startDashboardServer(options, runtimeOptions = {}) {
         });
         response.write(": connected\n\n");
         clients.add(response);
-        sendSseEvent(response, "state", toStateEventPayload(await loadState()));
+        try {
+          sendSseEvent(response, "state", toStateEventPayload(await loadState()));
+        } catch (error) {
+          sendSseEvent(
+            response,
+            "error",
+            JSON.stringify({ message: `Failed to load initial state: ${error.message}` })
+          );
+        }
         request.on("close", () => {
           clients.delete(response);
         });
@@ -3837,33 +3883,56 @@ async function startDashboardServer(options, runtimeOptions = {}) {
       );
     };
     void handleRequest().catch((error) => {
+      if (response.headersSent) {
+        try {
+          sendSseEvent(response, "error", JSON.stringify({ message: `Internal server error: ${error.message}` }));
+        } catch {
+        } finally {
+          response.end();
+        }
+        return;
+      }
       writeJson(response, 500, {
         error: `Internal server error: ${error.message}`
       });
     });
   });
   let closed = false;
-  const onSignal = () => {
-    void shutdown();
+  let shutdownPromise = null;
+  const onSignal = (signal) => {
+    void shutdown(signal);
   };
-  const shutdown = async () => {
-    if (closed) {
-      return;
+  const shutdown = async (_reason) => {
+    if (shutdownPromise) {
+      return shutdownPromise;
     }
-    closed = true;
-    if (registerSignalHandlers) {
-      process.off("SIGINT", onSignal);
-      process.off("SIGTERM", onSignal);
-    }
-    for (const watcher of watchers.values()) {
-      watcher.close();
-    }
-    for (const client of clients) {
-      client.end();
-    }
-    await new Promise((resolve) => {
-      server.close(() => resolve());
-    });
+    shutdownPromise = (async () => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      if (registerSignalHandlers) {
+        process.off("SIGINT", onSignal);
+        process.off("SIGTERM", onSignal);
+      }
+      if (publishTimer) {
+        clearTimeout(publishTimer);
+        publishTimer = null;
+      }
+      clearInterval(heartbeatTimer);
+      for (const watcher of watchers.values()) {
+        watcher.close();
+      }
+      watchers.clear();
+      for (const client of clients) {
+        client.end();
+      }
+      clients.clear();
+      await new Promise((resolve) => {
+        server.close(() => resolve());
+      });
+    })();
+    return shutdownPromise;
   };
   if (registerSignalHandlers) {
     process.once("SIGINT", onSignal);

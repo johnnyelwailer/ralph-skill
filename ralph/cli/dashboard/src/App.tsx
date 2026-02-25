@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { marked } from 'marked';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -341,6 +342,7 @@ function DocsView({
 }) {
   const docNames = Object.keys(docs);
   const content = docs[selectedDoc] ?? '';
+  const renderedContent = useMemo(() => marked.parse(content), [content]);
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
@@ -350,7 +352,14 @@ function DocsView({
           </Button>
         ))}
       </div>
-      <pre className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs">{content || 'No document content available.'}</pre>
+      {content ? (
+        <article
+          className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-sm [&_code]:text-xs [&_pre]:overflow-auto"
+          dangerouslySetInnerHTML={{ __html: renderedContent }}
+        />
+      ) : (
+        <pre className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs">No document content available.</pre>
+      )}
     </div>
   );
 }
