@@ -607,10 +607,22 @@ foreach ($p in $requiredPrompts) {
     }
 }
 
-# Validate providers installed
+# Validate / filter providers
 if (-not $DryRun) {
     if ($Provider -eq 'round-robin') {
-        foreach ($p in $RoundRobinProviders) { Assert-ProviderInstalled -ProviderName $p }
+        $available = @($RoundRobinProviders | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue })
+        $missing   = @($RoundRobinProviders | Where-Object { $_ -notin $available })
+        foreach ($p in $missing) {
+            Write-Warning "round-robin: '$p' not found on PATH — skipping."
+        }
+        if ($available.Count -eq 0) {
+            Write-Error "round-robin: no providers are installed. Install at least one of: $($RoundRobinProviders -join ', ')"
+            exit 1
+        }
+        if ($available.Count -lt $RoundRobinProviders.Count) {
+            Write-Host "round-robin will use: $($available -join ', ')" -ForegroundColor Yellow
+        }
+        $RoundRobinProviders = $available
     } else {
         Assert-ProviderInstalled -ProviderName $Provider
     }
