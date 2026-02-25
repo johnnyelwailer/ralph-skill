@@ -111,11 +111,12 @@ All runtime state installs to `~/.aloop/`, independent of harness selection.
 
 ### CLI Monorepo Build Contract
 
-- CLI implementation (including dashboard) lives in `aloop/cli/` TypeScript sources.
-- Source layout includes `src/index.ts` and command modules (`resolve`, `discover`, `scaffold`, `dashboard`).
-- Build step bundles output to `aloop/cli/dist/` for installation under `~/.aloop/cli/dist/`.
+- CLI server implementation lives in `aloop/cli/src/` TypeScript sources (`index.ts`, `commands/{resolve,discover,scaffold,dashboard}.ts`).
+- Dashboard frontend lives in `aloop/cli/dashboard/` and is built with React + Tailwind CSS + shadcn/ui components (copied source).
+- Markdown rendering for Docs view uses `marked` (or `react-markdown`).
+- Build output installs under `~/.aloop/cli/` and includes `dist/index.js` (server) plus bundled dashboard HTML assets.
 - Runtime execution uses the installed bundle (`node ~/.aloop/cli/dist/index.js`).
-- Zero runtime npm dependencies; dev/build dependencies are allowed.
+- "Zero deps" applies to installed runtime output (no installed `node_modules` required on user machines); dev/build dependencies are allowed.
 
 ### Template Variables
 
@@ -134,11 +135,11 @@ Resolved during `/ralph:setup` (or `/aloop-setup`) into per-project prompts:
 Self-contained Node.js HTTP server for real-time monitoring of running sessions.
 
 ### Architecture
-- **Runtime**: TypeScript monorepo CLI source under `aloop/cli/src/`, including `commands/dashboard.ts`; built output is invoked via `aloop dashboard` (or alias `aloop monitor`).
-- **Dependencies**: Zero runtime npm dependencies; dev/build dependencies are allowed.
+- **Runtime**: TypeScript monorepo with server code in `aloop/cli/src/` and dashboard frontend app in `aloop/cli/dashboard/`; `commands/dashboard.ts` serves the bundled frontend.
+- **Dependencies**: Frontend stack uses React, Tailwind CSS, shadcn/ui, and `marked` (or `react-markdown`); Vite or esbuild is used as a dev/build bundler.
 - **Data Source**: Watches `status.json`, `log.jsonl`, `active.json`, and work-dir documents via `fs.watch`.
 - **Transport**: Server-Sent Events (SSE) for live push to browser.
-- **Frontend**: Single self-contained HTML response with inline CSS/JS.
+- **Frontend**: Single bundled HTML response with inlined CSS/JS served by the dashboard server.
 
 ### Dashboard Layout (Three-Column)
 1.  **Left: Session List**: Active and recent sessions from `active.json`. Shows name, status (running/complete/stuck), elapsed time, and iteration count.
@@ -153,7 +154,8 @@ Self-contained Node.js HTTP server for real-time monitoring of running sessions.
 ### Integration
 - **Lifecycle**: Launched automatically by `loop.ps1` / `loop.sh` by starting the CLI dashboard subcommand in the background on an available port.
 - **Discovery**: URL printed to CLI upon launch and included in the `/ralph:start` prompt output.
-- **Installer**: `install.ps1` deploys bundled CLI output to `~/.aloop/cli/dist/`; the `aloop` shim runs `node ~/.aloop/cli/dist/index.js`.
+- **Build pipeline**: `vite build` bundles dashboard frontend, `esbuild` (or `tsc`) compiles CLI server to `dist/index.js`, and the server reads/serves the bundled HTML on `GET /`.
+- **Installer**: `install.ps1` deploys bundled CLI output to `~/.aloop/cli/`; the `aloop` shim runs `node ~/.aloop/cli/dist/index.js`.
 
 ### Project Working Files
 
@@ -176,7 +178,7 @@ Created in the project work directory (or worktree):
 | `claude/commands/$skillName/` | `~/.<harness>/commands/$skillName/` | Only `claude` and `codex` (`HasCommands = $true`) |
 | `copilot/prompts/` | `%APPDATA%\Code{,-Insiders}\User\prompts\` | Auto-detected VS Code installations |
 | `$skillName/config.yml` | `~/.aloop/config.yml` | Always |
-| `$skillName/cli/dist/` | `~/.aloop/cli/dist/` | Always (built TS CLI bundle) |
+| `$skillName/cli/dist/` | `~/.aloop/cli/` | Always (built CLI server + bundled dashboard frontend) |
 | `$skillName/bin/` | `~/.aloop/bin/` | Always |
 | `$skillName/templates/` | `~/.aloop/templates/` | Always |
 
