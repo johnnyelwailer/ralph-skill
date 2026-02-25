@@ -965,7 +965,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports2) {
     var EventEmitter = require("node:events").EventEmitter;
     var childProcess = require("node:child_process");
-    var path2 = require("node:path");
+    var path3 = require("node:path");
     var fs2 = require("node:fs");
     var process2 = require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -1908,10 +1908,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path2.resolve(baseDir, baseName);
+          const localBin = path3.resolve(baseDir, baseName);
           if (fs2.existsSync(localBin))
             return localBin;
-          if (sourceExt.includes(path2.extname(baseName)))
+          if (sourceExt.includes(path3.extname(baseName)))
             return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs2.existsSync(`${localBin}${ext}`)
@@ -1931,17 +1931,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch (err) {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path2.resolve(
-            path2.dirname(resolvedScriptPath),
+          executableDir = path3.resolve(
+            path3.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path2.basename(
+            const legacyName = path3.basename(
               this._scriptPath,
-              path2.extname(this._scriptPath)
+              path3.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -1952,7 +1952,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path2.extname(executableFile));
+        launchWithNode = sourceExt.includes(path3.extname(executableFile));
         let proc;
         if (process2.platform !== "win32") {
           if (launchWithNode) {
@@ -2809,7 +2809,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path2.basename(filename, path2.extname(filename));
+        this._name = path3.basename(filename, path3.extname(filename));
         return this;
       }
       /**
@@ -2823,10 +2823,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path3) {
-        if (path3 === void 0)
+      executableDir(path4) {
+        if (path4 === void 0)
           return this._executableDir;
-        this._executableDir = path3;
+        this._executableDir = path4;
         return this;
       }
       /**
@@ -3073,28 +3073,402 @@ var {
   Help
 } = import_index.default;
 
+// src/commands/project.ts
+var import_node_crypto = require("node:crypto");
+var import_node_child_process = require("node:child_process");
+var import_promises = require("node:fs/promises");
+var import_node_fs = require("node:fs");
+var import_node_os = __toESM(require("node:os"));
+var import_node_path = __toESM(require("node:path"));
+function getHomeDir(explicit) {
+  return import_node_path.default.resolve(explicit ?? import_node_os.default.homedir());
+}
+function resolveProjectRoot(projectRoot) {
+  const start = import_node_path.default.resolve(projectRoot ?? process.cwd());
+  const gitRoot = (0, import_node_child_process.spawnSync)("git", ["-C", start, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
+  if (gitRoot.status === 0) {
+    const value = gitRoot.stdout.trim();
+    if (value) {
+      return import_node_path.default.resolve(value);
+    }
+  }
+  return start;
+}
+function getProjectHash(projectPath) {
+  const normalized = import_node_path.default.resolve(projectPath).replace(/[\\\/]+$/, "").toLowerCase();
+  return (0, import_node_crypto.createHash)("sha256").update(normalized).digest("hex").slice(0, 8);
+}
+function detectGit(projectRoot) {
+  const isGit = (0, import_node_child_process.spawnSync)("git", ["-C", projectRoot, "rev-parse", "--is-inside-work-tree"], { encoding: "utf8" });
+  if (isGit.status !== 0) {
+    return { isGitRepo: false, gitBranch: null };
+  }
+  const branch = (0, import_node_child_process.spawnSync)("git", ["-C", projectRoot, "rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf8" });
+  return { isGitRepo: true, gitBranch: branch.status === 0 ? branch.stdout.trim() || null : null };
+}
+async function fileExists(filePath) {
+  try {
+    const info = await (0, import_promises.stat)(filePath);
+    return info.isFile() || info.isDirectory();
+  } catch {
+    return false;
+  }
+}
+async function detectLanguage(projectRoot) {
+  const score = {
+    "node-typescript": 0,
+    python: 0,
+    go: 0,
+    rust: 0,
+    dotnet: 0
+  };
+  const signals = [];
+  const checks = [
+    { rel: "package.json", language: "node-typescript", points: 4 },
+    { rel: "tsconfig.json", language: "node-typescript", points: 3 },
+    { rel: "pnpm-lock.yaml", language: "node-typescript", points: 2 },
+    { rel: "yarn.lock", language: "node-typescript", points: 2 },
+    { rel: "pyproject.toml", language: "python", points: 4 },
+    { rel: "requirements.txt", language: "python", points: 3 },
+    { rel: "setup.py", language: "python", points: 2 },
+    { rel: "go.mod", language: "go", points: 5 },
+    { rel: "Cargo.toml", language: "rust", points: 5 }
+  ];
+  for (const check of checks) {
+    if (await fileExists(import_node_path.default.join(projectRoot, check.rel))) {
+      score[check.language] += check.points;
+      signals.push(check.rel);
+    }
+  }
+  const dotnetFiles = await (0, import_promises.readdir)(projectRoot).catch(() => []);
+  if (dotnetFiles.some((item) => item.endsWith(".sln"))) {
+    score.dotnet += 4;
+    signals.push("*.sln");
+  }
+  let winner = "other";
+  let winnerScore = 0;
+  for (const [language, points] of Object.entries(score)) {
+    if (points > winnerScore) {
+      winner = language;
+      winnerScore = points;
+    }
+  }
+  const confidence = winnerScore >= 5 ? "high" : winnerScore >= 3 ? "medium" : "low";
+  return { language: winner, confidence, signals };
+}
+async function getPackageScripts(projectRoot) {
+  const packagePath = import_node_path.default.join(projectRoot, "package.json");
+  if (!await fileExists(packagePath)) {
+    return {};
+  }
+  const raw = await (0, import_promises.readFile)(packagePath, "utf8");
+  const parsed = JSON.parse(raw);
+  return parsed.scripts ?? {};
+}
+async function buildValidationPresets(language, projectRoot) {
+  if (language === "node-typescript") {
+    const scripts = await getPackageScripts(projectRoot);
+    const test = scripts.test ? "npm test" : "npx vitest run";
+    const typecheck = scripts.typecheck ? "npm run typecheck" : await fileExists(import_node_path.default.join(projectRoot, "tsconfig.json")) ? "npx tsc --noEmit" : null;
+    const lint = scripts.lint ? "npm run lint" : "npx eslint .";
+    const build = scripts.build ? "npm run build" : null;
+    const testsAndTypes = [typecheck, test].filter((value) => Boolean(value));
+    const full = [typecheck, lint, test, build].filter((value) => Boolean(value));
+    return { tests_only: [test], tests_and_types: testsAndTypes, full };
+  }
+  if (language === "python") {
+    return { tests_only: ["pytest"], tests_and_types: ["mypy .", "pytest"], full: ["mypy .", "ruff check .", "pytest"] };
+  }
+  if (language === "go") {
+    return { tests_only: ["go test ./..."], tests_and_types: ["go vet ./...", "go test ./..."], full: ["go vet ./...", "golangci-lint run", "go test ./..."] };
+  }
+  if (language === "rust") {
+    return { tests_only: ["cargo test"], tests_and_types: ["cargo clippy -- -D warnings", "cargo test"], full: ["cargo clippy -- -D warnings", "cargo test", "cargo build --release"] };
+  }
+  if (language === "dotnet") {
+    return { tests_only: ["dotnet test"], tests_and_types: ["dotnet build", "dotnet test"], full: ["dotnet build", "dotnet test"] };
+  }
+  return { tests_only: [], tests_and_types: [], full: [] };
+}
+async function discoverSpecCandidates(projectRoot) {
+  const ordered = ["SPEC.md", "README.md", "docs/SPEC.md", "docs/spec.md", "requirements.md", "PRD.md", "specs", "docs"];
+  const found = [];
+  for (const rel of ordered) {
+    if (await fileExists(import_node_path.default.join(projectRoot, rel))) {
+      found.push(rel.replace(/\\/g, "/"));
+    }
+  }
+  return found;
+}
+async function discoverReferenceCandidates(projectRoot, specCandidates) {
+  const ordered = [
+    "SPEC.md",
+    "README.md",
+    "RESEARCH.md",
+    "REVIEW_LOG.md",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "docs/architecture.md",
+    "docs/design.md",
+    "docs/adr"
+  ];
+  const excluded = new Set(specCandidates);
+  const found = [];
+  for (const rel of ordered) {
+    const normalized = rel.replace(/\\/g, "/");
+    if (excluded.has(normalized)) {
+      continue;
+    }
+    if (await fileExists(import_node_path.default.join(projectRoot, rel))) {
+      found.push(normalized);
+    }
+  }
+  return found;
+}
+function normalizeList(items) {
+  if (!items) {
+    return [];
+  }
+  return items.flatMap((item) => item.split(",")).map((item) => item.trim()).filter((item) => item.length > 0);
+}
+function readDefaultProvider(homeDir) {
+  const configPath = import_node_path.default.join(homeDir, ".aloop", "config.yml");
+  if (!(0, import_node_fs.existsSync)(configPath)) {
+    return "claude";
+  }
+  const content = (0, import_node_fs.readFileSync)(configPath, "utf8");
+  const line = content.split(/\r?\n/).find((entry) => entry.trim().startsWith("default_provider:"));
+  return line?.split(":").slice(1).join(":").trim() || "claude";
+}
+function getInstalledProviders() {
+  const providers = ["claude", "codex", "gemini", "copilot"];
+  const installed = [];
+  const missing = [];
+  for (const provider of providers) {
+    const status = (0, import_node_child_process.spawnSync)(provider, ["--version"], { stdio: "ignore" });
+    if (status.status === 0 || status.status === 1) {
+      installed.push(provider);
+    } else {
+      missing.push(provider);
+    }
+  }
+  return { installed, missing };
+}
+async function discoverWorkspace(options = {}) {
+  const homeDir = getHomeDir(options.homeDir);
+  const projectRoot = resolveProjectRoot(options.projectRoot);
+  const projectHash = getProjectHash(projectRoot);
+  const projectName = import_node_path.default.basename(projectRoot);
+  const { isGitRepo, gitBranch } = detectGit(projectRoot);
+  const language = await detectLanguage(projectRoot);
+  const validationPresets = await buildValidationPresets(language.language, projectRoot);
+  const specCandidates = await discoverSpecCandidates(projectRoot);
+  const referenceCandidates = await discoverReferenceCandidates(projectRoot, specCandidates);
+  const providers = getInstalledProviders();
+  const projectDir = import_node_path.default.join(homeDir, ".aloop", "projects", projectHash);
+  return {
+    project: {
+      root: projectRoot,
+      name: projectName,
+      hash: projectHash,
+      is_git_repo: isGitRepo,
+      git_branch: gitBranch
+    },
+    setup: {
+      project_dir: projectDir,
+      config_path: import_node_path.default.join(projectDir, "config.yml"),
+      config_exists: (0, import_node_fs.existsSync)(import_node_path.default.join(projectDir, "config.yml")),
+      templates_dir: import_node_path.default.join(homeDir, ".aloop", "templates")
+    },
+    context: {
+      detected_language: language.language,
+      language_confidence: language.confidence,
+      language_signals: language.signals,
+      validation_presets: validationPresets,
+      spec_candidates: specCandidates,
+      reference_candidates: referenceCandidates,
+      context_files: {
+        "TODO.md": (0, import_node_fs.existsSync)(import_node_path.default.join(projectRoot, "TODO.md")),
+        "RESEARCH.md": (0, import_node_fs.existsSync)(import_node_path.default.join(projectRoot, "RESEARCH.md")),
+        "REVIEW_LOG.md": (0, import_node_fs.existsSync)(import_node_path.default.join(projectRoot, "REVIEW_LOG.md")),
+        "STEERING.md": (0, import_node_fs.existsSync)(import_node_path.default.join(projectRoot, "STEERING.md"))
+      }
+    },
+    providers: {
+      installed: providers.installed,
+      missing: providers.missing,
+      default_provider: readDefaultProvider(homeDir),
+      default_models: {
+        claude: "opus",
+        codex: "gpt-5.3-codex",
+        gemini: "gemini-3.1-pro-preview",
+        copilot: "gpt-5.3-codex"
+      },
+      round_robin_default: ["claude", "codex", "gemini", "copilot"]
+    },
+    discovered_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function toYamlQuoted(value) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+function resolveProviderHints(provider) {
+  if (provider === "claude")
+    return "- Claude hint: Use parallel subagents when large searches are needed; summarize before coding.";
+  if (provider === "codex")
+    return "- Codex hint: Prefer stdin prompt mode and keep outputs concise and action-focused.";
+  if (provider === "gemini")
+    return "- Gemini hint: Keep prompts explicit and deterministic; re-check assumptions before writing code.";
+  if (provider === "copilot")
+    return "- Copilot hint: Keep edits surgical and validate with focused checks after changes.";
+  if (provider === "round-robin")
+    return "- Round-robin hint: Keep context handoff explicit in TODO.md and REVIEW_LOG.md between providers.";
+  return "";
+}
+async function scaffoldWorkspace(options = {}) {
+  const discovery = await discoverWorkspace(options);
+  const provider = options.provider ?? discovery.providers.default_provider;
+  const enabledProviders = normalizeList(options.enabledProviders);
+  const enabled = enabledProviders.length > 0 ? enabledProviders : discovery.providers.installed.length > 0 ? discovery.providers.installed : ["claude"];
+  const roundRobinOrder = normalizeList(options.roundRobinOrder);
+  const roundRobin = roundRobinOrder.length > 0 ? roundRobinOrder : [...enabled];
+  const specFiles = normalizeList(options.specFiles);
+  const resolvedSpecFiles = specFiles.length > 0 ? specFiles : discovery.context.spec_candidates.slice(0, 1);
+  const referenceFiles = normalizeList(options.referenceFiles);
+  const resolvedReferenceFiles = referenceFiles.length > 0 ? referenceFiles : discovery.context.reference_candidates;
+  const validationCommands = normalizeList(options.validationCommands);
+  const resolvedValidation = validationCommands.length > 0 ? validationCommands : discovery.context.validation_presets.full;
+  const safetyRules = normalizeList(options.safetyRules);
+  const resolvedSafetyRules = safetyRules.length > 0 ? safetyRules : ["Never delete the project directory or run destructive commands", "Never push to remote without explicit user approval"];
+  const language = options.language ?? discovery.context.detected_language;
+  const mode = options.mode ?? "plan-build-review";
+  const templatesDir = import_node_path.default.resolve(options.templatesDir ?? discovery.setup.templates_dir);
+  const promptsDir = import_node_path.default.join(discovery.setup.project_dir, "prompts");
+  for (const file of ["PROMPT_plan.md", "PROMPT_build.md", "PROMPT_review.md", "PROMPT_steer.md"]) {
+    if (!(0, import_node_fs.existsSync)(import_node_path.default.join(templatesDir, file))) {
+      throw new Error(`Template not found: ${import_node_path.default.join(templatesDir, file)}`);
+    }
+  }
+  await (0, import_promises.mkdir)(promptsDir, { recursive: true });
+  const configLines = [
+    `project_name: ${toYamlQuoted(discovery.project.name)}`,
+    `project_root: ${toYamlQuoted(discovery.project.root)}`,
+    `language: ${toYamlQuoted(language)}`,
+    `provider: ${toYamlQuoted(provider)}`,
+    `mode: ${toYamlQuoted(mode)}`,
+    "spec_files:",
+    ...resolvedSpecFiles.map((value) => `  - ${toYamlQuoted(value)}`),
+    "reference_files:",
+    ...resolvedReferenceFiles.map((value) => `  - ${toYamlQuoted(value)}`),
+    "validation_commands: |",
+    ...resolvedValidation.map((value) => `  ${value}`),
+    "safety_rules: |",
+    ...resolvedSafetyRules.map((value) => `  - ${value}`),
+    "",
+    "enabled_providers:",
+    ...enabled.map((value) => `  - ${toYamlQuoted(value)}`),
+    "",
+    "models:",
+    "  claude: 'opus'",
+    "  codex: 'gpt-5.3-codex'",
+    "  gemini: 'gemini-3.1-pro-preview'",
+    "  copilot: 'gpt-5.3-codex'",
+    "",
+    "round_robin_order:",
+    ...roundRobin.map((value) => `  - ${toYamlQuoted(value)}`),
+    "",
+    `created_at: ${toYamlQuoted((/* @__PURE__ */ new Date()).toISOString())}`
+  ];
+  await (0, import_promises.writeFile)(discovery.setup.config_path, `${configLines.join("\n")}
+`, "utf8");
+  const replacements = {
+    "{{SPEC_FILES}}": resolvedSpecFiles.join(", "),
+    "{{REFERENCE_FILES}}": resolvedReferenceFiles.join(", "),
+    "{{VALIDATION_COMMANDS}}": resolvedValidation.map((value) => `- ${value}`).join("\n"),
+    "{{SAFETY_RULES}}": resolvedSafetyRules.map((value) => `- ${value}`).join("\n"),
+    "{{PROVIDER_HINTS}}": resolveProviderHints(provider)
+  };
+  for (const suffix of ["plan", "build", "review", "steer"]) {
+    const fileName = `PROMPT_${suffix}.md`;
+    const templatePath = import_node_path.default.join(templatesDir, fileName);
+    const destinationPath = import_node_path.default.join(promptsDir, fileName);
+    let content = await (0, import_promises.readFile)(templatePath, "utf8");
+    for (const [key, value] of Object.entries(replacements)) {
+      content = content.replaceAll(key, value);
+    }
+    await (0, import_promises.writeFile)(destinationPath, content, "utf8");
+  }
+  return {
+    config_path: discovery.setup.config_path,
+    prompts_dir: promptsDir,
+    project_dir: discovery.setup.project_dir,
+    project_hash: discovery.project.hash
+  };
+}
+
 // src/commands/resolve.ts
-async function resolveCommand() {
-  console.log("Resolving project workspace...");
+async function resolveCommand(options = {}) {
+  const discovery = await discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
+  const result = {
+    project: discovery.project,
+    setup: discovery.setup
+  };
+  if (options.output === "text") {
+    console.log(`Project: ${result.project.name} [${result.project.hash}]`);
+    console.log(`Root: ${result.project.root}`);
+    console.log(`Project config: ${result.setup.config_path}`);
+    return;
+  }
+  console.log(JSON.stringify(result, null, 2));
 }
 
 // src/commands/discover.ts
-async function discoverCommand() {
-  console.log("Discovering workspace specs, files, and validation commands...");
+async function discoverCommand(options = {}) {
+  const result = await discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
+  if (options.output === "text") {
+    console.log(`Project: ${result.project.name} [${result.project.hash}]`);
+    console.log(`Root: ${result.project.root}`);
+    console.log(`Detected language: ${result.context.detected_language} (${result.context.language_confidence})`);
+    console.log(`Providers installed: ${result.providers.installed.join(", ")}`);
+    console.log(`Spec candidates: ${result.context.spec_candidates.join(", ")}`);
+    console.log(`Reference candidates: ${result.context.reference_candidates.join(", ")}`);
+    return;
+  }
+  console.log(JSON.stringify(result, null, 2));
 }
 
 // src/commands/scaffold.ts
-async function scaffoldCommand() {
-  console.log("Scaffolding project workdir and prompts...");
+async function scaffoldCommand(options = {}) {
+  const result = await scaffoldWorkspace({
+    projectRoot: options.projectRoot,
+    homeDir: options.homeDir,
+    language: options.language,
+    provider: options.provider,
+    enabledProviders: options.enabledProviders,
+    roundRobinOrder: options.roundRobinOrder,
+    specFiles: options.specFiles,
+    referenceFiles: options.referenceFiles,
+    validationCommands: options.validationCommands,
+    safetyRules: options.safetyRules,
+    mode: options.mode,
+    templatesDir: options.templatesDir
+  });
+  if (options.output === "text") {
+    console.log(`Wrote config: ${result.config_path}`);
+    console.log(`Wrote prompts: ${result.prompts_dir}`);
+    return;
+  }
+  console.log(JSON.stringify(result, null, 2));
 }
 
 // src/commands/dashboard.ts
 var import_node_http = require("node:http");
-var import_node_fs = require("node:fs");
 var import_node_fs2 = require("node:fs");
-var import_node_path = __toESM(require("node:path"));
+var import_node_fs3 = require("node:fs");
+var import_node_path2 = __toESM(require("node:path"));
 var DOC_FILES = ["TODO.md", "SPEC.md", "RESEARCH.md", "REVIEW_LOG.md", "STEERING.md"];
 var MAX_LOG_BYTES = 128 * 1024;
+var MAX_BODY_BYTES = 64 * 1024;
 function parsePort(value) {
   const port = Number.parseInt(value, 10);
   if (!Number.isFinite(port) || port < 1 || port > 65535) {
@@ -3102,9 +3476,12 @@ function parsePort(value) {
   }
   return port;
 }
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
 async function readJsonFile(filePath) {
   try {
-    const raw = await import_node_fs2.promises.readFile(filePath, "utf8");
+    const raw = await import_node_fs3.promises.readFile(filePath, "utf8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -3112,34 +3489,34 @@ async function readJsonFile(filePath) {
 }
 async function readTextFile(filePath) {
   try {
-    return await import_node_fs2.promises.readFile(filePath, "utf8");
+    return await import_node_fs3.promises.readFile(filePath, "utf8");
   } catch {
     return "";
   }
 }
 async function readLogTail(filePath) {
   try {
-    const buffer = await import_node_fs2.promises.readFile(filePath);
+    const buffer = await import_node_fs3.promises.readFile(filePath);
     const start = Math.max(0, buffer.length - MAX_LOG_BYTES);
     return buffer.subarray(start).toString("utf8");
   } catch {
     return "";
   }
 }
-async function fileExists(filePath) {
+async function fileExists2(filePath) {
   try {
-    const stats = await import_node_fs2.promises.stat(filePath);
+    const stats = await import_node_fs3.promises.stat(filePath);
     return stats.isFile();
   } catch {
     return false;
   }
 }
 async function resolveDefaultAssetsDir() {
-  const runtimeScriptPath = process.argv[1] ? import_node_path.default.resolve(process.argv[1]) : import_node_path.default.join(process.cwd(), "dist", "index.js");
-  const runtimeDistDir = import_node_path.default.dirname(runtimeScriptPath);
-  const installAssetsDir = import_node_path.default.join(runtimeDistDir, "dashboard");
-  const devAssetsDir = import_node_path.default.join(process.cwd(), "dashboard", "dist");
-  if (await fileExists(import_node_path.default.join(installAssetsDir, "index.html"))) {
+  const runtimeScriptPath = process.argv[1] ? import_node_path2.default.resolve(process.argv[1]) : import_node_path2.default.join(process.cwd(), "dist", "index.js");
+  const runtimeDistDir = import_node_path2.default.dirname(runtimeScriptPath);
+  const installAssetsDir = import_node_path2.default.join(runtimeDistDir, "dashboard");
+  const devAssetsDir = import_node_path2.default.join(process.cwd(), "dashboard", "dist");
+  if (await fileExists2(import_node_path2.default.join(installAssetsDir, "index.html"))) {
     return installAssetsDir;
   }
   return devAssetsDir;
@@ -3157,7 +3534,7 @@ function sendSseEvent(response, event, payload) {
   response.write("\n");
 }
 function getContentType(filePath) {
-  const ext = import_node_path.default.extname(filePath).toLowerCase();
+  const ext = import_node_path2.default.extname(filePath).toLowerCase();
   switch (ext) {
     case ".html":
       return "text/html; charset=utf-8";
@@ -3177,15 +3554,73 @@ function getContentType(filePath) {
       return "application/octet-stream";
   }
 }
-async function dashboardCommand(options) {
+function writeJson(response, statusCode, payload) {
+  response.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store"
+  });
+  response.end(JSON.stringify(payload));
+}
+function extractPid(meta) {
+  if (!isRecord(meta)) {
+    return null;
+  }
+  const pid = meta.pid;
+  if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) {
+    return null;
+  }
+  return pid;
+}
+async function readJsonBody(request) {
+  const chunks = [];
+  let size = 0;
+  await new Promise((resolve, reject) => {
+    request.on("data", (chunk) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buffer.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error(`Request body too large (max ${MAX_BODY_BYTES} bytes).`));
+        request.destroy();
+        return;
+      }
+      chunks.push(buffer);
+    });
+    request.on("end", () => resolve());
+    request.on("error", (error) => reject(error));
+  });
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (raw.length === 0) {
+    return {};
+  }
+  return JSON.parse(raw);
+}
+function buildSteeringDocument(instruction, affectsCompletedWork, commit) {
+  const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+  return [
+    "# Steering Instruction",
+    "",
+    `**Commit:** ${commit}`,
+    `**Timestamp:** ${timestamp}`,
+    `**Affects completed work:** ${affectsCompletedWork}`,
+    "",
+    "## Instruction",
+    "",
+    instruction,
+    ""
+  ].join("\n");
+}
+async function startDashboardServer(options, runtimeOptions = {}) {
+  const registerSignalHandlers = runtimeOptions.registerSignalHandlers ?? true;
   const port = parsePort(options.port);
-  const sessionDir = import_node_path.default.resolve(options.sessionDir ?? process.cwd());
-  const workdir = import_node_path.default.resolve(options.workdir ?? process.cwd());
-  const assetsDir = import_node_path.default.resolve(options.assetsDir ?? await resolveDefaultAssetsDir());
-  const statusPath = import_node_path.default.join(sessionDir, "status.json");
-  const logPath = import_node_path.default.join(sessionDir, "log.jsonl");
-  const docPaths = DOC_FILES.map((name) => import_node_path.default.join(workdir, name));
-  const watchedFiles = new Set([statusPath, logPath, ...docPaths].map((value) => import_node_path.default.normalize(value).toLowerCase()));
+  const sessionDir = import_node_path2.default.resolve(options.sessionDir ?? process.cwd());
+  const workdir = import_node_path2.default.resolve(options.workdir ?? process.cwd());
+  const assetsDir = import_node_path2.default.resolve(options.assetsDir ?? await resolveDefaultAssetsDir());
+  const statusPath = import_node_path2.default.join(sessionDir, "status.json");
+  const logPath = import_node_path2.default.join(sessionDir, "log.jsonl");
+  const metaPath = import_node_path2.default.join(sessionDir, "meta.json");
+  const steeringPath = import_node_path2.default.join(workdir, "STEERING.md");
+  const docPaths = DOC_FILES.map((name) => import_node_path2.default.join(workdir, name));
+  const watchedFiles = new Set([statusPath, logPath, ...docPaths].map((value) => import_node_path2.default.normalize(value).toLowerCase()));
   const clients = /* @__PURE__ */ new Set();
   const watchers = /* @__PURE__ */ new Map();
   const loadState = async () => {
@@ -3194,7 +3629,7 @@ async function dashboardCommand(options) {
       readLogTail(logPath),
       Promise.all(
         DOC_FILES.map(async (docFile) => {
-          const content = await readTextFile(import_node_path.default.join(workdir, docFile));
+          const content = await readTextFile(import_node_path2.default.join(workdir, docFile));
           return [docFile, content];
         })
       )
@@ -3228,11 +3663,11 @@ async function dashboardCommand(options) {
   const watchPaths = [sessionDir, workdir];
   for (const target of watchPaths) {
     try {
-      const watcher = (0, import_node_fs.watch)(target, (_eventType, filename) => {
+      const watcher = (0, import_node_fs2.watch)(target, (_eventType, filename) => {
         if (!filename) {
           return;
         }
-        const changed = import_node_path.default.normalize(import_node_path.default.join(target, filename.toString())).toLowerCase();
+        const changed = import_node_path2.default.normalize(import_node_path2.default.join(target, filename.toString())).toLowerCase();
         if (watchedFiles.has(changed) || changed.endsWith(".md")) {
           schedulePublish();
         }
@@ -3242,78 +3677,233 @@ async function dashboardCommand(options) {
       console.warn(`dashboard: unable to watch ${target}: ${error.message}`);
     }
   }
-  const server = (0, import_node_http.createServer)(async (request, response) => {
-    const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
-    if (requestUrl.pathname === "/api/state" && request.method === "GET") {
-      const state = await loadState();
-      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-      response.end(JSON.stringify(state));
-      return;
-    }
-    if (requestUrl.pathname === "/events" && request.method === "GET") {
-      response.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive"
+  const server = (0, import_node_http.createServer)((request, response) => {
+    const handleRequest = async () => {
+      const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+      if (requestUrl.pathname === "/api/state" && request.method === "GET") {
+        const state = await loadState();
+        writeJson(response, 200, state);
+        return;
+      }
+      if (requestUrl.pathname === "/events" && request.method === "GET") {
+        response.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive"
+        });
+        response.write(": connected\n\n");
+        clients.add(response);
+        sendSseEvent(response, "state", toStateEventPayload(await loadState()));
+        request.on("close", () => {
+          clients.delete(response);
+        });
+        return;
+      }
+      if (requestUrl.pathname === "/api/steer") {
+        if (request.method !== "POST") {
+          writeJson(response, 405, { error: "Method not allowed. Use POST /api/steer." });
+          return;
+        }
+        let parsedBody;
+        try {
+          parsedBody = await readJsonBody(request);
+        } catch (error) {
+          writeJson(response, 400, { error: `Invalid request body: ${error.message}` });
+          return;
+        }
+        if (!isRecord(parsedBody)) {
+          writeJson(response, 400, { error: "Request body must be a JSON object." });
+          return;
+        }
+        const instruction = parsedBody.instruction;
+        if (typeof instruction !== "string" || instruction.trim().length === 0) {
+          writeJson(response, 400, { error: 'Field "instruction" is required and must be a non-empty string.' });
+          return;
+        }
+        const overwrite = parsedBody.overwrite;
+        if (overwrite !== void 0 && typeof overwrite !== "boolean") {
+          writeJson(response, 400, { error: 'Field "overwrite" must be a boolean when provided.' });
+          return;
+        }
+        const affectsCompletedWork = parsedBody.affects_completed_work;
+        if (affectsCompletedWork !== void 0 && affectsCompletedWork !== "yes" && affectsCompletedWork !== "no" && affectsCompletedWork !== "unknown") {
+          writeJson(response, 400, {
+            error: 'Field "affects_completed_work" must be one of: yes, no, unknown.'
+          });
+          return;
+        }
+        if (await fileExists2(steeringPath) && overwrite !== true) {
+          writeJson(response, 409, {
+            error: "A steering instruction is already queued. Resubmit with overwrite=true to replace it."
+          });
+          return;
+        }
+        const commit = typeof parsedBody.commit === "string" && parsedBody.commit.trim().length > 0 ? parsedBody.commit.trim() : "unknown";
+        const steeringDoc = buildSteeringDocument(
+          instruction.trim(),
+          affectsCompletedWork ?? "unknown",
+          commit
+        );
+        await import_node_fs3.promises.writeFile(steeringPath, steeringDoc, "utf8");
+        writeJson(response, 201, {
+          queued: true,
+          path: steeringPath
+        });
+        return;
+      }
+      if (requestUrl.pathname === "/api/stop") {
+        if (request.method !== "POST") {
+          writeJson(response, 405, { error: "Method not allowed. Use POST /api/stop." });
+          return;
+        }
+        let parsedBody;
+        try {
+          parsedBody = await readJsonBody(request);
+        } catch (error) {
+          writeJson(response, 400, { error: `Invalid request body: ${error.message}` });
+          return;
+        }
+        if (!isRecord(parsedBody)) {
+          writeJson(response, 400, { error: "Request body must be a JSON object." });
+          return;
+        }
+        const force = parsedBody.force;
+        if (force !== void 0 && typeof force !== "boolean") {
+          writeJson(response, 400, { error: 'Field "force" must be a boolean when provided.' });
+          return;
+        }
+        const signal = force === true ? "SIGKILL" : "SIGTERM";
+        const meta = await readJsonFile(metaPath);
+        const pid = extractPid(meta);
+        if (pid === null) {
+          writeJson(response, 409, {
+            error: `Cannot stop session without a valid pid in ${metaPath}.`
+          });
+          return;
+        }
+        if (pid === process.pid) {
+          writeJson(response, 409, { error: "Refusing to stop dashboard process PID." });
+          return;
+        }
+        try {
+          process.kill(pid, signal);
+        } catch (error) {
+          const typedError = error;
+          if (typedError.code === "ESRCH") {
+            writeJson(response, 409, { error: `Process ${pid} is not running.` });
+            return;
+          }
+          if (typedError.code === "EPERM") {
+            writeJson(response, 403, { error: `Permission denied when signaling process ${pid}.` });
+            return;
+          }
+          throw error;
+        }
+        const existingStatus = await readJsonFile(statusPath);
+        const nextStatus = isRecord(existingStatus) ? { ...existingStatus } : {};
+        nextStatus.state = "stopping";
+        nextStatus.updated_at = (/* @__PURE__ */ new Date()).toISOString();
+        await import_node_fs3.promises.writeFile(statusPath, JSON.stringify(nextStatus), "utf8");
+        writeJson(response, 202, {
+          stopping: true,
+          pid,
+          signal
+        });
+        return;
+      }
+      if (requestUrl.pathname.startsWith("/api/")) {
+        writeJson(response, 404, { error: "Not found" });
+        return;
+      }
+      const requestPath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
+      const normalizedRequestPath = import_node_path2.default.normalize(requestPath).replace(/^(\.\.(\/|\\|$))+/, "");
+      const assetPath = import_node_path2.default.resolve(assetsDir, `.${normalizedRequestPath}`);
+      if (assetPath.startsWith(assetsDir) && await fileExists2(assetPath)) {
+        const content = await import_node_fs3.promises.readFile(assetPath);
+        response.writeHead(200, { "Content-Type": getContentType(assetPath), "Cache-Control": "no-cache" });
+        response.end(content);
+        return;
+      }
+      const indexPath = import_node_path2.default.join(assetsDir, "index.html");
+      if (await fileExists2(indexPath)) {
+        const indexContent = await import_node_fs3.promises.readFile(indexPath);
+        response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
+        response.end(indexContent);
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      response.end(
+        `<!doctype html><html><body><h1>Aloop Dashboard</h1><p>Dashboard assets not found at <code>${assetsDir}</code>.</p></body></html>`
+      );
+    };
+    void handleRequest().catch((error) => {
+      writeJson(response, 500, {
+        error: `Internal server error: ${error.message}`
       });
-      response.write(": connected\n\n");
-      clients.add(response);
-      sendSseEvent(response, "state", toStateEventPayload(await loadState()));
-      request.on("close", () => {
-        clients.delete(response);
-      });
-      return;
-    }
-    if (requestUrl.pathname.startsWith("/api/")) {
-      response.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ error: "Not found" }));
-      return;
-    }
-    const requestPath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
-    const normalizedRequestPath = import_node_path.default.normalize(requestPath).replace(/^(\.\.(\/|\\|$))+/, "");
-    const assetPath = import_node_path.default.resolve(assetsDir, `.${normalizedRequestPath}`);
-    if (assetPath.startsWith(assetsDir) && await fileExists(assetPath)) {
-      const content = await import_node_fs2.promises.readFile(assetPath);
-      response.writeHead(200, { "Content-Type": getContentType(assetPath), "Cache-Control": "no-cache" });
-      response.end(content);
-      return;
-    }
-    const indexPath = import_node_path.default.join(assetsDir, "index.html");
-    if (await fileExists(indexPath)) {
-      const indexContent = await import_node_fs2.promises.readFile(indexPath);
-      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
-      response.end(indexContent);
-      return;
-    }
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    response.end(
-      `<!doctype html><html><body><h1>Aloop Dashboard</h1><p>Dashboard assets not found at <code>${assetsDir}</code>.</p></body></html>`
-    );
+    });
   });
-  const shutdown = () => {
+  let closed = false;
+  const onSignal = () => {
+    void shutdown();
+  };
+  const shutdown = async () => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    if (registerSignalHandlers) {
+      process.off("SIGINT", onSignal);
+      process.off("SIGTERM", onSignal);
+    }
     for (const watcher of watchers.values()) {
       watcher.close();
     }
     for (const client of clients) {
       client.end();
     }
-    server.close();
+    await new Promise((resolve) => {
+      server.close(() => resolve());
+    });
   };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
-  server.listen(port, () => {
-    console.log(`Launching real-time progress dashboard on port ${port}...`);
-    console.log(`Session dir: ${sessionDir}`);
-    console.log(`Workdir: ${workdir}`);
-    console.log(`Assets dir: ${assetsDir}`);
+  if (registerSignalHandlers) {
+    process.once("SIGINT", onSignal);
+    process.once("SIGTERM", onSignal);
+  }
+  await new Promise((resolve, reject) => {
+    const onError = (error) => {
+      server.off("error", onError);
+      reject(error);
+    };
+    server.once("error", onError);
+    server.listen(port, () => {
+      server.off("error", onError);
+      resolve();
+    });
   });
+  const address = server.address();
+  const boundPort = typeof address === "object" && address ? address.port : port;
+  return {
+    close: shutdown,
+    port: boundPort,
+    url: `http://127.0.0.1:${boundPort}`
+  };
+}
+async function dashboardCommand(options) {
+  const sessionDir = import_node_path2.default.resolve(options.sessionDir ?? process.cwd());
+  const workdir = import_node_path2.default.resolve(options.workdir ?? process.cwd());
+  const assetsDir = import_node_path2.default.resolve(options.assetsDir ?? await resolveDefaultAssetsDir());
+  const handle = await startDashboardServer({ ...options, assetsDir, sessionDir, workdir });
+  console.log(`Launching real-time progress dashboard on port ${handle.port}...`);
+  console.log(`Session dir: ${sessionDir}`);
+  console.log(`Workdir: ${workdir}`);
+  console.log(`Assets dir: ${assetsDir}`);
 }
 
 // src/index.ts
 var program2 = new Command();
 program2.name("aloop").description("Aloop CLI for dashboard and project orchestration").version("1.0.0");
-program2.command("resolve").description("Resolve project workspace and configuration").action(resolveCommand);
-program2.command("discover").description("Discover workspace specs, files, and validation commands").action(discoverCommand);
-program2.command("scaffold").description("Scaffold project workdir and prompts").action(scaffoldCommand);
+program2.command("resolve").description("Resolve project workspace and configuration").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(resolveCommand);
+program2.command("discover").description("Discover workspace specs, files, and validation commands").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(discoverCommand);
+program2.command("scaffold").description("Scaffold project workdir and prompts").option("--project-root <path>", "Project root override").option("--language <language>", "Language override").option("--provider <provider>", "Provider override").option("--enabled-providers <providers...>", "Enabled providers list or csv values").option("--round-robin-order <providers...>", "Round-robin provider order list or csv values").option("--spec-files <files...>", "Spec file list or csv values").option("--reference-files <files...>", "Reference file list or csv values").option("--validation-commands <commands...>", "Validation command list or csv values").option("--safety-rules <rules...>", "Safety rule list or csv values").option("--mode <mode>", "Loop mode", "plan-build-review").option("--templates-dir <path>", "Template directory override").option("--output <mode>", "Output format: json or text", "json").action(scaffoldCommand);
 program2.command("dashboard").description("Launch real-time progress dashboard").option("-p, --port <number>", "Port to run the dashboard on", "3000").option("--session-dir <path>", "Session directory containing status.json and log.jsonl").option("--workdir <path>", "Project work directory containing TODO.md and related docs").option("--assets-dir <path>", "Directory containing bundled dashboard frontend assets").action(dashboardCommand);
 program2.parse();
