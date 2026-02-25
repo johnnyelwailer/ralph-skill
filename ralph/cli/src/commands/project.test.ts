@@ -102,6 +102,8 @@ test('discoverWorkspace falls back to node defaults when package.json is missing
 
   const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
   assert.equal(result.context.detected_language, 'node-typescript');
+  assert.equal(result.context.language_confidence, 'medium');
+  assert.deepEqual(result.context.language_signals, ['tsconfig.json']);
   assert.deepEqual(result.context.validation_presets.tests_only, ['npx vitest run']);
   assert.deepEqual(result.context.validation_presets.tests_and_types, ['npx tsc --noEmit', 'npx vitest run']);
   assert.deepEqual(result.context.validation_presets.full, ['npx tsc --noEmit', 'npx eslint .', 'npx vitest run']);
@@ -302,6 +304,8 @@ test('buildValidationPresets handles unknown language', async () => {
   // No files that trigger language detection
   const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
   assert.equal(result.context.detected_language, 'other');
+  assert.equal(result.context.language_confidence, 'low');
+  assert.deepEqual(result.context.language_signals, []);
   assert.deepEqual(result.context.validation_presets.full, []);
 });
 

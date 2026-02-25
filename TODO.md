@@ -4,7 +4,7 @@
 
 ### In Progress
 - [x] [review] Gate 2: Make `<skill>/cli/src/commands/dashboard.test.ts` oversized-body test deterministic (no `fetch failed` fallback) so it only passes on explicit `400` + `"Request body too large"` API behavior; this prevents transport-level false positives. (P0)
-- [ ] [review] Gate 3: Raise branch coverage for touched implementation modules to >=80% (>=90% for new modules); current summary still reports low branch coverage (`project.ts` 63.73%), so missing branches must be covered with focused tests. (P0)
+- [x] [review] Gate 3: Raise branch coverage for touched implementation modules to >=80% (>=90% for new modules); current summary still reports low branch coverage (`project.ts` 63.73%), so missing branches must be covered with focused tests. (P0)
 
 ### Up Next
 - [ ] Update prerequisites to Node.js 22 LTS guidance in `README.md` (version-manager-first: `nvm-windows`/`fnm` on Windows, `nvm`/`fnm` on macOS/Linux, with `nvm install --lts && nvm use --lts`) to match the spec baseline. (P0)
