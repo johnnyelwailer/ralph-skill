@@ -4,7 +4,7 @@
 
 ### In Progress
 - [x] [review] Gate 1: `{{REFERENCE_FILES}}` is hardcoded to empty in `$skillName/cli/src/commands/project.ts:370`, which misses SPEC template-variable intent; add discovery/option plumbing for reference files and assert scaffolded prompts render them (priority: high).
-- [ ] [review] Gate 2: tests in `$skillName/cli/src/commands/project.test.ts:8-51` are happy-path-only and miss failure/edge behaviors; add concrete assertions for missing template errors (`project.ts:332-333`), non-node language preset branches (`project.ts:181-194`), no-package fallback (`project.ts:162-163`), unknown provider hint fallback (`project.ts:308`), and non-git workspace detection (`project.ts:95-99`) (priority: high).
+- [x] [review] Gate 2: tests in `$skillName/cli/src/commands/project.test.ts:8-51` are happy-path-only and miss failure/edge behaviors; add concrete assertions for missing template errors (`project.ts:332-333`), non-node language preset branches (`project.ts:181-194`), no-package fallback (`project.ts:162-163`), unknown provider hint fallback (`project.ts:308`), and non-git workspace detection (`project.ts:95-99`) (priority: high).
 - [ ] [review] Gate 3: branch coverage is below threshold for changed/new CLI logic (`npx c8 ...` reports `$skillName/cli/src/commands/project.ts` at 63.73% branch, below 90% new-module gate); raise coverage to >=90% for `project.ts` and add explicit tests for touched command wrappers `resolve.ts`, `discover.ts`, and `scaffold.ts` output modes (priority: high).
 
 ### Up Next

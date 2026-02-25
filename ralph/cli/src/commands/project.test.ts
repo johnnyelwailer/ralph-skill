@@ -86,3 +86,98 @@ test('scaffoldWorkspace allows explicit reference file overrides', async () => {
   assert.match(config, /- 'notes.md'/);
   assert.match(planPrompt, /Refs: docs\/guide.md, notes.md/);
 });
+
+test('discoverWorkspace reports non-git workspaces', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-discover-'));
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+  assert.equal(result.project.is_git_repo, false);
+  assert.equal(result.project.git_branch, null);
+});
+
+test('discoverWorkspace falls back to node defaults when package.json is missing', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-discover-'));
+  await writeFile(path.join(tempRoot, 'tsconfig.json'), JSON.stringify({ compilerOptions: {} }), 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+  assert.equal(result.context.detected_language, 'node-typescript');
+  assert.deepEqual(result.context.validation_presets.tests_only, ['npx vitest run']);
+  assert.deepEqual(result.context.validation_presets.tests_and_types, ['npx tsc --noEmit', 'npx vitest run']);
+  assert.deepEqual(result.context.validation_presets.full, ['npx tsc --noEmit', 'npx eslint .', 'npx vitest run']);
+});
+
+test('discoverWorkspace builds language-specific validation presets for non-node projects', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-discover-'));
+
+  const pythonRoot = path.join(tempRoot, 'python');
+  await mkdir(pythonRoot, { recursive: true });
+  await writeFile(path.join(pythonRoot, 'pyproject.toml'), '[project]\nname = "demo"\n', 'utf8');
+
+  const goRoot = path.join(tempRoot, 'go');
+  await mkdir(goRoot, { recursive: true });
+  await writeFile(path.join(goRoot, 'go.mod'), 'module example.com/demo\n', 'utf8');
+
+  const rustRoot = path.join(tempRoot, 'rust');
+  await mkdir(rustRoot, { recursive: true });
+  await writeFile(path.join(rustRoot, 'Cargo.toml'), '[package]\nname = "demo"\nversion = "0.1.0"\n', 'utf8');
+
+  const dotnetRoot = path.join(tempRoot, 'dotnet');
+  await mkdir(dotnetRoot, { recursive: true });
+  await writeFile(path.join(dotnetRoot, 'demo.sln'), 'Microsoft Visual Studio Solution File\n', 'utf8');
+
+  const python = await discoverWorkspace({ projectRoot: pythonRoot, homeDir: tempRoot });
+  const go = await discoverWorkspace({ projectRoot: goRoot, homeDir: tempRoot });
+  const rust = await discoverWorkspace({ projectRoot: rustRoot, homeDir: tempRoot });
+  const dotnet = await discoverWorkspace({ projectRoot: dotnetRoot, homeDir: tempRoot });
+
+  assert.deepEqual(python.context.validation_presets.full, ['mypy .', 'ruff check .', 'pytest']);
+  assert.deepEqual(go.context.validation_presets.full, ['go vet ./...', 'golangci-lint run', 'go test ./...']);
+  assert.deepEqual(rust.context.validation_presets.full, ['cargo clippy -- -D warnings', 'cargo test', 'cargo build --release']);
+  assert.deepEqual(dotnet.context.validation_presets.full, ['dotnet build', 'dotnet test']);
+});
+
+test('scaffoldWorkspace errors when a required template is missing', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
+
+  await assert.rejects(
+    () =>
+      scaffoldWorkspace({
+        projectRoot: tempRoot,
+        homeDir: homeRoot,
+        templatesDir,
+      }),
+    /Template not found: .*PROMPT_review\.md/,
+  );
+});
+
+test('scaffoldWorkspace leaves provider hints empty for unknown providers', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review{{PROVIDER_HINTS}}', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer{{PROVIDER_HINTS}}', 'utf8');
+
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    provider: 'unknown-provider',
+  });
+
+  const reviewPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_review.md'), 'utf8');
+  assert.equal(reviewPrompt, 'Review');
+});
