@@ -55,12 +55,15 @@ Ralph works with any of these AI coding agents — mix and match, or let them ta
 
 ### What gets installed where
 
-| Harness | Skill | Commands |
-|---------|-------|----------|
+| Harness | Skill | Commands / Prompts |
+|---------|-------|--------------------|
 | Claude Code | `~/.claude/skills/ralph/` | `~/.claude/commands/ralph/` (4 slash commands) |
 | Codex CLI | `~/.codex/skills/ralph/` | `~/.codex/commands/ralph/` (4 slash commands) |
-| GH Copilot (VS Code) | `~/.copilot/skills/ralph/` | — (uses `.prompt.md` instead) |
+| GH Copilot (VS Code) | `~/.copilot/skills/ralph/` | `%APPDATA%\Code\User\prompts\` (4 `.prompt.md`) |
+| GH Copilot (VS Code Insiders) | `~/.copilot/skills/ralph/` | `%APPDATA%\Code - Insiders\User\prompts\` (4 `.prompt.md`) |
 | Agents (generic) | `~/.agents/skills/ralph/` | — |
+
+VS Code prompt files are installed automatically for any VS Code variant that is present — independently of which harness you select in the interactive menu.
 
 The Ralph runtime (loop scripts, config, templates) always goes to `~/.ralph/`.
 
@@ -73,9 +76,19 @@ In any project with Claude Code or Codex:
 /ralph:start     Launch a loop
 /ralph:status    Check running sessions
 /ralph:stop      Stop a loop
+/ralph:steer     Send a live steering instruction to a running loop
 ```
 
-GH Copilot users invoke the skill via `/ralph` (slash command from SKILL.md) or let Copilot load it automatically based on context.
+In VS Code (stable or Insiders) with GitHub Copilot, type `/` and select:
+
+```
+/ralph-setup     Configure Ralph for the current project
+/ralph-start     Launch a loop
+/ralph-status    Check running sessions
+/ralph-stop      Stop a loop
+```
+
+The skill (`~/.copilot/skills/ralph/`) is also loaded automatically by Copilot based on context.
 
 ## Architecture
 
@@ -89,10 +102,18 @@ GH Copilot users invoke the skill via `/ralph` (slash command from SKILL.md) or 
     start.md                    # /ralph:start — launch loop
     status.md                   # /ralph:status — check sessions
     stop.md                     # /ralph:stop — stop loop
+    steer.md                    # /ralph:steer — live steering
 
 ~/.copilot/
   skills/ralph/
     SKILL.md                    # Same skill, no commands dir
+
+%APPDATA%\Code\User\prompts\             (VS Code stable)
+%APPDATA%\Code - Insiders\User\prompts\ (VS Code Insiders)
+    ralph-setup.prompt.md       # /ralph-setup
+    ralph-start.prompt.md       # /ralph-start
+    ralph-status.prompt.md      # /ralph-status
+    ralph-stop.prompt.md        # /ralph-stop
 
 ~/.ralph/
   config.yml                   # Global defaults (providers, models)
@@ -102,7 +123,8 @@ GH Copilot users invoke the skill via `/ralph` (slash command from SKILL.md) or 
   templates/
     PROMPT_plan.md             # Plan template with {{variables}}
     PROMPT_build.md            # Build template
-    PROMPT_review.md           # Review template
+    PROMPT_review.md           # Review template (+ REVIEW_LOG.md tracking)
+    PROMPT_steer.md            # Steering template (spec-update agent)
   projects/<hash>/             # Per-project config
     config.yml
     prompts/                   # Generated project-specific prompts
@@ -117,6 +139,8 @@ GH Copilot users invoke the skill via `/ralph` (slash command from SKILL.md) or 
 - **Plan-build-review cycle**: Three distinct mindsets per iteration
 - **Backpressure**: Tests/types/lints gate every commit
 - **Stuck detection**: Auto-skip tasks after N consecutive failures
+- **Live steering**: Send mid-flight direction changes via `/ralph:steer` — loop picks up `STEERING.md` at the next iteration boundary, invokes a spec-update agent, force-replans, then resumes
+- **Review log**: Persistent `REVIEW_LOG.md` tracks every review verdict and resolved findings across iterations
 - **Worktree isolation**: Loops run on separate git branches
 - **Session tracking**: Status, logs, and reports per session
 - **No repo pollution**: All state in `~/.ralph/`, nothing in your project

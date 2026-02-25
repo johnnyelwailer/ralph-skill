@@ -131,6 +131,11 @@ resolve_iteration_provider() {
 
 resolve_iteration_mode() {
     local iteration=$1
+    if [ "$FORCE_PLAN_NEXT" = true ]; then
+        FORCE_PLAN_NEXT=false
+        echo "plan"
+        return
+    fi
     case "$MODE" in
         plan-build)
             if (( iteration % 2 == 1 )); then echo "plan"; else echo "build"; fi
@@ -254,6 +259,7 @@ get_current_task() {
 
 LAST_TASK=""
 STUCK_COUNT=0
+FORCE_PLAN_NEXT=false
 
 skip_stuck_task() {
     local task="$1"
@@ -533,6 +539,18 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION_START=$(date +%s)
     iter_provider=$(resolve_iteration_provider $ITERATION)
     iter_mode=$(resolve_iteration_mode $ITERATION)
+
+    # Check for live steering instruction (overrides normal mode)
+    STEERING_FILE="$SESSION_DIR/STEERING.md"
+    STEER_PROMPT_FILE="$PROMPTS_DIR/PROMPT_steer.md"
+    if [ -f "$STEERING_FILE" ] && [ -f "$STEER_PROMPT_FILE" ]; then
+        iter_mode="steer"
+        FORCE_PLAN_NEXT=true
+        write_log_entry "steering_detected" "iteration" "$ITERATION"
+    elif [ -f "$STEERING_FILE" ]; then
+        echo "Warning: STEERING.md found but PROMPT_steer.md is missing in $PROMPTS_DIR — steering skipped."
+    fi
+
     iter_prompt_file="$PROMPTS_DIR/PROMPT_$iter_mode.md"
 
     # Update session status
@@ -543,6 +561,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         plan)   color="\033[35m" ;;  # magenta
         build)  color="\033[33m" ;;  # yellow
         review) color="\033[36m" ;;  # cyan
+        steer)  color="\033[34m" ;;  # blue
         *)      color="\033[0m" ;;
     esac
     echo -e "${color}--- Iteration $ITERATION / $MAX_ITERATIONS [$(date '+%Y-%m-%d %H:%M:%S')] [$iter_provider] [$iter_mode] ---\033[0m"
@@ -586,8 +605,24 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     # Invoke provider
     prompt_content=$(cat "$iter_prompt_file")
 
+    # Steer mode: stage STEERING.md in work directory for the spec-update agent
+    if [ "$iter_mode" = "steer" ]; then
+        cp "$STEERING_FILE" "$WORK_DIR/STEERING.md"
+        echo "[Steering] Staging instruction for spec-update agent..."
+    fi
+
     cd "$WORK_DIR"
     if invoke_provider "$iter_provider" "$prompt_content"; then
+        # Steer mode: archive the processed steering file and clean up WorkDir copy
+        if [ "$iter_mode" = "steer" ]; then
+            archive_ts=$(date '+%Y%m%d-%H%M%S')
+            archive_name="STEERING_processed_${archive_ts}.md"
+            mv "$STEERING_FILE" "$(dirname "$STEERING_FILE")/$archive_name"
+            rm -f "$WORK_DIR/STEERING.md"
+            echo "[Steering processed — re-plan queued for next iteration]"
+            write_log_entry "steering_processed" "archive" "$archive_name" "iteration" "$ITERATION"
+        fi
+
         write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider"
 
         if [ "$iter_mode" = "build" ]; then

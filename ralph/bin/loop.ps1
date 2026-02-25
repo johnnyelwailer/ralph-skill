@@ -95,6 +95,10 @@ function Resolve-IterationProvider {
 
 function Resolve-IterationMode {
     param([int]$IterationNumber)
+    if ($script:forcePlanNext) {
+        $script:forcePlanNext = $false
+        return 'plan'
+    }
     if ($Mode -eq 'plan-build') {
         if ($IterationNumber % 2 -eq 1) { return 'plan' } else { return 'build' }
     }
@@ -279,6 +283,7 @@ function Get-CurrentTask {
 # ============================================================================
 
 $stuckState = @{ LastTask = ""; StuckCount = 0 }
+$script:forcePlanNext = $false
 
 function Skip-StuckTask {
     param([string]$task)
@@ -642,6 +647,18 @@ try {
         $iterationStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
         $iterationMode = Resolve-IterationMode -IterationNumber $iteration
+
+        # Check for live steering instruction (overrides normal mode)
+        $steeringFile = Join-Path $SessionDir "STEERING.md"
+        $steerPromptFile = Join-Path $PromptsDir "PROMPT_steer.md"
+        if ((Test-Path $steeringFile) -and (Test-Path $steerPromptFile)) {
+            $iterationMode = 'steer'
+            $script:forcePlanNext = $true
+            Write-LogEntry -Event "steering_detected" -Data @{ iteration = $iteration }
+        } elseif (Test-Path $steeringFile) {
+            Write-Warning "STEERING.md found but PROMPT_steer.md is missing in $PromptsDir — steering skipped."
+        }
+
         $iterationPromptFile = Join-Path $PromptsDir "PROMPT_$iterationMode.md"
 
         # Update session status
@@ -651,6 +668,7 @@ try {
             'plan'   { 'Magenta' }
             'build'  { 'Yellow' }
             'review' { 'Cyan' }
+            'steer'  { 'Blue' }
             default  { 'White' }
         }
         Write-Host "`n--- Iteration $iteration / $MaxIterations [$timestamp] [$iterationProvider] [$iterationMode] ---" -ForegroundColor $modeColor
@@ -693,6 +711,12 @@ try {
         try {
             $promptContent = Get-Content -Path $iterationPromptFile -Raw
 
+            # Steer mode: stage STEERING.md in work directory for the spec-update agent
+            if ($iterationMode -eq 'steer') {
+                Copy-Item $steeringFile (Join-Path $WorkDir "STEERING.md") -Force
+                Write-Host "[Steering] Staging instruction for spec-update agent..." -ForegroundColor Blue
+            }
+
             Push-Location $WorkDir
             try {
                 $providerOutput = Invoke-Provider -ProviderName $iterationProvider -PromptContent $promptContent
@@ -702,6 +726,17 @@ try {
             }
 
             Show-AgentSummary -ProviderName $iterationProvider -ProviderOutput $providerOutput
+
+            # Steer mode: archive the processed steering file and clean up WorkDir copy
+            if ($iterationMode -eq 'steer') {
+                $archiveTs = Get-Date -Format "yyyyMMdd-HHmmss"
+                $archiveName = "STEERING_processed_$archiveTs.md"
+                Rename-Item -Path $steeringFile -NewName $archiveName
+                $wdSteering = Join-Path $WorkDir "STEERING.md"
+                if (Test-Path $wdSteering) { Remove-Item $wdSteering -Force }
+                Write-Host "[Steering processed — re-plan queued for next iteration]" -ForegroundColor Blue
+                Write-LogEntry -Event "steering_processed" -Data @{ archive = $archiveName; iteration = $iteration }
+            }
 
             Write-LogEntry -Event "iteration_complete" -Data @{
                 iteration = $iteration
