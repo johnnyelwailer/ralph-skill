@@ -3,7 +3,6 @@
 ## Current Phase: Contract parity and dashboard completion
 
 ### In Progress
-- [ ] Align README and command/prompt docs with canonical install paths and naming (`skills/$skillName`, `commands/$skillName`, slash command vs Copilot prompt forms) to remove remaining spec drift. (P0)
 
 ### Up Next
 - [ ] Implement markdown rendering for Docs view using `marked` or `react-markdown` instead of raw `<pre>` text. (P1)
@@ -16,6 +15,7 @@
 - [ ] Update repo ignore/cleanup for generated artifacts (`playwright-report/`, `test-results/`) and stop tracking transient test output files. (P2)
 
 ### Completed
+- [x] Align README and command/prompt docs with canonical install paths and naming (`skills/$skillName`, `commands/$skillName`, slash command vs Copilot prompt forms) to remove remaining spec drift. (P0)
 - [x] Bring setup discovery/scaffold parity with spec: include `reference_candidates` in discovery output, persist `reference_files` in project config, and substitute `{{REFERENCE_FILES}}` in generated prompts.
 - [x] Added canonical `SPEC.md`.
 - [x] Added all five Copilot prompt files.

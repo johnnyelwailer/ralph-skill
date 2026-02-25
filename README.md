@@ -119,11 +119,11 @@ Aloop works with any of these AI coding agents — mix and match, or let them ta
 
 | Harness | Skill | Commands / Prompts |
 |---------|-------|--------------------|
-| Claude Code | `~/.claude/skills/aloop/` | `~/.claude/commands/aloop/` (5 slash commands) |
-| Codex CLI | `~/.codex/skills/aloop/` | `~/.codex/commands/aloop/` (5 slash commands) |
-| GH Copilot (VS Code) | `~/.copilot/skills/aloop/` | `%APPDATA%\Code\User\prompts\` (5 `.prompt.md`) |
-| GH Copilot (VS Code Insiders) | `~/.copilot/skills/aloop/` | `%APPDATA%\Code - Insiders\User\prompts\` (5 `.prompt.md`) |
-| Agents (generic) | `~/.agents/skills/aloop/` | — |
+| Claude Code | `~/.claude/skills/$skillName/` | `~/.claude/commands/$skillName/` (5 slash commands) |
+| Codex CLI | `~/.codex/skills/$skillName/` | `~/.codex/commands/$skillName/` (5 slash commands) |
+| GH Copilot (VS Code) | `~/.copilot/skills/$skillName/` | `%APPDATA%\Code\User\prompts\` (5 `.prompt.md`) |
+| GH Copilot (VS Code Insiders) | `~/.copilot/skills/$skillName/` | `%APPDATA%\Code - Insiders\User\prompts\` (5 `.prompt.md`) |
+| Agents (generic) | `~/.agents/skills/$skillName/` | — |
 
 VS Code prompt files are installed automatically for any VS Code variant that is present — independently of which harness you select in the interactive menu.
 
@@ -151,7 +151,7 @@ In VS Code (stable or Insiders) with GitHub Copilot, type `/` and select:
 /aloop-steer     Send a live steering instruction to a running loop
 ```
 
-The skill (`~/.copilot/skills/aloop/`) is also loaded automatically by Copilot based on context.
+The skill (`~/.copilot/skills/$skillName/`) is also loaded automatically by Copilot based on context.
 
 `/$skillName:setup` and `/aloop-setup` are discovery-first and interview-first: they use `~/.aloop/bin/setup-discovery.ps1` to auto-detect repo context (project root/hash, language, validation presets, providers, existing Aloop config), run a spec/context interview first, and ask loop run details only after explicit user go-ahead.
 
@@ -161,10 +161,10 @@ When no strong spec exists, setup defaults to a short interview to create/refine
 
 ```
 ~/.claude/   (or ~/.codex/)
-  skills/aloop/
+  skills/$skillName/
     SKILL.md                    # Background knowledge (auto-loaded)
     references/                 # 4 methodology reference files
-  commands/aloop/               # Claude + Codex only
+  commands/$skillName/          # Claude + Codex only
     setup.md                    # /$skillName:setup — configure project
     start.md                    # /$skillName:start — launch loop
     status.md                   # /$skillName:status — check sessions
@@ -172,7 +172,7 @@ When no strong spec exists, setup defaults to a short interview to create/refine
     steer.md                    # /$skillName:steer — live steering
 
 ~/.copilot/
-  skills/aloop/
+  skills/$skillName/
     SKILL.md                    # Same skill, no commands dir
 
 %APPDATA%\Code\User\prompts\             (VS Code stable)
