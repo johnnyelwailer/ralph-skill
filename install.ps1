@@ -216,6 +216,102 @@ function Copy-TreeItem {
 }
 
 # ============================================================================
+# INTERACTIVE UI
+# ============================================================================
+
+function Show-CheckboxMenu {
+    <#
+    .SYNOPSIS  Interactive keyboard-driven checkbox menu.
+    .OUTPUTS   bool[] — one entry per item (true = selected), or $null if cancelled (Esc).
+    #>
+    param(
+        [Parameter(Mandatory)][string]  $Prompt,
+        [Parameter(Mandatory)][string[]]$Items,
+        [string[]]$SubTexts    = @(),    # optional secondary text per item (right side)
+        [bool[]  ]$InitialState = @()    # pre-checked items
+    )
+
+    $count = $Items.Count
+    if ($count -eq 0) { return ,[bool[]]@() }
+
+    $checked = [bool[]]::new($count)
+    for ($i = 0; $i -lt [Math]::Min($InitialState.Count, $count); $i++) {
+        $checked[$i] = $InitialState[$i]
+    }
+    $cursor = 0
+
+    Write-Host $Prompt -ForegroundColor White
+    Write-Host ""
+    $menuTop = [Console]::CursorTop
+
+    # Render is a scriptblock so it can read $cursor/$checked/$menuTop from the
+    # enclosing function scope via PowerShell dynamic scoping (& invocation).
+    $render = {
+        [Console]::SetCursorPosition(0, $menuTop)
+        $w = try { [Math]::Max([Console]::WindowWidth - 1, 40) } catch { 79 }
+
+        for ($i = 0; $i -lt $count; $i++) {
+            $box  = if ($checked[$i]) { '[x]' } else { '[ ]' }
+            $mark = if ($i -eq $cursor) { '>' } else { ' ' }
+            $sub  = if (($SubTexts.Count -gt $i) -and $SubTexts[$i]) { "  — $($SubTexts[$i])" } else { '' }
+            $line = "  $mark $box  $($Items[$i])$sub"
+            $line = $line.PadRight($w)
+            if ($line.Length -gt $w) { $line = $line.Substring(0, $w) }
+
+            if ($i -eq $cursor) {
+                [Console]::BackgroundColor = [ConsoleColor]::DarkBlue
+                [Console]::ForegroundColor = [ConsoleColor]::White
+            } elseif ($checked[$i]) {
+                [Console]::ForegroundColor = [ConsoleColor]::Green
+            } else {
+                [Console]::ForegroundColor = [ConsoleColor]::Gray
+            }
+            [Console]::Write($line)
+            [Console]::ResetColor()
+            [Console]::WriteLine()
+        }
+
+        $hint = "  [↑↓] move   [Space] toggle   [A] all/none   [Enter] confirm   [Esc] cancel"
+        $hint = $hint.PadRight($w)
+        if ($hint.Length -gt $w) { $hint = $hint.Substring(0, $w) }
+        [Console]::ForegroundColor = [ConsoleColor]::DarkGray
+        [Console]::Write($hint)
+        [Console]::ResetColor()
+        [Console]::WriteLine()
+    }
+
+    [Console]::CursorVisible = $false
+    try {
+        & $render
+        $done      = $false
+        $cancelled = $false
+
+        while (-not $done) {
+            $key = [Console]::ReadKey($true)
+
+            if     ($key.Key -eq [ConsoleKey]::UpArrow)   { $cursor = if ($cursor -gt 0)            { $cursor - 1 } else { $count - 1 } }
+            elseif ($key.Key -eq [ConsoleKey]::DownArrow) { $cursor = if ($cursor -lt ($count - 1)) { $cursor + 1 } else { 0 }          }
+            elseif ($key.Key -eq [ConsoleKey]::Spacebar)  { $checked[$cursor] = -not $checked[$cursor] }
+            elseif ($key.Key -eq [ConsoleKey]::Enter)     { $done = $true }
+            elseif ($key.Key -eq [ConsoleKey]::Escape)    { $cancelled = $true; $done = $true }
+            elseif ($key.KeyChar -in 'a','A') {
+                $anyUnchecked = $checked -contains $false
+                for ($j = 0; $j -lt $count; $j++) { $checked[$j] = $anyUnchecked }
+            }
+
+            if (-not $done) { & $render }
+        }
+
+        [Console]::SetCursorPosition(0, $menuTop + $count + 1)
+        Write-Host ""
+        if ($cancelled) { return $null }
+        return ,$checked
+    } finally {
+        [Console]::CursorVisible = $true
+    }
+}
+
+# ============================================================================
 # MAIN
 # ============================================================================
 
@@ -280,27 +376,16 @@ if (-not $SkipCliCheck) {
                     Write-Host ""
                 }
             } else {
-                Write-Host "Install missing tools? (numbers, 'all', or Enter to skip)" -ForegroundColor White
-                for ($i = 0; $i -lt $missingTools.Count; $i++) {
-                    $t = $missingTools[$i]
-                    Write-Host "  [$($i+1)] $($t.Name)  (npm: $($t.NpmPackage))" -ForegroundColor Cyan
-                }
-                Write-Host ""
-                $cliChoice = Read-Host "Choice [1-$($missingTools.Count) / all / Enter to skip]"
-                Write-Host ""
+                $cliSubTexts = @($missingTools | ForEach-Object { "npm: $($_.NpmPackage)" })
+                $cliSelections = Show-CheckboxMenu `
+                    -Prompt   'Install missing CLI tools?' `
+                    -Items    @($missingTools | ForEach-Object { $_.Name }) `
+                    -SubTexts $cliSubTexts
 
                 $toInstall = @()
-                if ($cliChoice.Trim().ToLower() -eq 'all') {
-                    $toInstall = $missingTools
-                } elseif ($cliChoice.Trim() -ne '') {
-                    foreach ($part in ($cliChoice -split ',')) {
-                        $n = $part.Trim()
-                        if ($n -match '^\d+$') {
-                            $idx = [int]$n - 1
-                            if ($idx -ge 0 -and $idx -lt $missingTools.Count) {
-                                $toInstall += $missingTools[$idx]
-                            }
-                        }
+                if ($null -ne $cliSelections) {
+                    for ($i = 0; $i -lt $missingTools.Count; $i++) {
+                        if ($cliSelections[$i]) { $toInstall += $missingTools[$i] }
                     }
                 }
 
@@ -326,38 +411,22 @@ if ($All) {
         else    { Write-Warning "Unknown harness '$id', skipping." }
     }
 } else {
-    # Interactive multi-select
-    Write-Host "Select harnesses to install into (comma-separated numbers, or 'all'):" -ForegroundColor White
-    Write-Host ""
-    for ($i = 0; $i -lt $allHarnesses.Count; $i++) {
-        $h = $allHarnesses[$i]
-        $cmds = if ($h.HasCommands) { "skill + commands" } else { "skill only (no commands dir)" }
-        Write-Host "  [$($i+1)] $($h.Name)" -ForegroundColor Cyan -NoNewline
-        Write-Host "  ($cmds)" -ForegroundColor DarkGray
-        Write-Host "       skill:    $($h.SkillDest)" -ForegroundColor DarkGray
-        if ($h.HasCommands) {
-            Write-Host "       commands: $($h.CmdDest)" -ForegroundColor DarkGray
-        }
-        Write-Host ""
-    }
+    # Interactive multi-select with keyboard-driven checkboxes
+    $harnessSubTexts = @($allHarnesses | ForEach-Object {
+        if ($_.HasCommands) { "skill + commands  →  $($_.SkillDest)" }
+        else                { "skill only        →  $($_.SkillDest)" }
+    })
+    $harnessSelections = Show-CheckboxMenu `
+        -Prompt   'Select harnesses to install into:' `
+        -Items    @($allHarnesses | ForEach-Object { $_.Name }) `
+        -SubTexts $harnessSubTexts
 
-    $input = Read-Host "Choice [1-$($allHarnesses.Count) / all]"
-    if ($input.Trim().ToLower() -eq 'all') {
-        $selectedHarnesses = $allHarnesses
-    } else {
-        foreach ($part in ($input -split ',')) {
-            $n = $part.Trim()
-            if ($n -match '^\d+$') {
-                $idx = [int]$n - 1
-                if ($idx -ge 0 -and $idx -lt $allHarnesses.Count) {
-                    $selectedHarnesses += $allHarnesses[$idx]
-                } else {
-                    Write-Warning "Invalid number '$n', skipping."
-                }
-            } elseif ($n -ne '') {
-                Write-Warning "Invalid input '$n', skipping."
-            }
-        }
+    if ($null -eq $harnessSelections) {
+        Write-Host 'Cancelled.' -ForegroundColor Yellow
+        exit 0
+    }
+    for ($i = 0; $i -lt $allHarnesses.Count; $i++) {
+        if ($harnessSelections[$i]) { $selectedHarnesses += $allHarnesses[$i] }
     }
 }
 
