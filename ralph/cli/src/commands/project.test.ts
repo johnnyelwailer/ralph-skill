@@ -306,11 +306,24 @@ test('buildValidationPresets handles unknown language', async () => {
 });
 
 test('workspace functions handle default parameters', async () => {
-  const result = await discoverWorkspace();
-  assert.ok(result.project.root);
-  
-  // scaffoldWorkspace will likely fail due to missing templates in ~/.aloop, but we call it to cover the branch
-  try { await scaffoldWorkspace(); } catch (e) {}
+  const tempHome = await mkdtemp(path.join(os.tmpdir(), 'aloop-home-default-'));
+  const templatesDir = path.join(tempHome, '.aloop', 'templates');
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
+
+  // Test discoverWorkspace with no options (uses process.cwd() and os.homedir())
+  const result1 = await discoverWorkspace();
+  assert.ok(result1.project.root);
+  assert.ok(result1.project.name);
+  assert.ok(result1.providers.default_provider);
+
+  // Test scaffoldWorkspace with explicit homeDir to avoid machine-specific failure
+  const result2 = await scaffoldWorkspace({ homeDir: tempHome });
+  assert.ok(result2.config_path.includes(tempHome));
+  assert.ok(result2.prompts_dir.includes(tempHome));
 });
 
 import { discoverCommand } from './discover.js';
@@ -320,8 +333,7 @@ import { resolveCommand } from './resolve.js';
 test('command wrappers support json and text output', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-commands-'));
   const homeRoot = path.join(tempRoot, 'home');
-  const templatesDir = path.join(tempRoot, 'templates');
-  await mkdir(homeRoot, { recursive: true });
+  const templatesDir = path.join(homeRoot, '.aloop', 'templates');
   await mkdir(templatesDir, { recursive: true });
   await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
@@ -336,48 +348,44 @@ test('command wrappers support json and text output', async () => {
   try {
     // Test Discover Command with defaults
     logs.length = 0;
-    await discoverCommand();
-    assert.ok(logs.length > 0);
+    await discoverCommand({ projectRoot: tempRoot, homeDir: homeRoot });
+    assert.ok(logs.length > 0, 'Should have logs for discoverCommand');
+    const discDefaultJson = JSON.parse(logs[0]);
+    assert.equal(discDefaultJson.project.root, tempRoot);
 
-    // Test Discover Command
+    // Test Discover Command Text
     logs.length = 0;
-    await discoverCommand({ projectRoot: tempRoot, output: 'text' });
+    await discoverCommand({ projectRoot: tempRoot, output: 'text', homeDir: homeRoot });
     assert.ok(logs.some(l => l.includes('Project:')));
 
+    // Test Scaffold Command with controlled homeRoot
     logs.length = 0;
-    await discoverCommand({ projectRoot: tempRoot, output: 'json' });
-    const discJson = JSON.parse(logs[0]);
-    assert.equal(discJson.project.name, path.basename(tempRoot));
+    await scaffoldCommand({ projectRoot: tempRoot, homeDir: homeRoot });
+    assert.ok(logs.length > 0, 'Should have logs for scaffoldCommand');
+    const scafDefaultJson = JSON.parse(logs[0]);
+    assert.ok(scafDefaultJson.config_path, 'Should have config_path in scaffold result');
+    const normalizedConfigPath = path.resolve(scafDefaultJson.config_path);
+    const normalizedHomeRoot = path.resolve(homeRoot);
+    assert.ok(normalizedConfigPath.toLowerCase().includes(normalizedHomeRoot.toLowerCase()), 
+      `config_path (${normalizedConfigPath}) should include homeRoot (${normalizedHomeRoot})`);
 
-    // Test Scaffold Command with defaults (will use current dir)
+    // Test Scaffold Command Text
     logs.length = 0;
-    // We need templates to exist in the default location or provide them
-    // For coverage of default params, we just call it. 
-    // It might throw if templates not found in ~/.aloop, but that's okay if we catch it or if it reaches the branch before throwing.
-    try { await scaffoldCommand(); } catch (e) {}
-
-    logs.length = 0;
-    await scaffoldCommand({ projectRoot: tempRoot, output: 'text', templatesDir, homeDir: homeRoot } as any);
+    await scaffoldCommand({ projectRoot: tempRoot, output: 'text', homeDir: homeRoot });
     assert.ok(logs.some(l => l.includes('Wrote config:')));
-
-    logs.length = 0;
-    await scaffoldCommand({ projectRoot: tempRoot, output: 'json', templatesDir, homeDir: homeRoot } as any);
-    const scafJson = JSON.parse(logs[0]);
-    assert.ok(scafJson.config_path);
 
     // Test Resolve Command with defaults
     logs.length = 0;
-    await resolveCommand();
-    assert.ok(logs.length > 0);
+    await resolveCommand({ projectRoot: tempRoot, homeDir: homeRoot });
+    assert.ok(logs.length > 0, 'Should have logs for resolveCommand');
+    const resDefaultJson = JSON.parse(logs[0]);
+    assert.equal(resDefaultJson.project.root, tempRoot);
+    assert.ok(resDefaultJson.setup.config_path, 'Should have config_path in resolve result');
 
+    // Test Resolve Command Text
     logs.length = 0;
-    await resolveCommand({ projectRoot: tempRoot, output: 'text' });
+    await resolveCommand({ projectRoot: tempRoot, output: 'text', homeDir: homeRoot });
     assert.ok(logs.some(l => l.includes('Project config:')));
-
-    logs.length = 0;
-    await resolveCommand({ projectRoot: tempRoot, output: 'json' });
-    const resJson = JSON.parse(logs[0]);
-    assert.ok(resJson.setup.config_path);
 
   } finally {
     console.log = originalLog;

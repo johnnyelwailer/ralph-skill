@@ -2,11 +2,12 @@ import { discoverWorkspace, type OutputMode } from './project.js';
 
 interface DiscoverCommandOptions {
   projectRoot?: string;
+  homeDir?: string;
   output?: OutputMode;
 }
 
 export async function discoverCommand(options: DiscoverCommandOptions = {}) {
-  const result = await discoverWorkspace({ projectRoot: options.projectRoot });
+  const result = await discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
   if (options.output === 'text') {
     console.log(`Project: ${result.project.name} [${result.project.hash}]`);
     console.log(`Root: ${result.project.root}`);

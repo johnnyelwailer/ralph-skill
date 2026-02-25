@@ -2,6 +2,7 @@ import { scaffoldWorkspace, type OutputMode } from './project.js';
 
 interface ScaffoldCommandOptions {
   projectRoot?: string;
+  homeDir?: string;
   output?: OutputMode;
   language?: string;
   provider?: string;
@@ -18,6 +19,7 @@ interface ScaffoldCommandOptions {
 export async function scaffoldCommand(options: ScaffoldCommandOptions = {}) {
   const result = await scaffoldWorkspace({
     projectRoot: options.projectRoot,
+    homeDir: options.homeDir,
     language: options.language,
     provider: options.provider,
     enabledProviders: options.enabledProviders,
