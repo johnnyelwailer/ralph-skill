@@ -6,7 +6,7 @@
 - [x] Create `aloop/cli/` TypeScript workspace skeleton (`src/`, `commands/`, build config) and add a minimal entrypoint for `resolve/discover/scaffold/dashboard`. (priority: critical - prerequisite for all dashboard runtime work)
 
 ### Up Next
-- [ ] Build dashboard frontend workspace at `aloop/cli/dashboard/` (React + Tailwind + shadcn/ui) with `Progress`, `Docs`, `Log`, `Steer`, and `Stop` views. (priority: high - required by SPEC dashboard architecture)
+- [x] Build dashboard frontend workspace at `aloop/cli/dashboard/` (React + Tailwind 4 + shadcn/ui) with `Progress`, `Docs`, `Log`, `Steer`, and `Stop` views. (priority: high - required by SPEC dashboard architecture)
 - [ ] Implement `commands/dashboard.ts` server with SSE and file-watch updates for `status.json`, `log.jsonl`, and work-dir docs. (priority: high - required live progress behavior)
 - [ ] Add CLI build pipeline (`vite build` for dashboard assets + `esbuild`/`tsc` for server) to produce installable output under `aloop/cli/dist`. (priority: high - needed for runtime deployment contract)
 - [ ] Update `install.ps1` to deploy CLI bundle from `aloop/cli/dist` into `~/.aloop/cli/` and include CLI runtime paths in install summary. (priority: high - installer/runtime contract gap)
