@@ -3,11 +3,14 @@
 ## Current Phase: Dashboard + runtime contract completion
 
 ### In Progress
-- [x] [review] Strengthen weak assertions in `$skillName/cli/src/commands/project.test.ts` default-parameter tests (`workspace functions handle default parameters`, `command wrappers support json and text output`) by removing swallowed failures and asserting concrete expected outputs/errors (priority: high).
-- [x] [review] Add CLI entrypoint coverage for `$skillName/cli/src/index.ts` command registration/parse branches; current coverage is 0% branch for this touched file (`npx c8 --reporter=text --all --include='src/commands/*.ts' --include='src/index.ts' tsx --test src/**/*.test.ts`) (priority: high).
+- [ ] [review] Gate 1: `STEERING.md` is written to `sessionDir` but SPEC.md requires it in `workdir` (project root). Fix implementation in `dashboard.ts` and update tests (priority: high).
+- [ ] [review] Gate 3: `dashboard.ts` branch coverage is 62.8% (threshold 80%). Add tests for `/api/stop` (force: true, ESRCH, EPERM), `/api/steer` (overwrite: true), and `resolveDefaultAssetsDir` fallbacks (priority: high).
+- [ ] [review] Gate 1: Documentation mismatch — `SKILL.md` says `STEERING.md` goes to session directory, but `SPEC.md` says project directory. Align `SKILL.md` with `SPEC.md` (priority: medium).
+- [x] [review] Strengthen weak assertions in `$skillName/cli/src/commands/project.test.ts` default-parameter tests (`workspace functions handle default parameters`, `command wrappers support json and text output`) by removing swallowed failures and asserting concrete expected outputs/errors (priority: high). [reviewed: gates 1-5 pass]
+- [x] [review] Add CLI entrypoint coverage for `$skillName/cli/src/index.ts` command registration/parse branches; current coverage is 0% branch for this touched file (`npx c8 --reporter=text --all --include='src/commands/*.ts' --include='src/index.ts' tsx --test src/**/*.test.ts`) (priority: high). [reviewed: gates 1-5 pass]
 
 ### Up Next
-- [x] Implement `POST /api/steer` and `POST /api/stop` in `$skillName/cli/src/commands/dashboard.ts` with explicit validation and error responses (priority: critical; required dashboard controls).
+- [x] Implement `POST /api/steer` and `POST /api/stop` in `$skillName/cli/src/commands/dashboard.ts` with explicit validation and error responses (priority: critical; required dashboard controls). [reviewed: gates 1, 3 failed]
 - [ ] Expand dashboard state model/loading in `$skillName/cli/src/commands/dashboard.ts` to include `active.json`, `history.json`, and session `meta.json` (priority: high; required session list contract).
 - [ ] Replace placeholder UI in `$skillName/cli/dashboard/src/App.tsx` with real `/api/state` + SSE-driven session/progress/log views, wired steer/stop actions, and selected-session behavior (priority: high).
 - [ ] Implement Docs tab markdown rendering (`marked` or `react-markdown`) in dashboard frontend and render real document content from API state (priority: high).
