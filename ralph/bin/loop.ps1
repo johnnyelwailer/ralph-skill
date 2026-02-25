@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Ralph Loop — Generic Multi-Provider Autonomous Coding Loop
+# Aloop Loop — Generic Multi-Provider Autonomous Coding Loop
 # Usage: loop.ps1 -PromptsDir <path> -SessionDir <path> -WorkDir <path> [-Mode plan-build-review] [-Provider claude] [-MaxIterations 50]
 #
 # Modes:
@@ -30,7 +30,7 @@ param(
 
     [string[]]$RoundRobinProviders = @('claude', 'codex', 'gemini', 'copilot'),
 
-    # Model defaults — keep in sync with ~/.ralph/config.yml (source of truth)
+    # Model defaults — keep in sync with ~/.aloop/config.yml (source of truth)
     [string]$ClaudeModel = 'opus',
     [string]$CodexModel = 'gpt-5.3-codex',
     [string]$GeminiModel = 'gemini-3.1-pro-preview',
@@ -385,7 +385,7 @@ function Setup-RemoteBackup {
         }
 
         $projectName = Split-Path -Leaf $WorkDir
-        $repoName = "$projectName-ralph-backup"
+        $repoName = "$projectName-aloop-backup"
         Write-Host "Creating private backup repo: $repoName"
 
         try {
@@ -514,7 +514,7 @@ function Generate-Report {
     }
 
     @"
-# Ralph Session Report
+# Aloop Session Report
 
 Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 
@@ -574,7 +574,7 @@ if ($Provider -eq 'round-robin') {
     }
 }
 
-Write-Host "`n=== Ralph Loop ===" -ForegroundColor Cyan
+Write-Host "`n=== Aloop Loop ===" -ForegroundColor Cyan
 Write-Host "Mode: $Mode"
 Write-Host "Provider: $Provider"
 Write-Host "Work directory: $WorkDir"
@@ -792,4 +792,4 @@ if ($iteration -ge $MaxIterations) {
     Generate-Report -ExitReason "Reached iteration limit ($MaxIterations)." -Iteration $iteration
 }
 
-Write-Host "`n=== Ralph Loop Complete ($iteration iterations) ===" -ForegroundColor Cyan
+Write-Host "`n=== Aloop Loop Complete ($iteration iterations) ===" -ForegroundColor Cyan

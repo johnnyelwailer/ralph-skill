@@ -10,7 +10,7 @@ allowed-tools:
 ---
 
 <objective>
-Configure Ralph for the current project. Detect the project, gather configuration from the user, and create project-specific config and prompts in `~/.ralph/projects/<hash>/`.
+Configure Aloop for the current project. Detect the project, gather configuration from the user, and create project-specific config and prompts in `~/.aloop/projects/<hash>/`.
 </objective>
 
 <process>
@@ -21,7 +21,7 @@ Do NOT perform ad-hoc shell probing. Do NOT compose custom bash discovery pipeli
 
 Run this command first:
 
-`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command discover -Output json`
+`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command discover -Output json`
 
 Treat the JSON output as source of truth for:
 - project root/name/hash
@@ -32,7 +32,7 @@ Treat the JSON output as source of truth for:
 - context files (`TODO.md`, `RESEARCH.md`, `REVIEW_LOG.md`, `STEERING.md`)
 - installed/missing providers + default models
 
-Show: "Setting up Ralph for: <project-name> (<project-root>)"
+Show: "Setting up Aloop for: <project-name> (<project-root>)"
 
 ## Step 2: Use current conversation context
 
@@ -81,7 +81,7 @@ If discovery found spec candidates, ask whether to include each candidate in `sp
 ## Step 6: Explicit go-ahead gate (required)
 
 After interview/spec alignment, ask:
-- "Proceed to prepare Ralph loop config now? (yes/no)"
+- "Proceed to prepare Aloop loop config now? (yes/no)"
 
 If no:
 - stop after summarizing the agreed interview/spec output
@@ -102,21 +102,21 @@ Ask only now:
 
 After decisions are finalized, run:
 
-`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command scaffold -Output json -Provider <provider> -EnabledProviders <csv-or-list> -RoundRobinOrder <csv-or-list> -Language <language> -SpecFiles <list> -ValidationCommands <list>`
+`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command scaffold -Output json -Provider <provider> -EnabledProviders <csv-or-list> -RoundRobinOrder <csv-or-list> -Language <language> -SpecFiles <list> -ValidationCommands <list>`
 
 This script writes:
-- `~/.ralph/projects/<hash>/config.yml`
-- `~/.ralph/projects/<hash>/prompts/PROMPT_{plan,build,review}.md`
+- `~/.aloop/projects/<hash>/config.yml`
+- `~/.aloop/projects/<hash>/prompts/PROMPT_{plan,build,review}.md`
 
 ## Step 9: Confirm setup
 
 Display to user:
 
 ```
-Ralph configured for <project-name>!
+Aloop configured for <project-name>!
 
-  Config: ~/.ralph/projects/<hash>/config.yml
-  Prompts: ~/.ralph/projects/<hash>/prompts/
+  Config: ~/.aloop/projects/<hash>/config.yml
+  Prompts: ~/.aloop/projects/<hash>/prompts/
 
   Provider: <selected>
   Enabled:  <provider+model list>
@@ -125,15 +125,15 @@ Ralph configured for <project-name>!
   Spec files: <selected spec files>
 
 Next steps:
-  /ralph:start          Launch a Ralph loop
-  /ralph:start --plan   Run planning mode only
+  /aloop:start          Launch a Aloop loop
+  /aloop:start --plan   Run planning mode only
 ```
 
 </process>
 
 <notes>
 - The project hash is computed from the absolute path of the project root
-- On Windows, use `$HOME/.ralph/` (PowerShell resolves `~` correctly)
-- If `~/.ralph/templates/` doesn't exist, stop and ask the user to run the install script
+- On Windows, use `$HOME/.aloop/` (PowerShell resolves `~` correctly)
+- If `~/.aloop/templates/` doesn't exist, stop and ask the user to run the install script
 - Keep setup script-driven for consistency across machines and harnesses.
 </notes>

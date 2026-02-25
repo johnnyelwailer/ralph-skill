@@ -52,7 +52,7 @@ Keep prompts tight to maximize smart zone.
 <template_variables>
 ## Template Variables
 
-Ralph prompt templates use `{{variables}}` that are resolved during `/ralph:setup`:
+Aloop prompt templates use `{{variables}}` that are resolved during `/aloop:setup`:
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
@@ -62,7 +62,7 @@ Ralph prompt templates use `{{variables}}` that are resolved during `/ralph:setu
 | `{{SAFETY_RULES}}` | Project-specific safety constraints | "Never delete production data" |
 | `{{PROVIDER_HINTS}}` | Provider-specific instructions | Subagent counts for Claude |
 
-Variables are filled per-project during setup and stored in `~/.ralph/projects/<hash>/prompts/`.
+Variables are filled per-project during setup and stored in `~/.aloop/projects/<hash>/prompts/`.
 </template_variables>
 
 <review_prompt_design>
@@ -96,7 +96,7 @@ Even when all gates pass, the reviewer must cite concrete observations. "Everyth
 
 1. **Mixing Modes** — Plan AND build in same prompt creates confusion
 2. **Over-Specifying** — Too many rules = over-steering. Start minimal.
-3. **No Clear Exit** — Ralph needs to know when to stop. Always include "Exit" step.
+3. **No Clear Exit** — Aloop needs to know when to stop. Always include "Exit" step.
 4. **Vague Validation** — "Make sure it works" is not actionable. List specific commands.
 5. **No Review Phase** — Without the critic, shallow tests and spec drift accumulate
 </common_prompt_mistakes>

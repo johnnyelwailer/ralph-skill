@@ -7,19 +7,19 @@ allowed-tools:
 ---
 
 <objective>
-Send a live steering instruction to a running Ralph session. Analyse loop state, interview the user for details, and write a structured STEERING.md to the session directory for the loop to pick up at the next iteration boundary.
+Send a live steering instruction to a running Aloop session. Analyse loop state, interview the user for details, and write a structured STEERING.md to the session directory for the loop to pick up at the next iteration boundary.
 </objective>
 
 <process>
 
 ## Step 1: Find the Active Session
 
-Read `~/.ralph/active.json`. If no active sessions, display: "No active Ralph sessions. Start one with `/ralph:start` first." and stop.
+Read `~/.aloop/active.json`. If no active sessions, display: "No active Aloop sessions. Start one with `/aloop:start` first." and stop.
 
 If multiple sessions exist, ask using AskUserQuestion:
 - "Which session do you want to steer?" (list session IDs with project names)
 
-Read `~/.ralph/sessions/<session-id>/status.json` and `meta.json` for the chosen session.
+Read `~/.aloop/sessions/<session-id>/status.json` and `meta.json` for the chosen session.
 
 ## Step 2: Show Loop State
 
@@ -47,7 +47,7 @@ git -C <work-dir> log --oneline -5
 
 ## Step 4: Check for Pending Steering
 
-Check if `~/.ralph/sessions/<session-id>/STEERING.md` already exists (a previous instruction not yet processed).
+Check if `~/.aloop/sessions/<session-id>/STEERING.md` already exists (a previous instruction not yet processed).
 
 If it does, ask using AskUserQuestion: "A steering instruction is already queued and hasn't been processed yet. What do you want to do?"
 - Option 1: **Overwrite** — replace with new instruction
@@ -67,7 +67,7 @@ Ask using AskUserQuestion (can batch):
 
 ## Step 6: Produce STEERING.md
 
-Write `~/.ralph/sessions/<session-id>/STEERING.md` (overwrite or append per Step 4 choice):
+Write `~/.aloop/sessions/<session-id>/STEERING.md` (overwrite or append per Step 4 choice):
 
 ```markdown
 # Steering Instruction
@@ -101,13 +101,13 @@ Steering instruction queued.
 The loop will invoke a spec-update agent to apply the changes to specs
 and TODO.md, then force a re-plan before resuming normal build cycles.
 
-  Session dir: ~/.ralph/sessions/<session-id>/
+  Session dir: ~/.aloop/sessions/<session-id>/
 ```
 
 </process>
 
 <notes>
-- Write STEERING.md to the SESSION directory (`~/.ralph/sessions/<id>/`), not the project work directory. The loop copies it to WorkDir just before invoking the spec-update agent.
+- Write STEERING.md to the SESSION directory (`~/.aloop/sessions/<id>/`), not the project work directory. The loop copies it to WorkDir just before invoking the spec-update agent.
 - The work directory is the worktree path from meta.json, not necessarily the project root.
 - The loop processes one STEERING.md per iteration. If the agent fails, STEERING.md remains and will be retried on the next iteration.
 - There is no way to interrupt a mid-flight agent call — the instruction is always picked up at an iteration boundary.

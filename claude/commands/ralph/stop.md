@@ -7,16 +7,16 @@ allowed-tools:
 ---
 
 <objective>
-Stop a running Ralph loop session.
+Stop a running Aloop loop session.
 </objective>
 
 <process>
 
 ## Step 1: Identify Session to Stop
 
-Read `~/.ralph/active.json` to find active sessions.
+Read `~/.aloop/active.json` to find active sessions.
 
-If no active sessions: display "No active Ralph sessions to stop."
+If no active sessions: display "No active Aloop sessions to stop."
 
 If one active session for the current project: use that one.
 
@@ -26,7 +26,7 @@ If multiple active sessions: ask the user which one to stop using AskUserQuestio
 
 ## Step 2: Stop the Process
 
-1. Read `~/.ralph/sessions/<session-id>/meta.json` for session details
+1. Read `~/.aloop/sessions/<session-id>/meta.json` for session details
 2. If PID is recorded in `active.json`:
    - On Unix/macOS: `kill $PID` (SIGTERM for graceful shutdown)
    - On Windows: `Stop-Process -Id $PID` or `taskkill /PID $PID`
@@ -34,13 +34,13 @@ If multiple active sessions: ask the user which one to stop using AskUserQuestio
 
 ## Step 3: Update State
 
-1. Update `~/.ralph/sessions/<session-id>/status.json`:
+1. Update `~/.aloop/sessions/<session-id>/status.json`:
    - Set `state` to `stopped`
    - Update `updated_at`
 
-2. Remove the session from `~/.ralph/active.json`
+2. Remove the session from `~/.aloop/active.json`
 
-3. Add to `~/.ralph/history.json` (create if doesn't exist):
+3. Add to `~/.aloop/history.json` (create if doesn't exist):
    ```json
    {
      "session_id": "<id>",
@@ -55,22 +55,22 @@ If multiple active sessions: ask the user which one to stop using AskUserQuestio
 ## Step 4: Clean Up Worktree (optional)
 
 If the session used a git worktree, ask the user:
-"Remove the worktree branch `ralph/<session-id>`?"
-- Yes: `git worktree remove <path> && git branch -d ralph/<session-id>`
+"Remove the worktree branch `aloop/<session-id>`?"
+- Yes: `git worktree remove <path> && git branch -d aloop/<session-id>`
 - No: Leave it for inspection
 
 ## Step 5: Confirm
 
 Display:
 ```
-Ralph session stopped: <session-id>
+Aloop session stopped: <session-id>
 
   Project: <project-name>
   Iterations completed: <count>
-  Session directory: ~/.ralph/sessions/<session-id>/
+  Session directory: ~/.aloop/sessions/<session-id>/
 
 The session report (if generated) is at:
-  ~/.ralph/sessions/<session-id>/report.md
+  ~/.aloop/sessions/<session-id>/report.md
 ```
 
 </process>

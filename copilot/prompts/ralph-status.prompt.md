@@ -1,25 +1,25 @@
 ---
-name: ralph-status
-description: Display status of all running Ralph loop sessions and recent history.
+name: aloop-status
+description: Display status of all running Aloop loop sessions and recent history.
 agent: agent
 ---
 
-Display the status of all running Ralph sessions and recent history.
+Display the status of all running Aloop sessions and recent history.
 
 ## Step 1: Read Active Sessions
 
-Read `~/.ralph/active.json`. If missing or empty: "No active Ralph sessions."
+Read `~/.aloop/active.json`. If missing or empty: "No active Aloop sessions."
 
 ## Step 2: Display Each Session
 
 For each session in `active.json`:
-1. Read `~/.ralph/sessions/<session-id>/status.json`
-2. Read `~/.ralph/sessions/<session-id>/meta.json`
+1. Read `~/.aloop/sessions/<session-id>/status.json`
+2. Read `~/.aloop/sessions/<session-id>/meta.json`
 3. Check if the PID is still running (if available)
 
 Display:
 ```
-Ralph Sessions
+Aloop Sessions
 
   Session                     | Project  | Mode              | Provider | Iter | Phase | State
   my-app-20260221-143052      | my-app   | plan-build-review | claude   | 7    | build | running
@@ -43,7 +43,7 @@ Current project (my-app):
 
 ## Step 4: Show Recent History
 
-If `~/.ralph/history.json` exists, show last 5 completed sessions:
+If `~/.aloop/history.json` exists, show last 5 completed sessions:
 ```
 Recent History:
   my-app-20260220-100000   | completed    | 23 iterations | 45m
