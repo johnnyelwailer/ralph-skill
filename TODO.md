@@ -7,7 +7,6 @@
 - [x] Update `install.ps1` runtime mapping to copy `$skillName/cli/dist` into `~/.aloop/cli/` and include CLI/dashboard paths in the install summary (priority: critical; required before dashboard can run from installed runtime).
 
 ### Up Next
-- [ ] Implement real `resolve`, `discover`, and `scaffold` behavior in `$skillName/cli/src/commands/*.ts` (currently placeholders) so the CLI monorepo contract is not stubbed (priority: critical; foundational runtime contract gap).
 - [ ] Extend `$skillName/cli/src/commands/dashboard.ts` with `POST /api/steer` and `POST /api/stop` handlers and explicit error responses (priority: critical; required dashboard controls per SPEC).
 - [ ] Expand dashboard state loading/watch coverage to include `active.json` and session metadata expected by the session list UX (priority: high; current state only reads per-session status/log/docs).
 - [ ] Replace placeholder dashboard UI in `$skillName/cli/dashboard/src/App.tsx` with `/api/state` + SSE-driven live data, session selection, and real Progress/Log views (priority: high; current UI is hardcoded sample data).
@@ -20,6 +19,7 @@
 - [ ] Add regression tests for new installer CLI deployment mapping and add uninstaller coverage (`-All`, `-DryRun`, `-Force`, VS Code prompt cleanup) (priority: medium; prevents contract drift).
 
 ### Completed
+- [x] Implement real `resolve`, `discover`, and `scaffold` behavior in `$skillName/cli/src/commands/*.ts` (currently placeholders) so the CLI monorepo contract is not stubbed (priority: critical; foundational runtime contract gap).
 - [x] Add canonical `SPEC.md` with naming, harness, command/prompt, runtime, installer, and uninstaller contracts.
 - [x] Ensure all five Copilot prompt files exist with `aloop-*.prompt.md` names and matching YAML `name` fields.
 - [x] Keep installer harness mapping aligned with `claude/skills/$skillName`, `claude/commands/$skillName`, and `$skillName/{config.yml,bin,templates}`.

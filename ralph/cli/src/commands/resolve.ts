@@ -1,4 +1,21 @@
-export async function resolveCommand() {
-  console.log('Resolving project workspace...');
-  // TODO: implement project/workspace resolution
+import { discoverWorkspace, type OutputMode } from './project.js';
+
+interface ResolveCommandOptions {
+  projectRoot?: string;
+  output?: OutputMode;
+}
+
+export async function resolveCommand(options: ResolveCommandOptions = {}) {
+  const discovery = await discoverWorkspace({ projectRoot: options.projectRoot });
+  const result = {
+    project: discovery.project,
+    setup: discovery.setup,
+  };
+  if (options.output === 'text') {
+    console.log(`Project: ${result.project.name} [${result.project.hash}]`);
+    console.log(`Root: ${result.project.root}`);
+    console.log(`Project config: ${result.setup.config_path}`);
+    return;
+  }
+  console.log(JSON.stringify(result, null, 2));
 }
