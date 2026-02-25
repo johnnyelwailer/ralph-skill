@@ -572,7 +572,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     iter_mode=$(resolve_iteration_mode $ITERATION)
 
     # Check for live steering instruction (overrides normal mode)
-    STEERING_FILE="$SESSION_DIR/STEERING.md"
+    STEERING_FILE="$WORK_DIR/STEERING.md"
     STEER_PROMPT_FILE="$PROMPTS_DIR/PROMPT_steer.md"
     if [ -f "$STEERING_FILE" ] && [ -f "$STEER_PROMPT_FILE" ]; then
         iter_mode="steer"
@@ -636,22 +636,13 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     # Invoke provider
     prompt_content=$(cat "$iter_prompt_file")
 
-    # Steer mode: stage STEERING.md in work directory for the spec-update agent
-    if [ "$iter_mode" = "steer" ]; then
-        cp "$STEERING_FILE" "$WORK_DIR/STEERING.md"
-        echo "[Steering] Staging instruction for spec-update agent..."
-    fi
-
     cd "$WORK_DIR"
     if invoke_provider "$iter_provider" "$prompt_content"; then
-        # Steer mode: archive the processed steering file and clean up WorkDir copy
+        # Steer mode: remove any leftover steering file if the agent did not delete it
         if [ "$iter_mode" = "steer" ]; then
-            archive_ts=$(date '+%Y%m%d-%H%M%S')
-            archive_name="STEERING_processed_${archive_ts}.md"
-            mv "$STEERING_FILE" "$(dirname "$STEERING_FILE")/$archive_name"
-            rm -f "$WORK_DIR/STEERING.md"
+            rm -f "$STEERING_FILE"
             echo "[Steering processed — re-plan queued for next iteration]"
-            write_log_entry "steering_processed" "archive" "$archive_name" "iteration" "$ITERATION"
+            write_log_entry "steering_processed" "iteration" "$ITERATION"
         fi
 
         write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider"

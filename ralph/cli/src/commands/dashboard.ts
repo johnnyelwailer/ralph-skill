@@ -199,7 +199,7 @@ export async function startDashboardServer(
   const statusPath = path.join(sessionDir, 'status.json');
   const logPath = path.join(sessionDir, 'log.jsonl');
   const metaPath = path.join(sessionDir, 'meta.json');
-  const steeringPath = path.join(sessionDir, 'STEERING.md');
+  const steeringPath = path.join(workdir, 'STEERING.md');
   const docPaths = DOC_FILES.map((name) => path.join(workdir, name));
   const watchedFiles = new Set([statusPath, logPath, ...docPaths].map((value) => path.normalize(value).toLowerCase()));
 

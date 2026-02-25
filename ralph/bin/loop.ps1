@@ -661,7 +661,7 @@ try {
         $iterationMode = Resolve-IterationMode -IterationNumber $iteration
 
         # Check for live steering instruction (overrides normal mode)
-        $steeringFile = Join-Path $SessionDir "STEERING.md"
+        $steeringFile = Join-Path $WorkDir "STEERING.md"
         $steerPromptFile = Join-Path $PromptsDir "PROMPT_steer.md"
         if ((Test-Path $steeringFile) -and (Test-Path $steerPromptFile)) {
             $iterationMode = 'steer'
@@ -723,12 +723,6 @@ try {
         try {
             $promptContent = Get-Content -Path $iterationPromptFile -Raw
 
-            # Steer mode: stage STEERING.md in work directory for the spec-update agent
-            if ($iterationMode -eq 'steer') {
-                Copy-Item $steeringFile (Join-Path $WorkDir "STEERING.md") -Force
-                Write-Host "[Steering] Staging instruction for spec-update agent..." -ForegroundColor Blue
-            }
-
             Push-Location $WorkDir
             try {
                 $providerOutput = Invoke-Provider -ProviderName $iterationProvider -PromptContent $promptContent
@@ -739,15 +733,11 @@ try {
 
             Show-AgentSummary -ProviderName $iterationProvider -ProviderOutput $providerOutput
 
-            # Steer mode: archive the processed steering file and clean up WorkDir copy
+            # Steer mode: remove any leftover steering file if the agent did not delete it
             if ($iterationMode -eq 'steer') {
-                $archiveTs = Get-Date -Format "yyyyMMdd-HHmmss"
-                $archiveName = "STEERING_processed_$archiveTs.md"
-                Rename-Item -Path $steeringFile -NewName $archiveName
-                $wdSteering = Join-Path $WorkDir "STEERING.md"
-                if (Test-Path $wdSteering) { Remove-Item $wdSteering -Force }
+                if (Test-Path $steeringFile) { Remove-Item $steeringFile -Force }
                 Write-Host "[Steering processed — re-plan queued for next iteration]" -ForegroundColor Blue
-                Write-LogEntry -Event "steering_processed" -Data @{ archive = $archiveName; iteration = $iteration }
+                Write-LogEntry -Event "steering_processed" -Data @{ iteration = $iteration }
             }
 
             Write-LogEntry -Event "iteration_complete" -Data @{

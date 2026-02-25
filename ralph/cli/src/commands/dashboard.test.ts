@@ -74,7 +74,7 @@ test('POST /api/steer validates input and writes STEERING.md', async () => {
     });
     assert.equal(validResponse.status, 201);
 
-    const steeringDoc = await readFile(path.join(fixture.sessionDir, 'STEERING.md'), 'utf8');
+    const steeringDoc = await readFile(path.join(fixture.workdir, 'STEERING.md'), 'utf8');
     assert.match(steeringDoc, /# Steering Instruction/);
     assert.match(steeringDoc, /Shift to implement API controls first\./);
     assert.match(steeringDoc, /\*\*Affects completed work:\*\* no/);
