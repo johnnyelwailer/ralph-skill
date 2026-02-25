@@ -114,6 +114,7 @@ All runtime state installs to `~/.aloop/`, independent of harness selection.
 - CLI server implementation lives in `aloop/cli/src/` TypeScript sources (`index.ts`, `commands/{resolve,discover,scaffold,dashboard}.ts`).
 - Dashboard frontend lives in `aloop/cli/dashboard/` and is built with React + Tailwind CSS 4 + shadcn/ui (LATEST) components (copied source).
 - Markdown rendering for Docs view uses `marked` (or `react-markdown`).
+- Dashboard E2E test stack uses Playwright (`@playwright/test`) in the CLI/dashboard workspace with a `test:e2e` script.
 - Build output installs under `~/.aloop/cli/` and includes `dist/index.js` (server) plus bundled dashboard HTML assets.
 - Runtime execution uses the installed bundle (`node ~/.aloop/cli/dist/index.js`).
 - "Zero deps" applies to installed runtime output (no installed `node_modules` required on user machines); dev/build dependencies are allowed.
@@ -156,6 +157,13 @@ Self-contained Node.js HTTP server for real-time monitoring of running sessions.
 - **Discovery**: URL printed to CLI upon launch and included in the `/ralph:start` prompt output.
 - **Build pipeline**: `vite build` bundles dashboard frontend, `esbuild` (or `tsc`) compiles CLI server to `dist/index.js`, and the server reads/serves the bundled HTML on `GET /`.
 - **Installer**: `install.ps1` deploys bundled CLI output to `~/.aloop/cli/`; the `aloop` shim runs `node ~/.aloop/cli/dist/index.js`.
+- **E2E harness**: Playwright config uses `webServer` to start the real dashboard server (`dashboard.ts`) before browser tests.
+
+### Dashboard E2E Coverage (Playwright)
+- Runs in headless Chromium by default against the live dashboard app.
+- Includes scenarios for: initial render (title + three-column layout), SSE connection/state update, active session list/status indicators, Progress timeline/phase badges, Docs tab markdown rendering, Log streaming/autoscroll, Steer submit creating `STEERING.md` in session dir, Stop confirm + `POST /api/stop`, SSE reconnection/refresh, and navigation view switching.
+- Uses a fixture session directory with pre-populated `status.json`, `log.jsonl`, `active.json`, and `TODO.md`; tests may read/write fixture files to verify side effects.
+- Repository ignore list includes Playwright artifacts: `playwright-report/` and `test-results/`.
 
 ### Project Working Files
 

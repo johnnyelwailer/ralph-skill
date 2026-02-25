@@ -3,9 +3,9 @@
 ## Current Phase: Dashboard and command-surface spec alignment
 
 ### In Progress
-- [ ] [review] Gate 1: `ralph/bin/loop.ps1` dashboard lifecycle does not meet clean-shutdown intent because `Start-DashboardProcess` assigns `$dashboardProcess`/`$dashboardUrl` in function-local scope. Use script scope (`$script:dashboardProcess`) so `Stop-DashboardProcess` can terminate the launched process on completion/interruption. (priority: high)
-- [ ] [review] Gate 2: Dashboard runtime changes in `ralph/bin/loop.ps1` and `ralph/bin/loop.sh` have no behavioral tests; current coverage only checks file existence (`install.tests.ps1:79-80,333`). Add tests that execute loop scripts in dry-run/controlled mode and assert concrete outcomes for startup URL logging, missing CLI fallback warnings, early-exit handling, and shutdown cleanup paths. (priority: high)
-- [ ] [review] Gate 3: Branch coverage requirement is not met for this iteration; changed files (`ralph/bin/loop.ps1`, `ralph/bin/loop.sh`) have no measured branch coverage, and existing summary reports only `project.ts` at 63.73% branches (`coverage/coverage-summary.json`). Add coverage instrumentation/tests for new dashboard branches and raise touched-file branch coverage to >=80%. (priority: high)
+- [~] [review] Gate 1: `ralph/bin/loop.ps1` dashboard lifecycle clean-shutdown gap. **Cancelled:** superseded by steering focus on adding dashboard Playwright E2E spec/test planning.
+- [~] [review] Gate 2: Missing behavioral tests for loop runtime dashboard launch paths. **Cancelled:** steering redirects this cycle to browser-level Playwright E2E coverage.
+- [~] [review] Gate 3: Branch coverage for `loop.ps1`/`loop.sh` below target. **Cancelled:** steering scope is additive dashboard E2E layer, not loop runtime branch coverage.
 - [x] Replace dashboard frontend placeholders with real state wiring: load initial `/api/state`, subscribe to `/events` via `EventSource`, and render live Sessions/Progress/Docs/Log/Steer/Stop views from server data. (P0)
 
 ### Up Next
@@ -15,6 +15,10 @@
 - [ ] Correct steering contract docs/prompts to match runtime/spec: all steer flows should write/read `STEERING.md` in workdir (not session dir). Update Claude and Copilot steer docs accordingly. (P1)
 - [ ] Align README and skill/command docs with canonical naming and install paths from `SPEC.md` (`skills/$skillName`, `commands/$skillName`, `/ralph:*` vs `/aloop-*` split by harness). (P1)
 - [ ] Add/refresh tests for new dashboard behavior (SSE payload shape, active/history loading, frontend live updates) and steering path contract text regressions. (P1)
+- [ ] Add Playwright E2E tooling for dashboard in `ralph/cli/dashboard/` (or `ralph/cli/`): install `@playwright/test`, add `playwright.config.ts` with `webServer` startup for real `dashboard.ts`, and add `test:e2e` script. (P1)
+- [ ] Create dashboard E2E fixture session data (`status.json`, `log.jsonl`, `active.json`, `TODO.md`) and wire tests to read/write fixture files for side-effect assertions. (P1)
+- [ ] Add Playwright scenarios for dashboard load, SSE connect/update/reconnect, session list/status indicators, progress timeline badges, docs rendering, log stream autoscroll, steer submit side effect (`STEERING.md` in session dir), stop confirm + POST, and nav view switching. (P1)
+- [ ] Add Playwright artifact ignores (`playwright-report/`, `test-results/`) to `.gitignore`. (P1)
 - [ ] Remove tracked `testResults.xml` and ignore it in `.gitignore` to prevent machine-generated artifact churn. (P2)
 - [ ] Add dark theme tokens (`.dark` CSS vars) and a dashboard theme toggle to match existing Tailwind `darkMode: ['class']` config. (P3)
 - [ ] Refactor duplicated provider/model defaults in `project.ts` into shared constants to reduce drift across discovery/scaffold output. (P3)
