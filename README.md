@@ -28,14 +28,9 @@ The installer detects which CLIs are present and offers to install missing ones 
 | **Claude Code** | `claude` | `npm install -g @anthropic-ai/claude-code` | `claude auth` or `$env:ANTHROPIC_API_KEY` |
 | **OpenAI Codex** | `codex` | `npm install -g @openai/codex` | `codex auth` or `$env:OPENAI_API_KEY` |
 | **Gemini CLI** | `gemini` | `npm install -g @google/gemini-cli` | `gemini auth` (free browser OAuth) or `$env:GEMINI_API_KEY` |
-| **GitHub Copilot** | `copilot` | See note below | `gh auth login` (requires active Copilot subscription) |
+| **GitHub Copilot** | `copilot` | `npm install -g @github/copilot` | Run `copilot` and use `/login`, or set `$env:GH_TOKEN` / `$env:GITHUB_TOKEN` |
 
-> **Copilot CLI install note:** The recommended approach is the `gh` CLI extension — the standalone `@githubnext/github-copilot-cli` npm package is legacy.
-> ```powershell
-> winget install GitHub.cli   # or https://cli.github.com
-> gh auth login
-> gh extension install github/gh-copilot
-> ```
+> **Copilot CLI note:** Requires an active GitHub Copilot subscription.
 
 ### Persisting API keys
 
@@ -77,13 +72,13 @@ Ralph works with any of these AI coding agents — mix and match, or let them ta
 
 ```powershell
 # Single provider
-.\loop.ps1 -Provider claude
+~/.ralph/bin/loop.ps1 -Provider claude
 
 # Explicit round-robin
-.\loop.ps1 -Provider round-robin -RoundRobinProviders claude,codex,gemini
+~/.ralph/bin/loop.ps1 -Provider round-robin -RoundRobinProviders claude,codex,gemini
 
 # Per-provider model override
-.\loop.ps1 -Provider codex -CodexModel gpt-5.3-codex
+~/.ralph/bin/loop.ps1 -Provider codex -CodexModel gpt-5.3-codex
 ```
 
 > **Gemini note:** The `-m <model>` flag is version-dependent. The loop automatically retries without the flag if the specified model is rejected.
@@ -217,7 +212,7 @@ The skill (`~/.copilot/skills/ralph/`) is also loaded automatically by Copilot b
 - **Review log**: Persistent `REVIEW_LOG.md` tracks every review verdict and resolved findings across iterations
 - **Worktree isolation**: Loops run on separate git branches
 - **Session tracking**: Status, logs, and reports per session
-- **No repo pollution**: All state in `~/.ralph/`, nothing in your project
+- **Minimal repo footprint**: Runtime/session state is in `~/.ralph/`; project working files are `TODO.md`, `RESEARCH.md`, `REVIEW_LOG.md` (and temporary `STEERING.md` while steering is being processed)
 
 ## Development
 
