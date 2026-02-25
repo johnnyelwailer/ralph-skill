@@ -121,8 +121,8 @@ Aloop works with any of these AI coding agents — mix and match, or let them ta
 |---------|-------|--------------------|
 | Claude Code | `~/.claude/skills/aloop/` | `~/.claude/commands/aloop/` (5 slash commands) |
 | Codex CLI | `~/.codex/skills/aloop/` | `~/.codex/commands/aloop/` (5 slash commands) |
-| GH Copilot (VS Code) | `~/.copilot/skills/aloop/` | `%APPDATA%\Code\User\prompts\` (4 `.prompt.md`) |
-| GH Copilot (VS Code Insiders) | `~/.copilot/skills/aloop/` | `%APPDATA%\Code - Insiders\User\prompts\` (4 `.prompt.md`) |
+| GH Copilot (VS Code) | `~/.copilot/skills/aloop/` | `%APPDATA%\Code\User\prompts\` (5 `.prompt.md`) |
+| GH Copilot (VS Code Insiders) | `~/.copilot/skills/aloop/` | `%APPDATA%\Code - Insiders\User\prompts\` (5 `.prompt.md`) |
 | Agents (generic) | `~/.agents/skills/aloop/` | — |
 
 VS Code prompt files are installed automatically for any VS Code variant that is present — independently of which harness you select in the interactive menu.
@@ -148,6 +148,7 @@ In VS Code (stable or Insiders) with GitHub Copilot, type `/` and select:
 /aloop-start     Launch a loop
 /aloop-status    Check running sessions
 /aloop-stop      Stop a loop
+/aloop-steer     Send a live steering instruction to a running loop
 ```
 
 The skill (`~/.copilot/skills/aloop/`) is also loaded automatically by Copilot based on context.
@@ -180,6 +181,7 @@ When no strong spec exists, setup defaults to a short interview to create/refine
     aloop-start.prompt.md       # /aloop-start
     aloop-status.prompt.md      # /aloop-status
     aloop-stop.prompt.md        # /aloop-stop
+    aloop-steer.prompt.md       # /aloop-steer
 
 ~/.aloop/
   config.yml                   # Global defaults (providers, models)

@@ -64,6 +64,10 @@ Describe 'Source-to-destination path mappings' {
         It "has $('ra'+'lph')-start.prompt.md"  { Join-Path $promptDir "$skillName-start.prompt.md"  | Should -Exist }
         It "has $('ra'+'lph')-status.prompt.md" { Join-Path $promptDir "$skillName-status.prompt.md" | Should -Exist }
         It "has $('ra'+'lph')-stop.prompt.md"   { Join-Path $promptDir "$skillName-stop.prompt.md"   | Should -Exist }
+        It "has $('ra'+'lph')-steer.prompt.md"  { Join-Path $promptDir "$skillName-steer.prompt.md"  | Should -Exist }
+        It 'has exactly 5 .prompt.md files (no extras, no missing)' {
+            (Get-ChildItem $promptDir -File -Filter '*.prompt.md').Count | Should -Be 5
+        }
     }
 
     Context 'Runtime bin contains required scripts' {

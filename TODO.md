@@ -4,7 +4,7 @@
 
 ### In Progress
 
-- [ ] **Add missing Copilot steer prompt file and wire command surface parity** — `copilot/prompts/$skillName-steer.prompt.md` is missing, so only four Copilot prompts exist. Add the fifth prompt (`name: aloop-steer`) and update any prompt-count assertions/docs accordingly. (priority: high — spec requires 5 Copilot prompts)
+- [x] **Add missing Copilot steer prompt file and wire command surface parity** — `copilot/prompts/$skillName-steer.prompt.md` is missing, so only four Copilot prompts exist. Add the fifth prompt (`name: aloop-steer`) and update any prompt-count assertions/docs accordingly. (priority: high — spec requires 5 Copilot prompts)
 
 ### Up Next
 
