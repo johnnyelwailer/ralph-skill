@@ -1,36 +1,30 @@
 # Project TODO
 
-## Current Phase: Spec compliance hardening and CLI/dashboard foundation
+## Current Phase: CLI/dashboard contract implementation and spec parity
 
 ### In Progress
-- [x] **Fix VS Code prompt uninstall mismatch** — renamed `copilot/prompts/` files to `aloop-*.prompt.md` to match the pattern expected by `uninstall.ps1` and documented in `SPEC.md`. (priority: critical — uninstall correctness)
+- [x] Create `aloop/cli/` TypeScript workspace skeleton (`src/`, `commands/`, build config) and add a minimal entrypoint for `resolve/discover/scaffold/dashboard`. (priority: critical - prerequisite for all dashboard runtime work)
 
 ### Up Next
-- [ ] **Resolve prompt filename contract inconsistency in spec/docs vs scripts** — normalize the expected Copilot prompt filename pattern across `SPEC.md`, `README.md`, installer, and uninstaller so one canonical rule exists. (priority: high — prevents recurring install/uninstall drift)
-- [ ] **Add uninstaller regression tests** — create `uninstall.tests.ps1` for harness path cleanup, VS Code prompt cleanup, and runtime (`~/.aloop`) removal behavior. (priority: high — safety for cleanup changes)
-- [ ] **Align setup instructions with scaffold output** — update `claude/commands/agent/setup.md` and `copilot/prompts/aloop-setup.prompt.md` Step 8 prompt list to include `PROMPT_steer.md`. (priority: high — command correctness)
-- [~] **Create TypeScript CLI workspace skeleton** — superseded by steering: dashboard now requires a dedicated React/Tailwind/shadcn frontend workspace under `aloop/cli/dashboard/`. (priority: high — prerequisite changed)
-- [ ] **Implement CLI command modules for parity flows** — move/implement `resolve`, `discover`, and `scaffold` command logic in TS CLI sources so runtime can execute via bundled CLI entrypoint. (priority: high — prerequisite for dashboard launch contract)
-- [~] **Implement dashboard CLI subcommand** — superseded by steering: implementation must serve a bundled React/Tailwind/shadcn frontend instead of the previous frontend approach. (priority: high — scope amended)
-- [~] **Update installer for CLI bundle deployment** — superseded by steering: destination changed from `~/.aloop/cli/dist/` to `~/.aloop/cli/` for bundled server+frontend output. (priority: high — contract amended)
-- [ ] **Create dashboard frontend workspace (React + Tailwind + shadcn/ui)** — add `aloop/cli/dashboard/` with `App.tsx`, shadcn component sources, views (`Progress/Docs/Log/Steer/Stop`), and markdown rendering (`marked` or `react-markdown`). (priority: high — required by steering)
-- [ ] **Implement dashboard build pipeline for bundled output** — wire `vite build` (or equivalent) for inlined dashboard assets plus CLI server build (`esbuild`/`tsc`) to emit installable output consumed by `commands/dashboard.ts`. (priority: high — required by steering)
-- [ ] **Update installer for new CLI output contract** — copy built CLI output to `~/.aloop/cli/` (not `~/.aloop/cli/dist/`) and keep summary text aligned with installed runtime layout. (priority: high — required by steering)
-- [ ] **Update README architecture/install contract** — document `$skillName` harness paths consistently and include CLI runtime layout (`~/.aloop/cli/`, with `dist/index.js`) plus `PROMPT_steer.md` where applicable. (priority: high — user-facing accuracy)
-- [ ] **Wire dashboard launch into `loop.ps1`** — start/track dashboard process, print monitor URL, and ensure graceful lifecycle handling. (priority: high — runtime integration)
-- [ ] **Wire dashboard launch into `loop.sh`** — port dashboard startup/lifecycle handling to Bash loop for macOS/Linux parity. (priority: high — cross-platform integration)
-- [ ] **Port agent-summary filtering to `loop.sh`** — add output-noise filtering equivalent to `Show-AgentSummary` in `loop.ps1`. (priority: medium — operator UX parity)
-- [ ] **Deduplicate `Show-CheckboxMenu` helper** — extract shared UI helper consumed by both `install.ps1` and `uninstall.ps1`. (priority: low — maintainability)
+- [ ] Build dashboard frontend workspace at `aloop/cli/dashboard/` (React + Tailwind + shadcn/ui) with `Progress`, `Docs`, `Log`, `Steer`, and `Stop` views. (priority: high - required by SPEC dashboard architecture)
+- [ ] Implement `commands/dashboard.ts` server with SSE and file-watch updates for `status.json`, `log.jsonl`, and work-dir docs. (priority: high - required live progress behavior)
+- [ ] Add CLI build pipeline (`vite build` for dashboard assets + `esbuild`/`tsc` for server) to produce installable output under `aloop/cli/dist`. (priority: high - needed for runtime deployment contract)
+- [ ] Update `install.ps1` to deploy CLI bundle from `aloop/cli/dist` into `~/.aloop/cli/` and include CLI runtime paths in install summary. (priority: high - installer/runtime contract gap)
+- [ ] Launch and manage dashboard process from `aloop/bin/loop.ps1` (startup, URL output, cleanup on exit). (priority: high - Windows runtime integration)
+- [ ] Port dashboard launch/lifecycle handling to `aloop/bin/loop.sh` for macOS/Linux parity. (priority: high - cross-platform runtime parity)
+- [ ] Add session registry/metadata writes expected by SPEC (`active.json`, `history.json`, and per-session `meta.json`) and keep them synchronized with loop lifecycle. (priority: high - dashboard/session model contract gap)
+- [ ] Add `uninstall.tests.ps1` covering harness path removal, VS Code `aloop-*.prompt.md` cleanup, and runtime `~/.aloop/` removal branches (`-All`, `-DryRun`, `-Force`). (priority: high - missing regression coverage)
+- [ ] Update `README.md` install/architecture sections to replace legacy `skills/aloop` and `commands/aloop` paths with installer `$skillName` (`aloop`) paths. (priority: medium - docs/spec mismatch)
+- [ ] Update setup docs (`claude/commands/aloop/setup.md`, `copilot/prompts/aloop-setup.prompt.md`) so scaffold output lists `PROMPT_{plan,build,review,steer}.md`. (priority: medium - command/prompt contract mismatch)
+- [ ] Add installer tests for new CLI bundle mapping and summary text once CLI deployment is implemented. (priority: medium - prevents future contract drift)
+- [ ] Port PowerShell `Show-AgentSummary` noise filtering behavior to `loop.sh` summary output. (priority: low - operator UX parity)
+- [ ] Deduplicate `Show-CheckboxMenu` between `install.ps1` and `uninstall.ps1` via shared helper. (priority: low - maintainability)
 
 ### Completed
-- [x] **Add missing Copilot steer prompt file and wire command surface parity** — `copilot/prompts/$skillName-steer.prompt.md` exists (`name: aloop-steer`) and prompt-count checks include all five prompts.
-- [x] **Normalize Claude/Codex command naming to `/$skillName:*` across user-facing docs** — command surface consistently documents `/setup`, `/start`, `/status`, `/stop`, `/steer` under `/$skillName:*` for CLI harnesses.
-- [x] **Add branch-coverage evidence for touched installer paths** — behavioral tests in `install.tests.ps1` cover HasCommands, runtime copy paths, summary variants, and dry-run/force paths.
-- [x] **Fix `uninstall.ps1` harness target mismatch (`aloop` vs installer `$skillName`)** — uninstaller now targets `~/.{claude,codex,copilot,agents}/.../$skillName` to match installer output.
-- [x] **Fix install path/source drift (legacy vs canonical naming)** — installer maps from repo sources (`claude/skills/$skillName`, `claude/commands/$skillName`, `$skillName/{config.yml,bin,templates}`) without missing legacy paths.
-- [x] **Align `install.ps1` summary/usage text with 5-command contract** — installer output lists `setup,start,status,stop,steer` and Copilot `aloop-*` prompt command surface.
-- [x] **Add focused installer mapping/output tests (`install.tests.ps1`)** — tests cover source/destination mapping, harness command capability flags, runtime roots, and summary/usage surface.
-- [x] **Add canonical `SPEC.md` at repo root** — explicit naming, harness, command/prompt, installer/uninstaller, and runtime contracts are documented.
-- [x] **`setup-discovery.ps1`: scaffold copies `PROMPT_steer.md` through full substitution loop**
-- [x] **`loop.sh`: round-robin provider list filters to installed providers with warnings/errors**
-- [x] **`loop.sh`: Copilot auth assertion detects common unauthenticated states**
+- [x] Add canonical `SPEC.md` at repo root with naming, harness, command/prompt, installer/uninstaller, and runtime contracts.
+- [x] Ensure Copilot prompt files use `aloop-*.prompt.md` naming and include all five prompts (setup/start/status/stop/steer).
+- [x] Fix `uninstall.ps1` harness targets to use installer `$skillName` paths for `~/.{claude,codex,copilot,agents}/.../$skillName`.
+- [x] Keep installer harness mapping aligned with canonical sources (`claude/skills/$skillName`, `claude/commands/$skillName`, `$skillName/{config.yml,bin,templates}`).
+- [x] Add installer coverage in `install.tests.ps1` for harness mapping, `HasCommands`, summary surface, stale cleanup, and `-DryRun`/`-Force` branches.
+- [x] Update `setup-discovery.ps1` scaffold template copy loop to include `PROMPT_steer.md`.
+- [x] Improve `loop.sh` provider handling with round-robin installed-provider filtering and Copilot auth assertion checks.
