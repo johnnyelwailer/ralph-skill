@@ -10,6 +10,7 @@ interface ScaffoldCommandOptions {
   enabledProviders?: string[];
   roundRobinOrder?: string[];
   specFiles?: string[];
+  referenceFiles?: string[];
   validationCommands?: string[];
   safetyRules?: string[];
 }
@@ -22,6 +23,7 @@ export async function scaffoldCommand(options: ScaffoldCommandOptions = {}) {
     enabledProviders: options.enabledProviders,
     roundRobinOrder: options.roundRobinOrder,
     specFiles: options.specFiles,
+    referenceFiles: options.referenceFiles,
     validationCommands: options.validationCommands,
     safetyRules: options.safetyRules,
     mode: options.mode,

@@ -20,6 +20,7 @@ export interface ScaffoldOptions extends BaseOptions {
   enabledProviders?: string[];
   roundRobinOrder?: string[];
   specFiles?: string[];
+  referenceFiles?: string[];
   validationCommands?: string[];
   safetyRules?: string[];
   mode?: string;
@@ -50,6 +51,7 @@ export interface DiscoveryResult {
       full: string[];
     };
     spec_candidates: string[];
+    reference_candidates: string[];
     context_files: Record<string, boolean>;
   };
   providers: {
@@ -205,6 +207,30 @@ async function discoverSpecCandidates(projectRoot: string): Promise<string[]> {
   return found;
 }
 
+async function discoverReferenceCandidates(projectRoot: string, specCandidates: string[]): Promise<string[]> {
+  const ordered = [
+    'RESEARCH.md',
+    'REVIEW_LOG.md',
+    'AGENTS.md',
+    'CONTRIBUTING.md',
+    'docs/architecture.md',
+    'docs/design.md',
+    'docs/adr',
+  ];
+  const excluded = new Set(specCandidates);
+  const found: string[] = [];
+  for (const rel of ordered) {
+    const normalized = rel.replace(/\\/g, '/');
+    if (excluded.has(normalized)) {
+      continue;
+    }
+    if (await fileExists(path.join(projectRoot, rel))) {
+      found.push(normalized);
+    }
+  }
+  return found;
+}
+
 function normalizeList(items: string[] | undefined): string[] {
   if (!items) {
     return [];
@@ -249,6 +275,7 @@ export async function discoverWorkspace(options: DiscoverOptions = {}): Promise<
   const language = await detectLanguage(projectRoot);
   const validationPresets = await buildValidationPresets(language.language, projectRoot);
   const specCandidates = await discoverSpecCandidates(projectRoot);
+  const referenceCandidates = await discoverReferenceCandidates(projectRoot, specCandidates);
   const providers = getInstalledProviders();
   const projectDir = path.join(homeDir, '.aloop', 'projects', projectHash);
 
@@ -272,6 +299,7 @@ export async function discoverWorkspace(options: DiscoverOptions = {}): Promise<
       language_signals: language.signals,
       validation_presets: validationPresets,
       spec_candidates: specCandidates,
+      reference_candidates: referenceCandidates,
       context_files: {
         'TODO.md': existsSync(path.join(projectRoot, 'TODO.md')),
         'RESEARCH.md': existsSync(path.join(projectRoot, 'RESEARCH.md')),
@@ -317,6 +345,8 @@ export async function scaffoldWorkspace(options: ScaffoldOptions = {}): Promise<
   const roundRobin = roundRobinOrder.length > 0 ? roundRobinOrder : [...enabled];
   const specFiles = normalizeList(options.specFiles);
   const resolvedSpecFiles = specFiles.length > 0 ? specFiles : discovery.context.spec_candidates.slice(0, 1);
+  const referenceFiles = normalizeList(options.referenceFiles);
+  const resolvedReferenceFiles = referenceFiles.length > 0 ? referenceFiles : discovery.context.reference_candidates;
   const validationCommands = normalizeList(options.validationCommands);
   const resolvedValidation = validationCommands.length > 0 ? validationCommands : discovery.context.validation_presets.full;
   const safetyRules = normalizeList(options.safetyRules);
@@ -343,6 +373,8 @@ export async function scaffoldWorkspace(options: ScaffoldOptions = {}): Promise<
     `mode: ${toYamlQuoted(mode)}`,
     'spec_files:',
     ...resolvedSpecFiles.map((value) => `  - ${toYamlQuoted(value)}`),
+    'reference_files:',
+    ...resolvedReferenceFiles.map((value) => `  - ${toYamlQuoted(value)}`),
     'validation_commands: |',
     ...resolvedValidation.map((value) => `  ${value}`),
     'safety_rules: |',
@@ -367,7 +399,7 @@ export async function scaffoldWorkspace(options: ScaffoldOptions = {}): Promise<
 
   const replacements: Record<string, string> = {
     '{{SPEC_FILES}}': resolvedSpecFiles.join(', '),
-    '{{REFERENCE_FILES}}': '',
+    '{{REFERENCE_FILES}}': resolvedReferenceFiles.join(', '),
     '{{VALIDATION_COMMANDS}}': resolvedValidation.map((value) => `- ${value}`).join('\n'),
     '{{SAFETY_RULES}}': resolvedSafetyRules.map((value) => `- ${value}`).join('\n'),
     '{{PROVIDER_HINTS}}': resolveProviderHints(provider),

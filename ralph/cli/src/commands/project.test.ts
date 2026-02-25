@@ -10,12 +10,14 @@ test('discoverWorkspace resolves project details and language signals', async ()
   await writeFile(path.join(tempRoot, 'package.json'), JSON.stringify({ name: 'demo', scripts: { test: 'node --test' } }), 'utf8');
   await writeFile(path.join(tempRoot, 'tsconfig.json'), JSON.stringify({ compilerOptions: {} }), 'utf8');
   await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(tempRoot, 'RESEARCH.md'), '# research', 'utf8');
 
   const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
   assert.equal(result.project.root, tempRoot);
   assert.equal(result.project.hash.length, 8);
   assert.equal(result.context.detected_language, 'node-typescript');
   assert.ok(result.context.spec_candidates.includes('SPEC.md'));
+  assert.ok(result.context.reference_candidates.includes('RESEARCH.md'));
 });
 
 test('scaffoldWorkspace writes config and prompt files with substitutions', async () => {
@@ -26,7 +28,8 @@ test('scaffoldWorkspace writes config and prompt files with substitutions', asyn
   await mkdir(templatesDir, { recursive: true });
   await writeFile(path.join(tempRoot, 'package.json'), JSON.stringify({ name: 'demo', scripts: { test: 'node --test' } }), 'utf8');
   await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
-  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Specs: {{SPEC_FILES}}\n{{VALIDATION_COMMANDS}}\n{{SAFETY_RULES}}', 'utf8');
+  await writeFile(path.join(tempRoot, 'RESEARCH.md'), '# research', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Specs: {{SPEC_FILES}}\nRefs: {{REFERENCE_FILES}}\n{{VALIDATION_COMMANDS}}\n{{SAFETY_RULES}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build {{SPEC_FILES}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review {{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer {{PROVIDER_HINTS}}', 'utf8');
@@ -45,7 +48,41 @@ test('scaffoldWorkspace writes config and prompt files with substitutions', asyn
   const planPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_plan.md'), 'utf8');
   assert.match(config, /provider: 'copilot'/);
   assert.match(config, /- 'SPEC.md'/);
+  assert.match(config, /reference_files:/);
+  assert.match(config, /- 'RESEARCH.md'/);
   assert.match(planPrompt, /Specs: SPEC.md/);
+  assert.match(planPrompt, /Refs: RESEARCH.md/);
   assert.match(planPrompt, /- npm test/);
   assert.match(planPrompt, /- Do not delete files/);
+});
+
+test('scaffoldWorkspace allows explicit reference file overrides', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'package.json'), JSON.stringify({ name: 'demo', scripts: { test: 'node --test' } }), 'utf8');
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Refs: {{REFERENCE_FILES}}', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build {{SPEC_FILES}}', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
+
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    specFiles: ['SPEC.md'],
+    referenceFiles: ['docs/guide.md', 'notes.md'],
+    validationCommands: ['npm test'],
+    safetyRules: ['Do not delete files'],
+    provider: 'copilot',
+  });
+
+  const config = await readFile(result.config_path, 'utf8');
+  const planPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_plan.md'), 'utf8');
+  assert.match(config, /- 'docs\/guide.md'/);
+  assert.match(config, /- 'notes.md'/);
+  assert.match(planPrompt, /Refs: docs\/guide.md, notes.md/);
 });

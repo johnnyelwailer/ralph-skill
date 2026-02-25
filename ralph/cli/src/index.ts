@@ -34,6 +34,7 @@ program
   .option('--enabled-providers <providers...>', 'Enabled providers list or csv values')
   .option('--round-robin-order <providers...>', 'Round-robin provider order list or csv values')
   .option('--spec-files <files...>', 'Spec file list or csv values')
+  .option('--reference-files <files...>', 'Reference file list or csv values')
   .option('--validation-commands <commands...>', 'Validation command list or csv values')
   .option('--safety-rules <rules...>', 'Safety rule list or csv values')
   .option('--mode <mode>', 'Loop mode', 'plan-build-review')

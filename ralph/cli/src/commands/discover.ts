@@ -13,6 +13,7 @@ export async function discoverCommand(options: DiscoverCommandOptions = {}) {
     console.log(`Detected language: ${result.context.detected_language} (${result.context.language_confidence})`);
     console.log(`Providers installed: ${result.providers.installed.join(', ')}`);
     console.log(`Spec candidates: ${result.context.spec_candidates.join(', ')}`);
+    console.log(`Reference candidates: ${result.context.reference_candidates.join(', ')}`);
     return;
   }
   console.log(JSON.stringify(result, null, 2));
