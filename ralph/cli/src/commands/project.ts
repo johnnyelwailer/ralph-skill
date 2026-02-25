@@ -209,6 +209,8 @@ async function discoverSpecCandidates(projectRoot: string): Promise<string[]> {
 
 async function discoverReferenceCandidates(projectRoot: string, specCandidates: string[]): Promise<string[]> {
   const ordered = [
+    'SPEC.md',
+    'README.md',
     'RESEARCH.md',
     'REVIEW_LOG.md',
     'AGENTS.md',

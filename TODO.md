@@ -3,9 +3,6 @@
 ## Current Phase: Dashboard and runtime spec parity
 
 ### In Progress
-- [x] [review] Gate 1: `{{REFERENCE_FILES}}` is hardcoded to empty in `$skillName/cli/src/commands/project.ts:370`, which misses SPEC template-variable intent; add discovery/option plumbing for reference files and assert scaffolded prompts render them (priority: high).
-- [x] [review] Gate 2: tests in `$skillName/cli/src/commands/project.test.ts:8-51` are happy-path-only and miss failure/edge behaviors; add concrete assertions for missing template errors (`project.ts:332-333`), non-node language preset branches (`project.ts:181-194`), no-package fallback (`project.ts:162-163`), unknown provider hint fallback (`project.ts:308`), and non-git workspace detection (`project.ts:95-99`) (priority: high).
-- [ ] [review] Gate 3: branch coverage is below threshold for changed/new CLI logic (`npx c8 ...` reports `$skillName/cli/src/commands/project.ts` at 63.73% branch, below 90% new-module gate); raise coverage to >=90% for `project.ts` and add explicit tests for touched command wrappers `resolve.ts`, `discover.ts`, and `scaffold.ts` output modes (priority: high).
 
 ### Up Next
 - [ ] Extend `$skillName/cli/src/commands/dashboard.ts` with `POST /api/steer` and `POST /api/stop` handlers and explicit error responses (priority: critical; required dashboard controls per SPEC).
@@ -19,6 +16,9 @@
 - [ ] Add regression tests for new installer CLI deployment mapping and add uninstaller coverage (`-All`, `-DryRun`, `-Force`, VS Code prompt cleanup) (priority: medium; prevents contract drift).
 
 ### Completed
+- [x] [review] Gate 1: `{{REFERENCE_FILES}}` is hardcoded to empty in `$skillName/cli/src/commands/project.ts:370`, which misses SPEC template-variable intent; add discovery/option plumbing for reference files and assert scaffolded prompts render them (priority: high).
+- [x] [review] Gate 2: tests in `$skillName/cli/src/commands/project.test.ts:8-51` are happy-path-only and miss failure/edge behaviors; add concrete assertions for missing template errors (`project.ts:332-333`), non-node language preset branches (`project.ts:181-194`), no-package fallback (`project.ts:162-163`), unknown provider hint fallback (`project.ts:308`), and non-git workspace detection (`project.ts:95-99`) (priority: high).
+- [x] [review] Gate 3: branch coverage is below threshold for changed/new CLI logic (`npx c8 ...` reports `$skillName/cli/src/commands/project.ts` at 63.73% branch, below 90% new-module gate); raise coverage to >=90% for `project.ts` and add explicit tests for touched command wrappers `resolve.ts`, `discover.ts`, and `scaffold.ts` output modes (priority: high).
 - [x] Implement CLI packaging pipeline end-to-end: build dashboard frontend assets and server output into `$skillName/cli/dist`, with runtime paths that can be installed directly (priority: critical).
 - [x] Update `install.ps1` runtime mapping to copy `$skillName/cli/dist` into `~/.aloop/cli/` and include CLI/dashboard paths in the install summary (priority: critical; required before dashboard can run from installed runtime).
 - [x] Implement real `resolve`, `discover`, and `scaffold` behavior in `$skillName/cli/src/commands/*.ts` (currently placeholders) so the CLI monorepo contract is not stubbed (priority: critical; foundational runtime contract gap).
