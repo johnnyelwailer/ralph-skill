@@ -6,7 +6,7 @@
 - [x] Align steering contract to workdir across command/prompt/skill docs and spec references (replace session-dir STEERING guidance with workdir guidance). (P0)
 
 ### Up Next
-- [ ] Harden dashboard SSE/runtime behavior: add heartbeat events, guard `publishState()` failures, and make shutdown signal handling deterministic. (P0)
+- [x] Harden dashboard SSE/runtime behavior: add heartbeat events, guard `publishState()` failures, and make shutdown signal handling deterministic. (P0)
 - [ ] Implement markdown rendering in dashboard Docs view using `marked` or `react-markdown` (replace plain text `<pre>` rendering). (P1)
 - [ ] Make dashboard frontend delivery self-contained per spec (single served HTML with inlined CSS/JS) and update server asset loading accordingly. (P1)
 - [ ] Add Playwright E2E tooling for dashboard (`@playwright/test`, config with `webServer`, and `test:e2e` scripts). (P1)

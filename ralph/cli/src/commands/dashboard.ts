@@ -30,9 +30,15 @@ interface DashboardServerHandle {
   url: string;
 }
 
+interface DashboardRuntimeOptions {
+  registerSignalHandlers?: boolean;
+  heartbeatIntervalMs?: number;
+}
+
 const DOC_FILES = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
 const MAX_LOG_BYTES = 128 * 1024;
 const MAX_BODY_BYTES = 64 * 1024;
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 
 function parsePort(value: string): number {
   const port = Number.parseInt(value, 10);
@@ -198,9 +204,10 @@ function buildSteeringDocument(instruction: string, affectsCompletedWork: 'yes' 
 
 export async function startDashboardServer(
   options: DashboardOptions,
-  runtimeOptions: { registerSignalHandlers?: boolean } = {},
+  runtimeOptions: DashboardRuntimeOptions = {},
 ): Promise<DashboardServerHandle> {
   const registerSignalHandlers = runtimeOptions.registerSignalHandlers ?? true;
+  const heartbeatIntervalMs = Math.max(250, runtimeOptions.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS);
   const port = parsePort(options.port);
   const sessionDir = path.resolve(options.sessionDir ?? process.cwd());
   const workdir = path.resolve(options.workdir ?? process.cwd());
@@ -251,11 +258,27 @@ export async function startDashboardServer(
   };
 
   let publishPending = false;
+  let publishTimer: NodeJS.Timeout | null = null;
+
+  const sendToClients = (event: string, payload: string) => {
+    for (const client of clients) {
+      try {
+        sendSseEvent(client, event, payload);
+      } catch {
+        clients.delete(client);
+        client.destroy();
+      }
+    }
+  };
+
   const publishState = async () => {
     publishPending = false;
-    const statePayload = toStateEventPayload(await loadState());
-    for (const client of clients) {
-      sendSseEvent(client, 'state', statePayload);
+    publishTimer = null;
+    try {
+      const statePayload = toStateEventPayload(await loadState());
+      sendToClients('state', statePayload);
+    } catch (error) {
+      console.warn(`dashboard: failed to publish state: ${(error as Error).message}`);
     }
   };
 
@@ -264,10 +287,16 @@ export async function startDashboardServer(
       return;
     }
     publishPending = true;
-    setTimeout(() => {
+    publishTimer = setTimeout(() => {
       void publishState();
     }, 75);
   };
+
+  const heartbeatTimer = setInterval(() => {
+    const heartbeatPayload = JSON.stringify({ timestamp: new Date().toISOString() });
+    sendToClients('heartbeat', heartbeatPayload);
+  }, heartbeatIntervalMs);
+  heartbeatTimer.unref();
 
   const watchPaths = [sessionDir, workdir, runtimeDir];
   for (const target of watchPaths) {
@@ -305,7 +334,15 @@ export async function startDashboardServer(
         });
         response.write(': connected\n\n');
         clients.add(response);
-        sendSseEvent(response, 'state', toStateEventPayload(await loadState()));
+        try {
+          sendSseEvent(response, 'state', toStateEventPayload(await loadState()));
+        } catch (error) {
+          sendSseEvent(
+            response,
+            'error',
+            JSON.stringify({ message: `Failed to load initial state: ${(error as Error).message}` }),
+          );
+        }
         request.on('close', () => {
           clients.delete(response);
         });
@@ -479,6 +516,16 @@ export async function startDashboardServer(
     };
 
     void handleRequest().catch((error) => {
+      if (response.headersSent) {
+        try {
+          sendSseEvent(response, 'error', JSON.stringify({ message: `Internal server error: ${(error as Error).message}` }));
+        } catch {
+          // Ignore secondary stream write failures while unwinding request errors.
+        } finally {
+          response.end();
+        }
+        return;
+      }
       writeJson(response, 500, {
         error: `Internal server error: ${(error as Error).message}`,
       });
@@ -486,31 +533,50 @@ export async function startDashboardServer(
   });
 
   let closed = false;
-  const onSignal = () => {
-    void shutdown();
+  let shutdownPromise: Promise<void> | null = null;
+
+  const onSignal = (signal: NodeJS.Signals) => {
+    void shutdown(signal);
   };
 
-  const shutdown = async () => {
-    if (closed) {
-      return;
-    }
-    closed = true;
-
-    if (registerSignalHandlers) {
-      process.off('SIGINT', onSignal);
-      process.off('SIGTERM', onSignal);
+  const shutdown = async (_reason?: string) => {
+    if (shutdownPromise) {
+      return shutdownPromise;
     }
 
-    for (const watcher of watchers.values()) {
-      watcher.close();
-    }
-    for (const client of clients) {
-      client.end();
-    }
+    shutdownPromise = (async () => {
+      if (closed) {
+        return;
+      }
+      closed = true;
 
-    await new Promise<void>((resolve) => {
-      server.close(() => resolve());
-    });
+      if (registerSignalHandlers) {
+        process.off('SIGINT', onSignal);
+        process.off('SIGTERM', onSignal);
+      }
+
+      if (publishTimer) {
+        clearTimeout(publishTimer);
+        publishTimer = null;
+      }
+      clearInterval(heartbeatTimer);
+
+      for (const watcher of watchers.values()) {
+        watcher.close();
+      }
+      watchers.clear();
+
+      for (const client of clients) {
+        client.end();
+      }
+      clients.clear();
+
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+    })();
+
+    return shutdownPromise;
   };
 
   if (registerSignalHandlers) {

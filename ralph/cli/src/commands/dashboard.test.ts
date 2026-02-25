@@ -29,7 +29,7 @@ async function reservePort(): Promise<number> {
   });
 }
 
-async function createServerFixture() {
+async function createServerFixture(runtimeOptions: { heartbeatIntervalMs?: number } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-dashboard-'));
   const sessionDir = path.join(root, 'session');
   const workdir = path.join(root, 'workdir');
@@ -45,10 +45,14 @@ async function createServerFixture() {
   const port = await reservePort();
   const handle = await startDashboardServer(
     { port: String(port), sessionDir, workdir, assetsDir, runtimeDir },
-    { registerSignalHandlers: false },
+    { registerSignalHandlers: false, ...runtimeOptions },
   );
 
   return { root, sessionDir, workdir, assetsDir, runtimeDir, handle };
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 test('GET /api/state includes active and recent sessions from runtime state files', async () => {
@@ -324,6 +328,69 @@ test('Unknown API endpoints return 404', async () => {
     const response = await fetch(`${fixture.handle.url}/api/unknown`);
     assert.equal(response.status, 404);
   } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('SSE stream includes heartbeat events', async () => {
+  const fixture = await createServerFixture({ heartbeatIntervalMs: 250 });
+
+  try {
+    const response = await fetch(`${fixture.handle.url}/events`);
+    assert.equal(response.status, 200);
+    assert.ok(response.body);
+
+    const reader = response.body.getReader();
+    const timeoutAt = Date.now() + 3000;
+    let raw = '';
+
+    while (Date.now() < timeoutAt && !raw.includes('event: heartbeat')) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      raw += Buffer.from(value).toString('utf8');
+    }
+
+    await reader.cancel();
+    assert.match(raw, /event: heartbeat/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('watch-triggered publish failures are guarded and do not crash the server', async (t) => {
+  const fixture = await createServerFixture();
+  const originalStringify = JSON.stringify;
+
+  const stringifyMock = t.mock.method(JSON, 'stringify', (...args: Parameters<typeof JSON.stringify>) => {
+    const [value] = args;
+    if (value && typeof value === 'object' && 'updatedAt' in (value as Record<string, unknown>)) {
+      throw new Error('simulated publish failure');
+    }
+    return originalStringify(...args);
+  });
+
+  let unhandledRejection = false;
+  const onUnhandledRejection = () => {
+    unhandledRejection = true;
+  };
+  process.once('unhandledRejection', onUnhandledRejection);
+
+  try {
+    const response = await fetch(`${fixture.handle.url}/events`);
+    assert.equal(response.status, 200);
+
+    await writeFile(path.join(fixture.workdir, 'TODO.md'), '# changed', 'utf8');
+    await sleep(250);
+
+    stringifyMock.mock.restore();
+
+    const health = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(health.status, 200);
+    assert.equal(unhandledRejection, false);
+  } finally {
+    process.removeListener('unhandledRejection', onUnhandledRejection);
     await fixture.handle.close();
   }
 });
