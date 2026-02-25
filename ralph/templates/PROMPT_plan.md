@@ -24,7 +24,8 @@ Study specifications and existing code, then generate or update a prioritized im
 
 2. **Record new research in RESEARCH.md**
    - **Append** any new findings, lookups, or discoveries made during this planning iteration
-   - Each entry must have a timestamp, brief summary, and **source tier** (see Source Trustworthiness below)
+   - Each entry must have a timestamp, brief summary, **source tier**, and **explicit source citation** (URL, file path + line, or command run) — see format below
+   - A finding with no cited source is not acceptable — if you cannot cite it, do not record it as fact
    - If something was already covered in RESEARCH.md, skip it — do not add duplicate entries
    - Do NOT rewrite or delete existing entries — the file is **append-only**
 
@@ -69,19 +70,23 @@ Append a new entry for each planning iteration. Do NOT overwrite previous entrie
 
 ## 2026-02-25 14:32 — Gap analysis: auth module [T1+T2]
 
-- `src/auth/token.ts` exists but `refreshToken()` is a stub (returns null, no HTTP call) — confirmed by reading source
-- Spec §4.2 requires silent token refresh — not implemented (T3 spec, T2 code inspection)
+- `src/auth/token.ts` exists but `refreshToken()` is a stub (returns null, no HTTP call)
+  - Source: `src/auth/token.ts:42` (T2 — direct code inspection)
+- Spec §4.2 requires silent token refresh — not implemented
+  - Source: `SPEC.md §4.2` (T3)
 - `tests/auth.test.ts` has no tests for the refresh path
+  - Source: `tests/auth.test.ts` (T2 — direct inspection)
 
 ## 2026-02-25 16:10 — Investigated: adapter duplication [T2]
 
-- `src/adapters/openai.ts` and `src/adapters/azure.ts` share identical `buildHeaders()` logic (lines 34–41 and 29–36)
+- `src/adapters/openai.ts` and `src/adapters/azure.ts` share identical `buildHeaders()` logic
+  - Source: `src/adapters/openai.ts:34–41`, `src/adapters/azure.ts:29–36` (T2 — direct inspection)
 - No shared utility exists yet — flagged for extraction
-- Source: direct code inspection (T2). No official guidance on extraction pattern needed.
 
 ## 2026-03-18 09:05 — Stale recheck: adapter duplication (originally 2026-02-25) [T2]
 
 - Still holds. Both files still contain the same `buildHeaders()` block. Not yet extracted.
+  - Source: `src/adapters/openai.ts:34–41`, `src/adapters/azure.ts:29–36` (T2 — re-inspected)
 ```
 
 ## TODO.md Format
@@ -108,6 +113,7 @@ Append a new entry for each planning iteration. Do NOT overwrite previous entrie
 - **RESEARCH.md is append-only.** Never delete or modify previous entries.
 - **Check RESEARCH.md before researching.** If something is already recorded (and not stale), skip it.
 - **Tag source tiers.** Every research entry must note its tier (T1–T5). Low-tier findings (T4/T5) should be flagged for future T1/T2 verification.
+- **Always cite the source.** Every finding must reference the exact source: a URL, a file path with line number, or the exact command run and its output. A finding without a citation is not acceptable — if you cannot cite it, do not record it as fact.
 - **Prefer T1+T2 combinations.** Don't commit a finding to RESEARCH.md on T4/T5 alone without noting the uncertainty.
 - Each task should be small enough to complete in a single loop iteration.
 - Tasks should be ordered by dependency: foundational work first.
