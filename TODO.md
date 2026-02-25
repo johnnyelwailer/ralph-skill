@@ -3,7 +3,8 @@
 ## Current Phase: Spec parity hardening
 
 ### In Progress
-- [ ] None.
+- [ ] [review] Gate 2: `ralph/cli/src/commands/dashboard.test.ts:164` ("POST /api/steer rejects oversized request bodies") currently passes when `fetch` throws (`assert.match(..., /fetch failed/i)` at line 183), which can hide server crashes; rewrite to require deterministic API behavior (explicit `400` + `"Request body too large"` payload) and fail on transport errors. (priority: high)
+- [ ] [review] Gate 3: branch-coverage evidence still fails thresholds — `coverage/coverage-summary.json:1-2` reports only `project.ts` with `branches.pct = 63.73` and no >=80% per touched implementation module; generate/update branch coverage for this iteration and raise all touched implementation files to >=80% branches (>=90% for any new modules), adding tests for each uncovered branch. (priority: high)
 
 ### Up Next
 - [ ] Update prerequisite docs to Node.js 22.x (latest LTS) and add version-manager-first guidance (`nvm-windows`/`fnm` on Windows; `nvm`/`fnm` on macOS/Linux) including `nvm install --lts && nvm use --lts`. (P0)
