@@ -571,7 +571,7 @@ function Write-ProjectConfigAndPrompts {
     $safetyBlock = ($safety | ForEach-Object { "- $_" }) -join [Environment]::NewLine
     $providerHints = Resolve-ProviderHints -SelectedProvider $SelectedProvider
 
-    foreach ($name in @('plan', 'build', 'review')) {
+    foreach ($name in @('plan', 'build', 'review', 'steer')) {
         $templatePath = Join-Path $templatesDir ("PROMPT_{0}.md" -f $name)
         $destinationPath = Join-Path $promptsDir ("PROMPT_{0}.md" -f $name)
         if (-not (Test-Path $templatePath)) {
