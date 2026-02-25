@@ -161,7 +161,7 @@ Self-contained Node.js HTTP server for real-time monitoring of running sessions.
 
 ### Dashboard E2E Coverage (Playwright)
 - Runs in headless Chromium by default against the live dashboard app.
-- Includes scenarios for: initial render (title + three-column layout), SSE connection/state update, active session list/status indicators, Progress timeline/phase badges, Docs tab markdown rendering, Log streaming/autoscroll, Steer submit creating `STEERING.md` in session dir, Stop confirm + `POST /api/stop`, SSE reconnection/refresh, and navigation view switching.
+- Includes scenarios for: initial render (title + three-column layout), SSE connection/state update, active session list/status indicators, Progress timeline/phase badges, Docs tab markdown rendering, Log streaming/autoscroll, Steer submit creating `STEERING.md` in work dir, Stop confirm + `POST /api/stop`, SSE reconnection/refresh, and navigation view switching.
 - Uses a fixture session directory with pre-populated `status.json`, `log.jsonl`, `active.json`, and `TODO.md`; tests may read/write fixture files to verify side effects.
 - Repository ignore list includes Playwright artifacts: `playwright-report/` and `test-results/`.
 

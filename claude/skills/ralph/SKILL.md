@@ -45,7 +45,7 @@ Each cycle runs 5 iterations: one plan, three builds, one review. This ratio giv
 
 **Stuck Detection**: When Aloop fails on the same task N times in a row, the task is automatically marked as blocked and skipped so the loop can continue making progress.
 
-**Live Steering**: While the loop runs, you can redirect it mid-flight without stopping it. Use `/$skillName:steer` to tell the host agent what to change — it interviews you, reads current loop state, and drops a structured `STEERING.md` (with commit SHA + timestamp) into the session directory. At the next iteration boundary the loop detects it, invokes a spec-update agent that applies the changes to specs and TODO.md, then forces a re-plan before resuming normal cycles.
+**Live Steering**: While the loop runs, you can redirect it mid-flight without stopping it. Use `/$skillName:steer` to tell the host agent what to change — it interviews you, reads current loop state, and drops a structured `STEERING.md` (with commit SHA + timestamp) into the work directory. At the next iteration boundary the loop detects it, invokes a spec-update agent that applies the changes to specs and TODO.md, then forces a re-plan before resuming normal cycles.
 
 **Worktree Isolation**: By default, Aloop loops run on a separate git worktree to keep your main branch clean while development progresses.
 </essential_principles>

@@ -1,6 +1,6 @@
 ---
 name: aloop-steer
-description: Send a live steering instruction to a running Aloop session. Queues STEERING.md for the next iteration boundary.
+description: Send a live steering instruction to a running Aloop session. Queues STEERING.md in the work directory for the next iteration boundary.
 agent: agent
 ---
 
@@ -40,7 +40,7 @@ From `<work-dir>`:
 
 ## Step 4: Check for queued steering
 
-Check whether `~/.aloop/sessions/<session-id>/STEERING.md` already exists.
+Check whether `<work-dir>/STEERING.md` already exists.
 
 - If it exists, ask whether to:
   - Overwrite
@@ -57,7 +57,7 @@ Ask:
 
 ## Step 6: Write STEERING.md
 
-Create or update `~/.aloop/sessions/<session-id>/STEERING.md`:
+Create or update `<work-dir>/STEERING.md`:
 
 ```markdown
 # Steering Instruction
@@ -86,5 +86,5 @@ Steering instruction queued.
 
   Session:     <session-id>
   Picks up at: start of next iteration
-  Session dir: ~/.aloop/sessions/<session-id>/
+  Work dir:    <work-dir>
 ```

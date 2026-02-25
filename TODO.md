@@ -1,27 +1,21 @@
 # Project TODO
 
-## Current Phase: Dashboard and command-surface spec alignment
+## Current Phase: Dashboard spec hardening and contract alignment
 
 ### In Progress
-- [~] [review] Gate 1: `ralph/bin/loop.ps1` dashboard lifecycle clean-shutdown gap. **Cancelled:** superseded by steering focus on adding dashboard Playwright E2E spec/test planning.
-- [~] [review] Gate 2: Missing behavioral tests for loop runtime dashboard launch paths. **Cancelled:** steering redirects this cycle to browser-level Playwright E2E coverage.
-- [~] [review] Gate 3: Branch coverage for `loop.ps1`/`loop.sh` below target. **Cancelled:** steering scope is additive dashboard E2E layer, not loop runtime branch coverage.
-- [x] Replace dashboard frontend placeholders with real state wiring: load initial `/api/state`, subscribe to `/events` via `EventSource`, and render live Sessions/Progress/Docs/Log/Steer/Stop views from server data. (P0)
+- [x] Align steering contract to workdir across command/prompt/skill docs and spec references (replace session-dir STEERING guidance with workdir guidance). (P0)
 
 ### Up Next
-- [x] Expand dashboard server state to match SPEC: include active/recent sessions from `~/.aloop/active.json`/`history.json`, not just a single session's status/log/docs. (P0)
-- [x] Integrate dashboard lifecycle into loop runtime: auto-launch dashboard from `loop.ps1` and `loop.sh`, print URL on startup, and ensure clean shutdown handling. (P0)
-- [ ] Add dashboard reliability fixes in `dashboard.ts`: SSE heartbeat, guarded `publishState()` error handling in debounce, and `process.on` signal handler behavior aligned with graceful shutdown. (P1)
-- [ ] Correct steering contract docs/prompts to match runtime/spec: all steer flows should write/read `STEERING.md` in workdir (not session dir). Update Claude and Copilot steer docs accordingly. (P1)
-- [ ] Align README and skill/command docs with canonical naming and install paths from `SPEC.md` (`skills/$skillName`, `commands/$skillName`, `/ralph:*` vs `/aloop-*` split by harness). (P1)
-- [ ] Add/refresh tests for new dashboard behavior (SSE payload shape, active/history loading, frontend live updates) and steering path contract text regressions. (P1)
-- [ ] Add Playwright E2E tooling for dashboard in `ralph/cli/dashboard/` (or `ralph/cli/`): install `@playwright/test`, add `playwright.config.ts` with `webServer` startup for real `dashboard.ts`, and add `test:e2e` script. (P1)
-- [ ] Create dashboard E2E fixture session data (`status.json`, `log.jsonl`, `active.json`, `TODO.md`) and wire tests to read/write fixture files for side-effect assertions. (P1)
-- [ ] Add Playwright scenarios for dashboard load, SSE connect/update/reconnect, session list/status indicators, progress timeline badges, docs rendering, log stream autoscroll, steer submit side effect (`STEERING.md` in session dir), stop confirm + POST, and nav view switching. (P1)
-- [ ] Add Playwright artifact ignores (`playwright-report/`, `test-results/`) to `.gitignore`. (P1)
-- [ ] Remove tracked `testResults.xml` and ignore it in `.gitignore` to prevent machine-generated artifact churn. (P2)
-- [ ] Add dark theme tokens (`.dark` CSS vars) and a dashboard theme toggle to match existing Tailwind `darkMode: ['class']` config. (P3)
-- [ ] Refactor duplicated provider/model defaults in `project.ts` into shared constants to reduce drift across discovery/scaffold output. (P3)
+- [ ] Harden dashboard SSE/runtime behavior: add heartbeat events, guard `publishState()` failures, and make shutdown signal handling deterministic. (P0)
+- [ ] Implement markdown rendering in dashboard Docs view using `marked` or `react-markdown` (replace plain text `<pre>` rendering). (P1)
+- [ ] Make dashboard frontend delivery self-contained per spec (single served HTML with inlined CSS/JS) and update server asset loading accordingly. (P1)
+- [ ] Add Playwright E2E tooling for dashboard (`@playwright/test`, config with `webServer`, and `test:e2e` scripts). (P1)
+- [ ] Add fixture-backed dashboard E2E scenarios: initial layout, SSE update/reconnect, session list/status, progress badges, docs markdown rendering, log stream/autoscroll, steer side effect, stop flow, and view navigation. (P1)
+- [ ] Add targeted tests for dashboard reliability paths (heartbeat/publish failure/signal shutdown) and steering contract regressions. (P1)
+- [ ] Align README and command docs with canonical naming/install paths (`skills/$skillName`, `commands/$skillName`, `/$skillName:*` vs `/aloop-*`) plus steering path behavior. (P1)
+- [ ] Migrate dashboard workspace to Tailwind CSS 4 + current shadcn expectations from spec. (P2)
+- [ ] Consolidate duplicated provider/model default literals into shared constants used by discovery/scaffold and loop entrypoints. (P2)
+- [ ] Update repo ignores/cleanup for generated artifacts: `playwright-report/`, `test-results/`, and tracked `testResults.xml`. (P2)
 
 ### Completed
 - [x] Added canonical `SPEC.md`
@@ -33,3 +27,6 @@
 - [x] Added installer tests (`install.tests.ps1`)
 - [x] Added `PROMPT_steer.md` support in setup scaffolding
 - [x] Added initial dashboard server and frontend skeleton
+- [x] Expanded dashboard state to include active/recent sessions from runtime (`active.json` and `history.json`)
+- [x] Integrated dashboard auto-launch into loop runtimes (`loop.ps1` and `loop.sh`) with URL output
+- [x] Replaced dashboard frontend placeholders with live state wiring (`/api/state` + `/events`)
