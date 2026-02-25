@@ -7,7 +7,7 @@
 
 ### Up Next
 - [x] Expand dashboard server state to match SPEC: include active/recent sessions from `~/.aloop/active.json`/`history.json`, not just a single session's status/log/docs. (P0)
-- [ ] Integrate dashboard lifecycle into loop runtime: auto-launch dashboard from `loop.ps1` and `loop.sh`, print URL on startup, and ensure clean shutdown handling. (P0)
+- [x] Integrate dashboard lifecycle into loop runtime: auto-launch dashboard from `loop.ps1` and `loop.sh`, print URL on startup, and ensure clean shutdown handling. (P0)
 - [ ] Add dashboard reliability fixes in `dashboard.ts`: SSE heartbeat, guarded `publishState()` error handling in debounce, and `process.on` signal handler behavior aligned with graceful shutdown. (P1)
 - [ ] Correct steering contract docs/prompts to match runtime/spec: all steer flows should write/read `STEERING.md` in workdir (not session dir). Update Claude and Copilot steer docs accordingly. (P1)
 - [ ] Align README and skill/command docs with canonical naming and install paths from `SPEC.md` (`skills/$skillName`, `commands/$skillName`, `/ralph:*` vs `/aloop-*` split by harness). (P1)

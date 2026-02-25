@@ -114,6 +114,8 @@ STATUS_FILE="$SESSION_DIR/status.json"
 LOG_FILE="$SESSION_DIR/log.jsonl"
 REPORT_FILE="$SESSION_DIR/report.md"
 START_TIME=$(date +%s)
+DASHBOARD_PID=""
+DASHBOARD_URL=""
 
 # Parse round-robin providers into array
 IFS=',' read -ra RR_PROVIDERS <<< "$ROUND_ROBIN_PROVIDERS"
@@ -186,6 +188,52 @@ write_log_entry() {
         shift 2
     done
     echo "{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"event\":\"$event\"${data:+,$data}}" >> "$LOG_FILE"
+}
+
+find_dashboard_port() {
+    if ! command -v node >/dev/null 2>&1; then
+        return 1
+    fi
+    node -e "const net=require('net');const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const a=s.address();console.log(a&&typeof a==='object'?a.port:'');s.close();});s.on('error',()=>process.exit(1));"
+}
+
+start_dashboard() {
+    local runtime_dir="${ALOOP_RUNTIME_DIR:-$HOME/.aloop}"
+    local cli_entry="$runtime_dir/cli/dist/index.js"
+    if [ ! -f "$cli_entry" ]; then
+        echo "Warning: Dashboard CLI not found at $cli_entry. Continuing without dashboard."
+        return
+    fi
+
+    local dashboard_port
+    dashboard_port=$(find_dashboard_port 2>/dev/null || true)
+    if [ -z "$dashboard_port" ]; then
+        echo "Warning: Unable to reserve dashboard port. Continuing without dashboard."
+        return
+    fi
+
+    node "$cli_entry" dashboard --port "$dashboard_port" --session-dir "$SESSION_DIR" --workdir "$WORK_DIR" >> "$SESSION_DIR/dashboard.stdout.log" 2>> "$SESSION_DIR/dashboard.stderr.log" &
+    DASHBOARD_PID=$!
+    sleep 1
+    if ! kill -0 "$DASHBOARD_PID" 2>/dev/null; then
+        echo "Warning: Dashboard exited early. Check $SESSION_DIR/dashboard.stderr.log"
+        DASHBOARD_PID=""
+        return
+    fi
+
+    DASHBOARD_URL="http://127.0.0.1:$dashboard_port"
+    echo "Dashboard URL: $DASHBOARD_URL"
+}
+
+stop_dashboard() {
+    if [ -z "$DASHBOARD_PID" ]; then
+        return
+    fi
+    if kill -0 "$DASHBOARD_PID" 2>/dev/null; then
+        kill "$DASHBOARD_PID" 2>/dev/null || true
+        wait "$DASHBOARD_PID" 2>/dev/null || true
+    fi
+    DASHBOARD_PID=""
 }
 
 # ============================================================================
@@ -543,6 +591,7 @@ fi
 
 # Setup remote backup
 setup_remote_backup || true
+start_dashboard
 
 # Initialize session
 write_log_entry "session_start" "mode" "$MODE" "provider" "$PROVIDER" "work_dir" "$WORK_DIR"
@@ -555,6 +604,7 @@ echo ""
 # Cleanup on exit
 cleanup() {
     local reason="${1:-interrupted}"
+    stop_dashboard
     echo ""
     write_status "$ITERATION" "$(resolve_iteration_mode $ITERATION)" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "$reason"
     write_log_entry "$reason" "iteration" "$ITERATION"
@@ -602,6 +652,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         if check_all_tasks_complete; then
             echo ""
             echo "ALL TASKS COMPLETE"
+            stop_dashboard
             write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
             write_log_entry "all_tasks_complete" "iteration" "$ITERATION"
             generate_report "All tasks completed successfully."
@@ -667,6 +718,7 @@ echo "Reached iteration limit ($MAX_ITERATIONS)"
 write_status "$ITERATION" "$(resolve_iteration_mode $ITERATION)" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "limit_reached"
 write_log_entry "limit_reached" "iteration" "$ITERATION" "limit" "$MAX_ITERATIONS"
 generate_report "Reached iteration limit ($MAX_ITERATIONS)."
+stop_dashboard
 
 echo ""
 echo "=== Aloop Loop Complete ($ITERATION iterations) ==="

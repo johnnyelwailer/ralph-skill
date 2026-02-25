@@ -318,6 +318,65 @@ $statusFile = Join-Path $SessionDir "status.json"
 $logFile = Join-Path $SessionDir "log.jsonl"
 $reportFile = Join-Path $SessionDir "report.md"
 $startTime = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
+$dashboardProcess = $null
+$dashboardUrl = $null
+
+function Get-AvailableDashboardPort {
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    try {
+        $listener.Start()
+        return ($listener.LocalEndpoint).Port
+    } finally {
+        $listener.Stop()
+    }
+}
+
+function Start-DashboardProcess {
+    $runtimeDir = if ($env:ALOOP_RUNTIME_DIR) { $env:ALOOP_RUNTIME_DIR } else { Join-Path $HOME '.aloop' }
+    $cliEntrypoint = Join-Path $runtimeDir 'cli\dist\index.js'
+    if (-not (Test-Path $cliEntrypoint)) {
+        Write-Warning "Dashboard CLI not found at $cliEntrypoint. Continuing without dashboard."
+        return
+    }
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+        Write-Warning "node is not available on PATH. Continuing without dashboard."
+        return
+    }
+
+    try {
+        $dashboardPort = Get-AvailableDashboardPort
+    } catch {
+        Write-Warning "Failed to reserve dashboard port: $_"
+        return
+    }
+
+    $stdoutLog = Join-Path $SessionDir 'dashboard.stdout.log'
+    $stderrLog = Join-Path $SessionDir 'dashboard.stderr.log'
+    $dashboardProcess = Start-Process -FilePath 'node' -ArgumentList @($cliEntrypoint, 'dashboard', '--port', "$dashboardPort", '--session-dir', $SessionDir, '--workdir', $WorkDir) -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+    Start-Sleep -Seconds 1
+    if ($dashboardProcess.HasExited) {
+        Write-Warning "Dashboard exited early. Check $stderrLog for details."
+        $dashboardProcess = $null
+        return
+    }
+
+    $dashboardUrl = "http://127.0.0.1:$dashboardPort"
+    Write-Host "Dashboard URL: $dashboardUrl" -ForegroundColor Cyan
+}
+
+function Stop-DashboardProcess {
+    if ($null -eq $dashboardProcess) { return }
+    try {
+        if (-not $dashboardProcess.HasExited) {
+            Stop-Process -Id $dashboardProcess.Id -ErrorAction Stop
+            try { $dashboardProcess.WaitForExit(5000) | Out-Null } catch { }
+        }
+    } catch {
+        Write-Warning "Failed to stop dashboard process $($dashboardProcess.Id): $_"
+    } finally {
+        $dashboardProcess = $null
+    }
+}
 
 function Write-Status {
     param(
@@ -631,6 +690,7 @@ if (-not $DryRun) {
 # Setup remote backup
 $backupResult = Setup-RemoteBackup
 if (-not $backupResult) { $BackupEnabled = $false }
+Start-DashboardProcess
 
 # Initialize session
 Write-LogEntry -Event "session_start" -Data @{
@@ -689,6 +749,7 @@ try {
         if ($iterationMode -eq 'build') {
             if (Check-AllTasksComplete) {
                 Write-Host "`nALL TASKS COMPLETE" -ForegroundColor Green
+                Stop-DashboardProcess
                 Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
                 Write-LogEntry -Event "all_tasks_complete" -Data @{ iteration = $iteration }
                 Generate-Report -ExitReason "All tasks completed successfully." -Iteration $iteration
@@ -766,6 +827,7 @@ try {
         Start-Sleep -Seconds 3
     }
 } finally {
+    Stop-DashboardProcess
     if ($cancelled) {
         Write-Host "`nInterrupted" -ForegroundColor Yellow
         Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'interrupted'
