@@ -1,6 +1,6 @@
 # Ralph — Autonomous AI Coding Loop
 
-Ralph is Geoffrey Huntley's autonomous AI coding methodology, packaged as an installable skill for Claude Code, Codex CLI, and GitHub Copilot (VS Code). It runs plan-build-review loops with multi-provider support, backpressure validation, and stuck detection.
+Ralph is Geoffrey Huntley's autonomous AI coding methodology, packaged as an installable skill for Claude Code, Codex CLI, GitHub Copilot, and Gemini CLI. It runs plan-build-review loops with multi-provider support, backpressure validation, and stuck detection.
 
 ## What is Ralph?
 
@@ -10,18 +10,70 @@ Ralph is an iterative coding loop: feed a prompt to an AI coding agent, the agen
 2. **Build** — Picks one task, implements, validates, commits
 3. **Review** — Audits the last build against 5 quality gates
 
+## Prerequisites
+
+| Requirement | Minimum | Notes |
+|-------------|---------|-------|
+| **PowerShell** | 7.x (`pwsh`) | Required to run `install.ps1` and `loop.ps1`. Install: `winget install Microsoft.PowerShell` or https://aka.ms/pscore6 |
+| **Git** | any recent | Must be on `$PATH`. Required for commits, branches, and worktree isolation. |
+| **Node.js + npm** | 18 LTS | Required only to install provider CLIs via `npm install -g`. Install: `winget install OpenJS.NodeJS.LTS` or https://nodejs.org |
+| **At least one provider CLI** | — | `claude`, `codex`, `gemini`, or `copilot` — see [Provider CLIs](#provider-clis) below |
+
+### Provider CLIs
+
+The installer detects which CLIs are present and offers to install missing ones automatically.
+
+| Provider | CLI binary | Install | Auth |
+|----------|-----------|---------|------|
+| **Claude Code** | `claude` | `npm install -g @anthropic-ai/claude-code` | `claude auth` or `$env:ANTHROPIC_API_KEY` |
+| **OpenAI Codex** | `codex` | `npm install -g @openai/codex` | `codex auth` or `$env:OPENAI_API_KEY` |
+| **Gemini CLI** | `gemini` | `npm install -g @google/gemini-cli` | `gemini auth` (free browser OAuth) or `$env:GEMINI_API_KEY` |
+| **GitHub Copilot** | `copilot` | See note below | `gh auth login` (requires active Copilot subscription) |
+
+> **Copilot CLI install note:** The recommended approach is the `gh` CLI extension — the standalone `@githubnext/github-copilot-cli` npm package is legacy.
+> ```powershell
+> winget install GitHub.cli   # or https://cli.github.com
+> gh auth login
+> gh extension install github/gh-copilot
+> ```
+
+### Persisting API keys
+
+Add keys to your PowerShell profile so they survive reboots:
+
+```powershell
+code $PROFILE   # open profile in VS Code, then add:
+```
+```powershell
+$env:ANTHROPIC_API_KEY = 'sk-ant-...'
+$env:OPENAI_API_KEY    = 'sk-...'
+$env:GEMINI_API_KEY    = 'AIza...'
+```
+
+## Platform Support
+
+| Component | Windows | macOS | Linux |
+|-----------|:-------:|:-----:|:-----:|
+| `install.ps1` | ✅ | ✅ (requires `pwsh`) | ✅ (requires `pwsh`) |
+| `loop.ps1` | ✅ | ✅ (requires `pwsh`) | ✅ (requires `pwsh`) |
+| `loop.sh` | ❌ | ✅ | ✅ |
+| `winget install` hints in installer | ✅ | ❌ | ❌ |
+| All four provider CLIs | ✅ | ✅ | ✅ |
+
+> **macOS/Linux:** Use `loop.sh` (bash), or install `pwsh` and use `loop.ps1`. Path separators in `install.ps1` are handled cross-platform by PowerShell's `Join-Path`.
+
 ## Multi-Provider Support
 
 Ralph works with any of these AI coding agents — mix and match, or let them take turns:
 
-| Provider | CLI | Autonomous Flag | Commands |
-|----------|-----|-----------------|----------|
+| Provider | CLI | Autonomous flag | Slash commands |
+|----------|-----|-----------------|----------------|
 | Claude Code | `claude` | `--dangerously-skip-permissions --print` | `/ralph:setup`, `/ralph:start`, etc. |
 | Codex CLI | `codex` | `--dangerously-bypass-approvals-and-sandbox` | `/ralph:setup`, `/ralph:start`, etc. |
-| GH Copilot (VS Code) | `copilot` | `--yolo` | skill only (no slash commands) |
-| Gemini | `gemini` | `--yolo` | — |
+| GitHub Copilot | `copilot` | `--yolo` | skill only (no slash commands) |
+| Gemini CLI | `gemini` | `--yolo` | — |
 
-**Round-robin mode** cycles through providers each iteration for diversity — e.g. Claude plans, Codex builds, Gemini reviews.
+**Round-robin mode** cycles through providers each iteration — e.g. Claude plans, Codex builds, Gemini reviews.
 
 ```powershell
 # Single provider
@@ -34,38 +86,53 @@ Ralph works with any of these AI coding agents — mix and match, or let them ta
 .\loop.ps1 -Provider codex -CodexModel gpt-5.3-codex
 ```
 
+> **Gemini note:** The `-m <model>` flag is version-dependent. The loop automatically retries without the flag if the specified model is rejected.
+>
+> **Copilot note:** The loop uses a retry chain: preferred model → fallback model → no explicit model flag. Auth errors are detected from output text and surface as hard failures.
+
 ## Installation
 
 ```powershell
-# Interactive — choose which harnesses to install into
+# Interactive — detects missing CLIs, then choose which harnesses to install
 ./install.ps1
 
-# Install all harnesses at once
+# Install everything without prompting (also auto-installs any missing CLIs via npm)
 ./install.ps1 -All
 
-# Pre-select specific harnesses
+# Pre-select specific harnesses (still checks for missing CLIs interactively)
 ./install.ps1 -Harnesses claude,codex
 
 # Force overwrite existing files
 ./install.ps1 -Force
 
-# Preview what would be installed
+# Skip CLI detection/install entirely (useful for CI)
+./install.ps1 -SkipCliCheck
+
+# Preview what would be installed (no changes made)
 ./install.ps1 -DryRun
 ```
+
+### What the installer does
+
+1. **Detects provider CLIs** — shows `[OK]` / `[MISSING]` for `claude`, `codex`, `gemini`, `copilot`
+2. **Offers to install missing CLIs** via `npm install -g <package>` (skipped if npm is absent; all installed automatically with `-All`)
+3. **Installs skill files** into the selected harness directories
+4. **Installs the Ralph runtime** (`~/.ralph/` — config, loop scripts, templates)
+5. **Prints auth instructions** for every provider at the end, with `[installed]`/`[not found]` badges
 
 ### What gets installed where
 
 | Harness | Skill | Commands / Prompts |
 |---------|-------|--------------------|
-| Claude Code | `~/.claude/skills/ralph/` | `~/.claude/commands/ralph/` (4 slash commands) |
-| Codex CLI | `~/.codex/skills/ralph/` | `~/.codex/commands/ralph/` (4 slash commands) |
+| Claude Code | `~/.claude/skills/ralph/` | `~/.claude/commands/ralph/` (5 slash commands) |
+| Codex CLI | `~/.codex/skills/ralph/` | `~/.codex/commands/ralph/` (5 slash commands) |
 | GH Copilot (VS Code) | `~/.copilot/skills/ralph/` | `%APPDATA%\Code\User\prompts\` (4 `.prompt.md`) |
 | GH Copilot (VS Code Insiders) | `~/.copilot/skills/ralph/` | `%APPDATA%\Code - Insiders\User\prompts\` (4 `.prompt.md`) |
 | Agents (generic) | `~/.agents/skills/ralph/` | — |
 
 VS Code prompt files are installed automatically for any VS Code variant that is present — independently of which harness you select in the interactive menu.
 
-The Ralph runtime (loop scripts, config, templates) always goes to `~/.ralph/`.
+The Ralph runtime always goes to `~/.ralph/` regardless of harness selection.
 
 ## Usage
 
@@ -118,8 +185,8 @@ The skill (`~/.copilot/skills/ralph/`) is also loaded automatically by Copilot b
 ~/.ralph/
   config.yml                   # Global defaults (providers, models)
   bin/
-    loop.ps1                   # PowerShell loop (Windows)
-    loop.sh                    # Bash loop (macOS/Linux)
+    loop.ps1                   # PowerShell loop (Windows / macOS / Linux)
+    loop.sh                    # Bash loop (macOS / Linux)
   templates/
     PROMPT_plan.md             # Plan template with {{variables}}
     PROMPT_build.md            # Build template
@@ -136,7 +203,8 @@ The skill (`~/.copilot/skills/ralph/`) is also loaded automatically by Copilot b
 
 - **Multi-provider**: Claude, Codex, Gemini, Copilot — single provider or round-robin
 - **Multi-harness install**: One installer, choose Claude Code / Codex / Copilot / Agents
-- **Plan-build-review cycle**: Three distinct mindsets per iteration
+- **Auto-installs CLIs**: Detects missing providers at install time and installs via npm
+- **Plan-build-review cycle**: Three distinct mindsets per iteration (plan → build × 3 → review)
 - **Backpressure**: Tests/types/lints gate every commit
 - **Stuck detection**: Auto-skip tasks after N consecutive failures
 - **Live steering**: Send mid-flight direction changes via `/ralph:steer` — loop picks up `STEERING.md` at the next iteration boundary, invokes a spec-update agent, force-replans, then resumes
