@@ -152,3 +152,159 @@ test('POST /api/stop signals pid from meta.json and updates status.json', async 
     await fixture.handle.close();
   }
 });
+
+test('POST /api/steer supports overwrite: true', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    await writeFile(path.join(fixture.workdir, 'STEERING.md'), 'existing', 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/api/steer`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ instruction: 'New instruction', overwrite: true }),
+    });
+
+    assert.equal(response.status, 201);
+    const content = await readFile(path.join(fixture.workdir, 'STEERING.md'), 'utf8');
+    assert.match(content, /New instruction/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('POST /api/stop supports force: true', async () => {
+  const fixture = await createServerFixture();
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+
+  try {
+    await writeFile(path.join(fixture.sessionDir, 'meta.json'), JSON.stringify({ pid: child.pid }), 'utf8');
+    const response = await fetch(`${fixture.handle.url}/api/stop`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ force: true }),
+    });
+
+    assert.equal(response.status, 202);
+    const payload = (await response.json()) as { signal: string };
+    assert.equal(payload.signal, 'SIGKILL');
+  } finally {
+    if (child.exitCode === null) {
+      child.kill('SIGKILL');
+    }
+    await fixture.handle.close();
+  }
+});
+
+test('POST /api/stop handles ESRCH and EPERM errors', async (t) => {
+  const fixture = await createServerFixture();
+
+  // Test ESRCH
+  const killMock = t.mock.method(process, 'kill', () => {
+    const err = new Error('not running') as NodeJS.ErrnoException;
+    err.code = 'ESRCH';
+    throw err;
+  });
+
+  try {
+    await writeFile(path.join(fixture.sessionDir, 'meta.json'), JSON.stringify({ pid: 12345 }), 'utf8');
+    const response = await fetch(`${fixture.handle.url}/api/stop`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(response.status, 409);
+    assert.match(((await response.json()) as { error: string }).error, /not running/);
+
+    // Test EPERM
+    killMock.mock.mockImplementation(() => {
+      const err = new Error('denied') as NodeJS.ErrnoException;
+      err.code = 'EPERM';
+      throw err;
+    });
+
+    const response2 = await fetch(`${fixture.handle.url}/api/stop`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(response2.status, 403);
+    assert.match(((await response2.json()) as { error: string }).error, /Permission denied/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('resolveDefaultAssetsDir fallback logic', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-assets-fallback-'));
+  const sessionDir = path.join(root, 'session');
+  const workdir = path.join(root, 'workdir');
+  await mkdir(sessionDir, { recursive: true });
+  await mkdir(workdir, { recursive: true });
+
+  const port = await reservePort();
+  const handle = await startDashboardServer(
+    { port: String(port), sessionDir, workdir },
+    { registerSignalHandlers: false },
+  );
+
+  try {
+    const response = await fetch(`${handle.url}/`);
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.match(text, /Dashboard assets not found/);
+  } finally {
+    await handle.close();
+  }
+});
+
+test('POST /api/stop refuses to stop dashboard itself', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    await writeFile(path.join(fixture.sessionDir, 'meta.json'), JSON.stringify({ pid: process.pid }), 'utf8');
+    const response = await fetch(`${fixture.handle.url}/api/stop`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    assert.equal(response.status, 409);
+    assert.match(((await response.json()) as { error: string }).error, /Refusing to stop dashboard/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('POST /api/steer validates affects_completed_work and overwrite types', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const invalidAffectsResponse = await fetch(`${fixture.handle.url}/api/steer`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ instruction: 'test', affects_completed_work: 'maybe' }),
+    });
+    assert.equal(invalidAffectsResponse.status, 400);
+
+    const invalidOverwriteResponse = await fetch(`${fixture.handle.url}/api/steer`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ instruction: 'test', overwrite: 'yes' }),
+    });
+    assert.equal(invalidOverwriteResponse.status, 400);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('Unknown API endpoints return 404', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const response = await fetch(`${fixture.handle.url}/api/unknown`);
+    assert.equal(response.status, 404);
+  } finally {
+    await fixture.handle.close();
+  }
+});
