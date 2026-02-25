@@ -197,6 +197,11 @@ The skill (`~/.copilot/skills/ralph/`) is also loaded automatically by Copilot b
     prompts/                   # Generated project-specific prompts
   sessions/<id>/               # Per-session state
     meta.json, status.json, log.jsonl, report.md
+
+<project work-dir>/           # Lives in the project (or worktree)
+  TODO.md                     # Task plan (volatile — regenerated each plan cycle)
+  RESEARCH.md                 # Planner research log (append-only, never deleted)
+  REVIEW_LOG.md               # Reviewer findings log (append-only, never deleted)
 ```
 
 ## Key Features
@@ -208,6 +213,7 @@ The skill (`~/.copilot/skills/ralph/`) is also loaded automatically by Copilot b
 - **Backpressure**: Tests/types/lints gate every commit
 - **Stuck detection**: Auto-skip tasks after N consecutive failures
 - **Live steering**: Send mid-flight direction changes via `/ralph:steer` — loop picks up `STEERING.md` at the next iteration boundary, invokes a spec-update agent, force-replans, then resumes
+- **Persistent research log**: Planner appends timestamped findings to `RESEARCH.md` (append-only) — survives TODO regenerations, prevents re-researching already-investigated topics across runs
 - **Review log**: Persistent `REVIEW_LOG.md` tracks every review verdict and resolved findings across iterations
 - **Worktree isolation**: Loops run on separate git branches
 - **Session tracking**: Status, logs, and reports per session
