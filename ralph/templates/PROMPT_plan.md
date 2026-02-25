@@ -10,7 +10,9 @@ Study specifications and existing code, then generate or update a prioritized im
 
 0a. Study specification files: {{SPEC_FILES}}
 0b. Study @TODO.md (if it exists) to see the current plan
-0c. Read `RESEARCH.md` (if it exists) — this is your **persistent research log**. Check what has already been investigated before doing any new research. Do not re-investigate things already recorded there.
+0c. Read `RESEARCH.md` (if it exists) — this is your **persistent research log**. Check what has already been investigated before doing any new research.
+   - Entries **less than 30 days old**: treat as current — do not re-investigate.
+   - Entries **30 days or older**: treat as potentially stale. Quickly recheck (e.g. version numbers, API shape, file locations) and append a follow-up entry noting whether it still holds or what changed. Do not delete the original entry.
 0d. Study the project structure to understand what has been built
 {{REFERENCE_FILES}}
 
@@ -59,6 +61,10 @@ Append a new entry for each planning iteration. Do NOT overwrite previous entrie
 
 - `src/adapters/openai.ts` and `src/adapters/azure.ts` share identical `buildHeaders()` logic (lines 34–41 and 29–36)
 - No shared utility exists yet — flagged for extraction
+
+## 2026-03-18 09:05 — Stale recheck: adapter duplication (originally 2026-02-25)
+
+- Still holds. Both files still contain the same `buildHeaders()` block. Not yet extracted.
 ```
 
 ## TODO.md Format
