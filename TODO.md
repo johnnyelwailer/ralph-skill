@@ -6,7 +6,7 @@
 - [x] Fix runtime install path mismatch: ensure installer output contains `~/.aloop/cli/dist/index.js` so loop launchers (`loop.ps1` / `loop.sh`) can reliably start the dashboard CLI. (P0)
 
 ### Up Next
-- [ ] Add Playwright E2E foundation in `<skill>/cli/dashboard/` (`@playwright/test`, config, and `test:e2e` script using the real dashboard server via `webServer`). (P1)
+- [x] Add Playwright E2E foundation in `<skill>/cli/dashboard/` (`@playwright/test`, config, and `test:e2e` script using the real dashboard server via `webServer`). (P1)
 - [ ] Add first fixture-backed Playwright specs for the required flows: initial render, session list/status, progress view, docs markdown render, log view, steer write side effect, stop flow, nav switching, and SSE reconnect behavior. (P1)
 - [ ] Deliver dashboard frontend as a self-contained HTML response (inline JS/CSS) and update `dashboard.ts` asset serving to match spec. (P1)
 - [ ] Remove unused `"aloop-cli": "file:.."` from dashboard dependencies unless a concrete runtime/build use is added. (P1)
