@@ -117,6 +117,9 @@ All runtime state installs to `~/.aloop/`, independent of harness selection.
 - Dashboard E2E test stack uses Playwright (`@playwright/test`) in the CLI/dashboard workspace with a `test:e2e` script.
 - Build output installs under `~/.aloop/cli/` and includes `dist/index.js` (server) plus bundled dashboard HTML assets.
 - Runtime execution uses the installed bundle (`node ~/.aloop/cli/dist/index.js`).
+- Node.js baseline is latest LTS (22.x as of 2026-02-25) for development/runtime and any documented prerequisite guidance.
+- Prerequisite guidance must recommend a version manager (`nvm-windows` or `fnm` on Windows; `nvm` or `fnm` on macOS/Linux) with an LTS flow (example: `nvm install --lts && nvm use --lts`).
+- Any repository `package.json` files that declare `engines.node` must target Node.js 22 LTS (or latest LTS equivalent), not Node 18.
 - "Zero deps" applies to installed runtime output (no installed `node_modules` required on user machines); dev/build dependencies are allowed.
 
 ### Template Variables

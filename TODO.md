@@ -10,6 +10,9 @@
 ### Up Next
 - [x] Add Playwright E2E foundation in `<skill>/cli/dashboard/` (`@playwright/test`, config, and `test:e2e` script using the real dashboard server via `webServer`). (P1)
 - [x] Add first fixture-backed Playwright specs for the required flows: initial render, session list/status, progress view, docs markdown render, log view, steer write side effect, stop flow, nav switching, and SSE reconnect behavior. (P1)
+- [ ] Refresh Node prerequisite docs to latest LTS (22.x / latest LTS wording), replacing outdated Node 18 references in README and related docs. (P0)
+- [ ] Update prerequisite install guidance to recommend version managers (`nvm-windows`/`fnm` on Windows, `nvm`/`fnm` on macOS/Linux) and include `nvm install --lts && nvm use --lts` example flow. (P0)
+- [ ] Audit `package.json` files and set/add `engines.node` to Node.js 22 LTS (or latest LTS equivalent) where applicable. (P0)
 - [ ] Deliver dashboard frontend as a self-contained HTML response (inline JS/CSS) and update `dashboard.ts` asset serving to match spec. (P1)
 - [ ] Remove unused `"aloop-cli": "file:.."` from dashboard dependencies unless a concrete runtime/build use is added. (P1)
 - [ ] Add focused tests for docs markdown safety (unsafe HTML handling) and setup-discovery `{{REFERENCE_FILES}}` wiring to prevent regressions in recently changed paths. (P1)
