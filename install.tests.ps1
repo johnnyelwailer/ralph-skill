@@ -41,6 +41,9 @@ Describe 'Source-to-destination path mappings' {
         It 'runtime templates source: <skillName>/templates/' {
             Join-Path $repoRoot "$skillName/templates" | Should -Exist
         }
+        It 'runtime cli source: <skillName>/cli/dist/' {
+            Join-Path $repoRoot "$skillName/cli/dist" | Should -Exist
+        }
     }
 
     Context 'Command source contains exactly 5 command files per SPEC.md' {
@@ -106,6 +109,9 @@ Describe 'Source-to-destination path mappings' {
         It 'runtime templates source is "$skillName\templates"' {
             $scriptContent | Should -Match 'Join-Path \$scriptDir "\$skillName\\templates"'
         }
+        It 'runtime cli source is "$skillName\cli\dist"' {
+            $scriptContent | Should -Match 'Join-Path \$scriptDir "\$skillName\\cli\\dist"'
+        }
     }
 }
 
@@ -170,6 +176,9 @@ Describe 'Harness definitions' {
         It 'templates copy into $aloopDir' {
             $scriptContent | Should -Match 'Join-Path \$aloopDir "templates"'
         }
+        It 'cli copies into $aloopDir' {
+            $scriptContent | Should -Match 'Join-Path \$aloopDir "cli"'
+        }
     }
 }
 
@@ -209,6 +218,12 @@ Describe 'Post-install summary and usage text' {
             $line | Should -Not -BeNullOrEmpty
             $line | Should -Match 'Code'
             $line | Should -Match 'aloop-\*\.prompt\.md'
+        }
+
+        It 'CLI line references $aloopDir\cli\' {
+            $line = $scriptLines | Where-Object { $_ -match 'CLI:' -and $_ -match 'cli' }
+            $line | Should -Not -BeNullOrEmpty
+            $line | Should -Match '\$aloopDir\\cli\\'
         }
     }
 
@@ -317,6 +332,7 @@ Describe 'Installer behavioral branches' {
         (Join-Path $testHome '.aloop\config.yml') | Should -Exist
         (Join-Path $testHome '.aloop\bin\loop.ps1') | Should -Exist
         (Join-Path $testHome '.aloop\templates\PROMPT_plan.md') | Should -Exist
+        (Join-Path $testHome '.aloop\cli') | Should -Exist
         (Join-Path $testHome '.aloop\projects') | Should -Exist
         (Join-Path $testHome '.aloop\sessions') | Should -Exist
     }

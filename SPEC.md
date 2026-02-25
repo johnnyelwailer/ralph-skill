@@ -112,7 +112,7 @@ All runtime state installs to `~/.aloop/`, independent of harness selection.
 ### CLI Monorepo Build Contract
 
 - CLI server implementation lives in `aloop/cli/src/` TypeScript sources (`index.ts`, `commands/{resolve,discover,scaffold,dashboard}.ts`).
-- Dashboard frontend lives in `aloop/cli/dashboard/` and is built with React + Tailwind CSS + shadcn/ui components (copied source).
+- Dashboard frontend lives in `aloop/cli/dashboard/` and is built with React + Tailwind CSS 4 + shadcn/ui (LATEST) components (copied source).
 - Markdown rendering for Docs view uses `marked` (or `react-markdown`).
 - Build output installs under `~/.aloop/cli/` and includes `dist/index.js` (server) plus bundled dashboard HTML assets.
 - Runtime execution uses the installed bundle (`node ~/.aloop/cli/dist/index.js`).
