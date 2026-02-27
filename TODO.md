@@ -4,7 +4,7 @@
 
 ### In Progress
 - [x] Add concrete `discover` test assertions: recursive `.csproj` language detection, `docs/*.md` candidate inclusion, dedup, and limit behavior in `aloop/cli/aloop.mjs.test.mjs` (line 106 only checks it's an array). (P0)
-- [ ] Raise branch coverage for `aloop/cli/lib/discover.mjs` to ≥80%: add targeted tests for `.sln`/recursive `.csproj` detection, docs-directory candidate handling, and uncovered edge branches. Run with `node --test --experimental-test-coverage aloop/cli/aloop.mjs.test.mjs`. (P0)
+- [x] Raise branch coverage for `aloop/cli/lib/discover.mjs` to ≥80%: add targeted tests for `.sln`/recursive `.csproj` detection, docs-directory candidate handling, and uncovered edge branches. Run with `node --test --experimental-test-coverage aloop/cli/aloop.mjs.test.mjs`. (P0)
 
 ### Up Next
 - [ ] Remove the legacy `setup-discovery.ps1` line from `README.md` (line 197: "Legacy discovery + scaffold script (being replaced by aloop CLI)") since the file is already deleted. (P0)
