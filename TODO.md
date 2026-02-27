@@ -6,7 +6,7 @@
 - [x] Create `aloop/cli/aloop.mjs` entry point + `aloop/cli/lib/project.mjs` + `aloop/cli/lib/config.mjs` as zero-dependency native ESM (no TypeScript, no esbuild, no commander). This is the foundational blocker: prompts/commands already reference `node ~/.aloop/cli/aloop.mjs` but the runtime ships `dist/index.js`, breaking `/aloop:setup` and `/aloop:start`. (P0)
 
 ### Up Next
-- [ ] Add install-time CLI shims: `aloop.cmd` (Windows) and POSIX `aloop` shell wrapper that both invoke `~/.aloop/cli/aloop.mjs`; update `install.ps1` to create shims and update `install.tests.ps1` to verify shim existence and executability. (P0)
+- [x] Add install-time CLI shims: `aloop.cmd` (Windows) and POSIX `aloop` shell wrapper that both invoke `~/.aloop/cli/aloop.mjs`; update `install.ps1` to create shims and update `install.tests.ps1` to verify shim existence and executability. (P0)
 - [ ] Wire `aloop/cli/aloop.mjs` `discover` and `scaffold` subcommands to match the existing TypeScript logic in `aloop/cli/src/commands/discover.ts` and `scaffold.ts` — ensure JSON output schema matches `setup-discovery.ps1` output, then delete `setup-discovery.ps1`. (P1)
 - [ ] Implement `aloop status`, `aloop active`, and `aloop stop <session-id>` subcommands in `aloop/cli/aloop.mjs` (read `~/.aloop/sessions/*/status.json` + `active.json`, signal PIDs); wire into `claude/commands/aloop/status.md`, `stop.md`, and copilot prompt equivalents. (P1)
 - [ ] Implement provider health subsystem in `aloop/bin/loop.ps1`: per-provider `~/.aloop/health/<provider>.json` files, failure classification (rate_limit/timeout/auth/unknown), exponential cooldown table (2/5/15/30/60 min), file-locking with 5-retry backoff, and round-robin skip/sleep logic when all providers are unavailable. (P1)

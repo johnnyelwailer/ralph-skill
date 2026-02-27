@@ -521,9 +521,17 @@ Copy-TreeItem `
 Write-Host ""
 Write-Host "Installing CLI and dashboard..." -ForegroundColor White
 Copy-TreeItem `
+    -Source (Join-Path $scriptDir "$skillName\cli\aloop.mjs") `
+    -Destination (Join-Path $aloopDir "cli\aloop.mjs") `
+    -Label "aloop.mjs"
+Copy-TreeItem `
+    -Source (Join-Path $scriptDir "$skillName\cli\lib") `
+    -Destination (Join-Path $aloopDir "cli\lib") `
+    -Label "cli/lib"
+Copy-TreeItem `
     -Source (Join-Path $scriptDir "$skillName\cli\dist") `
     -Destination (Join-Path $aloopDir "cli\dist") `
-    -Label "cli"
+    -Label "cli/dist"
 
 # --- Create runtime directories ---
 Write-Host ""
@@ -560,6 +568,44 @@ if ($IsLinux -or $IsMacOS) {
     }
 }
 
+# --- Create CLI shims ---
+Write-Host ""
+Write-Host "Creating CLI shims..." -ForegroundColor White
+$cmdShim = Join-Path $aloopDir "bin\aloop.cmd"
+$shShim  = Join-Path $aloopDir "bin\aloop"
+
+$cmdShimContent = @'
+@echo off
+node "%~dp0..\cli\aloop.mjs" %*
+'@
+
+$shShimContent = @'
+#!/bin/sh
+exec node "$(dirname "$0")/../cli/aloop.mjs" "$@"
+'@
+
+foreach ($shim in @(
+    [PSCustomObject]@{ Path = $cmdShim; Content = $cmdShimContent; Label = "aloop.cmd (Windows)" }
+    [PSCustomObject]@{ Path = $shShim;  Content = $shShimContent;  Label = "aloop (POSIX)"       }
+)) {
+    $exists = Test-Path $shim.Path
+    if ($DryRun) {
+        $action = if ($exists) { "OVERWRITE" } else { "CREATE" }
+        Write-Host "  [DRY RUN] $action $($shim.Path)" -ForegroundColor DarkGray
+    } elseif ($exists -and -not $Force) {
+        Write-Host "  SKIP (exists): $($shim.Path)" -ForegroundColor Yellow
+    } else {
+        Set-Content -Path $shim.Path -Value $shim.Content
+        $action = if ($exists) { "Updated" } else { "Created" }
+        Write-Host "  ${action}: $($shim.Path)" -ForegroundColor Green
+    }
+}
+
+if (($IsLinux -or $IsMacOS) -and -not $DryRun -and (Test-Path $shShim)) {
+    chmod +x $shShim
+    Write-Host "  chmod +x $shShim" -ForegroundColor Green
+}
+
 # --- Summary ---
 Write-Host ""
 Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
@@ -569,8 +615,9 @@ Write-Host "  Skill:     ~/.{claude|codex|copilot|agents}/skills/$skillName/SKIL
 Write-Host "  Commands:  ~/.{claude|codex}/commands/$skillName/  (setup, start, status, stop, steer)"
 Write-Host "  Prompts:   %APPDATA%\Code{,-Insiders}\User\prompts\  (aloop-*.prompt.md)"
 Write-Host "  Config:    $aloopDir\config.yml"
-Write-Host "  CLI:       $aloopDir\cli\  (dashboard, resolve, discover, scaffold)"
-Write-Host "  Entry:     $aloopDir\cli\dist\index.js"
+Write-Host "  CLI:       $aloopDir\cli\  (aloop.mjs, lib/, dist/)"
+Write-Host "  Entry:     $aloopDir\cli\aloop.mjs"
+Write-Host "  Shims:     $aloopDir\bin\aloop.cmd  (Windows)  |  $aloopDir\bin\aloop  (POSIX)"
 Write-Host "  Scripts:   $aloopDir\bin\  (loop.ps1, loop.sh)"
 Write-Host "  Templates: $aloopDir\templates\ (PROMPT_plan.md, PROMPT_build.md, PROMPT_review.md)"
 Write-Host ""
