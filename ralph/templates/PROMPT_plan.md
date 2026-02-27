@@ -10,7 +10,7 @@ Study specifications and existing code, then generate or update a prioritized im
 
 0a. Study specification files: {{SPEC_FILES}}
 0b. Study @TODO.md (if it exists) to see the current plan
-0c. Read `RESEARCH.md` (if it exists) — this is your **persistent research log**. Check what has already been investigated before doing any new research.
+0c. Read `RESEARCH.md` (if it exists) — this is your **persistent external research log**, not an execution journal. Check what has already been investigated before doing any new research.
    - Entries **less than 30 days old**: treat as current — do not re-investigate.
    - Entries **30 days or older**: treat as potentially stale. Quickly recheck (e.g. version numbers, API shape, file locations) and append a follow-up entry noting whether it still holds or what changed. Do not delete the original entry.
 0d. Study the project structure to understand what has been built
@@ -23,8 +23,8 @@ Study specifications and existing code, then generate or update a prioritized im
    - Consider TODO comments, placeholders, and partial implementations
 
 2. **Record new research in RESEARCH.md**
-   - **Append** any new findings, lookups, or discoveries made during this planning iteration
-   - Each entry must have a timestamp, brief summary, **source tier**, and **explicit source citation** (URL, file path + line, or command run) — see format below
+   - **Append only externally verifiable research findings** (protocol/docs/web references), not internal progress notes
+   - Each entry must have a timestamp, brief summary, **source tier**, and **explicit source citation** (URL required; file path + line or command run may supplement) — see format below
    - A finding with no cited source is not acceptable — if you cannot cite it, do not record it as fact
    - If something was already covered in RESEARCH.md, skip it — do not add duplicate entries
    - Do NOT rewrite or delete existing entries — the file is **append-only**
@@ -41,7 +41,7 @@ Study specifications and existing code, then generate or update a prioritized im
 4. **Exit**
    - Do NOT implement anything
    - Do NOT create commits
-   - Just update RESEARCH.md and TODO.md, then exit
+   - Update TODO.md and only update RESEARCH.md if external research was actually performed
 
 {{PROVIDER_HINTS}}
 
@@ -111,6 +111,7 @@ Append a new entry for each planning iteration. Do NOT overwrite previous entrie
 - **DO NOT implement anything.** Only plan.
 - **DO NOT create commits.** Only update RESEARCH.md and TODO.md.
 - **RESEARCH.md is append-only.** Never delete or modify previous entries.
+- **RESEARCH.md is not a journal.** Never log execution telemetry, codebase housekeeping, loop status, or commit/progress summaries there.
 - **Check RESEARCH.md before researching.** If something is already recorded (and not stale), skip it.
 - **Tag source tiers.** Every research entry must note its tier (T1–T5). Low-tier findings (T4/T5) should be flagged for future T1/T2 verification.
 - **Always cite the source.** Every finding must reference the exact source: a URL, a file path with line number, or the exact command run and its output. A finding without a citation is not acceptable — if you cannot cite it, do not record it as fact.

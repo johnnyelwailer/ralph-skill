@@ -39,7 +39,7 @@ Each cycle runs 5 iterations: one plan, three builds, one review. This ratio giv
 
 **File I/O as State**: The plan file persists between isolated loop executions, serving as deterministic shared state — no sophisticated orchestration needed.
 
-**Persistent Research Log**: The planner appends discoveries to `RESEARCH.md` in the work directory (append-only, timestamped). Each planning iteration reads it first to avoid re-researching things already investigated. The file survives TODO.md regenerations and spec updates.
+**Persistent Research Log**: The planner appends externally verifiable, cited research discoveries to `RESEARCH.md` in the work directory (append-only, timestamped). `RESEARCH.md` is not an execution journal; progress/loop telemetry belongs outside that file. Each planning iteration reads it first to avoid re-researching things already investigated. The file survives TODO.md regenerations and spec updates.
 
 **Multi-Provider**: Ralph supports claude, codex, gemini, and copilot as providers. Round-robin mode cycles through providers each iteration for diversity.
 
