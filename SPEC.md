@@ -1,255 +1,263 @@
-# SPEC.md — Aloop Skill Repository
+# SPEC: Rename ralph → aloop + Node.js CLI
 
-Canonical specification for the Aloop skill installer, covering naming conventions, supported harnesses, command/prompt surface, and runtime layout.
+## Desired Outcome
 
-## Canonical Naming
+Rebrand the entire project from "ralph" to "aloop" (agent loop), and replace the PowerShell `setup-discovery.ps1` with a Node.js CLI (`aloop`) for developer-machine tasks. Loop scripts (`loop.ps1`/`loop.sh`) stay as-is for portable runtime execution.
 
-| Context | Value |
-|---------|-------|
-| Product / methodology | **Aloop** |
-| Installer `$skillName` variable | `ralph` (constructed as `'ra' + 'lph'` to avoid grep detection) |
-| Repo source: skill + commands | `claude/skills/ralph/`, `claude/commands/ralph/` |
-| Repo source: Copilot prompts | `copilot/prompts/` (files named `aloop-*.prompt.md`) |
-| Repo source: runtime | `ralph/` (config, bin, templates) |
-| Install: skill directories | `~/.{claude,codex,copilot,agents}/skills/ralph/` |
-| Install: command directories | `~/.{claude,codex}/commands/ralph/` |
-| Install: runtime root | `~/.aloop/` |
-| SKILL.md YAML `name:` | `aloop` |
-| Copilot prompt YAML `name:` | `aloop-{setup,start,status,stop,steer}` |
-| Slash commands (Claude/Codex) | `/ralph:setup`, `/ralph:start`, `/ralph:status`, `/ralph:stop`, `/ralph:steer` |
-| VS Code prompts (Copilot) | `/aloop-setup`, `/aloop-start`, `/aloop-status`, `/aloop-stop`, `/aloop-steer` |
+## Scope
 
-**Rule**: The string `ralph` must never appear literally in non-SPEC.md content files (`.md`, `.ps1`, `.sh`, `.yml`, `.mjs`). The installer constructs it at runtime via string concatenation. Reference files use the directory name but avoid the literal string in prose.
+### Phase 0: Rename ralph → aloop
+- Rename all directories, files, commands, prompts, config references
+- Use `git mv` to preserve file history
+- `~/.ralph/` → `~/.aloop/` in all references
+- Verify: `grep -ri "ralph"` returns 0 hits (excluding git history)
+- Verify: `install.ps1` installs to `~/.aloop/` and smoke-tests correctly
 
-## Supported Harnesses
+### Phase 1: `aloop resolve` CLI
+- Create `aloop/cli/aloop.mjs` entry point + `lib/project.mjs`, `lib/config.mjs`
+- Minimal YAML parser (hand-rolled, only handles our config format)
+- Replace duplicated runtime-root resolution in 7 prompt/command files with `aloop resolve`
+- Update `install.ps1` to install CLI shims
 
-| Id | Name | Skill | Commands | Notes |
-|----|------|:-----:|:--------:|-------|
-| `claude` | Claude Code | yes | yes (5 slash commands) | Primary harness |
-| `codex` | Codex CLI | yes | yes (5 slash commands) | Shares claude/ source files |
-| `copilot` | GH Copilot (VS Code) | yes | no (uses `.prompt.md` files) | Prompts installed to VS Code user dir |
-| `agents` | Agents (generic) | yes | no | agentskills.io standard |
+### Phase 2: Port setup-discovery → `aloop discover` + `aloop scaffold`
+- Create `lib/discover.mjs` and `lib/scaffold.mjs`
+- Match existing PS1 JSON output schema
+- Update setup prompts to call `aloop discover`/`aloop scaffold`
+- Delete `setup-discovery.ps1`
 
-### CLI Providers (independent of harness)
+### Phase 3: Convenience subcommands
+- `aloop status` — read active.json + status.json, print table
+- `aloop stop <session-id>` — kill PID, update state
+- `aloop active` — list active sessions
 
-| Provider | Binary | npm Package | Auth |
-|----------|--------|-------------|------|
-| Claude Code | `claude` | `@anthropic-ai/claude-code` | `claude auth` or `$ANTHROPIC_API_KEY` |
-| Codex CLI | `codex` | `@openai/codex` | `codex auth` or `$OPENAI_API_KEY` |
-| Gemini CLI | `gemini` | `@google/gemini-cli` | `gemini auth` or `$GEMINI_API_KEY` |
-| Copilot CLI | `copilot` | `@github/copilot` | `/login` or `$GH_TOKEN`/`$GITHUB_TOKEN` |
+## Non-Goals
+- npm publish / package.json (additive later)
+- Repo rename on GitHub (separate, GitHub handles redirects)
+- Changing loop.ps1/loop.sh internal logic (they're path-agnostic)
+- Backward compatibility with `~/.ralph/` (greenfield, no existing users)
+- Migration tooling from ralph → aloop installs
 
-## Command / Prompt Surface
+## Constraints
+- **Zero npm dependencies** — Node.js built-ins only (crypto, child_process, fs, path, os)
+- **`.mjs` extension** — native ESM without package.json
+- **No build step** — plain JS files
+- **Config stays YAML** — shell-friendly for loop.sh/loop.ps1 parsing
+- **Runtime state stays JSON** — active.json, status.json, session state
+- **`git mv` for renames** — preserve file history through the rename
+- **Clean break** — no migration from `~/.ralph/`, no backward compat shims
 
-### Claude Code + Codex CLI: 5 Slash Commands
+## Acceptance Criteria
 
-Source: `claude/commands/ralph/`
+### Phase 0
+- [ ] `grep -ri "ralph" . --include="*.md" --include="*.ps1" --include="*.sh" --include="*.yml" --include="*.mjs"` → 0 hits
+- [ ] `install.ps1` installs to `~/.aloop/` successfully
+- [ ] Commands register as `/aloop:setup`, `/aloop:start`, etc.
+- [ ] All file renames done via `git mv`
 
-| Command | File | Purpose |
-|---------|------|---------|
-| `/ralph:setup` | `setup.md` | Configure Aloop for current project (discovery + interview) |
-| `/ralph:start` | `start.md` | Launch a loop (`--plan`, `--build`, `--review`, `--provider`, `--in-place`, `--max <n>`) |
-| `/ralph:status` | `status.md` | Display running sessions and history |
-| `/ralph:stop` | `stop.md` | Stop a running loop (graceful SIGTERM, escalate SIGKILL) |
-| `/ralph:steer` | `steer.md` | Send live steering instruction (generates `STEERING.md`) |
+### Phase 1
+- [ ] `aloop resolve` outputs correct JSON for configured project
+- [ ] `aloop resolve` outputs correct JSON for project-local config
+- [ ] `aloop resolve` gives clear error for unconfigured project
+- [ ] 7 prompt/command files no longer contain duplicated resolution logic
+- [ ] `install.ps1` creates platform shims (`aloop.cmd` / `aloop` shell wrapper)
 
-### GitHub Copilot: 5 VS Code Prompt Files
+### Phase 2
+- [ ] `aloop discover --scope project` matches old PS1 JSON schema
+- [ ] `aloop discover --scope full` includes provider/model info
+- [ ] `aloop scaffold` writes config.yml + prompt templates
+- [ ] Full `/aloop:setup` → `/aloop:start` flow works end-to-end
+- [ ] `setup-discovery.ps1` is deleted
 
-Source: `copilot/prompts/`
+### Phase 3
+- [ ] `aloop status` reads and displays session state
+- [ ] `aloop stop` terminates session and updates state
+- [ ] `aloop active` lists running sessions
 
-| Prompt | File | YAML `name:` |
-|--------|------|--------------|
-| `/aloop-setup` | `aloop-setup.prompt.md` | `aloop-setup` |
-| `/aloop-start` | `aloop-start.prompt.md` | `aloop-start` |
-| `/aloop-status` | `aloop-status.prompt.md` | `aloop-status` |
-| `/aloop-stop` | `aloop-stop.prompt.md` | `aloop-stop` |
-| `/aloop-steer` | `aloop-steer.prompt.md` | `aloop-steer` |
+## Risks
 
-Install destinations:
-- VS Code stable: `%APPDATA%\Code\User\prompts\`
-- VS Code Insiders: `%APPDATA%\Code - Insiders\User\prompts\`
+| Risk | Mitigation |
+|------|------------|
+| Phase 0 blast radius (every file changes) | grep verification + install.ps1 smoke test before proceeding |
+| Minimal YAML parser edge cases | Parser only handles our controlled config format, not general YAML |
+| CLI must be installed before prompts work (Phase 1+) | Prompts can fallback to `node ~/.aloop/cli/aloop.mjs` if not on PATH |
+| Self-referential work (renaming the tool while using it) | Ralph state is in `~/.ralph/` (global), not in repo — rename is safe |
 
-### Skill (auto-loaded, all harnesses)
+## Architecture
 
-Source: `claude/skills/ralph/`
+| Layer | Runs where | Tech | Deps |
+|-------|-----------|------|------|
+| `aloop` CLI (discover, scaffold, resolve) | Developer machine | Node.js `.mjs` | Node.js |
+| Loop scripts (plan-build-review cycle) | Anywhere — containers, sandboxes, CI | `loop.ps1` / `loop.sh` | Shell + git + provider CLI |
 
-| File | Purpose |
-|------|---------|
-| `SKILL.md` | Skill metadata (`name: aloop`) + methodology overview |
-| `references/ralph-fundamentals.md` | Core concepts, phases, stuck detection |
-| `references/prompt-design.md` | Prompt principles, template design |
-| `references/validation-strategy.md` | Backpressure: tests, lints, builds |
-| `references/operational-learnings.md` | AGENTS.md guidance and evolution |
+---
 
-## Runtime Layout
+## Global Provider Health & Rate-Limit Resilience
 
-All runtime state installs to `~/.aloop/`, independent of harness selection.
+### Problem
+
+Multiple loops can run concurrently against the same providers. When a provider hits rate limits, auth expiry, or outages, every active session independently burns iterations retrying the same dead provider. There is no cross-session awareness.
+
+### Design
+
+**One health file per provider** to minimize lock contention:
 
 ```
-~/.aloop/
-  config.yml                     # Global defaults (provider, model, modes)
-  cli/
-    dist/
-      index.js                   # Bundled CLI entry (resolve/discover/scaffold/dashboard)
-  bin/
-    loop.ps1                     # PowerShell loop (Windows / macOS / Linux)
-    loop.sh                      # Bash loop (macOS / Linux)
-    setup-discovery.ps1          # Discovery + scaffold for setup command
-  templates/
-    PROMPT_plan.md               # Plan template with {{variables}}
-    PROMPT_build.md              # Build template
-    PROMPT_review.md             # Review template
-    PROMPT_steer.md              # Steering template (spec-update agent)
-  projects/<hash>/               # Per-project config (created by setup)
-    config.yml
-    prompts/                     # Substituted prompt files
-  sessions/<id>/                 # Per-session state (created by start)
-    meta.json, status.json, log.jsonl, report.md
-  active.json                    # Registry of running sessions
-  history.json                   # Completed sessions (last 100, managed by uninstaller)
+~/.aloop/health/
+  claude.json
+  codex.json
+  gemini.json
+  copilot.json
 ```
 
-### CLI Monorepo Build Contract
+Each file tracks:
 
-- CLI server implementation lives in `aloop/cli/src/` TypeScript sources (`index.ts`, `commands/{resolve,discover,scaffold,dashboard}.ts`).
-- Dashboard frontend lives in `aloop/cli/dashboard/` and is built with React + Tailwind CSS 4 + shadcn/ui (LATEST) components (copied source).
-- Markdown rendering for Docs view uses `marked` (or `react-markdown`).
-- Dashboard E2E test stack uses Playwright (`@playwright/test`) in the CLI/dashboard workspace with a `test:e2e` script.
-- Build output installs under `~/.aloop/cli/` and includes `dist/index.js` (server) plus bundled dashboard HTML assets.
-- Runtime execution uses the installed bundle (`node ~/.aloop/cli/dist/index.js`).
-- Node.js baseline is latest LTS (22.x as of 2026-02-25) for development/runtime and any documented prerequisite guidance.
-- Prerequisite guidance must recommend a version manager (`nvm-windows` or `fnm` on Windows; `nvm` or `fnm` on macOS/Linux) with an LTS flow (example: `nvm install --lts && nvm use --lts`).
-- Any repository `package.json` files that declare `engines.node` must target Node.js 22 LTS (or latest LTS equivalent), not Node 18.
-- "Zero deps" applies to installed runtime output (no installed `node_modules` required on user machines); dev/build dependencies are allowed.
+```json
+{
+  "status": "healthy | cooldown | degraded",
+  "last_success": "<iso-timestamp>",
+  "last_failure": "<iso-timestamp | null>",
+  "failure_reason": "<rate_limit | auth | timeout | unknown>",
+  "consecutive_failures": 0,
+  "cooldown_until": "<iso-timestamp | null>"
+}
+```
 
-### Template Variables
+**Status definitions:**
+- `healthy` — provider available, no recent failures
+- `cooldown` — transient failures (rate limit, timeout), auto-recovers after backoff
+- `degraded` — persistent failure (auth expired, quota exhausted), requires user action
 
-Resolved during `/ralph:setup` (or `/aloop-setup`) into per-project prompts:
+### Exponential Backoff (hard-capped)
 
-| Variable | Purpose |
-|----------|---------|
-| `{{SPEC_FILES}}` | Paths to spec files (e.g. `SPEC.md`, `specs/*.md`) |
-| `{{REFERENCE_FILES}}` | Additional reference documents |
-| `{{VALIDATION_COMMANDS}}` | Backpressure commands (e.g. `npm test && npm run type-check`) |
-| `{{SAFETY_RULES}}` | Project safety constraints |
-| `{{PROVIDER_HINTS}}` | Provider-specific guidance |
+| Consecutive failures | Cooldown |
+|---------------------|----------|
+| 1 | none (could be flaky) |
+| 2 | 2 min |
+| 3 | 5 min |
+| 4 | 15 min |
+| 5 | 30 min |
+| 6+ | 60 min (hard cap) |
 
-## Live Progress Dashboard
+Any successful call from ANY session resets `consecutive_failures` to 0 and status to `healthy`.
 
-Self-contained Node.js HTTP server for real-time monitoring of running sessions.
+### Failure Classification
 
-### Architecture
-- **Runtime**: TypeScript monorepo with server code in `aloop/cli/src/` and dashboard frontend app in `aloop/cli/dashboard/`; `commands/dashboard.ts` serves the bundled frontend.
-- **Dependencies**: Frontend stack uses React, Tailwind CSS, shadcn/ui, and `marked` (or `react-markdown`); Vite or esbuild is used as a dev/build bundler.
-- **Data Source**: Watches `status.json`, `log.jsonl`, `active.json`, and work-dir documents via `fs.watch`.
-- **Transport**: Server-Sent Events (SSE) for live push to browser.
-- **Frontend**: Single bundled HTML response with inlined CSS/JS served by the dashboard server.
+| Signal | Classification | Action |
+|--------|---------------|--------|
+| HTTP 429 / rate limit pattern in stderr | `rate_limit` | cooldown |
+| Connection timeout / network error | `timeout` | cooldown |
+| Auth error (expired token, invalid key) | `auth` | degraded (no auto-recover) |
+| "Cannot launch inside another session" | `concurrent_cap` | cooldown (short — 2 min) |
+| Unknown non-zero exit | `unknown` | cooldown |
 
-### Dashboard Layout (Three-Column)
-1.  **Left: Session List**: Active and recent sessions from `active.json`. Shows name, status (running/complete/stuck), elapsed time, and iteration count.
-2.  **Center: Vertical Nav**:
-    - **Progress** (Default): Session header and iteration timeline.
-    - **Docs**: Markdown document viewer (TODO.md, SPEC.md, etc.).
-    - **Log**: Raw log stream from `log.jsonl`.
-    - **Steer**: Interface to submit steering instructions (writes `STEERING.md` via `/api/steer`).
-    - **Stop**: Graceful session stop via `/api/stop`.
-3.  **Right: Content Area**: Renders the selected navigation view.
+### Concurrency / File Locking
 
-### Integration
-- **Lifecycle**: Launched automatically by `loop.ps1` / `loop.sh` by starting the CLI dashboard subcommand in the background on an available port.
-- **Discovery**: URL printed to CLI upon launch and included in the `/ralph:start` prompt output.
-- **Build pipeline**: `vite build` bundles dashboard frontend, `esbuild` (or `tsc`) compiles CLI server to `dist/index.js`, and the server reads/serves the bundled HTML on `GET /`.
-- **Installer**: `install.ps1` deploys bundled CLI output to `~/.aloop/cli/`; the `aloop` shim runs `node ~/.aloop/cli/dist/index.js`.
-- **E2E harness**: Playwright config uses `webServer` to start the real dashboard server (`dashboard.ts`) before browser tests.
+- **Writes**: Exclusive file lock via `[System.IO.File]::Open()` with `FileShare.None`
+- **Reads**: Shared lock via `FileShare.Read` (multiple loops can read simultaneously)
+- **Lock retry**: 5 attempts with progressive backoff (50ms, 100ms, 150ms, 200ms, 250ms)
+- **Graceful degradation**: If lock acquisition fails after all retries, skip health update and log `health_lock_failed` — loop continues normally, just without updating health that iteration
+- **One file per provider**: Two loops hitting different providers = zero contention
 
-### Dashboard E2E Coverage (Playwright)
-- Runs in headless Chromium by default against the live dashboard app.
-- Includes scenarios for: initial render (title + three-column layout), SSE connection/state update, active session list/status indicators, Progress timeline/phase badges, Docs tab markdown rendering, Log streaming/autoscroll, Steer submit creating `STEERING.md` in work dir, Stop confirm + `POST /api/stop`, SSE reconnection/refresh, and navigation view switching.
-- Uses a fixture session directory with pre-populated `status.json`, `log.jsonl`, `active.json`, and `TODO.md`; tests may read/write fixture files to verify side effects.
-- Repository ignore list includes Playwright artifacts: `playwright-report/` and `test-results/`.
+### Round-Robin Integration
 
-### Project Working Files
+Before selecting the next provider, check its health file:
+- `healthy` → use it
+- `cooldown` with `cooldown_until` in the future → skip, try next in rotation
+- `degraded` → skip, try next in rotation
 
-Created in the project work directory (or worktree):
+If ALL providers are in cooldown/degraded: sleep until the earliest cooldown expires, then retry. Log `all_providers_unavailable` event.
 
-| File | Lifecycle |
-|------|-----------|
-| `TODO.md` | Volatile — regenerated each plan cycle |
-| `RESEARCH.md` | Append-only — survives TODO regenerations |
-| `REVIEW_LOG.md` | Append-only — tracks review verdicts |
-| `STEERING.md` | Temporary — consumed by steer agent, then removed |
+### Observability
 
-## Installer Contract (`install.ps1`)
+- Every health state change logged to `log.jsonl` (`provider_cooldown`, `provider_recovered`, `provider_degraded`)
+- `/aloop:status` (and `aloop status` CLI) displays provider health table:
+  ```
+  Provider Health:
+    claude   healthy     (last success: 2m ago)
+    codex    cooldown    (3 failures, resumes in 12m)
+    gemini   healthy     (last success: 5m ago)
+    copilot  degraded    (auth error — run `gh auth login`)
+  ```
+- Dashboard SSE includes provider health in session status events
 
-### Source-to-Destination Mapping
+### Acceptance Criteria
 
-| Source (repo) | Destination | Condition |
-|---------------|-------------|-----------|
-| `claude/skills/$skillName/` | `~/.<harness>/skills/$skillName/` | All selected harnesses |
-| `claude/commands/$skillName/` | `~/.<harness>/commands/$skillName/` | Only `claude` and `codex` (`HasCommands = $true`) |
-| `copilot/prompts/` | `%APPDATA%\Code{,-Insiders}\User\prompts\` | Auto-detected VS Code installations |
-| `$skillName/config.yml` | `~/.aloop/config.yml` | Always |
-| `$skillName/cli/dist/` | `~/.aloop/cli/` | Always (built CLI server + bundled dashboard frontend) |
-| `$skillName/bin/` | `~/.aloop/bin/` | Always |
-| `$skillName/templates/` | `~/.aloop/templates/` | Always |
+- [ ] Each provider gets its own health file at `~/.aloop/health/<provider>.json`
+- [ ] Successful provider call resets that provider's health to `healthy` (even from a different session)
+- [ ] 2 consecutive failures trigger cooldown with exponential backoff
+- [ ] Auth failures mark provider as `degraded` (no auto-recover)
+- [ ] Round-robin skips providers in cooldown/degraded state
+- [ ] All providers in cooldown → loop sleeps until earliest cooldown expires
+- [ ] File locking prevents corruption from concurrent writes
+- [ ] Lock failure degrades gracefully (skip update, log warning, continue loop)
+- [ ] Health state changes are logged to `log.jsonl`
+- [ ] `/aloop:status` shows provider health summary
 
-### Flags
+---
 
-| Flag | Effect |
-|------|--------|
-| `-All` | Install all harnesses + auto-install missing CLIs |
-| `-Harnesses claude,codex` | Pre-select specific harnesses |
-| `-Force` | Overwrite existing files |
-| `-DryRun` | Preview without changes |
-| `-SkipCliCheck` | Skip CLI detection and auto-install |
+## Mandatory Final Review Gate (Loop Exit Invariant)
 
-### Stale Cleanup
+### Problem
 
-The installer removes legacy directories from older installs:
-- `~/.copilot/commands/aloop` (Copilot never supported commands dir)
-- `~/.agents/commands/aloop` (Agents never supported commands dir)
+In `plan-build-review` mode, the loop currently exits as soon as a **build** phase finds all TODO tasks marked `[x]`. This means a builder agent can mark everything done and the loop terminates without a review phase ever validating the work. The review is the gatekeeper — it must always have the final say.
 
-## Uninstaller Contract (`uninstall.ps1`)
+**Current bug** (`loop.ps1` lines ~690-697):
+```powershell
+if ($iterationMode -eq 'build') {
+    if (Check-AllTasksComplete) {
+        # Exits immediately — review never runs
+        exit 0
+    }
+}
+```
 
-### Removal Targets
+### Design
 
-| Target | Paths |
-|--------|-------|
-| Claude Code | `~/.claude/skills/$skillName/`, `~/.claude/commands/$skillName/` |
-| Codex CLI | `~/.codex/skills/$skillName/`, `~/.codex/commands/$skillName/` |
-| GH Copilot | `~/.copilot/skills/$skillName/` |
-| Agents | `~/.agents/skills/$skillName/` |
-| VS Code prompts | `%APPDATA%\Code{,-Insiders}\User\prompts\aloop-*.prompt.md` |
-| Runtime | `~/.aloop/` (includes session data — warning displayed) |
+**Invariant**: In any mode that includes `review` (i.e. `plan-build-review`), the loop MUST NOT exit on task completion during a build phase. Instead:
 
-**Note**: The uninstaller must use `$skillName` (`ralph`) for harness paths, matching what the installer deploys. VS Code prompt glob uses `aloop-*` because prompt file metadata names use `aloop-` prefix.
+1. **Build detects all tasks complete** → set `$script:allTasksMarkedDone = $true`, log `tasks_marked_complete`, but **do not exit**
+2. **Next iteration becomes a forced review** → override the normal cycle to schedule a review phase (similar to how `$script:forcePlanNext` works for steering)
+3. **Review decides**:
+   - If review approves → loop exits with `state: "completed"`
+   - If review finds issues → review reopens tasks (marks them `[ ]` again or adds new ones), resets `$script:allTasksMarkedDone`, and the loop continues with a forced re-plan
 
-### Flags
+This ensures the review phase is the **only** path to a clean exit when the mode includes review.
 
-| Flag | Effect |
-|------|--------|
-| `-All` | Remove everything without interactive selection |
-| `-Force` | Skip confirmation prompt |
-| `-DryRun` | Preview without changes |
+### State machine
 
-## Loop Modes
+```
+build marks all [x] → set flag, DO NOT EXIT
+    ↓
+forced review runs
+    ↓
+review approves?
+  YES → exit 0, state=completed
+  NO  → review reopens/adds tasks → reset flag → force plan → continue loop
+```
 
-| Mode | Cycle | Description |
-|------|-------|-------------|
-| `plan` | Plan only | Gap analysis, output TODO.md, no commits |
-| `build` | Build only | Implement one task, validate, commit |
-| `review` | Review only | Audit against 5 gates, write [review] tasks |
-| `plan-build` | Plan, Build alternating | Plan then build, repeat |
-| `plan-build-review` | Plan, Build x3, Review | Full 5-iteration cycle (default) |
+### Edge cases
 
-## Backpressure Validation
+- **Review-only mode** (`-Mode review`): No build phase exists, so this invariant doesn't apply. The single review runs and exits.
+- **Build-only mode** (`-Mode build`): No review phase exists. Current behavior (exit on all tasks done) is correct for this mode.
+- **Plan-build mode** (`-Mode plan-build`): No review phase. Current behavior is acceptable, but consider adding a final plan phase to verify completeness.
+- **Steering mid-flight**: If steering arrives while `allTasksMarkedDone` is set, the steer phase takes priority, the flag resets, and the loop continues normally.
+- **Builder re-marks after review reopen**: The flag can be set again after a review reopen. The same cycle repeats — forced review runs again.
 
-Every commit must pass configured validation. The build prompt includes `{{VALIDATION_COMMANDS}}` which the agent runs before committing. Stuck detection auto-skips tasks after `max_stuck` (default: 3) consecutive failures.
+### Implementation notes
 
-## Platform Support
+- New script-scoped flag: `$script:allTasksMarkedDone = $false`
+- New script-scoped flag: `$script:forceReviewNext = $false`
+- In `Resolve-IterationMode`: if `$script:forceReviewNext` is set, return `'review'` and clear the flag
+- In the build completion check: instead of `exit 0`, set both flags and `continue`
+- The review prompt (`PROMPT_review.md`) must already instruct the reviewer to reopen tasks or add new ones if quality gates fail — verify this is the case
+- Log events: `tasks_marked_complete` (build), `final_review_approved` (review exits), `final_review_rejected` (review reopens tasks)
 
-| Component | Windows | macOS | Linux |
-|-----------|:-------:|:-----:|:-----:|
-| `install.ps1` / `uninstall.ps1` | yes | yes (pwsh) | yes (pwsh) |
-| `loop.ps1` | yes | yes (pwsh) | yes (pwsh) |
-| `loop.sh` | no | yes | yes |
+### Acceptance Criteria
+
+- [ ] In `plan-build-review` mode, loop NEVER exits during a build phase due to all tasks being marked complete
+- [ ] When all tasks are marked done in build, the next iteration is a forced review
+- [ ] Review approval is the only path to `state: "completed"` exit in `plan-build-review` mode
+- [ ] Review can reopen/add tasks, causing the loop to continue with a forced re-plan
+- [ ] In `build`-only mode, current early-exit behavior is preserved (no review exists)
+- [ ] Steering takes priority over the `forceReviewNext` flag
+- [ ] `tasks_marked_complete`, `final_review_approved`, and `final_review_rejected` events are logged
