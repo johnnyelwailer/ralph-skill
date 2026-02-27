@@ -94,16 +94,37 @@ test('aloop.mjs rejects unknown commands', async () => {
 test('aloop.mjs discover runs natively and prints discovery JSON', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-discover-'));
   const homeRoot = path.join(tempRoot, 'home');
+  const docsDir = path.join(tempRoot, 'docs');
   await mkdir(path.join(homeRoot, '.aloop'), { recursive: true });
+  await mkdir(path.join(tempRoot, 'src', 'nested'), { recursive: true });
+  await mkdir(docsDir, { recursive: true });
   await writeFile(path.join(homeRoot, '.aloop', 'config.yml'), "default_provider: codex\n", 'utf8');
   await writeFile(path.join(tempRoot, 'README.md'), '# test\n', 'utf8');
+  await writeFile(path.join(tempRoot, 'src', 'nested', 'App.csproj'), '<Project />\n', 'utf8');
+  await writeFile(path.join(docsDir, 'spec.md'), '# docs spec\n', 'utf8');
+  for (let i = 0; i < 10; i += 1) {
+    await writeFile(path.join(docsDir, `guide-${String(i).padStart(2, '0')}.md`), `# guide ${i}\n`, 'utf8');
+  }
 
   const result = await runCli(['discover', '--project-root', tempRoot, '--home-dir', homeRoot, '--output', 'json']);
   assert.equal(result.code, 0);
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.project.root, tempRoot);
   assert.equal(parsed.providers.default_provider, 'codex');
-  assert.ok(Array.isArray(parsed.context.spec_candidates));
+  assert.equal(parsed.context.detected_language, 'dotnet');
+  assert.match(parsed.context.language_signals.join(' '), /\*\.csproj/);
+  assert.ok(parsed.context.spec_candidates.includes('docs/spec.md'));
+  assert.ok(parsed.context.spec_candidates.includes('docs'));
+
+  const specMdMatches = parsed.context.spec_candidates.filter((candidate) => candidate === 'docs/spec.md');
+  assert.equal(specMdMatches.length, 1);
+
+  const docsMarkdownCandidates = parsed.context.spec_candidates.filter((candidate) => candidate.startsWith('docs/') && candidate.endsWith('.md'));
+  assert.ok(docsMarkdownCandidates.some((candidate) => candidate.startsWith('docs/guide-')));
+
+  const preorderedDocs = new Set(['docs/SPEC.md', 'docs/spec.md']);
+  const dynamicDocsCandidates = docsMarkdownCandidates.filter((candidate) => !preorderedDocs.has(candidate));
+  assert.ok(dynamicDocsCandidates.length <= 8);
 });
 
 test('aloop.mjs scaffold runs natively and writes config/prompts', async () => {
