@@ -3,6 +3,8 @@
 ## Current Phase: Phase 0 rename + CLI contract alignment
 
 ### In Progress
+- [ ] [review] Gate 1: `claude/commands/aloop/{setup,start}.md` and `copilot/prompts/{aloop-setup.prompt.md,aloop-start.prompt.md}` now use fallback `node ~/.aloop/cli/aloop.mjs ...`, but current runtime install still ships `~/.aloop/cli/dist/index.js` (`install.ps1` lines 524-526, 572-573). Either implement `aloop/cli/aloop.mjs` + shims first, or update fallback commands to the currently shipped entrypoint before keeping this task marked complete. (priority: high)
+- [ ] [review] Gate 5: add an automated check that command/prompt docs reference a runnable CLI entrypoint (aligned with installer output) so future prompt rewrites cannot silently break `/aloop:setup` and `/aloop:start` execution paths. (priority: high)
 
 ### Up Next
 - [x] Update installer naming/registration to `aloop` (`$skillName`, harness destinations, usage text) so slash commands register as `/aloop:*`. (P0)
