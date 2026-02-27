@@ -92,9 +92,10 @@ async function main() {
     const result = await resolveWorkspace(options);
 
     if (options.output === 'text') {
+      const configStatus = result.setup.config_exists ? '' : ' (not found)';
       console.log(`Project: ${result.project.name} [${result.project.hash}]`);
       console.log(`Root: ${result.project.root}`);
-      console.log(`Project config: ${result.setup.config_path}`);
+      console.log(`Project config: ${result.setup.config_path}${configStatus}`);
       return;
     }
 

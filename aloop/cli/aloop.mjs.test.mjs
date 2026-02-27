@@ -57,6 +57,33 @@ test('aloop.mjs resolve text mode is human-readable', async () => {
   assert.match(result.stdout, /Project config:/);
 });
 
+test('aloop.mjs resolve JSON includes config_exists=false when project not configured', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-unconfigured-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(path.join(homeRoot, '.aloop'), { recursive: true });
+  // No project-specific config.yml written under ~/.aloop/projects/<hash>/
+
+  const result = await runCli(['resolve', '--project-root', tempRoot, '--home-dir', homeRoot, '--output', 'json']);
+  assert.equal(result.code, 0);
+
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.setup.config_exists, false);
+  assert.equal(typeof parsed.setup.config_path, 'string');
+  assert.ok(parsed.setup.config_path.length > 0);
+});
+
+test('aloop.mjs resolve text mode shows "(not found)" when project not configured', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-unconfigured-text-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(path.join(homeRoot, '.aloop'), { recursive: true });
+
+  const result = await runCli(['resolve', '--project-root', tempRoot, '--home-dir', homeRoot, '--output', 'text']);
+  assert.equal(result.code, 0);
+
+  assert.match(result.stdout, /Project config:/);
+  assert.match(result.stdout, /\(not found\)/);
+});
+
 test('aloop.mjs rejects unknown commands', async () => {
   const result = await runCli(['nope']);
 
