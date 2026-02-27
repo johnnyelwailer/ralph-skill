@@ -122,6 +122,48 @@ Describe 'Source-to-destination path mappings' {
 }
 
 # ============================================================================
+# 1b. Review gate: command/prompt CLI entrypoint consistency
+# ============================================================================
+Describe 'Command and prompt CLI entrypoint consistency' {
+    It 'uses the installed aloop.mjs entrypoint for all node-based CLI invocations' {
+        $docs = @(
+            Get-ChildItem (Join-Path $repoRoot "claude/commands/$skillName") -File -Filter '*.md'
+            Get-ChildItem (Join-Path $repoRoot 'copilot/prompts') -File -Filter 'aloop-*.prompt.md'
+        )
+
+        foreach ($doc in $docs) {
+            $content = Get-Content $doc.FullName -Raw
+            $codeSpans = [regex]::Matches($content, '`([^`]+)`') | ForEach-Object { $_.Groups[1].Value }
+
+            foreach ($span in $codeSpans) {
+                if ($span -match '^node\s+~/') {
+                    $span | Should -Match '^node ~/.aloop/cli/aloop\.mjs(?:\s|$)'
+                }
+            }
+
+            $content | Should -Not -Match 'node ~/.aloop/cli/dist/index\.js'
+            $content | Should -Not -Match 'node ~/.aloop/cli/src/index\.ts'
+        }
+    }
+
+    It 'keeps setup/start docs wired to fallback commands via aloop.mjs' {
+        $expectedSnippets = @(
+            @{ Path = 'claude/commands/aloop/setup.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs discover' },
+            @{ Path = 'claude/commands/aloop/setup.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs scaffold' },
+            @{ Path = 'claude/commands/aloop/start.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs resolve' },
+            @{ Path = 'copilot/prompts/aloop-setup.prompt.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs discover' },
+            @{ Path = 'copilot/prompts/aloop-setup.prompt.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs scaffold' },
+            @{ Path = 'copilot/prompts/aloop-start.prompt.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs resolve' }
+        )
+
+        foreach ($item in $expectedSnippets) {
+            $fullPath = Join-Path $repoRoot $item.Path
+            (Get-Content $fullPath -Raw) | Should -Match $item.Pattern
+        }
+    }
+}
+
+# ============================================================================
 # 2. Harness definitions
 # ============================================================================
 Describe 'Harness definitions' {
