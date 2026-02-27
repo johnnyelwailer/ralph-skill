@@ -10,8 +10,10 @@
 #   Codex CLI        : ~/.codex/skills/   + ~/.codex/commands/   (https://github.com/openai/codex)
 #   GH Copilot       : ~/.copilot/skills/ only — no commands dir (https://code.visualstudio.com/docs/copilot/customization/agent-skills)
 #   Agents           : ~/.agents/skills/  only — generic standard (agentskills.io)
-#   VS Code (stable) : $APPDATA\Code\User\prompts\         — .prompt.md slash commands
-#   VS Code Insiders : $APPDATA\Code - Insiders\User\prompts\ — .prompt.md slash commands
+#   VS Code (stable) : macOS: ~/Library/Application Support/Code/User/prompts/
+#                      Linux: ~/.config/Code/User/prompts/
+#                      Windows: $APPDATA\Code\User\prompts\
+#   VS Code Insiders : same dirs but with "Code - Insiders" instead of "Code"
 
 param(
     [switch]$Force,                  # Overwrite existing files without prompting
@@ -32,21 +34,21 @@ $allHarnesses = @(
     [PSCustomObject]@{
         Id          = 'claude'
         Name        = 'Claude Code'
-        SkillDest   = Join-Path $HOME ".claude\skills\ralph"
-        CmdDest     = Join-Path $HOME ".claude\commands\ralph"
+        SkillDest   = Join-Path $HOME '.claude' 'skills' 'ralph'
+        CmdDest     = Join-Path $HOME '.claude' 'commands' 'ralph'
         HasCommands = $true
     }
     [PSCustomObject]@{
         Id          = 'codex'
         Name        = 'Codex CLI'
-        SkillDest   = Join-Path $HOME ".codex\skills\ralph"
-        CmdDest     = Join-Path $HOME ".codex\commands\ralph"
+        SkillDest   = Join-Path $HOME '.codex' 'skills' 'ralph'
+        CmdDest     = Join-Path $HOME '.codex' 'commands' 'ralph'
         HasCommands = $true
     }
     [PSCustomObject]@{
         Id          = 'copilot'
         Name        = 'GH Copilot (VS Code / VS Code Insiders)'
-        SkillDest   = Join-Path $HOME ".copilot\skills\ralph"
+        SkillDest   = Join-Path $HOME '.copilot' 'skills' 'ralph'
         CmdDest     = $null
         HasCommands = $false
         # Note: .prompt.md files are installed separately into VS Code user prompts dirs
@@ -54,7 +56,7 @@ $allHarnesses = @(
     [PSCustomObject]@{
         Id          = 'agents'
         Name        = 'Agents (generic / agentskills.io)'
-        SkillDest   = Join-Path $HOME ".agents\skills\ralph"
+        SkillDest   = Join-Path $HOME '.agents' 'skills' 'ralph'
         CmdDest     = $null
         HasCommands = $false
     }
@@ -328,8 +330,8 @@ Write-Host ""
 # ---- Cleanup: remove commands/ dirs that were incorrectly installed by older versions
 # Only claude and codex support a commands/ directory; remove it from any other harness.
 $staleCommandsDirs = @(
-    Join-Path $HOME ".copilot\commands\ralph"
-    Join-Path $HOME ".agents\commands\ralph"
+    Join-Path $HOME '.copilot' 'commands' 'ralph'
+    Join-Path $HOME '.agents' 'commands' 'ralph'
 )
 foreach ($stale in $staleCommandsDirs) {
     if (Test-Path $stale) {
@@ -366,7 +368,13 @@ if (-not $SkipCliCheck) {
     if ($missingTools.Count -gt 0) {
         if (-not (Test-CommandExists 'npm')) {
             Write-Host "  Note: npm not found — cannot auto-install." -ForegroundColor Yellow
-            Write-Host "    Install Node.js to enable: winget install OpenJS.NodeJS.LTS" -ForegroundColor Gray
+            if ($IsWindows) {
+                Write-Host "    Install Node.js to enable: winget install OpenJS.NodeJS.LTS" -ForegroundColor Gray
+            } elseif ($IsMacOS) {
+                Write-Host "    Install Node.js to enable: brew install node" -ForegroundColor Gray
+            } else {
+                Write-Host "    Install Node.js from: https://nodejs.org (or use your package manager)" -ForegroundColor Gray
+            }
             Write-Host "    Or download from: https://nodejs.org" -ForegroundColor Gray
             Write-Host ""
         } else {
@@ -463,10 +471,22 @@ if ($selectedHarnesses.Count -eq 0) {
 # ---- VS Code prompts (.prompt.md) — stable + insiders -----------------------
 # VS Code uses a separate user-level prompts folder (not ~/.copilot/)
 # that is independent of which harness was selected above.
-# Official path: $APPDATA\Code\User\prompts\ and $APPDATA\Code - Insiders\User\prompts\
+# Paths per platform:
+#   Windows : $APPDATA\Code\User\prompts\  /  $APPDATA\Code - Insiders\User\prompts\
+#   macOS   : ~/Library/Application Support/Code/User/prompts/  (and Code - Insiders)
+#   Linux   : ~/.config/Code/User/prompts/  (respects $XDG_CONFIG_HOME)
+$vscodeUserBase = if ($IsWindows) {
+    $env:APPDATA
+} elseif ($IsMacOS) {
+    Join-Path $HOME 'Library' 'Application Support'
+} else {
+    # Linux: respect XDG_CONFIG_HOME, fall back to ~/.config
+    if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME '.config' }
+}
+
 $vscodePromptDirs = @(
-    [PSCustomObject]@{ Name = 'VS Code (stable)';   Path = Join-Path $env:APPDATA "Code\User\prompts" }
-    [PSCustomObject]@{ Name = 'VS Code Insiders';   Path = Join-Path $env:APPDATA "Code - Insiders\User\prompts" }
+    [PSCustomObject]@{ Name = 'VS Code (stable)';   Path = Join-Path $vscodeUserBase 'Code' 'User' 'prompts' }
+    [PSCustomObject]@{ Name = 'VS Code Insiders';   Path = Join-Path $vscodeUserBase 'Code - Insiders' 'User' 'prompts' }
 )
 
 $promptSource = Join-Path $scriptDir "copilot\prompts"
@@ -558,17 +578,24 @@ Write-Host ""
 Write-Host "Installed components:" -ForegroundColor White
 Write-Host "  Skill:     ~/.{claude|codex|copilot|agents}/skills/ralph/SKILL.md"
 Write-Host "  Commands:  ~/.{claude|codex}/commands/ralph/  (setup, start, status, stop)"
-Write-Host "  Prompts:   %APPDATA%\Code{,-Insiders}\User\prompts\  (ralph-*.prompt.md)"
-Write-Host "  Config:    $ralphDir\config.yml"
-Write-Host "  Scripts:   $ralphDir\bin\ (loop.ps1, loop.sh)"
-Write-Host "  Templates: $ralphDir\templates\ (PROMPT_plan.md, PROMPT_build.md, PROMPT_review.md)"
+$promptsDisplay = if ($IsWindows) {
+    '%APPDATA%\Code{,-Insiders}\User\prompts\'
+} elseif ($IsMacOS) {
+    '~/Library/Application Support/Code{,-Insiders}/User/prompts/'
+} else {
+    '~/.config/Code{,-Insiders}/User/prompts/'
+}
+Write-Host "  Prompts:   $promptsDisplay  (ralph-*.prompt.md)"
+Write-Host "  Config:    $(Join-Path $ralphDir 'config.yml')"
+Write-Host "  Scripts:   $(Join-Path $ralphDir 'bin') (loop.ps1, loop.sh)"
+Write-Host "  Templates: $(Join-Path $ralphDir 'templates') (PROMPT_plan.md, PROMPT_build.md, PROMPT_review.md)"
 Write-Host ""
 Write-Host "Usage:" -ForegroundColor White
 Write-Host "  Claude Code / Codex: /ralph:setup  /ralph:start  /ralph:status  /ralph:stop"
 Write-Host "  VS Code Copilot:     /ralph-setup  /ralph-start  /ralph-status  /ralph-stop  (prompt files)"
 Write-Host "  GH Copilot skill:    type '/' in chat and select ralph, or let Copilot load it automatically"
 Write-Host ""
-Write-Host "To reinstall: $scriptDir\install.ps1 -Force" -ForegroundColor Gray
+Write-Host "To reinstall: $(Join-Path $scriptDir 'install.ps1') -Force" -ForegroundColor Gray
 Write-Host ""
 Write-Host "=== Authentication ===" -ForegroundColor Cyan
 Write-Host ""

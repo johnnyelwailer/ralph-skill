@@ -126,35 +126,42 @@ $uninstallTargets = [System.Collections.Generic.List[PSCustomObject]]::new()
     [PSCustomObject]@{
         Name  = 'Claude Code  (skill + commands)'
         Dirs  = @(
-            Join-Path $HOME '.claude\skills\ralph'
-            Join-Path $HOME '.claude\commands\ralph'
+            Join-Path $HOME '.claude' 'skills' 'ralph'
+            Join-Path $HOME '.claude' 'commands' 'ralph'
         )
         Files = @()
     }
     [PSCustomObject]@{
         Name  = 'Codex CLI  (skill + commands)'
         Dirs  = @(
-            Join-Path $HOME '.codex\skills\ralph'
-            Join-Path $HOME '.codex\commands\ralph'
+            Join-Path $HOME '.codex' 'skills' 'ralph'
+            Join-Path $HOME '.codex' 'commands' 'ralph'
         )
         Files = @()
     }
     [PSCustomObject]@{
         Name  = 'GH Copilot  (skill)'
-        Dirs  = @(Join-Path $HOME '.copilot\skills\ralph')
+        Dirs  = @(Join-Path $HOME '.copilot' 'skills' 'ralph')
         Files = @()
     }
     [PSCustomObject]@{
         Name  = 'Agents  (skill)'
-        Dirs  = @(Join-Path $HOME '.agents\skills\ralph')
+        Dirs  = @(Join-Path $HOME '.agents' 'skills' 'ralph')
         Files = @()
     }
 ) | ForEach-Object { $uninstallTargets.Add($_) }
 
 # --- VS Code prompt files (only include variants that are installed) ---
+$vscodeUserBase = if ($IsWindows) {
+    $env:APPDATA
+} elseif ($IsMacOS) {
+    Join-Path $HOME 'Library' 'Application Support'
+} else {
+    if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME '.config' }
+}
 foreach ($vsc in @(
-    [PSCustomObject]@{ Name = 'VS Code stable — prompt files';   PromptsDir = Join-Path $env:APPDATA 'Code\User\prompts' }
-    [PSCustomObject]@{ Name = 'VS Code Insiders — prompt files'; PromptsDir = Join-Path $env:APPDATA 'Code - Insiders\User\prompts' }
+    [PSCustomObject]@{ Name = 'VS Code stable — prompt files';   PromptsDir = Join-Path $vscodeUserBase 'Code' 'User' 'prompts' }
+    [PSCustomObject]@{ Name = 'VS Code Insiders — prompt files'; PromptsDir = Join-Path $vscodeUserBase 'Code - Insiders' 'User' 'prompts' }
 )) {
     # Only add if VS Code itself is present (its User/ directory exists)
     if (Test-Path (Split-Path $vsc.PromptsDir -Parent)) {
@@ -300,6 +307,6 @@ foreach ($t in $selectedTargets) {
 Write-Host "=== Uninstall Complete ===" -ForegroundColor Cyan
 Write-Host ""
 if (-not $DryRun) {
-    Write-Host "To reinstall: $PSScriptRoot\install.ps1" -ForegroundColor Gray
+    Write-Host "To reinstall: $(Join-Path $PSScriptRoot 'install.ps1')" -ForegroundColor Gray
     Write-Host ""
 }
