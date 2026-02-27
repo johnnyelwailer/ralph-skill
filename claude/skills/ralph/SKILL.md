@@ -65,6 +65,30 @@ All Ralph runtime state lives in `~/.ralph/`, not in your project repository:
 Use `/ralph:setup` to configure a project, `/ralph:start` to launch a loop, `/ralph:status` to check progress, and `/ralph:stop` to end a loop.
 </infrastructure>
 
+<orchestration_playbook>
+## Orchestration Playbook (Critical)
+
+When Ralph is run by another agent/tooling layer, orchestration quality determines whether loops make progress or silently die.
+
+1. **Use a persistent execution channel for long runs.**
+   - Prefer a PTY/session model for `loop.sh`/`loop.ps1`.
+   - Do not assume detached/background children survive after a one-shot command wrapper exits.
+2. **Default to no provider timeout for real loops.**
+   - Use `RALPH_PROVIDER_TIMEOUT=0` (or `--provider-timeout 0`) unless you explicitly want enforced cutoff behavior.
+3. **Track liveness with both process and artifact signals.**
+   - Process signal: loop process exists plus active provider child process (`claude`, `codex`, etc.).
+   - Artifact signal: `status.json` `updated_at` advances, `log.jsonl` gains events, and `log.jsonl.raw` grows.
+4. **Treat stale `running` sessions as dead when process is gone.**
+   - If `status.json` still says `state=running` but no loop/provider process exists and file mtimes are stale, consider the run crashed/terminated.
+   - In this case, cleanup hooks may not have executed, so `report.md` may be missing.
+5. **Use a recovery-first restart protocol.**
+   - Start a new session id; keep old session artifacts for forensics.
+   - If first iteration repeatedly hangs, run a short foreground/debug iteration to capture concrete failure text before restarting the full loop.
+6. **Be explicit with provider strategy.**
+   - For diversity: `--provider round-robin --round-robin claude,codex` (or your chosen list).
+   - If one provider is unstable in current context, temporarily pin provider rather than burning iterations.
+</orchestration_playbook>
+
 <reference_index>
 ## Domain Knowledge
 
