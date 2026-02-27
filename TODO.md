@@ -6,7 +6,7 @@
 
 ### Up Next
 - [x] Update installer naming/registration to `aloop` (`$skillName`, harness destinations, usage text) so slash commands register as `/aloop:*`. (P0)
-- [ ] Replace remaining setup-discovery call sites in command/prompt docs with CLI-based flow (`aloop discover` / `aloop scaffold` / `aloop resolve`) and remove duplicated project-hash/runtime-root instructions. (P0)
+- [x] Replace remaining setup-discovery call sites in command/prompt docs with CLI-based flow (`aloop discover` / `aloop scaffold` / `aloop resolve`) and remove duplicated project-hash/runtime-root instructions. (P0)
 - [ ] Migrate runtime CLI to spec-required dependency-free ESM layout: add `aloop/cli/aloop.mjs` plus `lib/project.mjs` and `lib/config.mjs`, and remove the TypeScript/esbuild/`commander` dependency path for runtime usage. (P0)
 - [ ] Add install-time CLI shims (`aloop.cmd` and POSIX `aloop`) that invoke `~/.aloop/cli/aloop.mjs`, and update installer tests accordingly. (P0)
 - [ ] Port `setup-discovery.ps1` behavior into `aloop discover` + `aloop scaffold` with matching JSON schema and prompt-template substitution parity, then delete `setup-discovery.ps1`. (P1)

@@ -15,10 +15,8 @@ Launch a Aloop loop for the current project. Create a session, optionally set up
 
 ## Step 1: Find Project Config
 
-1. Find the git root of the current working directory
-2. Compute the project hash (first 8 chars of SHA-256 of absolute path)
-3. Check if `~/.aloop/projects/<hash>/config.yml` exists
-4. If not found, tell the user: "No Aloop configuration found for this project. Run `/$skillName:setup` first."
+1. Run `aloop resolve` (fallback: `node ~/.aloop/cli/aloop.mjs resolve`) to locate the project root, compute the project hash, and check for an existing config.
+2. If the command fails, or if the result shows `config_exists: false`, tell the user: "No Aloop configuration found for this project. Run `/$skillName:setup` first."
 
 Read the project config to get provider, mode, validation commands, etc.
 

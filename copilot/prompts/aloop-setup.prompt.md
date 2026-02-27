@@ -9,9 +9,11 @@ Configure Aloop for the current project. Detect the project, gather configuratio
 ## Step 1: Run scripted discovery (required)
 
 Do NOT do manual shell probing and do NOT use ad-hoc bash snippets for setup discovery.
-Run exactly this script first:
+Run exactly this command first:
 
-`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command discover -Output json`
+`aloop discover`
+
+(fallback if `aloop` is not yet on PATH: `node ~/.aloop/cli/aloop.mjs discover`)
 
 Use its JSON output as the source of truth for:
 - project root/name/hash
@@ -88,13 +90,15 @@ Ask only now:
 2. Provider selection from installed providers (multi-select)
 3. Default provider vs round-robin (only when 2+ providers selected)
 
-## Step 8: Use script to scaffold config + prompts (required)
+## Step 8: Use CLI to scaffold config + prompts (required)
 
 After collecting final choices, call:
 
-`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command scaffold -Output json -Provider <provider> -EnabledProviders <csv-or-list> -RoundRobinOrder <csv-or-list> -Language <language> -SpecFiles <list> -ValidationCommands <list>`
+`aloop scaffold --provider <provider> --enabled-providers <csv-or-list> --round-robin-order <csv-or-list> --language <language> --spec-files <list> --validation-commands <list>`
 
-This script must be used to write:
+(fallback if `aloop` is not yet on PATH: `node ~/.aloop/cli/aloop.mjs scaffold ...`)
+
+This command must be used to write:
 - `~/.aloop/projects/<hash>/config.yml`
 - `~/.aloop/projects/<hash>/prompts/PROMPT_{plan,build,review}.md`
 
@@ -115,3 +119,4 @@ Next: /aloop-start to launch a loop
 ```
 
 > If `~/.aloop/templates/` is missing, stop and ask the user to run `./install.ps1` first.
+> The `aloop discover` command computes the project hash automatically from the git root.

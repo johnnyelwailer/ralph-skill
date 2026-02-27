@@ -21,7 +21,9 @@ Do NOT perform ad-hoc shell probing. Do NOT compose custom bash discovery pipeli
 
 Run this command first:
 
-`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command discover -Output json`
+`aloop discover`
+
+(fallback if `aloop` is not yet on PATH: `node ~/.aloop/cli/aloop.mjs discover`)
 
 Treat the JSON output as source of truth for:
 - project root/name/hash
@@ -98,13 +100,15 @@ Ask only now:
 2. Enabled providers (from installed list)
 3. Default provider vs round-robin (only if 2+ enabled)
 
-## Step 8: Use scaffold script to write config and prompts (required)
+## Step 8: Use scaffold command to write config and prompts (required)
 
 After decisions are finalized, run:
 
-`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command scaffold -Output json -Provider <provider> -EnabledProviders <csv-or-list> -RoundRobinOrder <csv-or-list> -Language <language> -SpecFiles <list> -ValidationCommands <list>`
+`aloop scaffold --provider <provider> --enabled-providers <csv-or-list> --round-robin-order <csv-or-list> --language <language> --spec-files <list> --validation-commands <list>`
 
-This script writes:
+(fallback if `aloop` is not yet on PATH: `node ~/.aloop/cli/aloop.mjs scaffold ...`)
+
+This command writes:
 - `~/.aloop/projects/<hash>/config.yml`
 - `~/.aloop/projects/<hash>/prompts/PROMPT_{plan,build,review}.md`
 
@@ -132,8 +136,8 @@ Next steps:
 </process>
 
 <notes>
-- The project hash is computed from the absolute path of the project root
+- The `aloop discover` command computes the project hash automatically from the git root
 - On Windows, use `$HOME/.aloop/` (PowerShell resolves `~` correctly)
 - If `~/.aloop/templates/` doesn't exist, stop and ask the user to run the install script
-- Keep setup script-driven for consistency across machines and harnesses.
+- Keep setup CLI-driven for consistency across machines and harnesses.
 </notes>
