@@ -7,7 +7,7 @@
 
 ### Up Next
 - [x] Replace `discover` and `scaffold` delegation in `aloop/cli/aloop.mjs` with native `.mjs` modules (`lib/discover.mjs`, `lib/scaffold.mjs`) so setup flow no longer depends on `dist/index.js`. (P0)
-- [ ] Port remaining discovery/scaffold parity details from `aloop/bin/setup-discovery.ps1` to `.mjs` (schema fields, defaults, provider/model handling), then delete `setup-discovery.ps1`. (P0)
+- [x] Port remaining discovery/scaffold parity details from `aloop/bin/setup-discovery.ps1` to `.mjs` (schema fields, defaults, provider/model handling), then delete `setup-discovery.ps1`. (P0)
 - [ ] Update installer/tests/docs to remove legacy `setup-discovery.ps1` assumptions (`install.tests.ps1`, `README.md`, runtime copy expectations). (P0)
 - [ ] Expand CLI test coverage: `aloop.mjs` error paths (`--output` invalid, missing arg values, help paths), stronger text-output assertions, and direct unit tests for `lib/project.mjs` and `lib/config.mjs` branches. (P1)
 - [ ] Implement `aloop status`, `aloop active`, and `aloop stop <session-id>` in `aloop/cli/aloop.mjs` (or new `.mjs` libs) with JSON/text outputs based on `~/.aloop/active.json` and session `status.json` metadata. (P1)

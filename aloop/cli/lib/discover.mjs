@@ -63,6 +63,11 @@ async function detectLanguage(projectRoot) {
     score.dotnet += 4;
     signals.push('*.sln');
   }
+  const allEntries = await readdir(projectRoot, { recursive: true }).catch(() => []);
+  if (allEntries.some((entry) => String(entry).endsWith('.csproj'))) {
+    score.dotnet += 4;
+    signals.push('*.csproj');
+  }
 
   let language = 'other';
   let points = 0;
@@ -122,9 +127,24 @@ async function buildValidationPresets(language, projectRoot) {
   return { tests_only: [], tests_and_types: [], full: [] };
 }
 
-function discoverSpecCandidates(projectRoot) {
+async function discoverSpecCandidates(projectRoot) {
   const ordered = ['SPEC.md', 'README.md', 'docs/SPEC.md', 'docs/spec.md', 'requirements.md', 'PRD.md', 'specs', 'docs'];
-  return ordered.filter((candidate) => existsSync(path.join(projectRoot, candidate))).map((candidate) => candidate.replace(/\\/g, '/'));
+  const found = ordered.filter((candidate) => existsSync(path.join(projectRoot, candidate))).map((candidate) => candidate.replace(/\\/g, '/'));
+
+  const docsDir = path.join(projectRoot, 'docs');
+  if (existsSync(docsDir)) {
+    const foundSet = new Set(found);
+    const docEntries = await readdir(docsDir).catch(() => []);
+    for (const file of docEntries.filter((f) => f.endsWith('.md')).slice(0, 8)) {
+      const rel = `docs/${file}`;
+      if (!foundSet.has(rel)) {
+        found.push(rel);
+        foundSet.add(rel);
+      }
+    }
+  }
+
+  return found;
 }
 
 function discoverReferenceCandidates(projectRoot, specCandidates) {
@@ -236,7 +256,7 @@ export async function discoverWorkspace(options = {}) {
   const projectRoot = workspace.project.root;
   const language = await detectLanguage(projectRoot);
   const validation = await buildValidationPresets(language.language, projectRoot);
-  const specCandidates = discoverSpecCandidates(projectRoot);
+  const specCandidates = await discoverSpecCandidates(projectRoot);
   const referenceCandidates = discoverReferenceCandidates(projectRoot, specCandidates);
   const providers = getInstalledProviders();
   const defaultModels = await readGlobalModels(homeDir);

@@ -81,7 +81,6 @@ Describe 'Source-to-destination path mappings' {
 
         It 'has loop.ps1'            { Join-Path $binDir 'loop.ps1'            | Should -Exist }
         It 'has loop.sh'             { Join-Path $binDir 'loop.sh'             | Should -Exist }
-        It 'has setup-discovery.ps1' { Join-Path $binDir 'setup-discovery.ps1' | Should -Exist }
     }
 
     Context 'Runtime templates contain all 4 prompt templates per SPEC.md' {
