@@ -4,6 +4,8 @@
 
 ### In Progress
 - [x] Define and implement `aloop resolve` unconfigured-project contract (`config_exists=false`): either exit non-zero with clear stderr or keep exit 0 and document it explicitly; then add tests for both JSON and text outputs. (P0, blocks Phase 1 acceptance)
+- [ ] [review] Gate 2: `aloop/cli/aloop.mjs.test.mjs` discover test only asserts `spec_candidates` is an array (line 106) and does not verify the new parity logic from this iteration; add concrete assertions for recursive `.csproj` language detection and `docs/*.md` candidate inclusion/dedup/limit behavior (priority: high)
+- [ ] [review] Gate 3: branch coverage for `aloop/cli/lib/discover.mjs` is 56.52% (`node --test --experimental-test-coverage aloop/cli/aloop.mjs.test.mjs`), below the 80% minimum for touched files; add targeted tests for uncovered branches around `.sln`/recursive `.csproj` detection and docs-directory candidate handling (priority: high)
 
 ### Up Next
 - [x] Replace `discover` and `scaffold` delegation in `aloop/cli/aloop.mjs` with native `.mjs` modules (`lib/discover.mjs`, `lib/scaffold.mjs`) so setup flow no longer depends on `dist/index.js`. (P0)
