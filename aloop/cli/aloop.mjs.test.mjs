@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 
 function runCli(args) {
@@ -89,4 +89,52 @@ test('aloop.mjs rejects unknown commands', async () => {
 
   assert.notEqual(result.code, 0);
   assert.match(result.stderr, /Unknown command/);
+});
+
+test('aloop.mjs discover runs natively and prints discovery JSON', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-discover-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(path.join(homeRoot, '.aloop'), { recursive: true });
+  await writeFile(path.join(homeRoot, '.aloop', 'config.yml'), "default_provider: codex\n", 'utf8');
+  await writeFile(path.join(tempRoot, 'README.md'), '# test\n', 'utf8');
+
+  const result = await runCli(['discover', '--project-root', tempRoot, '--home-dir', homeRoot, '--output', 'json']);
+  assert.equal(result.code, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.project.root, tempRoot);
+  assert.equal(parsed.providers.default_provider, 'codex');
+  assert.ok(Array.isArray(parsed.context.spec_candidates));
+});
+
+test('aloop.mjs scaffold runs natively and writes config/prompts', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-scaffold-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(homeRoot, '.aloop', 'templates');
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec\n', 'utf8');
+
+  for (const name of ['plan', 'build', 'review', 'steer']) {
+    await writeFile(path.join(templatesDir, `PROMPT_${name}.md`), 'Spec: {{SPEC_FILES}}\nRules:\n{{SAFETY_RULES}}\n', 'utf8');
+  }
+
+  const result = await runCli([
+    'scaffold',
+    '--project-root',
+    tempRoot,
+    '--home-dir',
+    homeRoot,
+    '--templates-dir',
+    templatesDir,
+    '--provider',
+    'codex',
+    '--output',
+    'json',
+  ]);
+
+  assert.equal(result.code, 0);
+  const parsed = JSON.parse(result.stdout);
+  const configRaw = await readFile(parsed.config_path, 'utf8');
+  assert.match(configRaw, /provider:\s+'codex'/);
+  const promptRaw = await readFile(path.join(parsed.prompts_dir, 'PROMPT_plan.md'), 'utf8');
+  assert.match(promptRaw, /Spec: SPEC\.md/);
 });
