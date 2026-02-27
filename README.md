@@ -194,7 +194,6 @@ When no strong spec exists, setup defaults to a short interview to create/refine
   bin/
     loop.ps1                   # PowerShell loop (Windows / macOS / Linux)
     loop.sh                    # Bash loop (macOS / Linux)
-    setup-discovery.ps1        # Legacy discovery + scaffold script (being replaced by aloop CLI)
   templates/
     PROMPT_plan.md             # Plan template with {{variables}}
     PROMPT_build.md            # Build template

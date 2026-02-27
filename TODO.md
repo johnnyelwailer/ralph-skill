@@ -7,7 +7,7 @@
 - [x] Raise branch coverage for `aloop/cli/lib/discover.mjs` to ≥80%: add targeted tests for `.sln`/recursive `.csproj` detection, docs-directory candidate handling, and uncovered edge branches. Run with `node --test --experimental-test-coverage aloop/cli/aloop.mjs.test.mjs`. (P0)
 
 ### Up Next
-- [ ] Remove the legacy `setup-discovery.ps1` line from `README.md` (line 197: "Legacy discovery + scaffold script (being replaced by aloop CLI)") since the file is already deleted. (P0)
+- [x] Remove the legacy `setup-discovery.ps1` line from `README.md` (line 197: "Legacy discovery + scaffold script (being replaced by aloop CLI)") since the file is already deleted. (P0)
 - [ ] Expand CLI test coverage: error paths (`--output` invalid value, missing required arg values, help flag), stronger text-output assertions, and direct unit tests for `lib/project.mjs` and `lib/config.mjs` branches. (P1)
 - [ ] Implement `aloop status`, `aloop active`, and `aloop stop <session-id>` in `aloop/cli/aloop.mjs` (or new `lib/status.mjs`) with JSON/text outputs reading `~/.aloop/active.json` and session `status.json`; include provider health summary from `~/.aloop/health/<provider>.json`. (P1)
 - [ ] Add `/aloop:status` and `/aloop:stop` command/prompt stubs in `claude/commands/` and `copilot/prompts/` that delegate to `aloop status` / `aloop stop` CLI with `node ~/.aloop/cli/aloop.mjs` fallback. (P1)
