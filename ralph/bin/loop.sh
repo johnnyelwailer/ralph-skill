@@ -33,6 +33,7 @@ COPILOT_RETRY_MODEL="${RALPH_COPILOT_RETRY_MODEL:-claude-sonnet-4.6}"
 MAX_ITERATIONS="${RALPH_MAX_ITERATIONS:-50}"
 MAX_STUCK="${RALPH_MAX_STUCK:-3}"
 BACKUP_ENABLED="${RALPH_BACKUP:-false}"
+PROVIDER_TIMEOUT="${RALPH_PROVIDER_TIMEOUT:-0}"
 DRY_RUN=false
 
 # ============================================================================
@@ -53,6 +54,7 @@ usage() {
     echo "  --round-robin <list>    Comma-separated provider list (default: claude,codex,gemini,copilot)"
     echo "  --max-iterations <n>    Maximum iterations (default: 50)"
     echo "  --max-stuck <n>         Skip task after N failures (default: 3)"
+    echo "  --provider-timeout <s>  Max seconds per provider call (0 = disabled, default: 0)"
     echo "  --backup                Enable remote git backup"
     echo "  --dry-run               Print commands without executing"
     exit 1
@@ -68,6 +70,7 @@ while [[ $# -gt 0 ]]; do
         --round-robin)  ROUND_ROBIN_PROVIDERS="$2"; shift 2 ;;
         --max-iterations) MAX_ITERATIONS="$2"; shift 2 ;;
         --max-stuck)    MAX_STUCK="$2"; shift 2 ;;
+        --provider-timeout) PROVIDER_TIMEOUT="$2"; shift 2 ;;
         --backup)       BACKUP_ENABLED="true"; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --claude-model) CLAUDE_MODEL="$2"; shift 2 ;;
@@ -181,6 +184,34 @@ write_log_entry() {
     echo "{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"event\":\"$event\"${data:+,$data}}" >> "$LOG_FILE"
 }
 
+# Wait for a background process with timeout (portable on macOS bash 3.2).
+wait_with_timeout() {
+    local pid="$1"
+    local timeout_secs="$2"
+    local label="$3"
+    if [ "$timeout_secs" -le 0 ]; then
+        # 0 or negative disables timeout (allows very long-running iterations).
+        wait "$pid"
+        return $?
+    fi
+    local start now elapsed
+    start=$(date +%s)
+    while kill -0 "$pid" 2>/dev/null; do
+        now=$(date +%s)
+        elapsed=$((now - start))
+        if [ "$elapsed" -ge "$timeout_secs" ]; then
+            echo "$label timed out after ${timeout_secs}s" >&2
+            kill "$pid" 2>/dev/null || true
+            sleep 1
+            kill -9 "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            return 124
+        fi
+        sleep 1
+    done
+    wait "$pid"
+}
+
 # ============================================================================
 # PROVIDER INVOCATION
 # ============================================================================
@@ -191,16 +222,26 @@ invoke_provider() {
 
     case "$provider_name" in
         claude)
-            echo "$prompt_content" | claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2>&1 | tee -a "$LOG_FILE.raw"
-            local exit_code=${PIPESTATUS[1]}
+            (
+                set -o pipefail
+                echo "$prompt_content" | claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2>&1 | tee -a "$LOG_FILE.raw"
+            ) &
+            local provider_pid=$!
+            wait_with_timeout "$provider_pid" "$PROVIDER_TIMEOUT" "claude"
+            local exit_code=$?
             if [ "$exit_code" -ne 0 ]; then
                 echo "claude exited with code $exit_code" >&2
                 return $exit_code
             fi
             ;;
         codex)
-            echo "$prompt_content" | codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2>&1 | tee -a "$LOG_FILE.raw"
-            local exit_code=${PIPESTATUS[1]}
+            (
+                set -o pipefail
+                echo "$prompt_content" | codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2>&1 | tee -a "$LOG_FILE.raw"
+            ) &
+            local provider_pid=$!
+            wait_with_timeout "$provider_pid" "$PROVIDER_TIMEOUT" "codex"
+            local exit_code=$?
             if [ "$exit_code" -ne 0 ]; then
                 echo "codex exited with code $exit_code" >&2
                 return $exit_code
@@ -238,19 +279,47 @@ invoke_provider() {
 # PLAN FILE HELPERS
 # ============================================================================
 
+count_plan_items() {
+    local pattern="$1"
+    if [ ! -f "$PLAN_FILE" ]; then
+        echo "0"
+        return
+    fi
+    local count
+    count=$(grep -Ec "$pattern" "$PLAN_FILE" 2>/dev/null || true)
+    if [ -z "$count" ]; then count="0"; fi
+    echo "$count"
+}
+
 check_all_tasks_complete() {
     if [ ! -f "$PLAN_FILE" ]; then return 1; fi
-    local incomplete=$(grep -c '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null || echo "0")
-    if [ "$incomplete" -eq 0 ]; then
-        local completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null || echo "0")
-        if [ "$completed" -gt 0 ]; then return 0; fi
+    local incomplete completed stuck
+    incomplete=$(count_plan_items '^[[:space:]]*- \[ \]')
+    completed=$(count_plan_items '^[[:space:]]*- \[x\]')
+    stuck=$(count_plan_items '^[[:space:]]*- \[S\]')
+    # A session is complete only when there are no unchecked OR stuck tasks left.
+    if [ "$incomplete" -eq 0 ] && [ "$stuck" -eq 0 ] && [ "$completed" -gt 0 ]; then
+        return 0
     fi
     return 1
 }
 
 get_current_task() {
     if [ ! -f "$PLAN_FILE" ]; then echo ""; return; fi
-    grep '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null | head -1 | sed 's/.*- \[ \] //' || echo ""
+    grep -E '^[[:space:]]*- \[ \]' "$PLAN_FILE" 2>/dev/null | head -1 | sed 's/^[[:space:]]*- \[ \] //' || echo ""
+}
+
+requeue_first_stuck_task_if_needed() {
+    if [ ! -f "$PLAN_FILE" ]; then return; fi
+    local incomplete stuck
+    incomplete=$(count_plan_items '^[[:space:]]*- \[ \]')
+    stuck=$(count_plan_items '^[[:space:]]*- \[S\]')
+    # If everything is marked stuck, requeue one task so the loop can retry after fresh context.
+    if [ "$incomplete" -eq 0 ] && [ "$stuck" -gt 0 ]; then
+        sed_i '1,/^[[:space:]]*- \[S\] /s/^\([[:space:]]*\)- \[S\] /\1- [ ] /' "$PLAN_FILE"
+        write_log_entry "task_requeued" "reason" "all_tasks_stuck"
+        echo "Requeued one stuck task for retry."
+    fi
 }
 
 # ============================================================================
@@ -272,11 +341,14 @@ skip_stuck_task() {
         echo "## Blocked" >> "$PLAN_FILE"
         echo "" >> "$PLAN_FILE"
     fi
-    echo "- $task (stuck after $MAX_STUCK attempts)" >> "$PLAN_FILE"
+    local blocked_line="- $task (stuck after $MAX_STUCK attempts)"
+    if ! grep -Fqx "$blocked_line" "$PLAN_FILE" 2>/dev/null; then
+        echo "$blocked_line" >> "$PLAN_FILE"
+    fi
 
-    local escaped_task
-    escaped_task=$(printf '%s\n' "$task" | sed 's/[[\.*^$()+?{|/]/\\&/g')
-    sed_i "s/- \[ \] ${escaped_task}/- [S] $task/" "$PLAN_FILE"
+    # Mark the first unchecked task as stuck.
+    # Avoid task-text interpolation in sed replacement (can break on '/' and '&').
+    sed_i '1,/^[[:space:]]*- \[ \] /s/^\([[:space:]]*\)- \[ \] /\1- [S] /' "$PLAN_FILE"
 
     LAST_TASK=""
     STUCK_COUNT=0
@@ -303,8 +375,9 @@ print_iteration_summary() {
         commit_msg="$last_commit"
     fi
 
-    local completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null || echo "0")
-    local total_tasks=$(grep -c '^\s*- \[' "$PLAN_FILE" 2>/dev/null || echo "0")
+    local completed total_tasks
+    completed=$(count_plan_items '^[[:space:]]*- \[x\]')
+    total_tasks=$(count_plan_items '^[[:space:]]*- \[')
     local pct=0
     if [ "$total_tasks" -gt 0 ]; then
         pct=$((completed * 100 / total_tasks))
@@ -332,9 +405,10 @@ generate_report() {
     local minutes=$((duration / 60))
     local seconds=$((duration % 60))
 
-    local completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null || echo "0")
-    local skipped=$(grep -c '^\s*- \[S\]' "$PLAN_FILE" 2>/dev/null || echo "0")
-    local remaining=$(grep -c '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null || echo "0")
+    local completed skipped remaining
+    completed=$(count_plan_items '^[[:space:]]*- \[x\]')
+    skipped=$(count_plan_items '^[[:space:]]*- \[S\]')
+    remaining=$(count_plan_items '^[[:space:]]*- \[ \]')
     local total=$((completed + skipped + remaining))
 
     cd "$WORK_DIR"
@@ -364,7 +438,7 @@ $exit_reason
 
 ## Completed Tasks
 
-$(grep '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null || echo "None")
+$(grep -E '^[[:space:]]*- \[x\]' "$PLAN_FILE" 2>/dev/null || echo "None")
 
 ## Recent Commits
 
@@ -377,14 +451,14 @@ EOF
         echo "" >> "$REPORT_FILE"
         echo "## Skipped Tasks (stuck)" >> "$REPORT_FILE"
         echo "" >> "$REPORT_FILE"
-        grep '^\s*- \[S\]' "$PLAN_FILE" 2>/dev/null >> "$REPORT_FILE"
+        grep -E '^[[:space:]]*- \[S\]' "$PLAN_FILE" 2>/dev/null >> "$REPORT_FILE"
     fi
 
     if [ "$remaining" -gt 0 ]; then
         echo "" >> "$REPORT_FILE"
         echo "## Remaining Tasks" >> "$REPORT_FILE"
         echo "" >> "$REPORT_FILE"
-        grep '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null >> "$REPORT_FILE"
+        grep -E '^[[:space:]]*- \[ \]' "$PLAN_FILE" 2>/dev/null >> "$REPORT_FILE"
     fi
 
     echo ""
@@ -568,6 +642,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
 
     # Build mode: check completion and stuck detection
     if [ "$iter_mode" = "build" ]; then
+        requeue_first_stuck_task_if_needed
+
         if check_all_tasks_complete; then
             echo ""
             echo "ALL TASKS COMPLETE"
