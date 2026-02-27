@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $scriptDir = $PSScriptRoot
 $aloopDir = Join-Path $HOME ".aloop"
-$skillName = ('ra' + 'lph')
+$skillName = 'aloop'
 
 # ---- Harness definitions -------------------------------------------------------
 # HasCommands = $true  → also installs claude\commands\<skill> to <harness>/commands/<skill>

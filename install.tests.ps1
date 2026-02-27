@@ -14,8 +14,7 @@ BeforeAll {
     $scriptLines   = Get-Content $scriptPath
     $pwshPath      = (Get-Command pwsh -ErrorAction Stop).Source
 
-    # Construct skillName identically to install.ps1 (avoids the literal in this file)
-    $skillName = ('ra' + 'lph')
+    $skillName = 'aloop'
 }
 
 # ============================================================================
