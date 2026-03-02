@@ -766,3 +766,231 @@ Failed policy checks are logged as `gh_operation_denied`:
 - [ ] Convention-file protocol works across Docker volumes, bind mounts, and remote filesystems
 - [ ] Request files are archived after processing
 - [ ] PATH sanitization restores original PATH after agent execution completes
+
+---
+
+## User Feedback Triage Agent
+
+### Problem
+
+The orchestrator assumes issues are fully specified at creation time. In reality, humans comment on issues mid-flight — asking questions, clarifying scope, requesting changes, or providing feedback on PRs. Without triage, the system either ignores these comments (bad) or a child loop tries to interpret vague feedback on its own (worse — risks misinterpretation and wasted iterations).
+
+### Where It Fits
+
+The triage agent runs as a step in the orchestrator's monitor loop:
+
+```
+Orchestrator monitor loop (continuous):
+  1. Check child loop status           ← existing
+  2. Check provider health             ← existing
+  3. Triage new user comments          ← NEW
+  4. Process completed PRs             ← existing
+```
+
+It is NOT a long-running loop itself — it's a single agent invocation per batch of new comments, called by the orchestrator at each monitor cycle.
+
+### Triage Classification
+
+```
+New comment on issue/PR
+        │
+   ┌────┴────┐
+   │ TRIAGE  │  (single agent invocation)
+   │  AGENT  │
+   └────┬────┘
+        │
+        ├─► ACTIONABLE — clear instruction, no ambiguity
+        │     → inject as steering into child loop (STEERING.md)
+        │     → or append to child's TODO.md directly
+        │     → child loop picks up on next iteration
+        │
+        ├─► NEEDS CLARIFICATION — vague, ambiguous, or contradictory
+        │     → post follow-up question on the issue/PR
+        │     → add label: aloop/blocked-on-human
+        │     → pause child loop (harness skips iterations while blocked)
+        │     → resume automatically when human responds
+        │
+        ├─► QUESTION — user is asking, not instructing
+        │     → agent drafts answer based on current code/state
+        │     → posts answer as comment (flagged as agent-generated)
+        │     → does NOT change implementation
+        │     → does NOT pause child loop
+        │
+        └─► OUT OF SCOPE — unrelated to issue, meta-discussion, or noise
+              → ignore silently
+              → log as triaged-no-action
+```
+
+### Blocked-on-Human Flow
+
+The critical flow for preventing misinterpretation:
+
+```
+1. User comments: "hmm, should this use websockets instead?"
+
+2. Triage agent classifies: NEEDS CLARIFICATION (confidence 0.6)
+   Reasoning: "User is posing a question about tech choice, not giving
+   a direct instruction. Implementing this without confirmation risks
+   wasted work if they meant it rhetorically."
+
+3. Orchestrator posts reply via aloop gh:
+   "To clarify — should I switch from SSE to WebSockets for the
+    dashboard live updates? This would affect:
+    - dashboard.ts server (replace SSE endpoint with ws upgrade)
+    - App.tsx client (replace EventSource with WebSocket)
+    - E2E tests (mock WebSocket instead of SSE)
+    Current implementation uses SSE per the spec. Want me to switch?"
+
+4. Orchestrator adds label: aloop/blocked-on-human
+
+5. Child loop pauses:
+   - Harness checks for aloop/blocked-on-human label before each iteration
+   - While blocked: skip iteration, log "blocked_on_human", sleep
+   - No iterations are wasted
+
+6. User responds: "yes switch to ws"
+
+7. Next triage cycle picks up the response → classifies as ACTIONABLE
+
+8. Orchestrator:
+   - Removes aloop/blocked-on-human label
+   - Injects steering into child loop's STEERING.md
+   - Child loop resumes on next monitor cycle
+```
+
+### Triage Agent Input / Output
+
+**Input** (provided by orchestrator):
+
+```json
+{
+  "comments": [
+    {
+      "id": 456,
+      "author": "pj",
+      "body": "hmm, should this use websockets instead?",
+      "created_at": "2026-02-27T12:00:00Z",
+      "context": "issue"
+    }
+  ],
+  "issue": {
+    "number": 42,
+    "title": "Implement dashboard live updates",
+    "body": "...(original issue body with acceptance criteria)..."
+  },
+  "current_todo": "...(child's TODO.md content)...",
+  "recent_diff": "...(last 3 commits diff summary)..."
+}
+```
+
+**Output** (structured JSON):
+
+```json
+{
+  "comment_id": 456,
+  "classification": "needs_clarification",
+  "confidence": 0.6,
+  "reasoning": "User is posing a question about tech choice, not giving a direct instruction. Implementing without confirmation risks wasted work.",
+  "action": {
+    "type": "post_reply_and_block",
+    "reply": "To clarify — should I switch from SSE to WebSockets...",
+    "label_add": "aloop/blocked-on-human",
+    "pause_child": true
+  }
+}
+```
+
+### Confidence Threshold
+
+| Confidence | Behavior |
+|-----------|----------|
+| >= 0.8 | Trust classification, execute action |
+| 0.7 – 0.8 | Trust classification, but add disclaimer to any posted comment ("I interpreted this as X — let me know if I misunderstood") |
+| < 0.7 | Force `needs_clarification` regardless of classification — ask rather than assume |
+
+Low confidence always results in asking the human. Better to pause and clarify than to misinterpret and burn iterations.
+
+### Comment Polling
+
+The orchestrator checks for new comments at each monitor cycle:
+
+```bash
+aloop gh issue-comments --session <id> --since <last-check-timestamp>
+aloop gh pr-comments    --session <id> --since <last-check-timestamp>
+```
+
+Only comments since the last check are triaged. Processed comment IDs are tracked in orchestrator state to prevent re-triage.
+
+### Comment Authorship Filtering
+
+Not all comments need triage:
+
+| Author | Action |
+|--------|--------|
+| Human (repo collaborator) | Triage |
+| aloop bot / agent-generated | Skip (don't triage own replies) |
+| External / unknown | Skip, log as `untriaged_external_comment` |
+
+Agent-generated comments are identified by a footer marker:
+
+```markdown
+---
+*This comment was generated by aloop triage agent.
+Session: ralph-skill-20260227-issue42*
+```
+
+### Orchestrator State Addition
+
+```json
+{
+  "issues": [{
+    "number": 42,
+    "last_comment_check": "2026-02-27T12:00:00Z",
+    "blocked_on_human": false,
+    "triage_log": [
+      {
+        "comment_id": 456,
+        "author": "pj",
+        "classification": "needs_clarification",
+        "confidence": 0.6,
+        "action_taken": "post_reply_and_block",
+        "reply_comment_id": 457,
+        "timestamp": "2026-02-27T12:05:00Z"
+      },
+      {
+        "comment_id": 458,
+        "author": "pj",
+        "classification": "actionable",
+        "confidence": 0.95,
+        "action_taken": "steering_injected",
+        "timestamp": "2026-02-27T12:30:00Z"
+      }
+    ]
+  }]
+}
+```
+
+### Integration with Security Model
+
+The triage agent runs inside the orchestrator (Layer 1 — trusted). It uses `aloop gh` to post comments and manage labels, subject to the orchestrator's hardcoded policy:
+
+- Can comment on issues with `aloop/auto` label — enforced
+- Can add/remove `aloop/blocked-on-human` label — allowed via `aloop gh issue-label`
+- Cannot close issues, merge PRs, or access raw API — denied by policy
+- All triage actions logged to `log.jsonl`
+
+### Acceptance Criteria
+
+- [ ] Orchestrator monitor loop includes a comment triage step at each cycle
+- [ ] Triage agent classifies comments as: actionable, needs_clarification, question, or out_of_scope
+- [ ] Actionable comments are injected as steering into the child loop
+- [ ] Needs-clarification comments trigger a follow-up reply and `aloop/blocked-on-human` label
+- [ ] Child loops pause (skip iterations) while their issue has `aloop/blocked-on-human` label
+- [ ] Human response to a blocked issue is auto-triaged and unblocks the child loop
+- [ ] Question comments get an agent-drafted answer without pausing the child loop
+- [ ] Out-of-scope comments are ignored and logged
+- [ ] Confidence below 0.7 forces `needs_clarification` classification regardless of agent output
+- [ ] Agent-generated comments are marked with a footer and skipped during triage
+- [ ] Processed comment IDs are tracked to prevent re-triage
+- [ ] All triage decisions are logged in `orchestrator.json` triage_log
+- [ ] Triage agent uses `aloop gh` for all GH operations (subject to orchestrator policy)
