@@ -4,7 +4,7 @@
 
 ### In Progress
 - [x] Raise branch coverage for `aloop/cli/aloop.mjs` from 68.25% to >=80% by testing uncovered branches (relative-time hour path, cooldown/degraded formatting, dashboard dist-missing and passthrough exit, non-string error fallback). (P1)
-- [ ] Raise branch coverage for `aloop/cli/lib/session.mjs` from 30.77% to >=90% by covering malformed reads, health-dir read failures, non-JSON entries, Windows/non-Windows kill branches, status write skip path, and kill-failure path. (P1)
+- [x] Raise branch coverage for `aloop/cli/lib/session.mjs` from 30.77% to >=90% by covering malformed reads, health-dir read failures, non-JSON entries, Windows/non-Windows kill branches, status write skip path, and kill-failure path. (P1)
 
 ### Up Next
 - [ ] Update `claude/commands/aloop/{status,stop}.md` and `copilot/prompts/aloop-{status,stop}.prompt.md` to delegate to `aloop status` / `aloop stop` (with `node ~/.aloop/cli/aloop.mjs ...` fallback) instead of bespoke file/process logic. (P1)
