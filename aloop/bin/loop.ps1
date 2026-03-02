@@ -95,6 +95,10 @@ function Resolve-IterationProvider {
 
 function Resolve-IterationMode {
     param([int]$IterationNumber)
+    if ($script:forceReviewNext) {
+        $script:forceReviewNext = $false
+        return 'review'
+    }
     if ($script:forcePlanNext) {
         $script:forcePlanNext = $false
         return 'plan'
@@ -284,6 +288,8 @@ function Get-CurrentTask {
 
 $stuckState = @{ LastTask = ""; StuckCount = 0 }
 $script:forcePlanNext = $false
+$script:allTasksMarkedDone = $false
+$script:forceReviewNext = $false
 
 function Skip-StuckTask {
     param([string]$task)
@@ -726,6 +732,7 @@ try {
         if ((Test-Path $steeringFile) -and (Test-Path $steerPromptFile)) {
             $iterationMode = 'steer'
             $script:forcePlanNext = $true
+            $script:allTasksMarkedDone = $false
             Write-LogEntry -Event "steering_detected" -Data @{ iteration = $iteration }
         } elseif (Test-Path $steeringFile) {
             Write-Warning "STEERING.md found but PROMPT_steer.md is missing in $PromptsDir — steering skipped."
@@ -748,12 +755,20 @@ try {
         # Build mode: check completion and stuck detection
         if ($iterationMode -eq 'build') {
             if (Check-AllTasksComplete) {
-                Write-Host "`nALL TASKS COMPLETE" -ForegroundColor Green
-                Stop-DashboardProcess
-                Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
-                Write-LogEntry -Event "all_tasks_complete" -Data @{ iteration = $iteration }
-                Generate-Report -ExitReason "All tasks completed successfully." -Iteration $iteration
-                exit 0
+                if ($Mode -eq 'plan-build-review') {
+                    Write-Host "`nALL TASKS MARKED DONE - forcing final review" -ForegroundColor Cyan
+                    $script:allTasksMarkedDone = $true
+                    $script:forceReviewNext = $true
+                    Write-LogEntry -Event "tasks_marked_complete" -Data @{ iteration = $iteration }
+                    continue
+                } else {
+                    Write-Host "`nALL TASKS COMPLETE" -ForegroundColor Green
+                    Stop-DashboardProcess
+                    Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
+                    Write-LogEntry -Event "all_tasks_complete" -Data @{ iteration = $iteration }
+                    Generate-Report -ExitReason "All tasks completed successfully." -Iteration $iteration
+                    exit 0
+                }
             }
 
             $currentTask = Get-CurrentTask
@@ -810,6 +825,22 @@ try {
             if ($iterationMode -eq 'build') {
                 Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
                 Push-ToBackup
+            } elseif ($iterationMode -eq 'review' -and $script:allTasksMarkedDone) {
+                # Final review gate: review was forced by allTasksMarkedDone
+                if (Check-AllTasksComplete) {
+                    Write-Host "`nFINAL REVIEW APPROVED" -ForegroundColor Green
+                    Stop-DashboardProcess
+                    Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
+                    Write-LogEntry -Event "final_review_approved" -Data @{ iteration = $iteration }
+                    Generate-Report -ExitReason "All tasks completed and approved by final review." -Iteration $iteration
+                    exit 0
+                } else {
+                    Write-Host "`nFINAL REVIEW REJECTED - reopened tasks, continuing loop" -ForegroundColor Yellow
+                    $script:allTasksMarkedDone = $false
+                    $script:forcePlanNext = $true
+                    Write-LogEntry -Event "final_review_rejected" -Data @{ iteration = $iteration }
+                    Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
+                }
             } else {
                 Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
             }
