@@ -1,29 +1,35 @@
 # Project TODO
 
-## Current Phase: Phase 2 cleanup → Phase 3 CLI subcommands → Loop hardening
+## Current Phase: Phase 3 CLI + Loop Hardening + Orchestrator/Security Foundations
 
 ### In Progress
-- [x] Add concrete `discover` test assertions: recursive `.csproj` language detection, `docs/*.md` candidate inclusion, dedup, and limit behavior in `aloop/cli/aloop.mjs.test.mjs` (line 106 only checks it's an array). (P0) [reviewed: gates 1-5 pass]
-- [x] Raise branch coverage for `aloop/cli/lib/discover.mjs` to ≥80%: add targeted tests for `.sln`/recursive `.csproj` detection, docs-directory candidate handling, and uncovered edge branches. Run with `node --test --experimental-test-coverage aloop/cli/aloop.mjs.test.mjs`. (P0) [reviewed: gates 1-5 pass — discover.mjs at 94.12% branch, 13 unit tests all concrete]
 
 ### Up Next
-- [x] Remove the legacy `setup-discovery.ps1` line from `README.md` (line 197: "Legacy discovery + scaffold script (being replaced by aloop CLI)") since the file is already deleted. (P0)
-- [ ] Expand CLI test coverage: error paths (`--output` invalid value, missing required arg values, help flag), stronger text-output assertions, and direct unit tests for `lib/project.mjs` and `lib/config.mjs` branches. (P1)
-- [ ] Implement `aloop status`, `aloop active`, and `aloop stop <session-id>` in `aloop/cli/aloop.mjs` (or new `lib/status.mjs`) with JSON/text outputs reading `~/.aloop/active.json` and session `status.json`; include provider health summary from `~/.aloop/health/<provider>.json`. (P1)
-- [ ] Add `/aloop:status` and `/aloop:stop` command/prompt stubs in `claude/commands/` and `copilot/prompts/` that delegate to `aloop status` / `aloop stop` CLI with `node ~/.aloop/cli/aloop.mjs` fallback. (P1)
-- [ ] Add provider health subsystem to `aloop/bin/loop.ps1`: per-provider files at `~/.aloop/health/<provider>.json`, failure classification (rate_limit / auth / timeout / concurrent_cap / unknown), exponential backoff cooldown table (2/5/15/30/60 min caps), exclusive file-lock with 5-attempt retry, and round-robin skip/sleep when all providers unavailable. (P1)
-- [ ] Add health observability to `loop.ps1`: log `provider_cooldown`, `provider_recovered`, `provider_degraded`, `health_lock_failed`, `all_providers_unavailable` to `log.jsonl`; include provider health in dashboard SSE payloads. (P1)
-- [ ] Enforce mandatory final review gate in `loop.ps1` for `plan-build-review` mode: add `$script:allTasksMarkedDone` and `$script:forceReviewNext` flags; in build completion check set flags instead of `exit 0`; in `Resolve-IterationMode` return `'review'` when flag set; steering clears the flag; log `tasks_marked_complete`, `final_review_approved`, `final_review_rejected`. (P1)
-- [ ] Add focused tests for new `loop.ps1` invariants: forced final review state machine, cooldown progression, lock-failure graceful degradation, steering precedence over `forceReviewNext`. (P1)
-- [ ] Run full SPEC acceptance sweep (Phase 0–3 + global health/review-gate sections): verify zero non-spec "ralph" hits, install smoke test passes, and update SPEC.md acceptance checkboxes based on measured results. (P2)
+- [ ] Expand CLI test coverage in `aloop/cli/aloop.mjs.test.mjs`: parser error paths (`--output` invalid, missing arg values, unknown options), help output, and concrete text-mode assertions for `resolve`/`discover`/`scaffold` plus new Phase 3 commands. (P0)
+- [ ] Add direct unit tests for `aloop/cli/lib/project.mjs` and broaden `aloop/cli/lib/config.test.mjs` to cover parser branches (quotes/booleans/null/numbers/empty lists/block strings/malformed lines) to remove current blind spots. (P0)
+- [ ] Update `claude/commands/aloop/{status,stop}.md` and `copilot/prompts/aloop-{status,stop}.prompt.md` to delegate to `aloop status` / `aloop stop` (with `node ~/.aloop/cli/aloop.mjs ...` fallback) instead of bespoke file/process logic in prompts. (P1)
+- [ ] Implement provider health subsystem in `aloop/bin/loop.ps1`: per-provider files in `~/.aloop/health/`, failure classification (`rate_limit`/`auth`/`timeout`/`concurrent_cap`/`unknown`), exponential cooldown table, lock retries, and round-robin skip/sleep behavior when all providers are unavailable. (P1)
+- [ ] Add health observability in `loop.ps1`: log `provider_cooldown`, `provider_recovered`, `provider_degraded`, `health_lock_failed`, `all_providers_unavailable`; expose health in dashboard state/SSE and CLI status output. (P1)
+- [ ] Enforce mandatory final review gate in `loop.ps1` for `plan-build-review`: add `allTasksMarkedDone` + `forceReviewNext` flow so build never exits directly on all `[x]`; review approval is the only completion path; log `tasks_marked_complete`, `final_review_approved`, `final_review_rejected`. (P1)
+- [ ] Add focused regression tests for new loop invariants (forced final review, steering precedence, cooldown progression, lock-failure graceful degradation). (P1)
+- [ ] Align `aloop/bin/loop.sh` with the same final-review invariant to avoid cross-shell behavioral drift (`plan-build-review` currently exits directly from build on all tasks complete). (P2)
+- [ ] Implement `aloop orchestrate --plan-only` foundation: spec decomposition output + issue creation flow + persisted orchestrator state in `~/.aloop/sessions/<id>/orchestrator.json`. (P2)
+- [ ] Implement orchestrator dispatch/monitor wave engine: concurrency cap, per-issue child loop launch in dedicated worktrees/branches, PR creation targeting `agent/trunk`, and retry/reopen flow for conflicts/rejections. (P2)
+- [ ] Extend `aloop status` to render orchestrator tree view (orchestrator → child sessions → issues/PRs) as required by spec. (P2)
+- [ ] Implement `aloop gh` policy-enforced subcommand surface (`pr-create`, `pr-comment`, `issue-comment`, orchestrator-only operations) with hardcoded role policy, forced repo/base constraints, and deny logging. (P2)
+- [ ] Add convention-file GH request/response processing at loop iteration boundaries (`.aloop/requests` → `.aloop/responses`, archive processed requests), and wire harness delegation to `aloop gh`. (P2)
+- [ ] Add PATH sanitization in harness execution (strip `gh` for agent invocation, restore afterward) and verify restoration on success/failure paths. (P2)
+- [ ] Run full SPEC acceptance sweep (Phase 0-3 + health + final-review + orchestrator + security sections): verify measured outcomes, update SPEC.md checkboxes, and record any deferred items explicitly. (P2)
 
 ### Completed
-- [x] Core rename to `aloop` paths/commands is in place across runtime tree (`aloop/`), Claude commands, Copilot prompts, and installer destinations. Zero legacy-name references in .ps1/.sh/.yml/.mjs files.
+- [x] Implement `aloop status`, `aloop active`, and `aloop stop <session-id>` in `aloop/cli/aloop.mjs` and `aloop/cli/lib/session.mjs` with JSON/text outputs from `~/.aloop/active.json`, session `status.json`, and `~/.aloop/history.json`; include provider health summary from `~/.aloop/health/<provider>.json` for `status`. (P0)
+- [x] Core rename to `aloop` paths/commands is in place across runtime tree (`aloop/`), Claude commands, Copilot prompts, and installer destinations.
 - [x] `install.ps1` targets `~/.aloop/` and creates CLI shims (`~/.aloop/bin/aloop.cmd` and `~/.aloop/bin/aloop`).
 - [x] Native ESM entrypoint exists at `aloop/cli/aloop.mjs` with `resolve` implemented via `.mjs` libs.
-- [x] `aloop resolve` unconfigured-project contract implemented (`config_exists=false`) with tests for JSON and text outputs.
+- [x] `aloop resolve` unconfigured-project contract implemented (`config_exists=false`) with JSON/text coverage.
 - [x] `lib/discover.mjs` and `lib/scaffold.mjs` implemented as native `.mjs` modules; `discover` handles recursive `.csproj`, `.sln`, and `docs/*.md` candidates.
-- [x] `setup-discovery.ps1` deleted; `discover`/`scaffold` delegation in `aloop.mjs` uses native `.mjs` modules only.
-- [x] `install.tests.ps1` updated — no legacy `setup-discovery.ps1` references remain.
-- [x] Setup/start docs use `aloop resolve|discover|scaffold` with `node ~/.aloop/cli/aloop.mjs ...` fallback paths.
-- [x] Command/prompt entrypoint consistency checks are present in `install.tests.ps1`.
+- [x] Concrete `discover` assertions were added for recursive `.csproj`, docs candidate inclusion, dedup, and candidate limits in `aloop/cli/aloop.mjs.test.mjs`.
+- [x] Branch coverage for `aloop/cli/lib/discover.mjs` was raised with targeted unit tests (`aloop/cli/lib/discover.test.mjs`).
+- [x] Legacy `setup-discovery.ps1` is deleted and CLI delegation is native `.mjs`.
+- [x] Setup/start docs include `node ~/.aloop/cli/aloop.mjs` fallback entrypoints for `discover`, `scaffold`, and `resolve`.
+- [x] Installer tests enforce command/prompt entrypoint consistency and runtime destination wiring.

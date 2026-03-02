@@ -159,3 +159,199 @@ test('aloop.mjs scaffold runs natively and writes config/prompts', async () => {
   const promptRaw = await readFile(path.join(parsed.prompts_dir, 'PROMPT_plan.md'), 'utf8');
   assert.match(promptRaw, /Spec: SPEC\.md/);
 });
+
+test('aloop.mjs active returns empty list when no active.json', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-active-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(path.join(homeRoot, '.aloop'), { recursive: true });
+
+  const result = await runCli(['active', '--home-dir', homeRoot, '--output', 'json']);
+  assert.equal(result.code, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.ok(Array.isArray(parsed));
+  assert.equal(parsed.length, 0);
+});
+
+test('aloop.mjs active text mode prints "No active sessions" when none found', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-active-text-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(path.join(homeRoot, '.aloop'), { recursive: true });
+
+  const result = await runCli(['active', '--home-dir', homeRoot]);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /No active sessions/);
+});
+
+test('aloop.mjs active returns sessions from active.json', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-active-list-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const sessionDir = path.join(aloopDir, 'sessions', 'abc123');
+  await mkdir(sessionDir, { recursive: true });
+
+  await writeFile(path.join(aloopDir, 'active.json'), JSON.stringify({
+    abc123: {
+      pid: 99999,
+      session_dir: sessionDir,
+      work_dir: '/some/project',
+      started_at: new Date().toISOString(),
+      provider: 'claude',
+      mode: 'plan-build-review',
+    },
+  }), 'utf8');
+  await writeFile(path.join(sessionDir, 'status.json'), JSON.stringify({
+    iteration: 3,
+    phase: 'build',
+    provider: 'claude',
+    stuck_count: 0,
+    state: 'running',
+    updated_at: new Date().toISOString(),
+  }), 'utf8');
+
+  const result = await runCli(['active', '--home-dir', homeRoot, '--output', 'json']);
+  assert.equal(result.code, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].session_id, 'abc123');
+  assert.equal(parsed[0].state, 'running');
+  assert.equal(parsed[0].phase, 'build');
+  assert.equal(parsed[0].iteration, 3);
+});
+
+test('aloop.mjs status JSON includes sessions and health', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-status-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const healthDir = path.join(aloopDir, 'health');
+  const sessionDir = path.join(aloopDir, 'sessions', 'sess01');
+  await mkdir(sessionDir, { recursive: true });
+  await mkdir(healthDir, { recursive: true });
+
+  await writeFile(path.join(aloopDir, 'active.json'), JSON.stringify({
+    sess01: {
+      pid: 88888,
+      session_dir: sessionDir,
+      work_dir: '/myproject',
+      started_at: new Date().toISOString(),
+      provider: 'codex',
+      mode: 'build',
+    },
+  }), 'utf8');
+  await writeFile(path.join(sessionDir, 'status.json'), JSON.stringify({
+    iteration: 1,
+    phase: 'build',
+    provider: 'codex',
+    stuck_count: 0,
+    state: 'running',
+    updated_at: new Date().toISOString(),
+  }), 'utf8');
+  await writeFile(path.join(healthDir, 'claude.json'), JSON.stringify({
+    status: 'healthy',
+    last_success: new Date().toISOString(),
+    last_failure: null,
+    failure_reason: null,
+    consecutive_failures: 0,
+    cooldown_until: null,
+  }), 'utf8');
+
+  const result = await runCli(['status', '--home-dir', homeRoot, '--output', 'json']);
+  assert.equal(result.code, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.ok(Array.isArray(parsed.sessions));
+  assert.equal(parsed.sessions.length, 1);
+  assert.equal(parsed.sessions[0].session_id, 'sess01');
+  assert.ok(typeof parsed.health === 'object');
+  assert.ok('claude' in parsed.health);
+  assert.equal(parsed.health.claude.status, 'healthy');
+});
+
+test('aloop.mjs status text mode shows session and provider health', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-status-text-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const healthDir = path.join(aloopDir, 'health');
+  await mkdir(healthDir, { recursive: true });
+  await mkdir(path.join(aloopDir, 'sessions', 'sess02'), { recursive: true });
+
+  await writeFile(path.join(aloopDir, 'active.json'), JSON.stringify({
+    sess02: {
+      pid: 77777,
+      session_dir: path.join(aloopDir, 'sessions', 'sess02'),
+      work_dir: '/proj',
+      started_at: new Date().toISOString(),
+      provider: 'gemini',
+      mode: 'plan-build-review',
+    },
+  }), 'utf8');
+  await writeFile(path.join(aloopDir, 'sessions', 'sess02', 'status.json'), JSON.stringify({
+    iteration: 2, phase: 'plan', provider: 'gemini', stuck_count: 0, state: 'running', updated_at: new Date().toISOString(),
+  }), 'utf8');
+  await writeFile(path.join(healthDir, 'gemini.json'), JSON.stringify({
+    status: 'healthy', last_success: new Date().toISOString(), last_failure: null,
+    failure_reason: null, consecutive_failures: 0, cooldown_until: null,
+  }), 'utf8');
+
+  const result = await runCli(['status', '--home-dir', homeRoot]);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /Active Sessions/);
+  assert.match(result.stdout, /sess02/);
+  assert.match(result.stdout, /Provider Health/);
+  assert.match(result.stdout, /gemini/);
+  assert.match(result.stdout, /healthy/);
+});
+
+test('aloop.mjs stop returns error for unknown session in JSON mode', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-stop-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(path.join(homeRoot, '.aloop'), { recursive: true });
+
+  const result = await runCli(['stop', 'no-such-session', '--home-dir', homeRoot, '--output', 'json']);
+  assert.notEqual(result.code, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.success, false);
+  assert.match(parsed.reason, /not found/);
+});
+
+test('aloop.mjs stop removes session from active.json and writes history', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-stop-ok-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const sessionDir = path.join(aloopDir, 'sessions', 'stopsess');
+  await mkdir(sessionDir, { recursive: true });
+
+  await writeFile(path.join(aloopDir, 'active.json'), JSON.stringify({
+    stopsess: {
+      pid: 1,
+      session_dir: sessionDir,
+      work_dir: '/proj',
+      started_at: new Date().toISOString(),
+      provider: 'claude',
+      mode: 'build',
+    },
+  }), 'utf8');
+  await writeFile(path.join(sessionDir, 'status.json'), JSON.stringify({
+    iteration: 4, phase: 'build', provider: 'claude', stuck_count: 0, state: 'running', updated_at: new Date().toISOString(),
+  }), 'utf8');
+
+  const result = await runCli(['stop', 'stopsess', '--home-dir', homeRoot, '--output', 'json']);
+  assert.equal(result.code, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.success, true);
+
+  // active.json should not contain the session anymore
+  const activeRaw = await readFile(path.join(aloopDir, 'active.json'), 'utf8');
+  const active = JSON.parse(activeRaw);
+  assert.ok(!('stopsess' in active));
+
+  // history.json should contain the stopped session
+  const historyRaw = await readFile(path.join(aloopDir, 'history.json'), 'utf8');
+  const history = JSON.parse(historyRaw);
+  assert.equal(history.length, 1);
+  assert.equal(history[0].session_id, 'stopsess');
+  assert.equal(history[0].state, 'stopped');
+
+  // status.json should show stopped state
+  const statusRaw = await readFile(path.join(sessionDir, 'status.json'), 'utf8');
+  const status = JSON.parse(statusRaw);
+  assert.equal(status.state, 'stopped');
+});
