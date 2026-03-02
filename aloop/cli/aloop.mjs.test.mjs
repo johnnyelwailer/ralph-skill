@@ -443,6 +443,42 @@ test('aloop.mjs status text mode prints "No active sessions" when none found', a
   assert.match(result.stdout, /No active sessions/);
 });
 
+test('aloop.mjs status tolerates malformed session/health JSON', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-status-malformed-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const healthDir = path.join(aloopDir, 'health');
+  const sessionDir = path.join(aloopDir, 'sessions', 'badjson');
+  await mkdir(sessionDir, { recursive: true });
+  await mkdir(healthDir, { recursive: true });
+
+  await writeFile(path.join(aloopDir, 'active.json'), JSON.stringify({
+    badjson: {
+      pid: 42424,
+      session_dir: sessionDir,
+      work_dir: '/proj',
+      started_at: new Date().toISOString(),
+      provider: 'claude',
+      mode: 'build',
+    },
+  }), 'utf8');
+  await writeFile(path.join(sessionDir, 'status.json'), '{"state":"running"', 'utf8');
+  await writeFile(path.join(healthDir, 'claude.json'), '{"status":"healthy"', 'utf8');
+  await writeFile(path.join(healthDir, 'codex.json'), JSON.stringify({
+    status: 'degraded',
+    failure_reason: 'auth',
+  }), 'utf8');
+
+  const result = await runCli(['status', '--home-dir', homeRoot, '--output', 'json']);
+  assert.equal(result.code, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.sessions.length, 1);
+  assert.equal(parsed.sessions[0].session_id, 'badjson');
+  assert.equal(parsed.sessions[0].state, 'unknown');
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed.health, 'claude'), false);
+  assert.equal(parsed.health.codex.status, 'degraded');
+});
+
 test('aloop.mjs status rejects invalid --output values', async () => {
   const result = await runCli(['status', '--output', 'xml']);
 
