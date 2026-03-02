@@ -3,6 +3,7 @@
 ## Current Phase: Runtime Hardening + Health + Final Review + Orchestrator/Security
 
 ### In Progress
+- [ ] [review] Gate 2: `aloop/cli/aloop.mjs.test.mjs:641` uses a shape-only assertion (`assert.ok(parsed.config_path)`) in the new `scaffold accepts list flag with multiple values` test; replace with concrete value assertions (exact expected `config_path`, and verify generated config content includes both providers) so broken parsing fails deterministically. (priority: high)
 - [x] Raise branch coverage for `aloop/cli/aloop.mjs` from 68.25% to >=80% by testing uncovered branches (relative-time hour path, cooldown/degraded formatting, dashboard dist-missing and passthrough exit, non-string error fallback). (P1)
 - [x] Raise branch coverage for `aloop/cli/lib/session.mjs` from 30.77% to >=90% by covering malformed reads, health-dir read failures, non-JSON entries, Windows/non-Windows kill branches, status write skip path, and kill-failure path. (P1)
 
