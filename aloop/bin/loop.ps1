@@ -427,7 +427,7 @@ function Write-LogEntry {
 # PROVIDER HEALTH PRIMITIVES
 # ============================================================================
 
-$providerHealthDir = Join-Path (Join-Path $HOME '.aloop') 'health'
+$providerHealthDir = if ($env:ALOOP_HEALTH_DIR) { $env:ALOOP_HEALTH_DIR } else { Join-Path (Join-Path $HOME '.aloop') 'health' }
 $healthLockRetryDelaysMs = @(50, 100, 150, 200, 250)
 
 function Ensure-ProviderHealthDir {
@@ -525,7 +525,15 @@ function Get-ProviderHealthState {
     if ($parsed.PSObject.Properties.Name -contains 'last_failure') { $state.last_failure = $parsed.last_failure }
     if ($parsed.PSObject.Properties.Name -contains 'failure_reason') { $state.failure_reason = $parsed.failure_reason }
     if ($parsed.PSObject.Properties.Name -contains 'consecutive_failures') { $state.consecutive_failures = [int]$parsed.consecutive_failures }
-    if ($parsed.PSObject.Properties.Name -contains 'cooldown_until') { $state.cooldown_until = $parsed.cooldown_until }
+    if ($parsed.PSObject.Properties.Name -contains 'cooldown_until') {
+        $cu = $parsed.cooldown_until
+        # ConvertFrom-Json may auto-convert ISO 8601 strings to DateTime objects; normalise back to ISO string
+        if ($cu -is [datetime]) {
+            $state.cooldown_until = [DateTimeOffset]::new($cu.ToUniversalTime(), [TimeSpan]::Zero).ToString('o')
+        } else {
+            $state.cooldown_until = [string]$cu
+        }
+    }
     return $state
 }
 

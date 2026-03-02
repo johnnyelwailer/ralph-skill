@@ -135,31 +135,30 @@ resolve_iteration_mode() {
     local iteration=$1
     if [ "$FORCE_REVIEW_NEXT" = true ]; then
         FORCE_REVIEW_NEXT=false
-        echo "review"
-        return
-    fi
-    if [ "$FORCE_PLAN_NEXT" = true ]; then
+        RESOLVED_MODE="review"
+    elif [ "$FORCE_PLAN_NEXT" = true ]; then
         FORCE_PLAN_NEXT=false
-        echo "plan"
-        return
+        RESOLVED_MODE="plan"
+    else
+        case "$MODE" in
+            plan-build)
+                if (( iteration % 2 == 1 )); then RESOLVED_MODE="plan"; else RESOLVED_MODE="build"; fi
+                ;;
+            plan-build-review)
+                # 5-step cycle: plan -> build -> build -> build -> review
+                local phase=$(( (iteration - 1) % 5 ))
+                case $phase in
+                    0) RESOLVED_MODE="plan" ;;
+                    1|2|3) RESOLVED_MODE="build" ;;
+                    4) RESOLVED_MODE="review" ;;
+                esac
+                ;;
+            *)
+                RESOLVED_MODE="$MODE"
+                ;;
+        esac
     fi
-    case "$MODE" in
-        plan-build)
-            if (( iteration % 2 == 1 )); then echo "plan"; else echo "build"; fi
-            ;;
-        plan-build-review)
-            # 5-step cycle: plan -> build -> build -> build -> review
-            local phase=$(( (iteration - 1) % 5 ))
-            case $phase in
-                0) echo "plan" ;;
-                1|2|3) echo "build" ;;
-                4) echo "review" ;;
-            esac
-            ;;
-        *)
-            echo "$MODE"
-            ;;
-    esac
+    echo "$RESOLVED_MODE"
 }
 
 assert_provider_installed() {
@@ -309,9 +308,13 @@ invoke_provider() {
 
 check_all_tasks_complete() {
     if [ ! -f "$PLAN_FILE" ]; then return 1; fi
-    local incomplete=$(grep -c '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null || echo "0")
+    # grep -c exits 1 (no matches) outputting "0"; split declaration from assignment
+    # so || fallback doesn't capture the grep stdout twice
+    local incomplete
+    incomplete=$(grep -c '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null) || incomplete=0
     if [ "$incomplete" -eq 0 ]; then
-        local completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null || echo "0")
+        local completed
+        completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null) || completed=0
         if [ "$completed" -gt 0 ]; then return 0; fi
     fi
     return 1
@@ -331,6 +334,7 @@ STUCK_COUNT=0
 FORCE_PLAN_NEXT=false
 ALL_TASKS_MARKED_DONE=false
 FORCE_REVIEW_NEXT=false
+RESOLVED_MODE=""
 
 skip_stuck_task() {
     local task="$1"
@@ -626,7 +630,9 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
     iter_provider=$(resolve_iteration_provider $ITERATION)
-    iter_mode=$(resolve_iteration_mode $ITERATION)
+    # Call directly (not via subshell) so flag-clearing affects the main shell
+    resolve_iteration_mode "$ITERATION" > /dev/null
+    iter_mode="$RESOLVED_MODE"
 
     # Check for live steering instruction (overrides normal mode)
     STEERING_FILE="$WORK_DIR/STEERING.md"

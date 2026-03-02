@@ -1,252 +1,190 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.0' }
 <#
 .SYNOPSIS
-    Pester regression tests for the mandatory final-review exit invariant in
-    loop.ps1 and loop.sh.
-    Covers: forced review after build completion, review-approval exit,
-    review rejection re-plan, steering precedence, and required log events.
+    Pester behavioral regression tests for loop.ps1 and loop.sh.
+    Covers final-review exit invariant (forced review, approval, rejection, steering),
+    provider-health state transitions (auth→degraded, cooldown, recovery, round-robin
+    selection), and required log events — all validated against real subprocess
+    execution rather than static source-text matching.
 .NOTES
     Run:  Invoke-Pester ./aloop/bin/loop.tests.ps1 -Output Detailed
 #>
 
 # ============================================================================
-# 1. loop.ps1 — static analysis
+# 2. loop.sh — final-review behavioral end-to-end
 # ============================================================================
-Describe 'loop.ps1 — final-review exit invariant (static analysis)' {
+Describe 'loop.sh — final-review behavioral end-to-end' {
 
     BeforeAll {
-        $scriptPath    = Join-Path $PSScriptRoot 'loop.ps1'
-        $scriptContent = Get-Content $scriptPath -Raw
-    }
+        $script:bashExe = (Get-Command bash -ErrorAction SilentlyContinue)?.Source
+        if (-not $script:bashExe) { return }
 
-    Context 'Flag declarations' {
-        It 'declares $script:allTasksMarkedDone initialised to $false' {
-            $scriptContent | Should -Match '\$script:allTasksMarkedDone\s*=\s*\$false'
+        $loopShPath = Join-Path $PSScriptRoot 'loop.sh'
+        # Convert Windows path to POSIX for bash (Git Bash / WSL)
+        $script:loopShBash = & $script:bashExe -c "cygpath -u '$(($loopShPath -replace "\\","/"))'" 2>$null
+        if (-not $script:loopShBash) {
+            $script:loopShBash = ($loopShPath -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
         }
-        It 'declares $script:forceReviewNext initialised to $false' {
-            $scriptContent | Should -Match '\$script:forceReviewNext\s*=\s*\$false'
-        }
-    }
 
-    Context 'Build completion — plan-build-review branch sets flags and continues without exiting' {
-        It 'sets $script:allTasksMarkedDone = $true on build completion in plan-build-review mode' {
-            $scriptContent | Should -Match '\$script:allTasksMarkedDone\s*=\s*\$true'
-        }
-        It 'sets $script:forceReviewNext = $true on build completion in plan-build-review mode' {
-            $scriptContent | Should -Match '\$script:forceReviewNext\s*=\s*\$true'
-        }
-        It 'uses continue (not exit) in the plan-build-review completion branch' {
-            # tasks_marked_complete log event is emitted just before 'continue' in the plan-build-review branch
-            $scriptContent | Should -Match '"tasks_marked_complete"[\s\S]{0,200}\bcontinue\b'
-        }
-        It 'does NOT call exit inside the plan-build-review completion branch' {
-            # No 'exit' should appear between the tasks_marked_complete event and the continue keyword
-            $match = [regex]::Match($scriptContent, '"tasks_marked_complete"([\s\S]{0,300})\bcontinue\b')
-            $match.Success | Should -BeTrue
-            $match.Groups[1].Value | Should -Not -Match '\bexit\b'
-        }
-        It 'has exit 0 in the non-review-mode completion branch (build-only)' {
-            # The else branch (build-only / plan-build) logs all_tasks_complete then exits
-            $scriptContent | Should -Match '"all_tasks_complete"[\s\S]{0,200}exit 0'
-        }
-    }
+        $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("aloop-sh-tests-" + [guid]::NewGuid().ToString('N'))
+        $script:shTempRoot = $tempRoot
+        $fakeBinDir = Join-Path $tempRoot 'fake-bin'
+        New-Item -ItemType Directory -Force $fakeBinDir | Out-Null
+        $script:shFakeBinDir = $fakeBinDir
 
-    Context 'Resolve-IterationMode handles forceReviewNext flag' {
-        It 'checks $script:forceReviewNext in Resolve-IterationMode' {
-            $scriptContent | Should -Match 'if \(\$script:forceReviewNext\)'
+        # Fake claude shell script (bash) — manipulates TODO.md like the PS1 fake
+        # Created entirely via bash (printf + chmod) so the execute bit is preserved
+        # on Windows/NTFS where PowerShell-created files can't be chmod'd.
+        $fakeBinBash = & $script:bashExe -c "cygpath -u '$($fakeBinDir -replace '\\','/')'" 2>$null
+        if (-not $fakeBinBash) {
+            $fakeBinBash = ($fakeBinDir -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
         }
-        It 'clears forceReviewNext to $false after consuming it' {
-            # At least two occurrences: the initialisation and the reset inside Resolve-IterationMode
-            $matches = [regex]::Matches($scriptContent, '\$script:forceReviewNext\s*=\s*\$false')
-            $matches.Count | Should -BeGreaterOrEqual 2
-        }
-        It "returns 'review' when forceReviewNext is set" {
-            $scriptContent | Should -Match "forceReviewNext\)[\s\S]{0,100}return 'review'"
-        }
-    }
+        $fakeBinBash = $fakeBinBash.Trim()
+        $fakeShContent = @'
+#!/bin/bash
+STATE_FILE="${FAKE_CLAUDE_STATE:-}"
+CALLS=0; SCENARIO="approve"; REJECTED=""
+if [ -n "$STATE_FILE" ] && [ -f "$STATE_FILE" ]; then
+    CALLS=$(grep '^calls=' "$STATE_FILE" | cut -d= -f2 | tr -d '[:space:]')
+    SCENARIO=$(grep '^scenario=' "$STATE_FILE" | cut -d= -f2 | tr -d '[:space:]')
+    REJECTED=$(grep '^rejected=' "$STATE_FILE" | cut -d= -f2 | tr -d '[:space:]')
+fi
+CALLS=$((CALLS + 1))
+TODO_FILE="${PWD}/TODO.md"
+if grep -q -- '- \[ \]' "$TODO_FILE" 2>/dev/null; then
+    sed -i 's/- \[ \]/- [x]/g' "$TODO_FILE"
+elif [ "$SCENARIO" = "reject-once" ] && [ "$REJECTED" != "true" ]; then
+    REJECTED="true"
+    sed -i 's/- \[x\]/- [ ]/g' "$TODO_FILE"
+fi
+[ -n "$STATE_FILE" ] && printf 'calls=%d\nscenario=%s\nrejected=%s\n' "$CALLS" "$SCENARIO" "$REJECTED" > "$STATE_FILE"
+echo "Fake provider: call=$CALLS"
+exit 0
+'@
+        $env:_ALOOP_FAKE_CLAUDE_SH = $fakeShContent -replace "`r`n", "`n"
+        & $script:bashExe -c "mkdir -p '$fakeBinBash'; printf '%s' `"`$_ALOOP_FAKE_CLAUDE_SH`" > '$fakeBinBash/claude'; chmod +x '$fakeBinBash/claude'" 2>$null
+        Remove-Item Env:_ALOOP_FAKE_CLAUDE_SH -ErrorAction SilentlyContinue
 
-    Context 'Review gate — approval path' {
-        It "checks allTasksMarkedDone in the review branch condition" {
-            $scriptContent | Should -Match "iterationMode -eq 'review'[\s\S]{0,100}allTasksMarkedDone"
+        function script:New-ShLoopEnv {
+            param([string]$Scenario = 'approve')
+            $testDir   = Join-Path $script:shTempRoot ("env-" + [guid]::NewGuid().ToString('N'))
+            $workDir   = Join-Path $testDir 'work'
+            $sessDir   = Join-Path $testDir 'session'
+            $promptDir = Join-Path $testDir 'prompts'
+            foreach ($d in $workDir, $sessDir, $promptDir) {
+                New-Item -ItemType Directory -Force $d | Out-Null
+            }
+            # Use no-BOM UTF-8 + LF endings so bash grep/sed work correctly on these files
+            $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
+            $stateFile = Join-Path $testDir 'claude-state.txt'
+            [System.IO.File]::WriteAllText($stateFile, "calls=0`nscenario=$Scenario`nrejected=`n", $utf8NoBom)
+            return [pscustomobject]@{
+                WorkDir    = $workDir
+                SessionDir = $sessDir
+                PromptsDir = $promptDir
+                StateFile  = $stateFile
+                LogFile    = Join-Path $sessDir 'log.jsonl'
+            }
         }
-        It 'logs final_review_approved event on approval' {
-            $scriptContent | Should -Match '"final_review_approved"'
+
+        function script:ConvertTo-BashPath {
+            param([string]$WinPath)
+            $p = & $script:bashExe -c "cygpath -u '$(($WinPath -replace "\\","/"))'" 2>$null
+            if (-not $p) {
+                $p = ($WinPath -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+            }
+            return $p.Trim()
         }
-        It 'exits 0 after logging final_review_approved' {
-            $match = [regex]::Match(
-                $scriptContent,
-                '"final_review_approved"[\s\S]{0,300}exit 0'
+
+        function script:Invoke-ShLoopScript {
+            param($LoopEnv, [int]$MaxIter = 8)
+            $prevPath  = $env:PATH
+            $prevState = $env:FAKE_CLAUDE_STATE
+            $env:FAKE_CLAUDE_STATE = $LoopEnv.StateFile
+
+            $binBash   = ConvertTo-BashPath $script:shFakeBinDir
+            $promptBash = ConvertTo-BashPath $LoopEnv.PromptsDir
+            $sessBash   = ConvertTo-BashPath $LoopEnv.SessionDir
+            $workBash   = ConvertTo-BashPath $LoopEnv.WorkDir
+            $loopBash   = $script:loopShBash
+
+            try {
+                $output = & $script:bashExe -c "
+                    export PATH='$binBash':`$PATH
+                    export FAKE_CLAUDE_STATE='$(ConvertTo-BashPath $LoopEnv.StateFile)'
+                    bash '$loopBash' \
+                        --prompts-dir '$promptBash' \
+                        --session-dir '$sessBash' \
+                        --work-dir '$workBash' \
+                        --mode plan-build-review \
+                        --provider claude \
+                        --max-iterations $MaxIter
+                " 2>&1
+                return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
+            }
+            finally {
+                $env:PATH = $prevPath
+                if ($null -eq $prevState) { Remove-Item Env:FAKE_CLAUDE_STATE -ErrorAction SilentlyContinue }
+                else { $env:FAKE_CLAUDE_STATE = $prevState }
+            }
+        }
+
+        function script:Get-ShLogEvents {
+            param([string]$LogFile)
+            if (-not (Test-Path $LogFile)) { return @() }
+            return @(
+                Get-Content $LogFile |
+                    ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
+                    Where-Object { $_ } |
+                    ForEach-Object { $_.event }
             )
-            $match.Success | Should -BeTrue
         }
     }
 
-    Context 'Review gate — rejection path' {
-        It 'logs final_review_rejected event on rejection' {
-            $scriptContent | Should -Match '"final_review_rejected"'
-        }
-        It 'resets $script:allTasksMarkedDone to $false after rejection' {
-            # allTasksMarkedDone is reset before the final_review_rejected event is logged
-            $scriptContent | Should -Match 'allTasksMarkedDone\s*=\s*\$false[\s\S]{0,200}final_review_rejected'
-        }
-        It 'sets $script:forcePlanNext = $true after rejection' {
-            # forcePlanNext is set before the final_review_rejected event is logged
-            $scriptContent | Should -Match 'forcePlanNext\s*=\s*\$true[\s\S]{0,200}final_review_rejected'
+    AfterAll {
+        if ($script:shTempRoot -and (Test-Path $script:shTempRoot)) {
+            Remove-Item -Recurse -Force $script:shTempRoot
         }
     }
 
-    Context 'Steering takes priority and resets allTasksMarkedDone' {
-        It 'resets $script:allTasksMarkedDone to $false in the steering detection block' {
-            # allTasksMarkedDone is reset before the steering_detected event is logged
-            $scriptContent | Should -Match 'allTasksMarkedDone\s*=\s*\$false[\s\S]{0,200}steering_detected'
-        }
+    It 'build completion logs tasks_marked_complete (forced review, no all_tasks_complete)' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e      = New-ShLoopEnv -Scenario 'approve'
+        $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 8
+        $events = Get-ShLogEvents -LogFile $e.LogFile
+        $events | Should -Contain 'tasks_marked_complete'
+        $events | Should -Not -Contain 'all_tasks_complete'
     }
 
-    Context 'All three required log events are present in source' {
-        It 'source emits tasks_marked_complete event' {
-            $scriptContent | Should -Match '"tasks_marked_complete"'
-        }
-        It 'source emits final_review_approved event' {
-            $scriptContent | Should -Match '"final_review_approved"'
-        }
-        It 'source emits final_review_rejected event' {
-            $scriptContent | Should -Match '"final_review_rejected"'
-        }
+    It 'review approval emits final_review_approved and exits 0' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e      = New-ShLoopEnv -Scenario 'approve'
+        $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 8
+        $events = Get-ShLogEvents -LogFile $e.LogFile
+        $result.ExitCode | Should -Be 0
+        $events | Should -Contain 'final_review_approved'
+        $events | Should -Not -Contain 'final_review_rejected'
     }
 
-    Context 'Provider health primitives are present with lock retries and graceful failure logging' {
-        It 'declares provider health directory under ~/.aloop/health' {
-            $scriptContent | Should -Match '\$providerHealthDir\s*=\s*Join-Path\s+\(Join-Path\s+\$HOME\s+''\.aloop''\)\s+''health'''
-        }
-        It 'declares 5 lock retry delays (50..250ms)' {
-            $scriptContent | Should -Match '\$healthLockRetryDelaysMs\s*=\s*@\(50,\s*100,\s*150,\s*200,\s*250\)'
-        }
-        It 'provides Get-ProviderHealthPath helper' {
-            $scriptContent | Should -Match 'function\s+Get-ProviderHealthPath'
-        }
-        It 'provides default health state helper with required schema fields' {
-            $scriptContent | Should -Match 'function\s+New-ProviderHealthState'
-            $scriptContent | Should -Match 'status\s*=\s*''healthy'''
-            $scriptContent | Should -Match 'last_success\s*='
-            $scriptContent | Should -Match 'last_failure\s*='
-            $scriptContent | Should -Match 'failure_reason\s*='
-            $scriptContent | Should -Match 'consecutive_failures\s*=\s*0'
-            $scriptContent | Should -Match 'cooldown_until\s*='
-        }
-        It 'writes with exclusive lock (FileShare.None)' {
-            $scriptContent | Should -Match 'Set-ProviderHealthState[\s\S]{0,500}FileShare\]::None'
-        }
-        It 'reads with shared lock (FileShare.Read)' {
-            $scriptContent | Should -Match 'Get-ProviderHealthState[\s\S]{0,500}FileShare\]::Read'
-        }
-        It 'logs health_lock_failed when lock retries are exhausted' {
-            $scriptContent | Should -Match '"health_lock_failed"'
-        }
+    It 'review rejection emits final_review_rejected then final_review_approved in order' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e      = New-ShLoopEnv -Scenario 'reject-once'
+        $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 14
+        $events = Get-ShLogEvents -LogFile $e.LogFile
+        $result.ExitCode | Should -Be 0
+        $events | Should -Contain 'final_review_rejected'
+        $events | Should -Contain 'final_review_approved'
+        $rejIdx = [array]::IndexOf([string[]]$events, 'final_review_rejected')
+        $appIdx = [array]::IndexOf([string[]]$events, 'final_review_approved')
+        $rejIdx | Should -BeLessThan $appIdx
     }
 }
 
-# ============================================================================
-# 2. loop.sh — static analysis
-# ============================================================================
-Describe 'loop.sh — final-review exit invariant (static analysis)' {
 
-    BeforeAll {
-        $scriptPath    = Join-Path $PSScriptRoot 'loop.sh'
-        $scriptContent = Get-Content $scriptPath -Raw
-    }
-
-    Context 'Flag declarations' {
-        It 'declares ALL_TASKS_MARKED_DONE=false' {
-            $scriptContent | Should -Match 'ALL_TASKS_MARKED_DONE=false'
-        }
-        It 'declares FORCE_REVIEW_NEXT=false' {
-            $scriptContent | Should -Match 'FORCE_REVIEW_NEXT=false'
-        }
-    }
-
-    Context 'Build completion — plan-build-review branch sets flags and continues without exiting' {
-        It 'sets ALL_TASKS_MARKED_DONE=true on build completion' {
-            $scriptContent | Should -Match 'ALL_TASKS_MARKED_DONE=true'
-        }
-        It 'sets FORCE_REVIEW_NEXT=true on build completion' {
-            $scriptContent | Should -Match 'FORCE_REVIEW_NEXT=true'
-        }
-        It 'uses continue (not exit) in the plan-build-review completion branch' {
-            $match = [regex]::Match($scriptContent, 'plan-build-review[\s\S]*?\bcontinue\b')
-            $match.Success | Should -BeTrue
-        }
-        It 'does NOT call exit inside the plan-build-review completion branch' {
-            # No exit keyword should appear between the tasks_marked_complete event and continue in loop.sh
-            $match = [regex]::Match(
-                $scriptContent,
-                '"tasks_marked_complete"([\s\S]{0,300})\bcontinue\b'
-            )
-            $match.Success | Should -BeTrue
-            $match.Groups[1].Value | Should -Not -Match '\bexit\b'
-        }
-    }
-
-    Context 'resolve_iteration_mode handles FORCE_REVIEW_NEXT flag' {
-        It 'checks FORCE_REVIEW_NEXT=true in resolve_iteration_mode' {
-            $scriptContent | Should -Match 'FORCE_REVIEW_NEXT.*true'
-        }
-        It 'resets FORCE_REVIEW_NEXT=false after consuming it' {
-            # At least two occurrences: declaration and reset
-            $matches = [regex]::Matches($scriptContent, 'FORCE_REVIEW_NEXT=false')
-            $matches.Count | Should -BeGreaterOrEqual 2
-        }
-        It 'echoes "review" when FORCE_REVIEW_NEXT is set' {
-            $match = [regex]::Match(
-                $scriptContent,
-                'FORCE_REVIEW_NEXT.*true[\s\S]{0,200}echo "review"'
-            )
-            $match.Success | Should -BeTrue
-        }
-    }
-
-    Context 'Review gate' {
-        It 'checks ALL_TASKS_MARKED_DONE in review gate condition' {
-            $scriptContent | Should -Match 'ALL_TASKS_MARKED_DONE.*true'
-        }
-        It 'logs final_review_approved event' {
-            $scriptContent | Should -Match '"final_review_approved"'
-        }
-        It 'resets ALL_TASKS_MARKED_DONE=false on rejection' {
-            # ALL_TASKS_MARKED_DONE is reset before the final_review_rejected event is logged
-            $scriptContent | Should -Match 'ALL_TASKS_MARKED_DONE=false[\s\S]{0,200}final_review_rejected'
-        }
-        It 'sets FORCE_PLAN_NEXT=true on rejection' {
-            # FORCE_PLAN_NEXT is set before the final_review_rejected event is logged
-            $scriptContent | Should -Match 'FORCE_PLAN_NEXT=true[\s\S]{0,200}final_review_rejected'
-        }
-    }
-
-    Context 'Steering takes priority and resets ALL_TASKS_MARKED_DONE' {
-        It 'resets ALL_TASKS_MARKED_DONE=false when steering is detected' {
-            $match = [regex]::Match(
-                $scriptContent,
-                'STEERING[\s\S]{0,600}ALL_TASKS_MARKED_DONE=false'
-            )
-            $match.Success | Should -BeTrue
-        }
-    }
-
-    Context 'All three required log events are present in source' {
-        It 'source emits tasks_marked_complete event' {
-            $scriptContent | Should -Match '"tasks_marked_complete"'
-        }
-        It 'source emits final_review_approved event' {
-            $scriptContent | Should -Match '"final_review_approved"'
-        }
-        It 'source emits final_review_rejected event' {
-            $scriptContent | Should -Match '"final_review_rejected"'
-        }
-    }
-}
-
-# ============================================================================
-# 3. loop.ps1 — behavioral end-to-end
-# ============================================================================
 Describe 'loop.ps1 — final-review behavioral end-to-end' {
 
     BeforeAll {
@@ -398,93 +336,205 @@ exit 0
 }
 
 # ============================================================================
-# 4. loop.ps1 — round-robin health integration (static analysis)
+# 4. loop.ps1 — provider-health behavioral
 # ============================================================================
-Describe 'loop.ps1 — round-robin provider-health integration (static analysis)' {
+Describe 'loop.ps1 — provider-health behavioral' {
 
     BeforeAll {
-        $scriptPath    = Join-Path $PSScriptRoot 'loop.ps1'
-        $scriptContent = Get-Content $scriptPath -Raw
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+        $pwshPath   = (Get-Command pwsh -ErrorAction Stop).Source
+
+        $tempRoot   = Join-Path ([IO.Path]::GetTempPath()) ("aloop-health-tests-" + [guid]::NewGuid().ToString('N'))
+        $fakeBinDir = Join-Path $tempRoot 'fake-bin'
+        New-Item -ItemType Directory -Force $fakeBinDir | Out-Null
+
+        # ── Fake provider ps1: behaviour controlled by FAKE_PROVIDER_SCENARIO ─
+        $fakePs1 = Join-Path $fakeBinDir '_fake_provider.ps1'
+        Set-Content $fakePs1 @'
+$scenario = if ($env:FAKE_PROVIDER_SCENARIO) { $env:FAKE_PROVIDER_SCENARIO } else { 'succeed' }
+switch ($scenario) {
+    'fail-auth'       { Write-Output "auth: unauthorized access denied";              exit 1 }
+    'fail-rate-limit' { Write-Output "429: rate limit exceeded - too many requests";  exit 1 }
+    'fail-concurrent' { Write-Output "cannot launch inside another session";          exit 1 }
+    'fail-unknown'    { Write-Output "unexpected error: something went wrong";        exit 1 }
+    default {
+        $todoFile = Join-Path $PWD 'TODO.md'
+        if (Test-Path $todoFile) {
+            $c = Get-Content $todoFile -Raw
+            if ($c -match '- \[ \]') { ($c -replace '- \[ \]', '- [x]') | Set-Content $todoFile }
+        }
+        Write-Output "Fake provider: success"
+        exit 0
+    }
+}
+'@
+        $claudeCmd = Join-Path $fakeBinDir 'claude.cmd'
+        Set-Content $claudeCmd "@echo off`r`nset FAKE_PROVIDER_SCENARIO=%FAKE_CLAUDE_SCENARIO%`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+
+        $codexCmd = Join-Path $fakeBinDir 'codex.cmd'
+        Set-Content $codexCmd "@echo off`r`nset FAKE_PROVIDER_SCENARIO=%FAKE_CODEX_SCENARIO%`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+
+        # ── Helper: isolated test env with its own health dir ─────────────────
+        function script:New-HealthEnv {
+            $testDir   = Join-Path $tempRoot ("env-" + [guid]::NewGuid().ToString('N'))
+            $workDir   = Join-Path $testDir 'work'
+            $sessDir   = Join-Path $testDir 'session'
+            $promptDir = Join-Path $testDir 'prompts'
+            $healthDir = Join-Path $testDir 'health'
+            foreach ($d in $workDir, $sessDir, $promptDir, $healthDir) {
+                New-Item -ItemType Directory -Force $d | Out-Null
+            }
+            Set-Content (Join-Path $workDir   'TODO.md')         "- [ ] Task A"
+            Set-Content (Join-Path $promptDir 'PROMPT_build.md') "# Building Mode`nDo tasks."
+            return [pscustomobject]@{
+                WorkDir    = $workDir
+                SessionDir = $sessDir
+                PromptsDir = $promptDir
+                HealthDir  = $healthDir
+                LogFile    = Join-Path $sessDir 'log.jsonl'
+            }
+        }
+
+        # ── Helper: run loop.ps1 with fake provider + isolated health dir ─────
+        function script:Invoke-HealthLoop {
+            param(
+                $Env,
+                [string]$ClaudeScenario = 'succeed',
+                [string]$CodexScenario  = 'succeed',
+                [string]$Provider       = 'claude',
+                [string]$RRProviders    = 'claude,codex',
+                [string]$Mode           = 'build',
+                [int]   $MaxIter        = 2
+            )
+            $prevPath    = $env:PATH
+            $prevHDir    = $env:ALOOP_HEALTH_DIR
+            $prevClaudeS = $env:FAKE_CLAUDE_SCENARIO
+            $prevCodexS  = $env:FAKE_CODEX_SCENARIO
+            $env:PATH                  = "$fakeBinDir;$prevPath"
+            $env:ALOOP_HEALTH_DIR      = $Env.HealthDir
+            $env:FAKE_CLAUDE_SCENARIO  = $ClaudeScenario
+            $env:FAKE_CODEX_SCENARIO   = $CodexScenario
+            try {
+                $callArgs = @(
+                    '-NoProfile', '-File', $loopScript,
+                    '-PromptsDir',    $Env.PromptsDir,
+                    '-SessionDir',    $Env.SessionDir,
+                    '-WorkDir',       $Env.WorkDir,
+                    '-Mode',          $Mode,
+                    '-Provider',      $Provider,
+                    '-MaxIterations', $MaxIter
+                )
+                if ($Provider -eq 'round-robin') {
+                    $callArgs += '-RoundRobinProviders', $RRProviders
+                }
+                $output = & $pwshPath @callArgs 2>&1
+                return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
+            }
+            finally {
+                $env:PATH = $prevPath
+                if ($null -eq $prevHDir)    { Remove-Item Env:ALOOP_HEALTH_DIR     -EA SilentlyContinue } else { $env:ALOOP_HEALTH_DIR    = $prevHDir }
+                if ($null -eq $prevClaudeS) { Remove-Item Env:FAKE_CLAUDE_SCENARIO -EA SilentlyContinue } else { $env:FAKE_CLAUDE_SCENARIO = $prevClaudeS }
+                if ($null -eq $prevCodexS)  { Remove-Item Env:FAKE_CODEX_SCENARIO  -EA SilentlyContinue } else { $env:FAKE_CODEX_SCENARIO  = $prevCodexS }
+            }
+        }
+
+        function script:Get-HealthFile {
+            param([string]$HealthDir, [string]$Provider)
+            $p = Join-Path $HealthDir "$($Provider.ToLowerInvariant()).json"
+            if (-not (Test-Path $p)) { return $null }
+            return Get-Content $p -Raw | ConvertFrom-Json
+        }
+
+        function script:Get-HealthLogEvents {
+            param([string]$LogFile)
+            if (-not (Test-Path $LogFile)) { return @() }
+            return @(
+                Get-Content $LogFile |
+                    ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
+                    Where-Object { $_ } |
+                    ForEach-Object { $_.event }
+            )
+        }
     }
 
-    Context 'Cooldown schedule helper' {
-        It 'declares Get-ProviderCooldownSeconds function' {
-            $scriptContent | Should -Match 'function\s+Get-ProviderCooldownSeconds'
-        }
-        It 'returns 120 for 2 consecutive failures' {
-            $scriptContent | Should -Match '2\s*\{\s*return 120\s*\}'
-        }
-        It 'hard-caps at 3600 seconds' {
-            $scriptContent | Should -Match 'return 3600'
-        }
+    AfterAll {
+        if (Test-Path $tempRoot) { Remove-Item -Recurse -Force $tempRoot }
     }
 
-    Context 'Failure classification helper' {
-        It 'declares Classify-ProviderFailure function' {
-            $scriptContent | Should -Match 'function\s+Classify-ProviderFailure'
-        }
-        It 'classifies rate_limit' {
-            $scriptContent | Should -Match 'rate_limit'
-        }
-        It 'classifies auth as degraded trigger' {
-            $scriptContent | Should -Match 'auth'
-        }
-        It 'classifies concurrent_cap' {
-            $scriptContent | Should -Match 'concurrent_cap'
-        }
-        It 'classifies timeout' {
-            $scriptContent | Should -Match "'timeout'"
-        }
+    It 'auth failure writes status=degraded to health file and emits provider_degraded' {
+        $e = New-HealthEnv
+        Invoke-HealthLoop -Env $e -ClaudeScenario 'fail-auth' -MaxIter 1 | Out-Null
+        $health = Get-HealthFile -HealthDir $e.HealthDir -Provider 'claude'
+        $health            | Should -Not -BeNullOrEmpty
+        $health.status     | Should -Be 'degraded'
+        $health.failure_reason | Should -Be 'auth'
+        $health.consecutive_failures | Should -Be 1
+        $events = Get-HealthLogEvents -LogFile $e.LogFile
+        $events | Should -Contain 'provider_degraded'
     }
 
-    Context 'Health update functions' {
-        It 'declares Update-ProviderHealthOnSuccess' {
-            $scriptContent | Should -Match 'function\s+Update-ProviderHealthOnSuccess'
-        }
-        It 'declares Update-ProviderHealthOnFailure' {
-            $scriptContent | Should -Match 'function\s+Update-ProviderHealthOnFailure'
-        }
-        It 'logs provider_recovered on success after unhealthy state' {
-            $scriptContent | Should -Match "'provider_recovered'"
-        }
-        It 'logs provider_cooldown on failure entering cooldown' {
-            $scriptContent | Should -Match "'provider_cooldown'"
-        }
-        It 'logs provider_degraded on auth failure' {
-            $scriptContent | Should -Match "'provider_degraded'"
-        }
-        It 'marks auth failures as degraded (no auto-recover)' {
-            $scriptContent | Should -Match "reason.*auth[\s\S]{0,100}degraded|degraded[\s\S]{0,100}reason.*auth"
-        }
+    It 'second consecutive rate_limit failure enters cooldown and emits provider_cooldown' {
+        $e = New-HealthEnv
+        # Pre-seed: first failure already recorded (no cooldown yet at failures=1)
+        @{ status='healthy'; last_success=$null; last_failure=$null; failure_reason='rate_limit';
+           consecutive_failures=1; cooldown_until=$null } |
+            ConvertTo-Json | Set-Content (Join-Path $e.HealthDir 'claude.json')
+        Invoke-HealthLoop -Env $e -ClaudeScenario 'fail-rate-limit' -MaxIter 1 | Out-Null
+        $health = Get-HealthFile -HealthDir $e.HealthDir -Provider 'claude'
+        $health.status               | Should -Be 'cooldown'
+        $health.consecutive_failures | Should -Be 2
+        $health.cooldown_until       | Should -Not -BeNullOrEmpty
+        $events = Get-HealthLogEvents -LogFile $e.LogFile
+        $events | Should -Contain 'provider_cooldown'
     }
 
-    Context 'All-providers-unavailable sleep' {
-        It 'declares Resolve-HealthyProvider function' {
-            $scriptContent | Should -Match 'function\s+Resolve-HealthyProvider'
-        }
-        It 'logs all_providers_unavailable event' {
-            $scriptContent | Should -Match "'all_providers_unavailable'"
-        }
-        It 'sleeps when all providers are unavailable' {
-            $scriptContent | Should -Match 'all_providers_unavailable[\s\S]{0,400}Start-Sleep'
-        }
+    It 'first failure retains healthy status with no cooldown (consecutive_failures=1)' {
+        $e = New-HealthEnv
+        Invoke-HealthLoop -Env $e -ClaudeScenario 'fail-unknown' -MaxIter 1 | Out-Null
+        $health = Get-HealthFile -HealthDir $e.HealthDir -Provider 'claude'
+        $health.status               | Should -Be 'healthy'
+        $health.consecutive_failures | Should -Be 1
+        $health.cooldown_until       | Should -BeNullOrEmpty
     }
 
-    Context 'Round-robin selection uses health-aware helper' {
-        It 'Resolve-IterationProvider calls Resolve-HealthyProvider for round-robin' {
-            $scriptContent | Should -Match 'Resolve-IterationProvider[\s\S]{0,300}Resolve-HealthyProvider'
-        }
+    It 'success after cooldown resets health to healthy and emits provider_recovered' {
+        $e = New-HealthEnv
+        # Pre-seed: provider in cooldown
+        $pastTime = [DateTimeOffset]::UtcNow.AddSeconds(-30).ToString('o')
+        @{ status='cooldown'; last_success=$null; last_failure=$pastTime; failure_reason='rate_limit';
+           consecutive_failures=2; cooldown_until=$pastTime } |
+            ConvertTo-Json | Set-Content (Join-Path $e.HealthDir 'claude.json')
+        Invoke-HealthLoop -Env $e -ClaudeScenario 'succeed' -MaxIter 1 | Out-Null
+        $health = Get-HealthFile -HealthDir $e.HealthDir -Provider 'claude'
+        $health.status | Should -Be 'healthy'
+        $events = Get-HealthLogEvents -LogFile $e.LogFile
+        $events | Should -Contain 'provider_recovered'
     }
 
-    Context 'Health updates wired into main loop' {
-        It 'calls Update-ProviderHealthOnSuccess after successful provider invocation' {
-            $scriptContent | Should -Match 'Update-ProviderHealthOnSuccess'
-        }
-        It 'calls Update-ProviderHealthOnFailure in the catch block' {
-            $scriptContent | Should -Match 'Update-ProviderHealthOnFailure'
-        }
-        It 'passes lastProviderOutputText to failure classifier' {
-            $scriptContent | Should -Match '\$script:lastProviderOutputText'
-        }
+    It 'round-robin skips active-cooldown provider and selects expired-cooldown provider' {
+        $e = New-HealthEnv
+        # claude: active cooldown (far future)
+        $future = [DateTimeOffset]::UtcNow.AddSeconds(3600).ToString('o')
+        @{ status='cooldown'; last_success=$null; last_failure=[DateTimeOffset]::UtcNow.ToString('o');
+           failure_reason='rate_limit'; consecutive_failures=3; cooldown_until=$future } |
+            ConvertTo-Json | Set-Content (Join-Path $e.HealthDir 'claude.json')
+        # codex: expired cooldown (past)
+        $past = [DateTimeOffset]::UtcNow.AddSeconds(-10).ToString('o')
+        @{ status='cooldown'; last_success=$null; last_failure=$past;
+           failure_reason='rate_limit'; consecutive_failures=2; cooldown_until=$past } |
+            ConvertTo-Json | Set-Content (Join-Path $e.HealthDir 'codex.json')
+
+        Invoke-HealthLoop -Env $e -CodexScenario 'succeed' -Provider 'round-robin' `
+            -RRProviders 'claude,codex' -MaxIter 2 | Out-Null
+
+        # At least one iteration_complete should name 'codex' as the provider
+        $logEntries = @(
+            Get-Content $e.LogFile |
+                ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
+                Where-Object { $_ -and $_.event -eq 'iteration_complete' }
+        )
+        $selectedProviders = $logEntries | ForEach-Object { $_.provider }
+        $selectedProviders | Should -Contain 'codex'
+        $selectedProviders | Should -Not -Contain 'claude'
     }
 }
