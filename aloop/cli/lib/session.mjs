@@ -139,7 +139,9 @@ export async function stopSession(homeDir, sessionId) {
 
   // Kill process if alive
   if (pid && isProcessAlive(pid)) {
-    killProcess(pid);
+    if (!killProcess(pid)) {
+      return { success: false, reason: `Failed to stop session process: ${pid}` };
+    }
   }
 
   // Update status.json
