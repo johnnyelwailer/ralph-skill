@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rename, unlink } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 
 function runCli(args) {
@@ -601,4 +601,218 @@ test('aloop.mjs stop rejects unknown options', async () => {
   const result = await runCli(['stop', 'abc', '--unknown']);
 
   assertCliFailure(result, /Unknown option for stop: --unknown/);
+});
+
+test('aloop.mjs resolve rejects missing --home-dir value', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-resolve-missing-home-'));
+  const result = await runCli(['resolve', '--project-root', tempRoot, '--home-dir']);
+
+  assertCliFailure(result, /--home-dir requires a value/);
+});
+
+test('aloop.mjs discover rejects missing --project-root value', async () => {
+  const result = await runCli(['discover', '--project-root']);
+
+  assertCliFailure(result, /--project-root requires a value/);
+});
+
+test('aloop.mjs scaffold accepts list flag with multiple values', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-scaffold-list-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(homeRoot, '.aloop', 'templates');
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec\n', 'utf8');
+  for (const name of ['plan', 'build', 'review', 'steer']) {
+    await writeFile(path.join(templatesDir, `PROMPT_${name}.md`), 'Spec: {{SPEC_FILES}}\nRules:\n{{SAFETY_RULES}}\n', 'utf8');
+  }
+
+  const result = await runCli([
+    'scaffold',
+    '--project-root', tempRoot,
+    '--home-dir', homeRoot,
+    '--templates-dir', templatesDir,
+    '--provider', 'codex',
+    '--enabled-providers', 'codex', 'claude',
+    '--output', 'json',
+  ]);
+
+  assert.equal(result.code, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.ok(parsed.config_path);
+});
+
+test('aloop.mjs active text mode shows minutes-old session age', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-active-mins-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const sessionDir = path.join(aloopDir, 'sessions', 'mins-old');
+  await mkdir(sessionDir, { recursive: true });
+
+  const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  await writeFile(path.join(aloopDir, 'active.json'), JSON.stringify({
+    'mins-old': {
+      pid: 99991,
+      session_dir: sessionDir,
+      work_dir: '/proj',
+      started_at: fiveMinsAgo,
+      provider: 'claude',
+      mode: 'build',
+    },
+  }), 'utf8');
+  await writeFile(path.join(sessionDir, 'status.json'), JSON.stringify({
+    iteration: 1, phase: 'build', provider: 'claude', stuck_count: 0, state: 'running', updated_at: new Date().toISOString(),
+  }), 'utf8');
+
+  const result = await runCli(['active', '--home-dir', homeRoot]);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /\dm ago/);
+});
+
+test('aloop.mjs active text mode shows hours-old session age', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-active-hours-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const sessionDir = path.join(aloopDir, 'sessions', 'hours-old');
+  await mkdir(sessionDir, { recursive: true });
+
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  await writeFile(path.join(aloopDir, 'active.json'), JSON.stringify({
+    'hours-old': {
+      pid: 99992,
+      session_dir: sessionDir,
+      work_dir: '/proj',
+      started_at: twoHoursAgo,
+      provider: 'claude',
+      mode: 'build',
+    },
+  }), 'utf8');
+  await writeFile(path.join(sessionDir, 'status.json'), JSON.stringify({
+    iteration: 1, phase: 'build', provider: 'claude', stuck_count: 0, state: 'running', updated_at: new Date().toISOString(),
+  }), 'utf8');
+
+  const result = await runCli(['active', '--home-dir', homeRoot]);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /\dh ago/);
+});
+
+test('aloop.mjs status text mode shows cooldown provider health with plural failures', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-status-cooldown-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const healthDir = path.join(aloopDir, 'health');
+  await mkdir(healthDir, { recursive: true });
+
+  const cooldownUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  await writeFile(path.join(healthDir, 'claude.json'), JSON.stringify({
+    status: 'cooldown',
+    cooldown_until: cooldownUntil,
+    consecutive_failures: 3,
+    last_failure: new Date().toISOString(),
+    failure_reason: 'timeout',
+  }), 'utf8');
+
+  const result = await runCli(['status', '--home-dir', homeRoot]);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /cooldown/);
+  assert.match(result.stdout, /failures/);
+  assert.match(result.stdout, /resumes in/);
+});
+
+test('aloop.mjs status text mode shows cooldown provider health with singular failure', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-status-cooldown1-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const healthDir = path.join(aloopDir, 'health');
+  await mkdir(healthDir, { recursive: true });
+
+  const cooldownUntil = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  await writeFile(path.join(healthDir, 'codex.json'), JSON.stringify({
+    status: 'cooldown',
+    cooldown_until: cooldownUntil,
+    consecutive_failures: 1,
+    last_failure: new Date().toISOString(),
+    failure_reason: 'timeout',
+  }), 'utf8');
+
+  const result = await runCli(['status', '--home-dir', homeRoot]);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /cooldown/);
+  assert.match(result.stdout, /1 failure[^s]/);
+});
+
+test('aloop.mjs status text mode shows degraded provider health with known failure reason', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-status-degraded-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const healthDir = path.join(aloopDir, 'health');
+  await mkdir(healthDir, { recursive: true });
+
+  await writeFile(path.join(healthDir, 'claude.json'), JSON.stringify({
+    status: 'degraded',
+    failure_reason: 'auth',
+    consecutive_failures: 2,
+  }), 'utf8');
+
+  const result = await runCli(['status', '--home-dir', homeRoot]);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /degraded/);
+  assert.match(result.stdout, /auth error/);
+});
+
+test('aloop.mjs status text mode shows degraded provider health with unknown failure reason', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-status-degraded-unk-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const healthDir = path.join(aloopDir, 'health');
+  await mkdir(healthDir, { recursive: true });
+
+  await writeFile(path.join(healthDir, 'gemini.json'), JSON.stringify({
+    status: 'degraded',
+    failure_reason: 'rate_limit',
+    consecutive_failures: 1,
+  }), 'utf8');
+
+  const result = await runCli(['status', '--home-dir', homeRoot]);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /degraded/);
+  assert.match(result.stdout, /rate_limit/);
+});
+
+test('aloop.mjs stop text mode prints error for unknown session', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-stop-text-fail-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(path.join(homeRoot, '.aloop'), { recursive: true });
+
+  const result = await runCli(['stop', 'no-such-session', '--home-dir', homeRoot]);
+  assertCliFailure(result, /not found/);
+});
+
+test('aloop.mjs dashboard exits with error when dist not found', async () => {
+  const cliRoot = path.resolve(process.cwd(), 'aloop', 'cli');
+  const distEntry = path.join(cliRoot, 'dist', 'index.js');
+  const distBackup = path.join(cliRoot, 'dist', 'index.js.bak');
+
+  await rename(distEntry, distBackup);
+  try {
+    const result = await runCli(['dashboard']);
+    assertCliFailure(result, /dist entrypoint not found/);
+  } finally {
+    await rename(distBackup, distEntry);
+  }
+});
+
+test('aloop.mjs dashboard passes through exit code from dist', async () => {
+  const cliRoot = path.resolve(process.cwd(), 'aloop', 'cli');
+  const distEntry = path.join(cliRoot, 'dist', 'index.js');
+  const distBackup = path.join(cliRoot, 'dist', 'index.js.bak');
+
+  await rename(distEntry, distBackup);
+  await writeFile(distEntry, 'process.exit(0);\n', 'utf8');
+  try {
+    const result = await runCli(['dashboard']);
+    assert.equal(result.code, 0);
+  } finally {
+    await unlink(distEntry).catch(() => {});
+    await rename(distBackup, distEntry);
+  }
 });
