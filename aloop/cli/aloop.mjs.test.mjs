@@ -32,6 +32,24 @@ function runCli(args) {
   });
 }
 
+function assertCliFailure(result, pattern) {
+  assert.notEqual(result.code, 0);
+  assert.match(result.stderr, pattern);
+}
+
+test('aloop.mjs prints help for --help', async () => {
+  const result = await runCli(['--help']);
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /^aloop <command> \[options\]/m);
+  assert.match(result.stdout, /resolve/);
+  assert.match(result.stdout, /discover/);
+  assert.match(result.stdout, /scaffold/);
+  assert.match(result.stdout, /status/);
+  assert.match(result.stdout, /active/);
+  assert.match(result.stdout, /stop/);
+});
+
 test('aloop.mjs resolve prints project and setup JSON', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-resolve-'));
   const homeRoot = path.join(tempRoot, 'home');
@@ -53,8 +71,9 @@ test('aloop.mjs resolve text mode is human-readable', async () => {
   const result = await runCli(['resolve', '--project-root', tempRoot, '--output', 'text']);
 
   assert.equal(result.code, 0);
-  assert.match(result.stdout, /Project:/);
-  assert.match(result.stdout, /Project config:/);
+  assert.match(result.stdout, /^Project: .* \[[0-9a-f]{8}\]$/m);
+  assert.match(result.stdout, new RegExp(`^Root: ${tempRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
+  assert.match(result.stdout, /^Project config: .+/m);
 });
 
 test('aloop.mjs resolve JSON includes config_exists=false when project not configured', async () => {
@@ -87,8 +106,27 @@ test('aloop.mjs resolve text mode shows "(not found)" when project not configure
 test('aloop.mjs rejects unknown commands', async () => {
   const result = await runCli(['nope']);
 
-  assert.notEqual(result.code, 0);
-  assert.match(result.stderr, /Unknown command/);
+  assertCliFailure(result, /Unknown command/);
+});
+
+test('aloop.mjs resolve rejects invalid --output values', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-resolve-bad-output-'));
+  const result = await runCli(['resolve', '--project-root', tempRoot, '--output', 'xml']);
+
+  assertCliFailure(result, /Invalid output mode: xml/);
+});
+
+test('aloop.mjs resolve rejects missing --project-root value', async () => {
+  const result = await runCli(['resolve', '--project-root']);
+
+  assertCliFailure(result, /--project-root requires a value/);
+});
+
+test('aloop.mjs resolve rejects unknown options', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-resolve-unknown-opt-'));
+  const result = await runCli(['resolve', '--project-root', tempRoot, '--bogus']);
+
+  assertCliFailure(result, /Unknown option for resolve: --bogus/);
 });
 
 test('aloop.mjs discover runs natively and prints discovery JSON', async () => {
@@ -127,6 +165,43 @@ test('aloop.mjs discover runs natively and prints discovery JSON', async () => {
   assert.ok(dynamicDocsCandidates.length <= 8);
 });
 
+test('aloop.mjs discover text mode prints concrete fields', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-discover-text-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(path.join(homeRoot, '.aloop'), { recursive: true });
+  await writeFile(path.join(homeRoot, '.aloop', 'config.yml'), "default_provider: codex\n", 'utf8');
+  await writeFile(path.join(tempRoot, 'README.md'), '# hello\n', 'utf8');
+
+  const result = await runCli(['discover', '--project-root', tempRoot, '--home-dir', homeRoot, '--output', 'text']);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /^Project: .* \[[0-9a-f]{8}\]$/m);
+  assert.match(result.stdout, /^Detected language: \w+ \(\w+\)$/m);
+  assert.match(result.stdout, /^Providers installed: .*$/m);
+  assert.match(result.stdout, /^Spec candidates: .*$/m);
+  assert.match(result.stdout, /^Reference candidates: .*$/m);
+});
+
+test('aloop.mjs discover rejects missing --home-dir value', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-discover-missing-home-'));
+  const result = await runCli(['discover', '--project-root', tempRoot, '--home-dir']);
+
+  assertCliFailure(result, /--home-dir requires a value/);
+});
+
+test('aloop.mjs discover rejects invalid --output values', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-discover-bad-output-'));
+  const result = await runCli(['discover', '--project-root', tempRoot, '--output', 'yaml']);
+
+  assertCliFailure(result, /Invalid output mode: yaml/);
+});
+
+test('aloop.mjs discover rejects unknown options', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-discover-unknown-opt-'));
+  const result = await runCli(['discover', '--project-root', tempRoot, '--unknown']);
+
+  assertCliFailure(result, /Unknown option for discover: --unknown/);
+});
+
 test('aloop.mjs scaffold runs natively and writes config/prompts', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-scaffold-'));
   const homeRoot = path.join(tempRoot, 'home');
@@ -158,6 +233,64 @@ test('aloop.mjs scaffold runs natively and writes config/prompts', async () => {
   assert.match(configRaw, /provider:\s+'codex'/);
   const promptRaw = await readFile(path.join(parsed.prompts_dir, 'PROMPT_plan.md'), 'utf8');
   assert.match(promptRaw, /Spec: SPEC\.md/);
+});
+
+test('aloop.mjs scaffold text mode prints written paths', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-scaffold-text-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(homeRoot, '.aloop', 'templates');
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec\n', 'utf8');
+
+  for (const name of ['plan', 'build', 'review', 'steer']) {
+    await writeFile(path.join(templatesDir, `PROMPT_${name}.md`), 'Spec: {{SPEC_FILES}}\nRules:\n{{SAFETY_RULES}}\n', 'utf8');
+  }
+
+  const result = await runCli([
+    'scaffold',
+    '--project-root',
+    tempRoot,
+    '--home-dir',
+    homeRoot,
+    '--templates-dir',
+    templatesDir,
+    '--provider',
+    'codex',
+    '--output',
+    'text',
+  ]);
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /^Wrote config: .+config\.yml$/m);
+  assert.match(result.stdout, /^Wrote prompts: .+prompts$/m);
+});
+
+test('aloop.mjs scaffold rejects missing list values', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-scaffold-missing-list-'));
+  const result = await runCli(['scaffold', '--project-root', tempRoot, '--enabled-providers']);
+
+  assertCliFailure(result, /--enabled-providers requires one or more values/);
+});
+
+test('aloop.mjs scaffold rejects missing scalar values', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-scaffold-missing-scalar-'));
+  const result = await runCli(['scaffold', '--project-root', tempRoot, '--provider']);
+
+  assertCliFailure(result, /--provider requires a value/);
+});
+
+test('aloop.mjs scaffold rejects invalid --output values', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-scaffold-bad-output-'));
+  const result = await runCli(['scaffold', '--project-root', tempRoot, '--output', 'yaml']);
+
+  assertCliFailure(result, /Invalid output mode: yaml/);
+});
+
+test('aloop.mjs scaffold rejects unknown options', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-scaffold-unknown-opt-'));
+  const result = await runCli(['scaffold', '--project-root', tempRoot, '--unsupported-flag']);
+
+  assertCliFailure(result, /Unknown option for scaffold: --unsupported-flag/);
 });
 
 test('aloop.mjs active returns empty list when no active.json', async () => {
@@ -300,6 +433,40 @@ test('aloop.mjs status text mode shows session and provider health', async () =>
   assert.match(result.stdout, /healthy/);
 });
 
+test('aloop.mjs status text mode prints "No active sessions" when none found', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-status-empty-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(path.join(homeRoot, '.aloop'), { recursive: true });
+
+  const result = await runCli(['status', '--home-dir', homeRoot, '--output', 'text']);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /No active sessions/);
+});
+
+test('aloop.mjs status rejects invalid --output values', async () => {
+  const result = await runCli(['status', '--output', 'xml']);
+
+  assertCliFailure(result, /Invalid output mode: xml/);
+});
+
+test('aloop.mjs status rejects unknown options', async () => {
+  const result = await runCli(['status', '--fake-flag']);
+
+  assertCliFailure(result, /Unknown option for status: --fake-flag/);
+});
+
+test('aloop.mjs active rejects invalid --output values', async () => {
+  const result = await runCli(['active', '--output', 'yaml']);
+
+  assertCliFailure(result, /Invalid output mode: yaml/);
+});
+
+test('aloop.mjs active rejects unknown options', async () => {
+  const result = await runCli(['active', '--bad-option']);
+
+  assertCliFailure(result, /Unknown option for active: --bad-option/);
+});
+
 test('aloop.mjs stop returns error for unknown session in JSON mode', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-stop-'));
   const homeRoot = path.join(tempRoot, 'home');
@@ -354,4 +521,48 @@ test('aloop.mjs stop removes session from active.json and writes history', async
   const statusRaw = await readFile(path.join(sessionDir, 'status.json'), 'utf8');
   const status = JSON.parse(statusRaw);
   assert.equal(status.state, 'stopped');
+});
+
+test('aloop.mjs stop text mode confirms stopped session', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-cli-stop-text-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const aloopDir = path.join(homeRoot, '.aloop');
+  const sessionDir = path.join(aloopDir, 'sessions', 'sess-text');
+  await mkdir(sessionDir, { recursive: true });
+
+  await writeFile(path.join(aloopDir, 'active.json'), JSON.stringify({
+    'sess-text': {
+      pid: 1,
+      session_dir: sessionDir,
+      work_dir: '/proj',
+      started_at: new Date().toISOString(),
+      provider: 'claude',
+      mode: 'build',
+    },
+  }), 'utf8');
+  await writeFile(path.join(sessionDir, 'status.json'), JSON.stringify({
+    iteration: 1, phase: 'build', provider: 'claude', stuck_count: 0, state: 'running', updated_at: new Date().toISOString(),
+  }), 'utf8');
+
+  const result = await runCli(['stop', 'sess-text', '--home-dir', homeRoot, '--output', 'text']);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /Session sess-text stopped\./);
+});
+
+test('aloop.mjs stop rejects missing session id', async () => {
+  const result = await runCli(['stop']);
+
+  assertCliFailure(result, /stop requires a session-id argument/);
+});
+
+test('aloop.mjs stop rejects invalid --output values', async () => {
+  const result = await runCli(['stop', 'abc', '--output', 'yaml']);
+
+  assertCliFailure(result, /Invalid output mode: yaml/);
+});
+
+test('aloop.mjs stop rejects unknown options', async () => {
+  const result = await runCli(['stop', 'abc', '--unknown']);
+
+  assertCliFailure(result, /Unknown option for stop: --unknown/);
 });
