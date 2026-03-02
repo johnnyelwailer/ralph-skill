@@ -3,6 +3,11 @@
 ## Current Phase: Phase 3 CLI + Loop Hardening + Orchestrator/Security Foundations
 
 ### In Progress
+- [ ] [review] Gate 1: `aloop stop` reports success even when process termination can fail (`aloop/cli/lib/session.mjs:140-143`, `109-120`); return a failure result when kill attempts fail and avoid marking `status.json` as `stopped` in that case. (priority: high)
+- [ ] [review] Gate 2: strengthen shallow assertion in `resolveProjectRoot` test (`aloop/cli/lib/project.test.mjs:29-33`) which currently only checks for non-empty string; force a deterministic non-git fallback assertion to exact expected path. (priority: medium)
+- [ ] [review] Gate 2: add error-path tests for `stop` kill failures/permission errors and malformed session/health JSON handling in `aloop/cli/aloop.mjs.test.mjs` and `aloop/cli/lib/session.mjs` tests so broken behavior fails tests. (priority: high)
+- [ ] [review] Gate 3: raise branch coverage for touched CLI entrypoint `aloop/cli/aloop.mjs` from 68.25% to >=80% by testing uncovered branches (relative-time hour path, cooldown/degraded health formatting branches, dashboard dist-missing and passthrough exit paths, non-string error fallback). (priority: high)
+- [ ] [review] Gate 3: raise branch coverage for new module `aloop/cli/lib/session.mjs` from 30.77% to >=90% by covering read/parse failures, health directory read errors, non-JSON files, Windows/non-Windows kill branches, missing session-dir status write skip, and kill-failure handling. (priority: high)
 
 ### Up Next
 - [x] Expand CLI test coverage in `aloop/cli/aloop.mjs.test.mjs`: parser error paths (`--output` invalid, missing arg values, unknown options), help output, and concrete text-mode assertions for `resolve`/`discover`/`scaffold` plus new Phase 3 commands. (P0)
