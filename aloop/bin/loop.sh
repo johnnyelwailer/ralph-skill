@@ -133,6 +133,11 @@ resolve_iteration_provider() {
 
 resolve_iteration_mode() {
     local iteration=$1
+    if [ "$FORCE_REVIEW_NEXT" = true ]; then
+        FORCE_REVIEW_NEXT=false
+        echo "review"
+        return
+    fi
     if [ "$FORCE_PLAN_NEXT" = true ]; then
         FORCE_PLAN_NEXT=false
         echo "plan"
@@ -324,6 +329,8 @@ get_current_task() {
 LAST_TASK=""
 STUCK_COUNT=0
 FORCE_PLAN_NEXT=false
+ALL_TASKS_MARKED_DONE=false
+FORCE_REVIEW_NEXT=false
 
 skip_stuck_task() {
     local task="$1"
@@ -627,6 +634,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     if [ -f "$STEERING_FILE" ] && [ -f "$STEER_PROMPT_FILE" ]; then
         iter_mode="steer"
         FORCE_PLAN_NEXT=true
+        ALL_TASKS_MARKED_DONE=false
         write_log_entry "steering_detected" "iteration" "$ITERATION"
     elif [ -f "$STEERING_FILE" ]; then
         echo "Warning: STEERING.md found but PROMPT_steer.md is missing in $PROMPTS_DIR — steering skipped."
@@ -650,13 +658,22 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     # Build mode: check completion and stuck detection
     if [ "$iter_mode" = "build" ]; then
         if check_all_tasks_complete; then
-            echo ""
-            echo "ALL TASKS COMPLETE"
-            stop_dashboard
-            write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
-            write_log_entry "all_tasks_complete" "iteration" "$ITERATION"
-            generate_report "All tasks completed successfully."
-            exit 0
+            if [ "$MODE" = "plan-build-review" ]; then
+                echo ""
+                echo "ALL TASKS MARKED DONE - forcing final review"
+                ALL_TASKS_MARKED_DONE=true
+                FORCE_REVIEW_NEXT=true
+                write_log_entry "tasks_marked_complete" "iteration" "$ITERATION"
+                continue
+            else
+                echo ""
+                echo "ALL TASKS COMPLETE"
+                stop_dashboard
+                write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
+                write_log_entry "all_tasks_complete" "iteration" "$ITERATION"
+                generate_report "All tasks completed successfully."
+                exit 0
+            fi
         fi
 
         current_task=$(get_current_task)
@@ -701,6 +718,25 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         if [ "$iter_mode" = "build" ]; then
             print_iteration_summary "$ITERATION_START"
             push_to_backup
+        elif [ "$iter_mode" = "review" ] && [ "$ALL_TASKS_MARKED_DONE" = true ]; then
+            # Final review gate: review was forced by all completed tasks in build.
+            if check_all_tasks_complete; then
+                echo ""
+                echo "FINAL REVIEW APPROVED"
+                stop_dashboard
+                write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
+                write_log_entry "final_review_approved" "iteration" "$ITERATION"
+                generate_report "All tasks completed and approved by final review."
+                exit 0
+            else
+                echo ""
+                echo "FINAL REVIEW REJECTED - reopened tasks, continuing loop"
+                ALL_TASKS_MARKED_DONE=false
+                FORCE_PLAN_NEXT=true
+                write_log_entry "final_review_rejected" "iteration" "$ITERATION"
+                echo ""
+                echo "[Iteration $ITERATION complete - $iter_mode]"
+            fi
         else
             echo ""
             echo "[Iteration $ITERATION complete - $iter_mode]"

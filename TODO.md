@@ -7,7 +7,7 @@
 
 ### Up Next
 - [x] Implement mandatory final-review invariant in `aloop/bin/loop.ps1` for `plan-build-review`: add `$script:allTasksMarkedDone` and `$script:forceReviewNext` flags; build phase sets flags instead of exiting; `Resolve-IterationMode` returns `'review'` when flag set; log `tasks_marked_complete`, `final_review_approved`, `final_review_rejected`. (P1)
-- [ ] Mirror final-review invariant in `aloop/bin/loop.sh`: add `ALL_TASKS_MARKED_DONE` and `FORCE_REVIEW_NEXT` vars; `check_all_tasks_complete()` sets flags instead of `exit 0`; mode-resolution respects flag; log same events. (P1)
+- [x] Mirror final-review invariant in `aloop/bin/loop.sh`: add `ALL_TASKS_MARKED_DONE` and `FORCE_REVIEW_NEXT` vars; `check_all_tasks_complete()` sets flags instead of `exit 0`; mode-resolution respects flag; log same events. (P1)
 - [ ] Implement provider health core in `aloop/bin/loop.ps1`: `Read-ProviderHealth`/`Write-ProviderHealth` with `[System.IO.File]::Open()` locking (5 retries, progressive backoff); failure classification (rate_limit/timeout/auth/concurrent_cap/unknown); exponential cooldown table (2/5/15/30/60 min); round-robin skips cooldown/degraded providers; sleeps to earliest cooldown when all unavailable. (P1)
 - [ ] Add provider health observability in `loop.ps1` + status surfaces: emit `provider_cooldown`, `provider_recovered`, `provider_degraded`, `health_lock_failed`, `all_providers_unavailable` to `log.jsonl`; verify `aloop status` health table reads new schema correctly. (P1)
 - [ ] Mirror provider health core in `aloop/bin/loop.sh`: equivalent Bash implementation of health file read/write with flock locking, same failure classification and cooldown table, same round-robin skip/sleep behavior. (P1)
