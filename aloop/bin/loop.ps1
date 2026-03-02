@@ -87,8 +87,8 @@ function Normalize-ProviderList {
 function Resolve-IterationProvider {
     param([int]$IterationNumber)
     if ($Provider -eq 'round-robin') {
-        $index = ($IterationNumber - 1) % $RoundRobinProviders.Count
-        return $RoundRobinProviders[$index]
+        $startIndex = ($IterationNumber - 1) % $RoundRobinProviders.Count
+        return Resolve-HealthyProvider -StartIndex $startIndex
     }
     return $Provider
 }
@@ -144,15 +144,19 @@ function Invoke-Provider {
         'claude' {
             $PromptContent | & claude --model $ClaudeModel --dangerously-skip-permissions --print 2>&1 | Tee-Object -Variable output
             if ($LASTEXITCODE -ne 0) {
+                $script:lastProviderOutputText = $output | Out-String
                 throw "claude exited with code $LASTEXITCODE"
             }
+            $script:lastProviderOutputText = $null
             return $output
         }
         'codex' {
             $PromptContent | & codex exec -m $CodexModel --dangerously-bypass-approvals-and-sandbox - 2>&1 | Tee-Object -Variable output
             if ($LASTEXITCODE -ne 0) {
+                $script:lastProviderOutputText = $output | Out-String
                 throw "codex exited with code $LASTEXITCODE"
             }
+            $script:lastProviderOutputText = $null
             return $output
         }
         'gemini' {
@@ -161,9 +165,11 @@ function Invoke-Provider {
                 Write-Warning "Gemini -m $GeminiModel failed (exit $LASTEXITCODE). Retrying without explicit model."
                 & gemini --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
                 if ($LASTEXITCODE -ne 0) {
+                    $script:lastProviderOutputText = $output | Out-String
                     throw "gemini exited with code $LASTEXITCODE"
                 }
             }
+            $script:lastProviderOutputText = $null
             return $output
         }
         'copilot' {
@@ -179,9 +185,11 @@ function Invoke-Provider {
                     $outputText = ($output | Out-String)
                 }
                 if ($LASTEXITCODE -ne 0) {
+                    $script:lastProviderOutputText = $outputText
                     throw "copilot exited with code $LASTEXITCODE"
                 }
             }
+            $script:lastProviderOutputText = $null
             Assert-CopilotAuth -CopilotOutputText $outputText
             return $output
         }
@@ -290,6 +298,7 @@ $stuckState = @{ LastTask = ""; StuckCount = 0 }
 $script:forcePlanNext = $false
 $script:allTasksMarkedDone = $false
 $script:forceReviewNext = $false
+$script:lastProviderOutputText = $null
 
 function Skip-StuckTask {
     param([string]$task)
@@ -412,6 +421,284 @@ function Write-LogEntry {
         event = $Event
     } + $Data
     ($entry | ConvertTo-Json -Compress) | Add-Content -Encoding utf8 $logFile
+}
+
+# ============================================================================
+# PROVIDER HEALTH PRIMITIVES
+# ============================================================================
+
+$providerHealthDir = Join-Path (Join-Path $HOME '.aloop') 'health'
+$healthLockRetryDelaysMs = @(50, 100, 150, 200, 250)
+
+function Ensure-ProviderHealthDir {
+    if (-not (Test-Path $providerHealthDir)) {
+        New-Item -ItemType Directory -Path $providerHealthDir -Force | Out-Null
+    }
+}
+
+function Get-ProviderHealthPath {
+    param([string]$ProviderName)
+    Ensure-ProviderHealthDir
+    $providerId = $ProviderName.ToLowerInvariant()
+    return Join-Path $providerHealthDir "$providerId.json"
+}
+
+function New-ProviderHealthState {
+    return @{
+        status = 'healthy'
+        last_success = $null
+        last_failure = $null
+        failure_reason = $null
+        consecutive_failures = 0
+        cooldown_until = $null
+    }
+}
+
+function Open-ProviderHealthStreamWithRetry {
+    param(
+        [string]$Path,
+        [System.IO.FileMode]$FileMode,
+        [System.IO.FileAccess]$FileAccess,
+        [System.IO.FileShare]$FileShare,
+        [string]$ProviderName,
+        [string]$OperationName
+    )
+
+    for ($i = 0; $i -lt $healthLockRetryDelaysMs.Count; $i++) {
+        try {
+            return [System.IO.File]::Open($Path, $FileMode, $FileAccess, $FileShare)
+        }
+        catch [System.IO.IOException] {
+            if ($i -eq ($healthLockRetryDelaysMs.Count - 1)) {
+                Write-LogEntry -Event "health_lock_failed" -Data @{
+                    provider = $ProviderName
+                    operation = $OperationName
+                    path = $Path
+                    retries = $healthLockRetryDelaysMs.Count
+                }
+                return $null
+            }
+            Start-Sleep -Milliseconds $healthLockRetryDelaysMs[$i]
+        }
+    }
+    return $null
+}
+
+function Get-ProviderHealthState {
+    param([string]$ProviderName)
+
+    $path = Get-ProviderHealthPath -ProviderName $ProviderName
+    if (-not (Test-Path $path)) {
+        return New-ProviderHealthState
+    }
+
+    $stream = Open-ProviderHealthStreamWithRetry -Path $path -FileMode ([System.IO.FileMode]::Open) -FileAccess ([System.IO.FileAccess]::Read) -FileShare ([System.IO.FileShare]::Read) -ProviderName $ProviderName -OperationName 'read'
+    if ($null -eq $stream) { return $null }
+
+    try {
+        $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::UTF8, $true, 1024, $true)
+        try {
+            $raw = $reader.ReadToEnd()
+        }
+        finally {
+            $reader.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        return New-ProviderHealthState
+    }
+
+    try {
+        $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        return New-ProviderHealthState
+    }
+
+    $state = New-ProviderHealthState
+    if ($parsed.PSObject.Properties.Name -contains 'status') { $state.status = [string]$parsed.status }
+    if ($parsed.PSObject.Properties.Name -contains 'last_success') { $state.last_success = $parsed.last_success }
+    if ($parsed.PSObject.Properties.Name -contains 'last_failure') { $state.last_failure = $parsed.last_failure }
+    if ($parsed.PSObject.Properties.Name -contains 'failure_reason') { $state.failure_reason = $parsed.failure_reason }
+    if ($parsed.PSObject.Properties.Name -contains 'consecutive_failures') { $state.consecutive_failures = [int]$parsed.consecutive_failures }
+    if ($parsed.PSObject.Properties.Name -contains 'cooldown_until') { $state.cooldown_until = $parsed.cooldown_until }
+    return $state
+}
+
+function Set-ProviderHealthState {
+    param(
+        [string]$ProviderName,
+        [hashtable]$HealthState
+    )
+
+    $path = Get-ProviderHealthPath -ProviderName $ProviderName
+    $stream = Open-ProviderHealthStreamWithRetry -Path $path -FileMode ([System.IO.FileMode]::OpenOrCreate) -FileAccess ([System.IO.FileAccess]::ReadWrite) -FileShare ([System.IO.FileShare]::None) -ProviderName $ProviderName -OperationName 'write'
+    if ($null -eq $stream) { return $false }
+
+    try {
+        $json = $HealthState | ConvertTo-Json -Compress
+        $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($json)
+        $stream.SetLength(0)
+        $stream.Position = 0
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
+    }
+    finally {
+        $stream.Dispose()
+    }
+
+    return $true
+}
+
+function Get-ProviderCooldownSeconds {
+    param([int]$ConsecutiveFailures)
+    switch ($ConsecutiveFailures) {
+        1       { return 0 }
+        2       { return 120 }
+        3       { return 300 }
+        4       { return 900 }
+        5       { return 1800 }
+        default { return 3600 }
+    }
+}
+
+function Classify-ProviderFailure {
+    param([string]$ErrorText)
+    $lower = $ErrorText.ToLowerInvariant()
+    if ($lower -match '429|rate.limit|too many requests') { return 'rate_limit' }
+    if ($lower -match 'cannot launch inside another session') { return 'concurrent_cap' }
+    if ($lower -match 'auth|unauthorized|invalid.*(token|key)|expired.*(token|key)|(token|key).*expired') { return 'auth' }
+    if ($lower -match 'timeout|connection.*refused|network') { return 'timeout' }
+    return 'unknown'
+}
+
+function Update-ProviderHealthOnSuccess {
+    param([string]$ProviderName)
+    $current = Get-ProviderHealthState -ProviderName $ProviderName
+    if ($null -eq $current) { return }
+    $wasUnhealthy = ($current.status -ne 'healthy')
+    $state = New-ProviderHealthState
+    $state.last_success = [DateTimeOffset]::UtcNow.ToString('o')
+    $state.last_failure = $current.last_failure
+    $state.failure_reason = $current.failure_reason
+    Set-ProviderHealthState -ProviderName $ProviderName -HealthState $state | Out-Null
+    if ($wasUnhealthy) {
+        Write-LogEntry -Event 'provider_recovered' -Data @{
+            provider         = $ProviderName
+            previous_status  = $current.status
+        }
+    }
+}
+
+function Update-ProviderHealthOnFailure {
+    param([string]$ProviderName, [string]$ErrorText)
+    $current = Get-ProviderHealthState -ProviderName $ProviderName
+    if ($null -eq $current) { return }
+    $reason   = Classify-ProviderFailure -ErrorText $ErrorText
+    $failures = $current.consecutive_failures + 1
+    $now      = [DateTimeOffset]::UtcNow
+
+    if ($reason -eq 'auth') {
+        $newStatus     = 'degraded'
+        $cooldownUntil = $null
+    } else {
+        $cooldownSecs = if ($reason -eq 'concurrent_cap') { 120 } else { Get-ProviderCooldownSeconds -ConsecutiveFailures $failures }
+        if ($cooldownSecs -gt 0) {
+            $newStatus     = 'cooldown'
+            $cooldownUntil = $now.AddSeconds($cooldownSecs).ToString('o')
+        } else {
+            $newStatus     = $current.status
+            $cooldownUntil = $null
+        }
+    }
+
+    $state = @{
+        status               = $newStatus
+        last_success         = $current.last_success
+        last_failure         = $now.ToString('o')
+        failure_reason       = $reason
+        consecutive_failures = $failures
+        cooldown_until       = $cooldownUntil
+    }
+    Set-ProviderHealthState -ProviderName $ProviderName -HealthState $state | Out-Null
+
+    if ($newStatus -eq 'degraded') {
+        Write-LogEntry -Event 'provider_degraded' -Data @{
+            provider             = $ProviderName
+            reason               = $reason
+            consecutive_failures = $failures
+        }
+    } elseif ($newStatus -eq 'cooldown') {
+        Write-LogEntry -Event 'provider_cooldown' -Data @{
+            provider             = $ProviderName
+            reason               = $reason
+            consecutive_failures = $failures
+            cooldown_until       = $cooldownUntil
+        }
+    }
+}
+
+function Resolve-HealthyProvider {
+    param([int]$StartIndex)
+    # Returns the name of the first available provider starting from StartIndex,
+    # sleeping (with all_providers_unavailable log) if all are in cooldown/degraded.
+    $count = $RoundRobinProviders.Count
+    while ($true) {
+        $earliestCooldown = $null
+        $available = $null
+
+        for ($i = 0; $i -lt $count; $i++) {
+            $idx = ($StartIndex + $i) % $count
+            $p   = $RoundRobinProviders[$idx]
+            $health = Get-ProviderHealthState -ProviderName $p
+            if ($null -eq $health) {
+                # Lock failure → treat as healthy (degrade gracefully)
+                $available = $p
+                break
+            }
+            if ($health.status -eq 'healthy') {
+                $available = $p
+                break
+            }
+            if ($health.status -eq 'cooldown' -and $health.cooldown_until) {
+                try {
+                    $cooldownTime = [DateTimeOffset]::Parse($health.cooldown_until)
+                    if ([DateTimeOffset]::UtcNow -ge $cooldownTime) {
+                        $available = $p
+                        break
+                    }
+                    if ($null -eq $earliestCooldown -or $cooldownTime -lt $earliestCooldown) {
+                        $earliestCooldown = $cooldownTime
+                    }
+                } catch {
+                    $available = $p
+                    break
+                }
+            }
+            # degraded or cooldown still active: skip
+        }
+
+        if ($null -ne $available) {
+            return $available
+        }
+
+        # All providers unavailable — sleep until earliest cooldown expires
+        $sleepSecs = 60
+        if ($null -ne $earliestCooldown) {
+            $remaining = ($earliestCooldown - [DateTimeOffset]::UtcNow).TotalSeconds
+            $sleepSecs = if ($remaining -gt 1) { [Math]::Ceiling($remaining) } else { 1 }
+        }
+        Write-LogEntry -Event 'all_providers_unavailable' -Data @{
+            providers     = ($RoundRobinProviders -join ',')
+            sleep_seconds = $sleepSecs
+        }
+        Write-Warning "All providers unavailable. Sleeping ${sleepSecs}s until cooldown expires..."
+        Start-Sleep -Seconds $sleepSecs
+    }
 }
 
 # ============================================================================
@@ -809,6 +1096,8 @@ try {
 
             Show-AgentSummary -ProviderName $iterationProvider -ProviderOutput $providerOutput
 
+            Update-ProviderHealthOnSuccess -ProviderName $iterationProvider
+
             # Steer mode: remove any leftover steering file if the agent did not delete it
             if ($iterationMode -eq 'steer') {
                 if (Test-Path $steeringFile) { Remove-Item $steeringFile -Force }
@@ -846,6 +1135,8 @@ try {
             }
         }
         catch {
+            $errorContext = "$_ $script:lastProviderOutputText"
+            Update-ProviderHealthOnFailure -ProviderName $iterationProvider -ErrorText $errorContext
             Write-Warning "Iteration $iteration failed: $_"
             Write-LogEntry -Event "iteration_error" -Data @{
                 iteration = $iteration

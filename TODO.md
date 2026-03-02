@@ -8,8 +8,8 @@
 - [x] Add regression tests for the final-review exit invariant in both `aloop/bin/loop.ps1` and `aloop/bin/loop.sh` (forced review after build completion, review-approval exit, review rejection re-plan, steering precedence, and required log events). (P1)
 
 ### Up Next
-- [ ] Implement provider-health file primitives in `aloop/bin/loop.ps1` (`~/.aloop/health/<provider>.json`) with lock retries, safe read/write, and graceful `health_lock_failed` behavior so concurrent sessions cannot corrupt state. (P1)
-- [ ] Integrate provider-health decisions into PowerShell round-robin selection (cooldown/degraded skip, exponential backoff, all-providers-unavailable sleep) and emit `provider_cooldown`/`provider_recovered`/`provider_degraded`/`all_providers_unavailable` logs. (P1)
+- [x] Implement provider-health file primitives in `aloop/bin/loop.ps1` (`~/.aloop/health/<provider>.json`) with lock retries, safe read/write, and graceful `health_lock_failed` behavior so concurrent sessions cannot corrupt state. (P1)
+- [x] Integrate provider-health decisions into PowerShell round-robin selection (cooldown/degraded skip, exponential backoff, all-providers-unavailable sleep) and emit `provider_cooldown`/`provider_recovered`/`provider_degraded`/`all_providers_unavailable` logs. (P1)
 - [ ] Mirror provider-health primitives and round-robin behavior in `aloop/bin/loop.sh` using `flock` with equivalent failure classification and cooldown policy. (P1)
 - [ ] Add PATH sanitization around provider invocation in `loop.ps1` and `loop.sh` (remove `gh` from agent PATH, restore after invocation) to enforce the GH trust boundary defense-in-depth. (P1)
 - [ ] Add `aloop gh` command in `aloop/cli/aloop.mjs` with hardcoded role policy (child-loop vs orchestrator), forced repo/base constraints, and audit events (`gh_operation`, `gh_operation_denied`). (P1)

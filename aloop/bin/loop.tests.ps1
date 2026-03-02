@@ -113,6 +113,36 @@ Describe 'loop.ps1 — final-review exit invariant (static analysis)' {
             $scriptContent | Should -Match '"final_review_rejected"'
         }
     }
+
+    Context 'Provider health primitives are present with lock retries and graceful failure logging' {
+        It 'declares provider health directory under ~/.aloop/health' {
+            $scriptContent | Should -Match '\$providerHealthDir\s*=\s*Join-Path\s+\(Join-Path\s+\$HOME\s+''\.aloop''\)\s+''health'''
+        }
+        It 'declares 5 lock retry delays (50..250ms)' {
+            $scriptContent | Should -Match '\$healthLockRetryDelaysMs\s*=\s*@\(50,\s*100,\s*150,\s*200,\s*250\)'
+        }
+        It 'provides Get-ProviderHealthPath helper' {
+            $scriptContent | Should -Match 'function\s+Get-ProviderHealthPath'
+        }
+        It 'provides default health state helper with required schema fields' {
+            $scriptContent | Should -Match 'function\s+New-ProviderHealthState'
+            $scriptContent | Should -Match 'status\s*=\s*''healthy'''
+            $scriptContent | Should -Match 'last_success\s*='
+            $scriptContent | Should -Match 'last_failure\s*='
+            $scriptContent | Should -Match 'failure_reason\s*='
+            $scriptContent | Should -Match 'consecutive_failures\s*=\s*0'
+            $scriptContent | Should -Match 'cooldown_until\s*='
+        }
+        It 'writes with exclusive lock (FileShare.None)' {
+            $scriptContent | Should -Match 'Set-ProviderHealthState[\s\S]{0,500}FileShare\]::None'
+        }
+        It 'reads with shared lock (FileShare.Read)' {
+            $scriptContent | Should -Match 'Get-ProviderHealthState[\s\S]{0,500}FileShare\]::Read'
+        }
+        It 'logs health_lock_failed when lock retries are exhausted' {
+            $scriptContent | Should -Match '"health_lock_failed"'
+        }
+    }
 }
 
 # ============================================================================
@@ -364,5 +394,97 @@ exit 0
         $rejIdx = [array]::IndexOf([string[]]$events, 'final_review_rejected')
         $appIdx = [array]::IndexOf([string[]]$events, 'final_review_approved')
         $rejIdx | Should -BeLessThan $appIdx
+    }
+}
+
+# ============================================================================
+# 4. loop.ps1 — round-robin health integration (static analysis)
+# ============================================================================
+Describe 'loop.ps1 — round-robin provider-health integration (static analysis)' {
+
+    BeforeAll {
+        $scriptPath    = Join-Path $PSScriptRoot 'loop.ps1'
+        $scriptContent = Get-Content $scriptPath -Raw
+    }
+
+    Context 'Cooldown schedule helper' {
+        It 'declares Get-ProviderCooldownSeconds function' {
+            $scriptContent | Should -Match 'function\s+Get-ProviderCooldownSeconds'
+        }
+        It 'returns 120 for 2 consecutive failures' {
+            $scriptContent | Should -Match '2\s*\{\s*return 120\s*\}'
+        }
+        It 'hard-caps at 3600 seconds' {
+            $scriptContent | Should -Match 'return 3600'
+        }
+    }
+
+    Context 'Failure classification helper' {
+        It 'declares Classify-ProviderFailure function' {
+            $scriptContent | Should -Match 'function\s+Classify-ProviderFailure'
+        }
+        It 'classifies rate_limit' {
+            $scriptContent | Should -Match 'rate_limit'
+        }
+        It 'classifies auth as degraded trigger' {
+            $scriptContent | Should -Match 'auth'
+        }
+        It 'classifies concurrent_cap' {
+            $scriptContent | Should -Match 'concurrent_cap'
+        }
+        It 'classifies timeout' {
+            $scriptContent | Should -Match "'timeout'"
+        }
+    }
+
+    Context 'Health update functions' {
+        It 'declares Update-ProviderHealthOnSuccess' {
+            $scriptContent | Should -Match 'function\s+Update-ProviderHealthOnSuccess'
+        }
+        It 'declares Update-ProviderHealthOnFailure' {
+            $scriptContent | Should -Match 'function\s+Update-ProviderHealthOnFailure'
+        }
+        It 'logs provider_recovered on success after unhealthy state' {
+            $scriptContent | Should -Match "'provider_recovered'"
+        }
+        It 'logs provider_cooldown on failure entering cooldown' {
+            $scriptContent | Should -Match "'provider_cooldown'"
+        }
+        It 'logs provider_degraded on auth failure' {
+            $scriptContent | Should -Match "'provider_degraded'"
+        }
+        It 'marks auth failures as degraded (no auto-recover)' {
+            $scriptContent | Should -Match "reason.*auth[\s\S]{0,100}degraded|degraded[\s\S]{0,100}reason.*auth"
+        }
+    }
+
+    Context 'All-providers-unavailable sleep' {
+        It 'declares Resolve-HealthyProvider function' {
+            $scriptContent | Should -Match 'function\s+Resolve-HealthyProvider'
+        }
+        It 'logs all_providers_unavailable event' {
+            $scriptContent | Should -Match "'all_providers_unavailable'"
+        }
+        It 'sleeps when all providers are unavailable' {
+            $scriptContent | Should -Match 'all_providers_unavailable[\s\S]{0,400}Start-Sleep'
+        }
+    }
+
+    Context 'Round-robin selection uses health-aware helper' {
+        It 'Resolve-IterationProvider calls Resolve-HealthyProvider for round-robin' {
+            $scriptContent | Should -Match 'Resolve-IterationProvider[\s\S]{0,300}Resolve-HealthyProvider'
+        }
+    }
+
+    Context 'Health updates wired into main loop' {
+        It 'calls Update-ProviderHealthOnSuccess after successful provider invocation' {
+            $scriptContent | Should -Match 'Update-ProviderHealthOnSuccess'
+        }
+        It 'calls Update-ProviderHealthOnFailure in the catch block' {
+            $scriptContent | Should -Match 'Update-ProviderHealthOnFailure'
+        }
+        It 'passes lastProviderOutputText to failure classifier' {
+            $scriptContent | Should -Match '\$script:lastProviderOutputText'
+        }
     }
 }

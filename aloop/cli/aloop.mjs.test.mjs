@@ -638,7 +638,10 @@ test('aloop.mjs scaffold accepts list flag with multiple values', async () => {
 
   assert.equal(result.code, 0);
   const parsed = JSON.parse(result.stdout);
-  assert.ok(parsed.config_path);
+  const expectedConfigPath = path.join(homeRoot, '.aloop', 'projects', parsed.project_hash, 'config.yml');
+  assert.equal(parsed.config_path, expectedConfigPath);
+  const configRaw = await readFile(parsed.config_path, 'utf8');
+  assert.match(configRaw, /enabled_providers:\n  - 'codex'\n  - 'claude'\n/);
 });
 
 test('aloop.mjs active text mode shows minutes-old session age', async () => {
