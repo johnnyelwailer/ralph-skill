@@ -8,50 +8,27 @@ Stop a running Aloop loop session.
 
 ## Step 1: Identify Session to Stop
 
-Read `~/.aloop/active.json` to find active sessions.
+Run `aloop active` (fallback: `node ~/.aloop/cli/aloop.mjs active`) to list active sessions.
 
 - No active sessions → "No active Aloop sessions to stop."
-- One session for the current project → use that one
-- Multiple sessions → ask the user which one to stop (list session IDs with project names)
+- One session → use it.
+- Multiple sessions → ask the user which session ID to stop (list session IDs from the output).
 
-## Step 2: Stop the Process
+## Step 2: Stop the Session
 
-1. Read `~/.aloop/sessions/<session-id>/meta.json`
-2. If PID is recorded:
-   - Unix/macOS: `kill $PID` (SIGTERM; escalate to SIGKILL after 10s if needed)
-   - Windows: `Stop-Process -Id $PID`
-3. If PID unavailable or already dead, note it and continue
+Run:
+```
+aloop stop <session-id>
+```
+Fallback: `node ~/.aloop/cli/aloop.mjs stop <session-id>`
 
-## Step 3: Update State
+Display the output as-is.
 
-1. Update `~/.aloop/sessions/<session-id>/status.json`: set `state` to `stopped`, update `updated_at`
-2. Remove session from `~/.aloop/active.json`
-3. Append to `~/.aloop/history.json` (keep last 100 entries):
-   ```json
-   {
-     "session_id": "<id>",
-     "project_name": "<name>",
-     "ended_at": "<timestamp>",
-     "reason": "manual_stop",
-     "iterations": <count>
-   }
-   ```
-
-## Step 4: Clean Up Worktree (optional)
+## Step 3: Clean Up Worktree (optional)
 
 If the session used a git worktree, ask:
 "Remove the worktree branch `aloop/<session-id>`? (yes/no)"
-- Yes: `git worktree remove <path> && git branch -d aloop/<session-id>`
-- No: Leave it for inspection
+- Yes: `git worktree remove ~/.aloop/sessions/<session-id>/worktree && git branch -d aloop/<session-id>`
+- No: Leave it for inspection.
 
-## Step 5: Confirm
-
-Display:
-```
-Aloop session stopped: <session-id>
-
-  Project:    <project-name>
-  Iterations: <count>
-  Logs:       ~/.aloop/sessions/<session-id>/
-  Report:     ~/.aloop/sessions/<session-id>/report.md
-```
+> Note: The CLI handles PID lookup, process termination, status.json update, and active.json cleanup.

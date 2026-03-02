@@ -7,7 +7,7 @@
 - [x] Raise branch coverage for `aloop/cli/lib/session.mjs` from 30.77% to >=90% by covering malformed reads, health-dir read failures, non-JSON entries, Windows/non-Windows kill branches, status write skip path, and kill-failure path. (P1)
 
 ### Up Next
-- [ ] Update `claude/commands/aloop/{status,stop}.md` and `copilot/prompts/aloop-{status,stop}.prompt.md` to delegate to `aloop status` / `aloop stop` (with `node ~/.aloop/cli/aloop.mjs ...` fallback) instead of bespoke file/process logic. (P1)
+- [x] Update `claude/commands/aloop/{status,stop}.md` and `copilot/prompts/aloop-{status,stop}.prompt.md` to delegate to `aloop status` / `aloop stop` (with `node ~/.aloop/cli/aloop.mjs ...` fallback) instead of bespoke file/process logic. (P1)
 - [ ] Implement mandatory final-review invariant in `aloop/bin/loop.ps1` for `plan-build-review`: build cannot exit directly on all `[x]`; force review next; only review approval can set completed; log `tasks_marked_complete`, `final_review_approved`, `final_review_rejected`. (P1)
 - [ ] Mirror final-review invariant behavior in `aloop/bin/loop.sh` to avoid PowerShell/Bash drift. (P1)
 - [ ] Implement provider health core in `aloop/bin/loop.ps1`: per-provider `~/.aloop/health/<provider>.json`, failure classification, exponential cooldown, lock retries, and round-robin skip/sleep when all providers are unavailable. (P1)
