@@ -6,7 +6,7 @@
 
 ### Up Next
 - [x] Expand CLI test coverage in `aloop/cli/aloop.mjs.test.mjs`: parser error paths (`--output` invalid, missing arg values, unknown options), help output, and concrete text-mode assertions for `resolve`/`discover`/`scaffold` plus new Phase 3 commands. (P0)
-- [ ] Add direct unit tests for `aloop/cli/lib/project.mjs` and broaden `aloop/cli/lib/config.test.mjs` to cover parser branches (quotes/booleans/null/numbers/empty lists/block strings/malformed lines) to remove current blind spots. (P0)
+- [x] Add direct unit tests for `aloop/cli/lib/project.mjs` and broaden `aloop/cli/lib/config.test.mjs` to cover parser branches (quotes/booleans/null/numbers/empty lists/block strings/malformed lines) to remove current blind spots. (P0)
 - [ ] Update `claude/commands/aloop/{status,stop}.md` and `copilot/prompts/aloop-{status,stop}.prompt.md` to delegate to `aloop status` / `aloop stop` (with `node ~/.aloop/cli/aloop.mjs ...` fallback) instead of bespoke file/process logic in prompts. (P1)
 - [ ] Implement provider health subsystem in `aloop/bin/loop.ps1`: per-provider files in `~/.aloop/health/`, failure classification (`rate_limit`/`auth`/`timeout`/`concurrent_cap`/`unknown`), exponential cooldown table, lock retries, and round-robin skip/sleep behavior when all providers are unavailable. (P1)
 - [ ] Add health observability in `loop.ps1`: log `provider_cooldown`, `provider_recovered`, `provider_degraded`, `health_lock_failed`, `all_providers_unavailable`; expose health in dashboard state/SSE and CLI status output. (P1)
