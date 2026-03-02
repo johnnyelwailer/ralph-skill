@@ -28,9 +28,9 @@ test('resolveHomeDir: strips trailing slash', () => {
 
 test('resolveProjectRoot: returns explicit path when git is not available in it', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'proj-test-'));
+  const expected = path.resolve(dir).replace(/[\\/]+$/, '');
   const result = resolveProjectRoot(dir);
-  // Either git root or the dir itself — must be a non-empty string
-  assert.ok(typeof result === 'string' && result.length > 0);
+  assert.equal(result, expected);
 });
 
 test('getProjectHash: returns 8-char hex string', () => {
