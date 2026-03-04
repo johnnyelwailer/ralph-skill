@@ -17,6 +17,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DIST_ENTRYPOINT = path.join(__dirname, 'dist', 'index.js');
 
+function sanitizeClaudeCodeEnv(env) {
+  const next = { ...env };
+  delete next.CLAUDECODE;
+  return next;
+}
+
+const SANITIZED_ENV = sanitizeClaudeCodeEnv(process.env);
+delete process.env.CLAUDECODE;
+
 function printHelp() {
   console.log('aloop <command> [options]');
   console.log('');
@@ -305,7 +314,7 @@ function runDistCommand(command, argv) {
 
   const result = spawnSync(process.execPath, [DIST_ENTRYPOINT, command, ...argv], {
     stdio: 'inherit',
-    env: process.env,
+    env: SANITIZED_ENV,
   });
 
   if (typeof result.status === 'number') {

@@ -46,6 +46,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Defense in depth: clear CLAUDECODE from the process environment at script entry.
+if (Test-Path Env:CLAUDECODE) {
+    Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue
+}
+
 # ============================================================================
 # VALIDATION
 # ============================================================================
@@ -148,6 +153,31 @@ function Assert-CopilotAuth {
     }
 }
 
+function Invoke-WithSanitizedClaudeCodeEnv {
+    param(
+        [Parameter(Mandatory)]
+        [scriptblock]$Action
+    )
+
+    $hadClaudeCode = Test-Path Env:CLAUDECODE
+    $claudeCodeValue = $null
+    if ($hadClaudeCode) {
+        $claudeCodeValue = $env:CLAUDECODE
+    }
+
+    Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue
+    try {
+        return & $Action
+    }
+    finally {
+        if ($hadClaudeCode) {
+            $env:CLAUDECODE = $claudeCodeValue
+        } else {
+            Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Invoke-Provider {
     param(
         [string]$ProviderName,
@@ -156,7 +186,10 @@ function Invoke-Provider {
 
     switch ($ProviderName) {
         'claude' {
-            $PromptContent | & claude --model $ClaudeModel --dangerously-skip-permissions --print 2>&1 | Tee-Object -Variable output
+            $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
+                $PromptContent | & claude --model $ClaudeModel --dangerously-skip-permissions --print 2>&1 | Tee-Object -Variable output
+                return $output
+            }
             if ($LASTEXITCODE -ne 0) {
                 $script:lastProviderOutputText = $output | Out-String
                 throw "claude exited with code $LASTEXITCODE"
@@ -165,7 +198,10 @@ function Invoke-Provider {
             return $output
         }
         'codex' {
-            $PromptContent | & codex exec -m $CodexModel --dangerously-bypass-approvals-and-sandbox - 2>&1 | Tee-Object -Variable output
+            $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
+                $PromptContent | & codex exec -m $CodexModel --dangerously-bypass-approvals-and-sandbox - 2>&1 | Tee-Object -Variable output
+                return $output
+            }
             if ($LASTEXITCODE -ne 0) {
                 $script:lastProviderOutputText = $output | Out-String
                 throw "codex exited with code $LASTEXITCODE"
@@ -174,10 +210,16 @@ function Invoke-Provider {
             return $output
         }
         'gemini' {
-            & gemini -m $GeminiModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
+            $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
+                & gemini -m $GeminiModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
+                return $output
+            }
             if ($LASTEXITCODE -ne 0) {
                 Write-Warning "Gemini -m $GeminiModel failed (exit $LASTEXITCODE). Retrying without explicit model."
-                & gemini --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
+                $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
+                    & gemini --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
+                    return $output
+                }
                 if ($LASTEXITCODE -ne 0) {
                     $script:lastProviderOutputText = $output | Out-String
                     throw "gemini exited with code $LASTEXITCODE"
@@ -187,15 +229,24 @@ function Invoke-Provider {
             return $output
         }
         'copilot' {
-            & copilot --model $CopilotModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
+            $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
+                & copilot --model $CopilotModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
+                return $output
+            }
             $outputText = ($output | Out-String)
             if ($LASTEXITCODE -ne 0) {
                 Write-Warning "Copilot --model $CopilotModel failed (exit $LASTEXITCODE). Retrying with --model $CopilotRetryModel."
-                & copilot --model $CopilotRetryModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
+                $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
+                    & copilot --model $CopilotRetryModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
+                    return $output
+                }
                 $outputText = ($output | Out-String)
                 if ($LASTEXITCODE -ne 0) {
                     Write-Warning "Copilot --model $CopilotRetryModel failed (exit $LASTEXITCODE). Retrying without explicit model."
-                    & copilot --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
+                    $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
+                        & copilot --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
+                        return $output
+                    }
                     $outputText = ($output | Out-String)
                 }
                 if ($LASTEXITCODE -ne 0) {

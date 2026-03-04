@@ -14,6 +14,9 @@
 
 set -e
 
+# Defense in depth: clear CLAUDECODE from the process environment at script entry.
+unset CLAUDECODE
+
 # ============================================================================
 # DEFAULTS
 # ============================================================================
@@ -309,7 +312,7 @@ invoke_provider() {
 
     case "$provider_name" in
         claude)
-            echo "$prompt_content" | claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2>&1 | tee -a "$LOG_FILE.raw"
+            echo "$prompt_content" | env -u CLAUDECODE claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2>&1 | tee -a "$LOG_FILE.raw"
             local exit_code=${PIPESTATUS[1]}
             if [ "$exit_code" -ne 0 ]; then
                 LAST_PROVIDER_ERROR="claude exited with code $exit_code"
@@ -319,7 +322,7 @@ invoke_provider() {
             LAST_PROVIDER_ERROR=""
             ;;
         codex)
-            echo "$prompt_content" | codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2>&1 | tee -a "$LOG_FILE.raw"
+            echo "$prompt_content" | env -u CLAUDECODE codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2>&1 | tee -a "$LOG_FILE.raw"
             local exit_code=${PIPESTATUS[1]}
             if [ "$exit_code" -ne 0 ]; then
                 LAST_PROVIDER_ERROR="codex exited with code $exit_code"
@@ -329,9 +332,9 @@ invoke_provider() {
             LAST_PROVIDER_ERROR=""
             ;;
         gemini)
-            if ! gemini -m "$GEMINI_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw"; then
+            if ! env -u CLAUDECODE gemini -m "$GEMINI_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw"; then
                 echo "Gemini -m $GEMINI_MODEL failed. Retrying without explicit model." >&2
-                if ! gemini --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw"; then
+                if ! env -u CLAUDECODE gemini --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw"; then
                     LAST_PROVIDER_ERROR="gemini failed"
                     echo "gemini failed" >&2
                     return 1
@@ -342,11 +345,11 @@ invoke_provider() {
         copilot)
             local copilot_output_file
             copilot_output_file=$(mktemp)
-            if ! copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
+            if ! env -u CLAUDECODE copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
                 echo "Copilot --model $COPILOT_MODEL failed. Retrying with $COPILOT_RETRY_MODEL." >&2
-                if ! copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
+                if ! env -u CLAUDECODE copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
                     echo "Copilot retry failed. Trying without explicit model." >&2
-                    if ! copilot --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
+                    if ! env -u CLAUDECODE copilot --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
                         LAST_PROVIDER_ERROR="copilot failed"
                         echo "copilot failed" >&2
                         rm -f "$copilot_output_file"

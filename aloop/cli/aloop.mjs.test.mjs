@@ -5,14 +5,14 @@ import os from 'node:os';
 import { mkdtemp, mkdir, readFile, writeFile, rename, unlink } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 
-function runCli(args) {
+function runCli(args, options = {}) {
   const repoRoot = process.cwd();
   const cliRoot = path.resolve(repoRoot, 'aloop', 'cli');
   const entrypoint = path.join(cliRoot, 'aloop.mjs');
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [entrypoint, ...args], {
       cwd: cliRoot,
-      env: process.env,
+      env: { ...process.env, ...(options.env ?? {}) },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -813,6 +813,26 @@ test('aloop.mjs dashboard passes through exit code from dist', async () => {
   await writeFile(distEntry, 'process.exit(0);\n', 'utf8');
   try {
     const result = await runCli(['dashboard']);
+    assert.equal(result.code, 0);
+  } finally {
+    await unlink(distEntry).catch(() => {});
+    await rename(distBackup, distEntry);
+  }
+});
+
+test('aloop.mjs dashboard strips CLAUDECODE before delegating to dist', async () => {
+  const cliRoot = path.resolve(process.cwd(), 'aloop', 'cli');
+  const distEntry = path.join(cliRoot, 'dist', 'index.js');
+  const distBackup = path.join(cliRoot, 'dist', 'index.js.bak');
+
+  await rename(distEntry, distBackup);
+  await writeFile(
+    distEntry,
+    "if (process.env.CLAUDECODE) { process.exit(12); }\nprocess.exit(0);\n",
+    'utf8',
+  );
+  try {
+    const result = await runCli(['dashboard'], { env: { CLAUDECODE: '1' } });
     assert.equal(result.code, 0);
   } finally {
     await unlink(distEntry).catch(() => {});
