@@ -50,10 +50,11 @@ if [ -n "$STATE_FILE" ] && [ -f "$STATE_FILE" ]; then
     REJECTED=$(grep '^rejected=' "$STATE_FILE" | cut -d= -f2 | tr -d '[:space:]')
 fi
 CALLS=$((CALLS + 1))
+PROMPT_TEXT="$(cat)"
 TODO_FILE="${PWD}/TODO.md"
-if grep -q -- '- \[ \]' "$TODO_FILE" 2>/dev/null; then
+if echo "$PROMPT_TEXT" | grep -q "Building Mode" && grep -q -- '- \[ \]' "$TODO_FILE" 2>/dev/null; then
     sed -i 's/- \[ \]/- [x]/g' "$TODO_FILE"
-elif [ "$SCENARIO" = "reject-once" ] && [ "$REJECTED" != "true" ]; then
+elif echo "$PROMPT_TEXT" | grep -q "Review Mode" && [ "$SCENARIO" = "reject-once" ] && [ "$REJECTED" != "true" ]; then
     REJECTED="true"
     sed -i 's/- \[x\]/- [ ]/g' "$TODO_FILE"
 fi
@@ -104,7 +105,9 @@ exit 0
             param($LoopEnv, [int]$MaxIter = 8)
             $prevPath  = $env:PATH
             $prevState = $env:FAKE_CLAUDE_STATE
+            $prevRuntime = $env:ALOOP_RUNTIME_DIR
             $env:FAKE_CLAUDE_STATE = $LoopEnv.StateFile
+            $env:ALOOP_RUNTIME_DIR = Join-Path $LoopEnv.SessionDir '_runtime_stub'
 
             $binBash   = ConvertTo-BashPath $script:shFakeBinDir
             $promptBash = ConvertTo-BashPath $LoopEnv.PromptsDir
@@ -130,6 +133,8 @@ exit 0
                 $env:PATH = $prevPath
                 if ($null -eq $prevState) { Remove-Item Env:FAKE_CLAUDE_STATE -ErrorAction SilentlyContinue }
                 else { $env:FAKE_CLAUDE_STATE = $prevState }
+                if ($null -eq $prevRuntime) { Remove-Item Env:ALOOP_RUNTIME_DIR -ErrorAction SilentlyContinue }
+                else { $env:ALOOP_RUNTIME_DIR = $prevRuntime }
             }
         }
 
@@ -290,8 +295,14 @@ exit 0
         }
 
         function script:Invoke-ShRetryLoop {
-            param($LoopEnv, [int]$MaxIter = 5)
+            param(
+                $LoopEnv,
+                [int]$MaxIter = 5,
+                [string]$Provider = 'round-robin',
+                [string]$RoundRobinProviders = 'claude,codex'
+            )
             $prevState = $env:FAKE_RETRY_STATE_SH
+            $prevRuntime = $env:ALOOP_RUNTIME_DIR
             try {
                 $binBash   = ConvertTo-BashRetryPath $script:shRetryFakeBinDir
                 $promptBash = ConvertTo-BashRetryPath $LoopEnv.PromptsDir
@@ -299,24 +310,33 @@ exit 0
                 $workBash   = ConvertTo-BashRetryPath $LoopEnv.WorkDir
                 $loopBash   = $script:loopShRetryBash
                 $stateBash  = ConvertTo-BashRetryPath $LoopEnv.StateFile
+                $loopCommandLines = @(
+                    "bash '$loopBash' \",
+                    "    --prompts-dir '$promptBash' \",
+                    "    --session-dir '$sessBash' \",
+                    "    --work-dir '$workBash' \",
+                    "    --mode plan-build-review \",
+                    "    --provider '$Provider' \"
+                )
+                if ($Provider -eq 'round-robin') {
+                    $loopCommandLines += "    --round-robin '$RoundRobinProviders' \"
+                }
+                $loopCommandLines += "    --max-iterations $MaxIter"
+                $loopCommand = $loopCommandLines -join "`n"
 
                 $output = & $script:bashExeRetry -c "
                     export PATH='$binBash':`$PATH
                     export FAKE_RETRY_STATE_SH='$stateBash'
-                    bash '$loopBash' \
-                        --prompts-dir '$promptBash' \
-                        --session-dir '$sessBash' \
-                        --work-dir '$workBash' \
-                        --mode plan-build-review \
-                        --provider round-robin \
-                        --round-robin claude,codex \
-                        --max-iterations $MaxIter
+                    export ALOOP_RUNTIME_DIR='$(ConvertTo-BashRetryPath (Join-Path $LoopEnv.SessionDir '_runtime_stub'))'
+                    $loopCommand
                 " 2>&1
                 return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
             }
             finally {
                 if ($null -eq $prevState) { Remove-Item Env:FAKE_RETRY_STATE_SH -ErrorAction SilentlyContinue }
                 else { $env:FAKE_RETRY_STATE_SH = $prevState }
+                if ($null -eq $prevRuntime) { Remove-Item Env:ALOOP_RUNTIME_DIR -ErrorAction SilentlyContinue }
+                else { $env:ALOOP_RUNTIME_DIR = $prevRuntime }
             }
         }
 
@@ -340,7 +360,8 @@ exit 0
     It 'failed plan retries same phase and only advances after plan success' {
         if (-not $script:bashExeRetry) { Set-ItResult -Skipped -Because 'bash not available' }
         $e = New-ShRetryEnv -PlanFails 1
-        Invoke-ShRetryLoop -LoopEnv $e -MaxIter 4 | Out-Null
+        $result = Invoke-ShRetryLoop -LoopEnv $e -MaxIter 4
+        $result.ExitCode | Should -Be 0
         $entries = Get-ShRetryLogEntries -LogFile $e.LogFile
         $errors = @($entries | Where-Object { $_.event -eq 'iteration_error' })
         $completes = @($entries | Where-Object { $_.event -eq 'iteration_complete' })
@@ -354,7 +375,8 @@ exit 0
     It 'phase_retry_exhausted advances to next phase after max retries' {
         if (-not $script:bashExeRetry) { Set-ItResult -Skipped -Because 'bash not available' }
         $e = New-ShRetryEnv -PlanFails 10
-        Invoke-ShRetryLoop -LoopEnv $e -MaxIter 5 | Out-Null
+        $result = Invoke-ShRetryLoop -LoopEnv $e -Provider 'claude' -MaxIter 3
+        $result.ExitCode | Should -Be 0
         $entries = Get-ShRetryLogEntries -LogFile $e.LogFile
         ($entries | Where-Object { $_.event -eq 'phase_retry_exhausted' }).Count | Should -BeGreaterThan 0
         ($entries | Where-Object { $_.event -eq 'iteration_complete' -and $_.mode -eq 'build' }).Count | Should -BeGreaterThan 0
@@ -442,8 +464,10 @@ exit 0
             param($LoopEnv, [int]$MaxIter = 6)
             $prevPath  = $env:PATH
             $prevState = $env:FAKE_CLAUDE_STATE
+            $prevRuntime = $env:ALOOP_RUNTIME_DIR
             $env:PATH              = "$fakeBinDir;$prevPath"
             $env:FAKE_CLAUDE_STATE = $LoopEnv.StateFile
+            $env:ALOOP_RUNTIME_DIR = Join-Path $LoopEnv.SessionDir '_runtime_stub'
             try {
                 $output = & $pwshPath -NoProfile -File $loopScript `
                     -PromptsDir    $LoopEnv.PromptsDir `
@@ -460,6 +484,11 @@ exit 0
                     Remove-Item Env:FAKE_CLAUDE_STATE -ErrorAction SilentlyContinue
                 } else {
                     $env:FAKE_CLAUDE_STATE = $prevState
+                }
+                if ($null -eq $prevRuntime) {
+                    Remove-Item Env:ALOOP_RUNTIME_DIR -ErrorAction SilentlyContinue
+                } else {
+                    $env:ALOOP_RUNTIME_DIR = $prevRuntime
                 }
             }
         }
@@ -588,20 +617,33 @@ exit 0
         }
 
         function script:Invoke-RetryLoop {
-            param($Env, [int]$MaxIter = 5)
+            param(
+                $Env,
+                [int]$MaxIter = 5,
+                [string]$Provider = 'round-robin',
+                [string[]]$RoundRobinProviders = @('claude', 'codex')
+            )
             $prevPath  = $env:PATH
             $prevState = $env:FAKE_RETRY_STATE
+            $prevRuntime = $env:ALOOP_RUNTIME_DIR
             $env:PATH = "$fakeBinDir;$prevPath"
             $env:FAKE_RETRY_STATE = $Env.StateFile
+            $env:ALOOP_RUNTIME_DIR = Join-Path $Env.SessionDir '_runtime_stub'
             try {
-                $output = & $pwshPath -NoProfile -File $loopScript `
-                    -PromptsDir $Env.PromptsDir `
-                    -SessionDir $Env.SessionDir `
-                    -WorkDir $Env.WorkDir `
-                    -Mode 'plan-build-review' `
-                    -Provider 'round-robin' `
-                    -RoundRobinProviders @('claude', 'codex') `
-                    -MaxIterations $MaxIter 2>&1
+                $args = @(
+                    '-NoProfile', '-File', $loopScript,
+                    '-PromptsDir', $Env.PromptsDir,
+                    '-SessionDir', $Env.SessionDir,
+                    '-WorkDir', $Env.WorkDir,
+                    '-Mode', 'plan-build-review',
+                    '-Provider', $Provider,
+                    '-MaxIterations', $MaxIter
+                )
+                if ($Provider -eq 'round-robin') {
+                    $args += '-RoundRobinProviders'
+                    $args += ($RoundRobinProviders -join ',')
+                }
+                $output = & $pwshPath @args 2>&1
                 return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
             } finally {
                 $env:PATH = $prevPath
@@ -609,6 +651,11 @@ exit 0
                     Remove-Item Env:FAKE_RETRY_STATE -ErrorAction SilentlyContinue
                 } else {
                     $env:FAKE_RETRY_STATE = $prevState
+                }
+                if ($null -eq $prevRuntime) {
+                    Remove-Item Env:ALOOP_RUNTIME_DIR -ErrorAction SilentlyContinue
+                } else {
+                    $env:ALOOP_RUNTIME_DIR = $prevRuntime
                 }
             }
         }
@@ -620,7 +667,7 @@ exit 0
 
     It 'failed plan retries same phase and only advances after plan success' {
         $e = New-RetryEnv -PlanFails 1
-        Invoke-RetryLoop -Env $e -MaxIter 4 | Out-Null
+        $result = Invoke-RetryLoop -Env $e -MaxIter 4
         $entries = @(
             Get-Content $e.LogFile |
                 ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
@@ -638,7 +685,8 @@ exit 0
 
     It 'phase_retry_exhausted advances to next phase after max retries' {
         $e = New-RetryEnv -PlanFails 10
-        Invoke-RetryLoop -Env $e -MaxIter 5 | Out-Null
+        $result = Invoke-RetryLoop -Env $e -Provider 'claude' -MaxIter 3
+        $result.ExitCode | Should -Be 0
         $entries = @(
             Get-Content $e.LogFile |
                 ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
@@ -722,10 +770,12 @@ switch ($scenario) {
             )
             $prevPath    = $env:PATH
             $prevHDir    = $env:ALOOP_HEALTH_DIR
+            $prevRuntime = $env:ALOOP_RUNTIME_DIR
             $prevClaudeS = $env:FAKE_CLAUDE_SCENARIO
             $prevCodexS  = $env:FAKE_CODEX_SCENARIO
             $env:PATH                  = "$fakeBinDir;$prevPath"
             $env:ALOOP_HEALTH_DIR      = $Env.HealthDir
+            $env:ALOOP_RUNTIME_DIR     = Join-Path $Env.SessionDir '_runtime_stub'
             $env:FAKE_CLAUDE_SCENARIO  = $ClaudeScenario
             $env:FAKE_CODEX_SCENARIO   = $CodexScenario
             try {
@@ -747,6 +797,7 @@ switch ($scenario) {
             finally {
                 $env:PATH = $prevPath
                 if ($null -eq $prevHDir)    { Remove-Item Env:ALOOP_HEALTH_DIR     -EA SilentlyContinue } else { $env:ALOOP_HEALTH_DIR    = $prevHDir }
+                if ($null -eq $prevRuntime) { Remove-Item Env:ALOOP_RUNTIME_DIR    -EA SilentlyContinue } else { $env:ALOOP_RUNTIME_DIR   = $prevRuntime }
                 if ($null -eq $prevClaudeS) { Remove-Item Env:FAKE_CLAUDE_SCENARIO -EA SilentlyContinue } else { $env:FAKE_CLAUDE_SCENARIO = $prevClaudeS }
                 if ($null -eq $prevCodexS)  { Remove-Item Env:FAKE_CODEX_SCENARIO  -EA SilentlyContinue } else { $env:FAKE_CODEX_SCENARIO  = $prevCodexS }
             }
