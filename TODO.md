@@ -6,7 +6,7 @@
 - [x] Implement retry-same-phase semantics in `aloop/bin/loop.ps1` using a success-driven cycle position (not raw iteration modulo), with forced-flag precedence, phase prerequisites, and max phase-retry safety valve. This fixes build/review running without required context after failures. (P1)
 
 ### Up Next
-- [ ] Mirror the retry-same-phase model in `aloop/bin/loop.sh` (same semantics as PowerShell) so both runtimes behave identically in `plan-build-review`. (P1)
+- [x] Mirror the retry-same-phase model in `aloop/bin/loop.sh` (same semantics as PowerShell) so both runtimes behave identically in `plan-build-review`. (P1)
 - [ ] Add phase-prerequisite enforcement + logs in both runtimes (`phase_prerequisite_miss`): build requires unchecked TODO tasks; review requires builds since last plan. (P1)
 - [ ] Capture and persist provider stderr details on failure in both runtimes so health classification and debugging are based on real error text, not exit code alone. (P1)
 - [ ] Implement provider-health subsystem parity in `aloop/bin/loop.sh` (`~/.aloop/health/<provider>.json`, cooldown/degraded transitions, all-providers-unavailable sleep, lock-failure graceful path). Currently only `loop.ps1` has this. (P1)

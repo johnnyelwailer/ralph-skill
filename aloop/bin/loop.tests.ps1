@@ -185,6 +185,183 @@ exit 0
 }
 
 
+# ============================================================================
+# 3. loop.sh — retry-same-phase behavioral
+# ============================================================================
+Describe 'loop.sh — retry-same-phase behavioral' {
+
+    BeforeAll {
+        $script:bashExeRetry = (Get-Command bash -ErrorAction SilentlyContinue)?.Source
+        if (-not $script:bashExeRetry) { return }
+
+        $loopShPath = Join-Path $PSScriptRoot 'loop.sh'
+        $script:loopShRetryBash = & $script:bashExeRetry -c "cygpath -u '$(($loopShPath -replace "\\","/"))'" 2>$null
+        if (-not $script:loopShRetryBash) {
+            $script:loopShRetryBash = ($loopShPath -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+        }
+
+        $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("aloop-sh-retry-tests-" + [guid]::NewGuid().ToString('N'))
+        $script:shRetryTempRoot = $tempRoot
+        $fakeBinDir = Join-Path $tempRoot 'fake-bin'
+        New-Item -ItemType Directory -Force $fakeBinDir | Out-Null
+        $script:shRetryFakeBinDir = $fakeBinDir
+
+        $fakeBinBash = & $script:bashExeRetry -c "cygpath -u '$($fakeBinDir -replace '\\','/')'" 2>$null
+        if (-not $fakeBinBash) {
+            $fakeBinBash = ($fakeBinDir -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+        }
+        $fakeBinBash = $fakeBinBash.Trim()
+
+        $fakeRetryProvider = @'
+#!/bin/bash
+STATE_FILE="${FAKE_RETRY_STATE_SH:-}"
+CALLS=0
+PLAN_FAILS=0
+BUILD_FAILS=0
+
+if [ -n "$STATE_FILE" ] && [ -f "$STATE_FILE" ]; then
+    CALLS=$(grep '^calls=' "$STATE_FILE" | cut -d= -f2 | tr -d '[:space:]')
+    PLAN_FAILS=$(grep '^plan_fails=' "$STATE_FILE" | cut -d= -f2 | tr -d '[:space:]')
+    BUILD_FAILS=$(grep '^build_fails=' "$STATE_FILE" | cut -d= -f2 | tr -d '[:space:]')
+fi
+
+CALLS=$((CALLS + 1))
+PROMPT_TEXT="$(cat)"
+
+if echo "$PROMPT_TEXT" | grep -q "Planning Mode" && [ "${PLAN_FAILS:-0}" -gt 0 ]; then
+    PLAN_FAILS=$((PLAN_FAILS - 1))
+    [ -n "$STATE_FILE" ] && printf 'calls=%d\nplan_fails=%d\nbuild_fails=%d\n' "$CALLS" "$PLAN_FAILS" "$BUILD_FAILS" > "$STATE_FILE"
+    echo "forced plan failure"
+    exit 1
+fi
+
+if echo "$PROMPT_TEXT" | grep -q "Building Mode" && [ "${BUILD_FAILS:-0}" -gt 0 ]; then
+    BUILD_FAILS=$((BUILD_FAILS - 1))
+    [ -n "$STATE_FILE" ] && printf 'calls=%d\nplan_fails=%d\nbuild_fails=%d\n' "$CALLS" "$PLAN_FAILS" "$BUILD_FAILS" > "$STATE_FILE"
+    echo "forced build failure"
+    exit 1
+fi
+
+TODO_FILE="${PWD}/TODO.md"
+if echo "$PROMPT_TEXT" | grep -q "Building Mode" && [ -f "$TODO_FILE" ]; then
+    sed -i 's/- \[ \]/- [x]/g' "$TODO_FILE"
+fi
+
+[ -n "$STATE_FILE" ] && printf 'calls=%d\nplan_fails=%d\nbuild_fails=%d\n' "$CALLS" "$PLAN_FAILS" "$BUILD_FAILS" > "$STATE_FILE"
+echo "ok"
+exit 0
+'@
+        $env:_ALOOP_FAKE_RETRY_SH = $fakeRetryProvider -replace "`r`n", "`n"
+        & $script:bashExeRetry -c "mkdir -p '$fakeBinBash'; printf '%s' `"`$_ALOOP_FAKE_RETRY_SH`" > '$fakeBinBash/claude'; chmod +x '$fakeBinBash/claude'; cp '$fakeBinBash/claude' '$fakeBinBash/codex'; chmod +x '$fakeBinBash/codex'" 2>$null
+        Remove-Item Env:_ALOOP_FAKE_RETRY_SH -ErrorAction SilentlyContinue
+
+        function script:New-ShRetryEnv {
+            param([int]$PlanFails = 0, [int]$BuildFails = 0)
+            $testDir   = Join-Path $script:shRetryTempRoot ("env-" + [guid]::NewGuid().ToString('N'))
+            $workDir   = Join-Path $testDir 'work'
+            $sessDir   = Join-Path $testDir 'session'
+            $promptDir = Join-Path $testDir 'prompts'
+            foreach ($d in $workDir, $sessDir, $promptDir) {
+                New-Item -ItemType Directory -Force $d | Out-Null
+            }
+            $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
+            $stateFile = Join-Path $testDir 'retry-state.txt'
+            [System.IO.File]::WriteAllText($stateFile, "calls=0`nplan_fails=$PlanFails`nbuild_fails=$BuildFails`n", $utf8NoBom)
+            return [pscustomobject]@{
+                WorkDir    = $workDir
+                SessionDir = $sessDir
+                PromptsDir = $promptDir
+                StateFile  = $stateFile
+                LogFile    = Join-Path $sessDir 'log.jsonl'
+            }
+        }
+
+        function script:ConvertTo-BashRetryPath {
+            param([string]$WinPath)
+            $p = & $script:bashExeRetry -c "cygpath -u '$(($WinPath -replace "\\","/"))'" 2>$null
+            if (-not $p) {
+                $p = ($WinPath -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+            }
+            return $p.Trim()
+        }
+
+        function script:Invoke-ShRetryLoop {
+            param($LoopEnv, [int]$MaxIter = 5)
+            $prevState = $env:FAKE_RETRY_STATE_SH
+            try {
+                $binBash   = ConvertTo-BashRetryPath $script:shRetryFakeBinDir
+                $promptBash = ConvertTo-BashRetryPath $LoopEnv.PromptsDir
+                $sessBash   = ConvertTo-BashRetryPath $LoopEnv.SessionDir
+                $workBash   = ConvertTo-BashRetryPath $LoopEnv.WorkDir
+                $loopBash   = $script:loopShRetryBash
+                $stateBash  = ConvertTo-BashRetryPath $LoopEnv.StateFile
+
+                $output = & $script:bashExeRetry -c "
+                    export PATH='$binBash':`$PATH
+                    export FAKE_RETRY_STATE_SH='$stateBash'
+                    bash '$loopBash' \
+                        --prompts-dir '$promptBash' \
+                        --session-dir '$sessBash' \
+                        --work-dir '$workBash' \
+                        --mode plan-build-review \
+                        --provider round-robin \
+                        --round-robin claude,codex \
+                        --max-iterations $MaxIter
+                " 2>&1
+                return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
+            }
+            finally {
+                if ($null -eq $prevState) { Remove-Item Env:FAKE_RETRY_STATE_SH -ErrorAction SilentlyContinue }
+                else { $env:FAKE_RETRY_STATE_SH = $prevState }
+            }
+        }
+
+        function script:Get-ShRetryLogEntries {
+            param([string]$LogFile)
+            if (-not (Test-Path $LogFile)) { return @() }
+            return @(
+                Get-Content $LogFile |
+                    ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
+                    Where-Object { $_ }
+            )
+        }
+    }
+
+    AfterAll {
+        if ($script:shRetryTempRoot -and (Test-Path $script:shRetryTempRoot)) {
+            Remove-Item -Recurse -Force $script:shRetryTempRoot
+        }
+    }
+
+    It 'failed plan retries same phase and only advances after plan success' {
+        if (-not $script:bashExeRetry) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e = New-ShRetryEnv -PlanFails 1
+        Invoke-ShRetryLoop -LoopEnv $e -MaxIter 4 | Out-Null
+        $entries = Get-ShRetryLogEntries -LogFile $e.LogFile
+        $errors = @($entries | Where-Object { $_.event -eq 'iteration_error' })
+        $completes = @($entries | Where-Object { $_.event -eq 'iteration_complete' })
+        $errors[0].mode | Should -Be 'plan'
+        $errors[0].provider | Should -Be 'claude'
+        $completes[0].mode | Should -Be 'plan'
+        $completes[0].provider | Should -Be 'codex'
+        ($completes | Where-Object { $_.mode -eq 'build' }).Count | Should -BeGreaterThan 0
+    }
+
+    It 'phase_retry_exhausted advances to next phase after max retries' {
+        if (-not $script:bashExeRetry) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e = New-ShRetryEnv -PlanFails 10
+        Invoke-ShRetryLoop -LoopEnv $e -MaxIter 5 | Out-Null
+        $entries = Get-ShRetryLogEntries -LogFile $e.LogFile
+        ($entries | Where-Object { $_.event -eq 'phase_retry_exhausted' }).Count | Should -BeGreaterThan 0
+        ($entries | Where-Object { $_.event -eq 'iteration_complete' -and $_.mode -eq 'build' }).Count | Should -BeGreaterThan 0
+    }
+}
+
+
 Describe 'loop.ps1 — final-review behavioral end-to-end' {
 
     BeforeAll {

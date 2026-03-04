@@ -133,20 +133,23 @@ resolve_iteration_provider() {
 
 resolve_iteration_mode() {
     local iteration=$1
+    LAST_MODE_WAS_FORCED=false
     if [ "$FORCE_REVIEW_NEXT" = true ]; then
         FORCE_REVIEW_NEXT=false
+        LAST_MODE_WAS_FORCED=true
         RESOLVED_MODE="review"
     elif [ "$FORCE_PLAN_NEXT" = true ]; then
         FORCE_PLAN_NEXT=false
+        LAST_MODE_WAS_FORCED=true
         RESOLVED_MODE="plan"
     else
         case "$MODE" in
             plan-build)
-                if (( iteration % 2 == 1 )); then RESOLVED_MODE="plan"; else RESOLVED_MODE="build"; fi
+                if (( CYCLE_POSITION % 2 == 0 )); then RESOLVED_MODE="plan"; else RESOLVED_MODE="build"; fi
                 ;;
             plan-build-review)
                 # 5-step cycle: plan -> build -> build -> build -> review
-                local phase=$(( (iteration - 1) % 5 ))
+                local phase=$(( CYCLE_POSITION % 5 ))
                 case $phase in
                     0) RESOLVED_MODE="plan" ;;
                     1|2|3) RESOLVED_MODE="build" ;;
@@ -159,6 +162,62 @@ resolve_iteration_mode() {
         esac
     fi
     echo "$RESOLVED_MODE"
+}
+
+advance_cycle_position() {
+    case "$MODE" in
+        plan-build)
+            CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 2 ))
+            ;;
+        plan-build-review)
+            CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 5 ))
+            ;;
+    esac
+}
+
+register_iteration_success() {
+    local iteration_mode="$1"
+    local was_forced="$2"
+
+    PHASE_RETRY_PHASE=""
+    PHASE_RETRY_CONSECUTIVE=0
+
+    if { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; } \
+        && [ "$was_forced" != true ] \
+        && { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "review" ]; }; then
+        advance_cycle_position
+    fi
+}
+
+register_iteration_failure() {
+    local iteration_mode="$1"
+    local error_text="$2"
+
+    if ! { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; }; then
+        return
+    fi
+    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "review" ]; }; then
+        return
+    fi
+
+    if [ "$PHASE_RETRY_PHASE" = "$iteration_mode" ]; then
+        PHASE_RETRY_CONSECUTIVE=$((PHASE_RETRY_CONSECUTIVE + 1))
+    else
+        PHASE_RETRY_PHASE="$iteration_mode"
+        PHASE_RETRY_CONSECUTIVE=1
+    fi
+
+    if [ "$PHASE_RETRY_CONSECUTIVE" -ge "$MAX_PHASE_RETRIES" ]; then
+        echo "Warning: Phase '$iteration_mode' failed $PHASE_RETRY_CONSECUTIVE times; advancing cycle position."
+        write_log_entry "phase_retry_exhausted" \
+            "phase" "$iteration_mode" \
+            "consecutive_failures" "$PHASE_RETRY_CONSECUTIVE" \
+            "max_phase_retries" "$MAX_PHASE_RETRIES" \
+            "reason" "$error_text"
+        advance_cycle_position
+        PHASE_RETRY_PHASE=""
+        PHASE_RETRY_CONSECUTIVE=0
+    fi
 }
 
 assert_provider_installed() {
@@ -253,26 +312,32 @@ invoke_provider() {
             echo "$prompt_content" | claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2>&1 | tee -a "$LOG_FILE.raw"
             local exit_code=${PIPESTATUS[1]}
             if [ "$exit_code" -ne 0 ]; then
+                LAST_PROVIDER_ERROR="claude exited with code $exit_code"
                 echo "claude exited with code $exit_code" >&2
                 return $exit_code
             fi
+            LAST_PROVIDER_ERROR=""
             ;;
         codex)
             echo "$prompt_content" | codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2>&1 | tee -a "$LOG_FILE.raw"
             local exit_code=${PIPESTATUS[1]}
             if [ "$exit_code" -ne 0 ]; then
+                LAST_PROVIDER_ERROR="codex exited with code $exit_code"
                 echo "codex exited with code $exit_code" >&2
                 return $exit_code
             fi
+            LAST_PROVIDER_ERROR=""
             ;;
         gemini)
             if ! gemini -m "$GEMINI_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw"; then
                 echo "Gemini -m $GEMINI_MODEL failed. Retrying without explicit model." >&2
                 if ! gemini --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw"; then
+                    LAST_PROVIDER_ERROR="gemini failed"
                     echo "gemini failed" >&2
                     return 1
                 fi
             fi
+            LAST_PROVIDER_ERROR=""
             ;;
         copilot)
             local copilot_output_file
@@ -282,6 +347,7 @@ invoke_provider() {
                 if ! copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
                     echo "Copilot retry failed. Trying without explicit model." >&2
                     if ! copilot --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
+                        LAST_PROVIDER_ERROR="copilot failed"
                         echo "copilot failed" >&2
                         rm -f "$copilot_output_file"
                         return 1
@@ -292,10 +358,13 @@ invoke_provider() {
             copilot_output_text=$(cat "$copilot_output_file")
             rm -f "$copilot_output_file"
             if ! assert_copilot_auth "$copilot_output_text"; then
+                LAST_PROVIDER_ERROR="copilot not authenticated"
                 return 1
             fi
+            LAST_PROVIDER_ERROR=""
             ;;
         *)
+            LAST_PROVIDER_ERROR="unsupported provider: $provider_name"
             echo "Unsupported provider: $provider_name" >&2
             return 1
             ;;
@@ -335,6 +404,13 @@ FORCE_PLAN_NEXT=false
 ALL_TASKS_MARKED_DONE=false
 FORCE_REVIEW_NEXT=false
 RESOLVED_MODE=""
+CYCLE_POSITION=0
+LAST_MODE_WAS_FORCED=false
+PHASE_RETRY_PHASE=""
+PHASE_RETRY_CONSECUTIVE=0
+MAX_PHASE_RETRIES=2
+LAST_PROVIDER_ERROR=""
+LAST_ITER_MODE="$MODE"
 
 skip_stuck_task() {
     local task="$1"
@@ -600,6 +676,21 @@ if [ "$DRY_RUN" = false ]; then
     fi
 fi
 
+if [ "$PROVIDER" = "round-robin" ]; then
+    provider_count=${#RR_PROVIDERS[@]}
+    if [ "$provider_count" -lt 1 ]; then
+        provider_count=1
+    fi
+    calculated_retries=$((provider_count * 2))
+    if [ "$calculated_retries" -lt 2 ]; then
+        MAX_PHASE_RETRIES=2
+    else
+        MAX_PHASE_RETRIES="$calculated_retries"
+    fi
+else
+    MAX_PHASE_RETRIES=2
+fi
+
 # Setup remote backup
 setup_remote_backup || true
 start_dashboard
@@ -617,7 +708,7 @@ cleanup() {
     local reason="${1:-interrupted}"
     stop_dashboard
     echo ""
-    write_status "$ITERATION" "$(resolve_iteration_mode $ITERATION)" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "$reason"
+    write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "$reason"
     write_log_entry "$reason" "iteration" "$ITERATION"
     generate_report "$reason"
 }
@@ -633,6 +724,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     # Call directly (not via subshell) so flag-clearing affects the main shell
     resolve_iteration_mode "$ITERATION" > /dev/null
     iter_mode="$RESOLVED_MODE"
+    LAST_ITER_MODE="$iter_mode"
 
     # Check for live steering instruction (overrides normal mode)
     STEERING_FILE="$WORK_DIR/STEERING.md"
@@ -641,6 +733,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         iter_mode="steer"
         FORCE_PLAN_NEXT=true
         ALL_TASKS_MARKED_DONE=false
+        CYCLE_POSITION=0
+        LAST_ITER_MODE="$iter_mode"
         write_log_entry "steering_detected" "iteration" "$ITERATION"
     elif [ -f "$STEERING_FILE" ]; then
         echo "Warning: STEERING.md found but PROMPT_steer.md is missing in $PROMPTS_DIR — steering skipped."
@@ -712,6 +806,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
 
     cd "$WORK_DIR"
     if invoke_provider "$iter_provider" "$prompt_content"; then
+        register_iteration_success "$iter_mode" "$LAST_MODE_WAS_FORCED"
+
         # Steer mode: remove any leftover steering file if the agent did not delete it
         if [ "$iter_mode" = "steer" ]; then
             rm -f "$STEERING_FILE"
@@ -739,6 +835,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 echo "FINAL REVIEW REJECTED - reopened tasks, continuing loop"
                 ALL_TASKS_MARKED_DONE=false
                 FORCE_PLAN_NEXT=true
+                CYCLE_POSITION=0
                 write_log_entry "final_review_rejected" "iteration" "$ITERATION"
                 echo ""
                 echo "[Iteration $ITERATION complete - $iter_mode]"
@@ -748,6 +845,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
             echo "[Iteration $ITERATION complete - $iter_mode]"
         fi
     else
+        register_iteration_failure "$iter_mode" "${LAST_PROVIDER_ERROR:-provider_failed}"
         echo "Warning: Iteration $ITERATION failed"
         write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider"
     fi
@@ -757,7 +855,7 @@ done
 
 echo ""
 echo "Reached iteration limit ($MAX_ITERATIONS)"
-write_status "$ITERATION" "$(resolve_iteration_mode $ITERATION)" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "limit_reached"
+write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "limit_reached"
 write_log_entry "limit_reached" "iteration" "$ITERATION" "limit" "$MAX_ITERATIONS"
 generate_report "Reached iteration limit ($MAX_ITERATIONS)."
 stop_dashboard
