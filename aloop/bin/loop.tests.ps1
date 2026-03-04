@@ -209,14 +209,15 @@ $state = if ($stateFile -and (Test-Path $stateFile)) {
     [pscustomobject]@{ calls = 0; scenario = 'approve'; rejected = $false }
 }
 $state.calls++
+$promptText = ($input | Out-String)
 
 $todoFile = Join-Path $PWD 'TODO.md'
 $content  = if (Test-Path $todoFile) { Get-Content $todoFile -Raw } else { '' }
 
-if ($content -match '- \[ \]') {
+if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
     # Incomplete tasks exist — simulate successful build by marking all done
     ($content -replace '- \[ \]', '- [x]') | Set-Content $todoFile
-} elseif ($state.scenario -eq 'reject-once' -and -not $state.rejected) {
+} elseif (($promptText -match 'Review Mode') -and ($state.scenario -eq 'reject-once') -and -not $state.rejected) {
     # All done and first rejection — simulate review that reopens tasks
     $state.rejected = $true
     ($content -replace '- \[x\]', '- [ ]') | Set-Content $todoFile
@@ -336,7 +337,143 @@ exit 0
 }
 
 # ============================================================================
-# 4. loop.ps1 — provider-health behavioral
+# 4. loop.ps1 — retry-same-phase behavioral
+# ============================================================================
+Describe 'loop.ps1 — retry-same-phase behavioral' {
+
+    BeforeAll {
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+        $pwshPath   = (Get-Command pwsh -ErrorAction Stop).Source
+
+        $tempRoot   = Join-Path ([IO.Path]::GetTempPath()) ("aloop-retry-tests-" + [guid]::NewGuid().ToString('N'))
+        $fakeBinDir = Join-Path $tempRoot 'fake-bin'
+        New-Item -ItemType Directory -Force $fakeBinDir | Out-Null
+
+        $fakePs1 = Join-Path $fakeBinDir '_fake_retry_provider.ps1'
+        $fakeProviderContent = @'
+$stateFile = $env:FAKE_RETRY_STATE
+$state = if ($stateFile -and (Test-Path $stateFile)) {
+    Get-Content $stateFile -Raw | ConvertFrom-Json
+} else {
+    [pscustomobject]@{ calls = 0; planFails = 0; buildFails = 0 }
+}
+$state.calls++
+
+$promptText = ($input | Out-String)
+if ($promptText -match 'Planning Mode' -and $state.planFails -gt 0) {
+    $state.planFails--
+    if ($stateFile) { $state | ConvertTo-Json | Set-Content $stateFile }
+    Write-Output "forced plan failure"
+    exit 1
+}
+if ($promptText -match 'Building Mode' -and $state.buildFails -gt 0) {
+    $state.buildFails--
+    if ($stateFile) { $state | ConvertTo-Json | Set-Content $stateFile }
+    Write-Output "forced build failure"
+    exit 1
+}
+
+$todoFile = Join-Path $PWD 'TODO.md'
+if (($promptText -match 'Building Mode') -and (Test-Path $todoFile)) {
+    (Get-Content $todoFile -Raw -EA SilentlyContinue) -replace '- \[ \]', '- [x]' | Set-Content $todoFile
+}
+if ($stateFile) { $state | ConvertTo-Json | Set-Content $stateFile }
+Write-Output "ok"
+exit 0
+'@
+        Set-Content $fakePs1 $fakeProviderContent
+        Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+        Set-Content (Join-Path $fakeBinDir 'codex.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+
+        function script:New-RetryEnv {
+            param([int]$PlanFails = 0, [int]$BuildFails = 0)
+            $testDir   = Join-Path $tempRoot ("env-" + [guid]::NewGuid().ToString('N'))
+            $workDir   = Join-Path $testDir 'work'
+            $sessDir   = Join-Path $testDir 'session'
+            $promptDir = Join-Path $testDir 'prompts'
+            foreach ($d in $workDir, $sessDir, $promptDir) {
+                New-Item -ItemType Directory -Force $d | Out-Null
+            }
+            Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
+            Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
+            $stateFile = Join-Path $testDir 'retry-state.json'
+            [pscustomobject]@{ calls = 0; planFails = $PlanFails; buildFails = $BuildFails } |
+                ConvertTo-Json | Set-Content $stateFile
+            return [pscustomobject]@{
+                WorkDir    = $workDir
+                SessionDir = $sessDir
+                PromptsDir = $promptDir
+                StateFile  = $stateFile
+                LogFile    = Join-Path $sessDir 'log.jsonl'
+            }
+        }
+
+        function script:Invoke-RetryLoop {
+            param($Env, [int]$MaxIter = 5)
+            $prevPath  = $env:PATH
+            $prevState = $env:FAKE_RETRY_STATE
+            $env:PATH = "$fakeBinDir;$prevPath"
+            $env:FAKE_RETRY_STATE = $Env.StateFile
+            try {
+                $output = & $pwshPath -NoProfile -File $loopScript `
+                    -PromptsDir $Env.PromptsDir `
+                    -SessionDir $Env.SessionDir `
+                    -WorkDir $Env.WorkDir `
+                    -Mode 'plan-build-review' `
+                    -Provider 'round-robin' `
+                    -RoundRobinProviders @('claude', 'codex') `
+                    -MaxIterations $MaxIter 2>&1
+                return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
+            } finally {
+                $env:PATH = $prevPath
+                if ($null -eq $prevState) {
+                    Remove-Item Env:FAKE_RETRY_STATE -ErrorAction SilentlyContinue
+                } else {
+                    $env:FAKE_RETRY_STATE = $prevState
+                }
+            }
+        }
+    }
+
+    AfterAll {
+        if (Test-Path $tempRoot) { Remove-Item -Recurse -Force $tempRoot }
+    }
+
+    It 'failed plan retries same phase and only advances after plan success' {
+        $e = New-RetryEnv -PlanFails 1
+        Invoke-RetryLoop -Env $e -MaxIter 4 | Out-Null
+        $entries = @(
+            Get-Content $e.LogFile |
+                ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
+                Where-Object { $_ }
+        )
+
+        $errors = @($entries | Where-Object { $_.event -eq 'iteration_error' })
+        $completes = @($entries | Where-Object { $_.event -eq 'iteration_complete' })
+        $errors[0].mode | Should -Be 'plan'
+        $errors[0].provider | Should -Be 'claude'
+        $completes[0].mode | Should -Be 'plan'
+        $completes[0].provider | Should -Be 'codex'
+        ($completes | Where-Object { $_.mode -eq 'build' }).Count | Should -BeGreaterThan 0
+    }
+
+    It 'phase_retry_exhausted advances to next phase after max retries' {
+        $e = New-RetryEnv -PlanFails 10
+        Invoke-RetryLoop -Env $e -MaxIter 5 | Out-Null
+        $entries = @(
+            Get-Content $e.LogFile |
+                ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
+                Where-Object { $_ }
+        )
+        ($entries | Where-Object { $_.event -eq 'phase_retry_exhausted' }).Count | Should -BeGreaterThan 0
+        ($entries | Where-Object { $_.event -eq 'iteration_complete' -and $_.mode -eq 'build' }).Count | Should -BeGreaterThan 0
+    }
+}
+
+# ============================================================================
+# 5. loop.ps1 — provider-health behavioral
 # ============================================================================
 Describe 'loop.ps1 — provider-health behavioral' {
 

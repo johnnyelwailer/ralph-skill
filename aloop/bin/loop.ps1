@@ -95,29 +95,43 @@ function Resolve-IterationProvider {
 
 function Resolve-IterationMode {
     param([int]$IterationNumber)
+    $script:lastModeWasForced = $false
     if ($script:forceReviewNext) {
         $script:forceReviewNext = $false
+        $script:lastModeWasForced = $true
         return 'review'
     }
     if ($script:forcePlanNext) {
         $script:forcePlanNext = $false
+        $script:lastModeWasForced = $true
         return 'plan'
     }
+    $requestedMode = $Mode
     if ($Mode -eq 'plan-build') {
-        if ($IterationNumber % 2 -eq 1) { return 'plan' } else { return 'build' }
+        $phase = $script:cyclePosition % 2
+        if ($phase -eq 0) { $requestedMode = 'plan' } else { $requestedMode = 'build' }
     }
     if ($Mode -eq 'plan-build-review') {
         # 5-step cycle: plan -> build -> build -> build -> review
-        $phase = ($IterationNumber - 1) % 5
+        $phase = $script:cyclePosition % 5
         switch ($phase) {
-            0 { return 'plan' }
-            1 { return 'build' }
-            2 { return 'build' }
-            3 { return 'build' }
-            4 { return 'review' }
+            0 { $requestedMode = 'plan' }
+            1 { $requestedMode = 'build' }
+            2 { $requestedMode = 'build' }
+            3 { $requestedMode = 'build' }
+            4 { $requestedMode = 'review' }
         }
     }
-    return $Mode
+
+    if ($Mode -in @('plan-build', 'plan-build-review')) {
+        $actualMode = Check-PhasePrerequisite -RequestedPhase $requestedMode
+        if ($actualMode -ne $requestedMode) {
+            $script:lastModeWasForced = $true
+        }
+        return $actualMode
+    }
+
+    return $requestedMode
 }
 
 function Assert-ProviderInstalled {
@@ -299,6 +313,115 @@ $script:forcePlanNext = $false
 $script:allTasksMarkedDone = $false
 $script:forceReviewNext = $false
 $script:lastProviderOutputText = $null
+$script:cyclePosition = 0
+$script:lastModeWasForced = $false
+$script:hasBuildsSinceLastPlan = $false
+$script:phaseRetryState = @{
+    phase = ''
+    consecutive = 0
+    failureReasons = @()
+}
+$script:maxPhaseRetries = if ($Provider -eq 'round-robin') { [Math]::Max(2, $RoundRobinProviders.Count * 2) } else { 2 }
+
+function Advance-CyclePosition {
+    if ($Mode -eq 'plan-build') {
+        $script:cyclePosition = ($script:cyclePosition + 1) % 2
+    } elseif ($Mode -eq 'plan-build-review') {
+        $script:cyclePosition = ($script:cyclePosition + 1) % 5
+    }
+}
+
+function Register-IterationSuccess {
+    param(
+        [string]$IterationMode,
+        [bool]$WasForced
+    )
+    if ($IterationMode -eq 'plan') {
+        $script:hasBuildsSinceLastPlan = $false
+    } elseif ($IterationMode -eq 'build') {
+        $script:hasBuildsSinceLastPlan = $true
+    }
+
+    $script:phaseRetryState.phase = ''
+    $script:phaseRetryState.consecutive = 0
+    $script:phaseRetryState.failureReasons = @()
+
+    if (($Mode -in @('plan-build', 'plan-build-review')) -and -not $WasForced -and ($IterationMode -in @('plan', 'build', 'review'))) {
+        Advance-CyclePosition
+    }
+}
+
+function Register-IterationFailure {
+    param(
+        [string]$IterationMode,
+        [string]$ErrorText
+    )
+    if (-not ($Mode -in @('plan-build', 'plan-build-review'))) { return }
+    if (-not ($IterationMode -in @('plan', 'build', 'review'))) { return }
+
+    if ($script:phaseRetryState.phase -eq $IterationMode) {
+        $script:phaseRetryState.consecutive++
+    } else {
+        $script:phaseRetryState.phase = $IterationMode
+        $script:phaseRetryState.consecutive = 1
+        $script:phaseRetryState.failureReasons = @()
+    }
+
+    $script:phaseRetryState.failureReasons += [string]$ErrorText
+    if ($script:phaseRetryState.failureReasons.Count -gt $script:maxPhaseRetries) {
+        $script:phaseRetryState.failureReasons = @($script:phaseRetryState.failureReasons | Select-Object -Last $script:maxPhaseRetries)
+    }
+
+    if ($script:phaseRetryState.consecutive -ge $script:maxPhaseRetries) {
+        Write-Warning "Phase '$IterationMode' failed $($script:phaseRetryState.consecutive) times; advancing cycle position."
+        Write-LogEntry -Event "phase_retry_exhausted" -Data @{
+            phase = $IterationMode
+            consecutive_failures = $script:phaseRetryState.consecutive
+            max_phase_retries = $script:maxPhaseRetries
+            failure_reasons = @($script:phaseRetryState.failureReasons)
+        }
+        Advance-CyclePosition
+        $script:phaseRetryState.phase = ''
+        $script:phaseRetryState.consecutive = 0
+        $script:phaseRetryState.failureReasons = @()
+    }
+}
+
+function Check-PhasePrerequisite {
+    param([string]$RequestedPhase)
+
+    if ($RequestedPhase -eq 'build') {
+        $lines = Get-PlanLines
+        $unchecked = ($lines | Where-Object { $_ -match '^\s*-\s+\[ \]' }).Count
+        $completed = ($lines | Where-Object { $_ -match '^\s*-\s+\[x\]' }).Count
+        if ($unchecked -eq 0) {
+            if ($Mode -eq 'plan-build-review' -and $completed -gt 0) {
+                return 'build'
+            }
+            Write-Warning "No unchecked tasks in TODO.md; forcing plan phase."
+            Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
+                requested = 'build'
+                actual = 'plan'
+                reason = 'no_tasks'
+            }
+            return 'plan'
+        }
+    }
+
+    if ($RequestedPhase -eq 'review') {
+        if (-not $script:hasBuildsSinceLastPlan) {
+            Write-Warning "No successful builds since last plan; forcing build phase."
+            Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
+                requested = 'review'
+                actual = 'build'
+                reason = 'no_builds'
+            }
+            return 'build'
+        }
+    }
+
+    return $RequestedPhase
+}
 
 function Skip-StuckTask {
     param([string]$task)
@@ -860,14 +983,17 @@ function Generate-Report {
     try {
         $commitCount = "0"
         $filesChanged = "0"
-        try { $commitCount = git rev-list --count HEAD } catch { }
-        try {
-            $firstCommit = git rev-list --max-parents=0 HEAD
-            $filesChanged = (git diff --name-only $firstCommit HEAD | Measure-Object).Count
-        } catch { }
-
         $recentCommits = "No git history"
-        try { $recentCommits = (git log --oneline -20) -join "`n" } catch { }
+        if (Test-Path ".git") {
+            try { $commitCount = git rev-list --count HEAD } catch { }
+            try {
+                $firstCommit = git rev-list --max-parents=0 HEAD
+                if ($firstCommit) {
+                    $filesChanged = (git diff --name-only $firstCommit HEAD | Measure-Object).Count
+                }
+            } catch { }
+            try { $recentCommits = (git log --oneline -20) -join "`n" } catch { }
+        }
     }
     finally {
         Pop-Location
@@ -1028,6 +1154,7 @@ try {
             $iterationMode = 'steer'
             $script:forcePlanNext = $true
             $script:allTasksMarkedDone = $false
+            $script:cyclePosition = 0
             Write-LogEntry -Event "steering_detected" -Data @{ iteration = $iteration }
         } elseif (Test-Path $steeringFile) {
             Write-Warning "STEERING.md found but PROMPT_steer.md is missing in $PromptsDir — steering skipped."
@@ -1105,6 +1232,7 @@ try {
             Show-AgentSummary -ProviderName $iterationProvider -ProviderOutput $providerOutput
 
             Update-ProviderHealthOnSuccess -ProviderName $iterationProvider
+            Register-IterationSuccess -IterationMode $iterationMode -WasForced $script:lastModeWasForced
 
             # Steer mode: remove any leftover steering file if the agent did not delete it
             if ($iterationMode -eq 'steer') {
@@ -1135,6 +1263,7 @@ try {
                     Write-Host "`nFINAL REVIEW REJECTED - reopened tasks, continuing loop" -ForegroundColor Yellow
                     $script:allTasksMarkedDone = $false
                     $script:forcePlanNext = $true
+                    $script:cyclePosition = 0
                     Write-LogEntry -Event "final_review_rejected" -Data @{ iteration = $iteration }
                     Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
                 }
@@ -1145,6 +1274,7 @@ try {
         catch {
             $errorContext = "$_ $script:lastProviderOutputText"
             Update-ProviderHealthOnFailure -ProviderName $iterationProvider -ErrorText $errorContext
+            Register-IterationFailure -IterationMode $iterationMode -ErrorText $errorContext
             Write-Warning "Iteration $iteration failed: $_"
             Write-LogEntry -Event "iteration_error" -Data @{
                 iteration = $iteration
