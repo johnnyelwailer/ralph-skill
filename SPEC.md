@@ -264,6 +264,153 @@ review approves?
 
 ---
 
+## Phase Advancement Only on Success (Retry-Same-Phase)
+
+### Problem
+
+The current loop advances the phase cycle on every iteration regardless of success or failure. In `plan-build-review` mode (cycle: plan → build × 3 → review), if iteration 1 (plan) fails, iteration 2 becomes build — but no plan/TODO.md exists. The build phase flies blind, produces unstructured work, and the loop wastes iterations.
+
+**Current behavior (broken):**
+```
+iter 1: claude  plan   → FAIL (exit code 1)
+iter 2: codex   build  → no TODO.md exists, builds blind
+iter 3: gemini  build  → still no plan, random work
+iter 4: copilot build  → still no plan
+iter 5: claude  review → reviews unplanned work
+```
+
+**Correct behavior:**
+```
+iter 1: claude  plan   → FAIL
+iter 2: codex   plan   → retry same phase, different provider
+iter 3: gemini  plan   → SUCCESS, TODO.md created
+iter 4: copilot build  → NOW advance (plan exists)
+iter 5: claude  build  → continues building
+```
+
+### Design
+
+#### Rule 1: Failed iterations do not advance the phase cycle
+
+The cycle position (`($iteration - 1) % 5` in plan-build-review) must be tracked independently from the iteration counter. A new variable `$script:cyclePosition` tracks where we are in the phase cycle. It only increments on successful iterations.
+
+```
+$script:cyclePosition = 0   # starts at plan
+
+Resolve-IterationMode:
+  if forced flags (steer, review, plan) → return those, don't touch cyclePosition
+  else → return phase from cycle[$script:cyclePosition % cycleLength]
+
+On iteration SUCCESS:
+  $script:cyclePosition++
+
+On iteration FAILURE:
+  cyclePosition stays the same
+  next iteration retries the same phase with the next round-robin provider
+```
+
+This means a failed plan retries as plan, a failed build retries as build, a failed review retries as review. The round-robin still rotates providers, so each retry uses a different provider — giving the best chance of success.
+
+#### Rule 2: Phase prerequisites (defense-in-depth)
+
+Even with Rule 1, add explicit guards so phases can't run without their prerequisites:
+
+| Phase | Prerequisite | If not met |
+|-------|-------------|------------|
+| `build` | TODO.md exists with at least one `- [ ]` task | Force plan instead |
+| `review` | At least one commit since last plan iteration | Force build instead |
+| `plan` | None (always allowed) | — |
+
+```powershell
+function Check-PhasePrerequisites {
+    param([string]$Phase)
+
+    if ($Phase -eq 'build') {
+        $lines = Get-PlanLines
+        $unchecked = ($lines | Where-Object { $_ -match '^\s*-\s+\[ \]' }).Count
+        if ($unchecked -eq 0) {
+            Write-Warning "No unchecked tasks in TODO.md — forcing plan phase"
+            Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
+                requested = "build"; actual = "plan"; reason = "no_tasks"
+            }
+            return 'plan'
+        }
+    }
+
+    if ($Phase -eq 'review') {
+        # Check if any commits exist since last plan
+        # (implementation: compare HEAD against stored last-plan-commit)
+        if (-not $script:hasBuildsToReview) {
+            Write-Warning "No builds since last plan — forcing build phase"
+            Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
+                requested = "review"; actual = "build"; reason = "no_builds"
+            }
+            return 'build'
+        }
+    }
+
+    return $Phase
+}
+```
+
+#### Rule 3: Provider failure capture
+
+Currently failures show only "claude exited with code 1" — no stderr, no classification. Capture stderr separately for failure diagnosis:
+
+```powershell
+# In Invoke-Provider, capture stderr separately
+$output = $null
+$errorOutput = $null
+$PromptContent | & claude ... 2>&1 | Tee-Object -Variable rawOutput
+$output = $rawOutput | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }
+$errorOutput = $rawOutput | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
+
+if ($LASTEXITCODE -ne 0) {
+    $errorText = ($errorOutput | Out-String).Trim()
+    throw "claude exited with code $LASTEXITCODE`nStderr: $errorText"
+}
+```
+
+This feeds into the provider health failure classification system, which can distinguish rate_limit vs auth vs timeout from the actual error text.
+
+### Interaction with Existing Features
+
+| Feature | Interaction |
+|---------|-------------|
+| **Forced flags** (`forcePlanNext`, `forceReviewNext`) | Take priority over cycle position. When a forced flag fires, the phase overrides regardless of cycle position. Cycle position is NOT advanced. |
+| **Steering** | Sets `forcePlanNext` after steer phase. Cycle position resets to 0 (plan) so the new plan reflects the steering. |
+| **Stuck detection** | Stuck count tracks task-level stuck, not phase-level. A phase repeatedly failing with different providers is a different problem — after all providers fail the same phase, log `phase_all_providers_failed` and advance anyway (avoid infinite retry). |
+| **Provider health** | Failed iterations feed into provider health. If claude fails plan, its health degrades. Next retry tries codex (healthy). Provider health + retry-same-phase work together naturally. |
+| **Round-robin** | Round-robin still rotates on every iteration. So retry-same-phase with round-robin = same phase, different provider. This is the desired behavior. |
+
+### Safety valve: max retries per phase
+
+To prevent infinite retry loops (all providers fail the same phase forever):
+
+```
+MAX_PHASE_RETRIES = len(round_robin_providers) * 2
+```
+
+If the same phase fails `MAX_PHASE_RETRIES` times consecutively:
+- Log `phase_retry_exhausted` with all failure reasons
+- Advance cycle position anyway (skip to next phase)
+- This prevents the loop from getting stuck retrying a fundamentally broken phase
+
+### Acceptance Criteria
+
+- [ ] Failed iterations do not advance the phase cycle position
+- [ ] Retry-same-phase uses the next round-robin provider (different provider each retry)
+- [ ] Build phase requires TODO.md with unchecked tasks; missing → forces plan
+- [ ] Review phase requires commits since last plan; missing → forces build
+- [ ] Phase prerequisite overrides are logged as `phase_prerequisite_miss`
+- [ ] Provider stderr is captured and included in failure log entries
+- [ ] Forced flags (`forcePlanNext`, `forceReviewNext`, steering) override cycle position
+- [ ] Steering resets cycle position to 0 (plan)
+- [ ] After `MAX_PHASE_RETRIES` consecutive failures on same phase, advance anyway with `phase_retry_exhausted` log
+- [ ] Both `loop.ps1` and `loop.sh` implement the same retry-same-phase semantics
+
+---
+
 ## Parallel Orchestrator Mode (Fan-Out via GitHub Issues)
 
 ### Concept
