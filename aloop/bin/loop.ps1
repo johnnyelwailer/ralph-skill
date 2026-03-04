@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # Aloop Loop — Generic Multi-Provider Autonomous Coding Loop
 # Usage: loop.ps1 -PromptsDir <path> -SessionDir <path> -WorkDir <path> [-Mode plan-build-review] [-Provider claude] [-MaxIterations 50]
 #
@@ -187,42 +187,48 @@ function Invoke-Provider {
     switch ($ProviderName) {
         'claude' {
             $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                $PromptContent | & claude --model $ClaudeModel --dangerously-skip-permissions --print 2>&1 | Tee-Object -Variable output
-                return $output
+                $rawOutput = $PromptContent | & claude --model $ClaudeModel --dangerously-skip-permissions --print 2>&1 | Tee-Object -Variable rawOutput
+                return $rawOutput
             }
             if ($LASTEXITCODE -ne 0) {
+                $errorOutput = $output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
+                $errorText = ($errorOutput | Out-String).Trim()
                 $script:lastProviderOutputText = $output | Out-String
-                throw "claude exited with code $LASTEXITCODE"
+                throw "claude exited with code $LASTEXITCODE`nStderr: $errorText"
             }
             $script:lastProviderOutputText = $null
             return $output
         }
         'codex' {
             $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                $PromptContent | & codex exec -m $CodexModel --dangerously-bypass-approvals-and-sandbox - 2>&1 | Tee-Object -Variable output
-                return $output
+                $rawOutput = $PromptContent | & codex exec -m $CodexModel --dangerously-bypass-approvals-and-sandbox - 2>&1 | Tee-Object -Variable rawOutput
+                return $rawOutput
             }
             if ($LASTEXITCODE -ne 0) {
+                $errorOutput = $output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
+                $errorText = ($errorOutput | Out-String).Trim()
                 $script:lastProviderOutputText = $output | Out-String
-                throw "codex exited with code $LASTEXITCODE"
+                throw "codex exited with code $LASTEXITCODE`nStderr: $errorText"
             }
             $script:lastProviderOutputText = $null
             return $output
         }
         'gemini' {
             $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                & gemini -m $GeminiModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
-                return $output
+                $rawOutput = & gemini -m $GeminiModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable rawOutput
+                return $rawOutput
             }
             if ($LASTEXITCODE -ne 0) {
                 Write-Warning "Gemini -m $GeminiModel failed (exit $LASTEXITCODE). Retrying without explicit model."
                 $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                    & gemini --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
-                    return $output
+                    $rawOutput = & gemini --yolo -p $PromptContent 2>&1 | Tee-Object -Variable rawOutput
+                    return $rawOutput
                 }
                 if ($LASTEXITCODE -ne 0) {
+                    $errorOutput = $output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
+                    $errorText = ($errorOutput | Out-String).Trim()
                     $script:lastProviderOutputText = $output | Out-String
-                    throw "gemini exited with code $LASTEXITCODE"
+                    throw "gemini exited with code $LASTEXITCODE`nStderr: $errorText"
                 }
             }
             $script:lastProviderOutputText = $null
@@ -230,28 +236,30 @@ function Invoke-Provider {
         }
         'copilot' {
             $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                & copilot --model $CopilotModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
-                return $output
+                $rawOutput = & copilot --model $CopilotModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable rawOutput
+                return $rawOutput
             }
             $outputText = ($output | Out-String)
             if ($LASTEXITCODE -ne 0) {
                 Write-Warning "Copilot --model $CopilotModel failed (exit $LASTEXITCODE). Retrying with --model $CopilotRetryModel."
                 $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                    & copilot --model $CopilotRetryModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
-                    return $output
+                    $rawOutput = & copilot --model $CopilotRetryModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable rawOutput
+                    return $rawOutput
                 }
                 $outputText = ($output | Out-String)
                 if ($LASTEXITCODE -ne 0) {
                     Write-Warning "Copilot --model $CopilotRetryModel failed (exit $LASTEXITCODE). Retrying without explicit model."
                     $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                        & copilot --yolo -p $PromptContent 2>&1 | Tee-Object -Variable output
-                        return $output
+                        $rawOutput = & copilot --yolo -p $PromptContent 2>&1 | Tee-Object -Variable rawOutput
+                        return $rawOutput
                     }
                     $outputText = ($output | Out-String)
                 }
                 if ($LASTEXITCODE -ne 0) {
+                    $errorOutput = $output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
+                    $errorText = ($errorOutput | Out-String).Trim()
                     $script:lastProviderOutputText = $outputText
-                    throw "copilot exited with code $LASTEXITCODE"
+                    throw "copilot exited with code $LASTEXITCODE`nStderr: $errorText"
                 }
             }
             $script:lastProviderOutputText = $null
@@ -1355,4 +1363,4 @@ if ($iteration -ge $MaxIterations) {
     Generate-Report -ExitReason "Reached iteration limit ($MaxIterations)." -Iteration $iteration
 }
 
-Write-Host "`n=== Aloop Loop Complete ($iteration iterations) ===" -ForegroundColor Cyan
+Write-Host "`n=== Aloop Loop Complete $iteration iterations ===" -ForegroundColor Cyan

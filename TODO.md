@@ -3,11 +3,8 @@
 ## Current Phase: Runtime Semantics + Security Boundary + Orchestrator Buildout
 
 ### In Progress
-- [x] Add CLAUDECODE env var sanitization in all entry points: `loop.ps1` top + `Invoke-Provider`, `loop.sh` top + `invoke_provider`, `aloop.mjs` entry. Spec requires defense-in-depth at both script top and per-invocation. (P1)
 
 ### Up Next
-- [ ] Add phase-prerequisite enforcement in `loop.sh` (`phase_prerequisite_miss` logging): build requires unchecked TODO tasks, review requires builds since last plan. Already implemented in `loop.ps1` but completely missing from `loop.sh`. (P1)
-- [ ] Capture and persist provider stderr details on failure in both runtimes. `loop.ps1` passes `$errorContext` to `Update-ProviderHealthOnFailure` but doesn't capture actual stderr separately per spec design (2>&1 split). `loop.sh` only stores `"<provider> exited with code N"` — no real stderr. Needed for accurate health classification. (P1)
 - [ ] Implement provider-health subsystem in `loop.sh` (`~/.aloop/health/<provider>.json`, cooldown/degraded transitions, exponential backoff, all-providers-unavailable sleep, lock-failure graceful path). Currently only `loop.ps1` has health. `loop.sh` has zero health file code. (P1)
 - [ ] Add PATH sanitization around provider execution in both runtimes: strip `gh`/`gh.exe` directories from PATH before launching provider, restore after. Required by security model, currently absent from both `loop.ps1` and `loop.sh`. (P1)
 - [ ] Add `aloop gh` subcommand to `aloop/cli/aloop.mjs` with hardcoded child-loop vs orchestrator policy, forced repo/base constraints, and audit events (`gh_operation`, `gh_operation_denied`). Currently no `gh` subcommand exists. (P1)
@@ -30,6 +27,9 @@
 - [ ] Run acceptance sweep against all SPEC acceptance criteria, update SPEC checkboxes, and reconcile Phase 0 `ralph` grep criterion (18 hits in SPEC.md are expected — spec text references the old name in examples). (P3)
 
 ### Completed
+- [x] Capture and persist provider stderr details on failure in both runtimes. `loop.ps1` passes `$errorContext` to `Update-ProviderHealthOnFailure` but doesn't capture actual stderr separately per spec design (2>&1 split). `loop.sh` only stores `"<provider> exited with code N"` — no real stderr. Needed for accurate health classification. (P1)
+- [x] Add phase-prerequisite enforcement in `loop.sh` (`phase_prerequisite_miss` logging): build requires unchecked TODO tasks, review requires builds since last plan. Already implemented in `loop.ps1` but completely missing from `loop.sh`. (P1)
+- [x] Add CLAUDECODE env var sanitization in all entry points: `loop.ps1` top + `Invoke-Provider`, `loop.sh` top + `invoke_provider`, `aloop.mjs` entry. Spec requires defense-in-depth at both script top and per-invocation. (P1)
 - [x] Core rename to `aloop` paths/commands is in place across runtime tree, installer paths, and prompt/command references.
 - [x] `install.ps1` installs runtime under `~/.aloop/` and creates `aloop` CLI shims.
 - [x] Native ESM CLI entry exists at `aloop/cli/aloop.mjs` with `resolve`, `discover`, `scaffold`, `status`, `active`, and `stop`.

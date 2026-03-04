@@ -134,6 +134,46 @@ resolve_iteration_provider() {
     fi
 }
 
+check_phase_prerequisite() {
+    local requested_phase="$1"
+
+    if [ "$requested_phase" = "build" ]; then
+        local unchecked=0
+        local completed=0
+        if [ -f "$PLAN_FILE" ]; then
+            unchecked=$(grep -c '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null) || unchecked=0
+            completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null) || completed=0
+        fi
+        if [ "$unchecked" -eq 0 ]; then
+            if [ "$MODE" = "plan-build-review" ] && [ "$completed" -gt 0 ]; then
+                echo "build"
+                return
+            fi
+            echo "Warning: No unchecked tasks in TODO.md; forcing plan phase." >&2
+            write_log_entry "phase_prerequisite_miss" \
+                "requested" "build" \
+                "actual" "plan" \
+                "reason" "no_tasks"
+            echo "plan"
+            return
+        fi
+    fi
+
+    if [ "$requested_phase" = "review" ]; then
+        if [ "$HAS_BUILDS_SINCE_LAST_PLAN" != true ]; then
+            echo "Warning: No successful builds since last plan; forcing build phase." >&2
+            write_log_entry "phase_prerequisite_miss" \
+                "requested" "review" \
+                "actual" "build" \
+                "reason" "no_builds"
+            echo "build"
+            return
+        fi
+    fi
+
+    echo "$requested_phase"
+}
+
 resolve_iteration_mode() {
     local iteration=$1
     LAST_MODE_WAS_FORCED=false
@@ -164,6 +204,7 @@ resolve_iteration_mode() {
                 ;;
         esac
     fi
+    RESOLVED_MODE=$(check_phase_prerequisite "$RESOLVED_MODE")
     echo "$RESOLVED_MODE"
 }
 
@@ -181,6 +222,12 @@ advance_cycle_position() {
 register_iteration_success() {
     local iteration_mode="$1"
     local was_forced="$2"
+
+    if [ "$iteration_mode" = "plan" ]; then
+        HAS_BUILDS_SINCE_LAST_PLAN=false
+    elif [ "$iteration_mode" = "build" ]; then
+        HAS_BUILDS_SINCE_LAST_PLAN=true
+    fi
 
     PHASE_RETRY_PHASE=""
     PHASE_RETRY_CONSECUTIVE=0
@@ -309,34 +356,41 @@ stop_dashboard() {
 invoke_provider() {
     local provider_name=$1
     local prompt_content=$2
+    local tmp_stderr
+    tmp_stderr=$(mktemp)
 
     case "$provider_name" in
         claude)
-            echo "$prompt_content" | env -u CLAUDECODE claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2>&1 | tee -a "$LOG_FILE.raw"
+            echo "$prompt_content" | env -u CLAUDECODE claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
             local exit_code=${PIPESTATUS[1]}
             if [ "$exit_code" -ne 0 ]; then
-                LAST_PROVIDER_ERROR="claude exited with code $exit_code"
+                LAST_PROVIDER_ERROR="claude exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
                 echo "claude exited with code $exit_code" >&2
+                rm -f "$tmp_stderr"
                 return $exit_code
             fi
             LAST_PROVIDER_ERROR=""
             ;;
         codex)
-            echo "$prompt_content" | env -u CLAUDECODE codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2>&1 | tee -a "$LOG_FILE.raw"
+            echo "$prompt_content" | env -u CLAUDECODE codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
             local exit_code=${PIPESTATUS[1]}
             if [ "$exit_code" -ne 0 ]; then
-                LAST_PROVIDER_ERROR="codex exited with code $exit_code"
+                LAST_PROVIDER_ERROR="codex exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
                 echo "codex exited with code $exit_code" >&2
+                rm -f "$tmp_stderr"
                 return $exit_code
             fi
             LAST_PROVIDER_ERROR=""
             ;;
         gemini)
-            if ! env -u CLAUDECODE gemini -m "$GEMINI_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw"; then
+            env -u CLAUDECODE gemini -m "$GEMINI_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+            if [ ${PIPESTATUS[0]} -ne 0 ]; then
                 echo "Gemini -m $GEMINI_MODEL failed. Retrying without explicit model." >&2
-                if ! env -u CLAUDECODE gemini --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw"; then
-                    LAST_PROVIDER_ERROR="gemini failed"
+                env -u CLAUDECODE gemini --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                if [ ${PIPESTATUS[0]} -ne 0 ]; then
+                    LAST_PROVIDER_ERROR="gemini failed. Stderr: $(cat "$tmp_stderr")"
                     echo "gemini failed" >&2
+                    rm -f "$tmp_stderr"
                     return 1
                 fi
             fi
@@ -345,14 +399,17 @@ invoke_provider() {
         copilot)
             local copilot_output_file
             copilot_output_file=$(mktemp)
-            if ! env -u CLAUDECODE copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
+            env -u CLAUDECODE copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+            if [ ${PIPESTATUS[0]} -ne 0 ]; then
                 echo "Copilot --model $COPILOT_MODEL failed. Retrying with $COPILOT_RETRY_MODEL." >&2
-                if ! env -u CLAUDECODE copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
+                env -u CLAUDECODE copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+                if [ ${PIPESTATUS[0]} -ne 0 ]; then
                     echo "Copilot retry failed. Trying without explicit model." >&2
-                    if ! env -u CLAUDECODE copilot --yolo -p "$prompt_content" 2>&1 | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"; then
-                        LAST_PROVIDER_ERROR="copilot failed"
+                    env -u CLAUDECODE copilot --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+                    if [ ${PIPESTATUS[0]} -ne 0 ]; then
+                        LAST_PROVIDER_ERROR="copilot failed. Stderr: $(cat "$tmp_stderr")"
                         echo "copilot failed" >&2
-                        rm -f "$copilot_output_file"
+                        rm -f "$copilot_output_file" "$tmp_stderr"
                         return 1
                     fi
                 fi
@@ -361,7 +418,8 @@ invoke_provider() {
             copilot_output_text=$(cat "$copilot_output_file")
             rm -f "$copilot_output_file"
             if ! assert_copilot_auth "$copilot_output_text"; then
-                LAST_PROVIDER_ERROR="copilot not authenticated"
+                LAST_PROVIDER_ERROR="copilot not authenticated. Stderr: $(cat "$tmp_stderr")"
+                rm -f "$tmp_stderr"
                 return 1
             fi
             LAST_PROVIDER_ERROR=""
@@ -369,9 +427,11 @@ invoke_provider() {
         *)
             LAST_PROVIDER_ERROR="unsupported provider: $provider_name"
             echo "Unsupported provider: $provider_name" >&2
+            rm -f "$tmp_stderr"
             return 1
             ;;
     esac
+    rm -f "$tmp_stderr"
 }
 
 # ============================================================================
@@ -409,6 +469,7 @@ FORCE_REVIEW_NEXT=false
 RESOLVED_MODE=""
 CYCLE_POSITION=0
 LAST_MODE_WAS_FORCED=false
+HAS_BUILDS_SINCE_LAST_PLAN=false
 PHASE_RETRY_PHASE=""
 PHASE_RETRY_CONSECUTIVE=0
 MAX_PHASE_RETRIES=2
