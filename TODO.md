@@ -5,7 +5,7 @@
 ### In Progress
 
 ### Up Next
-- [ ] Implement provider-health subsystem in `loop.sh` (`~/.aloop/health/<provider>.json`, cooldown/degraded transitions, exponential backoff, all-providers-unavailable sleep, lock-failure graceful path). Currently only `loop.ps1` has health. `loop.sh` has zero health file code. (P1)
+- [x] Implement provider-health subsystem in `loop.sh` (`~/.aloop/health/<provider>.json`, cooldown/degraded transitions, exponential backoff, all-providers-unavailable sleep, lock-failure graceful path). Currently only `loop.ps1` has health. `loop.sh` has zero health file code. (P1)
 - [ ] Add PATH sanitization around provider execution in both runtimes: strip `gh`/`gh.exe` directories from PATH before launching provider, restore after. Required by security model, currently absent from both `loop.ps1` and `loop.sh`. (P1)
 - [ ] Add `aloop gh` subcommand to `aloop/cli/aloop.mjs` with hardcoded child-loop vs orchestrator policy, forced repo/base constraints, and audit events (`gh_operation`, `gh_operation_denied`). Currently no `gh` subcommand exists. (P1)
 - [ ] Implement convention-file request/response processing in `loop.ps1`: read `.aloop/requests/*.json` at iteration boundaries, delegate to `aloop gh`, write `.aloop/responses/*.json`, archive processed files to `requests/processed/`. (P1)

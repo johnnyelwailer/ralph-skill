@@ -37,6 +37,8 @@ MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-50}"
 MAX_STUCK="${ALOOP_MAX_STUCK:-3}"
 BACKUP_ENABLED="${ALOOP_BACKUP:-false}"
 DRY_RUN=false
+PROVIDER_HEALTH_DIR="${ALOOP_HEALTH_DIR:-$HOME/.aloop/health}"
+HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
 
 # ============================================================================
 # ARGUMENT PARSING
@@ -128,7 +130,7 @@ resolve_iteration_provider() {
     if [ "$PROVIDER" = "round-robin" ]; then
         local count=${#RR_PROVIDERS[@]}
         local index=$(( (iteration - 1) % count ))
-        echo "${RR_PROVIDERS[$index]}"
+        resolve_healthy_provider "$index"
     else
         echo "$PROVIDER"
     fi
@@ -301,6 +303,301 @@ write_log_entry() {
         shift 2
     done
     echo "{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"event\":\"$event\"${data:+,$data}}" >> "$LOG_FILE"
+}
+
+# ============================================================================
+# PROVIDER HEALTH PRIMITIVES
+# ============================================================================
+
+ensure_provider_health_dir() {
+    mkdir -p "$PROVIDER_HEALTH_DIR"
+}
+
+get_provider_health_path() {
+    local provider_name
+    provider_name=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    ensure_provider_health_dir
+    echo "$PROVIDER_HEALTH_DIR/$provider_name.json"
+}
+
+acquire_provider_health_lock() {
+    local path="$1"
+    local provider_name="$2"
+    local operation_name="$3"
+    local lock_dir="${path}.lock"
+    local retries=${#HEALTH_LOCK_RETRY_DELAYS[@]}
+    local i
+    for ((i=0; i<retries; i++)); do
+        if mkdir "$lock_dir" 2>/dev/null; then
+            echo "$lock_dir"
+            return 0
+        fi
+        sleep "${HEALTH_LOCK_RETRY_DELAYS[$i]}"
+    done
+    write_log_entry "health_lock_failed" \
+        "provider" "$provider_name" \
+        "operation" "$operation_name" \
+        "path" "$path" \
+        "retries" "$retries"
+    return 1
+}
+
+release_provider_health_lock() {
+    local lock_dir="$1"
+    if [ -n "$lock_dir" ] && [ -d "$lock_dir" ]; then
+        rmdir "$lock_dir" 2>/dev/null || true
+    fi
+}
+
+provider_health_defaults() {
+    HEALTH_STATUS="healthy"
+    HEALTH_LAST_SUCCESS=""
+    HEALTH_LAST_FAILURE=""
+    HEALTH_FAILURE_REASON=""
+    HEALTH_CONSECUTIVE_FAILURES=0
+    HEALTH_COOLDOWN_UNTIL=""
+}
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+json_nullable_string() {
+    if [ -n "$1" ]; then
+        printf '"%s"' "$(json_escape "$1")"
+    else
+        printf 'null'
+    fi
+}
+
+extract_json_string_field() {
+    local raw="$1"
+    local key="$2"
+    local value
+    value=$(printf '%s' "$raw" | sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1)
+    printf '%s' "$value"
+}
+
+extract_json_number_field() {
+    local raw="$1"
+    local key="$2"
+    local value
+    value=$(printf '%s' "$raw" | sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p" | head -n 1)
+    printf '%s' "$value"
+}
+
+get_provider_health_state() {
+    local provider_name="$1"
+    local path
+    path=$(get_provider_health_path "$provider_name")
+    provider_health_defaults
+    if [ ! -f "$path" ]; then
+        return 0
+    fi
+
+    local lock_dir
+    lock_dir=$(acquire_provider_health_lock "$path" "$provider_name" "read") || return 1
+    local raw=""
+    raw=$(cat "$path" 2>/dev/null || true)
+    release_provider_health_lock "$lock_dir"
+
+    if [ -z "${raw//[[:space:]]/}" ]; then
+        return 0
+    fi
+
+    local status
+    status=$(extract_json_string_field "$raw" "status")
+    if [ -n "$status" ]; then HEALTH_STATUS="$status"; fi
+
+    local last_success
+    last_success=$(extract_json_string_field "$raw" "last_success")
+    if [ -n "$last_success" ]; then HEALTH_LAST_SUCCESS="$last_success"; fi
+
+    local last_failure
+    last_failure=$(extract_json_string_field "$raw" "last_failure")
+    if [ -n "$last_failure" ]; then HEALTH_LAST_FAILURE="$last_failure"; fi
+
+    local failure_reason
+    failure_reason=$(extract_json_string_field "$raw" "failure_reason")
+    if [ -n "$failure_reason" ]; then HEALTH_FAILURE_REASON="$failure_reason"; fi
+
+    local consecutive_failures
+    consecutive_failures=$(extract_json_number_field "$raw" "consecutive_failures")
+    if [ -n "$consecutive_failures" ]; then HEALTH_CONSECUTIVE_FAILURES="$consecutive_failures"; fi
+
+    local cooldown_until
+    cooldown_until=$(extract_json_string_field "$raw" "cooldown_until")
+    if [ -n "$cooldown_until" ]; then HEALTH_COOLDOWN_UNTIL="$cooldown_until"; fi
+    return 0
+}
+
+set_provider_health_state() {
+    local provider_name="$1"
+    local status="$2"
+    local last_success="$3"
+    local last_failure="$4"
+    local failure_reason="$5"
+    local consecutive_failures="$6"
+    local cooldown_until="$7"
+    local path
+    path=$(get_provider_health_path "$provider_name")
+    local lock_dir
+    lock_dir=$(acquire_provider_health_lock "$path" "$provider_name" "write") || return 1
+
+    local tmp_file="${path}.tmp.$$"
+    cat > "$tmp_file" << EOF
+{"status":"$(json_escape "$status")","last_success":$(json_nullable_string "$last_success"),"last_failure":$(json_nullable_string "$last_failure"),"failure_reason":$(json_nullable_string "$failure_reason"),"consecutive_failures":$consecutive_failures,"cooldown_until":$(json_nullable_string "$cooldown_until")}
+EOF
+    mv "$tmp_file" "$path"
+    release_provider_health_lock "$lock_dir"
+    return 0
+}
+
+get_provider_cooldown_seconds() {
+    local failures="$1"
+    case "$failures" in
+        1) echo 0 ;;
+        2) echo 120 ;;
+        3) echo 300 ;;
+        4) echo 900 ;;
+        5) echo 1800 ;;
+        *) echo 3600 ;;
+    esac
+}
+
+classify_provider_failure() {
+    local lower
+    lower=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    if printf '%s' "$lower" | grep -Eq '429|rate.limit|too many requests'; then echo "rate_limit"; return; fi
+    if printf '%s' "$lower" | grep -Eq 'cannot launch inside another session'; then echo "concurrent_cap"; return; fi
+    if printf '%s' "$lower" | grep -Eq 'auth|unauthorized|invalid.*(token|key)|expired.*(token|key)|(token|key).*expired'; then echo "auth"; return; fi
+    if printf '%s' "$lower" | grep -Eq 'timeout|connection.*refused|network'; then echo "timeout"; return; fi
+    echo "unknown"
+}
+
+timestamp_to_epoch() {
+    date -u -d "$1" +%s 2>/dev/null
+}
+
+update_provider_health_on_success() {
+    local provider_name="$1"
+    if ! get_provider_health_state "$provider_name"; then
+        return
+    fi
+    local was_unhealthy="$HEALTH_STATUS"
+    local now
+    now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    set_provider_health_state "$provider_name" "healthy" "$now" "$HEALTH_LAST_FAILURE" "$HEALTH_FAILURE_REASON" 0 "" || return
+    if [ "$was_unhealthy" != "healthy" ]; then
+        write_log_entry "provider_recovered" \
+            "provider" "$provider_name" \
+            "previous_status" "$was_unhealthy"
+    fi
+}
+
+update_provider_health_on_failure() {
+    local provider_name="$1"
+    local error_text="$2"
+    if ! get_provider_health_state "$provider_name"; then
+        return
+    fi
+    local reason failures now_epoch now cooldown_secs new_status cooldown_until
+    reason=$(classify_provider_failure "$error_text")
+    failures=$((HEALTH_CONSECUTIVE_FAILURES + 1))
+    now_epoch=$(date -u +%s)
+    now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    cooldown_until=""
+
+    if [ "$reason" = "auth" ]; then
+        new_status="degraded"
+    else
+        if [ "$reason" = "concurrent_cap" ]; then
+            cooldown_secs=120
+        else
+            cooldown_secs=$(get_provider_cooldown_seconds "$failures")
+        fi
+        if [ "$cooldown_secs" -gt 0 ]; then
+            new_status="cooldown"
+            cooldown_until=$(date -u -d "@$((now_epoch + cooldown_secs))" +%Y-%m-%dT%H:%M:%SZ)
+        else
+            new_status="$HEALTH_STATUS"
+        fi
+    fi
+
+    set_provider_health_state "$provider_name" "$new_status" "$HEALTH_LAST_SUCCESS" "$now" "$reason" "$failures" "$cooldown_until" || return
+
+    if [ "$new_status" = "degraded" ]; then
+        write_log_entry "provider_degraded" \
+            "provider" "$provider_name" \
+            "reason" "$reason" \
+            "consecutive_failures" "$failures"
+    elif [ "$new_status" = "cooldown" ]; then
+        write_log_entry "provider_cooldown" \
+            "provider" "$provider_name" \
+            "reason" "$reason" \
+            "consecutive_failures" "$failures" \
+            "cooldown_until" "$cooldown_until"
+    fi
+}
+
+resolve_healthy_provider() {
+    local start_index="$1"
+    local count=${#RR_PROVIDERS[@]}
+    while true; do
+        local earliest_cooldown_epoch=""
+        local available_provider=""
+        local i
+        for ((i=0; i<count; i++)); do
+            local idx=$(( (start_index + i) % count ))
+            local p="${RR_PROVIDERS[$idx]}"
+            if ! get_provider_health_state "$p"; then
+                available_provider="$p"
+                break
+            fi
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
+                available_provider="$p"
+                break
+            fi
+            if [ "$HEALTH_STATUS" = "cooldown" ] && [ -n "$HEALTH_COOLDOWN_UNTIL" ]; then
+                local cooldown_epoch now_epoch
+                cooldown_epoch=$(timestamp_to_epoch "$HEALTH_COOLDOWN_UNTIL")
+                if [ -z "$cooldown_epoch" ]; then
+                    available_provider="$p"
+                    break
+                fi
+                now_epoch=$(date -u +%s)
+                if [ "$now_epoch" -ge "$cooldown_epoch" ]; then
+                    available_provider="$p"
+                    break
+                fi
+                if [ -z "$earliest_cooldown_epoch" ] || [ "$cooldown_epoch" -lt "$earliest_cooldown_epoch" ]; then
+                    earliest_cooldown_epoch="$cooldown_epoch"
+                fi
+            fi
+        done
+
+        if [ -n "$available_provider" ]; then
+            echo "$available_provider"
+            return
+        fi
+
+        local sleep_secs=60
+        if [ -n "$earliest_cooldown_epoch" ]; then
+            local now_epoch remaining
+            now_epoch=$(date -u +%s)
+            remaining=$((earliest_cooldown_epoch - now_epoch))
+            if [ "$remaining" -gt 1 ]; then
+                sleep_secs="$remaining"
+            else
+                sleep_secs=1
+            fi
+        fi
+        write_log_entry "all_providers_unavailable" \
+            "providers" "$(IFS=,; echo "${RR_PROVIDERS[*]}")" \
+            "sleep_seconds" "$sleep_secs"
+        echo "Warning: All providers unavailable. Sleeping ${sleep_secs}s until cooldown expires..." >&2
+        sleep "$sleep_secs"
+    done
 }
 
 find_dashboard_port() {
@@ -870,6 +1167,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
 
     cd "$WORK_DIR"
     if invoke_provider "$iter_provider" "$prompt_content"; then
+        update_provider_health_on_success "$iter_provider"
         register_iteration_success "$iter_mode" "$LAST_MODE_WAS_FORCED"
 
         # Steer mode: remove any leftover steering file if the agent did not delete it
@@ -909,6 +1207,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
             echo "[Iteration $ITERATION complete - $iter_mode]"
         fi
     else
+        update_provider_health_on_failure "$iter_provider" "${LAST_PROVIDER_ERROR:-provider_failed}"
         register_iteration_failure "$iter_mode" "${LAST_PROVIDER_ERROR:-provider_failed}"
         echo "Warning: Iteration $ITERATION failed"
         write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider"
