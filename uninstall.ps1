@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
-# Ralph Skill Uninstaller
+# Aloop Skill Uninstaller
 # Removes skill/command/prompt files installed by install.ps1, and optionally
-# the Ralph runtime (~/.ralph/).
+# the Aloop runtime (~/.aloop/).
 #
 # Usage: ./uninstall.ps1 [-Force] [-DryRun] [-All]
 #
@@ -126,57 +126,50 @@ $uninstallTargets = [System.Collections.Generic.List[PSCustomObject]]::new()
     [PSCustomObject]@{
         Name  = 'Claude Code  (skill + commands)'
         Dirs  = @(
-            Join-Path $HOME '.claude' 'skills' 'ralph'
-            Join-Path $HOME '.claude' 'commands' 'ralph'
+            Join-Path $HOME '.claude\skills\aloop'
+            Join-Path $HOME '.claude\commands\aloop'
         )
         Files = @()
     }
     [PSCustomObject]@{
         Name  = 'Codex CLI  (skill + commands)'
         Dirs  = @(
-            Join-Path $HOME '.codex' 'skills' 'ralph'
-            Join-Path $HOME '.codex' 'commands' 'ralph'
+            Join-Path $HOME '.codex\skills\aloop'
+            Join-Path $HOME '.codex\commands\aloop'
         )
         Files = @()
     }
     [PSCustomObject]@{
         Name  = 'GH Copilot  (skill)'
-        Dirs  = @(Join-Path $HOME '.copilot' 'skills' 'ralph')
+        Dirs  = @(Join-Path $HOME '.copilot\skills\aloop')
         Files = @()
     }
     [PSCustomObject]@{
         Name  = 'Agents  (skill)'
-        Dirs  = @(Join-Path $HOME '.agents' 'skills' 'ralph')
+        Dirs  = @(Join-Path $HOME '.agents\skills\aloop')
         Files = @()
     }
 ) | ForEach-Object { $uninstallTargets.Add($_) }
 
 # --- VS Code prompt files (only include variants that are installed) ---
-$vscodeUserBase = if ($IsWindows) {
-    $env:APPDATA
-} elseif ($IsMacOS) {
-    Join-Path $HOME 'Library' 'Application Support'
-} else {
-    if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME '.config' }
-}
 foreach ($vsc in @(
-    [PSCustomObject]@{ Name = 'VS Code stable — prompt files';   PromptsDir = Join-Path $vscodeUserBase 'Code' 'User' 'prompts' }
-    [PSCustomObject]@{ Name = 'VS Code Insiders — prompt files'; PromptsDir = Join-Path $vscodeUserBase 'Code - Insiders' 'User' 'prompts' }
+    [PSCustomObject]@{ Name = 'VS Code stable — prompt files';   PromptsDir = Join-Path $env:APPDATA 'Code\User\prompts' }
+    [PSCustomObject]@{ Name = 'VS Code Insiders — prompt files'; PromptsDir = Join-Path $env:APPDATA 'Code - Insiders\User\prompts' }
 )) {
     # Only add if VS Code itself is present (its User/ directory exists)
     if (Test-Path (Split-Path $vsc.PromptsDir -Parent)) {
         $uninstallTargets.Add([PSCustomObject]@{
             Name  = $vsc.Name
             Dirs  = @()
-            Files = @(Join-Path $vsc.PromptsDir 'ralph-*.prompt.md')
+            Files = @(Join-Path $vsc.PromptsDir 'aloop-*.prompt.md')
         })
     }
 }
 
-# --- Ralph runtime (added last so it appears at the bottom) ---
+# --- Aloop runtime (added last so it appears at the bottom) ---
 $uninstallTargets.Add([PSCustomObject]@{
-    Name      = 'Ralph runtime (~/.ralph/ — config, scripts, templates, sessions)'
-    Dirs      = @(Join-Path $HOME '.ralph')
+    Name      = 'Aloop runtime (~/.aloop/ — config, scripts, templates, sessions)'
+    Dirs      = @(Join-Path $HOME '.aloop')
     Files     = @()
     IsRuntime = $true
 })
@@ -244,7 +237,7 @@ function Remove-Target {
 # ============================================================================
 
 Write-Host ""
-Write-Host "=== Ralph Skill Uninstaller ===" -ForegroundColor Cyan
+Write-Host "=== Aloop Skill Uninstaller ===" -ForegroundColor Cyan
 if ($DryRun) { Write-Host "Mode: DRY RUN (no changes will be made)" -ForegroundColor Yellow }
 Write-Host ""
 
@@ -307,6 +300,6 @@ foreach ($t in $selectedTargets) {
 Write-Host "=== Uninstall Complete ===" -ForegroundColor Cyan
 Write-Host ""
 if (-not $DryRun) {
-    Write-Host "To reinstall: $(Join-Path $PSScriptRoot 'install.ps1')" -ForegroundColor Gray
+    Write-Host "To reinstall: $PSScriptRoot\install.ps1" -ForegroundColor Gray
     Write-Host ""
 }

@@ -1,11 +1,11 @@
-# Ralph Fundamentals
+# Aloop Fundamentals
 
-Core concepts and philosophy of Geoffrey Huntley's Ralph Wiggum autonomous coding technique.
+Core concepts and philosophy of Geoffrey Huntley's Aloop Wiggum autonomous coding technique.
 
-<what_is_ralph>
-## What is Ralph?
+<what_is_aloop>
+## What is Aloop?
 
-Ralph is an autonomous AI coding methodology created by Geoffrey Huntley that went viral in late 2025. In its purest form, it's a Bash loop:
+Aloop is an autonomous AI coding methodology created by Geoffrey Huntley that went viral in late 2025. In its purest form, it's a Bash loop:
 
 ```bash
 while :; do cat PROMPT.md | claude ; done
@@ -13,13 +13,13 @@ while :; do cat PROMPT.md | claude ; done
 
 The loop continuously feeds a prompt file to an AI coding CLI. The agent completes one task, updates the implementation plan on disk, commits changes, then exits. The loop restarts immediately with fresh context.
 
-**The core insight:** Ralph solves context accumulation by starting each iteration with fresh context. This is "deterministically bad in an undeterministic world" — embracing the chaos rather than fighting it.
-</what_is_ralph>
+**The core insight:** Aloop solves context accumulation by starting each iteration with fresh context. This is "deterministically bad in an undeterministic world" — embracing the chaos rather than fighting it.
+</what_is_aloop>
 
 <three_phases>
 ## The Cycle: Plan, Build x3, Review
 
-Ralph uses three distinct operational modes that cycle in a 5-step pattern (plan → build → build → build → review). The 1:3:1 ratio ensures real build progress between planning and review phases:
+Aloop uses three distinct operational modes that cycle in a 5-step pattern (plan → build → build → build → review). The 1:3:1 ratio ensures real build progress between planning and review phases:
 
 ### Phase 1: Planning Mode
 
@@ -78,13 +78,13 @@ The review prompt instructs the agent to:
 ### Observation Phase (Your Role)
 
 **Objective:** Sit on the loop, not in it
-**Action:** Engineer the environment that allows Ralph to succeed
+**Action:** Engineer the environment that allows Aloop to succeed
 
 You:
 - Watch for failure patterns
 - Tune prompts based on observed behavior
 - Add backpressure mechanisms
-- Improve specs when Ralph misunderstands
+- Improve specs when Aloop misunderstands
 
 You DON'T:
 - Jump into the loop to fix things
@@ -95,7 +95,7 @@ You DON'T:
 <multi_provider>
 ## Multi-Provider Support
 
-Ralph supports four AI coding providers:
+Aloop supports four AI coding providers:
 
 | Provider | CLI | Autonomous Flag | Model Selection |
 |----------|-----|-----------------|-----------------|
@@ -126,7 +126,7 @@ When a provider fails:
 <stuck_detection>
 ## Stuck Detection
 
-When Ralph fails on the same task N consecutive times (default: 3), the task is automatically:
+When Aloop fails on the same task N consecutive times (default: 3), the task is automatically:
 1. Marked as `[S]` (skipped) in the plan
 2. Added to a `## Blocked` section with the reason
 3. Loop continues with the next task
@@ -147,7 +147,7 @@ Each loop starts with a clean context window. No accumulated conversation histor
 `TODO.md` is the only state that persists across iterations. This serves as deterministic shared state.
 
 ### 3. Backpressure as Steering
-Tests, type checks, lints, and builds provide downstream steering. If Ralph's code doesn't pass validation, the loop continues until it does.
+Tests, type checks, lints, and builds provide downstream steering. If Aloop's code doesn't pass validation, the loop continues until it does.
 
 ### 4. Context Efficiency
 200K advertised tokens ~ 176K usable tokens. One task per loop = maximum context utilization.
@@ -155,7 +155,7 @@ Tests, type checks, lints, and builds provide downstream steering. If Ralph's co
 ### 5. Prompts as Signs
 Prompts evolve through observed failure patterns. Start minimal, add guidance only when needed.
 
-### 6. Let Ralph Ralph
+### 6. Let Aloop Aloop
 Trust the LLM's ability. Don't micromanage. Observe and course-correct reactively.
 </core_principles>
 
@@ -163,10 +163,10 @@ Trust the LLM's ability. Don't micromanage. Observe and course-correct reactivel
 ## When to Regenerate Plan
 
 Discard `TODO.md` and restart planning when:
-- Ralph implements wrong things or duplicates work
+- Aloop implements wrong things or duplicates work
 - Plan feels stale or mismatched to current state
 - Significant spec changes made
 - Confusion about actual completion status
 
-**Cost-benefit:** One planning loop iteration is cheaper than Ralph circling on bad assumptions.
+**Cost-benefit:** One planning loop iteration is cheaper than Aloop circling on bad assumptions.
 </when_to_regenerate_plan>

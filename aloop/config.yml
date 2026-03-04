@@ -1,5 +1,5 @@
-# Ralph Global Configuration
-# Override per-project via ~/.ralph/projects/<hash>/config.yml
+# Aloop Global Configuration
+# Override per-project via ~/.aloop/projects/<hash>/config.yml
 
 default_provider: claude
 default_mode: plan-build-review

@@ -6,15 +6,15 @@ allowed-tools:
 ---
 
 <objective>
-Display the status of all running Ralph sessions and recent history.
+Display the status of all running Aloop sessions and recent history.
 </objective>
 
 <process>
 
 ## Step 1: Read Active Sessions
 
-Resolve runtime root from current project config (`<project-root>/.ralph/config.yml` first, then `~/.ralph/projects/<hash>/config.yml`).
-Read `<runtime_root>/active.json`. If it doesn't exist or is empty, display: "No active Ralph sessions."
+Resolve runtime root from current project config (`<project-root>/.aloop/config.yml` first, then `~/.aloop/projects/<hash>/config.yml`).
+Read `<runtime_root>/active.json`. If it doesn't exist or is empty, display: "No active Aloop sessions."
 
 ## Step 2: Display Each Session
 
@@ -27,7 +27,7 @@ For each session in `active.json`:
 Display a table:
 
 ```
-Ralph Sessions
+Aloop Sessions
 
   Session                      | Project     | Mode             | Provider | Iteration | Phase  | State
   my-app-20260221-143052       | my-app      | plan-build-review| claude   | 7         | build  | running

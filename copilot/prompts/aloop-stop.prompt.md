@@ -1,17 +1,17 @@
 ---
-name: ralph-stop
-description: Stop a running Ralph loop session. Optionally cleans up the git worktree branch.
+name: aloop-stop
+description: Stop a running Aloop loop session. Optionally cleans up the git worktree branch.
 agent: agent
 ---
 
-Stop a running Ralph loop session.
+Stop a running Aloop loop session.
 
 ## Step 1: Identify Session to Stop
 
-Resolve runtime root from current project config (`<project-root>/.ralph/config.yml` first, then `~/.ralph/projects/<hash>/config.yml`).
+Resolve runtime root from current project config (`<project-root>/.aloop/config.yml` first, then `~/.aloop/projects/<hash>/config.yml`).
 Read `<runtime_root>/active.json` to find active sessions.
 
-- No active sessions → "No active Ralph sessions to stop."
+- No active sessions → "No active Aloop sessions to stop."
 - One session for the current project → use that one
 - Multiple sessions → ask the user which one to stop (list session IDs with project names)
 
@@ -41,15 +41,15 @@ Read `<runtime_root>/active.json` to find active sessions.
 ## Step 4: Clean Up Worktree (optional)
 
 If the session used a git worktree, ask:
-"Remove the worktree branch `ralph/<session-id>`? (yes/no)"
-- Yes: `git worktree remove <path> && git branch -d ralph/<session-id>`
+"Remove the worktree branch `aloop/<session-id>`? (yes/no)"
+- Yes: `git worktree remove <path> && git branch -d aloop/<session-id>`
 - No: Leave it for inspection
 
 ## Step 5: Confirm
 
 Display:
 ```
-Ralph session stopped: <session-id>
+Aloop session stopped: <session-id>
 
   Project:    <project-name>
   Iterations: <count>

@@ -1,15 +1,15 @@
 ---
-name: ralph-status
-description: Display status of all running Ralph loop sessions and recent history.
+name: aloop-status
+description: Display status of all running Aloop loop sessions and recent history.
 agent: agent
 ---
 
-Display the status of all running Ralph sessions and recent history.
+Display the status of all running Aloop sessions and recent history.
 
 ## Step 1: Read Active Sessions
 
-Resolve runtime root from current project config (`<project-root>/.ralph/config.yml` first, then `~/.ralph/projects/<hash>/config.yml`).
-Read `<runtime_root>/active.json`. If missing or empty: "No active Ralph sessions."
+Resolve runtime root from current project config (`<project-root>/.aloop/config.yml` first, then `~/.aloop/projects/<hash>/config.yml`).
+Read `<runtime_root>/active.json`. If missing or empty: "No active Aloop sessions."
 
 ## Step 2: Display Each Session
 
@@ -20,7 +20,7 @@ For each session in `active.json`:
 
 Display:
 ```
-Ralph Sessions
+Aloop Sessions
 
   Session                     | Project  | Mode              | Provider | Iter | Phase | State
   my-app-20260221-143052      | my-app   | plan-build-review | claude   | 7    | build | running

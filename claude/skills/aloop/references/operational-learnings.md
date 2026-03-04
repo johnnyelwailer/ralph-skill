@@ -1,14 +1,14 @@
 # Operational Learnings
 
-Guidance on using AGENTS.md to capture and evolve Ralph's knowledge.
+Guidance on using AGENTS.md to capture and evolve Aloop's knowledge.
 
 <what_is_agents_md>
 ## What is AGENTS.md?
 
-AGENTS.md (or CLAUDE.md, GEMINI.md, etc.) is a file that contains project-specific learnings that Ralph needs to know. It's loaded every loop iteration alongside the prompt.
+AGENTS.md (or CLAUDE.md, GEMINI.md, etc.) is a file that contains project-specific learnings that Aloop needs to know. It's loaded every loop iteration alongside the prompt.
 
 **Purpose:**
-- Capture patterns Ralph should follow
+- Capture patterns Aloop should follow
 - Document project-specific constraints
 - Record discovered learnings from failures
 - Provide build/test commands
@@ -44,7 +44,7 @@ AGENTS.md (or CLAUDE.md, GEMINI.md, etc.) is a file that contains project-specif
 
 **Do:**
 - Start empty or near-empty
-- Add entries when Ralph fails repeatedly
+- Add entries when Aloop fails repeatedly
 - Remove entries when no longer relevant
 </start_minimal>
 

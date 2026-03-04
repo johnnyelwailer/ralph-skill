@@ -8,7 +8,7 @@ allowed-tools:
 ---
 
 <objective>
-Launch a Ralph loop for the current project. Create a session, optionally set up a git worktree, and start the loop script.
+Launch a Aloop loop for the current project. Create a session, optionally set up a git worktree, and start the loop script.
 </objective>
 
 <process>
@@ -18,16 +18,16 @@ Launch a Ralph loop for the current project. Create a session, optionally set up
 1. Find the git root of the current working directory
 2. Compute the project hash (first 8 chars of SHA-256 of absolute path)
 3. Resolve config path in this order:
-  - `<project-root>/.ralph/config.yml` (project-local runtime)
-  - `~/.ralph/projects/<hash>/config.yml` (global runtime)
-4. If not found, tell the user: "No Ralph configuration found for this project. Run `/ralph:setup` first."
+  - `<project-root>/.aloop/config.yml` (project-local runtime)
+  - `~/.aloop/projects/<hash>/config.yml` (global runtime)
+4. If not found, tell the user: "No Aloop configuration found for this project. Run `/aloop:setup` first."
 
 Read the project config to get provider, mode, validation commands, etc.
-Read `runtime_scope` and `runtime_root` from config. If missing, default to `runtime_scope=global` and `runtime_root=~/.ralph`.
+Read `runtime_scope` and `runtime_root` from config. If missing, default to `runtime_scope=global` and `runtime_root=~/.aloop`.
 
 ## Step 2: Parse Arguments
 
-Check if the user provided arguments after `/ralph:start`:
+Check if the user provided arguments after `/aloop:start`:
 - `--plan` → override mode to `plan`
 - `--build` → override mode to `build`
 - `--review` → override mode to `review`
@@ -62,10 +62,10 @@ Check if the user provided arguments after `/ralph:start`:
 
 Unless `--in-place` was specified:
 
-1. Create a branch name: `ralph/<session-id>`
+1. Create a branch name: `aloop/<session-id>`
 2. Create a git worktree:
    ```bash
-  git worktree add <runtime_root>/sessions/<session-id>/worktree -b ralph/<session-id>
+  git worktree add <runtime_root>/sessions/<session-id>/worktree -b aloop/<session-id>
    ```
 3. The work directory for the loop is the worktree path
 
@@ -131,7 +131,7 @@ Launch the loop as a background process. Capture the PID and update `active.json
 Display to user:
 
 ```
-Ralph loop started!
+Aloop loop started!
 
   Session: <session-id>
   Mode: <mode>
@@ -141,8 +141,8 @@ Ralph loop started!
   Runtime root: <runtime_root>
 
 Monitor:
-  /ralph:status         Check progress
-  /ralph:stop           Stop the loop
+  /aloop:status         Check progress
+  /aloop:stop           Stop the loop
 
 Session logs:
   <runtime_root>/sessions/<session-id>/log.jsonl

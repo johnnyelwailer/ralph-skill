@@ -1,27 +1,27 @@
 # Validation Strategy
 
-Using tests, lints, and builds as backpressure to steer Ralph.
+Using tests, lints, and builds as backpressure to steer Aloop.
 
 <what_is_backpressure>
 ## What is Backpressure?
 
 Backpressure is automated validation that rejects invalid work. It creates a self-correcting feedback loop:
 
-1. Ralph implements task
+1. Aloop implements task
 2. Validation runs (tests, type checks, lints)
-3. If validation fails, Ralph investigates and fixes
+3. If validation fails, Aloop investigates and fixes
 4. Loop continues until validation passes
-5. Only then can Ralph commit and move to next task
+5. Only then can Aloop commit and move to next task
 
-**Without backpressure:** Ralph generates code that may not work.
-**With backpressure:** Ralph must produce working code to progress.
+**Without backpressure:** Aloop generates code that may not work.
+**With backpressure:** Aloop must produce working code to progress.
 </what_is_backpressure>
 
 <types_of_backpressure>
 ## Types of Backpressure
 
 ### 1. Tests (Most Important)
-Binary pass/fail, fast feedback, aligned with specs. If no tests exist, Ralph should create them.
+Binary pass/fail, fast feedback, aligned with specs. If no tests exist, Aloop should create them.
 
 ### 2. Type Checking
 `tsc --noEmit`, `mypy .`, `go vet` — catches type errors before runtime.
@@ -65,15 +65,15 @@ Add project-specific validation commands as needed.
 ## Handling Validation Failures
 
 ### Expected Behavior
-Ralph should: see failure → read errors → investigate → fix → re-validate → repeat until passing.
+Aloop should: see failure → read errors → investigate → fix → re-validate → repeat until passing.
 
 ### Stuck in Loop
-If Ralph repeatedly fails validation (3+ iterations on same task):
+If Aloop repeatedly fails validation (3+ iterations on same task):
 
 1. **Auto-skip**: Stuck detection marks task as blocked and moves on
 2. **Regenerate plan**: Delete TODO.md and run planning mode
 3. **Manual intervention**: Stop loop, fix issue, restart
-4. **Update guidance**: Add learning to AGENTS.md so Ralph doesn't repeat
+4. **Update guidance**: Add learning to AGENTS.md so Aloop doesn't repeat
 </handling_validation_failures>
 
 <tuning_backpressure>
@@ -81,7 +81,7 @@ If Ralph repeatedly fails validation (3+ iterations on same task):
 
 Start strict, loosen if too slow:
 
-**Week 1:** Full validation — see where Ralph struggles
+**Week 1:** Full validation — see where Aloop struggles
 **Week 2:** Remove low-value checks — keep only what catches real issues
 **Week 3:** Add custom checks — based on observed failure patterns
 **Ongoing:** Evolve with project

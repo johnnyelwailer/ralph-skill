@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
-# Ralph Skill Installer
+# Aloop Skill Installer
 # Copies skill/command files to the correct directories for each AI harness,
-# and installs the Ralph runtime (~/.ralph/).
+# and installs the Aloop runtime (~/.aloop/).
 #
 # Usage: ./install.ps1 [-Force] [-DryRun] [-All] [-Harnesses claude,codex,...] [-SkipCliCheck]
 #
@@ -10,10 +10,8 @@
 #   Codex CLI        : ~/.codex/skills/   + ~/.codex/commands/   (https://github.com/openai/codex)
 #   GH Copilot       : ~/.copilot/skills/ only — no commands dir (https://code.visualstudio.com/docs/copilot/customization/agent-skills)
 #   Agents           : ~/.agents/skills/  only — generic standard (agentskills.io)
-#   VS Code (stable) : macOS: ~/Library/Application Support/Code/User/prompts/
-#                      Linux: ~/.config/Code/User/prompts/
-#                      Windows: $APPDATA\Code\User\prompts\
-#   VS Code Insiders : same dirs but with "Code - Insiders" instead of "Code"
+#   VS Code (stable) : $APPDATA\Code\User\prompts\         — .prompt.md slash commands
+#   VS Code Insiders : $APPDATA\Code - Insiders\User\prompts\ — .prompt.md slash commands
 
 param(
     [switch]$Force,                  # Overwrite existing files without prompting
@@ -25,30 +23,30 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $scriptDir = $PSScriptRoot
-$ralphDir = Join-Path $HOME ".ralph"
+$aloopDir = Join-Path $HOME ".aloop"
 
 # ---- Harness definitions -------------------------------------------------------
-# HasCommands = $true  → also installs claude\commands\ralph to <harness>/commands/ralph
+# HasCommands = $true  → also installs claude\commands\aloop to <harness>/commands/aloop
 # HasCommands = $false → harness uses a different mechanism (e.g. .prompt.md); skip
 $allHarnesses = @(
     [PSCustomObject]@{
         Id          = 'claude'
         Name        = 'Claude Code'
-        SkillDest   = Join-Path $HOME '.claude' 'skills' 'ralph'
-        CmdDest     = Join-Path $HOME '.claude' 'commands' 'ralph'
+        SkillDest   = Join-Path $HOME ".claude\skills\aloop"
+        CmdDest     = Join-Path $HOME ".claude\commands\aloop"
         HasCommands = $true
     }
     [PSCustomObject]@{
         Id          = 'codex'
         Name        = 'Codex CLI'
-        SkillDest   = Join-Path $HOME '.codex' 'skills' 'ralph'
-        CmdDest     = Join-Path $HOME '.codex' 'commands' 'ralph'
+        SkillDest   = Join-Path $HOME ".codex\skills\aloop"
+        CmdDest     = Join-Path $HOME ".codex\commands\aloop"
         HasCommands = $true
     }
     [PSCustomObject]@{
         Id          = 'copilot'
         Name        = 'GH Copilot (VS Code / VS Code Insiders)'
-        SkillDest   = Join-Path $HOME '.copilot' 'skills' 'ralph'
+        SkillDest   = Join-Path $HOME ".copilot\skills\aloop"
         CmdDest     = $null
         HasCommands = $false
         # Note: .prompt.md files are installed separately into VS Code user prompts dirs
@@ -56,7 +54,7 @@ $allHarnesses = @(
     [PSCustomObject]@{
         Id          = 'agents'
         Name        = 'Agents (generic / agentskills.io)'
-        SkillDest   = Join-Path $HOME '.agents' 'skills' 'ralph'
+        SkillDest   = Join-Path $HOME ".agents\skills\aloop"
         CmdDest     = $null
         HasCommands = $false
     }
@@ -320,9 +318,9 @@ function Show-CheckboxMenu {
 # ============================================================================
 
 Write-Host ""
-Write-Host "=== Ralph Skill Installer ===" -ForegroundColor Cyan
+Write-Host "=== Aloop Skill Installer ===" -ForegroundColor Cyan
 Write-Host "Source: $scriptDir" -ForegroundColor Gray
-Write-Host "Ralph runtime: $ralphDir" -ForegroundColor Gray
+Write-Host "Aloop runtime: $aloopDir" -ForegroundColor Gray
 if ($DryRun) { Write-Host "Mode: DRY RUN (no changes will be made)" -ForegroundColor Yellow }
 if ($Force)  { Write-Host "Mode: FORCE (overwriting existing files)" -ForegroundColor Yellow }
 Write-Host ""
@@ -330,8 +328,8 @@ Write-Host ""
 # ---- Cleanup: remove commands/ dirs that were incorrectly installed by older versions
 # Only claude and codex support a commands/ directory; remove it from any other harness.
 $staleCommandsDirs = @(
-    Join-Path $HOME '.copilot' 'commands' 'ralph'
-    Join-Path $HOME '.agents' 'commands' 'ralph'
+    Join-Path $HOME ".copilot\commands\aloop"
+    Join-Path $HOME ".agents\commands\aloop"
 )
 foreach ($stale in $staleCommandsDirs) {
     if (Test-Path $stale) {
@@ -368,13 +366,7 @@ if (-not $SkipCliCheck) {
     if ($missingTools.Count -gt 0) {
         if (-not (Test-CommandExists 'npm')) {
             Write-Host "  Note: npm not found — cannot auto-install." -ForegroundColor Yellow
-            if ($IsWindows) {
-                Write-Host "    Install Node.js to enable: winget install OpenJS.NodeJS.LTS" -ForegroundColor Gray
-            } elseif ($IsMacOS) {
-                Write-Host "    Install Node.js to enable: brew install node" -ForegroundColor Gray
-            } else {
-                Write-Host "    Install Node.js from: https://nodejs.org (or use your package manager)" -ForegroundColor Gray
-            }
+            Write-Host "    Install Node.js to enable: winget install OpenJS.NodeJS.LTS" -ForegroundColor Gray
             Write-Host "    Or download from: https://nodejs.org" -ForegroundColor Gray
             Write-Host ""
         } else {
@@ -452,7 +444,7 @@ if ($selectedHarnesses.Count -eq 0) {
         # --- Skill ---
         Write-Host "  skill -> $($h.SkillDest)" -ForegroundColor Gray
         Copy-TreeItem `
-            -Source (Join-Path $scriptDir "claude\skills\ralph") `
+            -Source (Join-Path $scriptDir "claude\skills\aloop") `
             -Destination $h.SkillDest `
             -Label "skill"
 
@@ -460,7 +452,7 @@ if ($selectedHarnesses.Count -eq 0) {
         if ($h.HasCommands) {
             Write-Host "  commands -> $($h.CmdDest)" -ForegroundColor Gray
             Copy-TreeItem `
-                -Source (Join-Path $scriptDir "claude\commands\ralph") `
+                -Source (Join-Path $scriptDir "claude\commands\aloop") `
                 -Destination $h.CmdDest `
                 -Label "commands"
         }
@@ -471,22 +463,10 @@ if ($selectedHarnesses.Count -eq 0) {
 # ---- VS Code prompts (.prompt.md) — stable + insiders -----------------------
 # VS Code uses a separate user-level prompts folder (not ~/.copilot/)
 # that is independent of which harness was selected above.
-# Paths per platform:
-#   Windows : $APPDATA\Code\User\prompts\  /  $APPDATA\Code - Insiders\User\prompts\
-#   macOS   : ~/Library/Application Support/Code/User/prompts/  (and Code - Insiders)
-#   Linux   : ~/.config/Code/User/prompts/  (respects $XDG_CONFIG_HOME)
-$vscodeUserBase = if ($IsWindows) {
-    $env:APPDATA
-} elseif ($IsMacOS) {
-    Join-Path $HOME 'Library' 'Application Support'
-} else {
-    # Linux: respect XDG_CONFIG_HOME, fall back to ~/.config
-    if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME '.config' }
-}
-
+# Official path: $APPDATA\Code\User\prompts\ and $APPDATA\Code - Insiders\User\prompts\
 $vscodePromptDirs = @(
-    [PSCustomObject]@{ Name = 'VS Code (stable)';   Path = Join-Path $vscodeUserBase 'Code' 'User' 'prompts' }
-    [PSCustomObject]@{ Name = 'VS Code Insiders';   Path = Join-Path $vscodeUserBase 'Code - Insiders' 'User' 'prompts' }
+    [PSCustomObject]@{ Name = 'VS Code (stable)';   Path = Join-Path $env:APPDATA "Code\User\prompts" }
+    [PSCustomObject]@{ Name = 'VS Code Insiders';   Path = Join-Path $env:APPDATA "Code - Insiders\User\prompts" }
 )
 
 $promptSource = Join-Path $scriptDir "copilot\prompts"
@@ -512,36 +492,36 @@ if (-not (Test-Path $promptSource)) {
     }
 }
 
-# --- Ralph runtime: config ---
+# --- Aloop runtime: config ---
 Write-Host ""
-Write-Host "Installing Ralph runtime config..." -ForegroundColor White
+Write-Host "Installing Aloop runtime config..." -ForegroundColor White
 Copy-TreeItem `
-    -Source (Join-Path $scriptDir "ralph\config.yml") `
-    -Destination (Join-Path $ralphDir "config.yml") `
+    -Source (Join-Path $scriptDir "aloop\config.yml") `
+    -Destination (Join-Path $aloopDir "config.yml") `
     -Label "config"
 
-# --- Ralph runtime: bin ---
+# --- Aloop runtime: bin ---
 Write-Host ""
-Write-Host "Installing Ralph loop scripts..." -ForegroundColor White
+Write-Host "Installing Aloop loop scripts..." -ForegroundColor White
 Copy-TreeItem `
-    -Source (Join-Path $scriptDir "ralph\bin") `
-    -Destination (Join-Path $ralphDir "bin") `
+    -Source (Join-Path $scriptDir "aloop\bin") `
+    -Destination (Join-Path $aloopDir "bin") `
     -Label "bin"
 
-# --- Ralph runtime: templates ---
+# --- Aloop runtime: templates ---
 Write-Host ""
-Write-Host "Installing Ralph prompt templates..." -ForegroundColor White
+Write-Host "Installing Aloop prompt templates..." -ForegroundColor White
 Copy-TreeItem `
-    -Source (Join-Path $scriptDir "ralph\templates") `
-    -Destination (Join-Path $ralphDir "templates") `
+    -Source (Join-Path $scriptDir "aloop\templates") `
+    -Destination (Join-Path $aloopDir "templates") `
     -Label "templates"
 
 # --- Create runtime directories ---
 Write-Host ""
 Write-Host "Creating runtime directories..." -ForegroundColor White
 $runtimeDirs = @(
-    (Join-Path $ralphDir "projects"),
-    (Join-Path $ralphDir "sessions")
+    (Join-Path $aloopDir "projects"),
+    (Join-Path $aloopDir "sessions")
 )
 foreach ($dir in $runtimeDirs) {
     if (-not (Test-Path $dir)) {
@@ -560,7 +540,7 @@ foreach ($dir in $runtimeDirs) {
 if ($IsLinux -or $IsMacOS) {
     Write-Host ""
     Write-Host "Setting executable permissions..." -ForegroundColor White
-    $loopSh = Join-Path $ralphDir "bin/loop.sh"
+    $loopSh = Join-Path $aloopDir "bin/loop.sh"
     if (Test-Path $loopSh) {
         if ($DryRun) {
             Write-Host "  [DRY RUN] chmod +x $loopSh" -ForegroundColor DarkGray
@@ -576,26 +556,19 @@ Write-Host ""
 Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Installed components:" -ForegroundColor White
-Write-Host "  Skill:     ~/.{claude|codex|copilot|agents}/skills/ralph/SKILL.md"
-Write-Host "  Commands:  ~/.{claude|codex}/commands/ralph/  (setup, start, status, stop)"
-$promptsDisplay = if ($IsWindows) {
-    '%APPDATA%\Code{,-Insiders}\User\prompts\'
-} elseif ($IsMacOS) {
-    '~/Library/Application Support/Code{,-Insiders}/User/prompts/'
-} else {
-    '~/.config/Code{,-Insiders}/User/prompts/'
-}
-Write-Host "  Prompts:   $promptsDisplay  (ralph-*.prompt.md)"
-Write-Host "  Config:    $(Join-Path $ralphDir 'config.yml')"
-Write-Host "  Scripts:   $(Join-Path $ralphDir 'bin') (loop.ps1, loop.sh)"
-Write-Host "  Templates: $(Join-Path $ralphDir 'templates') (PROMPT_plan.md, PROMPT_build.md, PROMPT_review.md)"
+Write-Host "  Skill:     ~/.{claude|codex|copilot|agents}/skills/aloop/SKILL.md"
+Write-Host "  Commands:  ~/.{claude|codex}/commands/aloop/  (setup, start, status, stop)"
+Write-Host "  Prompts:   %APPDATA%\Code{,-Insiders}\User\prompts\  (aloop-*.prompt.md)"
+Write-Host "  Config:    $aloopDir\config.yml"
+Write-Host "  Scripts:   $aloopDir\bin\ (loop.ps1, loop.sh)"
+Write-Host "  Templates: $aloopDir\templates\ (PROMPT_plan.md, PROMPT_build.md, PROMPT_review.md)"
 Write-Host ""
 Write-Host "Usage:" -ForegroundColor White
-Write-Host "  Claude Code / Codex: /ralph:setup  /ralph:start  /ralph:status  /ralph:stop"
-Write-Host "  VS Code Copilot:     /ralph-setup  /ralph-start  /ralph-status  /ralph-stop  (prompt files)"
-Write-Host "  GH Copilot skill:    type '/' in chat and select ralph, or let Copilot load it automatically"
+Write-Host "  Claude Code / Codex: /aloop:setup  /aloop:start  /aloop:status  /aloop:stop"
+Write-Host "  VS Code Copilot:     /aloop-setup  /aloop-start  /aloop-status  /aloop-stop  (prompt files)"
+Write-Host "  GH Copilot skill:    type '/' in chat and select aloop, or let Copilot load it automatically"
 Write-Host ""
-Write-Host "To reinstall: $(Join-Path $scriptDir 'install.ps1') -Force" -ForegroundColor Gray
+Write-Host "To reinstall: $scriptDir\install.ps1 -Force" -ForegroundColor Gray
 Write-Host ""
 Write-Host "=== Authentication ===" -ForegroundColor Cyan
 Write-Host ""

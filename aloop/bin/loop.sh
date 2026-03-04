@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ralph Loop — Generic Multi-Provider Autonomous Coding Loop
+# Aloop Loop — Generic Multi-Provider Autonomous Coding Loop
 # Usage: loop.sh --prompts-dir <path> --session-dir <path> --work-dir <path> [options]
 #
 # Modes:
@@ -24,16 +24,16 @@ WORK_DIR=""
 MODE="plan-build-review"
 PROVIDER="claude"
 ROUND_ROBIN_PROVIDERS="claude,codex,gemini,copilot"
-# Model defaults — keep in sync with ~/.ralph/config.yml (source of truth)
-CLAUDE_MODEL="${RALPH_CLAUDE_MODEL:-opus}"
-CODEX_MODEL="${RALPH_CODEX_MODEL:-gpt-5.3-codex}"
-GEMINI_MODEL="${RALPH_GEMINI_MODEL:-gemini-3.1-pro-preview}"
-COPILOT_MODEL="${RALPH_COPILOT_MODEL:-gpt-5.3-codex}"
-COPILOT_RETRY_MODEL="${RALPH_COPILOT_RETRY_MODEL:-claude-sonnet-4.6}"
-MAX_ITERATIONS="${RALPH_MAX_ITERATIONS:-50}"
-MAX_STUCK="${RALPH_MAX_STUCK:-3}"
-BACKUP_ENABLED="${RALPH_BACKUP:-false}"
-PROVIDER_TIMEOUT="${RALPH_PROVIDER_TIMEOUT:-0}"
+# Model defaults — keep in sync with ~/.aloop/config.yml (source of truth)
+CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-opus}"
+CODEX_MODEL="${ALOOP_CODEX_MODEL:-gpt-5.3-codex}"
+GEMINI_MODEL="${ALOOP_GEMINI_MODEL:-gemini-3.1-pro-preview}"
+COPILOT_MODEL="${ALOOP_COPILOT_MODEL:-gpt-5.3-codex}"
+COPILOT_RETRY_MODEL="${ALOOP_COPILOT_RETRY_MODEL:-claude-sonnet-4.6}"
+MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-50}"
+MAX_STUCK="${ALOOP_MAX_STUCK:-3}"
+BACKUP_ENABLED="${ALOOP_BACKUP:-false}"
+PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-0}"
 DRY_RUN=false
 
 # ============================================================================
@@ -415,7 +415,7 @@ generate_report() {
     local commit_count=$(git rev-list --count HEAD 2>/dev/null || echo "0")
 
     cat > "$REPORT_FILE" << EOF
-# Ralph Session Report
+# Aloop Session Report
 
 Generated: $(date '+%Y-%m-%d %H:%M:%S')
 
@@ -502,7 +502,7 @@ setup_remote_backup() {
     fi
 
     local project_name=$(basename "$WORK_DIR")
-    local repo_name="${project_name}-ralph-backup"
+    local repo_name="${project_name}-aloop-backup"
     echo "Creating private backup repo: $repo_name"
 
     if gh repo create "$repo_name" --private --source=. --push 2>/dev/null; then
@@ -548,7 +548,7 @@ if [ "$PROVIDER" = "round-robin" ] && [ ${#RR_PROVIDERS[@]} -lt 2 ]; then
 fi
 
 echo ""
-echo "=== Ralph Loop ==="
+echo "=== Aloop Loop ==="
 echo "Mode: $MODE"
 echo "Provider: $PROVIDER"
 echo "Work directory: $WORK_DIR"
@@ -723,4 +723,4 @@ write_log_entry "limit_reached" "iteration" "$ITERATION" "limit" "$MAX_ITERATION
 generate_report "Reached iteration limit ($MAX_ITERATIONS)."
 
 echo ""
-echo "=== Ralph Loop Complete ($ITERATION iterations) ==="
+echo "=== Aloop Loop Complete ($ITERATION iterations) ==="

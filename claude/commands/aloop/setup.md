@@ -10,7 +10,7 @@ allowed-tools:
 ---
 
 <objective>
-Configure Ralph for the current project. Detect the project, gather configuration from the user, and create project-specific config and prompts in `~/.ralph/projects/<hash>/`.
+Configure Aloop for the current project. Detect the project, gather configuration from the user, and create project-specific config and prompts in `~/.aloop/projects/<hash>/`.
 </objective>
 
 <process>
@@ -22,7 +22,7 @@ Before explicit user go-ahead, do not read files outside the current project roo
 
 Run this command first:
 
-`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command discover -Scope project -Output json`
+`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command discover -Scope project -Output json`
 
 Treat the JSON output as source of truth for:
 - project root/name/hash
@@ -32,7 +32,7 @@ Treat the JSON output as source of truth for:
 - context files (`TODO.md`, `RESEARCH.md`, `REVIEW_LOG.md`, `STEERING.md`)
 - installed/missing providers
 
-Show: "Setting up Ralph for: <project-name> (<project-root>)"
+Show: "Setting up Aloop for: <project-name> (<project-root>)"
 
 ## Step 2: Use current conversation context
 
@@ -48,7 +48,7 @@ Do NOT repeat questions answered by discovery or earlier messages in the same co
 ## Step 3: Existing config behavior
 
 In interview phase, treat external config checks as deferred.
-Do not inspect `~/.ralph/projects/*` yet.
+Do not inspect `~/.aloop/projects/*` yet.
 
 After go-ahead and full-scope discovery, if `config_exists=true`, ask:
 - "Patch existing setup (recommended) or fully reconfigure?"
@@ -84,7 +84,7 @@ If discovery found spec candidates, ask whether to include each candidate in `sp
 ## Step 6: Explicit go-ahead gate (required)
 
 After interview/spec alignment, ask:
-- "Proceed to prepare Ralph loop config now? (yes/no)"
+- "Proceed to prepare Aloop loop config now? (yes/no)"
 
 If no:
 - stop after summarizing the agreed interview/spec output
@@ -101,34 +101,34 @@ Ask only now:
 2. Enabled providers (from installed list)
 3. Default provider vs round-robin (only if 2+ enabled)
 4. Runtime storage mode:
-  - `global` (default): keep runtime/session state in `~/.ralph/`
-  - `project-local`: store runtime/session state in `<project-root>/.ralph/`
+  - `global` (default): keep runtime/session state in `~/.aloop/`
+  - `project-local`: store runtime/session state in `<project-root>/.aloop/`
 
 Now it is allowed to read outside project root for runtime preparation. Re-run discovery in full scope:
 
-`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command discover -Scope full -Output json`
+`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command discover -Scope full -Output json`
 
 ## Step 8: Use scaffold script to write config and prompts (required)
 
 After decisions are finalized, run:
 
-`pwsh -NoProfile -File ~/.ralph/bin/setup-discovery.ps1 -Command scaffold -Output json -RuntimeScope <global|project-local> -Provider <provider> -EnabledProviders <csv-or-list> -RoundRobinOrder <csv-or-list> -Language <language> -SpecFiles <list> -ValidationCommands <list>`
+`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command scaffold -Output json -RuntimeScope <global|project-local> -Provider <provider> -EnabledProviders <csv-or-list> -RoundRobinOrder <csv-or-list> -Language <language> -SpecFiles <list> -ValidationCommands <list>`
 
 This script writes:
-- `~/.ralph/projects/<hash>/config.yml`
-- `~/.ralph/projects/<hash>/prompts/PROMPT_{plan,build,review,steer}.md`
+- `~/.aloop/projects/<hash>/config.yml`
+- `~/.aloop/projects/<hash>/prompts/PROMPT_{plan,build,review,steer}.md`
 
-If `RuntimeScope=project-local`, scaffold writes config/prompts under `<project-root>/.ralph/`, hydrates loop assets there once, and ensures `<project-root>/.gitignore` contains `.ralph/`.
+If `RuntimeScope=project-local`, scaffold writes config/prompts under `<project-root>/.aloop/`, hydrates loop assets there once, and ensures `<project-root>/.gitignore` contains `.aloop/`.
 
 ## Step 9: Confirm setup
 
 Display to user:
 
 ```
-Ralph configured for <project-name>!
+Aloop configured for <project-name>!
 
-  Config: ~/.ralph/projects/<hash>/config.yml
-  Prompts: ~/.ralph/projects/<hash>/prompts/
+  Config: ~/.aloop/projects/<hash>/config.yml
+  Prompts: ~/.aloop/projects/<hash>/prompts/
 
   Provider: <selected>
   Enabled:  <provider+model list>
@@ -138,15 +138,15 @@ Ralph configured for <project-name>!
   Runtime:  <global|project-local> (<resolved runtime root>)
 
 Next steps:
-  /ralph:start          Launch a Ralph loop
-  /ralph:start --plan   Run planning mode only
+  /aloop:start          Launch a Aloop loop
+  /aloop:start --plan   Run planning mode only
 ```
 
 </process>
 
 <notes>
 - The project hash is computed from the absolute path of the project root
-- On Windows, use `$HOME/.ralph/` (PowerShell resolves `~` correctly)
-- If `~/.ralph/templates/` doesn't exist, stop and ask the user to run the install script
+- On Windows, use `$HOME/.aloop/` (PowerShell resolves `~` correctly)
+- If `~/.aloop/templates/` doesn't exist, stop and ask the user to run the install script
 - Keep setup script-driven for consistency across machines and harnesses.
 </notes>

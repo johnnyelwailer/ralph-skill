@@ -7,15 +7,15 @@ allowed-tools:
 ---
 
 <objective>
-Send a live steering instruction to a running Ralph session. Analyse loop state, interview the user for details, and write a structured STEERING.md to the session directory for the loop to pick up at the next iteration boundary.
+Send a live steering instruction to a running Aloop session. Analyse loop state, interview the user for details, and write a structured STEERING.md to the session directory for the loop to pick up at the next iteration boundary.
 </objective>
 
 <process>
 
 ## Step 1: Find the Active Session
 
-Resolve runtime root from current project config (`<project-root>/.ralph/config.yml` first, then `~/.ralph/projects/<hash>/config.yml`).
-Read `<runtime_root>/active.json`. If no active sessions, display: "No active Ralph sessions. Start one with `/ralph:start` first." and stop.
+Resolve runtime root from current project config (`<project-root>/.aloop/config.yml` first, then `~/.aloop/projects/<hash>/config.yml`).
+Read `<runtime_root>/active.json`. If no active sessions, display: "No active Aloop sessions. Start one with `/aloop:start` first." and stop.
 
 If multiple sessions exist, ask using AskUserQuestion:
 - "Which session do you want to steer?" (list session IDs with project names)

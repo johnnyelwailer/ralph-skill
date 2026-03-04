@@ -83,7 +83,7 @@ function Convert-ToRelativePath {
 }
 
 function Get-GlobalConfigPath {
-    return (Join-Path $HOME '.ralph/config.yml')
+    return (Join-Path $HOME '.aloop/config.yml')
 }
 
 function Get-DefaultModelMap {
@@ -360,7 +360,7 @@ function Get-ExistingProjectConfig {
         [string]$ProjectHash
     )
 
-    $projectDir = Join-Path $HOME (".ralph/projects/{0}" -f $ProjectHash)
+    $projectDir = Join-Path $HOME (".aloop/projects/{0}" -f $ProjectHash)
     $configPath = Join-Path $projectDir 'config.yml'
     return @{
         project_dir = $projectDir
@@ -405,7 +405,7 @@ function New-DiscoveryResult {
             project_dir = $existing.project_dir
             config_path = $existing.config_path
             config_exists = $existing.exists
-            templates_dir = (Join-Path $HOME '.ralph/templates')
+            templates_dir = (Join-Path $HOME '.aloop/templates')
         }
         context = [ordered]@{
             detected_language = $languageDetection.language
@@ -474,10 +474,10 @@ function Write-ProjectConfigAndPrompts {
     $projectRoot = $Discovery.project.root
     $projectName = $Discovery.project.name
     $projectHash = $Discovery.project.hash
-    $projectDir = Join-Path $HOME (".ralph/projects/{0}" -f $projectHash)
+    $projectDir = Join-Path $HOME (".aloop/projects/{0}" -f $projectHash)
     $promptsDir = Join-Path $projectDir 'prompts'
     $configPath = Join-Path $projectDir 'config.yml'
-    $templatesDir = Join-Path $HOME '.ralph/templates'
+    $templatesDir = Join-Path $HOME '.aloop/templates'
 
     if (-not (Test-Path $templatesDir)) {
         throw "Templates directory not found: $templatesDir"

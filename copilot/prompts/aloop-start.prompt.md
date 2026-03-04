@@ -1,24 +1,24 @@
 ---
-name: ralph-start
-description: Launch a Ralph autonomous coding loop for the current project. Accepts --plan, --build, --review, --provider, --in-place, --max flags.
+name: aloop-start
+description: Launch a Aloop autonomous coding loop for the current project. Accepts --plan, --build, --review, --provider, --in-place, --max flags.
 argument-hint: "[--plan|--build|--review] [--provider claude|codex|gemini|copilot] [--in-place] [--max N]"
 agent: agent
 ---
 
-Launch a Ralph loop for the current project. Create a session, optionally set up a git worktree, and start the loop script.
+Launch a Aloop loop for the current project. Create a session, optionally set up a git worktree, and start the loop script.
 
 ## Step 1: Find Project Config
 
 1. Find the git root of the current working directory
 2. Compute the project hash (first 8 chars of SHA-256 of absolute path)
 3. Resolve config path in this order:
-  - `<project-root>/.ralph/config.yml` (project-local runtime)
-  - `~/.ralph/projects/<hash>/config.yml` (global runtime)
-4. If not found: "No Ralph configuration found for this project. Run `/ralph-setup` first."
+  - `<project-root>/.aloop/config.yml` (project-local runtime)
+  - `~/.aloop/projects/<hash>/config.yml` (global runtime)
+4. If not found: "No Aloop configuration found for this project. Run `/aloop-setup` first."
 
 Read `runtime_scope` and `runtime_root` from config. If missing, default to:
 - `runtime_scope=global`
-- `runtime_root=~/.ralph`
+- `runtime_root=~/.aloop`
 
 ## Step 2: Parse Arguments
 
@@ -54,8 +54,8 @@ Check for arguments passed after invoking this prompt:
 ## Step 4: Set Up Worktree (unless --in-place)
 
 Unless `--in-place`:
-1. Create branch: `ralph/<session-id>`
-2. Run: `git worktree add <runtime_root>/sessions/<session-id>/worktree -b ralph/<session-id>`
+1. Create branch: `aloop/<session-id>`
+2. Run: `git worktree add <runtime_root>/sessions/<session-id>/worktree -b aloop/<session-id>`
 3. Work directory = worktree path
 
 If `--in-place`, work directory = project root.
@@ -100,16 +100,16 @@ Launch as a background process. Capture PID and update `active.json`.
 
 Display:
 ```
-Ralph loop started!
+Aloop loop started!
 
   Session:  <session-id>
   Mode:     <mode>
   Provider: <provider>
   Work dir: <work-dir>
 
-Monitor:  /ralph-status
-Stop:     /ralph-stop
-Logs:     ~/.ralph/sessions/<session-id>/log.jsonl
+Monitor:  /aloop-status
+Stop:     /aloop-stop
+Logs:     ~/.aloop/sessions/<session-id>/log.jsonl
 
 Display runtime root in confirmation (e.g., `Runtime root: <runtime_root>`).
 ```
