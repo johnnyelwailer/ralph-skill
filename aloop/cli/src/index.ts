@@ -7,6 +7,7 @@ import { dashboardCommand } from './commands/dashboard.js';
 import { statusCommand } from './commands/status.js';
 import { activeCommand } from './commands/active.js';
 import { stopCommand } from './commands/stop.js';
+import { ghCommand } from './commands/gh.js';
 
 const program = new Command();
 
@@ -75,6 +76,8 @@ program
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(stopCommand);
+
+program.addCommand(ghCommand);
 
 program
   .command('debug-env', { hidden: true })

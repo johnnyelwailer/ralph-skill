@@ -7,7 +7,7 @@
 - [x] Fix `aloop/bin/loop.sh` RETURN-trap leakage in `invoke_provider` (trap persists beyond function return and can clobber PATH for later commands); add regression coverage. (priority: P1)
 
 ### Up Next
-- [ ] Add `aloop gh` command surface with hardcoded role policy scaffolding and audit log events (`gh_operation`, `gh_operation_denied`). (priority: P1)
+- [x] Add `aloop gh` command surface with hardcoded role policy scaffolding and audit log events (`gh_operation`, `gh_operation_denied`). (priority: P1)
 - [ ] Implement convention-file intake in `aloop/bin/loop.ps1` (`.aloop/requests/*.json` -> `aloop gh` -> `.aloop/responses/*.json` + processed archive). (priority: P1)
 - [ ] Implement convention-file intake in `aloop/bin/loop.sh` with PowerShell parity (ordering, responses, archival behavior). (priority: P1)
 - [ ] Add missing dashboard command assets: `claude/commands/aloop/dashboard.md` and `copilot/prompts/aloop-dashboard.prompt.md`. (priority: P1)

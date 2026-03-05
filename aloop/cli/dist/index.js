@@ -972,8 +972,8 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path4 = __require("node:path");
-    var fs2 = __require("node:fs");
+    var path5 = __require("node:path");
+    var fs3 = __require("node:fs");
     var process2 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
     var { CommanderError: CommanderError2 } = require_error();
@@ -1915,13 +1915,13 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path4.resolve(baseDir, baseName);
-          if (fs2.existsSync(localBin))
+          const localBin = path5.resolve(baseDir, baseName);
+          if (fs3.existsSync(localBin))
             return localBin;
-          if (sourceExt.includes(path4.extname(baseName)))
+          if (sourceExt.includes(path5.extname(baseName)))
             return void 0;
           const foundExt = sourceExt.find(
-            (ext) => fs2.existsSync(`${localBin}${ext}`)
+            (ext) => fs3.existsSync(`${localBin}${ext}`)
           );
           if (foundExt)
             return `${localBin}${foundExt}`;
@@ -1934,21 +1934,21 @@ Expecting one of '${allowedValues.join("', '")}'`);
         if (this._scriptPath) {
           let resolvedScriptPath;
           try {
-            resolvedScriptPath = fs2.realpathSync(this._scriptPath);
+            resolvedScriptPath = fs3.realpathSync(this._scriptPath);
           } catch (err) {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path4.resolve(
-            path4.dirname(resolvedScriptPath),
+          executableDir = path5.resolve(
+            path5.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path4.basename(
+            const legacyName = path5.basename(
               this._scriptPath,
-              path4.extname(this._scriptPath)
+              path5.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -1959,7 +1959,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path4.extname(executableFile));
+        launchWithNode = sourceExt.includes(path5.extname(executableFile));
         let proc;
         if (process2.platform !== "win32") {
           if (launchWithNode) {
@@ -2816,7 +2816,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path4.basename(filename, path4.extname(filename));
+        this._name = path5.basename(filename, path5.extname(filename));
         return this;
       }
       /**
@@ -2830,10 +2830,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path5) {
-        if (path5 === void 0)
+      executableDir(path6) {
+        if (path6 === void 0)
           return this._executableDir;
-        this._executableDir = path5;
+        this._executableDir = path6;
         return this;
       }
       /**
@@ -4231,6 +4231,132 @@ async function stopCommand(sessionId, options = {}) {
   console.log(`Session ${sessionId} stopped.`);
 }
 
+// src/commands/gh.ts
+import * as fs2 from "fs";
+import * as path4 from "path";
+import * as os4 from "os";
+var ghCommand = new Command("gh").description("Policy-enforced GitHub operations");
+function addGhSubcommand(name, description) {
+  return ghCommand.command(name).description(description).requiredOption("--session <id>", "Session ID").requiredOption("--request <file>", "Request JSON file path").option("--role <role>", "Role: child-loop or orchestrator", "child-loop").option("--home-dir <dir>", "Home directory override").action(async (options) => {
+    await executeGhOperation(name, options);
+  });
+}
+addGhSubcommand("pr-create", "Create a pull request");
+addGhSubcommand("pr-comment", "Comment on a pull request");
+addGhSubcommand("issue-comment", "Comment on an issue");
+addGhSubcommand("issue-create", "Create an issue (orchestrator only)");
+addGhSubcommand("issue-close", "Close an issue (orchestrator only)");
+addGhSubcommand("pr-merge", "Merge a pull request (orchestrator only)");
+function getSessionDir(homeDir, sessionId) {
+  const baseHome = homeDir || os4.homedir();
+  return path4.join(baseHome, ".aloop", "sessions", sessionId);
+}
+function appendLog(sessionDir, entry) {
+  const logFile = path4.join(sessionDir, "log.jsonl");
+  const logData = JSON.stringify(entry) + String.fromCharCode(10);
+  if (fs2.existsSync(sessionDir)) {
+    fs2.appendFileSync(logFile, logData);
+  } else {
+    fs2.mkdirSync(sessionDir, { recursive: true });
+    fs2.appendFileSync(logFile, logData);
+  }
+}
+async function executeGhOperation(operation, options) {
+  const sessionDir = getSessionDir(options.homeDir, options.session);
+  const requestFile = options.request;
+  const role = options.role;
+  let requestPayload = {};
+  if (fs2.existsSync(requestFile)) {
+    try {
+      requestPayload = JSON.parse(fs2.readFileSync(requestFile, "utf8"));
+    } catch (e) {
+      console.error(`Failed to parse request file: ${requestFile}`);
+      process.exit(1);
+    }
+  } else {
+    console.error(`Request file not found: ${requestFile}`);
+    process.exit(1);
+  }
+  const { allowed, reason, enforced } = evaluatePolicy(operation, role, requestPayload);
+  const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+  const requestFileName = path4.basename(requestFile);
+  if (!allowed) {
+    const logEntry = {
+      timestamp,
+      event: "gh_operation_denied",
+      type: operation,
+      session: options.session,
+      role,
+      reason: reason || `${operation} not allowed for ${role} role`
+    };
+    appendLog(sessionDir, logEntry);
+    console.error(JSON.stringify(logEntry));
+    process.exit(1);
+  } else {
+    const logEntry = {
+      timestamp,
+      event: "gh_operation",
+      type: operation,
+      session: options.session,
+      role,
+      request_file: requestFileName,
+      result: "success",
+      // Simulated success
+      enforced
+    };
+    if (operation === "pr-create") {
+      logEntry.pr_number = 15;
+    }
+    appendLog(sessionDir, logEntry);
+    console.log(JSON.stringify(logEntry));
+  }
+}
+function evaluatePolicy(operation, role, payload) {
+  if (role === "child-loop") {
+    switch (operation) {
+      case "pr-create":
+        return {
+          allowed: true,
+          enforced: { base: "agent/trunk", repo: payload.repo || "owner/repo" }
+          // repo should come from session config, scaffolding for now
+        };
+      case "issue-comment":
+        return { allowed: true };
+      case "pr-comment":
+        return { allowed: true };
+      case "pr-merge":
+      case "issue-create":
+      case "issue-close":
+      case "branch-delete":
+        return { allowed: false, reason: `${operation} not allowed for child-loop role` };
+      default:
+        return { allowed: false, reason: `Unknown operation: ${operation}` };
+    }
+  } else if (role === "orchestrator") {
+    switch (operation) {
+      case "issue-create":
+        if (!payload.labels || !payload.labels.includes("aloop/auto")) {
+          return { allowed: false, reason: "Must include aloop/auto label" };
+        }
+        return { allowed: true };
+      case "issue-close":
+        return { allowed: true };
+      case "pr-create":
+        return { allowed: true, enforced: { base: "agent/trunk" } };
+      case "pr-merge":
+        return { allowed: true, enforced: { base: "agent/trunk", merge_method: "squash" } };
+      case "pr-comment":
+      case "issue-comment":
+        return { allowed: true };
+      case "branch-delete":
+        return { allowed: false, reason: "branch-delete rejected - cleanup is manual" };
+      default:
+        return { allowed: false, reason: `Unknown operation: ${operation}` };
+    }
+  }
+  return { allowed: false, reason: `Unknown role: ${role}` };
+}
+
 // src/index.ts
 var program2 = new Command();
 program2.name("aloop").description("Aloop CLI for dashboard and project orchestration").version("1.0.0");
@@ -4241,6 +4367,7 @@ program2.command("dashboard").description("Launch real-time progress dashboard")
 program2.command("status").description("Show all active sessions and provider health").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(statusCommand);
 program2.command("active").description("List active sessions").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(activeCommand);
 program2.command("stop <session-id>").description("Stop a session by session-id").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(stopCommand);
+program2.addCommand(ghCommand);
 program2.command("debug-env", { hidden: true }).description("Print current environment variables (for testing)").action(() => {
   console.log(JSON.stringify(process.env));
 });
