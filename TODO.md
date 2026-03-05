@@ -3,6 +3,10 @@
 ## Current Phase: CLI Surface Unification + Security Boundary + Proof Pipeline
 
 ### In Progress
+- [ ] [review] Gate 1: `aloop/bin/loop.sh` PATH hardening removes whole directories that contain `gh` (`strip_gh_from_path`, lines 684-689), which can also remove provider binaries when co-located (repro: fake `gh` + `claude` in same dir makes `invoke_provider` fail). Rework sanitization to block `gh` without dropping provider/toolchain executables. (priority: high)
+- [ ] [review] Gate 2: `aloop/bin/loop_path_hardening.tests.sh` misses critical cases; add behavioral tests for (a) provider binary co-located with `gh` still executes, and (b) PATH restoration when provider exits non-zero. Current suite only validates happy-path separation of dirs. (priority: high)
+- [ ] [review] Gate 3: no branch-coverage evidence for touched shell runtime paths in this iteration (`aloop/bin/loop.sh` path-hardening branches). Add coverage-capable harness/reporting for shell branch paths and ensure touched runtime logic meets >=80% branch coverage; include uncovered branches in report output. (priority: high)
+- [ ] [review] Gate 5: regression baseline is red; `Invoke-Pester ./aloop/bin/loop.tests.ps1` fails at discovery with parse errors around lines 1029/1055/1071, and `Invoke-Pester ./install.tests.ps1` has 5 failing tests (`aloop.mjs` source/shim expectations). Restore full test suite green before continuing feature work. (priority: high)
 
 ### Up Next
 - [x] Add PowerShell parity for degraded provider handling in `Resolve-HealthyProvider` (`provider_skipped_degraded`, `all_providers_degraded`) and add matching Pester coverage. (priority: P1)
