@@ -3,6 +3,12 @@
 ## Current Phase: CLI Surface Unification + Security Boundary + Proof Pipeline
 
 ### In Progress
+- [ ] [review] Gate 1: `aloop/cli/src/commands/gh.ts` does not enforce spec-required repo/base constraints from session config (`evaluatePolicy` uses `payload.repo || 'owner/repo'` and never loads session repo); implement hard enforcement of `--repo` from session config and `--base agent/trunk` for all PR operations. (priority: high)
+- [ ] [review] Gate 1: Complete policy enforcement gaps in `aloop gh` scaffolding (`issue-close` currently unconditional for orchestrator; `issue-comment`/`pr-comment` lack scoped-target checks; targeting `main` and raw API pathways are not explicitly guarded/logged per spec intent). (priority: high)
+- [ ] [review] Gate 2: `aloop/cli/src/commands/gh.test.ts` uses `vitest` even though the repo test runner is `tsx --test`; rewrite tests to the existing Node test stack so they execute in CI and local `npm test`. (priority: high)
+- [ ] [review] Gate 2: Expand `gh.test.ts` beyond 3 happy/near-happy scenarios to concrete error-path assertions (missing request file, invalid JSON, unknown role/operation, orchestrator `issue-create` without `aloop/auto`, denied operations emit exact `gh_operation_denied` reason). (priority: high)
+- [ ] [review] Gate 3: Add branch-coverage reporting for `aloop/cli/src/commands/gh.ts` and raise new-module branch coverage to >=90%; currently untested branches include request read/parse failures, unknown role/operation paths, and orchestrator label-deny branch. (priority: high)
+- [ ] [review] Gate 5: Restore regression baseline — latest iteration makes `npm --prefix aloop/cli test` and `npm --prefix aloop/cli run type-check` fail (`Cannot find module 'vitest'` in `src/commands/gh.test.ts`). (priority: high)
 - [x] Implement PATH hardening in `aloop/bin/loop.ps1`: prepend gh-blocking shim directory for provider execution windows and restore PATH afterward; 7 Pester regression tests. (priority: P1)
 - [x] Fix `aloop/bin/loop.sh` RETURN-trap leakage in `invoke_provider` (trap persists beyond function return and can clobber PATH for later commands); add regression coverage. (priority: P1)
 
