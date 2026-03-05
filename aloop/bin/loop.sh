@@ -681,11 +681,33 @@ stop_dashboard() {
 # PROVIDER INVOCATION
 # ============================================================================
 
+strip_gh_from_path() {
+    local IFS=':'
+    local new_path=""
+    for dir in $PATH; do
+        if [ -x "$dir/gh" ] || [ -x "$dir/gh.exe" ]; then
+            continue
+        fi
+        if [ -n "$new_path" ]; then
+            new_path="$new_path:$dir"
+        else
+            new_path="$dir"
+        fi
+    done
+    echo "$new_path"
+}
+
 invoke_provider() {
     local provider_name=$1
     local prompt_content=$2
     local tmp_stderr
     tmp_stderr=$(mktemp)
+
+    # PATH hardening: strip gh from PATH during provider execution
+    local saved_path="$PATH"
+    PATH="$(strip_gh_from_path)"
+    export PATH
+    trap 'PATH="$saved_path"; export PATH' RETURN
 
     case "$provider_name" in
         claude)
