@@ -5,7 +5,7 @@
 ### In Progress
 
 ### Up Next
-- [ ] Add PowerShell parity for degraded provider handling in `Resolve-HealthyProvider` (`provider_skipped_degraded`, `all_providers_degraded`) and add matching Pester coverage. (priority: P1)
+- [x] Add PowerShell parity for degraded provider handling in `Resolve-HealthyProvider` (`provider_skipped_degraded`, `all_providers_degraded`) and add matching Pester coverage. (priority: P1)
 - [ ] Implement PATH hardening in `aloop/bin/loop.sh`: remove `gh` from PATH for provider execution windows and restore afterward; add regression tests. (priority: P1)
 - [ ] Implement PATH hardening in `aloop/bin/loop.ps1`: remove `gh`/`gh.exe` PATH entries for provider execution windows and restore afterward; add regression tests. (priority: P1)
 - [ ] Add `aloop gh` command surface with hardcoded role policy scaffolding and audit log events (`gh_operation`, `gh_operation_denied`). (priority: P1)

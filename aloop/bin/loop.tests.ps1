@@ -926,11 +926,91 @@ switch ($scenario) {
         $selectedProviders | Should -Contain 'codex'
         $selectedProviders | Should -Not -Contain 'claude'
     }
+
+    It 'round-robin logs provider_skipped_degraded and selects healthy fallback provider' {
+        $e = New-HealthEnv
+        @{ status='degraded'; last_success=$null; last_failure=[DateTimeOffset]::UtcNow.ToString('o');
+           failure_reason='auth'; consecutive_failures=1; cooldown_until=$null } |
+            ConvertTo-Json | Set-Content (Join-Path $e.HealthDir 'claude.json')
+        @{ status='healthy'; last_success=[DateTimeOffset]::UtcNow.ToString('o'); last_failure=$null;
+           failure_reason=$null; consecutive_failures=0; cooldown_until=$null } |
+            ConvertTo-Json | Set-Content (Join-Path $e.HealthDir 'codex.json')
+
+        Invoke-HealthLoop -Env $e -CodexScenario 'succeed' -Provider 'round-robin' `
+            -RRProviders 'claude,codex' -MaxIter 2 | Out-Null
+
+        $logEntries = @(
+            Get-Content $e.LogFile |
+                ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
+                Where-Object { $_ }
+        )
+        $skipEntry = $logEntries |
+            Where-Object { $_.event -eq 'provider_skipped_degraded' -and $_.provider -eq 'claude' } |
+            Select-Object -First 1
+        $skipEntry | Should -Not -BeNullOrEmpty
+        $skipEntry.reason | Should -Be 'auth'
+        ($logEntries | Where-Object { $_.event -eq 'iteration_complete' } | ForEach-Object { $_.provider }) |
+            Should -Contain 'codex'
+    }
+
+    It 'resolve function logs all_providers_degraded when every provider is degraded' {
+        $source = Get-Content $loopScript -Raw
+        $startMarker = 'function Resolve-HealthyProvider {'
+        $endMarker = "`nfunction Setup-RemoteBackup {"
+        $startIdx = $source.IndexOf($startMarker)
+        $endIdx = $source.IndexOf($endMarker, $startIdx)
+        $startIdx | Should -BeGreaterThan -1
+        $endIdx | Should -BeGreaterThan $startIdx
+        $resolveFuncSource = $source.Substring($startIdx, $endIdx - $startIdx)
+
+        $script:providerHealthStateByName = @{
+            claude = [pscustomobject]@{ status = 'degraded'; failure_reason = 'auth'; cooldown_until = $null }
+            codex  = [pscustomobject]@{ status = 'degraded'; failure_reason = 'quota'; cooldown_until = $null }
+        }
+        $script:loggedEvents = @()
+        $previousWarningPreference = $WarningPreference
+        $WarningPreference = 'SilentlyContinue'
+        try {
+            function Get-ProviderHealthState {
+                param([string]$ProviderName)
+                return $script:providerHealthStateByName[$ProviderName]
+            }
+            function Write-LogEntry {
+                param([string]$Event, [hashtable]$Data)
+                $script:loggedEvents += [pscustomobject]@{
+                    event = $Event
+                    data  = $Data
+                }
+            }
+            function Start-Sleep {
+                param([int]$Seconds)
+                throw "sleep:$Seconds"
+            }
+
+            $RoundRobinProviders = @('claude', 'codex')
+            . ([scriptblock]::Create($resolveFuncSource))
+            { Resolve-HealthyProvider -StartIndex 0 } | Should -Throw -ExpectedMessage 'sleep:60'
+
+            ($script:loggedEvents | Where-Object { $_.event -eq 'provider_skipped_degraded' }).Count | Should -Be 2
+            $allDegraded = $script:loggedEvents | Where-Object { $_.event -eq 'all_providers_degraded' } | Select-Object -First 1
+            $allDegraded | Should -Not -BeNullOrEmpty
+            $allDegraded.data.providers | Should -Be 'claude,codex'
+            $allDegraded.data.reasons | Should -Be 'claude:auth,codex:quota'
+        }
+        finally {
+            $WarningPreference = $previousWarningPreference
+            Remove-Item Function:\Get-ProviderHealthState -ErrorAction SilentlyContinue
+            Remove-Item Function:\Write-LogEntry -ErrorAction SilentlyContinue
+            Remove-Item Function:\Start-Sleep -ErrorAction SilentlyContinue
+            Remove-Variable providerHealthStateByName -Scope Script -ErrorAction SilentlyContinue
+            Remove-Variable loggedEvents -Scope Script -ErrorAction SilentlyContinue
+        }
+    }
 }
 
-# 4. loop.sh — json_escape behavioral
+# 4. loop.sh ï¿½ json_escape behavioral
 # ============================================================================
-Describe 'loop.sh — json_escape behavioral' {
+Describe 'loop.sh ï¿½ json_escape behavioral' {
 
     BeforeAll {
         $script:bashExeJson = (Get-Command bash -ErrorAction SilentlyContinue)?.Source

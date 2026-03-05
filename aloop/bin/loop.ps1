@@ -841,6 +841,8 @@ function Resolve-HealthyProvider {
     while ($true) {
         $earliestCooldown = $null
         $available = $null
+        $degradedCount = 0
+        $allDegradedReasons = @()
 
         for ($i = 0; $i -lt $count; $i++) {
             $idx = ($StartIndex + $i) % $count
@@ -854,6 +856,16 @@ function Resolve-HealthyProvider {
             if ($health.status -eq 'healthy') {
                 $available = $p
                 break
+            }
+            if ($health.status -eq 'degraded') {
+                $degradedCount++
+                $degradedReason = if ([string]::IsNullOrWhiteSpace($health.failure_reason)) { 'unknown' } else { $health.failure_reason }
+                $allDegradedReasons += ("{0}:{1}" -f $p, $degradedReason)
+                Write-LogEntry -Event 'provider_skipped_degraded' -Data @{
+                    provider = $p
+                    reason   = $degradedReason
+                }
+                continue
             }
             if ($health.status -eq 'cooldown' -and $health.cooldown_until) {
                 try {
@@ -879,12 +891,20 @@ function Resolve-HealthyProvider {
 
         # All providers unavailable — sleep until earliest cooldown expires
         $sleepSecs = 60
+        $providersCsv = ($RoundRobinProviders -join ',')
+        if ($degradedCount -eq $count) {
+            Write-LogEntry -Event 'all_providers_degraded' -Data @{
+                providers = $providersCsv
+                reasons   = ($allDegradedReasons -join ',')
+            }
+            Write-Warning "All providers are degraded. Fix auth/quota issues (for example, rerun provider login) and retry."
+        }
         if ($null -ne $earliestCooldown) {
             $remaining = ($earliestCooldown - [DateTimeOffset]::UtcNow).TotalSeconds
             $sleepSecs = if ($remaining -gt 1) { [Math]::Ceiling($remaining) } else { 1 }
         }
         Write-LogEntry -Event 'all_providers_unavailable' -Data @{
-            providers     = ($RoundRobinProviders -join ',')
+            providers     = $providersCsv
             sleep_seconds = $sleepSecs
         }
         Write-Warning "All providers unavailable. Sleeping ${sleepSecs}s until cooldown expires..."
