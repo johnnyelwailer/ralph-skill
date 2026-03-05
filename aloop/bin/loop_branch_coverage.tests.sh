@@ -69,8 +69,14 @@ run_invoke_provider() {
     local prompt_content="$2"
     invoke_provider "$provider_name" "$prompt_content" >/dev/null 2>/dev/null
     local rc=$?
-    trap - RETURN
     return "$rc"
+}
+
+assert_no_return_trap() {
+    if [ -n "$(trap -p RETURN)" ]; then
+        fail_case "invoke_provider leaked RETURN trap state into caller"
+        trap - RETURN
+    fi
 }
 
 json_bool() {
@@ -223,6 +229,7 @@ PATH="$FAKE_PROVIDER_DIR:$ORIGINAL_PATH"
 pre_success_path="$PATH"
 
 if run_invoke_provider "claude" "test prompt"; then
+    assert_no_return_trap
     if [ -z "$LAST_PROVIDER_ERROR" ]; then
         cover_branch "path.invoke.success"
         pass_case "invoke_provider success branch returns 0 and clears LAST_PROVIDER_ERROR"
@@ -259,6 +266,7 @@ pre_failure_path="$PATH"
 LAST_PROVIDER_ERROR=""
 run_invoke_provider "claude" "test prompt"
 rc=$?
+assert_no_return_trap
 if [ "$rc" -ne 0 ] && echo "$LAST_PROVIDER_ERROR" | grep -q "claude exited with code 3"; then
     cover_branch "path.invoke.failure"
     pass_case "invoke_provider failure branch returns non-zero and captures stderr summary"
@@ -277,6 +285,7 @@ PATH="$ORIGINAL_PATH"
 LAST_PROVIDER_ERROR=""
 run_invoke_provider "unsupported-provider" "test prompt"
 rc=$?
+assert_no_return_trap
 if [ "$rc" -ne 0 ] && echo "$LAST_PROVIDER_ERROR" | grep -q "unsupported provider"; then
     cover_branch "path.invoke.unsupported"
     pass_case "invoke_provider unsupported provider branch returns non-zero"

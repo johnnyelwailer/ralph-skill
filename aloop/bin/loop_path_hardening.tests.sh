@@ -75,11 +75,11 @@ cleanup_gh_block
 # --- Test 4: PATH with no gh directories is unchanged (minus prepended shim) ---
 safe_dir="$(mktemp -d)"
 another_safe_dir="$(mktemp -d)"
-PATH="$safe_dir:$another_safe_dir"
+PATH="$safe_dir:$another_safe_dir:$original_path"
 block_dir="$(setup_gh_block)"
 hardened="$block_dir:$PATH"
 
-if [ "$hardened" = "$block_dir:$safe_dir:$another_safe_dir" ]; then
+if [ "$hardened" = "$block_dir:$safe_dir:$another_safe_dir:$original_path" ]; then
     echo "PASS: PATH structure preserved with shim prepended"
 else
     echo "FAIL: PATH structure was not preserved"
@@ -141,6 +141,14 @@ else
     failed=1
 fi
 
+if [ -z "$(trap -p RETURN)" ]; then
+    echo "PASS: invoke_provider success does not leak a RETURN trap"
+else
+    echo "FAIL: invoke_provider success leaked a RETURN trap"
+    failed=1
+    trap - RETURN
+fi
+
 # --- Test 6: PATH restoration when provider exits non-zero ---
 cat > "$fake_provider_dir/claude" << 'SCRIPT'
 #!/bin/bash
@@ -158,6 +166,14 @@ if [ "$PATH" = "$pre_invoke_path" ]; then
 else
     echo "FAIL: PATH was not restored after provider error (got: $PATH)"
     failed=1
+fi
+
+if [ -z "$(trap -p RETURN)" ]; then
+    echo "PASS: invoke_provider failure does not leak a RETURN trap"
+else
+    echo "FAIL: invoke_provider failure leaked a RETURN trap"
+    failed=1
+    trap - RETURN
 fi
 
 # Cleanup

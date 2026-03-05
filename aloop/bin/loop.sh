@@ -720,7 +720,8 @@ invoke_provider() {
     local saved_path="$PATH"
     PATH="$gh_block_dir:$PATH"
     export PATH
-    trap 'PATH="$saved_path"; export PATH' RETURN
+    local invoke_rc=0
+    local copilot_output_file=""
 
     case "$provider_name" in
         claude)
@@ -729,10 +730,10 @@ invoke_provider() {
             if [ "$exit_code" -ne 0 ]; then
                 LAST_PROVIDER_ERROR="claude exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
                 echo "claude exited with code $exit_code" >&2
-                rm -f "$tmp_stderr"
-                return $exit_code
+                invoke_rc=$exit_code
+            else
+                LAST_PROVIDER_ERROR=""
             fi
-            LAST_PROVIDER_ERROR=""
             ;;
         codex)
             echo "$prompt_content" | env -u CLAUDECODE codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
@@ -740,10 +741,10 @@ invoke_provider() {
             if [ "$exit_code" -ne 0 ]; then
                 LAST_PROVIDER_ERROR="codex exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
                 echo "codex exited with code $exit_code" >&2
-                rm -f "$tmp_stderr"
-                return $exit_code
+                invoke_rc=$exit_code
+            else
+                LAST_PROVIDER_ERROR=""
             fi
-            LAST_PROVIDER_ERROR=""
             ;;
         gemini)
             env -u CLAUDECODE gemini -m "$GEMINI_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
@@ -753,14 +754,15 @@ invoke_provider() {
                 if [ ${PIPESTATUS[0]} -ne 0 ]; then
                     LAST_PROVIDER_ERROR="gemini failed. Stderr: $(cat "$tmp_stderr")"
                     echo "gemini failed" >&2
-                    rm -f "$tmp_stderr"
-                    return 1
+                    invoke_rc=1
+                else
+                    LAST_PROVIDER_ERROR=""
                 fi
+            else
+                LAST_PROVIDER_ERROR=""
             fi
-            LAST_PROVIDER_ERROR=""
             ;;
         copilot)
-            local copilot_output_file
             copilot_output_file=$(mktemp)
             env -u CLAUDECODE copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
             if [ ${PIPESTATUS[0]} -ne 0 ]; then
@@ -772,29 +774,35 @@ invoke_provider() {
                     if [ ${PIPESTATUS[0]} -ne 0 ]; then
                         LAST_PROVIDER_ERROR="copilot failed. Stderr: $(cat "$tmp_stderr")"
                         echo "copilot failed" >&2
-                        rm -f "$copilot_output_file" "$tmp_stderr"
-                        return 1
+                        invoke_rc=1
                     fi
                 fi
             fi
-            local copilot_output_text
-            copilot_output_text=$(cat "$copilot_output_file")
-            rm -f "$copilot_output_file"
-            if ! assert_copilot_auth "$copilot_output_text"; then
-                LAST_PROVIDER_ERROR="copilot not authenticated. Stderr: $(cat "$tmp_stderr")"
-                rm -f "$tmp_stderr"
-                return 1
+            if [ "$invoke_rc" -eq 0 ]; then
+                local copilot_output_text
+                copilot_output_text=$(cat "$copilot_output_file")
+                if ! assert_copilot_auth "$copilot_output_text"; then
+                    LAST_PROVIDER_ERROR="copilot not authenticated. Stderr: $(cat "$tmp_stderr")"
+                    invoke_rc=1
+                else
+                    LAST_PROVIDER_ERROR=""
+                fi
             fi
-            LAST_PROVIDER_ERROR=""
             ;;
         *)
             LAST_PROVIDER_ERROR="unsupported provider: $provider_name"
             echo "Unsupported provider: $provider_name" >&2
-            rm -f "$tmp_stderr"
-            return 1
+            invoke_rc=1
             ;;
     esac
+
+    PATH="$saved_path"
+    export PATH
+    if [ -n "$copilot_output_file" ]; then
+        rm -f "$copilot_output_file"
+    fi
     rm -f "$tmp_stderr"
+    return "$invoke_rc"
 }
 
 # ============================================================================
