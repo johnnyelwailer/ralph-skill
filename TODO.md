@@ -4,8 +4,8 @@
 
 ### In Progress
 - [x] [review] Gate 5: Fix regression baseline. `Invoke-Pester ./aloop/bin/loop.tests.ps1` fails at discovery with parse errors (e.g., `?.Source` syntax and string escaping syntax errors around line 1029), and `install.tests.ps1` has failing tests due to mismatched expectations. Restore full test suite green before continuing feature work. (priority: P0)
-- [ ] [review] Gate 1: `aloop/bin/loop.sh` PATH hardening removes whole directories that contain `gh` (`strip_gh_from_path`), which can also remove provider binaries when co-located. Rework sanitization to block `gh` without dropping provider executables. (priority: P1)
-- [ ] [review] Gate 2: `aloop/bin/loop_path_hardening.tests.sh` misses critical cases; add behavioral tests for (a) provider binary co-located with `gh` still executes, and (b) PATH restoration when provider exits non-zero. (priority: P1)
+- [x] [review] Gate 1: `aloop/bin/loop.sh` PATH hardening removes whole directories that contain `gh` (`strip_gh_from_path`), which can also remove provider binaries when co-located. Rework sanitization to block `gh` without dropping provider executables. (priority: P1)
+- [x] [review] Gate 2: `aloop/bin/loop_path_hardening.tests.sh` misses critical cases; add behavioral tests for (a) provider binary co-located with `gh` still executes, and (b) PATH restoration when provider exits non-zero. (priority: P1)
 - [ ] [review] Gate 3: Add coverage-capable harness/reporting for shell branch paths and ensure touched runtime logic meets >=80% branch coverage. (priority: P2)
 
 ### Up Next

@@ -1,99 +1,121 @@
 #!/bin/bash
-# Tests for PATH hardening: gh is stripped from PATH during provider execution
+# Tests for PATH hardening: gh is blocked via shim during provider execution
 
-# Extract the strip_gh_from_path function from loop.sh
-STRIP_FUNC=$(sed -n '/^strip_gh_from_path() {/,/^}/p' aloop/bin/loop.sh)
-eval "$STRIP_FUNC"
+# Extract the setup_gh_block, cleanup_gh_block, and helper from loop.sh
+BLOCK_FUNC=$(sed -n '/^_gh_block_dir=""/,/^}/p' aloop/bin/loop.sh)
+eval "$BLOCK_FUNC"
+SETUP_FUNC=$(sed -n '/^setup_gh_block() {/,/^}/p' aloop/bin/loop.sh)
+eval "$SETUP_FUNC"
+CLEANUP_FUNC=$(sed -n '/^cleanup_gh_block() {/,/^}/p' aloop/bin/loop.sh)
+eval "$CLEANUP_FUNC"
 
 failed=0
-
-# --- Test 1: gh directory is removed from PATH ---
-fake_gh_dir="$(mktemp -d)"
-echo '#!/bin/bash' > "$fake_gh_dir/gh"
-chmod +x "$fake_gh_dir/gh"
-
 original_path="$PATH"
-PATH="$fake_gh_dir:$PATH"
-sanitized="$(strip_gh_from_path)"
 
-if echo "$sanitized" | tr ':' '\n' | grep -Fxq "$fake_gh_dir"; then
-    echo "FAIL: directory containing gh was not removed from PATH"
-    failed=1
+# --- Test 1: gh shim blocks gh execution ---
+block_dir="$(setup_gh_block)"
+saved="$PATH"
+PATH="$block_dir:$PATH"
+
+gh_output=$("$block_dir/gh" 2>&1) || true
+if echo "$gh_output" | grep -q "blocked by aloop"; then
+    echo "PASS: gh shim blocks execution with expected message"
 else
-    echo "PASS: directory containing gh is removed from PATH"
+    echo "FAIL: gh shim did not produce expected blocking message"
+    failed=1
+fi
+PATH="$saved"
+cleanup_gh_block
+
+# --- Test 2: provider binary co-located with gh still executes ---
+colocated_dir="$(mktemp -d)"
+echo '#!/bin/bash' > "$colocated_dir/gh"
+chmod +x "$colocated_dir/gh"
+cat > "$colocated_dir/claude" << 'SCRIPT'
+#!/bin/bash
+echo "provider-executed"
+SCRIPT
+chmod +x "$colocated_dir/claude"
+
+block_dir="$(setup_gh_block)"
+PATH="$block_dir:$colocated_dir:$original_path"
+
+provider_out="$(claude 2>/dev/null)"
+if [ "$provider_out" = "provider-executed" ]; then
+    echo "PASS: provider binary co-located with gh still executes"
+else
+    echo "FAIL: provider binary co-located with gh was not reachable (got: $provider_out)"
+    failed=1
 fi
 
-# --- Test 2: directories without gh are preserved ---
+# Verify gh is blocked (shim takes precedence)
+gh_exit=0
+gh 2>/dev/null || gh_exit=$?
+if [ "$gh_exit" -eq 127 ]; then
+    echo "PASS: gh is blocked even though real gh exists in co-located dir"
+else
+    echo "FAIL: gh was not blocked (exit code: $gh_exit)"
+    failed=1
+fi
+
+PATH="$original_path"
+cleanup_gh_block
+rm -rf "$colocated_dir"
+
+# --- Test 3: gh.exe shim also blocks ---
+block_dir="$(setup_gh_block)"
+if [ -x "$block_dir/gh.exe" ]; then
+    echo "PASS: gh.exe shim exists in block directory"
+else
+    echo "FAIL: gh.exe shim was not created"
+    failed=1
+fi
+cleanup_gh_block
+
+# --- Test 4: PATH with no gh directories is unchanged (minus prepended shim) ---
 safe_dir="$(mktemp -d)"
-PATH="$safe_dir:$fake_gh_dir:$original_path"
-sanitized="$(strip_gh_from_path)"
-
-if echo "$sanitized" | tr ':' '\n' | grep -Fxq "$safe_dir"; then
-    echo "PASS: directories without gh are preserved"
-else
-    echo "FAIL: safe directory was incorrectly removed from PATH"
-    failed=1
-fi
-
-# --- Test 3: gh.exe directory is also removed ---
-fake_ghexe_dir="$(mktemp -d)"
-echo '#!/bin/bash' > "$fake_ghexe_dir/gh.exe"
-chmod +x "$fake_ghexe_dir/gh.exe"
-
-PATH="$safe_dir:$fake_ghexe_dir:$original_path"
-sanitized="$(strip_gh_from_path)"
-
-if echo "$sanitized" | tr ':' '\n' | grep -Fxq "$fake_ghexe_dir"; then
-    echo "FAIL: directory containing gh.exe was not removed from PATH"
-    failed=1
-else
-    echo "PASS: directory containing gh.exe is removed from PATH"
-fi
-
-# --- Test 4: PATH with no gh directories is unchanged ---
 another_safe_dir="$(mktemp -d)"
 PATH="$safe_dir:$another_safe_dir"
-sanitized="$(strip_gh_from_path)"
+block_dir="$(setup_gh_block)"
+hardened="$block_dir:$PATH"
 
-if [ "$sanitized" = "$safe_dir:$another_safe_dir" ]; then
-    echo "PASS: PATH without gh directories is unchanged"
+if [ "$hardened" = "$block_dir:$safe_dir:$another_safe_dir" ]; then
+    echo "PASS: PATH structure preserved with shim prepended"
 else
-    echo "FAIL: PATH without gh directories was modified"
+    echo "FAIL: PATH structure was not preserved"
     failed=1
 fi
-# Restore PATH for remaining tests
+cleanup_gh_block
+rm -rf "$safe_dir" "$another_safe_dir"
 PATH="$original_path"
-rm -rf "$another_safe_dir"
 
 # --- Test 5: invoke_provider restores PATH after execution ---
-# Extract invoke_provider and its dependency
 INVOKE_FUNC=$(sed -n '/^invoke_provider() {/,/^}/p' aloop/bin/loop.sh)
 
-# We need supporting globals/functions for invoke_provider
 LOG_FILE="$(mktemp)"
 LAST_PROVIDER_ERROR=""
 CLAUDE_MODEL="test"
 write_log_entry() { :; }
 
-# Create a fake provider that records PATH
 fake_provider_dir="$(mktemp -d)"
 cat > "$fake_provider_dir/claude" << 'SCRIPT'
 #!/bin/bash
-# Write current PATH to a marker file so the test can inspect it
 echo "$PATH" > "${ALOOP_TEST_PATH_MARKER}"
 exit 0
 SCRIPT
 chmod +x "$fake_provider_dir/claude"
 
-# Set up PATH with both fake gh and fake provider
-PATH="$fake_provider_dir:$fake_gh_dir:$original_path"
+# Put a real gh alongside the provider to test co-location
+echo '#!/bin/bash' > "$fake_provider_dir/gh"
+chmod +x "$fake_provider_dir/gh"
+
+PATH="$fake_provider_dir:$original_path"
 pre_invoke_path="$PATH"
 export ALOOP_TEST_PATH_MARKER="$(mktemp)"
 
 eval "$INVOKE_FUNC"
 invoke_provider "claude" "test prompt" >/dev/null 2>/dev/null
 
-# Check that PATH was restored after invoke_provider returned
 if [ "$PATH" = "$pre_invoke_path" ]; then
     echo "PASS: PATH is restored after invoke_provider returns"
 else
@@ -101,17 +123,45 @@ else
     failed=1
 fi
 
-# Check that gh was NOT on PATH during provider execution
+# Check that gh shim was on PATH during provider execution (blocks gh)
 provider_saw_path="$(cat "$ALOOP_TEST_PATH_MARKER")"
-if echo "$provider_saw_path" | tr ':' '\n' | grep -Fxq "$fake_gh_dir"; then
-    echo "FAIL: provider could see gh on PATH during execution"
-    failed=1
+first_dir="$(echo "$provider_saw_path" | cut -d: -f1)"
+if [ -f "$first_dir/gh" ] && grep -q "blocked by aloop" "$first_dir/gh" 2>/dev/null; then
+    echo "PASS: gh shim was prepended during provider execution"
 else
-    echo "PASS: gh was stripped from PATH during provider execution"
+    echo "FAIL: gh shim was not found at start of PATH during provider execution"
+    failed=1
+fi
+
+# Check that the provider dir is STILL on PATH (not stripped)
+if echo "$provider_saw_path" | tr ':' '\n' | grep -Fxq "$fake_provider_dir"; then
+    echo "PASS: provider directory preserved on PATH during execution"
+else
+    echo "FAIL: provider directory was removed from PATH during execution"
+    failed=1
+fi
+
+# --- Test 6: PATH restoration when provider exits non-zero ---
+cat > "$fake_provider_dir/claude" << 'SCRIPT'
+#!/bin/bash
+exit 1
+SCRIPT
+chmod +x "$fake_provider_dir/claude"
+
+PATH="$fake_provider_dir:$original_path"
+pre_invoke_path="$PATH"
+
+invoke_provider "claude" "test prompt" >/dev/null 2>/dev/null || true
+
+if [ "$PATH" = "$pre_invoke_path" ]; then
+    echo "PASS: PATH is restored after provider exits non-zero"
+else
+    echo "FAIL: PATH was not restored after provider error (got: $PATH)"
+    failed=1
 fi
 
 # Cleanup
-rm -rf "$fake_gh_dir" "$fake_ghexe_dir" "$safe_dir" "$fake_provider_dir"
+rm -rf "$fake_provider_dir"
 rm -f "$LOG_FILE" "$LOG_FILE.raw" "$ALOOP_TEST_PATH_MARKER"
 PATH="$original_path"
 

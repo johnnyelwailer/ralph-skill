@@ -681,20 +681,29 @@ stop_dashboard() {
 # PROVIDER INVOCATION
 # ============================================================================
 
-strip_gh_from_path() {
-    local IFS=':'
-    local new_path=""
-    for dir in $PATH; do
-        if [ -x "$dir/gh" ] || [ -x "$dir/gh.exe" ]; then
-            continue
-        fi
-        if [ -n "$new_path" ]; then
-            new_path="$new_path:$dir"
-        else
-            new_path="$dir"
-        fi
-    done
-    echo "$new_path"
+_gh_block_dir=""
+setup_gh_block() {
+    if [ -n "$_gh_block_dir" ]; then
+        echo "$_gh_block_dir"
+        return
+    fi
+    _gh_block_dir="$(mktemp -d)"
+    cat > "$_gh_block_dir/gh" << 'GHBLOCK'
+#!/bin/sh
+echo "gh: blocked by aloop PATH hardening" >&2
+exit 127
+GHBLOCK
+    chmod +x "$_gh_block_dir/gh"
+    # Also block gh.exe on Windows/MSYS
+    cp "$_gh_block_dir/gh" "$_gh_block_dir/gh.exe"
+    chmod +x "$_gh_block_dir/gh.exe"
+    echo "$_gh_block_dir"
+}
+cleanup_gh_block() {
+    if [ -n "$_gh_block_dir" ] && [ -d "$_gh_block_dir" ]; then
+        rm -rf "$_gh_block_dir"
+        _gh_block_dir=""
+    fi
 }
 
 invoke_provider() {
@@ -703,9 +712,13 @@ invoke_provider() {
     local tmp_stderr
     tmp_stderr=$(mktemp)
 
-    # PATH hardening: strip gh from PATH during provider execution
+    # PATH hardening: prepend gh-blocking shim directory so gh resolves to a
+    # non-functional wrapper while provider binaries in the same directories
+    # remain reachable.
+    local gh_block_dir
+    gh_block_dir="$(setup_gh_block)"
     local saved_path="$PATH"
-    PATH="$(strip_gh_from_path)"
+    PATH="$gh_block_dir:$PATH"
     export PATH
     trap 'PATH="$saved_path"; export PATH' RETURN
 
@@ -1121,6 +1134,7 @@ echo ""
 cleanup() {
     local reason="${1:-interrupted}"
     stop_dashboard
+    cleanup_gh_block
     echo ""
     write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "$reason"
     write_log_entry "$reason" "iteration" "$ITERATION"
