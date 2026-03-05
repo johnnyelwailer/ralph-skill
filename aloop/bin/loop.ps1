@@ -178,11 +178,50 @@ function Invoke-WithSanitizedClaudeCodeEnv {
     }
 }
 
+$script:ghBlockDir = $null
+
+function Setup-GhBlock {
+    if ($script:ghBlockDir -and (Test-Path $script:ghBlockDir)) {
+        return $script:ghBlockDir
+    }
+    $dir = Join-Path ([System.IO.Path]::GetTempPath()) "aloop-ghblock-$PID"
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    # Create gh shim that blocks execution
+    $shimContent = @'
+@echo off
+echo gh: blocked by aloop PATH hardening 1>&2
+exit /b 127
+'@
+    Set-Content -Path (Join-Path $dir 'gh.cmd') -Value $shimContent -NoNewline
+    Set-Content -Path (Join-Path $dir 'gh.bat') -Value $shimContent -NoNewline
+    # Also create a bash-style shim for MSYS/Git Bash environments
+    $bashShim = "#!/bin/sh`necho `"gh: blocked by aloop PATH hardening`" >&2`nexit 127"
+    Set-Content -Path (Join-Path $dir 'gh') -Value $bashShim -NoNewline
+    Set-Content -Path (Join-Path $dir 'gh.exe') -Value $bashShim -NoNewline
+    $script:ghBlockDir = $dir
+    return $dir
+}
+
+function Cleanup-GhBlock {
+    if ($script:ghBlockDir -and (Test-Path $script:ghBlockDir -ErrorAction SilentlyContinue)) {
+        Remove-Item -Recurse -Force $script:ghBlockDir -ErrorAction SilentlyContinue
+        $script:ghBlockDir = $null
+    }
+}
+
 function Invoke-Provider {
     param(
         [string]$ProviderName,
         [string]$PromptContent
     )
+
+    # PATH hardening: prepend gh-blocking shim directory so gh resolves to a
+    # non-functional wrapper while provider binaries in the same directories
+    # remain reachable.
+    $ghBlockDir = Setup-GhBlock
+    $savedPath = $env:PATH
+    $env:PATH = "$ghBlockDir$([System.IO.Path]::PathSeparator)$env:PATH"
+    try {
 
     switch ($ProviderName) {
         'claude' {
@@ -269,6 +308,11 @@ function Invoke-Provider {
         default {
             throw "Unsupported provider '$ProviderName'"
         }
+    }
+
+    } finally {
+        # Restore original PATH after provider execution
+        $env:PATH = $savedPath
     }
 }
 
@@ -1367,6 +1411,7 @@ try {
         Start-Sleep -Seconds 3
     }
 } finally {
+    Cleanup-GhBlock
     Stop-DashboardProcess
     if ($cancelled) {
         Write-Host "`nInterrupted" -ForegroundColor Yellow

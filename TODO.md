@@ -3,16 +3,10 @@
 ## Current Phase: CLI Surface Unification + Security Boundary + Proof Pipeline
 
 ### In Progress
-- [x] [review] Gate 5: Fix regression baseline. `Invoke-Pester ./aloop/bin/loop.tests.ps1` fails at discovery with parse errors (e.g., `?.Source` syntax and string escaping syntax errors around line 1029), and `install.tests.ps1` has failing tests due to mismatched expectations. Restore full test suite green before continuing feature work. (priority: P0)
-- [x] [review] Gate 1: `aloop/bin/loop.sh` PATH hardening removes whole directories that contain `gh` (`strip_gh_from_path`), which can also remove provider binaries when co-located. Rework sanitization to block `gh` without dropping provider executables. (priority: P1)
-- [x] [review] Gate 2: `aloop/bin/loop_path_hardening.tests.sh` misses critical cases; add behavioral tests for (a) provider binary co-located with `gh` still executes, and (b) PATH restoration when provider exits non-zero. (priority: P1)
-- [x] [review] Gate 3: Add coverage-capable harness/reporting for shell branch paths and ensure touched runtime logic meets >=80% branch coverage. (priority: P2) [reviewed: gates 1-5 pass]
+- [x] Implement PATH hardening in `aloop/bin/loop.ps1`: prepend gh-blocking shim directory for provider execution windows and restore PATH afterward; 7 Pester regression tests. (priority: P1)
+- [ ] Fix `aloop/bin/loop.sh` RETURN-trap leakage in `invoke_provider` (trap persists beyond function return and can clobber PATH for later commands); add regression coverage. (priority: P1)
 
 ### Up Next
-- [x] Add PowerShell parity for degraded provider handling in `Resolve-HealthyProvider` (`provider_skipped_degraded`, `all_providers_degraded`) and add matching Pester coverage.
-- [x] Implement PATH hardening in `aloop/bin/loop.sh`: remove `gh` from PATH for provider execution windows and restore afterward; add regression tests.
-- [ ] Implement PATH hardening in `aloop/bin/loop.ps1`: remove `gh`/`gh.exe` PATH entries for provider execution windows and restore afterward; add regression tests. (priority: P1)
-- [ ] Fix `aloop/bin/loop.sh` RETURN-trap leakage in `invoke_provider` (trap persists beyond function return and can clobber PATH for later commands); add regression coverage. (priority: P1)
 - [ ] Add `aloop gh` command surface with hardcoded role policy scaffolding and audit log events (`gh_operation`, `gh_operation_denied`). (priority: P1)
 - [ ] Implement convention-file intake in `aloop/bin/loop.ps1` (`.aloop/requests/*.json` -> `aloop gh` -> `.aloop/responses/*.json` + processed archive). (priority: P1)
 - [ ] Implement convention-file intake in `aloop/bin/loop.sh` with PowerShell parity (ordering, responses, archival behavior). (priority: P1)
@@ -25,6 +19,7 @@
 - [ ] Add dashboard proof artifact rendering (image thumbnail/expand + text/code viewer). (priority: P2)
 - [ ] Implement `aloop start` CLI command (session creation, prompt copy, worktree/in-place, loop launch, active session registration). (priority: P2)
 - [ ] Implement `aloop setup` CLI command as first-class interactive discover/scaffold flow. (priority: P2)
+- [ ] Add `aloop discover --scope project|full` parity with Phase 2 schema expectations (project scope baseline + full provider/model enrichment). (priority: P2)
 - [ ] Refactor `/aloop:start` and `/aloop:setup` command/prompt files to thin wrappers that delegate to CLI-first `aloop start`/`aloop setup`. (priority: P2)
 - [ ] Add `aloop status --watch` live refresh mode (argument parsing, refresh loop, graceful exit). (priority: P2)
 - [ ] Implement `aloop start` auto-monitoring UX (`status --watch` terminal + dashboard/browser launch options from config). (priority: P2)
@@ -38,6 +33,12 @@
 - [ ] Run final acceptance sweep against `SPEC.md` checkboxes and refresh TODO completion states based on actual code/tests. (priority: P3)
 
 ### Completed
+- [x] [review] Gate 5: Fix regression baseline. `Invoke-Pester ./aloop/bin/loop.tests.ps1` fails at discovery with parse errors (e.g., `?.Source` syntax and string escaping syntax errors around line 1029), and `install.tests.ps1` has failing tests due to mismatched expectations. Restore full test suite green before continuing feature work. (priority: P0)
+- [x] [review] Gate 1: `aloop/bin/loop.sh` PATH hardening removes whole directories that contain `gh` (`strip_gh_from_path`), which can also remove provider binaries when co-located. Rework sanitization to block `gh` without dropping provider executables. (priority: P1)
+- [x] [review] Gate 2: `aloop/bin/loop_path_hardening.tests.sh` misses critical cases; add behavioral tests for (a) provider binary co-located with `gh` still executes, and (b) PATH restoration when provider exits non-zero. (priority: P1)
+- [x] [review] Gate 3: Add coverage-capable harness/reporting for shell branch paths and ensure touched runtime logic meets >=80% branch coverage. (priority: P2) [reviewed: gates 1-5 pass]
+- [x] Add PowerShell parity for degraded provider handling in `Resolve-HealthyProvider` (`provider_skipped_degraded`, `all_providers_degraded`) and add matching Pester coverage.
+- [x] Implement PATH hardening in `aloop/bin/loop.sh`: remove `gh` from PATH for provider execution windows and restore afterward; add regression tests.
 - [x] Unify the CLI entry surface so `aloop` routes through one implementation (`aloop.mjs` vs `dist/index.js`) before adding new subcommands; this removes command drift and keeps future behavior testable.
 - [x] Core project rename to `aloop` is reflected across runtime paths, command/prompt namespaces, and install target (`~/.aloop/`).
 - [x] `install.ps1` installs runtime loop scripts/templates and creates platform CLI shims (`aloop.cmd` and POSIX `aloop` wrapper).

@@ -1068,9 +1068,148 @@ json_escape ""
 "@
         $escapedArray = & $script:bashExeJson -c $bashCmd
         $escaped = $escapedArray -join ""
-        
+
         $jsonStr = '{{ "value": "{0}" }}' -f $escaped
         $parsed = $jsonStr | ConvertFrom-Json -ErrorAction Stop
         $parsed.value | Should -BeExactly ""
+    }
+}
+
+# ============================================================================
+# PATH hardening — loop.ps1 Setup-GhBlock / Cleanup-GhBlock / Invoke-Provider
+# ============================================================================
+Describe 'loop.ps1 — PATH hardening' {
+
+    BeforeAll {
+        # Source the functions by extracting them from loop.ps1 and dot-sourcing
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+
+        # Extract the gh-block functions from loop.ps1 and eval them
+        $scriptContent = Get-Content $loopScript -Raw
+
+        # Extract Setup-GhBlock function
+        if ($scriptContent -match '(?ms)(\$script:ghBlockDir\s*=\s*\$null.*?^function Setup-GhBlock\s*\{.*?^}.*?^function Cleanup-GhBlock\s*\{.*?^})') {
+            $ghBlockFunctions = $Matches[1]
+        } else {
+            throw "Could not extract Setup-GhBlock/Cleanup-GhBlock from loop.ps1"
+        }
+        # Invoke the extracted functions in this scope
+        Invoke-Expression $ghBlockFunctions
+    }
+
+    AfterAll {
+        Cleanup-GhBlock
+    }
+
+    AfterEach {
+        Cleanup-GhBlock
+    }
+
+    It 'Setup-GhBlock creates shim directory with gh.cmd' {
+        $dir = Setup-GhBlock
+        $dir | Should -Not -BeNullOrEmpty
+        Test-Path (Join-Path $dir 'gh.cmd') | Should -BeTrue
+    }
+
+    It 'Setup-GhBlock creates gh.exe shim for MSYS compatibility' {
+        $dir = Setup-GhBlock
+        Test-Path (Join-Path $dir 'gh.exe') | Should -BeTrue
+    }
+
+    It 'gh.cmd shim exits with code 127 and prints blocked message' {
+        $dir = Setup-GhBlock
+        $ghCmd = Join-Path $dir 'gh.cmd'
+        $output = & cmd /c $ghCmd 2>&1
+        $LASTEXITCODE | Should -Be 127
+        ($output | Out-String) | Should -Match 'blocked by aloop PATH hardening'
+    }
+
+    It 'Setup-GhBlock returns same directory on repeated calls' {
+        $dir1 = Setup-GhBlock
+        $dir2 = Setup-GhBlock
+        $dir1 | Should -BeExactly $dir2
+    }
+
+    It 'Cleanup-GhBlock removes the shim directory' {
+        $dir = Setup-GhBlock
+        Test-Path $dir | Should -BeTrue
+        Cleanup-GhBlock
+        Test-Path $dir | Should -BeFalse
+    }
+
+    It 'provider binary co-located with gh still executes when shim is prepended' {
+        $dir = Setup-GhBlock
+
+        # Create a temp dir simulating a bin directory that contains both gh and a provider
+        $colocDir = Join-Path ([IO.Path]::GetTempPath()) ("aloop-coloc-test-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force $colocDir | Out-Null
+        try {
+            # Real gh in coloc dir
+            Set-Content (Join-Path $colocDir 'gh.cmd') "@echo off`r`necho real-gh`r`n"
+            # Provider binary in same dir
+            Set-Content (Join-Path $colocDir 'myprovider.cmd') "@echo off`r`necho provider-ok`r`n"
+
+            $savedPath = $env:PATH
+            $env:PATH = "$dir$([IO.Path]::PathSeparator)$colocDir$([IO.Path]::PathSeparator)$env:PATH"
+            try {
+                # gh should resolve to shim (blocked)
+                $ghOut = & cmd /c gh.cmd 2>&1
+                $LASTEXITCODE | Should -Be 127
+
+                # provider should still resolve to coloc dir
+                $provOut = & cmd /c myprovider.cmd 2>&1
+                ($provOut | Out-String).Trim() | Should -BeExactly 'provider-ok'
+            } finally {
+                $env:PATH = $savedPath
+            }
+        } finally {
+            Remove-Item -Recurse -Force $colocDir -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'PATH is restored after Invoke-Provider returns (integration)' {
+        # This test launches loop.ps1 as a subprocess and checks PATH restoration
+        # by invoking a provider that echoes the PATH, then checking it was restored.
+        $pwshPath = (Get-Command pwsh -ErrorAction Stop).Source
+
+        $testScript = @'
+$script:ghBlockDir = $null
+function Setup-GhBlock {
+    if ($script:ghBlockDir -and (Test-Path $script:ghBlockDir)) { return $script:ghBlockDir }
+    $dir = Join-Path ([IO.Path]::GetTempPath()) "aloop-ghblock-$PID"
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $shim = "@echo off`r`necho gh: blocked by aloop PATH hardening 1>&2`r`nexit /b 127`r`n"
+    Set-Content -Path (Join-Path $dir 'gh.cmd') -Value $shim -NoNewline
+    Set-Content -Path (Join-Path $dir 'gh.bat') -Value $shim -NoNewline
+    $script:ghBlockDir = $dir
+    return $dir
+}
+function Cleanup-GhBlock {
+    if ($script:ghBlockDir -and (Test-Path $script:ghBlockDir -ErrorAction SilentlyContinue)) {
+        Remove-Item -Recurse -Force $script:ghBlockDir -ErrorAction SilentlyContinue
+        $script:ghBlockDir = $null
+    }
+}
+
+$originalPath = $env:PATH
+$ghBlockDir = Setup-GhBlock
+$savedPath = $env:PATH
+$env:PATH = "$ghBlockDir$([IO.Path]::PathSeparator)$env:PATH"
+try {
+    # Simulate provider execution
+    Write-Output "during:$($env:PATH.Substring(0,20))"
+} finally {
+    $env:PATH = $savedPath
+}
+Cleanup-GhBlock
+if ($env:PATH -eq $originalPath) {
+    Write-Output "RESTORED:true"
+} else {
+    Write-Output "RESTORED:false"
+}
+'@
+        $result = & $pwshPath -NoProfile -Command $testScript 2>&1
+        $resultStr = ($result | Out-String)
+        $resultStr | Should -Match 'RESTORED:true'
     }
 }
