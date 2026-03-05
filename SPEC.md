@@ -31,20 +31,25 @@ Rebrand the entire project from "ralph" to "aloop" (agent loop), and replace the
 - `aloop active` — list active sessions
 
 ## Non-Goals
-- npm publish / package.json (additive later)
+- Public npm publish is out of scope (local package.json/build tooling is allowed)
 - Repo rename on GitHub (separate, GitHub handles redirects)
 - Changing loop.ps1/loop.sh internal logic (they're path-agnostic)
 - Backward compatibility with `~/.ralph/` (greenfield, no existing users)
 - Migration tooling from ralph → aloop installs
 
 ## Constraints
-- **Zero npm dependencies** — Node.js built-ins only (crypto, child_process, fs, path, os)
-- **`.mjs` extension** — native ESM without package.json
-- **No build step** — plain JS files
+- **Loop runtime portability** — `loop.ps1`/`loop.sh` remain shell-native and must not require Node.js to execute the core loop cycle
+- **Stable `.mjs` entrypoint** — `aloop/cli/aloop.mjs` remains the primary CLI entrypoint and must support core machine tasks (`resolve`, `discover`, `scaffold`, `status`, `active`, `stop`)
+- **TypeScript/React pipeline allowed** — `aloop/cli/src` and `aloop/cli/dashboard` may use TypeScript, React, and npm dependencies for advanced CLI/dashboard surfaces
+- **Build step allowed where needed** — bundling/transpilation is allowed for dashboard/backend assets as long as installed runtime entrypoints remain stable
 - **Config stays YAML** — shell-friendly for loop.sh/loop.ps1 parsing
 - **Runtime state stays JSON** — active.json, status.json, session state
 - **`git mv` for renames** — preserve file history through the rename
 - **Clean break** — no migration from `~/.ralph/`, no backward compat shims
+
+## Architecture Decision (2026-03-05)
+
+To resolve spec-vs-code drift, this spec adopts option (b): keep the existing TypeScript/React build pipeline and require parity through the stable `aloop.mjs` entrypoint for core workflows.
 
 ## Acceptance Criteria
 
@@ -86,7 +91,9 @@ Rebrand the entire project from "ralph" to "aloop" (agent loop), and replace the
 
 | Layer | Runs where | Tech | Deps |
 |-------|-----------|------|------|
-| `aloop` CLI (discover, scaffold, resolve) | Developer machine | Node.js `.mjs` | Node.js |
+| `aloop` CLI core (`resolve/discover/scaffold/status/active/stop`) | Developer machine | Node.js `.mjs` (`aloop.mjs` + `lib/*.mjs`) | Node.js built-ins |
+| `aloop` CLI extended commands + backend | Developer machine | TypeScript bundled for Node.js | npm dependencies allowed |
+| Dashboard frontend | Browser (launched from developer machine) | React + TypeScript + Vite | npm dependencies allowed |
 | Loop scripts (plan-build-review cycle) | Anywhere — containers, sandboxes, CI | `loop.ps1` / `loop.sh` | Shell + git + provider CLI |
 
 ---
@@ -408,6 +415,493 @@ If the same phase fails `MAX_PHASE_RETRIES` times consecutively:
 - [ ] Steering resets cycle position to 0 (plan)
 - [ ] After `MAX_PHASE_RETRIES` consecutive failures on same phase, advance anyway with `phase_retry_exhausted` log
 - [ ] Both `loop.ps1` and `loop.sh` implement the same retry-same-phase semantics
+
+---
+
+## Proof-of-Work Phase
+
+### Concept
+
+A new loop phase (`proof`) where a dedicated agent autonomously decides what evidence to generate for the work completed in the preceding build iterations. The proof agent is not told what to prove via keyword matching or hardcoded rules — it inspects the actual work (TODO.md, commits, changed files, SPEC) and uses its judgment to determine what proof is possible, appropriate, and valuable.
+
+### Phase cycle
+
+```
+Previous:  plan → build × 3 → review
+New:       plan → build × 3 → proof → review
+
+5-step cycle becomes 6-step:
+  0: plan
+  1: build
+  2: build
+  3: build
+  4: proof    ← new
+  5: review
+```
+
+The proof phase runs exactly once per cycle, after builds and before review. It gets its own prompt template (`PROMPT_proof.md`) and its own iteration, just like plan/build/review/steer.
+
+### Proof Agent Behavior
+
+The proof agent has full autonomy over what to prove and how. It receives:
+
+**Input (via prompt + worktree context):**
+- `TODO.md` — what tasks were worked on this cycle
+- Recent commits — what files changed and why
+- `SPEC.md` — what acceptance criteria exist
+- Available tooling — what's installed (Playwright, curl, node, etc.)
+- Previous proof baselines — what the app looked like before (if any)
+
+**The agent decides:**
+
+1. **What needs proof** — inspects the work and determines which deliverables have provable, observable output. Could be UI screenshots, API responses, CLI output captures, test result summaries, build artifacts, accessibility reports — whatever is appropriate.
+
+2. **What proof is possible** — considers what tooling is available. If Playwright is installed and there's a frontend, screenshots are possible. If it's a CLI tool, output captures. If it's a library, test output. If nothing is provable (pure refactoring, config changes), the agent says "nothing to prove" and the phase completes as a skip.
+
+3. **How to generate it** — the agent runs the actual commands: launches servers, runs Playwright, captures screenshots, diffs against baselines, saves artifacts. It uses whatever tools make sense.
+
+4. **What to skip** — not everything needs proof. The agent explicitly notes what it chose not to prove and why.
+
+**Output:**
+
+The agent writes artifacts to the session directory and produces a manifest:
+
+```
+~/.aloop/sessions/<session-id>/
+  artifacts/
+    iter-<N>/
+      proof-manifest.json
+      <agent-chosen artifact files>
+```
+
+### Proof Manifest
+
+The manifest is structured so the reviewer and dashboard can consume it, but the content is entirely agent-determined:
+
+```json
+{
+  "iteration": 7,
+  "phase": "proof",
+  "provider": "copilot",
+  "timestamp": "2026-03-04T12:00:00Z",
+  "summary": "Captured 3 screenshots of the redesigned dashboard layout and verified API health endpoint returns valid JSON.",
+  "artifacts": [
+    {
+      "type": "screenshot",
+      "path": "dashboard-main.png",
+      "description": "Dashboard main view showing dense layout with TODO, log, and health panels",
+      "metadata": { "viewport": "1920x1080", "url": "http://localhost:3000" }
+    },
+    {
+      "type": "visual_diff",
+      "path": "dashboard-main-diff.png",
+      "description": "Pixel diff against previous baseline — 12.3% change, all in the log panel area",
+      "metadata": { "baseline": "baselines/dashboard-main.png", "diff_percentage": 12.3 }
+    },
+    {
+      "type": "api_response",
+      "path": "health-endpoint.json",
+      "description": "GET /api/state returns valid JSON with session status and provider health",
+      "metadata": { "status_code": 200, "content_type": "application/json" }
+    }
+  ],
+  "skipped": [
+    {
+      "task": "Add provider health file locking in loop.ps1",
+      "reason": "PowerShell script internals — no observable external output to capture"
+    }
+  ],
+  "baselines_updated": ["dashboard-main.png"]
+}
+```
+
+The `type` field is free-form — the agent chooses whatever artifact types make sense. Common types might include `screenshot`, `visual_diff`, `api_response`, `cli_output`, `test_summary`, `accessibility_snapshot`, `video`, but the agent is not limited to these.
+
+### Baseline Management
+
+Baselines are stored per-session and updated when the reviewer approves:
+
+```
+artifacts/
+  baselines/
+    dashboard-main.png      ← updated after review approval
+    calendar-view.png
+```
+
+- **First proof run**: No baselines exist. Agent captures initial screenshots, these become the baselines.
+- **Subsequent runs**: Agent diffs against baselines. Large diffs are noted in the manifest.
+- **After review approval**: Current screenshots replace baselines (harness copies them).
+- **After review rejection**: Baselines stay as-is. Next build + proof cycle generates new screenshots to compare against the unchanged baselines.
+
+### Dashboard Integration
+
+Proof artifacts display inline in the dashboard log view:
+
+```
+Log:
+  20:06 build  codex   ✓ 8bc4d21  feat: dense layout
+  20:10 proof  copilot ✓ 3 artifacts                  ← expandable
+       ┌──────────────────────────────────────────┐
+       │ 📷 dashboard-main.png    1920×1080       │
+       │ 📷 steer-panel.png       800×600         │
+       │ 📊 health-endpoint.json  200 OK          │
+       │                                          │
+       │ "Dashboard shows TODO panel with 6 tasks,│
+       │  log panel auto-scrolling, health badges" │
+       └──────────────────────────────────────────┘
+  20:14 review claude  ✓ approved (with proof)
+```
+
+**Image rendering**: Dashboard serves artifact images via `/api/artifacts/<iteration>/<filename>`. Screenshots display inline as thumbnails, expandable to full size.
+
+**Before/after comparison view**: When a screenshot has a corresponding baseline, the dashboard renders a comparison widget with three modes:
+
+```
+┌─ dashboard-main.png ──────────────────────────────────────────┐
+│  [Side by Side]  [Slider]  [Diff Overlay]     diff: 12.3%    │
+├────────────────────────┬──────────────────────────────────────┤
+│  Baseline (iter 4)     │  Current (iter 7)                    │
+│                        │                                      │
+│  ┌──────────────────┐  │  ┌──────────────────┐               │
+│  │ old layout       │  │  │ new dense layout  │               │
+│  │ with tabs        │  │  │ panels side by    │               │
+│  │                  │  │  │ side              │               │
+│  └──────────────────┘  │  └──────────────────┘               │
+│                        │                                      │
+└────────────────────────┴──────────────────────────────────────┘
+```
+
+Two comparison modes (toggle via buttons):
+- **Side by side** — baseline left, current right, synchronized scroll
+- **Slider** — single image with a draggable vertical divider (left = baseline, right = current). User drags to reveal differences.
+
+The comparison widget uses the baseline from the proof manifest's `metadata.baseline` field. If no baseline exists (first proof run), the widget shows only the current screenshot with a "No baseline — first capture" label.
+
+**History scrubbing**: If proof has been generated across multiple iterations, the comparison dropdown lets the user pick any previous iteration's screenshot as the baseline:
+
+```
+Compare against: [iter 4 (baseline)] ▼
+                  iter 4 (baseline)
+                  iter 2 (initial)
+```
+
+This lets the reviewer see how the UI evolved across the entire session, not just against the latest approved baseline.
+
+**shadcn components**:
+- `Tabs` for the three comparison modes
+- `Slider` (radix) for the draggable divider
+- `Select` for history scrubbing dropdown
+- `Dialog` for full-screen expanded view
+- `Badge` showing diff percentage (green <5%, yellow 5-20%, red >20%)
+
+**Non-image artifacts**: API responses, CLI output, test summaries render as syntax-highlighted code blocks.
+
+### Review Integration
+
+The reviewer receives the proof manifest alongside the code diff. This strengthens the review:
+
+- Reviewer can verify that screenshots match the spec's visual expectations
+- Reviewer can flag: "proof shows a blank page — build is broken, reject"
+- Reviewer can flag: "no proof was generated but this was a UI task — reject, force proof re-run"
+- Reviewer can flag: "visual diff is extremely large — flag for human review"
+
+If the proof agent decided "nothing to prove" but the reviewer disagrees, the reviewer rejects with a note explaining what proof was expected. The loop re-enters build → proof with the reviewer's feedback.
+
+### Proof Skip Protocol
+
+When the proof agent determines nothing is provable:
+
+```json
+{
+  "iteration": 7,
+  "phase": "proof",
+  "summary": "No provable artifacts this cycle. All completed tasks involve internal script logic with no observable external output.",
+  "artifacts": [],
+  "skipped": [
+    { "task": "Fix CLAUDECODE env var sanitization", "reason": "Internal env var handling" },
+    { "task": "Add file lock retry logic", "reason": "Concurrent file access internals" }
+  ]
+}
+```
+
+The reviewer sees this and can agree (approve) or disagree (reject with "actually, you could have tested the CLI output of `aloop status` after the health file changes").
+
+### Prompt Template
+
+`PROMPT_proof.md` instructs the agent:
+- Read TODO.md for recently completed tasks
+- Read recent commits for changed files
+- Inspect what tooling is available (Playwright, curl, etc.)
+- Decide what proof is valuable and possible
+- Generate artifacts, save to `<session-dir>/artifacts/iter-<N>/`
+- Write `proof-manifest.json`
+- If nothing to prove, write manifest with empty artifacts and explanations in skipped
+
+The prompt does NOT prescribe what types of proof to generate or what tools to use — that's the agent's judgment call.
+
+### Acceptance Criteria
+
+- [ ] Proof is a first-class phase in the loop cycle, with its own `PROMPT_proof.md` template
+- [ ] Phase cycle in `plan-build-review` mode becomes: plan → build × 3 → proof → review (6-step)
+- [ ] Proof agent autonomously decides what to prove, how, and whether to skip
+- [ ] Artifacts are saved to `~/.aloop/sessions/<session-id>/artifacts/iter-<N>/`
+- [ ] `proof-manifest.json` is written with structured artifact metadata and skip reasons
+- [ ] Baselines are stored per-session and updated after review approval
+- [ ] Dashboard renders proof artifacts inline in the log view (images as thumbnails, expandable)
+- [ ] Dashboard serves artifacts via `/api/artifacts/<iteration>/<filename>`
+- [ ] Reviewer receives proof manifest alongside code diff
+- [ ] Reviewer can reject if proof is missing for work that should have been proven
+- [ ] Proof skip is a valid outcome (empty artifacts, documented skip reasons)
+- [ ] Both `loop.ps1` and `loop.sh` support the proof phase in their cycle resolution
+
+---
+
+## CLAUDECODE Environment Variable Sanitization
+
+### Problem
+
+When aloop is invoked from inside a Claude Code session (which is the normal case — user types `/aloop:start` in Claude Code), the `CLAUDECODE` env var is set. This causes the Claude CLI provider to refuse to start: "Claude Code cannot be launched inside another Claude Code session." Currently only the repo's `ralph/bin/loop.ps1` has a manual `$env:CLAUDECODE = $null` at line 50. The worktree's renamed `aloop/bin/loop.ps1`, `aloop/bin/loop.sh`, and the aloop CLI itself all lack this fix.
+
+### Design
+
+Unset `CLAUDECODE` in every process entry point that may launch provider CLIs:
+
+| Location | Fix |
+|----------|-----|
+| `aloop/bin/loop.ps1` | `$env:CLAUDECODE = $null` at script top |
+| `aloop/bin/loop.sh` | `unset CLAUDECODE` at script top |
+| `aloop/cli/aloop.mjs` | `delete process.env.CLAUDECODE` at entry |
+| `Invoke-Provider` (loop.ps1) | Also unset in the provider invocation block (defense-in-depth, in case something re-sets it) |
+| `invoke_provider` (loop.sh) | Same — `unset CLAUDECODE` before each provider call |
+
+### Acceptance Criteria
+
+- [ ] `CLAUDECODE` is unset at the top of `aloop/bin/loop.ps1`
+- [ ] `CLAUDECODE` is unset at the top of `aloop/bin/loop.sh`
+- [ ] `CLAUDECODE` is deleted from `process.env` at `aloop/cli/aloop.mjs` entry
+- [ ] `Invoke-Provider` in loop.ps1 unsets `CLAUDECODE` before each provider call (defense-in-depth)
+- [ ] `invoke_provider` in loop.sh unsets `CLAUDECODE` before each provider call (defense-in-depth)
+- [ ] Loop launched from inside a Claude Code session can successfully invoke the `claude` provider
+
+---
+
+## UX Improvements: Dashboard, Start Flow, Auto-Monitoring
+
+### Problem
+
+After global install, the end-to-end experience has significant UX gaps:
+
+1. **No `/aloop:dashboard` command** — the dashboard exists as `aloop dashboard` CLI but agents can't discover or invoke it. No command file, no copilot prompt.
+2. **Start flow is agent-orchestrated, not CLI-driven** — `/aloop:start` is a 7-step flow where the agent manually creates dirs, copies prompts, creates worktrees, and assembles a `loop.ps1` invocation with ~10 flags. There's no single `aloop start` CLI command.
+3. **No auto-monitoring on loop start** — when a loop starts, nothing happens visually. No dashboard opens, no terminal pops up. The user has to manually run `/aloop:status` to check progress.
+4. **Dashboard UI is rudimentary** — basic tabs per session, minimal content per view, no information density, underuses shadcn/ui component library.
+
+### Design
+
+#### 1. `aloop start` CLI subcommand
+
+Move the entire start orchestration into the CLI so it's a single command:
+
+```bash
+aloop start [--mode plan-build-review] [--provider round-robin] [--max 30] [--in-place]
+```
+
+What it does internally:
+1. `aloop resolve` — find project, check config
+2. Generate session ID
+3. Create session dir + copy prompts
+4. Create git worktree (unless `--in-place`)
+5. Write `meta.json` + register in `active.json`
+6. Launch `loop.ps1`/`loop.sh` as a background process
+7. Auto-launch dashboard (see below)
+8. Print session summary + dashboard URL
+
+The agent command `/aloop:start` becomes a thin wrapper that calls `aloop start` with the right flags. No more 7-step orchestration.
+
+#### 2. `aloop setup` CLI subcommand
+
+Similarly, move the setup/scaffold flow into a single interactive CLI:
+
+```bash
+aloop setup [--spec SPEC.md] [--providers claude,codex] [--non-interactive]
+```
+
+Interactive mode:
+1. Run `aloop discover`
+2. Prompt user for spec file, providers, validation level
+3. Run `aloop scaffold` with gathered options
+4. Print confirmation
+
+Non-interactive mode (for CI/automation):
+- All options passed as flags, no prompts
+
+#### 3. Auto-monitoring popup on loop start
+
+When `aloop start` launches a loop, it should automatically open a monitoring window:
+
+**Option A: Dashboard auto-launch (preferred)**
+```
+aloop start
+  → spawns loop.ps1 in background
+  → spawns dashboard server on random available port
+  → opens browser to http://localhost:<port>
+  → prints "Dashboard: http://localhost:<port>"
+```
+
+Browser auto-open:
+- Windows: `Start-Process "http://localhost:$port"`
+- macOS: `open "http://localhost:$port"`
+- Linux: `xdg-open "http://localhost:$port"`
+
+**Option B: Terminal popup (fallback if no browser)**
+```
+aloop start
+  → spawns loop.ps1 in background
+  → opens new terminal window with live `aloop status --watch` (auto-refreshing)
+```
+
+Terminal spawn:
+- Windows: `Start-Process pwsh -ArgumentList "-NoExit -Command aloop status --watch"`
+- macOS: `osascript -e 'tell app "Terminal" to do script "aloop status --watch"'`
+- Linux: `x-terminal-emulator -e "aloop status --watch"`
+
+**Configuration:** `config.yml` option to control behavior:
+```yaml
+on_start:
+  monitor: dashboard   # dashboard | terminal | none
+  auto_open: true      # open browser/terminal automatically
+```
+
+#### 4. `/aloop:dashboard` command + copilot prompt
+
+Add the missing command files:
+
+**`claude/commands/aloop/dashboard.md`:**
+- Invokes `aloop dashboard --session <active-session-id>`
+- If multiple sessions, asks which one
+- Opens browser to dashboard URL
+
+**`copilot/prompts/aloop-dashboard.prompt.md`:**
+- Same behavior for Copilot
+
+#### 5. Multi-session switching (left sidebar)
+
+The current dashboard has a sessions sidebar that renders session cards, but it's non-functional — no click handler, no session switching. The backend is also single-session (bound to one `--session-dir` at startup).
+
+**Backend changes:**
+- Dashboard server reads `~/.aloop/active.json` on startup to discover all sessions
+- New API: `GET /api/state?session=<id>` — returns state for any session
+- New SSE: `GET /events?session=<id>` — reconnects live stream to a different session
+- Server watches `active.json` for new/removed sessions (auto-updates sidebar)
+- Default: serves the session it was launched for, but can switch to any active session
+
+**Frontend changes:**
+- Session cards in sidebar get `onClick` → sets `selectedSessionId` state
+- Selected session highlighted with ring/border
+- Switching session: refetch `/api/state?session=<id>`, reconnect SSE to `/events?session=<id>`
+- Session cards show: project name, iteration N/max, phase badge (color-coded), state badge, elapsed time
+- Active sessions at top, recent/completed sessions below (dimmed)
+- Running sessions show a pulsing indicator
+
+**Layout with sidebar:**
+```
+┌──────────────┬──────────────────────────────────────────────┐
+│  Sessions    │  Header: session name, iter, phase, progress │
+│              ├──────────────────────────────────────────────┤
+│  ● cal-v2    │                                              │
+│    iter 7/30 │  Main content area                           │
+│    build     │  (TODO + Log + Health + Commits)             │
+│              │                                              │
+│  ○ ralph-sk  │                                              │
+│    completed │                                              │
+│    115 iters │                                              │
+│              │                                              │
+│  ○ api-svc   │                                              │
+│    iter 3/20 │                                              │
+│    plan      ├──────────────────────────────────────────────┤
+│              │  Steer: [                        ] Send      │
+│              │  [ Stop ]                                    │
+└──────────────┴──────────────────────────────────────────────┘
+```
+
+#### 6. Dashboard UI redesign
+
+The current dashboard uses basic shadcn components with tabs per section. Redesign for information density:
+
+**Layout: Single-page dense view (no tab switching for core info)**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  🔄 Session: cal-v2-20260302  │  iter 7/30  │  ■■■■□ 23%  │
+│  Provider: codex (healthy)     │  Phase: build │  3m ago    │
+├──────────────────────────┬──────────────────────────────────┤
+│  TODO.md (live)          │  Log (live, auto-scroll)         │
+│                          │                                  │
+│  ✅ Setup base component │  19:53 plan   claude  ✗ exit 1  │
+│  ✅ Add state management │  19:54 build  codex   ✓ 2fb5095 │
+│  🔨 Wire API integration │  19:58 build  gemini  ✗ model   │
+│  ☐ Add error handling    │  20:02 build  copilot ✓ a3f1bc2 │
+│  ☐ Write tests           │  20:06 review codex   ✓ approve │
+│  ☐ Update docs           │  20:10 build  claude  ✓ 8bc4d21 │
+│                          │                                  │
+├──────────────────────────┼──────────────────────────────────┤
+│  Provider Health         │  Recent Commits                  │
+│                          │                                  │
+│  claude  ● healthy  2m   │  8bc4d21 feat: wire API calls    │
+│  codex   ● healthy  1m   │  a3f1bc2 fix: null check on resp │
+│  gemini  ◐ cooldown 8m   │  2fb5095 feat: add state mgmt   │
+│  copilot ● healthy  4m   │  1a2b3c4 chore: initial plan    │
+│                          │                                  │
+├──────────────────────────┴──────────────────────────────────┤
+│  Steer: [                                            ] Send │
+│  [ Stop Session ]                                           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key changes from current dashboard:**
+- **No tab switching for core info** — TODO, log, health, commits all visible simultaneously
+- **Live TODO.md** — rendered inline with checkboxes, current task highlighted
+- **Compact log** — one line per iteration: timestamp, phase, provider, result (✓/✗), commit hash or error
+- **Provider health badges** — inline colored dots, time since last success
+- **Recent commits** — scrolling list with hash + subject
+- **Steer input** — always visible at bottom, not hidden in a tab
+- **Progress bar** — visual at top showing tasks completed percentage
+- **Phase indicator** — color-coded (plan=purple, build=yellow, review=cyan)
+
+**Advanced shadcn components to use:**
+- `Sheet` / `Drawer` — for expanded log view or full commit diff
+- `Collapsible` — for TODO sections (In Progress / Up Next / Completed)
+- `Progress` — for task completion bar
+- `HoverCard` — hover on commit hash to see diff summary
+- `Tooltip` — hover on provider health for failure details
+- `Command` (cmdk) — keyboard-driven steer/stop actions
+- `Sonner` (toast) — notifications for phase transitions, stuck alerts
+- `ResizablePanel` — user can resize the TODO vs Log panels
+- `ScrollArea` — smooth scrolling for log and commits
+
+**Real-time updates via SSE:**
+- TODO.md changes → re-render task list
+- New log entry → append to log panel, auto-scroll
+- Provider health change → update badge
+- New commit → prepend to commits list
+- Phase transition → update header, flash indicator
+- Stuck alert → toast notification
+
+### Acceptance Criteria
+
+- [ ] `aloop start` CLI command handles full session setup + loop launch in a single invocation
+- [ ] `aloop setup` CLI command handles interactive config creation in a single invocation
+- [ ] `aloop start` auto-launches dashboard and opens browser (configurable via `on_start` in config.yml)
+- [ ] `/aloop:start` agent command delegates to `aloop start` CLI (thin wrapper)
+- [ ] `/aloop:setup` agent command delegates to `aloop setup` CLI (thin wrapper)
+- [ ] `/aloop:dashboard` command file exists in `claude/commands/aloop/`
+- [ ] `aloop-dashboard.prompt.md` exists in `copilot/prompts/`
+- [ ] Dashboard shows TODO, log, health, commits, steer in a single dense view (no tabs for core info)
+- [ ] Dashboard updates in real-time via SSE for all state changes
+- [ ] Dashboard uses advanced shadcn components (ResizablePanel, HoverCard, Collapsible, Command, Sonner)
+- [ ] Steer input is always visible (not behind a tab)
+- [ ] Progress bar and phase indicator visible in dashboard header
+- [ ] `aloop status --watch` provides terminal-based live monitoring (auto-refresh)
 
 ---
 
