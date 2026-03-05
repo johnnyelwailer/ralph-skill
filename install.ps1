@@ -521,14 +521,6 @@ Copy-TreeItem `
 Write-Host ""
 Write-Host "Installing CLI and dashboard..." -ForegroundColor White
 Copy-TreeItem `
-    -Source (Join-Path $scriptDir "$skillName\cli\aloop.mjs") `
-    -Destination (Join-Path $aloopDir "cli\aloop.mjs") `
-    -Label "aloop.mjs"
-Copy-TreeItem `
-    -Source (Join-Path $scriptDir "$skillName\cli\lib") `
-    -Destination (Join-Path $aloopDir "cli\lib") `
-    -Label "cli/lib"
-Copy-TreeItem `
     -Source (Join-Path $scriptDir "$skillName\cli\dist") `
     -Destination (Join-Path $aloopDir "cli\dist") `
     -Label "cli/dist"
@@ -576,12 +568,12 @@ $shShim  = Join-Path $aloopDir "bin\aloop"
 
 $cmdShimContent = @'
 @echo off
-node "%~dp0..\cli\aloop.mjs" %*
+node "%~dp0..\cli\dist\index.js" %*
 '@
 
 $shShimContent = @'
 #!/bin/sh
-exec node "$(dirname "$0")/../cli/aloop.mjs" "$@"
+exec node "$(dirname "$0")/../cli/dist/index.js" "$@"
 '@
 
 foreach ($shim in @(

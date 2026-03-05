@@ -4,11 +4,11 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-export function resolveHomeDir(explicitHomeDir) {
-  return path.resolve(explicitHomeDir ?? os.homedir()).replace(/[\\/]+$/, '');
+export function resolveHomeDir(explicitHomeDir?: string): string {
+  return path.resolve(explicitHomeDir ?? os.homedir()).replace(/[\/]+$/, '');
 }
 
-async function readJsonFile(filePath) {
+async function readJsonFile(filePath: string): Promise<any> {
   if (!existsSync(filePath)) return null;
   try {
     const content = await readFile(filePath, 'utf8');
@@ -18,46 +18,34 @@ async function readJsonFile(filePath) {
   }
 }
 
-async function writeJsonFile(filePath, data) {
+async function writeJsonFile(filePath: string, data: any): Promise<void> {
   await writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
 }
 
-/**
- * Read active sessions from ~/.aloop/active.json.
- * Returns an object mapping session-id → session entry (or empty object).
- */
-export async function readActiveSessions(homeDir) {
+export async function readActiveSessions(homeDir: string): Promise<Record<string, any>> {
   const activePath = path.join(homeDir, '.aloop', 'active.json');
   const data = await readJsonFile(activePath);
   if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
   return data;
 }
 
-/**
- * Read status.json for a session.
- * Returns null if not found.
- */
-export async function readSessionStatus(sessionDir) {
+export async function readSessionStatus(sessionDir: string): Promise<any> {
   const statusPath = path.join(sessionDir, 'status.json');
   return readJsonFile(statusPath);
 }
 
-/**
- * Read all provider health files from ~/.aloop/health/.
- * Returns an object mapping provider-name → health data.
- */
-export async function readProviderHealth(homeDir) {
+export async function readProviderHealth(homeDir: string): Promise<Record<string, any>> {
   const healthDir = path.join(homeDir, '.aloop', 'health');
   if (!existsSync(healthDir)) return {};
 
-  let files;
+  let files: string[];
   try {
     files = await readdir(healthDir);
   } catch {
     return {};
   }
 
-  const health = {};
+  const health: Record<string, any> = {};
   for (const file of files) {
     if (!file.endsWith('.json')) continue;
     const provider = file.slice(0, -5);
@@ -67,13 +55,23 @@ export async function readProviderHealth(homeDir) {
   return health;
 }
 
-/**
- * List active sessions with their status information.
- * Returns an array of session info objects.
- */
-export async function listActiveSessions(homeDir) {
+export interface SessionInfo {
+  session_id: string;
+  pid: number | null;
+  work_dir: string | null;
+  started_at: string | null;
+  provider: string | null;
+  mode: string | null;
+  state: string;
+  phase: string | null;
+  iteration: number | null;
+  stuck_count: number;
+  updated_at: string | null;
+}
+
+export async function listActiveSessions(homeDir: string): Promise<SessionInfo[]> {
   const active = await readActiveSessions(homeDir);
-  const sessions = [];
+  const sessions: SessionInfo[] = [];
 
   for (const [sessionId, entry] of Object.entries(active)) {
     const sessionDir = entry.session_dir ?? path.join(homeDir, '.aloop', 'sessions', sessionId);
@@ -96,7 +94,7 @@ export async function listActiveSessions(homeDir) {
   return sessions;
 }
 
-function isProcessAlive(pid) {
+function isProcessAlive(pid: number | null): boolean {
   if (!pid) return false;
   try {
     process.kill(pid, 0);
@@ -106,7 +104,7 @@ function isProcessAlive(pid) {
   }
 }
 
-function killProcess(pid) {
+function killProcess(pid: number): boolean {
   if (process.platform === 'win32') {
     const result = spawnSync('taskkill', ['/PID', String(pid), '/F'], { encoding: 'utf8' });
     return result.status === 0;
@@ -119,14 +117,7 @@ function killProcess(pid) {
   }
 }
 
-/**
- * Stop a session by session ID.
- * Kills the PID, updates status.json to stopped, removes from active.json,
- * and appends an entry to history.json.
- *
- * Returns { success, reason } where reason is set if not successful.
- */
-export async function stopSession(homeDir, sessionId) {
+export async function stopSession(homeDir: string, sessionId: string): Promise<{ success: boolean; reason?: string }> {
   const active = await readActiveSessions(homeDir);
   const entry = active[sessionId];
 

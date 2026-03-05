@@ -12,9 +12,9 @@ import {
   readProviderHealth,
   resolveHomeDir,
   stopSession,
-} from './session.mjs';
+} from './session.js';
 
-async function makeHomeDir(prefix) {
+async function makeHomeDir(prefix: string) {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), prefix));
   const homeDir = path.join(tempRoot, 'home');
   await mkdir(path.join(homeDir, '.aloop'), { recursive: true });
@@ -118,14 +118,14 @@ test('listActiveSessions merges active/session data with sensible fallbacks', as
   const sessions = await listActiveSessions(homeDir);
   assert.equal(sessions.length, 2);
 
-  const one = sessions.find((s) => s.session_id === sessionOne);
+  const one = sessions.find((s) => s.session_id === sessionOne)!;
   assert.equal(one.provider, 'codex');
   assert.equal(one.state, 'running');
   assert.equal(one.phase, 'build');
   assert.equal(one.iteration, 7);
   assert.equal(one.stuck_count, 2);
 
-  const two = sessions.find((s) => s.session_id === sessionTwo);
+  const two = sessions.find((s) => s.session_id === sessionTwo)!;
   assert.equal(two.provider, null);
   assert.equal(two.state, 'unknown');
   assert.equal(two.stuck_count, 0);
@@ -137,7 +137,7 @@ test('stopSession returns failure when session id is missing from active map', a
 
   const result = await stopSession(homeDir, 'does-not-exist');
   assert.equal(result.success, false);
-  assert.match(result.reason, /Session not found/);
+  assert.match(result.reason || '', /Session not found/);
 });
 
 test('stopSession skips status write when session directory does not exist', async () => {
@@ -193,11 +193,11 @@ test('stopSession uses non-windows kill path and writes stopped state/history', 
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
   const originalKill = process.kill;
   Object.defineProperty(process, 'platform', { value: 'linux' });
-  process.kill = ((pid, signal) => {
+  process.kill = ((pid: number, signal?: string | number) => {
     if (pid !== 333333) throw new Error('Unexpected pid');
     if (signal === 0 || signal === 'SIGTERM') return true;
     throw new Error('Unexpected signal');
-  });
+  }) as any;
 
   try {
     const result = await stopSession(homeDir, sessionId);
@@ -237,10 +237,10 @@ test('stopSession continues when pid is stale and isProcessAlive throws', async 
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
   const originalKill = process.kill;
   Object.defineProperty(process, 'platform', { value: 'linux' });
-  process.kill = ((pid, signal) => {
+  process.kill = ((pid: number, signal?: string | number) => {
     if (pid === 987654 && signal === 0) throw new Error('ESRCH');
     throw new Error('Unexpected signal');
-  });
+  }) as any;
 
   try {
     const result = await stopSession(homeDir, sessionId);
@@ -288,8 +288,10 @@ test('stopSession uses Windows taskkill path when platform is win32', { skip: pr
     assert.equal(result.success, true);
   } finally {
     try {
-      process.kill(child.pid, 0);
-      process.kill(child.pid, 'SIGKILL');
+      if (child.pid !== undefined) {
+        process.kill(child.pid, 0);
+        process.kill(child.pid, 'SIGKILL');
+      }
     } catch {
       // ignore: child is already dead
     }
@@ -324,15 +326,15 @@ test('stopSession returns failure when process kill fails and leaves state uncha
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
   const originalKill = process.kill;
   Object.defineProperty(process, 'platform', { value: 'linux' });
-  process.kill = ((pid, signal) => {
+  process.kill = ((pid: number, signal?: string | number) => {
     if (signal === 0) return true;
     throw new Error('EPERM');
-  });
+  }) as any;
 
   try {
     const result = await stopSession(homeDir, sessionId);
     assert.equal(result.success, false);
-    assert.match(result.reason, /Failed to stop session process/);
+    assert.match(result.reason || '', /Failed to stop session process/);
   } finally {
     process.kill = originalKill;
     if (originalPlatform) {

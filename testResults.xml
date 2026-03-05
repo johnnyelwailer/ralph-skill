@@ -1,169 +1,27 @@
 ﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
-<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="84" errors="0" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2026-02-27" time="11:36:26">
-  <environment nunit-version="2.5.8.0" os-version="10.0.26200" user-domain="NEXPLORE" clr-version="9.0.10" machine-name="NX-GM17GBWE" cwd="C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree" user="pj" platform="Microsoft Windows 11 Enterprise|C:\Windows|\Device\Harddisk0\Partition3" />
+<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="2" errors="0" failures="2" not-run="11" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2026-03-04" time="09:16:34">
+  <environment os-version="10.0.26200" cwd="C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree" nunit-version="2.5.8.0" machine-name="NX-GM17GBWE" clr-version="9.0.10" user="pj" user-domain="NEXPLORE" platform="Microsoft Windows 11 Enterprise|C:\Windows|\Device\Harddisk0\Partition3" />
   <culture-info current-culture="de-CH" current-uiculture="en-US" />
-  <test-suite type="TestFixture" name="Pester" executed="True" result="Success" success="True" time="32.2841" asserts="0" description="Pester">
+  <test-suite type="TestFixture" name="Pester" executed="True" result="Failure" success="False" time="5.5549" asserts="0" description="Pester">
     <results>
-      <test-suite type="TestFixture" name="C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\install.tests.ps1" executed="True" result="Success" success="True" time="32.2841" asserts="0" description="C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\install.tests.ps1">
+      <test-suite type="TestFixture" name="C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1" executed="True" result="Failure" success="False" time="5.5549" asserts="0" description="C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1">
         <results>
-          <test-suite type="TestFixture" name="Source-to-destination path mappings" executed="True" result="Success" success="True" time="1.4773" asserts="0" description="Source-to-destination path mappings">
+          <test-suite type="TestFixture" name="loop.ps1 — retry-same-phase behavioral" executed="True" result="Failure" success="False" time="2.3377" asserts="0" description="loop.ps1 — retry-same-phase behavioral">
             <results>
-              <test-suite type="TestFixture" name="Source-to-destination path mappings.Repo source directories referenced by installer exist on disk" executed="True" result="Success" success="True" time="0.6757" asserts="0" description="Source-to-destination path mappings.Repo source directories referenced by installer exist on disk">
-                <results>
-                  <test-case description="skill source: claude/skills/aloop/" name="Source-to-destination path mappings.Repo source directories referenced by installer exist on disk.skill source: claude/skills/aloop/" time="0.2896" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="command source: claude/commands/aloop/" name="Source-to-destination path mappings.Repo source directories referenced by installer exist on disk.command source: claude/commands/aloop/" time="0.0448" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="prompt source: copilot/prompts/" name="Source-to-destination path mappings.Repo source directories referenced by installer exist on disk.prompt source: copilot/prompts/" time="0.0201" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="runtime config source: aloop/config.yml" name="Source-to-destination path mappings.Repo source directories referenced by installer exist on disk.runtime config source: aloop/config.yml" time="0.0401" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="runtime bin source: aloop/bin/" name="Source-to-destination path mappings.Repo source directories referenced by installer exist on disk.runtime bin source: aloop/bin/" time="0.0398" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="runtime templates source: aloop/templates/" name="Source-to-destination path mappings.Repo source directories referenced by installer exist on disk.runtime templates source: aloop/templates/" time="0.0396" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="runtime cli source: aloop/cli/dist/" name="Source-to-destination path mappings.Repo source directories referenced by installer exist on disk.runtime cli source: aloop/cli/dist/" time="0.0411" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="runtime cli source: aloop/cli/aloop.mjs" name="Source-to-destination path mappings.Repo source directories referenced by installer exist on disk.runtime cli source: aloop/cli/aloop.mjs" time="0.0384" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-              <test-suite type="TestFixture" name="Source-to-destination path mappings.Command source contains exactly 5 command files per SPEC.md" executed="True" result="Success" success="True" time="0.896" asserts="0" description="Source-to-destination path mappings.Command source contains exactly 5 command files per SPEC.md">
-                <results>
-                  <test-case description="contains setup.md" name="Source-to-destination path mappings.Command source contains exactly 5 command files per SPEC.md.contains setup.md" time="0.02" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="contains start.md" name="Source-to-destination path mappings.Command source contains exactly 5 command files per SPEC.md.contains start.md" time="0.0366" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="contains status.md" name="Source-to-destination path mappings.Command source contains exactly 5 command files per SPEC.md.contains status.md" time="0.024" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="contains stop.md" name="Source-to-destination path mappings.Command source contains exactly 5 command files per SPEC.md.contains stop.md" time="0.0239" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="contains steer.md" name="Source-to-destination path mappings.Command source contains exactly 5 command files per SPEC.md.contains steer.md" time="0.0216" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="has exactly 5 command files (no extras, no missing)" name="Source-to-destination path mappings.Command source contains exactly 5 command files per SPEC.md.has exactly 5 command files (no extras, no missing)" time="0.0655" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-              <test-suite type="TestFixture" name="Source-to-destination path mappings.Copilot prompt source has expected .prompt.md files" executed="True" result="Success" success="True" time="1.0577" asserts="0" description="Source-to-destination path mappings.Copilot prompt source has expected .prompt.md files">
-                <results>
-                  <test-case description="has aloop-setup.prompt.md" name="Source-to-destination path mappings.Copilot prompt source has expected .prompt.md files.has aloop-setup.prompt.md" time="0.0204" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="has aloop-start.prompt.md" name="Source-to-destination path mappings.Copilot prompt source has expected .prompt.md files.has aloop-start.prompt.md" time="0.0187" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="has aloop-status.prompt.md" name="Source-to-destination path mappings.Copilot prompt source has expected .prompt.md files.has aloop-status.prompt.md" time="0.0225" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="has aloop-stop.prompt.md" name="Source-to-destination path mappings.Copilot prompt source has expected .prompt.md files.has aloop-stop.prompt.md" time="0.0238" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="has aloop-steer.prompt.md" name="Source-to-destination path mappings.Copilot prompt source has expected .prompt.md files.has aloop-steer.prompt.md" time="0.024" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="has exactly 5 .prompt.md files (no extras, no missing)" name="Source-to-destination path mappings.Copilot prompt source has expected .prompt.md files.has exactly 5 .prompt.md files (no extras, no missing)" time="0.0225" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-              <test-suite type="TestFixture" name="Source-to-destination path mappings.Runtime bin contains required scripts" executed="True" result="Success" success="True" time="1.1172" asserts="0" description="Source-to-destination path mappings.Runtime bin contains required scripts">
-                <results>
-                  <test-case description="has loop.ps1" name="Source-to-destination path mappings.Runtime bin contains required scripts.has loop.ps1" time="0.0182" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="has loop.sh" name="Source-to-destination path mappings.Runtime bin contains required scripts.has loop.sh" time="0.0181" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-              <test-suite type="TestFixture" name="Source-to-destination path mappings.Runtime templates contain all 4 prompt templates per SPEC.md" executed="True" result="Success" success="True" time="1.2498" asserts="0" description="Source-to-destination path mappings.Runtime templates contain all 4 prompt templates per SPEC.md">
-                <results>
-                  <test-case description="has PROMPT_plan.md" name="Source-to-destination path mappings.Runtime templates contain all 4 prompt templates per SPEC.md.has PROMPT_plan.md" time="0.0198" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="has PROMPT_build.md" name="Source-to-destination path mappings.Runtime templates contain all 4 prompt templates per SPEC.md.has PROMPT_build.md" time="0.0207" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="has PROMPT_review.md" name="Source-to-destination path mappings.Runtime templates contain all 4 prompt templates per SPEC.md.has PROMPT_review.md" time="0.0197" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="has PROMPT_steer.md" name="Source-to-destination path mappings.Runtime templates contain all 4 prompt templates per SPEC.md.has PROMPT_steer.md" time="0.0472" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-              <test-suite type="TestFixture" name="Source-to-destination path mappings.Copy-TreeItem calls in script wire correct source paths" executed="True" result="Success" success="True" time="1.4425" asserts="0" description="Source-to-destination path mappings.Copy-TreeItem calls in script wire correct source paths">
-                <results>
-                  <test-case description="skill source path is &quot;claude\skills\$skillName&quot;" name="Source-to-destination path mappings.Copy-TreeItem calls in script wire correct source paths.skill source path is &quot;claude\skills\$skillName&quot;" time="0.0242" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="command source path is &quot;claude\commands\$skillName&quot;" name="Source-to-destination path mappings.Copy-TreeItem calls in script wire correct source paths.command source path is &quot;claude\commands\$skillName&quot;" time="0.0204" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="prompt source path is &quot;copilot\prompts&quot;" name="Source-to-destination path mappings.Copy-TreeItem calls in script wire correct source paths.prompt source path is &quot;copilot\prompts&quot;" time="0.0231" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="runtime config source is &quot;$skillName\config.yml&quot;" name="Source-to-destination path mappings.Copy-TreeItem calls in script wire correct source paths.runtime config source is &quot;$skillName\config.yml&quot;" time="0.0216" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="runtime bin source is &quot;$skillName\bin&quot;" name="Source-to-destination path mappings.Copy-TreeItem calls in script wire correct source paths.runtime bin source is &quot;$skillName\bin&quot;" time="0.0239" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="runtime templates source is &quot;$skillName\templates&quot;" name="Source-to-destination path mappings.Copy-TreeItem calls in script wire correct source paths.runtime templates source is &quot;$skillName\templates&quot;" time="0.021" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="runtime cli source is &quot;$skillName\cli\dist&quot;" name="Source-to-destination path mappings.Copy-TreeItem calls in script wire correct source paths.runtime cli source is &quot;$skillName\cli\dist&quot;" time="0.0225" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="runtime cli aloop.mjs source is &quot;$skillName\cli\aloop.mjs&quot;" name="Source-to-destination path mappings.Copy-TreeItem calls in script wire correct source paths.runtime cli aloop.mjs source is &quot;$skillName\cli\aloop.mjs&quot;" time="0.0253" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-            </results>
-          </test-suite>
-          <test-suite type="TestFixture" name="Command and prompt CLI entrypoint consistency" executed="True" result="Success" success="True" time="1.6195" asserts="0" description="Command and prompt CLI entrypoint consistency">
-            <results>
-              <test-case description="uses the installed aloop.mjs entrypoint for all node-based CLI invocations" name="Command and prompt CLI entrypoint consistency.uses the installed aloop.mjs entrypoint for all node-based CLI invocations" time="0.0975" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="keeps setup/start docs wired to fallback commands via aloop.mjs" name="Command and prompt CLI entrypoint consistency.keeps setup/start docs wired to fallback commands via aloop.mjs" time="0.0357" asserts="0" success="True" result="Success" executed="True" />
-            </results>
-          </test-suite>
-          <test-suite type="TestFixture" name="Harness definitions" executed="True" result="Success" success="True" time="2.0754" asserts="0" description="Harness definitions">
-            <results>
-              <test-suite type="TestFixture" name="Harness definitions.Four harnesses with correct id/order and HasCommands flags" executed="True" result="Success" success="True" time="0.0762" asserts="0" description="Harness definitions.Four harnesses with correct id/order and HasCommands flags">
-                <results>
-                  <test-case description="defines ids: claude, codex, copilot, agents (in order)" name="Harness definitions.Four harnesses with correct id/order and HasCommands flags.defines ids: claude, codex, copilot, agents (in order)" time="0.026" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="HasCommands = $true only for claude and codex (first two)" name="Harness definitions.Four harnesses with correct id/order and HasCommands flags.HasCommands = $true only for claude and codex (first two)" time="0.0434" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-              <test-suite type="TestFixture" name="Harness definitions.Skill destinations target ~/.{harness}/skills/$skillName for each harness" executed="True" result="Success" success="True" time="0.1616" asserts="0" description="Harness definitions.Skill destinations target ~/.{harness}/skills/$skillName for each harness">
-                <results>
-                  <test-case description="claude  -&gt; ~/.claude/skills/$skillName" name="Harness definitions.Skill destinations target ~/.{harness}/skills/$skillName for each harness.claude  -&gt; ~/.claude/skills/$skillName" time="0.0201" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="codex   -&gt; ~/.codex/skills/$skillName" name="Harness definitions.Skill destinations target ~/.{harness}/skills/$skillName for each harness.codex   -&gt; ~/.codex/skills/$skillName" time="0.0191" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="copilot -&gt; ~/.copilot/skills/$skillName" name="Harness definitions.Skill destinations target ~/.{harness}/skills/$skillName for each harness.copilot -&gt; ~/.copilot/skills/$skillName" time="0.0208" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="agents  -&gt; ~/.agents/skills/$skillName" name="Harness definitions.Skill destinations target ~/.{harness}/skills/$skillName for each harness.agents  -&gt; ~/.agents/skills/$skillName" time="0.0158" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-              <test-suite type="TestFixture" name="Harness definitions.Command destinations target only claude and codex" executed="True" result="Success" success="True" time="0.2817" asserts="0" description="Harness definitions.Command destinations target only claude and codex">
-                <results>
-                  <test-case description="claude -&gt; ~/.claude/commands/$skillName" name="Harness definitions.Command destinations target only claude and codex.claude -&gt; ~/.claude/commands/$skillName" time="0.037" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="codex  -&gt; ~/.codex/commands/$skillName" name="Harness definitions.Command destinations target only claude and codex.codex  -&gt; ~/.codex/commands/$skillName" time="0.0204" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="copilot harness sets CmdDest = $null" name="Harness definitions.Command destinations target only claude and codex.copilot harness sets CmdDest = $null" time="0.0343" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="agents harness sets CmdDest = $null" name="Harness definitions.Command destinations target only claude and codex.agents harness sets CmdDest = $null" time="0.0187" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-              <test-suite type="TestFixture" name="Harness definitions.Runtime destination is ~/.aloop/" executed="True" result="Success" success="True" time="0.4491" asserts="0" description="Harness definitions.Runtime destination is ~/.aloop/">
-                <results>
-                  <test-case description="aloopDir resolves to $HOME/.aloop" name="Harness definitions.Runtime destination is ~/.aloop/.aloopDir resolves to $HOME/.aloop" time="0.0211" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="config copies into $aloopDir" name="Harness definitions.Runtime destination is ~/.aloop/.config copies into $aloopDir" time="0.0201" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="bin copies into $aloopDir" name="Harness definitions.Runtime destination is ~/.aloop/.bin copies into $aloopDir" time="0.0205" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="templates copy into $aloopDir" name="Harness definitions.Runtime destination is ~/.aloop/.templates copy into $aloopDir" time="0.0201" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="cli copies into $aloopDir\cli\dist" name="Harness definitions.Runtime destination is ~/.aloop/.cli copies into $aloopDir\cli\dist" time="0.0187" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="aloop.mjs copies into $aloopDir\cli" name="Harness definitions.Runtime destination is ~/.aloop/.aloop.mjs copies into $aloopDir\cli" time="0.0199" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="aloop.cmd shim is created in $aloopDir\bin" name="Harness definitions.Runtime destination is ~/.aloop/.aloop.cmd shim is created in $aloopDir\bin" time="0.0195" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="aloop shim is created in $aloopDir\bin" name="Harness definitions.Runtime destination is ~/.aloop/.aloop shim is created in $aloopDir\bin" time="0.0184" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-            </results>
-          </test-suite>
-          <test-suite type="TestFixture" name="Post-install summary and usage text" executed="True" result="Success" success="True" time="2.6712" asserts="0" description="Post-install summary and usage text">
-            <results>
-              <test-suite type="TestFixture" name="Post-install summary and usage text.Installed-components block" executed="True" result="Success" success="True" time="0.2698" asserts="0" description="Post-install summary and usage text.Installed-components block">
-                <results>
-                  <test-case description="Skill line references all 4 harness directories" name="Post-install summary and usage text.Installed-components block.Skill line references all 4 harness directories" time="0.0579" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="Commands line lists exactly: setup, start, status, stop, steer" name="Post-install summary and usage text.Installed-components block.Commands line lists exactly: setup, start, status, stop, steer" time="0.0419" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="Commands line restricts to claude and codex (not copilot or agents)" name="Post-install summary and usage text.Installed-components block.Commands line restricts to claude and codex (not copilot or agents)" time="0.0292" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="Prompts line references VS Code and aloop-*.prompt.md" name="Post-install summary and usage text.Installed-components block.Prompts line references VS Code and aloop-*.prompt.md" time="0.0402" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="CLI line references $aloopDir\cli\" name="Post-install summary and usage text.Installed-components block.CLI line references $aloopDir\cli\" time="0.0456" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="Shims line references aloop.cmd and aloop" name="Post-install summary and usage text.Installed-components block.Shims line references aloop.cmd and aloop" time="0.0463" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-              <test-suite type="TestFixture" name="Post-install summary and usage text.Usage section — Claude Code / Codex commands" executed="True" result="Success" success="True" time="0.4313" asserts="0" description="Post-install summary and usage text.Usage section — Claude Code / Codex commands">
-                <results>
-                  <test-case description="has a Claude/Codex usage line" name="Post-install summary and usage text.Usage section — Claude Code / Codex commands.has a Claude/Codex usage line" time="0.0181" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="lists /setup command" name="Post-install summary and usage text.Usage section — Claude Code / Codex commands.lists /setup command" time="0.0175" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="lists /start command" name="Post-install summary and usage text.Usage section — Claude Code / Codex commands.lists /start command" time="0.0155" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="lists /status command" name="Post-install summary and usage text.Usage section — Claude Code / Codex commands.lists /status command" time="0.018" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="lists /stop command" name="Post-install summary and usage text.Usage section — Claude Code / Codex commands.lists /stop command" time="0.0229" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="lists /steer command" name="Post-install summary and usage text.Usage section — Claude Code / Codex commands.lists /steer command" time="0.0181" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-              <test-suite type="TestFixture" name="Post-install summary and usage text.Usage section — VS Code Copilot prompts" executed="True" result="Success" success="True" time="0.5867" asserts="0" description="Post-install summary and usage text.Usage section — VS Code Copilot prompts">
-                <results>
-                  <test-case description="has a Copilot usage line" name="Post-install summary and usage text.Usage section — VS Code Copilot prompts.has a Copilot usage line" time="0.0183" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="lists /aloop-setup" name="Post-install summary and usage text.Usage section — VS Code Copilot prompts.lists /aloop-setup" time="0.0184" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="lists /aloop-start" name="Post-install summary and usage text.Usage section — VS Code Copilot prompts.lists /aloop-start" time="0.0181" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="lists /aloop-status" name="Post-install summary and usage text.Usage section — VS Code Copilot prompts.lists /aloop-status" time="0.0185" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="lists /aloop-stop" name="Post-install summary and usage text.Usage section — VS Code Copilot prompts.lists /aloop-stop" time="0.019" asserts="0" success="True" result="Success" executed="True" />
-                  <test-case description="lists /aloop-steer" name="Post-install summary and usage text.Usage section — VS Code Copilot prompts.lists /aloop-steer" time="0.0182" asserts="0" success="True" result="Success" executed="True" />
-                </results>
-              </test-suite>
-            </results>
-          </test-suite>
-          <test-suite type="TestFixture" name="Stale directory cleanup" executed="True" result="Success" success="True" time="2.7174" asserts="0" description="Stale directory cleanup">
-            <results>
-              <test-case description="removes legacy .copilot/commands/aloop directory" name="Stale directory cleanup.removes legacy .copilot/commands/aloop directory" time="0.0195" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="removes legacy .agents/commands/aloop directory" name="Stale directory cleanup.removes legacy .agents/commands/aloop directory" time="0.0187" asserts="0" success="True" result="Success" executed="True" />
-            </results>
-          </test-suite>
-          <test-suite type="TestFixture" name="Installer behavioral branches" executed="True" result="Success" success="True" time="29.2337" asserts="0" description="Installer behavioral branches">
-            <results>
-              <test-case description="supports -DryRun path and reports dry-run mode in summary" name="Installer behavioral branches.supports -DryRun path and reports dry-run mode in summary" time="1.1784" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="supports -Force path and creates runtime/config targets" name="Installer behavioral branches.supports -Force path and creates runtime/config targets" time="1.6035" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="copies commands only for harnesses where HasCommands is true" name="Installer behavioral branches.copies commands only for harnesses where HasCommands is true" time="1.9995" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="covers no-harness summary variant for unknown harness values" name="Installer behavioral branches.covers no-harness summary variant for unknown harness values" time="1.1962" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="removes stale non-command harness command directories during install" name="Installer behavioral branches.removes stale non-command harness command directories during install" time="1.8161" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="covers CLI check branch when npm is unavailable" name="Installer behavioral branches.covers CLI check branch when npm is unavailable" time="8.3362" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="covers CLI auto-install dry-run branch when npm is available" name="Installer behavioral branches.covers CLI auto-install dry-run branch when npm is available" time="6.2211" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="skips VS Code prompt install when no VS Code user directory exists" name="Installer behavioral branches.skips VS Code prompt install when no VS Code user directory exists" time="1.2156" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="installs prompts for VS Code stable and skips VS Code Insiders when absent" name="Installer behavioral branches.installs prompts for VS Code stable and skips VS Code Insiders when absent" time="1.3066" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="CLI shims contain correct invocation path to aloop.mjs" name="Installer behavioral branches.CLI shims contain correct invocation path to aloop.mjs" time="1.537" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="failed plan retries same phase and only advances after plan success" name="loop.ps1 — retry-same-phase behavioral.failed plan retries same phase and only advances after plan success" time="1.1831" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected 'plan', but got $null.</message>
+                  <stack-trace>at $errors[0].mode | Should -Be 'plan', C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1:455
+at &lt;ScriptBlock&gt;, C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1:455</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="phase_retry_exhausted advances to next phase after max retries" name="loop.ps1 — retry-same-phase behavioral.phase_retry_exhausted advances to next phase after max retries" time="0.9863" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected the actual value to be greater than 0, but got 0.</message>
+                  <stack-trace>at ($entries | Where-Object { $_.event -eq 'phase_retry_exhausted' }).Count | Should -BeGreaterThan 0, C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1:470
+at &lt;ScriptBlock&gt;, C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1:470</stack-trace>
+                </failure>
+              </test-case>
             </results>
           </test-suite>
         </results>

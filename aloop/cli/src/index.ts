@@ -1,8 +1,12 @@
+import './sanitize.js';
 import { Command } from 'commander';
 import { resolveCommand } from './commands/resolve.js';
 import { discoverCommand } from './commands/discover.js';
 import { scaffoldCommand } from './commands/scaffold.js';
 import { dashboardCommand } from './commands/dashboard.js';
+import { statusCommand } from './commands/status.js';
+import { activeCommand } from './commands/active.js';
+import { stopCommand } from './commands/stop.js';
 
 const program = new Command();
 
@@ -50,5 +54,33 @@ program
   .option('--workdir <path>', 'Project work directory containing TODO.md and related docs')
   .option('--assets-dir <path>', 'Directory containing bundled dashboard frontend assets')
   .action(dashboardCommand);
+
+program
+  .command('status')
+  .description('Show all active sessions and provider health')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(statusCommand);
+
+program
+  .command('active')
+  .description('List active sessions')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(activeCommand);
+
+program
+  .command('stop <session-id>')
+  .description('Stop a session by session-id')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(stopCommand);
+
+program
+  .command('debug-env', { hidden: true })
+  .description('Print current environment variables (for testing)')
+  .action(() => {
+    console.log(JSON.stringify(process.env));
+  });
 
 program.parse();

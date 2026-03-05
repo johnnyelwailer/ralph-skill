@@ -1,11 +1,18 @@
-"use strict";
+import { createRequire } from 'module'; const require = createRequire(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __commonJS = (cb, mod) => function __require() {
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined")
+    return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
+var __commonJS = (cb, mod) => function __require2() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
 var __copyProps = (to, from, except, desc) => {
@@ -27,7 +34,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // node_modules/commander/lib/error.js
 var require_error = __commonJS({
-  "node_modules/commander/lib/error.js"(exports2) {
+  "node_modules/commander/lib/error.js"(exports) {
     var CommanderError2 = class extends Error {
       /**
        * Constructs the CommanderError class
@@ -55,14 +62,14 @@ var require_error = __commonJS({
         this.name = this.constructor.name;
       }
     };
-    exports2.CommanderError = CommanderError2;
-    exports2.InvalidArgumentError = InvalidArgumentError2;
+    exports.CommanderError = CommanderError2;
+    exports.InvalidArgumentError = InvalidArgumentError2;
   }
 });
 
 // node_modules/commander/lib/argument.js
 var require_argument = __commonJS({
-  "node_modules/commander/lib/argument.js"(exports2) {
+  "node_modules/commander/lib/argument.js"(exports) {
     var { InvalidArgumentError: InvalidArgumentError2 } = require_error();
     var Argument2 = class {
       /**
@@ -182,14 +189,14 @@ var require_argument = __commonJS({
       const nameOutput = arg.name() + (arg.variadic === true ? "..." : "");
       return arg.required ? "<" + nameOutput + ">" : "[" + nameOutput + "]";
     }
-    exports2.Argument = Argument2;
-    exports2.humanReadableArgName = humanReadableArgName;
+    exports.Argument = Argument2;
+    exports.humanReadableArgName = humanReadableArgName;
   }
 });
 
 // node_modules/commander/lib/help.js
 var require_help = __commonJS({
-  "node_modules/commander/lib/help.js"(exports2) {
+  "node_modules/commander/lib/help.js"(exports) {
     var { humanReadableArgName } = require_argument();
     var Help2 = class {
       constructor() {
@@ -601,13 +608,13 @@ var require_help = __commonJS({
         }).join("\n");
       }
     };
-    exports2.Help = Help2;
+    exports.Help = Help2;
   }
 });
 
 // node_modules/commander/lib/option.js
 var require_option = __commonJS({
-  "node_modules/commander/lib/option.js"(exports2) {
+  "node_modules/commander/lib/option.js"(exports) {
     var { InvalidArgumentError: InvalidArgumentError2 } = require_error();
     var Option2 = class {
       /**
@@ -873,14 +880,14 @@ var require_option = __commonJS({
       }
       return { shortFlag, longFlag };
     }
-    exports2.Option = Option2;
-    exports2.DualOptions = DualOptions;
+    exports.Option = Option2;
+    exports.DualOptions = DualOptions;
   }
 });
 
 // node_modules/commander/lib/suggestSimilar.js
 var require_suggestSimilar = __commonJS({
-  "node_modules/commander/lib/suggestSimilar.js"(exports2) {
+  "node_modules/commander/lib/suggestSimilar.js"(exports) {
     var maxDistance = 3;
     function editDistance(a, b) {
       if (Math.abs(a.length - b.length) > maxDistance)
@@ -956,18 +963,18 @@ var require_suggestSimilar = __commonJS({
       }
       return "";
     }
-    exports2.suggestSimilar = suggestSimilar;
+    exports.suggestSimilar = suggestSimilar;
   }
 });
 
 // node_modules/commander/lib/command.js
 var require_command = __commonJS({
-  "node_modules/commander/lib/command.js"(exports2) {
-    var EventEmitter = require("node:events").EventEmitter;
-    var childProcess = require("node:child_process");
-    var path3 = require("node:path");
-    var fs2 = require("node:fs");
-    var process2 = require("node:process");
+  "node_modules/commander/lib/command.js"(exports) {
+    var EventEmitter = __require("node:events").EventEmitter;
+    var childProcess = __require("node:child_process");
+    var path4 = __require("node:path");
+    var fs2 = __require("node:fs");
+    var process2 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
     var { CommanderError: CommanderError2 } = require_error();
     var { Help: Help2 } = require_help();
@@ -1908,10 +1915,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path3.resolve(baseDir, baseName);
+          const localBin = path4.resolve(baseDir, baseName);
           if (fs2.existsSync(localBin))
             return localBin;
-          if (sourceExt.includes(path3.extname(baseName)))
+          if (sourceExt.includes(path4.extname(baseName)))
             return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs2.existsSync(`${localBin}${ext}`)
@@ -1931,17 +1938,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch (err) {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path3.resolve(
-            path3.dirname(resolvedScriptPath),
+          executableDir = path4.resolve(
+            path4.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path3.basename(
+            const legacyName = path4.basename(
               this._scriptPath,
-              path3.extname(this._scriptPath)
+              path4.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -1952,7 +1959,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path3.extname(executableFile));
+        launchWithNode = sourceExt.includes(path4.extname(executableFile));
         let proc;
         if (process2.platform !== "win32") {
           if (launchWithNode) {
@@ -2809,7 +2816,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path3.basename(filename, path3.extname(filename));
+        this._name = path4.basename(filename, path4.extname(filename));
         return this;
       }
       /**
@@ -2823,10 +2830,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path4) {
-        if (path4 === void 0)
+      executableDir(path5) {
+        if (path5 === void 0)
           return this._executableDir;
-        this._executableDir = path4;
+        this._executableDir = path5;
         return this;
       }
       /**
@@ -3030,31 +3037,36 @@ Expecting one of '${allowedValues.join("', '")}'`);
         return arg;
       });
     }
-    exports2.Command = Command2;
+    exports.Command = Command2;
   }
 });
 
 // node_modules/commander/index.js
 var require_commander = __commonJS({
-  "node_modules/commander/index.js"(exports2) {
+  "node_modules/commander/index.js"(exports) {
     var { Argument: Argument2 } = require_argument();
     var { Command: Command2 } = require_command();
     var { CommanderError: CommanderError2, InvalidArgumentError: InvalidArgumentError2 } = require_error();
     var { Help: Help2 } = require_help();
     var { Option: Option2 } = require_option();
-    exports2.program = new Command2();
-    exports2.createCommand = (name) => new Command2(name);
-    exports2.createOption = (flags, description) => new Option2(flags, description);
-    exports2.createArgument = (name, description) => new Argument2(name, description);
-    exports2.Command = Command2;
-    exports2.Option = Option2;
-    exports2.Argument = Argument2;
-    exports2.Help = Help2;
-    exports2.CommanderError = CommanderError2;
-    exports2.InvalidArgumentError = InvalidArgumentError2;
-    exports2.InvalidOptionArgumentError = InvalidArgumentError2;
+    exports.program = new Command2();
+    exports.createCommand = (name) => new Command2(name);
+    exports.createOption = (flags, description) => new Option2(flags, description);
+    exports.createArgument = (name, description) => new Argument2(name, description);
+    exports.Command = Command2;
+    exports.Option = Option2;
+    exports.Argument = Argument2;
+    exports.Help = Help2;
+    exports.CommanderError = CommanderError2;
+    exports.InvalidArgumentError = InvalidArgumentError2;
+    exports.InvalidOptionArgumentError = InvalidArgumentError2;
   }
 });
+
+// src/sanitize.ts
+if (process.env.CLAUDECODE) {
+  delete process.env.CLAUDECODE;
+}
 
 // node_modules/commander/esm.mjs
 var import_index = __toESM(require_commander(), 1);
@@ -3074,41 +3086,41 @@ var {
 } = import_index.default;
 
 // src/commands/project.ts
-var import_node_crypto = require("node:crypto");
-var import_node_child_process = require("node:child_process");
-var import_promises = require("node:fs/promises");
-var import_node_fs = require("node:fs");
-var import_node_os = __toESM(require("node:os"));
-var import_node_path = __toESM(require("node:path"));
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 function getHomeDir(explicit) {
-  return import_node_path.default.resolve(explicit ?? import_node_os.default.homedir());
+  return path.resolve(explicit ?? os.homedir());
 }
 function resolveProjectRoot(projectRoot) {
-  const start = import_node_path.default.resolve(projectRoot ?? process.cwd());
-  const gitRoot = (0, import_node_child_process.spawnSync)("git", ["-C", start, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
+  const start = path.resolve(projectRoot ?? process.cwd());
+  const gitRoot = spawnSync("git", ["-C", start, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
   if (gitRoot.status === 0) {
     const value = gitRoot.stdout.trim();
     if (value) {
-      return import_node_path.default.resolve(value);
+      return path.resolve(value);
     }
   }
   return start;
 }
 function getProjectHash(projectPath) {
-  const normalized = import_node_path.default.resolve(projectPath).replace(/[\\\/]+$/, "").toLowerCase();
-  return (0, import_node_crypto.createHash)("sha256").update(normalized).digest("hex").slice(0, 8);
+  const normalized = path.resolve(projectPath).replace(/[\\\/]+$/, "").toLowerCase();
+  return createHash("sha256").update(normalized).digest("hex").slice(0, 8);
 }
 function detectGit(projectRoot) {
-  const isGit = (0, import_node_child_process.spawnSync)("git", ["-C", projectRoot, "rev-parse", "--is-inside-work-tree"], { encoding: "utf8" });
+  const isGit = spawnSync("git", ["-C", projectRoot, "rev-parse", "--is-inside-work-tree"], { encoding: "utf8" });
   if (isGit.status !== 0) {
     return { isGitRepo: false, gitBranch: null };
   }
-  const branch = (0, import_node_child_process.spawnSync)("git", ["-C", projectRoot, "rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf8" });
+  const branch = spawnSync("git", ["-C", projectRoot, "rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf8" });
   return { isGitRepo: true, gitBranch: branch.status === 0 ? branch.stdout.trim() || null : null };
 }
 async function fileExists(filePath) {
   try {
-    const info = await (0, import_promises.stat)(filePath);
+    const info = await stat(filePath);
     return info.isFile() || info.isDirectory();
   } catch {
     return false;
@@ -3135,12 +3147,12 @@ async function detectLanguage(projectRoot) {
     { rel: "Cargo.toml", language: "rust", points: 5 }
   ];
   for (const check of checks) {
-    if (await fileExists(import_node_path.default.join(projectRoot, check.rel))) {
+    if (await fileExists(path.join(projectRoot, check.rel))) {
       score[check.language] += check.points;
       signals.push(check.rel);
     }
   }
-  const dotnetFiles = await (0, import_promises.readdir)(projectRoot).catch(() => []);
+  const dotnetFiles = await readdir(projectRoot).catch(() => []);
   if (dotnetFiles.some((item) => item.endsWith(".sln"))) {
     score.dotnet += 4;
     signals.push("*.sln");
@@ -3157,11 +3169,11 @@ async function detectLanguage(projectRoot) {
   return { language: winner, confidence, signals };
 }
 async function getPackageScripts(projectRoot) {
-  const packagePath = import_node_path.default.join(projectRoot, "package.json");
+  const packagePath = path.join(projectRoot, "package.json");
   if (!await fileExists(packagePath)) {
     return {};
   }
-  const raw = await (0, import_promises.readFile)(packagePath, "utf8");
+  const raw = await readFile(packagePath, "utf8");
   const parsed = JSON.parse(raw);
   return parsed.scripts ?? {};
 }
@@ -3169,7 +3181,7 @@ async function buildValidationPresets(language, projectRoot) {
   if (language === "node-typescript") {
     const scripts = await getPackageScripts(projectRoot);
     const test = scripts.test ? "npm test" : "npx vitest run";
-    const typecheck = scripts.typecheck ? "npm run typecheck" : await fileExists(import_node_path.default.join(projectRoot, "tsconfig.json")) ? "npx tsc --noEmit" : null;
+    const typecheck = scripts.typecheck ? "npm run typecheck" : await fileExists(path.join(projectRoot, "tsconfig.json")) ? "npx tsc --noEmit" : null;
     const lint = scripts.lint ? "npm run lint" : "npx eslint .";
     const build = scripts.build ? "npm run build" : null;
     const testsAndTypes = [typecheck, test].filter((value) => Boolean(value));
@@ -3194,7 +3206,7 @@ async function discoverSpecCandidates(projectRoot) {
   const ordered = ["SPEC.md", "README.md", "docs/SPEC.md", "docs/spec.md", "requirements.md", "PRD.md", "specs", "docs"];
   const found = [];
   for (const rel of ordered) {
-    if (await fileExists(import_node_path.default.join(projectRoot, rel))) {
+    if (await fileExists(path.join(projectRoot, rel))) {
       found.push(rel.replace(/\\/g, "/"));
     }
   }
@@ -3219,7 +3231,7 @@ async function discoverReferenceCandidates(projectRoot, specCandidates) {
     if (excluded.has(normalized)) {
       continue;
     }
-    if (await fileExists(import_node_path.default.join(projectRoot, rel))) {
+    if (await fileExists(path.join(projectRoot, rel))) {
       found.push(normalized);
     }
   }
@@ -3232,11 +3244,11 @@ function normalizeList(items) {
   return items.flatMap((item) => item.split(",")).map((item) => item.trim()).filter((item) => item.length > 0);
 }
 function readDefaultProvider(homeDir) {
-  const configPath = import_node_path.default.join(homeDir, ".aloop", "config.yml");
-  if (!(0, import_node_fs.existsSync)(configPath)) {
+  const configPath = path.join(homeDir, ".aloop", "config.yml");
+  if (!existsSync(configPath)) {
     return "claude";
   }
-  const content = (0, import_node_fs.readFileSync)(configPath, "utf8");
+  const content = readFileSync(configPath, "utf8");
   const line = content.split(/\r?\n/).find((entry) => entry.trim().startsWith("default_provider:"));
   return line?.split(":").slice(1).join(":").trim() || "claude";
 }
@@ -3245,7 +3257,7 @@ function getInstalledProviders() {
   const installed = [];
   const missing = [];
   for (const provider of providers) {
-    const status = (0, import_node_child_process.spawnSync)(provider, ["--version"], { stdio: "ignore" });
+    const status = spawnSync(provider, ["--version"], { stdio: "ignore" });
     if (status.status === 0 || status.status === 1) {
       installed.push(provider);
     } else {
@@ -3258,14 +3270,14 @@ async function discoverWorkspace(options = {}) {
   const homeDir = getHomeDir(options.homeDir);
   const projectRoot = resolveProjectRoot(options.projectRoot);
   const projectHash = getProjectHash(projectRoot);
-  const projectName = import_node_path.default.basename(projectRoot);
+  const projectName = path.basename(projectRoot);
   const { isGitRepo, gitBranch } = detectGit(projectRoot);
   const language = await detectLanguage(projectRoot);
   const validationPresets = await buildValidationPresets(language.language, projectRoot);
   const specCandidates = await discoverSpecCandidates(projectRoot);
   const referenceCandidates = await discoverReferenceCandidates(projectRoot, specCandidates);
   const providers = getInstalledProviders();
-  const projectDir = import_node_path.default.join(homeDir, ".aloop", "projects", projectHash);
+  const projectDir = path.join(homeDir, ".aloop", "projects", projectHash);
   return {
     project: {
       root: projectRoot,
@@ -3276,9 +3288,9 @@ async function discoverWorkspace(options = {}) {
     },
     setup: {
       project_dir: projectDir,
-      config_path: import_node_path.default.join(projectDir, "config.yml"),
-      config_exists: (0, import_node_fs.existsSync)(import_node_path.default.join(projectDir, "config.yml")),
-      templates_dir: import_node_path.default.join(homeDir, ".aloop", "templates")
+      config_path: path.join(projectDir, "config.yml"),
+      config_exists: existsSync(path.join(projectDir, "config.yml")),
+      templates_dir: path.join(homeDir, ".aloop", "templates")
     },
     context: {
       detected_language: language.language,
@@ -3288,10 +3300,10 @@ async function discoverWorkspace(options = {}) {
       spec_candidates: specCandidates,
       reference_candidates: referenceCandidates,
       context_files: {
-        "TODO.md": (0, import_node_fs.existsSync)(import_node_path.default.join(projectRoot, "TODO.md")),
-        "RESEARCH.md": (0, import_node_fs.existsSync)(import_node_path.default.join(projectRoot, "RESEARCH.md")),
-        "REVIEW_LOG.md": (0, import_node_fs.existsSync)(import_node_path.default.join(projectRoot, "REVIEW_LOG.md")),
-        "STEERING.md": (0, import_node_fs.existsSync)(import_node_path.default.join(projectRoot, "STEERING.md"))
+        "TODO.md": existsSync(path.join(projectRoot, "TODO.md")),
+        "RESEARCH.md": existsSync(path.join(projectRoot, "RESEARCH.md")),
+        "REVIEW_LOG.md": existsSync(path.join(projectRoot, "REVIEW_LOG.md")),
+        "STEERING.md": existsSync(path.join(projectRoot, "STEERING.md"))
       }
     },
     providers: {
@@ -3342,14 +3354,14 @@ async function scaffoldWorkspace(options = {}) {
   const resolvedSafetyRules = safetyRules.length > 0 ? safetyRules : ["Never delete the project directory or run destructive commands", "Never push to remote without explicit user approval"];
   const language = options.language ?? discovery.context.detected_language;
   const mode = options.mode ?? "plan-build-review";
-  const templatesDir = import_node_path.default.resolve(options.templatesDir ?? discovery.setup.templates_dir);
-  const promptsDir = import_node_path.default.join(discovery.setup.project_dir, "prompts");
+  const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
+  const promptsDir = path.join(discovery.setup.project_dir, "prompts");
   for (const file of ["PROMPT_plan.md", "PROMPT_build.md", "PROMPT_review.md", "PROMPT_steer.md"]) {
-    if (!(0, import_node_fs.existsSync)(import_node_path.default.join(templatesDir, file))) {
-      throw new Error(`Template not found: ${import_node_path.default.join(templatesDir, file)}`);
+    if (!existsSync(path.join(templatesDir, file))) {
+      throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
     }
   }
-  await (0, import_promises.mkdir)(promptsDir, { recursive: true });
+  await mkdir(promptsDir, { recursive: true });
   const configLines = [
     `project_name: ${toYamlQuoted(discovery.project.name)}`,
     `project_root: ${toYamlQuoted(discovery.project.root)}`,
@@ -3379,7 +3391,7 @@ async function scaffoldWorkspace(options = {}) {
     "",
     `created_at: ${toYamlQuoted((/* @__PURE__ */ new Date()).toISOString())}`
   ];
-  await (0, import_promises.writeFile)(discovery.setup.config_path, `${configLines.join("\n")}
+  await writeFile(discovery.setup.config_path, `${configLines.join("\n")}
 `, "utf8");
   const replacements = {
     "{{SPEC_FILES}}": resolvedSpecFiles.join(", "),
@@ -3390,13 +3402,13 @@ async function scaffoldWorkspace(options = {}) {
   };
   for (const suffix of ["plan", "build", "review", "steer"]) {
     const fileName = `PROMPT_${suffix}.md`;
-    const templatePath = import_node_path.default.join(templatesDir, fileName);
-    const destinationPath = import_node_path.default.join(promptsDir, fileName);
-    let content = await (0, import_promises.readFile)(templatePath, "utf8");
+    const templatePath = path.join(templatesDir, fileName);
+    const destinationPath = path.join(promptsDir, fileName);
+    let content = await readFile(templatePath, "utf8");
     for (const [key, value] of Object.entries(replacements)) {
       content = content.replaceAll(key, value);
     }
-    await (0, import_promises.writeFile)(destinationPath, content, "utf8");
+    await writeFile(destinationPath, content, "utf8");
   }
   return {
     config_path: discovery.setup.config_path,
@@ -3462,11 +3474,11 @@ async function scaffoldCommand(options = {}) {
 }
 
 // src/commands/dashboard.ts
-var import_node_http = require("node:http");
-var import_node_fs2 = require("node:fs");
-var import_node_fs3 = require("node:fs");
-var import_node_os2 = __toESM(require("node:os"));
-var import_node_path2 = __toESM(require("node:path"));
+import { createServer } from "node:http";
+import { watch } from "node:fs";
+import { promises as fs } from "node:fs";
+import os2 from "node:os";
+import path2 from "node:path";
 var DOC_FILES = ["TODO.md", "SPEC.md", "RESEARCH.md", "REVIEW_LOG.md", "STEERING.md"];
 var MAX_LOG_BYTES = 128 * 1024;
 var MAX_BODY_BYTES = 64 * 1024;
@@ -3483,7 +3495,7 @@ function isRecord(value) {
 }
 async function readJsonFile(filePath) {
   try {
-    const raw = await import_node_fs3.promises.readFile(filePath, "utf8");
+    const raw = await fs.readFile(filePath, "utf8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -3495,14 +3507,14 @@ async function readJsonArrayFile(filePath) {
 }
 async function readTextFile(filePath) {
   try {
-    return await import_node_fs3.promises.readFile(filePath, "utf8");
+    return await fs.readFile(filePath, "utf8");
   } catch {
     return "";
   }
 }
 async function readLogTail(filePath) {
   try {
-    const buffer = await import_node_fs3.promises.readFile(filePath);
+    const buffer = await fs.readFile(filePath);
     const start = Math.max(0, buffer.length - MAX_LOG_BYTES);
     return buffer.subarray(start).toString("utf8");
   } catch {
@@ -3511,18 +3523,18 @@ async function readLogTail(filePath) {
 }
 async function fileExists2(filePath) {
   try {
-    const stats = await import_node_fs3.promises.stat(filePath);
+    const stats = await fs.stat(filePath);
     return stats.isFile();
   } catch {
     return false;
   }
 }
 async function resolveDefaultAssetsDir() {
-  const runtimeScriptPath = process.argv[1] ? import_node_path2.default.resolve(process.argv[1]) : import_node_path2.default.join(process.cwd(), "dist", "index.js");
-  const runtimeDistDir = import_node_path2.default.dirname(runtimeScriptPath);
-  const installAssetsDir = import_node_path2.default.join(runtimeDistDir, "dashboard");
-  const devAssetsDir = import_node_path2.default.join(process.cwd(), "dashboard", "dist");
-  if (await fileExists2(import_node_path2.default.join(installAssetsDir, "index.html"))) {
+  const runtimeScriptPath = process.argv[1] ? path2.resolve(process.argv[1]) : path2.join(process.cwd(), "dist", "index.js");
+  const runtimeDistDir = path2.dirname(runtimeScriptPath);
+  const installAssetsDir = path2.join(runtimeDistDir, "dashboard");
+  const devAssetsDir = path2.join(process.cwd(), "dashboard", "dist");
+  if (await fileExists2(path2.join(installAssetsDir, "index.html"))) {
     return installAssetsDir;
   }
   return devAssetsDir;
@@ -3540,7 +3552,7 @@ function sendSseEvent(response, event, payload) {
   response.write("\n");
 }
 function getContentType(filePath) {
-  const ext = import_node_path2.default.extname(filePath).toLowerCase();
+  const ext = path2.extname(filePath).toLowerCase();
   switch (ext) {
     case ".html":
       return "text/html; charset=utf-8";
@@ -3628,20 +3640,20 @@ async function startDashboardServer(options, runtimeOptions = {}) {
   const registerSignalHandlers = runtimeOptions.registerSignalHandlers ?? true;
   const heartbeatIntervalMs = Math.max(250, runtimeOptions.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS);
   const port = parsePort(options.port);
-  const sessionDir = import_node_path2.default.resolve(options.sessionDir ?? process.cwd());
-  const workdir = import_node_path2.default.resolve(options.workdir ?? process.cwd());
-  const assetsDir = import_node_path2.default.resolve(options.assetsDir ?? await resolveDefaultAssetsDir());
-  const runtimeDir = import_node_path2.default.resolve(options.runtimeDir ?? import_node_path2.default.join(import_node_os2.default.homedir(), ".aloop"));
-  const statusPath = import_node_path2.default.join(sessionDir, "status.json");
-  const logPath = import_node_path2.default.join(sessionDir, "log.jsonl");
-  const metaPath = import_node_path2.default.join(sessionDir, "meta.json");
-  const activeSessionsPath = import_node_path2.default.join(runtimeDir, "active.json");
-  const recentSessionsPath = import_node_path2.default.join(runtimeDir, "history.json");
-  const steeringPath = import_node_path2.default.join(workdir, "STEERING.md");
-  const docPaths = DOC_FILES.map((name) => import_node_path2.default.join(workdir, name));
+  const sessionDir = path2.resolve(options.sessionDir ?? process.cwd());
+  const workdir = path2.resolve(options.workdir ?? process.cwd());
+  const assetsDir = path2.resolve(options.assetsDir ?? await resolveDefaultAssetsDir());
+  const runtimeDir = path2.resolve(options.runtimeDir ?? path2.join(os2.homedir(), ".aloop"));
+  const statusPath = path2.join(sessionDir, "status.json");
+  const logPath = path2.join(sessionDir, "log.jsonl");
+  const metaPath = path2.join(sessionDir, "meta.json");
+  const activeSessionsPath = path2.join(runtimeDir, "active.json");
+  const recentSessionsPath = path2.join(runtimeDir, "history.json");
+  const steeringPath = path2.join(workdir, "STEERING.md");
+  const docPaths = DOC_FILES.map((name) => path2.join(workdir, name));
   const watchedFiles = new Set(
     [statusPath, logPath, activeSessionsPath, recentSessionsPath, ...docPaths].map(
-      (value) => import_node_path2.default.normalize(value).toLowerCase()
+      (value) => path2.normalize(value).toLowerCase()
     )
   );
   const clients = /* @__PURE__ */ new Set();
@@ -3654,7 +3666,7 @@ async function startDashboardServer(options, runtimeOptions = {}) {
       readJsonArrayFile(recentSessionsPath),
       Promise.all(
         DOC_FILES.map(async (docFile) => {
-          const content = await readTextFile(import_node_path2.default.join(workdir, docFile));
+          const content = await readTextFile(path2.join(workdir, docFile));
           return [docFile, content];
         })
       )
@@ -3710,11 +3722,11 @@ async function startDashboardServer(options, runtimeOptions = {}) {
   const watchPaths = [sessionDir, workdir, runtimeDir];
   for (const target of watchPaths) {
     try {
-      const watcher = (0, import_node_fs2.watch)(target, (_eventType, filename) => {
+      const watcher = watch(target, (_eventType, filename) => {
         if (!filename) {
           return;
         }
-        const changed = import_node_path2.default.normalize(import_node_path2.default.join(target, filename.toString())).toLowerCase();
+        const changed = path2.normalize(path2.join(target, filename.toString())).toLowerCase();
         if (watchedFiles.has(changed) || changed.endsWith(".md")) {
           schedulePublish();
         }
@@ -3724,7 +3736,7 @@ async function startDashboardServer(options, runtimeOptions = {}) {
       console.warn(`dashboard: unable to watch ${target}: ${error.message}`);
     }
   }
-  const server = (0, import_node_http.createServer)((request, response) => {
+  const server = createServer((request, response) => {
     const handleRequest = async () => {
       const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
       if (requestUrl.pathname === "/api/state" && request.method === "GET") {
@@ -3799,7 +3811,7 @@ async function startDashboardServer(options, runtimeOptions = {}) {
           affectsCompletedWork ?? "unknown",
           commit
         );
-        await import_node_fs3.promises.writeFile(steeringPath, steeringDoc, "utf8");
+        await fs.writeFile(steeringPath, steeringDoc, "utf8");
         writeJson(response, 201, {
           queued: true,
           path: steeringPath
@@ -3858,7 +3870,7 @@ async function startDashboardServer(options, runtimeOptions = {}) {
         const nextStatus = isRecord(existingStatus) ? { ...existingStatus } : {};
         nextStatus.state = "stopping";
         nextStatus.updated_at = (/* @__PURE__ */ new Date()).toISOString();
-        await import_node_fs3.promises.writeFile(statusPath, JSON.stringify(nextStatus), "utf8");
+        await fs.writeFile(statusPath, JSON.stringify(nextStatus), "utf8");
         writeJson(response, 202, {
           stopping: true,
           pid,
@@ -3871,17 +3883,17 @@ async function startDashboardServer(options, runtimeOptions = {}) {
         return;
       }
       const requestPath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
-      const normalizedRequestPath = import_node_path2.default.normalize(requestPath).replace(/^(\.\.(\/|\\|$))+/, "");
-      const assetPath = import_node_path2.default.resolve(assetsDir, `.${normalizedRequestPath}`);
+      const normalizedRequestPath = path2.normalize(requestPath).replace(/^(\.\.(\/|\\|$))+/, "");
+      const assetPath = path2.resolve(assetsDir, `.${normalizedRequestPath}`);
       if (assetPath.startsWith(assetsDir) && await fileExists2(assetPath)) {
-        const content = await import_node_fs3.promises.readFile(assetPath);
+        const content = await fs.readFile(assetPath);
         response.writeHead(200, { "Content-Type": getContentType(assetPath), "Cache-Control": "no-cache" });
         response.end(content);
         return;
       }
-      const indexPath = import_node_path2.default.join(assetsDir, "index.html");
+      const indexPath = path2.join(assetsDir, "index.html");
       if (await fileExists2(indexPath)) {
-        const indexContent = await import_node_fs3.promises.readFile(indexPath);
+        const indexContent = await fs.readFile(indexPath);
         response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
         response.end(indexContent);
         return;
@@ -3967,14 +3979,256 @@ async function startDashboardServer(options, runtimeOptions = {}) {
   };
 }
 async function dashboardCommand(options) {
-  const sessionDir = import_node_path2.default.resolve(options.sessionDir ?? process.cwd());
-  const workdir = import_node_path2.default.resolve(options.workdir ?? process.cwd());
-  const assetsDir = import_node_path2.default.resolve(options.assetsDir ?? await resolveDefaultAssetsDir());
+  const sessionDir = path2.resolve(options.sessionDir ?? process.cwd());
+  const workdir = path2.resolve(options.workdir ?? process.cwd());
+  const assetsDir = path2.resolve(options.assetsDir ?? await resolveDefaultAssetsDir());
   const handle = await startDashboardServer({ ...options, assetsDir, sessionDir, workdir });
   console.log(`Launching real-time progress dashboard on port ${handle.port}...`);
   console.log(`Session dir: ${sessionDir}`);
   console.log(`Workdir: ${workdir}`);
   console.log(`Assets dir: ${assetsDir}`);
+}
+
+// src/commands/session.ts
+import { spawnSync as spawnSync2 } from "node:child_process";
+import { readFile as readFile2, writeFile as writeFile2, readdir as readdir2 } from "node:fs/promises";
+import { existsSync as existsSync2 } from "node:fs";
+import os3 from "node:os";
+import path3 from "node:path";
+function resolveHomeDir(explicitHomeDir) {
+  return path3.resolve(explicitHomeDir ?? os3.homedir()).replace(/[\/]+$/, "");
+}
+async function readJsonFile2(filePath) {
+  if (!existsSync2(filePath))
+    return null;
+  try {
+    const content = await readFile2(filePath, "utf8");
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+async function writeJsonFile(filePath, data) {
+  await writeFile2(filePath, JSON.stringify(data, null, 2), "utf8");
+}
+async function readActiveSessions(homeDir) {
+  const activePath = path3.join(homeDir, ".aloop", "active.json");
+  const data = await readJsonFile2(activePath);
+  if (!data || typeof data !== "object" || Array.isArray(data))
+    return {};
+  return data;
+}
+async function readSessionStatus(sessionDir) {
+  const statusPath = path3.join(sessionDir, "status.json");
+  return readJsonFile2(statusPath);
+}
+async function readProviderHealth(homeDir) {
+  const healthDir = path3.join(homeDir, ".aloop", "health");
+  if (!existsSync2(healthDir))
+    return {};
+  let files;
+  try {
+    files = await readdir2(healthDir);
+  } catch {
+    return {};
+  }
+  const health = {};
+  for (const file of files) {
+    if (!file.endsWith(".json"))
+      continue;
+    const provider = file.slice(0, -5);
+    const data = await readJsonFile2(path3.join(healthDir, file));
+    if (data)
+      health[provider] = data;
+  }
+  return health;
+}
+async function listActiveSessions(homeDir) {
+  const active = await readActiveSessions(homeDir);
+  const sessions = [];
+  for (const [sessionId, entry] of Object.entries(active)) {
+    const sessionDir = entry.session_dir ?? path3.join(homeDir, ".aloop", "sessions", sessionId);
+    const status = await readSessionStatus(sessionDir);
+    sessions.push({
+      session_id: sessionId,
+      pid: entry.pid ?? null,
+      work_dir: entry.work_dir ?? null,
+      started_at: entry.started_at ?? null,
+      provider: entry.provider ?? status?.provider ?? null,
+      mode: entry.mode ?? null,
+      state: status?.state ?? "unknown",
+      phase: status?.phase ?? null,
+      iteration: status?.iteration ?? null,
+      stuck_count: status?.stuck_count ?? 0,
+      updated_at: status?.updated_at ?? null
+    });
+  }
+  return sessions;
+}
+function isProcessAlive(pid) {
+  if (!pid)
+    return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function killProcess(pid) {
+  if (process.platform === "win32") {
+    const result = spawnSync2("taskkill", ["/PID", String(pid), "/F"], { encoding: "utf8" });
+    return result.status === 0;
+  }
+  try {
+    process.kill(pid, "SIGTERM");
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function stopSession(homeDir, sessionId) {
+  const active = await readActiveSessions(homeDir);
+  const entry = active[sessionId];
+  if (!entry) {
+    return { success: false, reason: `Session not found: ${sessionId}` };
+  }
+  const sessionDir = entry.session_dir ?? path3.join(homeDir, ".aloop", "sessions", sessionId);
+  const pid = entry.pid ?? null;
+  if (pid && isProcessAlive(pid)) {
+    if (!killProcess(pid)) {
+      return { success: false, reason: `Failed to stop session process: ${pid}` };
+    }
+  }
+  const statusPath = path3.join(sessionDir, "status.json");
+  const status = await readJsonFile2(statusPath) ?? {};
+  status.state = "stopped";
+  status.updated_at = (/* @__PURE__ */ new Date()).toISOString();
+  if (existsSync2(sessionDir)) {
+    await writeJsonFile(statusPath, status);
+  }
+  delete active[sessionId];
+  const activePath = path3.join(homeDir, ".aloop", "active.json");
+  await writeJsonFile(activePath, active);
+  const historyPath = path3.join(homeDir, ".aloop", "history.json");
+  const history = await readJsonFile2(historyPath) ?? [];
+  history.push({
+    session_id: sessionId,
+    work_dir: entry.work_dir ?? null,
+    started_at: entry.started_at ?? null,
+    ended_at: status.updated_at,
+    state: "stopped",
+    iterations: status.iteration ?? null,
+    provider: entry.provider ?? status.provider ?? null,
+    mode: entry.mode ?? null,
+    pid
+  });
+  await writeJsonFile(historyPath, history);
+  return { success: true };
+}
+
+// src/commands/status.ts
+function formatRelativeTime(isoString) {
+  if (!isoString)
+    return "unknown";
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  if (diffMs < 0)
+    return "just now";
+  const secs = Math.floor(diffMs / 1e3);
+  if (secs < 60)
+    return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60)
+    return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  return `${hours}h ago`;
+}
+function formatHealthLine(provider, health) {
+  const status = health.status ?? "unknown";
+  let detail = "";
+  if (status === "cooldown" && health.cooldown_until) {
+    const resumeMs = new Date(health.cooldown_until).getTime() - Date.now();
+    if (resumeMs > 0) {
+      const mins = Math.ceil(resumeMs / 6e4);
+      const failures = health.consecutive_failures ?? 0;
+      detail = `(${failures} failure${failures !== 1 ? "s" : ""}, resumes in ${mins}m)`;
+    }
+  } else if (status === "degraded" && health.failure_reason) {
+    const hints = { auth: "auth error \u2014 run `gh auth login`" };
+    detail = `(${hints[health.failure_reason] ?? health.failure_reason})`;
+  } else if (status === "healthy" && health.last_success) {
+    detail = `(last success: ${formatRelativeTime(health.last_success)})`;
+  }
+  return `  ${provider.padEnd(10)} ${status.padEnd(12)} ${detail}`.trimEnd();
+}
+async function statusCommand(options = {}) {
+  const outputMode = options.output || "text";
+  const homeDir = resolveHomeDir(options.homeDir);
+  const sessions = await listActiveSessions(homeDir);
+  const health = await readProviderHealth(homeDir);
+  if (outputMode === "json") {
+    console.log(JSON.stringify({ sessions, health }, null, 2));
+    return;
+  }
+  if (sessions.length === 0) {
+    console.log("No active sessions.");
+  } else {
+    console.log("Active Sessions:");
+    for (const s of sessions) {
+      const age = formatRelativeTime(s.started_at);
+      const iter = s.iteration != null ? `iter ${s.iteration}` : "";
+      const phase = s.phase ?? "";
+      const detail = [iter, phase].filter(Boolean).join(", ");
+      console.log(`  ${s.session_id}  pid=${s.pid ?? "n/a"}  ${s.state}  ${detail}  (${age})`);
+      if (s.work_dir)
+        console.log(`    workdir: ${s.work_dir}`);
+    }
+  }
+  const healthEntries = Object.entries(health);
+  if (healthEntries.length > 0) {
+    console.log("");
+    console.log("Provider Health:");
+    for (const [provider, data] of healthEntries) {
+      console.log(formatHealthLine(provider, data));
+    }
+  }
+}
+
+// src/commands/active.ts
+async function activeCommand(options = {}) {
+  const outputMode = options.output || "text";
+  const homeDir = resolveHomeDir(options.homeDir);
+  const sessions = await listActiveSessions(homeDir);
+  if (outputMode === "json") {
+    console.log(JSON.stringify(sessions, null, 2));
+    return;
+  }
+  if (sessions.length === 0) {
+    console.log("No active sessions.");
+    return;
+  }
+  for (const s of sessions) {
+    const age = formatRelativeTime(s.started_at);
+    console.log(`${s.session_id}  pid=${s.pid ?? "n/a"}  ${s.state}  ${s.work_dir ?? ""}  (${age})`);
+  }
+}
+
+// src/commands/stop.ts
+async function stopCommand(sessionId, options = {}) {
+  const outputMode = options.output || "text";
+  const homeDir = resolveHomeDir(options.homeDir);
+  const result = await stopSession(homeDir, sessionId);
+  if (outputMode === "json") {
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.success)
+      process.exit(1);
+    return;
+  }
+  if (!result.success) {
+    console.error(result.reason);
+    process.exit(1);
+  }
+  console.log(`Session ${sessionId} stopped.`);
 }
 
 // src/index.ts
@@ -3984,4 +4238,10 @@ program2.command("resolve").description("Resolve project workspace and configura
 program2.command("discover").description("Discover workspace specs, files, and validation commands").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(discoverCommand);
 program2.command("scaffold").description("Scaffold project workdir and prompts").option("--project-root <path>", "Project root override").option("--language <language>", "Language override").option("--provider <provider>", "Provider override").option("--enabled-providers <providers...>", "Enabled providers list or csv values").option("--round-robin-order <providers...>", "Round-robin provider order list or csv values").option("--spec-files <files...>", "Spec file list or csv values").option("--reference-files <files...>", "Reference file list or csv values").option("--validation-commands <commands...>", "Validation command list or csv values").option("--safety-rules <rules...>", "Safety rule list or csv values").option("--mode <mode>", "Loop mode", "plan-build-review").option("--templates-dir <path>", "Template directory override").option("--output <mode>", "Output format: json or text", "json").action(scaffoldCommand);
 program2.command("dashboard").description("Launch real-time progress dashboard").option("-p, --port <number>", "Port to run the dashboard on", "3000").option("--session-dir <path>", "Session directory containing status.json and log.jsonl").option("--workdir <path>", "Project work directory containing TODO.md and related docs").option("--assets-dir <path>", "Directory containing bundled dashboard frontend assets").action(dashboardCommand);
+program2.command("status").description("Show all active sessions and provider health").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(statusCommand);
+program2.command("active").description("List active sessions").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(activeCommand);
+program2.command("stop <session-id>").description("Stop a session by session-id").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(stopCommand);
+program2.command("debug-env", { hidden: true }).description("Print current environment variables (for testing)").action(() => {
+  console.log(JSON.stringify(process.env));
+});
 program2.parse();
