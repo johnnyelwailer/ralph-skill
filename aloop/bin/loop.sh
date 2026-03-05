@@ -550,6 +550,8 @@ resolve_healthy_provider() {
     while true; do
         local earliest_cooldown_epoch=""
         local available_provider=""
+        local degraded_count=0
+        local all_degraded_reasons=""
         local i
         for ((i=0; i<count; i++)); do
             local idx=$(( (start_index + i) % count ))
@@ -561,6 +563,19 @@ resolve_healthy_provider() {
             if [ "$HEALTH_STATUS" = "healthy" ]; then
                 available_provider="$p"
                 break
+            fi
+            if [ "$HEALTH_STATUS" = "degraded" ]; then
+                degraded_count=$((degraded_count + 1))
+                local degraded_reason="${HEALTH_FAILURE_REASON:-unknown}"
+                if [ -n "$all_degraded_reasons" ]; then
+                    all_degraded_reasons="${all_degraded_reasons},${p}:${degraded_reason}"
+                else
+                    all_degraded_reasons="${p}:${degraded_reason}"
+                fi
+                write_log_entry "provider_skipped_degraded" \
+                    "provider" "$p" \
+                    "reason" "$degraded_reason"
+                continue
             fi
             if [ "$HEALTH_STATUS" = "cooldown" ] && [ -n "$HEALTH_COOLDOWN_UNTIL" ]; then
                 local cooldown_epoch now_epoch
@@ -586,6 +601,14 @@ resolve_healthy_provider() {
         fi
 
         local sleep_secs=60
+        local providers_csv
+        providers_csv="$(IFS=,; echo "${RR_PROVIDERS[*]}")"
+        if [ "$degraded_count" -eq "$count" ]; then
+            write_log_entry "all_providers_degraded" \
+                "providers" "$providers_csv" \
+                "reasons" "$all_degraded_reasons"
+            echo "Warning: All providers are degraded. Fix auth/quota issues (for example, rerun provider login) and retry." >&2
+        fi
         if [ -n "$earliest_cooldown_epoch" ]; then
             local now_epoch remaining
             now_epoch=$(date -u +%s)
@@ -597,9 +620,13 @@ resolve_healthy_provider() {
             fi
         fi
         write_log_entry "all_providers_unavailable" \
-            "providers" "$(IFS=,; echo "${RR_PROVIDERS[*]}")" \
+            "providers" "$providers_csv" \
             "sleep_seconds" "$sleep_secs"
-        echo "Warning: All providers unavailable. Sleeping ${sleep_secs}s until cooldown expires..." >&2
+        if [ -n "$earliest_cooldown_epoch" ]; then
+            echo "Warning: All providers unavailable. Sleeping ${sleep_secs}s until cooldown expires..." >&2
+        else
+            echo "Warning: All providers unavailable. Sleeping ${sleep_secs}s before retry..." >&2
+        fi
         sleep "$sleep_secs"
     done
 }
