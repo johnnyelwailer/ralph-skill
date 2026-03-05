@@ -44,8 +44,8 @@ Describe 'Source-to-destination path mappings' {
         It 'runtime cli source: <skillName>/cli/dist/' {
             Join-Path $repoRoot "$skillName/cli/dist" | Should -Exist
         }
-        It 'runtime cli source: <skillName>/cli/aloop.mjs' {
-            Join-Path $repoRoot "$skillName/cli/aloop.mjs" | Should -Exist
+        It 'runtime cli source: <skillName>/cli/dist/index.js' {
+            Join-Path $repoRoot "$skillName/cli/dist/index.js" | Should -Exist
         }
     }
 
@@ -114,8 +114,8 @@ Describe 'Source-to-destination path mappings' {
         It 'runtime cli source is "$skillName\cli\dist"' {
             $scriptContent | Should -Match 'Join-Path \$scriptDir "\$skillName\\cli\\dist"'
         }
-        It 'runtime cli aloop.mjs source is "$skillName\cli\aloop.mjs"' {
-            $scriptContent | Should -Match 'Join-Path \$scriptDir "\$skillName\\cli\\aloop\.mjs"'
+        It 'runtime cli does not copy aloop.mjs source directly' {
+            $scriptContent | Should -Not -Match 'Join-Path \$scriptDir "\$skillName\\cli\\aloop\.mjs"'
         }
     }
 }
@@ -226,8 +226,8 @@ Describe 'Harness definitions' {
         It 'cli copies into $aloopDir\cli\dist' {
             $scriptContent | Should -Match 'Join-Path \$aloopDir "cli\\dist"'
         }
-        It 'aloop.mjs copies into $aloopDir\cli' {
-            $scriptContent | Should -Match 'Join-Path \$aloopDir "cli\\aloop\.mjs"'
+        It 'runtime entrypoint comes from dist/index.js via shims' {
+            $scriptContent | Should -Match 'cli\\dist\\index\.js'
         }
         It 'aloop.cmd shim is created in $aloopDir\bin' {
             $scriptContent | Should -Match 'Join-Path \$aloopDir "bin\\aloop\.cmd"'
@@ -401,7 +401,7 @@ Describe 'Installer behavioral branches' {
         (Join-Path $testHome '.aloop\templates\PROMPT_plan.md') | Should -Exist
         (Join-Path $testHome '.aloop\cli') | Should -Exist
         (Join-Path $testHome '.aloop\cli\dist\index.js') | Should -Exist
-        (Join-Path $testHome '.aloop\cli\aloop.mjs') | Should -Exist
+        (Join-Path $testHome '.aloop\cli\aloop.mjs') | Should -Not -Exist
         (Join-Path $testHome '.aloop\bin\aloop.cmd') | Should -Exist
         (Join-Path $testHome '.aloop\bin\aloop') | Should -Exist
         (Join-Path $testHome '.aloop\projects') | Should -Exist
@@ -447,7 +447,7 @@ Describe 'Installer behavioral branches' {
         $output = Invoke-InstallerIsolated -InstallerArgs @('-All', '-DryRun') -PathValue $pathWithoutTools
 
         $output | Should -Match '\[MISSING\]'
-        $output | Should -Match 'npm not found — cannot auto-install'
+        $output | Should -Match 'npm not found [—-] cannot auto-install'
     }
 
     It 'covers CLI auto-install dry-run branch when npm is available' {
@@ -466,7 +466,7 @@ Describe 'Installer behavioral branches' {
 
         $output = Invoke-InstallerIsolated -InstallerArgs @('-Harnesses', 'copilot', '-SkipCliCheck', '-Force') -AppDataPath $appDataWithoutVsCode
 
-        $output | Should -Match 'No VS Code installation found — skipped \.prompt\.md files\.'
+        $output | Should -Match 'No VS Code installation found [—-] skipped \.prompt\.md files\.'
         (Test-Path (Join-Path $appDataWithoutVsCode 'Code\User\prompts')) | Should -BeFalse
         (Test-Path (Join-Path $appDataWithoutVsCode 'Code - Insiders\User\prompts')) | Should -BeFalse
     }
@@ -479,7 +479,7 @@ Describe 'Installer behavioral branches' {
 
         (Join-Path $appDataStableOnly 'Code\User\prompts\aloop-setup.prompt.md') | Should -Exist
         (Test-Path (Join-Path $appDataStableOnly 'Code - Insiders\User\prompts\aloop-setup.prompt.md')) | Should -BeFalse
-        $output | Should -Match '\[VS Code Insiders\] not installed — skipping'
+        $output | Should -Match '\[VS Code Insiders\] not installed [—-] skipping'
     }
 
     It 'CLI shims contain correct invocation path to aloop.mjs' {
@@ -488,8 +488,8 @@ Describe 'Installer behavioral branches' {
         $cmdContent = Get-Content (Join-Path $testHome '.aloop\bin\aloop.cmd') -Raw
         $shContent  = Get-Content (Join-Path $testHome '.aloop\bin\aloop')  -Raw
 
-        $cmdContent | Should -Match 'aloop\.mjs'
-        $shContent  | Should -Match 'aloop\.mjs'
+        $cmdContent | Should -Match 'cli\\dist\\index\.js'
+        $shContent  | Should -Match 'cli/dist/index\.js'
         $shContent  | Should -Match '#!/bin/sh'
     }
 }
