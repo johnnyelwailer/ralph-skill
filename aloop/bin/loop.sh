@@ -359,7 +359,11 @@ provider_health_defaults() {
 }
 
 json_escape() {
-    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+    printf '%s' "$1" \
+        | sed 's/\\/\\\\/g; s/"/\\"/g' \
+        | sed "s/$(printf '\t')/\\\\t/g" \
+        | sed "s/$(printf '\r')/\\\\r/g" \
+        | awk 'NR==1{printf "%s",$0} NR>1{printf "\\n%s",$0}'
 }
 
 json_nullable_string() {

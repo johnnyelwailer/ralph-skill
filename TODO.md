@@ -3,7 +3,7 @@
 ## Current Phase: Security Boundary + Proof Phase + UX CLI Completion
 
 ### In Progress
-- [ ] Fix `json_escape` in `aloop/bin/loop.sh` (line 361-363) to escape JSON control characters (`\n`, `\r`, `\t`) in provider stderr/log payloads; current implementation only escapes backslash/quote via `sed 's/\\/\\\\/g; s/"/\\"/g'` and can emit invalid JSON. (priority: high)
+- [x] Fix `json_escape` in `aloop/bin/loop.sh` (line 361-363) to escape JSON control characters (`\n`, `\r`, `\t`) in provider stderr/log payloads; current implementation only escapes backslash/quote via `sed 's/\\/\\\\/g; s/"/\\"/g'` and can emit invalid JSON. (priority: high)
 - [ ] Add explicit `degraded` handling in `resolve_healthy_provider` (`aloop/bin/loop.sh`, line 543-601): the function currently only checks for `healthy` (line 557) and `cooldown` (line 561) statuses — degraded providers silently fall through with no skip logic or distinct log event. Add a `degraded` branch that skips the provider and, when all providers are degraded, emits `all_providers_degraded` with actionable guidance instead of silent 60s polling via the generic `all_providers_unavailable` path. (priority: high)
 
 ### Up Next
