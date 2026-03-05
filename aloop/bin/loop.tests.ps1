@@ -465,9 +465,11 @@ exit 0
             $prevPath  = $env:PATH
             $prevState = $env:FAKE_CLAUDE_STATE
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
+            $prevNoDash  = $env:ALOOP_NO_DASHBOARD
             $env:PATH              = "$fakeBinDir;$prevPath"
             $env:FAKE_CLAUDE_STATE = $LoopEnv.StateFile
             $env:ALOOP_RUNTIME_DIR = Join-Path $LoopEnv.SessionDir '_runtime_stub'
+            $env:ALOOP_NO_DASHBOARD = '1'
             try {
                 $output = & $pwshPath -NoProfile -File $loopScript `
                     -PromptsDir    $LoopEnv.PromptsDir `
@@ -489,6 +491,11 @@ exit 0
                     Remove-Item Env:ALOOP_RUNTIME_DIR -ErrorAction SilentlyContinue
                 } else {
                     $env:ALOOP_RUNTIME_DIR = $prevRuntime
+                }
+                if ($null -eq $prevNoDash) {
+                    Remove-Item Env:ALOOP_NO_DASHBOARD -ErrorAction SilentlyContinue
+                } else {
+                    $env:ALOOP_NO_DASHBOARD = $prevNoDash
                 }
             }
         }
@@ -626,9 +633,11 @@ exit 0
             $prevPath  = $env:PATH
             $prevState = $env:FAKE_RETRY_STATE
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
+            $prevNoDash  = $env:ALOOP_NO_DASHBOARD
             $env:PATH = "$fakeBinDir;$prevPath"
             $env:FAKE_RETRY_STATE = $Env.StateFile
             $env:ALOOP_RUNTIME_DIR = Join-Path $Env.SessionDir '_runtime_stub'
+            $env:ALOOP_NO_DASHBOARD = '1'
             try {
                 $args = @(
                     '-NoProfile', '-File', $loopScript,
@@ -657,11 +666,19 @@ exit 0
                 } else {
                     $env:ALOOP_RUNTIME_DIR = $prevRuntime
                 }
+                if ($null -eq $prevNoDash) {
+                    Remove-Item Env:ALOOP_NO_DASHBOARD -ErrorAction SilentlyContinue
+                } else {
+                    $env:ALOOP_NO_DASHBOARD = $prevNoDash
+                }
             }
         }
     }
 
     AfterAll {
+        Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -match [regex]::Escape($tempRoot) } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
         if (Test-Path $tempRoot) { Remove-Item -Recurse -Force $tempRoot }
     }
 
@@ -771,11 +788,13 @@ switch ($scenario) {
             $prevPath    = $env:PATH
             $prevHDir    = $env:ALOOP_HEALTH_DIR
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
+            $prevNoDash  = $env:ALOOP_NO_DASHBOARD
             $prevClaudeS = $env:FAKE_CLAUDE_SCENARIO
             $prevCodexS  = $env:FAKE_CODEX_SCENARIO
             $env:PATH                  = "$fakeBinDir;$prevPath"
             $env:ALOOP_HEALTH_DIR      = $Env.HealthDir
             $env:ALOOP_RUNTIME_DIR     = Join-Path $Env.SessionDir '_runtime_stub'
+            $env:ALOOP_NO_DASHBOARD    = '1'
             $env:FAKE_CLAUDE_SCENARIO  = $ClaudeScenario
             $env:FAKE_CODEX_SCENARIO   = $CodexScenario
             try {
@@ -798,6 +817,7 @@ switch ($scenario) {
                 $env:PATH = $prevPath
                 if ($null -eq $prevHDir)    { Remove-Item Env:ALOOP_HEALTH_DIR     -EA SilentlyContinue } else { $env:ALOOP_HEALTH_DIR    = $prevHDir }
                 if ($null -eq $prevRuntime) { Remove-Item Env:ALOOP_RUNTIME_DIR    -EA SilentlyContinue } else { $env:ALOOP_RUNTIME_DIR   = $prevRuntime }
+                if ($null -eq $prevNoDash)  { Remove-Item Env:ALOOP_NO_DASHBOARD   -EA SilentlyContinue } else { $env:ALOOP_NO_DASHBOARD  = $prevNoDash }
                 if ($null -eq $prevClaudeS) { Remove-Item Env:FAKE_CLAUDE_SCENARIO -EA SilentlyContinue } else { $env:FAKE_CLAUDE_SCENARIO = $prevClaudeS }
                 if ($null -eq $prevCodexS)  { Remove-Item Env:FAKE_CODEX_SCENARIO  -EA SilentlyContinue } else { $env:FAKE_CODEX_SCENARIO  = $prevCodexS }
             }
@@ -823,6 +843,10 @@ switch ($scenario) {
     }
 
     AfterAll {
+        # Kill any orphaned dashboard node processes spawned from this test's temp dirs
+        Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -match [regex]::Escape($tempRoot) } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
         if (Test-Path $tempRoot) { Remove-Item -Recurse -Force $tempRoot }
     }
 

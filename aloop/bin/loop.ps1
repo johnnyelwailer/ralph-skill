@@ -529,6 +529,7 @@ function Get-AvailableDashboardPort {
 }
 
 function Start-DashboardProcess {
+    if ($env:ALOOP_NO_DASHBOARD -eq '1') { return }
     $runtimeDir = if ($env:ALOOP_RUNTIME_DIR) { $env:ALOOP_RUNTIME_DIR } else { Join-Path $HOME '.aloop' }
     $cliEntrypoint = Join-Path $runtimeDir 'cli\dist\index.js'
     if (-not (Test-Path $cliEntrypoint)) {
