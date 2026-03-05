@@ -927,3 +927,69 @@ switch ($scenario) {
         $selectedProviders | Should -Not -Contain 'claude'
     }
 }
+
+# 4. loop.sh — json_escape behavioral
+# ============================================================================
+Describe 'loop.sh — json_escape behavioral' {
+
+    BeforeAll {
+        $script:bashExeJson = (Get-Command bash -ErrorAction SilentlyContinue)?.Source
+        if (-not $script:bashExeJson) { return }
+
+        $loopShPath = Join-Path $PSScriptRoot 'loop.sh'
+        $script:loopShJsonBash = & $script:bashExeJson -c "cygpath -u '$(($loopShPath -replace "\\","/"))'" 2>$null
+        if (-not $script:loopShJsonBash) {
+            $script:loopShJsonBash = ($loopShPath -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+        }
+    }
+
+    It 'escapes \n, \r, \t, \\, \", mixed multiline stderr, and empty input correctly' {
+        if (-not $script:bashExeJson) { Set-ItResult -Inconclusive -Message "bash not found"; return }
+
+        $testInput = "Error: multiline output`nLine 2 with `t tab and `r carriage return`r`n\ Backslash \\ and \"Quotes\"`n`tMixed multiline`r`nEnd`n`n"
+
+        $tempInputFile = Join-Path ([IO.Path]::GetTempPath()) ("input-" + [guid]::NewGuid().ToString('N') + ".txt")
+        [IO.File]::WriteAllBytes($tempInputFile, [System.Text.Encoding]::UTF8.GetBytes($testInput))
+
+        $tempInputPosix = & $script:bashExeJson -c "cygpath -u '$(($tempInputFile -replace "\\","/"))'" 2>$null
+        if (-not $tempInputPosix) {
+            $tempInputPosix = ($tempInputFile -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+        }
+
+        $bashCmd = @"
+eval \"$$(sed -n '/^json_escape() {/,/^}/p' '$script:loopShJsonBash')\"
+file_contents=\"$$(cat '$tempInputPosix'; printf x)\"
+file_contents="\$${file_contents%x}"
+json_escape "\$file_contents"
+"@
+        
+        $escapedArray = & $script:bashExeJson -c $bashCmd
+        $escaped = $escapedArray -join ""
+        
+        Remove-Item -Force $tempInputFile -ErrorAction SilentlyContinue
+
+        $escaped | Should -Not -Match "`n"
+        $escaped | Should -Not -Match "`t"
+        $escaped | Should -Not -Match "`r"
+        
+        $jsonStr = "{ \"value\": \"$escaped\" }"
+        $parsed = $jsonStr | ConvertFrom-Json -ErrorAction Stop
+        
+        $parsed.value | Should -BeExactly $testInput
+    }
+
+    It 'handles empty input correctly' {
+        if (-not $script:bashExeJson) { Set-ItResult -Inconclusive -Message "bash not found"; return }
+
+        $bashCmd = @"
+eval \"$$(sed -n '/^json_escape() {/,/^}/p' '$script:loopShJsonBash')\"
+json_escape ""
+"@
+        $escapedArray = & $script:bashExeJson -c $bashCmd
+        $escaped = $escapedArray -join ""
+        
+        $jsonStr = "{ \"value\": \"$escaped\" }"
+        $parsed = $jsonStr | ConvertFrom-Json -ErrorAction Stop
+        $parsed.value | Should -BeExactly ""
+    }
+}

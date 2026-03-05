@@ -3,7 +3,7 @@
 ## Current Phase: Security Boundary + Proof Phase + CLI Flow Closure
 
 ### In Progress
-- [ ] Add `loop.sh` regression tests for `json_escape` covering `\n`, `\r`, `\t`, `\\`, `\"`, mixed multiline stderr, and empty input; assert both valid JSON and exact round-trip value. (priority: P1)
+- [x] Add `loop.sh` regression tests for `json_escape` covering `\n`, `\r`, `\t`, `\\`, `\"`, mixed multiline stderr, and empty input; assert both valid JSON and exact round-trip value. (priority: P1)
 - [ ] Add explicit `degraded` handling in `resolve_healthy_provider` (`aloop/bin/loop.sh`): skip degraded providers with a distinct log path (`provider_skipped_degraded`), and emit actionable signal when all providers are degraded. (priority: P1)
 - [ ] Add explicit `degraded` handling in `Resolve-HealthyProvider` (`aloop/bin/loop.ps1`): verify degraded skip has a distinct log event matching loop.sh parity. (priority: P1)
 - [ ] Remove or relocate root-level `reproduce_json_escape_issue.sh` into a test harness so repo root has no leftover debug scripts. (priority: P3)
