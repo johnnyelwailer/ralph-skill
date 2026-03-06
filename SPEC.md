@@ -1643,6 +1643,22 @@ Enable aloop loops to run inside VS Code devcontainers for full isolation. Provi
 - Reproducibility: identical environment across machines, no "works on my machine" provider/tool version drift
 - Required for convention-file protocol: the harness runs on host, the agent runs in container, `.aloop/requests/` and `.aloop/responses/` cross the boundary via bind mount
 
+### Prerequisite: Devcontainer Spec Research (MUST DO FIRST)
+
+Before implementing any devcontainer generation, the agent MUST research the current devcontainer specification by reading the official documentation at https://code.visualstudio.com/docs/devcontainers and the spec at https://containers.dev/implementors/spec/. This is non-negotiable — do not assume config format, available properties, feature syntax, lifecycle hooks, mount syntax, or `remoteEnv`/`containerEnv` semantics from training data alone. The spec evolves and training data may be stale.
+
+**What to research:**
+- `devcontainer.json` full property reference (image vs build, features, mounts, lifecycle hooks)
+- Lifecycle hook ordering: `initializeCommand` → `onCreateCommand` → `updateContentCommand` → `postCreateCommand` → `postStartCommand` → `postAttachCommand`
+- Feature specification and available features (`ghcr.io/devcontainers/features/`)
+- Mount syntax (bind mounts, volume mounts, tmpfs)
+- `remoteEnv` / `containerEnv` / `localEnv` semantics and variable substitution (`${localEnv:VAR}`, `${containerWorkspaceFolder}`, etc.)
+- `devcontainer` CLI commands: `build`, `up`, `exec`, `read-configuration`
+- Multi-workspace and worktree mounting patterns
+- Docker Compose integration (for projects needing databases/services)
+
+**The examples in this spec section below are illustrative, not authoritative.** The implementation must use the researched spec as the source of truth.
+
 ### Devcontainer Generation (`/aloop:devcontainer` skill)
 
 The skill analyzes the project and generates a tailored devcontainer config:
