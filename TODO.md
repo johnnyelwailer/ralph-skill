@@ -7,7 +7,7 @@
 
 ### Up Next
 - [x] [cli/P1] Add `aloop start` CLI command to perform full session bootstrap (resolve + session dir/meta + optional worktree + loop launch + active session registration). (foundational UX flow)
-- [ ] [cli/P1] Add `aloop setup` CLI command with interactive defaults and `--non-interactive` path that wraps discover/scaffold. (CLI-first onboarding target)
+- [x] [cli/P1] Add `aloop setup` CLI command with interactive defaults and `--non-interactive` path that wraps discover/scaffold. (CLI-first onboarding target)
 - [ ] [commands/P1] Refactor `/aloop:start` and `/aloop:setup` command/prompt surfaces into thin wrappers that delegate to the new CLI subcommands. (prevents duplicated orchestration logic)
 - [ ] [cli/P1] Implement `on_start` monitor behavior (`dashboard|terminal|none`, `auto_open`) and wire it from `aloop start`. (required auto-monitor experience)
 - [ ] [cli/P1] Add `aloop status --watch` live refresh mode. (terminal monitoring parity)

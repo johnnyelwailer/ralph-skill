@@ -972,7 +972,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path5 = __require("node:path");
+    var path6 = __require("node:path");
     var fs3 = __require("node:fs");
     var process2 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -1915,10 +1915,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path5.resolve(baseDir, baseName);
+          const localBin = path6.resolve(baseDir, baseName);
           if (fs3.existsSync(localBin))
             return localBin;
-          if (sourceExt.includes(path5.extname(baseName)))
+          if (sourceExt.includes(path6.extname(baseName)))
             return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs3.existsSync(`${localBin}${ext}`)
@@ -1938,17 +1938,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch (err) {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path5.resolve(
-            path5.dirname(resolvedScriptPath),
+          executableDir = path6.resolve(
+            path6.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path5.basename(
+            const legacyName = path6.basename(
               this._scriptPath,
-              path5.extname(this._scriptPath)
+              path6.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -1959,7 +1959,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path5.extname(executableFile));
+        launchWithNode = sourceExt.includes(path6.extname(executableFile));
         let proc;
         if (process2.platform !== "win32") {
           if (launchWithNode) {
@@ -2816,7 +2816,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path5.basename(filename, path5.extname(filename));
+        this._name = path6.basename(filename, path6.extname(filename));
         return this;
       }
       /**
@@ -2830,10 +2830,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path6) {
-        if (path6 === void 0)
+      executableDir(path7) {
+        if (path7 === void 0)
           return this._executableDir;
-        this._executableDir = path6;
+        this._executableDir = path7;
         return this;
       }
       /**
@@ -4232,9 +4232,17 @@ async function stopCommand(sessionId, options = {}) {
 }
 
 // src/commands/gh.ts
+import { execFile } from "child_process";
+import { promisify } from "util";
 import * as fs2 from "fs";
 import * as path4 from "path";
 import * as os4 from "os";
+var execFileAsync = promisify(execFile);
+var ghExecutor = {
+  async exec(args) {
+    return execFileAsync("gh", args);
+  }
+};
 var ghCommand = new Command("gh").description("Policy-enforced GitHub operations");
 function addGhSubcommand(name, description) {
   return ghCommand.command(name).description(description).requiredOption("--session <id>", "Session ID").requiredOption("--request <file>", "Request JSON file path").option("--role <role>", "Role: child-loop or orchestrator", "child-loop").option("--home-dir <dir>", "Home directory override").action(async (options) => {
@@ -4247,9 +4255,28 @@ addGhSubcommand("issue-comment", "Comment on an issue");
 addGhSubcommand("issue-create", "Create an issue (orchestrator only)");
 addGhSubcommand("issue-close", "Close an issue (orchestrator only)");
 addGhSubcommand("pr-merge", "Merge a pull request (orchestrator only)");
+addGhSubcommand("branch-delete", "Delete a branch (always rejected)");
 function getSessionDir(homeDir, sessionId) {
   const baseHome = homeDir || os4.homedir();
   return path4.join(baseHome, ".aloop", "sessions", sessionId);
+}
+function parsePositiveInteger(value) {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const parsed = Number.parseInt(value, 10);
+    if (parsed > 0) {
+      return parsed;
+    }
+  }
+  return void 0;
+}
+function includesAloopAutoLabel(targetLabels) {
+  if (!Array.isArray(targetLabels)) {
+    return false;
+  }
+  return targetLabels.some((label) => label === "aloop/auto");
 }
 function appendLog(sessionDir, entry) {
   const logFile = path4.join(sessionDir, "log.jsonl");
@@ -4261,10 +4288,119 @@ function appendLog(sessionDir, entry) {
     fs2.appendFileSync(logFile, logData);
   }
 }
+function buildGhArgs(operation, payload, enforced) {
+  const repo = enforced.repo;
+  switch (operation) {
+    case "pr-create": {
+      const args = ["pr", "create", "--repo", repo, "--base", enforced.base];
+      if (payload.title)
+        args.push("--title", String(payload.title));
+      if (payload.body)
+        args.push("--body", String(payload.body));
+      if (payload.head)
+        args.push("--head", String(payload.head));
+      if (Array.isArray(payload.labels)) {
+        for (const label of payload.labels) {
+          args.push("--label", String(label));
+        }
+      }
+      return args;
+    }
+    case "pr-comment": {
+      const prNum = enforced.pr_number ?? payload.pr_number;
+      const args = ["pr", "comment", String(prNum), "--repo", repo];
+      if (payload.body)
+        args.push("--body", String(payload.body));
+      return args;
+    }
+    case "issue-comment": {
+      const issueNum = enforced.issue_number ?? payload.issue_number;
+      const args = ["issue", "comment", String(issueNum), "--repo", repo];
+      if (payload.body)
+        args.push("--body", String(payload.body));
+      return args;
+    }
+    case "issue-create": {
+      const args = ["issue", "create", "--repo", repo];
+      if (payload.title)
+        args.push("--title", String(payload.title));
+      if (payload.body)
+        args.push("--body", String(payload.body));
+      if (Array.isArray(payload.labels)) {
+        for (const label of payload.labels) {
+          args.push("--label", String(label));
+        }
+      }
+      return args;
+    }
+    case "issue-close": {
+      const issueNum = payload.issue_number;
+      return ["issue", "close", String(issueNum), "--repo", repo];
+    }
+    case "pr-merge": {
+      const prNum = payload.pr_number;
+      return ["pr", "merge", String(prNum), "--repo", repo, "--squash"];
+    }
+    default:
+      throw new Error(`Cannot build gh args for operation: ${operation}`);
+  }
+}
+function parseGhOutput(operation, stdout) {
+  const result = {};
+  const trimmed = stdout.trim();
+  if (operation === "pr-create") {
+    const match = trimmed.match(/\/pull\/(\d+)/);
+    if (match) {
+      result.pr_number = parseInt(match[1], 10);
+    }
+    if (trimmed)
+      result.url = trimmed;
+  } else if (operation === "issue-create") {
+    const match = trimmed.match(/\/issues\/(\d+)/);
+    if (match) {
+      result.issue_number = parseInt(match[1], 10);
+    }
+    if (trimmed)
+      result.url = trimmed;
+  }
+  return result;
+}
 async function executeGhOperation(operation, options) {
   const sessionDir = getSessionDir(options.homeDir, options.session);
   const requestFile = options.request;
   const role = options.role;
+  let sessionPolicy;
+  const configFile = path4.join(sessionDir, "config.json");
+  try {
+    if (!fs2.existsSync(configFile)) {
+      throw new Error(`Session config not found: ${configFile}`);
+    }
+    const configContent = fs2.readFileSync(configFile, "utf8");
+    const config = JSON.parse(configContent);
+    if (!config || typeof config.repo !== "string" || !config.repo.trim()) {
+      throw new Error(`Invalid session config: missing or invalid 'repo' in ${configFile}`);
+    }
+    const assignedIssueNumber = parsePositiveInteger(config.issue_number);
+    const childCreatedPrNumbers = Array.isArray(config.created_pr_numbers) ? config.created_pr_numbers.map((value) => parsePositiveInteger(value)).filter((value) => value !== void 0) : [];
+    sessionPolicy = {
+      repo: config.repo,
+      assignedIssueNumber,
+      childCreatedPrNumbers
+    };
+  } catch (e) {
+    const timestamp2 = (/* @__PURE__ */ new Date()).toISOString();
+    const logEntry = {
+      timestamp: timestamp2,
+      event: "gh_operation_denied",
+      type: operation,
+      session: options.session,
+      role,
+      reason: e.message
+    };
+    appendLog(sessionDir, logEntry);
+    console.error(JSON.stringify(logEntry));
+    process.exit(1);
+  }
   let requestPayload = {};
   if (fs2.existsSync(requestFile)) {
     try {
@@ -4277,7 +4413,7 @@ async function executeGhOperation(operation, options) {
     console.error(`Request file not found: ${requestFile}`);
     process.exit(1);
   }
-  const { allowed, reason, enforced } = evaluatePolicy(operation, role, requestPayload);
+  const { allowed, reason, enforced } = evaluatePolicy(operation, role, requestPayload, sessionPolicy);
   const timestamp = (/* @__PURE__ */ new Date()).toISOString();
   const requestFileName = path4.basename(requestFile);
   if (!allowed) {
@@ -4293,6 +4429,27 @@ async function executeGhOperation(operation, options) {
     console.error(JSON.stringify(logEntry));
     process.exit(1);
   } else {
+    const ghArgs = buildGhArgs(operation, requestPayload, enforced);
+    let ghResult;
+    try {
+      ghResult = await ghExecutor.exec(ghArgs);
+    } catch (e) {
+      const errorEntry = {
+        timestamp,
+        event: "gh_operation_error",
+        type: operation,
+        session: options.session,
+        role,
+        request_file: requestFileName,
+        error: e.message,
+        stderr: e.stderr || "",
+        enforced
+      };
+      appendLog(sessionDir, errorEntry);
+      console.error(JSON.stringify(errorEntry));
+      process.exit(1);
+    }
+    const parsed = parseGhOutput(operation, ghResult.stdout);
     const logEntry = {
       timestamp,
       event: "gh_operation",
@@ -4301,29 +4458,59 @@ async function executeGhOperation(operation, options) {
       role,
       request_file: requestFileName,
       result: "success",
-      // Simulated success
-      enforced
+      enforced,
+      ...parsed
     };
-    if (operation === "pr-create") {
-      logEntry.pr_number = 15;
-    }
     appendLog(sessionDir, logEntry);
     console.log(JSON.stringify(logEntry));
   }
 }
-function evaluatePolicy(operation, role, payload) {
+function evaluatePolicy(operation, role, payload, sessionPolicy) {
+  if (payload.repo && payload.repo !== sessionPolicy.repo) {
+    return {
+      allowed: false,
+      reason: `Mismatched repo: requested ${payload.repo}, but session is bound to ${sessionPolicy.repo}`
+    };
+  }
+  if (typeof payload.base === "string" && payload.base.trim().toLowerCase() === "main") {
+    return { allowed: false, reason: "Operations targeting main are rejected; human must promote to main" };
+  }
   if (role === "child-loop") {
     switch (operation) {
       case "pr-create":
         return {
           allowed: true,
-          enforced: { base: "agent/trunk", repo: payload.repo || "owner/repo" }
-          // repo should come from session config, scaffolding for now
+          enforced: { base: "agent/trunk", repo: sessionPolicy.repo }
         };
-      case "issue-comment":
-        return { allowed: true };
-      case "pr-comment":
-        return { allowed: true };
+      case "issue-comment": {
+        const targetIssueNumber = parsePositiveInteger(payload.issue_number);
+        if (targetIssueNumber === void 0) {
+          return { allowed: false, reason: "Child issue-comment requires numeric issue_number" };
+        }
+        if (sessionPolicy.assignedIssueNumber === void 0) {
+          return { allowed: false, reason: "Child session is missing assigned issue scope in config" };
+        }
+        if (targetIssueNumber !== sessionPolicy.assignedIssueNumber) {
+          return {
+            allowed: false,
+            reason: `Child issue-comment must target assigned issue #${sessionPolicy.assignedIssueNumber}`
+          };
+        }
+        return { allowed: true, enforced: { issue_number: sessionPolicy.assignedIssueNumber, repo: sessionPolicy.repo } };
+      }
+      case "pr-comment": {
+        const targetPrNumber = parsePositiveInteger(payload.pr_number);
+        if (targetPrNumber === void 0) {
+          return { allowed: false, reason: "Child pr-comment requires numeric pr_number" };
+        }
+        if (!sessionPolicy.childCreatedPrNumbers.includes(targetPrNumber)) {
+          return {
+            allowed: false,
+            reason: `Child pr-comment must target a PR created by this session (${targetPrNumber} is out of scope)`
+          };
+        }
+        return { allowed: true, enforced: { pr_number: targetPrNumber, repo: sessionPolicy.repo } };
+      }
       case "pr-merge":
       case "issue-create":
       case "issue-close":
@@ -4338,16 +4525,22 @@ function evaluatePolicy(operation, role, payload) {
         if (!payload.labels || !payload.labels.includes("aloop/auto")) {
           return { allowed: false, reason: "Must include aloop/auto label" };
         }
-        return { allowed: true };
+        return { allowed: true, enforced: { repo: sessionPolicy.repo } };
       case "issue-close":
-        return { allowed: true };
+        if (!includesAloopAutoLabel(payload.target_labels)) {
+          return { allowed: false, reason: "issue-close requires aloop/auto-scoped target validation" };
+        }
+        return { allowed: true, enforced: { repo: sessionPolicy.repo } };
       case "pr-create":
-        return { allowed: true, enforced: { base: "agent/trunk" } };
+        return { allowed: true, enforced: { base: "agent/trunk", repo: sessionPolicy.repo } };
       case "pr-merge":
-        return { allowed: true, enforced: { base: "agent/trunk", merge_method: "squash" } };
+        return { allowed: true, enforced: { base: "agent/trunk", merge_method: "squash", repo: sessionPolicy.repo } };
       case "pr-comment":
       case "issue-comment":
-        return { allowed: true };
+        if (!includesAloopAutoLabel(payload.target_labels)) {
+          return { allowed: false, reason: `${operation} requires aloop/auto-scoped target validation` };
+        }
+        return { allowed: true, enforced: { repo: sessionPolicy.repo } };
       case "branch-delete":
         return { allowed: false, reason: "branch-delete rejected - cleanup is manual" };
       default:
@@ -4357,12 +4550,676 @@ function evaluatePolicy(operation, role, payload) {
   return { allowed: false, reason: `Unknown role: ${role}` };
 }
 
+// src/commands/start.ts
+import { spawn, spawnSync as spawnSync3 } from "node:child_process";
+import { cp, mkdir as mkdir2, readFile as readFile3, writeFile as writeFile3 } from "node:fs/promises";
+import { existsSync as existsSync4 } from "node:fs";
+import path5 from "node:path";
+var PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot", "round-robin"]);
+var MODEL_PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot"]);
+var LOOP_MODE_SET = /* @__PURE__ */ new Set(["plan", "build", "review", "plan-build", "plan-build-review"]);
+var DEFAULT_MODELS = {
+  claude: "opus",
+  codex: "gpt-5.3-codex",
+  gemini: "gemini-3.1-pro-preview",
+  copilot: "gpt-5.3-codex"
+};
+var defaultDeps = {
+  discoverWorkspace,
+  readFile: readFile3,
+  writeFile: writeFile3,
+  mkdir: mkdir2,
+  cp,
+  existsSync: existsSync4,
+  spawn,
+  spawnSync: spawnSync3,
+  platform: process.platform,
+  env: process.env,
+  now: () => /* @__PURE__ */ new Date()
+};
+function stripInlineComment(raw) {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i];
+    if (char === "'" && !inDouble) {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (char === '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (char === "#" && !inSingle && !inDouble) {
+      const prev = i > 0 ? raw[i - 1] : " ";
+      if (prev === " " || prev === "	") {
+        return raw.slice(0, i).trimEnd();
+      }
+    }
+  }
+  return raw.trimEnd();
+}
+function parseYamlScalar(raw) {
+  const cleaned = stripInlineComment(raw).trim();
+  if (cleaned === "")
+    return "";
+  if (/^null$/i.test(cleaned))
+    return null;
+  if (/^true$/i.test(cleaned))
+    return true;
+  if (/^false$/i.test(cleaned))
+    return false;
+  if (/^-?\d+$/.test(cleaned))
+    return Number.parseInt(cleaned, 10);
+  if (cleaned.startsWith("'") && cleaned.endsWith("'") && cleaned.length >= 2) {
+    return cleaned.slice(1, -1).replace(/''/g, "'");
+  }
+  if (cleaned.startsWith('"') && cleaned.endsWith('"') && cleaned.length >= 2) {
+    return cleaned.slice(1, -1).replace(/\\"/g, '"');
+  }
+  return cleaned;
+}
+function parseAloopConfig(content) {
+  const parsed = {
+    values: {},
+    enabled_providers: [],
+    round_robin_order: [],
+    models: {},
+    retry_models: {}
+  };
+  const listSections = /* @__PURE__ */ new Set(["enabled_providers", "round_robin_order"]);
+  const mapSections = /* @__PURE__ */ new Set(["models", "retry_models"]);
+  let activeSection = null;
+  let inBlockScalar = false;
+  const lines = content.split(/\r?\n/);
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (trimmed === "" || trimmed.startsWith("#")) {
+      continue;
+    }
+    const indent = rawLine.length - rawLine.trimStart().length;
+    if (inBlockScalar) {
+      if (indent > 0) {
+        continue;
+      }
+      inBlockScalar = false;
+      activeSection = null;
+    }
+    if (indent === 0) {
+      const topLevel = trimmed.match(/^([A-Za-z0-9_]+):(?:\s*(.*))?$/);
+      if (!topLevel) {
+        activeSection = null;
+        continue;
+      }
+      const key = topLevel[1];
+      const rawValue = topLevel[2] ?? "";
+      if (rawValue === "") {
+        activeSection = key;
+        continue;
+      }
+      if (rawValue === "|" || rawValue === ">") {
+        inBlockScalar = true;
+        activeSection = null;
+        continue;
+      }
+      parsed.values[key] = parseYamlScalar(rawValue);
+      activeSection = null;
+      continue;
+    }
+    if (!activeSection || indent < 2) {
+      continue;
+    }
+    if (listSections.has(activeSection)) {
+      const listMatch = trimmed.match(/^-\s+(.+)$/);
+      if (!listMatch) {
+        continue;
+      }
+      const value = parseYamlScalar(listMatch[1]);
+      if (typeof value === "string" && value.length > 0) {
+        if (activeSection === "enabled_providers") {
+          parsed.enabled_providers.push(value);
+        } else if (activeSection === "round_robin_order") {
+          parsed.round_robin_order.push(value);
+        }
+      }
+      continue;
+    }
+    if (mapSections.has(activeSection)) {
+      const mapMatch = trimmed.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+      if (!mapMatch) {
+        continue;
+      }
+      const mapKey = mapMatch[1];
+      const mapValue = parseYamlScalar(mapMatch[2]);
+      if (activeSection === "models") {
+        if (typeof mapValue === "string" && mapValue.length > 0) {
+          parsed.models[mapKey] = mapValue;
+        }
+      } else if (activeSection === "retry_models") {
+        if (mapValue === null) {
+          parsed.retry_models[mapKey] = null;
+        } else if (typeof mapValue === "string" && mapValue.length > 0) {
+          parsed.retry_models[mapKey] = mapValue;
+        }
+      }
+    }
+  }
+  return parsed;
+}
+async function readOptionalConfig(configPath, deps) {
+  if (!deps.existsSync(configPath))
+    return null;
+  const content = await deps.readFile(configPath, "utf8");
+  return parseAloopConfig(content);
+}
+function toPositiveInt(value) {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const parsed = Number.parseInt(value, 10);
+    return parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+function toBoolean(value, fallback) {
+  if (typeof value === "boolean")
+    return value;
+  if (typeof value === "string") {
+    if (/^true$/i.test(value))
+      return true;
+    if (/^false$/i.test(value))
+      return false;
+  }
+  return fallback;
+}
+function normalizeProviderList(values) {
+  const normalized = [];
+  for (const raw of values) {
+    const candidate = raw.trim().toLowerCase();
+    if (!MODEL_PROVIDER_SET.has(candidate)) {
+      continue;
+    }
+    const provider = candidate;
+    if (!normalized.includes(provider)) {
+      normalized.push(provider);
+    }
+  }
+  return normalized;
+}
+function sanitizeSessionToken(value) {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized.length > 0 ? normalized : "session";
+}
+function padNumber(value) {
+  return value.toString().padStart(2, "0");
+}
+function formatSessionTimestamp(date) {
+  return `${date.getUTCFullYear()}${padNumber(date.getUTCMonth() + 1)}${padNumber(date.getUTCDate())}-${padNumber(date.getUTCHours())}${padNumber(date.getUTCMinutes())}${padNumber(date.getUTCSeconds())}`;
+}
+function resolveModeFromFlags(options) {
+  const modeFlags = [options.plan, options.build, options.review].filter(Boolean).length;
+  if (modeFlags > 1) {
+    throw new Error("Choose at most one of --plan, --build, or --review.");
+  }
+  if (options.plan)
+    return "plan";
+  if (options.build)
+    return "build";
+  if (options.review)
+    return "review";
+  return null;
+}
+function assertLoopMode(value) {
+  const normalized = value.trim().toLowerCase();
+  if (!LOOP_MODE_SET.has(normalized)) {
+    throw new Error(`Invalid mode: ${value}`);
+  }
+  return normalized;
+}
+function assertLoopProvider(value) {
+  const normalized = value.trim().toLowerCase();
+  if (!PROVIDER_SET.has(normalized)) {
+    throw new Error(`Invalid provider: ${value}`);
+  }
+  return normalized;
+}
+function trySpawnSync(deps, command, args) {
+  try {
+    const result = deps.spawnSync(command, args, { encoding: "utf8", stdio: "ignore", windowsHide: true });
+    return result.status;
+  } catch {
+    return null;
+  }
+}
+function resolvePowerShellBinary(deps) {
+  for (const candidate of ["pwsh", "powershell"]) {
+    if (trySpawnSync(deps, candidate, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"]) === 0) {
+      return candidate;
+    }
+  }
+  throw new Error("PowerShell is required to launch loop.ps1 but neither pwsh nor powershell was found.");
+}
+async function readActiveMap(activePath, deps) {
+  if (!deps.existsSync(activePath)) {
+    return {};
+  }
+  try {
+    const content = await deps.readFile(activePath, "utf8");
+    const parsed = JSON.parse(content);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+function resolveSessionId(baseName, sessionsRoot, deps) {
+  const now = deps.now();
+  const baseSessionId = `${sanitizeSessionToken(baseName)}-${formatSessionTimestamp(now)}`;
+  let sessionId = baseSessionId;
+  let suffix = 1;
+  while (deps.existsSync(path5.join(sessionsRoot, sessionId))) {
+    sessionId = `${baseSessionId}-${suffix}`;
+    suffix += 1;
+  }
+  return sessionId;
+}
+function selectValue(...values) {
+  for (const value of values) {
+    if (value !== void 0 && value !== null) {
+      return value;
+    }
+  }
+  return void 0;
+}
+function collectModelProviders(enabledProviders, provider) {
+  const set = new Set(enabledProviders);
+  if (provider !== "round-robin") {
+    set.add(provider);
+  }
+  return Array.from(set);
+}
+function createGitFailureWarning(stderr, stdout) {
+  const detail = [stderr, stdout].map((value) => value.trim()).filter(Boolean).join(" | ");
+  if (!detail) {
+    return "git worktree add failed; falling back to in-place execution.";
+  }
+  return `git worktree add failed (${detail}); falling back to in-place execution.`;
+}
+async function startCommandWithDeps(options = {}, deps = defaultDeps) {
+  const homeDir = resolveHomeDir(options.homeDir);
+  const discovery = await deps.discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
+  if (!discovery.setup.config_exists || !deps.existsSync(discovery.setup.config_path)) {
+    throw new Error("No Aloop configuration found for this project. Run `aloop setup` first.");
+  }
+  const aloopRoot = path5.join(homeDir, ".aloop");
+  const sessionsRoot = path5.join(aloopRoot, "sessions");
+  const warnings = [];
+  await deps.mkdir(sessionsRoot, { recursive: true });
+  const projectConfig = await readOptionalConfig(discovery.setup.config_path, deps) ?? {
+    values: {},
+    enabled_providers: [],
+    round_robin_order: [],
+    models: {},
+    retry_models: {}
+  };
+  const globalConfig = await readOptionalConfig(path5.join(aloopRoot, "config.yml"), deps) ?? {
+    values: {},
+    enabled_providers: [],
+    round_robin_order: [],
+    models: {},
+    retry_models: {}
+  };
+  const enabledProviders = normalizeProviderList(
+    projectConfig.enabled_providers.length > 0 ? projectConfig.enabled_providers : globalConfig.enabled_providers.length > 0 ? globalConfig.enabled_providers : discovery.providers.installed
+  );
+  if (enabledProviders.length === 0) {
+    enabledProviders.push("claude");
+  }
+  const forcedMode = resolveModeFromFlags(options);
+  const resolvedMode = forcedMode ?? (options.mode ? assertLoopMode(options.mode) : null) ?? assertLoopMode(String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, "plan-build-review")));
+  const selectedProvider = options.provider ? assertLoopProvider(options.provider) : assertLoopProvider(String(selectValue(projectConfig.values.provider, globalConfig.values.default_provider, discovery.providers.default_provider, "claude")));
+  if (selectedProvider !== "round-robin" && !enabledProviders.includes(selectedProvider)) {
+    enabledProviders.push(selectedProvider);
+  }
+  const roundRobinOrderSource = projectConfig.round_robin_order.length > 0 ? projectConfig.round_robin_order : globalConfig.round_robin_order;
+  let roundRobinOrder = normalizeProviderList(roundRobinOrderSource);
+  if (roundRobinOrder.length === 0) {
+    roundRobinOrder = [...enabledProviders];
+  }
+  roundRobinOrder = roundRobinOrder.filter((provider) => enabledProviders.includes(provider));
+  if (roundRobinOrder.length === 0) {
+    roundRobinOrder = [...enabledProviders];
+  }
+  const maxIterations = toPositiveInt(selectValue(options.maxIterations, projectConfig.values.max_iterations, globalConfig.values.max_iterations)) ?? 50;
+  const maxStuck = toPositiveInt(selectValue(projectConfig.values.max_stuck, globalConfig.values.max_stuck)) ?? 3;
+  const backupEnabled = toBoolean(selectValue(projectConfig.values.backup_enabled, globalConfig.values.backup_enabled), false);
+  const worktreeDefault = toBoolean(selectValue(projectConfig.values.worktree_default, globalConfig.values.worktree_default), true);
+  const mergedModels = {
+    ...DEFAULT_MODELS,
+    ...Object.fromEntries(
+      Object.entries(globalConfig.models).filter(([provider]) => MODEL_PROVIDER_SET.has(provider))
+    ),
+    ...Object.fromEntries(
+      Object.entries(projectConfig.models).filter(([provider]) => MODEL_PROVIDER_SET.has(provider))
+    )
+  };
+  const copilotRetryModel = String(selectValue(projectConfig.retry_models.copilot, globalConfig.retry_models.copilot, "claude-sonnet-4.6") ?? "claude-sonnet-4.6");
+  const sessionId = resolveSessionId(discovery.project.name, sessionsRoot, deps);
+  const sessionDir = path5.join(sessionsRoot, sessionId);
+  const promptsSourceDir = path5.join(discovery.setup.project_dir, "prompts");
+  const promptsDir = path5.join(sessionDir, "prompts");
+  const startedAt = deps.now().toISOString();
+  let workDir = discovery.project.root;
+  let worktreePath = null;
+  let branchName = null;
+  let useWorktree = !options.inPlace && worktreeDefault;
+  await deps.mkdir(sessionDir, { recursive: true });
+  if (!deps.existsSync(promptsSourceDir)) {
+    throw new Error(`Project prompts not found: ${promptsSourceDir}. Run \`aloop setup\` first.`);
+  }
+  await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
+  if (useWorktree) {
+    if (!discovery.project.is_git_repo) {
+      warnings.push("Worktree requested but project is not a git repository; using in-place execution.");
+      useWorktree = false;
+    } else {
+      const candidatePath = path5.join(sessionDir, "worktree");
+      const candidateBranch = `aloop/${sessionId}`;
+      const worktreeResult = deps.spawnSync("git", ["-C", discovery.project.root, "worktree", "add", candidatePath, "-b", candidateBranch], { encoding: "utf8" });
+      if (worktreeResult.status !== 0) {
+        warnings.push(createGitFailureWarning(String(worktreeResult.stderr ?? ""), String(worktreeResult.stdout ?? "")));
+        useWorktree = false;
+      } else {
+        worktreePath = candidatePath;
+        workDir = candidatePath;
+        branchName = candidateBranch;
+      }
+    }
+  }
+  const modelProviders = collectModelProviders(enabledProviders, selectedProvider);
+  const roundRobinCsv = roundRobinOrder.join(",");
+  const loopBinDir = path5.join(aloopRoot, "bin");
+  let command;
+  let args;
+  if (deps.platform === "win32") {
+    const loopScript = path5.join(loopBinDir, "loop.ps1");
+    if (!deps.existsSync(loopScript)) {
+      throw new Error(`Loop script not found: ${loopScript}`);
+    }
+    command = resolvePowerShellBinary(deps);
+    args = [
+      "-NoProfile",
+      "-File",
+      loopScript,
+      "-PromptsDir",
+      promptsDir,
+      "-SessionDir",
+      sessionDir,
+      "-WorkDir",
+      workDir,
+      "-Mode",
+      resolvedMode,
+      "-Provider",
+      selectedProvider,
+      "-RoundRobinProviders",
+      roundRobinCsv,
+      "-MaxIterations",
+      String(maxIterations),
+      "-MaxStuck",
+      String(maxStuck)
+    ];
+    if (backupEnabled) {
+      args.push("-BackupEnabled");
+    }
+    for (const provider of modelProviders) {
+      const model = mergedModels[provider];
+      if (!model)
+        continue;
+      if (provider === "claude")
+        args.push("-ClaudeModel", model);
+      if (provider === "codex")
+        args.push("-CodexModel", model);
+      if (provider === "gemini")
+        args.push("-GeminiModel", model);
+      if (provider === "copilot") {
+        args.push("-CopilotModel", model);
+      }
+    }
+    if (modelProviders.includes("copilot") && copilotRetryModel.length > 0) {
+      args.push("-CopilotRetryModel", copilotRetryModel);
+    }
+  } else {
+    const loopScript = path5.join(loopBinDir, "loop.sh");
+    if (!deps.existsSync(loopScript)) {
+      throw new Error(`Loop script not found: ${loopScript}`);
+    }
+    command = loopScript;
+    args = [
+      "--prompts-dir",
+      promptsDir,
+      "--session-dir",
+      sessionDir,
+      "--work-dir",
+      workDir,
+      "--mode",
+      resolvedMode,
+      "--provider",
+      selectedProvider,
+      "--round-robin",
+      roundRobinCsv,
+      "--max-iterations",
+      String(maxIterations),
+      "--max-stuck",
+      String(maxStuck)
+    ];
+    if (backupEnabled) {
+      args.push("--backup");
+    }
+    for (const provider of modelProviders) {
+      const model = mergedModels[provider];
+      if (!model)
+        continue;
+      if (provider === "claude")
+        args.push("--claude-model", model);
+      if (provider === "codex")
+        args.push("--codex-model", model);
+      if (provider === "gemini")
+        args.push("--gemini-model", model);
+      if (provider === "copilot")
+        args.push("--copilot-model", model);
+    }
+  }
+  const metaPath = path5.join(sessionDir, "meta.json");
+  const statusPath = path5.join(sessionDir, "status.json");
+  const meta = {
+    session_id: sessionId,
+    project_name: discovery.project.name,
+    project_root: discovery.project.root,
+    project_hash: discovery.project.hash,
+    provider: selectedProvider,
+    mode: resolvedMode,
+    max_iterations: maxIterations,
+    max_stuck: maxStuck,
+    worktree: useWorktree,
+    worktree_path: worktreePath,
+    work_dir: workDir,
+    branch: branchName,
+    prompts_dir: promptsDir,
+    session_dir: sessionDir,
+    enabled_providers: enabledProviders,
+    round_robin_order: roundRobinOrder,
+    warnings,
+    created_at: startedAt
+  };
+  await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}
+`, "utf8");
+  await deps.writeFile(
+    statusPath,
+    `${JSON.stringify({ state: "starting", mode: resolvedMode, provider: selectedProvider, iteration: 0, updated_at: startedAt }, null, 2)}
+`,
+    "utf8"
+  );
+  const child = deps.spawn(command, args, {
+    cwd: workDir,
+    detached: true,
+    stdio: "ignore",
+    env: { ...deps.env },
+    windowsHide: true
+  });
+  child.unref();
+  const pid = child.pid;
+  if (!pid) {
+    throw new Error("Failed to launch loop process.");
+  }
+  meta.pid = pid;
+  meta.started_at = startedAt;
+  await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}
+`, "utf8");
+  const activePath = path5.join(aloopRoot, "active.json");
+  const active = await readActiveMap(activePath, deps);
+  active[sessionId] = {
+    session_id: sessionId,
+    session_dir: sessionDir,
+    project_name: discovery.project.name,
+    project_root: discovery.project.root,
+    pid,
+    work_dir: workDir,
+    started_at: startedAt,
+    provider: selectedProvider,
+    mode: resolvedMode
+  };
+  await deps.writeFile(activePath, `${JSON.stringify(active, null, 2)}
+`, "utf8");
+  return {
+    session_id: sessionId,
+    session_dir: sessionDir,
+    prompts_dir: promptsDir,
+    work_dir: workDir,
+    worktree: useWorktree,
+    worktree_path: worktreePath,
+    branch: branchName,
+    provider: selectedProvider,
+    mode: resolvedMode,
+    max_iterations: maxIterations,
+    max_stuck: maxStuck,
+    pid,
+    started_at: startedAt,
+    warnings
+  };
+}
+async function startCommand(options = {}) {
+  const outputMode = options.output ?? "text";
+  const result = await startCommandWithDeps(options);
+  if (outputMode === "json") {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log("Aloop loop started!");
+  console.log("");
+  console.log(`  Session:  ${result.session_id}`);
+  console.log(`  Mode:     ${result.mode}`);
+  console.log(`  Provider: ${result.provider}`);
+  console.log(`  Work dir: ${result.work_dir}`);
+  console.log(`  PID:      ${result.pid}`);
+  console.log(`  Prompts:  ${result.prompts_dir}`);
+  if (result.warnings.length > 0) {
+    console.log("");
+    console.log("Warnings:");
+    for (const warning of result.warnings) {
+      console.log(`  - ${warning}`);
+    }
+  }
+}
+
+// src/commands/setup.ts
+import * as readline from "node:readline";
+async function defaultPromptUser(rl, question, defaultValue) {
+  return new Promise((resolve) => {
+    rl.question(`${question} [${defaultValue}]: `, (answer) => {
+      resolve(answer.trim() || defaultValue);
+    });
+  });
+}
+async function setupCommandWithDeps(options, deps) {
+  const discovery = await deps.discover({
+    projectRoot: options.projectRoot,
+    homeDir: options.homeDir
+  });
+  if (options.nonInteractive) {
+    console.log("Running setup in non-interactive mode...");
+    const result2 = await deps.scaffold({
+      projectRoot: options.projectRoot,
+      homeDir: options.homeDir
+    });
+    console.log(`Setup complete. Config written to: ${result2.config_path}`);
+    return;
+  }
+  console.log("\n--- Aloop Interactive Setup ---\n");
+  const defaultLanguage = discovery.context.detected_language;
+  const language = await deps.prompt("Language", defaultLanguage);
+  const defaultProvider = discovery.providers.default_provider;
+  const provider = await deps.prompt("Provider", defaultProvider);
+  const defaultMode = "plan-build-review";
+  const mode = await deps.prompt("Mode", defaultMode);
+  const defaultValidation = discovery.context.validation_presets.full.join(", ") || "npm test";
+  const validationCommandsRaw = await deps.prompt("Validation Commands (comma-separated)", defaultValidation);
+  const validationCommands = validationCommandsRaw.split(",").map((s) => s.trim()).filter(Boolean);
+  const defaultSafety = "Never delete the project directory or run destructive commands, Never push to remote without explicit user approval";
+  const safetyRulesRaw = await deps.prompt("Safety Rules (comma-separated)", defaultSafety);
+  const safetyRules = safetyRulesRaw.split(",").map((s) => s.trim()).filter(Boolean);
+  console.log("\nScaffolding workspace with the following configuration:");
+  console.log(`- Language: ${language}`);
+  console.log(`- Provider: ${provider}`);
+  console.log(`- Mode: ${mode}`);
+  console.log(`- Validation Commands: ${validationCommands.join(", ")}`);
+  console.log(`- Safety Rules: ${safetyRules.join(", ")}`);
+  console.log("");
+  const result = await deps.scaffold({
+    projectRoot: options.projectRoot,
+    homeDir: options.homeDir,
+    language,
+    provider,
+    mode,
+    validationCommands,
+    safetyRules
+  });
+  console.log(`Setup complete. Config written to: ${result.config_path}`);
+}
+async function setupCommand(options = {}) {
+  let rl = null;
+  const deps = {
+    discover: discoverWorkspace,
+    scaffold: scaffoldWorkspace,
+    prompt: async (question, defaultValue) => {
+      if (!rl) {
+        rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout
+        });
+      }
+      return defaultPromptUser(rl, question, defaultValue);
+    }
+  };
+  try {
+    await setupCommandWithDeps(options, deps);
+  } finally {
+    if (rl) {
+      rl.close();
+    }
+  }
+}
+
 // src/index.ts
 var program2 = new Command();
 program2.name("aloop").description("Aloop CLI for dashboard and project orchestration").version("1.0.0");
 program2.command("resolve").description("Resolve project workspace and configuration").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(resolveCommand);
 program2.command("discover").description("Discover workspace specs, files, and validation commands").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(discoverCommand);
+program2.command("setup").description("Interactive setup and scaffold for aloop project").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--non-interactive", "Skip interactive prompts and use defaults").action(setupCommand);
 program2.command("scaffold").description("Scaffold project workdir and prompts").option("--project-root <path>", "Project root override").option("--language <language>", "Language override").option("--provider <provider>", "Provider override").option("--enabled-providers <providers...>", "Enabled providers list or csv values").option("--round-robin-order <providers...>", "Round-robin provider order list or csv values").option("--spec-files <files...>", "Spec file list or csv values").option("--reference-files <files...>", "Reference file list or csv values").option("--validation-commands <commands...>", "Validation command list or csv values").option("--safety-rules <rules...>", "Safety rule list or csv values").option("--mode <mode>", "Loop mode", "plan-build-review").option("--templates-dir <path>", "Template directory override").option("--output <mode>", "Output format: json or text", "json").action(scaffoldCommand);
+program2.command("start").description("Start an aloop session for the current project").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--provider <provider>", "Provider override").option("--mode <mode>", "Loop mode override").option("--plan", "Shortcut for --mode plan").option("--build", "Shortcut for --mode build").option("--review", "Shortcut for --mode review").option("--in-place", "Run in project root instead of creating a git worktree").option("--max-iterations <number>", "Max iteration override").option("--output <mode>", "Output format: json or text", "text").action(startCommand);
 program2.command("dashboard").description("Launch real-time progress dashboard").option("-p, --port <number>", "Port to run the dashboard on", "3000").option("--session-dir <path>", "Session directory containing status.json and log.jsonl").option("--workdir <path>", "Project work directory containing TODO.md and related docs").option("--assets-dir <path>", "Directory containing bundled dashboard frontend assets").action(dashboardCommand);
 program2.command("status").description("Show all active sessions and provider health").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(statusCommand);
 program2.command("active").description("List active sessions").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(activeCommand);

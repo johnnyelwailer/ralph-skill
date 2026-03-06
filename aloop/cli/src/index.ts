@@ -9,6 +9,7 @@ import { activeCommand } from './commands/active.js';
 import { stopCommand } from './commands/stop.js';
 import { ghCommand } from './commands/gh.js';
 import { startCommand } from './commands/start.js';
+import { setupCommand } from './commands/setup.js';
 
 const program = new Command();
 
@@ -30,6 +31,14 @@ program
   .option('--project-root <path>', 'Project root override')
   .option('--output <mode>', 'Output format: json or text', 'json')
   .action(discoverCommand);
+
+program
+  .command('setup')
+  .description('Interactive setup and scaffold for aloop project')
+  .option('--project-root <path>', 'Project root override')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--non-interactive', 'Skip interactive prompts and use defaults')
+  .action(setupCommand);
 
 program
   .command('scaffold')
