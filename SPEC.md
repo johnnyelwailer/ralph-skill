@@ -1846,3 +1846,56 @@ Preferred: option 4 (`remoteEnv` + `localEnv`) — no secrets in files, uses hos
 - [ ] Container is started by first loop, reused by subsequent loops (detect via `devcontainer exec -- echo ok`)
 - [ ] No per-loop container startup overhead after the first
 - [ ] Session worktrees are accessible inside the container via bind mount of `~/.aloop/sessions/`
+
+---
+
+## Known Issues & Required Fixes (from field testing)
+
+These issues were discovered when another agent attempted to set up and run aloop on a fresh Windows machine. They must be addressed before aloop can be considered reliably installable.
+
+### 1. loop.ps1 — Fatal parse error on last line
+
+`Write-Host "... ($iteration iterations) ..."` causes a cascading parse failure. PowerShell interprets `($iteration iterations)` as a sub-expression, chokes on `iterations` as an unexpected token, and then reports bogus "missing closing `}`" errors throughout the entire file. The file fails to load at all — no execution happens.
+
+**Fix:** Use `$($iteration)` subexpression syntax to avoid the parentheses-inside-string ambiguity. Applied to repo source but **the installed runtime at `~/.aloop/bin/loop.ps1` may still have the old version** — `install.ps1` must re-copy on next install.
+
+**Note:** This only affects Windows PowerShell 5.1. PowerShell 7 (pwsh) parses it differently but we must support both.
+
+### 2. Claude Code Edit tool corrupts line endings
+
+When Claude Code's Edit tool modifies `loop.ps1`, it writes edited lines with LF-only (`\n`) while the rest of the file uses CRLF (`\r\n`). Windows PowerShell cannot parse files with mixed line endings — it treats LF-only lines as continuation of the previous string, causing "missing string terminator" errors.
+
+Worse: attempting to fix with `Set-Content` can collapse the file into a single line.
+
+**Mitigations needed:**
+- [ ] Add `.editorconfig` to repo enforcing `end_of_line = crlf` for `*.ps1` files
+- [ ] Consider adding a line-ending self-check at the top of `loop.ps1` that detects and warns about mixed endings
+- [ ] `install.ps1` should normalize line endings when copying loop scripts to `~/.aloop/bin/`
+- [ ] Document in skill instructions that agents should use `Write` tool (full file) instead of `Edit` for `.ps1` files if line-ending corruption is detected
+
+### 3. Path format mismatch — Git Bash `$HOME` vs PowerShell paths
+
+When launching `loop.ps1` from Git Bash, `$HOME` resolves to `/c/Users/pj/` which PowerShell can't parse. Paths must be Windows-native (`C:\Users\pj\...`).
+
+**Mitigations needed:**
+- [ ] `aloop start` skill/CLI must detect the current shell and convert paths to the target script's expected format
+- [ ] `loop.ps1` should normalize any POSIX-style paths it receives in its parameters
+- [ ] Document that `loop.ps1` must always be invoked with Windows-native paths
+
+### 4. CLAUDECODE env var not unset in loop.sh
+
+When `aloop start` is invoked from within a Claude Code session, the `CLAUDECODE` env var is inherited by child processes. This causes `claude --print` (and potentially other provider CLIs) to fail with "Claude Code cannot be launched inside another Claude Code session."
+
+**Fix:** `unset CLAUDECODE` at the top of `loop.sh` and `Remove-Item Env:CLAUDECODE` at the top of `loop.ps1`. Applied to repo source but **installed runtime may be stale** — must be re-installed.
+
+**Defense in depth:** Also unset per-invocation in `Invoke-Provider` / `invoke_provider` blocks (already done in worktree versions).
+
+### 5. Installed runtime staleness
+
+The installed runtime at `~/.aloop/bin/` (or `~/.ralph/bin/` on older installs) is copied once during `install.ps1` and never auto-updated. When bugs are fixed in the repo, the installed copy stays broken until the user re-runs `install.ps1`.
+
+**Mitigations needed:**
+- [ ] `aloop` CLI should check if installed runtime is older than repo source and warn/offer to update
+- [ ] Consider `aloop update` command that re-copies runtime files from repo
+- [ ] `install.ps1` should print a version or timestamp so staleness is detectable
+- [ ] Loop scripts should log their own version/timestamp at `session_start` for debugging
