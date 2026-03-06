@@ -28,6 +28,7 @@ addGhSubcommand('issue-comment', 'Comment on an issue');
 addGhSubcommand('issue-create', 'Create an issue (orchestrator only)');
 addGhSubcommand('issue-close', 'Close an issue (orchestrator only)');
 addGhSubcommand('pr-merge', 'Merge a pull request (orchestrator only)');
+addGhSubcommand('branch-delete', 'Delete a branch (always rejected)');
 
 type SessionPolicyContext = {
   repo: string;

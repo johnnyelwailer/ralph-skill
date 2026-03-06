@@ -6,7 +6,7 @@
 - [x] [security/P0] Enforce scoped-target policy in `evaluatePolicy`: child `issue-comment` must be limited to assigned issue, child `pr-comment` to child-created PRs, and orchestrator `issue-close`/comment operations must require `aloop/auto` scope validation (not comments-only placeholders).
 
 ### Up Next
-- [ ] [security/P0] Expand `aloop/cli/src/commands/gh.test.ts` to cover: missing request file, invalid request JSON, unknown role, unknown operation, missing/invalid session config paths, missing `repo` in config, orchestrator label guards, and `enforced.repo` assertions on allowed paths.
+- [x] [security/P0] Expand `aloop/cli/src/commands/gh.test.ts` to cover: missing request file, invalid request JSON, unknown role, unknown operation, missing/invalid session config paths, missing `repo` in config, orchestrator label guards, and `enforced.repo` assertions on allowed paths.
 - [ ] [security/P0] Raise `aloop/cli/src/commands/gh.ts` branch coverage to >=90% by covering all policy and error-path branches introduced by the security hardening.
 - [ ] [security/P1] Replace `gh.ts` simulated-success scaffolding with real `gh` command execution wrappers and structured result payloads for harness consumption.
 

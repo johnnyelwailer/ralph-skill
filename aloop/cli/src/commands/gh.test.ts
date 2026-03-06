@@ -413,3 +413,468 @@ test('ghCommand denies orchestrator pr-comment without aloop/auto-scoped target 
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }
 });
+
+// --- Missing request file ---
+
+test('ghCommand exits non-zero when request file does not exist', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  const missingRequest = path.join(fixture.tmpHome, 'nonexistent.json');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'pr-create',
+        '--session', 'test-session',
+        '--request', missingRequest,
+        '--role', 'child-loop',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+// --- Invalid request JSON ---
+
+test('ghCommand exits non-zero when request file contains invalid JSON', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  fs.writeFileSync(fixture.requestFile, '{not valid json!!!', 'utf8');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'pr-create',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'child-loop',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+// --- Unknown role ---
+
+test('ghCommand denies unknown role and logs gh_operation_denied', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'pr-create',
+    repo: 'test/repo',
+  }), 'utf8');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'pr-create',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'rogue-agent',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /Unknown role/i);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+// --- Denied operations (branch-delete is always rejected) ---
+
+test('ghCommand denies branch-delete for child-loop', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'branch-delete',
+    repo: 'test/repo',
+  }), 'utf8');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'branch-delete',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'child-loop',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /not allowed/i);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand denies branch-delete for orchestrator', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'branch-delete',
+    repo: 'test/repo',
+  }), 'utf8');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'branch-delete',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'orchestrator',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /cleanup is manual/i);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+// --- Missing session config ---
+
+test('ghCommand hard-fails when session config.json is missing', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-test-'));
+  const sessionDir = path.join(tmpHome, '.aloop', 'sessions', 'no-config-session');
+  fs.mkdirSync(sessionDir, { recursive: true });
+  // Deliberately do NOT create config.json
+
+  const requestFile = path.join(tmpHome, 'request.json');
+  fs.writeFileSync(requestFile, JSON.stringify({
+    type: 'pr-create',
+    repo: 'test/repo',
+  }), 'utf8');
+
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'pr-create',
+        '--session', 'no-config-session',
+        '--request', requestFile,
+        '--role', 'child-loop',
+        '--home-dir', tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /Session config not found/i);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+// --- Invalid session config: missing repo ---
+
+test('ghCommand hard-fails when config.json is missing repo field', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-test-'));
+  const sessionDir = path.join(tmpHome, '.aloop', 'sessions', 'bad-config-session');
+  fs.mkdirSync(sessionDir, { recursive: true });
+
+  fs.writeFileSync(path.join(sessionDir, 'config.json'), JSON.stringify({
+    issue_number: 42,
+  }), 'utf8');
+
+  const requestFile = path.join(tmpHome, 'request.json');
+  fs.writeFileSync(requestFile, JSON.stringify({
+    type: 'pr-create',
+    repo: 'test/repo',
+  }), 'utf8');
+
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'pr-create',
+        '--session', 'bad-config-session',
+        '--request', requestFile,
+        '--role', 'child-loop',
+        '--home-dir', tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /missing or invalid.*repo/i);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+// --- Invalid session config: malformed JSON ---
+
+test('ghCommand hard-fails when config.json contains invalid JSON', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-test-'));
+  const sessionDir = path.join(tmpHome, '.aloop', 'sessions', 'broken-config');
+  fs.mkdirSync(sessionDir, { recursive: true });
+
+  fs.writeFileSync(path.join(sessionDir, 'config.json'), '{{not json', 'utf8');
+
+  const requestFile = path.join(tmpHome, 'request.json');
+  fs.writeFileSync(requestFile, JSON.stringify({
+    type: 'pr-create',
+    repo: 'test/repo',
+  }), 'utf8');
+
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'pr-create',
+        '--session', 'broken-config',
+        '--request', requestFile,
+        '--role', 'child-loop',
+        '--home-dir', tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+// --- Orchestrator issue-create label guards ---
+
+test('ghCommand denies orchestrator issue-create without aloop/auto label', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'issue-create',
+    repo: 'test/repo',
+    labels: ['bug'],
+  }), 'utf8');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'issue-create',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'orchestrator',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /aloop\/auto/i);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand allows orchestrator issue-create with aloop/auto label', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'issue-create',
+    repo: 'test/repo',
+    labels: ['aloop/auto'],
+  }), 'utf8');
+
+  try {
+    await ghCommand.parseAsync([
+      'issue-create',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'orchestrator',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation');
+    assert.equal(entries[0].type, 'issue-create');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+// --- enforced.repo assertions on allowed paths ---
+
+test('ghCommand enforces session repo on allowed child-loop pr-create', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  try {
+    await ghCommand.parseAsync([
+      'pr-create',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'child-loop',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal((entries[0].enforced as { repo?: string }).repo, 'test/repo');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand enforces session repo on allowed orchestrator pr-merge', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  try {
+    await ghCommand.parseAsync([
+      'pr-merge',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'orchestrator',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal((entries[0].enforced as { repo?: string }).repo, 'test/repo');
+    assert.equal((entries[0].enforced as { merge_method?: string }).merge_method, 'squash');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand enforces session repo on allowed child-loop issue-comment', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'issue-comment',
+    repo: 'test/repo',
+    issue_number: 42,
+  }), 'utf8');
+
+  try {
+    await ghCommand.parseAsync([
+      'issue-comment',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'child-loop',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal((entries[0].enforced as { repo?: string }).repo, 'test/repo');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand enforces session repo on allowed child-loop pr-comment', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'pr-comment',
+    repo: 'test/repo',
+    pr_number: 15,
+  }), 'utf8');
+
+  try {
+    await ghCommand.parseAsync([
+      'pr-comment',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'child-loop',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal((entries[0].enforced as { repo?: string }).repo, 'test/repo');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand enforces session repo on allowed orchestrator pr-create', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  try {
+    await ghCommand.parseAsync([
+      'pr-create',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'orchestrator',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal((entries[0].enforced as { repo?: string }).repo, 'test/repo');
+    assert.equal((entries[0].enforced as { base?: string }).base, 'agent/trunk');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
