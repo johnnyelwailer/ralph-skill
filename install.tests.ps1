@@ -86,13 +86,14 @@ Describe 'Source-to-destination path mappings' {
         It 'has loop.sh'             { Join-Path $binDir 'loop.sh'             | Should -Exist }
     }
 
-    Context 'Runtime templates contain all 4 prompt templates per SPEC.md' {
+    Context 'Runtime templates contain all 5 prompt templates per SPEC.md' {
         BeforeAll { $tplDir = Join-Path $repoRoot "$skillName/templates" }
 
         It 'has PROMPT_plan.md'   { Join-Path $tplDir 'PROMPT_plan.md'   | Should -Exist }
         It 'has PROMPT_build.md'  { Join-Path $tplDir 'PROMPT_build.md'  | Should -Exist }
         It 'has PROMPT_review.md' { Join-Path $tplDir 'PROMPT_review.md' | Should -Exist }
         It 'has PROMPT_steer.md'  { Join-Path $tplDir 'PROMPT_steer.md'  | Should -Exist }
+        It 'has PROMPT_proof.md'  { Join-Path $tplDir 'PROMPT_proof.md'  | Should -Exist }
     }
 
     Context 'Copy-TreeItem calls in script wire correct source paths' {

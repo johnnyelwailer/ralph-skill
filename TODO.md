@@ -1,45 +1,39 @@
 # Project TODO
 
-## Current Phase: P1 Spec Parity Foundations (Entrypoint, Protocol, Proof, UX)
+## Current Phase: P1 Spec Parity Completion (Proof + Protocol + UX)
 
 ### In Progress
-- [x] [review] Gate 3: `aloop/cli/aloop.mjs` is a newly added module with 0% branch coverage in `aloop/cli/coverage/coverage-summary.json`; add CLI entrypoint tests that execute `resolve`, `discover`, `scaffold`, `status`, `active`, `stop`, extended-command delegation, and error/help paths to raise branch coverage to >=90%. (priority: high) [reviewed: gates 1-5 pass]
-- [x] [review] Gate 5: existing tests are regressing because `install.tests.ps1` still expects `claude/commands/aloop/start.md` to contain `node ~/.aloop/cli/aloop.mjs resolve` (`install.tests.ps1:154-158`), but the command now delegates to `aloop start`; update the assertion to the thin-wrapper behavior and rerun `Invoke-Pester ./install.tests.ps1` until all tests pass. (priority: high) [reviewed: gates 1-5 pass]
+- [x] [proof/P1] Add `PROMPT_proof.md` to `aloop/templates/` and wire scaffold/install/template validation + tests so proof is a first-class prompt alongside plan/build/review/steer. (priority: highest, unblocks all proof-runtime work)
 
 ### Up Next
-- [x] [cli/P1] Make `aloop resolve` return a clear failure for unconfigured projects (or formally align callers/tests to accepted behavior) so Phase 1 acceptance is explicit and testable. [reviewed: gates 1-5 pass]
-- [x] [commands/P1] Refactor `/aloop:start` command/prompt assets into thin wrappers that delegate to `aloop start` with minimal argument translation. [reviewed: gates 1-5 pass]
-- [x] [commands/P1] Refactor `/aloop:setup` command/prompt assets into thin wrappers that delegate to `aloop setup`. [reviewed: gates 1-5 pass]
-- [ ] [commands/P1] Add `/aloop:dashboard` command asset (`claude/commands/aloop/dashboard.md`) and Copilot prompt asset (`copilot/prompts/aloop-dashboard.prompt.md`).
-- [ ] [cli/P1] Implement `aloop status --watch` auto-refresh mode and keep `aloop start` terminal-monitor fallback wired to this supported flag.
-- [ ] [security/P1] Implement convention-file GH protocol in `loop.ps1` (`.aloop/requests/*.json` -> `aloop gh` -> `.aloop/responses/*.json` -> archive to `.aloop/requests/processed/`) at iteration boundaries.
-- [ ] [security/P1] Implement matching convention-file GH protocol behavior in `loop.sh` with ordering, response, archival, and logging parity.
-- [ ] [proof/P1] Add `PROMPT_proof.md` and include it in scaffold/template/install validation paths.
-- [ ] [runtime/P1] Upgrade loop cycle in both runtimes from 5-step to 6-step (`plan -> build x3 -> proof -> review`) while preserving forced-phase and retry-same-phase behavior.
-- [ ] [proof/P1] Persist proof artifacts and `proof-manifest.json` under `~/.aloop/sessions/<id>/artifacts/iter-<N>/`, including explicit skip manifests.
-- [ ] [proof/P1] Wire baseline lifecycle and review integration so review consumes proof manifests, baselines update only after approval, and rejection keeps prior baselines.
-- [ ] [dashboard/P2] Add secure artifact serving endpoint `/api/artifacts/<iteration>/<filename>` and expose proof metadata in dashboard state/events.
-- [ ] [dashboard/P2] Add multi-session APIs (`/api/state?session=<id>`, `/events?session=<id>`) plus frontend session switching with SSE rebinding.
-- [ ] [dashboard/P2] Redesign dashboard to a dense single-page view (TODO/log/health/commits + always-visible steer + progress/phase header) using required components (`ResizablePanel`, `HoverCard`, `Collapsible`, `Command`, `Sonner`).
-- [ ] [orchestrator/P2] Add `aloop orchestrate --plan-only` and persist decomposition/wave state in `orchestrator.json`.
-- [ ] [orchestrator/P2] Implement orchestrator dispatch core (issue creation via `aloop gh`, dependency/wave gating, concurrency cap, child loop launch/worktree mapping).
-- [ ] [orchestrator/P2] Implement PR lifecycle gates (CI/coverage/conflicts/lint + agent review) with merge/reopen/retry handling.
-- [ ] [triage/P2] Extend `aloop gh` with orchestrator-safe comment polling and label operations required for triage (`issue-comments`, `pr-comments`, blocked label add/remove).
-- [ ] [triage/P2] Implement comment triage loop (`actionable`, `needs_clarification`, `question`, `out_of_scope`) with blocked-on-human pause/resume and processed-comment tracking.
-- [ ] [status/P2] Extend `aloop status` to render orchestrator tree state (orchestrator -> child sessions -> issue/PR mapping).
-- [ ] [acceptance/P3] Add/automate the legacy-name guard using required grep pipeline semantics so validation fails on forbidden legacy-name hits outside allowed files.
-- [x] [cleanup/P3] Fix stale `.gitignore` path for CLI coverage folder to `aloop/cli/coverage/`.
-- [ ] [acceptance/P3] Run final SPEC-to-code acceptance sweep and refresh task states from verified evidence.
+- [ ] [runtime/P1] Upgrade both runtimes (`loop.ps1`, `loop.sh`) from 5-step to 6-step cycle (`plan -> build x3 -> proof -> review`), including cycle-position math and forced-phase/retry-same-phase compatibility. (priority: highest, core behavior gap)
+- [ ] [proof/P1] Implement proof artifact persistence per iteration (`artifacts/iter-<N>/`) and write `proof-manifest.json` (including explicit skip protocol) consumed by review. (priority: high, required acceptance path)
+- [ ] [proof/P1] Add baseline lifecycle integration: only update baselines after approved review; preserve previous baselines on rejection. (priority: high, prevents regressions)
+- [ ] [security/P1] Implement convention-file GH protocol in `loop.ps1`: process `.aloop/requests/*.json` via `aloop gh`, emit `.aloop/responses/*.json`, then archive to `.aloop/requests/processed/` in deterministic order. (priority: high, trust-boundary requirement)
+- [ ] [security/P1] Implement equivalent convention-file GH protocol in `loop.sh` with parity for ordering, response writing, archival, and audit logging. (priority: high, cross-platform parity)
+- [ ] [cli/P1] Implement `aloop status --watch` refresh mode and ensure `aloop start` terminal monitor path uses a supported status flag. (priority: high, current start fallback references unsupported flag)
+- [ ] [commands/P1] Add missing dashboard command assets: `claude/commands/aloop/dashboard.md` and `copilot/prompts/aloop-dashboard.prompt.md` as thin wrappers to `aloop dashboard`. (priority: medium, command-surface parity)
+- [ ] [dashboard/P2] Add secure artifact endpoint `/api/artifacts/<iteration>/<filename>` and include proof metadata in `/api/state` + SSE payloads. (priority: medium, proof UX dependency)
+- [ ] [dashboard/P2] Add multi-session support (`/api/state?session=<id>`, `/events?session=<id>`) and frontend session switching with SSE rebind. (priority: medium, required UX target)
+- [ ] [orchestrator/P2] Add `aloop orchestrate --plan-only` and persisted orchestration state (`orchestrator.json`) for decomposition/wave planning without dispatch. (priority: medium, orchestrator foundation)
+- [ ] [orchestrator/P2] Implement orchestrator dispatch core: issue creation via `aloop gh`, dependency/wave gating, concurrency caps, child loop launch, and worktree/branch mapping. (priority: medium, execution core)
+- [ ] [orchestrator/P2] Implement PR lifecycle gates (CI/coverage/conflicts/lint + agent review) with merge/reopen/retry handling. (priority: medium, safe integration)
+- [ ] [triage/P2] Extend `aloop gh` with triage operations (`issue-comments`, `pr-comments`, blocked label add/remove) under existing policy model. (priority: medium, triage prerequisite)
+- [ ] [triage/P2] Implement comment triage loop (`actionable`, `needs_clarification`, `question`, `out_of_scope`) with blocked-on-human pause/resume + processed-comment tracking. (priority: medium, closes feedback loop)
+- [ ] [status/P2] Extend `aloop status` to render orchestrator tree state (orchestrator -> child sessions -> issue/PR mapping). (priority: medium, observability)
+- [ ] [acceptance/P3] Add automated legacy-name guard (required grep semantics) to fail validation on forbidden legacy-name hits outside allowlist. (priority: low, release gate)
+- [ ] [acceptance/P3] Run final SPEC-to-code acceptance sweep and refresh TODO task states from verified evidence. (priority: low, completion gate)
 
 ### Completed
-- [x] [entrypoint/P1] Restore the stable `aloop/cli/aloop.mjs` entrypoint as the canonical runtime surface, and align install shims/tests/docs to invoke it while keeping the TypeScript build pipeline. (required by SPEC constraints and CLAUDECODE entrypoint acceptance)
-- [x] [runtime] Provider health subsystem implemented in both runtimes (per-provider health files, cooldown/degraded/recovery logging, lock-failure graceful handling).
-- [x] [runtime] Mandatory final review gate invariant implemented (build completion forces review in `plan-build-review`).
+- [x] [entrypoint/P1] Stable canonical CLI entrypoint restored at `aloop/cli/aloop.mjs` and aligned with install/tests/docs.
+- [x] [runtime] Provider health subsystem implemented in both runtimes (cooldown/degraded/recovery + lock handling).
+- [x] [runtime] Mandatory final review gate implemented for `plan-build-review`.
 - [x] [runtime] Retry-same-phase semantics and prerequisite overrides implemented in both runtimes.
-- [x] [runtime] PATH hardening implemented around provider calls so agent-side `gh` is blocked and PATH is restored after execution.
-- [x] [runtime] CLAUDECODE sanitization implemented at loop runtime entry and provider invocation boundaries.
-- [x] [cli] Core commands implemented: `resolve`, `discover`, `scaffold`, `start`, `setup`, `dashboard`, `status`, `active`, `stop`.
-- [x] [cli] `aloop start` performs full session bootstrap and supports `on_start` monitor behavior (`dashboard|terminal|none`, `auto_open`).
-- [x] [security] `aloop gh` policy enforcement implemented for child-loop vs orchestrator roles, including denied-operation logging.
-- [x] [commands] Claude/Copilot assets exist for `setup`, `start`, `status`, `steer`, and `stop`.
+- [x] [runtime] PATH hardening implemented around provider calls to block agent-side direct `gh`.
+- [x] [runtime] CLAUDECODE environment sanitization implemented at runtime entry and provider invocation boundaries.
+- [x] [cli] Core commands implemented: `resolve`, `discover`, `scaffold`, `start`, `setup`, `dashboard`, `status`, `active`, `stop`, `gh`.
+- [x] [cli] `aloop start` performs session bootstrap and supports `on_start` monitor behavior (`dashboard|terminal|none`, `auto_open`).
+- [x] [security] `aloop gh` policy enforcement exists for child-loop vs orchestrator roles with denial logging.
+- [x] [commands] Claude/Copilot command assets exist for `setup`, `start`, `status`, `steer`, and `stop`.
 - [x] [templates] `PROMPT_plan.md`, `PROMPT_build.md`, `PROMPT_review.md`, and `PROMPT_steer.md` are scaffolded and installed.
+- [x] [cleanup/P3] `.gitignore` coverage path corrected to `aloop/cli/coverage/`.
