@@ -29,9 +29,47 @@ addGhSubcommand('issue-create', 'Create an issue (orchestrator only)');
 addGhSubcommand('issue-close', 'Close an issue (orchestrator only)');
 addGhSubcommand('pr-merge', 'Merge a pull request (orchestrator only)');
 
+type SessionPolicyContext = {
+  repo: string;
+  assignedIssueNumber?: number;
+  childCreatedPrNumbers: number[];
+};
+
 function getSessionDir(homeDir: string | undefined, sessionId: string): string {
   const baseHome = homeDir || os.homedir();
   return path.join(baseHome, '.aloop', 'sessions', sessionId);
+}
+
+function parsePositiveInteger(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const parsed = Number.parseInt(value, 10);
+    if (parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+function includesAloopAutoLabel(payload: any): boolean {
+  const labelSets: unknown[] = [
+    payload.labels,
+    payload.issue_labels,
+    payload.pr_labels,
+    payload.target_labels,
+  ];
+
+  for (const labelSet of labelSets) {
+    if (Array.isArray(labelSet) && labelSet.some((label) => label === 'aloop/auto')) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function appendLog(sessionDir: string, entry: any) {
@@ -53,7 +91,7 @@ async function executeGhOperation(operation: string, options: any) {
   const role = options.role;
 
   // Load session config
-  let sessionRepo: string;
+  let sessionPolicy: SessionPolicyContext;
   const configFile = path.join(sessionDir, 'config.json');
   try {
     if (!fs.existsSync(configFile)) {
@@ -64,7 +102,19 @@ async function executeGhOperation(operation: string, options: any) {
     if (!config || typeof config.repo !== 'string' || !config.repo.trim()) {
       throw new Error(`Invalid session config: missing or invalid 'repo' in ${configFile}`);
     }
-    sessionRepo = config.repo;
+
+    const assignedIssueNumber = parsePositiveInteger(config.issue_number);
+    const childCreatedPrNumbers = Array.isArray(config.created_pr_numbers)
+      ? config.created_pr_numbers
+        .map((value: unknown) => parsePositiveInteger(value))
+        .filter((value: number | undefined): value is number => value !== undefined)
+      : [];
+
+    sessionPolicy = {
+      repo: config.repo,
+      assignedIssueNumber,
+      childCreatedPrNumbers,
+    };
   } catch (e: any) {
     const timestamp = new Date().toISOString();
     const logEntry = {
@@ -95,7 +145,7 @@ async function executeGhOperation(operation: string, options: any) {
   }
 
   // Evaluate policy
-  const { allowed, reason, enforced } = evaluatePolicy(operation, role, requestPayload, sessionRepo);
+  const { allowed, reason, enforced } = evaluatePolicy(operation, role, requestPayload, sessionPolicy);
 
   const timestamp = new Date().toISOString();
   const requestFileName = path.basename(requestFile);
@@ -135,9 +185,17 @@ async function executeGhOperation(operation: string, options: any) {
   }
 }
 
-function evaluatePolicy(operation: string, role: string, payload: any, sessionRepo: string): { allowed: boolean, reason?: string, enforced?: any } {
-  if (payload.repo && payload.repo !== sessionRepo) {
-    return { allowed: false, reason: `Mismatched repo: requested ${payload.repo}, but session is bound to ${sessionRepo}` };
+function evaluatePolicy(
+  operation: string,
+  role: string,
+  payload: any,
+  sessionPolicy: SessionPolicyContext,
+): { allowed: boolean, reason?: string, enforced?: any } {
+  if (payload.repo && payload.repo !== sessionPolicy.repo) {
+    return {
+      allowed: false,
+      reason: `Mismatched repo: requested ${payload.repo}, but session is bound to ${sessionPolicy.repo}`,
+    };
   }
 
   if (typeof payload.base === 'string' && payload.base.trim().toLowerCase() === 'main') {
@@ -149,12 +207,37 @@ function evaluatePolicy(operation: string, role: string, payload: any, sessionRe
       case 'pr-create':
         return { 
           allowed: true, 
-          enforced: { base: 'agent/trunk', repo: sessionRepo }
+          enforced: { base: 'agent/trunk', repo: sessionPolicy.repo }
         };
-      case 'issue-comment':
-        return { allowed: true }; // Only on assigned issue
-      case 'pr-comment':
-        return { allowed: true }; // Only on PRs created by child
+      case 'issue-comment': {
+        const targetIssueNumber = parsePositiveInteger(payload.issue_number);
+        if (targetIssueNumber === undefined) {
+          return { allowed: false, reason: 'Child issue-comment requires numeric issue_number' };
+        }
+        if (sessionPolicy.assignedIssueNumber === undefined) {
+          return { allowed: false, reason: 'Child session is missing assigned issue scope in config' };
+        }
+        if (targetIssueNumber !== sessionPolicy.assignedIssueNumber) {
+          return {
+            allowed: false,
+            reason: `Child issue-comment must target assigned issue #${sessionPolicy.assignedIssueNumber}`,
+          };
+        }
+        return { allowed: true, enforced: { issue_number: sessionPolicy.assignedIssueNumber, repo: sessionPolicy.repo } };
+      }
+      case 'pr-comment': {
+        const targetPrNumber = parsePositiveInteger(payload.pr_number);
+        if (targetPrNumber === undefined) {
+          return { allowed: false, reason: 'Child pr-comment requires numeric pr_number' };
+        }
+        if (!sessionPolicy.childCreatedPrNumbers.includes(targetPrNumber)) {
+          return {
+            allowed: false,
+            reason: `Child pr-comment must target a PR created by this session (${targetPrNumber} is out of scope)`,
+          };
+        }
+        return { allowed: true, enforced: { pr_number: targetPrNumber, repo: sessionPolicy.repo } };
+      }
       case 'pr-merge':
       case 'issue-create':
       case 'issue-close':
@@ -171,15 +254,20 @@ function evaluatePolicy(operation: string, role: string, payload: any, sessionRe
         }
         return { allowed: true };
       case 'issue-close':
-        // Scaffolding: Assume issue has aloop/auto label
+        if (!includesAloopAutoLabel(payload)) {
+          return { allowed: false, reason: 'issue-close requires aloop/auto-scoped target validation' };
+        }
         return { allowed: true };
       case 'pr-create':
-        return { allowed: true, enforced: { base: 'agent/trunk', repo: sessionRepo } };
+        return { allowed: true, enforced: { base: 'agent/trunk', repo: sessionPolicy.repo } };
       case 'pr-merge':
         // Only to agent/trunk, only squash merge
-        return { allowed: true, enforced: { base: 'agent/trunk', merge_method: 'squash', repo: sessionRepo } };
+        return { allowed: true, enforced: { base: 'agent/trunk', merge_method: 'squash', repo: sessionPolicy.repo } };
       case 'pr-comment':
       case 'issue-comment':
+        if (!includesAloopAutoLabel(payload)) {
+          return { allowed: false, reason: `${operation} requires aloop/auto-scoped target validation` };
+        }
         return { allowed: true };
       case 'branch-delete':
         return { allowed: false, reason: 'branch-delete rejected - cleanup is manual' };

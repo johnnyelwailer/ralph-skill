@@ -17,7 +17,11 @@ function createFixture(): GhFixture {
   fs.mkdirSync(sessionDir, { recursive: true });
 
   const configFile = path.join(sessionDir, 'config.json');
-  fs.writeFileSync(configFile, JSON.stringify({ repo: 'test/repo' }), 'utf8');
+  fs.writeFileSync(configFile, JSON.stringify({
+    repo: 'test/repo',
+    issue_number: 42,
+    created_pr_numbers: [15, 18],
+  }), 'utf8');
 
   const requestFile = path.join(tmpHome, 'request.json');
   fs.writeFileSync(requestFile, JSON.stringify({
@@ -184,6 +188,227 @@ test('ghCommand denies operations targeting main branch', async (t) => {
     assert.equal(entries.length, 1);
     assert.equal(entries[0].event, 'gh_operation_denied');
     assert.match(String(entries[0].reason), /targeting main/i);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand allows child-loop issue-comment only on assigned issue', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'issue-comment',
+    repo: 'test/repo',
+    issue_number: 42,
+  }), 'utf8');
+
+  try {
+    await ghCommand.parseAsync([
+      'issue-comment',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'child-loop',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation');
+    assert.equal((entries[0].enforced as { issue_number?: number }).issue_number, 42);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand denies child-loop issue-comment outside assigned issue scope', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'issue-comment',
+    repo: 'test/repo',
+    issue_number: 99,
+  }), 'utf8');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'issue-comment',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'child-loop',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /assigned issue/i);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand allows child-loop pr-comment only on child-created PRs', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'pr-comment',
+    repo: 'test/repo',
+    pr_number: 18,
+  }), 'utf8');
+
+  try {
+    await ghCommand.parseAsync([
+      'pr-comment',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'child-loop',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation');
+    assert.equal((entries[0].enforced as { pr_number?: number }).pr_number, 18);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand denies child-loop pr-comment for PR outside child scope', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'pr-comment',
+    repo: 'test/repo',
+    pr_number: 21,
+  }), 'utf8');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'pr-comment',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'child-loop',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /created by this session/i);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand denies orchestrator issue-close without aloop/auto target validation', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'issue-close',
+    repo: 'test/repo',
+    issue_number: 42,
+  }), 'utf8');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'issue-close',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'orchestrator',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /aloop\/auto/i);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand allows orchestrator comment operations with aloop/auto-scoped targets', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'issue-comment',
+    repo: 'test/repo',
+    issue_number: 42,
+    target_labels: ['aloop/auto'],
+  }), 'utf8');
+
+  try {
+    await ghCommand.parseAsync([
+      'issue-comment',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'orchestrator',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation');
+    assert.equal(entries[0].type, 'issue-comment');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand denies orchestrator pr-comment without aloop/auto-scoped target validation', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'pr-comment',
+    repo: 'test/repo',
+    pr_number: 15,
+  }), 'utf8');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'pr-comment',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'orchestrator',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /aloop\/auto/i);
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }
