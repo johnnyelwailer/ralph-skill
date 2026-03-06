@@ -395,3 +395,15 @@ test('command wrappers support json and text output', async () => {
     console.log = originalLog;
   }
 });
+
+test('resolveCommand fails clearly for unconfigured projects', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-resolve-unconfigured-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(homeRoot, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  await assert.rejects(
+    () => resolveCommand({ projectRoot: tempRoot, homeDir: homeRoot }),
+    /No Aloop configuration found for this project\. Run `aloop setup` first\./,
+  );
+});

@@ -8,7 +8,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { discoverWorkspace, scaffoldWorkspace, normalizeList } from './lib/project.mjs';
+import { discoverWorkspace, scaffoldWorkspace, normalizeList, assertProjectConfigured } from './lib/project.mjs';
 import { resolveHomeDir, listActiveSessions, readProviderHealth, stopSession } from './lib/session.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -111,6 +111,7 @@ async function run() {
     switch (command) {
       case 'resolve': {
         const discovery = await discoverWorkspace(options);
+        assertProjectConfigured(discovery);
         const result = {
           project: discovery.project,
           setup: discovery.setup,

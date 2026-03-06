@@ -246,6 +246,12 @@ export function getInstalledProviders() {
   return { installed, missing };
 }
 
+export function assertProjectConfigured(discovery) {
+  if (!discovery?.setup?.config_exists) {
+    throw new Error('No Aloop configuration found for this project. Run `aloop setup` first.');
+  }
+}
+
 /**
  * @param {Object} options
  * @param {string} [options.projectRoot]

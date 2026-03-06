@@ -5,7 +5,7 @@
 ### In Progress
 
 ### Up Next
-- [ ] [cli/P1] Make `aloop resolve` return a clear failure for unconfigured projects (or formally align callers/tests to accepted behavior) so Phase 1 acceptance is explicit and testable.
+- [x] [cli/P1] Make `aloop resolve` return a clear failure for unconfigured projects (or formally align callers/tests to accepted behavior) so Phase 1 acceptance is explicit and testable.
 - [ ] [commands/P1] Refactor `/aloop:start` command/prompt assets into thin wrappers that delegate to `aloop start` with minimal argument translation.
 - [ ] [commands/P1] Refactor `/aloop:setup` command/prompt assets into thin wrappers that delegate to `aloop setup`.
 - [ ] [commands/P1] Add `/aloop:dashboard` command asset (`claude/commands/aloop/dashboard.md`) and Copilot prompt asset (`copilot/prompts/aloop-dashboard.prompt.md`).
@@ -25,8 +25,8 @@
 - [ ] [triage/P2] Extend `aloop gh` with orchestrator-safe comment polling and label operations required for triage (`issue-comments`, `pr-comments`, blocked label add/remove).
 - [ ] [triage/P2] Implement comment triage loop (`actionable`, `needs_clarification`, `question`, `out_of_scope`) with blocked-on-human pause/resume and processed-comment tracking.
 - [ ] [status/P2] Extend `aloop status` to render orchestrator tree state (orchestrator -> child sessions -> issue/PR mapping).
-- [ ] [acceptance/P3] Add/automate the legacy-name guard using required grep pipeline semantics so validation fails on forbidden `ralph` hits outside allowed files.
-- [x] [cleanup/P3] Fix stale `.gitignore` path `ralph/cli/coverage/` -> `aloop/cli/coverage/`.
+- [ ] [acceptance/P3] Add/automate the legacy-name guard using required grep pipeline semantics so validation fails on forbidden legacy-name hits outside allowed files.
+- [x] [cleanup/P3] Fix stale `.gitignore` path for CLI coverage folder to `aloop/cli/coverage/`.
 - [ ] [acceptance/P3] Run final SPEC-to-code acceptance sweep and refresh task states from verified evidence.
 
 ### Completed

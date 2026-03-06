@@ -1,4 +1,4 @@
-import { discoverWorkspace, type OutputMode } from './project.js';
+import { assertProjectConfigured, discoverWorkspace, type OutputMode } from './project.js';
 
 interface ResolveCommandOptions {
   projectRoot?: string;
@@ -8,6 +8,7 @@ interface ResolveCommandOptions {
 
 export async function resolveCommand(options: ResolveCommandOptions = {}) {
   const discovery = await discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
+  assertProjectConfigured(discovery);
   const result = {
     project: discovery.project,
     setup: discovery.setup,
