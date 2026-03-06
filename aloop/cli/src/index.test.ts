@@ -39,6 +39,7 @@ test('index CLI registers expected commands in help output', async () => {
   assert.match(result.stdout, /\bresolve\b/);
   assert.match(result.stdout, /\bdiscover\b/);
   assert.match(result.stdout, /\bscaffold\b/);
+  assert.match(result.stdout, /\bstart\b/);
   assert.match(result.stdout, /\bdashboard\b/);
 });
 

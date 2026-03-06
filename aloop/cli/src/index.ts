@@ -8,6 +8,7 @@ import { statusCommand } from './commands/status.js';
 import { activeCommand } from './commands/active.js';
 import { stopCommand } from './commands/stop.js';
 import { ghCommand } from './commands/gh.js';
+import { startCommand } from './commands/start.js';
 
 const program = new Command();
 
@@ -46,6 +47,21 @@ program
   .option('--templates-dir <path>', 'Template directory override')
   .option('--output <mode>', 'Output format: json or text', 'json')
   .action(scaffoldCommand);
+
+program
+  .command('start')
+  .description('Start an aloop session for the current project')
+  .option('--project-root <path>', 'Project root override')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--provider <provider>', 'Provider override')
+  .option('--mode <mode>', 'Loop mode override')
+  .option('--plan', 'Shortcut for --mode plan')
+  .option('--build', 'Shortcut for --mode build')
+  .option('--review', 'Shortcut for --mode review')
+  .option('--in-place', 'Run in project root instead of creating a git worktree')
+  .option('--max-iterations <number>', 'Max iteration override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(startCommand);
 
 program
   .command('dashboard')

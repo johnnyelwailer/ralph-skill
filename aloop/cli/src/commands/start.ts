@@ -1,0 +1,684 @@
+import { spawn, spawnSync } from 'node:child_process';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { discoverWorkspace, type DiscoveryResult } from './project.js';
+import { resolveHomeDir } from './session.js';
+import type { OutputMode } from './status.js';
+
+type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot';
+type LoopProvider = ProviderName | 'round-robin';
+type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review';
+
+const PROVIDER_SET = new Set<LoopProvider>(['claude', 'codex', 'gemini', 'copilot', 'round-robin']);
+const MODEL_PROVIDER_SET = new Set<ProviderName>(['claude', 'codex', 'gemini', 'copilot']);
+const LOOP_MODE_SET = new Set<LoopMode>(['plan', 'build', 'review', 'plan-build', 'plan-build-review']);
+const DEFAULT_MODELS: Record<ProviderName, string> = {
+  claude: 'opus',
+  codex: 'gpt-5.3-codex',
+  gemini: 'gemini-3.1-pro-preview',
+  copilot: 'gpt-5.3-codex',
+};
+
+interface ParsedAloopConfig {
+  values: Record<string, string | number | boolean | null>;
+  enabled_providers: string[];
+  round_robin_order: string[];
+  models: Record<string, string>;
+  retry_models: Record<string, string | null>;
+}
+
+export interface StartCommandOptions {
+  projectRoot?: string;
+  homeDir?: string;
+  provider?: string;
+  mode?: string;
+  plan?: boolean;
+  build?: boolean;
+  review?: boolean;
+  inPlace?: boolean;
+  maxIterations?: number | string;
+  output?: OutputMode;
+}
+
+export interface StartCommandResult {
+  session_id: string;
+  session_dir: string;
+  prompts_dir: string;
+  work_dir: string;
+  worktree: boolean;
+  worktree_path: string | null;
+  branch: string | null;
+  provider: LoopProvider;
+  mode: LoopMode;
+  max_iterations: number;
+  max_stuck: number;
+  pid: number;
+  started_at: string;
+  warnings: string[];
+}
+
+interface StartDeps {
+  discoverWorkspace: (options: { projectRoot?: string; homeDir?: string }) => Promise<DiscoveryResult>;
+  readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
+  writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
+  mkdir: (path: string, options?: { recursive?: boolean }) => Promise<string | undefined>;
+  cp: (src: string, dest: string, options: { recursive: boolean }) => Promise<void>;
+  existsSync: (path: string) => boolean;
+  spawn: typeof spawn;
+  spawnSync: typeof spawnSync;
+  platform: NodeJS.Platform;
+  env: NodeJS.ProcessEnv;
+  now: () => Date;
+}
+
+const defaultDeps: StartDeps = {
+  discoverWorkspace,
+  readFile,
+  writeFile,
+  mkdir,
+  cp,
+  existsSync,
+  spawn,
+  spawnSync,
+  platform: process.platform,
+  env: process.env,
+  now: () => new Date(),
+};
+
+function stripInlineComment(raw: string): string {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i];
+    if (char === "'" && !inDouble) {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (char === '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (char === '#' && !inSingle && !inDouble) {
+      const prev = i > 0 ? raw[i - 1] : ' ';
+      if (prev === ' ' || prev === '\t') {
+        return raw.slice(0, i).trimEnd();
+      }
+    }
+  }
+  return raw.trimEnd();
+}
+
+function parseYamlScalar(raw: string): string | number | boolean | null {
+  const cleaned = stripInlineComment(raw).trim();
+  if (cleaned === '') return '';
+  if (/^null$/i.test(cleaned)) return null;
+  if (/^true$/i.test(cleaned)) return true;
+  if (/^false$/i.test(cleaned)) return false;
+  if (/^-?\d+$/.test(cleaned)) return Number.parseInt(cleaned, 10);
+  if (cleaned.startsWith("'") && cleaned.endsWith("'") && cleaned.length >= 2) {
+    return cleaned.slice(1, -1).replace(/''/g, "'");
+  }
+  if (cleaned.startsWith('"') && cleaned.endsWith('"') && cleaned.length >= 2) {
+    return cleaned.slice(1, -1).replace(/\\"/g, '"');
+  }
+  return cleaned;
+}
+
+function parseAloopConfig(content: string): ParsedAloopConfig {
+  const parsed: ParsedAloopConfig = {
+    values: {},
+    enabled_providers: [],
+    round_robin_order: [],
+    models: {},
+    retry_models: {},
+  };
+
+  const listSections = new Set(['enabled_providers', 'round_robin_order']);
+  const mapSections = new Set(['models', 'retry_models']);
+
+  let activeSection: string | null = null;
+  let inBlockScalar = false;
+
+  const lines = content.split(/\r?\n/);
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      continue;
+    }
+
+    const indent = rawLine.length - rawLine.trimStart().length;
+    if (inBlockScalar) {
+      if (indent > 0) {
+        continue;
+      }
+      inBlockScalar = false;
+      activeSection = null;
+    }
+
+    if (indent === 0) {
+      const topLevel = trimmed.match(/^([A-Za-z0-9_]+):(?:\s*(.*))?$/);
+      if (!topLevel) {
+        activeSection = null;
+        continue;
+      }
+      const key = topLevel[1];
+      const rawValue = topLevel[2] ?? '';
+      if (rawValue === '') {
+        activeSection = key;
+        continue;
+      }
+      if (rawValue === '|' || rawValue === '>') {
+        inBlockScalar = true;
+        activeSection = null;
+        continue;
+      }
+      parsed.values[key] = parseYamlScalar(rawValue);
+      activeSection = null;
+      continue;
+    }
+
+    if (!activeSection || indent < 2) {
+      continue;
+    }
+
+    if (listSections.has(activeSection)) {
+      const listMatch = trimmed.match(/^-\s+(.+)$/);
+      if (!listMatch) {
+        continue;
+      }
+      const value = parseYamlScalar(listMatch[1]);
+      if (typeof value === 'string' && value.length > 0) {
+        if (activeSection === 'enabled_providers') {
+          parsed.enabled_providers.push(value);
+        } else if (activeSection === 'round_robin_order') {
+          parsed.round_robin_order.push(value);
+        }
+      }
+      continue;
+    }
+
+    if (mapSections.has(activeSection)) {
+      const mapMatch = trimmed.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+      if (!mapMatch) {
+        continue;
+      }
+      const mapKey = mapMatch[1];
+      const mapValue = parseYamlScalar(mapMatch[2]);
+      if (activeSection === 'models') {
+        if (typeof mapValue === 'string' && mapValue.length > 0) {
+          parsed.models[mapKey] = mapValue;
+        }
+      } else if (activeSection === 'retry_models') {
+        if (mapValue === null) {
+          parsed.retry_models[mapKey] = null;
+        } else if (typeof mapValue === 'string' && mapValue.length > 0) {
+          parsed.retry_models[mapKey] = mapValue;
+        }
+      }
+    }
+  }
+
+  return parsed;
+}
+
+async function readOptionalConfig(configPath: string, deps: StartDeps): Promise<ParsedAloopConfig | null> {
+  if (!deps.existsSync(configPath)) return null;
+  const content = await deps.readFile(configPath, 'utf8');
+  return parseAloopConfig(content);
+}
+
+function toPositiveInt(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const parsed = Number.parseInt(value, 10);
+    return parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
+function toBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    if (/^true$/i.test(value)) return true;
+    if (/^false$/i.test(value)) return false;
+  }
+  return fallback;
+}
+
+function normalizeProviderList(values: string[]): ProviderName[] {
+  const normalized: ProviderName[] = [];
+  for (const raw of values) {
+    const candidate = raw.trim().toLowerCase();
+    if (!MODEL_PROVIDER_SET.has(candidate as ProviderName)) {
+      continue;
+    }
+    const provider = candidate as ProviderName;
+    if (!normalized.includes(provider)) {
+      normalized.push(provider);
+    }
+  }
+  return normalized;
+}
+
+function sanitizeSessionToken(value: string): string {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return normalized.length > 0 ? normalized : 'session';
+}
+
+function padNumber(value: number): string {
+  return value.toString().padStart(2, '0');
+}
+
+function formatSessionTimestamp(date: Date): string {
+  return `${date.getUTCFullYear()}${padNumber(date.getUTCMonth() + 1)}${padNumber(date.getUTCDate())}-${padNumber(date.getUTCHours())}${padNumber(date.getUTCMinutes())}${padNumber(date.getUTCSeconds())}`;
+}
+
+function resolveModeFromFlags(options: StartCommandOptions): LoopMode | null {
+  const modeFlags = [options.plan, options.build, options.review].filter(Boolean).length;
+  if (modeFlags > 1) {
+    throw new Error('Choose at most one of --plan, --build, or --review.');
+  }
+  if (options.plan) return 'plan';
+  if (options.build) return 'build';
+  if (options.review) return 'review';
+  return null;
+}
+
+function assertLoopMode(value: string): LoopMode {
+  const normalized = value.trim().toLowerCase() as LoopMode;
+  if (!LOOP_MODE_SET.has(normalized)) {
+    throw new Error(`Invalid mode: ${value}`);
+  }
+  return normalized;
+}
+
+function assertLoopProvider(value: string): LoopProvider {
+  const normalized = value.trim().toLowerCase() as LoopProvider;
+  if (!PROVIDER_SET.has(normalized)) {
+    throw new Error(`Invalid provider: ${value}`);
+  }
+  return normalized;
+}
+
+function trySpawnSync(deps: StartDeps, command: string, args: string[]): number | null {
+  try {
+    const result = deps.spawnSync(command, args, { encoding: 'utf8', stdio: 'ignore', windowsHide: true });
+    return result.status;
+  } catch {
+    return null;
+  }
+}
+
+function resolvePowerShellBinary(deps: StartDeps): string {
+  for (const candidate of ['pwsh', 'powershell']) {
+    if (trySpawnSync(deps, candidate, ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.Major']) === 0) {
+      return candidate;
+    }
+  }
+  throw new Error('PowerShell is required to launch loop.ps1 but neither pwsh nor powershell was found.');
+}
+
+async function readActiveMap(activePath: string, deps: StartDeps): Promise<Record<string, unknown>> {
+  if (!deps.existsSync(activePath)) {
+    return {};
+  }
+  try {
+    const content = await deps.readFile(activePath, 'utf8');
+    const parsed = JSON.parse(content) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function resolveSessionId(baseName: string, sessionsRoot: string, deps: StartDeps): string {
+  const now = deps.now();
+  const baseSessionId = `${sanitizeSessionToken(baseName)}-${formatSessionTimestamp(now)}`;
+  let sessionId = baseSessionId;
+  let suffix = 1;
+  while (deps.existsSync(path.join(sessionsRoot, sessionId))) {
+    sessionId = `${baseSessionId}-${suffix}`;
+    suffix += 1;
+  }
+  return sessionId;
+}
+
+function selectValue<T>(...values: Array<T | undefined | null>): T | undefined {
+  for (const value of values) {
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function collectModelProviders(enabledProviders: ProviderName[], provider: LoopProvider): ProviderName[] {
+  const set = new Set<ProviderName>(enabledProviders);
+  if (provider !== 'round-robin') {
+    set.add(provider);
+  }
+  return Array.from(set);
+}
+
+function createGitFailureWarning(stderr: string, stdout: string): string {
+  const detail = [stderr, stdout].map((value) => value.trim()).filter(Boolean).join(' | ');
+  if (!detail) {
+    return 'git worktree add failed; falling back to in-place execution.';
+  }
+  return `git worktree add failed (${detail}); falling back to in-place execution.`;
+}
+
+export async function startCommandWithDeps(options: StartCommandOptions = {}, deps: StartDeps = defaultDeps): Promise<StartCommandResult> {
+  const homeDir = resolveHomeDir(options.homeDir);
+  const discovery = await deps.discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
+
+  if (!discovery.setup.config_exists || !deps.existsSync(discovery.setup.config_path)) {
+    throw new Error('No Aloop configuration found for this project. Run `aloop setup` first.');
+  }
+
+  const aloopRoot = path.join(homeDir, '.aloop');
+  const sessionsRoot = path.join(aloopRoot, 'sessions');
+  const warnings: string[] = [];
+
+  await deps.mkdir(sessionsRoot, { recursive: true });
+
+  const projectConfig = (await readOptionalConfig(discovery.setup.config_path, deps)) ?? {
+    values: {},
+    enabled_providers: [],
+    round_robin_order: [],
+    models: {},
+    retry_models: {},
+  };
+  const globalConfig = (await readOptionalConfig(path.join(aloopRoot, 'config.yml'), deps)) ?? {
+    values: {},
+    enabled_providers: [],
+    round_robin_order: [],
+    models: {},
+    retry_models: {},
+  };
+
+  const enabledProviders = normalizeProviderList(
+    projectConfig.enabled_providers.length > 0
+      ? projectConfig.enabled_providers
+      : globalConfig.enabled_providers.length > 0
+        ? globalConfig.enabled_providers
+        : discovery.providers.installed,
+  );
+  if (enabledProviders.length === 0) {
+    enabledProviders.push('claude');
+  }
+
+  const forcedMode = resolveModeFromFlags(options);
+  const resolvedMode = forcedMode
+    ?? (options.mode ? assertLoopMode(options.mode) : null)
+    ?? assertLoopMode(String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, 'plan-build-review')));
+
+  const selectedProvider = options.provider
+    ? assertLoopProvider(options.provider)
+    : assertLoopProvider(String(selectValue(projectConfig.values.provider, globalConfig.values.default_provider, discovery.providers.default_provider, 'claude')));
+
+  if (selectedProvider !== 'round-robin' && !enabledProviders.includes(selectedProvider)) {
+    enabledProviders.push(selectedProvider);
+  }
+
+  const roundRobinOrderSource = projectConfig.round_robin_order.length > 0 ? projectConfig.round_robin_order : globalConfig.round_robin_order;
+  let roundRobinOrder = normalizeProviderList(roundRobinOrderSource);
+  if (roundRobinOrder.length === 0) {
+    roundRobinOrder = [...enabledProviders];
+  }
+  roundRobinOrder = roundRobinOrder.filter((provider) => enabledProviders.includes(provider));
+  if (roundRobinOrder.length === 0) {
+    roundRobinOrder = [...enabledProviders];
+  }
+
+  const maxIterations = toPositiveInt(selectValue(options.maxIterations, projectConfig.values.max_iterations, globalConfig.values.max_iterations)) ?? 50;
+  const maxStuck = toPositiveInt(selectValue(projectConfig.values.max_stuck, globalConfig.values.max_stuck)) ?? 3;
+  const backupEnabled = toBoolean(selectValue(projectConfig.values.backup_enabled, globalConfig.values.backup_enabled), false);
+  const worktreeDefault = toBoolean(selectValue(projectConfig.values.worktree_default, globalConfig.values.worktree_default), true);
+
+  const mergedModels: Record<ProviderName, string> = {
+    ...DEFAULT_MODELS,
+    ...Object.fromEntries(
+      Object.entries(globalConfig.models).filter(([provider]) => MODEL_PROVIDER_SET.has(provider as ProviderName)),
+    ) as Record<ProviderName, string>,
+    ...Object.fromEntries(
+      Object.entries(projectConfig.models).filter(([provider]) => MODEL_PROVIDER_SET.has(provider as ProviderName)),
+    ) as Record<ProviderName, string>,
+  };
+  const copilotRetryModel = String(selectValue(projectConfig.retry_models.copilot, globalConfig.retry_models.copilot, 'claude-sonnet-4.6') ?? 'claude-sonnet-4.6');
+
+  const sessionId = resolveSessionId(discovery.project.name, sessionsRoot, deps);
+  const sessionDir = path.join(sessionsRoot, sessionId);
+  const promptsSourceDir = path.join(discovery.setup.project_dir, 'prompts');
+  const promptsDir = path.join(sessionDir, 'prompts');
+  const startedAt = deps.now().toISOString();
+  let workDir = discovery.project.root;
+  let worktreePath: string | null = null;
+  let branchName: string | null = null;
+  let useWorktree = !options.inPlace && worktreeDefault;
+
+  await deps.mkdir(sessionDir, { recursive: true });
+
+  if (!deps.existsSync(promptsSourceDir)) {
+    throw new Error(`Project prompts not found: ${promptsSourceDir}. Run \`aloop setup\` first.`);
+  }
+  await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
+
+  if (useWorktree) {
+    if (!discovery.project.is_git_repo) {
+      warnings.push('Worktree requested but project is not a git repository; using in-place execution.');
+      useWorktree = false;
+    } else {
+      const candidatePath = path.join(sessionDir, 'worktree');
+      const candidateBranch = `aloop/${sessionId}`;
+      const worktreeResult = deps.spawnSync('git', ['-C', discovery.project.root, 'worktree', 'add', candidatePath, '-b', candidateBranch], { encoding: 'utf8' });
+      if (worktreeResult.status !== 0) {
+        warnings.push(createGitFailureWarning(String(worktreeResult.stderr ?? ''), String(worktreeResult.stdout ?? '')));
+        useWorktree = false;
+      } else {
+        worktreePath = candidatePath;
+        workDir = candidatePath;
+        branchName = candidateBranch;
+      }
+    }
+  }
+
+  const modelProviders = collectModelProviders(enabledProviders, selectedProvider);
+  const roundRobinCsv = roundRobinOrder.join(',');
+  const loopBinDir = path.join(aloopRoot, 'bin');
+  let command: string;
+  let args: string[];
+
+  if (deps.platform === 'win32') {
+    const loopScript = path.join(loopBinDir, 'loop.ps1');
+    if (!deps.existsSync(loopScript)) {
+      throw new Error(`Loop script not found: ${loopScript}`);
+    }
+    command = resolvePowerShellBinary(deps);
+    args = [
+      '-NoProfile',
+      '-File',
+      loopScript,
+      '-PromptsDir',
+      promptsDir,
+      '-SessionDir',
+      sessionDir,
+      '-WorkDir',
+      workDir,
+      '-Mode',
+      resolvedMode,
+      '-Provider',
+      selectedProvider,
+      '-RoundRobinProviders',
+      roundRobinCsv,
+      '-MaxIterations',
+      String(maxIterations),
+      '-MaxStuck',
+      String(maxStuck),
+    ];
+    if (backupEnabled) {
+      args.push('-BackupEnabled');
+    }
+    for (const provider of modelProviders) {
+      const model = mergedModels[provider];
+      if (!model) continue;
+      if (provider === 'claude') args.push('-ClaudeModel', model);
+      if (provider === 'codex') args.push('-CodexModel', model);
+      if (provider === 'gemini') args.push('-GeminiModel', model);
+      if (provider === 'copilot') {
+        args.push('-CopilotModel', model);
+      }
+    }
+    if (modelProviders.includes('copilot') && copilotRetryModel.length > 0) {
+      args.push('-CopilotRetryModel', copilotRetryModel);
+    }
+  } else {
+    const loopScript = path.join(loopBinDir, 'loop.sh');
+    if (!deps.existsSync(loopScript)) {
+      throw new Error(`Loop script not found: ${loopScript}`);
+    }
+    command = loopScript;
+    args = [
+      '--prompts-dir',
+      promptsDir,
+      '--session-dir',
+      sessionDir,
+      '--work-dir',
+      workDir,
+      '--mode',
+      resolvedMode,
+      '--provider',
+      selectedProvider,
+      '--round-robin',
+      roundRobinCsv,
+      '--max-iterations',
+      String(maxIterations),
+      '--max-stuck',
+      String(maxStuck),
+    ];
+    if (backupEnabled) {
+      args.push('--backup');
+    }
+    for (const provider of modelProviders) {
+      const model = mergedModels[provider];
+      if (!model) continue;
+      if (provider === 'claude') args.push('--claude-model', model);
+      if (provider === 'codex') args.push('--codex-model', model);
+      if (provider === 'gemini') args.push('--gemini-model', model);
+      if (provider === 'copilot') args.push('--copilot-model', model);
+    }
+  }
+
+  const metaPath = path.join(sessionDir, 'meta.json');
+  const statusPath = path.join(sessionDir, 'status.json');
+  const meta: Record<string, unknown> = {
+    session_id: sessionId,
+    project_name: discovery.project.name,
+    project_root: discovery.project.root,
+    project_hash: discovery.project.hash,
+    provider: selectedProvider,
+    mode: resolvedMode,
+    max_iterations: maxIterations,
+    max_stuck: maxStuck,
+    worktree: useWorktree,
+    worktree_path: worktreePath,
+    work_dir: workDir,
+    branch: branchName,
+    prompts_dir: promptsDir,
+    session_dir: sessionDir,
+    enabled_providers: enabledProviders,
+    round_robin_order: roundRobinOrder,
+    warnings,
+    created_at: startedAt,
+  };
+
+  await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+  await deps.writeFile(
+    statusPath,
+    `${JSON.stringify({ state: 'starting', mode: resolvedMode, provider: selectedProvider, iteration: 0, updated_at: startedAt }, null, 2)}\n`,
+    'utf8',
+  );
+
+  const child = deps.spawn(command, args, {
+    cwd: workDir,
+    detached: true,
+    stdio: 'ignore',
+    env: { ...deps.env },
+    windowsHide: true,
+  });
+  child.unref();
+
+  const pid = child.pid;
+  if (!pid) {
+    throw new Error('Failed to launch loop process.');
+  }
+
+  meta.pid = pid;
+  meta.started_at = startedAt;
+  await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
+  const activePath = path.join(aloopRoot, 'active.json');
+  const active = await readActiveMap(activePath, deps);
+  active[sessionId] = {
+    session_id: sessionId,
+    session_dir: sessionDir,
+    project_name: discovery.project.name,
+    project_root: discovery.project.root,
+    pid,
+    work_dir: workDir,
+    started_at: startedAt,
+    provider: selectedProvider,
+    mode: resolvedMode,
+  };
+  await deps.writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+
+  return {
+    session_id: sessionId,
+    session_dir: sessionDir,
+    prompts_dir: promptsDir,
+    work_dir: workDir,
+    worktree: useWorktree,
+    worktree_path: worktreePath,
+    branch: branchName,
+    provider: selectedProvider,
+    mode: resolvedMode,
+    max_iterations: maxIterations,
+    max_stuck: maxStuck,
+    pid,
+    started_at: startedAt,
+    warnings,
+  };
+}
+
+export async function startCommand(options: StartCommandOptions = {}) {
+  const outputMode = options.output ?? 'text';
+  const result = await startCommandWithDeps(options);
+
+  if (outputMode === 'json') {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log('Aloop loop started!');
+  console.log('');
+  console.log(`  Session:  ${result.session_id}`);
+  console.log(`  Mode:     ${result.mode}`);
+  console.log(`  Provider: ${result.provider}`);
+  console.log(`  Work dir: ${result.work_dir}`);
+  console.log(`  PID:      ${result.pid}`);
+  console.log(`  Prompts:  ${result.prompts_dir}`);
+
+  if (result.warnings.length > 0) {
+    console.log('');
+    console.log('Warnings:');
+    for (const warning of result.warnings) {
+      console.log(`  - ${warning}`);
+    }
+  }
+}

@@ -6,7 +6,7 @@
 - [x] [security/P1] Replace `aloop/cli/src/commands/gh.ts` simulated-success logging path (`result: "success"`, fake `pr_number`) with real `gh` execution wrappers and structured response output for harness consumption. (blocks protocol + orchestrator)
 
 ### Up Next
-- [ ] [cli/P1] Add `aloop start` CLI command to perform full session bootstrap (resolve + session dir/meta + optional worktree + loop launch + active session registration). (foundational UX flow)
+- [x] [cli/P1] Add `aloop start` CLI command to perform full session bootstrap (resolve + session dir/meta + optional worktree + loop launch + active session registration). (foundational UX flow)
 - [ ] [cli/P1] Add `aloop setup` CLI command with interactive defaults and `--non-interactive` path that wraps discover/scaffold. (CLI-first onboarding target)
 - [ ] [commands/P1] Refactor `/aloop:start` and `/aloop:setup` command/prompt surfaces into thin wrappers that delegate to the new CLI subcommands. (prevents duplicated orchestration logic)
 - [ ] [cli/P1] Implement `on_start` monitor behavior (`dashboard|terminal|none`, `auto_open`) and wire it from `aloop start`. (required auto-monitor experience)
