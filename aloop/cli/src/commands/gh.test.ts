@@ -375,6 +375,7 @@ test('ghCommand allows orchestrator issue-close with aloop/auto-scoped target la
     assert.equal(entries.length, 1);
     assert.equal(entries[0].event, 'gh_operation');
     assert.equal(entries[0].type, 'issue-close');
+    assert.equal((entries[0].enforced as { repo?: string }).repo, 'test/repo');
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }
@@ -404,6 +405,7 @@ test('ghCommand allows orchestrator comment operations with aloop/auto-scoped ta
     assert.equal(entries.length, 1);
     assert.equal(entries[0].event, 'gh_operation');
     assert.equal(entries[0].type, 'issue-comment');
+    assert.equal((entries[0].enforced as { repo?: string }).repo, 'test/repo');
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }
@@ -817,6 +819,7 @@ test('ghCommand allows orchestrator issue-create with aloop/auto label', async (
     assert.equal(entries.length, 1);
     assert.equal(entries[0].event, 'gh_operation');
     assert.equal(entries[0].type, 'issue-create');
+    assert.equal((entries[0].enforced as { repo?: string }).repo, 'test/repo');
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }

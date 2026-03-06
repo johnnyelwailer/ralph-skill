@@ -244,12 +244,12 @@ function evaluatePolicy(
         if (!payload.labels || !payload.labels.includes('aloop/auto')) {
            return { allowed: false, reason: 'Must include aloop/auto label' };
         }
-        return { allowed: true };
+        return { allowed: true, enforced: { repo: sessionPolicy.repo } };
       case 'issue-close':
         if (!includesAloopAutoLabel(payload.target_labels)) {
           return { allowed: false, reason: 'issue-close requires aloop/auto-scoped target validation' };
         }
-        return { allowed: true };
+        return { allowed: true, enforced: { repo: sessionPolicy.repo } };
       case 'pr-create':
         return { allowed: true, enforced: { base: 'agent/trunk', repo: sessionPolicy.repo } };
       case 'pr-merge':
@@ -260,7 +260,7 @@ function evaluatePolicy(
         if (!includesAloopAutoLabel(payload.target_labels)) {
           return { allowed: false, reason: `${operation} requires aloop/auto-scoped target validation` };
         }
-        return { allowed: true };
+        return { allowed: true, enforced: { repo: sessionPolicy.repo } };
       case 'branch-delete':
         return { allowed: false, reason: 'branch-delete rejected - cleanup is manual' };
       default:
