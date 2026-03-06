@@ -1,104 +1,118 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { ghCommand } from './gh.js';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 
-describe('ghCommand', () => {
-  let tmpHome: string;
-  let sessionDir: string;
-  let requestFile: string;
+type GhFixture = {
+  tmpHome: string;
+  sessionDir: string;
+  requestFile: string;
+};
 
-  beforeEach(() => {
-    tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-test-'));
-    sessionDir = path.join(tmpHome, '.aloop', 'sessions', 'test-session');
-    fs.mkdirSync(sessionDir, { recursive: true });
-    
-    requestFile = path.join(tmpHome, 'request.json');
-    fs.writeFileSync(requestFile, JSON.stringify({
-      type: 'pr-create',
-      repo: 'test/repo',
-      labels: ['aloop/auto']
-    }));
-  });
+function createFixture(): GhFixture {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-test-'));
+  const sessionDir = path.join(tmpHome, '.aloop', 'sessions', 'test-session');
+  fs.mkdirSync(sessionDir, { recursive: true });
 
-  afterEach(() => {
-    fs.rmSync(tmpHome, { recursive: true, force: true });
-  });
+  const requestFile = path.join(tmpHome, 'request.json');
+  fs.writeFileSync(requestFile, JSON.stringify({
+    type: 'pr-create',
+    repo: 'test/repo',
+    labels: ['aloop/auto'],
+  }), 'utf8');
 
-  it('should allow child-loop to create PRs and log gh_operation', async () => {
-    // We override process.exit to prevent the test from exiting,
-    // and console.log/error to capture output
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
-    const mockLog = vi.spyOn(console, 'log').mockImplementation(() => {});
+  return { tmpHome, sessionDir, requestFile };
+}
 
+function readLogEntries(sessionDir: string): Array<Record<string, unknown>> {
+  const logFile = path.join(sessionDir, 'log.jsonl');
+  const lines = fs.readFileSync(logFile, 'utf8')
+    .split('\n')
+    .filter(Boolean);
+  return lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+test('ghCommand allows child-loop to create PRs and logs gh_operation', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  try {
     await ghCommand.parseAsync([
-      'node', 'test', 'pr-create',
+      'pr-create',
       '--session', 'test-session',
-      '--request', requestFile,
+      '--request', fixture.requestFile,
       '--role', 'child-loop',
-      '--home-dir', tmpHome
-    ]);
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
 
-    const logFile = path.join(sessionDir, 'log.jsonl');
-    expect(fs.existsSync(logFile)).toBe(true);
-    const logs = fs.readFileSync(logFile, 'utf8').split(String.fromCharCode(10)).filter(Boolean).map(line => JSON.parse(line));
-    expect(logs.length).toBe(1);
-    expect(logs[0].event).toBe('gh_operation');
-    expect(logs[0].type).toBe('pr-create');
-    expect(logs[0].role).toBe('child-loop');
-    expect(logs[0].result).toBe('success');
-    expect(logs[0].enforced.base).toBe('agent/trunk');
+    const logFile = path.join(fixture.sessionDir, 'log.jsonl');
+    assert.equal(fs.existsSync(logFile), true);
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation');
+    assert.equal(entries[0].type, 'pr-create');
+    assert.equal(entries[0].role, 'child-loop');
+    assert.equal(entries[0].result, 'success');
+    assert.equal((entries[0].enforced as { base?: string }).base, 'agent/trunk');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
 
-    mockExit.mockRestore();
-    mockLog.mockRestore();
-  });
+test('ghCommand denies child-loop from merging PRs and logs gh_operation_denied', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
 
-  it('should deny child-loop from merging PRs and log gh_operation_denied', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
-    const mockError = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'pr-merge',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'child-loop',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
 
+    const logFile = path.join(fixture.sessionDir, 'log.jsonl');
+    assert.equal(fs.existsSync(logFile), true);
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.equal(entries[0].type, 'pr-merge');
+    assert.equal(entries[0].role, 'child-loop');
+    assert.match(String(entries[0].reason), /not allowed/);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand allows orchestrator to merge PRs', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  try {
     await ghCommand.parseAsync([
-      'node', 'test', 'pr-merge',
+      'pr-merge',
       '--session', 'test-session',
-      '--request', requestFile,
-      '--role', 'child-loop',
-      '--home-dir', tmpHome
-    ]);
-
-    const logFile = path.join(sessionDir, 'log.jsonl');
-    expect(fs.existsSync(logFile)).toBe(true);
-    const logs = fs.readFileSync(logFile, 'utf8').split(String.fromCharCode(10)).filter(Boolean).map(line => JSON.parse(line));
-    expect(logs.length).toBe(1);
-    expect(logs[0].event).toBe('gh_operation_denied');
-    expect(logs[0].type).toBe('pr-merge');
-    expect(logs[0].role).toBe('child-loop');
-    expect(logs[0].reason).toContain('not allowed');
-
-    mockExit.mockRestore();
-    mockError.mockRestore();
-  });
-
-  it('should allow orchestrator to merge PRs', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
-    const mockLog = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await ghCommand.parseAsync([
-      'node', 'test', 'pr-merge',
-      '--session', 'test-session',
-      '--request', requestFile,
+      '--request', fixture.requestFile,
       '--role', 'orchestrator',
-      '--home-dir', tmpHome
-    ]);
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
 
-    const logFile = path.join(sessionDir, 'log.jsonl');
-    expect(fs.existsSync(logFile)).toBe(true);
-    const logs = fs.readFileSync(logFile, 'utf8').split(String.fromCharCode(10)).filter(Boolean).map(line => JSON.parse(line));
-    expect(logs.length).toBe(1);
-    expect(logs[0].event).toBe('gh_operation');
-    expect(logs[0].enforced.merge_method).toBe('squash');
-
-    mockExit.mockRestore();
-    mockLog.mockRestore();
-  });
+    const logFile = path.join(fixture.sessionDir, 'log.jsonl');
+    assert.equal(fs.existsSync(logFile), true);
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation');
+    assert.equal((entries[0].enforced as { merge_method?: string }).merge_method, 'squash');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
 });
