@@ -4,6 +4,11 @@
 
 ### In Progress
 - [x] [security/P1] Replace `aloop/cli/src/commands/gh.ts` simulated-success logging path (`result: "success"`, fake `pr_number`) with real `gh` execution wrappers and structured response output for harness consumption. (blocks protocol + orchestrator)
+- [ ] [review] Gate 1: `aloop start` implementation in `aloop/cli/src/commands/start.ts` is missing spec-required auto-monitor launch behavior (`on_start` dashboard/terminal/none + browser auto-open) from SPEC.md 731-760 and 887 — implement and wire through config/start flow with tests. (priority: high)
+- [ ] [review] Gate 1: `aloop setup` CLI surface in `aloop/cli/src/index.ts` and `aloop/cli/src/commands/setup.ts` does not implement SPEC.md 719 options (`--spec`, `--providers`, plus non-interactive flag-driven path); add missing flags and ensure they affect scaffold inputs as specified. (priority: high)
+- [ ] [review] Gate 2: `aloop/cli/src/commands/setup.test.ts` only validates happy-path interactive/non-interactive flows; add concrete failure-path tests (discover/scaffold rejection and prompt parsing edge cases) with exact error assertions so broken behavior fails deterministically. (priority: high)
+- [ ] [review] Gate 3: branch coverage is insufficient for touched new modules (`aloop/cli/src/commands/start.ts`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/src/index.ts`) versus required >=90% for new modules; add branch-focused tests for unhit paths (Windows launcher selection, successful worktree branch, invalid provider/mode, output mode json/text paths, config parse fallbacks). (priority: high)
+- [ ] [review] Gate 5: CI-equivalent validation command for forbidden `ralph` references was not executed with the required pipeline semantics (`grep ... | grep -v SPEC.md | grep -v aloop.md`); add/automate this exact check in the existing test/validation flow and enforce failure on match. (priority: medium)
 
 ### Up Next
 - [x] [cli/P1] Add `aloop start` CLI command to perform full session bootstrap (resolve + session dir/meta + optional worktree + loop launch + active session registration). (foundational UX flow)
