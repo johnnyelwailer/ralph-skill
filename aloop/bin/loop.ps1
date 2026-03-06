@@ -793,4 +793,4 @@ if ($iteration -ge $MaxIterations) {
     Generate-Report -ExitReason "Reached iteration limit ($MaxIterations)." -Iteration $iteration
 }
 
-Write-Host "`n=== Aloop Loop Complete ($iteration iterations) ===" -ForegroundColor Cyan
+Write-Host "`n=== Aloop Complete - $($iteration) iterations ===" -ForegroundColor Cyan

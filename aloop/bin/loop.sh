@@ -14,6 +14,9 @@
 
 set -e
 
+# Defense in depth: clear CLAUDECODE so provider CLIs can launch from within Claude Code sessions.
+unset CLAUDECODE
+
 # ============================================================================
 # DEFAULTS
 # ============================================================================
