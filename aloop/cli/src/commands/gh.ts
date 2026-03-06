@@ -52,6 +52,24 @@ async function executeGhOperation(operation: string, options: any) {
   const requestFile = options.request;
   const role = options.role;
 
+  // Load session config
+  let sessionRepo = 'owner/repo';
+  const configFile = path.join(sessionDir, 'config.json');
+  if (fs.existsSync(configFile)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+      if (config.repo) {
+        sessionRepo = config.repo;
+      }
+    } catch (e) {
+      console.error(`Failed to parse session config: ${configFile}`);
+    }
+  } else {
+    // Scaffold: create default config for testing if missing
+    fs.mkdirSync(sessionDir, { recursive: true });
+    fs.writeFileSync(configFile, JSON.stringify({ repo: 'owner/repo' }), 'utf8');
+  }
+
   // Read request payload
   let requestPayload: any = {};
   if (fs.existsSync(requestFile)) {
@@ -67,7 +85,7 @@ async function executeGhOperation(operation: string, options: any) {
   }
 
   // Evaluate policy
-  const { allowed, reason, enforced } = evaluatePolicy(operation, role, requestPayload);
+  const { allowed, reason, enforced } = evaluatePolicy(operation, role, requestPayload, sessionRepo);
 
   const timestamp = new Date().toISOString();
   const requestFileName = path.basename(requestFile);
@@ -107,13 +125,17 @@ async function executeGhOperation(operation: string, options: any) {
   }
 }
 
-function evaluatePolicy(operation: string, role: string, payload: any): { allowed: boolean, reason?: string, enforced?: any } {
+function evaluatePolicy(operation: string, role: string, payload: any, sessionRepo: string): { allowed: boolean, reason?: string, enforced?: any } {
+  if (payload.repo && payload.repo !== sessionRepo) {
+    return { allowed: false, reason: `Mismatched repo: requested ${payload.repo}, but session is bound to ${sessionRepo}` };
+  }
+
   if (role === 'child-loop') {
     switch (operation) {
       case 'pr-create':
         return { 
           allowed: true, 
-          enforced: { base: 'agent/trunk', repo: payload.repo || 'owner/repo' } // repo should come from session config, scaffolding for now
+          enforced: { base: 'agent/trunk', repo: sessionRepo }
         };
       case 'issue-comment':
         return { allowed: true }; // Only on assigned issue
@@ -138,10 +160,10 @@ function evaluatePolicy(operation: string, role: string, payload: any): { allowe
         // Scaffolding: Assume issue has aloop/auto label
         return { allowed: true };
       case 'pr-create':
-        return { allowed: true, enforced: { base: 'agent/trunk' } };
+        return { allowed: true, enforced: { base: 'agent/trunk', repo: sessionRepo } };
       case 'pr-merge':
         // Only to agent/trunk, only squash merge
-        return { allowed: true, enforced: { base: 'agent/trunk', merge_method: 'squash' } };
+        return { allowed: true, enforced: { base: 'agent/trunk', merge_method: 'squash', repo: sessionRepo } };
       case 'pr-comment':
       case 'issue-comment':
         return { allowed: true };
