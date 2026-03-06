@@ -5,7 +5,7 @@
 ### In Progress
 - [x] [review] Gate 1: `aloop/cli/src/commands/gh.ts` trusts request-payload labels for orchestrator scope checks (`includesAloopAutoLabel(payload)` in `issue-close`/`issue-comment`/`pr-comment`), which can be spoofed by an untrusted agent. Replace payload-declared labels with trusted target-label validation before allowing these operations. (priority: high)
 - [x] [review] Gate 1: `aloop/cli/src/commands/gh.ts` does not force `repo` from session config on all allowed operations (`issue-create`, `issue-close`, `issue-comment`, `pr-comment`). Enforce `repo` in policy output for every allowed operation so cross-repo bypasses remain impossible when real `gh` execution is wired in. (priority: high)
-- [x] [review] Gate 3: `aloop/cli/src/commands/gh.ts` branch coverage is 84.51% (<90% target for the new security module). Add tests for uncovered policy branches (missing assigned issue scope, non-numeric `issue_number`/`pr_number`, and allowed orchestrator `issue-close` path) until `gh.ts` reaches >=90% branch coverage. (priority: high)
+- [x] [review] Gate 3: `aloop/cli/src/commands/gh.ts` branch coverage is 84.51% (<90% target for the new security module). Add tests for uncovered policy branches (missing assigned issue scope, non-numeric `issue_number`/`pr_number`, and allowed orchestrator `issue-close` path) until `gh.ts` reaches >=90% branch coverage. (priority: high) [reviewed: gates 1-5 pass]
 
 ### Up Next
 - [x] [security/P0] Raise `aloop/cli/src/commands/gh.ts` branch coverage to >=90% by covering all policy and error-path branches introduced by the security hardening.
