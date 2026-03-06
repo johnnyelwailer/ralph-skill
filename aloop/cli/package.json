@@ -10,7 +10,7 @@
     "build:server": "esbuild src/index.ts --bundle --platform=node --format=esm \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=dist/index.js",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "tsx src/index.ts",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test src/**/*.test.ts && node --test aloop.test.mjs",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
