@@ -3,9 +3,7 @@
 ## Current Phase: P1 CLI, Protocol, and Proof Integration
 
 ### In Progress
-- [x] [review] Gate 1: `aloop setup` CLI surface in `aloop/cli/src/index.ts` and `aloop/cli/src/commands/setup.ts` does implement SPEC.md 719 options (`--spec`, `--providers`, plus non-interactive flag-driven path); added missing flags and ensured they affect scaffold inputs as specified. (priority: high)
-- [x] [review] Gate 2: `aloop/cli/src/commands/setup.test.ts` only validates happy-path interactive/non-interactive flows; add concrete failure-path tests (discover/scaffold rejection and prompt parsing edge cases) with exact error assertions so broken behavior fails deterministically. (priority: high)
-- [ ] [review] Gate 3: branch coverage is insufficient for touched new modules (`aloop/cli/src/commands/start.ts`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/src/index.ts`) versus required >=90% for new modules; add branch-focused tests for unhit paths (Windows launcher selection, successful worktree branch, invalid provider/mode, output mode json/text paths, config parse fallbacks). (priority: high)
+- [ ] [review] Gate 3: branch coverage is insufficient for touched new modules (`aloop/cli/src/commands/start.ts` at 64.89% branch, `aloop/cli/src/commands/setup.ts` at 76.19% branch) versus required >=90% for new modules; add branch-focused tests for unhit paths (Windows launcher selection via `resolvePowerShellBinary`/`openInBrowser`/`openStatusTerminal` win32+darwin branches, successful worktree creation, invalid provider/mode rejection, `startCommand` output mode json/text paths, config parse fallbacks for block scalars and malformed YAML, `reserveLocalPort` error path, `readActiveMap` with invalid JSON, `normalizeMonitorMode` with non-string input, setup.ts `setupCommand` readline lifecycle). (priority: high)
 - [ ] [review] Gate 5: CI-equivalent validation command for forbidden legacy-name references was not executed with the required pipeline semantics (`grep ... | grep -v SPEC.md | grep -v aloop.md`); add/automate this exact check in the existing test/validation flow and enforce failure on match. (priority: medium)
 
 ### Up Next
@@ -53,6 +51,8 @@
 - [ ] [acceptance/P3] Run a final SPEC-to-code acceptance sweep and refresh task states from verified code/test evidence. (release readiness)
 
 ### Completed
+- [x] [review] Gate 1: `aloop setup` --spec/--providers flags and `aloop start` on_start monitor behavior match SPEC.md 721-773 [reviewed: gates 1,2,4,5 pass; gate 3 outstanding on branch coverage]
+- [x] [review] Gate 2: setup.test.ts failure-path tests (discover/scaffold rejection, prompt parsing edge cases) assert exact error messages and concrete values — no shallow anti-patterns [reviewed: gates 1,2,4,5 pass]
 - [x] [review] Gate 1: Implemented `aloop start` auto-monitor launch behavior (`on_start` dashboard/terminal/none + browser auto-open) and added start command coverage tests.
 - [x] [security/P0] Hardened `aloop gh` policy boundaries in `gh.ts` (role scoping, repo enforcement, main-branch rejection, config hard-fail behavior).
 - [x] [security/P0] Expanded `gh.test.ts` and raised branch coverage to >=90% for security policy/error paths.
