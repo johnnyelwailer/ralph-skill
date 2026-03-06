@@ -155,10 +155,10 @@ Describe 'Command and prompt CLI entrypoint consistency' {
         $expectedSnippets = @(
             @{ Path = 'claude/commands/aloop/setup.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs discover' },
             @{ Path = 'claude/commands/aloop/setup.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs scaffold' },
-            @{ Path = 'claude/commands/aloop/start.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs resolve' },
+            @{ Path = 'claude/commands/aloop/start.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs start' },
             @{ Path = 'copilot/prompts/aloop-setup.prompt.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs discover' },
             @{ Path = 'copilot/prompts/aloop-setup.prompt.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs scaffold' },
-            @{ Path = 'copilot/prompts/aloop-start.prompt.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs resolve' }
+            @{ Path = 'copilot/prompts/aloop-start.prompt.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs start' }
         )
 
         foreach ($item in $expectedSnippets) {
