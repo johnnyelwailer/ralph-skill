@@ -6,7 +6,7 @@
 - [x] [proof/P1] Add `PROMPT_proof.md` to `aloop/templates/` and wire scaffold/install/template validation + tests so proof is a first-class prompt alongside plan/build/review/steer. (priority: highest, unblocks all proof-runtime work)
 
 ### Up Next
-- [ ] [runtime/P1] Upgrade both runtimes (`loop.ps1`, `loop.sh`) from 5-step to 6-step cycle (`plan -> build x3 -> proof -> review`), including cycle-position math and forced-phase/retry-same-phase compatibility. (priority: highest, core behavior gap)
+- [x] [runtime/P1] Upgrade both runtimes (`loop.ps1`, `loop.sh`) from 5-step to 6-step cycle (`plan -> build x3 -> proof -> review`), including cycle-position math and forced-phase/retry-same-phase compatibility. (priority: highest, core behavior gap)
 - [ ] [proof/P1] Implement proof artifact persistence per iteration (`artifacts/iter-<N>/`) and write `proof-manifest.json` (including explicit skip protocol) consumed by review. (priority: high, required acceptance path)
 - [ ] [proof/P1] Add baseline lifecycle integration: only update baselines after approved review; preserve previous baselines on rejection. (priority: high, prevents regressions)
 - [ ] [security/P1] Implement convention-file GH protocol in `loop.ps1`: process `.aloop/requests/*.json` via `aloop gh`, emit `.aloop/responses/*.json`, then archive to `.aloop/requests/processed/` in deterministic order. (priority: high, trust-boundary requirement)

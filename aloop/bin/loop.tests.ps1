@@ -80,6 +80,7 @@ exit 0
             [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
             $stateFile = Join-Path $testDir 'claude-state.txt'
             [System.IO.File]::WriteAllText($stateFile, "calls=0`nscenario=$Scenario`nrejected=`n", $utf8NoBom)
@@ -138,15 +139,19 @@ exit 0
             }
         }
 
-        function script:Get-ShLogEvents {
+        function script:Get-ShLogEntries {
             param([string]$LogFile)
             if (-not (Test-Path $LogFile)) { return @() }
             return @(
                 Get-Content $LogFile |
                     ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
-                    Where-Object { $_ } |
-                    ForEach-Object { $_.event }
+                    Where-Object { $_ }
             )
+        }
+
+        function script:Get-ShLogEvents {
+            param([string]$LogFile)
+            return @(Get-ShLogEntries -LogFile $LogFile | ForEach-Object { $_.event })
         }
     }
 
@@ -169,8 +174,16 @@ exit 0
         if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
         $e      = New-ShLoopEnv -Scenario 'approve'
         $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 8
+        $entries = Get-ShLogEntries -LogFile $e.LogFile
         $events = Get-ShLogEvents -LogFile $e.LogFile
         $result.ExitCode | Should -Be 0
+        ($entries | Where-Object { $_.event -eq 'iteration_complete' -and $_.mode -eq 'proof' }).Count | Should -BeGreaterThan 0
+        $milestones = @($entries | ForEach-Object {
+            if ($_.event -eq 'iteration_complete') { "iteration_complete:$($_.mode)" } else { $_.event }
+        })
+        $proofIdx = [array]::IndexOf([string[]]$milestones, 'iteration_complete:proof')
+        $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
+        $proofIdx | Should -BeLessThan $appIdx
         $events | Should -Contain 'final_review_approved'
         $events | Should -Not -Contain 'final_review_rejected'
     }
@@ -273,6 +286,7 @@ exit 0
             [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
             $stateFile = Join-Path $testDir 'retry-state.txt'
             [System.IO.File]::WriteAllText($stateFile, "calls=0`nplan_fails=$PlanFails`nbuild_fails=$BuildFails`n", $utf8NoBom)
@@ -446,6 +460,7 @@ exit 0
             Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof."
             Set-Content (Join-Path $promptDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
             $stateFile = Join-Path $testDir 'claude-state.json'
             [pscustomobject]@{ calls = 0; scenario = $Scenario; rejected = $false } |
@@ -501,15 +516,19 @@ exit 0
         }
 
         # ── Helper: parse log.jsonl into event-name array ───────────────────
-        function script:Get-LogEvents {
+        function script:Get-LogEntries {
             param([string]$LogFile)
             if (-not (Test-Path $LogFile)) { return @() }
             return @(
                 Get-Content $LogFile |
                     ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
-                    Where-Object { $_ } |
-                    ForEach-Object { $_.event }
+                    Where-Object { $_ }
             )
+        }
+
+        function script:Get-LogEvents {
+            param([string]$LogFile)
+            return @(Get-LogEntries -LogFile $LogFile | ForEach-Object { $_.event })
         }
     }
 
@@ -529,15 +548,23 @@ exit 0
     It 'review approval emits final_review_approved and exits 0' {
         $e      = New-LoopEnv -Scenario 'approve'
         $result = Invoke-LoopScript -LoopEnv $e -MaxIter 5
+        $entries = Get-LogEntries -LogFile $e.LogFile
         $events = Get-LogEvents -LogFile $e.LogFile
         $result.ExitCode | Should -Be 0
+        ($entries | Where-Object { $_.event -eq 'iteration_complete' -and $_.mode -eq 'proof' }).Count | Should -BeGreaterThan 0
+        $milestones = @($entries | ForEach-Object {
+            if ($_.event -eq 'iteration_complete') { "iteration_complete:$($_.mode)" } else { $_.event }
+        })
+        $proofIdx = [array]::IndexOf([string[]]$milestones, 'iteration_complete:proof')
+        $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
+        $proofIdx | Should -BeLessThan $appIdx
         $events | Should -Contain 'final_review_approved'
         $events | Should -Not -Contain 'final_review_rejected'
     }
 
     It 'review rejection emits final_review_rejected, re-plans, then final_review_approved' {
         $e      = New-LoopEnv -Scenario 'reject-once'
-        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 10
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 12
         $events = Get-LogEvents -LogFile $e.LogFile
         $result.ExitCode | Should -Be 0
         $events | Should -Contain 'final_review_rejected'
@@ -610,6 +637,7 @@ exit 0
             Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof."
             Set-Content (Join-Path $promptDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
             $stateFile = Join-Path $testDir 'retry-state.json'
             [pscustomobject]@{ calls = 0; planFails = $PlanFails; buildFails = $BuildFails } |

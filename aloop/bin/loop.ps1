@@ -7,7 +7,7 @@
 #   build              - building only (implement tasks from TODO)
 #   review             - review only (audit last build against quality gates)
 #   plan-build         - alternating: plan -> build -> plan -> build -> ...
-#   plan-build-review  - full cycle: plan -> build x3 -> review -> ... (DEFAULT)
+#   plan-build-review  - full cycle: plan -> build x3 -> proof -> review -> ... (DEFAULT)
 #
 # Providers:
 #   claude, codex, gemini, copilot, round-robin
@@ -106,6 +106,11 @@ function Resolve-IterationMode {
         $script:lastModeWasForced = $true
         return 'review'
     }
+    if ($script:forceProofNext) {
+        $script:forceProofNext = $false
+        $script:lastModeWasForced = $true
+        return 'proof'
+    }
     if ($script:forcePlanNext) {
         $script:forcePlanNext = $false
         $script:lastModeWasForced = $true
@@ -117,14 +122,15 @@ function Resolve-IterationMode {
         if ($phase -eq 0) { $requestedMode = 'plan' } else { $requestedMode = 'build' }
     }
     if ($Mode -eq 'plan-build-review') {
-        # 5-step cycle: plan -> build -> build -> build -> review
-        $phase = $script:cyclePosition % 5
+        # 6-step cycle: plan -> build -> build -> build -> proof -> review
+        $phase = $script:cyclePosition % 6
         switch ($phase) {
             0 { $requestedMode = 'plan' }
             1 { $requestedMode = 'build' }
             2 { $requestedMode = 'build' }
             3 { $requestedMode = 'build' }
-            4 { $requestedMode = 'review' }
+            4 { $requestedMode = 'proof' }
+            5 { $requestedMode = 'review' }
         }
     }
 
@@ -414,6 +420,7 @@ function Get-CurrentTask {
 $stuckState = @{ LastTask = ""; StuckCount = 0 }
 $script:forcePlanNext = $false
 $script:allTasksMarkedDone = $false
+$script:forceProofNext = $false
 $script:forceReviewNext = $false
 $script:lastProviderOutputText = $null
 $script:cyclePosition = 0
@@ -430,7 +437,7 @@ function Advance-CyclePosition {
     if ($Mode -eq 'plan-build') {
         $script:cyclePosition = ($script:cyclePosition + 1) % 2
     } elseif ($Mode -eq 'plan-build-review') {
-        $script:cyclePosition = ($script:cyclePosition + 1) % 5
+        $script:cyclePosition = ($script:cyclePosition + 1) % 6
     }
 }
 
@@ -443,13 +450,15 @@ function Register-IterationSuccess {
         $script:hasBuildsSinceLastPlan = $false
     } elseif ($IterationMode -eq 'build') {
         $script:hasBuildsSinceLastPlan = $true
+    } elseif ($IterationMode -eq 'proof' -and $script:allTasksMarkedDone) {
+        $script:forceReviewNext = $true
     }
 
     $script:phaseRetryState.phase = ''
     $script:phaseRetryState.consecutive = 0
     $script:phaseRetryState.failureReasons = @()
 
-    if (($Mode -in @('plan-build', 'plan-build-review')) -and -not $WasForced -and ($IterationMode -in @('plan', 'build', 'review'))) {
+    if (($Mode -in @('plan-build', 'plan-build-review')) -and -not $WasForced -and ($IterationMode -in @('plan', 'build', 'proof', 'review'))) {
         Advance-CyclePosition
     }
 }
@@ -460,7 +469,7 @@ function Register-IterationFailure {
         [string]$ErrorText
     )
     if (-not ($Mode -in @('plan-build', 'plan-build-review'))) { return }
-    if (-not ($IterationMode -in @('plan', 'build', 'review'))) { return }
+    if (-not ($IterationMode -in @('plan', 'build', 'proof', 'review'))) { return }
 
     if ($script:phaseRetryState.phase -eq $IterationMode) {
         $script:phaseRetryState.consecutive++
@@ -1197,7 +1206,7 @@ if ($Mode -eq 'plan-build') {
     Write-Host "Mode cycle: plan -> build -> plan -> build -> ..."
 }
 if ($Mode -eq 'plan-build-review') {
-    Write-Host "Mode cycle: plan -> build -> build -> build -> review -> ..."
+    Write-Host "Mode cycle: plan -> build -> build -> build -> proof -> review -> ..."
 }
 Write-Host "Max iterations: $MaxIterations"
 Write-Host "Stuck threshold: $MaxStuck"
@@ -1206,7 +1215,7 @@ Write-Host ""
 # Validate prompt files exist
 $requiredPrompts = switch ($Mode) {
     'plan-build'        { @('plan', 'build') }
-    'plan-build-review' { @('plan', 'build', 'review') }
+    'plan-build-review' { @('plan', 'build', 'proof', 'review') }
     default             { @($Mode) }
 }
 foreach ($p in $requiredPrompts) {
@@ -1292,6 +1301,7 @@ try {
         $modeColor = switch ($iterationMode) {
             'plan'   { 'Magenta' }
             'build'  { 'Yellow' }
+            'proof'  { 'DarkCyan' }
             'review' { 'Cyan' }
             'steer'  { 'Blue' }
             default  { 'White' }
@@ -1302,9 +1312,9 @@ try {
         if ($iterationMode -eq 'build') {
             if (Check-AllTasksComplete) {
                 if ($Mode -eq 'plan-build-review') {
-                    Write-Host "`nALL TASKS MARKED DONE - forcing final review" -ForegroundColor Cyan
+                    Write-Host "`nALL TASKS MARKED DONE - forcing final proof + review" -ForegroundColor Cyan
                     $script:allTasksMarkedDone = $true
-                    $script:forceReviewNext = $true
+                    $script:forceProofNext = $true
                     Write-LogEntry -Event "tasks_marked_complete" -Data @{ iteration = $iteration }
                     continue
                 } else {

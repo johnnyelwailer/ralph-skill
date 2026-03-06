@@ -7,7 +7,7 @@
 #   build              - building only (implement tasks from TODO)
 #   review             - review only (audit last build against quality gates)
 #   plan-build         - alternating: plan -> build -> plan -> build -> ...
-#   plan-build-review  - full cycle: plan -> build x3 -> review -> ... (DEFAULT)
+#   plan-build-review  - full cycle: plan -> build x3 -> proof -> review -> ... (DEFAULT)
 #
 # Providers:
 #   claude, codex, gemini, copilot, round-robin
@@ -48,7 +48,7 @@ usage() {
     echo "Usage: $0 --prompts-dir <path> --session-dir <path> --work-dir <path> [options]"
     echo ""
     echo "Required:"
-    echo "  --prompts-dir <path>    Directory containing PROMPT_{plan,build,review}.md"
+    echo "  --prompts-dir <path>    Directory containing PROMPT_{plan,build,proof,review}.md"
     echo "  --session-dir <path>    Directory for session state (status.json, log.jsonl)"
     echo "  --work-dir <path>       Project working directory"
     echo ""
@@ -183,6 +183,10 @@ resolve_iteration_mode() {
         FORCE_REVIEW_NEXT=false
         LAST_MODE_WAS_FORCED=true
         RESOLVED_MODE="review"
+    elif [ "$FORCE_PROOF_NEXT" = true ]; then
+        FORCE_PROOF_NEXT=false
+        LAST_MODE_WAS_FORCED=true
+        RESOLVED_MODE="proof"
     elif [ "$FORCE_PLAN_NEXT" = true ]; then
         FORCE_PLAN_NEXT=false
         LAST_MODE_WAS_FORCED=true
@@ -193,12 +197,13 @@ resolve_iteration_mode() {
                 if (( CYCLE_POSITION % 2 == 0 )); then RESOLVED_MODE="plan"; else RESOLVED_MODE="build"; fi
                 ;;
             plan-build-review)
-                # 5-step cycle: plan -> build -> build -> build -> review
-                local phase=$(( CYCLE_POSITION % 5 ))
+                # 6-step cycle: plan -> build -> build -> build -> proof -> review
+                local phase=$(( CYCLE_POSITION % 6 ))
                 case $phase in
                     0) RESOLVED_MODE="plan" ;;
                     1|2|3) RESOLVED_MODE="build" ;;
-                    4) RESOLVED_MODE="review" ;;
+                    4) RESOLVED_MODE="proof" ;;
+                    5) RESOLVED_MODE="review" ;;
                 esac
                 ;;
             *)
@@ -216,7 +221,7 @@ advance_cycle_position() {
             CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 2 ))
             ;;
         plan-build-review)
-            CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 5 ))
+            CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 6 ))
             ;;
     esac
 }
@@ -229,6 +234,8 @@ register_iteration_success() {
         HAS_BUILDS_SINCE_LAST_PLAN=false
     elif [ "$iteration_mode" = "build" ]; then
         HAS_BUILDS_SINCE_LAST_PLAN=true
+    elif [ "$iteration_mode" = "proof" ] && [ "$ALL_TASKS_MARKED_DONE" = true ]; then
+        FORCE_REVIEW_NEXT=true
     fi
 
     PHASE_RETRY_PHASE=""
@@ -236,7 +243,7 @@ register_iteration_success() {
 
     if { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; } \
         && [ "$was_forced" != true ] \
-        && { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "review" ]; }; then
+        && { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "proof" ] || [ "$iteration_mode" = "review" ]; }; then
         advance_cycle_position
     fi
 }
@@ -248,7 +255,7 @@ register_iteration_failure() {
     if ! { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; }; then
         return
     fi
-    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "review" ]; }; then
+    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "proof" ] || [ "$iteration_mode" = "review" ]; }; then
         return
     fi
 
@@ -836,6 +843,7 @@ LAST_TASK=""
 STUCK_COUNT=0
 FORCE_PLAN_NEXT=false
 ALL_TASKS_MARKED_DONE=false
+FORCE_PROOF_NEXT=false
 FORCE_REVIEW_NEXT=false
 RESOLVED_MODE=""
 CYCLE_POSITION=0
@@ -1076,7 +1084,7 @@ echo ""
 # Validate prompt files exist
 case "$MODE" in
     plan-build)        required_prompts="plan build" ;;
-    plan-build-review) required_prompts="plan build review" ;;
+    plan-build-review) required_prompts="plan build proof review" ;;
     *)                 required_prompts="$MODE" ;;
 esac
 
@@ -1185,6 +1193,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     case "$iter_mode" in
         plan)   color="\033[35m" ;;  # magenta
         build)  color="\033[33m" ;;  # yellow
+        proof)  color="\033[96m" ;;  # bright cyan
         review) color="\033[36m" ;;  # cyan
         steer)  color="\033[34m" ;;  # blue
         *)      color="\033[0m" ;;
@@ -1196,9 +1205,9 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         if check_all_tasks_complete; then
             if [ "$MODE" = "plan-build-review" ]; then
                 echo ""
-                echo "ALL TASKS MARKED DONE - forcing final review"
+                echo "ALL TASKS MARKED DONE - forcing final proof + review"
                 ALL_TASKS_MARKED_DONE=true
-                FORCE_REVIEW_NEXT=true
+                FORCE_PROOF_NEXT=true
                 write_log_entry "tasks_marked_complete" "iteration" "$ITERATION"
                 continue
             else
