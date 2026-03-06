@@ -53,21 +53,31 @@ async function executeGhOperation(operation: string, options: any) {
   const role = options.role;
 
   // Load session config
-  let sessionRepo = 'owner/repo';
+  let sessionRepo: string;
   const configFile = path.join(sessionDir, 'config.json');
-  if (fs.existsSync(configFile)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-      if (config.repo) {
-        sessionRepo = config.repo;
-      }
-    } catch (e) {
-      console.error(`Failed to parse session config: ${configFile}`);
+  try {
+    if (!fs.existsSync(configFile)) {
+      throw new Error(`Session config not found: ${configFile}`);
     }
-  } else {
-    // Scaffold: create default config for testing if missing
-    fs.mkdirSync(sessionDir, { recursive: true });
-    fs.writeFileSync(configFile, JSON.stringify({ repo: 'owner/repo' }), 'utf8');
+    const configContent = fs.readFileSync(configFile, 'utf8');
+    const config = JSON.parse(configContent);
+    if (!config || typeof config.repo !== 'string' || !config.repo.trim()) {
+      throw new Error(`Invalid session config: missing or invalid 'repo' in ${configFile}`);
+    }
+    sessionRepo = config.repo;
+  } catch (e: any) {
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      event: 'gh_operation_denied',
+      type: operation,
+      session: options.session,
+      role: role,
+      reason: e.message
+    };
+    appendLog(sessionDir, logEntry);
+    console.error(JSON.stringify(logEntry));
+    process.exit(1);
   }
 
   // Read request payload
