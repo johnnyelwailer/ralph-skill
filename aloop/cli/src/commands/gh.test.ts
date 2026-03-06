@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ghCommand } from './gh.js';
+import { ghCommand, ghExecutor } from './gh.js';
 
 type GhFixture = {
   tmpHome: string;
@@ -44,6 +44,7 @@ function readLogEntries(sessionDir: string): Array<Record<string, unknown>> {
 test('ghCommand allows child-loop to create PRs and logs gh_operation', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: 'https://github.com/test/repo/pull/42\n', stderr: '' }));
 
   try {
     await ghCommand.parseAsync([
@@ -103,6 +104,7 @@ test('ghCommand denies child-loop from merging PRs and logs gh_operation_denied'
 test('ghCommand allows orchestrator to merge PRs', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '', stderr: '' }));
 
   try {
     await ghCommand.parseAsync([
@@ -196,6 +198,7 @@ test('ghCommand denies operations targeting main branch', async (t) => {
 test('ghCommand allows child-loop issue-comment only on assigned issue', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '', stderr: '' }));
 
   fs.writeFileSync(fixture.requestFile, JSON.stringify({
     type: 'issue-comment',
@@ -330,6 +333,7 @@ test('ghCommand denies child-loop issue-comment when assigned issue scope is mis
 test('ghCommand allows child-loop pr-comment only on child-created PRs', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '', stderr: '' }));
 
   fs.writeFileSync(fixture.requestFile, JSON.stringify({
     type: 'pr-comment',
@@ -460,6 +464,7 @@ test('ghCommand denies orchestrator issue-close without aloop/auto target valida
 test('ghCommand allows orchestrator issue-close with aloop/auto-scoped target labels', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '', stderr: '' }));
 
   fs.writeFileSync(fixture.requestFile, JSON.stringify({
     type: 'issue-close',
@@ -490,6 +495,7 @@ test('ghCommand allows orchestrator issue-close with aloop/auto-scoped target la
 test('ghCommand allows orchestrator comment operations with aloop/auto-scoped targets', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '', stderr: '' }));
 
   fs.writeFileSync(fixture.requestFile, JSON.stringify({
     type: 'issue-comment',
@@ -944,6 +950,7 @@ test('ghCommand denies orchestrator issue-create without aloop/auto label', asyn
 test('ghCommand allows orchestrator issue-create with aloop/auto label', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: 'https://github.com/test/repo/issues/7\n', stderr: '' }));
 
   fs.writeFileSync(fixture.requestFile, JSON.stringify({
     type: 'issue-create',
@@ -975,6 +982,7 @@ test('ghCommand allows orchestrator issue-create with aloop/auto label', async (
 test('ghCommand enforces session repo on allowed child-loop pr-create', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: 'https://github.com/test/repo/pull/10\n', stderr: '' }));
 
   try {
     await ghCommand.parseAsync([
@@ -996,6 +1004,7 @@ test('ghCommand enforces session repo on allowed child-loop pr-create', async (t
 test('ghCommand enforces session repo on allowed orchestrator pr-merge', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '', stderr: '' }));
 
   try {
     await ghCommand.parseAsync([
@@ -1018,6 +1027,7 @@ test('ghCommand enforces session repo on allowed orchestrator pr-merge', async (
 test('ghCommand enforces session repo on allowed child-loop issue-comment', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '', stderr: '' }));
 
   fs.writeFileSync(fixture.requestFile, JSON.stringify({
     type: 'issue-comment',
@@ -1045,6 +1055,7 @@ test('ghCommand enforces session repo on allowed child-loop issue-comment', asyn
 test('ghCommand enforces session repo on allowed child-loop pr-comment', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '', stderr: '' }));
 
   fs.writeFileSync(fixture.requestFile, JSON.stringify({
     type: 'pr-comment',
@@ -1072,6 +1083,7 @@ test('ghCommand enforces session repo on allowed child-loop pr-comment', async (
 test('ghCommand enforces session repo on allowed orchestrator pr-create', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: 'https://github.com/test/repo/pull/5\n', stderr: '' }));
 
   try {
     await ghCommand.parseAsync([

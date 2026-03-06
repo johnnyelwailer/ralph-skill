@@ -1,7 +1,18 @@
 import { Command } from 'commander';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+
+const execFileAsync = promisify(execFile);
+
+// Exported for test mocking — all gh CLI execution goes through this object
+export const ghExecutor = {
+  async exec(args: string[]): Promise<{ stdout: string; stderr: string }> {
+    return execFileAsync('gh', args);
+  }
+};
 
 // Define the gh command
 export const ghCommand = new Command('gh')
@@ -75,6 +86,79 @@ function appendLog(sessionDir: string, entry: any) {
     fs.mkdirSync(sessionDir, { recursive: true });
     fs.appendFileSync(logFile, logData);
   }
+}
+
+function buildGhArgs(operation: string, payload: any, enforced: any): string[] {
+  const repo = enforced.repo;
+
+  switch (operation) {
+    case 'pr-create': {
+      const args = ['pr', 'create', '--repo', repo, '--base', enforced.base];
+      if (payload.title) args.push('--title', String(payload.title));
+      if (payload.body) args.push('--body', String(payload.body));
+      if (payload.head) args.push('--head', String(payload.head));
+      if (Array.isArray(payload.labels)) {
+        for (const label of payload.labels) {
+          args.push('--label', String(label));
+        }
+      }
+      return args;
+    }
+    case 'pr-comment': {
+      const prNum = enforced.pr_number ?? payload.pr_number;
+      const args = ['pr', 'comment', String(prNum), '--repo', repo];
+      if (payload.body) args.push('--body', String(payload.body));
+      return args;
+    }
+    case 'issue-comment': {
+      const issueNum = enforced.issue_number ?? payload.issue_number;
+      const args = ['issue', 'comment', String(issueNum), '--repo', repo];
+      if (payload.body) args.push('--body', String(payload.body));
+      return args;
+    }
+    case 'issue-create': {
+      const args = ['issue', 'create', '--repo', repo];
+      if (payload.title) args.push('--title', String(payload.title));
+      if (payload.body) args.push('--body', String(payload.body));
+      if (Array.isArray(payload.labels)) {
+        for (const label of payload.labels) {
+          args.push('--label', String(label));
+        }
+      }
+      return args;
+    }
+    case 'issue-close': {
+      const issueNum = payload.issue_number;
+      return ['issue', 'close', String(issueNum), '--repo', repo];
+    }
+    case 'pr-merge': {
+      const prNum = payload.pr_number;
+      return ['pr', 'merge', String(prNum), '--repo', repo, '--squash'];
+    }
+    default:
+      throw new Error(`Cannot build gh args for operation: ${operation}`);
+  }
+}
+
+function parseGhOutput(operation: string, stdout: string): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  const trimmed = stdout.trim();
+
+  if (operation === 'pr-create') {
+    const match = trimmed.match(/\/pull\/(\d+)/);
+    if (match) {
+      result.pr_number = parseInt(match[1], 10);
+    }
+    if (trimmed) result.url = trimmed;
+  } else if (operation === 'issue-create') {
+    const match = trimmed.match(/\/issues\/(\d+)/);
+    if (match) {
+      result.issue_number = parseInt(match[1], 10);
+    }
+    if (trimmed) result.url = trimmed;
+  }
+
+  return result;
 }
 
 async function executeGhOperation(operation: string, options: any) {
@@ -155,6 +239,31 @@ async function executeGhOperation(operation: string, options: any) {
     console.error(JSON.stringify(logEntry));
     process.exit(1);
   } else {
+    // Build and execute real gh CLI command
+    const ghArgs = buildGhArgs(operation, requestPayload, enforced);
+
+    let ghResult: { stdout: string; stderr: string };
+    try {
+      ghResult = await ghExecutor.exec(ghArgs);
+    } catch (e: any) {
+      const errorEntry = {
+        timestamp,
+        event: 'gh_operation_error',
+        type: operation,
+        session: options.session,
+        role: role,
+        request_file: requestFileName,
+        error: e.message,
+        stderr: e.stderr || '',
+        enforced: enforced,
+      };
+      appendLog(sessionDir, errorEntry);
+      console.error(JSON.stringify(errorEntry));
+      process.exit(1);
+    }
+
+    const parsed = parseGhOutput(operation, ghResult.stdout);
+
     const logEntry: any = {
       timestamp,
       event: 'gh_operation',
@@ -162,18 +271,13 @@ async function executeGhOperation(operation: string, options: any) {
       session: options.session,
       role: role,
       request_file: requestFileName,
-      result: 'success', // Simulated success
-      enforced: enforced
+      result: 'success',
+      enforced: enforced,
+      ...parsed,
     };
-    
-    // Scaffolding: Simulated response attributes based on operation
-    if (operation === 'pr-create') {
-      logEntry.pr_number = 15;
-    }
 
     appendLog(sessionDir, logEntry);
     console.log(JSON.stringify(logEntry));
-    // Here we would typically write the response file, e.g., 001-pr-create.json into .aloop/responses/
   }
 }
 
