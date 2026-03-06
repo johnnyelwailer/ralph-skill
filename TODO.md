@@ -9,7 +9,7 @@
 ### Up Next
 - [x] [cli/P1] Make `aloop resolve` return a clear failure for unconfigured projects (or formally align callers/tests to accepted behavior) so Phase 1 acceptance is explicit and testable.
 - [x] [commands/P1] Refactor `/aloop:start` command/prompt assets into thin wrappers that delegate to `aloop start` with minimal argument translation.
-- [ ] [commands/P1] Refactor `/aloop:setup` command/prompt assets into thin wrappers that delegate to `aloop setup`.
+- [x] [commands/P1] Refactor `/aloop:setup` command/prompt assets into thin wrappers that delegate to `aloop setup`.
 - [ ] [commands/P1] Add `/aloop:dashboard` command asset (`claude/commands/aloop/dashboard.md`) and Copilot prompt asset (`copilot/prompts/aloop-dashboard.prompt.md`).
 - [ ] [cli/P1] Implement `aloop status --watch` auto-refresh mode and keep `aloop start` terminal-monitor fallback wired to this supported flag.
 - [ ] [security/P1] Implement convention-file GH protocol in `loop.ps1` (`.aloop/requests/*.json` -> `aloop gh` -> `.aloop/responses/*.json` -> archive to `.aloop/requests/processed/`) at iteration boundaries.

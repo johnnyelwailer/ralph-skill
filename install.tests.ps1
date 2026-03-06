@@ -153,11 +153,9 @@ Describe 'Command and prompt CLI entrypoint consistency' {
 
     It 'keeps setup/start docs wired to fallback commands via aloop.mjs' {
         $expectedSnippets = @(
-            @{ Path = 'claude/commands/aloop/setup.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs discover' },
-            @{ Path = 'claude/commands/aloop/setup.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs scaffold' },
+            @{ Path = 'claude/commands/aloop/setup.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs setup' },
             @{ Path = 'claude/commands/aloop/start.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs start' },
-            @{ Path = 'copilot/prompts/aloop-setup.prompt.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs discover' },
-            @{ Path = 'copilot/prompts/aloop-setup.prompt.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs scaffold' },
+            @{ Path = 'copilot/prompts/aloop-setup.prompt.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs setup' },
             @{ Path = 'copilot/prompts/aloop-start.prompt.md'; Pattern = 'node ~/.aloop/cli/aloop\.mjs start' }
         )
 
