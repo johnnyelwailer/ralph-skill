@@ -3,6 +3,10 @@
 ## Current Phase: P1 Spec Parity Completion (Proof + Protocol + UX)
 
 ### In Progress
+- [ ] [review] Gate 1: Baseline updates are coupled to commit subject text (`chore(review): PASS`) in both runtimes (`aloop/bin/loop.ps1:1434-1436`, `aloop/bin/loop.sh:1316-1318`), so approved reviews with the documented `chore(review): approve — gates 1-5 pass` format never update baselines; replace subject-string matching with a deterministic approval signal and keep rejection behavior unchanged. (priority: high)
+- [ ] [review] Gate 2: Add runtime regression tests for baseline lifecycle branches that are currently untested—specifically prove baselines update on approved review and do not update on rejected review in both `loop.ps1` and `loop.sh` suites (`aloop/bin/loop.tests.ps1`). (priority: high)
+- [ ] [review] Gate 3: Branch-coverage evidence for the newly added proof/baseline paths is missing (`force proof` + manifest injection + baseline update paths in `aloop/bin/loop.ps1` and `aloop/bin/loop.sh`); add coverage-reporting assertions and tests so these new branches are measured and meet >=80%. (priority: high)
+- [ ] [review] Gate 4: `aloop/templates/PROMPT_review.md` now declares "5 quality gates" but introduces "Gate 6"; reconcile the gate count/wording so the review contract is internally consistent. (priority: medium)
 - [x] [proof/P1] Add `PROMPT_proof.md` to `aloop/templates/` and wire scaffold/install/template validation + tests so proof is a first-class prompt alongside plan/build/review/steer. (priority: highest, unblocks all proof-runtime work)
 
 ### Up Next
