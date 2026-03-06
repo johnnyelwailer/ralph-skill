@@ -5,7 +5,7 @@ import type { DiscoveryResult, ScaffoldResult, ScaffoldOptions } from './project
 
 test('setupCommandWithDeps - non-interactive mode', async () => {
   let discoverCalled = false;
-  let scaffoldCalled = false;
+  let scaffoldCalledOpts: ScaffoldOptions | null = null;
   let promptCalled = false;
 
   const mockDiscover = async (): Promise<DiscoveryResult> => {
@@ -28,9 +28,7 @@ test('setupCommandWithDeps - non-interactive mode', async () => {
   };
 
   const mockScaffold = async (opts: ScaffoldOptions): Promise<ScaffoldResult> => {
-    scaffoldCalled = true;
-    assert.equal(opts.projectRoot, '/my/project');
-    assert.equal(opts.homeDir, '/my/home');
+    scaffoldCalledOpts = opts;
     return { config_path: '/mock/config', prompts_dir: '/mock/prompts', project_dir: '/mock/dir', project_hash: '123' };
   };
 
@@ -45,10 +43,20 @@ test('setupCommandWithDeps - non-interactive mode', async () => {
     prompt: mockPrompt,
   };
 
-  await setupCommandWithDeps({ projectRoot: '/my/project', homeDir: '/my/home', nonInteractive: true }, deps);
+  await setupCommandWithDeps({
+    projectRoot: '/my/project',
+    homeDir: '/my/home',
+    nonInteractive: true,
+    spec: 'MY_SPEC.md',
+    providers: 'gemini,codex'
+  }, deps);
 
   assert.equal(discoverCalled, true);
-  assert.equal(scaffoldCalled, true);
+  assert.ok(scaffoldCalledOpts);
+  assert.equal(scaffoldCalledOpts.projectRoot, '/my/project');
+  assert.equal(scaffoldCalledOpts.homeDir, '/my/home');
+  assert.deepEqual(scaffoldCalledOpts.specFiles, ['MY_SPEC.md']);
+  assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['gemini', 'codex']);
   assert.equal(promptCalled, false, 'Prompt should not be called in non-interactive mode');
 });
 
@@ -83,8 +91,10 @@ test('setupCommandWithDeps - interactive mode', async () => {
 
   const mockPrompt: PromptFunction = async (question: string, defaultValue: string) => {
     promptCallCount++;
+    if (question.includes('Spec File')) return 'CUSTOM_SPEC.md';
+    if (question.includes('Enabled Providers')) return 'gemini';
     if (question.includes('Language')) return 'python';
-    if (question.includes('Provider')) return 'gemini';
+    if (question.includes('Primary Provider')) return 'gemini';
     if (question.includes('Mode')) return 'custom-mode';
     if (question.includes('Validation')) return 'pytest, ruff check .';
     if (question.includes('Safety')) return 'No rm -rf, No dropping tables';
@@ -100,8 +110,10 @@ test('setupCommandWithDeps - interactive mode', async () => {
   await setupCommandWithDeps({}, deps);
 
   assert.equal(discoverCalled, true);
-  assert.equal(promptCallCount, 5, 'Should ask 5 questions');
+  assert.equal(promptCallCount, 7, 'Should ask 7 questions');
   assert.ok(scaffoldCalledOpts);
+  assert.deepEqual(scaffoldCalledOpts.specFiles, ['CUSTOM_SPEC.md']);
+  assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['gemini']);
   assert.equal(scaffoldCalledOpts.language, 'python');
   assert.equal(scaffoldCalledOpts.provider, 'gemini');
   assert.equal(scaffoldCalledOpts.mode, 'custom-mode');

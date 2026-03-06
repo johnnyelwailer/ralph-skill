@@ -37,6 +37,8 @@ program
   .description('Interactive setup and scaffold for aloop project')
   .option('--project-root <path>', 'Project root override')
   .option('--home-dir <path>', 'Home directory override')
+  .option('--spec <path>', 'Specification file to use')
+  .option('--providers <providers>', 'Comma-separated list of providers to enable')
   .option('--non-interactive', 'Skip interactive prompts and use defaults')
   .action(setupCommand);
 

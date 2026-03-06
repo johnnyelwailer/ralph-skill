@@ -5,6 +5,8 @@ export interface SetupCommandOptions {
   projectRoot?: string;
   homeDir?: string;
   nonInteractive?: boolean;
+  spec?: string;
+  providers?: string;
 }
 
 export type PromptFunction = (question: string, defaultValue: string) => Promise<string>;
@@ -35,6 +37,8 @@ export async function setupCommandWithDeps(
     const result = await deps.scaffold({
       projectRoot: options.projectRoot,
       homeDir: options.homeDir,
+      specFiles: options.spec ? [options.spec] : undefined,
+      enabledProviders: options.providers ? options.providers.split(',').map(p => p.trim()) : undefined,
     });
     console.log(`Setup complete. Config written to: ${result.config_path}`);
     return;
@@ -42,11 +46,18 @@ export async function setupCommandWithDeps(
 
   console.log('\n--- Aloop Interactive Setup ---\n');
 
+  const defaultSpec = options.spec || discovery.context.spec_candidates[0] || 'SPEC.md';
+  const spec = await deps.prompt('Spec File', defaultSpec);
+
+  const defaultProviders = options.providers || discovery.providers.installed.join(',') || 'claude';
+  const providersRaw = await deps.prompt('Enabled Providers (comma-separated)', defaultProviders);
+  const enabledProviders = providersRaw.split(',').map((s) => s.trim()).filter(Boolean);
+
   const defaultLanguage = discovery.context.detected_language;
   const language = await deps.prompt('Language', defaultLanguage);
 
-  const defaultProvider = discovery.providers.default_provider;
-  const provider = await deps.prompt('Provider', defaultProvider);
+  const defaultProvider = enabledProviders[0] || discovery.providers.default_provider;
+  const provider = await deps.prompt('Primary Provider', defaultProvider);
 
   const defaultMode = 'plan-build-review';
   const mode = await deps.prompt('Mode', defaultMode);
@@ -60,8 +71,10 @@ export async function setupCommandWithDeps(
   const safetyRules = safetyRulesRaw.split(',').map((s) => s.trim()).filter(Boolean);
 
   console.log('\nScaffolding workspace with the following configuration:');
+  console.log(`- Spec: ${spec}`);
+  console.log(`- Providers: ${enabledProviders.join(', ')}`);
   console.log(`- Language: ${language}`);
-  console.log(`- Provider: ${provider}`);
+  console.log(`- Primary Provider: ${provider}`);
   console.log(`- Mode: ${mode}`);
   console.log(`- Validation Commands: ${validationCommands.join(', ')}`);
   console.log(`- Safety Rules: ${safetyRules.join(', ')}`);
@@ -70,6 +83,8 @@ export async function setupCommandWithDeps(
   const result = await deps.scaffold({
     projectRoot: options.projectRoot,
     homeDir: options.homeDir,
+    specFiles: [spec],
+    enabledProviders,
     language,
     provider,
     mode,
