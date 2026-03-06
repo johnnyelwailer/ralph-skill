@@ -130,6 +130,10 @@ function evaluatePolicy(operation: string, role: string, payload: any, sessionRe
     return { allowed: false, reason: `Mismatched repo: requested ${payload.repo}, but session is bound to ${sessionRepo}` };
   }
 
+  if (typeof payload.base === 'string' && payload.base.trim().toLowerCase() === 'main') {
+    return { allowed: false, reason: 'Operations targeting main are rejected; human must promote to main' };
+  }
+
   if (role === 'child-loop') {
     switch (operation) {
       case 'pr-create':
