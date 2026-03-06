@@ -1713,20 +1713,85 @@ If any check fails, the skill iterates: fix the config, rebuild, re-verify. Do n
 
 **Step 5 — Loop Integration**
 
-When `ALOOP_CONTAINER=1` is set:
-- Loop scripts detect container mode and skip dashboard launch (host handles it)
-- Convention-file protocol is the only way to request GH operations
-- Provider auth tokens must be passed via `containerEnv` or `secrets` mount — the skill should prompt for this and configure it
-- `aloop start --devcontainer` flag on host: builds/starts the devcontainer, then launches the loop inside it via `devcontainer exec`
+Once a devcontainer is set up for a project, the loop **automatically** uses it — no `--devcontainer` flag needed. The harness (loop.ps1/loop.sh) detects `.devcontainer/` in the project and routes all provider invocations through `devcontainer exec`. The harness itself always runs on the host.
 
-### `aloop start --devcontainer` Flow
+**Architecture: harness on host, agents in container**
 
-1. Host harness checks `.devcontainer/` exists (suggest `/aloop:devcontainer` if not)
-2. `devcontainer up --workspace-folder .` — start container
-3. `devcontainer exec -- bash -c "cd /workspace && aloop start --in-place --max N"` — run loop inside
-4. Host monitors `status.json` via bind mount
-5. Host processes `.aloop/requests/*.json` (convention-file protocol)
-6. Dashboard runs on host, reads session data via bind mount
+```
+┌─── Host ──────────────────────────────────────────────┐
+│  loop.ps1 / loop.sh  (harness)                        │
+│    ├── reads TODO.md, SPEC.md, status.json             │
+│    ├── decides phase, provider, iteration              │
+│    ├── dashboard server (node)                         │
+│    ├── processes .aloop/requests/ (convention-file)     │
+│    └── invokes provider via:                           │
+│         devcontainer exec -- claude --print ...        │
+│                                                        │
+│  ┌─── Devcontainer ─────────────────────────────────┐  │
+│  │  Provider CLIs (claude, codex, gemini)            │  │
+│  │  Project deps (node_modules, .NET SDK, etc.)      │  │
+│  │  Git (operates on bind-mounted worktree)          │  │
+│  │  NO gh CLI, NO host network access beyond API     │  │
+│  │  .aloop/ bind mount for convention-file protocol  │  │
+│  └──────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+```
+
+**Container is the default — opt-out requires explicit danger flag:**
+
+Once `.devcontainer/devcontainer.json` exists in the project, the harness ALWAYS uses it. There is no flag to "prefer" host execution. To bypass the container, the user must pass `--dangerously-skip-container`, which:
+- Prints a visible warning: `⚠️  DANGER: Running agents directly on host without container isolation. Agents have full access to your filesystem, network, and credentials.`
+- Logs a `container_bypass` event to `log.jsonl`
+- Is never set by default or by any skill/command
+
+**Auto-detection logic in harness:**
+1. Check if `.devcontainer/devcontainer.json` exists in the work directory
+2. If yes and `--dangerously-skip-container` NOT set:
+   a. Check if container is already running (`devcontainer exec -- echo ok`)
+   b. If not running, `devcontainer up --workspace-folder .`
+   c. All `Invoke-Provider` / `invoke_provider` calls wrap the CLI command in `devcontainer exec --workspace-folder <workdir> -- <provider-command>`
+3. If `.devcontainer/` does not exist, providers run directly on host (current behavior) — but `aloop start` prints a suggestion: `No devcontainer found. Run /aloop:devcontainer to set up isolated agent execution.`
+
+This means: after `/aloop:devcontainer` sets up the container once, every subsequent `aloop start` automatically sandboxes agents inside it. The container is opt-out, not opt-in.
+
+### Shared Container for Parallel Loops
+
+When running multiple loops in parallel (orchestrator mode or manual), do NOT start a separate container per loop. All loops share one running container instance, each operating on its own worktree:
+
+**Why shared:**
+- Container startup is slow (10-30s) — unacceptable per-iteration or per-loop
+- Provider CLIs are installed once in the container image — no need to duplicate
+- Memory/CPU overhead of N containers vs 1 is significant
+- Worktree isolation already provides filesystem separation
+
+**How it works:**
+1. First loop to start calls `devcontainer up` — container starts
+2. Subsequent loops detect the container is already running (via `devcontainer exec -- echo ok`) and reuse it
+3. Each loop passes its own `--workspace-folder` / `--work-dir` pointing to its worktree
+4. The harness uses `devcontainer exec --workspace-folder <worktree-path> -- <command>` so the agent's `$PWD` is the correct worktree
+5. Container stays running until explicitly stopped or last loop finishes
+
+**Worktree mount strategy:**
+- The project root is already mounted at `/workspace` by devcontainer default
+- Git worktrees created by `aloop start` live under `~/.aloop/sessions/<id>/worktree/` on the host
+- These must be bind-mounted into the container — the harness adds them dynamically:
+  `devcontainer exec --remote-env WORK_DIR=<path> --workspace-folder <path> -- <command>`
+- Alternatively, mount `~/.aloop/sessions/` as a volume in `devcontainer.json` so all worktrees are accessible
+
+**Concurrency safety:**
+- Provider CLIs are stateless per-invocation — safe to run N in parallel
+- Each worktree has its own `.git` lock — no git conflicts between loops
+- `.aloop/requests/` and `.aloop/responses/` are per-session — no cross-contamination
+
+### `aloop start` with Devcontainer (automatic)
+
+1. Harness detects `.devcontainer/devcontainer.json` in project root
+2. If container not running → `devcontainer up --workspace-folder .`
+3. Harness creates session, worktree (on host)
+4. Harness runs loop iterations, wrapping each provider call in `devcontainer exec`
+5. Host monitors `status.json` directly (host filesystem)
+6. Host processes `.aloop/requests/*.json` (convention-file protocol)
+7. Dashboard runs on host, reads session data from host filesystem
 
 ### Provider Auth in Container
 
@@ -1741,16 +1806,27 @@ Preferred: option 4 (`remoteEnv` + `localEnv`) — no secrets in files, uses hos
 
 ### Acceptance Criteria
 
+**Skill / Setup:**
 - [ ] `/aloop:devcontainer` skill exists for both Claude and Copilot command surfaces
 - [ ] Skill detects project language, runtime, and dependencies automatically
 - [ ] Generated devcontainer config includes all project-specific deps and build tools
 - [ ] Enabled providers are installed inside the container via postCreateCommand
-- [ ] `.aloop/` directory is bind-mounted for convention-file protocol
+- [ ] `.aloop/` directory (and session worktree root) is bind-mounted for convention-file protocol and worktree access
 - [ ] Verification step builds container, starts it, and checks all deps/providers/git/mount
 - [ ] Verification iterates on failure — fixes config and re-verifies until green
-- [ ] `aloop start --devcontainer` launches the loop inside the container from the host
-- [ ] Host can monitor session status and process convention-file requests via bind mount
-- [ ] Dashboard runs on host and reads container session data
-- [ ] Provider API keys forwarded via `remoteEnv`/`localEnv` (no secrets in config files)
-- [ ] `ALOOP_CONTAINER=1` env var detected by loop scripts to skip dashboard and use convention-file protocol
 - [ ] Existing projects with `.devcontainer/` get augmented (aloop mounts/env added) rather than overwritten
+- [ ] Provider API keys forwarded via `remoteEnv`/`localEnv` (no secrets in config files)
+
+**Automatic integration:**
+- [ ] Harness auto-detects `.devcontainer/devcontainer.json` and routes provider invocations through `devcontainer exec` — no manual flag needed
+- [ ] If container not running, harness starts it automatically via `devcontainer up`
+- [ ] Harness itself (loop.ps1/loop.sh) always runs on host, only agent CLIs run inside container
+- [ ] Dashboard runs on host and reads session data directly from host filesystem
+- [ ] Host processes convention-file requests (`.aloop/requests/`) — agents in container write requests, harness on host fulfills them
+
+**Shared container:**
+- [ ] Multiple parallel loops reuse a single running container instance
+- [ ] Each loop operates on its own worktree inside the shared container
+- [ ] Container is started by first loop, reused by subsequent loops (detect via `devcontainer exec -- echo ok`)
+- [ ] No per-loop container startup overhead after the first
+- [ ] Session worktrees are accessible inside the container via bind mount of `~/.aloop/sessions/`
