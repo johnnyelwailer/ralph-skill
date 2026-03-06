@@ -121,6 +121,9 @@ test('startCommandWithDeps bootstraps in-place session and registers active map'
       'models:',
       "  codex: 'gpt-5.3-codex'",
       "  claude: 'opus'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
       '',
     ].join('\n'),
     'utf8',
@@ -159,6 +162,10 @@ test('startCommandWithDeps bootstraps in-place session and registers active map'
   assert.equal(result.max_iterations, 77);
   assert.equal(result.max_stuck, 9);
   assert.equal(result.pid, 4242);
+  assert.equal(result.monitor_mode, 'none');
+  assert.equal(result.monitor_auto_open, false);
+  assert.equal(result.dashboard_url, null);
+  assert.equal(result.monitor_pid, null);
   assert.equal(launchCalls.length, 1);
   assert.equal(launchCalls[0].command, path.join(fixture.homeDir, '.aloop', 'bin', 'loop.sh'));
   assert.equal(launchCalls[0].args.includes('--provider'), true);
@@ -190,6 +197,9 @@ test('startCommandWithDeps falls back to in-place when git worktree add fails', 
       'worktree_default: true',
       'enabled_providers:',
       "  - 'claude'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
       '',
     ].join('\n'),
     'utf8',
@@ -229,6 +239,117 @@ test('startCommandWithDeps falls back to in-place when git worktree add fails', 
   assert.equal(result.work_dir, fixture.projectRoot);
   assert.equal(result.warnings.length, 1);
   assert.match(result.warnings[0], /falling back to in-place/i);
+  assert.equal(result.monitor_mode, 'none');
+  assert.equal(result.dashboard_url, null);
+  assert.equal(result.monitor_pid, null);
+});
+
+test('startCommandWithDeps launches dashboard monitor and opens browser when on_start.dashboard is enabled', async () => {
+  const fixture = await setupWorkspace('aloop-start-dashboard-monitor-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'claude'",
+      "mode: 'plan-build-review'",
+      'on_start:',
+      "  monitor: 'dashboard'",
+      '  auto_open: true',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const spawnCalls: SpawnRecord[] = [];
+  const syncCalls: SpawnRecord[] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        const call = { command, args: [...(args ?? [])] };
+        spawnCalls.push(call);
+        const isDashboard = call.args.includes('dashboard');
+        return { pid: isDashboard ? 3131 : 2121, unref() {} } as any;
+      }) as any,
+      spawnSync: ((command: string, args: readonly string[]) => {
+        syncCalls.push({ command, args: [...args] });
+        return { status: 0, stdout: '', stderr: '' } as any;
+      }) as any,
+      platform: 'linux',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.monitor_mode, 'dashboard');
+  assert.equal(result.monitor_auto_open, true);
+  assert.equal(result.monitor_pid, 3131);
+  assert.match(result.dashboard_url ?? '', /^http:\/\/localhost:\d+$/);
+  assert.equal(result.warnings.length, 0);
+  assert.equal(spawnCalls.length, 2);
+  assert.equal(spawnCalls[1].command, 'aloop');
+  assert.equal(spawnCalls[1].args[0], 'dashboard');
+  const portIndex = spawnCalls[1].args.indexOf('--port');
+  assert.equal(portIndex > -1, true);
+  assert.equal(result.dashboard_url, `http://localhost:${spawnCalls[1].args[portIndex + 1]}`);
+  assert.equal(syncCalls.some((call) => call.command === 'xdg-open'), true);
+});
+
+test('startCommandWithDeps launches terminal monitor when on_start.terminal is enabled', async () => {
+  const fixture = await setupWorkspace('aloop-start-terminal-monitor-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'claude'",
+      "mode: 'plan-build-review'",
+      'on_start:',
+      "  monitor: 'terminal'",
+      '  auto_open: true',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const syncCalls: SpawnRecord[] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 5151, unref() {} }) as any) as any,
+      spawnSync: ((command: string, args: readonly string[]) => {
+        syncCalls.push({ command, args: [...args] });
+        return { status: 0, stdout: '', stderr: '' } as any;
+      }) as any,
+      platform: 'linux',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.monitor_mode, 'terminal');
+  assert.equal(result.monitor_auto_open, true);
+  assert.equal(result.monitor_pid, null);
+  assert.equal(result.dashboard_url, null);
+  assert.equal(result.warnings.length, 0);
+  assert.equal(syncCalls.some((call) => call.command === 'x-terminal-emulator'), true);
 });
 
 test('startCommandWithDeps rejects conflicting mode flags', async () => {

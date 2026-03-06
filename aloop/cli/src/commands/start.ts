@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { createServer } from 'node:net';
 import path from 'node:path';
 import { discoverWorkspace, type DiscoveryResult } from './project.js';
 import { resolveHomeDir } from './session.js';
@@ -9,6 +10,7 @@ import type { OutputMode } from './status.js';
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot';
 type LoopProvider = ProviderName | 'round-robin';
 type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review';
+type StartMonitorMode = 'dashboard' | 'terminal' | 'none';
 
 const PROVIDER_SET = new Set<LoopProvider>(['claude', 'codex', 'gemini', 'copilot', 'round-robin']);
 const MODEL_PROVIDER_SET = new Set<ProviderName>(['claude', 'codex', 'gemini', 'copilot']);
@@ -26,6 +28,10 @@ interface ParsedAloopConfig {
   round_robin_order: string[];
   models: Record<string, string>;
   retry_models: Record<string, string | null>;
+  on_start: {
+    monitor?: string;
+    auto_open?: boolean;
+  };
 }
 
 export interface StartCommandOptions {
@@ -55,6 +61,10 @@ export interface StartCommandResult {
   max_stuck: number;
   pid: number;
   started_at: string;
+  monitor_mode: StartMonitorMode;
+  monitor_auto_open: boolean;
+  monitor_pid: number | null;
+  dashboard_url: string | null;
   warnings: string[];
 }
 
@@ -132,10 +142,11 @@ function parseAloopConfig(content: string): ParsedAloopConfig {
     round_robin_order: [],
     models: {},
     retry_models: {},
+    on_start: {},
   };
 
   const listSections = new Set(['enabled_providers', 'round_robin_order']);
-  const mapSections = new Set(['models', 'retry_models']);
+  const mapSections = new Set(['models', 'retry_models', 'on_start']);
 
   let activeSection: string | null = null;
   let inBlockScalar = false;
@@ -215,11 +226,28 @@ function parseAloopConfig(content: string): ParsedAloopConfig {
         } else if (typeof mapValue === 'string' && mapValue.length > 0) {
           parsed.retry_models[mapKey] = mapValue;
         }
+      } else if (activeSection === 'on_start') {
+        if (mapKey === 'monitor' && typeof mapValue === 'string' && mapValue.length > 0) {
+          parsed.on_start.monitor = mapValue;
+        } else if (mapKey === 'auto_open' && typeof mapValue === 'boolean') {
+          parsed.on_start.auto_open = mapValue;
+        }
       }
     }
   }
 
   return parsed;
+}
+
+function emptyParsedConfig(): ParsedAloopConfig {
+  return {
+    values: {},
+    enabled_providers: [],
+    round_robin_order: [],
+    models: {},
+    retry_models: {},
+    on_start: {},
+  };
 }
 
 async function readOptionalConfig(configPath: string, deps: StartDeps): Promise<ParsedAloopConfig | null> {
@@ -374,6 +402,115 @@ function createGitFailureWarning(stderr: string, stdout: string): string {
   return `git worktree add failed (${detail}); falling back to in-place execution.`;
 }
 
+function normalizeMonitorMode(value: unknown): StartMonitorMode | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'dashboard' || normalized === 'terminal' || normalized === 'none') {
+    return normalized;
+  }
+  return null;
+}
+
+function quotePowerShellSingle(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function resolveOnStartBehavior(projectConfig: ParsedAloopConfig, globalConfig: ParsedAloopConfig): { mode: StartMonitorMode; autoOpen: boolean } {
+  const monitor = normalizeMonitorMode(selectValue(projectConfig.on_start.monitor, globalConfig.on_start.monitor)) ?? 'dashboard';
+  const autoOpen = toBoolean(selectValue(projectConfig.on_start.auto_open, globalConfig.on_start.auto_open), true);
+  return { mode: monitor, autoOpen };
+}
+
+function runShortCommand(
+  deps: StartDeps,
+  command: string,
+  args: string[],
+  cwd: string,
+): { ok: boolean; message: string | null } {
+  try {
+    const result = deps.spawnSync(command, args, { cwd, encoding: 'utf8', stdio: 'ignore', windowsHide: true });
+    if (result.status === 0) {
+      return { ok: true, message: null };
+    }
+    return { ok: false, message: `exit code ${result.status ?? 'unknown'}` };
+  } catch (error) {
+    return { ok: false, message: (error as Error).message };
+  }
+}
+
+function spawnDetached(deps: StartDeps, command: string, args: string[], cwd: string): number | null {
+  try {
+    const child = deps.spawn(command, args, {
+      cwd,
+      detached: true,
+      stdio: 'ignore',
+      env: { ...deps.env },
+      windowsHide: true,
+    });
+    child.unref();
+    return child.pid ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function openInBrowser(deps: StartDeps, url: string, cwd: string): { ok: boolean; message: string | null } {
+  if (deps.platform === 'win32') {
+    const powerShell = resolvePowerShellBinary(deps);
+    return runShortCommand(deps, powerShell, ['-NoProfile', '-Command', `Start-Process ${quotePowerShellSingle(url)}`], cwd);
+  }
+  if (deps.platform === 'darwin') {
+    return runShortCommand(deps, 'open', [url], cwd);
+  }
+  return runShortCommand(deps, 'xdg-open', [url], cwd);
+}
+
+function openStatusTerminal(deps: StartDeps, homeDir: string, cwd: string): { ok: boolean; message: string | null } {
+  const statusCommand = `aloop status --watch --home-dir "${homeDir.replace(/"/g, '\\"')}"`;
+  if (deps.platform === 'win32') {
+    const powerShell = resolvePowerShellBinary(deps);
+    const terminalShell = trySpawnSync(deps, 'pwsh', ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.Major']) === 0 ? 'pwsh' : 'powershell';
+    const launchCommand = `Start-Process ${quotePowerShellSingle(terminalShell)} -ArgumentList @('-NoExit','-Command',${quotePowerShellSingle(statusCommand)})`;
+    return runShortCommand(deps, powerShell, ['-NoProfile', '-Command', launchCommand], cwd);
+  }
+  if (deps.platform === 'darwin') {
+    const escapedStatus = statusCommand.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return runShortCommand(
+      deps,
+      'osascript',
+      ['-e', `tell application "Terminal" to do script "${escapedStatus}"`],
+      cwd,
+    );
+  }
+  return runShortCommand(deps, 'x-terminal-emulator', ['-e', statusCommand], cwd);
+}
+
+async function reserveLocalPort(): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once('error', (error) => reject(error));
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close();
+        reject(new Error('Failed to reserve dashboard port.'));
+        return;
+      }
+      const reservedPort = address.port;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(reservedPort);
+      });
+    });
+  });
+}
+
 export async function startCommandWithDeps(options: StartCommandOptions = {}, deps: StartDeps = defaultDeps): Promise<StartCommandResult> {
   const homeDir = resolveHomeDir(options.homeDir);
   const discovery = await deps.discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
@@ -388,20 +525,8 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
 
   await deps.mkdir(sessionsRoot, { recursive: true });
 
-  const projectConfig = (await readOptionalConfig(discovery.setup.config_path, deps)) ?? {
-    values: {},
-    enabled_providers: [],
-    round_robin_order: [],
-    models: {},
-    retry_models: {},
-  };
-  const globalConfig = (await readOptionalConfig(path.join(aloopRoot, 'config.yml'), deps)) ?? {
-    values: {},
-    enabled_providers: [],
-    round_robin_order: [],
-    models: {},
-    retry_models: {},
-  };
+  const projectConfig = (await readOptionalConfig(discovery.setup.config_path, deps)) ?? emptyParsedConfig();
+  const globalConfig = (await readOptionalConfig(path.join(aloopRoot, 'config.yml'), deps)) ?? emptyParsedConfig();
 
   const enabledProviders = normalizeProviderList(
     projectConfig.enabled_providers.length > 0
@@ -441,6 +566,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   const maxStuck = toPositiveInt(selectValue(projectConfig.values.max_stuck, globalConfig.values.max_stuck)) ?? 3;
   const backupEnabled = toBoolean(selectValue(projectConfig.values.backup_enabled, globalConfig.values.backup_enabled), false);
   const worktreeDefault = toBoolean(selectValue(projectConfig.values.worktree_default, globalConfig.values.worktree_default), true);
+  const onStartBehavior = resolveOnStartBehavior(projectConfig, globalConfig);
 
   const mergedModels: Record<ProviderName, string> = {
     ...DEFAULT_MODELS,
@@ -638,6 +764,50 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   };
   await deps.writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
 
+  let monitorPid: number | null = null;
+  let dashboardUrl: string | null = null;
+  if (onStartBehavior.mode === 'dashboard') {
+    let dashboardPort: number | null = null;
+    try {
+      dashboardPort = await reserveLocalPort();
+    } catch (error) {
+      warnings.push(`Failed to reserve a local dashboard port: ${(error as Error).message}`);
+    }
+
+    if (dashboardPort !== null) {
+      dashboardUrl = `http://localhost:${dashboardPort}`;
+      monitorPid = spawnDetached(
+        deps,
+        'aloop',
+        ['dashboard', '--port', String(dashboardPort), '--session-dir', sessionDir, '--workdir', workDir],
+        workDir,
+      );
+      if (!monitorPid) {
+        warnings.push('Failed to launch dashboard monitor automatically. You can run `aloop dashboard` manually.');
+      } else if (onStartBehavior.autoOpen) {
+        const opened = openInBrowser(deps, dashboardUrl, workDir);
+        if (!opened.ok) {
+          warnings.push(`Failed to auto-open dashboard URL (${opened.message ?? 'unknown error'}); trying terminal monitor.`);
+          const terminalLaunch = openStatusTerminal(deps, homeDir, workDir);
+          if (!terminalLaunch.ok) {
+            warnings.push(`Failed to open terminal monitor fallback (${terminalLaunch.message ?? 'unknown error'}).`);
+          }
+        }
+      }
+    }
+  } else if (onStartBehavior.mode === 'terminal' && onStartBehavior.autoOpen) {
+    const terminalLaunch = openStatusTerminal(deps, homeDir, workDir);
+    if (!terminalLaunch.ok) {
+      warnings.push(`Failed to launch terminal monitor (${terminalLaunch.message ?? 'unknown error'}).`);
+    }
+  }
+
+  meta.monitor_mode = onStartBehavior.mode;
+  meta.monitor_auto_open = onStartBehavior.autoOpen;
+  meta.monitor_pid = monitorPid;
+  meta.dashboard_url = dashboardUrl;
+  await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
   return {
     session_id: sessionId,
     session_dir: sessionDir,
@@ -652,6 +822,10 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     max_stuck: maxStuck,
     pid,
     started_at: startedAt,
+    monitor_mode: onStartBehavior.mode,
+    monitor_auto_open: onStartBehavior.autoOpen,
+    monitor_pid: monitorPid,
+    dashboard_url: dashboardUrl,
     warnings,
   };
 }
@@ -673,6 +847,10 @@ export async function startCommand(options: StartCommandOptions = {}) {
   console.log(`  Work dir: ${result.work_dir}`);
   console.log(`  PID:      ${result.pid}`);
   console.log(`  Prompts:  ${result.prompts_dir}`);
+  console.log(`  Monitor:  ${result.monitor_mode} (auto_open=${result.monitor_auto_open ? 'true' : 'false'})`);
+  if (result.dashboard_url) {
+    console.log(`  Dashboard: ${result.dashboard_url}`);
+  }
 
   if (result.warnings.length > 0) {
     console.log('');

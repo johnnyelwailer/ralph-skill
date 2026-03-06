@@ -1,6 +1,6 @@
 # Aloop — Autonomous AI Coding Loop
 
-Aloop is based on Geoffrey Huntley's autonomous AI coding methodology, "Ralph Loops", packaged as an installable skill for Claude Code, Codex CLI, GitHub Copilot, and Gemini CLI. It runs plan-build-review loops with multi-provider support, backpressure validation, and stuck detection.
+Aloop is based on Geoffrey Huntley's autonomous AI coding methodology for autonomous plan-build-review loops, packaged as an installable skill for Claude Code, Codex CLI, GitHub Copilot, and Gemini CLI. It runs plan-build-review loops with multi-provider support, backpressure validation, and stuck detection.
 
 ## What is Aloop?
 
