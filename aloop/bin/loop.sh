@@ -640,7 +640,7 @@ find_dashboard_port() {
 
 start_dashboard() {
     local runtime_dir="${ALOOP_RUNTIME_DIR:-$HOME/.aloop}"
-    local cli_entry="$runtime_dir/cli/dist/index.js"
+    local cli_entry="$runtime_dir/cli/aloop.mjs"
     if [ ! -f "$cli_entry" ]; then
         echo "Warning: Dashboard CLI not found at $cli_entry. Continuing without dashboard."
         return

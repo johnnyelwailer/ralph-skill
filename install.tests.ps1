@@ -44,8 +44,11 @@ Describe 'Source-to-destination path mappings' {
         It 'runtime cli source: <skillName>/cli/dist/' {
             Join-Path $repoRoot "$skillName/cli/dist" | Should -Exist
         }
-        It 'runtime cli source: <skillName>/cli/dist/index.js' {
-            Join-Path $repoRoot "$skillName/cli/dist/index.js" | Should -Exist
+        It 'runtime cli source: <skillName>/cli/lib/' {
+            Join-Path $repoRoot "$skillName/cli/lib" | Should -Exist
+        }
+        It 'runtime cli source: <skillName>/cli/aloop.mjs' {
+            Join-Path $repoRoot "$skillName/cli/aloop.mjs" | Should -Exist
         }
     }
 
@@ -114,8 +117,11 @@ Describe 'Source-to-destination path mappings' {
         It 'runtime cli source is "$skillName\cli\dist"' {
             $scriptContent | Should -Match 'Join-Path \$scriptDir "\$skillName\\cli\\dist"'
         }
-        It 'runtime cli does not copy aloop.mjs source directly' {
-            $scriptContent | Should -Not -Match 'Join-Path \$scriptDir "\$skillName\\cli\\aloop\.mjs"'
+        It 'runtime cli copies lib' {
+            $scriptContent | Should -Match 'Join-Path \$scriptDir "\$skillName\\cli\\lib"'
+        }
+        It 'runtime cli copies aloop.mjs' {
+            $scriptContent | Should -Match 'Join-Path \$scriptDir "\$skillName\\cli\\aloop\.mjs"'
         }
     }
 }
@@ -226,8 +232,14 @@ Describe 'Harness definitions' {
         It 'cli copies into $aloopDir\cli\dist' {
             $scriptContent | Should -Match 'Join-Path \$aloopDir "cli\\dist"'
         }
-        It 'runtime entrypoint comes from dist/index.js via shims' {
-            $scriptContent | Should -Match 'cli\\dist\\index\.js'
+        It 'cli copies into $aloopDir\cli\lib' {
+            $scriptContent | Should -Match 'Join-Path \$aloopDir "cli\\lib"'
+        }
+        It 'cli copies into $aloopDir\cli\aloop.mjs' {
+            $scriptContent | Should -Match 'Join-Path \$aloopDir "cli\\aloop\.mjs"'
+        }
+        It 'runtime entrypoint comes from aloop.mjs via shims' {
+            $scriptContent | Should -Match 'cli\\aloop\.mjs'
         }
         It 'aloop.cmd shim is created in $aloopDir\bin' {
             $scriptContent | Should -Match 'Join-Path \$aloopDir "bin\\aloop\.cmd"'
@@ -401,7 +413,8 @@ Describe 'Installer behavioral branches' {
         (Join-Path $testHome '.aloop\templates\PROMPT_plan.md') | Should -Exist
         (Join-Path $testHome '.aloop\cli') | Should -Exist
         (Join-Path $testHome '.aloop\cli\dist\index.js') | Should -Exist
-        (Join-Path $testHome '.aloop\cli\aloop.mjs') | Should -Not -Exist
+        (Join-Path $testHome '.aloop\cli\aloop.mjs') | Should -Exist
+        (Join-Path $testHome '.aloop\cli\lib\project.mjs') | Should -Exist
         (Join-Path $testHome '.aloop\bin\aloop.cmd') | Should -Exist
         (Join-Path $testHome '.aloop\bin\aloop') | Should -Exist
         (Join-Path $testHome '.aloop\projects') | Should -Exist
@@ -488,8 +501,8 @@ Describe 'Installer behavioral branches' {
         $cmdContent = Get-Content (Join-Path $testHome '.aloop\bin\aloop.cmd') -Raw
         $shContent  = Get-Content (Join-Path $testHome '.aloop\bin\aloop')  -Raw
 
-        $cmdContent | Should -Match 'cli\\dist\\index\.js'
-        $shContent  | Should -Match 'cli/dist/index\.js'
+        $cmdContent | Should -Match 'cli\\aloop\.mjs'
+        $shContent  | Should -Match 'cli/aloop\.mjs'
         $shContent  | Should -Match '#!/bin/sh'
     }
 }

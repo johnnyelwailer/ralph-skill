@@ -3085,7 +3085,7 @@ var {
   Help
 } = import_index.default;
 
-// src/commands/project.ts
+// lib/project.mjs
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
@@ -3093,7 +3093,7 @@ import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 function getHomeDir(explicit) {
-  return path.resolve(explicit ?? os.homedir());
+  return path.resolve(explicit ?? os.homedir()).replace(/[\\\/]+$/, "");
 }
 function resolveProjectRoot(projectRoot) {
   const start = path.resolve(projectRoot ?? process.cwd());
@@ -3173,9 +3173,13 @@ async function getPackageScripts(projectRoot) {
   if (!await fileExists(packagePath)) {
     return {};
   }
-  const raw = await readFile(packagePath, "utf8");
-  const parsed = JSON.parse(raw);
-  return parsed.scripts ?? {};
+  try {
+    const raw = await readFile(packagePath, "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed.scripts ?? {};
+  } catch {
+    return {};
+  }
 }
 async function buildValidationPresets(language, projectRoot) {
   if (language === "node-typescript") {
@@ -3241,16 +3245,23 @@ function normalizeList(items) {
   if (!items) {
     return [];
   }
-  return items.flatMap((item) => item.split(",")).map((item) => item.trim()).filter((item) => item.length > 0);
+  if (typeof items === "string") {
+    return items.split(",").map((item) => item.trim()).filter((item) => item.length > 0);
+  }
+  return items.flatMap((item) => typeof item === "string" ? item.split(",") : [item]).map((item) => typeof item === "string" ? item.trim() : item).filter((item) => typeof item === "string" && item.length > 0);
 }
 function readDefaultProvider(homeDir) {
   const configPath = path.join(homeDir, ".aloop", "config.yml");
   if (!existsSync(configPath)) {
     return "claude";
   }
-  const content = readFileSync(configPath, "utf8");
-  const line = content.split(/\r?\n/).find((entry) => entry.trim().startsWith("default_provider:"));
-  return line?.split(":").slice(1).join(":").trim() || "claude";
+  try {
+    const content = readFileSync(configPath, "utf8");
+    const line = content.split(/\r?\n/).find((entry) => entry.trim().startsWith("default_provider:"));
+    return line?.split(":").slice(1).join(":").trim() || "claude";
+  } catch {
+    return "claude";
+  }
 }
 function getInstalledProviders() {
   const providers = ["claude", "codex", "gemini", "copilot"];
@@ -3322,7 +3333,9 @@ async function discoverWorkspace(options = {}) {
   };
 }
 function toYamlQuoted(value) {
-  return `'${value.replace(/'/g, "''")}'`;
+  if (value === null || value === void 0)
+    return "''";
+  return `'${String(value).replace(/'/g, "''")}'`;
 }
 function resolveProviderHints(provider) {
   if (provider === "claude")
@@ -3418,9 +3431,13 @@ async function scaffoldWorkspace(options = {}) {
   };
 }
 
+// src/commands/project.ts
+var discoverWorkspace2 = discoverWorkspace;
+var scaffoldWorkspace2 = scaffoldWorkspace;
+
 // src/commands/resolve.ts
 async function resolveCommand(options = {}) {
-  const discovery = await discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
+  const discovery = await discoverWorkspace2({ projectRoot: options.projectRoot, homeDir: options.homeDir });
   const result = {
     project: discovery.project,
     setup: discovery.setup
@@ -3436,7 +3453,7 @@ async function resolveCommand(options = {}) {
 
 // src/commands/discover.ts
 async function discoverCommand(options = {}) {
-  const result = await discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
+  const result = await discoverWorkspace2({ projectRoot: options.projectRoot, homeDir: options.homeDir });
   if (options.output === "text") {
     console.log(`Project: ${result.project.name} [${result.project.hash}]`);
     console.log(`Root: ${result.project.root}`);
@@ -3451,7 +3468,7 @@ async function discoverCommand(options = {}) {
 
 // src/commands/scaffold.ts
 async function scaffoldCommand(options = {}) {
-  const result = await scaffoldWorkspace({
+  const result = await scaffoldWorkspace2({
     projectRoot: options.projectRoot,
     homeDir: options.homeDir,
     language: options.language,
@@ -3989,7 +4006,7 @@ async function dashboardCommand(options) {
   console.log(`Assets dir: ${assetsDir}`);
 }
 
-// src/commands/session.ts
+// lib/session.mjs
 import { spawnSync as spawnSync2 } from "node:child_process";
 import { readFile as readFile2, writeFile as writeFile2, readdir as readdir2 } from "node:fs/promises";
 import { existsSync as existsSync2 } from "node:fs";
@@ -4127,6 +4144,12 @@ async function stopSession(homeDir, sessionId) {
   return { success: true };
 }
 
+// src/commands/session.ts
+var resolveHomeDir2 = resolveHomeDir;
+var readProviderHealth2 = readProviderHealth;
+var listActiveSessions2 = listActiveSessions;
+var stopSession2 = stopSession;
+
 // src/commands/status.ts
 function formatRelativeTime(isoString) {
   if (!isoString)
@@ -4163,9 +4186,9 @@ function formatHealthLine(provider, health) {
 }
 async function statusCommand(options = {}) {
   const outputMode = options.output || "text";
-  const homeDir = resolveHomeDir(options.homeDir);
-  const sessions = await listActiveSessions(homeDir);
-  const health = await readProviderHealth(homeDir);
+  const homeDir = resolveHomeDir2(options.homeDir);
+  const sessions = await listActiveSessions2(homeDir);
+  const health = await readProviderHealth2(homeDir);
   if (outputMode === "json") {
     console.log(JSON.stringify({ sessions, health }, null, 2));
     return;
@@ -4197,8 +4220,8 @@ async function statusCommand(options = {}) {
 // src/commands/active.ts
 async function activeCommand(options = {}) {
   const outputMode = options.output || "text";
-  const homeDir = resolveHomeDir(options.homeDir);
-  const sessions = await listActiveSessions(homeDir);
+  const homeDir = resolveHomeDir2(options.homeDir);
+  const sessions = await listActiveSessions2(homeDir);
   if (outputMode === "json") {
     console.log(JSON.stringify(sessions, null, 2));
     return;
@@ -4216,8 +4239,8 @@ async function activeCommand(options = {}) {
 // src/commands/stop.ts
 async function stopCommand(sessionId, options = {}) {
   const outputMode = options.output || "text";
-  const homeDir = resolveHomeDir(options.homeDir);
-  const result = await stopSession(homeDir, sessionId);
+  const homeDir = resolveHomeDir2(options.homeDir);
+  const result = await stopSession2(homeDir, sessionId);
   if (outputMode === "json") {
     console.log(JSON.stringify(result, null, 2));
     if (!result.success)
@@ -4554,6 +4577,7 @@ function evaluatePolicy(operation, role, payload, sessionPolicy) {
 import { spawn, spawnSync as spawnSync3 } from "node:child_process";
 import { cp, mkdir as mkdir2, readFile as readFile3, writeFile as writeFile3 } from "node:fs/promises";
 import { existsSync as existsSync4 } from "node:fs";
+import { createServer as createServer2 } from "node:net";
 import path5 from "node:path";
 var PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot", "round-robin"]);
 var MODEL_PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot"]);
@@ -4565,7 +4589,7 @@ var DEFAULT_MODELS = {
   copilot: "gpt-5.3-codex"
 };
 var defaultDeps = {
-  discoverWorkspace,
+  discoverWorkspace: discoverWorkspace2,
   readFile: readFile3,
   writeFile: writeFile3,
   mkdir: mkdir2,
@@ -4625,10 +4649,11 @@ function parseAloopConfig(content) {
     enabled_providers: [],
     round_robin_order: [],
     models: {},
-    retry_models: {}
+    retry_models: {},
+    on_start: {}
   };
   const listSections = /* @__PURE__ */ new Set(["enabled_providers", "round_robin_order"]);
-  const mapSections = /* @__PURE__ */ new Set(["models", "retry_models"]);
+  const mapSections = /* @__PURE__ */ new Set(["models", "retry_models", "on_start"]);
   let activeSection = null;
   let inBlockScalar = false;
   const lines = content.split(/\r?\n/);
@@ -4701,10 +4726,26 @@ function parseAloopConfig(content) {
         } else if (typeof mapValue === "string" && mapValue.length > 0) {
           parsed.retry_models[mapKey] = mapValue;
         }
+      } else if (activeSection === "on_start") {
+        if (mapKey === "monitor" && typeof mapValue === "string" && mapValue.length > 0) {
+          parsed.on_start.monitor = mapValue;
+        } else if (mapKey === "auto_open" && typeof mapValue === "boolean") {
+          parsed.on_start.auto_open = mapValue;
+        }
       }
     }
   }
   return parsed;
+}
+function emptyParsedConfig() {
+  return {
+    values: {},
+    enabled_providers: [],
+    round_robin_order: [],
+    models: {},
+    retry_models: {},
+    on_start: {}
+  };
 }
 async function readOptionalConfig(configPath, deps) {
   if (!deps.existsSync(configPath))
@@ -4848,8 +4889,104 @@ function createGitFailureWarning(stderr, stdout) {
   }
   return `git worktree add failed (${detail}); falling back to in-place execution.`;
 }
+function normalizeMonitorMode(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "dashboard" || normalized === "terminal" || normalized === "none") {
+    return normalized;
+  }
+  return null;
+}
+function quotePowerShellSingle(value) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+function resolveOnStartBehavior(projectConfig, globalConfig) {
+  const monitor = normalizeMonitorMode(selectValue(projectConfig.on_start.monitor, globalConfig.on_start.monitor)) ?? "dashboard";
+  const autoOpen = toBoolean(selectValue(projectConfig.on_start.auto_open, globalConfig.on_start.auto_open), true);
+  return { mode: monitor, autoOpen };
+}
+function runShortCommand(deps, command, args, cwd) {
+  try {
+    const result = deps.spawnSync(command, args, { cwd, encoding: "utf8", stdio: "ignore", windowsHide: true });
+    if (result.status === 0) {
+      return { ok: true, message: null };
+    }
+    return { ok: false, message: `exit code ${result.status ?? "unknown"}` };
+  } catch (error) {
+    return { ok: false, message: error.message };
+  }
+}
+function spawnDetached(deps, command, args, cwd) {
+  try {
+    const child = deps.spawn(command, args, {
+      cwd,
+      detached: true,
+      stdio: "ignore",
+      env: { ...deps.env },
+      windowsHide: true
+    });
+    child.unref();
+    return child.pid ?? null;
+  } catch {
+    return null;
+  }
+}
+function openInBrowser(deps, url, cwd) {
+  if (deps.platform === "win32") {
+    const powerShell = resolvePowerShellBinary(deps);
+    return runShortCommand(deps, powerShell, ["-NoProfile", "-Command", `Start-Process ${quotePowerShellSingle(url)}`], cwd);
+  }
+  if (deps.platform === "darwin") {
+    return runShortCommand(deps, "open", [url], cwd);
+  }
+  return runShortCommand(deps, "xdg-open", [url], cwd);
+}
+function openStatusTerminal(deps, homeDir, cwd) {
+  const statusCommand2 = `aloop status --watch --home-dir "${homeDir.replace(/"/g, '\\"')}"`;
+  if (deps.platform === "win32") {
+    const powerShell = resolvePowerShellBinary(deps);
+    const terminalShell = trySpawnSync(deps, "pwsh", ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"]) === 0 ? "pwsh" : "powershell";
+    const launchCommand = `Start-Process ${quotePowerShellSingle(terminalShell)} -ArgumentList @('-NoExit','-Command',${quotePowerShellSingle(statusCommand2)})`;
+    return runShortCommand(deps, powerShell, ["-NoProfile", "-Command", launchCommand], cwd);
+  }
+  if (deps.platform === "darwin") {
+    const escapedStatus = statusCommand2.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return runShortCommand(
+      deps,
+      "osascript",
+      ["-e", `tell application "Terminal" to do script "${escapedStatus}"`],
+      cwd
+    );
+  }
+  return runShortCommand(deps, "x-terminal-emulator", ["-e", statusCommand2], cwd);
+}
+async function reserveLocalPort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer2();
+    server.unref();
+    server.once("error", (error) => reject(error));
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("Failed to reserve dashboard port."));
+        return;
+      }
+      const reservedPort = address.port;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(reservedPort);
+      });
+    });
+  });
+}
 async function startCommandWithDeps(options = {}, deps = defaultDeps) {
-  const homeDir = resolveHomeDir(options.homeDir);
+  const homeDir = resolveHomeDir2(options.homeDir);
   const discovery = await deps.discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
   if (!discovery.setup.config_exists || !deps.existsSync(discovery.setup.config_path)) {
     throw new Error("No Aloop configuration found for this project. Run `aloop setup` first.");
@@ -4858,20 +4995,8 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
   const sessionsRoot = path5.join(aloopRoot, "sessions");
   const warnings = [];
   await deps.mkdir(sessionsRoot, { recursive: true });
-  const projectConfig = await readOptionalConfig(discovery.setup.config_path, deps) ?? {
-    values: {},
-    enabled_providers: [],
-    round_robin_order: [],
-    models: {},
-    retry_models: {}
-  };
-  const globalConfig = await readOptionalConfig(path5.join(aloopRoot, "config.yml"), deps) ?? {
-    values: {},
-    enabled_providers: [],
-    round_robin_order: [],
-    models: {},
-    retry_models: {}
-  };
+  const projectConfig = await readOptionalConfig(discovery.setup.config_path, deps) ?? emptyParsedConfig();
+  const globalConfig = await readOptionalConfig(path5.join(aloopRoot, "config.yml"), deps) ?? emptyParsedConfig();
   const enabledProviders = normalizeProviderList(
     projectConfig.enabled_providers.length > 0 ? projectConfig.enabled_providers : globalConfig.enabled_providers.length > 0 ? globalConfig.enabled_providers : discovery.providers.installed
   );
@@ -4897,6 +5022,7 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
   const maxStuck = toPositiveInt(selectValue(projectConfig.values.max_stuck, globalConfig.values.max_stuck)) ?? 3;
   const backupEnabled = toBoolean(selectValue(projectConfig.values.backup_enabled, globalConfig.values.backup_enabled), false);
   const worktreeDefault = toBoolean(selectValue(projectConfig.values.worktree_default, globalConfig.values.worktree_default), true);
+  const onStartBehavior = resolveOnStartBehavior(projectConfig, globalConfig);
   const mergedModels = {
     ...DEFAULT_MODELS,
     ...Object.fromEntries(
@@ -5093,6 +5219,48 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
   };
   await deps.writeFile(activePath, `${JSON.stringify(active, null, 2)}
 `, "utf8");
+  let monitorPid = null;
+  let dashboardUrl = null;
+  if (onStartBehavior.mode === "dashboard") {
+    let dashboardPort = null;
+    try {
+      dashboardPort = await reserveLocalPort();
+    } catch (error) {
+      warnings.push(`Failed to reserve a local dashboard port: ${error.message}`);
+    }
+    if (dashboardPort !== null) {
+      dashboardUrl = `http://localhost:${dashboardPort}`;
+      monitorPid = spawnDetached(
+        deps,
+        "aloop",
+        ["dashboard", "--port", String(dashboardPort), "--session-dir", sessionDir, "--workdir", workDir],
+        workDir
+      );
+      if (!monitorPid) {
+        warnings.push("Failed to launch dashboard monitor automatically. You can run `aloop dashboard` manually.");
+      } else if (onStartBehavior.autoOpen) {
+        const opened = openInBrowser(deps, dashboardUrl, workDir);
+        if (!opened.ok) {
+          warnings.push(`Failed to auto-open dashboard URL (${opened.message ?? "unknown error"}); trying terminal monitor.`);
+          const terminalLaunch = openStatusTerminal(deps, homeDir, workDir);
+          if (!terminalLaunch.ok) {
+            warnings.push(`Failed to open terminal monitor fallback (${terminalLaunch.message ?? "unknown error"}).`);
+          }
+        }
+      }
+    }
+  } else if (onStartBehavior.mode === "terminal" && onStartBehavior.autoOpen) {
+    const terminalLaunch = openStatusTerminal(deps, homeDir, workDir);
+    if (!terminalLaunch.ok) {
+      warnings.push(`Failed to launch terminal monitor (${terminalLaunch.message ?? "unknown error"}).`);
+    }
+  }
+  meta.monitor_mode = onStartBehavior.mode;
+  meta.monitor_auto_open = onStartBehavior.autoOpen;
+  meta.monitor_pid = monitorPid;
+  meta.dashboard_url = dashboardUrl;
+  await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}
+`, "utf8");
   return {
     session_id: sessionId,
     session_dir: sessionDir,
@@ -5107,6 +5275,10 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     max_stuck: maxStuck,
     pid,
     started_at: startedAt,
+    monitor_mode: onStartBehavior.mode,
+    monitor_auto_open: onStartBehavior.autoOpen,
+    monitor_pid: monitorPid,
+    dashboard_url: dashboardUrl,
     warnings
   };
 }
@@ -5125,6 +5297,10 @@ async function startCommand(options = {}) {
   console.log(`  Work dir: ${result.work_dir}`);
   console.log(`  PID:      ${result.pid}`);
   console.log(`  Prompts:  ${result.prompts_dir}`);
+  console.log(`  Monitor:  ${result.monitor_mode} (auto_open=${result.monitor_auto_open ? "true" : "false"})`);
+  if (result.dashboard_url) {
+    console.log(`  Dashboard: ${result.dashboard_url}`);
+  }
   if (result.warnings.length > 0) {
     console.log("");
     console.log("Warnings:");
@@ -5152,16 +5328,23 @@ async function setupCommandWithDeps(options, deps) {
     console.log("Running setup in non-interactive mode...");
     const result2 = await deps.scaffold({
       projectRoot: options.projectRoot,
-      homeDir: options.homeDir
+      homeDir: options.homeDir,
+      specFiles: options.spec ? [options.spec] : void 0,
+      enabledProviders: options.providers ? options.providers.split(",").map((p) => p.trim()) : void 0
     });
     console.log(`Setup complete. Config written to: ${result2.config_path}`);
     return;
   }
   console.log("\n--- Aloop Interactive Setup ---\n");
+  const defaultSpec = options.spec || discovery.context.spec_candidates[0] || "SPEC.md";
+  const spec = await deps.prompt("Spec File", defaultSpec);
+  const defaultProviders = options.providers || discovery.providers.installed.join(",") || "claude";
+  const providersRaw = await deps.prompt("Enabled Providers (comma-separated)", defaultProviders);
+  const enabledProviders = providersRaw.split(",").map((s) => s.trim()).filter(Boolean);
   const defaultLanguage = discovery.context.detected_language;
   const language = await deps.prompt("Language", defaultLanguage);
-  const defaultProvider = discovery.providers.default_provider;
-  const provider = await deps.prompt("Provider", defaultProvider);
+  const defaultProvider = enabledProviders[0] || discovery.providers.default_provider;
+  const provider = await deps.prompt("Primary Provider", defaultProvider);
   const defaultMode = "plan-build-review";
   const mode = await deps.prompt("Mode", defaultMode);
   const defaultValidation = discovery.context.validation_presets.full.join(", ") || "npm test";
@@ -5171,8 +5354,10 @@ async function setupCommandWithDeps(options, deps) {
   const safetyRulesRaw = await deps.prompt("Safety Rules (comma-separated)", defaultSafety);
   const safetyRules = safetyRulesRaw.split(",").map((s) => s.trim()).filter(Boolean);
   console.log("\nScaffolding workspace with the following configuration:");
+  console.log(`- Spec: ${spec}`);
+  console.log(`- Providers: ${enabledProviders.join(", ")}`);
   console.log(`- Language: ${language}`);
-  console.log(`- Provider: ${provider}`);
+  console.log(`- Primary Provider: ${provider}`);
   console.log(`- Mode: ${mode}`);
   console.log(`- Validation Commands: ${validationCommands.join(", ")}`);
   console.log(`- Safety Rules: ${safetyRules.join(", ")}`);
@@ -5180,6 +5365,8 @@ async function setupCommandWithDeps(options, deps) {
   const result = await deps.scaffold({
     projectRoot: options.projectRoot,
     homeDir: options.homeDir,
+    specFiles: [spec],
+    enabledProviders,
     language,
     provider,
     mode,
@@ -5191,8 +5378,8 @@ async function setupCommandWithDeps(options, deps) {
 async function setupCommand(options = {}) {
   let rl = null;
   const deps = {
-    discover: discoverWorkspace,
-    scaffold: scaffoldWorkspace,
+    discover: discoverWorkspace2,
+    scaffold: scaffoldWorkspace2,
     prompt: async (question, defaultValue) => {
       if (!rl) {
         rl = readline.createInterface({
@@ -5217,7 +5404,7 @@ var program2 = new Command();
 program2.name("aloop").description("Aloop CLI for dashboard and project orchestration").version("1.0.0");
 program2.command("resolve").description("Resolve project workspace and configuration").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(resolveCommand);
 program2.command("discover").description("Discover workspace specs, files, and validation commands").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(discoverCommand);
-program2.command("setup").description("Interactive setup and scaffold for aloop project").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--non-interactive", "Skip interactive prompts and use defaults").action(setupCommand);
+program2.command("setup").description("Interactive setup and scaffold for aloop project").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--spec <path>", "Specification file to use").option("--providers <providers>", "Comma-separated list of providers to enable").option("--non-interactive", "Skip interactive prompts and use defaults").action(setupCommand);
 program2.command("scaffold").description("Scaffold project workdir and prompts").option("--project-root <path>", "Project root override").option("--language <language>", "Language override").option("--provider <provider>", "Provider override").option("--enabled-providers <providers...>", "Enabled providers list or csv values").option("--round-robin-order <providers...>", "Round-robin provider order list or csv values").option("--spec-files <files...>", "Spec file list or csv values").option("--reference-files <files...>", "Reference file list or csv values").option("--validation-commands <commands...>", "Validation command list or csv values").option("--safety-rules <rules...>", "Safety rule list or csv values").option("--mode <mode>", "Loop mode", "plan-build-review").option("--templates-dir <path>", "Template directory override").option("--output <mode>", "Output format: json or text", "json").action(scaffoldCommand);
 program2.command("start").description("Start an aloop session for the current project").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--provider <provider>", "Provider override").option("--mode <mode>", "Loop mode override").option("--plan", "Shortcut for --mode plan").option("--build", "Shortcut for --mode build").option("--review", "Shortcut for --mode review").option("--in-place", "Run in project root instead of creating a git worktree").option("--max-iterations <number>", "Max iteration override").option("--output <mode>", "Output format: json or text", "text").action(startCommand);
 program2.command("dashboard").description("Launch real-time progress dashboard").option("-p, --port <number>", "Port to run the dashboard on", "3000").option("--session-dir <path>", "Session directory containing status.json and log.jsonl").option("--workdir <path>", "Project work directory containing TODO.md and related docs").option("--assets-dir <path>", "Directory containing bundled dashboard frontend assets").action(dashboardCommand);

@@ -575,7 +575,7 @@ function Get-AvailableDashboardPort {
 function Start-DashboardProcess {
     if ($env:ALOOP_NO_DASHBOARD -eq '1') { return }
     $runtimeDir = if ($env:ALOOP_RUNTIME_DIR) { $env:ALOOP_RUNTIME_DIR } else { Join-Path $HOME '.aloop' }
-    $cliEntrypoint = Join-Path $runtimeDir 'cli\dist\index.js'
+    $cliEntrypoint = Join-Path $runtimeDir 'cli\aloop.mjs'
     if (-not (Test-Path $cliEntrypoint)) {
         Write-Warning "Dashboard CLI not found at $cliEntrypoint. Continuing without dashboard."
         return

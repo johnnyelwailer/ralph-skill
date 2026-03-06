@@ -525,6 +525,16 @@ Copy-TreeItem `
     -Destination (Join-Path $aloopDir "cli\dist") `
     -Label "cli/dist"
 
+Copy-TreeItem `
+    -Source (Join-Path $scriptDir "$skillName\cli\lib") `
+    -Destination (Join-Path $aloopDir "cli\lib") `
+    -Label "cli/lib"
+
+Copy-TreeItem `
+    -Source (Join-Path $scriptDir "$skillName\cli\aloop.mjs") `
+    -Destination (Join-Path $aloopDir "cli\aloop.mjs") `
+    -Label "cli/aloop.mjs"
+
 # --- Create runtime directories ---
 Write-Host ""
 Write-Host "Creating runtime directories..." -ForegroundColor White
@@ -568,12 +578,12 @@ $shShim  = Join-Path $aloopDir "bin\aloop"
 
 $cmdShimContent = @'
 @echo off
-node "%~dp0..\cli\dist\index.js" %*
+node "%~dp0..\cli\aloop.mjs" %*
 '@
 
 $shShimContent = @'
 #!/bin/sh
-exec node "$(dirname "$0")/../cli/dist/index.js" "$@"
+exec node "$(dirname "$0")/../cli/aloop.mjs" "$@"
 '@
 
 foreach ($shim in @(

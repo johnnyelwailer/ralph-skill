@@ -26,4 +26,4 @@ Thumbs.db
 .env.local
 .env.*.local
 coverage/
-ralph/cli/coverage/
+aloop/cli/coverage/
