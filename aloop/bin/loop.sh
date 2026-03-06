@@ -854,6 +854,29 @@ PHASE_RETRY_CONSECUTIVE=0
 MAX_PHASE_RETRIES=2
 LAST_PROVIDER_ERROR=""
 LAST_ITER_MODE="$MODE"
+LAST_PROOF_ITERATION=0
+
+update_proof_baselines() {
+    local proof_iteration="$1"
+    if [ "$proof_iteration" -le 0 ]; then return; fi
+
+    local iter_dir="$SESSION_DIR/artifacts/iter-$proof_iteration"
+    local manifest_path="$iter_dir/proof-manifest.json"
+    if [ ! -f "$manifest_path" ]; then return; fi
+
+    local baseline_dir="$SESSION_DIR/artifacts/baselines"
+    mkdir -p "$baseline_dir"
+
+    # Copy all artifacts (except manifest) to baselines directory
+    for file in "$iter_dir"/*; do
+        if [ "$(basename "$file")" != "proof-manifest.json" ]; then
+            cp -R "$file" "$baseline_dir/"
+        fi
+    done
+    
+    echo "Updated proof baselines from iteration $proof_iteration"
+    write_log_entry "baselines_updated" "iteration" "$proof_iteration"
+}
 
 skip_stuck_task() {
     local task="$1"
@@ -1249,6 +1272,27 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     # Invoke provider
     prompt_content=$(cat "$iter_prompt_file")
 
+    # Proof phase: prepare artifact directory and replace placeholders
+    if [ "$iter_mode" = "proof" ]; then
+        artifact_dir="$SESSION_DIR/artifacts/iter-$ITERATION"
+        mkdir -p "$artifact_dir"
+        LAST_PROOF_ITERATION="$ITERATION"
+        prompt_content="${prompt_content//<session-dir>/$SESSION_DIR}"
+        prompt_content="${prompt_content//iter-<N>/iter-$ITERATION}"
+    fi
+
+    # Review phase: inject latest proof manifest if available
+    if [ "$iter_mode" = "review" ]; then
+        if [ "$LAST_PROOF_ITERATION" -gt 0 ]; then
+            last_manifest="$SESSION_DIR/artifacts/iter-$LAST_PROOF_ITERATION/proof-manifest.json"
+            if [ -f "$last_manifest" ]; then
+                manifest_content=$(cat "$last_manifest")
+                prompt_content="${prompt_content}"$'\n\n'"## Proof Manifest (from iteration $LAST_PROOF_ITERATION)"$'\n\n'"${manifest_content}"
+                echo "Injected proof manifest from iteration $LAST_PROOF_ITERATION into review prompt."
+            fi
+        fi
+    fi
+
     cd "$WORK_DIR"
     if invoke_provider "$iter_provider" "$prompt_content"; then
         update_provider_health_on_success "$iter_provider"
@@ -1266,23 +1310,35 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         if [ "$iter_mode" = "build" ]; then
             print_iteration_summary "$ITERATION_START"
             push_to_backup
-        elif [ "$iter_mode" = "review" ] && [ "$ALL_TASKS_MARKED_DONE" = true ]; then
-            # Final review gate: review was forced by all completed tasks in build.
-            if check_all_tasks_complete; then
-                echo ""
-                echo "FINAL REVIEW APPROVED"
-                stop_dashboard
-                write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
-                write_log_entry "final_review_approved" "iteration" "$ITERATION"
-                generate_report "All tasks completed and approved by final review."
-                exit 0
+        elif [ "$iter_mode" = "review" ]; then
+            # Check for PASS in the commit message to update baselines
+            cd "$WORK_DIR"
+            last_msg=$(git log -1 --format="%s" 2>/dev/null || echo "")
+            if [[ "$last_msg" == *"chore(review): PASS"* ]]; then
+                update_proof_baselines "$LAST_PROOF_ITERATION"
+            fi
+
+            if [ "$ALL_TASKS_MARKED_DONE" = true ]; then
+                # Final review gate: review was forced by all completed tasks in build.
+                if check_all_tasks_complete; then
+                    echo ""
+                    echo "FINAL REVIEW APPROVED"
+                    stop_dashboard
+                    write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
+                    write_log_entry "final_review_approved" "iteration" "$ITERATION"
+                    generate_report "All tasks completed and approved by final review."
+                    exit 0
+                else
+                    echo ""
+                    echo "FINAL REVIEW REJECTED - reopened tasks, continuing loop"
+                    ALL_TASKS_MARKED_DONE=false
+                    FORCE_PLAN_NEXT=true
+                    CYCLE_POSITION=0
+                    write_log_entry "final_review_rejected" "iteration" "$ITERATION"
+                    echo ""
+                    echo "[Iteration $ITERATION complete - $iter_mode]"
+                fi
             else
-                echo ""
-                echo "FINAL REVIEW REJECTED - reopened tasks, continuing loop"
-                ALL_TASKS_MARKED_DONE=false
-                FORCE_PLAN_NEXT=true
-                CYCLE_POSITION=0
-                write_log_entry "final_review_rejected" "iteration" "$ITERATION"
                 echo ""
                 echo "[Iteration $ITERATION complete - $iter_mode]"
             fi

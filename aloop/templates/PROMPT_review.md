@@ -68,6 +68,14 @@ Audit the last build iteration's changes against 5 quality gates. Write actionab
 - Validation passes:
   {{VALIDATION_COMMANDS}}
 
+### Gate 6: Proof Verification (Evidence-Based)
+
+- **Examine the Proof Manifest** (if provided at the bottom of this prompt)
+- Does the evidence match the changes?
+- Are screenshots or API captures consistent with the spec's visual/functional requirements?
+- If the proof agent skipped work that SHOULD have been proven (e.g., a UI change with no screenshot), that is a failure.
+- If no proof was generated at all but the work had observable output, reject.
+
 ## Rejection Flow
 
 When ANY gate fails:

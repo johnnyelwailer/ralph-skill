@@ -422,6 +422,7 @@ $script:forcePlanNext = $false
 $script:allTasksMarkedDone = $false
 $script:forceProofNext = $false
 $script:forceReviewNext = $false
+$script:lastProofIteration = 0
 $script:lastProviderOutputText = $null
 $script:cyclePosition = 0
 $script:lastModeWasForced = $false
@@ -432,6 +433,25 @@ $script:phaseRetryState = @{
     failureReasons = @()
 }
 $script:maxPhaseRetries = if ($Provider -eq 'round-robin') { [Math]::Max(2, $RoundRobinProviders.Count * 2) } else { 2 }
+
+function Update-ProofBaselines {
+    param([int]$ProofIteration)
+    if ($ProofIteration -le 0) { return }
+
+    $iterDir = Join-Path $SessionDir "artifacts\iter-$ProofIteration"
+    $manifestPath = Join-Path $iterDir "proof-manifest.json"
+    if (-not (Test-Path $manifestPath)) { return }
+
+    $baselineDir = Join-Path $SessionDir "artifacts\baselines"
+    if (-not (Test-Path $baselineDir)) {
+        New-Item -ItemType Directory -Path $baselineDir -Force | Out-Null
+    }
+
+    # Copy all artifacts (except manifest) to baselines directory
+    Copy-Item -Path "$iterDir\*" -Destination $baselineDir -Force -Exclude "proof-manifest.json"
+    Write-Host "Updated proof baselines from iteration $ProofIteration" -ForegroundColor Cyan
+    Write-LogEntry -Event "baselines_updated" -Data @{ iteration = $ProofIteration }
+}
 
 function Advance-CyclePosition {
     if ($Mode -eq 'plan-build') {
@@ -1355,6 +1375,29 @@ try {
         try {
             $promptContent = Get-Content -Path $iterationPromptFile -Raw
 
+            # Proof phase: prepare artifact directory and replace placeholders
+            if ($iterationMode -eq 'proof') {
+                $artifactDir = Join-Path $SessionDir "artifacts\iter-$iteration"
+                if (-not (Test-Path $artifactDir)) {
+                    New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
+                }
+                $script:lastProofIteration = $iteration
+                $promptContent = $promptContent -replace '<session-dir>', $SessionDir
+                $promptContent = $promptContent -replace 'iter-<N>', "iter-$iteration"
+            }
+
+            # Review phase: inject latest proof manifest if available
+            if ($iterationMode -eq 'review') {
+                if ($script:lastProofIteration -gt 0) {
+                    $lastManifest = Join-Path $SessionDir "artifacts\iter-$($script:lastProofIteration)\proof-manifest.json"
+                    if (Test-Path $lastManifest) {
+                        $manifestContent = Get-Content -Path $lastManifest -Raw
+                        $promptContent += "`n`n## Proof Manifest (from iteration $($script:lastProofIteration))`n`n$manifestContent"
+                        Write-Host "Injected proof manifest from iteration $($script:lastProofIteration) into review prompt." -ForegroundColor Gray
+                    }
+                }
+            }
+
             Push-Location $WorkDir
             try {
                 $providerOutput = Invoke-Provider -ProviderName $iterationProvider -PromptContent $promptContent
@@ -1384,21 +1427,36 @@ try {
             if ($iterationMode -eq 'build') {
                 Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
                 Push-ToBackup
-            } elseif ($iterationMode -eq 'review' -and $script:allTasksMarkedDone) {
-                # Final review gate: review was forced by allTasksMarkedDone
-                if (Check-AllTasksComplete) {
-                    Write-Host "`nFINAL REVIEW APPROVED" -ForegroundColor Green
-                    Stop-DashboardProcess
-                    Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
-                    Write-LogEntry -Event "final_review_approved" -Data @{ iteration = $iteration }
-                    Generate-Report -ExitReason "All tasks completed and approved by final review." -Iteration $iteration
-                    exit 0
+            } elseif ($iterationMode -eq 'review') {
+                # Check for PASS in the commit message to update baselines
+                Push-Location $WorkDir
+                try {
+                    $lastMsg = git log -1 --format="%s" 2>$null
+                    if ($lastMsg -match 'chore\(review\): PASS') {
+                        Update-ProofBaselines -ProofIteration $script:lastProofIteration
+                    }
+                } finally {
+                    Pop-Location
+                }
+
+                if ($script:allTasksMarkedDone) {
+                    # Final review gate: review was forced by allTasksMarkedDone
+                    if (Check-AllTasksComplete) {
+                        Write-Host "`nFINAL REVIEW APPROVED" -ForegroundColor Green
+                        Stop-DashboardProcess
+                        Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
+                        Write-LogEntry -Event "final_review_approved" -Data @{ iteration = $iteration }
+                        Generate-Report -ExitReason "All tasks completed and approved by final review." -Iteration $iteration
+                        exit 0
+                    } else {
+                        Write-Host "`nFINAL REVIEW REJECTED - reopened tasks, continuing loop" -ForegroundColor Yellow
+                        $script:allTasksMarkedDone = $false
+                        $script:forcePlanNext = $true
+                        $script:cyclePosition = 0
+                        Write-LogEntry -Event "final_review_rejected" -Data @{ iteration = $iteration }
+                        Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
+                    }
                 } else {
-                    Write-Host "`nFINAL REVIEW REJECTED - reopened tasks, continuing loop" -ForegroundColor Yellow
-                    $script:allTasksMarkedDone = $false
-                    $script:forcePlanNext = $true
-                    $script:cyclePosition = 0
-                    Write-LogEntry -Event "final_review_rejected" -Data @{ iteration = $iteration }
                     Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
                 }
             } else {

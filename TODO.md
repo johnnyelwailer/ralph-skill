@@ -7,8 +7,8 @@
 
 ### Up Next
 - [x] [runtime/P1] Upgrade both runtimes (`loop.ps1`, `loop.sh`) from 5-step to 6-step cycle (`plan -> build x3 -> proof -> review`), including cycle-position math and forced-phase/retry-same-phase compatibility. (priority: highest, core behavior gap)
-- [ ] [proof/P1] Implement proof artifact persistence per iteration (`artifacts/iter-<N>/`) and write `proof-manifest.json` (including explicit skip protocol) consumed by review. (priority: high, required acceptance path)
-- [ ] [proof/P1] Add baseline lifecycle integration: only update baselines after approved review; preserve previous baselines on rejection. (priority: high, prevents regressions)
+- [x] [proof/P1] Implement proof artifact persistence per iteration (`artifacts/iter-<N>/`) and write `proof-manifest.json` (including explicit skip protocol) consumed by review. (priority: high, required acceptance path)
+- [x] [proof/P1] Add baseline lifecycle integration: only update baselines after approved review; preserve previous baselines on rejection. (priority: high, prevents regressions)
 - [ ] [security/P1] Implement convention-file GH protocol in `loop.ps1`: process `.aloop/requests/*.json` via `aloop gh`, emit `.aloop/responses/*.json`, then archive to `.aloop/requests/processed/` in deterministic order. (priority: high, trust-boundary requirement)
 - [ ] [security/P1] Implement equivalent convention-file GH protocol in `loop.sh` with parity for ordering, response writing, archival, and audit logging. (priority: high, cross-platform parity)
 - [ ] [cli/P1] Implement `aloop status --watch` refresh mode and ensure `aloop start` terminal monitor path uses a supported status flag. (priority: high, current start fallback references unsupported flag)
