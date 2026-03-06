@@ -1628,3 +1628,129 @@ The triage agent runs inside the orchestrator (Layer 1 — trusted). It uses `al
 - [ ] Processed comment IDs are tracked to prevent re-triage
 - [ ] All triage decisions are logged in `orchestrator.json` triage_log
 - [ ] Triage agent uses `aloop gh` for all GH operations (subject to orchestrator policy)
+
+---
+
+## Devcontainer Support (Priority: P1)
+
+### Goal
+
+Enable aloop loops to run inside VS Code devcontainers for full isolation. Provide a skill (`/aloop:devcontainer`) that generates a project-tailored `.devcontainer/` config, verifies it builds and starts, and confirms all loop dependencies are available inside the container.
+
+### Why P1
+
+- Security boundary: devcontainer is the natural sandbox for Layer 2 (agent execution) — agents can't access host GH tokens, filesystem, or network beyond what's mounted
+- Reproducibility: identical environment across machines, no "works on my machine" provider/tool version drift
+- Required for convention-file protocol: the harness runs on host, the agent runs in container, `.aloop/requests/` and `.aloop/responses/` cross the boundary via bind mount
+
+### Devcontainer Generation (`/aloop:devcontainer` skill)
+
+The skill analyzes the project and generates a tailored devcontainer config:
+
+**Step 1 — Project Analysis**
+- Detect language/runtime (package.json → Node, *.csproj → .NET, pyproject.toml → Python, go.mod → Go, etc.)
+- Detect required tools (database services, build tools, system deps)
+- Read existing `SPEC.md`, `CLAUDE.md`, `README.md` for dependency hints
+- Check for existing `.devcontainer/` — offer to augment or replace
+
+**Step 2 — Config Generation**
+Generate `.devcontainer/devcontainer.json` (and `Dockerfile` if needed):
+
+```jsonc
+{
+  "name": "${project-name}-aloop",
+  "image": "mcr.microsoft.com/devcontainers/${base-image}",
+  // OR "build": { "dockerfile": "Dockerfile" } for complex setups
+  "features": {
+    // auto-selected based on project analysis
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "postCreateCommand": "${install-command}",  // npm install, dotnet restore, etc.
+  "mounts": [
+    // Bind mount for convention-file protocol (host harness <-> container agent)
+    "source=${localWorkspaceFolder}/.aloop,target=/workspace/.aloop,type=bind"
+  ],
+  "containerEnv": {
+    "ALOOP_NO_DASHBOARD": "1",  // dashboard runs on host, not in container
+    "ALOOP_CONTAINER": "1"      // signals to loop that it's inside a container
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // provider extensions auto-detected
+      ]
+    }
+  }
+}
+```
+
+**Step 3 — Provider Installation**
+Generate a `postCreateCommand` or `onCreateCommand` script that installs the enabled providers inside the container:
+- `claude`: npm install -g @anthropic-ai/claude-code
+- `codex`: npm install -g @openai/codex
+- `gemini`: npm install -g @google/gemini-cli (or equivalent)
+- `copilot`: installed via VS Code extension, not CLI inside container
+
+Only install providers listed in the project's `config.yml` `enabled_providers`.
+
+**Step 4 — Verification (mandatory, not optional)**
+
+After generating the config, the skill MUST verify it works:
+
+1. `devcontainer build --workspace-folder .` — container image builds successfully
+2. `devcontainer up --workspace-folder .` — container starts
+3. Inside the running container, verify:
+   - Project deps installed (`node_modules/`, `bin/`, etc. exist)
+   - Each enabled provider CLI is available (`which claude`, `which codex`, etc.)
+   - Git is functional (`git status`)
+   - `.aloop/` bind mount is accessible
+   - Build/test commands from `config.yml` `validation_commands` pass
+4. `devcontainer exec --workspace-folder . -- aloop status` — aloop CLI reachable (if installed globally)
+5. Report results: pass/fail per check with actionable fix suggestions
+
+If any check fails, the skill iterates: fix the config, rebuild, re-verify. Do not mark setup complete until all checks pass.
+
+**Step 5 — Loop Integration**
+
+When `ALOOP_CONTAINER=1` is set:
+- Loop scripts detect container mode and skip dashboard launch (host handles it)
+- Convention-file protocol is the only way to request GH operations
+- Provider auth tokens must be passed via `containerEnv` or `secrets` mount — the skill should prompt for this and configure it
+- `aloop start --devcontainer` flag on host: builds/starts the devcontainer, then launches the loop inside it via `devcontainer exec`
+
+### `aloop start --devcontainer` Flow
+
+1. Host harness checks `.devcontainer/` exists (suggest `/aloop:devcontainer` if not)
+2. `devcontainer up --workspace-folder .` — start container
+3. `devcontainer exec -- bash -c "cd /workspace && aloop start --in-place --max N"` — run loop inside
+4. Host monitors `status.json` via bind mount
+5. Host processes `.aloop/requests/*.json` (convention-file protocol)
+6. Dashboard runs on host, reads session data via bind mount
+
+### Provider Auth in Container
+
+Provider CLIs need API keys. Options (skill should auto-configure the best available):
+
+1. **`containerEnv` in devcontainer.json** — simplest, keys in plain text (acceptable for local dev)
+2. **`initializeCommand` that reads from host keyring** — more secure, runs on host before container starts
+3. **Secrets mount** — `.env` file bind-mounted read-only
+4. **`remoteEnv` with `localEnv`** — forward host env vars: `"ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"`
+
+Preferred: option 4 (`remoteEnv` + `localEnv`) — no secrets in files, uses host's existing env vars.
+
+### Acceptance Criteria
+
+- [ ] `/aloop:devcontainer` skill exists for both Claude and Copilot command surfaces
+- [ ] Skill detects project language, runtime, and dependencies automatically
+- [ ] Generated devcontainer config includes all project-specific deps and build tools
+- [ ] Enabled providers are installed inside the container via postCreateCommand
+- [ ] `.aloop/` directory is bind-mounted for convention-file protocol
+- [ ] Verification step builds container, starts it, and checks all deps/providers/git/mount
+- [ ] Verification iterates on failure — fixes config and re-verifies until green
+- [ ] `aloop start --devcontainer` launches the loop inside the container from the host
+- [ ] Host can monitor session status and process convention-file requests via bind mount
+- [ ] Dashboard runs on host and reads container session data
+- [ ] Provider API keys forwarded via `remoteEnv`/`localEnv` (no secrets in config files)
+- [ ] `ALOOP_CONTAINER=1` env var detected by loop scripts to skip dashboard and use convention-file protocol
+- [ ] Existing projects with `.devcontainer/` get augmented (aloop mounts/env added) rather than overwritten
