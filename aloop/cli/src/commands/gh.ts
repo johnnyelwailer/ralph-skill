@@ -56,21 +56,12 @@ function parsePositiveInteger(value: unknown): number | undefined {
   return undefined;
 }
 
-function includesAloopAutoLabel(payload: any): boolean {
-  const labelSets: unknown[] = [
-    payload.labels,
-    payload.issue_labels,
-    payload.pr_labels,
-    payload.target_labels,
-  ];
-
-  for (const labelSet of labelSets) {
-    if (Array.isArray(labelSet) && labelSet.some((label) => label === 'aloop/auto')) {
-      return true;
-    }
+function includesAloopAutoLabel(targetLabels: unknown): boolean {
+  if (!Array.isArray(targetLabels)) {
+    return false;
   }
 
-  return false;
+  return targetLabels.some((label) => label === 'aloop/auto');
 }
 
 function appendLog(sessionDir: string, entry: any) {
@@ -255,7 +246,7 @@ function evaluatePolicy(
         }
         return { allowed: true };
       case 'issue-close':
-        if (!includesAloopAutoLabel(payload)) {
+        if (!includesAloopAutoLabel(payload.target_labels)) {
           return { allowed: false, reason: 'issue-close requires aloop/auto-scoped target validation' };
         }
         return { allowed: true };
@@ -266,7 +257,7 @@ function evaluatePolicy(
         return { allowed: true, enforced: { base: 'agent/trunk', merge_method: 'squash', repo: sessionPolicy.repo } };
       case 'pr-comment':
       case 'issue-comment':
-        if (!includesAloopAutoLabel(payload)) {
+        if (!includesAloopAutoLabel(payload.target_labels)) {
           return { allowed: false, reason: `${operation} requires aloop/auto-scoped target validation` };
         }
         return { allowed: true };

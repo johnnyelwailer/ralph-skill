@@ -3,13 +3,11 @@
 ## Current Phase: Security Boundary Completion + Proof/Protocol Foundations
 
 ### In Progress
-- [ ] [review] Gate 1: `aloop/cli/src/commands/gh.ts` trusts request-payload labels for orchestrator scope checks (`includesAloopAutoLabel(payload)` in `issue-close`/`issue-comment`/`pr-comment`), which can be spoofed by an untrusted agent. Replace payload-declared labels with trusted target-label validation before allowing these operations. (priority: high)
+- [x] [review] Gate 1: `aloop/cli/src/commands/gh.ts` trusts request-payload labels for orchestrator scope checks (`includesAloopAutoLabel(payload)` in `issue-close`/`issue-comment`/`pr-comment`), which can be spoofed by an untrusted agent. Replace payload-declared labels with trusted target-label validation before allowing these operations. (priority: high)
 - [ ] [review] Gate 1: `aloop/cli/src/commands/gh.ts` does not force `repo` from session config on all allowed operations (`issue-create`, `issue-close`, `issue-comment`, `pr-comment`). Enforce `repo` in policy output for every allowed operation so cross-repo bypasses remain impossible when real `gh` execution is wired in. (priority: high)
 - [ ] [review] Gate 3: `aloop/cli/src/commands/gh.ts` branch coverage is 84.51% (<90% target for the new security module). Add tests for uncovered policy branches (missing assigned issue scope, non-numeric `issue_number`/`pr_number`, and allowed orchestrator `issue-close` path) until `gh.ts` reaches >=90% branch coverage. (priority: high)
-- [x] [security/P0] Enforce scoped-target policy in `evaluatePolicy`: child `issue-comment` must be limited to assigned issue, child `pr-comment` to child-created PRs, and orchestrator `issue-close`/comment operations must require `aloop/auto` scope validation (not comments-only placeholders).
 
 ### Up Next
-- [x] [security/P0] Expand `aloop/cli/src/commands/gh.test.ts` to cover: missing request file, invalid request JSON, unknown role, unknown operation, missing/invalid session config paths, missing `repo` in config, orchestrator label guards, and `enforced.repo` assertions on allowed paths.
 - [ ] [security/P0] Raise `aloop/cli/src/commands/gh.ts` branch coverage to >=90% by covering all policy and error-path branches introduced by the security hardening.
 - [ ] [security/P1] Replace `gh.ts` simulated-success scaffolding with real `gh` command execution wrappers and structured result payloads for harness consumption.
 
@@ -27,20 +25,6 @@
 - [ ] [cli/P1] Implement `aloop setup` as a first-class interactive discover/scaffold flow with a non-interactive flag path.
 - [ ] [cli/P1] Add `aloop status --watch` live refresh mode.
 - [ ] [cli/P1] Implement `on_start` monitor behavior (`dashboard|terminal|none`, `auto_open`) and auto-monitor launch from `aloop start`.
-- [ ] [cli/P2] Add `aloop discover --scope project|full` parity with SPEC Phase 2 schema expectations.
-
-- [ ] [dashboard/P2] Add multi-session APIs (`/api/state?session=<id>`, `/events?session=<id>`) and frontend session switching with SSE rebinding.
-- [ ] [dashboard/P2] Add backend artifact endpoint `/api/artifacts/<iteration>/<filename>` with strict path safety checks.
-- [ ] [dashboard/P2] Redesign the dashboard to a dense single-page layout (TODO, log, health, commits, steer visible together) and use required advanced components (`ResizablePanel`, `HoverCard`, `Collapsible`, `Command`, `Sonner`).
-- [ ] [dashboard/P2] Render proof artifacts inline (thumbnails/expand, text+code views, baseline comparison modes, iteration history selection).
-
-- [ ] [commands/P2] Refactor `/aloop:start` and `/aloop:setup` command/prompt files into thin wrappers that delegate to CLI-first `aloop start` / `aloop setup`.
-
-- [ ] [orchestrator/P2] Add `aloop orchestrate --plan-only` and persist decomposition/wave metadata in `orchestrator.json`.
-- [ ] [orchestrator/P2] Implement orchestrator dispatch core (issue creation via `aloop gh`, wave gating, concurrency cap, child loop launch/worktree mapping).
-- [ ] [orchestrator/P2] Implement orchestrator PR lifecycle gates (CI/coverage/conflicts/lint + agent review) with merge/reopen/retry handling.
-- [ ] [orchestrator/P2] Implement user-feedback triage loop (`actionable`, `needs_clarification`, `question`, `out_of_scope`) with blocked-on-human pause/resume and processed-comment tracking.
-- [ ] [status/P2] Extend `aloop status` to show orchestrator tree state (orchestrator -> child sessions -> issue/PR mapping).
 
 - [ ] [devcontainer/P1] Complete prerequisite research of current devcontainer spec (`code.visualstudio.com` + `containers.dev`) before implementation details are finalized.
 - [ ] [devcontainer/P1] Add `/aloop:devcontainer` skill files for Claude and Copilot command surfaces.
@@ -48,10 +32,24 @@
 - [ ] [devcontainer/P1] Implement harness auto-detection of `.devcontainer/devcontainer.json` in both loop runtimes and route provider invocations through `devcontainer exec` by default, with `--dangerously-skip-container` warning/logging opt-out.
 - [ ] [devcontainer/P1] Implement shared-container reuse for parallel loops (single container, multiple worktrees, mount strategy for `~/.aloop/sessions/`).
 
+- [ ] [cli/P2] Add `aloop discover --scope project|full` parity with SPEC Phase 2 schema expectations.
+- [ ] [dashboard/P2] Add multi-session APIs (`/api/state?session=<id>`, `/events?session=<id>`) and frontend session switching with SSE rebinding.
+- [ ] [dashboard/P2] Add backend artifact endpoint `/api/artifacts/<iteration>/<filename>` with strict path safety checks.
+- [ ] [dashboard/P2] Redesign the dashboard to a dense single-page layout (TODO, log, health, commits, steer visible together) and use required advanced components (`ResizablePanel`, `HoverCard`, `Collapsible`, `Command`, `Sonner`).
+- [ ] [dashboard/P2] Render proof artifacts inline (thumbnails/expand, text+code views, baseline comparison modes, iteration history selection).
+- [ ] [commands/P2] Refactor `/aloop:start` and `/aloop:setup` command/prompt files into thin wrappers that delegate to CLI-first `aloop start` / `aloop setup`.
+- [ ] [orchestrator/P2] Add `aloop orchestrate --plan-only` and persist decomposition/wave metadata in `orchestrator.json`.
+- [ ] [orchestrator/P2] Implement orchestrator dispatch core (issue creation via `aloop gh`, wave gating, concurrency cap, child loop launch/worktree mapping).
+- [ ] [orchestrator/P2] Implement orchestrator PR lifecycle gates (CI/coverage/conflicts/lint + agent review) with merge/reopen/retry handling.
+- [ ] [orchestrator/P2] Implement user-feedback triage loop (`actionable`, `needs_clarification`, `question`, `out_of_scope`) with blocked-on-human pause/resume and processed-comment tracking.
+- [ ] [status/P2] Extend `aloop status` to show orchestrator tree state (orchestrator -> child sessions -> issue/PR mapping).
+
 - [ ] [cleanup/P3] Remove or relocate root-level `reproduce_json_escape_issue.sh` into a test harness so the repo root has no leftover debug script.
 - [ ] [acceptance/P3] Run final acceptance sweep against `SPEC.md` and refresh TODO completion states from actual code/test/grep results.
 
 ### Completed
+- [x] [security/P0] Expand `aloop/cli/src/commands/gh.test.ts` to cover: missing request file, invalid request JSON, unknown role, unknown operation, missing/invalid session config paths, missing `repo` in config, orchestrator label guards, and `enforced.repo` assertions on allowed paths.
+- [x] [security/P0] Enforce scoped-target policy in `evaluatePolicy`: child `issue-comment` must be limited to assigned issue, child `pr-comment` to child-created PRs, and orchestrator `issue-close`/comment operations must require `aloop/auto` scope validation (not comments-only placeholders).
 - [x] [security/P0] Remove scaffold fallback behavior from `aloop gh` session config loading in `aloop/cli/src/commands/gh.ts`: missing/invalid/malformed `config.json` (or missing `repo`) must hard-fail, log `gh_operation_denied`, and exit non-zero. This closes the current cross-repo trust-boundary hole.
 - [x] [review] Gate 5: Restore regression baseline — `gh.test.ts` uses `vitest` (`import { describe, it, expect, ... } from 'vitest'`) while all other tests use `node:test`/`node:assert`. Rewrite `gh.test.ts` to use the existing Node test stack so `npm --prefix aloop/cli test` and `npm --prefix aloop/cli run type-check` pass.
 - [x] [review] Gate 1: `evaluatePolicy` in `gh.ts` uses `payload.repo || 'owner/repo'` placeholder — never loads session config. Implement hard enforcement: load session repo from config, reject requests with mismatched repo.

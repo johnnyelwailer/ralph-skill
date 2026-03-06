@@ -351,6 +351,35 @@ test('ghCommand denies orchestrator issue-close without aloop/auto target valida
   }
 });
 
+test('ghCommand allows orchestrator issue-close with aloop/auto-scoped target labels', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'issue-close',
+    repo: 'test/repo',
+    issue_number: 42,
+    target_labels: ['aloop/auto'],
+  }), 'utf8');
+
+  try {
+    await ghCommand.parseAsync([
+      'issue-close',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'orchestrator',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation');
+    assert.equal(entries[0].type, 'issue-close');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
 test('ghCommand allows orchestrator comment operations with aloop/auto-scoped targets', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
@@ -375,6 +404,41 @@ test('ghCommand allows orchestrator comment operations with aloop/auto-scoped ta
     assert.equal(entries.length, 1);
     assert.equal(entries[0].event, 'gh_operation');
     assert.equal(entries[0].type, 'issue-comment');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand denies orchestrator issue-comment when aloop/auto is only in request labels', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'issue-comment',
+    repo: 'test/repo',
+    issue_number: 42,
+    labels: ['aloop/auto'],
+  }), 'utf8');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'issue-comment',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'orchestrator',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /aloop\/auto/i);
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }
