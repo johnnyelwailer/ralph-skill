@@ -3,6 +3,8 @@
 ## Current Phase: P1 Spec Parity Foundations (Entrypoint, Protocol, Proof, UX)
 
 ### In Progress
+- [ ] [review] Gate 3: `aloop/cli/aloop.mjs` is a newly added module with 0% branch coverage in `aloop/cli/coverage/coverage-summary.json`; add CLI entrypoint tests that execute `resolve`, `discover`, `scaffold`, `status`, `active`, `stop`, extended-command delegation, and error/help paths to raise branch coverage to >=90%. (priority: high)
+- [ ] [review] Gate 5: existing tests are regressing because `install.tests.ps1` still expects `claude/commands/aloop/start.md` to contain `node ~/.aloop/cli/aloop.mjs resolve` (`install.tests.ps1:154-158`), but the command now delegates to `aloop start`; update the assertion to the thin-wrapper behavior and rerun `Invoke-Pester ./install.tests.ps1` until all tests pass. (priority: high)
 
 ### Up Next
 - [x] [cli/P1] Make `aloop resolve` return a clear failure for unconfigured projects (or formally align callers/tests to accepted behavior) so Phase 1 acceptance is explicit and testable.
