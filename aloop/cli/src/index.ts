@@ -88,6 +88,7 @@ program
   .description('Show all active sessions and provider health')
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
+  .option('--watch', 'Auto-refresh status display')
   .action(statusCommand);
 
 program
