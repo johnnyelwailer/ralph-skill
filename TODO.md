@@ -12,7 +12,7 @@
 - [ ] [known-issues/P1] Add runtime version stamping in `install.ps1` output and include runtime version/timestamp in `loop.ps1`/`loop.sh` `session_start` logs. (priority: medium, makes drift diagnosable)
 - [ ] [known-issues/P1] Add runtime staleness warning in `aloop start` when installed runtime appears older than repo/runtime source. (priority: medium, reduces stale-runtime incidents)
 - [ ] [known-issues/P1] Add `aloop update` command to refresh `~/.aloop` runtime assets from the current repo checkout. (priority: medium, gives explicit remediation path)
-- [ ] [devcontainer/P1] Add `/aloop:devcontainer` command surfaces (`claude/commands/aloop/devcontainer.md` and `copilot/prompts/aloop-devcontainer.prompt.md`). (priority: high, required entrypoint)
+- [x] [devcontainer/P1] Add `/aloop:devcontainer` command surfaces (`claude/commands/aloop/devcontainer.md` and `copilot/prompts/aloop-devcontainer.prompt.md`). (priority: high, required entrypoint)
 - [ ] [devcontainer/P1] Implement initial devcontainer generation flow to create/augment `.devcontainer/devcontainer.json` based on project analysis. (priority: high, isolation foundation)
 - [ ] [devcontainer/P1] Add provider install hooks plus mount/env forwarding strategy in generated devcontainer config. (priority: high, container usability/security boundary)
 - [ ] [devcontainer/P1] Implement verification loop (`devcontainer build`, `up`, `exec`) with fail-fix-reverify behavior. (priority: high, acceptance gate)
