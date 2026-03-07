@@ -125,10 +125,10 @@ Aloop works with any of these AI coding agents — mix and match, or let them ta
 
 | Harness | Skill | Commands / Prompts |
 |---------|-------|--------------------|
-| Claude Code | `~/.claude/skills/$skillName/` | `~/.claude/commands/$skillName/` (5 slash commands) |
-| Codex CLI | `~/.codex/skills/$skillName/` | `~/.codex/commands/$skillName/` (5 slash commands) |
-| GH Copilot (VS Code) | `~/.copilot/skills/$skillName/` | `%APPDATA%\Code\User\prompts\` (5 `.prompt.md`) |
-| GH Copilot (VS Code Insiders) | `~/.copilot/skills/$skillName/` | `%APPDATA%\Code - Insiders\User\prompts\` (5 `.prompt.md`) |
+| Claude Code | `~/.claude/skills/$skillName/` | `~/.claude/commands/$skillName/` (6 slash commands) |
+| Codex CLI | `~/.codex/skills/$skillName/` | `~/.codex/commands/$skillName/` (6 slash commands) |
+| GH Copilot (VS Code) | `~/.copilot/skills/$skillName/` | `%APPDATA%\Code\User\prompts\` (6 `.prompt.md`) |
+| GH Copilot (VS Code Insiders) | `~/.copilot/skills/$skillName/` | `%APPDATA%\Code - Insiders\User\prompts\` (6 `.prompt.md`) |
 | Agents (generic) | `~/.agents/skills/$skillName/` | — |
 
 VS Code prompt files are installed automatically for any VS Code variant that is present — independently of which harness you select in the interactive menu.
@@ -143,6 +143,7 @@ In any project with Claude Code or Codex:
 /$skillName:setup     Configure Aloop for the current project
 /$skillName:start     Launch a loop
 /$skillName:status    Check running sessions
+/$skillName:dashboard Launch the dashboard
 /$skillName:stop      Stop a loop
 /$skillName:steer     Send a live steering instruction to a running loop
 ```
@@ -153,6 +154,7 @@ In VS Code (stable or Insiders) with GitHub Copilot, type `/` and select:
 /aloop-setup     Configure Aloop for the current project
 /aloop-start     Launch a loop
 /aloop-status    Check running sessions
+/aloop-dashboard Launch the dashboard
 /aloop-stop      Stop a loop
 /aloop-steer     Send a live steering instruction to a running loop
 ```
@@ -174,6 +176,7 @@ When no strong spec exists, setup defaults to a short interview to create/refine
     setup.md                    # /$skillName:setup — configure project
     start.md                    # /$skillName:start — launch loop
     status.md                   # /$skillName:status — check sessions
+    dashboard.md                # /$skillName:dashboard — launch dashboard
     stop.md                     # /$skillName:stop — stop loop
     steer.md                    # /$skillName:steer — live steering
 
@@ -186,6 +189,7 @@ When no strong spec exists, setup defaults to a short interview to create/refine
     aloop-setup.prompt.md       # /aloop-setup
     aloop-start.prompt.md       # /aloop-start
     aloop-status.prompt.md      # /aloop-status
+    aloop-dashboard.prompt.md   # /aloop-dashboard
     aloop-stop.prompt.md        # /aloop-stop
     aloop-steer.prompt.md       # /aloop-steer
 

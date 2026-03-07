@@ -6,7 +6,7 @@
 - [x] [cli/P1] Implement `aloop status --watch` end-to-end (CLI flag wiring in `src/index.ts`, watch loop in `src/commands/status.ts`, and tests) so `start.ts` terminal monitor path is no longer broken. (priority: high, currently `start.ts` launches unsupported command path)
 
 ### Up Next
-- [ ] [commands/P1] Add missing dashboard command wrappers: `claude/commands/aloop/dashboard.md` and `copilot/prompts/aloop-dashboard.prompt.md` so `/aloop:dashboard` is discoverable from both harnesses. (priority: high, spec UX parity)
+- [x] [commands/P1] Add missing dashboard command wrappers: `claude/commands/aloop/dashboard.md` and `copilot/prompts/aloop-dashboard.prompt.md` so `/aloop:dashboard` is discoverable from both harnesses. (priority: high, spec UX parity)
 - [ ] [known-issues/P1] Add repo `.editorconfig` enforcing `CRLF` for `*.ps1` to prevent mixed-EOL parse failures. (priority: high, blocks reliable PowerShell edits)
 - [ ] [known-issues/P1] Normalize line endings during `install.ps1` runtime copy (`loop.ps1` as CRLF, `loop.sh` as LF). (priority: high, prevents stale/corrupt installed runtime)
 - [ ] [known-issues/P1] Add Git Bash/posix-path normalization in `aloop/cli/src/commands/start.ts` before launching `loop.ps1` (`/c/...` -> `C:\...`). (priority: high, Windows cross-shell reliability)
