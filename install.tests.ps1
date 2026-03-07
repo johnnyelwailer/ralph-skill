@@ -422,6 +422,26 @@ Describe 'Installer behavioral branches' {
         (Join-Path $testHome '.aloop\sessions') | Should -Exist
     }
 
+    It 'normalizes installed loop.ps1 to CRLF line endings' {
+        Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-Force') | Out-Null
+
+        $loopPs1Path = Join-Path $testHome '.aloop\bin\loop.ps1'
+        $loopPs1Text = [System.IO.File]::ReadAllText($loopPs1Path)
+
+        $loopPs1Text | Should -Match "`r`n"
+        $loopPs1Text | Should -Not -Match "(?<!`r)`n"
+    }
+
+    It 'normalizes installed loop.sh to LF line endings' {
+        Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-Force') | Out-Null
+
+        $loopShPath = Join-Path $testHome '.aloop\bin\loop.sh'
+        $loopShText = [System.IO.File]::ReadAllText($loopShPath)
+
+        $loopShText | Should -Match "`n"
+        $loopShText | Should -Not -Match "`r`n"
+    }
+
     It 'copies commands only for harnesses where HasCommands is true' {
         Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-Force') | Out-Null
 

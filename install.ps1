@@ -216,6 +216,36 @@ function Copy-TreeItem {
     }
 }
 
+function Normalize-LoopScriptLineEndings {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][ValidateSet('CRLF', 'LF')][string]$LineEnding
+    )
+
+    if (-not (Test-Path $Path)) {
+        Write-Warning "Line ending normalization skipped; file not found: $Path"
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host "  [DRY RUN] Normalize line endings ($LineEnding): $Path" -ForegroundColor DarkGray
+        return
+    }
+
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $content = [System.IO.File]::ReadAllText($Path, $utf8NoBom)
+    $normalizedLf = $content -replace "`r`n", "`n" -replace "`r", "`n"
+
+    $normalized = if ($LineEnding -eq 'CRLF') {
+        $normalizedLf -replace "`n", "`r`n"
+    } else {
+        $normalizedLf
+    }
+
+    [System.IO.File]::WriteAllText($Path, $normalized, $utf8NoBom)
+    Write-Host "  Normalized line endings ($LineEnding): $Path" -ForegroundColor Green
+}
+
 # ============================================================================
 # INTERACTIVE UI
 # ============================================================================
@@ -508,6 +538,8 @@ Copy-TreeItem `
     -Source (Join-Path $scriptDir "$skillName\bin") `
     -Destination (Join-Path $aloopDir "bin") `
     -Label "bin"
+Normalize-LoopScriptLineEndings -Path (Join-Path $aloopDir "bin\loop.ps1") -LineEnding CRLF
+Normalize-LoopScriptLineEndings -Path (Join-Path $aloopDir "bin\loop.sh") -LineEnding LF
 
 # --- Runtime: templates ---
 Write-Host ""
