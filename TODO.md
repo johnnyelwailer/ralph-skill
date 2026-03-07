@@ -7,7 +7,7 @@
 
 ### Up Next
 - [x] [commands/P1] Add missing dashboard command wrappers: `claude/commands/aloop/dashboard.md` and `copilot/prompts/aloop-dashboard.prompt.md` so `/aloop:dashboard` is discoverable from both harnesses. (priority: high, spec UX parity)
-- [ ] [known-issues/P1] Add repo `.editorconfig` enforcing `CRLF` for `*.ps1` to prevent mixed-EOL parse failures. (priority: high, blocks reliable PowerShell edits)
+- [x] [known-issues/P1] Add repo `.editorconfig` enforcing `CRLF` for `*.ps1` to prevent mixed-EOL parse failures. (priority: high, blocks reliable PowerShell edits)
 - [ ] [known-issues/P1] Normalize line endings during `install.ps1` runtime copy (`loop.ps1` as CRLF, `loop.sh` as LF). (priority: high, prevents stale/corrupt installed runtime)
 - [ ] [known-issues/P1] Add Git Bash/posix-path normalization in `aloop/cli/src/commands/start.ts` before launching `loop.ps1` (`/c/...` -> `C:\...`). (priority: high, Windows cross-shell reliability)
 - [ ] [known-issues/P1] Add defensive posix-to-Windows path normalization in `aloop/bin/loop.ps1` parameter handling for direct invocations. (priority: medium, runtime robustness)
