@@ -10,6 +10,7 @@ import type { DiscoveryResult } from './project.js';
 interface SpawnRecord {
   command: string;
   args: string[];
+  cwd?: string;
 }
 
 async function setupWorkspace(prefix: string): Promise<{ root: string; homeDir: string; projectRoot: string; discovery: DiscoveryResult }> {
@@ -242,6 +243,58 @@ test('startCommandWithDeps falls back to in-place when git worktree add fails', 
   assert.equal(result.monitor_mode, 'none');
   assert.equal(result.dashboard_url, null);
   assert.equal(result.monitor_pid, null);
+});
+
+test('startCommandWithDeps normalizes Git Bash work paths before launching loop.ps1 on Windows', async () => {
+  const fixture = await setupWorkspace('aloop-start-win32-path-normalization-');
+  await writeFile(path.join(fixture.homeDir, '.aloop', 'bin', 'loop.ps1'), '# noop\n', 'utf8');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'claude'",
+      "mode: 'plan-build-review'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  fixture.discovery.project.root = '/c/Users/pj/demo-repo';
+
+  const launchCalls: SpawnRecord[] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[], options?: { cwd?: string }) => {
+        launchCalls.push({ command, args: [...(args ?? [])], cwd: options?.cwd });
+        return { pid: 6161, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'win32',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.work_dir, '/c/Users/pj/demo-repo');
+  assert.equal(launchCalls.length, 1);
+  assert.equal(launchCalls[0].command, 'pwsh');
+  const workDirArgIndex = launchCalls[0].args.indexOf('-WorkDir');
+  assert.equal(workDirArgIndex > -1, true);
+  assert.equal(launchCalls[0].args[workDirArgIndex + 1], 'C:\\Users\\pj\\demo-repo');
+  assert.equal(launchCalls[0].cwd, 'C:\\Users\\pj\\demo-repo');
 });
 
 test('startCommandWithDeps launches dashboard monitor and opens browser when on_start.dashboard is enabled', async () => {

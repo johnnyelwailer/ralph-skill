@@ -349,6 +349,16 @@ function resolvePowerShellBinary(deps: StartDeps): string {
   throw new Error('PowerShell is required to launch loop.ps1 but neither pwsh nor powershell was found.');
 }
 
+function normalizeGitBashPathForWindows(value: string): string {
+  const match = value.match(/^[\\/](?![\\/])([a-zA-Z])(?:[\\/](.*))?$/);
+  if (!match) {
+    return value;
+  }
+  const drive = match[1].toUpperCase();
+  const tail = (match[2] ?? '').replace(/[\\/]+/g, '\\');
+  return tail.length > 0 ? `${drive}:\\${tail}` : `${drive}:\\`;
+}
+
 async function readActiveMap(activePath: string, deps: StartDeps): Promise<Record<string, unknown>> {
   if (!deps.existsSync(activePath)) {
     return {};
@@ -618,25 +628,29 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   const modelProviders = collectModelProviders(enabledProviders, selectedProvider);
   const roundRobinCsv = roundRobinOrder.join(',');
   const loopBinDir = path.join(aloopRoot, 'bin');
+  const launchWorkDir = deps.platform === 'win32' ? normalizeGitBashPathForWindows(workDir) : workDir;
   let command: string;
   let args: string[];
 
   if (deps.platform === 'win32') {
-    const loopScript = path.join(loopBinDir, 'loop.ps1');
+    const loopScript = normalizeGitBashPathForWindows(path.join(loopBinDir, 'loop.ps1'));
     if (!deps.existsSync(loopScript)) {
       throw new Error(`Loop script not found: ${loopScript}`);
     }
+    const promptsDirForPowerShell = normalizeGitBashPathForWindows(promptsDir);
+    const sessionDirForPowerShell = normalizeGitBashPathForWindows(sessionDir);
+    const workDirForPowerShell = normalizeGitBashPathForWindows(workDir);
     command = resolvePowerShellBinary(deps);
     args = [
       '-NoProfile',
       '-File',
       loopScript,
       '-PromptsDir',
-      promptsDir,
+      promptsDirForPowerShell,
       '-SessionDir',
-      sessionDir,
+      sessionDirForPowerShell,
       '-WorkDir',
-      workDir,
+      workDirForPowerShell,
       '-Mode',
       resolvedMode,
       '-Provider',
@@ -732,7 +746,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   );
 
   const child = deps.spawn(command, args, {
-    cwd: workDir,
+    cwd: launchWorkDir,
     detached: true,
     stdio: 'ignore',
     env: { ...deps.env },
@@ -779,16 +793,16 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
       monitorPid = spawnDetached(
         deps,
         'aloop',
-        ['dashboard', '--port', String(dashboardPort), '--session-dir', sessionDir, '--workdir', workDir],
-        workDir,
+        ['dashboard', '--port', String(dashboardPort), '--session-dir', sessionDir, '--workdir', launchWorkDir],
+        launchWorkDir,
       );
       if (!monitorPid) {
         warnings.push('Failed to launch dashboard monitor automatically. You can run `aloop dashboard` manually.');
       } else if (onStartBehavior.autoOpen) {
-        const opened = openInBrowser(deps, dashboardUrl, workDir);
+        const opened = openInBrowser(deps, dashboardUrl, launchWorkDir);
         if (!opened.ok) {
           warnings.push(`Failed to auto-open dashboard URL (${opened.message ?? 'unknown error'}); trying terminal monitor.`);
-          const terminalLaunch = openStatusTerminal(deps, homeDir, workDir);
+          const terminalLaunch = openStatusTerminal(deps, homeDir, launchWorkDir);
           if (!terminalLaunch.ok) {
             warnings.push(`Failed to open terminal monitor fallback (${terminalLaunch.message ?? 'unknown error'}).`);
           }
@@ -796,7 +810,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
       }
     }
   } else if (onStartBehavior.mode === 'terminal' && onStartBehavior.autoOpen) {
-    const terminalLaunch = openStatusTerminal(deps, homeDir, workDir);
+    const terminalLaunch = openStatusTerminal(deps, homeDir, launchWorkDir);
     if (!terminalLaunch.ok) {
       warnings.push(`Failed to launch terminal monitor (${terminalLaunch.message ?? 'unknown error'}).`);
     }
