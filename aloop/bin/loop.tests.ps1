@@ -54,9 +54,27 @@ PROMPT_TEXT="$(cat)"
 TODO_FILE="${PWD}/TODO.md"
 if echo "$PROMPT_TEXT" | grep -q "Building Mode" && grep -q -- '- \[ \]' "$TODO_FILE" 2>/dev/null; then
     sed -i 's/- \[ \]/- [x]/g' "$TODO_FILE"
-elif echo "$PROMPT_TEXT" | grep -q "Review Mode" && [ "$SCENARIO" = "reject-once" ] && [ "$REJECTED" != "true" ]; then
-    REJECTED="true"
-    sed -i 's/- \[x\]/- [ ]/g' "$TODO_FILE"
+elif echo "$PROMPT_TEXT" | grep -q "Review Mode"; then
+    VERDICT_FILE=$(echo "$PROMPT_TEXT" | grep -A 1 "write a JSON verdict file at:" | tail -n 1 | tr -d '\r')
+    ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE '"iteration": [0-9]+' | grep -oE '[0-9]+' | head -n 1)
+    if [ "$SCENARIO" = "reject-once" ] && [ "$REJECTED" != "true" ]; then
+        REJECTED="true"
+        sed -i 's/- \[x\]/- [ ]/g' "$TODO_FILE"
+        if [ -n "$VERDICT_FILE" ]; then
+            printf '{\n  "iteration": %s,\n  "verdict": "FAIL",\n  "summary": "rejected"\n}\n' "$ITER_NUM" > "$VERDICT_FILE"
+        fi
+    else
+        if [ -n "$VERDICT_FILE" ]; then
+            printf '{\n  "iteration": %s,\n  "verdict": "PASS",\n  "summary": "approved"\n}\n' "$ITER_NUM" > "$VERDICT_FILE"
+        fi
+    fi
+elif echo "$PROMPT_TEXT" | grep -q "Proof Mode"; then
+    ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE 'iter-[0-9]+' | grep -oE '[0-9]+' | head -n 1)
+    if [ -n "$ITER_NUM" ]; then
+        mkdir -p "../session/artifacts/iter-$ITER_NUM"
+        echo '[]' > "../session/artifacts/iter-$ITER_NUM/proof-manifest.json"
+        echo 'dummy artifact' > "../session/artifacts/iter-$ITER_NUM/dummy.txt"
+    fi
 fi
 [ -n "$STATE_FILE" ] && printf 'calls=%d\nscenario=%s\nrejected=%s\n' "$CALLS" "$SCENARIO" "$REJECTED" > "$STATE_FILE"
 echo "Fake provider: call=$CALLS"
@@ -80,7 +98,7 @@ exit 0
             [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
-            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof iter-<N>.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
             $stateFile = Join-Path $testDir 'claude-state.txt'
             [System.IO.File]::WriteAllText($stateFile, "calls=0`nscenario=$Scenario`nrejected=`n", $utf8NoBom)
@@ -200,6 +218,39 @@ exit 0
         $appIdx = [array]::IndexOf([string[]]$events, 'final_review_approved')
         $rejIdx | Should -BeLessThan $appIdx
     }
+
+    It 'approved review updates proof baselines' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e      = New-ShLoopEnv -Scenario 'approve'
+        $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 8
+        $events = Get-ShLogEvents -LogFile $e.LogFile
+        $result.ExitCode | Should -Be 0
+        $events | Should -Contain 'baselines_updated'
+        Test-Path "$($e.SessionDir)/artifacts/baselines/dummy.txt" | Should -Be $true
+        Test-Path "$($e.SessionDir)/artifacts/baselines/proof-manifest.json" | Should -Be $false
+    }
+
+    It 'rejected review preserves existing baselines and updates them only on final approval' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e      = New-ShLoopEnv -Scenario 'reject-once'
+        
+        $baselineDir = Join-Path $e.SessionDir 'artifacts/baselines'
+        New-Item -ItemType Directory -Force $baselineDir | Out-Null
+        Set-Content (Join-Path $baselineDir 'preserved.txt') 'old-baseline'
+
+        $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 14
+        $events = Get-ShLogEvents -LogFile $e.LogFile
+        $result.ExitCode | Should -Be 0
+        
+        $updIdx = [array]::IndexOf([string[]]$events, 'baselines_updated')
+        $rejIdx = [array]::IndexOf([string[]]$events, 'final_review_rejected')
+        
+        $updIdx | Should -BeGreaterThan -1
+        $rejIdx | Should -BeLessThan $updIdx
+        
+        Test-Path (Join-Path $baselineDir 'preserved.txt') | Should -Be $true
+        Test-Path (Join-Path $baselineDir 'dummy.txt') | Should -Be $true
+    }
 }
 
 
@@ -286,7 +337,7 @@ exit 0
             [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
-            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof iter-<N>.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
             $stateFile = Join-Path $testDir 'retry-state.txt'
             [System.IO.File]::WriteAllText($stateFile, "calls=0`nplan_fails=$PlanFails`nbuild_fails=$BuildFails`n", $utf8NoBom)
@@ -430,12 +481,31 @@ $content  = if (Test-Path $todoFile) { Get-Content $todoFile -Raw } else { '' }
 if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
     # Incomplete tasks exist — simulate successful build by marking all done
     ($content -replace '- \[ \]', '- [x]') | Set-Content $todoFile
-} elseif (($promptText -match 'Review Mode') -and ($state.scenario -eq 'reject-once') -and -not $state.rejected) {
-    # All done and first rejection — simulate review that reopens tasks
-    $state.rejected = $true
-    ($content -replace '- \[x\]', '- [ ]') | Set-Content $todoFile
+} elseif ($promptText -match 'Review Mode') {
+    $iterNum = if ($promptText -match '"iteration":\s*(\d+)') { $matches[1] } else { 0 }
+    $verdictFile = if ($promptText -match 'write a JSON verdict file at:(?:\r?\n)(.*?)(?:\r?\n)Schema:') { $matches[1].Trim() } else { '' }
+
+    if (($state.scenario -eq 'reject-once') -and -not $state.rejected) {
+        # All done and first rejection — simulate review that reopens tasks
+        $state.rejected = $true
+        ($content -replace '- \[x\]', '- [ ]') | Set-Content $todoFile
+        if ($verdictFile) {
+            "{`n  `"iteration`": $iterNum,`n  `"verdict`": `"FAIL`",`n  `"summary`": `"rejected`"`n}" | Set-Content $verdictFile
+        }
+    } else {
+        if ($verdictFile) {
+            "{`n  `"iteration`": $iterNum,`n  `"verdict`": `"PASS`",`n  `"summary`": `"approved`"`n}" | Set-Content $verdictFile
+        }
+    }
+} elseif ($promptText -match 'Proof Mode') {
+    if ($promptText -match 'iter-(\d+)') {
+        $iterNum = $matches[1]
+        $artifactDir = Join-Path $PWD "..\session\artifacts\iter-$iterNum"
+        if (-not (Test-Path $artifactDir)) { New-Item -ItemType Directory -Force $artifactDir | Out-Null }
+        "[]" | Set-Content (Join-Path $artifactDir 'proof-manifest.json')
+        "dummy artifact" | Set-Content (Join-Path $artifactDir 'dummy.txt')
+    }
 }
-# else: all done and no rejection — simulate review approval (do nothing)
 
 if ($stateFile) { $state | ConvertTo-Json | Set-Content $stateFile }
 Write-Output "Fake provider: call=$($state.calls)"
@@ -460,7 +530,7 @@ exit 0
             Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
-            Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof."
+            Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof iter-<N>."
             Set-Content (Join-Path $promptDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
             $stateFile = Join-Path $testDir 'claude-state.json'
             [pscustomobject]@{ calls = 0; scenario = $Scenario; rejected = $false } |
@@ -574,6 +644,37 @@ exit 0
         $appIdx = [array]::IndexOf([string[]]$events, 'final_review_approved')
         $rejIdx | Should -BeLessThan $appIdx
     }
+
+    It 'approved review updates proof baselines' {
+        $e      = New-LoopEnv -Scenario 'approve'
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 5
+        $events = Get-LogEvents -LogFile $e.LogFile
+        $result.ExitCode | Should -Be 0
+        $events | Should -Contain 'baselines_updated'
+        Test-Path "$($e.SessionDir)/artifacts/baselines/dummy.txt" | Should -Be $true
+        Test-Path "$($e.SessionDir)/artifacts/baselines/proof-manifest.json" | Should -Be $false
+    }
+
+    It 'rejected review preserves existing baselines and updates them only on final approval' {
+        $e      = New-LoopEnv -Scenario 'reject-once'
+        
+        $baselineDir = Join-Path $e.SessionDir 'artifacts/baselines'
+        New-Item -ItemType Directory -Force $baselineDir | Out-Null
+        Set-Content (Join-Path $baselineDir 'preserved.txt') 'old-baseline'
+
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 12
+        $events = Get-LogEvents -LogFile $e.LogFile
+        $result.ExitCode | Should -Be 0
+        
+        $updIdx = [array]::IndexOf([string[]]$events, 'baselines_updated')
+        $rejIdx = [array]::IndexOf([string[]]$events, 'final_review_rejected')
+        
+        $updIdx | Should -BeGreaterThan -1
+        $rejIdx | Should -BeLessThan $updIdx
+        
+        Test-Path (Join-Path $baselineDir 'preserved.txt') | Should -Be $true
+        Test-Path (Join-Path $baselineDir 'dummy.txt') | Should -Be $true
+    }
 }
 
 # ============================================================================
@@ -637,7 +738,7 @@ exit 0
             Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
-            Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof."
+            Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof iter-<N>."
             Set-Content (Join-Path $promptDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
             $stateFile = Join-Path $testDir 'retry-state.json'
             [pscustomobject]@{ calls = 0; planFails = $PlanFails; buildFails = $BuildFails } |
