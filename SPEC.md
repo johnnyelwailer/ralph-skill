@@ -2075,5 +2075,6 @@ Three session launch modes are needed:
 - [ ] **resume**: log the resume point: "Resuming from iteration N (phase: build)"
 - [ ] **restart**: current behavior, no changes needed
 - [ ] **start**: create new session directory, fresh state
+- [ ] All other params (provider, model, max iterations, mode) remain independently overridable regardless of launch mode — e.g., `resume --max-iterations 200` or `restart --provider codex --mode plan-build`
 - [ ] Both `loop.ps1` and `loop.sh` must implement this
 - [ ] `/aloop:start` and `/aloop:resume` as separate skills, or `/aloop:start` asks which mode
