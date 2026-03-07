@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
-import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtemp, mkdir, readFile, writeFile, chmod } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { startDashboardServer } from './dashboard.js';
 
 async function reservePort(): Promise<number> {
@@ -70,6 +71,55 @@ async function waitFor(check: () => Promise<boolean>, timeoutMs = 3_000): Promis
     await sleep(50);
   }
   throw new Error('Timed out waiting for condition.');
+}
+
+function toBashPath(nativePath: string): string {
+  if (process.platform !== 'win32') {
+    return nativePath;
+  }
+
+  const normalized = nativePath.replace(/\\/g, '/');
+  const driveMatch = normalized.match(/^([A-Za-z]):\/(.*)$/);
+  if (driveMatch) {
+    return `/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`;
+  }
+  return normalized;
+}
+
+function quoteBash(value: string): string {
+  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+async function runBashCommand(command: string, envOverrides: NodeJS.ProcessEnv = {}, timeoutMs = 20_000): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return await new Promise((resolve, reject) => {
+    const child = spawn('bash', ['-lc', command], {
+      env: { ...process.env, ...envOverrides },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+    }, timeoutMs);
+
+    child.once('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    child.once('close', (code) => {
+      clearTimeout(timer);
+      resolve({ code, stdout, stderr });
+    });
+  });
 }
 
 test('GET /api/state includes active and recent sessions from runtime state files', async () => {
@@ -326,6 +376,122 @@ test('GH request processor handles archive collision with duplicate file names',
       .filter(Boolean)
       .map((line) => JSON.parse(line) as { event?: string });
     assert.equal(logs.filter((entry) => entry.event === 'gh_request_processed').length, 1);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('host monitor processes requests while loop.sh runtime path executes', async (t) => {
+  const bashCheck = spawnSync('bash', ['-lc', 'exit 0'], { encoding: 'utf8' });
+  if (bashCheck.status !== 0) {
+    t.skip('bash is not available in PATH');
+    return;
+  }
+
+  const calls: string[] = [];
+  const fixture = await createServerFixture({
+    requestPollIntervalMs: 50,
+    ghCommandRunner: async (operation, _sessionId, requestPath) => {
+      calls.push(`${operation}|${path.basename(requestPath)}`);
+      if (operation === 'pr-create') {
+        return { exitCode: 0, output: '{"pr_number":22}' };
+      }
+      if (operation === 'pr-comment') {
+        return { exitCode: 0, output: 'comment saved' };
+      }
+      return { exitCode: 1, output: 'permission denied' };
+    },
+  });
+
+  const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
+  const processedDir = path.join(requestsDir, 'processed');
+  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+  const promptsDir = path.join(fixture.root, 'prompts');
+  const fakeBinDir = path.join(fixture.root, 'fake-bin');
+  const providerStateFile = path.join(fixture.root, 'provider-state.txt');
+  const runtimeStub = path.join(fixture.root, 'runtime-stub');
+  const loopScriptNative = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../bin/loop.sh');
+
+  try {
+    await mkdir(requestsDir, { recursive: true });
+    await mkdir(promptsDir, { recursive: true });
+    await mkdir(fakeBinDir, { recursive: true });
+    await mkdir(runtimeStub, { recursive: true });
+
+    await writeFile(path.join(fixture.workdir, 'TODO.md'), '- [ ] Build something\n', 'utf8');
+    await writeFile(path.join(promptsDir, 'PROMPT_build.md'), '# Building Mode\nBuild the task.\n', 'utf8');
+
+    await writeFile(
+      path.join(fakeBinDir, 'claude'),
+      [
+        '#!/bin/bash',
+        'STATE_FILE="${FAKE_LOOP_PROVIDER_STATE:-}"',
+        'if [ -n "$STATE_FILE" ]; then',
+        '  COUNT=0',
+        '  if [ -f "$STATE_FILE" ]; then',
+        '    COUNT="$(cat "$STATE_FILE" 2>/dev/null || echo 0)"',
+        '  fi',
+        '  COUNT=$((COUNT + 1))',
+        '  printf \'%s\\n\' "$COUNT" > "$STATE_FILE"',
+        'fi',
+        'TODO_FILE="${PWD}/TODO.md"',
+        'if [ -f "$TODO_FILE" ]; then',
+        '  sed -i \'s/- \\[ \\]/- [x]/g\' "$TODO_FILE" 2>/dev/null || true',
+        'fi',
+        'echo "fake claude ok"',
+      ].join('\n'),
+      'utf8',
+    );
+    await chmod(path.join(fakeBinDir, 'claude'), 0o755);
+
+    await writeFile(path.join(requestsDir, '002-pr-comment.json'), '{"type":"pr-comment","pr_number":22}', 'utf8');
+    await writeFile(path.join(requestsDir, '001-pr-create.json'), '{"type":"pr-create","title":"demo"}', 'utf8');
+    await writeFile(path.join(requestsDir, '003-bad.json'), 'not valid json {{{', 'utf8');
+    await writeFile(path.join(requestsDir, '004-issue-comment.json'), '{"type":"issue-comment","issue_number":9}', 'utf8');
+
+    const loopCommand = [
+      `export PATH=${quoteBash(toBashPath(fakeBinDir))}:$PATH`,
+      `export FAKE_LOOP_PROVIDER_STATE=${quoteBash(toBashPath(providerStateFile))}`,
+      `bash ${quoteBash(toBashPath(loopScriptNative))} --prompts-dir ${quoteBash(toBashPath(promptsDir))} --session-dir ${quoteBash(toBashPath(fixture.sessionDir))} --work-dir ${quoteBash(toBashPath(fixture.workdir))} --mode build --provider claude --max-iterations 1`,
+    ].join('; ');
+    const loopResult = await runBashCommand(loopCommand, { ALOOP_RUNTIME_DIR: runtimeStub }, 30_000);
+    assert.equal(loopResult.code, 0, `loop.sh exited non-zero.\nstdout:\n${loopResult.stdout}\nstderr:\n${loopResult.stderr}`);
+
+    await waitFor(async () => {
+      try {
+        await readFile(path.join(processedDir, '001-pr-create.json'), 'utf8');
+        await readFile(path.join(processedDir, '002-pr-comment.json'), 'utf8');
+        await readFile(path.join(processedDir, '003-bad.json'), 'utf8');
+        await readFile(path.join(processedDir, '004-issue-comment.json'), 'utf8');
+        return true;
+      } catch {
+        return false;
+      }
+    }, 5_000);
+
+    assert.deepEqual(calls, [
+      'pr-create|001-pr-create.json',
+      'pr-comment|002-pr-comment.json',
+      'issue-comment|004-issue-comment.json',
+    ]);
+
+    const createResponse = JSON.parse(await readFile(path.join(responsesDir, '001-pr-create.json'), 'utf8')) as Record<string, unknown>;
+    const commentResponse = JSON.parse(await readFile(path.join(responsesDir, '002-pr-comment.json'), 'utf8')) as Record<string, unknown>;
+    const malformedResponse = JSON.parse(await readFile(path.join(responsesDir, '003-bad.json'), 'utf8')) as Record<string, unknown>;
+    const failedResponse = JSON.parse(await readFile(path.join(responsesDir, '004-issue-comment.json'), 'utf8')) as Record<string, unknown>;
+
+    assert.equal(createResponse.status, 'success');
+    assert.deepEqual(createResponse.gh, { pr_number: 22 });
+    assert.equal(commentResponse.status, 'success');
+    assert.equal(commentResponse.gh, 'comment saved');
+    assert.equal(malformedResponse.status, 'error');
+    assert.equal(typeof malformedResponse.error, 'string');
+    assert.equal(failedResponse.status, 'error');
+    assert.match(String(failedResponse.error), /failed with exit code 1/);
+    assert.match(String(failedResponse.error), /permission denied/);
+
+    const providerCallCount = Number.parseInt((await readFile(providerStateFile, 'utf8')).trim(), 10);
+    assert.ok(Number.isFinite(providerCallCount) && providerCallCount >= 1);
   } finally {
     await fixture.handle.close();
   }
