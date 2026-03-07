@@ -3,29 +3,33 @@
 ## Current Phase: P1 Spec Parity Completion (Proof + Protocol + UX)
 
 ### In Progress
-- [ ] [review] Gate 1: Baseline updates are coupled to commit subject text (`chore(review): PASS`) in both runtimes (`aloop/bin/loop.ps1:1434-1436`, `aloop/bin/loop.sh:1316-1318`), so approved reviews with the documented `chore(review): approve — gates 1-5 pass` format never update baselines; replace subject-string matching with a deterministic approval signal and keep rejection behavior unchanged. (priority: high)
-- [ ] [review] Gate 2: Add runtime regression tests for baseline lifecycle branches that are currently untested—specifically prove baselines update on approved review and do not update on rejected review in both `loop.ps1` and `loop.sh` suites (`aloop/bin/loop.tests.ps1`). (priority: high)
-- [ ] [review] Gate 3: Branch-coverage evidence for the newly added proof/baseline paths is missing (`force proof` + manifest injection + baseline update paths in `aloop/bin/loop.ps1` and `aloop/bin/loop.sh`); add coverage-reporting assertions and tests so these new branches are measured and meet >=80%. (priority: high)
-- [ ] [review] Gate 4: `aloop/templates/PROMPT_review.md` now declares "5 quality gates" but introduces "Gate 6"; reconcile the gate count/wording so the review contract is internally consistent. (priority: medium)
-- [x] [proof/P1] Add `PROMPT_proof.md` to `aloop/templates/` and wire scaffold/install/template validation + tests so proof is a first-class prompt alongside plan/build/review/steer. (priority: highest, unblocks all proof-runtime work)
+- [x] [review] Gate 1: Baseline updates are coupled to commit subject text (`chore(review): PASS`) in both runtimes (`loop.ps1:1435`, `loop.sh:1317`); replace fragile subject-string matching with a deterministic approval signal (e.g., a `review-verdict.json` file or exit-code convention) and keep rejection behavior unchanged. (priority: high)
+- [ ] [review] Gate 2: No runtime regression tests exist for baseline lifecycle in `loop.tests.ps1` or any shell test file — specifically, no tests prove baselines update on approved review or are preserved on rejected review. Add these tests. (priority: high)
+- [ ] [review] Gate 3: Branch-coverage evidence for newly added proof/baseline paths is missing — no tests cover `force proof`, manifest injection, or baseline update branches in either runtime; add coverage-reporting assertions so these branches are measured and meet >=80%. (priority: high)
+- [ ] [review] Gate 4: `PROMPT_review.md` header says "5 quality gates" (lines 7, 17, 24) and approval text says "gates 1-5 pass" (lines 99, 101), but Gate 6 (Proof Verification) is listed at line 71; reconcile by updating to "6 quality gates" and "gates 1-6 pass" throughout. (priority: medium)
 
 ### Up Next
-- [x] [runtime/P1] Upgrade both runtimes (`loop.ps1`, `loop.sh`) from 5-step to 6-step cycle (`plan -> build x3 -> proof -> review`), including cycle-position math and forced-phase/retry-same-phase compatibility. (priority: highest, core behavior gap)
-- [x] [proof/P1] Implement proof artifact persistence per iteration (`artifacts/iter-<N>/`) and write `proof-manifest.json` (including explicit skip protocol) consumed by review. (priority: high, required acceptance path)
-- [x] [proof/P1] Add baseline lifecycle integration: only update baselines after approved review; preserve previous baselines on rejection. (priority: high, prevents regressions)
-- [ ] [security/P1] Implement convention-file GH protocol in `loop.ps1`: process `.aloop/requests/*.json` via `aloop gh`, emit `.aloop/responses/*.json`, then archive to `.aloop/requests/processed/` in deterministic order. (priority: high, trust-boundary requirement)
-- [ ] [security/P1] Implement equivalent convention-file GH protocol in `loop.sh` with parity for ordering, response writing, archival, and audit logging. (priority: high, cross-platform parity)
-- [ ] [cli/P1] Implement `aloop status --watch` refresh mode and ensure `aloop start` terminal monitor path uses a supported status flag. (priority: high, current start fallback references unsupported flag)
-- [ ] [commands/P1] Add missing dashboard command assets: `claude/commands/aloop/dashboard.md` and `copilot/prompts/aloop-dashboard.prompt.md` as thin wrappers to `aloop dashboard`. (priority: medium, command-surface parity)
-- [ ] [dashboard/P2] Add secure artifact endpoint `/api/artifacts/<iteration>/<filename>` and include proof metadata in `/api/state` + SSE payloads. (priority: medium, proof UX dependency)
-- [ ] [dashboard/P2] Add multi-session support (`/api/state?session=<id>`, `/events?session=<id>`) and frontend session switching with SSE rebind. (priority: medium, required UX target)
-- [ ] [orchestrator/P2] Add `aloop orchestrate --plan-only` and persisted orchestration state (`orchestrator.json`) for decomposition/wave planning without dispatch. (priority: medium, orchestrator foundation)
+- [ ] [security/P1] Implement convention-file GH protocol in `loop.ps1`: process `.aloop/requests/*.json` via `aloop gh`, emit `.aloop/responses/*.json`, then archive to `.aloop/requests/processed/` in deterministic order. No implementation exists currently. (priority: high, trust-boundary requirement)
+- [ ] [security/P1] Implement equivalent convention-file GH protocol in `loop.sh` with parity for ordering, response writing, archival, and audit logging. No implementation exists currently. (priority: high, cross-platform parity)
+- [ ] [cli/P1] Implement `aloop status --watch` refresh mode (no `--watch` flag exists anywhere in the CLI) and ensure `aloop start` terminal monitor path uses a supported status flag. (priority: high, current start fallback references unsupported flag)
+- [ ] [commands/P1] Add missing dashboard command assets: `claude/commands/aloop/dashboard.md` and `copilot/prompts/aloop-dashboard.prompt.md` as thin wrappers to `aloop dashboard`. Neither file exists. (priority: medium, command-surface parity)
+- [ ] [dashboard/P2] Add secure artifact endpoint `/api/artifacts/<iteration>/<filename>` and include proof metadata in `/api/state` + SSE payloads. No artifact endpoint or proof metadata exists in dashboard code. (priority: medium, proof UX dependency)
+- [ ] [dashboard/P2] Add multi-session support (`/api/state?session=<id>`, `/events?session=<id>`) and frontend session switching with SSE rebind. No session parameter support exists in dashboard API. (priority: medium, required UX target)
+- [ ] [orchestrator/P2] Add `aloop orchestrate --plan-only` and persisted orchestration state (`orchestrator.json`) for decomposition/wave planning without dispatch. No orchestrate command exists (only role-based policy in `aloop gh`). (priority: medium, orchestrator foundation)
 - [ ] [orchestrator/P2] Implement orchestrator dispatch core: issue creation via `aloop gh`, dependency/wave gating, concurrency caps, child loop launch, and worktree/branch mapping. (priority: medium, execution core)
 - [ ] [orchestrator/P2] Implement PR lifecycle gates (CI/coverage/conflicts/lint + agent review) with merge/reopen/retry handling. (priority: medium, safe integration)
-- [ ] [triage/P2] Extend `aloop gh` with triage operations (`issue-comments`, `pr-comments`, blocked label add/remove) under existing policy model. (priority: medium, triage prerequisite)
+- [ ] [triage/P2] Extend `aloop gh` with triage operations (`issue-comments`, `pr-comments`, blocked label add/remove) under existing policy model. No triage operations exist in `aloop gh`. (priority: medium, triage prerequisite)
 - [ ] [triage/P2] Implement comment triage loop (`actionable`, `needs_clarification`, `question`, `out_of_scope`) with blocked-on-human pause/resume + processed-comment tracking. (priority: medium, closes feedback loop)
 - [ ] [status/P2] Extend `aloop status` to render orchestrator tree state (orchestrator -> child sessions -> issue/PR mapping). (priority: medium, observability)
-- [ ] [acceptance/P3] Add automated legacy-name guard (required grep semantics) to fail validation on forbidden legacy-name hits outside allowlist. (priority: low, release gate)
+- [ ] [devcontainer/P1] Implement `/aloop:devcontainer` skill — project analysis, `.devcontainer/devcontainer.json` generation, provider installation via postCreateCommand, `.aloop/` bind mount, and `remoteEnv`/`localEnv` auth forwarding. No devcontainer support exists. (priority: high, security/isolation boundary)
+- [ ] [devcontainer/P1] Implement devcontainer verification step: `devcontainer build`, `devcontainer up`, verify deps/providers/git/mount inside container, iterate on failure until green. (priority: high, required acceptance path)
+- [ ] [devcontainer/P1] Add harness auto-detection in `loop.ps1` and `loop.sh`: detect `.devcontainer/devcontainer.json`, route `Invoke-Provider`/`invoke_provider` through `devcontainer exec`, auto-start container if needed, support `--dangerously-skip-container` opt-out. (priority: high, automatic integration)
+- [ ] [devcontainer/P1] Support shared container for parallel loops: first loop starts container, subsequent loops reuse it, session worktrees accessible via bind mount. (priority: medium, orchestrator dependency)
+- [ ] [known-issues/P1] Add `.editorconfig` enforcing `end_of_line = crlf` for `*.ps1` files. No `.editorconfig` exists in the project (only in node_modules). (priority: medium, prevents line-ending corruption)
+- [ ] [known-issues/P1] Add line-ending normalization in `install.ps1` when copying loop scripts to `~/.aloop/bin/`. (priority: medium, prevents installed runtime corruption)
+- [ ] [known-issues/P1] Add path format detection/normalization in `aloop start` and `loop.ps1` for Git Bash `$HOME` → Windows-native path conversion. (priority: medium, cross-shell compatibility)
+- [ ] [known-issues/P1] Implement `aloop update` command or staleness detection so installed runtime at `~/.aloop/bin/` warns when older than repo source. (priority: low, developer experience)
+- [ ] [acceptance/P3] Add automated legacy-name guard (required grep semantics) to fail validation on forbidden legacy-name hits outside allowlist. No guard exists. (priority: low, release gate)
 - [ ] [acceptance/P3] Run final SPEC-to-code acceptance sweep and refresh TODO task states from verified evidence. (priority: low, completion gate)
 
 ### Completed
@@ -39,5 +43,8 @@
 - [x] [cli] `aloop start` performs session bootstrap and supports `on_start` monitor behavior (`dashboard|terminal|none`, `auto_open`).
 - [x] [security] `aloop gh` policy enforcement exists for child-loop vs orchestrator roles with denial logging.
 - [x] [commands] Claude/Copilot command assets exist for `setup`, `start`, `status`, `steer`, and `stop`.
-- [x] [templates] `PROMPT_plan.md`, `PROMPT_build.md`, `PROMPT_review.md`, and `PROMPT_steer.md` are scaffolded and installed.
+- [x] [templates] `PROMPT_plan.md`, `PROMPT_build.md`, `PROMPT_review.md`, `PROMPT_proof.md`, and `PROMPT_steer.md` are scaffolded and installed.
+- [x] [runtime/P1] Upgrade both runtimes (`loop.ps1`, `loop.sh`) from 5-step to 6-step cycle (`plan -> build x3 -> proof -> review`), including cycle-position math and forced-phase/retry-same-phase compatibility.
+- [x] [proof/P1] Implement proof artifact persistence per iteration (`artifacts/iter-<N>/`) and write `proof-manifest.json` (including explicit skip protocol) consumed by review.
+- [x] [proof/P1] Add baseline lifecycle integration: only update baselines after approved review; preserve previous baselines on rejection.
 - [x] [cleanup/P3] `.gitignore` coverage path corrected to `aloop/cli/coverage/`.

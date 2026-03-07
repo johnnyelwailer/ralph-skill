@@ -389,6 +389,7 @@ function Show-AgentSummary {
 # ============================================================================
 
 $planFile = Join-Path $WorkDir "TODO.md"
+$reviewVerdictFile = Join-Path $SessionDir "review-verdict.json"
 
 function Get-PlanLines {
     if (-not (Test-Path $planFile)) { return @() }
@@ -411,6 +412,70 @@ function Get-CurrentTask {
     $line = $lines | Where-Object { $_ -match '^\s*-\s+\[ \]' } | Select-Object -First 1
     if (-not $line) { return "" }
     return ($line -replace '^\s*-\s+\[ \]\s*', '')
+}
+
+function Reset-ReviewVerdict {
+    if (Test-Path $reviewVerdictFile) {
+        Remove-Item -Path $reviewVerdictFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-ReviewVerdict {
+    param([int]$ExpectedIteration)
+
+    if (-not (Test-Path $reviewVerdictFile)) {
+        Write-Warning "Review verdict file missing: $reviewVerdictFile"
+        Write-LogEntry -Event "review_verdict_missing" -Data @{
+            iteration = $ExpectedIteration
+            path = $reviewVerdictFile
+        }
+        return $null
+    }
+
+    $payload = $null
+    try {
+        $payload = Get-Content -Path $reviewVerdictFile -Raw | ConvertFrom-Json
+    }
+    catch {
+        Write-Warning "Review verdict file is not valid JSON: $reviewVerdictFile"
+        Write-LogEntry -Event "review_verdict_invalid" -Data @{
+            iteration = $ExpectedIteration
+            path = $reviewVerdictFile
+            reason = 'invalid_json'
+        }
+        return $null
+    }
+
+    $verdict = [string]$payload.verdict
+    $verdict = $verdict.Trim().ToUpperInvariant()
+    if ($verdict -notin @('PASS', 'FAIL')) {
+        Write-Warning "Review verdict file has invalid verdict value: $reviewVerdictFile"
+        Write-LogEntry -Event "review_verdict_invalid" -Data @{
+            iteration = $ExpectedIteration
+            path = $reviewVerdictFile
+            reason = 'invalid_verdict'
+        }
+        return $null
+    }
+
+    $parsedIteration = -1
+    if (-not [int]::TryParse([string]$payload.iteration, [ref]$parsedIteration) -or $parsedIteration -ne $ExpectedIteration) {
+        Write-Warning "Review verdict file has invalid or stale iteration value: $reviewVerdictFile"
+        Write-LogEntry -Event "review_verdict_invalid" -Data @{
+            iteration = $ExpectedIteration
+            path = $reviewVerdictFile
+            reason = 'invalid_iteration'
+            file_iteration = [string]$payload.iteration
+        }
+        return $null
+    }
+
+    Write-LogEntry -Event "review_verdict_read" -Data @{
+        iteration = $ExpectedIteration
+        path = $reviewVerdictFile
+        verdict = $verdict
+    }
+    return $verdict
 }
 
 # ============================================================================
@@ -1388,6 +1453,7 @@ try {
 
             # Review phase: inject latest proof manifest if available
             if ($iterationMode -eq 'review') {
+                Reset-ReviewVerdict
                 if ($script:lastProofIteration -gt 0) {
                     $lastManifest = Join-Path $SessionDir "artifacts\iter-$($script:lastProofIteration)\proof-manifest.json"
                     if (Test-Path $lastManifest) {
@@ -1396,6 +1462,7 @@ try {
                         Write-Host "Injected proof manifest from iteration $($script:lastProofIteration) into review prompt." -ForegroundColor Gray
                     }
                 }
+                $promptContent += "`n`n## Mandatory Machine-Readable Verdict`nBefore exiting this review iteration, write a JSON verdict file at:`n$reviewVerdictFile`nSchema:`n{`n  `"iteration`": $iteration,`n  `"verdict`": `"PASS`" | `"FAIL`",`n  `"summary`": `"<one-sentence reason>`"`n}`nDo not skip writing this file."
             }
 
             Push-Location $WorkDir
@@ -1428,15 +1495,10 @@ try {
                 Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
                 Push-ToBackup
             } elseif ($iterationMode -eq 'review') {
-                # Check for PASS in the commit message to update baselines
-                Push-Location $WorkDir
-                try {
-                    $lastMsg = git log -1 --format="%s" 2>$null
-                    if ($lastMsg -match 'chore\(review\): PASS') {
-                        Update-ProofBaselines -ProofIteration $script:lastProofIteration
-                    }
-                } finally {
-                    Pop-Location
+                # Deterministic baseline update based on review-verdict.json
+                $reviewVerdict = Get-ReviewVerdict -ExpectedIteration $iteration
+                if ($reviewVerdict -eq 'PASS') {
+                    Update-ProofBaselines -ProofIteration $script:lastProofIteration
                 }
 
                 if ($script:allTasksMarkedDone) {
