@@ -1853,57 +1853,56 @@ When running multiple loops in parallel (orchestrator mode or manual), do NOT st
 
 ### Provider Auth in Container
 
-Provider CLIs need API keys. Options (skill should auto-configure the best available):
+**Principle: API keys via env vars only — never copy or bind-mount OAuth tokens.**
 
-1. **`containerEnv` in devcontainer.json** — simplest, keys in plain text (acceptable for local dev)
-2. **`initializeCommand` that reads from host keyring** — more secure, runs on host before container starts
-3. **Secrets mount** — `.env` file bind-mounted read-only
-4. **`remoteEnv` with `localEnv`** — forward host env vars: `"ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"`
+All supported providers offer API key / token authentication via environment variables. This is the only approach that is:
+- **ToS-compliant** — especially for Claude Code, where Anthropic explicitly prohibits using OAuth tokens from Claude Free/Pro/Max subscriptions outside the Claude Code product itself
+- **Secure** — no credential files duplicated, no keychain extraction, no stale tokens
+- **Simple** — `remoteEnv` + `localEnv` in devcontainer.json, works on all platforms
 
-Preferred: option 4 (`remoteEnv` + `localEnv`) — no secrets in files, uses host's existing env vars.
+#### Per-Provider Auth
 
-#### OAuth / CLI Token Forwarding
+| Provider | Env var | How to obtain | Notes |
+|---|---|---|---|
+| Claude Code | `ANTHROPIC_API_KEY` | [Anthropic Console](https://console.anthropic.com/) → API Keys | Uses API pay-as-you-go billing (NOT subscription). This is the only ToS-compliant approach for containers. Copying `~/.claude/` OAuth tokens into containers violates Anthropic Consumer ToS. |
+| Codex (OpenAI) | `OPENAI_API_KEY` or `CODEX_API_KEY` | [OpenAI Dashboard](https://platform.openai.com/api-keys) | Can also pipe to `codex login --with-api-key` inside container |
+| Gemini CLI | `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) | Also supports `.env` file in `~/.gemini/` but env var preferred |
+| Copilot CLI | `GITHUB_TOKEN` or `GH_TOKEN` or `COPILOT_GITHUB_TOKEN` | GitHub Settings → Fine-grained PATs → enable "Copilot Requests" permission | Newer Copilot CLI supports PAT via env var; older `gh copilot` extension may require OAuth (not supported in container) |
+| GitHub CLI (gh) | `GH_TOKEN` or `GITHUB_TOKEN` | GitHub Settings → PATs | For convention-file GH request processing on host-side monitor (not needed inside container) |
 
-The above covers API key env vars, but provider CLIs also store OAuth tokens in platform-specific credential stores that `remoteEnv`/`localEnv` cannot reach:
+#### devcontainer.json Configuration
 
-| Provider | Host credential location | Token type |
-|---|---|---|
-| Claude Code | `~/.claude/` (config + session tokens) | OAuth / session |
-| GitHub Copilot CLI | `~/.config/github-copilot/` or OS keychain | OAuth device flow |
-| Codex (OpenAI) | `~/.codex/` or `~/.config/openai/` | OAuth / API key |
-| Gemini CLI | `~/.config/gemini/` or application-default credentials | OAuth |
-| GitHub CLI (gh) | `~/.config/gh/hosts.yml` or OS keychain | OAuth PAT |
+Only forward env vars for providers **actually activated in the project's aloop config**:
 
-These tokens live in files or OS keychains — not env vars — so `remoteEnv` alone is insufficient.
+```json
+{
+  "remoteEnv": {
+    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
+    "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
+  }
+}
+```
 
-**Strategy (ordered by preference):**
+The skill's devcontainer generator MUST:
+- Read the project's provider config to determine which providers are activated
+- Only add `remoteEnv` entries for activated providers — never forward unused credentials
+- Warn the user if a required env var is not set on the host (e.g., `ANTHROPIC_API_KEY` not found)
+- Verification step MUST confirm each activated provider can authenticate inside the container (e.g., `claude --print-api-key-status`, `codex --version`, `gemini --version`)
 
-1. **Bind-mount credential directories** — mount host credential dirs read-only into container via `mounts` in devcontainer.json:
-   ```json
-   "mounts": [
-     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,readonly"
-   ]
-   ```
-   Pros: zero-config for user, tokens stay on host. Cons: path differences across OS; some CLIs write to their config dir (read-only mount may cause issues).
+#### What NOT to do
 
-2. **`initializeCommand` copy** — copy credential files into container at startup (runs on host):
-   ```json
-   "initializeCommand": "cp -r ~/.claude /tmp/.claude-creds"
-   ```
-   Then mount `/tmp/.claude-creds` into container. Pros: works even if CLI needs write access. Cons: credentials duplicated; stale if host tokens refresh mid-session.
+- **Do NOT bind-mount `~/.claude/`** — contains OAuth tokens; using them outside Claude Code violates Anthropic ToS
+- **Do NOT copy credential files** (`initializeCommand` with `cp ~/.claude/...`) — same ToS issue, plus stale token risk
+- **Do NOT extract OS keychain tokens** — brittle, platform-specific, potential ToS violations
+- **Do NOT store API keys in devcontainer.json** — use `${localEnv:...}` references, never plaintext keys
 
-3. **Re-authenticate inside container** — run provider CLI auth flow inside container. Pros: cleanest isolation. Cons: requires interactive auth; not viable for unattended loops.
+#### Claude Code ToS Constraint (important)
 
-4. **OS keychain tokens** — some providers (Copilot, gh) use OS keychain (Windows Credential Manager, macOS Keychain, libsecret). These CANNOT be bind-mounted. For these, either:
-   - Set equivalent env vars (`GH_TOKEN`, `GITHUB_TOKEN`) from host before container start
-   - Use `initializeCommand` to extract tokens from keychain and write to container-accessible location
-   - Configure provider to use file-based auth instead of keychain (e.g., `gh auth login --with-token`)
-
-**Implementation requirements:**
-- Skill's devcontainer generator MUST detect which providers are **actually activated in the project's aloop config** and set up credential forwarding only for those — never forward credentials for unused providers
-- Verification step MUST check that each provider can authenticate inside the container (e.g., `claude --version`, `gh auth status`)
-- If a provider uses OS keychain and no env var fallback exists, skill should warn the user and provide manual steps
-- Document the credential forwarding approach in generated devcontainer README or comments
+Anthropic's Consumer ToS explicitly prohibits using OAuth tokens obtained through Claude Free/Pro/Max accounts in any other product, tool, or service. This means:
+- Users who only have a Claude subscription (no API access) CANNOT run Claude Code inside containers in an unattended loop
+- They need an Anthropic API key (separate from subscription) with pay-as-you-go billing
+- The skill MUST detect this situation and inform the user: "Container-based loops with Claude Code require an Anthropic API key (console.anthropic.com). Subscription-only OAuth tokens cannot be forwarded into containers per Anthropic's Terms of Service."
+- Alternative: use `--dangerously-skip-container` to run Claude Code directly on host (where OAuth works natively)
 
 ### Acceptance Criteria
 
@@ -1916,9 +1915,10 @@ These tokens live in files or OS keychains — not env vars — so `remoteEnv` a
 - [ ] Verification step builds container, starts it, and checks all deps/providers/git/mount
 - [ ] Verification iterates on failure — fixes config and re-verifies until green
 - [ ] Existing projects with `.devcontainer/` get augmented (aloop mounts/env added) rather than overwritten
-- [ ] Provider API keys forwarded via `remoteEnv`/`localEnv` (no secrets in config files)
-- [ ] Provider OAuth/CLI tokens forwarded into container only for activated providers (bind-mount or `initializeCommand` copy)
+- [ ] Provider API keys forwarded via `remoteEnv`/`localEnv` only for activated providers (no secrets in config files, no OAuth token copying)
 - [ ] Verification confirms each activated provider can authenticate inside the container
+- [ ] Skill warns if required API key env var is not set on host
+- [ ] Skill detects Claude subscription-only users and explains API key requirement for containerized loops
 
 **Automatic integration:**
 - [ ] Harness auto-detects `.devcontainer/devcontainer.json` and routes provider invocations through `devcontainer exec` — no manual flag needed
