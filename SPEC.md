@@ -2054,3 +2054,18 @@ The installed runtime at `~/.aloop/bin/` (or `~/.ralph/bin/` on older installs) 
 - [ ] Consider `aloop update` command that re-copies runtime files from repo
 - [ ] `install.ps1` should print a version or timestamp so staleness is detectable
 - [ ] Loop scripts should log their own version/timestamp at `session_start` for debugging
+
+### 9. Loop restart always begins at plan — does not resume cycle position
+
+**Severity: Medium**
+
+The loop always starts at iteration 1, which maps to `plan` in the 5-step cycle (`plan → build → build → build → review`). If a loop is stopped after completing `plan → build → review → plan` (iteration 4) and restarted, it starts at `plan` again instead of resuming at `build` (iteration 5's position).
+
+This wastes iterations re-planning work that was already planned, and can cause the planner to overwrite or conflict with the previous plan.
+
+**Mitigations needed:**
+- [ ] On startup, read `status.json` from the session directory (already contains `iteration` and `phase`)
+- [ ] If a previous run exists and state is `interrupted` or `limit_reached`, calculate the next cycle position and start there
+- [ ] If state is `completed`, start fresh (new plan)
+- [ ] Log the resume point: "Resuming from iteration N (phase: build)" so it's visible
+- [ ] Both `loop.ps1` and `loop.sh` must implement this
