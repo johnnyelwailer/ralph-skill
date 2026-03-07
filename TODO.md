@@ -4,7 +4,7 @@
 
 ### In Progress
 - [x] [cli/P1] Implement `aloop status --watch` end-to-end (CLI flag wiring in `src/index.ts`, watch loop in `src/commands/status.ts`, and tests) so `start.ts` terminal monitor path is no longer broken. (priority: high, currently `start.ts` launches unsupported command path)
-- [ ] [review] Gate 5: `Invoke-Pester ./install.tests.ps1` currently fails at `install.tests.ps1:65`, `:78`, and `:270` because expectations still require 5 commands/prompts and omit `dashboard`; update assertions to require the new 6-command/6-prompt surface and revised summary line `(setup, start, status, dashboard, stop, steer)`. (priority: high)
+- [x] [review] Gate 5: `Invoke-Pester ./install.tests.ps1` currently fails at `install.tests.ps1:65`, `:78`, and `:270` because expectations still require 5 commands/prompts and omit `dashboard`; update assertions to require the new 6-command/6-prompt surface and revised summary line `(setup, start, status, dashboard, stop, steer)`. (priority: high)
 - [ ] [review] Gate 5: `npm --prefix ./aloop/cli run type-check` fails with 22 TS errors (`TS7016`, `TS2339`) in `src/commands/project.ts`, `src/commands/session.ts`, `src/commands/setup.ts`, and `src/commands/setup.test.ts`; fix typing regressions so repository validation is green again. (priority: high)
 
 ### Up Next
