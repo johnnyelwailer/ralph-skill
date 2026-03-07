@@ -1853,22 +1853,44 @@ When running multiple loops in parallel (orchestrator mode or manual), do NOT st
 
 ### Provider Auth in Container
 
-**Principle: API keys via env vars only — never copy or bind-mount OAuth tokens.**
+**Principle: env vars only — no credential file copying, no keychain extraction.**
 
-All supported providers offer API key / token authentication via environment variables. This is the only approach that is:
-- **ToS-compliant** — especially for Claude Code, where Anthropic explicitly prohibits using OAuth tokens from Claude Free/Pro/Max subscriptions outside the Claude Code product itself
-- **Secure** — no credential files duplicated, no keychain extraction, no stale tokens
-- **Simple** — `remoteEnv` + `localEnv` in devcontainer.json, works on all platforms
+All providers support authentication via environment variables. The skill generates `remoteEnv` entries that forward host env vars into the container using `${localEnv:...}` references. Only activated providers get forwarded — never expose unused credentials.
 
 #### Per-Provider Auth
 
-| Provider | Env var | How to obtain | Notes |
+| Provider | Env var(s) | How to obtain | Notes |
 |---|---|---|---|
-| Claude Code | `ANTHROPIC_API_KEY` | [Anthropic Console](https://console.anthropic.com/) → API Keys | Uses API pay-as-you-go billing (NOT subscription). This is the only ToS-compliant approach for containers. Copying `~/.claude/` OAuth tokens into containers violates Anthropic Consumer ToS. |
+| Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` (preferred) or `ANTHROPIC_API_KEY` | `claude setup-token` (generates 1-year headless token from Pro/Max subscription) or [Anthropic Console](https://console.anthropic.com/) API Keys | See Claude-specific section below. `setup-token` uses existing subscription; `ANTHROPIC_API_KEY` switches to pay-as-you-go. |
 | Codex (OpenAI) | `OPENAI_API_KEY` or `CODEX_API_KEY` | [OpenAI Dashboard](https://platform.openai.com/api-keys) | Can also pipe to `codex login --with-api-key` inside container |
 | Gemini CLI | `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) | Also supports `.env` file in `~/.gemini/` but env var preferred |
-| Copilot CLI | `GITHUB_TOKEN` or `GH_TOKEN` or `COPILOT_GITHUB_TOKEN` | GitHub Settings → Fine-grained PATs → enable "Copilot Requests" permission | Newer Copilot CLI supports PAT via env var; older `gh copilot` extension may require OAuth (not supported in container) |
-| GitHub CLI (gh) | `GH_TOKEN` or `GITHUB_TOKEN` | GitHub Settings → PATs | For convention-file GH request processing on host-side monitor (not needed inside container) |
+| Copilot CLI | `GITHUB_TOKEN` or `GH_TOKEN` or `COPILOT_GITHUB_TOKEN` | GitHub Settings → Fine-grained PATs → enable "Copilot Requests" permission | Newer Copilot CLI supports PAT via env var; older `gh copilot` extension requires separate OAuth (not supported in unattended container) |
+| GitHub CLI (gh) | `GH_TOKEN` or `GITHUB_TOKEN` | GitHub Settings → PATs | For convention-file GH request processing on host-side monitor (not typically needed inside container) |
+
+#### Claude Code Container Auth (detailed)
+
+Claude Code is the most nuanced provider for container auth. Three legitimate approaches exist:
+
+1. **`CLAUDE_CODE_OAUTH_TOKEN` env var (recommended for aloop)** — Run `claude setup-token` on a machine with a browser. This generates a 1-year OAuth token designed for headless/container use. Requires Claude Pro or Max subscription. Forward via `remoteEnv`:
+   ```json
+   "remoteEnv": { "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}" }
+   ```
+   This is ToS-compliant: it's still Claude Code consuming its own token, just in a headless environment. Anthropic built this command specifically for this use case.
+
+2. **`ANTHROPIC_API_KEY` env var** — Uses API pay-as-you-go billing (separate from subscription). No OAuth involved. Simplest option if user has API access:
+   ```json
+   "remoteEnv": { "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}" }
+   ```
+
+3. **Docker volume persistence** — Anthropic's own reference devcontainer uses a named volume to persist `~/.claude/` across container rebuilds. User authenticates once interactively inside the container, credentials persist in the volume:
+   ```json
+   "mounts": [ "source=claude-code-config-${devcontainerId},target=/home/node/.claude,type=volume" ]
+   ```
+   This is official Anthropic practice (from their [reference devcontainer](https://github.com/anthropics/claude-code/tree/main/.devcontainer)). Not ideal for aloop's unattended use — requires one-time interactive auth after first container creation.
+
+**Preference order for aloop:** `CLAUDE_CODE_OAUTH_TOKEN` > `ANTHROPIC_API_KEY` > volume persistence (fallback).
+
+**ToS clarification:** Anthropic's ToS prohibits third-party tools from extracting and reusing OAuth tokens. Running the actual `claude` CLI binary inside a container (which is what aloop does — `claude -p`) is NOT a ToS violation — it's Claude Code itself running in a different environment. The `setup-token` command was built explicitly for this. Do NOT bind-mount `~/.claude/` from the host — use env vars or volume persistence instead.
 
 #### devcontainer.json Configuration
 
@@ -1877,7 +1899,7 @@ Only forward env vars for providers **actually activated in the project's aloop 
 ```json
 {
   "remoteEnv": {
-    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
+    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
     "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
   }
 }
@@ -1886,23 +1908,16 @@ Only forward env vars for providers **actually activated in the project's aloop 
 The skill's devcontainer generator MUST:
 - Read the project's provider config to determine which providers are activated
 - Only add `remoteEnv` entries for activated providers — never forward unused credentials
-- Warn the user if a required env var is not set on the host (e.g., `ANTHROPIC_API_KEY` not found)
-- Verification step MUST confirm each activated provider can authenticate inside the container (e.g., `claude --print-api-key-status`, `codex --version`, `gemini --version`)
+- Warn the user if a required env var is not set on the host
+- For Claude Code: check `CLAUDE_CODE_OAUTH_TOKEN` first, fall back to `ANTHROPIC_API_KEY`, then suggest `claude setup-token` if neither is set
+- Verification step MUST confirm each activated provider can authenticate inside the container
 
 #### What NOT to do
 
-- **Do NOT bind-mount `~/.claude/`** — contains OAuth tokens; using them outside Claude Code violates Anthropic ToS
-- **Do NOT copy credential files** (`initializeCommand` with `cp ~/.claude/...`) — same ToS issue, plus stale token risk
-- **Do NOT extract OS keychain tokens** — brittle, platform-specific, potential ToS violations
-- **Do NOT store API keys in devcontainer.json** — use `${localEnv:...}` references, never plaintext keys
-
-#### Claude Code ToS Constraint (important)
-
-Anthropic's Consumer ToS explicitly prohibits using OAuth tokens obtained through Claude Free/Pro/Max accounts in any other product, tool, or service. This means:
-- Users who only have a Claude subscription (no API access) CANNOT run Claude Code inside containers in an unattended loop
-- They need an Anthropic API key (separate from subscription) with pay-as-you-go billing
-- The skill MUST detect this situation and inform the user: "Container-based loops with Claude Code require an Anthropic API key (console.anthropic.com). Subscription-only OAuth tokens cannot be forwarded into containers per Anthropic's Terms of Service."
-- Alternative: use `--dangerously-skip-container` to run Claude Code directly on host (where OAuth works natively)
+- **Do NOT bind-mount `~/.claude/` from host** — use env vars or Docker volume persistence instead
+- **Do NOT copy credential files** between host and container — stale token risk, unnecessary duplication
+- **Do NOT extract OS keychain tokens** — brittle, platform-specific
+- **Do NOT store API keys or tokens in devcontainer.json** — use `${localEnv:...}` references, never plaintext
 
 ### Acceptance Criteria
 
@@ -1915,10 +1930,10 @@ Anthropic's Consumer ToS explicitly prohibits using OAuth tokens obtained throug
 - [ ] Verification step builds container, starts it, and checks all deps/providers/git/mount
 - [ ] Verification iterates on failure — fixes config and re-verifies until green
 - [ ] Existing projects with `.devcontainer/` get augmented (aloop mounts/env added) rather than overwritten
-- [ ] Provider API keys forwarded via `remoteEnv`/`localEnv` only for activated providers (no secrets in config files, no OAuth token copying)
+- [ ] Provider auth forwarded via `remoteEnv`/`localEnv` only for activated providers (no secrets in config files)
+- [ ] For Claude Code: prefers `CLAUDE_CODE_OAUTH_TOKEN` (via `claude setup-token`), falls back to `ANTHROPIC_API_KEY`, guides user if neither is set
 - [ ] Verification confirms each activated provider can authenticate inside the container
-- [ ] Skill warns if required API key env var is not set on host
-- [ ] Skill detects Claude subscription-only users and explains API key requirement for containerized loops
+- [ ] Skill warns if required auth env var is not set on host
 
 **Automatic integration:**
 - [ ] Harness auto-detects `.devcontainer/devcontainer.json` and routes provider invocations through `devcontainer exec` — no manual flag needed
