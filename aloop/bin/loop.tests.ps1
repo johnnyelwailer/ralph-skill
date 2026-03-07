@@ -1529,6 +1529,14 @@ Describe 'loop.ps1 — ConvertTo-NativePath POSIX path normalization' {
         ConvertTo-NativePath '/c/' | Should -BeExactly 'C:\'
     }
 
+    It 'converts backslash-prefixed \c\Users\foo to C:\Users\foo' {
+        ConvertTo-NativePath '\c\Users\foo' | Should -BeExactly 'C:\Users\foo'
+    }
+
+    It 'converts backslash-prefixed drive-only \c to C:\' {
+        ConvertTo-NativePath '\c' | Should -BeExactly 'C:\'
+    }
+
     It 'passes through normal Windows path unchanged' {
         ConvertTo-NativePath 'C:\Users\foo' | Should -BeExactly 'C:\Users\foo'
     }

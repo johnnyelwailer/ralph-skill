@@ -4,7 +4,7 @@
 
 ### In Progress
 - [x] [review] Gate 5: `aloop/bin/loop.tests.ps1` uses the PS 7+ null-conditional operator `?.` (lines 19, 305, 1294), causing parse failures and preventing test execution on PowerShell 5.1. (priority: high)
-- [ ] [review] Gate 3: `aloop/bin/loop.ps1` (`ConvertTo-NativePath`) branch coverage is unverified because the test suite fails to run on the target platform. (priority: high)
+- [x] [review] Gate 3: `aloop/bin/loop.ps1` (`ConvertTo-NativePath`) branch coverage is unverified because the test suite fails to run on the target platform. (priority: high)
 - [x] [review] Gate 2: `install.tests.ps1:453-460` (`skips line ending mutation when in DryRun`) only asserts log output and never verifies file contents remain unchanged; extend the test to assert `loop.ps1` bytes/text are identical before/after `-DryRun` so a mutating implementation fails. (priority: high)
 - [x] [review] Gate 3: `aloop/cli/src/commands/start.ts:352-359` (`normalizeGitBashPathForWindows`) has uncovered branches in the new code path; add `start.test.ts` cases for non-POSIX passthrough (e.g., `C:\\repo\\work`) and drive-root conversion (`/c` or `/c/` => `C:\\`) and assert exact `-WorkDir`/`cwd` outputs. (priority: high)
 
