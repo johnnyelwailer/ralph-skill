@@ -1992,7 +1992,44 @@ When `aloop start` is invoked from within a Claude Code session, the `CLAUDECODE
 
 **Defense in depth:** Also unset per-invocation in `Invoke-Provider` / `invoke_provider` blocks (already done in worktree versions).
 
-### 5. Installed runtime staleness
+### 5. No session locking — multiple loops race on same session files
+
+**Severity: Critical**
+
+Starting a new loop on the same session doesn't detect or kill a previous loop. Both processes write to `log.jsonl`, `status.json`, and `report.md` simultaneously, corrupting all session state. The stale loop consumed its 50 iterations writing garbage while the new loop was blocked on a real provider call.
+
+**Mitigations needed:**
+- [ ] On startup, write a PID lockfile (`session.lock`) in `SessionDir`
+- [ ] Before starting, check if lockfile exists and if the PID is still alive — if so, either kill it or refuse to start with a clear error
+- [ ] On exit (including Ctrl+C and errors), clean up the lockfile in the `finally`/`trap` block
+- [ ] Both `loop.ps1` and `loop.sh` must implement this
+
+### 6. Log file never cleared between runs
+
+**Severity: Medium**
+
+`log.jsonl` is append-only across runs. Iteration numbers from run N carry into run N+1, making it impossible to tell which run an entry belongs to.
+
+**Mitigations needed (pick one):**
+- [ ] Option A: Add a unique `run_id` field to every log entry (generated at session start, included in all `write_log_entry` calls)
+- [ ] Option B: Rotate the log on `session_start` — rename existing `log.jsonl` to `log.jsonl.1` (or timestamped)
+- [ ] Whichever approach is chosen, apply to both `loop.ps1` and `loop.sh`
+
+### 7. Zombie child processes never cleaned up
+
+**Severity: High**
+
+When a provider call (`claude`/`codex`/`copilot`) hangs or errors, the child process is never killed. Over multiple iterations, dozens of zombie `claude.exe`, `codex.exe`, `pwsh.exe` processes accumulate, consuming memory and potentially holding file locks.
+
+Current `Invoke-Provider` / `invoke_provider` uses synchronous pipe (`|`) with no timeout and no PID tracking.
+
+**Mitigations needed:**
+- [ ] Track the child PID when invoking a provider (use `Start-Process` with `-PassThru` in PS1, `$!` in bash)
+- [ ] Implement per-iteration timeout (e.g., `ALOOP_PROVIDER_TIMEOUT` env var, default ~10 minutes) — kill child process tree on timeout
+- [ ] On loop exit (`finally`/`trap`), kill all spawned child processes
+- [ ] Consider the zombie dashboard process issue too (already partially mitigated by `ALOOP_NO_DASHBOARD` in tests, but production loops need cleanup)
+
+### 8. Installed runtime staleness
 
 The installed runtime at `~/.aloop/bin/` (or `~/.ralph/bin/` on older installs) is copied once during `install.ps1` and never auto-updated. When bugs are fixed in the repo, the installed copy stays broken until the user re-runs `install.ps1`.
 
