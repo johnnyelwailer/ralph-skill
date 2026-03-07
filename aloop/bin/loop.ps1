@@ -745,6 +745,154 @@ function Write-LogEntry {
 }
 
 # ============================================================================
+# CONVENTION-FILE GH REQUEST PROCESSING
+# ============================================================================
+
+function Get-GhRequestArchivePath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ProcessedDir,
+        [Parameter(Mandatory)]
+        [string]$FileName
+    )
+
+    $destination = Join-Path $ProcessedDir $FileName
+    if (-not (Test-Path $destination)) {
+        return $destination
+    }
+
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
+    $extension = [System.IO.Path]::GetExtension($FileName)
+    $suffix = 1
+    while ($true) {
+        $candidate = Join-Path $ProcessedDir "$baseName.dup$suffix$extension"
+        if (-not (Test-Path $candidate)) {
+            return $candidate
+        }
+        $suffix++
+    }
+}
+
+function Write-GhResponseFile {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ResponsePath,
+        [Parameter(Mandatory)]
+        [hashtable]$Payload
+    )
+    ($Payload | ConvertTo-Json -Depth 10) | Set-Content -Encoding utf8 $ResponsePath
+}
+
+function Process-GhConventionRequests {
+    param(
+        [Parameter(Mandatory)]
+        [int]$Iteration
+    )
+
+    $aloopDir = Join-Path $WorkDir '.aloop'
+    $requestsDir = Join-Path $aloopDir 'requests'
+    if (-not (Test-Path $requestsDir)) {
+        return
+    }
+
+    $responsesDir = Join-Path $aloopDir 'responses'
+    $processedDir = Join-Path $requestsDir 'processed'
+    foreach ($dir in @($responsesDir, $processedDir)) {
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+    }
+
+    $requestFiles = @(
+        Get-ChildItem -Path $requestsDir -File -Filter '*.json' |
+            Sort-Object -Property Name
+    )
+    if ($requestFiles.Count -eq 0) {
+        return
+    }
+
+    $sessionId = Split-Path -Leaf $SessionDir
+    $allowedTypes = @(
+        'pr-create',
+        'pr-comment',
+        'issue-comment',
+        'issue-create',
+        'issue-close',
+        'pr-merge',
+        'branch-delete'
+    )
+
+    foreach ($requestFile in $requestFiles) {
+        $responsePath = Join-Path $responsesDir $requestFile.Name
+        $archivePath = Get-GhRequestArchivePath -ProcessedDir $processedDir -FileName $requestFile.Name
+        $requestType = $null
+
+        try {
+            $payload = Get-Content -Path $requestFile.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
+            $requestType = [string]$payload.type
+            if ([string]::IsNullOrWhiteSpace($requestType) -or $requestType -notin $allowedTypes) {
+                throw "Unsupported request type '$requestType'."
+            }
+
+            $outputLines = & aloop gh $requestType --session $sessionId --request $requestFile.FullName 2>&1
+            $exitCode = $LASTEXITCODE
+            $outputText = ($outputLines | Out-String).Trim()
+            if ($exitCode -ne 0) {
+                throw "aloop gh $requestType failed with exit code $exitCode. $outputText"
+            }
+
+            $ghPayload = $null
+            if (-not [string]::IsNullOrWhiteSpace($outputText)) {
+                try {
+                    $ghPayload = $outputText | ConvertFrom-Json -ErrorAction Stop
+                }
+                catch {
+                    $ghPayload = $outputText
+                }
+            }
+
+            $responsePayload = @{
+                status = 'success'
+                type = $requestType
+                request_file = $requestFile.Name
+                processed_at = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+            }
+            if ($null -ne $ghPayload) {
+                $responsePayload.gh = $ghPayload
+            }
+            Write-GhResponseFile -ResponsePath $responsePath -Payload $responsePayload
+
+            Write-LogEntry -Event 'gh_request_processed' -Data @{
+                iteration = $Iteration
+                type = $requestType
+                request_file = $requestFile.Name
+                response_file = [System.IO.Path]::GetFileName($responsePath)
+            }
+        }
+        catch {
+            $responsePayload = @{
+                status = 'error'
+                type = $requestType
+                request_file = $requestFile.Name
+                error = "$_"
+                processed_at = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+            }
+            Write-GhResponseFile -ResponsePath $responsePath -Payload $responsePayload
+
+            Write-LogEntry -Event 'gh_request_failed' -Data @{
+                iteration = $Iteration
+                type = $requestType
+                request_file = $requestFile.Name
+                error = "$_"
+            }
+        }
+        finally {
+            Move-Item -Path $requestFile.FullName -Destination $archivePath -Force
+        }
+    }
+}
+
+# ============================================================================
 # PROVIDER HEALTH PRIMITIVES
 # ============================================================================
 
@@ -1364,6 +1512,8 @@ try {
         $iterationStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
         $iterationMode = Resolve-IterationMode -IterationNumber $iteration
+
+        Process-GhConventionRequests -Iteration $iteration
 
         # Check for live steering instruction (overrides normal mode)
         $steeringFile = Join-Path $WorkDir "STEERING.md"

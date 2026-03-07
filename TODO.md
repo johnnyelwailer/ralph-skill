@@ -5,7 +5,7 @@
 ### In Progress
 
 ### Up Next
-- [ ] [security/P1] Implement convention-file GH request processor in `aloop/bin/loop.ps1` (`.aloop/requests/*.json` -> `aloop gh` -> `.aloop/responses/*.json` -> archive to `.aloop/requests/processed/`) with deterministic ordering and logging. (priority: high, trust boundary)
+- [x] [security/P1] Implement convention-file GH request processor in `aloop/bin/loop.ps1` (`.aloop/requests/*.json` -> `aloop gh` -> `.aloop/responses/*.json` -> archive to `.aloop/requests/processed/`) with deterministic ordering and logging. (priority: high, trust boundary)
 - [ ] [security/P1] Implement convention-file GH request processor parity in `aloop/bin/loop.sh` with the same ordering, response schema, archival, and logs. (priority: high, cross-platform parity)
 - [ ] [cli/P1] Add `--watch` mode to `aloop status` and make `start.ts` terminal monitor call a supported command path; add tests for refresh behavior. (priority: high, current terminal monitor path is broken)
 - [ ] [commands/P1] Add missing command wrappers: `claude/commands/aloop/dashboard.md` and `copilot/prompts/aloop-dashboard.prompt.md`. (priority: medium, command-surface parity)

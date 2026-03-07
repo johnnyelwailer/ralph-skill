@@ -559,6 +559,44 @@ exit 0
         $claudeCmd = Join-Path $fakeBinDir 'claude.cmd'
         Set-Content $claudeCmd "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
 
+        # aloop.cmd shim for convention-file GH processing tests
+        $fakeAloopPs1 = Join-Path $fakeBinDir '_fake_aloop.ps1'
+        $fakeAloopContent = @'
+param(
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Args
+)
+
+if ($Args.Count -lt 2 -or $Args[0] -ne 'gh') {
+    Write-Output '{"status":"error","reason":"unsupported"}'
+    exit 1
+}
+
+$operation = $Args[1]
+$requestPath = ''
+for ($i = 0; $i -lt $Args.Count; $i++) {
+    if ($Args[$i] -eq '--request' -and ($i + 1) -lt $Args.Count) {
+        $requestPath = $Args[$i + 1]
+        break
+    }
+}
+
+$requestFile = if ($requestPath) { [System.IO.Path]::GetFileName($requestPath) } else { '' }
+if ($env:FAKE_ALOOP_GH_CALLS) {
+    "$operation|$requestFile" | Add-Content -Path $env:FAKE_ALOOP_GH_CALLS
+}
+
+$response = @{
+    status = 'success'
+    type = $operation
+    request_file = $requestFile
+}
+$response | ConvertTo-Json -Compress
+exit 0
+'@
+        Set-Content $fakeAloopPs1 $fakeAloopContent
+        Set-Content (Join-Path $fakeBinDir 'aloop.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakeAloopPs1`" %*`r`n"
+
         # ── Helper: create an isolated test environment ──────────────────────
         function script:New-LoopEnv {
             param([string]$Scenario = 'approve')
@@ -577,12 +615,14 @@ exit 0
             $stateFile = Join-Path $testDir 'claude-state.json'
             [pscustomobject]@{ calls = 0; scenario = $Scenario; rejected = $false } |
                 ConvertTo-Json | Set-Content $stateFile
+            $ghCallsFile = Join-Path $testDir 'gh-calls.log'
             return [pscustomobject]@{
                 WorkDir    = $workDir
                 SessionDir = $sessDir
                 PromptsDir = $promptDir
                 StateFile  = $stateFile
                 LogFile    = Join-Path $sessDir 'log.jsonl'
+                GhCallsFile = $ghCallsFile
             }
         }
 
@@ -593,10 +633,12 @@ exit 0
             $prevState = $env:FAKE_CLAUDE_STATE
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
             $prevNoDash  = $env:ALOOP_NO_DASHBOARD
+            $prevGhCalls = $env:FAKE_ALOOP_GH_CALLS
             $env:PATH              = "$fakeBinDir;$prevPath"
             $env:FAKE_CLAUDE_STATE = $LoopEnv.StateFile
             $env:ALOOP_RUNTIME_DIR = Join-Path $LoopEnv.SessionDir '_runtime_stub'
             $env:ALOOP_NO_DASHBOARD = '1'
+            $env:FAKE_ALOOP_GH_CALLS = $LoopEnv.GhCallsFile
             try {
                 $output = & $pwshPath -NoProfile -File $loopScript `
                     -PromptsDir    $LoopEnv.PromptsDir `
@@ -623,6 +665,11 @@ exit 0
                     Remove-Item Env:ALOOP_NO_DASHBOARD -ErrorAction SilentlyContinue
                 } else {
                     $env:ALOOP_NO_DASHBOARD = $prevNoDash
+                }
+                if ($null -eq $prevGhCalls) {
+                    Remove-Item Env:FAKE_ALOOP_GH_CALLS -ErrorAction SilentlyContinue
+                } else {
+                    $env:FAKE_ALOOP_GH_CALLS = $prevGhCalls
                 }
             }
         }
@@ -655,6 +702,35 @@ exit 0
         $events | Should -Contain 'tasks_marked_complete'
         # Loop must NOT have exited before reaching the review gate
         $events | Should -Not -Contain 'all_tasks_complete'
+    }
+
+    It 'processes GH convention files in deterministic order with responses and archival' {
+        $e = New-LoopEnv -Scenario 'approve'
+        $reqDir = Join-Path $e.WorkDir '.aloop\requests'
+        New-Item -ItemType Directory -Path $reqDir -Force | Out-Null
+        '{"type":"pr-comment","pr_number":15,"body":"second"}' | Set-Content (Join-Path $reqDir '002-pr-comment.json')
+        '{"type":"pr-create","title":"first","body":"first body"}' | Set-Content (Join-Path $reqDir '001-pr-create.json')
+
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 1
+        $result.ExitCode | Should -Be 0
+
+        $calls = if (Test-Path $e.GhCallsFile) { @(Get-Content $e.GhCallsFile) } else { @() }
+        $calls | Should -Be @(
+            'pr-create|001-pr-create.json',
+            'pr-comment|002-pr-comment.json'
+        )
+
+        $respDir = Join-Path $e.WorkDir '.aloop\responses'
+        $processedDir = Join-Path $e.WorkDir '.aloop\requests\processed'
+        Test-Path (Join-Path $respDir '001-pr-create.json') | Should -Be $true
+        Test-Path (Join-Path $respDir '002-pr-comment.json') | Should -Be $true
+        Test-Path (Join-Path $processedDir '001-pr-create.json') | Should -Be $true
+        Test-Path (Join-Path $processedDir '002-pr-comment.json') | Should -Be $true
+        Test-Path (Join-Path $reqDir '001-pr-create.json') | Should -Be $false
+        Test-Path (Join-Path $reqDir '002-pr-comment.json') | Should -Be $false
+
+        $entries = Get-LogEntries -LogFile $e.LogFile
+        ($entries | Where-Object { $_.event -eq 'gh_request_processed' }).Count | Should -Be 2
     }
 
     It 'review approval emits final_review_approved and exits 0' {
