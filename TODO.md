@@ -4,6 +4,8 @@
 
 ### In Progress
 - [x] [review/P1] Raise branch coverage for `Normalize-LoopScriptLineEndings` in `install.ps1` by adding tests for both missing branches: file-not-found (`Test-Path` false) and `$DryRun` no-mutation path. (priority: high, closes remaining reliability gate)
+- [ ] [review] Gate 2: `install.tests.ps1:453-460` (`skips line ending mutation when in DryRun`) only asserts log output and never verifies file contents remain unchanged; extend the test to assert `loop.ps1` bytes/text are identical before/after `-DryRun` so a mutating implementation fails. (priority: high)
+- [ ] [review] Gate 3: `aloop/cli/src/commands/start.ts:352-359` (`normalizeGitBashPathForWindows`) has uncovered branches in the new code path; add `start.test.ts` cases for non-POSIX passthrough (e.g., `C:\\repo\\work`) and drive-root conversion (`/c` or `/c/` => `C:\\`) and assert exact `-WorkDir`/`cwd` outputs. (priority: high)
 
 ### Up Next
 - [x] [known-issues/P1] Add Git Bash/posix-path normalization in `aloop/cli/src/commands/start.ts` before PowerShell launch (`/c/...` -> `C:\\...`). (priority: high, prevents Windows cross-shell launch failures)
