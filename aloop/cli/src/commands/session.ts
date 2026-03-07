@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 // Re-export from the stable .mjs core
+// @ts-expect-error: Untyped .mjs core module
 import * as sessionCore from '../../lib/session.mjs';
 
 export interface SessionInfo {

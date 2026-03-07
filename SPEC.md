@@ -1284,10 +1284,52 @@ Agents communicate GH intent via filesystem — the only interface that crosses 
 
 **Protocol rules:**
 - Sequential numbering (`001-`, `002-`) preserves ordering
-- Harness reads requests at iteration boundaries (same timing as steering checks)
-- Harness writes responses before next agent iteration starts
 - Request files are archived after processing (moved to `.aloop/requests/processed/`)
 - Unrecognized request types are rejected and logged
+
+### Architecture: Keep loop scripts lean — GH/steering/requests are host-side plugins
+
+**Critical design rule:** `loop.ps1` and `loop.sh` must NOT contain convention-file processing, GH logic, or any host-only operations directly. The loop scripts run inside containers and must stay minimal: iterate phases, invoke providers, write status/logs, detect stuck. That's it.
+
+All host-side operations (GH requests, steering injection, dashboard, request processing) are handled by the **aloop host monitor** — a separate process that runs alongside the loop on the host:
+
+```
+┌─── Host ──────────────────────────────────────────────┐
+│                                                        │
+│  aloop start                                           │
+│    ├── loop.ps1/sh (may run in container)              │
+│    │     └── just: plan/build/review + provider invoke │
+│    │                                                   │
+│    └── aloop monitor (host-side, always on host)       │
+│          ├── watches .aloop/requests/ → aloop gh       │
+│          ├── watches STEERING.md → injects into loop   │
+│          ├── serves dashboard                          │
+│          ├── processes convention-file protocol         │
+│          └── manages provider health (cross-session)   │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+```
+
+**What stays in loop.ps1/loop.sh:**
+- Phase cycle (plan → build × 3 → proof → review)
+- Provider invocation (direct — loop and providers run in the same environment)
+- Stuck detection and iteration counting
+- Status.json and log.jsonl writes
+- TODO.md reading for phase prerequisites
+- PATH hardening (defense in depth, even though container already isolates)
+
+**Execution model:** The loop script and provider CLIs always run in the same environment. When containerized, `aloop start` on the host launches the loop **inside** the container via `devcontainer exec -- loop.sh ...`. From that point, the loop invokes providers directly (they're co-located). The loop never calls `devcontainer exec` itself — that's the host's job.
+
+**What moves to aloop monitor (host-side):**
+- Convention-file request processing (`.aloop/requests/` → `aloop gh` → `.aloop/responses/`)
+- Steering file detection and injection
+- Dashboard server
+- Provider health file management (already cross-session)
+- Session lifecycle (start, stop, cleanup)
+
+The monitor is a long-running process started by `aloop start` that watches the session directory via filesystem polling. It reads `status.json` to know the current iteration and processes requests/steering between iterations. This cleanly separates container-safe loop logic from host-privileged operations.
+
+**If convention-file processing was already added to loop.ps1:** It must be extracted out. The loop script should not import or call `aloop gh`. Any such code is a spec violation — the loop may run in a container where `aloop` is not available.
 
 ### `aloop gh` Subcommand
 

@@ -5,7 +5,7 @@ import type { DiscoveryResult, ScaffoldResult, ScaffoldOptions } from './project
 
 test('setupCommandWithDeps - non-interactive mode', async () => {
   let discoverCalled = false;
-  let scaffoldCalledOpts: ScaffoldOptions | null = null;
+  let scaffoldCalledOpts = null as unknown as ScaffoldOptions;
   let promptCalled = false;
 
   const mockDiscover = async (): Promise<DiscoveryResult> => {
@@ -62,7 +62,7 @@ test('setupCommandWithDeps - non-interactive mode', async () => {
 
 test('setupCommandWithDeps - interactive mode', async () => {
   let discoverCalled = false;
-  let scaffoldCalledOpts: ScaffoldOptions | null = null;
+  let scaffoldCalledOpts = null as unknown as ScaffoldOptions;
   let promptCallCount = 0;
 
   const mockDiscover = async (): Promise<DiscoveryResult> => {
@@ -122,7 +122,7 @@ test('setupCommandWithDeps - interactive mode', async () => {
 });
 
 test('setupCommandWithDeps - interactive mode uses defaults', async () => {
-  let scaffoldCalledOpts: ScaffoldOptions | null = null;
+  let scaffoldCalledOpts = null as unknown as ScaffoldOptions;
 
   const mockDiscover = async (): Promise<DiscoveryResult> => {
     return {
@@ -222,7 +222,7 @@ test('setupCommandWithDeps - propagates scaffold failure with exact error', asyn
 });
 
 test('setupCommandWithDeps - interactive prompt parsing trims and filters comma lists', async () => {
-  let scaffoldCalledOpts: ScaffoldOptions | null = null;
+  let scaffoldCalledOpts = null as unknown as ScaffoldOptions;
   let providerPromptDefault = '';
 
   const mockDiscover = async (): Promise<DiscoveryResult> => {

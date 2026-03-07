@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 // Re-export from the stable .mjs core
+// @ts-expect-error: Untyped .mjs core module
 import * as projectCore from '../../lib/project.mjs';
 
 export type OutputMode = 'json' | 'text';

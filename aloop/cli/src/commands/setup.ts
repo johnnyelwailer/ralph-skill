@@ -115,7 +115,7 @@ export async function setupCommand(options: SetupCommandOptions = {}) {
     await setupCommandWithDeps(options, deps);
   } finally {
     if (rl) {
-      rl.close();
+      (rl as readline.Interface).close();
     }
   }
 }
