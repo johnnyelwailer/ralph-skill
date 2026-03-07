@@ -3,13 +3,10 @@
 ## Current Phase: P1 Reliability Hardening + Devcontainer Foundations
 
 ### In Progress
-- [x] [review/P1] Raise branch coverage for `Normalize-LoopScriptLineEndings` in `install.ps1` by adding tests for both missing branches: file-not-found (`Test-Path` false) and `$DryRun` no-mutation path. (priority: high, closes remaining reliability gate)
-- [ ] [review] Gate 2: `install.tests.ps1:453-460` (`skips line ending mutation when in DryRun`) only asserts log output and never verifies file contents remain unchanged; extend the test to assert `loop.ps1` bytes/text are identical before/after `-DryRun` so a mutating implementation fails. (priority: high)
+- [x] [review] Gate 2: `install.tests.ps1:453-460` (`skips line ending mutation when in DryRun`) only asserts log output and never verifies file contents remain unchanged; extend the test to assert `loop.ps1` bytes/text are identical before/after `-DryRun` so a mutating implementation fails. (priority: high)
 - [ ] [review] Gate 3: `aloop/cli/src/commands/start.ts:352-359` (`normalizeGitBashPathForWindows`) has uncovered branches in the new code path; add `start.test.ts` cases for non-POSIX passthrough (e.g., `C:\\repo\\work`) and drive-root conversion (`/c` or `/c/` => `C:\\`) and assert exact `-WorkDir`/`cwd` outputs. (priority: high)
 
 ### Up Next
-- [x] [known-issues/P1] Add Git Bash/posix-path normalization in `aloop/cli/src/commands/start.ts` before PowerShell launch (`/c/...` -> `C:\\...`). (priority: high, prevents Windows cross-shell launch failures)
-- [x] [known-issues/P1] Add defensive path normalization in `aloop/bin/loop.ps1` for `-PromptsDir`, `-SessionDir`, and `-WorkDir` so direct invocations tolerate POSIX-style paths. (priority: high, hardens runtime entrypoint)
 - [ ] [known-issues/P1] Add runtime version stamping in `install.ps1` output and include runtime version/timestamp in `loop.ps1`/`loop.sh` `session_start` logs. (priority: medium, makes drift diagnosable)
 - [ ] [known-issues/P1] Add runtime staleness warning in `aloop start` when installed runtime appears older than repo/runtime source. (priority: medium, reduces stale-runtime incidents)
 - [ ] [known-issues/P1] Add `aloop update` command to refresh `~/.aloop` runtime assets from the current repo checkout. (priority: medium, gives explicit remediation path)
@@ -41,6 +38,9 @@
 - [ ] [acceptance/P3] Run final SPEC acceptance sweep and refresh TODO states from verified code/tests. (priority: low, completion gate)
 
 ### Completed
+- [x] [review/P1] Raise branch coverage for `Normalize-LoopScriptLineEndings` in `install.ps1` by adding tests for both missing branches: file-not-found (`Test-Path` false) and `$DryRun` no-mutation path.
+- [x] [known-issues/P1] Add Git Bash/posix-path normalization in `aloop/cli/src/commands/start.ts` before PowerShell launch (`/c/...` -> `C:\\...`).
+- [x] [known-issues/P1] Add defensive path normalization in `aloop/bin/loop.ps1` for `-PromptsDir`, `-SessionDir`, and `-WorkDir` so direct invocations tolerate POSIX-style paths.
 - [x] [phase-0/P1] Rename legacy name -> aloop in files, directories, and command surface.
 - [x] [entrypoint/P1] Stable canonical CLI entrypoint at `aloop/cli/aloop.mjs` is present and wired.
 - [x] [runtime/P1] Provider health subsystem exists in both runtimes (cooldown/degraded/recovery + lock handling + logging).

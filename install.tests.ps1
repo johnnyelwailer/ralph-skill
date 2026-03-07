@@ -454,10 +454,19 @@ Describe 'Installer behavioral branches' {
         $binDir = Join-Path $testHome '.aloop\bin'
         New-Item -ItemType Directory -Path $binDir -Force | Out-Null
         $dummyFile = Join-Path $binDir 'loop.ps1'
-        Set-Content -Path $dummyFile -Value 'test'
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        $originalText = "line1`r`nline2`nline3`r`n"
+        [System.IO.File]::WriteAllText($dummyFile, $originalText, $utf8NoBom)
+        $beforeBytesB64 = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($dummyFile))
+        $beforeText = [System.IO.File]::ReadAllText($dummyFile, $utf8NoBom)
         
         $output = Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-DryRun')
+        $afterBytesB64 = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($dummyFile))
+        $afterText = [System.IO.File]::ReadAllText($dummyFile, $utf8NoBom)
+
         $output | Should -Match '\[DRY RUN\] Normalize line endings \(CRLF\):'
+        $afterText | Should -BeExactly $beforeText
+        $afterBytesB64 | Should -BeExactly $beforeBytesB64
     }
 
     It 'copies commands only for harnesses where HasCommands is true' {
