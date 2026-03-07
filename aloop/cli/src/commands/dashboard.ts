@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { watch, type FSWatcher } from 'node:fs';
 import { promises as fs } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -33,12 +34,31 @@ interface DashboardServerHandle {
 interface DashboardRuntimeOptions {
   registerSignalHandlers?: boolean;
   heartbeatIntervalMs?: number;
+  requestPollIntervalMs?: number;
+  ghCommandRunner?: GhCommandRunner;
 }
 
 const DOC_FILES = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
 const MAX_LOG_BYTES = 128 * 1024;
 const MAX_BODY_BYTES = 64 * 1024;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
+const DEFAULT_REQUEST_POLL_INTERVAL_MS = 1_000;
+const GH_REQUEST_TYPES = new Set([
+  'pr-create',
+  'pr-comment',
+  'issue-comment',
+  'issue-create',
+  'issue-close',
+  'pr-merge',
+  'branch-delete',
+]);
+
+interface GhCommandRunnerResult {
+  exitCode: number;
+  output: string;
+}
+
+type GhCommandRunner = (operation: string, sessionId: string, requestPath: string) => Promise<GhCommandRunnerResult>;
 
 function parsePort(value: string): number {
   const port = Number.parseInt(value, 10);
@@ -90,6 +110,154 @@ async function fileExists(filePath: string): Promise<boolean> {
     return stats.isFile();
   } catch {
     return false;
+  }
+}
+
+function normalizeProcessOutput(stdout: string, stderr: string): string {
+  return [stdout, stderr].map((value) => value.trim()).filter((value) => value.length > 0).join('\n').trim();
+}
+
+async function defaultGhCommandRunner(operation: string, sessionId: string, requestPath: string): Promise<GhCommandRunnerResult> {
+  try {
+    const result = spawnSync('aloop', ['gh', operation, '--session', sessionId, '--request', requestPath], {
+      encoding: 'utf8',
+    });
+    return {
+      exitCode: result.status ?? 1,
+      output: normalizeProcessOutput(String(result.stdout ?? ''), String(result.stderr ?? '')),
+    };
+  } catch (error) {
+    return {
+      exitCode: 1,
+      output: (error as Error).message,
+    };
+  }
+}
+
+function getGhArchivePath(processedDir: string, fileName: string, existingFiles: Set<string>): string {
+  const destination = path.join(processedDir, fileName);
+  if (!existingFiles.has(destination.toLowerCase())) {
+    existingFiles.add(destination.toLowerCase());
+    return destination;
+  }
+
+  const ext = path.extname(fileName);
+  const base = path.basename(fileName, ext);
+  let suffix = 1;
+  while (true) {
+    const candidate = path.join(processedDir, `${base}.dup${suffix}${ext}`);
+    if (!existingFiles.has(candidate.toLowerCase())) {
+      existingFiles.add(candidate.toLowerCase());
+      return candidate;
+    }
+    suffix += 1;
+  }
+}
+
+async function writeSessionLogEntry(logPath: string, event: string, data: Record<string, unknown>): Promise<void> {
+  const payload = {
+    timestamp: new Date().toISOString(),
+    event,
+    ...data,
+  };
+  await fs.appendFile(logPath, `${JSON.stringify(payload)}\n`, 'utf8');
+}
+
+async function processGhConventionRequests(
+  workdir: string,
+  sessionId: string,
+  logPath: string,
+  ghCommandRunner: GhCommandRunner,
+): Promise<void> {
+  const aloopDir = path.join(workdir, '.aloop');
+  const requestsDir = path.join(aloopDir, 'requests');
+  try {
+    const requestStats = await fs.stat(requestsDir);
+    if (!requestStats.isDirectory()) {
+      return;
+    }
+  } catch {
+    return;
+  }
+
+  const responsesDir = path.join(aloopDir, 'responses');
+  const processedDir = path.join(requestsDir, 'processed');
+  await fs.mkdir(responsesDir, { recursive: true });
+  await fs.mkdir(processedDir, { recursive: true });
+
+  const entries = await fs.readdir(requestsDir, { withFileTypes: true });
+  const requestFiles = entries
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b));
+  if (requestFiles.length === 0) {
+    return;
+  }
+
+  const processedEntries = await fs.readdir(processedDir, { withFileTypes: true });
+  const reservedArchivePaths = new Set(
+    processedEntries
+      .filter((entry) => entry.isFile())
+      .map((entry) => path.join(processedDir, entry.name).toLowerCase()),
+  );
+
+  for (const fileName of requestFiles) {
+    const requestPath = path.join(requestsDir, fileName);
+    const responsePath = path.join(responsesDir, fileName);
+    const archivePath = getGhArchivePath(processedDir, fileName, reservedArchivePaths);
+    const processedAt = new Date().toISOString();
+    let requestType = '';
+
+    try {
+      const rawRequest = await fs.readFile(requestPath, 'utf8');
+      const parsedRequest = JSON.parse(rawRequest) as Record<string, unknown>;
+      requestType = typeof parsedRequest.type === 'string' ? parsedRequest.type : '';
+      if (!GH_REQUEST_TYPES.has(requestType)) {
+        throw new Error(`Unsupported request type '${requestType}'.`);
+      }
+
+      const result = await ghCommandRunner(requestType, sessionId, requestPath);
+      if (result.exitCode !== 0) {
+        throw new Error(`aloop gh ${requestType} failed with exit code ${result.exitCode}. ${result.output}`.trim());
+      }
+
+      const responsePayload: Record<string, unknown> = {
+        status: 'success',
+        type: requestType,
+        request_file: fileName,
+        processed_at: processedAt,
+      };
+      if (result.output.length > 0) {
+        try {
+          responsePayload.gh = JSON.parse(result.output);
+        } catch {
+          responsePayload.gh = result.output;
+        }
+      }
+      await fs.writeFile(responsePath, `${JSON.stringify(responsePayload, null, 2)}\n`, 'utf8');
+      await writeSessionLogEntry(logPath, 'gh_request_processed', {
+        type: requestType,
+        request_file: fileName,
+        response_file: path.basename(responsePath),
+      });
+    } catch (error) {
+      const message = (error as Error).message;
+      const responsePayload = {
+        status: 'error',
+        type: requestType,
+        request_file: fileName,
+        error: message,
+        processed_at: processedAt,
+      };
+      await fs.writeFile(responsePath, `${JSON.stringify(responsePayload, null, 2)}\n`, 'utf8');
+      await writeSessionLogEntry(logPath, 'gh_request_failed', {
+        type: requestType,
+        request_file: fileName,
+        error: message,
+      });
+    } finally {
+      await fs.rename(requestPath, archivePath);
+    }
   }
 }
 
@@ -217,11 +385,14 @@ export async function startDashboardServer(
 ): Promise<DashboardServerHandle> {
   const registerSignalHandlers = runtimeOptions.registerSignalHandlers ?? true;
   const heartbeatIntervalMs = Math.max(250, runtimeOptions.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS);
+  const requestPollIntervalMs = Math.max(250, runtimeOptions.requestPollIntervalMs ?? DEFAULT_REQUEST_POLL_INTERVAL_MS);
   const port = parsePort(options.port);
   const sessionDir = path.resolve(options.sessionDir ?? process.cwd());
   const workdir = path.resolve(options.workdir ?? process.cwd());
   const assetsDir = path.resolve(options.assetsDir ?? (await resolveDefaultAssetsDir()));
   const runtimeDir = path.resolve(options.runtimeDir ?? path.join(os.homedir(), '.aloop'));
+  const ghCommandRunner = runtimeOptions.ghCommandRunner ?? defaultGhCommandRunner;
+  const sessionId = path.basename(sessionDir);
 
   const statusPath = path.join(sessionDir, 'status.json');
   const logPath = path.join(sessionDir, 'log.jsonl');
@@ -229,6 +400,8 @@ export async function startDashboardServer(
   const activeSessionsPath = path.join(runtimeDir, 'active.json');
   const recentSessionsPath = path.join(runtimeDir, 'history.json');
   const steeringPath = path.join(workdir, 'STEERING.md');
+  const requestsDir = path.join(workdir, '.aloop', 'requests');
+  const normalizedRequestsDir = path.normalize(requestsDir).toLowerCase();
   const docPaths = DOC_FILES.map((name) => path.join(workdir, name));
   const watchedFiles = new Set(
     [statusPath, logPath, activeSessionsPath, recentSessionsPath, ...docPaths].map((value) =>
@@ -307,7 +480,33 @@ export async function startDashboardServer(
   }, heartbeatIntervalMs);
   heartbeatTimer.unref();
 
-  const watchPaths = [sessionDir, workdir, runtimeDir];
+  let requestProcessingActive = false;
+  let requestProcessingQueued = false;
+  const runRequestProcessing = () => {
+    if (requestProcessingActive) {
+      requestProcessingQueued = true;
+      return;
+    }
+    requestProcessingActive = true;
+    void processGhConventionRequests(workdir, sessionId, logPath, ghCommandRunner)
+      .catch((error) => {
+        console.warn(`dashboard: failed to process GH convention requests: ${(error as Error).message}`);
+      })
+      .finally(() => {
+        requestProcessingActive = false;
+        if (requestProcessingQueued) {
+          requestProcessingQueued = false;
+          runRequestProcessing();
+        }
+      });
+  };
+  runRequestProcessing();
+  const requestPollTimer = setInterval(() => {
+    runRequestProcessing();
+  }, requestPollIntervalMs);
+  requestPollTimer.unref();
+
+  const watchPaths = [sessionDir, workdir, runtimeDir, requestsDir];
   for (const target of watchPaths) {
     try {
       const watcher = watch(target, (_eventType, filename) => {
@@ -315,12 +514,18 @@ export async function startDashboardServer(
           return;
         }
         const changed = path.normalize(path.join(target, filename.toString())).toLowerCase();
+        if (changed === normalizedRequestsDir || changed.startsWith(`${normalizedRequestsDir}${path.sep}`)) {
+          runRequestProcessing();
+        }
         if (watchedFiles.has(changed) || changed.endsWith('.md')) {
           schedulePublish();
         }
       });
       watchers.set(target, watcher);
     } catch (error) {
+      if (target === requestsDir && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+        continue;
+      }
       console.warn(`dashboard: unable to watch ${target}: ${(error as Error).message}`);
     }
   }
@@ -569,6 +774,7 @@ export async function startDashboardServer(
         publishTimer = null;
       }
       clearInterval(heartbeatTimer);
+      clearInterval(requestPollTimer);
 
       for (const watcher of watchers.values()) {
         watcher.close();

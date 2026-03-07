@@ -704,7 +704,7 @@ exit 0
         $events | Should -Not -Contain 'all_tasks_complete'
     }
 
-    It 'processes GH convention files in deterministic order with responses and archival' {
+    It 'does not process GH convention files inside loop runtime' {
         $e = New-LoopEnv -Scenario 'approve'
         $reqDir = Join-Path $e.WorkDir '.aloop\requests'
         New-Item -ItemType Directory -Path $reqDir -Force | Out-Null
@@ -714,23 +714,13 @@ exit 0
         $result = Invoke-LoopScript -LoopEnv $e -MaxIter 1
         $result.ExitCode | Should -Be 0
 
-        $calls = if (Test-Path $e.GhCallsFile) { @(Get-Content $e.GhCallsFile) } else { @() }
-        $calls | Should -Be @(
-            'pr-create|001-pr-create.json',
-            'pr-comment|002-pr-comment.json'
-        )
-
-        $respDir = Join-Path $e.WorkDir '.aloop\responses'
-        $processedDir = Join-Path $e.WorkDir '.aloop\requests\processed'
-        Test-Path (Join-Path $respDir '001-pr-create.json') | Should -Be $true
-        Test-Path (Join-Path $respDir '002-pr-comment.json') | Should -Be $true
-        Test-Path (Join-Path $processedDir '001-pr-create.json') | Should -Be $true
-        Test-Path (Join-Path $processedDir '002-pr-comment.json') | Should -Be $true
-        Test-Path (Join-Path $reqDir '001-pr-create.json') | Should -Be $false
-        Test-Path (Join-Path $reqDir '002-pr-comment.json') | Should -Be $false
+        Test-Path $e.GhCallsFile | Should -Be $false
+        Test-Path (Join-Path $reqDir '001-pr-create.json') | Should -Be $true
+        Test-Path (Join-Path $reqDir '002-pr-comment.json') | Should -Be $true
 
         $entries = Get-LogEntries -LogFile $e.LogFile
-        ($entries | Where-Object { $_.event -eq 'gh_request_processed' }).Count | Should -Be 2
+        ($entries | Where-Object { $_.event -eq 'gh_request_processed' }).Count | Should -Be 0
+        ($entries | Where-Object { $_.event -eq 'gh_request_failed' }).Count | Should -Be 0
     }
 
     It 'review approval emits final_review_approved and exits 0' {

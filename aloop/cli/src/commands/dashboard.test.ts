@@ -29,7 +29,13 @@ async function reservePort(): Promise<number> {
   });
 }
 
-async function createServerFixture(runtimeOptions: { heartbeatIntervalMs?: number } = {}) {
+async function createServerFixture(
+  runtimeOptions: {
+    heartbeatIntervalMs?: number;
+    requestPollIntervalMs?: number;
+    ghCommandRunner?: (operation: string, sessionId: string, requestPath: string) => Promise<{ exitCode: number; output: string }>;
+  } = {},
+) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-dashboard-'));
   const sessionDir = path.join(root, 'session');
   const workdir = path.join(root, 'workdir');
@@ -55,6 +61,17 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function waitFor(check: () => Promise<boolean>, timeoutMs = 3_000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await check()) {
+      return;
+    }
+    await sleep(50);
+  }
+  throw new Error('Timed out waiting for condition.');
+}
+
 test('GET /api/state includes active and recent sessions from runtime state files', async () => {
   const fixture = await createServerFixture();
 
@@ -75,6 +92,57 @@ test('GET /api/state includes active and recent sessions from runtime state file
     assert.equal(payload.runtimeDir, fixture.runtimeDir);
     assert.deepEqual(payload.activeSessions, activeSessions);
     assert.deepEqual(payload.recentSessions, recentSessions);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('host monitor processes GH convention requests outside loop runtime', async () => {
+  const calls: string[] = [];
+  const fixture = await createServerFixture({
+    requestPollIntervalMs: 50,
+    ghCommandRunner: async (operation, _sessionId, requestPath) => {
+      calls.push(`${operation}|${path.basename(requestPath)}`);
+      if (operation === 'pr-create') {
+        return { exitCode: 0, output: '{"pr_number":15}' };
+      }
+      return { exitCode: 0, output: 'commented' };
+    },
+  });
+
+  const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
+  const processedDir = path.join(requestsDir, 'processed');
+  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+
+  try {
+    await mkdir(requestsDir, { recursive: true });
+    await writeFile(path.join(requestsDir, '002-pr-comment.json'), '{"type":"pr-comment","pr_number":15}', 'utf8');
+    await writeFile(path.join(requestsDir, '001-pr-create.json'), '{"type":"pr-create","title":"x"}', 'utf8');
+
+    await waitFor(async () => {
+      try {
+        await readFile(path.join(processedDir, '001-pr-create.json'), 'utf8');
+        await readFile(path.join(processedDir, '002-pr-comment.json'), 'utf8');
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    assert.deepEqual(calls, ['pr-create|001-pr-create.json', 'pr-comment|002-pr-comment.json']);
+    const createResponse = JSON.parse(await readFile(path.join(responsesDir, '001-pr-create.json'), 'utf8')) as Record<string, unknown>;
+    const commentResponse = JSON.parse(await readFile(path.join(responsesDir, '002-pr-comment.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(createResponse.status, 'success');
+    assert.equal(commentResponse.status, 'success');
+    assert.deepEqual(createResponse.gh, { pr_number: 15 });
+    assert.equal(commentResponse.gh, 'commented');
+
+    const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { event?: string });
+    assert.equal(logs.filter((entry) => entry.event === 'gh_request_processed').length, 2);
   } finally {
     await fixture.handle.close();
   }
