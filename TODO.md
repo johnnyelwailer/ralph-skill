@@ -3,6 +3,8 @@
 ## Current Phase: P1 Reliability Hardening + PS 5.1 Compatibility + Devcontainer Foundations
 
 ### In Progress
+- [ ] [review] Gate 1: `/aloop:devcontainer` surfaces were added, but installer/user-facing command discovery was not updated (`install.ps1` usage output still lists only setup/start/status/dashboard/stop/steer at line 660); add devcontainer to command-surface announcements so the new entrypoint is discoverable. (priority: high)
+- [ ] [review] Gate 2: New devcontainer command-surface files are unprotected by installer regression tests (`install.tests.ps1` has no assertions for `claude/commands/aloop/devcontainer.md`, `copilot/prompts/aloop-devcontainer.prompt.md`, or related usage-line mentions); add concrete assertions for file presence and expected invocation/fallback strings. (priority: high)
 - [x] [review] Gate 5: `aloop/bin/loop.tests.ps1` uses the PS 7+ null-conditional operator `?.` (lines 19, 305, 1294), causing parse failures and preventing test execution on PowerShell 5.1. (priority: high)
 - [x] [review] Gate 3: `aloop/bin/loop.ps1` (`ConvertTo-NativePath`) branch coverage is unverified because the test suite fails to run on the target platform. (priority: high)
 - [x] [review] Gate 2: `install.tests.ps1:453-460` (`skips line ending mutation when in DryRun`) only asserts log output and never verifies file contents remain unchanged; extend the test to assert `loop.ps1` bytes/text are identical before/after `-DryRun` so a mutating implementation fails. (priority: high)
