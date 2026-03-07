@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { startCommandWithDeps, type StartCommandOptions } from './start.js';
+import { startCommandWithDeps, normalizeGitBashPathForWindows, type StartCommandOptions } from './start.js';
 import type { DiscoveryResult } from './project.js';
 
 interface SpawnRecord {
@@ -403,6 +403,22 @@ test('startCommandWithDeps launches terminal monitor when on_start.terminal is e
   assert.equal(result.dashboard_url, null);
   assert.equal(result.warnings.length, 0);
   assert.equal(syncCalls.some((call) => call.command === 'x-terminal-emulator'), true);
+});
+
+test('normalizeGitBashPathForWindows passes through non-POSIX Windows paths unchanged', () => {
+  assert.equal(normalizeGitBashPathForWindows('C:\\repo\\work'), 'C:\\repo\\work');
+  assert.equal(normalizeGitBashPathForWindows('D:\\Users\\pj\\project'), 'D:\\Users\\pj\\project');
+  assert.equal(normalizeGitBashPathForWindows('relative/path'), 'relative/path');
+  assert.equal(normalizeGitBashPathForWindows(''), '');
+  assert.equal(normalizeGitBashPathForWindows('\\\\server\\share'), '\\\\server\\share');
+});
+
+test('normalizeGitBashPathForWindows converts drive-root paths', () => {
+  assert.equal(normalizeGitBashPathForWindows('/c'), 'C:\\');
+  assert.equal(normalizeGitBashPathForWindows('/c/'), 'C:\\');
+  assert.equal(normalizeGitBashPathForWindows('/D'), 'D:\\');
+  assert.equal(normalizeGitBashPathForWindows('/d/'), 'D:\\');
+  assert.equal(normalizeGitBashPathForWindows('/c/Users/pj/repo'), 'C:\\Users\\pj\\repo');
 });
 
 test('startCommandWithDeps rejects conflicting mode flags', async () => {

@@ -349,7 +349,7 @@ function resolvePowerShellBinary(deps: StartDeps): string {
   throw new Error('PowerShell is required to launch loop.ps1 but neither pwsh nor powershell was found.');
 }
 
-function normalizeGitBashPathForWindows(value: string): string {
+export function normalizeGitBashPathForWindows(value: string): string {
   const match = value.match(/^[\\/](?![\\/])([a-zA-Z])(?:[\\/](.*))?$/);
   if (!match) {
     return value;
