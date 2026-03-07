@@ -1907,13 +1907,16 @@ Claude Code is the most nuanced provider for container auth. Three legitimate ap
 
 #### devcontainer.json Configuration
 
-Only forward env vars for providers **actually activated in the project's aloop config**:
+Only forward env vars for providers **activated in the project's aloop config**.
+
+Since multiple loops with different providers may share one container, the devcontainer must forward auth for **all providers the project has configured** — not just the ones a single loop uses. For example, if the project config lists `claude`, `codex`, and `gemini` as available providers, all three get `remoteEnv` entries even if a given loop only uses `claude`. This ensures any loop launched inside the shared container can use any configured provider without rebuilding.
 
 ```json
 {
   "remoteEnv": {
     "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
-    "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
+    "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+    "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}"
   }
 }
 ```
