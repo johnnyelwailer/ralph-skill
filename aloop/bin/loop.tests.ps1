@@ -251,6 +251,48 @@ exit 0
         Test-Path (Join-Path $baselineDir 'preserved.txt') | Should -Be $true
         Test-Path (Join-Path $baselineDir 'dummy.txt') | Should -Be $true
     }
+
+    It 'records proof-path branch coverage evidence at >=80%' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e = New-ShLoopEnv -Scenario 'approve'
+        $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 8
+        $entries = Get-ShLogEntries -LogFile $e.LogFile
+        $events = Get-ShLogEvents -LogFile $e.LogFile
+
+        $milestones = @($entries | ForEach-Object {
+            if ($_.event -eq 'iteration_complete') { "iteration_complete:$($_.mode)" } else { $_.event }
+        })
+        $proofIdx = [array]::IndexOf([string[]]$milestones, 'iteration_complete:proof')
+        $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
+        $forceProofCovered = ($events -contains 'tasks_marked_complete') -and ($proofIdx -ge 0) -and ($appIdx -gt $proofIdx)
+        $manifestInjectionCovered = $result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.'
+        $baselineUpdateCovered = $events -contains 'baselines_updated'
+
+        $branches = [ordered]@{
+            'proof.force_on_all_tasks_done' = $forceProofCovered
+            'review.inject_proof_manifest' = $manifestInjectionCovered
+            'review.update_baselines_on_approval' = $baselineUpdateCovered
+        }
+        $covered = @($branches.Values | Where-Object { $_ }).Count
+        $total = $branches.Count
+        $percent = if ($total -gt 0) { [math]::Floor(($covered * 100) / $total) } else { 0 }
+        $coverageDir = Join-Path (Join-Path $PSScriptRoot '..\..') 'coverage'
+        if (-not (Test-Path $coverageDir)) { New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null }
+        $reportFile = Join-Path $coverageDir 'sh-proof-branch-coverage.json'
+        $branchRows = foreach ($key in $branches.Keys) {
+            [pscustomobject]@{ id = $key; covered = [bool]$branches[$key] }
+        }
+        [pscustomobject]@{
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            target = 'aloop/bin/loop.sh'
+            minimum_percent = 80
+            summary = [pscustomobject]@{ covered = $covered; total = $total; percent = $percent }
+            branches = $branchRows
+        } | ConvertTo-Json -Depth 6 | Set-Content -Path $reportFile
+
+        $result.ExitCode | Should -Be 0
+        $percent | Should -BeGreaterOrEqual 80
+    }
 }
 
 
@@ -674,6 +716,47 @@ exit 0
         
         Test-Path (Join-Path $baselineDir 'preserved.txt') | Should -Be $true
         Test-Path (Join-Path $baselineDir 'dummy.txt') | Should -Be $true
+    }
+
+    It 'records proof-path branch coverage evidence at >=80%' {
+        $e = New-LoopEnv -Scenario 'approve'
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 5
+        $entries = Get-LogEntries -LogFile $e.LogFile
+        $events = Get-LogEvents -LogFile $e.LogFile
+
+        $milestones = @($entries | ForEach-Object {
+            if ($_.event -eq 'iteration_complete') { "iteration_complete:$($_.mode)" } else { $_.event }
+        })
+        $proofIdx = [array]::IndexOf([string[]]$milestones, 'iteration_complete:proof')
+        $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
+        $forceProofCovered = ($events -contains 'tasks_marked_complete') -and ($proofIdx -ge 0) -and ($appIdx -gt $proofIdx)
+        $manifestInjectionCovered = $result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.'
+        $baselineUpdateCovered = $events -contains 'baselines_updated'
+
+        $branches = [ordered]@{
+            'proof.force_on_all_tasks_done' = $forceProofCovered
+            'review.inject_proof_manifest' = $manifestInjectionCovered
+            'review.update_baselines_on_approval' = $baselineUpdateCovered
+        }
+        $covered = @($branches.Values | Where-Object { $_ }).Count
+        $total = $branches.Count
+        $percent = if ($total -gt 0) { [math]::Floor(($covered * 100) / $total) } else { 0 }
+        $coverageDir = Join-Path (Join-Path $PSScriptRoot '..\..') 'coverage'
+        if (-not (Test-Path $coverageDir)) { New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null }
+        $reportFile = Join-Path $coverageDir 'ps1-proof-branch-coverage.json'
+        $branchRows = foreach ($key in $branches.Keys) {
+            [pscustomobject]@{ id = $key; covered = [bool]$branches[$key] }
+        }
+        [pscustomobject]@{
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            target = 'aloop/bin/loop.ps1'
+            minimum_percent = 80
+            summary = [pscustomobject]@{ covered = $covered; total = $total; percent = $percent }
+            branches = $branchRows
+        } | ConvertTo-Json -Depth 6 | Set-Content -Path $reportFile
+
+        $result.ExitCode | Should -Be 0
+        $percent | Should -BeGreaterOrEqual 80
     }
 }
 
