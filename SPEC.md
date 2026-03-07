@@ -1312,11 +1312,13 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 
 **What stays in loop.ps1/loop.sh:**
 - Phase cycle (plan → build × 3 → proof → review)
-- Provider invocation (via `devcontainer exec` when containerized)
+- Provider invocation (direct — loop and providers run in the same environment)
 - Stuck detection and iteration counting
 - Status.json and log.jsonl writes
 - TODO.md reading for phase prerequisites
 - PATH hardening (defense in depth, even though container already isolates)
+
+**Execution model:** The loop script and provider CLIs always run in the same environment. When containerized, `aloop start` on the host launches the loop **inside** the container via `devcontainer exec -- loop.sh ...`. From that point, the loop invokes providers directly (they're co-located). The loop never calls `devcontainer exec` itself — that's the host's job.
 
 **What moves to aloop monitor (host-side):**
 - Convention-file request processing (`.aloop/requests/` → `aloop gh` → `.aloop/responses/`)
