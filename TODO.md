@@ -3,6 +3,7 @@
 ## Current Phase: P1 Reliability Hardening + Devcontainer Prerequisites
 
 ### In Progress
+- [ ] [review] Gate 3: `Normalize-LoopScriptLineEndings` in `install.ps1` has 50% branch coverage (new function requires ≥90%) — add tests for the file-not-found branch (`Test-Path` returns false, expect `Write-Warning` and no file mutation) and the `$DryRun` branch (expect `Write-Host` message and no file mutation). (priority: high)
 - [x] [review] Gate 5: `Invoke-Pester ./install.tests.ps1` fails because assertions at lines ~64-65, ~77-78, and ~267-270 still expect 5 commands/prompts and omit `dashboard`; update assertions to require the new 6-command/6-prompt surface and revised summary line `(setup, start, status, dashboard, stop, steer)`. (priority: high)
 - [x] [review] Gate 5: `npm --prefix ./aloop/cli run type-check` fails with ~21 TS errors: 2x `TS7016` missing declaration files for `../../lib/project.mjs` and `../../lib/session.mjs` in `src/commands/project.ts` and `src/commands/session.ts`; 18x `TS2339` property-on-`never` errors in `src/commands/setup.test.ts` (scaffoldCalledOpts typed as `never`); 1x `TS2339` in `src/commands/setup.ts` line 118 (`rl` typed as `never`). Fix type annotations/narrowing. (priority: high)
 
