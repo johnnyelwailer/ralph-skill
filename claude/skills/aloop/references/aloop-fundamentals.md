@@ -63,17 +63,18 @@ The building prompt instructs the agent to:
 
 The review prompt instructs the agent to:
 1. Identify files changed in the last build commit(s)
-2. Audit every changed file against 5 quality gates
+2. Audit every changed file against 6 quality gates
 3. Write specific, actionable `[review]` fix tasks for failures
 4. Add approval notes with concrete observations for passes
 5. Exit
 
-**The 5 Gates:**
+**The 6 Gates:**
 1. **Spec Compliance** — Does code match spec intent?
 2. **Test Depth** — No shallow fakes (toBeDefined, toBeTruthy, shape-only checks)
 3. **Coverage** — >=80% branch coverage for touched files
 4. **Code Quality** — No dead code, duplication, or over-engineering
 5. **Integration Sanity** — No regressions, validation passes
+6. **Proof Verification** — Does evidence match changes?
 
 ### Observation Phase (Your Role)
 

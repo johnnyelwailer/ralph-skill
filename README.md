@@ -8,7 +8,7 @@ Aloop is an iterative coding loop: feed a prompt to an AI coding agent, the agen
 
 1. **Plan** — Gap analysis between specs and code, outputs prioritized TODO
 2. **Build** — Picks one task, implements, validates, commits
-3. **Review** — Audits the last build against 5 quality gates
+3. **Review** — Audits the last build against 6 quality gates
 
 ## Prerequisites
 

@@ -31,25 +31,20 @@ Rebrand the entire project from "ralph" to "aloop" (agent loop), and replace the
 - `aloop active` — list active sessions
 
 ## Non-Goals
-- Public npm publish is out of scope (local package.json/build tooling is allowed)
+- npm publish / package.json (additive later)
 - Repo rename on GitHub (separate, GitHub handles redirects)
 - Changing loop.ps1/loop.sh internal logic (they're path-agnostic)
 - Backward compatibility with `~/.ralph/` (greenfield, no existing users)
 - Migration tooling from ralph → aloop installs
 
 ## Constraints
-- **Loop runtime portability** — `loop.ps1`/`loop.sh` remain shell-native and must not require Node.js to execute the core loop cycle
-- **Stable `.mjs` entrypoint** — `aloop/cli/aloop.mjs` remains the primary CLI entrypoint and must support core machine tasks (`resolve`, `discover`, `scaffold`, `status`, `active`, `stop`)
-- **TypeScript/React pipeline allowed** — `aloop/cli/src` and `aloop/cli/dashboard` may use TypeScript, React, and npm dependencies for advanced CLI/dashboard surfaces
-- **Build step allowed where needed** — bundling/transpilation is allowed for dashboard/backend assets as long as installed runtime entrypoints remain stable
+- **Zero npm dependencies** — Node.js built-ins only (crypto, child_process, fs, path, os)
+- **`.mjs` extension** — native ESM without package.json
+- **No build step** — plain JS files
 - **Config stays YAML** — shell-friendly for loop.sh/loop.ps1 parsing
 - **Runtime state stays JSON** — active.json, status.json, session state
 - **`git mv` for renames** — preserve file history through the rename
 - **Clean break** — no migration from `~/.ralph/`, no backward compat shims
-
-## Architecture Decision (2026-03-05)
-
-To resolve spec-vs-code drift, this spec adopts option (b): keep the existing TypeScript/React build pipeline and require parity through the stable `aloop.mjs` entrypoint for core workflows.
 
 ## Acceptance Criteria
 
@@ -91,9 +86,7 @@ To resolve spec-vs-code drift, this spec adopts option (b): keep the existing Ty
 
 | Layer | Runs where | Tech | Deps |
 |-------|-----------|------|------|
-| `aloop` CLI core (`resolve/discover/scaffold/status/active/stop`) | Developer machine | Node.js `.mjs` (`aloop.mjs` + `lib/*.mjs`) | Node.js built-ins |
-| `aloop` CLI extended commands + backend | Developer machine | TypeScript bundled for Node.js | npm dependencies allowed |
-| Dashboard frontend | Browser (launched from developer machine) | React + TypeScript + Vite | npm dependencies allowed |
+| `aloop` CLI (discover, scaffold, resolve) | Developer machine | Node.js `.mjs` | Node.js |
 | Loop scripts (plan-build-review cycle) | Anywhere — containers, sandboxes, CI | `loop.ps1` / `loop.sh` | Shell + git + provider CLI |
 
 ---
@@ -1635,3 +1628,274 @@ The triage agent runs inside the orchestrator (Layer 1 — trusted). It uses `al
 - [ ] Processed comment IDs are tracked to prevent re-triage
 - [ ] All triage decisions are logged in `orchestrator.json` triage_log
 - [ ] Triage agent uses `aloop gh` for all GH operations (subject to orchestrator policy)
+
+---
+
+## Devcontainer Support (Priority: P1)
+
+### Goal
+
+Enable aloop loops to run inside VS Code devcontainers for full isolation. Provide a skill (`/aloop:devcontainer`) that generates a project-tailored `.devcontainer/` config, verifies it builds and starts, and confirms all loop dependencies are available inside the container.
+
+### Why P1
+
+- Security boundary: devcontainer is the natural sandbox for Layer 2 (agent execution) — agents can't access host GH tokens, filesystem, or network beyond what's mounted
+- Reproducibility: identical environment across machines, no "works on my machine" provider/tool version drift
+- Required for convention-file protocol: the harness runs on host, the agent runs in container, `.aloop/requests/` and `.aloop/responses/` cross the boundary via bind mount
+
+### Prerequisite: Devcontainer Spec Research (MUST DO FIRST)
+
+Before implementing any devcontainer generation, the agent MUST research the current devcontainer specification by reading the official documentation at https://code.visualstudio.com/docs/devcontainers and the spec at https://containers.dev/implementors/spec/. This is non-negotiable — do not assume config format, available properties, feature syntax, lifecycle hooks, mount syntax, or `remoteEnv`/`containerEnv` semantics from training data alone. The spec evolves and training data may be stale.
+
+**What to research:**
+- `devcontainer.json` full property reference (image vs build, features, mounts, lifecycle hooks)
+- Lifecycle hook ordering: `initializeCommand` → `onCreateCommand` → `updateContentCommand` → `postCreateCommand` → `postStartCommand` → `postAttachCommand`
+- Feature specification and available features (`ghcr.io/devcontainers/features/`)
+- Mount syntax (bind mounts, volume mounts, tmpfs)
+- `remoteEnv` / `containerEnv` / `localEnv` semantics and variable substitution (`${localEnv:VAR}`, `${containerWorkspaceFolder}`, etc.)
+- `devcontainer` CLI commands: `build`, `up`, `exec`, `read-configuration`
+- Multi-workspace and worktree mounting patterns
+- Docker Compose integration (for projects needing databases/services)
+
+**The examples in this spec section below are illustrative, not authoritative.** The implementation must use the researched spec as the source of truth.
+
+### Devcontainer Generation (`/aloop:devcontainer` skill)
+
+The skill analyzes the project and generates a tailored devcontainer config:
+
+**Step 1 — Project Analysis**
+- Detect language/runtime (package.json → Node, *.csproj → .NET, pyproject.toml → Python, go.mod → Go, etc.)
+- Detect required tools (database services, build tools, system deps)
+- Read existing `SPEC.md`, `CLAUDE.md`, `README.md` for dependency hints
+- Check for existing `.devcontainer/` — offer to augment or replace
+
+**Step 2 — Config Generation**
+Generate `.devcontainer/devcontainer.json` (and `Dockerfile` if needed):
+
+```jsonc
+{
+  "name": "${project-name}-aloop",
+  "image": "mcr.microsoft.com/devcontainers/${base-image}",
+  // OR "build": { "dockerfile": "Dockerfile" } for complex setups
+  "features": {
+    // auto-selected based on project analysis
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "postCreateCommand": "${install-command}",  // npm install, dotnet restore, etc.
+  "mounts": [
+    // Bind mount for convention-file protocol (host harness <-> container agent)
+    "source=${localWorkspaceFolder}/.aloop,target=/workspace/.aloop,type=bind"
+  ],
+  "containerEnv": {
+    "ALOOP_NO_DASHBOARD": "1",  // dashboard runs on host, not in container
+    "ALOOP_CONTAINER": "1"      // signals to loop that it's inside a container
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // provider extensions auto-detected
+      ]
+    }
+  }
+}
+```
+
+**Step 3 — Provider Installation**
+Generate a `postCreateCommand` or `onCreateCommand` script that installs the enabled providers inside the container:
+- `claude`: npm install -g @anthropic-ai/claude-code
+- `codex`: npm install -g @openai/codex
+- `gemini`: npm install -g @google/gemini-cli (or equivalent)
+- `copilot`: installed via VS Code extension, not CLI inside container
+
+Only install providers listed in the project's `config.yml` `enabled_providers`.
+
+**Step 4 — Verification (mandatory, not optional)**
+
+After generating the config, the skill MUST verify it works:
+
+1. `devcontainer build --workspace-folder .` — container image builds successfully
+2. `devcontainer up --workspace-folder .` — container starts
+3. Inside the running container, verify:
+   - Project deps installed (`node_modules/`, `bin/`, etc. exist)
+   - Each enabled provider CLI is available (`which claude`, `which codex`, etc.)
+   - Git is functional (`git status`)
+   - `.aloop/` bind mount is accessible
+   - Build/test commands from `config.yml` `validation_commands` pass
+4. `devcontainer exec --workspace-folder . -- aloop status` — aloop CLI reachable (if installed globally)
+5. Report results: pass/fail per check with actionable fix suggestions
+
+If any check fails, the skill iterates: fix the config, rebuild, re-verify. Do not mark setup complete until all checks pass.
+
+**Step 5 — Loop Integration**
+
+Once a devcontainer is set up for a project, the loop **automatically** uses it — no `--devcontainer` flag needed. The harness (loop.ps1/loop.sh) detects `.devcontainer/` in the project and routes all provider invocations through `devcontainer exec`. The harness itself always runs on the host.
+
+**Architecture: harness on host, agents in container**
+
+```
+┌─── Host ──────────────────────────────────────────────┐
+│  loop.ps1 / loop.sh  (harness)                        │
+│    ├── reads TODO.md, SPEC.md, status.json             │
+│    ├── decides phase, provider, iteration              │
+│    ├── dashboard server (node)                         │
+│    ├── processes .aloop/requests/ (convention-file)     │
+│    └── invokes provider via:                           │
+│         devcontainer exec -- claude --print ...        │
+│                                                        │
+│  ┌─── Devcontainer ─────────────────────────────────┐  │
+│  │  Provider CLIs (claude, codex, gemini)            │  │
+│  │  Project deps (node_modules, .NET SDK, etc.)      │  │
+│  │  Git (operates on bind-mounted worktree)          │  │
+│  │  NO gh CLI, NO host network access beyond API     │  │
+│  │  .aloop/ bind mount for convention-file protocol  │  │
+│  └──────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+```
+
+**Container is the default — opt-out requires explicit danger flag:**
+
+Once `.devcontainer/devcontainer.json` exists in the project, the harness ALWAYS uses it. There is no flag to "prefer" host execution. To bypass the container, the user must pass `--dangerously-skip-container`, which:
+- Prints a visible warning: `⚠️  DANGER: Running agents directly on host without container isolation. Agents have full access to your filesystem, network, and credentials.`
+- Logs a `container_bypass` event to `log.jsonl`
+- Is never set by default or by any skill/command
+
+**Auto-detection logic in harness:**
+1. Check if `.devcontainer/devcontainer.json` exists in the work directory
+2. If yes and `--dangerously-skip-container` NOT set:
+   a. Check if container is already running (`devcontainer exec -- echo ok`)
+   b. If not running, `devcontainer up --workspace-folder .`
+   c. All `Invoke-Provider` / `invoke_provider` calls wrap the CLI command in `devcontainer exec --workspace-folder <workdir> -- <provider-command>`
+3. If `.devcontainer/` does not exist, providers run directly on host (current behavior) — but `aloop start` prints a suggestion: `No devcontainer found. Run /aloop:devcontainer to set up isolated agent execution.`
+
+This means: after `/aloop:devcontainer` sets up the container once, every subsequent `aloop start` automatically sandboxes agents inside it. The container is opt-out, not opt-in.
+
+### Shared Container for Parallel Loops
+
+When running multiple loops in parallel (orchestrator mode or manual), do NOT start a separate container per loop. All loops share one running container instance, each operating on its own worktree:
+
+**Why shared:**
+- Container startup is slow (10-30s) — unacceptable per-iteration or per-loop
+- Provider CLIs are installed once in the container image — no need to duplicate
+- Memory/CPU overhead of N containers vs 1 is significant
+- Worktree isolation already provides filesystem separation
+
+**How it works:**
+1. First loop to start calls `devcontainer up` — container starts
+2. Subsequent loops detect the container is already running (via `devcontainer exec -- echo ok`) and reuse it
+3. Each loop passes its own `--workspace-folder` / `--work-dir` pointing to its worktree
+4. The harness uses `devcontainer exec --workspace-folder <worktree-path> -- <command>` so the agent's `$PWD` is the correct worktree
+5. Container stays running until explicitly stopped or last loop finishes
+
+**Worktree mount strategy:**
+- The project root is already mounted at `/workspace` by devcontainer default
+- Git worktrees created by `aloop start` live under `~/.aloop/sessions/<id>/worktree/` on the host
+- These must be bind-mounted into the container — the harness adds them dynamically:
+  `devcontainer exec --remote-env WORK_DIR=<path> --workspace-folder <path> -- <command>`
+- Alternatively, mount `~/.aloop/sessions/` as a volume in `devcontainer.json` so all worktrees are accessible
+
+**Concurrency safety:**
+- Provider CLIs are stateless per-invocation — safe to run N in parallel
+- Each worktree has its own `.git` lock — no git conflicts between loops
+- `.aloop/requests/` and `.aloop/responses/` are per-session — no cross-contamination
+
+### `aloop start` with Devcontainer (automatic)
+
+1. Harness detects `.devcontainer/devcontainer.json` in project root
+2. If container not running → `devcontainer up --workspace-folder .`
+3. Harness creates session, worktree (on host)
+4. Harness runs loop iterations, wrapping each provider call in `devcontainer exec`
+5. Host monitors `status.json` directly (host filesystem)
+6. Host processes `.aloop/requests/*.json` (convention-file protocol)
+7. Dashboard runs on host, reads session data from host filesystem
+
+### Provider Auth in Container
+
+Provider CLIs need API keys. Options (skill should auto-configure the best available):
+
+1. **`containerEnv` in devcontainer.json** — simplest, keys in plain text (acceptable for local dev)
+2. **`initializeCommand` that reads from host keyring** — more secure, runs on host before container starts
+3. **Secrets mount** — `.env` file bind-mounted read-only
+4. **`remoteEnv` with `localEnv`** — forward host env vars: `"ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"`
+
+Preferred: option 4 (`remoteEnv` + `localEnv`) — no secrets in files, uses host's existing env vars.
+
+### Acceptance Criteria
+
+**Skill / Setup:**
+- [ ] `/aloop:devcontainer` skill exists for both Claude and Copilot command surfaces
+- [ ] Skill detects project language, runtime, and dependencies automatically
+- [ ] Generated devcontainer config includes all project-specific deps and build tools
+- [ ] Enabled providers are installed inside the container via postCreateCommand
+- [ ] `.aloop/` directory (and session worktree root) is bind-mounted for convention-file protocol and worktree access
+- [ ] Verification step builds container, starts it, and checks all deps/providers/git/mount
+- [ ] Verification iterates on failure — fixes config and re-verifies until green
+- [ ] Existing projects with `.devcontainer/` get augmented (aloop mounts/env added) rather than overwritten
+- [ ] Provider API keys forwarded via `remoteEnv`/`localEnv` (no secrets in config files)
+
+**Automatic integration:**
+- [ ] Harness auto-detects `.devcontainer/devcontainer.json` and routes provider invocations through `devcontainer exec` — no manual flag needed
+- [ ] If container not running, harness starts it automatically via `devcontainer up`
+- [ ] Harness itself (loop.ps1/loop.sh) always runs on host, only agent CLIs run inside container
+- [ ] Dashboard runs on host and reads session data directly from host filesystem
+- [ ] Host processes convention-file requests (`.aloop/requests/`) — agents in container write requests, harness on host fulfills them
+
+**Shared container:**
+- [ ] Multiple parallel loops reuse a single running container instance
+- [ ] Each loop operates on its own worktree inside the shared container
+- [ ] Container is started by first loop, reused by subsequent loops (detect via `devcontainer exec -- echo ok`)
+- [ ] No per-loop container startup overhead after the first
+- [ ] Session worktrees are accessible inside the container via bind mount of `~/.aloop/sessions/`
+
+---
+
+## Known Issues & Required Fixes (from field testing)
+
+These issues were discovered when another agent attempted to set up and run aloop on a fresh Windows machine. They must be addressed before aloop can be considered reliably installable.
+
+### 1. loop.ps1 — Fatal parse error on last line
+
+`Write-Host "... ($iteration iterations) ..."` causes a cascading parse failure. PowerShell interprets `($iteration iterations)` as a sub-expression, chokes on `iterations` as an unexpected token, and then reports bogus "missing closing `}`" errors throughout the entire file. The file fails to load at all — no execution happens.
+
+**Fix:** Use `$($iteration)` subexpression syntax to avoid the parentheses-inside-string ambiguity. Applied to repo source but **the installed runtime at `~/.aloop/bin/loop.ps1` may still have the old version** — `install.ps1` must re-copy on next install.
+
+**Note:** This only affects Windows PowerShell 5.1. PowerShell 7 (pwsh) parses it differently but we must support both.
+
+### 2. Claude Code Edit tool corrupts line endings
+
+When Claude Code's Edit tool modifies `loop.ps1`, it writes edited lines with LF-only (`\n`) while the rest of the file uses CRLF (`\r\n`). Windows PowerShell cannot parse files with mixed line endings — it treats LF-only lines as continuation of the previous string, causing "missing string terminator" errors.
+
+Worse: attempting to fix with `Set-Content` can collapse the file into a single line.
+
+**Mitigations needed:**
+- [ ] Add `.editorconfig` to repo enforcing `end_of_line = crlf` for `*.ps1` files
+- [ ] Consider adding a line-ending self-check at the top of `loop.ps1` that detects and warns about mixed endings
+- [ ] `install.ps1` should normalize line endings when copying loop scripts to `~/.aloop/bin/`
+- [ ] Document in skill instructions that agents should use `Write` tool (full file) instead of `Edit` for `.ps1` files if line-ending corruption is detected
+
+### 3. Path format mismatch — Git Bash `$HOME` vs PowerShell paths
+
+When launching `loop.ps1` from Git Bash, `$HOME` resolves to `/c/Users/pj/` which PowerShell can't parse. Paths must be Windows-native (`C:\Users\pj\...`).
+
+**Mitigations needed:**
+- [ ] `aloop start` skill/CLI must detect the current shell and convert paths to the target script's expected format
+- [ ] `loop.ps1` should normalize any POSIX-style paths it receives in its parameters
+- [ ] Document that `loop.ps1` must always be invoked with Windows-native paths
+
+### 4. CLAUDECODE env var not unset in loop.sh
+
+When `aloop start` is invoked from within a Claude Code session, the `CLAUDECODE` env var is inherited by child processes. This causes `claude --print` (and potentially other provider CLIs) to fail with "Claude Code cannot be launched inside another Claude Code session."
+
+**Fix:** `unset CLAUDECODE` at the top of `loop.sh` and `Remove-Item Env:CLAUDECODE` at the top of `loop.ps1`. Applied to repo source but **installed runtime may be stale** — must be re-installed.
+
+**Defense in depth:** Also unset per-invocation in `Invoke-Provider` / `invoke_provider` blocks (already done in worktree versions).
+
+### 5. Installed runtime staleness
+
+The installed runtime at `~/.aloop/bin/` (or `~/.ralph/bin/` on older installs) is copied once during `install.ps1` and never auto-updated. When bugs are fixed in the repo, the installed copy stays broken until the user re-runs `install.ps1`.
+
+**Mitigations needed:**
+- [ ] `aloop` CLI should check if installed runtime is older than repo source and warn/offer to update
+- [ ] Consider `aloop update` command that re-copies runtime files from repo
+- [ ] `install.ps1` should print a version or timestamp so staleness is detectable
+- [ ] Loop scripts should log their own version/timestamp at `session_start` for debugging

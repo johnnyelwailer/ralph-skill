@@ -24,7 +24,7 @@ Each cycle runs 5 iterations: one plan, three builds, one review. This ratio giv
 
 1. **Planning Phase** (1x): Gap analysis (specs vs code) outputs prioritized TODO list — no implementation, no commits
 2. **Building Phase** (3x): Picks tasks from plan, implements, runs tests (backpressure), commits — three consecutive iterations for real progress
-3. **Review Phase** (1x): Critically audits the build iterations against 5 quality gates — the adversarial critic that catches shallow tests, spec deviations, and coverage gaps
+3. **Review Phase** (1x): Critically audits the build iterations against 6 quality gates — the adversarial critic that catches shallow tests, spec deviations, and coverage gaps
 4. **Observation Phase** (yours): You sit on the loop, not in it — engineer the setup and environment that allows Aloop to succeed
 
 ### Key Principles
