@@ -3,6 +3,8 @@
 ## Current Phase: P1 Reliability Hardening + Devcontainer Foundations
 
 ### In Progress
+- [ ] [review] Gate 5: `aloop/bin/loop.tests.ps1` uses the PS 7+ null-conditional operator `?.` (lines 19, 305, 1294), causing parse failures and preventing test execution on PowerShell 5.1. (priority: high)
+- [ ] [review] Gate 3: `aloop/bin/loop.ps1` (`ConvertTo-NativePath`) branch coverage is unverified because the test suite fails to run on the target platform. (priority: high)
 - [x] [review] Gate 2: `install.tests.ps1:453-460` (`skips line ending mutation when in DryRun`) only asserts log output and never verifies file contents remain unchanged; extend the test to assert `loop.ps1` bytes/text are identical before/after `-DryRun` so a mutating implementation fails. (priority: high)
 - [x] [review] Gate 3: `aloop/cli/src/commands/start.ts:352-359` (`normalizeGitBashPathForWindows`) has uncovered branches in the new code path; add `start.test.ts` cases for non-POSIX passthrough (e.g., `C:\\repo\\work`) and drive-root conversion (`/c` or `/c/` => `C:\\`) and assert exact `-WorkDir`/`cwd` outputs. (priority: high)
 
@@ -37,10 +39,10 @@
 - [ ] [acceptance/P3] Run final SPEC acceptance sweep and refresh TODO states from verified code/tests. (priority: low, completion gate)
 
 ### Completed
-- [x] [devcontainer/P1] Perform mandatory devcontainer research and capture decisions/constraints in `RESEARCH.md` from containers.dev + VS Code devcontainer docs.
-- [x] [review/P1] Raise branch coverage for `Normalize-LoopScriptLineEndings` in `install.ps1` by adding tests for both missing branches: file-not-found (`Test-Path` false) and `$DryRun` no-mutation path.
-- [x] [known-issues/P1] Add Git Bash/posix-path normalization in `aloop/cli/src/commands/start.ts` before PowerShell launch (`/c/...` -> `C:\\...`).
-- [x] [known-issues/P1] Add defensive path normalization in `aloop/bin/loop.ps1` for `-PromptsDir`, `-SessionDir`, and `-WorkDir` so direct invocations tolerate POSIX-style paths.
+- [x] [devcontainer/P1] Perform mandatory devcontainer research and capture decisions/constraints in `RESEARCH.md` from containers.dev + VS Code devcontainer docs. [reviewed: gates 1-5 pass]
+- [x] [review/P1] Raise branch coverage for `Normalize-LoopScriptLineEndings` in `install.ps1` by adding tests for both missing branches: file-not-found (`Test-Path` false) and `$DryRun` no-mutation path. [reviewed: gates 2-3 pass]
+- [x] [known-issues/P1] Add Git Bash/posix-path normalization in `aloop/cli/src/commands/start.ts` before PowerShell launch (`/c/...` -> `C:\\...`). [reviewed: gates 1-5 pass]
+- [x] [known-issues/P1] Add defensive path normalization in `aloop/bin/loop.ps1` for `-PromptsDir`, `-SessionDir`, and `-WorkDir` so direct invocations tolerate POSIX-style paths. [reviewed: gate 5 fail — loop.tests.ps1 syntax error]
 - [x] [phase-0/P1] Rename legacy name -> aloop in files, directories, and command surface.
 - [x] [entrypoint/P1] Stable canonical CLI entrypoint at `aloop/cli/aloop.mjs` is present and wired.
 - [x] [runtime/P1] Provider health subsystem exists in both runtimes (cooldown/degraded/recovery + lock handling + logging).
