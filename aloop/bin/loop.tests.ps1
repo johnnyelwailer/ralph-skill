@@ -16,7 +16,7 @@
 Describe 'loop.sh — final-review behavioral end-to-end' {
 
     BeforeAll {
-        $script:bashExe = (Get-Command bash -ErrorAction SilentlyContinue)?.Source
+        $script:bashExe = Get-Command bash -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
         if (-not $script:bashExe) { return }
 
         $loopShPath = Join-Path $PSScriptRoot 'loop.sh'
@@ -302,7 +302,7 @@ exit 0
 Describe 'loop.sh — retry-same-phase behavioral' {
 
     BeforeAll {
-        $script:bashExeRetry = (Get-Command bash -ErrorAction SilentlyContinue)?.Source
+        $script:bashExeRetry = Get-Command bash -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
         if (-not $script:bashExeRetry) { return }
 
         $loopShPath = Join-Path $PSScriptRoot 'loop.sh'
@@ -1291,7 +1291,7 @@ switch ($scenario) {
 Describe 'loop.sh � json_escape behavioral' {
 
     BeforeAll {
-        $script:bashExeJson = (Get-Command bash -ErrorAction SilentlyContinue)?.Source
+        $script:bashExeJson = Get-Command bash -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
         if (-not $script:bashExeJson) { return }
 
         $loopShPath = Join-Path $PSScriptRoot 'loop.sh'
