@@ -442,6 +442,24 @@ Describe 'Installer behavioral branches' {
         $loopShText | Should -Not -Match "`r`n"
     }
 
+    It 'skips line ending normalization when file is missing (Test-Path false branch)' {
+        $binDir = Join-Path $testHome '.aloop\bin'
+        if (Test-Path $binDir) { Remove-Item -Recurse -Force $binDir }
+
+        $output = Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-DryRun')
+        $output | Should -Match 'Line ending normalization skipped; file not found'
+    }
+
+    It 'skips line ending mutation when in DryRun (DryRun true branch)' {
+        $binDir = Join-Path $testHome '.aloop\bin'
+        New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+        $dummyFile = Join-Path $binDir 'loop.ps1'
+        Set-Content -Path $dummyFile -Value 'test'
+        
+        $output = Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-DryRun')
+        $output | Should -Match '\[DRY RUN\] Normalize line endings \(CRLF\):'
+    }
+
     It 'copies commands only for harnesses where HasCommands is true' {
         Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-Force') | Out-Null
 
