@@ -2055,17 +2055,25 @@ The installed runtime at `~/.aloop/bin/` (or `~/.ralph/bin/` on older installs) 
 - [ ] `install.ps1` should print a version or timestamp so staleness is detectable
 - [ ] Loop scripts should log their own version/timestamp at `session_start` for debugging
 
-### 9. Loop restart always begins at plan — does not resume cycle position
+### 9. No distinction between start, restart, and resume
 
 **Severity: Medium**
 
-The loop always starts at iteration 1, which maps to `plan` in the 5-step cycle (`plan → build → build → build → review`). If a loop is stopped after completing `plan → build → review → plan` (iteration 4) and restarted, it starts at `plan` again instead of resuming at `build` (iteration 5's position).
+The loop always starts at iteration 1 (plan phase). There is no way to resume from where a previous run left off in the cycle. If stopped after `plan → build → review → plan` and restarted, it re-plans instead of continuing to build.
 
-This wastes iterations re-planning work that was already planned, and can cause the planner to overwrite or conflict with the previous plan.
+Three session launch modes are needed:
+
+| Mode | Session | TODO/plan | Cycle position | Use case |
+|---|---|---|---|---|
+| **start** | New session | Fresh (no TODO) | Iteration 1 (plan) | New work from scratch |
+| **restart** | Existing session | Keeps existing TODO | Iteration 1 (plan) | Re-plan with existing work (current behavior) |
+| **resume** | Existing session | Keeps existing TODO | Continues from last position | Pick up where you left off |
 
 **Mitigations needed:**
-- [ ] On startup, read `status.json` from the session directory (already contains `iteration` and `phase`)
-- [ ] If a previous run exists and state is `interrupted` or `limit_reached`, calculate the next cycle position and start there
-- [ ] If state is `completed`, start fresh (new plan)
-- [ ] Log the resume point: "Resuming from iteration N (phase: build)" so it's visible
+- [ ] Add `--mode start|restart|resume` flag (or equivalent) to loop scripts and `/aloop:start` skill
+- [ ] **resume**: read `status.json` (already has `iteration` and `phase`), calculate next cycle position, start there
+- [ ] **resume**: log the resume point: "Resuming from iteration N (phase: build)"
+- [ ] **restart**: current behavior, no changes needed
+- [ ] **start**: create new session directory, fresh state
 - [ ] Both `loop.ps1` and `loop.sh` must implement this
+- [ ] `/aloop:start` and `/aloop:resume` as separate skills, or `/aloop:start` asks which mode
