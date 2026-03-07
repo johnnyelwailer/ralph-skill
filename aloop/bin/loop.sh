@@ -876,6 +876,135 @@ get_review_verdict() {
 }
 
 # ============================================================================
+# CONVENTION-FILE GH REQUEST PROCESSING
+# ============================================================================
+
+get_gh_request_archive_path() {
+    local processed_dir="$1"
+    local filename="$2"
+    local destination="$processed_dir/$filename"
+    if [ ! -e "$destination" ]; then
+        echo "$destination"
+        return
+    fi
+    local base="${filename%.*}"
+    local ext="${filename##*.}"
+    local suffix=1
+    while true; do
+        local candidate="$processed_dir/${base}.dup${suffix}.${ext}"
+        if [ ! -e "$candidate" ]; then
+            echo "$candidate"
+            return
+        fi
+        suffix=$((suffix + 1))
+    done
+}
+
+write_gh_response_file() {
+    local response_path="$1"
+    local json_content="$2"
+    printf '%s\n' "$json_content" > "$response_path"
+}
+
+process_gh_convention_requests() {
+    local iteration="$1"
+
+    local aloop_dir="$WORK_DIR/.aloop"
+    local requests_dir="$aloop_dir/requests"
+    if [ ! -d "$requests_dir" ]; then
+        return
+    fi
+
+    local responses_dir="$aloop_dir/responses"
+    local processed_dir="$requests_dir/processed"
+    mkdir -p "$responses_dir" "$processed_dir"
+
+    local request_files=()
+    while IFS= read -r -d '' f; do
+        request_files+=("$f")
+    done < <(find "$requests_dir" -maxdepth 1 -name '*.json' -type f -print0 | sort -z)
+
+    if [ ${#request_files[@]} -eq 0 ]; then
+        return
+    fi
+
+    local session_id
+    session_id=$(basename "$SESSION_DIR")
+    local allowed_types="pr-create pr-comment issue-comment issue-create issue-close pr-merge branch-delete"
+
+    for request_file in "${request_files[@]}"; do
+        local filename
+        filename=$(basename "$request_file")
+        local response_path="$responses_dir/$filename"
+        local archive_path
+        archive_path=$(get_gh_request_archive_path "$processed_dir" "$filename")
+        local request_type=""
+        local processed_at
+        processed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+        # Try processing; always archive afterward
+        local success=false
+        local error_msg=""
+
+        # Parse request type from JSON
+        if [ -f "$request_file" ]; then
+            request_type=$(sed -nE 's/.*"type"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$request_file" | head -1)
+        fi
+
+        if [ -z "$request_type" ]; then
+            error_msg="Unsupported request type ''."
+        elif ! echo "$allowed_types" | grep -qw "$request_type"; then
+            error_msg="Unsupported request type '$request_type'."
+        else
+            local output=""
+            local exit_code=0
+            output=$(aloop gh "$request_type" --session "$session_id" --request "$request_file" 2>&1) || exit_code=$?
+
+            if [ "$exit_code" -ne 0 ]; then
+                error_msg="aloop gh $request_type failed with exit code $exit_code. $output"
+            else
+                # Build success response
+                local gh_field=""
+                if [ -n "$output" ]; then
+                    # Check if output looks like JSON (starts with { or [)
+                    local trimmed_output
+                    trimmed_output=$(printf '%s' "$output" | sed 's/^[[:space:]]*//')
+                    if [ "${trimmed_output:0:1}" = "{" ] || [ "${trimmed_output:0:1}" = "[" ]; then
+                        gh_field=",\"gh\":$output"
+                    else
+                        gh_field=",\"gh\":\"$(printf '%s' "$output" | sed 's/"/\\"/g')\""
+                    fi
+                fi
+                write_gh_response_file "$response_path" \
+                    "{\"status\":\"success\",\"type\":\"$request_type\",\"request_file\":\"$filename\",\"processed_at\":\"$processed_at\"$gh_field}"
+
+                write_log_entry "gh_request_processed" \
+                    "iteration" "$iteration" \
+                    "type" "$request_type" \
+                    "request_file" "$filename" \
+                    "response_file" "$filename"
+                success=true
+            fi
+        fi
+
+        if [ "$success" = false ]; then
+            local escaped_error
+            escaped_error=$(printf '%s' "$error_msg" | sed 's/"/\\"/g' | tr '\n' ' ')
+            write_gh_response_file "$response_path" \
+                "{\"status\":\"error\",\"type\":\"$request_type\",\"request_file\":\"$filename\",\"error\":\"$escaped_error\",\"processed_at\":\"$processed_at\"}"
+
+            write_log_entry "gh_request_failed" \
+                "iteration" "$iteration" \
+                "type" "$request_type" \
+                "request_file" "$filename" \
+                "error" "$error_msg"
+        fi
+
+        mv -f "$request_file" "$archive_path"
+    done
+}
+
+# ============================================================================
 # STUCK DETECTION
 # ============================================================================
 
@@ -1232,6 +1361,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     resolve_iteration_mode "$ITERATION" > /dev/null
     iter_mode="$RESOLVED_MODE"
     LAST_ITER_MODE="$iter_mode"
+
+    process_gh_convention_requests "$ITERATION"
 
     # Check for live steering instruction (overrides normal mode)
     STEERING_FILE="$WORK_DIR/STEERING.md"
