@@ -1967,6 +1967,119 @@ The skill's devcontainer generator MUST:
 
 ---
 
+## Custom Prompt Pipeline & Task Routing (Priority: P3 — future enhancement)
+
+The current loop uses a fixed cycle (`plan → build × 3 → review`) with a single provider. This works for the common case but limits what's possible. This enhancement makes the loop cycle **fully configurable** via prompt files with front-matter metadata.
+
+### Prompt Front Matter
+
+Each `PROMPT_*.md` file can include YAML front matter that controls when, how, and with what provider it runs:
+
+```markdown
+---
+# When to run this prompt in the cycle
+runAfter: plan           # runs after 'plan' phase completes (default: standalone)
+repeat: 3                # run this prompt 3 times before advancing (default: 1)
+
+# Provider selection for this specific prompt
+providers:
+  - harness: claude
+    model: opus
+  - harness: codex
+    model: auto
+providerMode: fallthrough  # 'round-robin' | 'fallthrough' | 'fixed'
+                            # fallthrough = try first, fall back to next on failure
+                            # round-robin = rotate across repeats
+                            # fixed = always use first provider (default)
+
+# Behavior
+autoCommit: true           # auto-commit after each invocation (default: true for build)
+timeout: 600               # per-invocation timeout in seconds (default: from config)
+continueOnError: false     # skip failures and continue cycle (default: false)
+---
+
+# Build Prompt
+
+You are building features from TODO.md...
+```
+
+### Configurable Cycle
+
+Instead of hardcoded `plan-build-review`, the cycle becomes a sequence of prompt references:
+
+```yaml
+# In project's aloop config (e.g., .aloop/config.yml)
+cycle:
+  - prompt: plan
+  - prompt: build
+    repeat: 3
+  - prompt: review
+```
+
+This is equivalent to today's `plan-build-review` mode, but now users can insert custom phases:
+
+```yaml
+cycle:
+  - prompt: plan
+  - prompt: build
+    repeat: 2
+  - prompt: test          # custom: run tests and report failures
+    providers: [{ harness: claude, model: haiku }]  # cheap model for test runner
+  - prompt: build         # fix test failures
+  - prompt: security-scan # custom: run security audit
+    providers: [{ harness: codex, model: auto }]
+  - prompt: review
+```
+
+### Task Routing (tagged TODOs → specialized agents)
+
+TODO items can be tagged with categories that route them to specialized prompts with purpose-built instructions and provider choices:
+
+```markdown
+## TODO
+- [ ] #build Add user authentication endpoint
+- [ ] #debugger Fix race condition in WebSocket handler
+- [ ] #refactor Extract payment logic into service class
+- [ ] #docs Write API documentation for /users endpoint
+- [ ] #test Add integration tests for auth flow
+```
+
+The loop reads the tag from the next unchecked TODO and dispatches to the matching prompt:
+
+| Tag | Prompt file | Typical provider | Purpose |
+|---|---|---|---|
+| `#build` | `PROMPT_build.md` | claude/opus | General feature implementation |
+| `#debugger` | `PROMPT_debugger.md` | claude/opus | Focused debugging with diagnostic steps |
+| `#refactor` | `PROMPT_refactor.md` | codex | Structural changes, large-scale edits |
+| `#docs` | `PROMPT_docs.md` | claude/haiku | Documentation (cheaper model sufficient) |
+| `#test` | `PROMPT_test.md` | codex | Test writing and coverage |
+| (untagged) | `PROMPT_build.md` | (default) | Falls back to standard build prompt |
+
+The planning agent would assign tags based on the nature of each task. The loop then picks the right prompt and provider automatically.
+
+### Provider Selection Intelligence
+
+During `/aloop:setup`, the setup agent can analyze the project and pre-configure optimal provider assignments:
+
+- **TypeScript/JavaScript projects** → codex for refactoring (strong at structural edits), claude for architecture
+- **Debugging tasks** → claude/opus (best reasoning for root cause analysis)
+- **Documentation** → claude/haiku or gemini (cost-effective for prose)
+- **Test writing** → codex or claude (both strong, round-robin for diversity)
+- **Security review** → claude/opus (most thorough for security analysis)
+
+These are defaults that the user can override per-project.
+
+### Implementation Notes
+
+- Front matter is parsed before prompt content is sent to the provider (strip the `---` block)
+- Unknown front-matter keys are ignored (forward-compatible)
+- The loop script needs a prompt registry: scan `PROMPT_*.md` files, parse front matter, build the execution graph
+- Task routing requires the plan prompt to produce tagged TODOs — update `PROMPT_plan.md` template to include tag guidance
+- Cycle config in `config.yml` takes precedence over individual front-matter `runAfter` (explicit ordering wins)
+- This is additive — projects without front matter or custom config use the current hardcoded `plan → build × 3 → review` cycle unchanged
+
+---
+
 ## Known Issues & Required Fixes (from field testing)
 
 These issues were discovered when another agent attempted to set up and run aloop on a fresh Windows machine. They must be addressed before aloop can be considered reliably installable.
