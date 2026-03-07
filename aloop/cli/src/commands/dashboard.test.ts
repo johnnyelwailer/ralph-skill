@@ -148,6 +148,189 @@ test('host monitor processes GH convention requests outside loop runtime', async
   }
 });
 
+test('GH request processor writes error response for malformed JSON request', async () => {
+  const calls: string[] = [];
+  const fixture = await createServerFixture({
+    requestPollIntervalMs: 50,
+    ghCommandRunner: async (operation, _sessionId, requestPath) => {
+      calls.push(`${operation}|${path.basename(requestPath)}`);
+      return { exitCode: 0, output: '{}' };
+    },
+  });
+
+  const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
+  const processedDir = path.join(requestsDir, 'processed');
+  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+
+  try {
+    await mkdir(requestsDir, { recursive: true });
+    await writeFile(path.join(requestsDir, '001-bad.json'), 'not valid json {{{', 'utf8');
+
+    await waitFor(async () => {
+      try {
+        await readFile(path.join(processedDir, '001-bad.json'), 'utf8');
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    assert.deepEqual(calls, []);
+    const response = JSON.parse(await readFile(path.join(responsesDir, '001-bad.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(response.status, 'error');
+    assert.equal(typeof response.error, 'string');
+    assert.equal(typeof response.processed_at, 'string');
+
+    const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { event?: string });
+    assert.equal(logs.filter((entry) => entry.event === 'gh_request_failed').length, 1);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GH request processor writes error response for unsupported request type', async () => {
+  const calls: string[] = [];
+  const fixture = await createServerFixture({
+    requestPollIntervalMs: 50,
+    ghCommandRunner: async (operation, _sessionId, requestPath) => {
+      calls.push(`${operation}|${path.basename(requestPath)}`);
+      return { exitCode: 0, output: '{}' };
+    },
+  });
+
+  const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
+  const processedDir = path.join(requestsDir, 'processed');
+  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+
+  try {
+    await mkdir(requestsDir, { recursive: true });
+    await writeFile(path.join(requestsDir, '001-unknown.json'), '{"type":"repo-delete","target":"foo"}', 'utf8');
+
+    await waitFor(async () => {
+      try {
+        await readFile(path.join(processedDir, '001-unknown.json'), 'utf8');
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    assert.deepEqual(calls, []);
+    const response = JSON.parse(await readFile(path.join(responsesDir, '001-unknown.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(response.status, 'error');
+    assert.equal(response.type, 'repo-delete');
+    assert.match(response.error as string, /Unsupported request type/);
+
+    const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { event?: string });
+    assert.equal(logs.filter((entry) => entry.event === 'gh_request_failed').length, 1);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GH request processor writes error response when aloop gh returns non-zero exit code', async () => {
+  const fixture = await createServerFixture({
+    requestPollIntervalMs: 50,
+    ghCommandRunner: async () => {
+      return { exitCode: 1, output: 'rate limit exceeded' };
+    },
+  });
+
+  const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
+  const processedDir = path.join(requestsDir, 'processed');
+  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+
+  try {
+    await mkdir(requestsDir, { recursive: true });
+    await writeFile(path.join(requestsDir, '001-pr-create.json'), '{"type":"pr-create","title":"x"}', 'utf8');
+
+    await waitFor(async () => {
+      try {
+        await readFile(path.join(processedDir, '001-pr-create.json'), 'utf8');
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    const response = JSON.parse(await readFile(path.join(responsesDir, '001-pr-create.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(response.status, 'error');
+    assert.equal(response.type, 'pr-create');
+    assert.match(response.error as string, /failed with exit code 1/);
+    assert.match(response.error as string, /rate limit exceeded/);
+
+    const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { event?: string });
+    assert.equal(logs.filter((entry) => entry.event === 'gh_request_failed').length, 1);
+    assert.equal(logs.filter((entry) => entry.event === 'gh_request_processed').length, 0);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GH request processor handles archive collision with duplicate file names', async () => {
+  const fixture = await createServerFixture({
+    requestPollIntervalMs: 50,
+    ghCommandRunner: async () => {
+      return { exitCode: 0, output: '{"ok":true}' };
+    },
+  });
+
+  const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
+  const processedDir = path.join(requestsDir, 'processed');
+  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+
+  try {
+    await mkdir(processedDir, { recursive: true });
+    // Pre-populate processed dir with a file that will collide
+    await writeFile(path.join(processedDir, '001-pr-create.json'), '{"old":"archive"}', 'utf8');
+
+    await writeFile(path.join(requestsDir, '001-pr-create.json'), '{"type":"pr-create","title":"new"}', 'utf8');
+
+    await waitFor(async () => {
+      try {
+        await readFile(path.join(processedDir, '001-pr-create.dup1.json'), 'utf8');
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    // Original archive file should be untouched
+    const oldArchive = JSON.parse(await readFile(path.join(processedDir, '001-pr-create.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(oldArchive.old, 'archive');
+
+    // New request should be archived with .dup1 suffix
+    const newArchive = JSON.parse(await readFile(path.join(processedDir, '001-pr-create.dup1.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(newArchive.type, 'pr-create');
+
+    // Response should still be written with success
+    const response = JSON.parse(await readFile(path.join(responsesDir, '001-pr-create.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(response.status, 'success');
+    assert.deepEqual(response.gh, { ok: true });
+
+    const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { event?: string });
+    assert.equal(logs.filter((entry) => entry.event === 'gh_request_processed').length, 1);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test('POST /api/steer validates input and writes STEERING.md', async () => {
   const fixture = await createServerFixture();
 
