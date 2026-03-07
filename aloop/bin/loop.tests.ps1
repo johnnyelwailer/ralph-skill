@@ -1491,3 +1491,61 @@ if ($env:PATH -eq $originalPath) {
         $resultStr | Should -Match 'RESTORED:true'
     }
 }
+
+# ============================================================================
+# 6. loop.ps1 — ConvertTo-NativePath POSIX path normalization
+# ============================================================================
+Describe 'loop.ps1 — ConvertTo-NativePath POSIX path normalization' {
+
+    BeforeAll {
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+        $scriptContent = Get-Content $loopScript -Raw
+
+        # Extract the ConvertTo-NativePath function
+        if ($scriptContent -match '(?ms)(^function ConvertTo-NativePath\s*\{.*?^})') {
+            Invoke-Expression $Matches[1]
+        } else {
+            throw "Could not extract ConvertTo-NativePath from loop.ps1"
+        }
+    }
+
+    It 'converts /c/Users/foo to C:\Users\foo' {
+        ConvertTo-NativePath '/c/Users/foo' | Should -BeExactly 'C:\Users\foo'
+    }
+
+    It 'converts /d/projects/work to D:\projects\work' {
+        ConvertTo-NativePath '/d/projects/work' | Should -BeExactly 'D:\projects\work'
+    }
+
+    It 'converts uppercase /C/Users to C:\Users' {
+        ConvertTo-NativePath '/C/Users' | Should -BeExactly 'C:\Users'
+    }
+
+    It 'converts drive-only /c to C:\' {
+        ConvertTo-NativePath '/c' | Should -BeExactly 'C:\'
+    }
+
+    It 'converts drive-with-trailing-slash /c/ to C:\' {
+        ConvertTo-NativePath '/c/' | Should -BeExactly 'C:\'
+    }
+
+    It 'passes through normal Windows path unchanged' {
+        ConvertTo-NativePath 'C:\Users\foo' | Should -BeExactly 'C:\Users\foo'
+    }
+
+    It 'passes through UNC path unchanged' {
+        ConvertTo-NativePath '\\server\share' | Should -BeExactly '\\server\share'
+    }
+
+    It 'passes through relative path unchanged' {
+        ConvertTo-NativePath 'some\relative\path' | Should -BeExactly 'some\relative\path'
+    }
+
+    It 'handles forward slashes in tail segment' {
+        ConvertTo-NativePath '/e/a/b/c' | Should -BeExactly 'E:\a\b\c'
+    }
+
+    It 'handles mixed slashes in tail segment' {
+        ConvertTo-NativePath '/e/a\b/c' | Should -BeExactly 'E:\a\b\c'
+    }
+}

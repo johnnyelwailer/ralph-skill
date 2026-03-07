@@ -52,6 +52,25 @@ if (Test-Path Env:CLAUDECODE) {
 }
 
 # ============================================================================
+# PATH NORMALIZATION — tolerate POSIX-style paths from Git Bash / MSYS
+# ============================================================================
+
+function ConvertTo-NativePath {
+    param([string]$Value)
+    # Match POSIX-style /c/... or /C/... (single letter after leading slash, not UNC \\)
+    if ($Value -match '^[\\/](?![\\/])([a-zA-Z])(?:[\\/](.*))?$') {
+        $drive = $Matches[1].ToUpper()
+        $tail  = if ($Matches[2]) { $Matches[2] -replace '/', '\' } else { '' }
+        if ($tail.Length -gt 0) { return "${drive}:\${tail}" } else { return "${drive}:\" }
+    }
+    return $Value
+}
+
+$PromptsDir = ConvertTo-NativePath $PromptsDir
+$SessionDir = ConvertTo-NativePath $SessionDir
+$WorkDir    = ConvertTo-NativePath $WorkDir
+
+# ============================================================================
 # VALIDATION
 # ============================================================================
 
