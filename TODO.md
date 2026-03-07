@@ -3,9 +3,9 @@
 ## Current Phase: P1 Spec Parity Completion (Proof + Protocol + UX)
 
 ### In Progress
-- [x] [review] Gate 1: Baseline updates are coupled to commit subject text (`chore(review): PASS`) in both runtimes (`loop.ps1:1435`, `loop.sh:1317`); replace fragile subject-string matching with a deterministic approval signal (e.g., a `review-verdict.json` file or exit-code convention) and keep rejection behavior unchanged. (priority: high)
-- [x] [review] Gate 2: No runtime regression tests exist for baseline lifecycle in `loop.tests.ps1` or any shell test file — specifically, no tests prove baselines update on approved review or are preserved on rejected review. Add these tests. (priority: high)
-- [x] [review] Gate 3: Branch-coverage evidence for newly added proof/baseline paths is missing — no tests cover `force proof`, manifest injection, or baseline update branches in either runtime; add coverage-reporting assertions so these branches are measured and meet >=80%. (priority: high)
+- [x] [review] Gate 1: Baseline updates are coupled to commit subject text (`chore(review): PASS`) in both runtimes (`loop.ps1:1435`, `loop.sh:1317`); replace fragile subject-string matching with a deterministic approval signal (e.g., a `review-verdict.json` file or exit-code convention) and keep rejection behavior unchanged. (priority: high) [reviewed: gates 1-5 pass — deterministic review-verdict.json with iteration/verdict validation in both runtimes]
+- [x] [review] Gate 2: No runtime regression tests exist for baseline lifecycle in `loop.tests.ps1` or any shell test file — specifically, no tests prove baselines update on approved review or are preserved on rejected review. Add these tests. (priority: high) [reviewed: gates 1-5 pass — 4 new baseline lifecycle tests with concrete file-existence and event-ordering assertions]
+- [x] [review] Gate 3: Branch-coverage evidence for newly added proof/baseline paths is missing — no tests cover `force proof`, manifest injection, or baseline update branches in either runtime; add coverage-reporting assertions so these branches are measured and meet >=80%. (priority: high) [reviewed: gates 1-5 pass — coverage tests track 3 branches per runtime with >=80% threshold assertion]
 - [ ] [review] Gate 4: `PROMPT_review.md` header says "5 quality gates" (lines 7, 17, 24) and approval text says "gates 1-5 pass" (lines 99, 101), but Gate 6 (Proof Verification) is listed at line 71; reconcile by updating to "6 quality gates" and "gates 1-6 pass" throughout. (priority: medium)
 
 ### Up Next
