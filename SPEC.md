@@ -1862,6 +1862,49 @@ Provider CLIs need API keys. Options (skill should auto-configure the best avail
 
 Preferred: option 4 (`remoteEnv` + `localEnv`) — no secrets in files, uses host's existing env vars.
 
+#### OAuth / CLI Token Forwarding
+
+The above covers API key env vars, but provider CLIs also store OAuth tokens in platform-specific credential stores that `remoteEnv`/`localEnv` cannot reach:
+
+| Provider | Host credential location | Token type |
+|---|---|---|
+| Claude Code | `~/.claude/` (config + session tokens) | OAuth / session |
+| GitHub Copilot CLI | `~/.config/github-copilot/` or OS keychain | OAuth device flow |
+| Codex (OpenAI) | `~/.codex/` or `~/.config/openai/` | OAuth / API key |
+| Gemini CLI | `~/.config/gemini/` or application-default credentials | OAuth |
+| GitHub CLI (gh) | `~/.config/gh/hosts.yml` or OS keychain | OAuth PAT |
+
+These tokens live in files or OS keychains — not env vars — so `remoteEnv` alone is insufficient.
+
+**Strategy (ordered by preference):**
+
+1. **Bind-mount credential directories** — mount host credential dirs read-only into container via `mounts` in devcontainer.json:
+   ```json
+   "mounts": [
+     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,readonly"
+   ]
+   ```
+   Pros: zero-config for user, tokens stay on host. Cons: path differences across OS; some CLIs write to their config dir (read-only mount may cause issues).
+
+2. **`initializeCommand` copy** — copy credential files into container at startup (runs on host):
+   ```json
+   "initializeCommand": "cp -r ~/.claude /tmp/.claude-creds"
+   ```
+   Then mount `/tmp/.claude-creds` into container. Pros: works even if CLI needs write access. Cons: credentials duplicated; stale if host tokens refresh mid-session.
+
+3. **Re-authenticate inside container** — run provider CLI auth flow inside container. Pros: cleanest isolation. Cons: requires interactive auth; not viable for unattended loops.
+
+4. **OS keychain tokens** — some providers (Copilot, gh) use OS keychain (Windows Credential Manager, macOS Keychain, libsecret). These CANNOT be bind-mounted. For these, either:
+   - Set equivalent env vars (`GH_TOKEN`, `GITHUB_TOKEN`) from host before container start
+   - Use `initializeCommand` to extract tokens from keychain and write to container-accessible location
+   - Configure provider to use file-based auth instead of keychain (e.g., `gh auth login --with-token`)
+
+**Implementation requirements:**
+- Skill's devcontainer generator MUST detect which providers are **actually activated in the project's aloop config** and set up credential forwarding only for those — never forward credentials for unused providers
+- Verification step MUST check that each provider can authenticate inside the container (e.g., `claude --version`, `gh auth status`)
+- If a provider uses OS keychain and no env var fallback exists, skill should warn the user and provide manual steps
+- Document the credential forwarding approach in generated devcontainer README or comments
+
 ### Acceptance Criteria
 
 **Skill / Setup:**
@@ -1874,6 +1917,8 @@ Preferred: option 4 (`remoteEnv` + `localEnv`) — no secrets in files, uses hos
 - [ ] Verification iterates on failure — fixes config and re-verifies until green
 - [ ] Existing projects with `.devcontainer/` get augmented (aloop mounts/env added) rather than overwritten
 - [ ] Provider API keys forwarded via `remoteEnv`/`localEnv` (no secrets in config files)
+- [ ] Provider OAuth/CLI tokens forwarded into container only for activated providers (bind-mount or `initializeCommand` copy)
+- [ ] Verification confirms each activated provider can authenticate inside the container
 
 **Automatic integration:**
 - [ ] Harness auto-detects `.devcontainer/devcontainer.json` and routes provider invocations through `devcontainer exec` — no manual flag needed
