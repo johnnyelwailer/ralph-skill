@@ -1832,18 +1832,30 @@ exit 0
     It 'refuses to start when session.lock contains a live PID' {
         if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available'; return }
         $e = New-ShLockTestEnv
-        # Start a background sleep process to get a guaranteed-alive PID
-        $alivePid = & $script:bashExe -c 'sleep 120 & echo $!; disown' 2>$null
-        $alivePid = $alivePid.Trim()
-        try {
-            $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-            [System.IO.File]::WriteAllText($e.LockFile, "$alivePid`n", $utf8NoBom)
-            $result = Invoke-ShLockLoopScript -Env $e -MaxIter 1
-            $result.ExitCode | Should -Not -Be 0
-            $result.Output | Should -Match 'already locked by PID'
-        } finally {
-            & $script:bashExe -c "kill $alivePid 2>/dev/null" | Out-Null
+        # Write the lockfile with a live PID and invoke loop.sh in one bash session
+        # so the blocker PID (sleep) is visible to kill -0 inside loop.sh.
+        $fakeBinBashPath = & $script:bashExe -c "cygpath -u '$($script:shLockFakeBinDir -replace '\\','/')'" 2>$null
+        if (-not $fakeBinBashPath) {
+            $fakeBinBashPath = ($script:shLockFakeBinDir -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
         }
+        $fakeBinBashPath = $fakeBinBashPath.Trim()
+        $lockBash = & $script:bashExe -c "cygpath -u '$($e.LockFile -replace '\\','/')'" 2>$null
+        $lockBash = $lockBash.Trim()
+        $output = & $script:bashExe -c "
+            sleep 300 &
+            BLOCKER_PID=`$!
+            echo `$BLOCKER_PID > '$lockBash'
+            export PATH='$fakeBinBashPath':`$PATH
+            export ALOOP_NO_DASHBOARD=1
+            bash '$($script:loopShBash)' --prompts-dir '$($e.PromptsBash)' --session-dir '$($e.SessionBash)' --work-dir '$($e.WorkBash)' --max-iterations 1 2>&1
+            RC=`$?
+            kill `$BLOCKER_PID 2>/dev/null
+            exit `$RC
+        " 2>&1
+        $exitCode = $LASTEXITCODE
+        $outputText = $output -join "`n"
+        $exitCode | Should -Not -Be 0
+        $outputText | Should -Match 'already locked by PID'
     }
 
     It 'ignores stale session.lock with dead PID' {
