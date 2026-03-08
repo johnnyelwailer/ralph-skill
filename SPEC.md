@@ -1967,6 +1967,125 @@ The skill's devcontainer generator MUST:
 
 ---
 
+## Configurable Agent Pipeline (Priority: P2)
+
+The current hardcoded `plan → build × 3 → review` cycle is replaced by a **configurable, runtime-mutable pipeline of agents**. The existing cycle becomes just the default configuration — zero breaking change.
+
+### Core Concept: Agents as the Unit
+
+An **agent** is a named unit with:
+- **Prompt** — instructions for what the agent does (a `PROMPT_*.md` file or inline)
+- **Provider/model preference** (optional) — which harness and model to use (falls back to session default)
+- **Transition rules** — what happens on success, failure, and repeated failure
+
+Agents are NOT hardcoded. `plan`, `build`, `review`, `steer` are just the default agents that ship with aloop. Users and the setup agent can define custom agents (e.g., `verify`, `debugger`, `security-audit`, `docs-generator`, `guard`).
+
+### Pipeline Configuration
+
+The pipeline is a sequence of agent references with transition rules:
+
+```yaml
+# Example: default plan-build-review (equivalent to current behavior)
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 3
+    onFailure: retry       # retry same agent
+  - agent: review
+    onFailure: goto build   # review fails → back to build
+
+# Example: vertical slice with verification
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 2
+  - agent: verify           # run tests, capture screenshots/video
+    onFailure: goto build
+    escalation:
+      maxRetries: 3
+      ladder:
+        1: { restrict: code-only }      # first failure: agent can only fix code
+        2: { restrict: code-and-tests, requireJustification: true }
+        3: { escalateTo: review }        # third failure: second opinion
+        4: { flag: human-review }        # give up, flag for human
+  - agent: guard             # verify the build agent didn't touch protected files
+    onFailure: revert-and-goto build
+  - agent: review
+  - agent: docs-generator
+```
+
+### Runtime Mutation
+
+The pipeline is **mutable at runtime** — phases can be added, removed, or reordered while the loop is running. Two control surfaces:
+
+1. **User via steering** — drop a steering file that modifies the pipeline:
+   ```markdown
+   # STEERING.md
+   Insert `security-audit` agent after `build` for remaining iterations.
+   Remove `docs-generator` — not needed yet.
+   ```
+   The host-side monitor interprets steering instructions and updates the pipeline.
+
+2. **Host-side monitor** — observes loop patterns and injects agents automatically:
+   - 3 consecutive build failures → inject `debugger` agent before next build
+   - Verification failing on environment issues → inject `env-fix` agent
+   - Provider consistently timing out → swap to different provider for next agent
+
+Agents do **not** modify the pipeline themselves — control stays with the user and host-side monitor (avoids perverse incentives like agents removing their own reviewers).
+
+### Agent-Based Guarding
+
+Instead of structural file-permission enforcement, a **guard agent** reviews what the previous agent changed and rejects unauthorized modifications:
+
+- Runs after the build agent (or any agent that needs policing)
+- Checks `git diff` for the agent's iteration
+- Reverts changes to protected files (e.g., test expectations, config, spec) and sends the build agent back with a rejection message
+- The guard agent's own prompt defines what's protected — configurable per project
+- Guard agent is itself guarded by being unable to modify code (it can only revert and reject)
+
+This is preferable to hardcoded file-permission enforcement because:
+- The guard can make judgment calls (e.g., "this test change is legitimate because the API contract changed")
+- Protection rules are configurable per project, not baked into loop machinery
+- It follows the same agent model — no special-case infrastructure
+
+### Vertical Slice Verification (built on the pipeline)
+
+For greenfield projects, the orchestrator decomposes the spec into **vertical slices** (each a GH issue/PR). Each slice is an independently runnable end-to-end path, not a horizontal layer.
+
+**Slice definition of done** (enforced by the pipeline):
+- Code is complete (build agent)
+- Builds and runs independently (verify agent)
+- Happy path works end-to-end with Playwright (verify agent — screenshots + video capture)
+- Tested with both fake/mock data and real/E2E data where applicable (verify agent)
+- No dead UI or stubs — the slice feels complete for what it covers (review agent)
+- Dependencies on other slices are explicit (plan agent)
+- Setup is bootstrapped — seed data, docker-compose, env vars included (build agent)
+- Getting-started docs generated (docs-generator agent)
+
+**Self-healing verification loop:**
+The verify agent runs Playwright tests, captures screenshots and video. On failure, it feeds the evidence (failure screenshot, error log, video of broken flow) back to the build agent. The escalation ladder controls what the build agent is allowed to fix:
+
+| Attempt | Agent may change | Requirement |
+|---|---|---|
+| 1st failure | Code only | Tests are treated as the spec |
+| 2nd failure | Code + tests | Must justify why the test was wrong |
+| 3rd failure | Escalated to review agent | Independent assessment: code vs test bug |
+| 4th failure | Flagged for human | Loop stops on this slice, continues others |
+
+Test expectations ideally originate from the **plan agent** (derived from the slice spec), not the build agent — so the build agent is implementing to a contract it didn't write.
+
+### Implementation Notes
+
+- Pipeline config lives in `.aloop/pipeline.yml` (or inline in `config.yml`)
+- Default pipeline (plan-build-review) is generated if no config exists — backward compatible
+- Agent definitions live in `.aloop/agents/` — each is a YAML file with prompt reference, provider preference, transition rules
+- The loop script becomes a generic agent runner: read pipeline, resolve next agent, invoke, check transition rules, repeat
+- Runtime pipeline mutations are applied via the host-side monitor (same mechanism as steering)
+- Pipeline state (current position, escalation counts, mutation history) is persisted in `status.json`
+- The parallel orchestrator creates per-slice pipelines — each child loop runs its own pipeline independently
+
+---
+
 ## Known Issues & Required Fixes (from field testing)
 
 These issues were discovered when another agent attempted to set up and run aloop on a fresh Windows machine. They must be addressed before aloop can be considered reliably installable.
