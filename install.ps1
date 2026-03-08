@@ -541,6 +541,22 @@ Copy-TreeItem `
 Normalize-LoopScriptLineEndings -Path (Join-Path $aloopDir "bin\loop.ps1") -LineEnding CRLF
 Normalize-LoopScriptLineEndings -Path (Join-Path $aloopDir "bin\loop.sh") -LineEnding LF
 
+# --- Runtime: version stamp ---
+$versionCommit = ''
+$versionTimestamp = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+try {
+    $gitDir = Join-Path $scriptDir '.git'
+    if (Test-Path $gitDir) {
+        $versionCommit = (git -C $scriptDir rev-parse --short HEAD 2>$null)
+        if (-not $versionCommit) { $versionCommit = '' }
+    }
+} catch { }
+$versionData = @{
+    commit = $versionCommit
+    installed_at = $versionTimestamp
+} | ConvertTo-Json -Compress
+Set-Content -Path (Join-Path $aloopDir "version.json") -Value $versionData -Encoding utf8
+
 # --- Runtime: templates ---
 Write-Host ""
 Write-Host "Installing prompt templates..." -ForegroundColor White
@@ -642,7 +658,8 @@ if (($IsLinux -or $IsMacOS) -and -not $DryRun -and (Test-Path $shShim)) {
 
 # --- Summary ---
 Write-Host ""
-Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
+$versionLabel = if ($versionCommit) { "$versionCommit ($versionTimestamp)" } else { $versionTimestamp }
+Write-Host "=== Installation Complete ($versionLabel) ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Installed components:" -ForegroundColor White
 Write-Host "  Skill:     ~/.{claude|codex|copilot|agents}/skills/$skillName/SKILL.md"

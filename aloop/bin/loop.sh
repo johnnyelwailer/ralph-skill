@@ -173,6 +173,17 @@ REPORT_FILE="$SESSION_DIR/report.md"
 REVIEW_VERDICT_FILE="$SESSION_DIR/review-verdict.json"
 START_TIME=$(date +%s)
 RUN_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || date +%s%N)
+
+# Runtime version: read version.json written by install.ps1
+RUNTIME_VERSION_DIR="${ALOOP_RUNTIME_DIR:-$HOME/.aloop}"
+RUNTIME_VERSION_FILE="$RUNTIME_VERSION_DIR/version.json"
+RUNTIME_COMMIT=""
+RUNTIME_INSTALLED_AT=""
+if [ -f "$RUNTIME_VERSION_FILE" ]; then
+    RUNTIME_COMMIT=$(grep -o '"commit":"[^"]*"' "$RUNTIME_VERSION_FILE" 2>/dev/null | head -1 | sed 's/"commit":"//;s/"//')
+    RUNTIME_INSTALLED_AT=$(grep -o '"installed_at":"[^"]*"' "$RUNTIME_VERSION_FILE" 2>/dev/null | head -1 | sed 's/"installed_at":"//;s/"//')
+fi
+
 DASHBOARD_PID=""
 DASHBOARD_URL=""
 
@@ -1340,7 +1351,7 @@ setup_remote_backup || true
 start_dashboard
 
 # Initialize session
-write_log_entry "session_start" "mode" "$MODE" "provider" "$PROVIDER" "work_dir" "$WORK_DIR"
+write_log_entry "session_start" "mode" "$MODE" "provider" "$PROVIDER" "work_dir" "$WORK_DIR" "runtime_commit" "$RUNTIME_COMMIT" "runtime_installed_at" "$RUNTIME_INSTALLED_AT"
 
 echo ""
 echo "Starting loop..."

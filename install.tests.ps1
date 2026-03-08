@@ -426,6 +426,25 @@ Describe 'Installer behavioral branches' {
         (Join-Path $testHome '.aloop\sessions') | Should -Exist
     }
 
+    It 'writes version.json with commit and installed_at fields' {
+        Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-Force') | Out-Null
+
+        $versionFile = Join-Path $testHome '.aloop\version.json'
+        $versionFile | Should -Exist
+        $versionData = Get-Content $versionFile -Raw | ConvertFrom-Json
+        $versionData | Should -Not -BeNullOrEmpty
+        # installed_at must be a non-empty ISO timestamp (check raw JSON to avoid DateTime deserialization)
+        $rawJson = Get-Content $versionFile -Raw
+        $rawJson | Should -Match '"installed_at"\s*:\s*"\d{4}-\d{2}-\d{2}T'
+        # commit may be empty (no .git in test env) but field must exist
+        $versionData.PSObject.Properties.Name | Should -Contain 'commit'
+    }
+
+    It 'includes version in installation complete banner' {
+        $output = Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-Force')
+        $output | Should -Match 'Installation Complete \('
+    }
+
     It 'normalizes installed loop.ps1 to CRLF line endings' {
         Invoke-InstallerIsolated -InstallerArgs @('-All', '-SkipCliCheck', '-Force') | Out-Null
 

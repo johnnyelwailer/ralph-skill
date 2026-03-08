@@ -1719,6 +1719,25 @@ exit 0
         # Lock should be cleaned up after exit
         Test-Path $e.LockFile | Should -Be $false
     }
+
+    It 'session_start log includes runtime_commit and runtime_installed_at fields' {
+        $e = New-LockTestEnv
+        # Write a fake version.json so the runtime version is populated
+        $versionDir = Join-Path $e.SessionDir '_runtime_stub'
+        if (-not (Test-Path $versionDir)) { New-Item -ItemType Directory -Force $versionDir | Out-Null }
+        '{"commit":"abc1234","installed_at":"2026-01-01T00:00:00Z"}' | Set-Content (Join-Path $versionDir 'version.json')
+        $result = Invoke-LockLoopScript -Env $e -MaxIter 6
+        $result.ExitCode | Should -Be 0
+        $logFile = Join-Path $e.SessionDir 'log.jsonl'
+        $logFile | Should -Exist
+        $entries = Get-Content $logFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $startEntry = $entries | Where-Object { $_.event -eq 'session_start' } | Select-Object -First 1
+        $startEntry | Should -Not -BeNullOrEmpty
+        $startEntry.runtime_commit | Should -Be 'abc1234'
+        # runtime_installed_at may be deserialized as DateTime; check the raw JSON line
+        $rawStartLine = Get-Content $logFile | Where-Object { $_ -match '"session_start"' } | Select-Object -First 1
+        $rawStartLine | Should -Match '"runtime_installed_at"\s*:\s*"2026-01-01T00:00:00Z"'
+    }
 }
 
 # ============================================================================

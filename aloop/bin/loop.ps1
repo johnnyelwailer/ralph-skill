@@ -783,6 +783,19 @@ $logFile = Join-Path $SessionDir "log.jsonl"
 $reportFile = Join-Path $SessionDir "report.md"
 $startTime = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
 $runId = [guid]::NewGuid().ToString()
+
+# Runtime version: read version.json written by install.ps1
+$runtimeVersionDir = if ($env:ALOOP_RUNTIME_DIR) { $env:ALOOP_RUNTIME_DIR } else { Join-Path $HOME '.aloop' }
+$runtimeVersionFile = Join-Path $runtimeVersionDir 'version.json'
+$runtimeVersion = @{ commit = ''; installed_at = '' }
+if (Test-Path $runtimeVersionFile) {
+    try {
+        $parsed = Get-Content $runtimeVersionFile -Raw | ConvertFrom-Json
+        if ($parsed.commit) { $runtimeVersion.commit = $parsed.commit }
+        if ($parsed.installed_at) { $runtimeVersion.installed_at = $parsed.installed_at }
+    } catch { }
+}
+
 $dashboardProcess = $null
 $dashboardUrl = $null
 
@@ -1474,6 +1487,8 @@ Write-LogEntry -Event "session_start" -Data @{
     provider = $Provider
     work_dir = $WorkDir
     max_iterations = $MaxIterations
+    runtime_commit = $runtimeVersion.commit
+    runtime_installed_at = $runtimeVersion.installed_at
 }
 
 Write-Host "`nStarting loop..." -ForegroundColor Green
