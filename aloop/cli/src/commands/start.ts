@@ -535,6 +535,27 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
 
   await deps.mkdir(sessionsRoot, { recursive: true });
 
+  // Runtime staleness check: compare installed version.json commit with current repo HEAD
+  const versionJsonPath = path.join(aloopRoot, 'version.json');
+  try {
+    const versionRaw = await deps.readFile(versionJsonPath, 'utf8');
+    const versionData = JSON.parse(versionRaw) as { commit?: string; installed_at?: string };
+    if (versionData.commit && discovery.project.is_git_repo) {
+      const headResult = deps.spawnSync('git', ['-C', discovery.project.root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' });
+      if (headResult.status === 0) {
+        const currentCommit = headResult.stdout.trim();
+        if (currentCommit && currentCommit !== versionData.commit) {
+          warnings.push(
+            `Installed runtime (commit ${versionData.commit}, installed ${versionData.installed_at ?? 'unknown'}) ` +
+            `may be stale — current repo HEAD is ${currentCommit}. Run install.ps1 to update.`,
+          );
+        }
+      }
+    }
+  } catch {
+    // version.json missing or unreadable — skip staleness check
+  }
+
   const projectConfig = (await readOptionalConfig(discovery.setup.config_path, deps)) ?? emptyParsedConfig();
   const globalConfig = (await readOptionalConfig(path.join(aloopRoot, 'config.yml'), deps)) ?? emptyParsedConfig();
 

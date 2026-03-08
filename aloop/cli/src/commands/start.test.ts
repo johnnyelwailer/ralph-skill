@@ -446,3 +446,88 @@ test('startCommandWithDeps rejects conflicting mode flags', async () => {
     /at most one of --plan, --build, or --review/i,
   );
 });
+
+test('startCommandWithDeps warns when installed runtime commit differs from repo HEAD', async () => {
+  const fixture = await setupWorkspace('aloop-start-staleness-');
+  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\non_start:\n  monitor: 'none'\n", 'utf8');
+
+  // Write version.json with an old commit
+  await writeFile(
+    path.join(fixture.homeDir, '.aloop', 'version.json'),
+    JSON.stringify({ commit: 'old1234', installed_at: '2026-01-01T00:00:00Z' }),
+    'utf8',
+  );
+
+  const spawnSyncCalls: Array<{ command: string; args: string[] }> = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: ((command: string, args?: readonly string[]) => {
+        spawnSyncCalls.push({ command, args: [...(args ?? [])] });
+        // Return a different commit than what's in version.json
+        if (args && args.includes('rev-parse')) {
+          return { status: 0, stdout: 'new5678\n', stderr: '' };
+        }
+        return { status: 0, stdout: '', stderr: '' };
+      }) as any,
+      platform: 'linux',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.ok(result.warnings.some((w: string) => w.includes('stale') && w.includes('old1234')),
+    `Expected a staleness warning mentioning 'old1234', got: ${result.warnings.join('; ')}`);
+});
+
+test('startCommandWithDeps does not warn when installed commit matches repo HEAD', async () => {
+  const fixture = await setupWorkspace('aloop-start-no-stale-');
+  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\non_start:\n  monitor: 'none'\n", 'utf8');
+
+  // Write version.json with the same commit as HEAD
+  await writeFile(
+    path.join(fixture.homeDir, '.aloop', 'version.json'),
+    JSON.stringify({ commit: 'same123', installed_at: '2026-03-01T00:00:00Z' }),
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: ((command: string, args?: readonly string[]) => {
+        if (args && args.includes('rev-parse')) {
+          return { status: 0, stdout: 'same123\n', stderr: '' };
+        }
+        return { status: 0, stdout: '', stderr: '' };
+      }) as any,
+      platform: 'linux',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.ok(!result.warnings.some((w: string) => w.includes('stale')),
+    `Expected no staleness warning, got: ${result.warnings.join('; ')}`);
+});
