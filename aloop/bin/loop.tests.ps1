@@ -1557,3 +1557,267 @@ Describe 'loop.ps1 — ConvertTo-NativePath POSIX path normalization' {
         ConvertTo-NativePath '/e/a\b/c' | Should -BeExactly 'E:\a\b\c'
     }
 }
+
+# ============================================================================
+# SESSION LOCKING — loop.ps1
+# ============================================================================
+Describe 'loop.ps1 — session lockfile' {
+
+    BeforeAll {
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+        $pwshPath   = (Get-Command pwsh -ErrorAction Stop).Source
+
+        $tempRoot   = Join-Path ([IO.Path]::GetTempPath()) ("aloop-lock-tests-" + [guid]::NewGuid().ToString('N'))
+        $fakeBinDir = Join-Path $tempRoot 'fake-bin'
+        New-Item -ItemType Directory -Force $fakeBinDir | Out-Null
+
+        # Fake claude provider that just marks tasks done
+        $fakePs1 = Join-Path $fakeBinDir '_fake_claude.ps1'
+        $fakePs1Content = @'
+$promptText = ($input | Out-String)
+$todoFile = Join-Path $PWD 'TODO.md'
+$content  = if (Test-Path $todoFile) { Get-Content $todoFile -Raw } else { '' }
+if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
+    ($content -replace '- \[ \]', '- [x]') | Set-Content $todoFile
+} elseif ($promptText -match 'Review Mode') {
+    $verdictFile = if ($promptText -match 'write a JSON verdict file at:(?:\r?\n)(.*?)(?:\r?\n)Schema:') { $matches[1].Trim() } else { '' }
+    $iterNum = if ($promptText -match '"iteration":\s*(\d+)') { $matches[1] } else { 0 }
+    if ($verdictFile) {
+        "{`n  `"iteration`": $iterNum,`n  `"verdict`": `"PASS`",`n  `"summary`": `"approved`"`n}" | Set-Content $verdictFile
+    }
+} elseif ($promptText -match 'Proof Mode') {
+    if ($promptText -match 'iter-(\d+)') {
+        $iterNum = $matches[1]
+        $artifactDir = Join-Path $PWD "..\session\artifacts\iter-$iterNum"
+        if (-not (Test-Path $artifactDir)) { New-Item -ItemType Directory -Force $artifactDir | Out-Null }
+        "[]" | Set-Content (Join-Path $artifactDir 'proof-manifest.json')
+    }
+}
+Write-Output "Fake provider: done"
+exit 0
+'@
+        Set-Content $fakePs1 $fakePs1Content
+        Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+
+        # Fake aloop.cmd shim (no-op)
+        $fakeAloopPs1 = Join-Path $fakeBinDir '_fake_aloop.ps1'
+        Set-Content $fakeAloopPs1 'Write-Output "{}"; exit 0'
+        Set-Content (Join-Path $fakeBinDir 'aloop.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakeAloopPs1`" %*`r`n"
+
+        function script:New-LockTestEnv {
+            $testDir   = Join-Path $tempRoot ("env-" + [guid]::NewGuid().ToString('N'))
+            $workDir   = Join-Path $testDir 'work'
+            $sessDir   = Join-Path $testDir 'session'
+            $promptDir = Join-Path $testDir 'prompts'
+            foreach ($d in $workDir, $sessDir, $promptDir) {
+                New-Item -ItemType Directory -Force $d | Out-Null
+            }
+            Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
+            Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof iter-<N>."
+            Set-Content (Join-Path $promptDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
+            return [pscustomobject]@{
+                WorkDir    = $workDir
+                SessionDir = $sessDir
+                PromptsDir = $promptDir
+                LockFile   = Join-Path $sessDir 'session.lock'
+            }
+        }
+
+        function script:Invoke-LockLoopScript {
+            param($Env, [int]$MaxIter = 6)
+            $prevPath    = $env:PATH
+            $prevRuntime = $env:ALOOP_RUNTIME_DIR
+            $prevNoDash  = $env:ALOOP_NO_DASHBOARD
+            $env:PATH              = "$fakeBinDir;$prevPath"
+            $env:ALOOP_RUNTIME_DIR = Join-Path $Env.SessionDir '_runtime_stub'
+            $env:ALOOP_NO_DASHBOARD = '1'
+            try {
+                $output = & $pwshPath -NoProfile -File $loopScript `
+                    -PromptsDir    $Env.PromptsDir `
+                    -SessionDir    $Env.SessionDir `
+                    -WorkDir       $Env.WorkDir    `
+                    -Mode          'plan-build-review'  `
+                    -Provider      'claude'             `
+                    -MaxIterations $MaxIter             `
+                    2>&1
+                return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
+            } finally {
+                $env:PATH = $prevPath
+                if ($null -eq $prevRuntime) {
+                    Remove-Item Env:ALOOP_RUNTIME_DIR -ErrorAction SilentlyContinue
+                } else {
+                    $env:ALOOP_RUNTIME_DIR = $prevRuntime
+                }
+                if ($null -eq $prevNoDash) {
+                    Remove-Item Env:ALOOP_NO_DASHBOARD -ErrorAction SilentlyContinue
+                } else {
+                    $env:ALOOP_NO_DASHBOARD = $prevNoDash
+                }
+            }
+        }
+    }
+
+    AfterAll {
+        if (Test-Path $tempRoot) { Remove-Item -Recurse -Force $tempRoot }
+    }
+
+    It 'creates session.lock on startup and removes it on normal exit' {
+        $e = New-LockTestEnv
+        Test-Path $e.LockFile | Should -Be $false
+        $result = Invoke-LockLoopScript -Env $e -MaxIter 6
+        $result.ExitCode | Should -Be 0
+        # Lock should be cleaned up after exit
+        Test-Path $e.LockFile | Should -Be $false
+    }
+
+    It 'refuses to start when session.lock contains a live PID' {
+        $e = New-LockTestEnv
+        # Write the current process PID (which is alive) into the lockfile
+        $PID | Set-Content $e.LockFile
+        $result = Invoke-LockLoopScript -Env $e -MaxIter 1
+        $result.ExitCode | Should -Be 1
+        $result.Output | Should -Match 'already locked by PID'
+    }
+
+    It 'ignores stale session.lock with dead PID' {
+        $e = New-LockTestEnv
+        # Use a PID that is almost certainly not alive
+        '999999' | Set-Content $e.LockFile
+        $result = Invoke-LockLoopScript -Env $e -MaxIter 6
+        $result.ExitCode | Should -Be 0
+        # Lock should be cleaned up after exit
+        Test-Path $e.LockFile | Should -Be $false
+    }
+}
+
+# ============================================================================
+# SESSION LOCKING — loop.sh
+# ============================================================================
+Describe 'loop.sh — session lockfile' {
+
+    BeforeAll {
+        $script:bashExe = Get-Command bash -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+        if (-not $script:bashExe) { return }
+
+        $loopShPath = Join-Path $PSScriptRoot 'loop.sh'
+        $script:loopShBash = & $script:bashExe -c "cygpath -u '$(($loopShPath -replace "\\","/"))'" 2>$null
+        if (-not $script:loopShBash) {
+            $script:loopShBash = ($loopShPath -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+        }
+
+        $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("aloop-sh-lock-tests-" + [guid]::NewGuid().ToString('N'))
+        $script:shLockTempRoot = $tempRoot
+        $fakeBinDir = Join-Path $tempRoot 'fake-bin'
+        New-Item -ItemType Directory -Force $fakeBinDir | Out-Null
+        $script:shLockFakeBinDir = $fakeBinDir
+
+        # Fake claude shell script
+        $fakeBinBash = & $script:bashExe -c "cygpath -u '$($fakeBinDir -replace '\\','/')'" 2>$null
+        if (-not $fakeBinBash) {
+            $fakeBinBash = ($fakeBinDir -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+        }
+        $fakeBinBash = $fakeBinBash.Trim()
+        $fakeShContent = @'
+#!/bin/bash
+PROMPT_TEXT="$(cat)"
+TODO_FILE="${PWD}/TODO.md"
+if echo "$PROMPT_TEXT" | grep -q "Building Mode" && grep -q -- '- \[ \]' "$TODO_FILE" 2>/dev/null; then
+    sed -i 's/- \[ \]/- [x]/g' "$TODO_FILE"
+elif echo "$PROMPT_TEXT" | grep -q "Review Mode"; then
+    VERDICT_FILE=$(echo "$PROMPT_TEXT" | grep -A 1 "write a JSON verdict file at:" | tail -n 1 | tr -d '\r')
+    ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE '"iteration": [0-9]+' | grep -oE '[0-9]+' | head -n 1)
+    if [ -n "$VERDICT_FILE" ]; then
+        printf '{\n  "iteration": %s,\n  "verdict": "PASS",\n  "summary": "approved"\n}\n' "$ITER_NUM" > "$VERDICT_FILE"
+    fi
+elif echo "$PROMPT_TEXT" | grep -q "Proof Mode"; then
+    ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE 'iter-[0-9]+' | grep -oE '[0-9]+' | head -n 1)
+    if [ -n "$ITER_NUM" ]; then
+        mkdir -p "../session/artifacts/iter-$ITER_NUM"
+        echo '[]' > "../session/artifacts/iter-$ITER_NUM/proof-manifest.json"
+    fi
+fi
+echo "Fake provider: done"
+exit 0
+'@
+        & $script:bashExe -c "printf '%s' $(([char]39) + ($fakeShContent -replace "'", "'\''") + [char]39) > '$fakeBinBash/claude' && chmod +x '$fakeBinBash/claude'"
+
+        function script:New-ShLockTestEnv {
+            $testDir   = Join-Path $tempRoot ("env-" + [guid]::NewGuid().ToString('N'))
+            $workDir   = Join-Path $testDir 'work'
+            $sessDir   = Join-Path $testDir 'session'
+            $promptDir = Join-Path $testDir 'prompts'
+            foreach ($d in $workDir, $sessDir, $promptDir) {
+                New-Item -ItemType Directory -Force $d | Out-Null
+            }
+            $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof iter-<N>.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
+
+            $workBash    = & $script:bashExe -c "cygpath -u '$($workDir -replace '\\','/')'" 2>$null
+            $sessBash    = & $script:bashExe -c "cygpath -u '$($sessDir -replace '\\','/')'" 2>$null
+            $promptsBash = & $script:bashExe -c "cygpath -u '$($promptDir -replace '\\','/')'" 2>$null
+            return [pscustomobject]@{
+                WorkDir     = $workDir
+                SessionDir  = $sessDir
+                PromptsDir  = $promptDir
+                WorkBash    = ($workBash).Trim()
+                SessionBash = ($sessBash).Trim()
+                PromptsBash = ($promptsBash).Trim()
+                LockFile    = Join-Path $sessDir 'session.lock'
+            }
+        }
+
+        function script:Invoke-ShLockLoopScript {
+            param($Env, [int]$MaxIter = 6)
+            $fakeBinBashPath = & $script:bashExe -c "cygpath -u '$($script:shLockFakeBinDir -replace '\\','/')'" 2>$null
+            if (-not $fakeBinBashPath) {
+                $fakeBinBashPath = ($script:shLockFakeBinDir -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+            }
+            $fakeBinBashPath = $fakeBinBashPath.Trim()
+            $output = & $script:bashExe -c "export PATH='$fakeBinBashPath':$([char]36)PATH; export ALOOP_NO_DASHBOARD=1; bash '$($script:loopShBash)' --prompts-dir '$($Env.PromptsBash)' --session-dir '$($Env.SessionBash)' --work-dir '$($Env.WorkBash)' --max-iterations $MaxIter 2>&1"
+            return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
+        }
+    }
+
+    AfterAll {
+        if ($script:shLockTempRoot -and (Test-Path $script:shLockTempRoot)) {
+            Remove-Item -Recurse -Force $script:shLockTempRoot
+        }
+    }
+
+    It 'creates session.lock on startup and removes it on normal exit' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available'; return }
+        $e = New-ShLockTestEnv
+        Test-Path $e.LockFile | Should -Be $false
+        $result = Invoke-ShLockLoopScript -Env $e -MaxIter 6
+        $result.ExitCode | Should -Be 0
+        # Lock should be cleaned up after exit
+        Test-Path $e.LockFile | Should -Be $false
+    }
+
+    It 'refuses to start when session.lock contains a live PID' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available'; return }
+        $e = New-ShLockTestEnv
+        # Use PID 1 which is always alive on Unix-like systems (init/systemd)
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($e.LockFile, "1`n", $utf8NoBom)
+        $result = Invoke-ShLockLoopScript -Env $e -MaxIter 1
+        $result.ExitCode | Should -Not -Be 0
+        $result.Output | Should -Match 'already locked by PID'
+    }
+
+    It 'ignores stale session.lock with dead PID' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available'; return }
+        $e = New-ShLockTestEnv
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($e.LockFile, "999999`n", $utf8NoBom)
+        $result = Invoke-ShLockLoopScript -Env $e -MaxIter 6
+        $result.ExitCode | Should -Be 0
+        Test-Path $e.LockFile | Should -Be $false
+    }
+}

@@ -40,6 +40,8 @@ param(
     [int]$MaxIterations = 50,
     [int]$MaxStuck = 3,
 
+    [int]$ProviderTimeoutSec = $(if ($env:ALOOP_PROVIDER_TIMEOUT) { [int]$env:ALOOP_PROVIDER_TIMEOUT } else { 600 }),
+
     [switch]$BackupEnabled,
     [switch]$DryRun
 )
@@ -87,6 +89,58 @@ if (-not (Test-Path $WorkDir)) {
 # Create session directory if it doesn't exist
 if (-not (Test-Path $SessionDir)) {
     New-Item -ItemType Directory -Path $SessionDir -Force | Out-Null
+}
+
+# ============================================================================
+# SESSION LOCKING — prevent multiple loops on same session files
+# ============================================================================
+
+$sessionLockFile = Join-Path $SessionDir "session.lock"
+
+function Test-SessionLockAlive {
+    if (-not (Test-Path $sessionLockFile)) { return $false }
+    $lockPid = (Get-Content $sessionLockFile -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
+    if (-not $lockPid -or $lockPid -notmatch '^\d+$') { return $false }
+    $proc = Get-Process -Id ([int]$lockPid) -ErrorAction SilentlyContinue
+    return ($null -ne $proc)
+}
+
+if (Test-SessionLockAlive) {
+    $existingPid = (Get-Content $sessionLockFile | Select-Object -First 1).Trim()
+    Write-Error "Session is already locked by PID $existingPid (still alive). Another loop is running on this session directory: $SessionDir"
+    exit 1
+}
+
+# Write our PID to the lockfile
+$PID | Set-Content -Encoding utf8 $sessionLockFile
+
+function Remove-SessionLock {
+    if (Test-Path $sessionLockFile) {
+        $lockPid = (Get-Content $sessionLockFile -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
+        if ($lockPid -eq "$PID") {
+            Remove-Item $sessionLockFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+# ============================================================================
+# PROVIDER PROCESS TRACKING — kill hung/zombie provider on timeout or exit
+# ============================================================================
+
+$script:activeProviderProcess = $null
+
+function Stop-ActiveProvider {
+    if ($null -ne $script:activeProviderProcess) {
+        try {
+            if (-not $script:activeProviderProcess.HasExited) {
+                $childPid = $script:activeProviderProcess.Id
+                # Kill the entire process tree (provider may spawn children)
+                & taskkill /F /T /PID $childPid 2>$null | Out-Null
+                Write-Warning "Killed active provider process tree (PID $childPid)"
+            }
+        } catch { }
+        $script:activeProviderProcess = $null
+    }
 }
 
 # ============================================================================
@@ -234,6 +288,68 @@ function Cleanup-GhBlock {
     }
 }
 
+function Invoke-ProviderProcess {
+    param(
+        [string]$Command,
+        [string]$Arguments,
+        [string]$StdinContent
+    )
+
+    $cmdPath = (Get-Command $Command -ErrorAction Stop).Source
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $cmdPath
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.RedirectStandardInput = ($null -ne $StdinContent)
+    $psi.CreateNoWindow = $true
+    $psi.WorkingDirectory = (Get-Location).Path
+
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $proc.Start() | Out-Null
+    $script:activeProviderProcess = $proc
+
+    try {
+        if ($null -ne $StdinContent) {
+            $proc.StandardInput.Write($StdinContent)
+            $proc.StandardInput.Close()
+        }
+
+        # Read output asynchronously to avoid deadlocks
+        $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+        $stderrTask = $proc.StandardError.ReadToEndAsync()
+
+        $timeoutMs = $ProviderTimeoutSec * 1000
+        $exited = $proc.WaitForExit($timeoutMs)
+        if (-not $exited) {
+            Stop-ActiveProvider
+            throw "Provider '$Command' timed out after $ProviderTimeoutSec seconds"
+        }
+        # Ensure async reads have flushed
+        $proc.WaitForExit()
+
+        $stdout = $stdoutTask.Result
+        $stderr = $stderrTask.Result
+        $exitCode = $proc.ExitCode
+        $script:activeProviderProcess = $null
+
+        # Display buffered provider output
+        if ($stdout) { Write-Host $stdout }
+
+        return @{
+            ExitCode = $exitCode
+            Output   = $stdout
+            Error    = $stderr
+        }
+    }
+    finally {
+        if ($null -ne $proc) { $proc.Dispose() }
+    }
+}
+
 function Invoke-Provider {
     param(
         [string]$ProviderName,
@@ -246,98 +362,92 @@ function Invoke-Provider {
     $ghBlockDir = Setup-GhBlock
     $savedPath = $env:PATH
     $env:PATH = "$ghBlockDir$([System.IO.Path]::PathSeparator)$env:PATH"
-    try {
 
-    switch ($ProviderName) {
-        'claude' {
-            $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                $rawOutput = $PromptContent | & claude --model $ClaudeModel --dangerously-skip-permissions --print 2>&1 | Tee-Object -Variable rawOutput
-                return $rawOutput
-            }
-            if ($LASTEXITCODE -ne 0) {
-                $errorOutput = $output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
-                $errorText = ($errorOutput | Out-String).Trim()
-                $script:lastProviderOutputText = $output | Out-String
-                throw "claude exited with code $LASTEXITCODE`nStderr: $errorText"
-            }
-            $script:lastProviderOutputText = $null
-            return $output
-        }
-        'codex' {
-            $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                $rawOutput = $PromptContent | & codex exec -m $CodexModel --dangerously-bypass-approvals-and-sandbox - 2>&1 | Tee-Object -Variable rawOutput
-                return $rawOutput
-            }
-            if ($LASTEXITCODE -ne 0) {
-                $errorOutput = $output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
-                $errorText = ($errorOutput | Out-String).Trim()
-                $script:lastProviderOutputText = $output | Out-String
-                throw "codex exited with code $LASTEXITCODE`nStderr: $errorText"
-            }
-            $script:lastProviderOutputText = $null
-            return $output
-        }
-        'gemini' {
-            $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                $rawOutput = & gemini -m $GeminiModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable rawOutput
-                return $rawOutput
-            }
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warning "Gemini -m $GeminiModel failed (exit $LASTEXITCODE). Retrying without explicit model."
-                $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                    $rawOutput = & gemini --yolo -p $PromptContent 2>&1 | Tee-Object -Variable rawOutput
-                    return $rawOutput
-                }
-                if ($LASTEXITCODE -ne 0) {
-                    $errorOutput = $output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
-                    $errorText = ($errorOutput | Out-String).Trim()
-                    $script:lastProviderOutputText = $output | Out-String
-                    throw "gemini exited with code $LASTEXITCODE`nStderr: $errorText"
+    # Sanitize CLAUDECODE env before spawning child process (inherits env)
+    $hadClaudeCode = Test-Path Env:CLAUDECODE
+    $claudeCodeValue = $null
+    if ($hadClaudeCode) { $claudeCodeValue = $env:CLAUDECODE }
+    Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue
+
+    try {
+        $result = $null
+        switch ($ProviderName) {
+            'claude' {
+                $result = Invoke-ProviderProcess -Command 'claude' `
+                    -Arguments "--model $ClaudeModel --dangerously-skip-permissions --print" `
+                    -StdinContent $PromptContent
+                if ($result.ExitCode -ne 0) {
+                    $script:lastProviderOutputText = $result.Output
+                    throw "claude exited with code $($result.ExitCode)`nStderr: $($result.Error)"
                 }
             }
-            $script:lastProviderOutputText = $null
-            return $output
-        }
-        'copilot' {
-            $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                $rawOutput = & copilot --model $CopilotModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable rawOutput
-                return $rawOutput
-            }
-            $outputText = ($output | Out-String)
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warning "Copilot --model $CopilotModel failed (exit $LASTEXITCODE). Retrying with --model $CopilotRetryModel."
-                $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                    $rawOutput = & copilot --model $CopilotRetryModel --yolo -p $PromptContent 2>&1 | Tee-Object -Variable rawOutput
-                    return $rawOutput
+            'codex' {
+                $result = Invoke-ProviderProcess -Command 'codex' `
+                    -Arguments "exec -m $CodexModel --dangerously-bypass-approvals-and-sandbox -" `
+                    -StdinContent $PromptContent
+                if ($result.ExitCode -ne 0) {
+                    $script:lastProviderOutputText = $result.Output
+                    throw "codex exited with code $($result.ExitCode)`nStderr: $($result.Error)"
                 }
-                $outputText = ($output | Out-String)
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "Copilot --model $CopilotRetryModel failed (exit $LASTEXITCODE). Retrying without explicit model."
-                    $output = Invoke-WithSanitizedClaudeCodeEnv -Action {
-                        $rawOutput = & copilot --yolo -p $PromptContent 2>&1 | Tee-Object -Variable rawOutput
-                        return $rawOutput
+            }
+            'gemini' {
+                $result = Invoke-ProviderProcess -Command 'gemini' `
+                    -Arguments "-m $GeminiModel --yolo" `
+                    -StdinContent $PromptContent
+                if ($result.ExitCode -ne 0) {
+                    Write-Warning "Gemini -m $GeminiModel failed (exit $($result.ExitCode)). Retrying without explicit model."
+                    $result = Invoke-ProviderProcess -Command 'gemini' `
+                        -Arguments "--yolo" `
+                        -StdinContent $PromptContent
+                    if ($result.ExitCode -ne 0) {
+                        $script:lastProviderOutputText = $result.Output
+                        throw "gemini exited with code $($result.ExitCode)`nStderr: $($result.Error)"
                     }
-                    $outputText = ($output | Out-String)
-                }
-                if ($LASTEXITCODE -ne 0) {
-                    $errorOutput = $output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
-                    $errorText = ($errorOutput | Out-String).Trim()
-                    $script:lastProviderOutputText = $outputText
-                    throw "copilot exited with code $LASTEXITCODE`nStderr: $errorText"
                 }
             }
-            $script:lastProviderOutputText = $null
-            Assert-CopilotAuth -CopilotOutputText $outputText
-            return $output
+            'copilot' {
+                $result = Invoke-ProviderProcess -Command 'copilot' `
+                    -Arguments "--model $CopilotModel --yolo" `
+                    -StdinContent $PromptContent
+                $outputText = $result.Output
+                if ($result.ExitCode -ne 0) {
+                    Write-Warning "Copilot --model $CopilotModel failed (exit $($result.ExitCode)). Retrying with --model $CopilotRetryModel."
+                    $result = Invoke-ProviderProcess -Command 'copilot' `
+                        -Arguments "--model $CopilotRetryModel --yolo" `
+                        -StdinContent $PromptContent
+                    $outputText = $result.Output
+                    if ($result.ExitCode -ne 0) {
+                        Write-Warning "Copilot --model $CopilotRetryModel failed (exit $($result.ExitCode)). Retrying without explicit model."
+                        $result = Invoke-ProviderProcess -Command 'copilot' `
+                            -Arguments "--yolo" `
+                            -StdinContent $PromptContent
+                        $outputText = $result.Output
+                    }
+                    if ($result.ExitCode -ne 0) {
+                        $script:lastProviderOutputText = $outputText
+                        throw "copilot exited with code $($result.ExitCode)`nStderr: $($result.Error)"
+                    }
+                }
+                Assert-CopilotAuth -CopilotOutputText $outputText
+            }
+            default {
+                throw "Unsupported provider '$ProviderName'"
+            }
         }
-        default {
-            throw "Unsupported provider '$ProviderName'"
-        }
-    }
+
+        $script:lastProviderOutputText = $null
+        # Return output as array of lines for Show-AgentSummary compatibility
+        return ($result.Output -split "`n")
 
     } finally {
         # Restore original PATH after provider execution
         $env:PATH = $savedPath
+        # Restore CLAUDECODE env
+        if ($hadClaudeCode) {
+            $env:CLAUDECODE = $claudeCodeValue
+        } else {
+            Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -1560,6 +1670,8 @@ try {
         Start-Sleep -Seconds 3
     }
 } finally {
+    Stop-ActiveProvider
+    Remove-SessionLock
     Cleanup-GhBlock
     Stop-DashboardProcess
     if ($cancelled) {

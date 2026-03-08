@@ -106,8 +106,10 @@ RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
 CLEANUP_FUNC="$(extract_function cleanup_gh_block)"
 INVOKE_FUNC="$(extract_function invoke_provider)"
+WAIT_FUNC="$(extract_function _wait_for_provider)"
+KILL_PROVIDER_FUNC="$(extract_function kill_active_provider)"
 
-if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ]; then
+if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
     exit 1
 fi
@@ -115,11 +117,15 @@ fi
 eval "$RESOLVE_FUNC"
 eval "$SETUP_FUNC"
 eval "$CLEANUP_FUNC"
+eval "$KILL_PROVIDER_FUNC"
+eval "$WAIT_FUNC"
 eval "$INVOKE_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
 LAST_PROVIDER_ERROR=""
+ACTIVE_PROVIDER_PID=""
+PROVIDER_TIMEOUT=30
 CLAUDE_MODEL="test"
 LOG_FILE="$(mktemp)"
 COVERAGE_LOG_FILE="$(mktemp)"

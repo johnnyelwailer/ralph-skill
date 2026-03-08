@@ -37,6 +37,7 @@ MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-50}"
 MAX_STUCK="${ALOOP_MAX_STUCK:-3}"
 BACKUP_ENABLED="${ALOOP_BACKUP:-false}"
 DRY_RUN=false
+PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-600}"
 PROVIDER_HEALTH_DIR="${ALOOP_HEALTH_DIR:-$HOME/.aloop/health}"
 HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
 
@@ -100,6 +101,57 @@ if [ ! -d "$WORK_DIR" ]; then
 fi
 
 mkdir -p "$SESSION_DIR"
+
+# ============================================================================
+# SESSION LOCKING — prevent multiple loops on same session files
+# ============================================================================
+
+SESSION_LOCK_FILE="$SESSION_DIR/session.lock"
+
+check_session_lock_alive() {
+    [ -f "$SESSION_LOCK_FILE" ] || return 1
+    local lock_pid
+    lock_pid=$(head -1 "$SESSION_LOCK_FILE" 2>/dev/null | tr -d '[:space:]')
+    [ -n "$lock_pid" ] || return 1
+    # Check if the process is still running
+    kill -0 "$lock_pid" 2>/dev/null
+}
+
+if check_session_lock_alive; then
+    existing_pid=$(head -1 "$SESSION_LOCK_FILE" | tr -d '[:space:]')
+    echo "Error: Session is already locked by PID $existing_pid (still alive). Another loop is running on this session directory: $SESSION_DIR" >&2
+    exit 1
+fi
+
+# Write our PID to the lockfile
+echo $$ > "$SESSION_LOCK_FILE"
+
+remove_session_lock() {
+    if [ -f "$SESSION_LOCK_FILE" ]; then
+        local lock_pid
+        lock_pid=$(head -1 "$SESSION_LOCK_FILE" 2>/dev/null | tr -d '[:space:]')
+        if [ "$lock_pid" = "$$" ]; then
+            rm -f "$SESSION_LOCK_FILE"
+        fi
+    fi
+}
+
+# ============================================================================
+# PROVIDER PROCESS TRACKING — kill hung/zombie provider on timeout or exit
+# ============================================================================
+
+ACTIVE_PROVIDER_PID=""
+
+kill_active_provider() {
+    if [ -n "$ACTIVE_PROVIDER_PID" ]; then
+        if kill -0 "$ACTIVE_PROVIDER_PID" 2>/dev/null; then
+            # Kill process group to include children
+            kill -- -"$ACTIVE_PROVIDER_PID" 2>/dev/null || kill "$ACTIVE_PROVIDER_PID" 2>/dev/null || true
+            echo "Warning: Killed active provider process tree (PID $ACTIVE_PROVIDER_PID)" >&2
+        fi
+        ACTIVE_PROVIDER_PID=""
+    fi
+}
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -714,6 +766,25 @@ cleanup_gh_block() {
     fi
 }
 
+# Wait for ACTIVE_PROVIDER_PID with timeout.
+# Returns the process exit code, or 124 on timeout (matching GNU timeout convention).
+# Uses wall-clock time so mocked sleep in tests doesn't cause false timeouts.
+_wait_for_provider() {
+    local deadline=$(( $(date +%s) + PROVIDER_TIMEOUT ))
+    while kill -0 "$ACTIVE_PROVIDER_PID" 2>/dev/null; do
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+            kill_active_provider
+            ACTIVE_PROVIDER_PID=""
+            return 124
+        fi
+        sleep 1
+    done
+    wait "$ACTIVE_PROVIDER_PID" 2>/dev/null
+    local rc=$?
+    ACTIVE_PROVIDER_PID=""
+    return $rc
+}
+
 invoke_provider() {
     local provider_name=$1
     local prompt_content=$2
@@ -730,12 +801,22 @@ invoke_provider() {
     export PATH
     local invoke_rc=0
     local copilot_output_file=""
+    local exit_code=0
 
     case "$provider_name" in
         claude)
-            echo "$prompt_content" | env -u CLAUDECODE claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
-            local exit_code=${PIPESTATUS[1]}
-            if [ "$exit_code" -ne 0 ]; then
+            {
+                echo "$prompt_content" | env -u CLAUDECODE claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                exit ${PIPESTATUS[1]}
+            } &
+            ACTIVE_PROVIDER_PID=$!
+            _wait_for_provider
+            exit_code=$?
+            if [ "$exit_code" -eq 124 ]; then
+                LAST_PROVIDER_ERROR="claude timed out after $PROVIDER_TIMEOUT seconds"
+                echo "claude timed out after $PROVIDER_TIMEOUT seconds" >&2
+                invoke_rc=1
+            elif [ "$exit_code" -ne 0 ]; then
                 LAST_PROVIDER_ERROR="claude exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
                 echo "claude exited with code $exit_code" >&2
                 invoke_rc=$exit_code
@@ -744,9 +825,18 @@ invoke_provider() {
             fi
             ;;
         codex)
-            echo "$prompt_content" | env -u CLAUDECODE codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
-            local exit_code=${PIPESTATUS[1]}
-            if [ "$exit_code" -ne 0 ]; then
+            {
+                echo "$prompt_content" | env -u CLAUDECODE codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                exit ${PIPESTATUS[1]}
+            } &
+            ACTIVE_PROVIDER_PID=$!
+            _wait_for_provider
+            exit_code=$?
+            if [ "$exit_code" -eq 124 ]; then
+                LAST_PROVIDER_ERROR="codex timed out after $PROVIDER_TIMEOUT seconds"
+                echo "codex timed out after $PROVIDER_TIMEOUT seconds" >&2
+                invoke_rc=1
+            elif [ "$exit_code" -ne 0 ]; then
                 LAST_PROVIDER_ERROR="codex exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
                 echo "codex exited with code $exit_code" >&2
                 invoke_rc=$exit_code
@@ -755,11 +845,30 @@ invoke_provider() {
             fi
             ;;
         gemini)
-            env -u CLAUDECODE gemini -m "$GEMINI_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
-            if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            {
+                env -u CLAUDECODE gemini -m "$GEMINI_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                exit ${PIPESTATUS[0]}
+            } &
+            ACTIVE_PROVIDER_PID=$!
+            _wait_for_provider
+            exit_code=$?
+            if [ "$exit_code" -eq 124 ]; then
+                LAST_PROVIDER_ERROR="gemini timed out after $PROVIDER_TIMEOUT seconds"
+                echo "gemini timed out after $PROVIDER_TIMEOUT seconds" >&2
+                invoke_rc=1
+            elif [ "$exit_code" -ne 0 ]; then
                 echo "Gemini -m $GEMINI_MODEL failed. Retrying without explicit model." >&2
-                env -u CLAUDECODE gemini --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
-                if [ ${PIPESTATUS[0]} -ne 0 ]; then
+                {
+                    env -u CLAUDECODE gemini --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                    exit ${PIPESTATUS[0]}
+                } &
+                ACTIVE_PROVIDER_PID=$!
+                _wait_for_provider
+                exit_code=$?
+                if [ "$exit_code" -eq 124 ]; then
+                    LAST_PROVIDER_ERROR="gemini timed out after $PROVIDER_TIMEOUT seconds"
+                    invoke_rc=1
+                elif [ "$exit_code" -ne 0 ]; then
                     LAST_PROVIDER_ERROR="gemini failed. Stderr: $(cat "$tmp_stderr")"
                     echo "gemini failed" >&2
                     invoke_rc=1
@@ -772,14 +881,42 @@ invoke_provider() {
             ;;
         copilot)
             copilot_output_file=$(mktemp)
-            env -u CLAUDECODE copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
-            if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            {
+                env -u CLAUDECODE copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+                exit ${PIPESTATUS[0]}
+            } &
+            ACTIVE_PROVIDER_PID=$!
+            _wait_for_provider
+            exit_code=$?
+            if [ "$exit_code" -eq 124 ]; then
+                LAST_PROVIDER_ERROR="copilot timed out after $PROVIDER_TIMEOUT seconds"
+                echo "copilot timed out after $PROVIDER_TIMEOUT seconds" >&2
+                invoke_rc=1
+            elif [ "$exit_code" -ne 0 ]; then
                 echo "Copilot --model $COPILOT_MODEL failed. Retrying with $COPILOT_RETRY_MODEL." >&2
-                env -u CLAUDECODE copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
-                if [ ${PIPESTATUS[0]} -ne 0 ]; then
+                {
+                    env -u CLAUDECODE copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+                    exit ${PIPESTATUS[0]}
+                } &
+                ACTIVE_PROVIDER_PID=$!
+                _wait_for_provider
+                exit_code=$?
+                if [ "$exit_code" -eq 124 ]; then
+                    LAST_PROVIDER_ERROR="copilot timed out after $PROVIDER_TIMEOUT seconds"
+                    invoke_rc=1
+                elif [ "$exit_code" -ne 0 ]; then
                     echo "Copilot retry failed. Trying without explicit model." >&2
-                    env -u CLAUDECODE copilot --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
-                    if [ ${PIPESTATUS[0]} -ne 0 ]; then
+                    {
+                        env -u CLAUDECODE copilot --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+                        exit ${PIPESTATUS[0]}
+                    } &
+                    ACTIVE_PROVIDER_PID=$!
+                    _wait_for_provider
+                    exit_code=$?
+                    if [ "$exit_code" -eq 124 ]; then
+                        LAST_PROVIDER_ERROR="copilot timed out after $PROVIDER_TIMEOUT seconds"
+                        invoke_rc=1
+                    elif [ "$exit_code" -ne 0 ]; then
                         LAST_PROVIDER_ERROR="copilot failed. Stderr: $(cat "$tmp_stderr")"
                         echo "copilot failed" >&2
                         invoke_rc=1
@@ -1212,6 +1349,8 @@ echo ""
 # Cleanup on exit
 cleanup() {
     local reason="${1:-interrupted}"
+    kill_active_provider
+    remove_session_lock
     stop_dashboard
     cleanup_gh_block
     echo ""
@@ -1222,6 +1361,7 @@ cleanup() {
 
 trap 'cleanup "interrupted"; exit 130' INT
 trap 'cleanup "error"; exit $?' ERR
+trap 'kill_active_provider; remove_session_lock' EXIT
 
 ITERATION=0
 while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
