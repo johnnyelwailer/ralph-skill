@@ -1196,6 +1196,137 @@ aloop orchestrate --spec SPEC.md --plan-only
 
 ---
 
+## `aloop gh` — GitHub-Integrated Commands (Priority: P2)
+
+### Overview
+
+`aloop gh` is the CLI namespace for all GitHub-integrated loop modes. It connects the loop lifecycle to GH issues, PRs, and the agent trunk. While the core `aloop start` is local-only (no GH awareness), `aloop gh` adds issue tracking, PR creation, feedback response, and event-driven automation.
+
+### Commands
+
+#### `aloop gh start --issue <number> [options]`
+
+Start a loop targeting a specific GitHub issue. The issue provides the requirements/context.
+
+```bash
+aloop gh start --issue 42                    # use issue as full spec
+aloop gh start --issue 42 --spec SPEC.md     # issue is a slice, SPEC.md provides broader context
+aloop gh start --issue 42 --provider codex --max 30
+```
+
+**Flow:**
+1. Fetch issue title, body, labels, and comments via `gh issue view`
+2. If `--spec` provided, load the spec file as additional context
+3. Create branch: `agent/issue-42-<slug>`
+4. Create session + worktree (same as `aloop start`)
+5. Inject issue content into the plan prompt as the requirement
+6. Run loop (plan-build-review)
+7. On completion → create PR against `agent/main` (or `main` if no agent trunk exists)
+8. Link PR to issue (`Closes #42`)
+9. Post a summary comment on the issue with results
+
+**If the issue has no spec and no `--spec` flag:** the issue body IS the spec. The planner decomposes it into TODO tasks directly.
+
+#### `aloop gh watch [options]`
+
+Event-driven daemon that monitors a repo and auto-spawns loops for matching issues.
+
+```bash
+aloop gh watch                                # default: issues labeled 'aloop'
+aloop gh watch --label automated --label p1   # custom label filter
+aloop gh watch --assignee @me                 # only issues assigned to me
+aloop gh watch --milestone v2.0               # only issues in milestone
+aloop gh watch --max-concurrent 3             # limit parallel loops
+aloop gh watch --repo owner/repo              # explicit repo (default: current)
+```
+
+**Daemon behavior:**
+1. Poll for new/updated issues matching filters (configurable interval, default 60s)
+2. For each matching issue not already being worked on → `aloop gh start --issue <number>`
+3. Respect `--max-concurrent` — queue excess issues
+4. Track issue→session mapping in `~/.aloop/watch.json`
+5. On loop completion → create PR, post summary (same as `aloop gh start`)
+6. Keep watching — new issues trigger new loops
+7. Stop with `aloop gh stop-watch` or Ctrl+C
+
+**Filter precedence:** labels > assignee > milestone. All filters are AND-combined.
+
+**Re-trigger:** If a loop finished but the issue gets reopened or new comments are added, the watch daemon can re-spawn a loop (configurable: `--re-trigger-on reopen,comment` or `--no-re-trigger`).
+
+#### `aloop gh status`
+
+Show all GH-linked loops, their issues, PRs, and feedback status.
+
+```bash
+aloop gh status
+```
+
+```
+Issue  Branch                PR    Status      Iteration  Feedback
+#42    agent/issue-42-auth   #51   building    12/50      —
+#43    agent/issue-43-api    #52   pr-review   done       2 comments (unresolved)
+#44    agent/issue-44-ui     —     planning    3/50       —
+#45    (queued)              —     waiting     —          —
+```
+
+#### `aloop gh stop [--issue <number> | --all]`
+
+Stop a GH-linked loop.
+
+```bash
+aloop gh stop --issue 42     # stop loop for specific issue
+aloop gh stop --all          # stop all GH-linked loops
+```
+
+### PR Feedback Loop
+
+When a loop creates a PR, it doesn't just fire-and-forget. The loop (or watch daemon) monitors the PR for feedback and re-iterates.
+
+**What triggers re-iteration:**
+- New review comments on the PR
+- Review requesting changes
+- CI failure
+- Manual comment with `@aloop` mention (e.g., `@aloop please fix the error handling`)
+
+**Flow:**
+1. Watch daemon (or background poller) detects new PR activity via `gh pr view --comments`
+2. Collect unresolved review comments and CI status
+3. Resume the loop on the same branch/worktree with feedback injected as a steering instruction
+4. Loop fixes issues, pushes new commits to the PR branch
+5. PR auto-updates, reviewers are notified
+6. Repeat until approved or max feedback iterations reached (configurable, default 5)
+
+**What the loop sees:** feedback is formatted as a steering prompt — the build agent gets the review comments as its next task, not the original TODO.
+
+### Agent Trunk Integration
+
+PRs from `aloop gh` target `agent/main` by default (the agent trunk from the Parallel Orchestrator spec):
+
+- Individual issue loops create PRs against `agent/main`
+- Auto-merge into `agent/main` when CI passes (configurable — can require human approval)
+- Human promotes `agent/main` → `main` when satisfied
+- PR from `agent/main` → `main` is human-only by default (configurable)
+
+If no agent trunk exists yet, the first `aloop gh start` creates it: `git checkout -b agent/main main`.
+
+### Acceptance Criteria
+
+- [ ] `aloop gh start --issue <N>` fetches issue, creates branch/session/worktree, runs loop, creates PR on completion
+- [ ] `aloop gh start --issue <N> --spec SPEC.md` uses both issue and spec as context
+- [ ] PR is linked to issue (`Closes #N`) and summary comment posted on issue
+- [ ] `aloop gh watch` polls for matching issues and auto-spawns loops
+- [ ] Watch respects `--label`, `--assignee`, `--milestone`, `--max-concurrent` filters
+- [ ] Watch daemon is stoppable and resumable
+- [ ] PR feedback loop detects review comments and CI failures, re-iterates automatically
+- [ ] Feedback is injected as steering (not appended to original TODO)
+- [ ] Max feedback iterations configurable with sensible default
+- [ ] `aloop gh status` shows issue→loop→PR mapping with feedback status
+- [ ] `aloop gh stop` cleanly stops GH-linked loops
+- [ ] PRs target `agent/main` by default, auto-merge configurable
+- [ ] All GH operations go through `gh` CLI (no direct API calls) — respects existing auth
+
+---
+
 ## Security Model: Trust Boundaries & GH Access Control
 
 ### Principle
