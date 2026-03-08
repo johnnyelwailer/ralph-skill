@@ -1853,14 +1853,87 @@ When running multiple loops in parallel (orchestrator mode or manual), do NOT st
 
 ### Provider Auth in Container
 
-Provider CLIs need API keys. Options (skill should auto-configure the best available):
+**Principle: if you're authenticated on the host, it should just work in the container. Zero manual config.**
 
-1. **`containerEnv` in devcontainer.json** — simplest, keys in plain text (acceptable for local dev)
-2. **`initializeCommand` that reads from host keyring** — more secure, runs on host before container starts
-3. **Secrets mount** — `.env` file bind-mounted read-only
-4. **`remoteEnv` with `localEnv`** — forward host env vars: `"ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"`
+All providers support authentication via environment variables. The skill auto-detects the host's auth state for each activated provider and generates `remoteEnv` entries to forward credentials into the container. The user should never have to manually configure container auth.
 
-Preferred: option 4 (`remoteEnv` + `localEnv`) — no secrets in files, uses host's existing env vars.
+**Auto-detection flow (runs during devcontainer setup/verification):**
+
+For each activated provider, the skill checks the host for existing auth and sets up forwarding automatically:
+
+1. **Check env vars first** — if the provider's env var is already set on the host (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`), add it to `remoteEnv` with `${localEnv:...}`. Done.
+2. **Check CLI auth state** — if no env var but the CLI is authenticated (e.g., `claude` has an active OAuth session), extract or generate a portable token automatically:
+   - Claude Code: run `claude setup-token` to generate a 1-year headless token, save it to a host-side env var or `.env` file, and reference via `remoteEnv`
+   - gh CLI: run `gh auth token` to extract the current token, set as `GH_TOKEN`
+   - Other providers: check their respective auth status commands
+3. **Prompt only as last resort** — if neither env var nor CLI auth exists, guide the user through the minimal setup (e.g., "Run `claude setup-token` and paste the result" or "Set OPENAI_API_KEY").
+
+Only activated providers get forwarded — never expose unused credentials.
+
+#### Per-Provider Auth
+
+| Provider | Env var(s) | How to obtain | Notes |
+|---|---|---|---|
+| Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` (preferred) or `ANTHROPIC_API_KEY` | `claude setup-token` (generates 1-year headless token from Pro/Max subscription) or [Anthropic Console](https://console.anthropic.com/) API Keys | See Claude-specific section below. `setup-token` uses existing subscription; `ANTHROPIC_API_KEY` switches to pay-as-you-go. |
+| Codex (OpenAI) | `OPENAI_API_KEY` or `CODEX_API_KEY` | [OpenAI Dashboard](https://platform.openai.com/api-keys) | Can also pipe to `codex login --with-api-key` inside container |
+| Gemini CLI | `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) | Also supports `.env` file in `~/.gemini/` but env var preferred |
+| Copilot CLI | `GITHUB_TOKEN` or `GH_TOKEN` or `COPILOT_GITHUB_TOKEN` | GitHub Settings → Fine-grained PATs → enable "Copilot Requests" permission | Newer Copilot CLI supports PAT via env var; older `gh copilot` extension requires separate OAuth (not supported in unattended container) |
+| GitHub CLI (gh) | `GH_TOKEN` or `GITHUB_TOKEN` | GitHub Settings → PATs | For convention-file GH request processing on host-side monitor (not typically needed inside container) |
+
+#### Claude Code Container Auth (detailed)
+
+Claude Code is the most nuanced provider for container auth. Three legitimate approaches exist:
+
+1. **`CLAUDE_CODE_OAUTH_TOKEN` env var (recommended for aloop)** — Run `claude setup-token` on a machine with a browser. This generates a 1-year OAuth token designed for headless/container use. Requires Claude Pro or Max subscription. Forward via `remoteEnv`:
+   ```json
+   "remoteEnv": { "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}" }
+   ```
+   This is ToS-compliant: it's still Claude Code consuming its own token, just in a headless environment. Anthropic built this command specifically for this use case.
+
+2. **`ANTHROPIC_API_KEY` env var** — Uses API pay-as-you-go billing (separate from subscription). No OAuth involved. Simplest option if user has API access:
+   ```json
+   "remoteEnv": { "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}" }
+   ```
+
+3. **Docker volume persistence** — Anthropic's own reference devcontainer uses a named volume to persist `~/.claude/` across container rebuilds. User authenticates once interactively inside the container, credentials persist in the volume:
+   ```json
+   "mounts": [ "source=claude-code-config-${devcontainerId},target=/home/node/.claude,type=volume" ]
+   ```
+   This is official Anthropic practice (from their [reference devcontainer](https://github.com/anthropics/claude-code/tree/main/.devcontainer)). Not ideal for aloop's unattended use — requires one-time interactive auth after first container creation.
+
+**Preference order for aloop:** `CLAUDE_CODE_OAUTH_TOKEN` > `ANTHROPIC_API_KEY` > volume persistence (fallback).
+
+**ToS clarification:** Anthropic's ToS prohibits third-party tools from extracting and reusing OAuth tokens. Running the actual `claude` CLI binary inside a container (which is what aloop does — `claude -p`) is NOT a ToS violation — it's Claude Code itself running in a different environment. The `setup-token` command was built explicitly for this. Do NOT bind-mount `~/.claude/` from the host — use env vars or volume persistence instead.
+
+#### devcontainer.json Configuration
+
+Only forward env vars for providers **activated in the project's aloop config**.
+
+Since multiple loops with different providers may share one container, the devcontainer must forward auth for **all providers the project has configured** — not just the ones a single loop uses. For example, if the project config lists `claude`, `codex`, and `gemini` as available providers, all three get `remoteEnv` entries even if a given loop only uses `claude`. This ensures any loop launched inside the shared container can use any configured provider without rebuilding.
+
+```json
+{
+  "remoteEnv": {
+    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
+    "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+    "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}"
+  }
+}
+```
+
+The skill's devcontainer generator MUST:
+- Read the project's provider config to determine which providers are activated
+- Only add `remoteEnv` entries for activated providers — never forward unused credentials
+- Warn the user if a required env var is not set on the host
+- For Claude Code: check `CLAUDE_CODE_OAUTH_TOKEN` first, fall back to `ANTHROPIC_API_KEY`, then suggest `claude setup-token` if neither is set
+- Verification step MUST confirm each activated provider can authenticate inside the container
+
+#### What NOT to do
+
+- **Do NOT bind-mount `~/.claude/` from host** — use env vars or Docker volume persistence instead
+- **Do NOT copy credential files** between host and container — stale token risk, unnecessary duplication
+- **Do NOT extract OS keychain tokens** — brittle, platform-specific
+- **Do NOT store API keys or tokens in devcontainer.json** — use `${localEnv:...}` references, never plaintext
 
 ### Acceptance Criteria
 
@@ -1873,7 +1946,10 @@ Preferred: option 4 (`remoteEnv` + `localEnv`) — no secrets in files, uses hos
 - [ ] Verification step builds container, starts it, and checks all deps/providers/git/mount
 - [ ] Verification iterates on failure — fixes config and re-verifies until green
 - [ ] Existing projects with `.devcontainer/` get augmented (aloop mounts/env added) rather than overwritten
-- [ ] Provider API keys forwarded via `remoteEnv`/`localEnv` (no secrets in config files)
+- [ ] Provider auth forwarded via `remoteEnv`/`localEnv` only for activated providers (no secrets in config files)
+- [ ] For Claude Code: prefers `CLAUDE_CODE_OAUTH_TOKEN` (via `claude setup-token`), falls back to `ANTHROPIC_API_KEY`, guides user if neither is set
+- [ ] Verification confirms each activated provider can authenticate inside the container
+- [ ] Skill warns if required auth env var is not set on host
 
 **Automatic integration:**
 - [ ] Harness auto-detects `.devcontainer/devcontainer.json` and routes provider invocations through `devcontainer exec` — no manual flag needed
@@ -1888,6 +1964,125 @@ Preferred: option 4 (`remoteEnv` + `localEnv`) — no secrets in files, uses hos
 - [ ] Container is started by first loop, reused by subsequent loops (detect via `devcontainer exec -- echo ok`)
 - [ ] No per-loop container startup overhead after the first
 - [ ] Session worktrees are accessible inside the container via bind mount of `~/.aloop/sessions/`
+
+---
+
+## Configurable Agent Pipeline (Priority: P2)
+
+The current hardcoded `plan → build × 3 → review` cycle is replaced by a **configurable, runtime-mutable pipeline of agents**. The existing cycle becomes just the default configuration — zero breaking change.
+
+### Core Concept: Agents as the Unit
+
+An **agent** is a named unit with:
+- **Prompt** — instructions for what the agent does (a `PROMPT_*.md` file or inline)
+- **Provider/model preference** (optional) — which harness and model to use (falls back to session default)
+- **Transition rules** — what happens on success, failure, and repeated failure
+
+Agents are NOT hardcoded. `plan`, `build`, `review`, `steer` are just the default agents that ship with aloop. Users and the setup agent can define custom agents (e.g., `verify`, `debugger`, `security-audit`, `docs-generator`, `guard`).
+
+### Pipeline Configuration
+
+The pipeline is a sequence of agent references with transition rules:
+
+```yaml
+# Example: default plan-build-review (equivalent to current behavior)
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 3
+    onFailure: retry       # retry same agent
+  - agent: review
+    onFailure: goto build   # review fails → back to build
+
+# Example: vertical slice with verification
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 2
+  - agent: verify           # run tests, capture screenshots/video
+    onFailure: goto build
+    escalation:
+      maxRetries: 3
+      ladder:
+        1: { restrict: code-only }      # first failure: agent can only fix code
+        2: { restrict: code-and-tests, requireJustification: true }
+        3: { escalateTo: review }        # third failure: second opinion
+        4: { flag: human-review }        # give up, flag for human
+  - agent: guard             # verify the build agent didn't touch protected files
+    onFailure: revert-and-goto build
+  - agent: review
+  - agent: docs-generator
+```
+
+### Runtime Mutation
+
+The pipeline is **mutable at runtime** — phases can be added, removed, or reordered while the loop is running. Two control surfaces:
+
+1. **User via steering** — drop a steering file that modifies the pipeline:
+   ```markdown
+   # STEERING.md
+   Insert `security-audit` agent after `build` for remaining iterations.
+   Remove `docs-generator` — not needed yet.
+   ```
+   The host-side monitor interprets steering instructions and updates the pipeline.
+
+2. **Host-side monitor** — observes loop patterns and injects agents automatically:
+   - 3 consecutive build failures → inject `debugger` agent before next build
+   - Verification failing on environment issues → inject `env-fix` agent
+   - Provider consistently timing out → swap to different provider for next agent
+
+Agents do **not** modify the pipeline themselves — control stays with the user and host-side monitor (avoids perverse incentives like agents removing their own reviewers).
+
+### Agent-Based Guarding
+
+Instead of structural file-permission enforcement, a **guard agent** reviews what the previous agent changed and rejects unauthorized modifications:
+
+- Runs after the build agent (or any agent that needs policing)
+- Checks `git diff` for the agent's iteration
+- Reverts changes to protected files (e.g., test expectations, config, spec) and sends the build agent back with a rejection message
+- The guard agent's own prompt defines what's protected — configurable per project
+- Guard agent is itself guarded by being unable to modify code (it can only revert and reject)
+
+This is preferable to hardcoded file-permission enforcement because:
+- The guard can make judgment calls (e.g., "this test change is legitimate because the API contract changed")
+- Protection rules are configurable per project, not baked into loop machinery
+- It follows the same agent model — no special-case infrastructure
+
+### Vertical Slice Verification (built on the pipeline)
+
+For greenfield projects, the orchestrator decomposes the spec into **vertical slices** (each a GH issue/PR). Each slice is an independently runnable end-to-end path, not a horizontal layer.
+
+**Slice definition of done** (enforced by the pipeline):
+- Code is complete (build agent)
+- Builds and runs independently (verify agent)
+- Happy path works end-to-end with Playwright (verify agent — screenshots + video capture)
+- Tested with both fake/mock data and real/E2E data where applicable (verify agent)
+- No dead UI or stubs — the slice feels complete for what it covers (review agent)
+- Dependencies on other slices are explicit (plan agent)
+- Setup is bootstrapped — seed data, docker-compose, env vars included (build agent)
+- Getting-started docs generated (docs-generator agent)
+
+**Self-healing verification loop:**
+The verify agent runs Playwright tests, captures screenshots and video. On failure, it feeds the evidence (failure screenshot, error log, video of broken flow) back to the build agent. The escalation ladder controls what the build agent is allowed to fix:
+
+| Attempt | Agent may change | Requirement |
+|---|---|---|
+| 1st failure | Code only | Tests are treated as the spec |
+| 2nd failure | Code + tests | Must justify why the test was wrong |
+| 3rd failure | Escalated to review agent | Independent assessment: code vs test bug |
+| 4th failure | Flagged for human | Loop stops on this slice, continues others |
+
+Test expectations ideally originate from the **plan agent** (derived from the slice spec), not the build agent — so the build agent is implementing to a contract it didn't write.
+
+### Implementation Notes
+
+- Pipeline config lives in `.aloop/pipeline.yml` (or inline in `config.yml`)
+- Default pipeline (plan-build-review) is generated if no config exists — backward compatible
+- Agent definitions live in `.aloop/agents/` — each is a YAML file with prompt reference, provider preference, transition rules
+- The loop script becomes a generic agent runner: read pipeline, resolve next agent, invoke, check transition rules, repeat
+- Runtime pipeline mutations are applied via the host-side monitor (same mechanism as steering)
+- Pipeline state (current position, escalation counts, mutation history) is persisted in `status.json`
+- The parallel orchestrator creates per-slice pipelines — each child loop runs its own pipeline independently
 
 ---
 
@@ -1932,7 +2127,44 @@ When `aloop start` is invoked from within a Claude Code session, the `CLAUDECODE
 
 **Defense in depth:** Also unset per-invocation in `Invoke-Provider` / `invoke_provider` blocks (already done in worktree versions).
 
-### 5. Installed runtime staleness
+### 5. No session locking — multiple loops race on same session files
+
+**Severity: Critical**
+
+Starting a new loop on the same session doesn't detect or kill a previous loop. Both processes write to `log.jsonl`, `status.json`, and `report.md` simultaneously, corrupting all session state. The stale loop consumed its 50 iterations writing garbage while the new loop was blocked on a real provider call.
+
+**Mitigations needed:**
+- [ ] On startup, write a PID lockfile (`session.lock`) in `SessionDir`
+- [ ] Before starting, check if lockfile exists and if the PID is still alive — if so, either kill it or refuse to start with a clear error
+- [ ] On exit (including Ctrl+C and errors), clean up the lockfile in the `finally`/`trap` block
+- [ ] Both `loop.ps1` and `loop.sh` must implement this
+
+### 6. Log file never cleared between runs
+
+**Severity: Medium**
+
+`log.jsonl` is append-only across runs. Iteration numbers from run N carry into run N+1, making it impossible to tell which run an entry belongs to.
+
+**Mitigations needed (pick one):**
+- [ ] Option A: Add a unique `run_id` field to every log entry (generated at session start, included in all `write_log_entry` calls)
+- [ ] Option B: Rotate the log on `session_start` — rename existing `log.jsonl` to `log.jsonl.1` (or timestamped)
+- [ ] Whichever approach is chosen, apply to both `loop.ps1` and `loop.sh`
+
+### 7. Zombie child processes never cleaned up
+
+**Severity: High**
+
+When a provider call (`claude`/`codex`/`copilot`) hangs or errors, the child process is never killed. Over multiple iterations, dozens of zombie `claude.exe`, `codex.exe`, `pwsh.exe` processes accumulate, consuming memory and potentially holding file locks.
+
+Current `Invoke-Provider` / `invoke_provider` uses synchronous pipe (`|`) with no timeout and no PID tracking.
+
+**Mitigations needed:**
+- [ ] Track the child PID when invoking a provider (use `Start-Process` with `-PassThru` in PS1, `$!` in bash)
+- [ ] Implement per-iteration timeout (e.g., `ALOOP_PROVIDER_TIMEOUT` env var, default ~10 minutes) — kill child process tree on timeout
+- [ ] On loop exit (`finally`/`trap`), kill all spawned child processes
+- [ ] Consider the zombie dashboard process issue too (already partially mitigated by `ALOOP_NO_DASHBOARD` in tests, but production loops need cleanup)
+
+### 8. Installed runtime staleness
 
 The installed runtime at `~/.aloop/bin/` (or `~/.ralph/bin/` on older installs) is copied once during `install.ps1` and never auto-updated. When bugs are fixed in the repo, the installed copy stays broken until the user re-runs `install.ps1`.
 
@@ -1941,3 +2173,27 @@ The installed runtime at `~/.aloop/bin/` (or `~/.ralph/bin/` on older installs) 
 - [ ] Consider `aloop update` command that re-copies runtime files from repo
 - [ ] `install.ps1` should print a version or timestamp so staleness is detectable
 - [ ] Loop scripts should log their own version/timestamp at `session_start` for debugging
+
+### 9. No distinction between start, restart, and resume
+
+**Severity: Medium**
+
+The loop always starts at iteration 1 (plan phase). There is no way to resume from where a previous run left off in the cycle. If stopped after `plan → build → review → plan` and restarted, it re-plans instead of continuing to build.
+
+Three session launch modes are needed:
+
+| Mode | Session | TODO/plan | Cycle position | Use case |
+|---|---|---|---|---|
+| **start** | New session | Fresh (no TODO) | Iteration 1 (plan) | New work from scratch |
+| **restart** | Existing session | Keeps existing TODO | Iteration 1 (plan) | Re-plan with existing work (current behavior) |
+| **resume** | Existing session | Keeps existing TODO | Continues from last position | Pick up where you left off |
+
+**Mitigations needed:**
+- [ ] Add `--mode start|restart|resume` flag (or equivalent) to loop scripts and `/aloop:start` skill
+- [ ] **resume**: read `status.json` (already has `iteration` and `phase`), calculate next cycle position, start there
+- [ ] **resume**: log the resume point: "Resuming from iteration N (phase: build)"
+- [ ] **restart**: current behavior, no changes needed
+- [ ] **start**: create new session directory, fresh state
+- [ ] All other params (provider, model, max iterations, mode) remain independently overridable regardless of launch mode — e.g., `resume --max-iterations 200` or `restart --provider codex --mode plan-build`
+- [ ] Both `loop.ps1` and `loop.sh` must implement this
+- [ ] `/aloop:start` and `/aloop:resume` as separate skills, or `/aloop:start` asks which mode
