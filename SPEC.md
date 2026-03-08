@@ -1285,18 +1285,39 @@ When a loop creates a PR, it doesn't just fire-and-forget. The loop (or watch da
 **What triggers re-iteration:**
 - New review comments on the PR
 - Review requesting changes
-- CI failure
+- CI check failure (build, test, lint, etc.)
 - Manual comment with `@aloop` mention (e.g., `@aloop please fix the error handling`)
 
 **Flow:**
-1. Watch daemon (or background poller) detects new PR activity via `gh pr view --comments`
+1. Watch daemon (or background poller) detects new PR activity via `gh pr view --comments` and check status via `gh pr checks`
 2. Collect unresolved review comments and CI status
 3. Resume the loop on the same branch/worktree with feedback injected as a steering instruction
 4. Loop fixes issues, pushes new commits to the PR branch
 5. PR auto-updates, reviewers are notified
-6. Repeat until approved or max feedback iterations reached (configurable, default 5)
+6. CI re-runs on new commits → if it fails again, loop gets the new failure (self-healing cycle)
+7. Repeat until approved and CI green, or max feedback iterations reached (configurable, default 5)
 
 **What the loop sees:** feedback is formatted as a steering prompt — the build agent gets the review comments as its next task, not the original TODO.
+
+#### CI Failure Handling (detailed)
+
+When the watch daemon detects a failed CI check on a PR:
+
+1. **Fetch failure details** — `gh pr checks <number>` to identify which check failed, then `gh run view <run-id> --log-failed` to get the actual error logs
+2. **Build steering prompt** — format the CI failure as actionable context:
+   ```
+   CI check "build-and-test" failed on PR #51. Fix the following errors:
+
+   Check: build-and-test (run 12345678)
+   Failed step: "Run tests"
+   Error log:
+   <truncated CI log output — last 200 lines>
+   ```
+3. **Resume loop** — inject as STEERING.md, resume the loop on the PR branch
+4. **Loop fixes** → pushes new commits → CI re-runs automatically
+5. **Watch daemon re-checks** — if CI fails again with a *different* error, repeat. If same error persists after N attempts (default 3), flag for human review and stop re-iterating on CI for this PR.
+
+**Deduplication:** the daemon tracks which CI run IDs it has already responded to, so it doesn't re-trigger on the same failure twice. It only re-triggers when a *new* CI run fails after the loop pushed a fix.
 
 ### Agent Trunk Integration
 
