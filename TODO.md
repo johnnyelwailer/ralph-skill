@@ -3,17 +3,21 @@
 ## Current Phase: P1 Reliability Hardening + PS 5.1 Compatibility + Devcontainer Foundations
 
 ### In Progress
-- [ ] [review] Gate 1: `/aloop:devcontainer` surfaces were added, but installer/user-facing command discovery was not updated (`install.ps1` usage output still lists only setup/start/status/dashboard/stop/steer at line 660); add devcontainer to command-surface announcements so the new entrypoint is discoverable. (priority: high)
-- [ ] [review] Gate 2: New devcontainer command-surface files are unprotected by installer regression tests (`install.tests.ps1` has no assertions for `claude/commands/aloop/devcontainer.md`, `copilot/prompts/aloop-devcontainer.prompt.md`, or related usage-line mentions); add concrete assertions for file presence and expected invocation/fallback strings. (priority: high)
+- [x] [review] Gate 1: `/aloop:devcontainer` surfaces were added, but installer/user-facing command discovery was not updated (`install.ps1` usage output still lists only setup/start/status/dashboard/stop/steer at line 660); add devcontainer to command-surface announcements so the new entrypoint is discoverable. (priority: high)
+- [x] [review] Gate 2: New devcontainer command-surface files are unprotected by installer regression tests (`install.tests.ps1` has no assertions for `claude/commands/aloop/devcontainer.md`, `copilot/prompts/aloop-devcontainer.prompt.md`, or related usage-line mentions); add concrete assertions for file presence and expected invocation/fallback strings. (priority: high)
 - [x] [review] Gate 5: `aloop/bin/loop.tests.ps1` uses the PS 7+ null-conditional operator `?.` (lines 19, 305, 1294), causing parse failures and preventing test execution on PowerShell 5.1. (priority: high)
 - [x] [review] Gate 3: `aloop/bin/loop.ps1` (`ConvertTo-NativePath`) branch coverage is unverified because the test suite fails to run on the target platform. (priority: high)
 - [x] [review] Gate 2: `install.tests.ps1:453-460` (`skips line ending mutation when in DryRun`) only asserts log output and never verifies file contents remain unchanged; extend the test to assert `loop.ps1` bytes/text are identical before/after `-DryRun` so a mutating implementation fails. (priority: high)
 - [x] [review] Gate 3: `aloop/cli/src/commands/start.ts:352-359` (`normalizeGitBashPathForWindows`) has uncovered branches in the new code path; add `start.test.ts` cases for non-POSIX passthrough (e.g., `C:\\repo\\work`) and drive-root conversion (`/c` or `/c/` => `C:\\`) and assert exact `-WorkDir`/`cwd` outputs. (priority: high)
 
 ### Up Next
-- [ ] [known-issues/P1] Add runtime version stamping in `install.ps1` output and include runtime version/timestamp in `loop.ps1`/`loop.sh` `session_start` logs. (priority: medium, makes drift diagnosable)
+- [ ] [known-issues/P1] Add session PID lockfile (`session.lock`) in `SessionDir` with alive-check on startup; clean up in `finally`/`trap` block. Both `loop.ps1` and `loop.sh`. (priority: critical, SPEC Known Issue #5 — multiple loops race on same session files causing corruption)
+- [ ] [known-issues/P1] Add per-iteration provider timeout and child PID tracking in `Invoke-Provider`/`invoke_provider`; kill child process tree on timeout and on loop exit via `finally`/`trap`. Both runtimes. (priority: high, SPEC Known Issue #7 — zombie provider processes accumulate)
+- [ ] [known-issues/P1] Add `run_id` field to every `log.jsonl` entry (generated at session start) so entries from different runs are distinguishable. Both runtimes. (priority: medium, SPEC Known Issue #6 — log never cleared between runs)
+- [ ] [known-issues/P1] Add runtime version stamping in `install.ps1` output and include runtime version/timestamp in `loop.ps1`/`loop.sh` `session_start` logs. (priority: medium, SPEC Known Issue #8 — makes drift diagnosable)
 - [ ] [known-issues/P1] Add runtime staleness warning in `aloop start` when installed runtime appears older than repo/runtime source. (priority: medium, reduces stale-runtime incidents)
 - [ ] [known-issues/P1] Add `aloop update` command to refresh `~/.aloop` runtime assets from the current repo checkout. (priority: medium, gives explicit remediation path)
+- [ ] [known-issues/P1] Add start/restart/resume session launch modes with `--mode start|restart|resume` flag; resume reads `status.json` for last iteration/phase. Both runtimes + `/aloop:start` skill. (priority: medium, SPEC Known Issue #9 — no way to resume from where left off)
 - [x] [devcontainer/P1] Add `/aloop:devcontainer` command surfaces (`claude/commands/aloop/devcontainer.md` and `copilot/prompts/aloop-devcontainer.prompt.md`). (priority: high, required entrypoint)
 - [ ] [devcontainer/P1] Implement initial devcontainer generation flow to create/augment `.devcontainer/devcontainer.json` based on project analysis. (priority: high, isolation foundation)
 - [ ] [devcontainer/P1] Add provider install hooks plus mount/env forwarding strategy in generated devcontainer config. (priority: high, container usability/security boundary)
@@ -35,6 +39,10 @@
 - [ ] [triage/P2] Extend `aloop gh` with triage prerequisites: comment listing and `aloop/blocked-on-human` label add/remove under existing policy model. (priority: medium, triage prerequisite)
 - [ ] [triage/P2] Implement orchestrator triage classification loop (`actionable`, `needs_clarification`, `question`, `out_of_scope`) with confidence floor behavior. (priority: medium, feedback processing)
 - [ ] [triage/P2] Implement processed-comment tracking plus blocked-on-human pause/resume and unblocking flow in orchestrator state. (priority: medium, prevents re-triage and loop churn)
+- [ ] [pipeline/P2] Implement configurable agent pipeline (`pipeline.yml` or inline in `config.yml`) with named agents, transition rules, and repeat counts. Default pipeline generates plan-build-review backward-compatible. (priority: medium, SPEC Configurable Agent Pipeline section)
+- [ ] [pipeline/P2] Add agent definitions in `.aloop/agents/` (YAML with prompt reference, provider preference, transition rules) and make loop script a generic agent runner. (priority: medium, agent extensibility)
+- [ ] [pipeline/P2] Add runtime pipeline mutation via host-side monitor (steering-driven insert/remove/reorder of agents). (priority: medium, dynamic pipeline control)
+- [ ] [pipeline/P2] Implement guard agent pattern and escalation ladder for verification failures (restrict code-only → code+tests → escalate → flag-for-human). (priority: medium, self-healing verification)
 - [ ] [status/P2] Extend `aloop status` to show orchestrator tree state (orchestrator -> child sessions -> issue/PR mapping). (priority: medium, operational visibility)
 - [ ] [architecture/P3] Reconcile spec constraints (`zero npm dependencies`, `no build step`, `lib/config.mjs`) with current TypeScript/bundled CLI architecture, or explicitly update spec. (priority: low, spec parity risk)
 - [ ] [acceptance/P3] Add automated legacy-name guard for forbidden legacy references outside explicit allowlist contexts. (priority: low, release gate)

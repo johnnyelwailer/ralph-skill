@@ -52,32 +52,34 @@ Describe 'Source-to-destination path mappings' {
         }
     }
 
-    Context 'Command source contains exactly 6 command files per SPEC.md' {
+    Context 'Command source contains exactly 7 command files per SPEC.md' {
         BeforeAll { $cmdDir = Join-Path $repoRoot "claude/commands/$skillName" }
 
-        It 'contains dashboard.md' { Join-Path $cmdDir 'dashboard.md' | Should -Exist }
+        It 'contains dashboard.md'    { Join-Path $cmdDir 'dashboard.md'    | Should -Exist }
+        It 'contains devcontainer.md' { Join-Path $cmdDir 'devcontainer.md' | Should -Exist }
         It 'contains setup.md'  { Join-Path $cmdDir 'setup.md'  | Should -Exist }
         It 'contains start.md'  { Join-Path $cmdDir 'start.md'  | Should -Exist }
         It 'contains status.md' { Join-Path $cmdDir 'status.md' | Should -Exist }
         It 'contains stop.md'   { Join-Path $cmdDir 'stop.md'   | Should -Exist }
         It 'contains steer.md'  { Join-Path $cmdDir 'steer.md'  | Should -Exist }
 
-        It 'has exactly 6 command files (no extras, no missing)' {
-            (Get-ChildItem $cmdDir -File).Count | Should -Be 6
+        It 'has exactly 7 command files (no extras, no missing)' {
+            (Get-ChildItem $cmdDir -File).Count | Should -Be 7
         }
     }
 
     Context 'Copilot prompt source has expected .prompt.md files' {
         BeforeAll { $promptDir = Join-Path $repoRoot 'copilot/prompts' }
 
-        It "has aloop-dashboard.prompt.md" { Join-Path $promptDir "aloop-dashboard.prompt.md" | Should -Exist }
+        It "has aloop-dashboard.prompt.md"    { Join-Path $promptDir "aloop-dashboard.prompt.md"    | Should -Exist }
+        It "has aloop-devcontainer.prompt.md" { Join-Path $promptDir "aloop-devcontainer.prompt.md" | Should -Exist }
         It "has aloop-setup.prompt.md"  { Join-Path $promptDir "aloop-setup.prompt.md"  | Should -Exist }
         It "has aloop-start.prompt.md"  { Join-Path $promptDir "aloop-start.prompt.md"  | Should -Exist }
         It "has aloop-status.prompt.md" { Join-Path $promptDir "aloop-status.prompt.md" | Should -Exist }
         It "has aloop-stop.prompt.md"   { Join-Path $promptDir "aloop-stop.prompt.md"   | Should -Exist }
         It "has aloop-steer.prompt.md"  { Join-Path $promptDir "aloop-steer.prompt.md"  | Should -Exist }
-        It 'has exactly 6 .prompt.md files (no extras, no missing)' {
-            (Get-ChildItem $promptDir -File -Filter '*.prompt.md').Count | Should -Be 6
+        It 'has exactly 7 .prompt.md files (no extras, no missing)' {
+            (Get-ChildItem $promptDir -File -Filter '*.prompt.md').Count | Should -Be 7
         }
     }
 
@@ -266,10 +268,10 @@ Describe 'Post-install summary and usage text' {
             $line | Should -Match 'agents'
         }
 
-        It 'Commands line lists exactly: setup, start, status, dashboard, stop, steer' {
+        It 'Commands line lists exactly: setup, start, status, dashboard, stop, steer, devcontainer' {
             $line = $scriptLines | Where-Object { $_ -match 'Commands:' -and $_ -match 'setup' }
             $line | Should -Not -BeNullOrEmpty
-            $line | Should -Match '\(setup, start, status, dashboard, stop, steer\)'
+            $line | Should -Match '\(setup, start, status, dashboard, stop, steer, devcontainer\)'
         }
 
         It 'Commands line restricts to claude and codex (not copilot or agents)' {
@@ -318,6 +320,7 @@ Describe 'Post-install summary and usage text' {
         It 'lists /status command' { $usageLine | Should -Match ':status' }
         It 'lists /stop command'   { $usageLine | Should -Match ':stop' }
         It 'lists /steer command'  { $usageLine | Should -Match ':steer' }
+        It 'lists /devcontainer command' { $usageLine | Should -Match ':devcontainer' }
     }
 
     Context 'Usage section — VS Code Copilot prompts' {
@@ -335,6 +338,7 @@ Describe 'Post-install summary and usage text' {
         It 'lists /aloop-status' { $copilotLine | Should -Match '/aloop-status' }
         It 'lists /aloop-stop'   { $copilotLine | Should -Match '/aloop-stop' }
         It 'lists /aloop-steer'  { $copilotLine | Should -Match '/aloop-steer' }
+        It 'lists /aloop-devcontainer' { $copilotLine | Should -Match '/aloop-devcontainer' }
     }
 }
 
