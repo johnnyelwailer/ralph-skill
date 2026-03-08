@@ -188,6 +188,21 @@ exit 0
         $events | Should -Not -Contain 'all_tasks_complete'
     }
 
+    It 'every log entry contains a consistent run_id (SPEC Known Issue #6)' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e       = New-ShLoopEnv -Scenario 'approve'
+        $result  = Invoke-ShLoopScript -LoopEnv $e -MaxIter 3
+        $entries = Get-ShLogEntries -LogFile $e.LogFile
+        $entries.Count | Should -BeGreaterThan 0
+        # Every entry must have a non-empty run_id
+        $entries | ForEach-Object { $_.run_id | Should -Not -BeNullOrEmpty }
+        # All entries must share the same run_id
+        $uniqueIds = @($entries | ForEach-Object { $_.run_id } | Sort-Object -Unique)
+        $uniqueIds.Count | Should -Be 1
+        # run_id should be a non-empty identifier (UUID on Linux, may be timestamp fallback)
+        $uniqueIds[0].Length | Should -BeGreaterThan 5
+    }
+
     It 'review approval emits final_review_approved and exits 0' {
         if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
         $e      = New-ShLoopEnv -Scenario 'approve'
@@ -702,6 +717,20 @@ exit 0
         $events | Should -Contain 'tasks_marked_complete'
         # Loop must NOT have exited before reaching the review gate
         $events | Should -Not -Contain 'all_tasks_complete'
+    }
+
+    It 'every log entry contains a consistent run_id (SPEC Known Issue #6)' {
+        $e       = New-LoopEnv -Scenario 'approve'
+        $result  = Invoke-LoopScript -LoopEnv $e -MaxIter 3
+        $entries = Get-LogEntries -LogFile $e.LogFile
+        $entries.Count | Should -BeGreaterThan 0
+        # Every entry must have a non-empty run_id
+        $entries | ForEach-Object { $_.run_id | Should -Not -BeNullOrEmpty }
+        # All entries must share the same run_id
+        $uniqueIds = @($entries | ForEach-Object { $_.run_id } | Sort-Object -Unique)
+        $uniqueIds.Count | Should -Be 1
+        # run_id should look like a GUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+        $uniqueIds[0] | Should -Match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     }
 
     It 'does not process GH convention files inside loop runtime' {
@@ -1803,12 +1832,18 @@ exit 0
     It 'refuses to start when session.lock contains a live PID' {
         if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available'; return }
         $e = New-ShLockTestEnv
-        # Use PID 1 which is always alive on Unix-like systems (init/systemd)
-        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-        [System.IO.File]::WriteAllText($e.LockFile, "1`n", $utf8NoBom)
-        $result = Invoke-ShLockLoopScript -Env $e -MaxIter 1
-        $result.ExitCode | Should -Not -Be 0
-        $result.Output | Should -Match 'already locked by PID'
+        # Start a background sleep process to get a guaranteed-alive PID
+        $alivePid = & $script:bashExe -c 'sleep 120 & echo $!; disown' 2>$null
+        $alivePid = $alivePid.Trim()
+        try {
+            $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+            [System.IO.File]::WriteAllText($e.LockFile, "$alivePid`n", $utf8NoBom)
+            $result = Invoke-ShLockLoopScript -Env $e -MaxIter 1
+            $result.ExitCode | Should -Not -Be 0
+            $result.Output | Should -Match 'already locked by PID'
+        } finally {
+            & $script:bashExe -c "kill $alivePid 2>/dev/null" | Out-Null
+        }
     }
 
     It 'ignores stale session.lock with dead PID' {

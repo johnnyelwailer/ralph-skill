@@ -172,6 +172,7 @@ LOG_FILE="$SESSION_DIR/log.jsonl"
 REPORT_FILE="$SESSION_DIR/report.md"
 REVIEW_VERDICT_FILE="$SESSION_DIR/review-verdict.json"
 START_TIME=$(date +%s)
+RUN_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || date +%s%N)
 DASHBOARD_PID=""
 DASHBOARD_URL=""
 
@@ -362,7 +363,7 @@ write_log_entry() {
         data="$data\"$1\":\"$2\""
         shift 2
     done
-    echo "{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"event\":\"$event\"${data:+,$data}}" >> "$LOG_FILE"
+    echo "{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"run_id\":\"$RUN_ID\",\"event\":\"$event\"${data:+,$data}}" >> "$LOG_FILE"
 }
 
 # ============================================================================

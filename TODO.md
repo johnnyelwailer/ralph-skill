@@ -7,7 +7,7 @@
 ### Up Next
 - [x] [known-issues/P1] Add session PID lockfile (`session.lock`) in `SessionDir` with alive-check on startup; clean up in `finally`/`trap` block. Both `loop.ps1` and `loop.sh`. (priority: critical, SPEC Known Issue #5 — already implemented in both runtimes)
 - [x] [known-issues/P1] Add per-iteration provider timeout and child PID tracking in `Invoke-Provider`/`invoke_provider`; kill child process tree on timeout and on loop exit via `finally`/`trap`. Both runtimes. (priority: high, SPEC Known Issue #7 — zombie provider processes accumulate)
-- [ ] [known-issues/P1] Add `run_id` field to every `log.jsonl` entry (generated at session start) so entries from different runs are distinguishable. Both runtimes. (priority: medium, SPEC Known Issue #6 — log never cleared between runs)
+- [x] [known-issues/P1] Add `run_id` field to every `log.jsonl` entry (generated at session start) so entries from different runs are distinguishable. Both runtimes. (priority: medium, SPEC Known Issue #6 — log never cleared between runs)
 - [ ] [known-issues/P1] Add runtime version stamping in `install.ps1` output and include runtime version/timestamp in `loop.ps1`/`loop.sh` `session_start` logs. (priority: medium, SPEC Known Issue #8 — makes drift diagnosable)
 - [ ] [known-issues/P1] Add runtime staleness warning in `aloop start` when installed runtime appears older than repo/runtime source. (priority: medium, reduces stale-runtime incidents)
 - [ ] [known-issues/P1] Add `aloop update` command to refresh `~/.aloop` runtime assets from the current repo checkout. (priority: medium, gives explicit remediation path)

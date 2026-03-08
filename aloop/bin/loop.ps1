@@ -782,6 +782,7 @@ $statusFile = Join-Path $SessionDir "status.json"
 $logFile = Join-Path $SessionDir "log.jsonl"
 $reportFile = Join-Path $SessionDir "report.md"
 $startTime = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
+$runId = [guid]::NewGuid().ToString()
 $dashboardProcess = $null
 $dashboardUrl = $null
 
@@ -869,6 +870,7 @@ function Write-LogEntry {
     $entry = @{
         timestamp = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
         event = $Event
+        run_id = $runId
     } + $Data
     ($entry | ConvertTo-Json -Compress) | Add-Content -Encoding utf8 $logFile
 }
