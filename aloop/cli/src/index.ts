@@ -142,6 +142,7 @@ program
   .option('--issues <numbers>', 'Comma-separated issue numbers to process')
   .option('--label <label>', 'GitHub label to filter issues')
   .option('--repo <owner/repo>', 'GitHub repository')
+  .option('--plan <file>', 'Decomposition plan JSON file with issues and dependencies')
   .option('--plan-only', 'Create issues without launching loops')
   .option('--home-dir <path>', 'Home directory override')
   .option('--project-root <path>', 'Project root override')
