@@ -54,7 +54,7 @@ const defaultDeps: DevcontainerDeps = {
   existsSync,
 };
 
-function getLanguageMapping(language: string, projectRoot: string): LanguageMapping {
+function getLanguageMapping(language: string, projectRoot: string, existsFn: (p: string) => boolean = existsSync): LanguageMapping {
   switch (language) {
     case 'node-typescript':
       return {
@@ -62,7 +62,7 @@ function getLanguageMapping(language: string, projectRoot: string): LanguageMapp
         features: {
           'ghcr.io/devcontainers/features/git:1': {},
         },
-        postCreateCommand: detectNodeInstallCommand(projectRoot),
+        postCreateCommand: detectNodeInstallCommand(projectRoot, existsFn),
       };
     case 'python':
       return {
@@ -70,7 +70,7 @@ function getLanguageMapping(language: string, projectRoot: string): LanguageMapp
         features: {
           'ghcr.io/devcontainers/features/git:1': {},
         },
-        postCreateCommand: detectPythonInstallCommand(projectRoot),
+        postCreateCommand: detectPythonInstallCommand(projectRoot, existsFn),
       };
     case 'go':
       return {
@@ -108,16 +108,16 @@ function getLanguageMapping(language: string, projectRoot: string): LanguageMapp
   }
 }
 
-function detectNodeInstallCommand(projectRoot: string): string {
-  if (existsSync(path.join(projectRoot, 'pnpm-lock.yaml'))) return 'pnpm install';
-  if (existsSync(path.join(projectRoot, 'yarn.lock'))) return 'yarn install';
-  if (existsSync(path.join(projectRoot, 'bun.lockb')) || existsSync(path.join(projectRoot, 'bun.lock'))) return 'bun install';
+export function detectNodeInstallCommand(projectRoot: string, existsFn: (p: string) => boolean = existsSync): string {
+  if (existsFn(path.join(projectRoot, 'pnpm-lock.yaml'))) return 'pnpm install';
+  if (existsFn(path.join(projectRoot, 'yarn.lock'))) return 'yarn install';
+  if (existsFn(path.join(projectRoot, 'bun.lockb')) || existsFn(path.join(projectRoot, 'bun.lock'))) return 'bun install';
   return 'npm install';
 }
 
-function detectPythonInstallCommand(projectRoot: string): string {
-  if (existsSync(path.join(projectRoot, 'pyproject.toml'))) return 'pip install -e .';
-  if (existsSync(path.join(projectRoot, 'requirements.txt'))) return 'pip install -r requirements.txt';
+export function detectPythonInstallCommand(projectRoot: string, existsFn: (p: string) => boolean = existsSync): string {
+  if (existsFn(path.join(projectRoot, 'pyproject.toml'))) return 'pip install -e .';
+  if (existsFn(path.join(projectRoot, 'requirements.txt'))) return 'pip install -r requirements.txt';
   return 'pip install -e .';
 }
 
@@ -136,11 +136,12 @@ function buildAloopContainerEnv(): Record<string, string> {
 
 export function generateDevcontainerConfig(
   discovery: DiscoveryResult,
+  existsFn: (p: string) => boolean = existsSync,
 ): DevcontainerConfig {
   const projectRoot = discovery.project.root;
   const projectName = discovery.project.name;
   const language = discovery.context.detected_language;
-  const mapping = getLanguageMapping(language, projectRoot);
+  const mapping = getLanguageMapping(language, projectRoot, existsFn);
 
   const config: DevcontainerConfig = {
     name: `${projectName}-aloop`,
@@ -252,7 +253,7 @@ export async function devcontainerCommandWithDeps(
   const configPath = path.join(devcontainerDir, 'devcontainer.json');
   const hadExisting = deps.existsSync(configPath);
 
-  const generated = generateDevcontainerConfig(discovery);
+  const generated = generateDevcontainerConfig(discovery, deps.existsSync);
 
   let finalConfig: Record<string, unknown>;
   let action: 'created' | 'augmented';
@@ -271,7 +272,7 @@ export async function devcontainerCommandWithDeps(
   await deps.mkdir(devcontainerDir, { recursive: true });
   await deps.writeFile(configPath, JSON.stringify(finalConfig, null, 2) + '\n', 'utf8');
 
-  const mapping = getLanguageMapping(discovery.context.detected_language, projectRoot);
+  const mapping = getLanguageMapping(discovery.context.detected_language, projectRoot, deps.existsSync);
 
   return {
     action,

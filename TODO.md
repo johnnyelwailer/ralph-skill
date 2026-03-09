@@ -3,29 +3,16 @@
 ## Current Phase: P1 Reliability Hardening + PS 5.1 Compatibility + Devcontainer Foundations
 
 ### In Progress
-- [x] [review/P1] Gate 2: `devcontainer.test.ts` lines 47, 50-51 use `assert.ok` existence/truthy checks — rewrite to assert exact values (e.g., `assert.deepEqual(config.features[...], {})`, assert exact mount string). (priority: high) [reviewed: gates 1-5 pass]
-- [x] [review/P1] Gate 2: `devcontainer.test.ts` node-typescript test (line 41) and python test (line 54) never assert `postCreateCommand` value — add `assert.equal(config.postCreateCommand, 'npm install')` and equivalent for python. (priority: high) [reviewed: gates 1-5 pass]
-- [x] [review/P1] Gate 2: No error-path test for `devcontainerCommandWithDeps` when existing `devcontainer.json` contains invalid JSON — add test that asserts the thrown error. (priority: high) [reviewed: gates 1-5 pass]
-- [ ] [review/P1] Gate 3: `detectNodeInstallCommand` (devcontainer.ts:111-116) has 4 branches (pnpm/yarn/bun/npm) with zero direct test coverage — add unit tests or refactor to accept injected `existsSync` so branches are testable. (priority: high)
-- [ ] [review/P1] Gate 3: `detectPythonInstallCommand` (devcontainer.ts:118-122) has 3 branches with zero direct test coverage — same fix needed. (priority: high)
+- [x] [review/P1] Gate 3: `detectNodeInstallCommand` (devcontainer.ts:111-116) has 4 branches (pnpm/yarn/bun/npm) with zero direct test coverage — add unit tests or refactor to accept injected `existsSync` so branches are testable. (priority: high) [refactored to accept injected existsFn, added 5 tests covering all branches]
+- [x] [review/P1] Gate 3: `detectPythonInstallCommand` (devcontainer.ts:118-122) has 3 branches with zero direct test coverage — same fix needed. (priority: high) [refactored to accept injected existsFn, added 3 tests covering all branches]
 - [ ] [review/P1] Gate 3: `devcontainerCommand` (devcontainer.ts:288-314) text/json output wrapper has zero test coverage — add tests for both output modes and both action types. (priority: medium)
 - [ ] [review/P1] Gate 3: `mergeArrayUnique` dedup branch (devcontainer.ts:164) not tested — add test with duplicate mount entry to exercise the `includes` guard. (priority: medium)
-- [x] [review/P1] Gate 4: JSONC comment-stripping regex (devcontainer.ts:214) `raw.replace(/\/\/.*$/gm, '')` corrupts string values containing `//` (e.g., URLs like `https://...`) — replaced with `stripJsoncComments()` state-machine that respects quoted strings. (priority: high) [reviewed: gates 1-5 pass]
 
 ### Up Next
-- [x] [known-issues/P1] Add session PID lockfile (`session.lock`) in `SessionDir` with alive-check on startup; clean up in `finally`/`trap` block. Both `loop.ps1` and `loop.sh`. (priority: critical, SPEC Known Issue #5 — already implemented in both runtimes)
-- [x] [known-issues/P1] Add per-iteration provider timeout and child PID tracking in `Invoke-Provider`/`invoke_provider`; kill child process tree on timeout and on loop exit via `finally`/`trap`. Both runtimes. (priority: high, SPEC Known Issue #7 — zombie provider processes accumulate)
-- [x] [known-issues/P1] Add `run_id` field to every `log.jsonl` entry (generated at session start) so entries from different runs are distinguishable. Both runtimes. (priority: medium, SPEC Known Issue #6 — log never cleared between runs)
-- [x] [known-issues/P1] Add runtime version stamping in `install.ps1` output and include runtime version/timestamp in `loop.ps1`/`loop.sh` `session_start` logs. (priority: medium, SPEC Known Issue #8 — makes drift diagnosable)
-- [x] [known-issues/P1] Add runtime staleness warning in `aloop start` when installed runtime appears older than repo/runtime source. (priority: medium, reduces stale-runtime incidents)
-- [x] [known-issues/P1] Add `aloop update` command to refresh `~/.aloop` runtime assets from the current repo checkout. (priority: medium, gives explicit remediation path)
-- [x] [known-issues/P1] Add start/restart/resume session launch modes with `--mode start|restart|resume` flag; resume reads `status.json` for last iteration/phase. Both runtimes + `/aloop:start` skill. (priority: medium, SPEC Known Issue #9 — no way to resume from where left off)
-- [x] [devcontainer/P1] Implement initial devcontainer generation flow to create/augment `.devcontainer/devcontainer.json` based on project analysis (detect language/runtime/deps, generate tailored config). (priority: high, isolation foundation)
 - [ ] [devcontainer/P1] Add provider install hooks (`postCreateCommand`) plus `remoteEnv`/`localEnv` auth forwarding for activated providers only; prefer `CLAUDE_CODE_OAUTH_TOKEN` > `ANTHROPIC_API_KEY` for Claude. (priority: high, container usability/security boundary)
 - [ ] [devcontainer/P1] Implement verification loop (`devcontainer build`, `up`, `exec`) that checks deps/providers/git/mount and iterates on failure until green. (priority: high, acceptance gate)
 - [ ] [devcontainer/P1] Implement host-side auto-container routing in `loop.ps1` and `loop.sh` (detect `.devcontainer/devcontainer.json`, ensure `devcontainer up`, wrap provider calls with `devcontainer exec`, support `--dangerously-skip-container` with visible warning + `container_bypass` log event). (priority: high, required runtime behavior)
 - [ ] [devcontainer/P1] Add shared-container reuse checks (`devcontainer exec -- echo ok`) and bind-mount `~/.aloop/sessions/` so session worktrees are reachable inside container. (priority: medium, parallel-loop scalability)
-- [ ] [devcontainer/P1] Handle existing `.devcontainer/` augmentation (add aloop mounts/env without overwriting user's existing config). (priority: medium, SPEC acceptance criterion)
 - [ ] [dashboard/P2] Add backend multi-session APIs (`/api/state?session=<id>`, `/events?session=<id>`) with session-aware state loading from `active.json`. (priority: medium, enables real session switching)
 - [ ] [dashboard/P2] Add frontend session switching that refetches state and rebinds SSE to selected session id; session cards get click handlers. (priority: medium, completes multi-session UX)
 - [ ] [dashboard/P2] Add `/api/artifacts/<iteration>/<filename>` endpoint and include proof artifact metadata in state/SSE payloads. (priority: medium, proof visibility contract)
@@ -51,35 +38,48 @@
 - [ ] [acceptance/P3] Run final SPEC acceptance sweep and refresh TODO states from verified code/tests. (priority: low, completion gate)
 
 ### Completed
-- [x] [review/P1] Gate 2 regression: `install.tests.ps1` assertions updated to 7 commands/7 prompts including devcontainer (already done in 7dd94c6, verified all 99 tests pass).
-- [x] [review/P1] Gate 1: `install.ps1` usage output updated to include devcontainer in command-surface announcements (7 commands listed).
+- [x] [review/P1] Gate 2: `devcontainer.test.ts` lines 47, 50-51 use `assert.ok` existence/truthy checks — rewrite to assert exact values. [reviewed: gates 1-5 pass]
+- [x] [review/P1] Gate 2: `devcontainer.test.ts` node-typescript test and python test assert `postCreateCommand` value. [reviewed: gates 1-5 pass]
+- [x] [review/P1] Gate 2: Error-path test for `devcontainerCommandWithDeps` when existing `devcontainer.json` contains invalid JSON. [reviewed: gates 1-5 pass]
+- [x] [review/P1] Gate 4: JSONC comment-stripping regex replaced with `stripJsoncComments()` state-machine that respects quoted strings. [reviewed: gates 1-5 pass]
+- [x] [review/P1] Gate 2 regression: `install.tests.ps1` assertions updated to 7 commands/7 prompts including devcontainer.
+- [x] [review/P1] Gate 1: `install.ps1` usage output updated to include devcontainer in command-surface announcements.
 - [x] [review/P1] Gate 2: Devcontainer command-surface files added and installer updated.
 - [x] [review/P1] Gate 5: PS 7+ null-conditional operator `?.` replaced with PS 5.1-compatible pipeline in `loop.tests.ps1`.
 - [x] [review/P1] Gate 3: `ConvertTo-NativePath` branch coverage verified after PS 5.1 syntax fix.
 - [x] [review/P1] Gate 2: `install.tests.ps1` DryRun test extended to assert file bytes unchanged.
 - [x] [review/P1] Gate 3: `start.test.ts` cases added for non-POSIX passthrough and drive-root conversion.
-- [x] [devcontainer/P1] Perform mandatory devcontainer research and capture decisions/constraints in `RESEARCH.md` from containers.dev + VS Code devcontainer docs. [reviewed: gates 1-5 pass]
-- [x] [review/P1] Raise branch coverage for `Normalize-LoopScriptLineEndings` in `install.ps1` by adding tests for both missing branches: file-not-found (`Test-Path` false) and `$DryRun` no-mutation path. [reviewed: gates 2-3 pass]
-- [x] [known-issues/P1] Add Git Bash/posix-path normalization in `aloop/cli/src/commands/start.ts` before PowerShell launch (`/c/...` -> `C:\\...`). [reviewed: gates 1-5 pass]
-- [x] [known-issues/P1] Add defensive path normalization in `aloop/bin/loop.ps1` for `-PromptsDir`, `-SessionDir`, and `-WorkDir` so direct invocations tolerate POSIX-style paths.
+- [x] [review/P1] Raise branch coverage for `Normalize-LoopScriptLineEndings` in `install.ps1`. [reviewed: gates 2-3 pass]
+- [x] [devcontainer/P1] Perform mandatory devcontainer research and capture decisions/constraints in `RESEARCH.md`. [reviewed: gates 1-5 pass]
+- [x] [devcontainer/P1] Implement initial devcontainer generation flow to create/augment `.devcontainer/devcontainer.json` based on project analysis. [reviewed: gates 1-5 pass]
+- [x] [devcontainer/P1] Handle existing `.devcontainer/` augmentation (add aloop mounts/env without overwriting user's existing config) — `augmentExistingConfig()` implemented with merge tests.
 - [x] [devcontainer/P1] Add `/aloop:devcontainer` command surfaces (`claude/commands/aloop/devcontainer.md` and `copilot/prompts/aloop-devcontainer.prompt.md`).
+- [x] [known-issues/P1] Add Git Bash/posix-path normalization in `aloop/cli/src/commands/start.ts`. [reviewed: gates 1-5 pass]
+- [x] [known-issues/P1] Add defensive path normalization in `aloop/bin/loop.ps1` for POSIX-style paths.
+- [x] [known-issues/P1] Add session PID lockfile (`session.lock`) in `SessionDir` with alive-check on startup.
+- [x] [known-issues/P1] Add per-iteration provider timeout and child PID tracking in `Invoke-Provider`/`invoke_provider`.
+- [x] [known-issues/P1] Add `run_id` field to every `log.jsonl` entry.
+- [x] [known-issues/P1] Add runtime version stamping in `install.ps1` output and loop script `session_start` logs.
+- [x] [known-issues/P1] Add runtime staleness warning in `aloop start`.
+- [x] [known-issues/P1] Add `aloop update` command to refresh `~/.aloop` runtime assets.
+- [x] [known-issues/P1] Add start/restart/resume session launch modes with `--mode start|restart|resume` flag.
 - [x] [phase-0/P1] Rename legacy name -> aloop in files, directories, and command surface.
 - [x] [entrypoint/P1] Stable canonical CLI entrypoint at `aloop/cli/aloop.mjs` is present and wired.
-- [x] [runtime/P1] Provider health subsystem exists in both runtimes (cooldown/degraded/recovery + lock handling + logging).
+- [x] [runtime/P1] Provider health subsystem exists in both runtimes.
 - [x] [runtime/P1] Mandatory final review gate behavior implemented in both runtimes.
-- [x] [runtime/P1] Retry-same-phase + phase prerequisites + retry exhaustion behavior implemented in both runtimes.
+- [x] [runtime/P1] Retry-same-phase + phase prerequisites + retry exhaustion behavior implemented.
 - [x] [runtime/P1] PATH hardening and `CLAUDECODE` sanitization are present around provider execution.
-- [x] [runtime/P1] 6-step cycle (`plan -> build x3 -> proof -> review`) is implemented in `loop.ps1` and `loop.sh`.
+- [x] [runtime/P1] 6-step cycle (`plan -> build x3 -> proof -> review`) is implemented.
 - [x] [proof/P1] Proof artifact directories and `proof-manifest.json` generation are implemented.
-- [x] [proof/P1] Review prompt injection for proof manifest and baseline update gating via deterministic review verdict exists.
-- [x] [tests/P1] Baseline lifecycle and proof/baseline branch-coverage tests were added for runtime paths.
+- [x] [proof/P1] Review prompt injection for proof manifest and baseline update gating exists.
+- [x] [tests/P1] Baseline lifecycle and proof/baseline branch-coverage tests were added.
 - [x] [cli/P1] Core commands are present: `resolve`, `discover`, `scaffold`, `start`, `setup`, `dashboard`, `status`, `active`, `stop`, `gh`.
 - [x] [cli/P1] `aloop start` session bootstrap/worktree/monitor wiring is implemented.
-- [x] [cli/P1] `aloop status --watch` is wired end-to-end in CLI + command implementation + tests.
+- [x] [cli/P1] `aloop status --watch` is wired end-to-end.
 - [x] [security/P1] `aloop gh` policy model exists for child-loop vs orchestrator roles with denial logging.
-- [x] [security/P1] Convention-file GH request processing is host-side in `aloop/cli/src/commands/dashboard.ts`, and requests are archived after processing.
-- [x] [commands/P1] Command assets exist for `setup`, `start`, `status`, `steer`, `stop`, `dashboard`, and `devcontainer` in both Claude and Copilot surfaces.
+- [x] [security/P1] Convention-file GH request processing is host-side, requests are archived after processing.
+- [x] [commands/P1] Command assets exist for `setup`, `start`, `status`, `steer`, `stop`, `dashboard`, and `devcontainer`.
 - [x] [templates/P1] `PROMPT_plan.md`, `PROMPT_build.md`, `PROMPT_proof.md`, `PROMPT_review.md`, and `PROMPT_steer.md` are scaffolded.
-- [x] [review/P1] `npm --prefix ./aloop/cli run type-check` passes (previous TS7016/TS2339 regressions resolved).
+- [x] [review/P1] `npm --prefix ./aloop/cli run type-check` passes.
 - [x] [known-issues/P1] Repo `.editorconfig` enforces `CRLF` for `*.ps1`.
 - [x] [known-issues/P1] `install.ps1` now normalizes installed `loop.ps1` to CRLF and `loop.sh` to LF.

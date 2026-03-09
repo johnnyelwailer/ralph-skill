@@ -5,6 +5,8 @@ import {
   generateDevcontainerConfig,
   augmentExistingConfig,
   stripJsoncComments,
+  detectNodeInstallCommand,
+  detectPythonInstallCommand,
   type DevcontainerDeps,
   type DevcontainerConfig,
 } from './devcontainer.js';
@@ -174,6 +176,50 @@ test('augmentExistingConfig - preserves existing remoteEnv values', () => {
 
   assert.equal(env.EXISTING_KEY, 'keep'); // Existing takes priority
   assert.equal(env.NEW_KEY, 'new');
+});
+
+// --- detectNodeInstallCommand ---
+
+test('detectNodeInstallCommand - detects pnpm from pnpm-lock.yaml', () => {
+  const existsFn = (p: string) => p.endsWith('pnpm-lock.yaml');
+  assert.equal(detectNodeInstallCommand('/project', existsFn), 'pnpm install');
+});
+
+test('detectNodeInstallCommand - detects yarn from yarn.lock', () => {
+  const existsFn = (p: string) => p.endsWith('yarn.lock');
+  assert.equal(detectNodeInstallCommand('/project', existsFn), 'yarn install');
+});
+
+test('detectNodeInstallCommand - detects bun from bun.lockb', () => {
+  const existsFn = (p: string) => p.endsWith('bun.lockb');
+  assert.equal(detectNodeInstallCommand('/project', existsFn), 'bun install');
+});
+
+test('detectNodeInstallCommand - detects bun from bun.lock', () => {
+  const existsFn = (p: string) => p.endsWith('bun.lock');
+  assert.equal(detectNodeInstallCommand('/project', existsFn), 'bun install');
+});
+
+test('detectNodeInstallCommand - defaults to npm install when no lock file', () => {
+  const existsFn = () => false;
+  assert.equal(detectNodeInstallCommand('/project', existsFn), 'npm install');
+});
+
+// --- detectPythonInstallCommand ---
+
+test('detectPythonInstallCommand - detects pyproject.toml', () => {
+  const existsFn = (p: string) => p.endsWith('pyproject.toml');
+  assert.equal(detectPythonInstallCommand('/project', existsFn), 'pip install -e .');
+});
+
+test('detectPythonInstallCommand - detects requirements.txt', () => {
+  const existsFn = (p: string) => p.endsWith('requirements.txt');
+  assert.equal(detectPythonInstallCommand('/project', existsFn), 'pip install -r requirements.txt');
+});
+
+test('detectPythonInstallCommand - defaults to pip install -e . when no config file', () => {
+  const existsFn = () => false;
+  assert.equal(detectPythonInstallCommand('/project', existsFn), 'pip install -e .');
 });
 
 // --- devcontainerCommandWithDeps ---
