@@ -981,6 +981,116 @@ test('GET /api/state without session param returns default session state', async
   }
 });
 
+test('resolveSessionContext returns null when active.json is an array instead of object', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    // Write active.json as an array — isRecord([]) is true but array has no string-keyed entries
+    // so active[sessionId] will be undefined → isRecord(undefined) is false → returns null
+    await writeFile(
+      path.join(fixture.runtimeDir, 'active.json'),
+      JSON.stringify([{ session_id: 'arr-session', state: 'running' }]),
+      'utf8',
+    );
+
+    const response = await fetch(`${fixture.handle.url}/api/state?session=arr-session`);
+    assert.equal(response.status, 404);
+    const payload = (await response.json()) as { error: string };
+    assert.match(payload.error, /Session not found/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('resolveSessionContext returns null when entry value is a non-object (string)', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    // Entry value is a string instead of an object → isRecord("running") is false → returns null
+    await writeFile(
+      path.join(fixture.runtimeDir, 'active.json'),
+      JSON.stringify({ 'str-session': 'running' }),
+      'utf8',
+    );
+
+    const response = await fetch(`${fixture.handle.url}/api/state?session=str-session`);
+    assert.equal(response.status, 404);
+    const payload = (await response.json()) as { error: string };
+    assert.match(payload.error, /Session not found/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('resolveSessionContext falls back to runtimeDir/sessions/<id> when entry missing session_dir', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    // Create the fallback session directory at runtimeDir/sessions/<id>
+    const fallbackSessionDir = path.join(fixture.runtimeDir, 'sessions', 'no-dir-session');
+    await mkdir(fallbackSessionDir, { recursive: true });
+    await writeFile(
+      path.join(fallbackSessionDir, 'status.json'),
+      JSON.stringify({ state: 'running', phase: 'proof', iteration: 7 }),
+      'utf8',
+    );
+
+    // Entry has work_dir but no session_dir → session_dir falls back to runtimeDir/sessions/<id>
+    await writeFile(
+      path.join(fixture.runtimeDir, 'active.json'),
+      JSON.stringify({ 'no-dir-session': { work_dir: fixture.root, pid: 555 } }),
+      'utf8',
+    );
+
+    const response = await fetch(`${fixture.handle.url}/api/state?session=no-dir-session`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      sessionDir: string;
+      status: { state: string; phase: string; iteration: number };
+    };
+    assert.equal(payload.sessionDir, fallbackSessionDir);
+    assert.equal(payload.status.state, 'running');
+    assert.equal(payload.status.phase, 'proof');
+    assert.equal(payload.status.iteration, 7);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('resolveSessionContext falls back to process.cwd() when entry missing work_dir', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const sessionDir = path.join(fixture.root, 'cwd-fallback-session');
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(
+      path.join(sessionDir, 'status.json'),
+      JSON.stringify({ state: 'build', phase: 'build', iteration: 1 }),
+      'utf8',
+    );
+
+    // Entry has session_dir but no work_dir → work_dir falls back to process.cwd()
+    await writeFile(
+      path.join(fixture.runtimeDir, 'active.json'),
+      JSON.stringify({ 'cwd-session': { session_dir: sessionDir, pid: 777 } }),
+      'utf8',
+    );
+
+    const response = await fetch(`${fixture.handle.url}/api/state?session=cwd-session`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      sessionDir: string;
+      workdir: string;
+      status: { state: string };
+    };
+    assert.equal(payload.sessionDir, sessionDir);
+    assert.equal(payload.workdir, process.cwd());
+    assert.equal(payload.status.state, 'build');
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test('watch-triggered publish failures are guarded and do not crash the server', async (t) => {
   const fixture = await createServerFixture();
   const originalStringify = JSON.stringify;
