@@ -813,6 +813,174 @@ test('SSE stream includes heartbeat events', async () => {
   }
 });
 
+test('GET /api/state?session=<id> returns state for a different session', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    // Create a second session directory with its own status and workdir
+    const otherSessionDir = path.join(fixture.root, 'other-session');
+    const otherWorkdir = path.join(fixture.root, 'other-workdir');
+    await mkdir(otherSessionDir, { recursive: true });
+    await mkdir(otherWorkdir, { recursive: true });
+    await writeFile(
+      path.join(otherSessionDir, 'status.json'),
+      JSON.stringify({ state: 'running', phase: 'build', iteration: 3 }),
+      'utf8',
+    );
+    await writeFile(path.join(otherWorkdir, 'TODO.md'), '# Other Project TODO\n', 'utf8');
+
+    // Register the session in active.json (object format keyed by session ID)
+    const activeSessions: Record<string, unknown> = {
+      'other-session-42': {
+        session_dir: otherSessionDir,
+        work_dir: otherWorkdir,
+        pid: 12345,
+        started_at: '2026-03-09T10:00:00Z',
+      },
+    };
+    await writeFile(path.join(fixture.runtimeDir, 'active.json'), JSON.stringify(activeSessions), 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/api/state?session=other-session-42`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      sessionDir: string;
+      workdir: string;
+      status: { state: string; phase: string; iteration: number };
+      docs: Record<string, string>;
+    };
+    assert.equal(payload.sessionDir, otherSessionDir);
+    assert.equal(payload.workdir, otherWorkdir);
+    assert.equal(payload.status.state, 'running');
+    assert.equal(payload.status.phase, 'build');
+    assert.equal(payload.status.iteration, 3);
+    assert.match(payload.docs['TODO.md'], /Other Project TODO/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/state?session=<id> returns 404 for unknown session', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    // active.json is empty or doesn't contain the session
+    await writeFile(path.join(fixture.runtimeDir, 'active.json'), '{}', 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/api/state?session=nonexistent-session`);
+    assert.equal(response.status, 404);
+    const payload = (await response.json()) as { error: string };
+    assert.match(payload.error, /Session not found/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /events?session=<id> sends initial state for that session', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const otherSessionDir = path.join(fixture.root, 'sse-other-session');
+    const otherWorkdir = path.join(fixture.root, 'sse-other-workdir');
+    await mkdir(otherSessionDir, { recursive: true });
+    await mkdir(otherWorkdir, { recursive: true });
+    await writeFile(
+      path.join(otherSessionDir, 'status.json'),
+      JSON.stringify({ state: 'review', phase: 'review', iteration: 5 }),
+      'utf8',
+    );
+
+    const activeSessions: Record<string, unknown> = {
+      'sse-session-99': {
+        session_dir: otherSessionDir,
+        work_dir: otherWorkdir,
+        pid: 99999,
+      },
+    };
+    await writeFile(path.join(fixture.runtimeDir, 'active.json'), JSON.stringify(activeSessions), 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/events?session=sse-session-99`);
+    assert.equal(response.status, 200);
+    assert.ok(response.body);
+
+    const reader = response.body.getReader();
+    const timeoutAt = Date.now() + 3000;
+    let raw = '';
+
+    while (Date.now() < timeoutAt && !raw.includes('event: state')) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      raw += Buffer.from(value).toString('utf8');
+    }
+    await reader.cancel();
+
+    assert.match(raw, /event: state/);
+    // Extract the data payload from the SSE stream
+    const dataMatch = raw.match(/event: state\ndata: (.+)\n/);
+    assert.ok(dataMatch, 'Should have state event data');
+    const statePayload = JSON.parse(dataMatch[1]) as {
+      sessionDir: string;
+      status: { state: string; phase: string };
+    };
+    assert.equal(statePayload.sessionDir, otherSessionDir);
+    assert.equal(statePayload.status.state, 'review');
+    assert.equal(statePayload.status.phase, 'review');
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /events?session=<id> sends error for unknown session and closes', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    await writeFile(path.join(fixture.runtimeDir, 'active.json'), '{}', 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/events?session=ghost-session`);
+    assert.equal(response.status, 200);
+    assert.ok(response.body);
+
+    const reader = response.body.getReader();
+    const timeoutAt = Date.now() + 3000;
+    let raw = '';
+
+    while (Date.now() < timeoutAt) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      raw += Buffer.from(value).toString('utf8');
+    }
+    await reader.cancel();
+
+    assert.match(raw, /event: error/);
+    assert.match(raw, /Session not found/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/state without session param returns default session state', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    await writeFile(
+      path.join(fixture.sessionDir, 'status.json'),
+      JSON.stringify({ state: 'running', phase: 'plan' }),
+      'utf8',
+    );
+
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      sessionDir: string;
+      status: { state: string; phase: string };
+    };
+    assert.equal(payload.sessionDir, fixture.sessionDir);
+    assert.equal(payload.status.state, 'running');
+    assert.equal(payload.status.phase, 'plan');
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test('watch-triggered publish failures are guarded and do not crash the server', async (t) => {
   const fixture = await createServerFixture();
   const originalStringify = JSON.stringify;

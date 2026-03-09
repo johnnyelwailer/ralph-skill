@@ -25,6 +25,11 @@ interface DashboardState {
   recentSessions: unknown[];
 }
 
+interface SessionContext {
+  sessionDir: string;
+  workdir: string;
+}
+
 interface DashboardServerHandle {
   close: () => Promise<void>;
   port: number;
@@ -111,6 +116,59 @@ async function fileExists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function resolveSessionContext(runtimeDir: string, sessionId: string): Promise<SessionContext | null> {
+  const activeSessionsPath = path.join(runtimeDir, 'active.json');
+  const active = await readJsonFile(activeSessionsPath);
+  if (!isRecord(active)) {
+    return null;
+  }
+  const entry = active[sessionId];
+  if (!isRecord(entry)) {
+    return null;
+  }
+  const sessionDir =
+    typeof entry.session_dir === 'string'
+      ? entry.session_dir
+      : path.join(runtimeDir, 'sessions', sessionId);
+  const workdir = typeof entry.work_dir === 'string' ? entry.work_dir : process.cwd();
+  return { sessionDir, workdir };
+}
+
+async function loadStateForContext(
+  ctx: SessionContext,
+  runtimeDir: string,
+): Promise<DashboardState> {
+  const statusPath = path.join(ctx.sessionDir, 'status.json');
+  const logPath = path.join(ctx.sessionDir, 'log.jsonl');
+  const activeSessionsPath = path.join(runtimeDir, 'active.json');
+  const recentSessionsPath = path.join(runtimeDir, 'history.json');
+
+  const [status, log, activeSessions, recentSessions, docsEntries] = await Promise.all([
+    readJsonFile(statusPath),
+    readLogTail(logPath),
+    readJsonArrayFile(activeSessionsPath),
+    readJsonArrayFile(recentSessionsPath),
+    Promise.all(
+      DOC_FILES.map(async (docFile) => {
+        const content = await readTextFile(path.join(ctx.workdir, docFile));
+        return [docFile, content] as const;
+      }),
+    ),
+  ]);
+
+  return {
+    sessionDir: ctx.sessionDir,
+    workdir: ctx.workdir,
+    runtimeDir,
+    updatedAt: new Date().toISOString(),
+    status,
+    log,
+    docs: Object.fromEntries(docsEntries),
+    activeSessions,
+    recentSessions,
+  };
 }
 
 function normalizeProcessOutput(stdout: string, stderr: string): string {
@@ -409,41 +467,38 @@ export async function startDashboardServer(
     ),
   );
 
-  const clients = new Set<ServerResponse>();
+  const defaultContext: SessionContext = { sessionDir, workdir };
+  const clients = new Map<ServerResponse, SessionContext>();
   const watchers = new Map<string, FSWatcher>();
 
   const loadState = async (): Promise<DashboardState> => {
-    const [status, log, activeSessions, recentSessions, docsEntries] = await Promise.all([
-      readJsonFile(statusPath),
-      readLogTail(logPath),
-      readJsonArrayFile(activeSessionsPath),
-      readJsonArrayFile(recentSessionsPath),
-      Promise.all(
-        DOC_FILES.map(async (docFile) => {
-          const content = await readTextFile(path.join(workdir, docFile));
-          return [docFile, content] as const;
-        }),
-      ),
-    ]);
-
-    return {
-      sessionDir,
-      workdir,
-      runtimeDir,
-      updatedAt: new Date().toISOString(),
-      status,
-      log,
-      docs: Object.fromEntries(docsEntries),
-      activeSessions,
-      recentSessions,
-    };
+    return loadStateForContext(defaultContext, runtimeDir);
   };
+
+  const normalizedGlobalFiles = new Set(
+    [activeSessionsPath, recentSessionsPath].map((value) => path.normalize(value).toLowerCase()),
+  );
 
   let publishPending = false;
   let publishTimer: NodeJS.Timeout | null = null;
+  let globalChangeDetected = false;
 
   const sendToClients = (event: string, payload: string) => {
-    for (const client of clients) {
+    for (const [client] of clients) {
+      try {
+        sendSseEvent(client, event, payload);
+      } catch {
+        clients.delete(client);
+        client.destroy();
+      }
+    }
+  };
+
+  const sendToDefaultSessionClients = (event: string, payload: string) => {
+    for (const [client, ctx] of clients) {
+      if (ctx.sessionDir !== defaultContext.sessionDir) {
+        continue;
+      }
       try {
         sendSseEvent(client, event, payload);
       } catch {
@@ -456,15 +511,42 @@ export async function startDashboardServer(
   const publishState = async () => {
     publishPending = false;
     publishTimer = null;
+    const isGlobal = globalChangeDetected;
+    globalChangeDetected = false;
     try {
-      const statePayload = toStateEventPayload(await loadState());
-      sendToClients('state', statePayload);
+      if (isGlobal) {
+        // Global file changed (active.json/history.json) — notify all clients with their session state
+        const contextPayloads = new Map<string, string>();
+        for (const [client, ctx] of clients) {
+          const key = ctx.sessionDir;
+          let payload = contextPayloads.get(key);
+          if (payload === undefined) {
+            const state = ctx === defaultContext
+              ? await loadState()
+              : await loadStateForContext(ctx, runtimeDir);
+            payload = toStateEventPayload(state);
+            contextPayloads.set(key, payload);
+          }
+          try {
+            sendSseEvent(client, 'state', payload);
+          } catch {
+            clients.delete(client);
+            client.destroy();
+          }
+        }
+      } else {
+        const statePayload = toStateEventPayload(await loadState());
+        sendToDefaultSessionClients('state', statePayload);
+      }
     } catch (error) {
       console.warn(`dashboard: failed to publish state: ${(error as Error).message}`);
     }
   };
 
-  const schedulePublish = () => {
+  const schedulePublish = (changedPath?: string) => {
+    if (changedPath && normalizedGlobalFiles.has(changedPath)) {
+      globalChangeDetected = true;
+    }
     if (publishPending) {
       return;
     }
@@ -518,7 +600,7 @@ export async function startDashboardServer(
           runRequestProcessing();
         }
         if (watchedFiles.has(changed) || changed.endsWith('.md')) {
-          schedulePublish();
+          schedulePublish(changed);
         }
       });
       watchers.set(target, watcher);
@@ -535,6 +617,17 @@ export async function startDashboardServer(
       const requestUrl = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
 
       if (requestUrl.pathname === '/api/state' && request.method === 'GET') {
+        const targetSessionId = requestUrl.searchParams.get('session');
+        if (targetSessionId) {
+          const ctx = await resolveSessionContext(runtimeDir, targetSessionId);
+          if (!ctx) {
+            writeJson(response, 404, { error: `Session not found: ${targetSessionId}` });
+            return;
+          }
+          const state = await loadStateForContext(ctx, runtimeDir);
+          writeJson(response, 200, state);
+          return;
+        }
         const state = await loadState();
         writeJson(response, 200, state);
         return;
@@ -547,9 +640,29 @@ export async function startDashboardServer(
           Connection: 'keep-alive',
         });
         response.write(': connected\n\n');
-        clients.add(response);
+
+        const targetSessionId = requestUrl.searchParams.get('session');
+        let clientContext = defaultContext;
+        if (targetSessionId) {
+          const ctx = await resolveSessionContext(runtimeDir, targetSessionId);
+          if (!ctx) {
+            sendSseEvent(
+              response,
+              'error',
+              JSON.stringify({ message: `Session not found: ${targetSessionId}` }),
+            );
+            response.end();
+            return;
+          }
+          clientContext = ctx;
+        }
+
+        clients.set(response, clientContext);
         try {
-          sendSseEvent(response, 'state', toStateEventPayload(await loadState()));
+          const initialState = clientContext === defaultContext
+            ? await loadState()
+            : await loadStateForContext(clientContext, runtimeDir);
+          sendSseEvent(response, 'state', toStateEventPayload(initialState));
         } catch (error) {
           sendSseEvent(
             response,
@@ -781,7 +894,7 @@ export async function startDashboardServer(
       }
       watchers.clear();
 
-      for (const client of clients) {
+      for (const [client] of clients) {
         client.end();
       }
       clients.clear();
