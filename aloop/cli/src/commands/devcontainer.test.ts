@@ -8,6 +8,8 @@ import {
   stripJsoncComments,
   detectNodeInstallCommand,
   detectPythonInstallCommand,
+  buildProviderInstallCommands,
+  buildProviderRemoteEnv,
   type DevcontainerDeps,
   type DevcontainerConfig,
 } from './devcontainer.js';
@@ -53,7 +55,10 @@ test('generateDevcontainerConfig - node-typescript project', () => {
   assert.equal(config.containerEnv.ALOOP_NO_DASHBOARD, '1');
   assert.equal(config.mounts.length, 1);
   assert.equal(config.mounts[0], 'source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind');
-  assert.equal(config.postCreateCommand, 'npm install');
+  assert.equal(config.postCreateCommand, 'npm install && npm install -g @anthropic-ai/claude-code');
+  // remoteEnv forwards Claude auth vars (OAUTH preferred, API key fallback)
+  assert.equal(config.remoteEnv.CLAUDE_CODE_OAUTH_TOKEN, '${localEnv:CLAUDE_CODE_OAUTH_TOKEN}');
+  assert.equal(config.remoteEnv.ANTHROPIC_API_KEY, '${localEnv:ANTHROPIC_API_KEY}');
 });
 
 test('generateDevcontainerConfig - python project', () => {
@@ -61,7 +66,7 @@ test('generateDevcontainerConfig - python project', () => {
   const config = generateDevcontainerConfig(discovery);
 
   assert.equal(config.image, 'mcr.microsoft.com/devcontainers/python:3');
-  assert.equal(config.postCreateCommand, 'pip install -e .');
+  assert.equal(config.postCreateCommand, 'pip install -e . && npm install -g @anthropic-ai/claude-code');
 });
 
 test('generateDevcontainerConfig - go project', () => {
@@ -69,7 +74,7 @@ test('generateDevcontainerConfig - go project', () => {
   const config = generateDevcontainerConfig(discovery);
 
   assert.equal(config.image, 'mcr.microsoft.com/devcontainers/go:1');
-  assert.equal(config.postCreateCommand, 'go mod download');
+  assert.equal(config.postCreateCommand, 'go mod download && npm install -g @anthropic-ai/claude-code');
 });
 
 test('generateDevcontainerConfig - rust project', () => {
@@ -77,7 +82,7 @@ test('generateDevcontainerConfig - rust project', () => {
   const config = generateDevcontainerConfig(discovery);
 
   assert.equal(config.image, 'mcr.microsoft.com/devcontainers/rust:1');
-  assert.equal(config.postCreateCommand, 'cargo build');
+  assert.equal(config.postCreateCommand, 'cargo build && npm install -g @anthropic-ai/claude-code');
 });
 
 test('generateDevcontainerConfig - dotnet project', () => {
@@ -85,7 +90,7 @@ test('generateDevcontainerConfig - dotnet project', () => {
   const config = generateDevcontainerConfig(discovery);
 
   assert.equal(config.image, 'mcr.microsoft.com/devcontainers/dotnet:8.0');
-  assert.equal(config.postCreateCommand, 'dotnet restore');
+  assert.equal(config.postCreateCommand, 'dotnet restore && npm install -g @anthropic-ai/claude-code');
 });
 
 test('generateDevcontainerConfig - unknown language uses base ubuntu', () => {
@@ -94,7 +99,8 @@ test('generateDevcontainerConfig - unknown language uses base ubuntu', () => {
 
   assert.equal(config.image, 'mcr.microsoft.com/devcontainers/base:ubuntu');
   assert.deepEqual(config.features['ghcr.io/devcontainers/features/node:1'], {});
-  assert.equal(config.postCreateCommand, undefined);
+  // No language deps but claude provider install is included
+  assert.equal(config.postCreateCommand, 'npm install -g @anthropic-ai/claude-code');
 });
 
 // --- augmentExistingConfig ---
@@ -495,7 +501,7 @@ test('devcontainerCommand - text output for created action', async () => {
   assert.ok(logs.some(l => l.includes('Created devcontainer config at')));
   assert.ok(logs.some(l => l.includes('Language: node-typescript')));
   assert.ok(logs.some(l => l.includes('Image:')));
-  assert.ok(logs.some(l => l.includes('Post-create: npm install')));
+  assert.ok(logs.some(l => l.includes('Post-create: npm install &&')));
   assert.ok(logs.some(l => l.includes('Next steps:')));
 });
 
@@ -519,7 +525,10 @@ test('devcontainerCommand - text output for augmented action', async () => {
 
 test('devcontainerCommand - text output omits post-create when null', async () => {
   const deps: DevcontainerDeps = {
-    discover: async () => mockDiscovery({ context: { detected_language: 'other' } as DiscoveryResult['context'] }),
+    discover: async () => mockDiscovery({
+      context: { detected_language: 'other' } as DiscoveryResult['context'],
+      providers: { installed: [], missing: [], default_provider: '', default_models: {}, round_robin_default: [] },
+    }),
     readFile: async () => '',
     writeFile: async () => {},
     mkdir: async () => undefined,
@@ -537,4 +546,122 @@ test('devcontainerCommand - text output omits post-create when null', async () =
 
   assert.ok(logs.some(l => l.includes('Created devcontainer config at')));
   assert.ok(!logs.some(l => l.includes('Post-create:')));
+});
+
+// --- buildProviderInstallCommands ---
+
+test('buildProviderInstallCommands - returns claude install for claude provider', () => {
+  const cmds = buildProviderInstallCommands(['claude']);
+  assert.deepEqual(cmds, ['npm install -g @anthropic-ai/claude-code']);
+});
+
+test('buildProviderInstallCommands - returns multiple installs for multiple providers', () => {
+  const cmds = buildProviderInstallCommands(['claude', 'codex', 'gemini']);
+  assert.deepEqual(cmds, [
+    'npm install -g @anthropic-ai/claude-code',
+    'npm install -g @openai/codex',
+    'npm install -g @google/gemini-cli',
+  ]);
+});
+
+test('buildProviderInstallCommands - skips copilot (VS Code extension, no CLI)', () => {
+  const cmds = buildProviderInstallCommands(['copilot']);
+  assert.deepEqual(cmds, []);
+});
+
+test('buildProviderInstallCommands - skips unknown providers', () => {
+  const cmds = buildProviderInstallCommands(['unknown-provider']);
+  assert.deepEqual(cmds, []);
+});
+
+test('buildProviderInstallCommands - empty list returns empty', () => {
+  const cmds = buildProviderInstallCommands([]);
+  assert.deepEqual(cmds, []);
+});
+
+// --- buildProviderRemoteEnv ---
+
+test('buildProviderRemoteEnv - forwards claude auth vars with localEnv syntax', () => {
+  const env = buildProviderRemoteEnv(['claude']);
+  assert.equal(env.CLAUDE_CODE_OAUTH_TOKEN, '${localEnv:CLAUDE_CODE_OAUTH_TOKEN}');
+  assert.equal(env.ANTHROPIC_API_KEY, '${localEnv:ANTHROPIC_API_KEY}');
+  assert.equal(Object.keys(env).length, 2);
+});
+
+test('buildProviderRemoteEnv - forwards codex auth var', () => {
+  const env = buildProviderRemoteEnv(['codex']);
+  assert.equal(env.OPENAI_API_KEY, '${localEnv:OPENAI_API_KEY}');
+  assert.equal(Object.keys(env).length, 1);
+});
+
+test('buildProviderRemoteEnv - forwards gemini auth var', () => {
+  const env = buildProviderRemoteEnv(['gemini']);
+  assert.equal(env.GEMINI_API_KEY, '${localEnv:GEMINI_API_KEY}');
+  assert.equal(Object.keys(env).length, 1);
+});
+
+test('buildProviderRemoteEnv - forwards copilot GH_TOKEN', () => {
+  const env = buildProviderRemoteEnv(['copilot']);
+  assert.equal(env.GH_TOKEN, '${localEnv:GH_TOKEN}');
+  assert.equal(Object.keys(env).length, 1);
+});
+
+test('buildProviderRemoteEnv - multiple providers merges all vars', () => {
+  const env = buildProviderRemoteEnv(['claude', 'codex', 'gemini']);
+  assert.equal(Object.keys(env).length, 4); // 2 claude + 1 codex + 1 gemini
+  assert.equal(env.CLAUDE_CODE_OAUTH_TOKEN, '${localEnv:CLAUDE_CODE_OAUTH_TOKEN}');
+  assert.equal(env.ANTHROPIC_API_KEY, '${localEnv:ANTHROPIC_API_KEY}');
+  assert.equal(env.OPENAI_API_KEY, '${localEnv:OPENAI_API_KEY}');
+  assert.equal(env.GEMINI_API_KEY, '${localEnv:GEMINI_API_KEY}');
+});
+
+test('buildProviderRemoteEnv - empty list returns empty', () => {
+  const env = buildProviderRemoteEnv([]);
+  assert.deepEqual(env, {});
+});
+
+test('buildProviderRemoteEnv - unknown provider skipped', () => {
+  const env = buildProviderRemoteEnv(['unknown']);
+  assert.deepEqual(env, {});
+});
+
+// --- generateDevcontainerConfig with providers ---
+
+test('generateDevcontainerConfig - no providers means no provider install or remoteEnv', () => {
+  const discovery = mockDiscovery({
+    providers: { installed: [], missing: [], default_provider: '', default_models: {}, round_robin_default: [] },
+  });
+  const config = generateDevcontainerConfig(discovery);
+
+  assert.equal(config.postCreateCommand, 'npm install'); // language deps only
+  assert.deepEqual(config.remoteEnv, {});
+});
+
+test('generateDevcontainerConfig - multiple providers chains installs and merges remoteEnv', () => {
+  const discovery = mockDiscovery({
+    providers: { installed: ['claude', 'codex'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: ['claude', 'codex'] },
+  });
+  const config = generateDevcontainerConfig(discovery);
+
+  assert.equal(config.postCreateCommand, 'npm install && npm install -g @anthropic-ai/claude-code && npm install -g @openai/codex');
+  assert.equal(config.remoteEnv.CLAUDE_CODE_OAUTH_TOKEN, '${localEnv:CLAUDE_CODE_OAUTH_TOKEN}');
+  assert.equal(config.remoteEnv.ANTHROPIC_API_KEY, '${localEnv:ANTHROPIC_API_KEY}');
+  assert.equal(config.remoteEnv.OPENAI_API_KEY, '${localEnv:OPENAI_API_KEY}');
+});
+
+test('generateDevcontainerConfig - augment merges generated remoteEnv without overwriting existing', () => {
+  const discovery = mockDiscovery(); // installed: ['claude']
+  const generated = generateDevcontainerConfig(discovery);
+
+  const existing = {
+    remoteEnv: { CLAUDE_CODE_OAUTH_TOKEN: 'my-custom-token' },
+  };
+
+  const result = augmentExistingConfig(existing, generated);
+  const env = result.remoteEnv as Record<string, string>;
+
+  // Existing user value takes priority
+  assert.equal(env.CLAUDE_CODE_OAUTH_TOKEN, 'my-custom-token');
+  // Generated values fill gaps
+  assert.equal(env.ANTHROPIC_API_KEY, '${localEnv:ANTHROPIC_API_KEY}');
 });

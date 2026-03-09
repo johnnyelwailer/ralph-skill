@@ -5,7 +5,7 @@
 ### In Progress
 
 ### Up Next
-- [ ] [devcontainer/P1] Add provider install hooks (`postCreateCommand`) plus `remoteEnv`/`localEnv` auth forwarding for activated providers only; prefer `CLAUDE_CODE_OAUTH_TOKEN` > `ANTHROPIC_API_KEY` for Claude. (priority: high, container usability/security boundary)
+- [x] [devcontainer/P1] Add provider install hooks (`postCreateCommand`) plus `remoteEnv`/`localEnv` auth forwarding for activated providers only; prefer `CLAUDE_CODE_OAUTH_TOKEN` > `ANTHROPIC_API_KEY` for Claude. (priority: high, container usability/security boundary)
 - [ ] [devcontainer/P1] Implement verification loop (`devcontainer build`, `up`, `exec`) that checks deps/providers/git/mount and iterates on failure until green. (priority: high, acceptance gate)
 - [ ] [devcontainer/P1] Implement host-side auto-container routing in `loop.ps1` and `loop.sh` (detect `.devcontainer/devcontainer.json`, ensure `devcontainer up`, wrap provider calls with `devcontainer exec`, support `--dangerously-skip-container` with visible warning + `container_bypass` log event). (priority: high, required runtime behavior)
 - [ ] [devcontainer/P1] Add shared-container reuse checks (`devcontainer exec -- echo ok`) and bind-mount `~/.aloop/sessions/` so session worktrees are reachable inside container. (priority: medium, parallel-loop scalability)
@@ -28,6 +28,10 @@
 - [ ] [pipeline/P2] Add agent definitions in `.aloop/agents/` (YAML with prompt reference, provider preference, transition rules) and refactor loop script into a generic agent runner. (priority: medium, agent extensibility)
 - [ ] [pipeline/P2] Add runtime pipeline mutation via host-side monitor (steering-driven insert/remove/reorder of agents; auto-inject debugger after 3 consecutive build failures). (priority: medium, dynamic pipeline control)
 - [ ] [pipeline/P2] Implement guard agent pattern and escalation ladder for verification failures (restrict code-only → code+tests → escalate to review → flag-for-human). (priority: medium, self-healing verification)
+- [ ] [gh/P2] Implement `aloop gh start --issue <N>` that fetches issue, creates branch/session/worktree, runs loop, creates PR on completion with `Closes #N` link + summary comment. (priority: medium, issue-driven workflow)
+- [ ] [gh/P2] Implement `aloop gh watch` event-driven daemon that polls for matching issues (by label/assignee/milestone) and auto-spawns loops with `--max-concurrent` cap and `watch.json` state tracking. (priority: medium, automated issue processing)
+- [ ] [gh/P2] Implement `aloop gh status` showing issue→loop→PR mapping with feedback status, and `aloop gh stop` for cleanly stopping GH-linked loops. (priority: medium, GH operational visibility)
+- [ ] [gh/P2] Implement PR feedback loop in `aloop gh watch`: detect review comments and CI failures on PRs, re-iterate with feedback as steering, max feedback iterations configurable. (priority: medium, self-healing PR cycle)
 - [ ] [status/P2] Extend `aloop status` to show orchestrator tree state (orchestrator -> child sessions -> issue/PR mapping). (priority: medium, operational visibility)
 - [ ] [architecture/P3] Reconcile spec constraints (`zero npm dependencies`, `no build step`, `lib/config.mjs`) with current TypeScript/bundled CLI architecture, or explicitly update spec. (priority: low, spec parity risk)
 - [ ] [acceptance/P3] Add automated legacy-name guard for forbidden legacy references outside explicit allowlist contexts. (priority: low, release gate)

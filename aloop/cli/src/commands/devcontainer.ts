@@ -121,6 +121,59 @@ export function detectPythonInstallCommand(projectRoot: string, existsFn: (p: st
   return 'pip install -e .';
 }
 
+/**
+ * Map of provider names to their npm install commands for container setup.
+ * Copilot is excluded — it's installed via VS Code extension, not CLI.
+ */
+const PROVIDER_INSTALL_COMMANDS: Record<string, string> = {
+  claude: 'npm install -g @anthropic-ai/claude-code',
+  codex: 'npm install -g @openai/codex',
+  gemini: 'npm install -g @google/gemini-cli',
+};
+
+/**
+ * Map of provider names to their auth env vars for remoteEnv forwarding.
+ * Claude lists two vars in preference order (OAUTH token preferred over API key).
+ */
+const PROVIDER_AUTH_ENV_VARS: Record<string, string[]> = {
+  claude: ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'],
+  codex: ['OPENAI_API_KEY'],
+  gemini: ['GEMINI_API_KEY'],
+  copilot: ['GH_TOKEN'],
+};
+
+/**
+ * Build provider install commands for postCreateCommand.
+ * Only includes providers that have a CLI install command.
+ */
+export function buildProviderInstallCommands(installedProviders: string[]): string[] {
+  const commands: string[] = [];
+  for (const provider of installedProviders) {
+    const cmd = PROVIDER_INSTALL_COMMANDS[provider];
+    if (cmd) {
+      commands.push(cmd);
+    }
+  }
+  return commands;
+}
+
+/**
+ * Build remoteEnv entries for auth forwarding.
+ * Only forwards env vars for activated providers using ${localEnv:VAR} syntax.
+ */
+export function buildProviderRemoteEnv(installedProviders: string[]): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const provider of installedProviders) {
+    const vars = PROVIDER_AUTH_ENV_VARS[provider];
+    if (vars) {
+      for (const v of vars) {
+        env[v] = `\${localEnv:${v}}`;
+      }
+    }
+  }
+  return env;
+}
+
 function buildAloopMounts(): string[] {
   return [
     'source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind',
@@ -142,6 +195,14 @@ export function generateDevcontainerConfig(
   const projectName = discovery.project.name;
   const language = discovery.context.detected_language;
   const mapping = getLanguageMapping(language, projectRoot, existsFn);
+  const installedProviders = discovery.providers.installed;
+
+  // Chain language deps install + provider CLI installs into postCreateCommand
+  const providerInstalls = buildProviderInstallCommands(installedProviders);
+  const allCommands = [
+    ...(mapping.postCreateCommand ? [mapping.postCreateCommand] : []),
+    ...providerInstalls,
+  ];
 
   const config: DevcontainerConfig = {
     name: `${projectName}-aloop`,
@@ -149,11 +210,11 @@ export function generateDevcontainerConfig(
     features: { ...mapping.features },
     mounts: buildAloopMounts(),
     containerEnv: buildAloopContainerEnv(),
-    remoteEnv: {},
+    remoteEnv: buildProviderRemoteEnv(installedProviders),
   };
 
-  if (mapping.postCreateCommand) {
-    config.postCreateCommand = mapping.postCreateCommand;
+  if (allCommands.length > 0) {
+    config.postCreateCommand = allCommands.join(' && ');
   }
 
   return config;
@@ -280,7 +341,7 @@ export async function devcontainerCommandWithDeps(
     language: discovery.context.detected_language,
     image: mapping.image,
     features: Object.keys(generated.features),
-    post_create_command: mapping.postCreateCommand,
+    post_create_command: generated.postCreateCommand ?? null,
     mounts: generated.mounts,
     had_existing: hadExisting,
   };
