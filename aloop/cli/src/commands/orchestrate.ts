@@ -16,6 +16,7 @@ export interface OrchestrateCommandOptions {
   homeDir?: string;
   projectRoot?: string;
   output?: OutputMode;
+  budget?: string;
 }
 
 export interface DecompositionPlanIssue {
@@ -52,6 +53,7 @@ export interface OrchestratorState {
   filter_issues: number[] | null;
   filter_label: string | null;
   filter_repo: string | null;
+  budget_cap: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -131,6 +133,15 @@ function parseIssueNumbers(value: string | undefined): number[] | null {
     return n;
   });
   return numbers;
+}
+
+function parseBudget(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid budget value: ${value} (must be a positive number in USD)`);
+  }
+  return parsed;
 }
 
 export function validateDependencyGraph(issues: DecompositionPlanIssue[]): void {
@@ -309,6 +320,7 @@ export async function orchestrateCommandWithDeps(
   const filterLabel = options.label ?? null;
   const filterRepo = options.repo ?? null;
   const planOnly = options.planOnly ?? false;
+  const budgetCap = parseBudget(options.budget);
 
   const now = deps.now();
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}${String(now.getUTCSeconds()).padStart(2, '0')}`;
@@ -328,6 +340,7 @@ export async function orchestrateCommandWithDeps(
     filter_issues: filterIssues,
     filter_label: filterLabel,
     filter_repo: filterRepo,
+    budget_cap: budgetCap,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
   };
@@ -387,6 +400,9 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   }
   if (result.state.filter_repo) {
     console.log(`  Repo:         ${result.state.filter_repo}`);
+  }
+  if (result.state.budget_cap !== null) {
+    console.log(`  Budget cap:   $${result.state.budget_cap.toFixed(2)}`);
   }
 }
 
@@ -1061,4 +1077,213 @@ export function advanceWave(state: OrchestratorState): boolean {
 
   // All waves complete
   return false;
+}
+
+// --- Budget awareness & final report ---
+
+export interface ChildSessionCost {
+  session_id: string;
+  issue_number: number;
+  iterations: number;
+  providers: Record<string, number>;
+  estimated_cost_usd: number;
+}
+
+export interface BudgetSummary {
+  budget_cap: number | null;
+  total_estimated_cost_usd: number;
+  children: ChildSessionCost[];
+  budget_exceeded: boolean;
+  budget_approaching: boolean;
+}
+
+export interface FinalReport {
+  session_dir: string;
+  started_at: string;
+  completed_at: string;
+  duration_seconds: number;
+  issues_total: number;
+  issues_completed: number;
+  issues_failed: number;
+  issues_pending: number;
+  waves_total: number;
+  waves_completed: number;
+  budget: BudgetSummary;
+}
+
+/** Default cost-per-iteration estimate in USD (configurable per-provider in future). */
+const DEFAULT_COST_PER_ITERATION_USD = 0.50;
+
+export interface BudgetDeps {
+  readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
+  existsSync: (path: string) => boolean;
+}
+
+/**
+ * Parse a child session's log.jsonl to count iterations and provider usage.
+ */
+export async function parseChildSessionCost(
+  sessionDir: string,
+  sessionId: string,
+  issueNumber: number,
+  deps: BudgetDeps,
+): Promise<ChildSessionCost> {
+  const logFile = path.join(sessionDir, 'log.jsonl');
+  const providers: Record<string, number> = {};
+  let iterations = 0;
+
+  if (deps.existsSync(logFile)) {
+    try {
+      const content = await deps.readFile(logFile, 'utf8');
+      const lines = content.split('\n').filter((l) => l.trim().length > 0);
+      for (const line of lines) {
+        try {
+          const entry = JSON.parse(line);
+          if (entry.event === 'iteration_complete') {
+            iterations++;
+            const provider = entry.provider ?? 'unknown';
+            providers[provider] = (providers[provider] ?? 0) + 1;
+          }
+        } catch {
+          // Skip malformed log lines
+        }
+      }
+    } catch {
+      // log.jsonl not readable — zero cost
+    }
+  }
+
+  return {
+    session_id: sessionId,
+    issue_number: issueNumber,
+    iterations,
+    providers,
+    estimated_cost_usd: iterations * DEFAULT_COST_PER_ITERATION_USD,
+  };
+}
+
+/**
+ * Aggregate costs across all child sessions referenced in orchestrator state.
+ */
+export async function aggregateChildCosts(
+  state: OrchestratorState,
+  aloopRoot: string,
+  deps: BudgetDeps,
+): Promise<BudgetSummary> {
+  const children: ChildSessionCost[] = [];
+
+  for (const issue of state.issues) {
+    if (issue.child_session) {
+      const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+      const cost = await parseChildSessionCost(childDir, issue.child_session, issue.number, deps);
+      children.push(cost);
+    }
+  }
+
+  const totalCost = children.reduce((sum, c) => sum + c.estimated_cost_usd, 0);
+  const budgetCap = state.budget_cap;
+
+  return {
+    budget_cap: budgetCap,
+    total_estimated_cost_usd: totalCost,
+    children,
+    budget_exceeded: budgetCap !== null && totalCost >= budgetCap,
+    budget_approaching: budgetCap !== null && totalCost >= budgetCap * 0.8 && totalCost < budgetCap,
+  };
+}
+
+/**
+ * Check if budget threshold is approached and dispatch should be paused.
+ * Returns true if dispatch should be paused (budget >= 80% of cap).
+ */
+export function shouldPauseForBudget(budget: BudgetSummary): boolean {
+  return budget.budget_exceeded || budget.budget_approaching;
+}
+
+/**
+ * Generate a final report summarizing the orchestrator session.
+ */
+export function generateFinalReport(
+  state: OrchestratorState,
+  sessionDir: string,
+  budget: BudgetSummary,
+  completedAt: Date,
+): FinalReport {
+  const startedAt = state.created_at;
+  const completedAtIso = completedAt.toISOString();
+  const durationMs = completedAt.getTime() - new Date(startedAt).getTime();
+  const durationSeconds = Math.round(durationMs / 1000);
+
+  const issuesCompleted = state.issues.filter((i) => i.state === 'merged').length;
+  const issuesFailed = state.issues.filter((i) => i.state === 'failed').length;
+  const issuesPending = state.issues.filter((i) => i.state === 'pending' || i.state === 'in_progress' || i.state === 'pr_open').length;
+  const wavesTotal = new Set(state.issues.map((i) => i.wave)).size;
+
+  return {
+    session_dir: sessionDir,
+    started_at: startedAt,
+    completed_at: completedAtIso,
+    duration_seconds: durationSeconds,
+    issues_total: state.issues.length,
+    issues_completed: issuesCompleted,
+    issues_failed: issuesFailed,
+    issues_pending: issuesPending,
+    waves_total: wavesTotal,
+    waves_completed: state.completed_waves.length,
+    budget,
+  };
+}
+
+/**
+ * Format a final report as human-readable text.
+ */
+export function formatFinalReportText(report: FinalReport): string {
+  const lines: string[] = [];
+  lines.push('=== Orchestrator Final Report ===');
+  lines.push('');
+  lines.push(`Session:     ${report.session_dir}`);
+  lines.push(`Started:     ${report.started_at}`);
+  lines.push(`Completed:   ${report.completed_at}`);
+  const hours = Math.floor(report.duration_seconds / 3600);
+  const mins = Math.floor((report.duration_seconds % 3600) / 60);
+  const secs = report.duration_seconds % 60;
+  lines.push(`Duration:    ${hours > 0 ? `${hours}h ` : ''}${mins}m ${secs}s`);
+  lines.push('');
+  lines.push('--- Issues ---');
+  lines.push(`Total:       ${report.issues_total}`);
+  lines.push(`Completed:   ${report.issues_completed}`);
+  lines.push(`Failed:      ${report.issues_failed}`);
+  lines.push(`Pending:     ${report.issues_pending}`);
+  lines.push('');
+  lines.push('--- Waves ---');
+  lines.push(`Total:       ${report.waves_total}`);
+  lines.push(`Completed:   ${report.waves_completed}`);
+  lines.push('');
+  lines.push('--- Budget ---');
+  if (report.budget.budget_cap !== null) {
+    lines.push(`Cap:         $${report.budget.budget_cap.toFixed(2)}`);
+  } else {
+    lines.push('Cap:         (none)');
+  }
+  lines.push(`Estimated:   $${report.budget.total_estimated_cost_usd.toFixed(2)}`);
+
+  if (report.budget.children.length > 0) {
+    lines.push('');
+    lines.push('--- Provider Usage ---');
+    // Aggregate provider counts across all children
+    const providerTotals: Record<string, number> = {};
+    let totalIterations = 0;
+    for (const child of report.budget.children) {
+      totalIterations += child.iterations;
+      for (const [provider, count] of Object.entries(child.providers)) {
+        providerTotals[provider] = (providerTotals[provider] ?? 0) + count;
+      }
+    }
+    lines.push(`Iterations:  ${totalIterations}`);
+    for (const [provider, count] of Object.entries(providerTotals).sort()) {
+      lines.push(`  ${provider}: ${count} iterations`);
+    }
+  }
+
+  return lines.join('\n');
 }

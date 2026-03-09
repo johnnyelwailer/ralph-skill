@@ -144,6 +144,7 @@ program
   .option('--repo <owner/repo>', 'GitHub repository')
   .option('--plan <file>', 'Decomposition plan JSON file with issues and dependencies')
   .option('--plan-only', 'Create issues without launching loops')
+  .option('--budget <usd>', 'Session budget cap in USD (pauses dispatch at 80%)')
   .option('--home-dir <path>', 'Home directory override')
   .option('--project-root <path>', 'Project root override')
   .option('--output <mode>', 'Output format: json or text', 'text')

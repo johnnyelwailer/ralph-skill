@@ -19,6 +19,11 @@ import {
   processPrLifecycle,
   isWaveComplete,
   advanceWave,
+  parseChildSessionCost,
+  aggregateChildCosts,
+  shouldPauseForBudget,
+  generateFinalReport,
+  formatFinalReportText,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
   type DispatchDeps,
@@ -28,6 +33,8 @@ import {
   type OrchestratorIssue,
   type PrLifecycleDeps,
   type AgentReviewResult,
+  type BudgetDeps,
+  type BudgetSummary,
 } from './orchestrate.js';
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
@@ -409,6 +416,7 @@ describe('applyDecompositionPlan', () => {
       filter_issues: null,
       filter_label: null,
       filter_repo: null,
+      budget_cap: null,
       created_at: '2026-03-09T10:30:00.000Z',
       updated_at: '2026-03-09T10:30:00.000Z',
     };
@@ -658,6 +666,7 @@ function makeState(overrides: Partial<OrchestratorState> = {}): OrchestratorStat
     filter_issues: null,
     filter_label: null,
     filter_repo: null,
+    budget_cap: null,
     created_at: '2026-03-09T10:00:00.000Z',
     updated_at: '2026-03-09T10:00:00.000Z',
     ...overrides,
@@ -1081,6 +1090,7 @@ function makeOrchestratorState(issueOverrides: Partial<OrchestratorIssue>[] = []
     filter_issues: null,
     filter_label: null,
     filter_repo: null,
+    budget_cap: null,
     created_at: '2026-03-09T10:00:00.000Z',
     updated_at: '2026-03-09T10:00:00.000Z',
   };
@@ -1593,5 +1603,292 @@ describe('advanceWave', () => {
     state.completed_waves = [1];
     advanceWave(state);
     assert.deepStrictEqual(state.completed_waves, [1]);
+  });
+});
+
+// --- Budget & final report tests ---
+
+import path from 'node:path';
+
+function createMockBudgetDeps(files: Record<string, string> = {}): BudgetDeps {
+  // Normalize all keys to OS path format for cross-platform compatibility
+  const normalized: Record<string, string> = {};
+  for (const [k, v] of Object.entries(files)) {
+    normalized[path.normalize(k)] = v;
+  }
+  return {
+    readFile: async (p: string) => {
+      const np = path.normalize(p);
+      if (np in normalized) return normalized[np];
+      throw new Error(`File not found: ${p}`);
+    },
+    existsSync: (p: string) => path.normalize(p) in normalized,
+  };
+}
+
+describe('parseChildSessionCost', () => {
+  it('returns zero cost when log.jsonl does not exist', async () => {
+    const deps = createMockBudgetDeps();
+    const result = await parseChildSessionCost('/sessions/child-1', 'child-1', 42, deps);
+    assert.equal(result.iterations, 0);
+    assert.equal(result.estimated_cost_usd, 0);
+    assert.deepStrictEqual(result.providers, {});
+    assert.equal(result.session_id, 'child-1');
+    assert.equal(result.issue_number, 42);
+  });
+
+  it('counts iteration_complete events and tracks providers', async () => {
+    const logLines = [
+      JSON.stringify({ event: 'session_start', timestamp: '2026-03-09T10:00:00Z' }),
+      JSON.stringify({ event: 'iteration_complete', provider: 'claude', timestamp: '2026-03-09T10:05:00Z' }),
+      JSON.stringify({ event: 'iteration_complete', provider: 'claude', timestamp: '2026-03-09T10:10:00Z' }),
+      JSON.stringify({ event: 'iteration_complete', provider: 'copilot', timestamp: '2026-03-09T10:15:00Z' }),
+      JSON.stringify({ event: 'steering_detected', timestamp: '2026-03-09T10:16:00Z' }),
+    ].join('\n');
+
+    const deps = createMockBudgetDeps({ '/sessions/child-1/log.jsonl': logLines });
+    const result = await parseChildSessionCost('/sessions/child-1', 'child-1', 42, deps);
+    assert.equal(result.iterations, 3);
+    assert.deepStrictEqual(result.providers, { claude: 2, copilot: 1 });
+    assert.equal(result.estimated_cost_usd, 1.5);
+  });
+
+  it('handles malformed log lines gracefully', async () => {
+    const logLines = [
+      'not json at all',
+      JSON.stringify({ event: 'iteration_complete', provider: 'claude' }),
+      '{ broken',
+    ].join('\n');
+
+    const deps = createMockBudgetDeps({ '/sessions/child-1/log.jsonl': logLines });
+    const result = await parseChildSessionCost('/sessions/child-1', 'child-1', 42, deps);
+    assert.equal(result.iterations, 1);
+    assert.deepStrictEqual(result.providers, { claude: 1 });
+  });
+
+  it('uses "unknown" provider when provider field is missing', async () => {
+    const logLines = JSON.stringify({ event: 'iteration_complete' });
+    const deps = createMockBudgetDeps({ '/sessions/child-1/log.jsonl': logLines });
+    const result = await parseChildSessionCost('/sessions/child-1', 'child-1', 42, deps);
+    assert.equal(result.iterations, 1);
+    assert.deepStrictEqual(result.providers, { unknown: 1 });
+  });
+});
+
+describe('aggregateChildCosts', () => {
+  it('aggregates costs from multiple children', async () => {
+    const state = makeOrchestratorState([
+      { number: 1, wave: 1, state: 'merged', child_session: 'child-1' },
+      { number: 2, wave: 1, state: 'in_progress', child_session: 'child-2' },
+      { number: 3, wave: 2, state: 'pending', child_session: null },
+    ]);
+
+    const deps = createMockBudgetDeps({
+      '/home/.aloop/sessions/child-1/log.jsonl': [
+        JSON.stringify({ event: 'iteration_complete', provider: 'claude' }),
+        JSON.stringify({ event: 'iteration_complete', provider: 'claude' }),
+      ].join('\n'),
+      '/home/.aloop/sessions/child-2/log.jsonl': [
+        JSON.stringify({ event: 'iteration_complete', provider: 'copilot' }),
+      ].join('\n'),
+    });
+
+    const result = await aggregateChildCosts(state, '/home/.aloop', deps);
+    assert.equal(result.children.length, 2);
+    assert.equal(result.total_estimated_cost_usd, 1.5);
+    assert.equal(result.budget_exceeded, false);
+    assert.equal(result.budget_approaching, false);
+  });
+
+  it('detects budget approaching at 80% threshold', async () => {
+    const state = makeOrchestratorState([
+      { number: 1, wave: 1, state: 'merged', child_session: 'child-1' },
+    ]);
+    state.budget_cap = 1.0;
+
+    const deps = createMockBudgetDeps({
+      '/home/.aloop/sessions/child-1/log.jsonl': [
+        JSON.stringify({ event: 'iteration_complete', provider: 'claude' }),
+        JSON.stringify({ event: 'iteration_complete', provider: 'claude' }),
+      ].join('\n'),
+    });
+
+    const result = await aggregateChildCosts(state, '/home/.aloop', deps);
+    // 2 iterations * $0.50 = $1.00, cap = $1.00 → exceeded
+    assert.equal(result.budget_exceeded, true);
+    assert.equal(result.budget_approaching, false);
+  });
+
+  it('detects budget approaching but not exceeded', async () => {
+    const state = makeOrchestratorState([
+      { number: 1, wave: 1, state: 'merged', child_session: 'child-1' },
+    ]);
+    state.budget_cap = 1.10;
+
+    const deps = createMockBudgetDeps({
+      '/home/.aloop/sessions/child-1/log.jsonl': [
+        JSON.stringify({ event: 'iteration_complete', provider: 'claude' }),
+        JSON.stringify({ event: 'iteration_complete', provider: 'claude' }),
+      ].join('\n'),
+    });
+
+    const result = await aggregateChildCosts(state, '/home/.aloop', deps);
+    // 2 * $0.50 = $1.00, cap = $1.10, 80% = $0.88 → approaching
+    assert.equal(result.budget_exceeded, false);
+    assert.equal(result.budget_approaching, true);
+  });
+
+  it('returns no budget flags when cap is null', async () => {
+    const state = makeOrchestratorState([]);
+    state.budget_cap = null;
+    const deps = createMockBudgetDeps();
+    const result = await aggregateChildCosts(state, '/home/.aloop', deps);
+    assert.equal(result.budget_exceeded, false);
+    assert.equal(result.budget_approaching, false);
+  });
+});
+
+describe('shouldPauseForBudget', () => {
+  it('returns false when budget is not set', () => {
+    const budget: BudgetSummary = {
+      budget_cap: null, total_estimated_cost_usd: 100, children: [],
+      budget_exceeded: false, budget_approaching: false,
+    };
+    assert.equal(shouldPauseForBudget(budget), false);
+  });
+
+  it('returns true when budget is exceeded', () => {
+    const budget: BudgetSummary = {
+      budget_cap: 5.0, total_estimated_cost_usd: 6.0, children: [],
+      budget_exceeded: true, budget_approaching: false,
+    };
+    assert.equal(shouldPauseForBudget(budget), true);
+  });
+
+  it('returns true when budget is approaching', () => {
+    const budget: BudgetSummary = {
+      budget_cap: 5.0, total_estimated_cost_usd: 4.5, children: [],
+      budget_exceeded: false, budget_approaching: true,
+    };
+    assert.equal(shouldPauseForBudget(budget), true);
+  });
+});
+
+describe('generateFinalReport', () => {
+  it('generates correct summary from orchestrator state', () => {
+    const state = makeOrchestratorState([
+      { number: 1, wave: 1, state: 'merged' },
+      { number: 2, wave: 1, state: 'failed' },
+      { number: 3, wave: 2, state: 'pending' },
+    ]);
+    state.completed_waves = [1];
+
+    const budget: BudgetSummary = {
+      budget_cap: 10.0, total_estimated_cost_usd: 3.5,
+      children: [
+        { session_id: 'child-1', issue_number: 1, iterations: 5, providers: { claude: 3, copilot: 2 }, estimated_cost_usd: 2.5 },
+        { session_id: 'child-2', issue_number: 2, iterations: 2, providers: { claude: 2 }, estimated_cost_usd: 1.0 },
+      ],
+      budget_exceeded: false, budget_approaching: false,
+    };
+
+    const report = generateFinalReport(state, '/sessions/orch-1', budget, new Date('2026-03-09T11:00:00Z'));
+
+    assert.equal(report.issues_total, 3);
+    assert.equal(report.issues_completed, 1);
+    assert.equal(report.issues_failed, 1);
+    assert.equal(report.issues_pending, 1);
+    assert.equal(report.waves_total, 2);
+    assert.equal(report.waves_completed, 1);
+    assert.equal(report.duration_seconds, 3600);
+    assert.equal(report.session_dir, '/sessions/orch-1');
+    assert.equal(report.budget.total_estimated_cost_usd, 3.5);
+  });
+});
+
+describe('formatFinalReportText', () => {
+  it('formats report as human-readable text', () => {
+    const budget: BudgetSummary = {
+      budget_cap: 10.0, total_estimated_cost_usd: 3.0,
+      children: [
+        { session_id: 'c1', issue_number: 1, iterations: 4, providers: { claude: 3, copilot: 1 }, estimated_cost_usd: 2.0 },
+        { session_id: 'c2', issue_number: 2, iterations: 2, providers: { claude: 2 }, estimated_cost_usd: 1.0 },
+      ],
+      budget_exceeded: false, budget_approaching: false,
+    };
+
+    const report = generateFinalReport(
+      makeOrchestratorState([
+        { number: 1, wave: 1, state: 'merged' },
+        { number: 2, wave: 1, state: 'merged' },
+      ]),
+      '/sessions/orch-1',
+      budget,
+      new Date('2026-03-09T11:30:00Z'),
+    );
+
+    const text = formatFinalReportText(report);
+    assert.ok(text.includes('=== Orchestrator Final Report ==='));
+    assert.ok(text.includes('Total:       2'));
+    assert.ok(text.includes('Completed:   2'));
+    assert.ok(text.includes('Failed:      0'));
+    assert.ok(text.includes('Cap:         $10.00'));
+    assert.ok(text.includes('Estimated:   $3.00'));
+    assert.ok(text.includes('Iterations:  6'));
+    assert.ok(text.includes('claude: 5 iterations'));
+    assert.ok(text.includes('copilot: 1 iterations'));
+  });
+
+  it('shows (none) when budget cap is null', () => {
+    const budget: BudgetSummary = {
+      budget_cap: null, total_estimated_cost_usd: 0, children: [],
+      budget_exceeded: false, budget_approaching: false,
+    };
+    const report = generateFinalReport(
+      makeOrchestratorState([]),
+      '/sessions/orch-1',
+      budget,
+      new Date('2026-03-09T10:05:00Z'),
+    );
+    const text = formatFinalReportText(report);
+    assert.ok(text.includes('Cap:         (none)'));
+  });
+});
+
+describe('orchestrateCommandWithDeps budget option', () => {
+  it('sets budget_cap from --budget option', async () => {
+    const deps = createMockDeps();
+    const result = await orchestrateCommandWithDeps({ budget: '25.50' }, deps);
+    assert.equal(result.state.budget_cap, 25.50);
+  });
+
+  it('defaults budget_cap to null when not provided', async () => {
+    const deps = createMockDeps();
+    const result = await orchestrateCommandWithDeps({}, deps);
+    assert.equal(result.state.budget_cap, null);
+  });
+
+  it('throws on invalid budget value', async () => {
+    const deps = createMockDeps();
+    await assert.rejects(
+      () => orchestrateCommandWithDeps({ budget: 'abc' }, deps),
+      { message: /Invalid budget value/ },
+    );
+  });
+
+  it('throws on zero budget value', async () => {
+    const deps = createMockDeps();
+    await assert.rejects(
+      () => orchestrateCommandWithDeps({ budget: '0' }, deps),
+      { message: /Invalid budget value/ },
+    );
+  });
+
+  it('throws on negative budget value', async () => {
+    const deps = createMockDeps();
+    await assert.rejects(
+      () => orchestrateCommandWithDeps({ budget: '-5' }, deps),
+      { message: /Invalid budget value/ },
+    );
   });
 });

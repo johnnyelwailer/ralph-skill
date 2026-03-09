@@ -10,7 +10,7 @@ _(none)_
 #### Orchestrator Execution Core (foundational — blocks triage, GH integration, and status tree)
 - [x] [orchestrator/P2] Implement child-loop dispatch engine with concurrency cap (default 3), per-issue worktree/branch mapping (`aloop/issue-<N>`), and launch lifecycle tracking. (priority: medium, execution core)
 - [x] [orchestrator/P2] Implement PR lifecycle gates (CI/coverage/conflict/lint/review) with squash-merge to `agent/trunk`, reopen on conflict (max 2 rebase attempts), and agent review on PR diffs. (priority: medium, safe integration)
-- [ ] [orchestrator/P2] Add orchestrator budget/final-report outputs (session budget cap, issues created/completed/failed, provider usage/cost estimates, coverage delta). (priority: medium, acceptance completeness)
+- [x] [orchestrator/P2] Add orchestrator budget/final-report outputs (session budget cap, issues created/completed/failed, provider usage/cost estimates, coverage delta). (priority: medium, acceptance completeness)
 
 #### Triage Agent (depends on orchestrator dispatch for end-to-end flow)
 - [ ] [triage/P2] Extend `aloop gh` with triage prerequisites: `issue-comments`/`pr-comments` listing with `--since` and `aloop/blocked-on-human` label add/remove under existing policy model. (priority: medium, triage prerequisite)
