@@ -10,8 +10,10 @@ import type { OutputMode } from './status.js';
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot';
 type LoopProvider = ProviderName | 'round-robin';
 type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review';
+type LaunchMode = 'start' | 'restart' | 'resume';
 type StartMonitorMode = 'dashboard' | 'terminal' | 'none';
 
+const LAUNCH_MODE_SET = new Set<LaunchMode>(['start', 'restart', 'resume']);
 const PROVIDER_SET = new Set<LoopProvider>(['claude', 'codex', 'gemini', 'copilot', 'round-robin']);
 const MODEL_PROVIDER_SET = new Set<ProviderName>(['claude', 'codex', 'gemini', 'copilot']);
 const LOOP_MODE_SET = new Set<LoopMode>(['plan', 'build', 'review', 'plan-build', 'plan-build-review']);
@@ -39,6 +41,7 @@ export interface StartCommandOptions {
   homeDir?: string;
   provider?: string;
   mode?: string;
+  launch?: string;
   plan?: boolean;
   build?: boolean;
   review?: boolean;
@@ -57,6 +60,7 @@ export interface StartCommandResult {
   branch: string | null;
   provider: LoopProvider;
   mode: LoopMode;
+  launch_mode: LaunchMode;
   max_iterations: number;
   max_stuck: number;
   pid: number;
@@ -323,6 +327,14 @@ function assertLoopMode(value: string): LoopMode {
   return normalized;
 }
 
+function assertLaunchMode(value: string): LaunchMode {
+  const normalized = value.trim().toLowerCase() as LaunchMode;
+  if (!LAUNCH_MODE_SET.has(normalized)) {
+    throw new Error(`Invalid launch mode: ${value} (must be start, restart, or resume)`);
+  }
+  return normalized;
+}
+
 function assertLoopProvider(value: string): LoopProvider {
   const normalized = value.trim().toLowerCase() as LoopProvider;
   if (!PROVIDER_SET.has(normalized)) {
@@ -575,6 +587,8 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     ?? (options.mode ? assertLoopMode(options.mode) : null)
     ?? assertLoopMode(String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, 'plan-build-review')));
 
+  const launchMode: LaunchMode = options.launch ? assertLaunchMode(options.launch) : 'start';
+
   const selectedProvider = options.provider
     ? assertLoopProvider(options.provider)
     : assertLoopProvider(String(selectValue(projectConfig.values.provider, globalConfig.values.default_provider, discovery.providers.default_provider, 'claude')));
@@ -682,6 +696,8 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
       String(maxIterations),
       '-MaxStuck',
       String(maxStuck),
+      '-LaunchMode',
+      launchMode,
     ];
     if (backupEnabled) {
       args.push('-BackupEnabled');
@@ -722,6 +738,8 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
       String(maxIterations),
       '--max-stuck',
       String(maxStuck),
+      '--launch-mode',
+      launchMode,
     ];
     if (backupEnabled) {
       args.push('--backup');
@@ -745,6 +763,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     project_hash: discovery.project.hash,
     provider: selectedProvider,
     mode: resolvedMode,
+    launch_mode: launchMode,
     max_iterations: maxIterations,
     max_stuck: maxStuck,
     worktree: useWorktree,
@@ -853,6 +872,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     branch: branchName,
     provider: selectedProvider,
     mode: resolvedMode,
+    launch_mode: launchMode,
     max_iterations: maxIterations,
     max_stuck: maxStuck,
     pid,
@@ -878,6 +898,7 @@ export async function startCommand(options: StartCommandOptions = {}) {
   console.log('');
   console.log(`  Session:  ${result.session_id}`);
   console.log(`  Mode:     ${result.mode}`);
+  console.log(`  Launch:   ${result.launch_mode}`);
   console.log(`  Provider: ${result.provider}`);
   console.log(`  Work dir: ${result.work_dir}`);
   console.log(`  PID:      ${result.pid}`);

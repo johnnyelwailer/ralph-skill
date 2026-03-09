@@ -42,6 +42,9 @@ param(
 
     [int]$ProviderTimeoutSec = $(if ($env:ALOOP_PROVIDER_TIMEOUT) { [int]$env:ALOOP_PROVIDER_TIMEOUT } else { 600 }),
 
+    [ValidateSet('start', 'restart', 'resume')]
+    [string]$LaunchMode = 'start',
+
     [switch]$BackupEnabled,
     [switch]$DryRun
 )
@@ -1487,14 +1490,63 @@ Write-LogEntry -Event "session_start" -Data @{
     provider = $Provider
     work_dir = $WorkDir
     max_iterations = $MaxIterations
+    launch_mode = $LaunchMode
     runtime_commit = $runtimeVersion.commit
     runtime_installed_at = $runtimeVersion.installed_at
 }
 
+$iteration = 0
+
+# ============================================================================
+# LAUNCH MODE — start / restart / resume
+# ============================================================================
+
+if ($LaunchMode -eq 'resume') {
+    $statusFile = Join-Path $SessionDir "status.json"
+    if (Test-Path $statusFile) {
+        try {
+            $resumeStatus = Get-Content $statusFile -Raw | ConvertFrom-Json
+            $resumeIteration = [int]$resumeStatus.iteration
+            $resumePhase = [string]$resumeStatus.phase
+            if ($resumeIteration -gt 0) {
+                # Resume from the same iteration (re-try it since it may not have completed)
+                $iteration = $resumeIteration - 1
+                # Calculate cycle position from phase
+                if ($Mode -eq 'plan-build-review') {
+                    switch ($resumePhase) {
+                        'plan'   { $script:cyclePosition = 0 }
+                        'build'  { $script:cyclePosition = 1 }
+                        'proof'  { $script:cyclePosition = 4 }
+                        'review' { $script:cyclePosition = 5 }
+                        default  { $script:cyclePosition = 0 }
+                    }
+                } elseif ($Mode -eq 'plan-build') {
+                    switch ($resumePhase) {
+                        'plan'  { $script:cyclePosition = 0 }
+                        'build' { $script:cyclePosition = 1 }
+                        default { $script:cyclePosition = 0 }
+                    }
+                }
+                Write-Host "Resuming from iteration $resumeIteration (phase: $resumePhase)" -ForegroundColor Cyan
+                Write-LogEntry -Event "session_resume" -Data @{
+                    resume_iteration = $resumeIteration
+                    resume_phase = $resumePhase
+                    resume_cycle_position = $script:cyclePosition
+                }
+            }
+        } catch {
+            Write-Warning "Failed to read status.json for resume — starting from beginning."
+        }
+    } else {
+        Write-Warning "No status.json found for resume — starting from beginning."
+    }
+} elseif ($LaunchMode -eq 'restart') {
+    Write-Host "Restarting session (keeping existing work, starting from iteration 1)" -ForegroundColor Cyan
+    Write-LogEntry -Event "session_restart" -Data @{}
+}
+
 Write-Host "`nStarting loop..." -ForegroundColor Green
 Write-Host "---`n"
-
-$iteration = 0
 $cancelled = $false
 $handler = [ConsoleCancelEventHandler]{
     param($sender, $eventArgs)

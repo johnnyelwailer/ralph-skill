@@ -37,6 +37,7 @@ MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-50}"
 MAX_STUCK="${ALOOP_MAX_STUCK:-3}"
 BACKUP_ENABLED="${ALOOP_BACKUP:-false}"
 DRY_RUN=false
+LAUNCH_MODE="start"
 PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-600}"
 PROVIDER_HEALTH_DIR="${ALOOP_HEALTH_DIR:-$HOME/.aloop/health}"
 HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
@@ -59,6 +60,7 @@ usage() {
     echo "  --round-robin <list>    Comma-separated provider list (default: claude,codex,gemini,copilot)"
     echo "  --max-iterations <n>    Maximum iterations (default: 50)"
     echo "  --max-stuck <n>         Skip task after N failures (default: 3)"
+    echo "  --launch-mode <mode>    start|restart|resume (default: start)"
     echo "  --backup                Enable remote git backup"
     echo "  --dry-run               Print commands without executing"
     exit 1
@@ -80,6 +82,7 @@ while [[ $# -gt 0 ]]; do
         --codex-model)  CODEX_MODEL="$2"; shift 2 ;;
         --gemini-model) GEMINI_MODEL="$2"; shift 2 ;;
         --copilot-model) COPILOT_MODEL="$2"; shift 2 ;;
+        --launch-mode)  LAUNCH_MODE="$2"; shift 2 ;;
         *)              echo "Unknown option: $1"; usage ;;
     esac
 done
@@ -99,6 +102,12 @@ if [ ! -d "$WORK_DIR" ]; then
     echo "Error: Work directory not found: $WORK_DIR"
     exit 1
 fi
+
+# Validate launch mode
+case "$LAUNCH_MODE" in
+    start|restart|resume) ;;
+    *) echo "Error: Invalid launch mode: $LAUNCH_MODE (must be start, restart, or resume)"; exit 1 ;;
+esac
 
 mkdir -p "$SESSION_DIR"
 
@@ -1351,7 +1360,47 @@ setup_remote_backup || true
 start_dashboard
 
 # Initialize session
-write_log_entry "session_start" "mode" "$MODE" "provider" "$PROVIDER" "work_dir" "$WORK_DIR" "runtime_commit" "$RUNTIME_COMMIT" "runtime_installed_at" "$RUNTIME_INSTALLED_AT"
+write_log_entry "session_start" "mode" "$MODE" "provider" "$PROVIDER" "work_dir" "$WORK_DIR" "launch_mode" "$LAUNCH_MODE" "runtime_commit" "$RUNTIME_COMMIT" "runtime_installed_at" "$RUNTIME_INSTALLED_AT"
+
+# ============================================================================
+# LAUNCH MODE — start / restart / resume
+# ============================================================================
+
+if [ "$LAUNCH_MODE" = "resume" ]; then
+    if [ -f "$STATUS_FILE" ]; then
+        resume_iteration=$(sed -nE 's/.*"iteration"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$STATUS_FILE" | head -1)
+        resume_phase=$(sed -nE 's/.*"phase"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$STATUS_FILE" | head -1)
+        if [ -n "$resume_iteration" ] && [ "$resume_iteration" -gt 0 ] 2>/dev/null; then
+            # Resume from the same iteration (re-try it since it may not have completed)
+            ITERATION=$((resume_iteration - 1))
+            # Calculate cycle position from phase
+            if [ "$MODE" = "plan-build-review" ]; then
+                case "$resume_phase" in
+                    plan)   CYCLE_POSITION=0 ;;
+                    build)  CYCLE_POSITION=1 ;;
+                    proof)  CYCLE_POSITION=4 ;;
+                    review) CYCLE_POSITION=5 ;;
+                    *)      CYCLE_POSITION=0 ;;
+                esac
+            elif [ "$MODE" = "plan-build" ]; then
+                case "$resume_phase" in
+                    plan)  CYCLE_POSITION=0 ;;
+                    build) CYCLE_POSITION=1 ;;
+                    *)     CYCLE_POSITION=0 ;;
+                esac
+            fi
+            echo "Resuming from iteration $resume_iteration (phase: $resume_phase)"
+            write_log_entry "session_resume" "resume_iteration" "$resume_iteration" "resume_phase" "$resume_phase" "resume_cycle_position" "$CYCLE_POSITION"
+        else
+            echo "Warning: Could not parse status.json for resume — starting from beginning."
+        fi
+    else
+        echo "Warning: No status.json found for resume — starting from beginning."
+    fi
+elif [ "$LAUNCH_MODE" = "restart" ]; then
+    echo "Restarting session (keeping existing work, starting from iteration 1)"
+    write_log_entry "session_restart"
+fi
 
 echo ""
 echo "Starting loop..."

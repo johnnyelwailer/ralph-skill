@@ -531,3 +531,154 @@ test('startCommandWithDeps does not warn when installed commit matches repo HEAD
   assert.ok(!result.warnings.some((w: string) => w.includes('stale')),
     `Expected no staleness warning, got: ${result.warnings.join('; ')}`);
 });
+
+test('startCommandWithDeps defaults launch_mode to start and passes --launch-mode to loop script', async () => {
+  const fixture = await setupWorkspace('aloop-start-launch-default-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'none'\n",
+    'utf8',
+  );
+
+  const launchCalls: SpawnRecord[] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        launchCalls.push({ command, args: [...(args ?? [])] });
+        return { pid: 7070, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.launch_mode, 'start');
+  assert.equal(launchCalls.length, 1);
+  const launchModeIdx = launchCalls[0].args.indexOf('--launch-mode');
+  assert.ok(launchModeIdx > -1, 'Expected --launch-mode arg');
+  assert.equal(launchCalls[0].args[launchModeIdx + 1], 'start');
+
+  const meta = JSON.parse(await readFile(path.join(result.session_dir, 'meta.json'), 'utf8')) as Record<string, unknown>;
+  assert.equal(meta.launch_mode, 'start');
+});
+
+test('startCommandWithDeps passes resume launch mode to loop script', async () => {
+  const fixture = await setupWorkspace('aloop-start-launch-resume-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'none'\n",
+    'utf8',
+  );
+
+  const launchCalls: SpawnRecord[] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true, launch: 'resume' },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        launchCalls.push({ command, args: [...(args ?? [])] });
+        return { pid: 8080, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.launch_mode, 'resume');
+  assert.equal(launchCalls.length, 1);
+  const launchModeIdx = launchCalls[0].args.indexOf('--launch-mode');
+  assert.ok(launchModeIdx > -1, 'Expected --launch-mode arg');
+  assert.equal(launchCalls[0].args[launchModeIdx + 1], 'resume');
+});
+
+test('startCommandWithDeps passes -LaunchMode to loop.ps1 on Windows', async () => {
+  const fixture = await setupWorkspace('aloop-start-launch-win32-');
+  await writeFile(path.join(fixture.homeDir, '.aloop', 'bin', 'loop.ps1'), '# noop\n', 'utf8');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'none'\n",
+    'utf8',
+  );
+
+  fixture.discovery.project.root = '/c/Users/pj/demo-repo';
+
+  const launchCalls: SpawnRecord[] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true, launch: 'restart' },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        launchCalls.push({ command, args: [...(args ?? [])] });
+        return { pid: 9090, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'win32',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.launch_mode, 'restart');
+  const launchModeIdx = launchCalls[0].args.indexOf('-LaunchMode');
+  assert.ok(launchModeIdx > -1, 'Expected -LaunchMode arg');
+  assert.equal(launchCalls[0].args[launchModeIdx + 1], 'restart');
+});
+
+test('startCommandWithDeps rejects invalid launch mode', async () => {
+  const fixture = await setupWorkspace('aloop-start-launch-invalid-');
+  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\n", 'utf8');
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, launch: 'invalid' },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync,
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          env: process.env,
+          now: () => new Date('2026-03-01T12:34:56.000Z'),
+        },
+      ),
+    /Invalid launch mode/i,
+  );
+});

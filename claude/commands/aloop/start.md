@@ -20,6 +20,9 @@ Map any user-provided arguments after `/$skillName:start` to `aloop start` flags
 - `--provider <name>` → `--provider <name>`
 - `--in-place` → `--in-place`
 - `--max <n>` → `--max-iterations <n>`
+- `--launch <mode>` → `--launch <mode>` (start, restart, or resume)
+- `--resume` → `--launch resume` (shorthand)
+- `--restart` → `--launch restart` (shorthand)
 - No args → no extra flags (CLI uses project config defaults)
 
 ## Step 2: Run `aloop start`

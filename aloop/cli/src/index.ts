@@ -67,6 +67,7 @@ program
   .option('--home-dir <path>', 'Home directory override')
   .option('--provider <provider>', 'Provider override')
   .option('--mode <mode>', 'Loop mode override')
+  .option('--launch <mode>', 'Session launch mode: start, restart, or resume')
   .option('--plan', 'Shortcut for --mode plan')
   .option('--build', 'Shortcut for --mode build')
   .option('--review', 'Shortcut for --mode review')
