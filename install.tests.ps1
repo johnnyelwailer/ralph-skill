@@ -61,10 +61,11 @@ Describe 'Source-to-destination path mappings' {
         It 'contains start.md'  { Join-Path $cmdDir 'start.md'  | Should -Exist }
         It 'contains status.md' { Join-Path $cmdDir 'status.md' | Should -Exist }
         It 'contains stop.md'   { Join-Path $cmdDir 'stop.md'   | Should -Exist }
-        It 'contains steer.md'  { Join-Path $cmdDir 'steer.md'  | Should -Exist }
+        It 'contains steer.md'      { Join-Path $cmdDir 'steer.md'      | Should -Exist }
+        It 'contains orchestrate.md' { Join-Path $cmdDir 'orchestrate.md' | Should -Exist }
 
-        It 'has exactly 7 command files (no extras, no missing)' {
-            (Get-ChildItem $cmdDir -File).Count | Should -Be 7
+        It 'has exactly 8 command files (no extras, no missing)' {
+            (Get-ChildItem $cmdDir -File).Count | Should -Be 8
         }
     }
 
@@ -77,9 +78,10 @@ Describe 'Source-to-destination path mappings' {
         It "has aloop-start.prompt.md"  { Join-Path $promptDir "aloop-start.prompt.md"  | Should -Exist }
         It "has aloop-status.prompt.md" { Join-Path $promptDir "aloop-status.prompt.md" | Should -Exist }
         It "has aloop-stop.prompt.md"   { Join-Path $promptDir "aloop-stop.prompt.md"   | Should -Exist }
-        It "has aloop-steer.prompt.md"  { Join-Path $promptDir "aloop-steer.prompt.md"  | Should -Exist }
-        It 'has exactly 7 .prompt.md files (no extras, no missing)' {
-            (Get-ChildItem $promptDir -File -Filter '*.prompt.md').Count | Should -Be 7
+        It "has aloop-steer.prompt.md"       { Join-Path $promptDir "aloop-steer.prompt.md"       | Should -Exist }
+        It "has aloop-orchestrate.prompt.md" { Join-Path $promptDir "aloop-orchestrate.prompt.md" | Should -Exist }
+        It 'has exactly 8 .prompt.md files (no extras, no missing)' {
+            (Get-ChildItem $promptDir -File -Filter '*.prompt.md').Count | Should -Be 8
         }
     }
 

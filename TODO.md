@@ -6,7 +6,7 @@
 - [x] [review/P2] Gate 3: `orchestrateCommand` (orchestrate.ts:132-159) — 8 tests added covering text/JSON output modes and conditional display of filter_issues, filter_label, filter_repo.
 
 ### Up Next
-- [ ] [orchestrator/P2] Add orchestrator command wrappers (`claude/commands/aloop/orchestrate.md`, `copilot/prompts/aloop-orchestrate.prompt.md`). (priority: medium, command-surface parity)
+- [x] [orchestrator/P2] Add orchestrator command wrappers (`claude/commands/aloop/orchestrate.md`, `copilot/prompts/aloop-orchestrate.prompt.md`). (priority: medium, command-surface parity)
 - [ ] [orchestrator/P2] Implement issue decomposition + dependency graph + wave assignment + issue creation via `aloop gh issue-create` with `aloop/auto` + wave labels. (priority: medium, planning core)
 - [ ] [orchestrator/P2] Implement child-loop dispatch engine with concurrency cap (default 3), per-issue worktree/branch mapping (`aloop/issue-<N>`), and launch lifecycle tracking. (priority: medium, execution core)
 - [ ] [orchestrator/P2] Implement PR lifecycle gates (CI/coverage/conflict/lint/review) with squash-merge to `agent/trunk`, reopen on conflict (max 2 rebase attempts), and agent review on PR diffs. (priority: medium, safe integration)

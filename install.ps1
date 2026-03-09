@@ -663,7 +663,7 @@ Write-Host "=== Installation Complete ($versionLabel) ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Installed components:" -ForegroundColor White
 Write-Host "  Skill:     ~/.{claude|codex|copilot|agents}/skills/$skillName/SKILL.md"
-Write-Host "  Commands:  ~/.{claude|codex}/commands/$skillName/  (setup, start, status, dashboard, stop, steer, devcontainer)"
+Write-Host "  Commands:  ~/.{claude|codex}/commands/$skillName/  (setup, start, status, dashboard, stop, steer, devcontainer, orchestrate)"
 Write-Host "  Prompts:   %APPDATA%\Code{,-Insiders}\User\prompts\  (aloop-*.prompt.md)"
 Write-Host "  Config:    $aloopDir\config.yml"
 Write-Host "  CLI:       $aloopDir\cli\  (aloop.mjs, lib/, dist/)"
@@ -673,8 +673,8 @@ Write-Host "  Scripts:   $aloopDir\bin\  (loop.ps1, loop.sh)"
 Write-Host "  Templates: $aloopDir\templates\ (PROMPT_plan.md, PROMPT_build.md, PROMPT_review.md)"
 Write-Host ""
 Write-Host "Usage:" -ForegroundColor White
-Write-Host "  Claude Code / Codex: /$skillName`:setup  /$skillName`:start  /$skillName`:status  /$skillName`:dashboard  /$skillName`:stop  /$skillName`:steer  /$skillName`:devcontainer"
-Write-Host "  VS Code Copilot:     /aloop-setup  /aloop-start  /aloop-status  /aloop-dashboard  /aloop-stop  /aloop-steer  /aloop-devcontainer  (prompt files)"
+Write-Host "  Claude Code / Codex: /$skillName`:setup  /$skillName`:start  /$skillName`:status  /$skillName`:dashboard  /$skillName`:stop  /$skillName`:steer  /$skillName`:devcontainer  /$skillName`:orchestrate"
+Write-Host "  VS Code Copilot:     /aloop-setup  /aloop-start  /aloop-status  /aloop-dashboard  /aloop-stop  /aloop-steer  /aloop-devcontainer  /aloop-orchestrate  (prompt files)"
 Write-Host "  GH Copilot skill:    type '/' in chat and select $skillName, or let Copilot load it automatically"
 Write-Host ""
 Write-Host "To reinstall: $scriptDir\install.ps1 -Force" -ForegroundColor Gray
