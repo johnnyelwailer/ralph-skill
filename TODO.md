@@ -7,7 +7,7 @@
 - [x] [review/P2] Gate 3: `parseTodoProgress` (App.tsx:110-120) is a new pure function with 0% branch coverage — extract to a testable module and add unit tests covering: empty string input, input with no tasks, mixed completed/uncompleted tasks, edge cases (`[X]` uppercase). (priority: high)
 
 ### Up Next
-- [ ] [orchestrator/P2] Add `aloop orchestrate` command registration with `--plan-only` and persisted `orchestrator.json` skeleton state. (priority: medium, orchestrator foundation)
+- [x] [orchestrator/P2] Add `aloop orchestrate` command registration with `--plan-only` and persisted `orchestrator.json` skeleton state. (priority: medium, orchestrator foundation)
 - [ ] [orchestrator/P2] Add orchestrator command wrappers (`claude/commands/aloop/orchestrate.md`, `copilot/prompts/aloop-orchestrate.prompt.md`). (priority: medium, command-surface parity)
 - [ ] [orchestrator/P2] Implement issue decomposition + dependency graph + wave assignment + issue creation via `aloop gh issue-create` with `aloop/auto` + wave labels. (priority: medium, planning core)
 - [ ] [orchestrator/P2] Implement child-loop dispatch engine with concurrency cap (default 3), per-issue worktree/branch mapping (`aloop/issue-<N>`), and launch lifecycle tracking. (priority: medium, execution core)

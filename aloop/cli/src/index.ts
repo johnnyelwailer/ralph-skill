@@ -12,6 +12,7 @@ import { startCommand } from './commands/start.js';
 import { setupCommand } from './commands/setup.js';
 import { updateCommand } from './commands/update.js';
 import { devcontainerCommand, verifyDevcontainerCommand } from './commands/devcontainer.js';
+import { orchestrateCommand } from './commands/orchestrate.js';
 
 const program = new Command();
 
@@ -131,6 +132,21 @@ program
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(verifyDevcontainerCommand);
+
+program
+  .command('orchestrate')
+  .description('Decompose spec into issues, dispatch child loops, and merge PRs')
+  .option('--spec <path>', 'Specification file to decompose', 'SPEC.md')
+  .option('--concurrency <number>', 'Max concurrent child loops', '3')
+  .option('--trunk <branch>', 'Target branch for merged PRs', 'agent/trunk')
+  .option('--issues <numbers>', 'Comma-separated issue numbers to process')
+  .option('--label <label>', 'GitHub label to filter issues')
+  .option('--repo <owner/repo>', 'GitHub repository')
+  .option('--plan-only', 'Create issues without launching loops')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--project-root <path>', 'Project root override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(orchestrateCommand);
 
 program.addCommand(ghCommand);
 
