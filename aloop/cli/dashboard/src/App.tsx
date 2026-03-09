@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 
-const navItems = ['Progress', 'Docs', 'Log', 'Steer', 'Stop'] as const;
-type NavItem = (typeof navItems)[number];
 type SessionStatus = Record<string, unknown>;
 
 interface ArtifactManifest {
@@ -76,11 +73,19 @@ function toSessionSummary(source: Record<string, unknown>, fallbackName: string,
   };
 }
 
+// Phase colors per spec: plan=blue, build=amber, proof=purple, review=green
 const phaseColors: Record<string, string> = {
   plan: 'bg-blue-500/20 text-blue-400',
   build: 'bg-amber-500/20 text-amber-400',
   proof: 'bg-purple-500/20 text-purple-400',
   review: 'bg-green-500/20 text-green-400',
+};
+
+const phaseBarColors: Record<string, string> = {
+  plan: 'bg-blue-500',
+  build: 'bg-amber-500',
+  proof: 'bg-purple-500',
+  review: 'bg-green-500',
 };
 
 function PhaseBadge({ phase }: { phase: string }) {
@@ -93,23 +98,37 @@ function PhaseBadge({ phase }: { phase: string }) {
   );
 }
 
+/** Parse TODO.md to count completed vs total tasks */
+function parseTodoProgress(todoContent: string): { completed: number; total: number } {
+  const taskPattern = /^[ \t]*- \[([ xX])\]/gm;
+  let completed = 0;
+  let total = 0;
+  let match: RegExpExecArray | null;
+  while ((match = taskPattern.exec(todoContent)) !== null) {
+    total++;
+    if (match[1] !== ' ') completed++;
+  }
+  return { completed, total };
+}
+
 export function App() {
-  const [activeView, setActiveView] = useState<NavItem>('Progress');
   const [state, setState] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedDoc, setSelectedDoc] = useState('TODO.md');
   const [steerInstruction, setSteerInstruction] = useState('');
   const [steerStatus, setSteerStatus] = useState<string | null>(null);
   const [steerSubmitting, setSteerSubmitting] = useState(false);
   const [stopStatus, setStopStatus] = useState<string | null>(null);
   const [stopSubmitting, setStopSubmitting] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
+  const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
 
   const selectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
     setLoading(true);
     setLoadError(null);
+    setSessionSwitcherOpen(false);
   }, []);
 
   useEffect(() => {
@@ -126,25 +145,13 @@ export function App() {
           throw new Error(`HTTP ${response.status}`);
         }
         const nextState = (await response.json()) as DashboardState;
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
         setState(nextState);
-        if (nextState.docs[selectedDoc] === undefined) {
-          const firstDoc = Object.keys(nextState.docs)[0];
-          if (firstDoc) {
-            setSelectedDoc(firstDoc);
-          }
-        }
       } catch (error) {
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
         setLoadError((error as Error).message);
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -170,23 +177,15 @@ export function App() {
       controller.abort();
       eventSource?.close();
     };
-  }, [selectedDoc, selectedSessionId]);
+  }, [selectedSessionId]);
 
   const sessions = useMemo<SessionSummary[]>(() => {
     if (!state) {
-      return [
-        {
-          id: 'current',
-          name: 'Current workspace',
-          status: 'unknown',
-          phase: '',
-          elapsed: '--',
-          iterations: '--',
-          isActive: false,
-        },
-      ];
+      return [{
+        id: 'current', name: 'Current workspace', status: 'unknown',
+        phase: '', elapsed: '--', iterations: '--', isActive: false,
+      }];
     }
-
     const active = (state.activeSessions ?? [])
       .filter(isRecord)
       .map((entry, index) => toSessionSummary(entry, `Active session ${index + 1}`, true));
@@ -195,234 +194,339 @@ export function App() {
       .slice(-5)
       .reverse()
       .map((entry, index) => toSessionSummary(entry, `Recent session ${index + 1}`, false));
-
     const combined = [...active, ...recent];
-    if (combined.length > 0) {
-      return combined;
-    }
-
-    if (isRecord(state.status)) {
-      return [toSessionSummary(state.status, state.workdir, true)];
-    }
-
-    return [
-      {
-        id: 'current',
-        name: state.workdir,
-        status: 'unknown',
-        phase: '',
-        elapsed: '--',
-        iterations: '--',
-        isActive: false,
-      },
-    ];
+    if (combined.length > 0) return combined;
+    if (isRecord(state.status)) return [toSessionSummary(state.status, state.workdir, true)];
+    return [{
+      id: 'current', name: state.workdir, status: 'unknown',
+      phase: '', elapsed: '--', iterations: '--', isActive: false,
+    }];
   }, [state]);
 
   const statusRecord = isRecord(state?.status) ? state.status : null;
+  const currentPhase = statusRecord ? readString(statusRecord, ['mode', 'phase'], '') : '';
+  const currentState = statusRecord ? readString(statusRecord, ['state', 'status'], 'unknown') : 'unknown';
+  const currentIteration = statusRecord ? readNumberLike(statusRecord, ['iteration', 'iterations'], '--') : '--';
+  const providerName = statusRecord ? readString(statusRecord, ['provider', 'current_provider'], '') : '';
+  const isRunning = currentState === 'running';
+
+  // Parse TODO.md for progress bar
+  const todoContent = state?.docs?.['TODO.md'] ?? '';
+  const { completed: tasksCompleted, total: tasksTotal } = useMemo(() => parseTodoProgress(todoContent), [todoContent]);
+  const progressPercent = tasksTotal > 0 ? Math.round((tasksCompleted / tasksTotal) * 100) : 0;
+
+  // Current session name
+  const currentSession = sessions.find((s) =>
+    selectedSessionId === null
+      ? s.id === 'current' || sessions.indexOf(s) === 0
+      : s.id === selectedSessionId,
+  );
+  const sessionName = currentSession?.name ?? 'No session';
+
+  const handleSteer = useCallback(async () => {
+    if (steerInstruction.trim().length === 0 || steerSubmitting) return;
+    setSteerSubmitting(true);
+    setSteerStatus(null);
+    try {
+      const response = await fetch('/api/steer', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ instruction: steerInstruction.trim() }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        throw new Error(payload.error ?? `HTTP ${response.status}`);
+      }
+      setSteerInstruction('');
+      setSteerStatus('Steering instruction queued.');
+    } catch (error) {
+      setSteerStatus((error as Error).message);
+    } finally {
+      setSteerSubmitting(false);
+    }
+  }, [steerInstruction, steerSubmitting]);
+
+  const handleStop = useCallback(async (force: boolean) => {
+    if (stopSubmitting) return;
+    setStopSubmitting(true);
+    setStopStatus(null);
+    try {
+      const response = await fetch('/api/stop', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(force ? { force: true } : {}),
+      });
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        throw new Error(payload.error ?? `HTTP ${response.status}`);
+      }
+      const payload = (await response.json()) as { signal?: string };
+      setStopStatus(`Stop requested (${payload.signal ?? 'SIGTERM'}).`);
+    } catch (error) {
+      setStopStatus((error as Error).message);
+    } finally {
+      setStopSubmitting(false);
+    }
+  }, [stopSubmitting]);
+
+  const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b px-6 py-4">
-        <h1 className="text-xl font-semibold">Aloop Dashboard</h1>
-        <p className="text-xs text-muted-foreground">
-          {loading ? 'Loading state...' : `Updated ${state?.updatedAt ?? 'n/a'}`}
-          {loadError ? ` • ${loadError}` : ''}
-        </p>
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
+      {/* ── Header: session info + progress bar + phase indicator ── */}
+      <header className="border-b px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {/* Session name + switcher */}
+          <div className="relative">
+            <button
+              type="button"
+              className="flex items-center gap-1.5 text-sm font-semibold hover:text-primary transition-colors"
+              onClick={() => setSessionSwitcherOpen(!sessionSwitcherOpen)}
+            >
+              {isRunning && (
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+                </span>
+              )}
+              <span className="truncate max-w-[200px]">{sessionName}</span>
+              <span className="text-muted-foreground text-xs">&#x25BE;</span>
+            </button>
+            {sessionSwitcherOpen && (
+              <div className="absolute left-0 top-full z-40 mt-1 w-72 rounded-md border bg-card shadow-lg">
+                <div className="p-2 space-y-1 max-h-64 overflow-auto">
+                  {sessions.map((session) => {
+                    const isSelected = selectedSessionId === null
+                      ? session.id === 'current' || sessions.indexOf(session) === 0
+                      : session.id === selectedSessionId;
+                    return (
+                      <button
+                        key={session.id}
+                        type="button"
+                        className={`w-full rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${
+                          isSelected ? 'bg-accent font-medium' : ''
+                        } ${!session.isActive ? 'opacity-60' : ''}`}
+                        onClick={() => selectSession(session.id === 'current' ? null : session.id)}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {session.isActive && session.status === 'running' && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+                          )}
+                          <span className="truncate">{session.name}</span>
+                          <PhaseBadge phase={session.phase} />
+                        </div>
+                        <div className="text-muted-foreground mt-0.5">
+                          {session.status} &middot; {session.elapsed} &middot; iter {session.iterations}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Iteration */}
+          <span className="text-xs text-muted-foreground">
+            iter {currentIteration}{tasksTotal > 0 ? `/${tasksTotal}` : ''}
+          </span>
+
+          {/* Progress bar */}
+          <div className="flex items-center gap-2 min-w-[120px]">
+            <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${phaseBarColor}`}
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">{progressPercent}%</span>
+          </div>
+
+          {/* Phase indicator */}
+          <PhaseBadge phase={currentPhase} />
+
+          {/* Provider */}
+          {providerName && (
+            <span className="text-xs text-muted-foreground">{providerName}</span>
+          )}
+
+          {/* Status */}
+          <span className="text-xs text-muted-foreground">{currentState}</span>
+
+          {/* Updated timestamp */}
+          <span className="ml-auto text-xs text-muted-foreground">
+            {loading ? 'Loading...' : state?.updatedAt ?? ''}
+            {loadError ? ` • ${loadError}` : ''}
+          </span>
+        </div>
       </header>
-      <main className="grid min-h-[calc(100vh-73px)] grid-cols-1 gap-4 p-4 md:grid-cols-[1.1fr_180px_2fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Sessions</CardTitle>
-            <CardDescription>Active and recent loop sessions.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {sessions.map((session) => {
-              const isSelected = selectedSessionId === null
-                ? session.id === 'current' || sessions.indexOf(session) === 0
-                : session.id === selectedSessionId;
-              const isRunning = session.isActive && session.status === 'running';
-              return (
-                <button
-                  key={session.id}
-                  type="button"
-                  className={`w-full rounded-md border p-3 text-left transition-colors hover:bg-accent ${
-                    isSelected ? 'ring-2 ring-primary border-primary' : ''
-                  } ${!session.isActive ? 'opacity-60' : ''}`}
-                  onClick={() => selectSession(session.id === 'current' ? null : session.id)}
-                >
-                  <div className="flex items-center gap-2">
-                    {isRunning && (
-                      <span className="relative flex h-2.5 w-2.5 shrink-0">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
-                      </span>
-                    )}
-                    <p className="font-medium truncate">{session.name}</p>
-                  </div>
-                  <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                    <PhaseBadge phase={session.phase} />
-                    <span>{session.status}</span>
-                    <span>{session.elapsed}</span>
-                    <span>iter {session.iterations}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Views</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {navItems.map((item) => (
-              <Button
-                key={item}
-                variant={activeView === item ? 'default' : 'ghost'}
-                className="justify-start"
-                onClick={() => setActiveView(item)}
-              >
-                {item}
-              </Button>
-            ))}
-          </CardContent>
-        </Card>
+      {/* ── Main content: TODO + Log side by side ── */}
+      <main className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3 p-3 overflow-hidden">
+        {/* Left column: TODO.md (live) */}
+        <div className="flex flex-col gap-3 min-h-0">
+          <Card className="flex-1 flex flex-col min-h-0">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm">TODO.md</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 min-h-0 px-4 pb-3">
+              <TodoPanel content={todoContent} />
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{activeView}</CardTitle>
-            <CardDescription>Live panel content for the selected dashboard section.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {activeView === 'Progress' && <ProgressView status={statusRecord} />}
-            {activeView === 'Docs' && (
-              <DocsView docs={state?.docs ?? {}} selectedDoc={selectedDoc} onSelectDoc={setSelectedDoc} />
-            )}
-            {activeView === 'Log' && <LogView log={state?.log ?? ''} artifacts={state?.artifacts ?? []} />}
-            {activeView === 'Steer' && (
-              <SteerView
-                instruction={steerInstruction}
-                onInstructionChange={setSteerInstruction}
-                status={steerStatus}
-                submitting={steerSubmitting}
-                onSubmit={async () => {
-                  if (steerInstruction.trim().length === 0 || steerSubmitting) {
-                    return;
-                  }
-                  setSteerSubmitting(true);
-                  setSteerStatus(null);
-                  try {
-                    const response = await fetch('/api/steer', {
-                      method: 'POST',
-                      headers: { 'content-type': 'application/json' },
-                      body: JSON.stringify({ instruction: steerInstruction.trim() }),
-                    });
-                    if (!response.ok) {
-                      const payload = (await response.json()) as { error?: string };
-                      throw new Error(payload.error ?? `HTTP ${response.status}`);
-                    }
-                    setSteerInstruction('');
-                    setSteerStatus('Steering instruction queued.');
-                  } catch (error) {
-                    setSteerStatus((error as Error).message);
-                  } finally {
-                    setSteerSubmitting(false);
-                  }
-                }}
-              />
-            )}
-            {activeView === 'Stop' && (
-              <StopView
-                status={stopStatus}
-                submitting={stopSubmitting}
-                onStop={async (force) => {
-                  if (stopSubmitting) {
-                    return;
-                  }
-                  setStopSubmitting(true);
-                  setStopStatus(null);
-                  try {
-                    const response = await fetch('/api/stop', {
-                      method: 'POST',
-                      headers: { 'content-type': 'application/json' },
-                      body: JSON.stringify(force ? { force: true } : {}),
-                    });
-                    if (!response.ok) {
-                      const payload = (await response.json()) as { error?: string };
-                      throw new Error(payload.error ?? `HTTP ${response.status}`);
-                    }
-                    const payload = (await response.json()) as { signal?: string };
-                    setStopStatus(`Stop requested (${payload.signal ?? 'SIGTERM'}).`);
-                  } catch (error) {
-                    setStopStatus((error as Error).message);
-                  } finally {
-                    setStopSubmitting(false);
-                  }
-                }}
-              />
-            )}
-          </CardContent>
-        </Card>
+          {/* Other docs (collapsible) */}
+          <DocsPanel
+            docs={state?.docs ?? {}}
+            expandedDoc={expandedDoc}
+            onToggleDoc={setExpandedDoc}
+          />
+        </div>
+
+        {/* Right column: Log + artifacts */}
+        <div className="flex flex-col gap-3 min-h-0">
+          <Card className="flex-1 flex flex-col min-h-0">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm">Log</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 min-h-0 px-4 pb-3">
+              <LogPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} />
+            </CardContent>
+          </Card>
+        </div>
       </main>
+
+      {/* ── Footer: always-visible steer + stop ── */}
+      <footer className="border-t px-4 py-3">
+        <div className="flex items-start gap-3">
+          <div className="flex-1 space-y-1">
+            <div className="flex gap-2">
+              <Textarea
+                className="min-h-[36px] h-9 resize-none text-sm"
+                placeholder="Steer: enter guidance for the next iteration..."
+                value={steerInstruction}
+                onChange={(e) => setSteerInstruction(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleSteer();
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                disabled={steerSubmitting || steerInstruction.trim().length === 0}
+                onClick={() => void handleSteer()}
+              >
+                {steerSubmitting ? '...' : 'Send'}
+              </Button>
+            </div>
+            {steerStatus && <p className="text-xs text-muted-foreground">{steerStatus}</p>}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={stopSubmitting}
+              onClick={() => void handleStop(false)}
+            >
+              {stopSubmitting ? '...' : 'Stop'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={stopSubmitting}
+              onClick={() => void handleStop(true)}
+            >
+              Force
+            </Button>
+            {stopStatus && <p className="text-xs text-muted-foreground whitespace-nowrap">{stopStatus}</p>}
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
 
-function ProgressView({ status }: { status: SessionStatus | null }) {
-  const stateValue = status ? readString(status, ['state', 'status'], 'unknown') : 'unknown';
-  const iterationValue = status ? readNumberLike(status, ['iteration', 'iterations'], '--') : '--';
-  const phaseValue = status ? readString(status, ['mode', 'phase'], 'n/a') : 'n/a';
+/** Live TODO.md panel — renders markdown with task checkboxes */
+function TodoPanel({ content }: { content: string }) {
+  const rendered = useMemo(() => marked.parse(content), [content]);
+  if (!content) {
+    return <p className="text-xs text-muted-foreground">No TODO.md available.</p>;
+  }
   return (
-    <Tabs defaultValue="timeline">
-      <TabsList>
-        <TabsTrigger value="timeline">Timeline</TabsTrigger>
-        <TabsTrigger value="summary">Summary</TabsTrigger>
-      </TabsList>
-      <TabsContent value="timeline" className="space-y-2">
-        <p className="text-sm">State: {stateValue}</p>
-        <p className="text-sm text-muted-foreground">Iteration: {iterationValue}</p>
-      </TabsContent>
-      <TabsContent value="summary" className="space-y-2">
-        <p className="text-sm">Phase: {phaseValue}</p>
-        <p className="text-sm">Status: {stateValue}</p>
-      </TabsContent>
-    </Tabs>
+    <div
+      className="overflow-auto h-full text-sm [&_code]:text-xs [&_pre]:overflow-auto [&_li]:leading-relaxed [&_ul]:space-y-0.5"
+      dangerouslySetInnerHTML={{ __html: rendered }}
+    />
   );
 }
 
-function DocsView({
+/** Collapsible panel for non-TODO docs */
+function DocsPanel({
   docs,
-  selectedDoc,
-  onSelectDoc,
+  expandedDoc,
+  onToggleDoc,
 }: {
   docs: Record<string, string>;
-  selectedDoc: string;
-  onSelectDoc: (doc: string) => void;
+  expandedDoc: string | null;
+  onToggleDoc: (doc: string | null) => void;
 }) {
-  const docNames = Object.keys(docs);
-  const content = docs[selectedDoc] ?? '';
-  const renderedContent = useMemo(() => marked.parse(content), [content]);
+  const docNames = Object.keys(docs).filter((name) => name !== 'TODO.md');
+  if (docNames.length === 0) return null;
+
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
+    <Card>
+      <CardHeader className="py-2 px-4">
+        <CardTitle className="text-sm">Docs</CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 pb-3 space-y-1">
         {docNames.map((name) => (
-          <Button key={name} size="sm" variant={name === selectedDoc ? 'default' : 'outline'} onClick={() => onSelectDoc(name)}>
-            {name}
-          </Button>
+          <DocEntry
+            key={name}
+            name={name}
+            content={docs[name] ?? ''}
+            isExpanded={expandedDoc === name}
+            onToggle={() => onToggleDoc(expandedDoc === name ? null : name)}
+          />
         ))}
-      </div>
-      {content ? (
+      </CardContent>
+    </Card>
+  );
+}
+
+function DocEntry({
+  name,
+  content,
+  isExpanded,
+  onToggle,
+}: {
+  name: string;
+  content: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const rendered = useMemo(() => marked.parse(content), [content]);
+  return (
+    <div>
+      <button
+        type="button"
+        className="flex items-center gap-1.5 text-xs font-medium hover:text-primary transition-colors w-full text-left py-1"
+        onClick={onToggle}
+      >
+        <span className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>&#x25B6;</span>
+        {name}
+      </button>
+      {isExpanded && content && (
         <article
-          className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-sm [&_code]:text-xs [&_pre]:overflow-auto"
-          dangerouslySetInnerHTML={{ __html: renderedContent }}
+          className="max-h-64 overflow-auto rounded-md bg-muted p-2 text-xs mt-1 [&_code]:text-xs [&_pre]:overflow-auto"
+          dangerouslySetInnerHTML={{ __html: rendered }}
         />
-      ) : (
-        <pre className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs">No document content available.</pre>
       )}
     </div>
   );
 }
+
+// ── Artifact types and helpers (unchanged from previous implementation) ──
 
 interface ArtifactEntry {
   type: string;
@@ -557,7 +661,6 @@ function ImageArtifactCard({
   const currentUrl = artifactUrl(iteration, artifact.path);
   const hasBaseline = !!artifact.metadata?.baseline;
 
-  // Find previous iterations that have the same artifact filename for history scrubbing
   const previousIterations = useMemo(() => {
     return allManifests
       .filter((m) => m.iteration < iteration && m.artifacts.some((a) => a.path === artifact.path))
@@ -706,8 +809,8 @@ function ArtifactGallery({ artifacts }: { artifacts: ArtifactManifest[] }) {
   if (manifests.length === 0) return null;
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-semibold">Proof Artifacts</h3>
+    <div className="space-y-3 mt-3">
+      <h3 className="text-xs font-semibold">Proof Artifacts</h3>
       {manifests.map((manifest) => (
         <div key={manifest.iteration} className="space-y-2">
           <div className="flex items-center gap-2 text-xs">
@@ -742,64 +845,26 @@ function ArtifactGallery({ artifacts }: { artifacts: ArtifactManifest[] }) {
   );
 }
 
-function LogView({ log, artifacts }: { log: string; artifacts: ArtifactManifest[] }) {
+/** Log panel — compact log lines + artifact gallery */
+function LogPanel({ log, artifacts }: { log: string; artifacts: ArtifactManifest[] }) {
+  const logRef = useRef<HTMLPreElement>(null);
+
+  // Auto-scroll to bottom on new log content
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [log]);
+
   return (
-    <div className="space-y-4">
-      <pre className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs">{log || 'No log entries available.'}</pre>
+    <div className="flex flex-col h-full min-h-0">
+      <pre
+        ref={logRef}
+        className="flex-1 min-h-0 overflow-auto rounded-md bg-muted p-2 text-xs"
+      >
+        {log || 'No log entries available.'}
+      </pre>
       <ArtifactGallery artifacts={artifacts} />
-    </div>
-  );
-}
-
-function SteerView({
-  instruction,
-  onInstructionChange,
-  onSubmit,
-  status,
-  submitting,
-}: {
-  instruction: string;
-  onInstructionChange: (value: string) => void;
-  onSubmit: () => Promise<void>;
-  status: string | null;
-  submitting: boolean;
-}) {
-  return (
-    <div className="space-y-3">
-      <Textarea
-        placeholder="Enter steering guidance to write STEERING.md..."
-        value={instruction}
-        onChange={(event) => onInstructionChange(event.target.value)}
-      />
-      <Button disabled={submitting || instruction.trim().length === 0} onClick={() => void onSubmit()}>
-        {submitting ? 'Submitting...' : 'Submit steering instruction'}
-      </Button>
-      {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-    </div>
-  );
-}
-
-function StopView({
-  onStop,
-  status,
-  submitting,
-}: {
-  onStop: (force: boolean) => Promise<void>;
-  status: string | null;
-  submitting: boolean;
-}) {
-  return (
-    <div className="space-y-3">
-      <p className="text-sm">Stop the selected running session with a graceful shutdown request.</p>
-      <div className="flex gap-2">
-        <Button variant="destructive" disabled={submitting} onClick={() => void onStop(false)}>
-          {submitting ? 'Stopping...' : 'Stop session'}
-        </Button>
-        <Button variant="outline" disabled={submitting} onClick={() => void onStop(true)}>
-          Force stop
-        </Button>
-      </div>
-      {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
     </div>
   );
 }
