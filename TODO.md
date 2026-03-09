@@ -3,7 +3,7 @@
 ## Current Phase: P1 Reliability Hardening + PS 5.1 Compatibility + Devcontainer Foundations
 
 ### In Progress
-- [ ] [review/P1] Gate 2: `devcontainer.test.ts` lines 47, 50-51 use `assert.ok` existence/truthy checks — rewrite to assert exact values (e.g., `assert.deepEqual(config.features[...], {})`, assert exact mount string). (priority: high)
+- [x] [review/P1] Gate 2: `devcontainer.test.ts` lines 47, 50-51 use `assert.ok` existence/truthy checks — rewrite to assert exact values (e.g., `assert.deepEqual(config.features[...], {})`, assert exact mount string). (priority: high)
 - [ ] [review/P1] Gate 2: `devcontainer.test.ts` node-typescript test (line 41) and python test (line 54) never assert `postCreateCommand` value — add `assert.equal(config.postCreateCommand, 'npm install')` and equivalent for python. (priority: high)
 - [ ] [review/P1] Gate 2: No error-path test for `devcontainerCommandWithDeps` when existing `devcontainer.json` contains invalid JSON — add test that asserts the thrown error. (priority: high)
 - [ ] [review/P1] Gate 3: `detectNodeInstallCommand` (devcontainer.ts:111-116) has 4 branches (pnpm/yarn/bun/npm) with zero direct test coverage — add unit tests or refactor to accept injected `existsSync` so branches are testable. (priority: high)

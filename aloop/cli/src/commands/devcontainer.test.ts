@@ -45,11 +45,11 @@ test('generateDevcontainerConfig - node-typescript project', () => {
 
   assert.equal(config.name, 'mock-project-aloop');
   assert.equal(config.image, 'mcr.microsoft.com/devcontainers/typescript-node:22');
-  assert.ok(config.features['ghcr.io/devcontainers/features/git:1']);
+  assert.deepEqual(config.features['ghcr.io/devcontainers/features/git:1'], {});
   assert.equal(config.containerEnv.ALOOP_CONTAINER, '1');
   assert.equal(config.containerEnv.ALOOP_NO_DASHBOARD, '1');
-  assert.ok(config.mounts.length > 0);
-  assert.ok(config.mounts[0].includes('.aloop'));
+  assert.equal(config.mounts.length, 1);
+  assert.equal(config.mounts[0], 'source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind');
 });
 
 test('generateDevcontainerConfig - python project', () => {
@@ -88,7 +88,7 @@ test('generateDevcontainerConfig - unknown language uses base ubuntu', () => {
   const config = generateDevcontainerConfig(discovery);
 
   assert.equal(config.image, 'mcr.microsoft.com/devcontainers/base:ubuntu');
-  assert.ok(config.features['ghcr.io/devcontainers/features/node:1']);
+  assert.deepEqual(config.features['ghcr.io/devcontainers/features/node:1'], {});
   assert.equal(config.postCreateCommand, undefined);
 });
 
