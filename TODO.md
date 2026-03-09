@@ -3,13 +3,10 @@
 ## Current Phase: P2 Dashboard UX + Orchestrator + GitHub Integration + Pipeline
 
 ### In Progress
-- [ ] [review/P2] Gate 1: Phase colors in `App.tsx:84-97` don't match spec (spec line 862: `plan=purple, build=yellow, review=cyan`; code uses `plan=blue, build=amber, proof=purple, review=green`). Fix colors to match spec and correct the misleading comment "Phase colors per spec". (priority: high)
+- [x] [review/P2] Gate 1: Phase colors in `App.tsx:84-97` don't match spec (spec line 862: `plan=purple, build=yellow, review=cyan`; code uses `plan=blue, build=amber, proof=purple, review=green`). Fix colors to match spec and correct the misleading comment "Phase colors per spec". (priority: high)
 - [ ] [review/P2] Gate 3: `parseTodoProgress` (App.tsx:110-120) is a new pure function with 0% branch coverage — extract to a testable module and add unit tests covering: empty string input, input with no tasks, mixed completed/uncompleted tasks, edge cases (`[X]` uppercase). (priority: high)
 
 ### Up Next
-- [x] [dashboard/P2] Render proof artifacts inline in dashboard views (thumbnail/expand for images, syntax-highlighted code blocks for non-image artifacts, before/after comparison widget with side-by-side/slider modes). (priority: medium, closes proof UX gap)
-- [x] [dashboard/P2] Redesign dashboard from tabbed views to dense single-page operations layout with always-visible steer input, header progress bar, and color-coded phase indicator. (priority: medium, aligns with spec UX intent)
-- [x] [dashboard/P2] Integrate required advanced components (`ResizablePanel`, `HoverCard`, `Collapsible`, `Command`, `Sonner`, `ScrollArea`, `Progress`) into the new layout. (priority: medium, explicit acceptance criterion)
 - [ ] [orchestrator/P2] Add `aloop orchestrate` command registration with `--plan-only` and persisted `orchestrator.json` skeleton state. (priority: medium, orchestrator foundation)
 - [ ] [orchestrator/P2] Add orchestrator command wrappers (`claude/commands/aloop/orchestrate.md`, `copilot/prompts/aloop-orchestrate.prompt.md`). (priority: medium, command-surface parity)
 - [ ] [orchestrator/P2] Implement issue decomposition + dependency graph + wave assignment + issue creation via `aloop gh issue-create` with `aloop/auto` + wave labels. (priority: medium, planning core)
@@ -33,6 +30,9 @@
 - [ ] [acceptance/P3] Run final SPEC acceptance sweep and refresh TODO states from verified code/tests. (priority: low, completion gate)
 
 ### Completed
+- [x] [dashboard/P2] Render proof artifacts inline in dashboard views (thumbnail/expand for images, syntax-highlighted code blocks for non-image artifacts, before/after comparison widget with side-by-side/slider modes). (priority: medium, closes proof UX gap)
+- [x] [dashboard/P2] Redesign dashboard from tabbed views to dense single-page operations layout with always-visible steer input, header progress bar, and color-coded phase indicator. (priority: medium, aligns with spec UX intent)
+- [x] [dashboard/P2] Integrate required advanced components (`ResizablePanel`, `HoverCard`, `Collapsible`, `Command`, `Sonner`, `ScrollArea`, `Progress`) into the new layout. (priority: medium, explicit acceptance criterion)
 - [x] [review/P2] Gate 3: `resolveSessionContext` (dashboard.ts:121-137) — 4 untested branches covered.
 - [x] [devcontainer/P1] Add provider install hooks (`postCreateCommand`) plus `remoteEnv`/`localEnv` auth forwarding for activated providers only.
 - [x] [devcontainer/P1] Implement verification loop (`devcontainer build`, `up`, `exec`) that checks deps/providers/git/mount and iterates on failure until green.

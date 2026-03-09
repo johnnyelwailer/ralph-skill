@@ -81,19 +81,19 @@ function toSessionSummary(source: Record<string, unknown>, fallbackName: string,
   };
 }
 
-// Phase colors per spec: plan=blue, build=amber, proof=purple, review=green
+// Phase colors per spec (line 862): plan=purple, build=yellow, review=cyan
 const phaseColors: Record<string, string> = {
-  plan: 'bg-blue-500/20 text-blue-400',
-  build: 'bg-amber-500/20 text-amber-400',
-  proof: 'bg-purple-500/20 text-purple-400',
-  review: 'bg-green-500/20 text-green-400',
+  plan: 'bg-purple-500/20 text-purple-400',
+  build: 'bg-yellow-500/20 text-yellow-400',
+  proof: 'bg-amber-500/20 text-amber-400',
+  review: 'bg-cyan-500/20 text-cyan-400',
 };
 
 const phaseBarColors: Record<string, string> = {
-  plan: 'bg-blue-500',
-  build: 'bg-amber-500',
-  proof: 'bg-purple-500',
-  review: 'bg-green-500',
+  plan: 'bg-purple-500',
+  build: 'bg-yellow-500',
+  proof: 'bg-amber-500',
+  review: 'bg-cyan-500',
 };
 
 function PhaseBadge({ phase }: { phase: string }) {
