@@ -4,7 +4,7 @@
 
 ### In Progress
 - [x] [review/P2] Gate 1: Phase colors in `App.tsx:84-97` don't match spec (spec line 862: `plan=purple, build=yellow, review=cyan`; code uses `plan=blue, build=amber, proof=purple, review=green`). Fix colors to match spec and correct the misleading comment "Phase colors per spec". (priority: high)
-- [ ] [review/P2] Gate 3: `parseTodoProgress` (App.tsx:110-120) is a new pure function with 0% branch coverage — extract to a testable module and add unit tests covering: empty string input, input with no tasks, mixed completed/uncompleted tasks, edge cases (`[X]` uppercase). (priority: high)
+- [x] [review/P2] Gate 3: `parseTodoProgress` (App.tsx:110-120) is a new pure function with 0% branch coverage — extract to a testable module and add unit tests covering: empty string input, input with no tasks, mixed completed/uncompleted tasks, edge cases (`[X]` uppercase). (priority: high)
 
 ### Up Next
 - [ ] [orchestrator/P2] Add `aloop orchestrate` command registration with `--plan-only` and persisted `orchestrator.json` skeleton state. (priority: medium, orchestrator foundation)
