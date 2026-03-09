@@ -3,7 +3,8 @@
 ## Current Phase: P2 Dashboard UX + Orchestrator + GitHub Integration + Pipeline
 
 ### In Progress
-(none)
+- [ ] [review/P2] Gate 1: Phase colors in `App.tsx:84-97` don't match spec (spec line 862: `plan=purple, build=yellow, review=cyan`; code uses `plan=blue, build=amber, proof=purple, review=green`). Fix colors to match spec and correct the misleading comment "Phase colors per spec". (priority: high)
+- [ ] [review/P2] Gate 3: `parseTodoProgress` (App.tsx:110-120) is a new pure function with 0% branch coverage — extract to a testable module and add unit tests covering: empty string input, input with no tasks, mixed completed/uncompleted tasks, edge cases (`[X]` uppercase). (priority: high)
 
 ### Up Next
 - [x] [dashboard/P2] Render proof artifacts inline in dashboard views (thumbnail/expand for images, syntax-highlighted code blocks for non-image artifacts, before/after comparison widget with side-by-side/slider modes). (priority: medium, closes proof UX gap)
