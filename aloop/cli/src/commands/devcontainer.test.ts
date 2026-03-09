@@ -140,6 +140,27 @@ test('augmentExistingConfig - merges mounts without duplicates', () => {
   assert.ok(mounts.some(m => m.includes('.aloop')));
 });
 
+test('augmentExistingConfig - deduplicates mount entries present in both existing and generated', () => {
+  const sharedMount = 'source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind';
+  const existing = {
+    mounts: [sharedMount, 'source=/host/data,target=/data,type=bind'],
+  };
+  const generated: DevcontainerConfig = {
+    name: 'proj-aloop',
+    features: {},
+    mounts: [sharedMount],
+    containerEnv: { ALOOP_CONTAINER: '1' },
+    remoteEnv: {},
+  };
+
+  const result = augmentExistingConfig(existing, generated);
+  const mounts = result.mounts as string[];
+
+  assert.equal(mounts.length, 2); // shared mount NOT duplicated
+  assert.equal(mounts.filter(m => m === sharedMount).length, 1);
+  assert.ok(mounts.includes('source=/host/data,target=/data,type=bind'));
+});
+
 test('augmentExistingConfig - preserves existing containerEnv values', () => {
   const existing = {
     containerEnv: { MY_VAR: 'keep-this' },
