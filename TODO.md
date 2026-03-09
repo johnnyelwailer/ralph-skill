@@ -4,6 +4,7 @@
 
 ### In Progress
 - [x] [review/P1] Gate 3: `Initialize-DevcontainerRouting` (loop.ps1:98-147) and `initialize_devcontainer_routing` (loop.sh:118-160) — the "devcontainer CLI not found on PATH" branch is untested. Add a test for each runtime that creates `devcontainer.json`, ensures PATH has no `devcontainer` binary, and asserts the warning message about CLI not found. (priority: high)
+- [ ] [review/P2] Gate 3: `resolveSessionContext` (dashboard.ts:121-137) has 4 untested branches — add tests for: (1) active.json is an array instead of object → returns null, (2) entry value is a non-object (e.g. string) → returns null, (3) entry missing `session_dir` → falls back to `path.join(runtimeDir, 'sessions', sessionId)`, (4) entry missing `work_dir` → falls back to `process.cwd()`. (priority: high)
 
 ### Up Next
 - [x] [devcontainer/P1] Add provider install hooks (`postCreateCommand`) plus `remoteEnv`/`localEnv` auth forwarding for activated providers only; prefer `CLAUDE_CODE_OAUTH_TOKEN` > `ANTHROPIC_API_KEY` for Claude. (priority: high, container usability/security boundary)
