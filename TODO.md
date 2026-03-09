@@ -7,7 +7,7 @@
 
 ### Up Next
 - [x] [orchestrator/P2] Add orchestrator command wrappers (`claude/commands/aloop/orchestrate.md`, `copilot/prompts/aloop-orchestrate.prompt.md`). (priority: medium, command-surface parity)
-- [x] [orchestrator/P2] Implement issue decomposition + dependency graph + wave assignment + issue creation via `aloop gh issue-create` with `aloop/auto` + wave labels. (priority: medium, planning core)
+- [x] [orchestrator/P2] Implement issue decomposition + dependency graph + wave assignment + issue creation via `aloop gh issue-create` with `aloop/auto` + wave labels. (priority: medium, planning core) [reviewed: gates 1-5 pass]
 - [ ] [orchestrator/P2] Implement child-loop dispatch engine with concurrency cap (default 3), per-issue worktree/branch mapping (`aloop/issue-<N>`), and launch lifecycle tracking. (priority: medium, execution core)
 - [ ] [orchestrator/P2] Implement PR lifecycle gates (CI/coverage/conflict/lint/review) with squash-merge to `agent/trunk`, reopen on conflict (max 2 rebase attempts), and agent review on PR diffs. (priority: medium, safe integration)
 - [ ] [orchestrator/P2] Add orchestrator budget/final-report outputs (session budget cap, issues created/completed/failed, provider usage/cost estimates, coverage delta). (priority: medium, acceptance completeness)
