@@ -3,10 +3,6 @@
 ## Current Phase: P1 Reliability Hardening + PS 5.1 Compatibility + Devcontainer Foundations
 
 ### In Progress
-- [x] [review/P1] Gate 3: `detectNodeInstallCommand` (devcontainer.ts:111-116) has 4 branches (pnpm/yarn/bun/npm) with zero direct test coverage — add unit tests or refactor to accept injected `existsSync` so branches are testable. (priority: high) [refactored to accept injected existsFn, added 5 tests covering all branches]
-- [x] [review/P1] Gate 3: `detectPythonInstallCommand` (devcontainer.ts:118-122) has 3 branches with zero direct test coverage — same fix needed. (priority: high) [refactored to accept injected existsFn, added 3 tests covering all branches]
-- [x] [review/P1] Gate 3: `devcontainerCommand` (devcontainer.ts:288-314) text/json output wrapper has zero test coverage — add tests for both output modes and both action types. (priority: medium) [refactored to accept injected deps, added 5 tests: json×created, json×augmented, text×created, text×augmented, text omits null post-create]
-- [x] [review/P1] Gate 3: `mergeArrayUnique` dedup branch (devcontainer.ts:164) not tested — add test with duplicate mount entry to exercise the `includes` guard. (priority: medium) [added test with shared mount in both existing and generated, asserts no duplication]
 
 ### Up Next
 - [ ] [devcontainer/P1] Add provider install hooks (`postCreateCommand`) plus `remoteEnv`/`localEnv` auth forwarding for activated providers only; prefer `CLAUDE_CODE_OAUTH_TOKEN` > `ANTHROPIC_API_KEY` for Claude. (priority: high, container usability/security boundary)
@@ -38,6 +34,10 @@
 - [ ] [acceptance/P3] Run final SPEC acceptance sweep and refresh TODO states from verified code/tests. (priority: low, completion gate)
 
 ### Completed
+- [x] [review/P1] Gate 3: `detectNodeInstallCommand` (devcontainer.ts:111-116) has 4 branches (pnpm/yarn/bun/npm) with zero direct test coverage — add unit tests or refactor to accept injected `existsSync` so branches are testable. (priority: high) [reviewed: gates 1-5 pass]
+- [x] [review/P1] Gate 3: `detectPythonInstallCommand` (devcontainer.ts:118-122) has 3 branches with zero direct test coverage — same fix needed. (priority: high) [reviewed: gates 1-5 pass]
+- [x] [review/P1] Gate 3: `devcontainerCommand` (devcontainer.ts:288-314) text/json output wrapper has zero test coverage — add tests for both output modes and both action types. (priority: medium) [reviewed: gates 1-5 pass]
+- [x] [review/P1] Gate 3: `mergeArrayUnique` dedup branch (devcontainer.ts:164) not tested — add test with duplicate mount entry to exercise the `includes` guard. (priority: medium) [reviewed: gates 1-5 pass]
 - [x] [review/P1] Gate 2: `devcontainer.test.ts` lines 47, 50-51 use `assert.ok` existence/truthy checks — rewrite to assert exact values. [reviewed: gates 1-5 pass]
 - [x] [review/P1] Gate 2: `devcontainer.test.ts` node-typescript test and python test assert `postCreateCommand` value. [reviewed: gates 1-5 pass]
 - [x] [review/P1] Gate 2: Error-path test for `devcontainerCommandWithDeps` when existing `devcontainer.json` contains invalid JSON. [reviewed: gates 1-5 pass]
