@@ -11,6 +11,14 @@ import {
   availableSlots,
   launchChildLoop,
   dispatchChildLoops,
+  checkPrGates,
+  reviewPrDiff,
+  mergePr,
+  requestRebase,
+  flagForHuman,
+  processPrLifecycle,
+  isWaveComplete,
+  advanceWave,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
   type DispatchDeps,
@@ -18,6 +26,8 @@ import {
   type DecompositionPlan,
   type OrchestratorState,
   type OrchestratorIssue,
+  type PrLifecycleDeps,
+  type AgentReviewResult,
 } from './orchestrate.js';
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
@@ -1029,5 +1039,559 @@ describe('dispatchChildLoops', () => {
     assert.equal(result.launched[0].branch, 'aloop/issue-10');
     assert.equal(result.launched[1].branch, 'aloop/issue-20');
     assert.notEqual(result.launched[0].session_id, result.launched[1].session_id);
+  });
+});
+
+// --- PR lifecycle gates tests ---
+
+function createMockPrDeps(overrides: Partial<PrLifecycleDeps> = {}): PrLifecycleDeps & { logs: Record<string, unknown>[]; writtenFiles: Record<string, string> } {
+  const logs: Record<string, unknown>[] = [];
+  const writtenFiles: Record<string, string> = {};
+  return {
+    execGh: async () => ({ stdout: '', stderr: '' }),
+    readFile: async () => '',
+    writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+    now: () => new Date('2026-03-09T12:00:00Z'),
+    appendLog: (_dir: string, entry: Record<string, unknown>) => { logs.push(entry); },
+    ...overrides,
+    logs,
+    writtenFiles,
+  };
+}
+
+function makeOrchestratorState(issueOverrides: Partial<OrchestratorIssue>[] = []): OrchestratorState {
+  const issues: OrchestratorIssue[] = issueOverrides.map((o, i) => ({
+    number: 42 + i,
+    title: `Issue ${42 + i}`,
+    wave: 1,
+    state: 'pr_open' as const,
+    child_session: `session-${42 + i}`,
+    pr_number: 100 + i,
+    depends_on: [],
+    ...o,
+  }));
+  return {
+    spec_file: 'SPEC.md',
+    trunk_branch: 'agent/trunk',
+    concurrency_cap: 3,
+    current_wave: 1,
+    plan_only: false,
+    issues,
+    completed_waves: [],
+    filter_issues: null,
+    filter_label: null,
+    filter_repo: null,
+    created_at: '2026-03-09T10:00:00.000Z',
+    updated_at: '2026-03-09T10:00:00.000Z',
+  };
+}
+
+describe('checkPrGates', () => {
+  it('returns pass when PR is mergeable and all CI checks pass', async () => {
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('--json') && args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
+            { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
+            { name: 'lint', state: 'COMPLETED', conclusion: 'SUCCESS' },
+          ]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.all_passed, true);
+    assert.equal(result.mergeable, true);
+    assert.equal(result.gates.length, 2);
+    assert.equal(result.gates[0].gate, 'merge_conflicts');
+    assert.equal(result.gates[0].status, 'pass');
+    assert.equal(result.gates[1].gate, 'ci_checks');
+    assert.equal(result.gates[1].status, 'pass');
+  });
+
+  it('returns fail when PR has merge conflicts', async () => {
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.mergeable, false);
+    assert.equal(result.gates[0].status, 'fail');
+    assert.ok(result.gates[0].detail.includes('DIRTY'));
+  });
+
+  it('returns pending when CI checks are still running', async () => {
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
+            { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
+          ]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.all_passed, false);
+    assert.equal(result.gates[1].status, 'pending');
+  });
+
+  it('returns fail when CI checks have failures', async () => {
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
+            { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
+            { name: 'lint', state: 'COMPLETED', conclusion: 'FAILURE' },
+          ]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.gates[1].status, 'fail');
+    assert.ok(result.gates[1].detail.includes('lint'));
+  });
+
+  it('handles gh errors gracefully for mergeability', async () => {
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          throw new Error('gh API error');
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.mergeable, false);
+    assert.equal(result.gates[0].status, 'fail');
+  });
+
+  it('treats SKIPPED and NEUTRAL checks as passing', async () => {
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
+            { name: 'optional', state: 'COMPLETED', conclusion: 'SKIPPED' },
+            { name: 'info', state: 'COMPLETED', conclusion: 'NEUTRAL' },
+          ]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.all_passed, true);
+    assert.equal(result.gates[1].status, 'pass');
+  });
+});
+
+describe('reviewPrDiff', () => {
+  it('auto-approves when no agent reviewer configured', async () => {
+    const deps = createMockPrDeps({
+      execGh: async () => ({ stdout: 'diff --git a/file.ts b/file.ts\n+hello', stderr: '' }),
+    });
+    const result = await reviewPrDiff(100, 'owner/repo', deps);
+    assert.equal(result.verdict, 'approve');
+    assert.ok(result.summary.includes('Auto-approved'));
+  });
+
+  it('delegates to agent reviewer when configured', async () => {
+    const deps = createMockPrDeps({
+      execGh: async () => ({ stdout: 'diff content', stderr: '' }),
+      invokeAgentReview: async (prNum, _repo, diff) => ({
+        pr_number: prNum,
+        verdict: 'request-changes',
+        summary: `Review of diff (${diff.length} chars): needs fixes`,
+      }),
+    });
+    const result = await reviewPrDiff(100, 'owner/repo', deps);
+    assert.equal(result.verdict, 'request-changes');
+    assert.ok(result.summary.includes('needs fixes'));
+  });
+
+  it('flags for human when diff fetch fails', async () => {
+    const deps = createMockPrDeps({
+      execGh: async () => { throw new Error('Not found'); },
+    });
+    const result = await reviewPrDiff(100, 'owner/repo', deps);
+    assert.equal(result.verdict, 'flag-for-human');
+    assert.ok(result.summary.includes('Failed to fetch PR diff'));
+  });
+});
+
+describe('mergePr', () => {
+  it('returns merged true on success', async () => {
+    const deps = createMockPrDeps({
+      execGh: async () => ({ stdout: 'Merged', stderr: '' }),
+    });
+    const result = await mergePr(100, 'owner/repo', deps);
+    assert.equal(result.merged, true);
+    assert.equal(result.pr_number, 100);
+  });
+
+  it('returns merged false with error on failure', async () => {
+    const deps = createMockPrDeps({
+      execGh: async () => { throw new Error('Merge conflict'); },
+    });
+    const result = await mergePr(100, 'owner/repo', deps);
+    assert.equal(result.merged, false);
+    assert.ok(result.error?.includes('Merge conflict'));
+  });
+});
+
+describe('requestRebase', () => {
+  it('posts comment on the issue', async () => {
+    const calls: string[][] = [];
+    const deps = createMockPrDeps({
+      execGh: async (args) => { calls.push(args); return { stdout: '', stderr: '' }; },
+    });
+    const issue: OrchestratorIssue = { number: 42, title: 'Test', wave: 1, state: 'pr_open', child_session: 's1', pr_number: 100, depends_on: [] };
+    await requestRebase(issue, 'owner/repo', 'agent/trunk', 1, deps);
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].includes('issue'));
+    assert.ok(calls[0].includes('comment'));
+    assert.ok(calls[0].includes('42'));
+  });
+});
+
+describe('flagForHuman', () => {
+  it('comments and labels the issue', async () => {
+    const calls: string[][] = [];
+    const deps = createMockPrDeps({
+      execGh: async (args) => { calls.push(args); return { stdout: '', stderr: '' }; },
+    });
+    const issue: OrchestratorIssue = { number: 42, title: 'Test', wave: 1, state: 'pr_open', child_session: 's1', pr_number: 100, depends_on: [] };
+    await flagForHuman(issue, 'owner/repo', 'test reason', deps);
+    assert.equal(calls.length, 2);
+    // First call: comment
+    assert.ok(calls[0].includes('comment'));
+    // Second call: add label
+    assert.ok(calls[1].includes('--add-label'));
+    assert.ok(calls[1].includes('aloop/blocked-on-human'));
+  });
+});
+
+describe('processPrLifecycle', () => {
+  it('merges PR when all gates pass and review approves', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const ghCalls: string[][] = [];
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        ghCalls.push(args);
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
+            { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
+          ]), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff content', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'merged');
+    assert.equal(state.issues[0].state, 'merged');
+    assert.ok(deps.logs.some((l) => l.event === 'pr_merged'));
+  });
+
+  it('returns gates_pending when CI is still running', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
+            { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
+          ]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'gates_pending');
+  });
+
+  it('requests rebase on first merge conflict', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'rebase_requested');
+    assert.ok(result.detail.includes('attempt 1/2'));
+    assert.equal(state.issues[0].rebase_attempts, 1);
+    assert.ok(deps.logs.some((l) => l.event === 'pr_rebase_requested'));
+  });
+
+  it('flags for human after 2 rebase attempts', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open', rebase_attempts: 2 }]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'CONFLICTING' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'flagged_for_human');
+    assert.equal(state.issues[0].state, 'failed');
+    assert.ok(deps.logs.some((l) => l.event === 'pr_flagged_for_human'));
+  });
+
+  it('rejects PR when agent review requests changes', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'request-changes' as const,
+        summary: 'Missing test coverage',
+      }),
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'rejected');
+    assert.equal(result.review?.verdict, 'request-changes');
+  });
+
+  it('flags for human when agent review flags', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'flag-for-human' as const,
+        summary: 'Security concern',
+      }),
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'flagged_for_human');
+  });
+
+  it('returns gates_failed when no pr_number on issue', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: null, state: 'pr_open' }]);
+    const deps = createMockPrDeps();
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'gates_failed');
+    assert.ok(result.detail.includes('No PR number'));
+  });
+
+  it('comments on issue when CI gates fail', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const ghCalls: string[][] = [];
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        ghCalls.push(args);
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
+            { name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' },
+          ]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'gates_failed');
+    // Should have posted a comment about the failure
+    const commentCall = ghCalls.find((c) => c.includes('comment') && c.includes('42'));
+    assert.ok(commentCall);
+    assert.ok(deps.logs.some((l) => l.event === 'pr_gates_failed'));
+  });
+
+  it('handles merge failure after approval', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    let mergeAttempted = false;
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff', stderr: '' };
+        }
+        if (args.includes('merge')) {
+          mergeAttempted = true;
+          throw new Error('Race condition conflict');
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(mergeAttempted, true);
+    assert.equal(result.action, 'gates_failed');
+    assert.ok(result.detail.includes('Race condition'));
+    assert.ok(deps.logs.some((l) => l.event === 'pr_merge_failed'));
+  });
+
+  it('closes issue after successful merge', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const ghCalls: string[][] = [];
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        ghCalls.push(args);
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    const closeCall = ghCalls.find((c) => c.includes('close') && c.includes('42'));
+    assert.ok(closeCall, 'Should have closed the issue');
+  });
+});
+
+describe('isWaveComplete', () => {
+  it('returns true when all issues in wave are merged', () => {
+    const state = makeOrchestratorState([
+      { number: 1, wave: 1, state: 'merged' },
+      { number: 2, wave: 1, state: 'merged' },
+      { number: 3, wave: 2, state: 'pending' },
+    ]);
+    assert.equal(isWaveComplete(state, 1), true);
+    assert.equal(isWaveComplete(state, 2), false);
+  });
+
+  it('returns true when all issues are merged or failed', () => {
+    const state = makeOrchestratorState([
+      { number: 1, wave: 1, state: 'merged' },
+      { number: 2, wave: 1, state: 'failed' },
+    ]);
+    assert.equal(isWaveComplete(state, 1), true);
+  });
+
+  it('returns false when some issues are still in progress', () => {
+    const state = makeOrchestratorState([
+      { number: 1, wave: 1, state: 'merged' },
+      { number: 2, wave: 1, state: 'in_progress' },
+    ]);
+    assert.equal(isWaveComplete(state, 1), false);
+  });
+
+  it('returns false for empty wave', () => {
+    const state = makeOrchestratorState([{ number: 1, wave: 2, state: 'merged' }]);
+    assert.equal(isWaveComplete(state, 1), false);
+  });
+});
+
+describe('advanceWave', () => {
+  it('advances to next wave when current is complete', () => {
+    const state = makeOrchestratorState([
+      { number: 1, wave: 1, state: 'merged' },
+      { number: 2, wave: 2, state: 'pending' },
+    ]);
+    state.current_wave = 1;
+    const advanced = advanceWave(state);
+    assert.equal(advanced, true);
+    assert.equal(state.current_wave, 2);
+    assert.deepStrictEqual(state.completed_waves, [1]);
+  });
+
+  it('returns false when current wave is not complete', () => {
+    const state = makeOrchestratorState([
+      { number: 1, wave: 1, state: 'merged' },
+      { number: 2, wave: 1, state: 'in_progress' },
+    ]);
+    state.current_wave = 1;
+    assert.equal(advanceWave(state), false);
+  });
+
+  it('returns false when current_wave is 0', () => {
+    const state = makeOrchestratorState([]);
+    state.current_wave = 0;
+    assert.equal(advanceWave(state), false);
+  });
+
+  it('returns false when on last wave (all complete)', () => {
+    const state = makeOrchestratorState([
+      { number: 1, wave: 1, state: 'merged' },
+    ]);
+    state.current_wave = 1;
+    assert.equal(advanceWave(state), false);
+    assert.deepStrictEqual(state.completed_waves, [1]);
+  });
+
+  it('does not duplicate completed_waves entries', () => {
+    const state = makeOrchestratorState([
+      { number: 1, wave: 1, state: 'merged' },
+      { number: 2, wave: 2, state: 'pending' },
+    ]);
+    state.current_wave = 1;
+    state.completed_waves = [1];
+    advanceWave(state);
+    assert.deepStrictEqual(state.completed_waves, [1]);
   });
 });
