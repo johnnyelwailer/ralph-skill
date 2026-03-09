@@ -178,6 +178,7 @@ export function buildProviderRemoteEnv(installedProviders: string[]): Record<str
 function buildAloopMounts(): string[] {
   return [
     'source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind',
+    'source=${localEnv:HOME}/.aloop/sessions,target=/aloop-sessions,type=bind',
   ];
 }
 
@@ -478,6 +479,9 @@ export async function verifyDevcontainer(
 
     // 3b. .aloop/ mount accessible
     checks.push(await execCheck(deps, projectRoot, 'aloop-mount', ['test', '-d', '.aloop']));
+
+    // 3b2. /aloop-sessions/ mount accessible
+    checks.push(await execCheck(deps, projectRoot, 'sessions-mount', ['test', '-d', '/aloop-sessions']));
 
     // 3c. Provider CLIs available
     for (const provider of providers) {

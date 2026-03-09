@@ -56,8 +56,9 @@ test('generateDevcontainerConfig - node-typescript project', () => {
   assert.deepEqual(config.features['ghcr.io/devcontainers/features/git:1'], {});
   assert.equal(config.containerEnv.ALOOP_CONTAINER, '1');
   assert.equal(config.containerEnv.ALOOP_NO_DASHBOARD, '1');
-  assert.equal(config.mounts.length, 1);
+  assert.equal(config.mounts.length, 2);
   assert.equal(config.mounts[0], 'source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind');
+  assert.equal(config.mounts[1], 'source=${localEnv:HOME}/.aloop/sessions,target=/aloop-sessions,type=bind');
   assert.equal(config.postCreateCommand, 'npm install && npm install -g @anthropic-ai/claude-code');
   // remoteEnv forwards Claude auth vars (OAUTH preferred, API key fallback)
   assert.equal(config.remoteEnv.CLAUDE_CODE_OAUTH_TOKEN, '${localEnv:CLAUDE_CODE_OAUTH_TOKEN}');
@@ -114,7 +115,10 @@ test('augmentExistingConfig - adds mounts to empty existing', () => {
     name: 'proj-aloop',
     image: 'mcr.microsoft.com/devcontainers/typescript-node:22',
     features: {},
-    mounts: ['source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind'],
+    mounts: [
+      'source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind',
+      'source=${localEnv:HOME}/.aloop/sessions,target=/aloop-sessions,type=bind',
+    ],
     containerEnv: { ALOOP_CONTAINER: '1', ALOOP_NO_DASHBOARD: '1' },
     remoteEnv: {},
   };
@@ -136,6 +140,7 @@ test('augmentExistingConfig - merges mounts without duplicates', () => {
     features: {},
     mounts: [
       'source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind',
+      'source=${localEnv:HOME}/.aloop/sessions,target=/aloop-sessions,type=bind',
     ],
     containerEnv: { ALOOP_CONTAINER: '1' },
     remoteEnv: {},
@@ -144,20 +149,22 @@ test('augmentExistingConfig - merges mounts without duplicates', () => {
   const result = augmentExistingConfig(existing, generated);
   const mounts = result.mounts as string[];
 
-  assert.equal(mounts.length, 2);
+  assert.equal(mounts.length, 3);
   assert.ok(mounts.includes('source=/host/data,target=/data,type=bind'));
-  assert.ok(mounts.some(m => m.includes('.aloop')));
+  assert.ok(mounts.some(m => m.includes('.aloop,target=')));
+  assert.ok(mounts.some(m => m.includes('/aloop-sessions')));
 });
 
 test('augmentExistingConfig - deduplicates mount entries present in both existing and generated', () => {
   const sharedMount = 'source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind';
+  const sessionsMount = 'source=${localEnv:HOME}/.aloop/sessions,target=/aloop-sessions,type=bind';
   const existing = {
     mounts: [sharedMount, 'source=/host/data,target=/data,type=bind'],
   };
   const generated: DevcontainerConfig = {
     name: 'proj-aloop',
     features: {},
-    mounts: [sharedMount],
+    mounts: [sharedMount, sessionsMount],
     containerEnv: { ALOOP_CONTAINER: '1' },
     remoteEnv: {},
   };
@@ -165,9 +172,10 @@ test('augmentExistingConfig - deduplicates mount entries present in both existin
   const result = augmentExistingConfig(existing, generated);
   const mounts = result.mounts as string[];
 
-  assert.equal(mounts.length, 2); // shared mount NOT duplicated
+  assert.equal(mounts.length, 3); // shared mount NOT duplicated, sessions mount added
   assert.equal(mounts.filter(m => m === sharedMount).length, 1);
   assert.ok(mounts.includes('source=/host/data,target=/data,type=bind'));
+  assert.ok(mounts.includes(sessionsMount));
 });
 
 test('augmentExistingConfig - preserves existing containerEnv values', () => {
@@ -722,8 +730,8 @@ test('verifyDevcontainer - all checks pass for node-typescript project', async (
 
   assert.equal(result.passed, true);
   assert.equal(result.iteration, 1);
-  // build, up, git, aloop-mount, provider-claude, deps-installed
-  assert.equal(result.checks.length, 6);
+  // build, up, git, aloop-mount, sessions-mount, provider-claude, deps-installed
+  assert.equal(result.checks.length, 7);
   assert.ok(result.checks.every((c) => c.passed));
 
   const names = result.checks.map((c) => c.name);
@@ -731,6 +739,7 @@ test('verifyDevcontainer - all checks pass for node-typescript project', async (
   assert.ok(names.includes('up'));
   assert.ok(names.includes('git'));
   assert.ok(names.includes('aloop-mount'));
+  assert.ok(names.includes('sessions-mount'));
   assert.ok(names.includes('provider-claude'));
   assert.ok(names.includes('deps-installed'));
 });
@@ -862,6 +871,20 @@ test('verifyDevcontainer - git check failure reported', async () => {
   assert.ok(gitCheck);
   assert.equal(gitCheck.passed, false);
   assert.ok(gitCheck.message.includes('fatal'));
+});
+
+test('verifyDevcontainer - sessions-mount check failure reported', async () => {
+  const deps = mockVerifyDeps({
+    execResults: {
+      'test -d /aloop-sessions': { stdout: '', stderr: '', exitCode: 1 },
+    },
+  });
+  const result = await verifyDevcontainer('/mock/project', [], deps);
+
+  assert.equal(result.passed, false);
+  const sessionsCheck = result.checks.find((c) => c.name === 'sessions-mount');
+  assert.ok(sessionsCheck);
+  assert.equal(sessionsCheck.passed, false);
 });
 
 test('verifyDevcontainer - mount check failure reported', async () => {
