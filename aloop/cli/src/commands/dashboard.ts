@@ -13,6 +13,11 @@ interface DashboardOptions {
   runtimeDir?: string;
 }
 
+interface ArtifactManifest {
+  iteration: number;
+  manifest: unknown;
+}
+
 interface DashboardState {
   sessionDir: string;
   workdir: string;
@@ -23,6 +28,7 @@ interface DashboardState {
   docs: Record<string, string>;
   activeSessions: unknown[];
   recentSessions: unknown[];
+  artifacts: ArtifactManifest[];
 }
 
 interface SessionContext {
@@ -118,6 +124,34 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
+async function loadArtifactManifests(sessionDir: string): Promise<ArtifactManifest[]> {
+  const artifactsDir = path.join(sessionDir, 'artifacts');
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await fs.readdir(artifactsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const iterDirs = entries
+    .filter((entry) => entry.isDirectory() && /^iter-\d+$/.test(entry.name))
+    .sort((a, b) => {
+      const numA = Number.parseInt(a.name.slice(5), 10);
+      const numB = Number.parseInt(b.name.slice(5), 10);
+      return numA - numB;
+    });
+
+  const results: ArtifactManifest[] = [];
+  for (const dir of iterDirs) {
+    const manifestPath = path.join(artifactsDir, dir.name, 'proof-manifest.json');
+    const manifest = await readJsonFile(manifestPath);
+    if (manifest !== null) {
+      const iteration = Number.parseInt(dir.name.slice(5), 10);
+      results.push({ iteration, manifest });
+    }
+  }
+  return results;
+}
+
 async function resolveSessionContext(runtimeDir: string, sessionId: string): Promise<SessionContext | null> {
   const activeSessionsPath = path.join(runtimeDir, 'active.json');
   const active = await readJsonFile(activeSessionsPath);
@@ -145,7 +179,7 @@ async function loadStateForContext(
   const activeSessionsPath = path.join(runtimeDir, 'active.json');
   const recentSessionsPath = path.join(runtimeDir, 'history.json');
 
-  const [status, log, activeSessions, recentSessions, docsEntries] = await Promise.all([
+  const [status, log, activeSessions, recentSessions, docsEntries, artifacts] = await Promise.all([
     readJsonFile(statusPath),
     readLogTail(logPath),
     readJsonArrayFile(activeSessionsPath),
@@ -156,6 +190,7 @@ async function loadStateForContext(
         return [docFile, content] as const;
       }),
     ),
+    loadArtifactManifests(ctx.sessionDir),
   ]);
 
   return {
@@ -168,6 +203,7 @@ async function loadStateForContext(
     docs: Object.fromEntries(docsEntries),
     activeSessions,
     recentSessions,
+    artifacts,
   };
 }
 
@@ -357,6 +393,15 @@ function getContentType(filePath: string): string {
       return 'application/javascript; charset=utf-8';
     case '.json':
       return 'application/json; charset=utf-8';
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.gif':
+      return 'image/gif';
+    case '.webp':
+      return 'image/webp';
     case '.svg':
       return 'image/svg+xml';
     case '.ico':
@@ -809,6 +854,35 @@ export async function startDashboardServer(
           pid,
           signal,
         });
+        return;
+      }
+
+      const artifactMatch = requestUrl.pathname.match(/^\/api\/artifacts\/(\d+)\/(.+)$/);
+      if (artifactMatch && request.method === 'GET') {
+        const iteration = artifactMatch[1];
+        const filename = artifactMatch[2];
+        // Reject path traversal attempts
+        if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+          writeJson(response, 400, { error: 'Invalid artifact filename.' });
+          return;
+        }
+        const artifactPath = path.join(sessionDir, 'artifacts', `iter-${iteration}`, filename);
+        const resolvedPath = path.resolve(artifactPath);
+        const allowedPrefix = path.resolve(path.join(sessionDir, 'artifacts')) + path.sep;
+        if (!resolvedPath.startsWith(allowedPrefix)) {
+          writeJson(response, 400, { error: 'Invalid artifact path.' });
+          return;
+        }
+        if (!(await fileExists(resolvedPath))) {
+          writeJson(response, 404, { error: 'Artifact not found.' });
+          return;
+        }
+        const content = await fs.readFile(resolvedPath);
+        response.writeHead(200, {
+          'Content-Type': getContentType(resolvedPath),
+          'Cache-Control': 'no-cache',
+        });
+        response.end(content);
         return;
       }
 

@@ -1091,6 +1091,105 @@ test('resolveSessionContext falls back to process.cwd() when entry missing work_
   }
 });
 
+test('GET /api/artifacts/<iteration>/<filename> serves artifact files', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const iterDir = path.join(fixture.sessionDir, 'artifacts', 'iter-3');
+    await mkdir(iterDir, { recursive: true });
+    await writeFile(path.join(iterDir, 'screenshot.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]), 'binary');
+
+    const response = await fetch(`${fixture.handle.url}/api/artifacts/3/screenshot.png`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'image/png');
+    const body = Buffer.from(await response.arrayBuffer());
+    assert.equal(body.length, 4);
+    assert.equal(body[0], 0x89);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/artifacts rejects path traversal attempts', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const response = await fetch(`${fixture.handle.url}/api/artifacts/3/..%2F..%2Fstatus.json`);
+    assert.equal(response.status, 400);
+    const payload = (await response.json()) as { error: string };
+    assert.match(payload.error, /Invalid artifact/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/artifacts returns 404 for missing artifact', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const response = await fetch(`${fixture.handle.url}/api/artifacts/1/nonexistent.png`);
+    assert.equal(response.status, 404);
+    const payload = (await response.json()) as { error: string };
+    assert.match(payload.error, /Artifact not found/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/state includes proof artifact manifests from session artifacts directory', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const iter2Dir = path.join(fixture.sessionDir, 'artifacts', 'iter-2');
+    const iter5Dir = path.join(fixture.sessionDir, 'artifacts', 'iter-5');
+    await mkdir(iter2Dir, { recursive: true });
+    await mkdir(iter5Dir, { recursive: true });
+
+    const manifest2 = {
+      iteration: 2,
+      phase: 'proof',
+      summary: 'Dashboard screenshot captured',
+      artifacts: [{ type: 'screenshot', path: 'dashboard.png', description: 'Main dashboard view' }],
+    };
+    const manifest5 = {
+      iteration: 5,
+      phase: 'proof',
+      summary: 'API health verified',
+      artifacts: [{ type: 'api_response', path: 'health.json', description: 'Health endpoint 200 OK' }],
+    };
+
+    await writeFile(path.join(iter2Dir, 'proof-manifest.json'), JSON.stringify(manifest2), 'utf8');
+    await writeFile(path.join(iter5Dir, 'proof-manifest.json'), JSON.stringify(manifest5), 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      artifacts: Array<{ iteration: number; manifest: { summary: string; artifacts: unknown[] } }>;
+    };
+
+    assert.equal(payload.artifacts.length, 2);
+    assert.equal(payload.artifacts[0].iteration, 2);
+    assert.equal(payload.artifacts[0].manifest.summary, 'Dashboard screenshot captured');
+    assert.equal(payload.artifacts[1].iteration, 5);
+    assert.equal(payload.artifacts[1].manifest.summary, 'API health verified');
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/state returns empty artifacts array when no artifacts directory exists', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as { artifacts: unknown[] };
+    assert.deepEqual(payload.artifacts, []);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test('watch-triggered publish failures are guarded and do not crash the server', async (t) => {
   const fixture = await createServerFixture();
   const originalStringify = JSON.stringify;

@@ -9,6 +9,11 @@ const navItems = ['Progress', 'Docs', 'Log', 'Steer', 'Stop'] as const;
 type NavItem = (typeof navItems)[number];
 type SessionStatus = Record<string, unknown>;
 
+interface ArtifactManifest {
+  iteration: number;
+  manifest: unknown;
+}
+
 interface DashboardState {
   sessionDir: string;
   workdir: string;
@@ -19,6 +24,7 @@ interface DashboardState {
   docs: Record<string, string>;
   activeSessions: unknown[];
   recentSessions: unknown[];
+  artifacts: ArtifactManifest[];
 }
 
 interface SessionSummary {
