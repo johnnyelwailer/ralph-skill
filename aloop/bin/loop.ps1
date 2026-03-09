@@ -46,7 +46,8 @@ param(
     [string]$LaunchMode = 'start',
 
     [switch]$BackupEnabled,
-    [switch]$DryRun
+    [switch]$DryRun,
+    [switch]$DangerouslySkipContainer
 )
 
 $ErrorActionPreference = 'Stop'
@@ -93,6 +94,57 @@ if (-not (Test-Path $WorkDir)) {
 if (-not (Test-Path $SessionDir)) {
     New-Item -ItemType Directory -Path $SessionDir -Force | Out-Null
 }
+
+# ============================================================================
+# DEVCONTAINER AUTO-ROUTING — detect and route provider calls through container
+# ============================================================================
+
+$script:useDevcontainer = $false
+$devcontainerJsonPath = Join-Path $WorkDir '.devcontainer' 'devcontainer.json'
+
+function Initialize-DevcontainerRouting {
+    if (-not (Test-Path $devcontainerJsonPath)) {
+        Write-Host "No devcontainer found. Run /aloop:devcontainer to set up isolated agent execution."
+        return
+    }
+
+    if ($DangerouslySkipContainer) {
+        Write-Warning "DANGER: Running agents directly on host without container isolation. Agents have full access to your filesystem, network, and credentials."
+        return
+    }
+
+    # Check if devcontainer CLI is available
+    $dcCmd = Get-Command 'devcontainer' -ErrorAction SilentlyContinue
+    if (-not $dcCmd) {
+        Write-Warning "devcontainer CLI not found on PATH. Running agents directly on host. Install with: npm install -g @devcontainers/cli"
+        return
+    }
+
+    # Check if container is already running
+    Write-Host "Checking devcontainer status..."
+    $checkResult = $null
+    try {
+        $checkResult = & devcontainer exec --workspace-folder $WorkDir -- echo ok 2>&1
+    } catch { }
+
+    if (-not ($checkResult -match 'ok')) {
+        Write-Host "Starting devcontainer..."
+        $upResult = & devcontainer up --workspace-folder $WorkDir 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "devcontainer up failed (exit $LASTEXITCODE). Running agents directly on host."
+            Write-Warning ($upResult | Out-String)
+            return
+        }
+        Write-Host "Devcontainer started successfully."
+    } else {
+        Write-Host "Devcontainer already running."
+    }
+
+    $script:useDevcontainer = $true
+    Write-Host "Provider calls will be routed through devcontainer."
+}
+
+Initialize-DevcontainerRouting
 
 # ============================================================================
 # SESSION LOCKING — prevent multiple loops on same session files
@@ -298,11 +350,17 @@ function Invoke-ProviderProcess {
         [string]$StdinContent
     )
 
-    $cmdPath = (Get-Command $Command -ErrorAction Stop).Source
+    if ($script:useDevcontainer) {
+        $cmdPath = (Get-Command 'devcontainer' -ErrorAction Stop).Source
+        $dcArgs = "exec --workspace-folder `"$WorkDir`" -- $Command $Arguments"
+    } else {
+        $cmdPath = (Get-Command $Command -ErrorAction Stop).Source
+        $dcArgs = $Arguments
+    }
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $cmdPath
-    $psi.Arguments = $Arguments
+    $psi.Arguments = $dcArgs
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
@@ -1493,6 +1551,14 @@ Write-LogEntry -Event "session_start" -Data @{
     launch_mode = $LaunchMode
     runtime_commit = $runtimeVersion.commit
     runtime_installed_at = $runtimeVersion.installed_at
+    devcontainer = $script:useDevcontainer
+}
+
+# Log container bypass if devcontainer exists but was skipped
+if ($DangerouslySkipContainer -and (Test-Path $devcontainerJsonPath)) {
+    Write-LogEntry -Event "container_bypass" -Data @{
+        reason = "dangerously_skip_container_flag"
+    }
 }
 
 $iteration = 0

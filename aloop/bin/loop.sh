@@ -37,6 +37,7 @@ MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-50}"
 MAX_STUCK="${ALOOP_MAX_STUCK:-3}"
 BACKUP_ENABLED="${ALOOP_BACKUP:-false}"
 DRY_RUN=false
+DANGEROUSLY_SKIP_CONTAINER=false
 LAUNCH_MODE="start"
 PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-600}"
 PROVIDER_HEALTH_DIR="${ALOOP_HEALTH_DIR:-$HOME/.aloop/health}"
@@ -63,6 +64,7 @@ usage() {
     echo "  --launch-mode <mode>    start|restart|resume (default: start)"
     echo "  --backup                Enable remote git backup"
     echo "  --dry-run               Print commands without executing"
+    echo "  --dangerously-skip-container  Skip devcontainer routing (agents run on host)"
     exit 1
 }
 
@@ -78,6 +80,7 @@ while [[ $# -gt 0 ]]; do
         --max-stuck)    MAX_STUCK="$2"; shift 2 ;;
         --backup)       BACKUP_ENABLED="true"; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
+        --dangerously-skip-container) DANGEROUSLY_SKIP_CONTAINER=true; shift ;;
         --claude-model) CLAUDE_MODEL="$2"; shift 2 ;;
         --codex-model)  CODEX_MODEL="$2"; shift 2 ;;
         --gemini-model) GEMINI_MODEL="$2"; shift 2 ;;
@@ -110,6 +113,51 @@ case "$LAUNCH_MODE" in
 esac
 
 mkdir -p "$SESSION_DIR"
+
+# ============================================================================
+# DEVCONTAINER AUTO-ROUTING — detect and route provider calls through container
+# ============================================================================
+
+DEVCONTAINER_ACTIVE=false
+DC_EXEC=()
+DEVCONTAINER_JSON_PATH="$WORK_DIR/.devcontainer/devcontainer.json"
+
+initialize_devcontainer_routing() {
+    if [ ! -f "$DEVCONTAINER_JSON_PATH" ]; then
+        echo "No devcontainer found. Run /aloop:devcontainer to set up isolated agent execution."
+        return
+    fi
+
+    if [ "$DANGEROUSLY_SKIP_CONTAINER" = "true" ]; then
+        echo "WARNING: DANGER: Running agents directly on host without container isolation. Agents have full access to your filesystem, network, and credentials." >&2
+        return
+    fi
+
+    # Check if devcontainer CLI is available
+    if ! command -v devcontainer >/dev/null 2>&1; then
+        echo "WARNING: devcontainer CLI not found on PATH. Running agents directly on host. Install with: npm install -g @devcontainers/cli" >&2
+        return
+    fi
+
+    # Check if container is already running
+    echo "Checking devcontainer status..."
+    if devcontainer exec --workspace-folder "$WORK_DIR" -- echo ok >/dev/null 2>&1; then
+        echo "Devcontainer already running."
+    else
+        echo "Starting devcontainer..."
+        if ! devcontainer up --workspace-folder "$WORK_DIR" >/dev/null 2>&1; then
+            echo "WARNING: devcontainer up failed. Running agents directly on host." >&2
+            return
+        fi
+        echo "Devcontainer started successfully."
+    fi
+
+    DEVCONTAINER_ACTIVE=true
+    DC_EXEC=(devcontainer exec --workspace-folder "$WORK_DIR" --)
+    echo "Provider calls will be routed through devcontainer."
+}
+
+initialize_devcontainer_routing
 
 # ============================================================================
 # SESSION LOCKING — prevent multiple loops on same session files
@@ -827,7 +875,7 @@ invoke_provider() {
     case "$provider_name" in
         claude)
             {
-                echo "$prompt_content" | env -u CLAUDECODE claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
                 exit ${PIPESTATUS[1]}
             } &
             ACTIVE_PROVIDER_PID=$!
@@ -847,7 +895,7 @@ invoke_provider() {
             ;;
         codex)
             {
-                echo "$prompt_content" | env -u CLAUDECODE codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
                 exit ${PIPESTATUS[1]}
             } &
             ACTIVE_PROVIDER_PID=$!
@@ -867,7 +915,7 @@ invoke_provider() {
             ;;
         gemini)
             {
-                env -u CLAUDECODE gemini -m "$GEMINI_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                env -u CLAUDECODE "${DC_EXEC[@]}" gemini -m "$GEMINI_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
                 exit ${PIPESTATUS[0]}
             } &
             ACTIVE_PROVIDER_PID=$!
@@ -880,7 +928,7 @@ invoke_provider() {
             elif [ "$exit_code" -ne 0 ]; then
                 echo "Gemini -m $GEMINI_MODEL failed. Retrying without explicit model." >&2
                 {
-                    env -u CLAUDECODE gemini --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                    env -u CLAUDECODE "${DC_EXEC[@]}" gemini --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
                     exit ${PIPESTATUS[0]}
                 } &
                 ACTIVE_PROVIDER_PID=$!
@@ -903,7 +951,7 @@ invoke_provider() {
         copilot)
             copilot_output_file=$(mktemp)
             {
-                env -u CLAUDECODE copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+                env -u CLAUDECODE "${DC_EXEC[@]}" copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
                 exit ${PIPESTATUS[0]}
             } &
             ACTIVE_PROVIDER_PID=$!
@@ -916,7 +964,7 @@ invoke_provider() {
             elif [ "$exit_code" -ne 0 ]; then
                 echo "Copilot --model $COPILOT_MODEL failed. Retrying with $COPILOT_RETRY_MODEL." >&2
                 {
-                    env -u CLAUDECODE copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+                    env -u CLAUDECODE "${DC_EXEC[@]}" copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
                     exit ${PIPESTATUS[0]}
                 } &
                 ACTIVE_PROVIDER_PID=$!
@@ -928,7 +976,7 @@ invoke_provider() {
                 elif [ "$exit_code" -ne 0 ]; then
                     echo "Copilot retry failed. Trying without explicit model." >&2
                     {
-                        env -u CLAUDECODE copilot --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+                        env -u CLAUDECODE "${DC_EXEC[@]}" copilot --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
                         exit ${PIPESTATUS[0]}
                     } &
                     ACTIVE_PROVIDER_PID=$!
@@ -1360,7 +1408,12 @@ setup_remote_backup || true
 start_dashboard
 
 # Initialize session
-write_log_entry "session_start" "mode" "$MODE" "provider" "$PROVIDER" "work_dir" "$WORK_DIR" "launch_mode" "$LAUNCH_MODE" "runtime_commit" "$RUNTIME_COMMIT" "runtime_installed_at" "$RUNTIME_INSTALLED_AT"
+write_log_entry "session_start" "mode" "$MODE" "provider" "$PROVIDER" "work_dir" "$WORK_DIR" "launch_mode" "$LAUNCH_MODE" "runtime_commit" "$RUNTIME_COMMIT" "runtime_installed_at" "$RUNTIME_INSTALLED_AT" "devcontainer" "$DEVCONTAINER_ACTIVE"
+
+# Log container bypass if devcontainer exists but was skipped
+if [ "$DANGEROUSLY_SKIP_CONTAINER" = "true" ] && [ -f "$DEVCONTAINER_JSON_PATH" ]; then
+    write_log_entry "container_bypass" "reason" "dangerously_skip_container_flag"
+fi
 
 # ============================================================================
 # LAUNCH MODE — start / restart / resume

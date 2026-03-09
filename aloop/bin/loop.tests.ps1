@@ -1887,3 +1887,293 @@ exit 0
         Test-Path $e.LockFile | Should -Be $false
     }
 }
+
+# ============================================================================
+# DEVCONTAINER ROUTING — loop.ps1
+# ============================================================================
+Describe 'loop.ps1 — devcontainer auto-routing' {
+
+    BeforeAll {
+        $pwshPath = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
+        if (-not $pwshPath) { $pwshPath = (Get-Command powershell -ErrorAction SilentlyContinue).Source }
+        $script:dcPwsh = $pwshPath
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+        $script:dcLoopScript = $loopScript
+
+        $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("aloop-dc-ps1-tests-" + [guid]::NewGuid().ToString('N'))
+        $script:dcTempRoot = $tempRoot
+        $fakeBinDir = Join-Path $tempRoot 'fake-bin'
+        New-Item -ItemType Directory -Force $fakeBinDir | Out-Null
+        $script:dcFakeBinDir = $fakeBinDir
+
+        # Fake claude provider
+        $fakePs1 = Join-Path $fakeBinDir '_fake_claude.ps1'
+        @'
+$promptText = ($input | Out-String)
+$todoFile = Join-Path $PWD 'TODO.md'
+$content  = if (Test-Path $todoFile) { Get-Content $todoFile -Raw } else { '' }
+if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
+    ($content -replace '- \[ \]', '- [x]') | Set-Content $todoFile
+} elseif ($promptText -match 'Review Mode') {
+    $verdictFile = if ($promptText -match 'write a JSON verdict file at:(?:\r?\n)(.*?)(?:\r?\n)Schema:') { $matches[1].Trim() } else { '' }
+    $iterNum = if ($promptText -match '"iteration":\s*(\d+)') { $matches[1] } else { 0 }
+    if ($verdictFile) {
+        "{`n  `"iteration`": $iterNum,`n  `"verdict`": `"PASS`",`n  `"summary`": `"approved`"`n}" | Set-Content $verdictFile
+    }
+} elseif ($promptText -match 'Proof Mode') {
+    if ($promptText -match 'iter-(\d+)') {
+        $iterNum = $matches[1]
+        $artifactDir = Join-Path $PWD "..\session\artifacts\iter-$iterNum"
+        if (-not (Test-Path $artifactDir)) { New-Item -ItemType Directory -Force $artifactDir | Out-Null }
+        "[]" | Set-Content (Join-Path $artifactDir 'proof-manifest.json')
+    }
+}
+Write-Output "Fake provider: done"
+exit 0
+'@ | Set-Content $fakePs1
+        Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+
+        # Fake aloop.cmd shim (no-op)
+        Set-Content (Join-Path $fakeBinDir '_fake_aloop.ps1') 'Write-Output "{}"; exit 0'
+        Set-Content (Join-Path $fakeBinDir 'aloop.cmd') "@echo off`r`npwsh -NoProfile -File `"$(Join-Path $fakeBinDir '_fake_aloop.ps1')`" %*`r`n"
+
+        function script:New-DcTestEnv {
+            $testDir   = Join-Path $tempRoot ("env-" + [guid]::NewGuid().ToString('N'))
+            $workDir   = Join-Path $testDir 'work'
+            $sessDir   = Join-Path $testDir 'session'
+            $promptDir = Join-Path $testDir 'prompts'
+            foreach ($d in $workDir, $sessDir, $promptDir) {
+                New-Item -ItemType Directory -Force $d | Out-Null
+            }
+            Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
+            Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof iter-<N>."
+            Set-Content (Join-Path $promptDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
+            return [pscustomobject]@{
+                WorkDir    = $workDir
+                SessionDir = $sessDir
+                PromptsDir = $promptDir
+            }
+        }
+
+        function script:Invoke-DcLoopScript {
+            param($Env, [int]$MaxIter = 6, [switch]$DangerouslySkipContainer)
+            $prevPath    = $env:PATH
+            $prevNoDash  = $env:ALOOP_NO_DASHBOARD
+            $env:PATH              = "$($script:dcFakeBinDir);$prevPath"
+            $env:ALOOP_NO_DASHBOARD = '1'
+            try {
+                $args = @(
+                    '-NoProfile', '-File', $script:dcLoopScript,
+                    '-PromptsDir',    $Env.PromptsDir,
+                    '-SessionDir',    $Env.SessionDir,
+                    '-WorkDir',       $Env.WorkDir,
+                    '-Mode',          'plan-build-review',
+                    '-Provider',      'claude',
+                    '-MaxIterations', $MaxIter
+                )
+                if ($DangerouslySkipContainer) { $args += '-DangerouslySkipContainer' }
+                $output = & $script:dcPwsh @args 2>&1
+                return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
+            } finally {
+                $env:PATH = $prevPath
+                if ($null -eq $prevNoDash) {
+                    Remove-Item Env:ALOOP_NO_DASHBOARD -ErrorAction SilentlyContinue
+                } else {
+                    $env:ALOOP_NO_DASHBOARD = $prevNoDash
+                }
+            }
+        }
+    }
+
+    AfterAll {
+        if ($script:dcTempRoot -and (Test-Path $script:dcTempRoot)) {
+            Remove-Item -Recurse -Force $script:dcTempRoot
+        }
+    }
+
+    It 'prints suggestion when no devcontainer.json exists' {
+        $e = New-DcTestEnv
+        $result = Invoke-DcLoopScript -Env $e -MaxIter 6
+        $result.ExitCode | Should -Be 0
+        $result.Output | Should -Match 'No devcontainer found'
+        $result.Output | Should -Match 'aloop:devcontainer'
+    }
+
+    It 'prints DANGER warning and logs container_bypass with --DangerouslySkipContainer when devcontainer.json exists' {
+        $e = New-DcTestEnv
+        # Create a devcontainer.json
+        $dcDir = Join-Path $e.WorkDir '.devcontainer'
+        New-Item -ItemType Directory -Force $dcDir | Out-Null
+        Set-Content (Join-Path $dcDir 'devcontainer.json') '{"name":"test"}'
+
+        $result = Invoke-DcLoopScript -Env $e -MaxIter 6 -DangerouslySkipContainer
+        $result.ExitCode | Should -Be 0
+        $result.Output | Should -Match 'DANGER.*Running agents directly on host'
+
+        # Verify container_bypass log event
+        $logFile = Join-Path $e.SessionDir 'log.jsonl'
+        $logFile | Should -Exist
+        $entries = Get-Content $logFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $bypassEntry = $entries | Where-Object { $_.event -eq 'container_bypass' } | Select-Object -First 1
+        $bypassEntry | Should -Not -BeNullOrEmpty
+        $bypassEntry.reason | Should -Be 'dangerously_skip_container_flag'
+    }
+
+    It 'session_start log includes devcontainer field set to false when no devcontainer' {
+        $e = New-DcTestEnv
+        $result = Invoke-DcLoopScript -Env $e -MaxIter 6
+        $result.ExitCode | Should -Be 0
+
+        $logFile = Join-Path $e.SessionDir 'log.jsonl'
+        $logFile | Should -Exist
+        $entries = Get-Content $logFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $startEntry = $entries | Where-Object { $_.event -eq 'session_start' } | Select-Object -First 1
+        $startEntry | Should -Not -BeNullOrEmpty
+        # devcontainer should be False when no devcontainer.json exists
+        $startEntry.devcontainer | Should -Be $false
+    }
+}
+
+# ============================================================================
+# DEVCONTAINER ROUTING — loop.sh
+# ============================================================================
+Describe 'loop.sh — devcontainer auto-routing' {
+
+    BeforeAll {
+        $script:bashExe = Get-Command bash -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+        if (-not $script:bashExe) { return }
+
+        $loopShPath = Join-Path $PSScriptRoot 'loop.sh'
+        $script:dcLoopShBash = & $script:bashExe -c "cygpath -u '$(($loopShPath -replace "\\","/"))'" 2>$null
+        if (-not $script:dcLoopShBash) {
+            $script:dcLoopShBash = ($loopShPath -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+        }
+
+        $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("aloop-sh-dc-tests-" + [guid]::NewGuid().ToString('N'))
+        $script:dcShTempRoot = $tempRoot
+        $fakeBinDir = Join-Path $tempRoot 'fake-bin'
+        New-Item -ItemType Directory -Force $fakeBinDir | Out-Null
+        $script:dcShFakeBinDir = $fakeBinDir
+
+        $fakeBinBash = & $script:bashExe -c "cygpath -u '$($fakeBinDir -replace '\\','/')'" 2>$null
+        if (-not $fakeBinBash) {
+            $fakeBinBash = ($fakeBinDir -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+        }
+        $fakeBinBash = $fakeBinBash.Trim()
+        $script:dcShFakeBinBash = $fakeBinBash
+
+        # Fake claude shell script
+        $fakeShContent = @'
+#!/bin/bash
+PROMPT_TEXT="$(cat)"
+TODO_FILE="${PWD}/TODO.md"
+if echo "$PROMPT_TEXT" | grep -q "Building Mode" && grep -q -- '- \[ \]' "$TODO_FILE" 2>/dev/null; then
+    sed -i 's/- \[ \]/- [x]/g' "$TODO_FILE"
+elif echo "$PROMPT_TEXT" | grep -q "Review Mode"; then
+    VERDICT_FILE=$(echo "$PROMPT_TEXT" | grep -A 1 "write a JSON verdict file at:" | tail -n 1 | tr -d '\r')
+    ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE '"iteration": [0-9]+' | grep -oE '[0-9]+' | head -n 1)
+    if [ -n "$VERDICT_FILE" ]; then
+        printf '{\n  "iteration": %s,\n  "verdict": "PASS",\n  "summary": "approved"\n}\n' "$ITER_NUM" > "$VERDICT_FILE"
+    fi
+elif echo "$PROMPT_TEXT" | grep -q "Proof Mode"; then
+    ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE 'iter-[0-9]+' | grep -oE '[0-9]+' | head -n 1)
+    if [ -n "$ITER_NUM" ]; then
+        mkdir -p "../session/artifacts/iter-$ITER_NUM"
+        echo '[]' > "../session/artifacts/iter-$ITER_NUM/proof-manifest.json"
+    fi
+fi
+echo "Fake provider: done"
+exit 0
+'@
+        & $script:bashExe -c "printf '%s' $(([char]39) + ($fakeShContent -replace "'", "'\''") + [char]39) > '$fakeBinBash/claude' && chmod +x '$fakeBinBash/claude'"
+
+        function script:New-ShDcTestEnv {
+            $testDir   = Join-Path $tempRoot ("env-" + [guid]::NewGuid().ToString('N'))
+            $workDir   = Join-Path $testDir 'work'
+            $sessDir   = Join-Path $testDir 'session'
+            $promptDir = Join-Path $testDir 'prompts'
+            foreach ($d in $workDir, $sessDir, $promptDir) {
+                New-Item -ItemType Directory -Force $d | Out-Null
+            }
+            $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof iter-<N>.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
+
+            $workBash    = (& $script:bashExe -c "cygpath -u '$($workDir -replace '\\','/')'" 2>$null).Trim()
+            $sessBash    = (& $script:bashExe -c "cygpath -u '$($sessDir -replace '\\','/')'" 2>$null).Trim()
+            $promptsBash = (& $script:bashExe -c "cygpath -u '$($promptDir -replace '\\','/')'" 2>$null).Trim()
+            return [pscustomobject]@{
+                WorkDir     = $workDir
+                SessionDir  = $sessDir
+                PromptsDir  = $promptDir
+                WorkBash    = $workBash
+                SessionBash = $sessBash
+                PromptsBash = $promptsBash
+            }
+        }
+
+        function script:Invoke-ShDcLoopScript {
+            param($Env, [int]$MaxIter = 6, [switch]$DangerouslySkipContainer)
+            $extraArgs = ""
+            if ($DangerouslySkipContainer) { $extraArgs = "--dangerously-skip-container" }
+            $output = & $script:bashExe -c "export PATH='$($script:dcShFakeBinBash)':$([char]36)PATH; export ALOOP_NO_DASHBOARD=1; bash '$($script:dcLoopShBash)' --prompts-dir '$($Env.PromptsBash)' --session-dir '$($Env.SessionBash)' --work-dir '$($Env.WorkBash)' --max-iterations $MaxIter $extraArgs 2>&1"
+            return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
+        }
+    }
+
+    AfterAll {
+        if ($script:dcShTempRoot -and (Test-Path $script:dcShTempRoot)) {
+            Remove-Item -Recurse -Force $script:dcShTempRoot
+        }
+    }
+
+    It 'prints suggestion when no devcontainer.json exists' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available'; return }
+        $e = New-ShDcTestEnv
+        $result = Invoke-ShDcLoopScript -Env $e -MaxIter 6
+        $result.ExitCode | Should -Be 0
+        $result.Output | Should -Match 'No devcontainer found'
+        $result.Output | Should -Match 'aloop:devcontainer'
+    }
+
+    It 'prints DANGER warning and logs container_bypass with --dangerously-skip-container when devcontainer.json exists' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available'; return }
+        $e = New-ShDcTestEnv
+        # Create a devcontainer.json
+        $dcDir = Join-Path $e.WorkDir '.devcontainer'
+        New-Item -ItemType Directory -Force $dcDir | Out-Null
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText((Join-Path $dcDir 'devcontainer.json'), '{"name":"test"}', $utf8NoBom)
+
+        $result = Invoke-ShDcLoopScript -Env $e -MaxIter 6 -DangerouslySkipContainer
+        $result.ExitCode | Should -Be 0
+        $result.Output | Should -Match 'DANGER.*Running agents directly on host'
+
+        # Verify container_bypass log event
+        $logFile = Join-Path $e.SessionDir 'log.jsonl'
+        $logFile | Should -Exist
+        $rawLines = Get-Content $logFile
+        $bypassLine = $rawLines | Where-Object { $_ -match '"container_bypass"' } | Select-Object -First 1
+        $bypassLine | Should -Not -BeNullOrEmpty
+        $bypassLine | Should -Match '"reason".*"dangerously_skip_container_flag"'
+    }
+
+    It 'session_start log includes devcontainer field set to false when no devcontainer' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available'; return }
+        $e = New-ShDcTestEnv
+        $result = Invoke-ShDcLoopScript -Env $e -MaxIter 6
+        $result.ExitCode | Should -Be 0
+
+        $logFile = Join-Path $e.SessionDir 'log.jsonl'
+        $logFile | Should -Exist
+        $rawLines = Get-Content $logFile
+        $startLine = $rawLines | Where-Object { $_ -match '"session_start"' } | Select-Object -First 1
+        $startLine | Should -Not -BeNullOrEmpty
+        $startLine | Should -Match '"devcontainer".*"false"'
+    }
+}
