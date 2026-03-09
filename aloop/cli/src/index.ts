@@ -10,6 +10,7 @@ import { stopCommand } from './commands/stop.js';
 import { ghCommand } from './commands/gh.js';
 import { startCommand } from './commands/start.js';
 import { setupCommand } from './commands/setup.js';
+import { updateCommand } from './commands/update.js';
 
 const program = new Command();
 
@@ -104,6 +105,14 @@ program
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(stopCommand);
+
+program
+  .command('update')
+  .description('Refresh ~/.aloop runtime assets from the current repo checkout')
+  .option('--repo-root <path>', 'Path to aloop source repository root')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(updateCommand);
 
 program.addCommand(ghCommand);
 

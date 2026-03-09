@@ -547,7 +547,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
         if (currentCommit && currentCommit !== versionData.commit) {
           warnings.push(
             `Installed runtime (commit ${versionData.commit}, installed ${versionData.installed_at ?? 'unknown'}) ` +
-            `may be stale — current repo HEAD is ${currentCommit}. Run install.ps1 to update.`,
+            `may be stale — current repo HEAD is ${currentCommit}. Run \`aloop update\` to refresh.`,
           );
         }
       }
