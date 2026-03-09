@@ -10,8 +10,11 @@ import {
   detectPythonInstallCommand,
   buildProviderInstallCommands,
   buildProviderRemoteEnv,
+  verifyDevcontainer,
+  verifyDevcontainerCommand,
   type DevcontainerDeps,
   type DevcontainerConfig,
+  type VerifyDeps,
 } from './devcontainer.js';
 import type { DiscoveryResult } from './project.js';
 
@@ -664,4 +667,263 @@ test('generateDevcontainerConfig - augment merges generated remoteEnv without ov
   assert.equal(env.CLAUDE_CODE_OAUTH_TOKEN, 'my-custom-token');
   // Generated values fill gaps
   assert.equal(env.ANTHROPIC_API_KEY, '${localEnv:ANTHROPIC_API_KEY}');
+});
+
+// --- verifyDevcontainer ---
+
+function mockVerifyDeps(overrides: Partial<VerifyDeps> & {
+  execResults?: Record<string, { stdout: string; stderr: string; exitCode: number }>;
+  existingFiles?: Set<string>;
+  fileContents?: Record<string, string>;
+} = {}): VerifyDeps {
+  const execResults = overrides.execResults ?? {};
+  const existingFiles = overrides.existingFiles ?? new Set(['.devcontainer/devcontainer.json']);
+  const fileContents = overrides.fileContents ?? {};
+
+  return {
+    exec: overrides.exec ?? (async (command: string, args: string[]) => {
+      // Build a key from the args to match against
+      const key = args.join(' ');
+      for (const [pattern, result] of Object.entries(execResults)) {
+        if (key.includes(pattern)) return result;
+      }
+      // Default: success
+      return { stdout: '', stderr: '', exitCode: 0 };
+    }),
+    existsSync: overrides.existsSync ?? ((filePath: string) => {
+      for (const f of existingFiles) {
+        if (filePath.includes(f.replace(/\//g, '\\')) || filePath.includes(f)) return true;
+      }
+      return false;
+    }),
+    readFile: overrides.readFile ?? (async (filePath: string) => {
+      for (const [f, content] of Object.entries(fileContents)) {
+        if (filePath.includes(f.replace(/\//g, '\\')) || filePath.includes(f)) return content;
+      }
+      return JSON.stringify({ image: 'mcr.microsoft.com/devcontainers/typescript-node:22' });
+    }),
+  };
+}
+
+test('verifyDevcontainer - returns failure when config does not exist', async () => {
+  const deps = mockVerifyDeps({ existingFiles: new Set() });
+  const result = await verifyDevcontainer('/mock/project', ['claude'], deps);
+
+  assert.equal(result.passed, false);
+  assert.equal(result.iteration, 0);
+  assert.equal(result.checks.length, 1);
+  assert.equal(result.checks[0].name, 'config-exists');
+  assert.equal(result.checks[0].passed, false);
+});
+
+test('verifyDevcontainer - all checks pass for node-typescript project', async () => {
+  const deps = mockVerifyDeps();
+  const result = await verifyDevcontainer('/mock/project', ['claude'], deps);
+
+  assert.equal(result.passed, true);
+  assert.equal(result.iteration, 1);
+  // build, up, git, aloop-mount, provider-claude, deps-installed
+  assert.equal(result.checks.length, 6);
+  assert.ok(result.checks.every((c) => c.passed));
+
+  const names = result.checks.map((c) => c.name);
+  assert.ok(names.includes('build'));
+  assert.ok(names.includes('up'));
+  assert.ok(names.includes('git'));
+  assert.ok(names.includes('aloop-mount'));
+  assert.ok(names.includes('provider-claude'));
+  assert.ok(names.includes('deps-installed'));
+});
+
+test('verifyDevcontainer - build failure stops early', async () => {
+  const deps = mockVerifyDeps({
+    execResults: {
+      'build --workspace-folder': { stdout: '', stderr: 'Dockerfile error', exitCode: 1 },
+    },
+  });
+  const result = await verifyDevcontainer('/mock/project', ['claude'], deps);
+
+  assert.equal(result.passed, false);
+  assert.equal(result.checks.length, 1);
+  assert.equal(result.checks[0].name, 'build');
+  assert.equal(result.checks[0].passed, false);
+  assert.ok(result.checks[0].message.includes('Dockerfile error'));
+});
+
+test('verifyDevcontainer - up failure stops after build', async () => {
+  const deps = mockVerifyDeps({
+    execResults: {
+      'up --workspace-folder': { stdout: '', stderr: 'port conflict', exitCode: 1 },
+    },
+  });
+  const result = await verifyDevcontainer('/mock/project', ['claude'], deps);
+
+  assert.equal(result.passed, false);
+  assert.equal(result.checks.length, 2);
+  assert.equal(result.checks[0].name, 'build');
+  assert.equal(result.checks[0].passed, true);
+  assert.equal(result.checks[1].name, 'up');
+  assert.equal(result.checks[1].passed, false);
+});
+
+test('verifyDevcontainer - provider check failure reported', async () => {
+  const deps = mockVerifyDeps({
+    execResults: {
+      'which claude': { stdout: '', stderr: 'not found', exitCode: 1 },
+    },
+  });
+  const result = await verifyDevcontainer('/mock/project', ['claude'], deps);
+
+  assert.equal(result.passed, false);
+  const providerCheck = result.checks.find((c) => c.name === 'provider-claude');
+  assert.ok(providerCheck);
+  assert.equal(providerCheck.passed, false);
+});
+
+test('verifyDevcontainer - multiple providers checked', async () => {
+  const deps = mockVerifyDeps();
+  const result = await verifyDevcontainer('/mock/project', ['claude', 'codex', 'gemini'], deps);
+
+  assert.equal(result.passed, true);
+  const providerChecks = result.checks.filter((c) => c.name.startsWith('provider-'));
+  assert.equal(providerChecks.length, 3);
+});
+
+test('verifyDevcontainer - copilot provider skipped (no CLI binary)', async () => {
+  const deps = mockVerifyDeps();
+  const result = await verifyDevcontainer('/mock/project', ['copilot'], deps);
+
+  assert.equal(result.passed, true);
+  const providerChecks = result.checks.filter((c) => c.name.startsWith('provider-'));
+  assert.equal(providerChecks.length, 0);
+});
+
+test('verifyDevcontainer - python image checks python', async () => {
+  const deps = mockVerifyDeps({
+    fileContents: {
+      'devcontainer.json': JSON.stringify({ image: 'mcr.microsoft.com/devcontainers/python:3' }),
+    },
+  });
+  const result = await verifyDevcontainer('/mock/project', [], deps);
+
+  assert.equal(result.passed, true);
+  const depsCheck = result.checks.find((c) => c.name === 'deps-installed');
+  assert.ok(depsCheck);
+  assert.equal(depsCheck.passed, true);
+});
+
+test('verifyDevcontainer - go image checks go version', async () => {
+  const deps = mockVerifyDeps({
+    fileContents: {
+      'devcontainer.json': JSON.stringify({ image: 'mcr.microsoft.com/devcontainers/go:1' }),
+    },
+  });
+  const result = await verifyDevcontainer('/mock/project', [], deps);
+
+  const depsCheck = result.checks.find((c) => c.name === 'deps-installed');
+  assert.ok(depsCheck);
+  assert.equal(depsCheck.passed, true);
+});
+
+test('verifyDevcontainer - rust image checks cargo', async () => {
+  const deps = mockVerifyDeps({
+    fileContents: {
+      'devcontainer.json': JSON.stringify({ image: 'mcr.microsoft.com/devcontainers/rust:1' }),
+    },
+  });
+  const result = await verifyDevcontainer('/mock/project', [], deps);
+
+  const depsCheck = result.checks.find((c) => c.name === 'deps-installed');
+  assert.ok(depsCheck);
+});
+
+test('verifyDevcontainer - dotnet image checks dotnet', async () => {
+  const deps = mockVerifyDeps({
+    fileContents: {
+      'devcontainer.json': JSON.stringify({ image: 'mcr.microsoft.com/devcontainers/dotnet:8.0' }),
+    },
+  });
+  const result = await verifyDevcontainer('/mock/project', [], deps);
+
+  const depsCheck = result.checks.find((c) => c.name === 'deps-installed');
+  assert.ok(depsCheck);
+});
+
+test('verifyDevcontainer - git check failure reported', async () => {
+  const deps = mockVerifyDeps({
+    execResults: {
+      'git status': { stdout: '', stderr: 'fatal: not a git repository', exitCode: 128 },
+    },
+  });
+  const result = await verifyDevcontainer('/mock/project', [], deps);
+
+  assert.equal(result.passed, false);
+  const gitCheck = result.checks.find((c) => c.name === 'git');
+  assert.ok(gitCheck);
+  assert.equal(gitCheck.passed, false);
+  assert.ok(gitCheck.message.includes('fatal'));
+});
+
+test('verifyDevcontainer - mount check failure reported', async () => {
+  const deps = mockVerifyDeps({
+    execResults: {
+      'test -d .aloop': { stdout: '', stderr: '', exitCode: 1 },
+    },
+  });
+  const result = await verifyDevcontainer('/mock/project', [], deps);
+
+  assert.equal(result.passed, false);
+  const mountCheck = result.checks.find((c) => c.name === 'aloop-mount');
+  assert.ok(mountCheck);
+  assert.equal(mountCheck.passed, false);
+});
+
+// --- verifyDevcontainerCommand output ---
+
+test('verifyDevcontainerCommand - json output mode', async () => {
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => logs.push(args.join(' '));
+  try {
+    const mockDevDeps: DevcontainerDeps = {
+      discover: async () => mockDiscovery(),
+      readFile: async () => '',
+      writeFile: async () => {},
+      mkdir: async () => undefined,
+      existsSync: () => true,
+    };
+    const vDeps = mockVerifyDeps();
+    await verifyDevcontainerCommand({ output: 'json' }, mockDevDeps, vDeps);
+    const output = JSON.parse(logs.join(''));
+    assert.equal(output.passed, true);
+    assert.ok(Array.isArray(output.checks));
+  } finally {
+    console.log = origLog;
+  }
+});
+
+test('verifyDevcontainerCommand - text output shows pass/fail', async () => {
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => logs.push(args.join(' '));
+  try {
+    const mockDevDeps: DevcontainerDeps = {
+      discover: async () => mockDiscovery(),
+      readFile: async () => '',
+      writeFile: async () => {},
+      mkdir: async () => undefined,
+      existsSync: () => true,
+    };
+    const vDeps = mockVerifyDeps({
+      execResults: {
+        'build --workspace-folder': { stdout: '', stderr: 'build error', exitCode: 1 },
+      },
+    });
+    await verifyDevcontainerCommand({ output: 'text' }, mockDevDeps, vDeps);
+    const allOutput = logs.join('\n');
+    assert.ok(allOutput.includes('[FAIL]'));
+    assert.ok(allOutput.includes('Some checks failed'));
+  } finally {
+    console.log = origLog;
+  }
 });

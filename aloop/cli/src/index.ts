@@ -11,7 +11,7 @@ import { ghCommand } from './commands/gh.js';
 import { startCommand } from './commands/start.js';
 import { setupCommand } from './commands/setup.js';
 import { updateCommand } from './commands/update.js';
-import { devcontainerCommand } from './commands/devcontainer.js';
+import { devcontainerCommand, verifyDevcontainerCommand } from './commands/devcontainer.js';
 
 const program = new Command();
 
@@ -123,6 +123,14 @@ program
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(devcontainerCommand);
+
+program
+  .command('devcontainer-verify')
+  .description('Verify devcontainer builds, starts, and passes all checks')
+  .option('--project-root <path>', 'Project root override')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(verifyDevcontainerCommand);
 
 program.addCommand(ghCommand);
 

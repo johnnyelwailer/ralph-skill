@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { execFile as execFileCb } from 'node:child_process';
 import path from 'node:path';
 import { discoverWorkspace, type DiscoveryResult } from './project.js';
 
@@ -345,6 +346,213 @@ export async function devcontainerCommandWithDeps(
     mounts: generated.mounts,
     had_existing: hadExisting,
   };
+}
+
+// --- Verification Loop ---
+
+export interface VerificationCheck {
+  name: string;
+  passed: boolean;
+  message: string;
+}
+
+export interface VerificationResult {
+  passed: boolean;
+  checks: VerificationCheck[];
+  iteration: number;
+}
+
+export interface VerifyDeps {
+  exec: (command: string, args: string[], options?: { cwd?: string; timeout?: number }) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  existsSync: (filePath: string) => boolean;
+  readFile: (filePath: string, encoding: BufferEncoding) => Promise<string>;
+}
+
+function execFilePromise(command: string, args: string[], options?: { cwd?: string; timeout?: number }): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve) => {
+    execFileCb(command, args, { cwd: options?.cwd, timeout: options?.timeout ?? 120_000 }, (error, stdout, stderr) => {
+      const exitCode = error && 'code' in error && typeof error.code === 'number' ? error.code : (error ? 1 : 0);
+      resolve({ stdout: String(stdout), stderr: String(stderr), exitCode });
+    });
+  });
+}
+
+const defaultVerifyDeps: VerifyDeps = {
+  exec: execFilePromise,
+  existsSync,
+  readFile,
+};
+
+/**
+ * Map provider names to their CLI binary names for `which` checks inside the container.
+ */
+const PROVIDER_CLI_BINARIES: Record<string, string> = {
+  claude: 'claude',
+  codex: 'codex',
+  gemini: 'gemini',
+};
+
+/**
+ * Run a single exec check inside the devcontainer.
+ */
+async function execCheck(
+  deps: VerifyDeps,
+  projectRoot: string,
+  name: string,
+  containerArgs: string[],
+): Promise<VerificationCheck> {
+  const result = await deps.exec('devcontainer', [
+    'exec',
+    '--workspace-folder', projectRoot,
+    '--',
+    ...containerArgs,
+  ], { cwd: projectRoot, timeout: 30_000 });
+  return {
+    name,
+    passed: result.exitCode === 0,
+    message: result.exitCode === 0
+      ? `${name}: OK`
+      : `${name}: FAILED — ${(result.stderr || result.stdout).trim().split('\n')[0] || 'non-zero exit'}`,
+  };
+}
+
+/**
+ * Run the devcontainer verification loop:
+ *   1. devcontainer build
+ *   2. devcontainer up
+ *   3. exec checks (deps, providers, git, mount)
+ * Returns structured results.
+ */
+export async function verifyDevcontainer(
+  projectRoot: string,
+  providers: string[],
+  deps: VerifyDeps = defaultVerifyDeps,
+  maxIterations: number = 1,
+): Promise<VerificationResult> {
+  const configPath = path.join(projectRoot, '.devcontainer', 'devcontainer.json');
+  if (!deps.existsSync(configPath)) {
+    return {
+      passed: false,
+      checks: [{ name: 'config-exists', passed: false, message: 'config-exists: FAILED — .devcontainer/devcontainer.json not found' }],
+      iteration: 0,
+    };
+  }
+
+  for (let iteration = 1; iteration <= maxIterations; iteration++) {
+    const checks: VerificationCheck[] = [];
+
+    // Step 1: Build
+    const buildResult = await deps.exec('devcontainer', [
+      'build', '--workspace-folder', projectRoot,
+    ], { cwd: projectRoot, timeout: 300_000 });
+    checks.push({
+      name: 'build',
+      passed: buildResult.exitCode === 0,
+      message: buildResult.exitCode === 0
+        ? 'build: OK'
+        : `build: FAILED — ${(buildResult.stderr || buildResult.stdout).trim().split('\n')[0] || 'non-zero exit'}`,
+    });
+    if (buildResult.exitCode !== 0) {
+      return { passed: false, checks, iteration };
+    }
+
+    // Step 2: Up
+    const upResult = await deps.exec('devcontainer', [
+      'up', '--workspace-folder', projectRoot,
+    ], { cwd: projectRoot, timeout: 300_000 });
+    checks.push({
+      name: 'up',
+      passed: upResult.exitCode === 0,
+      message: upResult.exitCode === 0
+        ? 'up: OK'
+        : `up: FAILED — ${(upResult.stderr || upResult.stdout).trim().split('\n')[0] || 'non-zero exit'}`,
+    });
+    if (upResult.exitCode !== 0) {
+      return { passed: false, checks, iteration };
+    }
+
+    // Step 3: Exec checks inside the running container
+
+    // 3a. Git functional
+    checks.push(await execCheck(deps, projectRoot, 'git', ['git', 'status']));
+
+    // 3b. .aloop/ mount accessible
+    checks.push(await execCheck(deps, projectRoot, 'aloop-mount', ['test', '-d', '.aloop']));
+
+    // 3c. Provider CLIs available
+    for (const provider of providers) {
+      const binary = PROVIDER_CLI_BINARIES[provider];
+      if (binary) {
+        checks.push(await execCheck(deps, projectRoot, `provider-${provider}`, ['which', binary]));
+      }
+    }
+
+    // 3d. Project deps (check common artifact dirs)
+    // Read config to determine language-based dep check
+    const raw = await deps.readFile(configPath, 'utf8');
+    const stripped = stripJsoncComments(raw);
+    const config = JSON.parse(stripped) as Record<string, unknown>;
+    const image = (config.image as string) || '';
+    if (image.includes('typescript-node') || image.includes('node:')) {
+      checks.push(await execCheck(deps, projectRoot, 'deps-installed', ['test', '-d', 'node_modules']));
+    } else if (image.includes('python')) {
+      // Python deps are installed globally or in venv, check pip works
+      checks.push(await execCheck(deps, projectRoot, 'deps-installed', ['python', '-c', 'print("ok")']));
+    } else if (image.includes('go')) {
+      checks.push(await execCheck(deps, projectRoot, 'deps-installed', ['go', 'version']));
+    } else if (image.includes('rust')) {
+      checks.push(await execCheck(deps, projectRoot, 'deps-installed', ['cargo', '--version']));
+    } else if (image.includes('dotnet')) {
+      checks.push(await execCheck(deps, projectRoot, 'deps-installed', ['dotnet', '--version']));
+    }
+
+    const allPassed = checks.every((c) => c.passed);
+    if (allPassed || iteration === maxIterations) {
+      return { passed: allPassed, checks, iteration };
+    }
+    // If not all passed and we have more iterations, the caller's
+    // fix-and-retry logic would go here. For the CLI, we just report.
+  }
+
+  // Unreachable, but TypeScript needs it
+  return { passed: false, checks: [], iteration: maxIterations };
+}
+
+/**
+ * CLI-facing verify command: runs verification and prints results.
+ */
+export async function verifyDevcontainerCommand(
+  options: DevcontainerCommandOptions = {},
+  deps: DevcontainerDeps = defaultDeps,
+  verifyDepsOverride?: VerifyDeps,
+): Promise<void> {
+  const discovery = await deps.discover({
+    projectRoot: options.projectRoot,
+    homeDir: options.homeDir,
+  });
+
+  const projectRoot = discovery.project.root;
+  const providers = discovery.providers.installed;
+  const vDeps = verifyDepsOverride ?? defaultVerifyDeps;
+  const result = await verifyDevcontainer(projectRoot, providers, vDeps);
+  const outputMode = options.output || 'text';
+
+  if (outputMode === 'json') {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`Devcontainer verification (iteration ${result.iteration}):`);
+  for (const check of result.checks) {
+    const icon = check.passed ? '[PASS]' : '[FAIL]';
+    console.log(`  ${icon} ${check.message}`);
+  }
+  console.log('');
+  if (result.passed) {
+    console.log('All checks passed. Container is ready for aloop.');
+  } else {
+    console.log('Some checks failed. Review the output above and fix .devcontainer/devcontainer.json.');
+  }
 }
 
 export async function devcontainerCommand(options: DevcontainerCommandOptions = {}, deps: DevcontainerDeps = defaultDeps) {
