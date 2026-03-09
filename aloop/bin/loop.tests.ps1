@@ -2034,6 +2034,33 @@ exit 0
         # devcontainer should be False when no devcontainer.json exists
         $startEntry.devcontainer | Should -Be $false
     }
+
+    It 'warns about devcontainer CLI not found when devcontainer.json exists but no devcontainer binary on PATH' {
+        $e = New-DcTestEnv
+        # Create devcontainer.json so routing proceeds past the first check
+        $dcDir = Join-Path $e.WorkDir '.devcontainer'
+        New-Item -ItemType Directory -Force $dcDir | Out-Null
+        Set-Content (Join-Path $dcDir 'devcontainer.json') '{"name":"test"}'
+
+        # Use a PATH containing ONLY fakeBinDir (has claude.cmd/aloop.cmd but NOT devcontainer)
+        $prevPath    = $env:PATH
+        $prevNoDash  = $env:ALOOP_NO_DASHBOARD
+        $env:PATH               = $script:dcFakeBinDir
+        $env:ALOOP_NO_DASHBOARD = '1'
+        try {
+            $output = & $script:dcPwsh -NoProfile -File $script:dcLoopScript `
+                -PromptsDir $e.PromptsDir -SessionDir $e.SessionDir -WorkDir $e.WorkDir `
+                -Mode 'plan-build-review' -Provider 'claude' -MaxIterations 6 2>&1
+            $exitCode = $LASTEXITCODE
+        } finally {
+            $env:PATH = $prevPath
+            if ($null -eq $prevNoDash) { Remove-Item Env:ALOOP_NO_DASHBOARD -ErrorAction SilentlyContinue } else { $env:ALOOP_NO_DASHBOARD = $prevNoDash }
+        }
+        $combined = $output -join "`n"
+        $exitCode | Should -Be 0
+        $combined | Should -Match 'devcontainer CLI not found on PATH'
+        $combined | Should -Match 'npm install -g @devcontainers/cli'
+    }
 }
 
 # ============================================================================
@@ -2175,5 +2202,23 @@ exit 0
         $startLine = $rawLines | Where-Object { $_ -match '"session_start"' } | Select-Object -First 1
         $startLine | Should -Not -BeNullOrEmpty
         $startLine | Should -Match '"devcontainer".*"false"'
+    }
+
+    It 'warns about devcontainer CLI not found when devcontainer.json exists but no devcontainer binary on PATH' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available'; return }
+        $e = New-ShDcTestEnv
+        # Create devcontainer.json so routing proceeds past the first check
+        $dcDir = Join-Path $e.WorkDir '.devcontainer'
+        New-Item -ItemType Directory -Force $dcDir | Out-Null
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText((Join-Path $dcDir 'devcontainer.json'), '{"name":"test"}', $utf8NoBom)
+
+        # Use a PATH containing ONLY fakeBinBash + essential system dirs (no devcontainer binary)
+        $output = & $script:bashExe -c "export PATH='$($script:dcShFakeBinBash)':/usr/bin:/bin; export ALOOP_NO_DASHBOARD=1; bash '$($script:dcLoopShBash)' --prompts-dir '$($e.PromptsBash)' --session-dir '$($e.SessionBash)' --work-dir '$($e.WorkBash)' --max-iterations 6 2>&1"
+        $exitCode = $LASTEXITCODE
+        $combined = $output -join "`n"
+        $exitCode | Should -Be 0
+        $combined | Should -Match 'devcontainer CLI not found on PATH'
+        $combined | Should -Match 'npm install -g @devcontainers/cli'
     }
 }

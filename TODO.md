@@ -3,13 +3,13 @@
 ## Current Phase: P1 Reliability Hardening + PS 5.1 Compatibility + Devcontainer Foundations
 
 ### In Progress
-- [ ] [review/P1] Gate 3: `Initialize-DevcontainerRouting` (loop.ps1:98-147) and `initialize_devcontainer_routing` (loop.sh:118-160) — the "devcontainer CLI not found on PATH" branch is untested. Add a test for each runtime that creates `devcontainer.json`, ensures PATH has no `devcontainer` binary, and asserts the warning message about CLI not found. (priority: high)
+- [x] [review/P1] Gate 3: `Initialize-DevcontainerRouting` (loop.ps1:98-147) and `initialize_devcontainer_routing` (loop.sh:118-160) — the "devcontainer CLI not found on PATH" branch is untested. Add a test for each runtime that creates `devcontainer.json`, ensures PATH has no `devcontainer` binary, and asserts the warning message about CLI not found. (priority: high)
 
 ### Up Next
 - [x] [devcontainer/P1] Add provider install hooks (`postCreateCommand`) plus `remoteEnv`/`localEnv` auth forwarding for activated providers only; prefer `CLAUDE_CODE_OAUTH_TOKEN` > `ANTHROPIC_API_KEY` for Claude. (priority: high, container usability/security boundary)
 - [x] [devcontainer/P1] Implement verification loop (`devcontainer build`, `up`, `exec`) that checks deps/providers/git/mount and iterates on failure until green. (priority: high, acceptance gate)
 - [x] [devcontainer/P1] Implement host-side auto-container routing in `loop.ps1` and `loop.sh` (detect `.devcontainer/devcontainer.json`, ensure `devcontainer up`, wrap provider calls with `devcontainer exec`, support `--dangerously-skip-container` with visible warning + `container_bypass` log event). (priority: high, required runtime behavior)
-- [ ] [devcontainer/P1] Add shared-container reuse checks (`devcontainer exec -- echo ok`) and bind-mount `~/.aloop/sessions/` so session worktrees are reachable inside container. (priority: medium, parallel-loop scalability)
+- [ ] [devcontainer/P1] Bind-mount `~/.aloop/sessions/` in devcontainer config so session worktrees are reachable inside container. (priority: medium, parallel-loop scalability — note: shared-container reuse check via `devcontainer exec -- echo ok` is already implemented in both loop.ps1 and loop.sh; only the sessions bind-mount is missing)
 - [ ] [dashboard/P2] Add backend multi-session APIs (`/api/state?session=<id>`, `/events?session=<id>`) with session-aware state loading from `active.json`. (priority: medium, enables real session switching)
 - [ ] [dashboard/P2] Add frontend session switching that refetches state and rebinds SSE to selected session id; session cards get click handlers. (priority: medium, completes multi-session UX)
 - [ ] [dashboard/P2] Add `/api/artifacts/<iteration>/<filename>` endpoint and include proof artifact metadata in state/SSE payloads. (priority: medium, proof visibility contract)
