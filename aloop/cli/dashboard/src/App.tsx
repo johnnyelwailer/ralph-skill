@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { marked } from 'marked';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,8 +25,10 @@ interface SessionSummary {
   id: string;
   name: string;
   status: string;
+  phase: string;
   elapsed: string;
   iterations: string;
+  isActive: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -56,14 +58,33 @@ function readNumberLike(source: Record<string, unknown>, keys: string[], fallbac
   return fallback;
 }
 
-function toSessionSummary(source: Record<string, unknown>, fallbackName: string): SessionSummary {
+function toSessionSummary(source: Record<string, unknown>, fallbackName: string, isActive: boolean): SessionSummary {
   return {
     id: readString(source, ['session_id', 'id'], fallbackName),
     name: readString(source, ['project_name', 'name', 'session_name'], fallbackName),
     status: readString(source, ['state', 'status'], 'unknown'),
+    phase: readString(source, ['mode', 'phase'], ''),
     elapsed: readString(source, ['elapsed', 'elapsed_time', 'duration'], '--'),
     iterations: readNumberLike(source, ['iteration', 'iterations'], '--'),
+    isActive,
   };
+}
+
+const phaseColors: Record<string, string> = {
+  plan: 'bg-blue-500/20 text-blue-400',
+  build: 'bg-amber-500/20 text-amber-400',
+  proof: 'bg-purple-500/20 text-purple-400',
+  review: 'bg-green-500/20 text-green-400',
+};
+
+function PhaseBadge({ phase }: { phase: string }) {
+  if (!phase) return null;
+  const colors = phaseColors[phase.toLowerCase()] ?? 'bg-muted text-muted-foreground';
+  return (
+    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${colors}`}>
+      {phase}
+    </span>
+  );
 }
 
 export function App() {
@@ -77,15 +98,24 @@ export function App() {
   const [steerSubmitting, setSteerSubmitting] = useState(false);
   const [stopStatus, setStopStatus] = useState<string | null>(null);
   const [stopSubmitting, setStopSubmitting] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+
+  const selectSession = useCallback((id: string | null) => {
+    setSelectedSessionId(id);
+    setLoading(true);
+    setLoadError(null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
     let eventSource: EventSource | null = null;
 
+    const sessionParam = selectedSessionId ? `?session=${encodeURIComponent(selectedSessionId)}` : '';
+
     async function loadInitialState() {
       try {
-        const response = await fetch('/api/state', { signal: controller.signal });
+        const response = await fetch(`/api/state${sessionParam}`, { signal: controller.signal });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -114,7 +144,7 @@ export function App() {
 
     loadInitialState().catch(() => undefined);
 
-    eventSource = new EventSource('/events');
+    eventSource = new EventSource(`/events${sessionParam}`);
     eventSource.addEventListener('state', (event) => {
       try {
         const messageEvent = event as MessageEvent<string>;
@@ -134,7 +164,7 @@ export function App() {
       controller.abort();
       eventSource?.close();
     };
-  }, [selectedDoc]);
+  }, [selectedDoc, selectedSessionId]);
 
   const sessions = useMemo<SessionSummary[]>(() => {
     if (!state) {
@@ -143,24 +173,22 @@ export function App() {
           id: 'current',
           name: 'Current workspace',
           status: 'unknown',
+          phase: '',
           elapsed: '--',
           iterations: '--',
+          isActive: false,
         },
       ];
     }
 
     const active = (state.activeSessions ?? [])
       .filter(isRecord)
-      .map((entry, index) => ({
-        ...toSessionSummary(entry, `Active session ${index + 1}`),
-      }));
+      .map((entry, index) => toSessionSummary(entry, `Active session ${index + 1}`, true));
     const recent = (state.recentSessions ?? [])
       .filter(isRecord)
       .slice(-5)
       .reverse()
-      .map((entry, index) => ({
-        ...toSessionSummary(entry, `Recent session ${index + 1}`),
-      }));
+      .map((entry, index) => toSessionSummary(entry, `Recent session ${index + 1}`, false));
 
     const combined = [...active, ...recent];
     if (combined.length > 0) {
@@ -168,7 +196,7 @@ export function App() {
     }
 
     if (isRecord(state.status)) {
-      return [toSessionSummary(state.status, state.workdir)];
+      return [toSessionSummary(state.status, state.workdir, true)];
     }
 
     return [
@@ -176,8 +204,10 @@ export function App() {
         id: 'current',
         name: state.workdir,
         status: 'unknown',
+        phase: '',
         elapsed: '--',
         iterations: '--',
+        isActive: false,
       },
     ];
   }, [state]);
@@ -200,14 +230,38 @@ export function App() {
             <CardDescription>Active and recent loop sessions.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {sessions.map((session) => (
-              <div key={session.id} className="rounded-md border p-3">
-                <p className="font-medium">{session.name}</p>
-                <p className="text-sm text-muted-foreground">
-                  {session.status} • {session.elapsed} • iter {session.iterations}
-                </p>
-              </div>
-            ))}
+            {sessions.map((session) => {
+              const isSelected = selectedSessionId === null
+                ? session.id === 'current' || sessions.indexOf(session) === 0
+                : session.id === selectedSessionId;
+              const isRunning = session.isActive && session.status === 'running';
+              return (
+                <button
+                  key={session.id}
+                  type="button"
+                  className={`w-full rounded-md border p-3 text-left transition-colors hover:bg-accent ${
+                    isSelected ? 'ring-2 ring-primary border-primary' : ''
+                  } ${!session.isActive ? 'opacity-60' : ''}`}
+                  onClick={() => selectSession(session.id === 'current' ? null : session.id)}
+                >
+                  <div className="flex items-center gap-2">
+                    {isRunning && (
+                      <span className="relative flex h-2.5 w-2.5 shrink-0">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
+                      </span>
+                    )}
+                    <p className="font-medium truncate">{session.name}</p>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                    <PhaseBadge phase={session.phase} />
+                    <span>{session.status}</span>
+                    <span>{session.elapsed}</span>
+                    <span>iter {session.iterations}</span>
+                  </div>
+                </button>
+              );
+            })}
           </CardContent>
         </Card>
 
