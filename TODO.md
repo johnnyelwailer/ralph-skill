@@ -3,6 +3,7 @@
 ## Current Phase: P1 Reliability Hardening + PS 5.1 Compatibility + Devcontainer Foundations
 
 ### In Progress
+- [ ] [review/P1] Gate 3: `Initialize-DevcontainerRouting` (loop.ps1:98-147) and `initialize_devcontainer_routing` (loop.sh:118-160) — the "devcontainer CLI not found on PATH" branch is untested. Add a test for each runtime that creates `devcontainer.json`, ensures PATH has no `devcontainer` binary, and asserts the warning message about CLI not found. (priority: high)
 
 ### Up Next
 - [x] [devcontainer/P1] Add provider install hooks (`postCreateCommand`) plus `remoteEnv`/`localEnv` auth forwarding for activated providers only; prefer `CLAUDE_CODE_OAUTH_TOKEN` > `ANTHROPIC_API_KEY` for Claude. (priority: high, container usability/security boundary)
