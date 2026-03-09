@@ -189,6 +189,55 @@ export function augmentExistingConfig(
   return result;
 }
 
+/**
+ * Strip JSONC comments (single-line // and block /* ... *​/) while preserving
+ * string contents. Uses a simple state machine so that `//` inside quoted
+ * strings (e.g. URLs like `"https://..."`) is left untouched.
+ */
+export function stripJsoncComments(raw: string): string {
+  let result = '';
+  let i = 0;
+  while (i < raw.length) {
+    const ch = raw[i];
+    // String literal — copy through including escapes
+    if (ch === '"') {
+      result += ch;
+      i++;
+      while (i < raw.length) {
+        const sc = raw[i];
+        result += sc;
+        i++;
+        if (sc === '\\') {
+          // Copy escaped char verbatim
+          if (i < raw.length) { result += raw[i]; i++; }
+        } else if (sc === '"') {
+          break;
+        }
+      }
+      continue;
+    }
+    // Single-line comment
+    if (ch === '/' && i + 1 < raw.length && raw[i + 1] === '/') {
+      // Skip until end of line
+      i += 2;
+      while (i < raw.length && raw[i] !== '\n') { i++; }
+      continue;
+    }
+    // Block comment
+    if (ch === '/' && i + 1 < raw.length && raw[i + 1] === '*') {
+      i += 2;
+      while (i < raw.length) {
+        if (raw[i] === '*' && i + 1 < raw.length && raw[i + 1] === '/') { i += 2; break; }
+        i++;
+      }
+      continue;
+    }
+    result += ch;
+    i++;
+  }
+  return result;
+}
+
 export async function devcontainerCommandWithDeps(
   options: DevcontainerCommandOptions = {},
   deps: DevcontainerDeps = defaultDeps,
@@ -210,8 +259,7 @@ export async function devcontainerCommandWithDeps(
 
   if (hadExisting) {
     const raw = await deps.readFile(configPath, 'utf8');
-    // Strip JSONC comments for parsing
-    const stripped = raw.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    const stripped = stripJsoncComments(raw);
     const existing = JSON.parse(stripped) as Record<string, unknown>;
     finalConfig = augmentExistingConfig(existing, generated);
     action = 'augmented';

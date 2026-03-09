@@ -10,7 +10,7 @@
 - [ ] [review/P1] Gate 3: `detectPythonInstallCommand` (devcontainer.ts:118-122) has 3 branches with zero direct test coverage — same fix needed. (priority: high)
 - [ ] [review/P1] Gate 3: `devcontainerCommand` (devcontainer.ts:240-266) text/json output wrapper has zero test coverage — add tests for both output modes and both action types. (priority: medium)
 - [ ] [review/P1] Gate 3: `mergeArrayUnique` dedup branch (devcontainer.ts:164) not tested — add test with duplicate mount entry to exercise the `includes` guard. (priority: medium)
-- [ ] [review/P1] Gate 4: JSONC comment-stripping regex (devcontainer.ts:214) `raw.replace(/\/\/.*$/gm, '')` corrupts string values containing `//` (e.g., URLs like `https://...`) — replace with a proper JSONC-aware strip or use `jsonc-parser` approach that respects quoted strings. (priority: high)
+- [x] [review/P1] Gate 4: JSONC comment-stripping regex (devcontainer.ts:214) `raw.replace(/\/\/.*$/gm, '')` corrupts string values containing `//` (e.g., URLs like `https://...`) — replaced with `stripJsoncComments()` state-machine that respects quoted strings. (priority: high)
 
 ### Up Next
 - [x] [known-issues/P1] Add session PID lockfile (`session.lock`) in `SessionDir` with alive-check on startup; clean up in `finally`/`trap` block. Both `loop.ps1` and `loop.sh`. (priority: critical, SPEC Known Issue #5 — already implemented in both runtimes)

@@ -4,6 +4,7 @@ import {
   devcontainerCommandWithDeps,
   generateDevcontainerConfig,
   augmentExistingConfig,
+  stripJsoncComments,
   type DevcontainerDeps,
   type DevcontainerConfig,
 } from './devcontainer.js';
@@ -269,4 +270,81 @@ test('devcontainerCommandWithDeps - passes project root to discover', async () =
 
   assert.equal(discoverOpts.projectRoot, '/custom/root');
   assert.equal(discoverOpts.homeDir, '/custom/home');
+});
+
+// --- stripJsoncComments ---
+
+test('stripJsoncComments - strips single-line comments', () => {
+  const input = '{\n  // this is a comment\n  "key": "value"\n}';
+  const result = stripJsoncComments(input);
+  const parsed = JSON.parse(result);
+  assert.equal(parsed.key, 'value');
+  assert.ok(!result.includes('this is a comment'));
+});
+
+test('stripJsoncComments - strips block comments', () => {
+  const input = '{\n  /* block\n     comment */\n  "key": "value"\n}';
+  const result = stripJsoncComments(input);
+  const parsed = JSON.parse(result);
+  assert.equal(parsed.key, 'value');
+  assert.ok(!result.includes('block'));
+});
+
+test('stripJsoncComments - preserves URLs inside string values', () => {
+  const input = '{\n  // a comment\n  "url": "https://example.com/path",\n  "other": "http://foo.bar"\n}';
+  const result = stripJsoncComments(input);
+  const parsed = JSON.parse(result);
+  assert.equal(parsed.url, 'https://example.com/path');
+  assert.equal(parsed.other, 'http://foo.bar');
+});
+
+test('stripJsoncComments - preserves escaped quotes in strings', () => {
+  const input = '{ "msg": "say \\"hello\\"", "n": 1 }';
+  const result = stripJsoncComments(input);
+  const parsed = JSON.parse(result);
+  assert.equal(parsed.msg, 'say "hello"');
+  assert.equal(parsed.n, 1);
+});
+
+test('stripJsoncComments - handles mixed comments and URL strings', () => {
+  const input = `{
+  // First comment
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  /* block */ "url": "https://registry.com/v2/image",
+  "plain": "no comments here"
+  // trailing comment
+}`;
+  const result = stripJsoncComments(input);
+  const parsed = JSON.parse(result);
+  assert.equal(parsed.image, 'mcr.microsoft.com/devcontainers/typescript-node:22');
+  assert.equal(parsed.url, 'https://registry.com/v2/image');
+  assert.equal(parsed.plain, 'no comments here');
+});
+
+test('devcontainerCommandWithDeps - augments JSONC with URLs without corruption', async () => {
+  const existingConfig = `{
+  // Container config with URLs
+  "name": "url-project",
+  "image": "custom:latest",
+  "settings": {
+    "proxy": "https://proxy.internal.com/api"
+  }
+}`;
+
+  let writtenContent = '';
+
+  const deps: DevcontainerDeps = {
+    discover: async () => mockDiscovery(),
+    readFile: async () => existingConfig,
+    writeFile: async (_p, data) => { writtenContent = data; },
+    mkdir: async () => undefined,
+    existsSync: (p) => p.includes('devcontainer.json'),
+  };
+
+  const result = await devcontainerCommandWithDeps({}, deps);
+
+  assert.equal(result.action, 'augmented');
+  const parsed = JSON.parse(writtenContent);
+  assert.equal(parsed.name, 'url-project');
+  assert.equal((parsed.settings as Record<string, string>).proxy, 'https://proxy.internal.com/api');
 });
