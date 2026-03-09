@@ -3,6 +3,14 @@
 ## Current Phase: P1 Reliability Hardening + PS 5.1 Compatibility + Devcontainer Foundations
 
 ### In Progress
+- [ ] [review/P1] Gate 2: `devcontainer.test.ts` lines 47, 50-51 use `assert.ok` existence/truthy checks — rewrite to assert exact values (e.g., `assert.deepEqual(config.features[...], {})`, assert exact mount string). (priority: high)
+- [ ] [review/P1] Gate 2: `devcontainer.test.ts` node-typescript test (line 41) and python test (line 54) never assert `postCreateCommand` value — add `assert.equal(config.postCreateCommand, 'npm install')` and equivalent for python. (priority: high)
+- [ ] [review/P1] Gate 2: No error-path test for `devcontainerCommandWithDeps` when existing `devcontainer.json` contains invalid JSON — add test that asserts the thrown error. (priority: high)
+- [ ] [review/P1] Gate 3: `detectNodeInstallCommand` (devcontainer.ts:111-116) has 4 branches (pnpm/yarn/bun/npm) with zero direct test coverage — add unit tests or refactor to accept injected `existsSync` so branches are testable. (priority: high)
+- [ ] [review/P1] Gate 3: `detectPythonInstallCommand` (devcontainer.ts:118-122) has 3 branches with zero direct test coverage — same fix needed. (priority: high)
+- [ ] [review/P1] Gate 3: `devcontainerCommand` (devcontainer.ts:240-266) text/json output wrapper has zero test coverage — add tests for both output modes and both action types. (priority: medium)
+- [ ] [review/P1] Gate 3: `mergeArrayUnique` dedup branch (devcontainer.ts:164) not tested — add test with duplicate mount entry to exercise the `includes` guard. (priority: medium)
+- [ ] [review/P1] Gate 4: JSONC comment-stripping regex (devcontainer.ts:214) `raw.replace(/\/\/.*$/gm, '')` corrupts string values containing `//` (e.g., URLs like `https://...`) — replace with a proper JSONC-aware strip or use `jsonc-parser` approach that respects quoted strings. (priority: high)
 
 ### Up Next
 - [x] [known-issues/P1] Add session PID lockfile (`session.lock`) in `SessionDir` with alive-check on startup; clean up in `finally`/`trap` block. Both `loop.ps1` and `loop.sh`. (priority: critical, SPEC Known Issue #5 — already implemented in both runtimes)
