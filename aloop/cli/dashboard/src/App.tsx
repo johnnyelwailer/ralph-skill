@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { Progress } from '@/components/ui/progress';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Toaster } from '@/components/ui/sonner';
 import { Textarea } from '@/components/ui/textarea';
 
 type SessionStatus = Record<string, unknown>;
@@ -116,13 +124,13 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [steerInstruction, setSteerInstruction] = useState('');
-  const [steerStatus, setSteerStatus] = useState<string | null>(null);
   const [steerSubmitting, setSteerSubmitting] = useState(false);
-  const [stopStatus, setStopStatus] = useState<string | null>(null);
   const [stopSubmitting, setStopSubmitting] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
   const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const prevPhaseRef = useRef<string>('');
 
   const selectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
@@ -210,6 +218,16 @@ export function App() {
   const providerName = statusRecord ? readString(statusRecord, ['provider', 'current_provider'], '') : '';
   const isRunning = currentState === 'running';
 
+  // Toast on phase transitions
+  useEffect(() => {
+    if (currentPhase && prevPhaseRef.current && currentPhase !== prevPhaseRef.current) {
+      toast(`Phase: ${prevPhaseRef.current} \u2192 ${currentPhase}`, {
+        description: `Iteration ${currentIteration}`,
+      });
+    }
+    prevPhaseRef.current = currentPhase;
+  }, [currentPhase, currentIteration]);
+
   // Parse TODO.md for progress bar
   const todoContent = state?.docs?.['TODO.md'] ?? '';
   const { completed: tasksCompleted, total: tasksTotal } = useMemo(() => parseTodoProgress(todoContent), [todoContent]);
@@ -226,7 +244,6 @@ export function App() {
   const handleSteer = useCallback(async () => {
     if (steerInstruction.trim().length === 0 || steerSubmitting) return;
     setSteerSubmitting(true);
-    setSteerStatus(null);
     try {
       const response = await fetch('/api/steer', {
         method: 'POST',
@@ -238,9 +255,9 @@ export function App() {
         throw new Error(payload.error ?? `HTTP ${response.status}`);
       }
       setSteerInstruction('');
-      setSteerStatus('Steering instruction queued.');
+      toast.success('Steering instruction queued.');
     } catch (error) {
-      setSteerStatus((error as Error).message);
+      toast.error((error as Error).message);
     } finally {
       setSteerSubmitting(false);
     }
@@ -249,7 +266,6 @@ export function App() {
   const handleStop = useCallback(async (force: boolean) => {
     if (stopSubmitting) return;
     setStopSubmitting(true);
-    setStopStatus(null);
     try {
       const response = await fetch('/api/stop', {
         method: 'POST',
@@ -261,13 +277,25 @@ export function App() {
         throw new Error(payload.error ?? `HTTP ${response.status}`);
       }
       const payload = (await response.json()) as { signal?: string };
-      setStopStatus(`Stop requested (${payload.signal ?? 'SIGTERM'}).`);
+      toast.info(`Stop requested (${payload.signal ?? 'SIGTERM'}).`);
     } catch (error) {
-      setStopStatus((error as Error).message);
+      toast.error((error as Error).message);
     } finally {
       setStopSubmitting(false);
     }
   }, [stopSubmitting]);
+
+  // Ctrl+K command palette
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setCommandOpen((prev) => !prev);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
 
@@ -294,51 +322,67 @@ export function App() {
             </button>
             {sessionSwitcherOpen && (
               <div className="absolute left-0 top-full z-40 mt-1 w-72 rounded-md border bg-card shadow-lg">
-                <div className="p-2 space-y-1 max-h-64 overflow-auto">
-                  {sessions.map((session) => {
-                    const isSelected = selectedSessionId === null
-                      ? session.id === 'current' || sessions.indexOf(session) === 0
-                      : session.id === selectedSessionId;
-                    return (
-                      <button
-                        key={session.id}
-                        type="button"
-                        className={`w-full rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${
-                          isSelected ? 'bg-accent font-medium' : ''
-                        } ${!session.isActive ? 'opacity-60' : ''}`}
-                        onClick={() => selectSession(session.id === 'current' ? null : session.id)}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          {session.isActive && session.status === 'running' && (
-                            <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
-                          )}
-                          <span className="truncate">{session.name}</span>
-                          <PhaseBadge phase={session.phase} />
-                        </div>
-                        <div className="text-muted-foreground mt-0.5">
-                          {session.status} &middot; {session.elapsed} &middot; iter {session.iterations}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                <ScrollArea className="max-h-64">
+                  <div className="p-2 space-y-1">
+                    {sessions.map((session) => {
+                      const isSelected = selectedSessionId === null
+                        ? session.id === 'current' || sessions.indexOf(session) === 0
+                        : session.id === selectedSessionId;
+                      return (
+                        <button
+                          key={session.id}
+                          type="button"
+                          className={`w-full rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${
+                            isSelected ? 'bg-accent font-medium' : ''
+                          } ${!session.isActive ? 'opacity-60' : ''}`}
+                          onClick={() => selectSession(session.id === 'current' ? null : session.id)}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {session.isActive && session.status === 'running' && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+                            )}
+                            <span className="truncate">{session.name}</span>
+                            <PhaseBadge phase={session.phase} />
+                          </div>
+                          <div className="text-muted-foreground mt-0.5">
+                            {session.status} &middot; {session.elapsed} &middot; iter {session.iterations}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
               </div>
             )}
           </div>
 
-          {/* Iteration */}
-          <span className="text-xs text-muted-foreground">
-            iter {currentIteration}{tasksTotal > 0 ? `/${tasksTotal}` : ''}
-          </span>
+          {/* Iteration with HoverCard for session details */}
+          <HoverCard>
+            <HoverCardTrigger asChild>
+              <span className="text-xs text-muted-foreground cursor-help">
+                iter {currentIteration}{tasksTotal > 0 ? `/${tasksTotal}` : ''}
+              </span>
+            </HoverCardTrigger>
+            <HoverCardContent className="w-56 text-xs">
+              <div className="space-y-1">
+                <p><span className="text-muted-foreground">Phase:</span> {currentPhase || 'none'}</p>
+                <p><span className="text-muted-foreground">Status:</span> {currentState}</p>
+                <p><span className="text-muted-foreground">Provider:</span> {providerName || 'none'}</p>
+                <p><span className="text-muted-foreground">Tasks:</span> {tasksCompleted}/{tasksTotal} ({progressPercent}%)</p>
+                {currentSession && (
+                  <p><span className="text-muted-foreground">Elapsed:</span> {currentSession.elapsed}</p>
+                )}
+              </div>
+            </HoverCardContent>
+          </HoverCard>
 
-          {/* Progress bar */}
+          {/* Progress bar (shadcn Progress component) */}
           <div className="flex items-center gap-2 min-w-[120px]">
-            <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${phaseBarColor}`}
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
+            <Progress
+              value={progressPercent}
+              className="flex-1"
+              indicatorClassName={phaseBarColor}
+            />
             <span className="text-xs text-muted-foreground whitespace-nowrap">{progressPercent}%</span>
           </div>
 
@@ -353,46 +397,63 @@ export function App() {
           {/* Status */}
           <span className="text-xs text-muted-foreground">{currentState}</span>
 
+          {/* Ctrl+K hint */}
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setCommandOpen(true)}
+          >
+            <kbd className="rounded border px-1 py-0.5 text-[10px]">Ctrl+K</kbd>
+          </button>
+
           {/* Updated timestamp */}
           <span className="ml-auto text-xs text-muted-foreground">
             {loading ? 'Loading...' : state?.updatedAt ?? ''}
-            {loadError ? ` • ${loadError}` : ''}
+            {loadError ? ` \u2022 ${loadError}` : ''}
           </span>
         </div>
       </header>
 
-      {/* ── Main content: TODO + Log side by side ── */}
-      <main className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3 p-3 overflow-hidden">
-        {/* Left column: TODO.md (live) */}
-        <div className="flex flex-col gap-3 min-h-0">
-          <Card className="flex-1 flex flex-col min-h-0">
-            <CardHeader className="py-3 px-4">
-              <CardTitle className="text-sm">TODO.md</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-0 px-4 pb-3">
-              <TodoPanel content={todoContent} />
-            </CardContent>
-          </Card>
+      {/* ── Main content: Resizable TODO + Log side by side ── */}
+      <main className="flex-1 overflow-hidden p-3">
+        <ResizablePanelGroup orientation="horizontal" className="h-full rounded-lg">
+          {/* Left panel: TODO.md (live) + docs */}
+          <ResizablePanel defaultSize={50} minSize={25}>
+            <div className="flex flex-col gap-3 h-full pr-3">
+              <Card className="flex-1 flex flex-col min-h-0">
+                <CardHeader className="py-3 px-4">
+                  <CardTitle className="text-sm">TODO.md</CardTitle>
+                </CardHeader>
+                <CardContent className="flex-1 min-h-0 px-4 pb-3">
+                  <TodoPanel content={todoContent} />
+                </CardContent>
+              </Card>
 
-          {/* Other docs (collapsible) */}
-          <DocsPanel
-            docs={state?.docs ?? {}}
-            expandedDoc={expandedDoc}
-            onToggleDoc={setExpandedDoc}
-          />
-        </div>
+              {/* Other docs (collapsible) */}
+              <DocsPanel
+                docs={state?.docs ?? {}}
+                expandedDoc={expandedDoc}
+                onToggleDoc={setExpandedDoc}
+              />
+            </div>
+          </ResizablePanel>
 
-        {/* Right column: Log + artifacts */}
-        <div className="flex flex-col gap-3 min-h-0">
-          <Card className="flex-1 flex flex-col min-h-0">
-            <CardHeader className="py-3 px-4">
-              <CardTitle className="text-sm">Log</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-0 px-4 pb-3">
-              <LogPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} />
-            </CardContent>
-          </Card>
-        </div>
+          <ResizableHandle />
+
+          {/* Right panel: Log + artifacts */}
+          <ResizablePanel defaultSize={50} minSize={25}>
+            <div className="flex flex-col gap-3 h-full pl-3">
+              <Card className="flex-1 flex flex-col min-h-0">
+                <CardHeader className="py-3 px-4">
+                  <CardTitle className="text-sm">Log</CardTitle>
+                </CardHeader>
+                <CardContent className="flex-1 min-h-0 px-4 pb-3">
+                  <LogPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} />
+                </CardContent>
+              </Card>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </main>
 
       {/* ── Footer: always-visible steer + stop ── */}
@@ -420,7 +481,6 @@ export function App() {
                 {steerSubmitting ? '...' : 'Send'}
               </Button>
             </div>
-            {steerStatus && <p className="text-xs text-muted-foreground">{steerStatus}</p>}
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -439,10 +499,57 @@ export function App() {
             >
               Force
             </Button>
-            {stopStatus && <p className="text-xs text-muted-foreground whitespace-nowrap">{stopStatus}</p>}
           </div>
         </div>
       </footer>
+
+      {/* ── Command palette (Ctrl+K) ── */}
+      {commandOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50" onClick={() => setCommandOpen(false)}>
+          <div className="w-full max-w-md rounded-lg border bg-popover shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <Command>
+              <CommandInput placeholder="Type a command..." />
+              <CommandList>
+                <CommandEmpty>No results found.</CommandEmpty>
+                <CommandGroup heading="Actions">
+                  <CommandItem
+                    onSelect={() => {
+                      setCommandOpen(false);
+                      void handleStop(false);
+                    }}
+                  >
+                    Stop session
+                  </CommandItem>
+                  <CommandItem
+                    onSelect={() => {
+                      setCommandOpen(false);
+                      void handleStop(true);
+                    }}
+                  >
+                    Force stop session
+                  </CommandItem>
+                </CommandGroup>
+                <CommandGroup heading="Navigation">
+                  {sessions.map((session) => (
+                    <CommandItem
+                      key={session.id}
+                      onSelect={() => {
+                        setCommandOpen(false);
+                        selectSession(session.id === 'current' ? null : session.id);
+                      }}
+                    >
+                      Switch to: {session.name}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </div>
+        </div>
+      )}
+
+      {/* ── Toast notifications ── */}
+      <Toaster />
     </div>
   );
 }
@@ -454,14 +561,16 @@ function TodoPanel({ content }: { content: string }) {
     return <p className="text-xs text-muted-foreground">No TODO.md available.</p>;
   }
   return (
-    <div
-      className="overflow-auto h-full text-sm [&_code]:text-xs [&_pre]:overflow-auto [&_li]:leading-relaxed [&_ul]:space-y-0.5"
-      dangerouslySetInnerHTML={{ __html: rendered }}
-    />
+    <ScrollArea className="h-full">
+      <div
+        className="text-sm [&_code]:text-xs [&_pre]:overflow-auto [&_li]:leading-relaxed [&_ul]:space-y-0.5 pr-3"
+        dangerouslySetInnerHTML={{ __html: rendered }}
+      />
+    </ScrollArea>
   );
 }
 
-/** Collapsible panel for non-TODO docs */
+/** Collapsible panel for non-TODO docs using Collapsible component */
 function DocsPanel({
   docs,
   expandedDoc,
@@ -507,22 +616,22 @@ function DocEntry({
 }) {
   const rendered = useMemo(() => marked.parse(content), [content]);
   return (
-    <div>
-      <button
-        type="button"
-        className="flex items-center gap-1.5 text-xs font-medium hover:text-primary transition-colors w-full text-left py-1"
-        onClick={onToggle}
-      >
+    <Collapsible open={isExpanded} onOpenChange={onToggle}>
+      <CollapsibleTrigger className="flex items-center gap-1.5 text-xs font-medium hover:text-primary transition-colors w-full text-left py-1">
         <span className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>&#x25B6;</span>
         {name}
-      </button>
-      {isExpanded && content && (
-        <article
-          className="max-h-64 overflow-auto rounded-md bg-muted p-2 text-xs mt-1 [&_code]:text-xs [&_pre]:overflow-auto"
-          dangerouslySetInnerHTML={{ __html: rendered }}
-        />
-      )}
-    </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        {content && (
+          <ScrollArea className="max-h-64">
+            <article
+              className="rounded-md bg-muted p-2 text-xs mt-1 [&_code]:text-xs [&_pre]:overflow-auto pr-3"
+              dangerouslySetInnerHTML={{ __html: rendered }}
+            />
+          </ScrollArea>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -797,7 +906,9 @@ function CodeArtifactCard({ artifact, iteration }: { artifact: ArtifactEntry; it
         {loading && <span className="text-muted-foreground animate-pulse">loading...</span>}
       </div>
       {expanded && content !== null && (
-        <pre className="max-h-48 overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap">{content}</pre>
+        <ScrollArea className="max-h-48">
+          <pre className="rounded bg-muted p-2 text-xs whitespace-pre-wrap pr-3">{content}</pre>
+        </ScrollArea>
       )}
     </div>
   );
@@ -845,7 +956,7 @@ function ArtifactGallery({ artifacts }: { artifacts: ArtifactManifest[] }) {
   );
 }
 
-/** Log panel — compact log lines + artifact gallery */
+/** Log panel — compact log lines + artifact gallery with smooth scrolling */
 function LogPanel({ log, artifacts }: { log: string; artifacts: ArtifactManifest[] }) {
   const logRef = useRef<HTMLPreElement>(null);
 
@@ -858,13 +969,15 @@ function LogPanel({ log, artifacts }: { log: string; artifacts: ArtifactManifest
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <pre
-        ref={logRef}
-        className="flex-1 min-h-0 overflow-auto rounded-md bg-muted p-2 text-xs"
-      >
-        {log || 'No log entries available.'}
-      </pre>
-      <ArtifactGallery artifacts={artifacts} />
+      <ScrollArea className="flex-1 min-h-0">
+        <pre
+          ref={logRef}
+          className="rounded-md bg-muted p-2 text-xs"
+        >
+          {log || 'No log entries available.'}
+        </pre>
+        <ArtifactGallery artifacts={artifacts} />
+      </ScrollArea>
     </div>
   );
 }

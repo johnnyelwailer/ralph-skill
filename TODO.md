@@ -8,7 +8,7 @@
 ### Up Next
 - [x] [dashboard/P2] Render proof artifacts inline in dashboard views (thumbnail/expand for images, syntax-highlighted code blocks for non-image artifacts, before/after comparison widget with side-by-side/slider modes). (priority: medium, closes proof UX gap)
 - [x] [dashboard/P2] Redesign dashboard from tabbed views to dense single-page operations layout with always-visible steer input, header progress bar, and color-coded phase indicator. (priority: medium, aligns with spec UX intent)
-- [ ] [dashboard/P2] Integrate required advanced components (`ResizablePanel`, `HoverCard`, `Collapsible`, `Command`, `Sonner`, `ScrollArea`, `Progress`) into the new layout. (priority: medium, explicit acceptance criterion)
+- [x] [dashboard/P2] Integrate required advanced components (`ResizablePanel`, `HoverCard`, `Collapsible`, `Command`, `Sonner`, `ScrollArea`, `Progress`) into the new layout. (priority: medium, explicit acceptance criterion)
 - [ ] [orchestrator/P2] Add `aloop orchestrate` command registration with `--plan-only` and persisted `orchestrator.json` skeleton state. (priority: medium, orchestrator foundation)
 - [ ] [orchestrator/P2] Add orchestrator command wrappers (`claude/commands/aloop/orchestrate.md`, `copilot/prompts/aloop-orchestrate.prompt.md`). (priority: medium, command-surface parity)
 - [ ] [orchestrator/P2] Implement issue decomposition + dependency graph + wave assignment + issue creation via `aloop gh issue-create` with `aloop/auto` + wave labels. (priority: medium, planning core)
