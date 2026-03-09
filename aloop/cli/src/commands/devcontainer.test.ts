@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  devcontainerCommand,
   devcontainerCommandWithDeps,
   generateDevcontainerConfig,
   augmentExistingConfig,
@@ -412,4 +413,107 @@ test('devcontainerCommandWithDeps - throws on invalid JSON in existing config', 
     () => devcontainerCommandWithDeps({}, deps),
     (err: Error) => err instanceof SyntaxError,
   );
+});
+
+// --- devcontainerCommand (output wrapper) ---
+
+function makeDeps(existingConfig?: string): DevcontainerDeps {
+  return {
+    discover: async () => mockDiscovery(),
+    readFile: async () => existingConfig ?? '',
+    writeFile: async () => {},
+    mkdir: async () => undefined,
+    existsSync: existingConfig ? (p) => p.includes('devcontainer.json') : () => false,
+  };
+}
+
+test('devcontainerCommand - json output for created action', async () => {
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => logs.push(args.join(' '));
+  try {
+    await devcontainerCommand({ output: 'json' }, makeDeps());
+  } finally {
+    console.log = origLog;
+  }
+
+  assert.equal(logs.length, 1);
+  const parsed = JSON.parse(logs[0]);
+  assert.equal(parsed.action, 'created');
+  assert.equal(parsed.language, 'node-typescript');
+  assert.equal(parsed.had_existing, false);
+});
+
+test('devcontainerCommand - json output for augmented action', async () => {
+  const existing = JSON.stringify({ name: 'existing', image: 'custom:latest' });
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => logs.push(args.join(' '));
+  try {
+    await devcontainerCommand({ output: 'json' }, makeDeps(existing));
+  } finally {
+    console.log = origLog;
+  }
+
+  assert.equal(logs.length, 1);
+  const parsed = JSON.parse(logs[0]);
+  assert.equal(parsed.action, 'augmented');
+  assert.equal(parsed.had_existing, true);
+});
+
+test('devcontainerCommand - text output for created action', async () => {
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => logs.push(args.join(' '));
+  try {
+    await devcontainerCommand({ output: 'text' }, makeDeps());
+  } finally {
+    console.log = origLog;
+  }
+
+  assert.ok(logs.some(l => l.includes('Created devcontainer config at')));
+  assert.ok(logs.some(l => l.includes('Language: node-typescript')));
+  assert.ok(logs.some(l => l.includes('Image:')));
+  assert.ok(logs.some(l => l.includes('Post-create: npm install')));
+  assert.ok(logs.some(l => l.includes('Next steps:')));
+});
+
+test('devcontainerCommand - text output for augmented action', async () => {
+  const existing = JSON.stringify({ name: 'existing', image: 'custom:latest' });
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => logs.push(args.join(' '));
+  try {
+    await devcontainerCommand({ output: 'text' }, makeDeps(existing));
+  } finally {
+    console.log = origLog;
+  }
+
+  assert.ok(logs.some(l => l.includes('Augmented existing devcontainer config at')));
+  assert.ok(logs.some(l => l.includes('Added aloop mounts and environment variables.')));
+  assert.ok(logs.some(l => l.includes('Next steps:')));
+  // Augmented mode should NOT print Language/Image
+  assert.ok(!logs.some(l => l.includes('Language:')));
+});
+
+test('devcontainerCommand - text output omits post-create when null', async () => {
+  const deps: DevcontainerDeps = {
+    discover: async () => mockDiscovery({ context: { detected_language: 'other' } as DiscoveryResult['context'] }),
+    readFile: async () => '',
+    writeFile: async () => {},
+    mkdir: async () => undefined,
+    existsSync: () => false,
+  };
+
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => logs.push(args.join(' '));
+  try {
+    await devcontainerCommand({ output: 'text' }, deps);
+  } finally {
+    console.log = origLog;
+  }
+
+  assert.ok(logs.some(l => l.includes('Created devcontainer config at')));
+  assert.ok(!logs.some(l => l.includes('Post-create:')));
 });

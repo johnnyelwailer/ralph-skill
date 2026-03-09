@@ -286,8 +286,8 @@ export async function devcontainerCommandWithDeps(
   };
 }
 
-export async function devcontainerCommand(options: DevcontainerCommandOptions = {}) {
-  const result = await devcontainerCommandWithDeps(options);
+export async function devcontainerCommand(options: DevcontainerCommandOptions = {}, deps: DevcontainerDeps = defaultDeps) {
+  const result = await devcontainerCommandWithDeps(options, deps);
   const outputMode = options.output || 'text';
 
   if (outputMode === 'json') {

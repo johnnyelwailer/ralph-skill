@@ -5,7 +5,7 @@
 ### In Progress
 - [x] [review/P1] Gate 3: `detectNodeInstallCommand` (devcontainer.ts:111-116) has 4 branches (pnpm/yarn/bun/npm) with zero direct test coverage — add unit tests or refactor to accept injected `existsSync` so branches are testable. (priority: high) [refactored to accept injected existsFn, added 5 tests covering all branches]
 - [x] [review/P1] Gate 3: `detectPythonInstallCommand` (devcontainer.ts:118-122) has 3 branches with zero direct test coverage — same fix needed. (priority: high) [refactored to accept injected existsFn, added 3 tests covering all branches]
-- [ ] [review/P1] Gate 3: `devcontainerCommand` (devcontainer.ts:288-314) text/json output wrapper has zero test coverage — add tests for both output modes and both action types. (priority: medium)
+- [x] [review/P1] Gate 3: `devcontainerCommand` (devcontainer.ts:288-314) text/json output wrapper has zero test coverage — add tests for both output modes and both action types. (priority: medium) [refactored to accept injected deps, added 5 tests: json×created, json×augmented, text×created, text×augmented, text omits null post-create]
 - [ ] [review/P1] Gate 3: `mergeArrayUnique` dedup branch (devcontainer.ts:164) not tested — add test with duplicate mount entry to exercise the `includes` guard. (priority: medium)
 
 ### Up Next
