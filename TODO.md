@@ -3,12 +3,9 @@
 ## Current Phase: P2 Dashboard UX + Orchestrator + GitHub Integration + Pipeline
 
 ### In Progress
-- [x] [review/P2] Gate 1: Phase colors in `App.tsx:84-97` don't match spec (spec line 862: `plan=purple, build=yellow, review=cyan`; code uses `plan=blue, build=amber, proof=purple, review=green`). Fix colors to match spec and correct the misleading comment "Phase colors per spec". (priority: high)
-- [x] [review/P2] Gate 3: `parseTodoProgress` (App.tsx:110-120) is a new pure function with 0% branch coverage — extract to a testable module and add unit tests covering: empty string input, input with no tasks, mixed completed/uncompleted tasks, edge cases (`[X]` uppercase). (priority: high)
-- [ ] [review/P2] Gate 3: `orchestrateCommand` (orchestrate.ts:132-159) has 0% branch coverage — add tests for: text output mode (assert console.log lines include session dir, spec, trunk, concurrency), JSON output mode (assert valid JSON with session_dir/state_file/state keys), conditional display of `filter_issues` (lines 150-152), `filter_label` (lines 153-155), and `filter_repo` (lines 156-158). (priority: high)
+- [x] [review/P2] Gate 3: `orchestrateCommand` (orchestrate.ts:132-159) — 8 tests added covering text/JSON output modes and conditional display of filter_issues, filter_label, filter_repo.
 
 ### Up Next
-- [x] [orchestrator/P2] Add `aloop orchestrate` command registration with `--plan-only` and persisted `orchestrator.json` skeleton state. (priority: medium, orchestrator foundation)
 - [ ] [orchestrator/P2] Add orchestrator command wrappers (`claude/commands/aloop/orchestrate.md`, `copilot/prompts/aloop-orchestrate.prompt.md`). (priority: medium, command-surface parity)
 - [ ] [orchestrator/P2] Implement issue decomposition + dependency graph + wave assignment + issue creation via `aloop gh issue-create` with `aloop/auto` + wave labels. (priority: medium, planning core)
 - [ ] [orchestrator/P2] Implement child-loop dispatch engine with concurrency cap (default 3), per-issue worktree/branch mapping (`aloop/issue-<N>`), and launch lifecycle tracking. (priority: medium, execution core)
@@ -31,6 +28,9 @@
 - [ ] [acceptance/P3] Run final SPEC acceptance sweep and refresh TODO states from verified code/tests. (priority: low, completion gate)
 
 ### Completed
+- [x] [review/P2] Gate 1: Phase colors in `App.tsx:84-97` fixed to match spec (`plan=purple, build=yellow, review=cyan`).
+- [x] [review/P2] Gate 3: `parseTodoProgress` extracted to testable module with unit tests (empty, no tasks, mixed, uppercase `[X]`).
+- [x] [orchestrator/P2] Add `aloop orchestrate` command registration with `--plan-only` and persisted `orchestrator.json` skeleton state.
 - [x] [dashboard/P2] Render proof artifacts inline in dashboard views (thumbnail/expand for images, syntax-highlighted code blocks for non-image artifacts, before/after comparison widget with side-by-side/slider modes). (priority: medium, closes proof UX gap)
 - [x] [dashboard/P2] Redesign dashboard from tabbed views to dense single-page operations layout with always-visible steer input, header progress bar, and color-coded phase indicator. (priority: medium, aligns with spec UX intent)
 - [x] [dashboard/P2] Integrate required advanced components (`ResizablePanel`, `HoverCard`, `Collapsible`, `Command`, `Sonner`, `ScrollArea`, `Progress`) into the new layout. (priority: medium, explicit acceptance criterion)

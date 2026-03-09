@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { orchestrateCommandWithDeps, type OrchestrateCommandOptions, type OrchestrateDeps } from './orchestrate.js';
+import { orchestrateCommand, orchestrateCommandWithDeps, type OrchestrateCommandOptions, type OrchestrateDeps } from './orchestrate.js';
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
   const writtenFiles: Record<string, string> = {};
@@ -127,5 +127,135 @@ describe('orchestrateCommandWithDeps', () => {
 
     assert.ok(mockDeps._createdDirs.length > 0);
     assert.ok(mockDeps._createdDirs.some((d) => d.includes('orchestrator-')));
+  });
+});
+
+describe('orchestrateCommand', () => {
+  it('text output includes session dir, spec, trunk, concurrency', async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(' '));
+    try {
+      await orchestrateCommand({}, createMockDeps());
+    } finally {
+      console.log = origLog;
+    }
+
+    const allOutput = logs.join('\n');
+    assert.ok(allOutput.includes('Session dir:'));
+    assert.ok(allOutput.includes('orchestrator-'));
+    assert.ok(allOutput.includes('Spec:'));
+    assert.ok(allOutput.includes('SPEC.md'));
+    assert.ok(allOutput.includes('Trunk:'));
+    assert.ok(allOutput.includes('agent/trunk'));
+    assert.ok(allOutput.includes('Concurrency:'));
+    assert.ok(allOutput.includes('3'));
+    assert.ok(allOutput.includes('Plan only:'));
+    assert.ok(allOutput.includes('false'));
+  });
+
+  it('json output emits valid JSON with session_dir, state_file, state keys', async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(' '));
+    try {
+      await orchestrateCommand({ output: 'json' }, createMockDeps());
+    } finally {
+      console.log = origLog;
+    }
+
+    assert.equal(logs.length, 1);
+    const parsed = JSON.parse(logs[0]);
+    assert.ok('session_dir' in parsed);
+    assert.ok('state_file' in parsed);
+    assert.ok('state' in parsed);
+    assert.equal(parsed.state.spec_file, 'SPEC.md');
+  });
+
+  it('text output shows filter_issues when set', async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(' '));
+    try {
+      await orchestrateCommand({ issues: '10,20' }, createMockDeps());
+    } finally {
+      console.log = origLog;
+    }
+
+    const allOutput = logs.join('\n');
+    assert.ok(allOutput.includes('Issues:'));
+    assert.ok(allOutput.includes('10, 20'));
+  });
+
+  it('text output omits filter_issues when not set', async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(' '));
+    try {
+      await orchestrateCommand({}, createMockDeps());
+    } finally {
+      console.log = origLog;
+    }
+
+    const allOutput = logs.join('\n');
+    assert.ok(!allOutput.includes('Issues:'));
+  });
+
+  it('text output shows filter_label when set', async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(' '));
+    try {
+      await orchestrateCommand({ label: 'aloop/auto' }, createMockDeps());
+    } finally {
+      console.log = origLog;
+    }
+
+    const allOutput = logs.join('\n');
+    assert.ok(allOutput.includes('Label:'));
+    assert.ok(allOutput.includes('aloop/auto'));
+  });
+
+  it('text output omits filter_label when not set', async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(' '));
+    try {
+      await orchestrateCommand({}, createMockDeps());
+    } finally {
+      console.log = origLog;
+    }
+
+    const allOutput = logs.join('\n');
+    assert.ok(!allOutput.includes('Label:'));
+  });
+
+  it('text output shows filter_repo when set', async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(' '));
+    try {
+      await orchestrateCommand({ repo: 'owner/repo' }, createMockDeps());
+    } finally {
+      console.log = origLog;
+    }
+
+    const allOutput = logs.join('\n');
+    assert.ok(allOutput.includes('Repo:'));
+    assert.ok(allOutput.includes('owner/repo'));
+  });
+
+  it('text output omits filter_repo when not set', async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(' '));
+    try {
+      await orchestrateCommand({}, createMockDeps());
+    } finally {
+      console.log = origLog;
+    }
+
+    const allOutput = logs.join('\n');
+    assert.ok(!allOutput.includes('Repo:'));
   });
 });

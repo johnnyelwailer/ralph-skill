@@ -129,9 +129,9 @@ export async function orchestrateCommandWithDeps(
   return { session_dir: sessionDir, state_file: stateFile, state };
 }
 
-export async function orchestrateCommand(options: OrchestrateCommandOptions = {}) {
+export async function orchestrateCommand(options: OrchestrateCommandOptions = {}, deps?: OrchestrateDeps) {
   const outputMode = options.output ?? 'text';
-  const result = await orchestrateCommandWithDeps(options);
+  const result = await orchestrateCommandWithDeps(options, deps);
 
   if (outputMode === 'json') {
     console.log(JSON.stringify(result, null, 2));
