@@ -350,3 +350,20 @@ test('devcontainerCommandWithDeps - augments JSONC with URLs without corruption'
   assert.equal(parsed.name, 'url-project');
   assert.equal((parsed.settings as Record<string, string>).proxy, 'https://proxy.internal.com/api');
 });
+
+test('devcontainerCommandWithDeps - throws on invalid JSON in existing config', async () => {
+  const invalidJson = '{ name: broken, missing quotes }';
+
+  const deps: DevcontainerDeps = {
+    discover: async () => mockDiscovery(),
+    readFile: async () => invalidJson,
+    writeFile: async () => {},
+    mkdir: async () => undefined,
+    existsSync: (p) => p.includes('devcontainer.json'),
+  };
+
+  await assert.rejects(
+    () => devcontainerCommandWithDeps({}, deps),
+    (err: Error) => err instanceof SyntaxError,
+  );
+});
