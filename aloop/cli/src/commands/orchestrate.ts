@@ -64,6 +64,45 @@ export interface OrchestrateDeps {
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
 }
 
+export interface SpawnSyncResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+export interface ChildProcess {
+  pid?: number;
+  unref: () => void;
+}
+
+export interface DispatchDeps {
+  existsSync: (path: string) => boolean;
+  readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
+  writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
+  mkdir: (path: string, options?: { recursive?: boolean }) => Promise<string | undefined>;
+  cp: (src: string, dest: string, options?: { recursive?: boolean }) => Promise<void>;
+  now: () => Date;
+  spawnSync: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
+  spawn: (command: string, args: string[], options?: Record<string, unknown>) => ChildProcess;
+  platform: string;
+  env: Record<string, string | undefined>;
+}
+
+export interface ChildLaunchResult {
+  issue_number: number;
+  session_id: string;
+  session_dir: string;
+  branch: string;
+  worktree_path: string;
+  pid: number;
+}
+
+export interface DispatchResult {
+  launched: ChildLaunchResult[];
+  skipped: number[];
+  state: OrchestratorState;
+}
+
 const defaultDeps: OrchestrateDeps = {
   existsSync,
   readFile,
@@ -348,4 +387,266 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   if (result.state.filter_repo) {
     console.log(`  Repo:         ${result.state.filter_repo}`);
   }
+}
+
+// --- Child-loop dispatch engine ---
+
+/**
+ * Returns issues from the current wave that are eligible for dispatch.
+ * An issue is dispatchable when:
+ *   - It belongs to the current wave
+ *   - Its state is 'pending'
+ *   - All its dependencies are in 'merged' state
+ */
+export function getDispatchableIssues(state: OrchestratorState): OrchestratorIssue[] {
+  if (state.current_wave === 0 || state.issues.length === 0) {
+    return [];
+  }
+
+  const issueByNumber = new Map<number, OrchestratorIssue>();
+  for (const issue of state.issues) {
+    issueByNumber.set(issue.number, issue);
+  }
+
+  return state.issues.filter((issue) => {
+    if (issue.wave !== state.current_wave) return false;
+    if (issue.state !== 'pending') return false;
+    // All dependencies must be merged
+    for (const depNumber of issue.depends_on) {
+      const dep = issueByNumber.get(depNumber);
+      if (!dep || dep.state !== 'merged') return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * Counts the number of currently in-progress child loops.
+ */
+export function countActiveChildren(state: OrchestratorState): number {
+  return state.issues.filter((i) => i.state === 'in_progress').length;
+}
+
+/**
+ * Returns the number of child loops that can be launched without exceeding the concurrency cap.
+ */
+export function availableSlots(state: OrchestratorState): number {
+  return Math.max(0, state.concurrency_cap - countActiveChildren(state));
+}
+
+function formatChildSessionId(projectName: string, issueNumber: number, now: Date): string {
+  const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}${String(now.getUTCSeconds()).padStart(2, '0')}`;
+  const sanitized = projectName.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+  return `${sanitized}-issue-${issueNumber}-${timestamp}`;
+}
+
+/**
+ * Launches a single child loop for the given issue.
+ * Creates branch, worktree, seeds TODO.md, launches loop process.
+ */
+export async function launchChildLoop(
+  issue: OrchestratorIssue,
+  orchestratorSessionDir: string,
+  projectRoot: string,
+  projectName: string,
+  promptsSourceDir: string,
+  aloopRoot: string,
+  deps: DispatchDeps,
+): Promise<ChildLaunchResult> {
+  const now = deps.now();
+  const sessionId = formatChildSessionId(projectName, issue.number, now);
+  const sessionsRoot = path.join(aloopRoot, 'sessions');
+  const sessionDir = path.join(sessionsRoot, sessionId);
+  const branchName = `aloop/issue-${issue.number}`;
+  const worktreePath = path.join(sessionDir, 'worktree');
+  const promptsDir = path.join(sessionDir, 'prompts');
+
+  // Create session directory
+  await deps.mkdir(sessionDir, { recursive: true });
+
+  // Copy prompts
+  await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
+
+  // Create git worktree with branch
+  const worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName], { encoding: 'utf8' });
+  if (worktreeResult.status !== 0) {
+    throw new Error(`Failed to create worktree for issue #${issue.number}: ${worktreeResult.stderr || worktreeResult.stdout}`);
+  }
+
+  // Seed TODO.md in worktree from issue body
+  const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
+  await deps.writeFile(path.join(worktreePath, 'TODO.md'), todoContent, 'utf8');
+
+  // Write child session config.json for policy enforcement
+  const configJson = {
+    repo: null, // Will be set by orchestrator if repo is known
+    assignedIssueNumber: issue.number,
+    childCreatedPrNumbers: [],
+    role: 'child-loop',
+    orchestrator_session: path.basename(orchestratorSessionDir),
+  };
+  await deps.writeFile(path.join(sessionDir, 'config.json'), `${JSON.stringify(configJson, null, 2)}\n`, 'utf8');
+
+  // Write meta.json
+  const startedAt = now.toISOString();
+  const meta = {
+    session_id: sessionId,
+    project_name: projectName,
+    project_root: projectRoot,
+    provider: 'round-robin',
+    mode: 'plan-build-review',
+    launch_mode: 'start',
+    worktree: true,
+    worktree_path: worktreePath,
+    work_dir: worktreePath,
+    branch: branchName,
+    prompts_dir: promptsDir,
+    session_dir: sessionDir,
+    issue_number: issue.number,
+    orchestrator_session: path.basename(orchestratorSessionDir),
+    created_at: startedAt,
+  };
+  await deps.writeFile(path.join(sessionDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
+  // Write initial status.json
+  await deps.writeFile(
+    path.join(sessionDir, 'status.json'),
+    `${JSON.stringify({ state: 'starting', mode: 'plan-build-review', provider: 'round-robin', iteration: 0, updated_at: startedAt }, null, 2)}\n`,
+    'utf8',
+  );
+
+  // Launch loop process
+  const loopBinDir = path.join(aloopRoot, 'bin');
+  let command: string;
+  let args: string[];
+
+  if (deps.platform === 'win32') {
+    const loopScript = path.join(loopBinDir, 'loop.ps1');
+    command = 'powershell';
+    args = [
+      '-NoProfile', '-File', loopScript,
+      '-PromptsDir', promptsDir,
+      '-SessionDir', sessionDir,
+      '-WorkDir', worktreePath,
+      '-Mode', 'plan-build-review',
+      '-Provider', 'round-robin',
+      '-MaxIterations', '20',
+      '-MaxStuck', '3',
+      '-LaunchMode', 'start',
+    ];
+  } else {
+    const loopScript = path.join(loopBinDir, 'loop.sh');
+    command = loopScript;
+    args = [
+      '--prompts-dir', promptsDir,
+      '--session-dir', sessionDir,
+      '--work-dir', worktreePath,
+      '--mode', 'plan-build-review',
+      '--provider', 'round-robin',
+      '--max-iterations', '20',
+      '--max-stuck', '3',
+      '--launch-mode', 'start',
+    ];
+  }
+
+  const child = deps.spawn(command, args, {
+    cwd: worktreePath,
+    detached: true,
+    stdio: 'ignore',
+    env: { ...deps.env },
+    windowsHide: true,
+  });
+  child.unref();
+
+  const pid = child.pid;
+  if (!pid) {
+    throw new Error(`Failed to launch loop process for issue #${issue.number}`);
+  }
+
+  // Update meta with PID
+  (meta as Record<string, unknown>).pid = pid;
+  (meta as Record<string, unknown>).started_at = startedAt;
+  await deps.writeFile(path.join(sessionDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
+  // Register in active.json
+  const activePath = path.join(aloopRoot, 'active.json');
+  let active: Record<string, unknown> = {};
+  try {
+    if (deps.existsSync(activePath)) {
+      active = JSON.parse(await deps.readFile(activePath, 'utf8'));
+    }
+  } catch {
+    active = {};
+  }
+  active[sessionId] = {
+    session_id: sessionId,
+    session_dir: sessionDir,
+    project_name: projectName,
+    project_root: projectRoot,
+    pid,
+    work_dir: worktreePath,
+    started_at: startedAt,
+    provider: 'round-robin',
+    mode: 'plan-build-review',
+  };
+  await deps.writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+
+  return {
+    issue_number: issue.number,
+    session_id: sessionId,
+    session_dir: sessionDir,
+    branch: branchName,
+    worktree_path: worktreePath,
+    pid,
+  };
+}
+
+/**
+ * Dispatches child loops for eligible issues up to the concurrency cap.
+ * Updates orchestrator state with child session references.
+ */
+export async function dispatchChildLoops(
+  stateFile: string,
+  orchestratorSessionDir: string,
+  projectRoot: string,
+  projectName: string,
+  promptsSourceDir: string,
+  aloopRoot: string,
+  deps: DispatchDeps,
+): Promise<DispatchResult> {
+  const stateContent = await deps.readFile(stateFile, 'utf8');
+  let state: OrchestratorState = JSON.parse(stateContent);
+
+  const dispatchable = getDispatchableIssues(state);
+  const slots = availableSlots(state);
+  const toDispatch = dispatchable.slice(0, slots);
+  const skipped = dispatchable.slice(slots).map((i) => i.number);
+
+  const launched: ChildLaunchResult[] = [];
+
+  for (const issue of toDispatch) {
+    const result = await launchChildLoop(
+      issue,
+      orchestratorSessionDir,
+      projectRoot,
+      projectName,
+      promptsSourceDir,
+      aloopRoot,
+      deps,
+    );
+    launched.push(result);
+
+    // Update issue state in-place
+    const stateIssue = state.issues.find((i) => i.number === issue.number);
+    if (stateIssue) {
+      stateIssue.state = 'in_progress';
+      stateIssue.child_session = result.session_id;
+    }
+  }
+
+  // Persist updated state
+  state = { ...state, updated_at: deps.now().toISOString() };
+  await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+
+  return { launched, skipped, state };
 }

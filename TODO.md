@@ -3,31 +3,44 @@
 ## Current Phase: P2 Dashboard UX + Orchestrator + GitHub Integration + Pipeline
 
 ### In Progress
-- [x] [review/P2] Gate 3: `orchestrateCommand` (orchestrate.ts:132-159) — 8 tests added covering text/JSON output modes and conditional display of filter_issues, filter_label, filter_repo.
+_(none)_
 
 ### Up Next
-- [x] [orchestrator/P2] Add orchestrator command wrappers (`claude/commands/aloop/orchestrate.md`, `copilot/prompts/aloop-orchestrate.prompt.md`). (priority: medium, command-surface parity)
-- [x] [orchestrator/P2] Implement issue decomposition + dependency graph + wave assignment + issue creation via `aloop gh issue-create` with `aloop/auto` + wave labels. (priority: medium, planning core) [reviewed: gates 1-5 pass]
-- [ ] [orchestrator/P2] Implement child-loop dispatch engine with concurrency cap (default 3), per-issue worktree/branch mapping (`aloop/issue-<N>`), and launch lifecycle tracking. (priority: medium, execution core)
+
+#### Orchestrator Execution Core (foundational — blocks triage, GH integration, and status tree)
+- [x] [orchestrator/P2] Implement child-loop dispatch engine with concurrency cap (default 3), per-issue worktree/branch mapping (`aloop/issue-<N>`), and launch lifecycle tracking. (priority: medium, execution core)
 - [ ] [orchestrator/P2] Implement PR lifecycle gates (CI/coverage/conflict/lint/review) with squash-merge to `agent/trunk`, reopen on conflict (max 2 rebase attempts), and agent review on PR diffs. (priority: medium, safe integration)
 - [ ] [orchestrator/P2] Add orchestrator budget/final-report outputs (session budget cap, issues created/completed/failed, provider usage/cost estimates, coverage delta). (priority: medium, acceptance completeness)
+
+#### Triage Agent (depends on orchestrator dispatch for end-to-end flow)
 - [ ] [triage/P2] Extend `aloop gh` with triage prerequisites: `issue-comments`/`pr-comments` listing with `--since` and `aloop/blocked-on-human` label add/remove under existing policy model. (priority: medium, triage prerequisite)
 - [ ] [triage/P2] Implement orchestrator triage classification loop (`actionable`, `needs_clarification`, `question`, `out_of_scope`) with confidence floor (<0.7 forces `needs_clarification`). (priority: medium, feedback processing)
 - [ ] [triage/P2] Implement processed-comment tracking (by ID), blocked-on-human pause/resume flow, and auto-unblock when human responds with actionable feedback. (priority: medium, prevents re-triage and loop churn)
+
+#### Configurable Agent Pipeline (independent track — can be parallelized with orchestrator work)
 - [ ] [pipeline/P2] Implement configurable agent pipeline (`pipeline.yml` or inline in `config.yml`) with named agents, transition rules (`onFailure: retry|goto`), and repeat counts. Default pipeline generates plan-build-review backward-compatible. (priority: medium, SPEC Configurable Agent Pipeline)
 - [ ] [pipeline/P2] Add agent definitions in `.aloop/agents/` (YAML with prompt reference, provider preference, transition rules) and refactor loop script into a generic agent runner. (priority: medium, agent extensibility)
 - [ ] [pipeline/P2] Add runtime pipeline mutation via host-side monitor (steering-driven insert/remove/reorder of agents; auto-inject debugger after 3 consecutive build failures). (priority: medium, dynamic pipeline control)
 - [ ] [pipeline/P2] Implement guard agent pattern and escalation ladder for verification failures (restrict code-only → code+tests → escalate to review → flag-for-human). (priority: medium, self-healing verification)
+
+#### GitHub-Integrated Workflows (depends on orchestrator dispatch + triage)
 - [ ] [gh/P2] Implement `aloop gh start --issue <N>` that fetches issue, creates branch/session/worktree, runs loop, creates PR on completion with `Closes #N` link + summary comment. (priority: medium, issue-driven workflow)
 - [ ] [gh/P2] Implement `aloop gh watch` event-driven daemon that polls for matching issues (by label/assignee/milestone) and auto-spawns loops with `--max-concurrent` cap and `watch.json` state tracking. (priority: medium, automated issue processing)
 - [ ] [gh/P2] Implement `aloop gh status` showing issue→loop→PR mapping with feedback status, and `aloop gh stop` for cleanly stopping GH-linked loops. (priority: medium, GH operational visibility)
 - [ ] [gh/P2] Implement PR feedback loop in `aloop gh watch`: detect review comments and CI failures on PRs, re-iterate with feedback as steering, max feedback iterations configurable. (priority: medium, self-healing PR cycle)
+
+#### Operational Visibility (depends on orchestrator dispatch for tree data)
 - [ ] [status/P2] Extend `aloop status` to show orchestrator tree state (orchestrator -> child sessions -> issue/PR mapping). (priority: medium, operational visibility)
+
+#### P3 — Spec Parity & Acceptance
 - [ ] [architecture/P3] Reconcile spec constraints (`zero npm dependencies`, `no build step`, `lib/config.mjs`) with current TypeScript/bundled CLI architecture, or explicitly update spec. (priority: low, spec parity risk)
 - [ ] [acceptance/P3] Add automated legacy-name guard for forbidden legacy references outside explicit allowlist contexts. (priority: low, release gate)
 - [ ] [acceptance/P3] Run final SPEC acceptance sweep and refresh TODO states from verified code/tests. (priority: low, completion gate)
 
 ### Completed
+- [x] [review/P2] Gate 3: `orchestrateCommand` (orchestrate.ts:132-159) — 8 tests added covering text/JSON output modes and conditional display of filter_issues, filter_label, filter_repo.
+- [x] [orchestrator/P2] Add orchestrator command wrappers (`claude/commands/aloop/orchestrate.md`, `copilot/prompts/aloop-orchestrate.prompt.md`). (priority: medium, command-surface parity)
+- [x] [orchestrator/P2] Implement issue decomposition + dependency graph + wave assignment + issue creation via `aloop gh issue-create` with `aloop/auto` + wave labels. (priority: medium, planning core) [reviewed: gates 1-5 pass]
 - [x] [review/P2] Gate 1: Phase colors in `App.tsx:84-97` fixed to match spec (`plan=purple, build=yellow, review=cyan`).
 - [x] [review/P2] Gate 3: `parseTodoProgress` extracted to testable module with unit tests (empty, no tasks, mixed, uppercase `[X]`).
 - [x] [orchestrator/P2] Add `aloop orchestrate` command registration with `--plan-only` and persisted `orchestrator.json` skeleton state.

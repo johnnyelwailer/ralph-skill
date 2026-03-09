@@ -6,11 +6,18 @@ import {
   validateDependencyGraph,
   assignWaves,
   applyDecompositionPlan,
+  getDispatchableIssues,
+  countActiveChildren,
+  availableSlots,
+  launchChildLoop,
+  dispatchChildLoops,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
+  type DispatchDeps,
   type DecompositionPlanIssue,
   type DecompositionPlan,
   type OrchestratorState,
+  type OrchestratorIssue,
 } from './orchestrate.js';
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
@@ -611,5 +618,416 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const allOutput = logs.join('\n');
     assert.ok(allOutput.includes('Issues:'));
     assert.ok(allOutput.includes('2 (2 waves)'));
+  });
+});
+
+// --- Dispatch engine tests ---
+
+function makeIssue(overrides: Partial<OrchestratorIssue> = {}): OrchestratorIssue {
+  return {
+    number: 1,
+    title: 'Test issue',
+    wave: 1,
+    state: 'pending',
+    child_session: null,
+    pr_number: null,
+    depends_on: [],
+    ...overrides,
+  };
+}
+
+function makeState(overrides: Partial<OrchestratorState> = {}): OrchestratorState {
+  return {
+    spec_file: 'SPEC.md',
+    trunk_branch: 'agent/trunk',
+    concurrency_cap: 3,
+    current_wave: 1,
+    plan_only: false,
+    issues: [],
+    completed_waves: [],
+    filter_issues: null,
+    filter_label: null,
+    filter_repo: null,
+    created_at: '2026-03-09T10:00:00.000Z',
+    updated_at: '2026-03-09T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('getDispatchableIssues', () => {
+  it('returns pending issues from the current wave', () => {
+    const state = makeState({
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'pending' }),
+        makeIssue({ number: 2, wave: 1, state: 'pending' }),
+        makeIssue({ number: 3, wave: 2, state: 'pending' }),
+      ],
+    });
+    const result = getDispatchableIssues(state);
+    assert.equal(result.length, 2);
+    assert.equal(result[0].number, 1);
+    assert.equal(result[1].number, 2);
+  });
+
+  it('excludes in_progress and merged issues', () => {
+    const state = makeState({
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'in_progress' }),
+        makeIssue({ number: 2, wave: 1, state: 'merged' }),
+        makeIssue({ number: 3, wave: 1, state: 'pending' }),
+      ],
+    });
+    const result = getDispatchableIssues(state);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].number, 3);
+  });
+
+  it('returns empty when current_wave is 0', () => {
+    const state = makeState({ current_wave: 0, issues: [makeIssue()] });
+    assert.deepStrictEqual(getDispatchableIssues(state), []);
+  });
+
+  it('returns empty when no issues exist', () => {
+    const state = makeState({ current_wave: 1, issues: [] });
+    assert.deepStrictEqual(getDispatchableIssues(state), []);
+  });
+
+  it('excludes issues with unmerged dependencies', () => {
+    const state = makeState({
+      current_wave: 2,
+      issues: [
+        makeIssue({ number: 10, wave: 1, state: 'merged' }),
+        makeIssue({ number: 11, wave: 1, state: 'in_progress' }),
+        makeIssue({ number: 20, wave: 2, state: 'pending', depends_on: [10] }),
+        makeIssue({ number: 21, wave: 2, state: 'pending', depends_on: [11] }),
+      ],
+    });
+    const result = getDispatchableIssues(state);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].number, 20);
+  });
+
+  it('includes issues whose dependencies are all merged', () => {
+    const state = makeState({
+      current_wave: 2,
+      issues: [
+        makeIssue({ number: 10, wave: 1, state: 'merged' }),
+        makeIssue({ number: 11, wave: 1, state: 'merged' }),
+        makeIssue({ number: 20, wave: 2, state: 'pending', depends_on: [10, 11] }),
+      ],
+    });
+    const result = getDispatchableIssues(state);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].number, 20);
+  });
+});
+
+describe('countActiveChildren', () => {
+  it('counts issues in in_progress state', () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 1, state: 'in_progress' }),
+        makeIssue({ number: 2, state: 'pending' }),
+        makeIssue({ number: 3, state: 'in_progress' }),
+        makeIssue({ number: 4, state: 'merged' }),
+      ],
+    });
+    assert.equal(countActiveChildren(state), 2);
+  });
+
+  it('returns 0 when no issues are in progress', () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 1, state: 'pending' }),
+        makeIssue({ number: 2, state: 'merged' }),
+      ],
+    });
+    assert.equal(countActiveChildren(state), 0);
+  });
+});
+
+describe('availableSlots', () => {
+  it('returns concurrency_cap minus active children', () => {
+    const state = makeState({
+      concurrency_cap: 3,
+      issues: [
+        makeIssue({ number: 1, state: 'in_progress' }),
+      ],
+    });
+    assert.equal(availableSlots(state), 2);
+  });
+
+  it('returns 0 when at capacity', () => {
+    const state = makeState({
+      concurrency_cap: 2,
+      issues: [
+        makeIssue({ number: 1, state: 'in_progress' }),
+        makeIssue({ number: 2, state: 'in_progress' }),
+      ],
+    });
+    assert.equal(availableSlots(state), 0);
+  });
+
+  it('never returns negative', () => {
+    const state = makeState({
+      concurrency_cap: 1,
+      issues: [
+        makeIssue({ number: 1, state: 'in_progress' }),
+        makeIssue({ number: 2, state: 'in_progress' }),
+      ],
+    });
+    assert.equal(availableSlots(state), 0);
+  });
+});
+
+function createMockDispatchDeps(overrides: Partial<DispatchDeps> = {}): DispatchDeps & {
+  _writtenFiles: Record<string, string>;
+  _createdDirs: string[];
+  _spawnSyncCalls: Array<{ command: string; args: string[] }>;
+  _spawnCalls: Array<{ command: string; args: string[] }>;
+} {
+  const writtenFiles: Record<string, string> = {};
+  const createdDirs: string[] = [];
+  const spawnSyncCalls: Array<{ command: string; args: string[] }> = [];
+  const spawnCalls: Array<{ command: string; args: string[] }> = [];
+
+  const deps: DispatchDeps = {
+    existsSync: () => false,
+    readFile: async () => '',
+    writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+    mkdir: async (p: string) => { createdDirs.push(p); return undefined; },
+    cp: async () => {},
+    now: () => new Date('2026-03-09T12:00:00Z'),
+    spawnSync: (command: string, args: string[]) => {
+      spawnSyncCalls.push({ command, args });
+      return { status: 0, stdout: '', stderr: '' };
+    },
+    spawn: (command: string, args: string[]) => {
+      spawnCalls.push({ command, args });
+      return { pid: 9999, unref: () => {} };
+    },
+    platform: 'linux',
+    env: {},
+    ...overrides,
+  };
+
+  return Object.assign(deps, {
+    _writtenFiles: writtenFiles,
+    _createdDirs: createdDirs,
+    _spawnSyncCalls: spawnSyncCalls,
+    _spawnCalls: spawnCalls,
+  });
+}
+
+describe('launchChildLoop', () => {
+  const issue = makeIssue({ number: 42, title: 'Add feature X' });
+
+  it('creates session directory', async () => {
+    const deps = createMockDispatchDeps();
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    assert.ok(deps._createdDirs.some((d) => d.includes('issue-42')));
+  });
+
+  it('creates worktree with correct branch name', async () => {
+    const deps = createMockDispatchDeps();
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git');
+    assert.ok(gitCall, 'git worktree add should be called');
+    assert.ok(gitCall.args.includes('-b'));
+    assert.ok(gitCall.args.includes('aloop/issue-42'));
+  });
+
+  it('seeds TODO.md in worktree', async () => {
+    const deps = createMockDispatchDeps();
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const todoFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('TODO.md'));
+    assert.ok(todoFile, 'TODO.md should be written');
+    assert.ok(deps._writtenFiles[todoFile].includes('Issue #42'));
+    assert.ok(deps._writtenFiles[todoFile].includes('Add feature X'));
+  });
+
+  it('writes config.json with child-loop role', async () => {
+    const deps = createMockDispatchDeps();
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const configFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('config.json'));
+    assert.ok(configFile, 'config.json should be written');
+    const config = JSON.parse(deps._writtenFiles[configFile]);
+    assert.equal(config.role, 'child-loop');
+    assert.equal(config.assignedIssueNumber, 42);
+    assert.deepStrictEqual(config.childCreatedPrNumbers, []);
+  });
+
+  it('writes meta.json with issue number and orchestrator reference', async () => {
+    const deps = createMockDispatchDeps();
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const metaFiles = Object.keys(deps._writtenFiles).filter((p) => p.endsWith('meta.json'));
+    // meta.json is written twice (before and after PID)
+    assert.ok(metaFiles.length >= 1);
+    const meta = JSON.parse(deps._writtenFiles[metaFiles[0]]);
+    assert.equal(meta.issue_number, 42);
+    assert.equal(meta.orchestrator_session, 'orch-1');
+    assert.equal(meta.branch, 'aloop/issue-42');
+  });
+
+  it('writes status.json with starting state', async () => {
+    const deps = createMockDispatchDeps();
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const statusFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('status.json'));
+    assert.ok(statusFile);
+    const status = JSON.parse(deps._writtenFiles[statusFile]);
+    assert.equal(status.state, 'starting');
+    assert.equal(status.mode, 'plan-build-review');
+  });
+
+  it('launches loop process and returns PID', async () => {
+    const deps = createMockDispatchDeps();
+    const result = await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    assert.equal(result.pid, 9999);
+    assert.equal(result.issue_number, 42);
+    assert.equal(result.branch, 'aloop/issue-42');
+    assert.ok(result.session_id.includes('issue-42'));
+  });
+
+  it('registers session in active.json', async () => {
+    const deps = createMockDispatchDeps();
+    const result = await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const activeFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('active.json'));
+    assert.ok(activeFile);
+    const active = JSON.parse(deps._writtenFiles[activeFile]);
+    assert.ok(active[result.session_id]);
+    assert.equal(active[result.session_id].pid, 9999);
+    assert.equal(active[result.session_id].mode, 'plan-build-review');
+  });
+
+  it('throws when worktree creation fails', async () => {
+    const deps = createMockDispatchDeps({
+      spawnSync: () => ({ status: 1, stdout: '', stderr: 'branch already exists' }),
+    });
+    await assert.rejects(
+      () => launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps),
+      /Failed to create worktree for issue #42/,
+    );
+  });
+
+  it('throws when spawn returns no PID', async () => {
+    const deps = createMockDispatchDeps({
+      spawn: () => ({ pid: undefined, unref: () => {} }),
+    });
+    await assert.rejects(
+      () => launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps),
+      /Failed to launch loop process for issue #42/,
+    );
+  });
+
+  it('uses powershell on win32', async () => {
+    const deps = createMockDispatchDeps({ platform: 'win32' });
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    assert.ok(deps._spawnCalls.some((c) => c.command === 'powershell'));
+  });
+
+  it('uses loop.sh on linux', async () => {
+    const deps = createMockDispatchDeps({ platform: 'linux' });
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    assert.ok(deps._spawnCalls.some((c) => c.command.endsWith('loop.sh')));
+  });
+});
+
+describe('dispatchChildLoops', () => {
+  function stateWithIssues(issues: OrchestratorIssue[], cap = 3): OrchestratorState {
+    return makeState({ concurrency_cap: cap, current_wave: 1, issues });
+  }
+
+  it('dispatches pending issues up to concurrency cap', async () => {
+    const issues = [
+      makeIssue({ number: 1, wave: 1, state: 'pending' }),
+      makeIssue({ number: 2, wave: 1, state: 'pending' }),
+      makeIssue({ number: 3, wave: 1, state: 'pending' }),
+      makeIssue({ number: 4, wave: 1, state: 'pending' }),
+    ];
+    const state = stateWithIssues(issues, 2);
+    const deps = createMockDispatchDeps({
+      readFile: async () => JSON.stringify(state),
+    });
+
+    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
+    assert.equal(result.launched.length, 2);
+    assert.deepStrictEqual(result.skipped, [3, 4]);
+  });
+
+  it('updates issue states to in_progress in persisted state', async () => {
+    const issues = [
+      makeIssue({ number: 1, wave: 1, state: 'pending' }),
+    ];
+    const state = stateWithIssues(issues);
+    const deps = createMockDispatchDeps({
+      readFile: async () => JSON.stringify(state),
+    });
+
+    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
+    assert.equal(result.state.issues[0].state, 'in_progress');
+    assert.ok(result.state.issues[0].child_session);
+  });
+
+  it('persists updated state to file', async () => {
+    const issues = [makeIssue({ number: 1, wave: 1, state: 'pending' })];
+    const state = stateWithIssues(issues);
+    const deps = createMockDispatchDeps({
+      readFile: async () => JSON.stringify(state),
+    });
+
+    await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
+    const persisted = JSON.parse(deps._writtenFiles['/state.json']);
+    assert.equal(persisted.issues[0].state, 'in_progress');
+    assert.equal(persisted.updated_at, '2026-03-09T12:00:00.000Z');
+  });
+
+  it('dispatches nothing when no slots are available', async () => {
+    const issues = [
+      makeIssue({ number: 1, wave: 1, state: 'in_progress' }),
+      makeIssue({ number: 2, wave: 1, state: 'in_progress' }),
+      makeIssue({ number: 3, wave: 1, state: 'pending' }),
+    ];
+    const state = stateWithIssues(issues, 2);
+    const deps = createMockDispatchDeps({
+      readFile: async () => JSON.stringify(state),
+    });
+
+    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
+    assert.equal(result.launched.length, 0);
+    assert.deepStrictEqual(result.skipped, [3]);
+  });
+
+  it('dispatches nothing when all issues are already dispatched', async () => {
+    const issues = [
+      makeIssue({ number: 1, wave: 1, state: 'in_progress' }),
+      makeIssue({ number: 2, wave: 1, state: 'merged' }),
+    ];
+    const state = stateWithIssues(issues);
+    const deps = createMockDispatchDeps({
+      readFile: async () => JSON.stringify(state),
+    });
+
+    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
+    assert.equal(result.launched.length, 0);
+    assert.deepStrictEqual(result.skipped, []);
+  });
+
+  it('each launched child has unique session_id and branch', async () => {
+    const issues = [
+      makeIssue({ number: 10, wave: 1, state: 'pending' }),
+      makeIssue({ number: 20, wave: 1, state: 'pending' }),
+    ];
+    const state = stateWithIssues(issues);
+    const deps = createMockDispatchDeps({
+      readFile: async () => JSON.stringify(state),
+    });
+
+    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
+    assert.equal(result.launched.length, 2);
+    assert.equal(result.launched[0].branch, 'aloop/issue-10');
+    assert.equal(result.launched[1].branch, 'aloop/issue-20');
+    assert.notEqual(result.launched[0].session_id, result.launched[1].session_id);
   });
 });
