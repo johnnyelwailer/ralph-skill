@@ -50,6 +50,7 @@ test('generateDevcontainerConfig - node-typescript project', () => {
   assert.equal(config.containerEnv.ALOOP_NO_DASHBOARD, '1');
   assert.equal(config.mounts.length, 1);
   assert.equal(config.mounts[0], 'source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind');
+  assert.equal(config.postCreateCommand, 'npm install');
 });
 
 test('generateDevcontainerConfig - python project', () => {
@@ -57,6 +58,7 @@ test('generateDevcontainerConfig - python project', () => {
   const config = generateDevcontainerConfig(discovery);
 
   assert.equal(config.image, 'mcr.microsoft.com/devcontainers/python:3');
+  assert.equal(config.postCreateCommand, 'pip install -e .');
 });
 
 test('generateDevcontainerConfig - go project', () => {
