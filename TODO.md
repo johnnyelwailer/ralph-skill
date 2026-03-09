@@ -1,19 +1,12 @@
 # Project TODO
 
-## Current Phase: P1 Reliability Hardening + PS 5.1 Compatibility + Devcontainer Foundations
+## Current Phase: P2 Dashboard UX + Orchestrator + GitHub Integration + Pipeline
 
 ### In Progress
-- [x] [review/P2] Gate 3: `resolveSessionContext` (dashboard.ts:121-137) has 4 untested branches — add tests for: (1) active.json is an array instead of object → returns null, (2) entry value is a non-object (e.g. string) → returns null, (3) entry missing `session_dir` → falls back to `path.join(runtimeDir, 'sessions', sessionId)`, (4) entry missing `work_dir` → falls back to `process.cwd()`. (priority: high)
+(none)
 
 ### Up Next
-- [x] [devcontainer/P1] Add provider install hooks (`postCreateCommand`) plus `remoteEnv`/`localEnv` auth forwarding for activated providers only; prefer `CLAUDE_CODE_OAUTH_TOKEN` > `ANTHROPIC_API_KEY` for Claude. (priority: high, container usability/security boundary)
-- [x] [devcontainer/P1] Implement verification loop (`devcontainer build`, `up`, `exec`) that checks deps/providers/git/mount and iterates on failure until green. (priority: high, acceptance gate)
-- [x] [devcontainer/P1] Implement host-side auto-container routing in `loop.ps1` and `loop.sh` (detect `.devcontainer/devcontainer.json`, ensure `devcontainer up`, wrap provider calls with `devcontainer exec`, support `--dangerously-skip-container` with visible warning + `container_bypass` log event). (priority: high, required runtime behavior)
-- [x] [devcontainer/P1] Bind-mount `~/.aloop/sessions/` in devcontainer config so session worktrees are reachable inside container. (priority: medium, parallel-loop scalability — note: shared-container reuse check via `devcontainer exec -- echo ok` is already implemented in both loop.ps1 and loop.sh; only the sessions bind-mount is missing)
-- [x] [dashboard/P2] Add backend multi-session APIs (`/api/state?session=<id>`, `/events?session=<id>`) with session-aware state loading from `active.json`. (priority: medium, enables real session switching)
-- [x] [dashboard/P2] Add frontend session switching that refetches state and rebinds SSE to selected session id; session cards get click handlers. (priority: medium, completes multi-session UX)
-- [x] [dashboard/P2] Add `/api/artifacts/<iteration>/<filename>` endpoint and include proof artifact metadata in state/SSE payloads. (priority: medium, proof visibility contract) [reviewed: gates 1-5 pass]
-- [ ] [dashboard/P2] Render proof artifacts inline in dashboard views (thumbnail/expand for images, syntax-highlighted code blocks for non-image artifacts, before/after comparison widget with side-by-side/slider modes). (priority: medium, closes proof UX gap)
+- [x] [dashboard/P2] Render proof artifacts inline in dashboard views (thumbnail/expand for images, syntax-highlighted code blocks for non-image artifacts, before/after comparison widget with side-by-side/slider modes). (priority: medium, closes proof UX gap)
 - [ ] [dashboard/P2] Redesign dashboard from tabbed views to dense single-page operations layout with always-visible steer input, header progress bar, and color-coded phase indicator. (priority: medium, aligns with spec UX intent)
 - [ ] [dashboard/P2] Integrate required advanced components (`ResizablePanel`, `HoverCard`, `Collapsible`, `Command`, `Sonner`, `ScrollArea`, `Progress`) into the new layout. (priority: medium, explicit acceptance criterion)
 - [ ] [orchestrator/P2] Add `aloop orchestrate` command registration with `--plan-only` and persisted `orchestrator.json` skeleton state. (priority: medium, orchestrator foundation)
@@ -39,6 +32,14 @@
 - [ ] [acceptance/P3] Run final SPEC acceptance sweep and refresh TODO states from verified code/tests. (priority: low, completion gate)
 
 ### Completed
+- [x] [review/P2] Gate 3: `resolveSessionContext` (dashboard.ts:121-137) — 4 untested branches covered.
+- [x] [devcontainer/P1] Add provider install hooks (`postCreateCommand`) plus `remoteEnv`/`localEnv` auth forwarding for activated providers only.
+- [x] [devcontainer/P1] Implement verification loop (`devcontainer build`, `up`, `exec`) that checks deps/providers/git/mount and iterates on failure until green.
+- [x] [devcontainer/P1] Implement host-side auto-container routing in `loop.ps1` and `loop.sh` (detect `.devcontainer/devcontainer.json`, ensure `devcontainer up`, wrap provider calls with `devcontainer exec`, support `--dangerously-skip-container`).
+- [x] [devcontainer/P1] Bind-mount `~/.aloop/sessions/` in devcontainer config so session worktrees are reachable inside container.
+- [x] [dashboard/P2] Add backend multi-session APIs (`/api/state?session=<id>`, `/events?session=<id>`) with session-aware state loading from `active.json`.
+- [x] [dashboard/P2] Add frontend session switching that refetches state and rebinds SSE to selected session id; session cards get click handlers.
+- [x] [dashboard/P2] Add `/api/artifacts/<iteration>/<filename>` endpoint and include proof artifact metadata in state/SSE payloads. [reviewed: gates 1-5 pass]
 - [x] [review/P1] Gate 3: `Initialize-DevcontainerRouting` (loop.ps1:98-147) and `initialize_devcontainer_routing` (loop.sh:118-160) — the "devcontainer CLI not found on PATH" branch is untested. Add a test for each runtime that creates `devcontainer.json`, ensures PATH has no `devcontainer` binary, and asserts the warning message about CLI not found. (priority: high)
 - [x] [review/P1] Gate 3: `detectNodeInstallCommand` (devcontainer.ts:111-116) has 4 branches (pnpm/yarn/bun/npm) with zero direct test coverage — add unit tests or refactor to accept injected `existsSync` so branches are testable. (priority: high) [reviewed: gates 1-5 pass]
 - [x] [review/P1] Gate 3: `detectPythonInstallCommand` (devcontainer.ts:118-122) has 3 branches with zero direct test coverage — same fix needed. (priority: high) [reviewed: gates 1-5 pass]
