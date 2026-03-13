@@ -3,7 +3,7 @@
 # Copies skill/command files to the correct directories for each AI harness,
 # and installs the runtime (~/.aloop/).
 #
-# Usage: ./install.ps1 [-Force] [-DryRun] [-All] [-Harnesses claude,codex,...] [-SkipCliCheck]
+# Usage: ./install.ps1 [-Help] [-Force] [-DryRun] [-All] [-Harnesses claude,codex,...] [-SkipCliCheck]
 #
 # Harness skill/command directories (official sources):
 #   Claude Code      : ~/.claude/skills/  + ~/.claude/commands/  (https://docs.anthropic.com/claude-code)
@@ -14,12 +14,37 @@
 #   VS Code Insiders : $APPDATA\Code - Insiders\User\prompts\ — .prompt.md slash commands
 
 param(
-    [switch]$Force,                  # Overwrite existing files without prompting
+    [switch]$Help,                   # Show this help message and exit
+    [switch]$Force,                  # Overwrite ALL existing files without prompting or content checks
     [switch]$DryRun,                 # Show what would be done without doing it
     [switch]$All,                    # Install all harnesses without prompting
     [string[]]$Harnesses = @(),      # Pre-select harnesses: claude, codex, copilot, agents
     [switch]$SkipCliCheck            # Skip CLI detection and auto-install
 )
+
+if ($Help) {
+    Write-Host @"
+Usage: ./install.ps1 [-Help] [-Force] [-DryRun] [-All] [-Harnesses <csv>] [-SkipCliCheck]
+
+Parameters:
+  -Help           Show this help message and exit.
+  -Force          Overwrite ALL existing files, even if content is identical.
+  -DryRun         Preview what would be done without making any changes.
+  -All            Install all harnesses and auto-install missing CLIs without prompting.
+  -Harnesses      Pre-select harnesses (comma-separated): claude, codex, copilot, agents
+  -SkipCliCheck   Skip AI provider CLI detection and auto-install step.
+
+Examples:
+  ./install.ps1                              # Interactive — choose harnesses, optionally install CLIs
+  ./install.ps1 -All                         # Install everything non-interactively
+  ./install.ps1 -Harnesses claude,codex      # Install only Claude Code + Codex CLI
+  ./install.ps1 -DryRun                      # Preview changes without writing anything
+  ./install.ps1 -Force                       # Re-install and overwrite all existing files
+
+Note: Without -Force, existing files are updated only when the source content differs.
+"@
+    exit 0
+}
 
 $ErrorActionPreference = 'Stop'
 $scriptDir = $PSScriptRoot
@@ -174,13 +199,21 @@ function Copy-TreeItem {
             }
 
             $exists = Test-Path $destPath
+
+            $shouldSkip = $false
             if ($exists -and -not $Force) {
-                Write-Host "  SKIP (exists): $destPath" -ForegroundColor Yellow
+                $srcHash = (Get-FileHash -Path $item.FullName -Algorithm SHA256).Hash
+                $dstHash = (Get-FileHash -Path $destPath      -Algorithm SHA256).Hash
+                $shouldSkip = ($srcHash -eq $dstHash)
+            }
+
+            if ($shouldSkip) {
+                Write-Host "  SKIP (up-to-date): $destPath" -ForegroundColor DarkGray
                 continue
             }
 
             if ($DryRun) {
-                $action = if ($exists) { "OVERWRITE" } else { "COPY" }
+                $action = if ($exists) { "UPDATE (content changed)" } else { "COPY" }
                 Write-Host "  [DRY RUN] $action $($item.FullName) -> $destPath" -ForegroundColor DarkGray
             } else {
                 Copy-Item -Path $item.FullName -Destination $destPath -Force
@@ -200,13 +233,21 @@ function Copy-TreeItem {
         }
 
         $exists = Test-Path $Destination
+
+        $shouldSkip = $false
         if ($exists -and -not $Force) {
-            Write-Host "  SKIP (exists): $Destination" -ForegroundColor Yellow
+            $srcHash = (Get-FileHash -Path $Source      -Algorithm SHA256).Hash
+            $dstHash = (Get-FileHash -Path $Destination -Algorithm SHA256).Hash
+            $shouldSkip = ($srcHash -eq $dstHash)
+        }
+
+        if ($shouldSkip) {
+            Write-Host "  SKIP (up-to-date): $Destination" -ForegroundColor DarkGray
             return
         }
 
         if ($DryRun) {
-            $action = if ($exists) { "OVERWRITE" } else { "COPY" }
+            $action = if ($exists) { "UPDATE (content changed)" } else { "COPY" }
             Write-Host "  [DRY RUN] $action $Source -> $Destination" -ForegroundColor DarkGray
         } else {
             Copy-Item -Path $Source -Destination $Destination -Force
@@ -495,9 +536,11 @@ if ($selectedHarnesses.Count -eq 0) {
 # VS Code uses a separate user-level prompts folder (not ~/.copilot/)
 # that is independent of which harness was selected above.
 # Official path: $APPDATA\Code\User\prompts\ and $APPDATA\Code - Insiders\User\prompts\
+$appData = $env:APPDATA
+if (-not $appData) { $appData = Join-Path $HOME ".config" }   # Linux/macOS fallback
 $vscodePromptDirs = @(
-    [PSCustomObject]@{ Name = 'VS Code (stable)';   Path = Join-Path $env:APPDATA "Code\User\prompts" }
-    [PSCustomObject]@{ Name = 'VS Code Insiders';   Path = Join-Path $env:APPDATA "Code - Insiders\User\prompts" }
+    [PSCustomObject]@{ Name = 'VS Code (stable)';   Path = Join-Path $appData "Code/User/prompts" }
+    [PSCustomObject]@{ Name = 'VS Code Insiders';   Path = Join-Path $appData "Code - Insiders/User/prompts" }
 )
 
 $promptSource = Join-Path $scriptDir "copilot\prompts"
@@ -568,6 +611,35 @@ Copy-TreeItem `
 # --- Runtime: CLI ---
 Write-Host ""
 Write-Host "Installing CLI and dashboard..." -ForegroundColor White
+
+# Build dashboard from source if npm is available
+$dashboardSrc = Join-Path $scriptDir "$skillName/cli/dashboard"
+if ((Test-Path (Join-Path $dashboardSrc "package.json")) -and (Test-CommandExists 'npm')) {
+    Write-Host "  Building dashboard from source..." -ForegroundColor Gray
+    Push-Location $dashboardSrc
+    try {
+        & npm install --silent 2>&1 | Out-Null
+        & npm run build 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $dashboardDist = Join-Path $dashboardSrc "dist"
+            $cliDashboardDist = Join-Path $scriptDir "$skillName/cli/dist/dashboard"
+            if (Test-Path $dashboardDist) {
+                if (-not (Test-Path $cliDashboardDist)) {
+                    New-Item -ItemType Directory -Path $cliDashboardDist -Force | Out-Null
+                }
+                Copy-Item -Path (Join-Path $dashboardDist "*") -Destination $cliDashboardDist -Recurse -Force
+                Write-Host "  Dashboard built successfully." -ForegroundColor Green
+            }
+        } else {
+            Write-Warning "  Dashboard build failed — installing without fresh build."
+        }
+    } finally {
+        Pop-Location
+    }
+} else {
+    Write-Host "  Skipping dashboard build (npm not found or no dashboard source)." -ForegroundColor Yellow
+}
+
 Copy-TreeItem `
     -Source (Join-Path $scriptDir "$skillName\cli\dist") `
     -Destination (Join-Path $aloopDir "cli\dist") `
@@ -639,11 +711,23 @@ foreach ($shim in @(
     [PSCustomObject]@{ Path = $shShim;  Content = $shShimContent;  Label = "aloop (POSIX)"       }
 )) {
     $exists = Test-Path $shim.Path
+
+    $shouldSkipShim = $false
+    if ($exists -and -not $Force -and -not $DryRun) {
+        $dstShimContent = Get-Content -Path $shim.Path -Raw -Encoding utf8
+        $shouldSkipShim = ($dstShimContent -eq $shim.Content)
+    }
+
     if ($DryRun) {
-        $action = if ($exists) { "OVERWRITE" } else { "CREATE" }
+        if ($exists) {
+            $dstShimContent = Get-Content -Path $shim.Path -Raw -Encoding utf8
+            $action = if ($dstShimContent -eq $shim.Content) { "SKIP (up-to-date)" } else { "UPDATE (content changed)" }
+        } else {
+            $action = "CREATE"
+        }
         Write-Host "  [DRY RUN] $action $($shim.Path)" -ForegroundColor DarkGray
-    } elseif ($exists -and -not $Force) {
-        Write-Host "  SKIP (exists): $($shim.Path)" -ForegroundColor Yellow
+    } elseif ($shouldSkipShim) {
+        Write-Host "  SKIP (up-to-date): $($shim.Path)" -ForegroundColor DarkGray
     } else {
         Set-Content -Path $shim.Path -Value $shim.Content
         $action = if ($exists) { "Updated" } else { "Created" }
@@ -677,7 +761,8 @@ Write-Host "  Claude Code / Codex: /$skillName`:setup  /$skillName`:start  /$ski
 Write-Host "  VS Code Copilot:     /aloop-setup  /aloop-start  /aloop-status  /aloop-dashboard  /aloop-stop  /aloop-steer  /aloop-devcontainer  /aloop-orchestrate  (prompt files)"
 Write-Host "  GH Copilot skill:    type '/' in chat and select $skillName, or let Copilot load it automatically"
 Write-Host ""
-Write-Host "To reinstall: $scriptDir\install.ps1 -Force" -ForegroundColor Gray
+Write-Host "To reinstall/update: $scriptDir\install.ps1 -Force" -ForegroundColor Gray
+Write-Host "Help:                $scriptDir\install.ps1 -Help" -ForegroundColor Gray
 Write-Host ""
 Write-Host "=== Authentication ===" -ForegroundColor Cyan
 Write-Host ""

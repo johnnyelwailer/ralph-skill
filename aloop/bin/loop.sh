@@ -951,7 +951,7 @@ invoke_provider() {
         copilot)
             copilot_output_file=$(mktemp)
             {
-                env -u CLAUDECODE "${DC_EXEC[@]}" copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+                env -u CLAUDECODE "${DC_EXEC[@]}" copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" "$copilot_output_file"
                 exit ${PIPESTATUS[0]}
             } &
             ACTIVE_PROVIDER_PID=$!
@@ -964,7 +964,7 @@ invoke_provider() {
             elif [ "$exit_code" -ne 0 ]; then
                 echo "Copilot --model $COPILOT_MODEL failed. Retrying with $COPILOT_RETRY_MODEL." >&2
                 {
-                    env -u CLAUDECODE "${DC_EXEC[@]}" copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+                    env -u CLAUDECODE "${DC_EXEC[@]}" copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" "$copilot_output_file"
                     exit ${PIPESTATUS[0]}
                 } &
                 ACTIVE_PROVIDER_PID=$!
@@ -976,7 +976,7 @@ invoke_provider() {
                 elif [ "$exit_code" -ne 0 ]; then
                     echo "Copilot retry failed. Trying without explicit model." >&2
                     {
-                        env -u CLAUDECODE "${DC_EXEC[@]}" copilot --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" -a "$copilot_output_file"
+                        env -u CLAUDECODE "${DC_EXEC[@]}" copilot --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" "$copilot_output_file"
                         exit ${PIPESTATUS[0]}
                     } &
                     ACTIVE_PROVIDER_PID=$!
