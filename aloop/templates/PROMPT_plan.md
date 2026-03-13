@@ -34,9 +34,11 @@ Study specifications and existing code, then generate or update a prioritized im
    - Most important/foundational work first
    - Each task should be completable in one loop iteration
    - Include brief context for why each task matters
-   - Mark completed tasks with `[x]`
+   - Mark completed tasks with `[x]` — but ONLY if you verified the implementation is correct and complete (not just that code exists)
    - Add new tasks discovered during analysis
-   - Remove tasks that are no longer relevant
+   - **NEVER remove or drop uncompleted tasks.** If a task seems irrelevant, mark it `[~]` (cancelled) with a reason — do not silently delete it
+   - **NEVER mark a task `[x]` without verifying it works.** "Component exists" is not "component works correctly." Check actual behavior, not just file existence.
+   - Tasks added by steering (marked with `(steering)` or recently added) must be preserved — they represent explicit user direction
 
 4. **Exit**
    - Do NOT implement anything

@@ -13,18 +13,22 @@ Read `STEERING.md`, update affected spec files and `TODO.md` to reflect the new 
 0c. Study `TODO.md` to understand current task state
 {{REFERENCE_FILES}}
 
-1. **Apply steering to spec files**
-   - Update only the spec sections the instruction affects
+1. **Apply steering to spec files (MANDATORY)**
+   - Every steering instruction MUST be reflected in the spec — if the steering describes a requirement, it must exist as a spec section or acceptance criterion
+   - Update existing spec sections the instruction affects
+   - Add new spec sections or acceptance criteria if the steering describes features not yet in the spec
    - Do NOT add requirements beyond what the instruction says
    - Do NOT touch spec sections that are unaffected
+   - The spec is the source of truth for all other agents — if it's not in the spec, it won't get built or verified
 
 2. **Update TODO.md**
    - Mark tasks invalidated by the steering as `[~]` (cancelled) with a short reason
    - Add new tasks the steering requires (they will be re-prioritized by the next plan iteration)
-   - Leave already-completed `[x]` tasks untouched — do not undo implemented work unless explicitly asked
+   - If the steering says a completed `[x]` task is NOT actually implemented, **reopen it**: change `[x]` to `[ ]` and add `(reopened: not actually implemented — <reason from steering>)`
+   - Otherwise leave completed `[x]` tasks untouched
    - Do NOT re-prioritize the whole plan — that is the next plan iteration's job
 
-3. **Delete `STEERING.md`** from the work directory
+3. **Archive `STEERING.md`** — append its full contents (with timestamp) to `STEERING_LOG.md`, then delete `STEERING.md` from the work directory. This ensures steering history is never lost.
 
 4. **Commit** all changes with message: `chore(steer): apply steering — <one-line summary>`
 

@@ -1594,9 +1594,19 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         update_provider_health_on_success "$iter_provider"
         register_iteration_success "$iter_mode" "$LAST_MODE_WAS_FORCED"
 
-        # Steer mode: remove any leftover steering file if the agent did not delete it
+        # Steer mode: archive leftover steering file if the agent did not delete it
         if [ "$iter_mode" = "steer" ]; then
-            rm -f "$STEERING_FILE"
+            if [ -f "$STEERING_FILE" ]; then
+                # Archive to STEERING_LOG.md before removing
+                {
+                    echo ""
+                    echo "## Steering — iteration $ITERATION ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+                    echo ""
+                    cat "$STEERING_FILE"
+                    echo ""
+                } >> "$WORK_DIR/STEERING_LOG.md"
+                rm -f "$STEERING_FILE"
+            fi
             echo "[Steering processed — re-plan queued for next iteration]"
             write_log_entry "steering_processed" "iteration" "$ITERATION"
         fi
