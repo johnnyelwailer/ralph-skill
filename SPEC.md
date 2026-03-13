@@ -719,14 +719,24 @@ Similarly, move the setup/scaffold flow into a single interactive CLI:
 aloop setup [--spec SPEC.md] [--providers claude,codex] [--non-interactive]
 ```
 
+**Dual-mode support**: setup must support configuring both loop mode and orchestrator mode. Based on the scope and complexity of the task the user describes, setup should recommend the appropriate mode:
+
+- **Loop mode** (default for simple/single-track work): one spec, one loop, plan-build-review cycle. Best for: single feature, bug fix, focused refactor, small-to-medium scope.
+- **Orchestrator mode** (recommended for complex/multi-track work): spec decomposition into parallel issues, wave scheduling, concurrent child loops. Best for: large migrations, multi-component features, greenfield projects with many independent workstreams.
+
+Setup should analyze the spec file (if provided) or the user's description to gauge complexity — number of independent workstreams, estimated issue count, whether parallelism would help — and recommend one mode. The user can override the recommendation.
+
 Interactive mode:
 1. Run `aloop discover`
 2. Prompt user for spec file, providers, validation level
-3. Run `aloop scaffold` with gathered options
-4. Print confirmation
+3. **Analyze scope and recommend loop vs orchestrator mode**
+4. If orchestrator: prompt for concurrency cap, trunk branch name, budget limits
+5. Run `aloop scaffold` with gathered options
+6. Print confirmation
 
 Non-interactive mode (for CI/automation):
 - All options passed as flags, no prompts
+- `--mode loop|orchestrate` to select explicitly
 
 #### 3. Auto-monitoring popup on loop start
 
@@ -1174,6 +1184,59 @@ aloop orchestrate --spec SPEC.md --plan-only
 | Steering (`STEERING.md`) | Can steer individual children or the orchestrator |
 | `aloop status` | Shows orchestrator + children in a tree view |
 
+### Resumability
+
+The orchestrator MUST be resumable. If the process is killed (SIGTERM, crash, OOM, user Ctrl-C) and restarted, it picks up exactly where it left off:
+
+1. **State persistence**: `orchestrator.json` is the single source of truth. It is written atomically (write-to-temp + rename) after every state transition (issue created, child dispatched, PR merged, wave advanced).
+2. **On restart**, the orchestrator:
+   - Reads `orchestrator.json` to recover task graph, wave progress, and child session states
+   - Checks each child session's `status.json` to detect children that completed/failed while the orchestrator was down
+   - Resumes monitoring live children, dispatches queued issues, advances waves as appropriate
+   - Does NOT re-create issues or re-launch children that are already running or completed
+3. **Idempotency**: every orchestrator operation must be safe to re-execute. Creating an issue checks if one already exists for that task (by title/label match). Dispatching checks if a child session already exists. Merging checks if PR is already merged.
+4. **No work lost**: in-flight child loops continue running independently of the orchestrator process. They write their own `status.json` and commits. The orchestrator is a coordinator, not a parent process — children are orphan-safe.
+
+### Per-Task Environment Requirements
+
+Not all tasks can run in a container. Each task in the decomposition plan may declare environment requirements that the dispatch engine uses to decide execution context:
+
+```yaml
+issues:
+  - id: 1
+    title: "Screenshot all legacy app views"
+    wave: 1
+    requires: [windows]    # must run on host Windows OS, no container
+    sandbox: none
+
+  - id: 2
+    title: "Migrate legacy views to React"
+    wave: 2
+    depends_on: [1]
+    requires: []           # default — can run in devcontainer
+    sandbox: container
+```
+
+**Dispatch rules:**
+- `sandbox: container` (default) — child loop runs inside a devcontainer if one is configured
+- `sandbox: none` — child loop runs directly on the host OS, no devcontainer isolation
+- `requires: [<label>, ...]` — declarative environment labels. The dispatcher checks that the current host satisfies all labels before dispatching. If unsatisfied, the task is queued with a reason.
+- Common labels: `windows`, `macos`, `linux`, `gpu`, `docker`, `network-access`
+- Tasks with `sandbox: none` skip devcontainer setup entirely and run in a host worktree
+- This is analogous to CI runner labels — tasks declare what they need, the dispatcher routes accordingly
+
+**Use case**: migrating a legacy Windows-only application. Phase 0 (`requires: [windows]`, `sandbox: none`) runs the app natively to capture screenshots of every view. Phase 1+ (`sandbox: container`) uses those screenshots as baseline references and can run containerized.
+
+### GitHub Enterprise Support
+
+All GitHub operations MUST support GitHub Enterprise instances, not just `github.com`:
+
+- The `gh` CLI already handles GHE via `gh auth login --hostname ghes.company.com` — aloop must not hardcode `github.com` anywhere
+- Repository URLs, issue URLs, PR URLs, and commit URLs must be derived from the repo's actual remote origin, not constructed with a hardcoded `github.com` prefix
+- The convention-file response format (`url` fields in `.aloop/responses/`) must use the actual GHE hostname
+- `aloop orchestrate`, `aloop gh`, and the dashboard's contextual links must all work with any GH-compatible hostname
+- No validation or parsing should assume `github.com` as the only valid GitHub host
+
 ### Acceptance Criteria
 
 - [ ] Orchestrator can decompose a spec into GitHub issues with dependency graph and wave assignment
@@ -1193,6 +1256,10 @@ aloop orchestrate --spec SPEC.md --plan-only
 - [ ] Final report includes: issues created/completed/failed, time, provider usage, cost estimates
 - [ ] Provider health subsystem is shared across all child loops (file-lock safe)
 - [ ] Session-level budget cap can pause dispatch when threshold is approached
+- [ ] Orchestrator is resumable: kill + restart recovers full state from `orchestrator.json` and child `status.json` files, no duplicate issues or child sessions created
+- [ ] Per-task `sandbox` field controls whether child runs in devcontainer (`container`) or on host (`none`)
+- [ ] Per-task `requires` labels declare environment needs; dispatcher checks host capabilities before dispatch
+- [ ] All GitHub operations work with GitHub Enterprise instances (no hardcoded `github.com`)
 
 ---
 

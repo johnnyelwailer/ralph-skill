@@ -22,12 +22,21 @@ Study specifications and existing code, then generate or update a prioritized im
    - IMPORTANT: Don't assume not implemented; confirm with code search first
    - Consider TODO comments, placeholders, and partial implementations
 
-2. **Record new research in RESEARCH.md**
-   - **Append** any new findings, lookups, or discoveries made during this planning iteration
-   - Each entry must have a timestamp, brief summary, **source tier**, and **explicit source citation** (URL, file path + line, or command run) — see format below
-   - A finding with no cited source is not acceptable — if you cannot cite it, do not record it as fact
-   - If something was already covered in RESEARCH.md, skip it — do not add duplicate entries
-   - Do NOT rewrite or delete existing entries — the file is **append-only**
+2. **RESEARCH.md — almost always SKIP this step**
+   - **Default action: do NOT touch RESEARCH.md.** Most iterations have zero new external research.
+   - RESEARCH.md is ONLY for **external knowledge you discovered by reading official docs or testing a tool/library/API** — things like "shadcn Sidebar uses SidebarProvider context" or "marked.js needs an extension for heading anchors."
+   - **Self-check before writing:** ask yourself "Did I learn something new about an external system, library, or platform that is NOT visible in our codebase?" If the answer is no, **SKIP this step entirely.**
+   - **NEVER write entries titled "Planning recheck"** — this pattern is explicitly banned. There is no such thing as a planning recheck entry.
+   - **NEVER write code gap analysis.** The following are NOT research and MUST NOT appear in RESEARCH.md:
+     - "component X is missing / not implemented / is a stub"
+     - "function Y doesn't match the spec"
+     - "no tests for Z"
+     - "dashboard still uses flexbox instead of grid"
+     - Status updates on what has or hasn't been built
+     - Any finding derived solely from reading project source code (T2+T3 only)
+   - These belong in TODO.md as tasks, not in RESEARCH.md as research.
+   - If you have genuine external research: timestamp, source tier, explicit citation. Append-only — never rewrite or delete.
+   - **If in doubt, don't write it.** An empty RESEARCH.md diff is the correct outcome 95% of the time.
 
 3. **Generate/Update TODO.md**
    - Prioritized list of tasks
@@ -38,7 +47,8 @@ Study specifications and existing code, then generate or update a prioritized im
    - Add new tasks discovered during analysis
    - **NEVER remove or drop uncompleted tasks.** If a task seems irrelevant, mark it `[~]` (cancelled) with a reason — do not silently delete it
    - **NEVER mark a task `[x]` without verifying it works.** "Component exists" is not "component works correctly." Check actual behavior, not just file existence.
-   - Tasks added by steering (marked with `(steering)` or recently added) must be preserved — they represent explicit user direction
+   - Tasks added by steering must be preserved at their current position — they represent explicit user direction. The steer agent already placed them at the correct priority level. Do not move steering tasks down unless their declared priority is clearly lower than surrounding tasks.
+   - Priority order: (1) `[review]` fix tasks, (2) tasks marked `(priority: critical)` or `CRITICAL`, (3) everything else by dependency order
 
 4. **Exit**
    - Do NOT implement anything
@@ -65,30 +75,25 @@ When a finding's source tier is low (T4/T5), note it explicitly so future iterat
 
 ## RESEARCH.md Format
 
-Append a new entry for each planning iteration. Do NOT overwrite previous entries.
+Append an entry ONLY when you discover something new about an **external** system, dependency, or platform. Do NOT append an entry every iteration. Do NOT use RESEARCH.md for code gap analysis.
 
 ```markdown
 # Research Log
 
-## 2026-02-25 14:32 — Gap analysis: auth module [T1+T2]
+## 2026-02-25 14:32 — shadcn Sidebar component API [T1]
 
-- `src/auth/token.ts` exists but `refreshToken()` is a stub (returns null, no HTTP call)
-  - Source: `src/auth/token.ts:42` (T2 — direct code inspection)
-- Spec §4.2 requires silent token refresh — not implemented
-  - Source: `SPEC.md §4.2` (T3)
-- `tests/auth.test.ts` has no tests for the refresh path
-  - Source: `tests/auth.test.ts` (T2 — direct inspection)
+- shadcn `Sidebar` uses `SidebarProvider` context with `defaultOpen` prop for initial state
+- Collapse/expand controlled via `useSidebar()` hook: `toggleSidebar()`, `open`, `setOpen`
+- Mobile: automatically renders as a `Sheet` (drawer) below `md` breakpoint
+- Keyboard shortcut: `Ctrl+B` toggles sidebar by default
+  - Source: https://ui.shadcn.com/docs/components/sidebar (T1)
 
-## 2026-02-25 16:10 — Investigated: adapter duplication [T2]
+## 2026-02-25 16:10 — marked.js GFM task list rendering [T1+T2]
 
-- `src/adapters/openai.ts` and `src/adapters/azure.ts` share identical `buildHeaders()` logic
-  - Source: `src/adapters/openai.ts:34–41`, `src/adapters/azure.ts:29–36` (T2 — direct inspection)
-- No shared utility exists yet — flagged for extraction
-
-## 2026-03-18 09:05 — Stale recheck: adapter duplication (originally 2026-02-25) [T2]
-
-- Still holds. Both files still contain the same `buildHeaders()` block. Not yet extracted.
-  - Source: `src/adapters/openai.ts:34–41`, `src/adapters/azure.ts:29–36` (T2 — re-inspected)
+- `marked` renders GFM task lists (`- [x]`) as `<input type="checkbox" disabled>` by default
+- Need `marked-gfm-heading-id` extension for heading anchors
+- Tested: `marked.parse('- [x] done\n- [ ] todo')` produces correct HTML with checkboxes
+  - Source: https://marked.js.org/using_advanced#options (T1), local test (T2)
 ```
 
 ## TODO.md Format
@@ -112,17 +117,15 @@ Append a new entry for each planning iteration. Do NOT overwrite previous entrie
 
 - **DO NOT implement anything.** Only plan.
 - **DO NOT create commits.** Only update RESEARCH.md and TODO.md.
+- **RESEARCH.md: default is DO NOT TOUCH.** Only append if you learned something new about an external system (library API, platform behavior, tool quirk). Code gap analysis is NEVER research. "Planning recheck" entries are banned. If your entry title contains "recheck", "gap analysis", "parity", "delta", or "verification" — it is NOT research, do not write it.
 - **RESEARCH.md is append-only.** Never delete or modify previous entries.
-- **Check RESEARCH.md before researching.** If something is already recorded (and not stale), skip it.
-- **Tag source tiers.** Every research entry must note its tier (T1–T5). Low-tier findings (T4/T5) should be flagged for future T1/T2 verification.
-- **Always cite the source.** Every finding must reference the exact source: a URL, a file path with line number, or the exact command run and its output. A finding without a citation is not acceptable — if you cannot cite it, do not record it as fact.
-- **Prefer T1+T2 combinations.** Don't commit a finding to RESEARCH.md on T4/T5 alone without noting the uncertainty.
+- **Tag source tiers.** Every research entry must note its tier (T1–T5). Entries that are purely T2+T3 (local code + project specs) are code gap analysis, not research — do not write them.
 - Each task should be small enough to complete in a single loop iteration.
 - Tasks should be ordered by dependency: foundational work first.
 
 ## Success Criteria
 
-- RESEARCH.md updated with any new findings (or unchanged if nothing new was discovered)
+- RESEARCH.md **untouched** in most iterations (95%+). Only updated if genuinely new external knowledge was discovered. Zero "Planning recheck" entries.
 - TODO.md exists and is prioritized
 - Each task is specific and actionable
 - Plan reflects actual gaps (confirmed via code search)
