@@ -13,7 +13,7 @@ _(none)_
 - [x] [orchestrator/P2] Add orchestrator budget/final-report outputs (session budget cap, issues created/completed/failed, provider usage/cost estimates, coverage delta). (priority: medium, acceptance completeness) [reviewed: gates 1-5 pass]
 
 #### Triage Agent (depends on orchestrator dispatch for end-to-end flow)
-- [ ] [triage/P2] Extend `aloop gh` with triage prerequisites: `issue-comments`/`pr-comments` listing with `--since` and `aloop/blocked-on-human` label add/remove under existing policy model. (priority: medium, triage prerequisite)
+- [x] [triage/P2] Extend `aloop gh` with triage prerequisites: `issue-comments`/`pr-comments` listing with `--since` and `aloop/blocked-on-human` label add/remove under existing policy model. (priority: medium, triage prerequisite)
 - [ ] [triage/P2] Implement orchestrator triage classification loop (`actionable`, `needs_clarification`, `question`, `out_of_scope`) with confidence floor (<0.7 forces `needs_clarification`). (priority: medium, feedback processing)
 - [ ] [triage/P2] Implement processed-comment tracking (by ID), blocked-on-human pause/resume flow, and auto-unblock when human responds with actionable feedback. (priority: medium, prevents re-triage and loop churn)
 

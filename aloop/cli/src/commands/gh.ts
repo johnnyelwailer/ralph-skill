@@ -19,7 +19,7 @@ export const ghCommand = new Command('gh')
   .description('Policy-enforced GitHub operations');
 
 // Common options for gh subcommands
-function addGhSubcommand(name: string, description: string) {
+function addGhRequestSubcommand(name: string, description: string) {
   return ghCommand
     .command(name)
     .description(description)
@@ -32,14 +32,30 @@ function addGhSubcommand(name: string, description: string) {
     });
 }
 
+function addGhSinceSubcommand(name: string, description: string) {
+  return ghCommand
+    .command(name)
+    .description(description)
+    .requiredOption('--session <id>', 'Session ID')
+    .requiredOption('--since <timestamp>', 'Only return comments created at/after this timestamp (ISO-8601)')
+    .option('--role <role>', 'Role: child-loop or orchestrator', 'orchestrator')
+    .option('--home-dir <dir>', 'Home directory override')
+    .action(async (options) => {
+      await executeGhOperation(name, options);
+    });
+}
+
 // Register subcommands
-addGhSubcommand('pr-create', 'Create a pull request');
-addGhSubcommand('pr-comment', 'Comment on a pull request');
-addGhSubcommand('issue-comment', 'Comment on an issue');
-addGhSubcommand('issue-create', 'Create an issue (orchestrator only)');
-addGhSubcommand('issue-close', 'Close an issue (orchestrator only)');
-addGhSubcommand('pr-merge', 'Merge a pull request (orchestrator only)');
-addGhSubcommand('branch-delete', 'Delete a branch (always rejected)');
+addGhRequestSubcommand('pr-create', 'Create a pull request');
+addGhRequestSubcommand('pr-comment', 'Comment on a pull request');
+addGhRequestSubcommand('issue-comment', 'Comment on an issue');
+addGhRequestSubcommand('issue-create', 'Create an issue (orchestrator only)');
+addGhRequestSubcommand('issue-close', 'Close an issue (orchestrator only)');
+addGhRequestSubcommand('issue-label', 'Add/remove issue labels (orchestrator only)');
+addGhRequestSubcommand('pr-merge', 'Merge a pull request (orchestrator only)');
+addGhRequestSubcommand('branch-delete', 'Delete a branch (always rejected)');
+addGhSinceSubcommand('issue-comments', 'List issue comments since a timestamp (orchestrator only)');
+addGhSinceSubcommand('pr-comments', 'List pull request review comments since a timestamp (orchestrator only)');
 
 type SessionPolicyContext = {
   repo: string;
@@ -88,6 +104,10 @@ function appendLog(sessionDir: string, entry: any) {
   }
 }
 
+function requiresRequestFile(operation: string): boolean {
+  return operation !== 'issue-comments' && operation !== 'pr-comments';
+}
+
 function buildGhArgs(operation: string, payload: any, enforced: any): string[] {
   const repo = enforced.repo;
 
@@ -131,9 +151,27 @@ function buildGhArgs(operation: string, payload: any, enforced: any): string[] {
       const issueNum = payload.issue_number;
       return ['issue', 'close', String(issueNum), '--repo', repo];
     }
+    case 'issue-label': {
+      const issueNum = enforced.issue_number ?? payload.issue_number;
+      const action = enforced.label_action ?? payload.label_action;
+      const label = enforced.label ?? payload.label;
+      const args = ['issue', 'edit', String(issueNum), '--repo', repo];
+      if (action === 'add') {
+        args.push('--add-label', String(label));
+      } else {
+        args.push('--remove-label', String(label));
+      }
+      return args;
+    }
     case 'pr-merge': {
       const prNum = payload.pr_number;
       return ['pr', 'merge', String(prNum), '--repo', repo, '--squash'];
+    }
+    case 'issue-comments': {
+      return ['api', `repos/${repo}/issues/comments`, '--method', 'GET', '-f', `since=${String(enforced.since)}`];
+    }
+    case 'pr-comments': {
+      return ['api', `repos/${repo}/pulls/comments`, '--method', 'GET', '-f', `since=${String(enforced.since)}`];
     }
     default:
       throw new Error(`Cannot build gh args for operation: ${operation}`);
@@ -156,6 +194,11 @@ function parseGhOutput(operation: string, stdout: string): Record<string, unknow
       result.issue_number = parseInt(match[1], 10);
     }
     if (trimmed) result.url = trimmed;
+  } else if (operation === 'issue-comments' || operation === 'pr-comments') {
+    const parsed = trimmed ? JSON.parse(trimmed) : [];
+    const comments = Array.isArray(parsed) ? parsed : [];
+    result.comments = comments;
+    result.comment_count = comments.length;
   }
 
   return result;
@@ -164,6 +207,7 @@ function parseGhOutput(operation: string, stdout: string): Record<string, unknow
 async function executeGhOperation(operation: string, options: any) {
   const sessionDir = getSessionDir(options.homeDir, options.session);
   const requestFile = options.request;
+  const needsRequestFile = requiresRequestFile(operation);
   const role = options.role;
 
   // Load session config
@@ -208,23 +252,34 @@ async function executeGhOperation(operation: string, options: any) {
 
   // Read request payload
   let requestPayload: any = {};
-  if (fs.existsSync(requestFile)) {
-    try {
-      requestPayload = JSON.parse(fs.readFileSync(requestFile, 'utf8'));
-    } catch (e) {
-      console.error(`Failed to parse request file: ${requestFile}`);
+  if (needsRequestFile) {
+    if (typeof requestFile !== 'string' || !requestFile.trim()) {
+      console.error(`Request file not provided for operation: ${operation}`);
+      process.exit(1);
+    }
+
+    if (fs.existsSync(requestFile)) {
+      try {
+        requestPayload = JSON.parse(fs.readFileSync(requestFile, 'utf8'));
+      } catch (e) {
+        console.error(`Failed to parse request file: ${requestFile}`);
+        process.exit(1);
+      }
+    } else {
+      console.error(`Request file not found: ${requestFile}`);
       process.exit(1);
     }
   } else {
-    console.error(`Request file not found: ${requestFile}`);
-    process.exit(1);
+    requestPayload = {
+      since: options.since,
+    };
   }
 
   // Evaluate policy
   const { allowed, reason, enforced } = evaluatePolicy(operation, role, requestPayload, sessionPolicy);
 
   const timestamp = new Date().toISOString();
-  const requestFileName = path.basename(requestFile);
+  const requestFileName = typeof requestFile === 'string' ? path.basename(requestFile) : undefined;
 
   if (!allowed) {
     const logEntry = {
@@ -262,7 +317,27 @@ async function executeGhOperation(operation: string, options: any) {
       process.exit(1);
     }
 
-    const parsed = parseGhOutput(operation, ghResult.stdout);
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = parseGhOutput(operation, ghResult.stdout);
+    } catch (e: any) {
+      const parseErrorEntry: any = {
+        timestamp,
+        event: 'gh_operation_error',
+        type: operation,
+        session: options.session,
+        role: role,
+        error: e.message,
+        stderr: ghResult.stderr || '',
+        enforced: enforced,
+      };
+      if (requestFileName) {
+        parseErrorEntry.request_file = requestFileName;
+      }
+      appendLog(sessionDir, parseErrorEntry);
+      console.error(JSON.stringify(parseErrorEntry));
+      process.exit(1);
+    }
 
     const logEntry: any = {
       timestamp,
@@ -270,11 +345,13 @@ async function executeGhOperation(operation: string, options: any) {
       type: operation,
       session: options.session,
       role: role,
-      request_file: requestFileName,
       result: 'success',
       enforced: enforced,
       ...parsed,
     };
+    if (requestFileName) {
+      logEntry.request_file = requestFileName;
+    }
 
     appendLog(sessionDir, logEntry);
     console.log(JSON.stringify(logEntry));
@@ -337,6 +414,9 @@ function evaluatePolicy(
       case 'pr-merge':
       case 'issue-create':
       case 'issue-close':
+      case 'issue-label':
+      case 'issue-comments':
+      case 'pr-comments':
       case 'branch-delete':
         return { allowed: false, reason: `${operation} not allowed for child-loop role` };
       default:
@@ -359,6 +439,37 @@ function evaluatePolicy(
       case 'pr-merge':
         // Only to agent/trunk, only squash merge
         return { allowed: true, enforced: { base: 'agent/trunk', merge_method: 'squash', repo: sessionPolicy.repo } };
+      case 'issue-label': {
+        if (!includesAloopAutoLabel(payload.target_labels)) {
+          return { allowed: false, reason: 'issue-label requires aloop/auto-scoped target validation' };
+        }
+        const issueNumber = parsePositiveInteger(payload.issue_number);
+        if (issueNumber === undefined) {
+          return { allowed: false, reason: 'issue-label requires numeric issue_number' };
+        }
+        const action = payload.label_action;
+        if (action !== 'add' && action !== 'remove') {
+          return { allowed: false, reason: 'issue-label requires label_action: add or remove' };
+        }
+        if (payload.label !== 'aloop/blocked-on-human') {
+          return { allowed: false, reason: 'issue-label only permits aloop/blocked-on-human' };
+        }
+        return {
+          allowed: true,
+          enforced: {
+            repo: sessionPolicy.repo,
+            issue_number: issueNumber,
+            label_action: action,
+            label: 'aloop/blocked-on-human',
+          }
+        };
+      }
+      case 'issue-comments':
+      case 'pr-comments':
+        if (typeof payload.since !== 'string' || !payload.since.trim()) {
+          return { allowed: false, reason: `${operation} requires --since timestamp` };
+        }
+        return { allowed: true, enforced: { repo: sessionPolicy.repo, since: payload.since.trim() } };
       case 'pr-comment':
       case 'issue-comment':
         if (!includesAloopAutoLabel(payload.target_labels)) {
