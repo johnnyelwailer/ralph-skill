@@ -44,6 +44,7 @@ export interface OrchestratorIssue {
   blocked_on_human?: boolean;
   processed_comment_ids?: number[];
   triage_log?: TriageLogEntry[];
+  pending_steering_comments?: TriageComment[];
 }
 
 export interface OrchestratorState {
@@ -67,6 +68,7 @@ export type TriageActionTaken =
   | 'post_reply_and_block'
   | 'unblock_and_steering'
   | 'steering_injected'
+  | 'steering_deferred'
   | 'question_answered'
   | 'triaged_no_action'
   | 'untriaged_external_comment';
@@ -600,18 +602,23 @@ function isExternalAuthor(comment: TriageComment): boolean {
   return !trustedAssociations.has(association);
 }
 
-function formatSteeringContent(comment: TriageComment, issue: OrchestratorIssue): string {
-  return `# Steering Injection\n\nFrom issue #${issue.number} comment by @${comment.author}:\n\n${comment.body}\n`;
+function formatSteeringComment(comment: TriageComment, issue: OrchestratorIssue): string {
+  return `From issue #${issue.number} comment by @${comment.author}:\n\n${comment.body}`;
+}
+
+function formatSteeringContent(comments: TriageComment[], issue: OrchestratorIssue): string {
+  const sections = comments.map((comment) => formatSteeringComment(comment, issue));
+  return `# Steering Injection\n\n${sections.join('\n\n---\n\n')}\n`;
 }
 
 async function injectSteeringToChildLoop(
   issue: OrchestratorIssue,
-  comment: TriageComment,
+  comments: TriageComment[],
   deps: TriageDeps,
 ): Promise<void> {
   if (!deps.writeFile || !deps.aloopRoot || !issue.child_session) return;
   const steeringPath = path.join(deps.aloopRoot, 'sessions', issue.child_session, 'worktree', 'STEERING.md');
-  await deps.writeFile(steeringPath, formatSteeringContent(comment, issue), 'utf8');
+  await deps.writeFile(steeringPath, formatSteeringContent(comments, issue), 'utf8');
 }
 
 export async function applyTriageResultsToIssue(
@@ -620,6 +627,12 @@ export async function applyTriageResultsToIssue(
   repo: string,
   deps: TriageDeps,
 ): Promise<TriageLogEntry[]> {
+  const pendingSteeringComments = issue.pending_steering_comments ?? [];
+  if (issue.child_session && pendingSteeringComments.length > 0) {
+    await injectSteeringToChildLoop(issue, pendingSteeringComments, deps);
+    issue.pending_steering_comments = [];
+  }
+
   const newComments = getUnprocessedTriageComments(issue, comments);
   if (newComments.length === 0) {
     return [];
@@ -668,16 +681,30 @@ export async function applyTriageResultsToIssue(
       issue.blocked_on_human = true;
       actionTaken = 'post_reply_and_block';
     } else if (result.classification === 'actionable') {
+      let unblocked = false;
       if (issue.blocked_on_human) {
         await deps.execGh([
           'issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', 'aloop/blocked-on-human',
         ]);
         issue.blocked_on_human = false;
-        actionTaken = 'unblock_and_steering';
-      } else {
-        actionTaken = 'steering_injected';
+        unblocked = true;
       }
-      await injectSteeringToChildLoop(issue, comment, deps);
+      if (issue.child_session) {
+        const pendingSteeringComments = issue.pending_steering_comments ?? [];
+        const commentsToInject = pendingSteeringComments.length > 0
+          ? [...pendingSteeringComments, comment]
+          : [comment];
+        await injectSteeringToChildLoop(issue, commentsToInject, deps);
+        issue.pending_steering_comments = [];
+        actionTaken = unblocked ? 'unblock_and_steering' : 'steering_injected';
+      } else {
+        const pendingSteeringComments = issue.pending_steering_comments ?? [];
+        if (!pendingSteeringComments.some((pendingComment) => pendingComment.id === comment.id)) {
+          pendingSteeringComments.push(comment);
+        }
+        issue.pending_steering_comments = pendingSteeringComments;
+        actionTaken = 'steering_deferred';
+      }
     } else if (result.classification === 'question') {
       await deps.execGh([
         'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatQuestionReply(comment),

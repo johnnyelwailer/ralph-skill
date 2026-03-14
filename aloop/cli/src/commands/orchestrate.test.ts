@@ -214,7 +214,11 @@ describe('orchestrateCommandWithDeps', () => {
     assert.deepStrictEqual(result.state.issues[0].processed_comment_ids, [201]);
     assert.equal(result.state.issues[0].triage_log?.length, 1);
     assert.equal(result.state.issues[0].triage_log?.[0]?.classification, 'actionable');
-    assert.equal(result.state.issues[0].triage_log?.[0]?.action_taken, 'steering_injected');
+    assert.equal(result.state.issues[0].triage_log?.[0]?.action_taken, 'steering_deferred');
+    assert.deepStrictEqual(
+      result.state.issues[0].pending_steering_comments?.map((comment) => comment.id),
+      [201],
+    );
     assert.equal(result.state.issues[0].last_comment_check, '2026-03-09T10:30:00.000Z');
     assert.equal(ghCalls.length, 2);
     assert.deepStrictEqual(
@@ -1033,6 +1037,71 @@ Based on the current issue context, this requires human clarification before imp
     assert.ok(writtenFiles[expectedPath].includes('#48'), 'steering content references issue number');
   });
 
+  it('applyTriageResultsToIssue defers actionable steering when child_session is missing', async () => {
+    const issue = makeIssue({
+      number: 58,
+      blocked_on_human: false,
+      processed_comment_ids: [],
+      triage_log: [],
+      child_session: null,
+    });
+    const comments = [
+      triageComment({ id: 60, body: 'Please add integration coverage for this flow.', author: 'alice' }),
+    ];
+    const ghCalls: string[][] = [];
+    const writtenFiles: Record<string, string> = {};
+    const deps: TriageDeps = {
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
+      now: () => new Date('2026-03-14T12:18:00.000Z'),
+      writeFile: async (p, data) => { writtenFiles[p] = data; },
+      aloopRoot: '/home/user/.aloop',
+    };
+
+    const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
+
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].classification, 'actionable');
+    assert.equal(entries[0].action_taken, 'steering_deferred');
+    assert.deepStrictEqual(issue.processed_comment_ids, [60]);
+    assert.deepStrictEqual(issue.pending_steering_comments?.map((comment) => comment.id), [60]);
+    assert.equal(ghCalls.length, 0, 'steering_deferred should not call GH when issue is not blocked');
+    assert.deepStrictEqual(Object.keys(writtenFiles), [], 'steering_deferred should not write STEERING.md without child_session');
+  });
+
+  it('applyTriageResultsToIssue flushes deferred steering when child_session becomes available', async () => {
+    const issue = makeIssue({
+      number: 59,
+      child_session: 'proj-issue-59-20260314-120000',
+      processed_comment_ids: [61],
+      triage_log: [],
+      pending_steering_comments: [
+        triageComment({
+          id: 61,
+          author: 'alice',
+          body: 'Please keep polling interval configurable.',
+        }),
+      ],
+    });
+    const writtenFiles: Record<string, string> = {};
+    const deps: TriageDeps = {
+      execGh: async () => ({ stdout: '', stderr: '' }),
+      now: () => new Date('2026-03-14T12:19:00.000Z'),
+      writeFile: async (p, data) => { writtenFiles[p] = data; },
+      aloopRoot: '/home/user/.aloop',
+    };
+
+    const entries = await applyTriageResultsToIssue(issue, [], 'owner/repo', deps);
+
+    assert.deepStrictEqual(entries, []);
+    assert.deepStrictEqual(issue.pending_steering_comments, []);
+    const expectedPath = '/home/user/.aloop/sessions/proj-issue-59-20260314-120000/worktree/STEERING.md';
+    assert.ok(writtenFiles[expectedPath], 'should write deferred steering once child_session exists');
+    assert.ok(writtenFiles[expectedPath].includes('configurable'), 'deferred steering content should be preserved');
+  });
+
   it('applyTriageResultsToIssue propagates execGh errors on needs_clarification comment post', async () => {
     const issue = makeIssue({
       number: 49,
@@ -1157,7 +1226,7 @@ Based on the current issue context, this requires human clarification before imp
 
     assert.equal(entries[1].comment_id, 41);
     assert.equal(entries[1].classification, 'actionable');
-    assert.equal(entries[1].action_taken, 'steering_injected');
+    assert.equal(entries[1].action_taken, 'steering_deferred');
 
     assert.equal(entries[2].comment_id, 42);
     assert.equal(entries[2].classification, 'question');
@@ -1173,6 +1242,7 @@ Based on the current issue context, this requires human clarification before imp
     // Verify all non-agent IDs processed
     assert.deepStrictEqual(issue.processed_comment_ids, [40, 41, 42, 43, 44, 45]);
     assert.equal(issue.blocked_on_human, true);
+    assert.deepStrictEqual(issue.pending_steering_comments?.map((comment) => comment.id), [41]);
     assert.equal(issue.triage_log?.length, 5);
     assert.equal(issue.last_comment_check, '2026-03-14T12:15:00.000Z');
 

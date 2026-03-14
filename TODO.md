@@ -1,36 +1,31 @@
 # Project TODO
 
-## Current Phase: P2 Triage + Runtime/Dashboard Spec Parity
+## Current Phase: P2 Spec Parity Closure (Triage + Runtime + GH Workflows)
 
 ### In Progress
-- [x] [review][high] Restore green baseline by fixing `resolveHomeDir` trailing-separator behavior (`session.test.ts` currently failing on Linux/Git-Bash path case).
-- [ ] [review] Gate 1: `applyTriageResultsToIssue` records `action_taken: "steering_injected"` even when no child loop exists (`issue.child_session` missing) because `injectSteeringToChildLoop` no-ops; actionable guidance is then marked processed and lost. Persist pending steering for pre-dispatch issues (or defer processing) so actionable comments are actually injected once a child session exists (priority: high).
-- [ ] [review] Gate 2: add a regression test for actionable triage on issues without `child_session` to prove steering is not silently dropped (assert either deferred queue write or comment remains unprocessed until injection is possible) (priority: high).
+- [x] [triage][high] Prevent actionable triage loss before child dispatch: when `issue.child_session` is missing, do not finalize as `steering_injected` unless steering is durably queued/deferred. This protects human guidance from being silently dropped.
 
 ### Up Next
-- [x] [review][high] Regenerate and attach missing proof artifacts (`proof-run.log`, `monitor-cycle-proof.json`, `triage-action-policy-proof.json`) so review gate evidence is verifiable.
-- [ ] [runtime+dashboard][high] Align loop/runtime state handling with spec: emit `stopped`/`exited` where required, reset `stuck_count` on successful iterations, and auto-correct dashboard running state when session PID is dead.
-- [ ] [tests][high] Raise `gh.ts` branch coverage to >=80% with targeted tests for remaining uncovered branches (notably issue-label remove path and parse/error fallback branches).
-- [ ] [dashboard][medium] Add activity/timing context: provider+model together, per-iteration duration, elapsed since `session_start`, total iterations, and average iteration duration.
-- [ ] [dashboard][medium] Refine docs panel behavior: render only non-empty docs and add overflow handling (`...`) for large doc sets.
-- [ ] [gh-workflows][medium] Implement high-level GH workflow commands: `aloop gh start --issue`, `aloop gh watch`, `aloop gh status`, and `aloop gh stop` with persisted watch/status state.
-- [ ] [gh-workflows][medium] Implement PR feedback re-iteration loop (review comments + CI failures) with configurable max feedback iterations.
-- [ ] [pipeline][medium] Implement configurable agent pipeline (`pipeline.yml` / config inline) with named agents and transitions (`retry|goto`) while preserving backward-compatible defaults.
-- [ ] [pipeline][medium] Add runtime pipeline mutation + guard-agent escalation ladder for verification failures.
-- [ ] [status][medium] Extend `aloop status` to show orchestrator tree (orchestrator session -> child sessions -> issue/PR mapping).
-- [ ] [spec-parity][low] Reconcile spec constraints (`zero npm deps`, `.mjs` only/no build, `lib/config.mjs`) vs current TS/bundled CLI architecture, or update spec explicitly.
-- [ ] [acceptance][low] Add automated legacy-name guard and run final SPEC acceptance sweep.
+- [ ] [tests][high] Add a regression test for actionable comments on issues without `child_session` (assert deferred/pending steering behavior and no false “processed” outcome).
+- [ ] [runtime][high] Align loop exit/state semantics to spec: emit `stopped`/`exited` in `status.json` and reset `stuck_count` on successful iterations (not only skip/unblock paths).
+- [ ] [dashboard-runtime][high] Add dead-PID liveness correction so dashboard state auto-flips stale `running` sessions to exited/stopped without manual intervention.
+- [ ] [tests][high] Raise `gh.ts` branch coverage to >=80% with targeted missing branches (notably issue-label remove path and parse/error fallbacks).
+- [ ] [dashboard][medium] Show provider+model together and add timing context (per-iteration duration, elapsed since `session_start`, total iterations, average iteration duration).
+- [ ] [dashboard][medium] Update docs panel to render only non-empty docs and add overflow handling (`...`) for large doc sets.
+- [ ] [gh-workflows][medium] Implement high-level GH orchestration commands: `aloop gh start --issue`, `aloop gh watch`, `aloop gh status`, `aloop gh stop` with persisted watch/status mapping.
+- [ ] [gh-workflows][medium] Implement PR feedback re-iteration loop (review comments + CI failures) with configurable max feedback iterations and dedupe behavior.
+- [ ] [status][medium] Extend `aloop status` to display orchestrator tree (orchestrator session -> child sessions -> issue/PR mapping).
+- [ ] [pipeline][medium] Add configurable pipeline support (`.aloop/pipeline.yml` or inline config) with named agents/transitions (`retry|goto`) and backward-compatible defaults.
+- [ ] [pipeline][medium] Add runtime pipeline mutation and guard-agent escalation ladder behavior per spec.
+- [ ] [spec-parity][low] Reconcile spec architecture constraints (`zero npm deps`, `.mjs`-only/no-build, `lib/config.mjs`) with current TypeScript/bundled CLI, or update spec explicitly.
+- [ ] [acceptance][low] Add automated legacy-name guard and run final full SPEC acceptance sweep.
 
 ### Completed
-- [x] [review][high] Complete end-to-end triage behavior: `steering_injected` now writes `STEERING.md` to child loop worktree so actionable feedback is a real mutation picked up by loop.sh steering detection.
-- [x] [review][high] Complete triage comment actions in `applyTriageResultsToIssue`: clarification/question replies include triage footer and bot/external-author filtering behavior.
-- [x] [orchestrator][high] Wire triage monitor-cycle helper into orchestrator initialization path when repo + GH executor are provided.
-- [x] [tests][high] Expand triage coverage in `orchestrate.test.ts` for `question`, `out_of_scope`, mixed batches, and `execGh` failure propagation paths.
-- [x] [orchestrator/P2] Child-loop dispatch engine with concurrency cap, worktree/branch mapping, and lifecycle tracking.
-- [x] [orchestrator/P2] PR lifecycle gates (CI/mergeability/review) with squash-merge to `agent/trunk` and conflict handling.
-- [x] [triage/P2] Added GH triage prerequisites in `aloop gh` (`issue-label`, `issue-comments --since`, `pr-comments --since`).
-- [x] [triage/P2] Added triage state fields and classification helpers (`last_comment_check`, `blocked_on_human`, `processed_comment_ids`, `triage_log`).
-- [x] [dashboard/P2] Multi-session dashboard APIs and frontend session switching.
-- [x] [dashboard/P2] Proof artifact rendering (image/code viewers and comparisons).
-- [x] [proof/P2] `PROMPT_proof.md` enforces human-verifiable artifacts and bans CI/typecheck/diff-only proof.
-- [x] [build][low] Verified dashboard build prerequisite exists (`vite` already declared in `aloop/cli/dashboard/package.json`).
+- [x] [triage][high] Added triage monitor-cycle wiring in orchestrator flow when repo + GH executor are available.
+- [x] [triage][high] Added triage classification/actions for `actionable|needs_clarification|question|out_of_scope`, including bot/external filtering and triage footer replies.
+- [x] [triage][high] Added STEERING.md injection for actionable comments when a child session exists.
+- [x] [tests][high] Expanded orchestrate triage coverage for mixed-classification batches and GH error propagation paths.
+- [x] [gh-policy][high] Added GH triage prerequisite subcommands: `issue-label`, `issue-comments --since`, `pr-comments --since`.
+- [x] [orchestrator][high] Delivered child-loop dispatch engine with concurrency cap, worktree/branch mapping, and lifecycle tracking.
+- [x] [orchestrator][high] Delivered PR lifecycle gates (mergeability/checks/review) with squash-merge handling.
+- [x] [dashboard][medium] Added multi-session dashboard APIs/session switching and proof artifact rendering.
