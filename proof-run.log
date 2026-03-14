@@ -1,0 +1,2486 @@
+# proof-run
+timestamp=2026-03-14T13:14:36Z
+repo=/home/pj/.aloop/sessions/ralph-skill-20260314-114301/worktree
+command: cd aloop/cli && npm test && npm run type-check && npm run build
+
+> aloop-cli@1.0.0 test
+> tsx --test src/**/*.test.ts && node --test aloop.test.mjs
+
+TAP version 13
+# Subtest: GET /api/state includes active and recent sessions from runtime state files
+ok 1 - GET /api/state includes active and recent sessions from runtime state files
+  ---
+  duration_ms: 29.441789
+  type: 'test'
+  ...
+# Subtest: host monitor processes GH convention requests outside loop runtime
+ok 2 - host monitor processes GH convention requests outside loop runtime
+  ---
+  duration_ms: 277.698964
+  type: 'test'
+  ...
+# Subtest: GH request processor writes error response for malformed JSON request
+ok 3 - GH request processor writes error response for malformed JSON request
+  ---
+  duration_ms: 285.564392
+  type: 'test'
+  ...
+# Subtest: GH request processor writes error response for unsupported request type
+ok 4 - GH request processor writes error response for unsupported request type
+  ---
+  duration_ms: 289.245884
+  type: 'test'
+  ...
+# Subtest: GH request processor writes error response when aloop gh returns non-zero exit code
+ok 5 - GH request processor writes error response when aloop gh returns non-zero exit code
+  ---
+  duration_ms: 288.543545
+  type: 'test'
+  ...
+# Subtest: GH request processor handles archive collision with duplicate file names
+ok 6 - GH request processor handles archive collision with duplicate file names
+  ---
+  duration_ms: 285.740269
+  type: 'test'
+  ...
+# Subtest: host monitor processes requests while loop.sh runtime path executes
+ok 7 - host monitor processes requests while loop.sh runtime path executes
+  ---
+  duration_ms: 4093.912043
+  type: 'test'
+  ...
+# Subtest: POST /api/steer validates input and writes STEERING.md
+ok 8 - POST /api/steer validates input and writes STEERING.md
+  ---
+  duration_ms: 8.707997
+  type: 'test'
+  ...
+# Subtest: API method guards return 405 for /api/steer and /api/stop
+ok 9 - API method guards return 405 for /api/steer and /api/stop
+  ---
+  duration_ms: 3.288113
+  type: 'test'
+  ...
+# Subtest: POST /api/stop validates payload and reports missing pid
+ok 10 - POST /api/stop validates payload and reports missing pid
+  ---
+  duration_ms: 3.799077
+  type: 'test'
+  ...
+# Subtest: POST /api/steer rejects oversized request bodies
+ok 11 - POST /api/steer rejects oversized request bodies
+  ---
+  duration_ms: 2.283105
+  type: 'test'
+  ...
+# Subtest: POST /api/stop signals pid from meta.json and updates status.json
+ok 12 - POST /api/stop signals pid from meta.json and updates status.json
+  ---
+  duration_ms: 4.379999
+  type: 'test'
+  ...
+# Subtest: POST /api/steer supports overwrite: true
+ok 13 - POST /api/steer supports overwrite: true
+  ---
+  duration_ms: 2.760609
+  type: 'test'
+  ...
+# Subtest: POST /api/stop supports force: true
+ok 14 - POST /api/stop supports force: true
+  ---
+  duration_ms: 5.21759
+  type: 'test'
+  ...
+# Subtest: POST /api/stop handles ESRCH and EPERM errors
+ok 15 - POST /api/stop handles ESRCH and EPERM errors
+  ---
+  duration_ms: 3.439073
+  type: 'test'
+  ...
+# Subtest: resolveDefaultAssetsDir fallback logic
+ok 16 - resolveDefaultAssetsDir fallback logic
+  ---
+  duration_ms: 1.866268
+  type: 'test'
+  ...
+# Subtest: POST /api/stop refuses to stop dashboard itself
+ok 17 - POST /api/stop refuses to stop dashboard itself
+  ---
+  duration_ms: 1.502597
+  type: 'test'
+  ...
+# Subtest: POST /api/steer validates affects_completed_work and overwrite types
+ok 18 - POST /api/steer validates affects_completed_work and overwrite types
+  ---
+  duration_ms: 2.051061
+  type: 'test'
+  ...
+# Subtest: Unknown API endpoints return 404
+ok 19 - Unknown API endpoints return 404
+  ---
+  duration_ms: 1.410347
+  type: 'test'
+  ...
+# Subtest: SSE stream includes heartbeat events
+ok 20 - SSE stream includes heartbeat events
+  ---
+  duration_ms: 257.321505
+  type: 'test'
+  ...
+# Subtest: GET /api/state?session=<id> returns state for a different session
+ok 21 - GET /api/state?session=<id> returns state for a different session
+  ---
+  duration_ms: 2.840485
+  type: 'test'
+  ...
+# Subtest: GET /api/state?session=<id> returns 404 for unknown session
+ok 22 - GET /api/state?session=<id> returns 404 for unknown session
+  ---
+  duration_ms: 3.561533
+  type: 'test'
+  ...
+# Subtest: GET /events?session=<id> sends initial state for that session
+ok 23 - GET /events?session=<id> sends initial state for that session
+  ---
+  duration_ms: 1.914268
+  type: 'test'
+  ...
+# Subtest: GET /events?session=<id> sends error for unknown session and closes
+ok 24 - GET /events?session=<id> sends error for unknown session and closes
+  ---
+  duration_ms: 1.232511
+  type: 'test'
+  ...
+# Subtest: GET /api/state without session param returns default session state
+ok 25 - GET /api/state without session param returns default session state
+  ---
+  duration_ms: 1.130261
+  type: 'test'
+  ...
+# Subtest: resolveSessionContext returns null when active.json is an array instead of object
+ok 26 - resolveSessionContext returns null when active.json is an array instead of object
+  ---
+  duration_ms: 0.955258
+  type: 'test'
+  ...
+# Subtest: resolveSessionContext returns null when entry value is a non-object (string)
+ok 27 - resolveSessionContext returns null when entry value is a non-object (string)
+  ---
+  duration_ms: 1.183345
+  type: 'test'
+  ...
+# Subtest: resolveSessionContext falls back to runtimeDir/sessions/<id> when entry missing session_dir
+ok 28 - resolveSessionContext falls back to runtimeDir/sessions/<id> when entry missing session_dir
+  ---
+  duration_ms: 1.409263
+  type: 'test'
+  ...
+# Subtest: resolveSessionContext falls back to process.cwd() when entry missing work_dir
+ok 29 - resolveSessionContext falls back to process.cwd() when entry missing work_dir
+  ---
+  duration_ms: 2.045643
+  type: 'test'
+  ...
+# Subtest: GET /api/artifacts/<iteration>/<filename> serves artifact files
+ok 30 - GET /api/artifacts/<iteration>/<filename> serves artifact files
+  ---
+  duration_ms: 1.448513
+  type: 'test'
+  ...
+# Subtest: GET /api/artifacts rejects path traversal attempts
+ok 31 - GET /api/artifacts rejects path traversal attempts
+  ---
+  duration_ms: 2.317729
+  type: 'test'
+  ...
+# Subtest: GET /api/artifacts returns 404 for missing artifact
+ok 32 - GET /api/artifacts returns 404 for missing artifact
+  ---
+  duration_ms: 1.212136
+  type: 'test'
+  ...
+# Subtest: GET /api/state includes proof artifact manifests from session artifacts directory
+ok 33 - GET /api/state includes proof artifact manifests from session artifacts directory
+  ---
+  duration_ms: 1.595598
+  type: 'test'
+  ...
+# Subtest: GET /api/state returns empty artifacts array when no artifacts directory exists
+ok 34 - GET /api/state returns empty artifacts array when no artifacts directory exists
+  ---
+  duration_ms: 1.786933
+  type: 'test'
+  ...
+# dashboard: failed to publish state: simulated publish failure
+# Subtest: watch-triggered publish failures are guarded and do not crash the server
+ok 35 - watch-triggered publish failures are guarded and do not crash the server
+  ---
+  duration_ms: 258.289015
+  type: 'test'
+  ...
+# Subtest: generateDevcontainerConfig - node-typescript project
+ok 36 - generateDevcontainerConfig - node-typescript project
+  ---
+  duration_ms: 0.988894
+  type: 'test'
+  ...
+# Subtest: generateDevcontainerConfig - python project
+ok 37 - generateDevcontainerConfig - python project
+  ---
+  duration_ms: 0.137794
+  type: 'test'
+  ...
+# Subtest: generateDevcontainerConfig - go project
+ok 38 - generateDevcontainerConfig - go project
+  ---
+  duration_ms: 0.057376
+  type: 'test'
+  ...
+# Subtest: generateDevcontainerConfig - rust project
+ok 39 - generateDevcontainerConfig - rust project
+  ---
+  duration_ms: 0.053126
+  type: 'test'
+  ...
+# Subtest: generateDevcontainerConfig - dotnet project
+ok 40 - generateDevcontainerConfig - dotnet project
+  ---
+  duration_ms: 0.103168
+  type: 'test'
+  ...
+# Subtest: generateDevcontainerConfig - unknown language uses base ubuntu
+ok 41 - generateDevcontainerConfig - unknown language uses base ubuntu
+  ---
+  duration_ms: 0.061126
+  type: 'test'
+  ...
+# Subtest: augmentExistingConfig - adds mounts to empty existing
+ok 42 - augmentExistingConfig - adds mounts to empty existing
+  ---
+  duration_ms: 0.153711
+  type: 'test'
+  ...
+# Subtest: augmentExistingConfig - merges mounts without duplicates
+ok 43 - augmentExistingConfig - merges mounts without duplicates
+  ---
+  duration_ms: 0.08346
+  type: 'test'
+  ...
+# Subtest: augmentExistingConfig - deduplicates mount entries present in both existing and generated
+ok 44 - augmentExistingConfig - deduplicates mount entries present in both existing and generated
+  ---
+  duration_ms: 0.186212
+  type: 'test'
+  ...
+# Subtest: augmentExistingConfig - preserves existing containerEnv values
+ok 45 - augmentExistingConfig - preserves existing containerEnv values
+  ---
+  duration_ms: 0.239172
+  type: 'test'
+  ...
+# Subtest: augmentExistingConfig - preserves existing remoteEnv values
+ok 46 - augmentExistingConfig - preserves existing remoteEnv values
+  ---
+  duration_ms: 0.063876
+  type: 'test'
+  ...
+# Subtest: detectNodeInstallCommand - detects pnpm from pnpm-lock.yaml
+ok 47 - detectNodeInstallCommand - detects pnpm from pnpm-lock.yaml
+  ---
+  duration_ms: 0.049918
+  type: 'test'
+  ...
+# Subtest: detectNodeInstallCommand - detects yarn from yarn.lock
+ok 48 - detectNodeInstallCommand - detects yarn from yarn.lock
+  ---
+  duration_ms: 0.040667
+  type: 'test'
+  ...
+# Subtest: detectNodeInstallCommand - detects bun from bun.lockb
+ok 49 - detectNodeInstallCommand - detects bun from bun.lockb
+  ---
+  duration_ms: 0.039542
+  type: 'test'
+  ...
+# Subtest: detectNodeInstallCommand - detects bun from bun.lock
+ok 50 - detectNodeInstallCommand - detects bun from bun.lock
+  ---
+  duration_ms: 0.041335
+  type: 'test'
+  ...
+# Subtest: detectNodeInstallCommand - defaults to npm install when no lock file
+ok 51 - detectNodeInstallCommand - defaults to npm install when no lock file
+  ---
+  duration_ms: 0.037793
+  type: 'test'
+  ...
+# Subtest: detectPythonInstallCommand - detects pyproject.toml
+ok 52 - detectPythonInstallCommand - detects pyproject.toml
+  ---
+  duration_ms: 0.042251
+  type: 'test'
+  ...
+# Subtest: detectPythonInstallCommand - detects requirements.txt
+ok 53 - detectPythonInstallCommand - detects requirements.txt
+  ---
+  duration_ms: 0.036875
+  type: 'test'
+  ...
+# Subtest: detectPythonInstallCommand - defaults to pip install -e . when no config file
+ok 54 - detectPythonInstallCommand - defaults to pip install -e . when no config file
+  ---
+  duration_ms: 0.037376
+  type: 'test'
+  ...
+# Subtest: devcontainerCommandWithDeps - creates new config
+ok 55 - devcontainerCommandWithDeps - creates new config
+  ---
+  duration_ms: 0.168628
+  type: 'test'
+  ...
+# Subtest: devcontainerCommandWithDeps - augments existing config
+ok 56 - devcontainerCommandWithDeps - augments existing config
+  ---
+  duration_ms: 0.205837
+  type: 'test'
+  ...
+# Subtest: devcontainerCommandWithDeps - handles JSONC with comments
+ok 57 - devcontainerCommandWithDeps - handles JSONC with comments
+  ---
+  duration_ms: 0.123502
+  type: 'test'
+  ...
+# Subtest: devcontainerCommandWithDeps - passes project root to discover
+ok 58 - devcontainerCommandWithDeps - passes project root to discover
+  ---
+  duration_ms: 0.094085
+  type: 'test'
+  ...
+# Subtest: stripJsoncComments - strips single-line comments
+ok 59 - stripJsoncComments - strips single-line comments
+  ---
+  duration_ms: 0.082169
+  type: 'test'
+  ...
+# Subtest: stripJsoncComments - strips block comments
+ok 60 - stripJsoncComments - strips block comments
+  ---
+  duration_ms: 0.037501
+  type: 'test'
+  ...
+# Subtest: stripJsoncComments - preserves URLs inside string values
+ok 61 - stripJsoncComments - preserves URLs inside string values
+  ---
+  duration_ms: 0.040459
+  type: 'test'
+  ...
+# Subtest: stripJsoncComments - preserves escaped quotes in strings
+ok 62 - stripJsoncComments - preserves escaped quotes in strings
+  ---
+  duration_ms: 0.038126
+  type: 'test'
+  ...
+# Subtest: stripJsoncComments - handles mixed comments and URL strings
+ok 63 - stripJsoncComments - handles mixed comments and URL strings
+  ---
+  duration_ms: 0.046459
+  type: 'test'
+  ...
+# Subtest: devcontainerCommandWithDeps - augments JSONC with URLs without corruption
+ok 64 - devcontainerCommandWithDeps - augments JSONC with URLs without corruption
+  ---
+  duration_ms: 0.8566
+  type: 'test'
+  ...
+# Subtest: devcontainerCommandWithDeps - throws on invalid JSON in existing config
+ok 65 - devcontainerCommandWithDeps - throws on invalid JSON in existing config
+  ---
+  duration_ms: 0.212212
+  type: 'test'
+  ...
+# Subtest: devcontainerCommand - json output for created action
+ok 66 - devcontainerCommand - json output for created action
+  ---
+  duration_ms: 0.125919
+  type: 'test'
+  ...
+# Subtest: devcontainerCommand - json output for augmented action
+ok 67 - devcontainerCommand - json output for augmented action
+  ---
+  duration_ms: 0.106127
+  type: 'test'
+  ...
+# Subtest: devcontainerCommand - text output for created action
+ok 68 - devcontainerCommand - text output for created action
+  ---
+  duration_ms: 0.129627
+  type: 'test'
+  ...
+# Subtest: devcontainerCommand - text output for augmented action
+ok 69 - devcontainerCommand - text output for augmented action
+  ---
+  duration_ms: 0.104461
+  type: 'test'
+  ...
+# Subtest: devcontainerCommand - text output omits post-create when null
+ok 70 - devcontainerCommand - text output omits post-create when null
+  ---
+  duration_ms: 0.098419
+  type: 'test'
+  ...
+# Subtest: buildProviderInstallCommands - returns claude install for claude provider
+ok 71 - buildProviderInstallCommands - returns claude install for claude provider
+  ---
+  duration_ms: 0.049167
+  type: 'test'
+  ...
+# Subtest: buildProviderInstallCommands - returns multiple installs for multiple providers
+ok 72 - buildProviderInstallCommands - returns multiple installs for multiple providers
+  ---
+  duration_ms: 0.033084
+  type: 'test'
+  ...
+# Subtest: buildProviderInstallCommands - skips copilot (VS Code extension, no CLI)
+ok 73 - buildProviderInstallCommands - skips copilot (VS Code extension, no CLI)
+  ---
+  duration_ms: 0.032168
+  type: 'test'
+  ...
+# Subtest: buildProviderInstallCommands - skips unknown providers
+ok 74 - buildProviderInstallCommands - skips unknown providers
+  ---
+  duration_ms: 0.031167
+  type: 'test'
+  ...
+# Subtest: buildProviderInstallCommands - empty list returns empty
+ok 75 - buildProviderInstallCommands - empty list returns empty
+  ---
+  duration_ms: 0.066543
+  type: 'test'
+  ...
+# Subtest: buildProviderRemoteEnv - forwards claude auth vars with localEnv syntax
+ok 76 - buildProviderRemoteEnv - forwards claude auth vars with localEnv syntax
+  ---
+  duration_ms: 0.033876
+  type: 'test'
+  ...
+# Subtest: buildProviderRemoteEnv - forwards codex auth var
+ok 77 - buildProviderRemoteEnv - forwards codex auth var
+  ---
+  duration_ms: 0.032334
+  type: 'test'
+  ...
+# Subtest: buildProviderRemoteEnv - forwards gemini auth var
+ok 78 - buildProviderRemoteEnv - forwards gemini auth var
+  ---
+  duration_ms: 0.030292
+  type: 'test'
+  ...
+# Subtest: buildProviderRemoteEnv - forwards copilot GH_TOKEN
+ok 79 - buildProviderRemoteEnv - forwards copilot GH_TOKEN
+  ---
+  duration_ms: 0.032501
+  type: 'test'
+  ...
+# Subtest: buildProviderRemoteEnv - multiple providers merges all vars
+ok 80 - buildProviderRemoteEnv - multiple providers merges all vars
+  ---
+  duration_ms: 0.034459
+  type: 'test'
+  ...
+# Subtest: buildProviderRemoteEnv - empty list returns empty
+ok 81 - buildProviderRemoteEnv - empty list returns empty
+  ---
+  duration_ms: 0.030751
+  type: 'test'
+  ...
+# Subtest: buildProviderRemoteEnv - unknown provider skipped
+ok 82 - buildProviderRemoteEnv - unknown provider skipped
+  ---
+  duration_ms: 0.028667
+  type: 'test'
+  ...
+# Subtest: generateDevcontainerConfig - no providers means no provider install or remoteEnv
+ok 83 - generateDevcontainerConfig - no providers means no provider install or remoteEnv
+  ---
+  duration_ms: 0.052085
+  type: 'test'
+  ...
+# Subtest: generateDevcontainerConfig - multiple providers chains installs and merges remoteEnv
+ok 84 - generateDevcontainerConfig - multiple providers chains installs and merges remoteEnv
+  ---
+  duration_ms: 0.043126
+  type: 'test'
+  ...
+# Subtest: generateDevcontainerConfig - augment merges generated remoteEnv without overwriting existing
+ok 85 - generateDevcontainerConfig - augment merges generated remoteEnv without overwriting existing
+  ---
+  duration_ms: 0.050501
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - returns failure when config does not exist
+ok 86 - verifyDevcontainer - returns failure when config does not exist
+  ---
+  duration_ms: 0.157836
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - all checks pass for node-typescript project
+ok 87 - verifyDevcontainer - all checks pass for node-typescript project
+  ---
+  duration_ms: 0.170087
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - build failure stops early
+ok 88 - verifyDevcontainer - build failure stops early
+  ---
+  duration_ms: 0.05521
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - up failure stops after build
+ok 89 - verifyDevcontainer - up failure stops after build
+  ---
+  duration_ms: 0.056626
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - provider check failure reported
+ok 90 - verifyDevcontainer - provider check failure reported
+  ---
+  duration_ms: 0.145961
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - multiple providers checked
+ok 91 - verifyDevcontainer - multiple providers checked
+  ---
+  duration_ms: 0.095377
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - copilot provider skipped (no CLI binary)
+ok 92 - verifyDevcontainer - copilot provider skipped (no CLI binary)
+  ---
+  duration_ms: 0.076668
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - python image checks python
+ok 93 - verifyDevcontainer - python image checks python
+  ---
+  duration_ms: 0.080335
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - go image checks go version
+ok 94 - verifyDevcontainer - go image checks go version
+  ---
+  duration_ms: 0.342049
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - rust image checks cargo
+ok 95 - verifyDevcontainer - rust image checks cargo
+  ---
+  duration_ms: 0.080544
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - dotnet image checks dotnet
+ok 96 - verifyDevcontainer - dotnet image checks dotnet
+  ---
+  duration_ms: 0.192171
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - git check failure reported
+ok 97 - verifyDevcontainer - git check failure reported
+  ---
+  duration_ms: 0.092793
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - sessions-mount check failure reported
+ok 98 - verifyDevcontainer - sessions-mount check failure reported
+  ---
+  duration_ms: 0.081044
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainer - mount check failure reported
+ok 99 - verifyDevcontainer - mount check failure reported
+  ---
+  duration_ms: 0.075835
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainerCommand - json output mode
+ok 100 - verifyDevcontainerCommand - json output mode
+  ---
+  duration_ms: 1.255983
+  type: 'test'
+  ...
+# Subtest: verifyDevcontainerCommand - text output shows pass/fail
+ok 101 - verifyDevcontainerCommand - text output shows pass/fail
+  ---
+  duration_ms: 0.085752
+  type: 'test'
+  ...
+# Subtest: ghCommand allows child-loop to create PRs and logs gh_operation
+ok 102 - ghCommand allows child-loop to create PRs and logs gh_operation
+  ---
+  duration_ms: 2.166001
+  type: 'test'
+  ...
+# Subtest: ghCommand denies child-loop from merging PRs and logs gh_operation_denied
+ok 103 - ghCommand denies child-loop from merging PRs and logs gh_operation_denied
+  ---
+  duration_ms: 0.66593
+  type: 'test'
+  ...
+# Subtest: ghCommand allows orchestrator to merge PRs
+ok 104 - ghCommand allows orchestrator to merge PRs
+  ---
+  duration_ms: 0.643179
+  type: 'test'
+  ...
+# Subtest: ghCommand denies request with mismatched repo
+ok 105 - ghCommand denies request with mismatched repo
+  ---
+  duration_ms: 0.477468
+  type: 'test'
+  ...
+# Subtest: ghCommand denies operations targeting main branch
+ok 106 - ghCommand denies operations targeting main branch
+  ---
+  duration_ms: 0.476552
+  type: 'test'
+  ...
+# Subtest: ghCommand allows child-loop issue-comment only on assigned issue
+ok 107 - ghCommand allows child-loop issue-comment only on assigned issue
+  ---
+  duration_ms: 1.170565
+  type: 'test'
+  ...
+# Subtest: ghCommand denies child-loop issue-comment outside assigned issue scope
+ok 108 - ghCommand denies child-loop issue-comment outside assigned issue scope
+  ---
+  duration_ms: 0.430675
+  type: 'test'
+  ...
+# Subtest: ghCommand denies child-loop issue-comment with non-numeric issue_number
+ok 109 - ghCommand denies child-loop issue-comment with non-numeric issue_number
+  ---
+  duration_ms: 0.345298
+  type: 'test'
+  ...
+# Subtest: ghCommand denies child-loop issue-comment when assigned issue scope is missing in config
+ok 110 - ghCommand denies child-loop issue-comment when assigned issue scope is missing in config
+  ---
+  duration_ms: 0.647429
+  type: 'test'
+  ...
+# Subtest: ghCommand allows child-loop pr-comment only on child-created PRs
+ok 111 - ghCommand allows child-loop pr-comment only on child-created PRs
+  ---
+  duration_ms: 0.51151
+  type: 'test'
+  ...
+# Subtest: ghCommand denies child-loop pr-comment for PR outside child scope
+ok 112 - ghCommand denies child-loop pr-comment for PR outside child scope
+  ---
+  duration_ms: 0.294631
+  type: 'test'
+  ...
+# Subtest: ghCommand denies child-loop pr-comment with non-numeric pr_number
+ok 113 - ghCommand denies child-loop pr-comment with non-numeric pr_number
+  ---
+  duration_ms: 0.280922
+  type: 'test'
+  ...
+# Subtest: ghCommand denies orchestrator issue-close without aloop/auto target validation
+ok 114 - ghCommand denies orchestrator issue-close without aloop/auto target validation
+  ---
+  duration_ms: 0.314173
+  type: 'test'
+  ...
+# Subtest: ghCommand allows orchestrator issue-close with aloop/auto-scoped target labels
+ok 115 - ghCommand allows orchestrator issue-close with aloop/auto-scoped target labels
+  ---
+  duration_ms: 0.233629
+  type: 'test'
+  ...
+# Subtest: ghCommand allows orchestrator comment operations with aloop/auto-scoped targets
+ok 116 - ghCommand allows orchestrator comment operations with aloop/auto-scoped targets
+  ---
+  duration_ms: 0.203379
+  type: 'test'
+  ...
+# Subtest: ghCommand denies orchestrator issue-comment when aloop/auto is only in request labels
+ok 117 - ghCommand denies orchestrator issue-comment when aloop/auto is only in request labels
+  ---
+  duration_ms: 1.411236
+  type: 'test'
+  ...
+# Subtest: ghCommand denies orchestrator pr-comment without aloop/auto-scoped target validation
+ok 118 - ghCommand denies orchestrator pr-comment without aloop/auto-scoped target validation
+  ---
+  duration_ms: 0.474718
+  type: 'test'
+  ...
+# Subtest: ghCommand allows orchestrator issue-label add for aloop/blocked-on-human
+ok 119 - ghCommand allows orchestrator issue-label add for aloop/blocked-on-human
+  ---
+  duration_ms: 0.641596
+  type: 'test'
+  ...
+# Subtest: ghCommand denies orchestrator issue-label when label is not aloop/blocked-on-human
+ok 120 - ghCommand denies orchestrator issue-label when label is not aloop/blocked-on-human
+  ---
+  duration_ms: 0.290964
+  type: 'test'
+  ...
+# Subtest: ghCommand allows orchestrator issue-comments with --since and no request file
+ok 121 - ghCommand allows orchestrator issue-comments with --since and no request file
+  ---
+  duration_ms: 0.279256
+  type: 'test'
+  ...
+# Subtest: ghCommand denies child-loop pr-comments listing
+ok 122 - ghCommand denies child-loop pr-comments listing
+  ---
+  duration_ms: 0.247505
+  type: 'test'
+  ...
+# Subtest: ghCommand exits non-zero when request file does not exist
+ok 123 - ghCommand exits non-zero when request file does not exist
+  ---
+  duration_ms: 0.217546
+  type: 'test'
+  ...
+# Subtest: ghCommand exits non-zero when request file contains invalid JSON
+ok 124 - ghCommand exits non-zero when request file contains invalid JSON
+  ---
+  duration_ms: 0.262589
+  type: 'test'
+  ...
+# Subtest: ghCommand denies unknown role and logs gh_operation_denied
+ok 125 - ghCommand denies unknown role and logs gh_operation_denied
+  ---
+  duration_ms: 0.248921
+  type: 'test'
+  ...
+# Subtest: ghCommand denies branch-delete for child-loop
+ok 126 - ghCommand denies branch-delete for child-loop
+  ---
+  duration_ms: 0.914018
+  type: 'test'
+  ...
+# Subtest: ghCommand denies branch-delete for orchestrator
+ok 127 - ghCommand denies branch-delete for orchestrator
+  ---
+  duration_ms: 0.248254
+  type: 'test'
+  ...
+# Subtest: ghCommand hard-fails when session config.json is missing
+ok 128 - ghCommand hard-fails when session config.json is missing
+  ---
+  duration_ms: 0.25363
+  type: 'test'
+  ...
+# Subtest: ghCommand creates missing session directory before denial logging
+ok 129 - ghCommand creates missing session directory before denial logging
+  ---
+  duration_ms: 0.244422
+  type: 'test'
+  ...
+# Subtest: ghCommand hard-fails when config.json is missing repo field
+ok 130 - ghCommand hard-fails when config.json is missing repo field
+  ---
+  duration_ms: 0.285589
+  type: 'test'
+  ...
+# Subtest: ghCommand hard-fails when config.json contains invalid JSON
+ok 131 - ghCommand hard-fails when config.json contains invalid JSON
+  ---
+  duration_ms: 0.236838
+  type: 'test'
+  ...
+# Subtest: ghCommand denies orchestrator issue-create without aloop/auto label
+ok 132 - ghCommand denies orchestrator issue-create without aloop/auto label
+  ---
+  duration_ms: 0.239213
+  type: 'test'
+  ...
+# Subtest: ghCommand allows orchestrator issue-create with aloop/auto label
+ok 133 - ghCommand allows orchestrator issue-create with aloop/auto label
+  ---
+  duration_ms: 0.543678
+  type: 'test'
+  ...
+# Subtest: ghCommand enforces session repo on allowed child-loop pr-create
+ok 134 - ghCommand enforces session repo on allowed child-loop pr-create
+  ---
+  duration_ms: 0.269213
+  type: 'test'
+  ...
+# Subtest: ghCommand enforces session repo on allowed orchestrator pr-merge
+ok 135 - ghCommand enforces session repo on allowed orchestrator pr-merge
+  ---
+  duration_ms: 0.204296
+  type: 'test'
+  ...
+# Subtest: ghCommand enforces session repo on allowed child-loop issue-comment
+ok 136 - ghCommand enforces session repo on allowed child-loop issue-comment
+  ---
+  duration_ms: 0.214504
+  type: 'test'
+  ...
+# Subtest: ghCommand enforces session repo on allowed child-loop pr-comment
+ok 137 - ghCommand enforces session repo on allowed child-loop pr-comment
+  ---
+  duration_ms: 0.202671
+  type: 'test'
+  ...
+# Subtest: ghCommand enforces session repo on allowed orchestrator pr-create
+ok 138 - ghCommand enforces session repo on allowed orchestrator pr-create
+  ---
+  duration_ms: 0.293505
+  type: 'test'
+  ...
+# Subtest: orchestrateCommandWithDeps
+    # Subtest: creates orchestrator.json with default options
+    ok 1 - creates orchestrator.json with default options
+      ---
+      duration_ms: 1.013936
+      type: 'test'
+      ...
+    # Subtest: respects --spec, --trunk, --concurrency options
+    ok 2 - respects --spec, --trunk, --concurrency options
+      ---
+      duration_ms: 0.171712
+      type: 'test'
+      ...
+    # Subtest: respects --plan-only flag
+    ok 3 - respects --plan-only flag
+      ---
+      duration_ms: 0.083002
+      type: 'test'
+      ...
+    # Subtest: parses --issues as comma-separated numbers
+    ok 4 - parses --issues as comma-separated numbers
+      ---
+      duration_ms: 0.119627
+      type: 'test'
+      ...
+    # Subtest: stores --label and --repo filters
+    ok 5 - stores --label and --repo filters
+      ---
+      duration_ms: 0.077084
+      type: 'test'
+      ...
+    # Subtest: throws on invalid concurrency value
+    ok 6 - throws on invalid concurrency value
+      ---
+      duration_ms: 0.211171
+      type: 'test'
+      ...
+    # Subtest: throws on zero concurrency
+    ok 7 - throws on zero concurrency
+      ---
+      duration_ms: 0.112169
+      type: 'test'
+      ...
+    # Subtest: throws on invalid issue number
+    ok 8 - throws on invalid issue number
+      ---
+      duration_ms: 0.128211
+      type: 'test'
+      ...
+    # Subtest: persists state to orchestrator.json file
+    ok 9 - persists state to orchestrator.json file
+      ---
+      duration_ms: 0.219379
+      type: 'test'
+      ...
+    # Subtest: creates session directory
+    ok 10 - creates session directory
+      ---
+      duration_ms: 0.829266
+      type: 'test'
+      ...
+    # Subtest: runs triage monitor cycle when repo and gh executor are available
+    ok 11 - runs triage monitor cycle when repo and gh executor are available
+      ---
+      duration_ms: 0.961936
+      type: 'test'
+      ...
+    1..11
+ok 139 - orchestrateCommandWithDeps
+  ---
+  duration_ms: 4.547757
+  type: 'suite'
+  ...
+# Subtest: orchestrateCommand
+    # Subtest: text output includes session dir, spec, trunk, concurrency
+    ok 1 - text output includes session dir, spec, trunk, concurrency
+      ---
+      duration_ms: 0.16617
+      type: 'test'
+      ...
+    # Subtest: json output emits valid JSON with session_dir, state_file, state keys
+    ok 2 - json output emits valid JSON with session_dir, state_file, state keys
+      ---
+      duration_ms: 0.076127
+      type: 'test'
+      ...
+    # Subtest: text output shows filter_issues when set
+    ok 3 - text output shows filter_issues when set
+      ---
+      duration_ms: 0.069876
+      type: 'test'
+      ...
+    # Subtest: text output omits filter_issues when not set
+    ok 4 - text output omits filter_issues when not set
+      ---
+      duration_ms: 0.059209
+      type: 'test'
+      ...
+    # Subtest: text output shows filter_label when set
+    ok 5 - text output shows filter_label when set
+      ---
+      duration_ms: 0.079959
+      type: 'test'
+      ...
+    # Subtest: text output omits filter_label when not set
+    ok 6 - text output omits filter_label when not set
+      ---
+      duration_ms: 0.057626
+      type: 'test'
+      ...
+    # Subtest: text output shows filter_repo when set
+    ok 7 - text output shows filter_repo when set
+      ---
+      duration_ms: 0.065335
+      type: 'test'
+      ...
+    # Subtest: text output omits filter_repo when not set
+    ok 8 - text output omits filter_repo when not set
+      ---
+      duration_ms: 0.273588
+      type: 'test'
+      ...
+    1..8
+ok 140 - orchestrateCommand
+  ---
+  duration_ms: 0.938976
+  type: 'suite'
+  ...
+# Subtest: validateDependencyGraph
+    # Subtest: accepts valid graph with no dependencies
+    ok 1 - accepts valid graph with no dependencies
+      ---
+      duration_ms: 0.124961
+      type: 'test'
+      ...
+    # Subtest: accepts valid graph with linear chain
+    ok 2 - accepts valid graph with linear chain
+      ---
+      duration_ms: 0.046626
+      type: 'test'
+      ...
+    # Subtest: accepts valid graph with diamond shape
+    ok 3 - accepts valid graph with diamond shape
+      ---
+      duration_ms: 0.154586
+      type: 'test'
+      ...
+    # Subtest: rejects duplicate IDs
+    ok 4 - rejects duplicate IDs
+      ---
+      duration_ms: 0.05921
+      type: 'test'
+      ...
+    # Subtest: rejects unknown dependency reference
+    ok 5 - rejects unknown dependency reference
+      ---
+      duration_ms: 0.048293
+      type: 'test'
+      ...
+    # Subtest: rejects self-dependency
+    ok 6 - rejects self-dependency
+      ---
+      duration_ms: 0.044209
+      type: 'test'
+      ...
+    # Subtest: rejects simple cycle (A->B->A)
+    ok 7 - rejects simple cycle (A->B->A)
+      ---
+      duration_ms: 0.046584
+      type: 'test'
+      ...
+    # Subtest: rejects transitive cycle (A->B->C->A)
+    ok 8 - rejects transitive cycle (A->B->C->A)
+      ---
+      duration_ms: 0.044
+      type: 'test'
+      ...
+    1..8
+ok 141 - validateDependencyGraph
+  ---
+  duration_ms: 0.649763
+  type: 'suite'
+  ...
+# Subtest: assignWaves
+    # Subtest: assigns wave 1 to independent issues
+    ok 1 - assigns wave 1 to independent issues
+      ---
+      duration_ms: 0.069877
+      type: 'test'
+      ...
+    # Subtest: assigns sequential waves for linear chain
+    ok 2 - assigns sequential waves for linear chain
+      ---
+      duration_ms: 0.037876
+      type: 'test'
+      ...
+    # Subtest: assigns waves for diamond dependency
+    ok 3 - assigns waves for diamond dependency
+      ---
+      duration_ms: 0.076585
+      type: 'test'
+      ...
+    # Subtest: handles mixed independent and dependent issues
+    ok 4 - handles mixed independent and dependent issues
+      ---
+      duration_ms: 0.042209
+      type: 'test'
+      ...
+    # Subtest: handles single issue
+    ok 5 - handles single issue
+      ---
+      duration_ms: 0.034126
+      type: 'test'
+      ...
+    1..5
+ok 142 - assignWaves
+  ---
+  duration_ms: 0.318048
+  type: 'suite'
+  ...
+# Subtest: applyDecompositionPlan
+    # Subtest: creates issues with correct wave assignments (no GH executor)
+    ok 1 - creates issues with correct wave assignments (no GH executor)
+      ---
+      duration_ms: 0.137503
+      type: 'test'
+      ...
+    # Subtest: all issues start in pending state
+    ok 2 - all issues start in pending state
+      ---
+      duration_ms: 0.057001
+      type: 'test'
+      ...
+    # Subtest: maps depends_on to GH issue numbers when GH executor is provided
+    ok 3 - maps depends_on to GH issue numbers when GH executor is provided
+      ---
+      duration_ms: 0.07921
+      type: 'test'
+      ...
+    # Subtest: calls execGhIssueCreate with correct labels (aloop/auto + wave)
+    ok 4 - calls execGhIssueCreate with correct labels (aloop/auto + wave)
+      ---
+      duration_ms: 0.159836
+      type: 'test'
+      ...
+    # Subtest: updates updated_at timestamp
+    ok 5 - updates updated_at timestamp
+      ---
+      duration_ms: 0.053293
+      type: 'test'
+      ...
+    # Subtest: rejects invalid dependency graph
+    ok 6 - rejects invalid dependency graph
+      ---
+      duration_ms: 0.078877
+      type: 'test'
+      ...
+    # Subtest: uses plan IDs as placeholders when no repo is provided
+    ok 7 - uses plan IDs as placeholders when no repo is provided
+      ---
+      duration_ms: 0.059418
+      type: 'test'
+      ...
+    1..7
+ok 143 - applyDecompositionPlan
+  ---
+  duration_ms: 0.718722
+  type: 'suite'
+  ...
+# Subtest: orchestrateCommandWithDeps with --plan
+    # Subtest: loads plan file and populates issues in state
+    ok 1 - loads plan file and populates issues in state
+      ---
+      duration_ms: 0.147337
+      type: 'test'
+      ...
+    # Subtest: persists issues in orchestrator.json
+    ok 2 - persists issues in orchestrator.json
+      ---
+      duration_ms: 0.087126
+      type: 'test'
+      ...
+    # Subtest: throws when plan file does not exist
+    ok 3 - throws when plan file does not exist
+      ---
+      duration_ms: 0.068126
+      type: 'test'
+      ...
+    # Subtest: throws when plan file has invalid JSON
+    ok 4 - throws when plan file has invalid JSON
+      ---
+      duration_ms: 0.078668
+      type: 'test'
+      ...
+    # Subtest: throws when plan has empty issues array
+    ok 5 - throws when plan has empty issues array
+      ---
+      duration_ms: 0.07771
+      type: 'test'
+      ...
+    # Subtest: calls execGhIssueCreate when repo is provided
+    ok 6 - calls execGhIssueCreate when repo is provided
+      ---
+      duration_ms: 0.099085
+      type: 'test'
+      ...
+    # Subtest: text output shows issue count and wave count
+    ok 7 - text output shows issue count and wave count
+      ---
+      duration_ms: 0.829183
+      type: 'test'
+      ...
+    1..7
+ok 144 - orchestrateCommandWithDeps with --plan
+  ---
+  duration_ms: 1.463237
+  type: 'suite'
+  ...
+# Subtest: triage classification loop
+    # Subtest: classifies explicit instructions as actionable
+    ok 1 - classifies explicit instructions as actionable
+      ---
+      duration_ms: 1.525822
+      type: 'test'
+      ...
+    # Subtest: classifies direct questions as question
+    ok 2 - classifies direct questions as question
+      ---
+      duration_ms: 0.159628
+      type: 'test'
+      ...
+    # Subtest: classifies low-signal acknowledgements as out_of_scope
+    ok 3 - classifies low-signal acknowledgements as out_of_scope
+      ---
+      duration_ms: 0.034876
+      type: 'test'
+      ...
+    # Subtest: forces needs_clarification when confidence is below 0.7
+    ok 4 - forces needs_clarification when confidence is below 0.7
+      ---
+      duration_ms: 0.038793
+      type: 'test'
+      ...
+    # Subtest: applyTriageConfidenceFloor keeps high-confidence classifications unchanged
+    ok 5 - applyTriageConfidenceFloor keeps high-confidence classifications unchanged
+      ---
+      duration_ms: 0.028833
+      type: 'test'
+      ...
+    # Subtest: runTriageClassificationLoop classifies all comments in a batch
+    ok 6 - runTriageClassificationLoop classifies all comments in a batch
+      ---
+      duration_ms: 0.146086
+      type: 'test'
+      ...
+    # Subtest: getUnprocessedTriageComments excludes processed comment IDs
+    ok 7 - getUnprocessedTriageComments excludes processed comment IDs
+      ---
+      duration_ms: 0.048501
+      type: 'test'
+      ...
+    # Subtest: applyTriageResultsToIssue tracks processed IDs and blocks on clarification
+    ok 8 - applyTriageResultsToIssue tracks processed IDs and blocks on clarification
+      ---
+      duration_ms: 0.119085
+      type: 'test'
+      ...
+    # Subtest: applyTriageResultsToIssue auto-unblocks on actionable human response
+    ok 9 - applyTriageResultsToIssue auto-unblocks on actionable human response
+      ---
+      duration_ms: 0.106627
+      type: 'test'
+      ...
+    # Subtest: applyTriageResultsToIssue answers question comments without blocking
+    ok 10 - applyTriageResultsToIssue answers question comments without blocking
+      ---
+      duration_ms: 0.07546
+      type: 'test'
+      ...
+    # Subtest: applyTriageResultsToIssue skips agent-generated comments
+    ok 11 - applyTriageResultsToIssue skips agent-generated comments
+      ---
+      duration_ms: 0.10771
+      type: 'test'
+      ...
+    # Subtest: applyTriageResultsToIssue skips and logs external comments
+    ok 12 - applyTriageResultsToIssue skips and logs external comments
+      ---
+      duration_ms: 0.059876
+      type: 'test'
+      ...
+    # Subtest: applyTriageResultsToIssue records triaged_no_action for out_of_scope collaborator comments
+    ok 13 - applyTriageResultsToIssue records triaged_no_action for out_of_scope collaborator comments
+      ---
+      duration_ms: 0.053793
+      type: 'test'
+      ...
+    # Subtest: applyTriageResultsToIssue injects steering without unblocking for actionable when not blocked
+    ok 14 - applyTriageResultsToIssue injects steering without unblocking for actionable when not blocked
+      ---
+      duration_ms: 0.086377
+      type: 'test'
+      ...
+    # Subtest: applyTriageResultsToIssue propagates execGh errors on needs_clarification comment post
+    ok 15 - applyTriageResultsToIssue propagates execGh errors on needs_clarification comment post
+      ---
+      duration_ms: 0.097127
+      type: 'test'
+      ...
+    # Subtest: applyTriageResultsToIssue propagates execGh errors on label add
+    ok 16 - applyTriageResultsToIssue propagates execGh errors on label add
+      ---
+      duration_ms: 1.056938
+      type: 'test'
+      ...
+    # Subtest: applyTriageResultsToIssue propagates execGh errors on question reply
+    ok 17 - applyTriageResultsToIssue propagates execGh errors on question reply
+      ---
+      duration_ms: 0.139295
+      type: 'test'
+      ...
+    # Subtest: applyTriageResultsToIssue handles mixed classifications in a single batch
+    ok 18 - applyTriageResultsToIssue handles mixed classifications in a single batch
+      ---
+      duration_ms: 0.121585
+      type: 'test'
+      ...
+    1..18
+ok 145 - triage classification loop
+  ---
+  duration_ms: 4.171707
+  type: 'suite'
+  ...
+# Subtest: runTriageMonitorCycle
+    # Subtest: polls issue and PR comments per issue and applies triage to matching records
+    ok 1 - polls issue and PR comments per issue and applies triage to matching records
+      ---
+      duration_ms: 0.331465
+      type: 'test'
+      ...
+    # Subtest: returns no-op result when gh executor is not provided
+    ok 2 - returns no-op result when gh executor is not provided
+      ---
+      duration_ms: 0.051835
+      type: 'test'
+      ...
+    1..2
+ok 146 - runTriageMonitorCycle
+  ---
+  duration_ms: 0.420092
+  type: 'suite'
+  ...
+# Subtest: getDispatchableIssues
+    # Subtest: returns pending issues from the current wave
+    ok 1 - returns pending issues from the current wave
+      ---
+      duration_ms: 0.103419
+      type: 'test'
+      ...
+    # Subtest: excludes in_progress and merged issues
+    ok 2 - excludes in_progress and merged issues
+      ---
+      duration_ms: 0.031667
+      type: 'test'
+      ...
+    # Subtest: returns empty when current_wave is 0
+    ok 3 - returns empty when current_wave is 0
+      ---
+      duration_ms: 0.027167
+      type: 'test'
+      ...
+    # Subtest: returns empty when no issues exist
+    ok 4 - returns empty when no issues exist
+      ---
+      duration_ms: 0.025
+      type: 'test'
+      ...
+    # Subtest: excludes issues with unmerged dependencies
+    ok 5 - excludes issues with unmerged dependencies
+      ---
+      duration_ms: 0.033667
+      type: 'test'
+      ...
+    # Subtest: includes issues whose dependencies are all merged
+    ok 6 - includes issues whose dependencies are all merged
+      ---
+      duration_ms: 0.030501
+      type: 'test'
+      ...
+    # Subtest: excludes issues blocked on human feedback
+    ok 7 - excludes issues blocked on human feedback
+      ---
+      duration_ms: 0.041292
+      type: 'test'
+      ...
+    1..7
+ok 147 - getDispatchableIssues
+  ---
+  duration_ms: 0.355632
+  type: 'suite'
+  ...
+# Subtest: countActiveChildren
+    # Subtest: counts issues in in_progress state
+    ok 1 - counts issues in in_progress state
+      ---
+      duration_ms: 0.053418
+      type: 'test'
+      ...
+    # Subtest: returns 0 when no issues are in progress
+    ok 2 - returns 0 when no issues are in progress
+      ---
+      duration_ms: 0.026375
+      type: 'test'
+      ...
+    1..2
+ok 148 - countActiveChildren
+  ---
+  duration_ms: 0.115252
+  type: 'suite'
+  ...
+# Subtest: availableSlots
+    # Subtest: returns concurrency_cap minus active children
+    ok 1 - returns concurrency_cap minus active children
+      ---
+      duration_ms: 0.043418
+      type: 'test'
+      ...
+    # Subtest: returns 0 when at capacity
+    ok 2 - returns 0 when at capacity
+      ---
+      duration_ms: 0.02525
+      type: 'test'
+      ...
+    # Subtest: never returns negative
+    ok 3 - never returns negative
+      ---
+      duration_ms: 0.025625
+      type: 'test'
+      ...
+    1..3
+ok 149 - availableSlots
+  ---
+  duration_ms: 0.128044
+  type: 'suite'
+  ...
+# Subtest: launchChildLoop
+    # Subtest: creates session directory
+    ok 1 - creates session directory
+      ---
+      duration_ms: 2.020373
+      type: 'test'
+      ...
+    # Subtest: creates worktree with correct branch name
+    ok 2 - creates worktree with correct branch name
+      ---
+      duration_ms: 0.155336
+      type: 'test'
+      ...
+    # Subtest: seeds TODO.md in worktree
+    ok 3 - seeds TODO.md in worktree
+      ---
+      duration_ms: 0.097668
+      type: 'test'
+      ...
+    # Subtest: writes config.json with child-loop role
+    ok 4 - writes config.json with child-loop role
+      ---
+      duration_ms: 0.11271
+      type: 'test'
+      ...
+    # Subtest: writes meta.json with issue number and orchestrator reference
+    ok 5 - writes meta.json with issue number and orchestrator reference
+      ---
+      duration_ms: 0.098877
+      type: 'test'
+      ...
+    # Subtest: writes status.json with starting state
+    ok 6 - writes status.json with starting state
+      ---
+      duration_ms: 3.379275
+      type: 'test'
+      ...
+    # Subtest: launches loop process and returns PID
+    ok 7 - launches loop process and returns PID
+      ---
+      duration_ms: 0.101627
+      type: 'test'
+      ...
+    # Subtest: registers session in active.json
+    ok 8 - registers session in active.json
+      ---
+      duration_ms: 0.098793
+      type: 'test'
+      ...
+    # Subtest: throws when worktree creation fails
+    ok 9 - throws when worktree creation fails
+      ---
+      duration_ms: 0.228671
+      type: 'test'
+      ...
+    # Subtest: throws when spawn returns no PID
+    ok 10 - throws when spawn returns no PID
+      ---
+      duration_ms: 0.115377
+      type: 'test'
+      ...
+    # Subtest: uses powershell on win32
+    ok 11 - uses powershell on win32
+      ---
+      duration_ms: 0.085794
+      type: 'test'
+      ...
+    # Subtest: uses loop.sh on linux
+    ok 12 - uses loop.sh on linux
+      ---
+      duration_ms: 0.067252
+      type: 'test'
+      ...
+    1..12
+ok 150 - launchChildLoop
+  ---
+  duration_ms: 6.699674
+  type: 'suite'
+  ...
+# Subtest: dispatchChildLoops
+    # Subtest: dispatches pending issues up to concurrency cap
+    ok 1 - dispatches pending issues up to concurrency cap
+      ---
+      duration_ms: 0.262464
+      type: 'test'
+      ...
+    # Subtest: updates issue states to in_progress in persisted state
+    ok 2 - updates issue states to in_progress in persisted state
+      ---
+      duration_ms: 0.088752
+      type: 'test'
+      ...
+    # Subtest: persists updated state to file
+    ok 3 - persists updated state to file
+      ---
+      duration_ms: 0.094752
+      type: 'test'
+      ...
+    # Subtest: dispatches nothing when no slots are available
+    ok 4 - dispatches nothing when no slots are available
+      ---
+      duration_ms: 0.061876
+      type: 'test'
+      ...
+    # Subtest: dispatches nothing when all issues are already dispatched
+    ok 5 - dispatches nothing when all issues are already dispatched
+      ---
+      duration_ms: 0.052584
+      type: 'test'
+      ...
+    # Subtest: each launched child has unique session_id and branch
+    ok 6 - each launched child has unique session_id and branch
+      ---
+      duration_ms: 3.738699
+      type: 'test'
+      ...
+    1..6
+ok 151 - dispatchChildLoops
+  ---
+  duration_ms: 4.387129
+  type: 'suite'
+  ...
+# Subtest: checkPrGates
+    # Subtest: returns pass when PR is mergeable and all CI checks pass
+    ok 1 - returns pass when PR is mergeable and all CI checks pass
+      ---
+      duration_ms: 0.220921
+      type: 'test'
+      ...
+    # Subtest: returns fail when PR has merge conflicts
+    ok 2 - returns fail when PR has merge conflicts
+      ---
+      duration_ms: 0.064626
+      type: 'test'
+      ...
+    # Subtest: returns pending when CI checks are still running
+    ok 3 - returns pending when CI checks are still running
+      ---
+      duration_ms: 0.056293
+      type: 'test'
+      ...
+    # Subtest: returns fail when CI checks have failures
+    ok 4 - returns fail when CI checks have failures
+      ---
+      duration_ms: 0.059209
+      type: 'test'
+      ...
+    # Subtest: handles gh errors gracefully for mergeability
+    ok 5 - handles gh errors gracefully for mergeability
+      ---
+      duration_ms: 0.073751
+      type: 'test'
+      ...
+    # Subtest: treats SKIPPED and NEUTRAL checks as passing
+    ok 6 - treats SKIPPED and NEUTRAL checks as passing
+      ---
+      duration_ms: 0.055835
+      type: 'test'
+      ...
+    1..6
+ok 152 - checkPrGates
+  ---
+  duration_ms: 0.598887
+  type: 'suite'
+  ...
+# Subtest: reviewPrDiff
+    # Subtest: auto-approves when no agent reviewer configured
+    ok 1 - auto-approves when no agent reviewer configured
+      ---
+      duration_ms: 0.064918
+      type: 'test'
+      ...
+    # Subtest: delegates to agent reviewer when configured
+    ok 2 - delegates to agent reviewer when configured
+      ---
+      duration_ms: 0.057626
+      type: 'test'
+      ...
+    # Subtest: flags for human when diff fetch fails
+    ok 3 - flags for human when diff fetch fails
+      ---
+      duration_ms: 0.110294
+      type: 'test'
+      ...
+    1..3
+ok 153 - reviewPrDiff
+  ---
+  duration_ms: 0.27263
+  type: 'suite'
+  ...
+# Subtest: mergePr
+    # Subtest: returns merged true on success
+    ok 1 - returns merged true on success
+      ---
+      duration_ms: 0.05496
+      type: 'test'
+      ...
+    # Subtest: returns merged false with error on failure
+    ok 2 - returns merged false with error on failure
+      ---
+      duration_ms: 0.044126
+      type: 'test'
+      ...
+    1..2
+ok 154 - mergePr
+  ---
+  duration_ms: 0.130503
+  type: 'suite'
+  ...
+# Subtest: requestRebase
+    # Subtest: posts comment on the issue
+    ok 1 - posts comment on the issue
+      ---
+      duration_ms: 0.062251
+      type: 'test'
+      ...
+    1..1
+ok 155 - requestRebase
+  ---
+  duration_ms: 0.084668
+  type: 'suite'
+  ...
+# Subtest: flagForHuman
+    # Subtest: comments and labels the issue
+    ok 1 - comments and labels the issue
+      ---
+      duration_ms: 0.056085
+      type: 'test'
+      ...
+    1..1
+ok 156 - flagForHuman
+  ---
+  duration_ms: 0.075418
+  type: 'suite'
+  ...
+# Subtest: processPrLifecycle
+    # Subtest: merges PR when all gates pass and review approves
+    ok 1 - merges PR when all gates pass and review approves
+      ---
+      duration_ms: 0.856642
+      type: 'test'
+      ...
+    # Subtest: returns gates_pending when CI is still running
+    ok 2 - returns gates_pending when CI is still running
+      ---
+      duration_ms: 0.116961
+      type: 'test'
+      ...
+    # Subtest: requests rebase on first merge conflict
+    ok 3 - requests rebase on first merge conflict
+      ---
+      duration_ms: 0.132711
+      type: 'test'
+      ...
+    # Subtest: flags for human after 2 rebase attempts
+    ok 4 - flags for human after 2 rebase attempts
+      ---
+      duration_ms: 0.088377
+      type: 'test'
+      ...
+    # Subtest: rejects PR when agent review requests changes
+    ok 5 - rejects PR when agent review requests changes
+      ---
+      duration_ms: 0.081335
+      type: 'test'
+      ...
+    # Subtest: flags for human when agent review flags
+    ok 6 - flags for human when agent review flags
+      ---
+      duration_ms: 0.073168
+      type: 'test'
+      ...
+    # Subtest: returns gates_failed when no pr_number on issue
+    ok 7 - returns gates_failed when no pr_number on issue
+      ---
+      duration_ms: 0.036001
+      type: 'test'
+      ...
+    # Subtest: comments on issue when CI gates fail
+    ok 8 - comments on issue when CI gates fail
+      ---
+      duration_ms: 0.085043
+      type: 'test'
+      ...
+    # Subtest: handles merge failure after approval
+    ok 9 - handles merge failure after approval
+      ---
+      duration_ms: 0.090543
+      type: 'test'
+      ...
+    # Subtest: closes issue after successful merge
+    ok 10 - closes issue after successful merge
+      ---
+      duration_ms: 0.084543
+      type: 'test'
+      ...
+    1..10
+ok 157 - processPrLifecycle
+  ---
+  duration_ms: 1.736118
+  type: 'suite'
+  ...
+# Subtest: isWaveComplete
+    # Subtest: returns true when all issues in wave are merged
+    ok 1 - returns true when all issues in wave are merged
+      ---
+      duration_ms: 0.062335
+      type: 'test'
+      ...
+    # Subtest: returns true when all issues are merged or failed
+    ok 2 - returns true when all issues are merged or failed
+      ---
+      duration_ms: 0.026375
+      type: 'test'
+      ...
+    # Subtest: returns false when some issues are still in progress
+    ok 3 - returns false when some issues are still in progress
+      ---
+      duration_ms: 0.026417
+      type: 'test'
+      ...
+    # Subtest: returns false for empty wave
+    ok 4 - returns false for empty wave
+      ---
+      duration_ms: 0.025125
+      type: 'test'
+      ...
+    1..4
+ok 158 - isWaveComplete
+  ---
+  duration_ms: 0.186295
+  type: 'suite'
+  ...
+# Subtest: advanceWave
+    # Subtest: advances to next wave when current is complete
+    ok 1 - advances to next wave when current is complete
+      ---
+      duration_ms: 0.065001
+      type: 'test'
+      ...
+    # Subtest: returns false when current wave is not complete
+    ok 2 - returns false when current wave is not complete
+      ---
+      duration_ms: 0.025917
+      type: 'test'
+      ...
+    # Subtest: returns false when current_wave is 0
+    ok 3 - returns false when current_wave is 0
+      ---
+      duration_ms: 0.023792
+      type: 'test'
+      ...
+    # Subtest: returns false when on last wave (all complete)
+    ok 4 - returns false when on last wave (all complete)
+      ---
+      duration_ms: 0.027625
+      type: 'test'
+      ...
+    # Subtest: does not duplicate completed_waves entries
+    ok 5 - does not duplicate completed_waves entries
+      ---
+      duration_ms: 0.030334
+      type: 'test'
+      ...
+    1..5
+ok 159 - advanceWave
+  ---
+  duration_ms: 0.231005
+  type: 'suite'
+  ...
+# Subtest: parseChildSessionCost
+    # Subtest: returns zero cost when log.jsonl does not exist
+    ok 1 - returns zero cost when log.jsonl does not exist
+      ---
+      duration_ms: 0.109418
+      type: 'test'
+      ...
+    # Subtest: counts iteration_complete events and tracks providers
+    ok 2 - counts iteration_complete events and tracks providers
+      ---
+      duration_ms: 0.160086
+      type: 'test'
+      ...
+    # Subtest: handles malformed log lines gracefully
+    ok 3 - handles malformed log lines gracefully
+      ---
+      duration_ms: 0.062335
+      type: 'test'
+      ...
+    # Subtest: uses "unknown" provider when provider field is missing
+    ok 4 - uses "unknown" provider when provider field is missing
+      ---
+      duration_ms: 0.044292
+      type: 'test'
+      ...
+    1..4
+ok 160 - parseChildSessionCost
+  ---
+  duration_ms: 0.419883
+  type: 'suite'
+  ...
+# Subtest: aggregateChildCosts
+    # Subtest: aggregates costs from multiple children
+    ok 1 - aggregates costs from multiple children
+      ---
+      duration_ms: 0.111336
+      type: 'test'
+      ...
+    # Subtest: detects budget approaching at 80% threshold
+    ok 2 - detects budget approaching at 80% threshold
+      ---
+      duration_ms: 0.09546
+      type: 'test'
+      ...
+    # Subtest: detects budget approaching but not exceeded
+    ok 3 - detects budget approaching but not exceeded
+      ---
+      duration_ms: 0.054543
+      type: 'test'
+      ...
+    # Subtest: returns no budget flags when cap is null
+    ok 4 - returns no budget flags when cap is null
+      ---
+      duration_ms: 0.035834
+      type: 'test'
+      ...
+    1..4
+ok 161 - aggregateChildCosts
+  ---
+  duration_ms: 0.339673
+  type: 'suite'
+  ...
+# Subtest: shouldPauseForBudget
+    # Subtest: returns false when budget is not set
+    ok 1 - returns false when budget is not set
+      ---
+      duration_ms: 0.039584
+      type: 'test'
+      ...
+    # Subtest: returns true when budget is exceeded
+    ok 2 - returns true when budget is exceeded
+      ---
+      duration_ms: 0.033959
+      type: 'test'
+      ...
+    # Subtest: returns true when budget is approaching
+    ok 3 - returns true when budget is approaching
+      ---
+      duration_ms: 0.034376
+      type: 'test'
+      ...
+    1..3
+ok 162 - shouldPauseForBudget
+  ---
+  duration_ms: 0.146044
+  type: 'suite'
+  ...
+# Subtest: generateFinalReport
+    # Subtest: generates correct summary from orchestrator state
+    ok 1 - generates correct summary from orchestrator state
+      ---
+      duration_ms: 0.099752
+      type: 'test'
+      ...
+    1..1
+ok 163 - generateFinalReport
+  ---
+  duration_ms: 0.126669
+  type: 'suite'
+  ...
+# Subtest: formatFinalReportText
+    # Subtest: formats report as human-readable text
+    ok 1 - formats report as human-readable text
+      ---
+      duration_ms: 0.117252
+      type: 'test'
+      ...
+    # Subtest: shows (none) when budget cap is null
+    ok 2 - shows (none) when budget cap is null
+      ---
+      duration_ms: 0.035334
+      type: 'test'
+      ...
+    1..2
+ok 164 - formatFinalReportText
+  ---
+  duration_ms: 0.182128
+  type: 'suite'
+  ...
+# Subtest: orchestrateCommandWithDeps budget option
+    # Subtest: sets budget_cap from --budget option
+    ok 1 - sets budget_cap from --budget option
+      ---
+      duration_ms: 0.077418
+      type: 'test'
+      ...
+    # Subtest: defaults budget_cap to null when not provided
+    ok 2 - defaults budget_cap to null when not provided
+      ---
+      duration_ms: 0.039668
+      type: 'test'
+      ...
+    # Subtest: throws on invalid budget value
+    ok 3 - throws on invalid budget value
+      ---
+      duration_ms: 0.088502
+      type: 'test'
+      ...
+    # Subtest: throws on zero budget value
+    ok 4 - throws on zero budget value
+      ---
+      duration_ms: 0.050084
+      type: 'test'
+      ...
+    # Subtest: throws on negative budget value
+    ok 5 - throws on negative budget value
+      ---
+      duration_ms: 0.046751
+      type: 'test'
+      ...
+    1..5
+ok 165 - orchestrateCommandWithDeps budget option
+  ---
+  duration_ms: 1.101938
+  type: 'suite'
+  ...
+# Subtest: discoverWorkspace resolves project details and language signals
+ok 166 - discoverWorkspace resolves project details and language signals
+  ---
+  duration_ms: 1625.817624
+  type: 'test'
+  ...
+# Subtest: scaffoldWorkspace writes config and prompt files with substitutions
+ok 167 - scaffoldWorkspace writes config and prompt files with substitutions
+  ---
+  duration_ms: 1587.170142
+  type: 'test'
+  ...
+# Subtest: scaffoldWorkspace allows explicit reference file overrides
+ok 168 - scaffoldWorkspace allows explicit reference file overrides
+  ---
+  duration_ms: 1595.9936
+  type: 'test'
+  ...
+# Subtest: discoverWorkspace reports non-git workspaces
+ok 169 - discoverWorkspace reports non-git workspaces
+  ---
+  duration_ms: 1582.674851
+  type: 'test'
+  ...
+# Subtest: discoverWorkspace falls back to node defaults when package.json is missing
+ok 170 - discoverWorkspace falls back to node defaults when package.json is missing
+  ---
+  duration_ms: 1585.797213
+  type: 'test'
+  ...
+# Subtest: discoverWorkspace uses package.json scripts for validation presets
+ok 171 - discoverWorkspace uses package.json scripts for validation presets
+  ---
+  duration_ms: 1587.759689
+  type: 'test'
+  ...
+# Subtest: discoverWorkspace handles node-typescript with NO scripts and NO tsconfig
+ok 172 - discoverWorkspace handles node-typescript with NO scripts and NO tsconfig
+  ---
+  duration_ms: 1588.171027
+  type: 'test'
+  ...
+# Subtest: scaffoldWorkspace respects explicit enabledProviders and roundRobinOrder
+ok 173 - scaffoldWorkspace respects explicit enabledProviders and roundRobinOrder
+  ---
+  duration_ms: 1586.660596
+  type: 'test'
+  ...
+# Subtest: discoverWorkspace builds language-specific validation presets for non-node projects
+ok 174 - discoverWorkspace builds language-specific validation presets for non-node projects
+  ---
+  duration_ms: 6365.121056
+  type: 'test'
+  ...
+# Subtest: scaffoldWorkspace errors when a required template is missing
+ok 175 - scaffoldWorkspace errors when a required template is missing
+  ---
+  duration_ms: 1581.295463
+  type: 'test'
+  ...
+# Subtest: scaffoldWorkspace leaves provider hints empty for unknown providers
+ok 176 - scaffoldWorkspace leaves provider hints empty for unknown providers
+  ---
+  duration_ms: 1571.911251
+  type: 'test'
+  ...
+# Subtest: resolveProjectRoot correctly identifies git root
+ok 177 - resolveProjectRoot correctly identifies git root
+  ---
+  duration_ms: 1588.932492
+  type: 'test'
+  ...
+# Subtest: discoverReferenceCandidates deduplicates against spec candidates
+ok 178 - discoverReferenceCandidates deduplicates against spec candidates
+  ---
+  duration_ms: 1579.377237
+  type: 'test'
+  ...
+# Subtest: readDefaultProvider handles missing or malformed config
+ok 179 - readDefaultProvider handles missing or malformed config
+  ---
+  duration_ms: 3167.722224
+  type: 'test'
+  ...
+# Subtest: resolveProviderHints covers all branches
+ok 180 - resolveProviderHints covers all branches
+  ---
+  duration_ms: 7920.774782
+  type: 'test'
+  ...
+# Subtest: buildValidationPresets handles unknown language
+ok 181 - buildValidationPresets handles unknown language
+  ---
+  duration_ms: 1574.492567
+  type: 'test'
+  ...
+# Subtest: workspace functions handle default parameters
+ok 182 - workspace functions handle default parameters
+  ---
+  duration_ms: 3159.297062
+  type: 'test'
+  ...
+# Subtest: command wrappers support json and text output
+ok 183 - command wrappers support json and text output
+  ---
+  duration_ms: 9492.167528
+  type: 'test'
+  ...
+# Subtest: resolveCommand fails clearly for unconfigured projects
+ok 184 - resolveCommand fails clearly for unconfigured projects
+  ---
+  duration_ms: 1587.919358
+  type: 'test'
+  ...
+# Subtest: readActiveSessions returns empty object for malformed active.json
+ok 185 - readActiveSessions returns empty object for malformed active.json
+  ---
+  duration_ms: 4.796719
+  type: 'test'
+  ...
+# Subtest: readActiveSessions returns empty object for non-object payloads
+ok 186 - readActiveSessions returns empty object for non-object payloads
+  ---
+  duration_ms: 0.808808
+  type: 'test'
+  ...
+# Subtest: readSessionStatus returns null for malformed status.json
+ok 187 - readSessionStatus returns null for malformed status.json
+  ---
+  duration_ms: 1.863286
+  type: 'test'
+  ...
+# Subtest: resolveHomeDir trims trailing separators and falls back to os.homedir
+ok 188 - resolveHomeDir trims trailing separators and falls back to os.homedir
+  ---
+  duration_ms: 0.388758
+  type: 'test'
+  ...
+# Subtest: readProviderHealth returns empty object when health path is not readable as a directory
+ok 189 - readProviderHealth returns empty object when health path is not readable as a directory
+  ---
+  duration_ms: 2.278794
+  type: 'test'
+  ...
+# Subtest: readProviderHealth ignores malformed and non-json files
+ok 190 - readProviderHealth ignores malformed and non-json files
+  ---
+  duration_ms: 1.061563
+  type: 'test'
+  ...
+# Subtest: listActiveSessions merges active/session data with sensible fallbacks
+ok 191 - listActiveSessions merges active/session data with sensible fallbacks
+  ---
+  duration_ms: 1.94683
+  type: 'test'
+  ...
+# Subtest: stopSession returns failure when session id is missing from active map
+ok 192 - stopSession returns failure when session id is missing from active map
+  ---
+  duration_ms: 0.485134
+  type: 'test'
+  ...
+# Subtest: stopSession skips status write when session directory does not exist
+ok 193 - stopSession skips status write when session directory does not exist
+  ---
+  duration_ms: 2.36688
+  type: 'test'
+  ...
+# Subtest: stopSession uses non-windows kill path and writes stopped state/history
+ok 194 - stopSession uses non-windows kill path and writes stopped state/history
+  ---
+  duration_ms: 1.317443
+  type: 'test'
+  ...
+# Subtest: stopSession continues when pid is stale and isProcessAlive throws
+ok 195 - stopSession continues when pid is stale and isProcessAlive throws
+  ---
+  duration_ms: 2.034832
+  type: 'test'
+  ...
+# Subtest: stopSession uses Windows taskkill path when platform is win32
+ok 196 - stopSession uses Windows taskkill path when platform is win32 # SKIP
+  ---
+  duration_ms: 0.045834
+  type: 'test'
+  ...
+# Subtest: stopSession returns failure when process kill fails and leaves state unchanged
+ok 197 - stopSession returns failure when process kill fails and leaves state unchanged
+  ---
+  duration_ms: 3.665572
+  type: 'test'
+  ...
+# Running setup in non-interactive mode...
+# Setup complete. Config written to: /mock/config
+# --- Aloop Interactive Setup ---
+# Scaffolding workspace with the following configuration:
+# - Spec: CUSTOM_SPEC.md
+# - Providers: gemini
+# - Language: python
+# - Primary Provider: gemini
+# - Mode: custom-mode
+# - Validation Commands: pytest, ruff check .
+# - Safety Rules: No rm -rf, No dropping tables
+# Setup complete. Config written to: /mock/config
+# --- Aloop Interactive Setup ---
+# Scaffolding workspace with the following configuration:
+# - Spec: SPEC.md
+# - Providers: codex
+# - Language: rust
+# - Primary Provider: codex
+# - Mode: plan-build-review
+# - Validation Commands: cargo test
+# - Safety Rules: Never delete the project directory or run destructive commands, Never push to remote without explicit user approval
+# Setup complete. Config written to: /mock/config
+# --- Aloop Interactive Setup ---
+# Scaffolding workspace with the following configuration:
+# - Spec: SPEC.md
+# - Providers: claude
+# - Language: node-typescript
+# - Primary Provider: claude
+# - Mode: plan-build-review
+# - Validation Commands: npm test
+# - Safety Rules: Never delete the project directory or run destructive commands, Never push to remote without explicit user approval
+# --- Aloop Interactive Setup ---
+# Scaffolding workspace with the following configuration:
+# - Spec: SPEC.custom.md
+# - Providers: codex, gemini
+# - Language: typescript
+# - Primary Provider: codex
+# - Mode: plan-build-review
+# - Validation Commands: npm test, npm run typecheck
+# - Safety Rules: Rule 1, Rule 2
+# Setup complete. Config written to: /mock/config
+# Subtest: setupCommandWithDeps - non-interactive mode
+ok 198 - setupCommandWithDeps - non-interactive mode
+  ---
+  duration_ms: 1.539863
+  type: 'test'
+  ...
+# Subtest: setupCommandWithDeps - interactive mode
+ok 199 - setupCommandWithDeps - interactive mode
+  ---
+  duration_ms: 0.476926
+  type: 'test'
+  ...
+# Subtest: setupCommandWithDeps - interactive mode uses defaults
+ok 200 - setupCommandWithDeps - interactive mode uses defaults
+  ---
+  duration_ms: 0.160503
+  type: 'test'
+  ...
+# Subtest: setupCommandWithDeps - propagates discover failure with exact error
+ok 201 - setupCommandWithDeps - propagates discover failure with exact error
+  ---
+  duration_ms: 0.207212
+  type: 'test'
+  ...
+# Subtest: setupCommandWithDeps - propagates scaffold failure with exact error
+ok 202 - setupCommandWithDeps - propagates scaffold failure with exact error
+  ---
+  duration_ms: 0.189003
+  type: 'test'
+  ...
+# Subtest: setupCommandWithDeps - interactive prompt parsing trims and filters comma lists
+ok 203 - setupCommandWithDeps - interactive prompt parsing trims and filters comma lists
+  ---
+  duration_ms: 0.222254
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps errors when project config is missing
+ok 204 - startCommandWithDeps errors when project config is missing
+  ---
+  duration_ms: 4.866804
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps bootstraps in-place session and registers active map
+ok 205 - startCommandWithDeps bootstraps in-place session and registers active map
+  ---
+  duration_ms: 3.500986
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps falls back to in-place when git worktree add fails
+ok 206 - startCommandWithDeps falls back to in-place when git worktree add fails
+  ---
+  duration_ms: 1.585531
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps normalizes Git Bash work paths before launching loop.ps1 on Windows
+ok 207 - startCommandWithDeps normalizes Git Bash work paths before launching loop.ps1 on Windows
+  ---
+  duration_ms: 7.28006
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps launches dashboard monitor and opens browser when on_start.dashboard is enabled
+ok 208 - startCommandWithDeps launches dashboard monitor and opens browser when on_start.dashboard is enabled
+  ---
+  duration_ms: 4.437963
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps launches terminal monitor when on_start.terminal is enabled
+ok 209 - startCommandWithDeps launches terminal monitor when on_start.terminal is enabled
+  ---
+  duration_ms: 4.99314
+  type: 'test'
+  ...
+# Subtest: normalizeGitBashPathForWindows passes through non-POSIX Windows paths unchanged
+ok 210 - normalizeGitBashPathForWindows passes through non-POSIX Windows paths unchanged
+  ---
+  duration_ms: 0.127544
+  type: 'test'
+  ...
+# Subtest: normalizeGitBashPathForWindows converts drive-root paths
+ok 211 - normalizeGitBashPathForWindows converts drive-root paths
+  ---
+  duration_ms: 0.047417
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps rejects conflicting mode flags
+ok 212 - startCommandWithDeps rejects conflicting mode flags
+  ---
+  duration_ms: 2.308462
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps warns when installed runtime commit differs from repo HEAD
+ok 213 - startCommandWithDeps warns when installed runtime commit differs from repo HEAD
+  ---
+  duration_ms: 3.144937
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps does not warn when installed commit matches repo HEAD
+ok 214 - startCommandWithDeps does not warn when installed commit matches repo HEAD
+  ---
+  duration_ms: 3.990496
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps defaults launch_mode to start and passes --launch-mode to loop script
+ok 215 - startCommandWithDeps defaults launch_mode to start and passes --launch-mode to loop script
+  ---
+  duration_ms: 1.048437
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps passes resume launch mode to loop script
+ok 216 - startCommandWithDeps passes resume launch mode to loop script
+  ---
+  duration_ms: 1.026187
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps passes -LaunchMode to loop.ps1 on Windows
+ok 217 - startCommandWithDeps passes -LaunchMode to loop.ps1 on Windows
+  ---
+  duration_ms: 1.159023
+  type: 'test'
+  ...
+# Subtest: startCommandWithDeps rejects invalid launch mode
+ok 218 - startCommandWithDeps rejects invalid launch mode
+  ---
+  duration_ms: 0.663263
+  type: 'test'
+  ...
+# Subtest: formatRelativeTime returns "unknown" for null/undefined
+ok 219 - formatRelativeTime returns "unknown" for null/undefined
+  ---
+  duration_ms: 0.417841
+  type: 'test'
+  ...
+# Subtest: formatRelativeTime returns seconds for recent timestamps
+ok 220 - formatRelativeTime returns seconds for recent timestamps
+  ---
+  duration_ms: 0.307839
+  type: 'test'
+  ...
+# Subtest: formatRelativeTime returns minutes for older timestamps
+ok 221 - formatRelativeTime returns minutes for older timestamps
+  ---
+  duration_ms: 0.05696
+  type: 'test'
+  ...
+# Subtest: formatRelativeTime returns hours for old timestamps
+ok 222 - formatRelativeTime returns hours for old timestamps
+  ---
+  duration_ms: 0.048543
+  type: 'test'
+  ...
+# Subtest: formatRelativeTime returns "just now" for future timestamps
+ok 223 - formatRelativeTime returns "just now" for future timestamps
+  ---
+  duration_ms: 0.04321
+  type: 'test'
+  ...
+# Subtest: formatHealthLine shows cooldown detail
+ok 224 - formatHealthLine shows cooldown detail
+  ---
+  duration_ms: 0.07521
+  type: 'test'
+  ...
+# Subtest: formatHealthLine shows degraded detail
+ok 225 - formatHealthLine shows degraded detail
+  ---
+  duration_ms: 0.097752
+  type: 'test'
+  ...
+# Subtest: formatHealthLine shows healthy detail
+ok 226 - formatHealthLine shows healthy detail
+  ---
+  duration_ms: 0.047334
+  type: 'test'
+  ...
+# Subtest: renderStatus shows no-sessions message when empty
+ok 227 - renderStatus shows no-sessions message when empty
+  ---
+  duration_ms: 0.159503
+  type: 'test'
+  ...
+# Subtest: renderStatus shows session details
+ok 228 - renderStatus shows session details
+  ---
+  duration_ms: 0.249422
+  type: 'test'
+  ...
+# Subtest: renderStatus includes provider health
+ok 229 - renderStatus includes provider health
+  ---
+  duration_ms: 0.059709
+  type: 'test'
+  ...
+# Subtest: status CLI runs without --watch and exits cleanly
+ok 230 - status CLI runs without --watch and exits cleanly
+  ---
+  duration_ms: 149.8965
+  type: 'test'
+  ...
+# Subtest: status CLI --output json returns valid JSON
+ok 231 - status CLI --output json returns valid JSON
+  ---
+  duration_ms: 115.231107
+  type: 'test'
+  ...
+# Subtest: status CLI --watch produces output and exits on SIGINT
+ok 232 - status CLI --watch produces output and exits on SIGINT
+  ---
+  duration_ms: 218.138018
+  type: 'test'
+  ...
+# Subtest: executeUpdate copies runtime assets to ~/.aloop
+ok 233 - executeUpdate copies runtime assets to ~/.aloop
+  ---
+  duration_ms: 6.773175
+  type: 'test'
+  ...
+# Subtest: executeUpdate fails when repo root not found
+ok 234 - executeUpdate fails when repo root not found
+  ---
+  duration_ms: 2.799846
+  type: 'test'
+  ...
+# Subtest: executeUpdate fails when repo structure is incomplete
+ok 235 - executeUpdate fails when repo structure is incomplete
+  ---
+  duration_ms: 1.967497
+  type: 'test'
+  ...
+# Subtest: executeUpdate works with empty git commit (no git)
+ok 236 - executeUpdate works with empty git commit (no git)
+  ---
+  duration_ms: 4.58809
+  type: 'test'
+  ...
+# Subtest: executeUpdate json output includes all fields
+ok 237 - executeUpdate json output includes all fields
+  ---
+  duration_ms: 1.85212
+  type: 'test'
+  ...
+1..237
+# tests 357
+# suites 27
+# pass 356
+# fail 0
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 52476.658062
+TAP version 13
+# Subtest: aloop entrypoint shows help for no args and explicit --help
+ok 1 - aloop entrypoint shows help for no args and explicit --help
+  ---
+  duration_ms: 31.709252
+  type: 'test'
+  ...
+# Subtest: aloop entrypoint runs discover scaffold and resolve
+ok 2 - aloop entrypoint runs discover scaffold and resolve
+  ---
+  duration_ms: 9627.219486
+  type: 'test'
+  ...
+# Subtest: aloop entrypoint surfaces resolve misconfiguration and stop validation errors
+ok 3 - aloop entrypoint surfaces resolve misconfiguration and stop validation errors
+  ---
+  duration_ms: 1619.542151
+  type: 'test'
+  ...
+# Subtest: aloop entrypoint runs status active and stop text/json paths
+ok 4 - aloop entrypoint runs status active and stop text/json paths
+  ---
+  duration_ms: 148.814044
+  type: 'test'
+  ...
+# Subtest: aloop entrypoint supports debug-env command
+ok 5 - aloop entrypoint supports debug-env command
+  ---
+  duration_ms: 15.388684
+  type: 'test'
+  ...
+# Subtest: aloop entrypoint exercises status formatting edge cases and short help
+ok 6 - aloop entrypoint exercises status formatting edge cases and short help
+  ---
+  duration_ms: 34.42486
+  type: 'test'
+  ...
+# Subtest: aloop entrypoint delegates unknown commands when dist bundle exists
+ok 7 - aloop entrypoint delegates unknown commands when dist bundle exists
+  ---
+  duration_ms: 30.914536
+  type: 'test'
+  ...
+# Subtest: aloop entrypoint returns bundle-not-found error when dist is absent
+ok 8 - aloop entrypoint returns bundle-not-found error when dist is absent
+  ---
+  duration_ms: 15.251808
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11547.709088
+
+> aloop-cli@1.0.0 type-check
+> tsc --noEmit
+
+
+> aloop-cli@1.0.0 build
+> npm run clean && npm run build:dashboard && npm run build:server
+
+
+> aloop-cli@1.0.0 clean
+> node -e "require('node:fs').rmSync('dist',{recursive:true,force:true})"
+
+
+> aloop-cli@1.0.0 build:dashboard
+> npm --prefix dashboard run build -- --outDir ../dist/dashboard --emptyOutDir
+
+
+> aloop-dashboard@1.0.0 build
+> vite build --outDir ../dist/dashboard --emptyOutDir
+
+vite v5.4.21 building for production...
+transforming...
+✓ 122 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/dashboard/index.html                   0.38 kB │ gzip:   0.27 kB
+../dist/dashboard/assets/index-BtQNfAiz.css   20.25 kB │ gzip:   4.71 kB
+../dist/dashboard/assets/index-6XOpQ7DO.js   391.35 kB │ gzip: 124.49 kB
+✓ built in 939ms
+
+> aloop-cli@1.0.0 build:server
+> esbuild src/index.ts --bundle --platform=node --format=esm "--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);" --outfile=dist/index.js
+
+
+  dist/index.js  256.3kb
+
+⚡ Done in 5ms

@@ -6,7 +6,7 @@
 - [x] [review][high] Restore green baseline by fixing `resolveHomeDir` trailing-separator behavior (`session.test.ts` currently failing on Linux/Git-Bash path case).
 
 ### Up Next
-- [ ] [review][high] Regenerate and attach missing proof artifacts (`proof-run.log`, `monitor-cycle-proof.json`, `triage-action-policy-proof.json`) so review gate evidence is verifiable.
+- [x] [review][high] Regenerate and attach missing proof artifacts (`proof-run.log`, `monitor-cycle-proof.json`, `triage-action-policy-proof.json`) so review gate evidence is verifiable.
 - [ ] [runtime+dashboard][high] Align loop/runtime state handling with spec: emit `stopped`/`exited` where required, reset `stuck_count` on successful iterations, and auto-correct dashboard running state when session PID is dead.
 - [ ] [tests][high] Raise `gh.ts` branch coverage to >=80% with targeted tests for remaining uncovered branches (notably issue-label remove path and parse/error fallback branches).
 - [ ] [dashboard][medium] Add activity/timing context: provider+model together, per-iteration duration, elapsed since `session_start`, total iterations, and average iteration duration.
