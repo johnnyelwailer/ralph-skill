@@ -682,3 +682,247 @@ test('startCommandWithDeps rejects invalid launch mode', async () => {
     /Invalid launch mode/i,
   );
 });
+
+test('startCommandWithDeps resume reuses existing session worktree and branch', async () => {
+  const fixture = await setupWorkspace('aloop-start-resume-worktree-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'none'\n",
+    'utf8',
+  );
+
+  // Create an existing session with meta.json
+  const existingSessionId = 'demo-project-20260301-100000';
+  const sessionsRoot = path.join(fixture.homeDir, '.aloop', 'sessions');
+  const existingSessionDir = path.join(sessionsRoot, existingSessionId);
+  const existingWorktreePath = path.join(existingSessionDir, 'worktree');
+  const existingBranch = `aloop/${existingSessionId}`;
+  const existingPromptsDir = path.join(existingSessionDir, 'prompts');
+
+  await mkdir(existingSessionDir, { recursive: true });
+  await mkdir(existingWorktreePath, { recursive: true });
+  await mkdir(existingPromptsDir, { recursive: true });
+  await writeFile(path.join(existingPromptsDir, 'PROMPT_plan.md'), '# plan\n', 'utf8');
+
+  const meta = {
+    session_id: existingSessionId,
+    session_dir: existingSessionDir,
+    project_root: fixture.projectRoot,
+    worktree: true,
+    worktree_path: existingWorktreePath,
+    work_dir: existingWorktreePath,
+    branch: existingBranch,
+    prompts_dir: existingPromptsDir,
+    provider: 'claude',
+    mode: 'plan-build-review',
+    enabled_providers: ['claude'],
+    round_robin_order: ['claude'],
+    max_iterations: 50,
+    max_stuck: 3,
+  };
+  await writeFile(path.join(existingSessionDir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
+
+  const launchCalls: SpawnRecord[] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, launch: 'resume', sessionId: existingSessionId },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        launchCalls.push({ command, args: [...(args ?? [])] });
+        return { pid: 1234, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.session_id, existingSessionId);
+  assert.equal(result.work_dir, existingWorktreePath);
+  assert.equal(result.worktree, true);
+  assert.equal(result.worktree_path, existingWorktreePath);
+  assert.equal(result.branch, existingBranch);
+  assert.equal(result.launch_mode, 'resume');
+  assert.equal(launchCalls.length, 1);
+  const launchModeIdx = launchCalls[0].args.indexOf('--launch-mode');
+  assert.ok(launchModeIdx > -1, 'Expected --launch-mode arg');
+  assert.equal(launchCalls[0].args[launchModeIdx + 1], 'resume');
+});
+
+test('startCommandWithDeps resume recreates worktree on same branch when worktree was removed', async () => {
+  const fixture = await setupWorkspace('aloop-start-resume-recreate-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'none'\n",
+    'utf8',
+  );
+
+  const existingSessionId = 'demo-project-20260301-110000';
+  const sessionsRoot = path.join(fixture.homeDir, '.aloop', 'sessions');
+  const existingSessionDir = path.join(sessionsRoot, existingSessionId);
+  const existingWorktreePath = path.join(existingSessionDir, 'worktree');
+  const existingBranch = `aloop/${existingSessionId}`;
+  const existingPromptsDir = path.join(existingSessionDir, 'prompts');
+
+  await mkdir(existingSessionDir, { recursive: true });
+  await mkdir(existingPromptsDir, { recursive: true });
+  await writeFile(path.join(existingPromptsDir, 'PROMPT_plan.md'), '# plan\n', 'utf8');
+  // NOTE: worktree directory does NOT exist — simulating removal
+
+  const meta = {
+    session_id: existingSessionId,
+    session_dir: existingSessionDir,
+    project_root: fixture.projectRoot,
+    worktree: true,
+    worktree_path: existingWorktreePath,
+    work_dir: existingWorktreePath,
+    branch: existingBranch,
+    prompts_dir: existingPromptsDir,
+    provider: 'claude',
+    mode: 'plan-build-review',
+    enabled_providers: ['claude'],
+    round_robin_order: ['claude'],
+    max_iterations: 50,
+    max_stuck: 3,
+  };
+  await writeFile(path.join(existingSessionDir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
+
+  const gitCalls: string[][] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, launch: 'resume', sessionId: existingSessionId },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        return { pid: 5678, unref() {} } as any;
+      }) as any,
+      spawnSync: ((command: string, args: readonly string[]) => {
+        if (command === 'git' && args.includes('worktree')) {
+          gitCalls.push([...args]);
+          // Simulate successful worktree recreation
+          return { status: 0, stdout: '', stderr: '' } as any;
+        }
+        return { status: 0, stdout: '', stderr: '' } as any;
+      }) as any,
+      platform: 'linux',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.session_id, existingSessionId);
+  assert.equal(result.branch, existingBranch);
+  assert.equal(result.worktree, true);
+  // Verify git worktree add was called with the existing branch (no -b flag)
+  assert.ok(gitCalls.length >= 1, 'Expected at least one git worktree call');
+  const worktreeCall = gitCalls.find(c => c.includes('worktree'));
+  assert.ok(worktreeCall, 'Expected a worktree add call');
+  assert.ok(!worktreeCall.includes('-b'), 'Resume must NOT create a new branch (-b flag should be absent)');
+  assert.ok(worktreeCall.includes(existingBranch), 'Should checkout existing branch');
+});
+
+test('startCommandWithDeps resume errors when session does not exist', async () => {
+  const fixture = await setupWorkspace('aloop-start-resume-missing-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'none'\n",
+    'utf8',
+  );
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, launch: 'resume', sessionId: 'nonexistent-session' },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync,
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          env: process.env,
+          now: () => new Date('2026-03-01T12:34:56.000Z'),
+        },
+      ),
+    /Session not found.*nonexistent-session/i,
+  );
+});
+
+test('startCommandWithDeps resume reuses in-place session without worktree', async () => {
+  const fixture = await setupWorkspace('aloop-start-resume-inplace-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'none'\n",
+    'utf8',
+  );
+
+  const existingSessionId = 'demo-project-20260301-120000';
+  const sessionsRoot = path.join(fixture.homeDir, '.aloop', 'sessions');
+  const existingSessionDir = path.join(sessionsRoot, existingSessionId);
+  const existingPromptsDir = path.join(existingSessionDir, 'prompts');
+
+  await mkdir(existingSessionDir, { recursive: true });
+  await mkdir(existingPromptsDir, { recursive: true });
+  await writeFile(path.join(existingPromptsDir, 'PROMPT_plan.md'), '# plan\n', 'utf8');
+
+  const meta = {
+    session_id: existingSessionId,
+    session_dir: existingSessionDir,
+    project_root: fixture.projectRoot,
+    worktree: false,
+    worktree_path: null,
+    work_dir: fixture.projectRoot,
+    branch: null,
+    prompts_dir: existingPromptsDir,
+    provider: 'claude',
+    mode: 'plan-build-review',
+    enabled_providers: ['claude'],
+    round_robin_order: ['claude'],
+    max_iterations: 50,
+    max_stuck: 3,
+  };
+  await writeFile(path.join(existingSessionDir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, launch: 'resume', sessionId: existingSessionId },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+      },
+      existsSync,
+      spawn: (() => ({ pid: 9999, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.session_id, existingSessionId);
+  assert.equal(result.worktree, false);
+  assert.equal(result.worktree_path, null);
+  assert.equal(result.work_dir, fixture.projectRoot);
+  assert.equal(result.branch, null);
+  assert.equal(result.launch_mode, 'resume');
+});

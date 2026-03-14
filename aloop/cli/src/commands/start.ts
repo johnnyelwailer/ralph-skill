@@ -48,6 +48,7 @@ export interface StartCommandOptions {
   inPlace?: boolean;
   maxIterations?: number | string;
   output?: OutputMode;
+  sessionId?: string;
 }
 
 export interface StartCommandResult {
@@ -371,6 +372,37 @@ export function normalizeGitBashPathForWindows(value: string): string {
   return tail.length > 0 ? `${drive}:\\${tail}` : `${drive}:\\`;
 }
 
+interface SessionMeta {
+  session_id: string;
+  session_dir: string;
+  project_root: string;
+  worktree: boolean;
+  worktree_path: string | null;
+  work_dir: string;
+  branch: string | null;
+  prompts_dir: string;
+  provider: string;
+  mode: string;
+  enabled_providers: string[];
+  round_robin_order: string[];
+  max_iterations: number;
+  max_stuck: number;
+  pid?: number;
+}
+
+async function readSessionMeta(sessionDir: string, deps: StartDeps): Promise<SessionMeta | null> {
+  const metaPath = path.join(sessionDir, 'meta.json');
+  if (!deps.existsSync(metaPath)) return null;
+  try {
+    const content = await deps.readFile(metaPath, 'utf8');
+    const parsed = JSON.parse(content) as SessionMeta;
+    if (!parsed || typeof parsed !== 'object' || !parsed.session_id) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 async function readActiveMap(activePath: string, deps: StartDeps): Promise<Record<string, unknown>> {
   if (!deps.existsSync(activePath)) {
     return {};
@@ -624,38 +656,89 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   };
   const copilotRetryModel = String(selectValue(projectConfig.retry_models.copilot, globalConfig.retry_models.copilot, 'claude-sonnet-4.6') ?? 'claude-sonnet-4.6');
 
-  const sessionId = resolveSessionId(discovery.project.name, sessionsRoot, deps);
-  const sessionDir = path.join(sessionsRoot, sessionId);
-  const promptsSourceDir = path.join(discovery.setup.project_dir, 'prompts');
-  const promptsDir = path.join(sessionDir, 'prompts');
   const startedAt = deps.now().toISOString();
+  let sessionId: string;
+  let sessionDir: string;
+  let promptsDir: string;
   let workDir = discovery.project.root;
   let worktreePath: string | null = null;
   let branchName: string | null = null;
   let useWorktree = !options.inPlace && worktreeDefault;
 
-  await deps.mkdir(sessionDir, { recursive: true });
+  if (launchMode === 'resume' && options.sessionId) {
+    // Resume: reuse existing session directory, worktree, and branch
+    sessionId = options.sessionId;
+    sessionDir = path.join(sessionsRoot, sessionId);
 
-  if (!deps.existsSync(promptsSourceDir)) {
-    throw new Error(`Project prompts not found: ${promptsSourceDir}. Run \`aloop setup\` first.`);
-  }
-  await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
+    if (!deps.existsSync(sessionDir)) {
+      throw new Error(`Session not found: ${sessionId}. Cannot resume a non-existent session.`);
+    }
 
-  if (useWorktree) {
-    if (!discovery.project.is_git_repo) {
-      warnings.push('Worktree requested but project is not a git repository; using in-place execution.');
-      useWorktree = false;
+    const existingMeta = await readSessionMeta(sessionDir, deps);
+    if (!existingMeta) {
+      throw new Error(`Session meta.json not found or invalid for session: ${sessionId}.`);
+    }
+
+    promptsDir = existingMeta.prompts_dir ?? path.join(sessionDir, 'prompts');
+    branchName = existingMeta.branch ?? null;
+
+    if (existingMeta.worktree && existingMeta.worktree_path) {
+      if (deps.existsSync(existingMeta.worktree_path)) {
+        // Worktree still exists — reuse it
+        worktreePath = existingMeta.worktree_path;
+        workDir = existingMeta.worktree_path;
+        useWorktree = true;
+      } else if (branchName && discovery.project.is_git_repo) {
+        // Worktree was removed but branch exists — recreate worktree on the same branch
+        const candidatePath = existingMeta.worktree_path;
+        const worktreeResult = deps.spawnSync('git', ['-C', discovery.project.root, 'worktree', 'add', candidatePath, branchName], { encoding: 'utf8' });
+        if (worktreeResult.status === 0) {
+          worktreePath = candidatePath;
+          workDir = candidatePath;
+          useWorktree = true;
+        } else {
+          warnings.push(createGitFailureWarning(String(worktreeResult.stderr ?? ''), String(worktreeResult.stdout ?? '')));
+          useWorktree = false;
+        }
+      } else {
+        warnings.push('Original worktree was removed and branch is unavailable; resuming in-place.');
+        useWorktree = false;
+      }
     } else {
-      const candidatePath = path.join(sessionDir, 'worktree');
-      const candidateBranch = `aloop/${sessionId}`;
-      const worktreeResult = deps.spawnSync('git', ['-C', discovery.project.root, 'worktree', 'add', candidatePath, '-b', candidateBranch], { encoding: 'utf8' });
-      if (worktreeResult.status !== 0) {
-        warnings.push(createGitFailureWarning(String(worktreeResult.stderr ?? ''), String(worktreeResult.stdout ?? '')));
+      // Original session was in-place
+      workDir = existingMeta.work_dir ?? discovery.project.root;
+      useWorktree = false;
+    }
+  } else {
+    // Normal start: create new session
+    sessionId = resolveSessionId(discovery.project.name, sessionsRoot, deps);
+    sessionDir = path.join(sessionsRoot, sessionId);
+    const promptsSourceDir = path.join(discovery.setup.project_dir, 'prompts');
+    promptsDir = path.join(sessionDir, 'prompts');
+
+    await deps.mkdir(sessionDir, { recursive: true });
+
+    if (!deps.existsSync(promptsSourceDir)) {
+      throw new Error(`Project prompts not found: ${promptsSourceDir}. Run \`aloop setup\` first.`);
+    }
+    await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
+
+    if (useWorktree) {
+      if (!discovery.project.is_git_repo) {
+        warnings.push('Worktree requested but project is not a git repository; using in-place execution.');
         useWorktree = false;
       } else {
-        worktreePath = candidatePath;
-        workDir = candidatePath;
-        branchName = candidateBranch;
+        const candidatePath = path.join(sessionDir, 'worktree');
+        const candidateBranch = `aloop/${sessionId}`;
+        const worktreeResult = deps.spawnSync('git', ['-C', discovery.project.root, 'worktree', 'add', candidatePath, '-b', candidateBranch], { encoding: 'utf8' });
+        if (worktreeResult.status !== 0) {
+          warnings.push(createGitFailureWarning(String(worktreeResult.stderr ?? ''), String(worktreeResult.stdout ?? '')));
+          useWorktree = false;
+        } else {
+          worktreePath = candidatePath;
+          workDir = candidatePath;
+          branchName = candidateBranch;
+        }
       }
     }
   }
@@ -885,7 +968,10 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   };
 }
 
-export async function startCommand(options: StartCommandOptions = {}) {
+export async function startCommand(sessionIdArg: string | undefined, options: StartCommandOptions = {}) {
+  if (sessionIdArg) {
+    options.sessionId = sessionIdArg;
+  }
   const outputMode = options.output ?? 'text';
   const result = await startCommandWithDeps(options);
 

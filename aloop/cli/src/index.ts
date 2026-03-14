@@ -65,6 +65,7 @@ program
 program
   .command('start')
   .description('Start an aloop session for the current project')
+  .argument('[session-id]', 'Session ID to resume (used with --launch resume)')
   .option('--project-root <path>', 'Project root override')
   .option('--home-dir <path>', 'Home directory override')
   .option('--provider <provider>', 'Provider override')

@@ -372,3 +372,33 @@
 
 - `gh.ts` branch coverage remains at ~65.80%, well below the >=80% gate target. Many uncovered branches from start/watch/status/stop command paths.
   - Source: prior research entry 16:00Z (T2), no new test additions detected
+
+## 2026-03-14 18:50Z — Gap analysis: Start/resume logic, GH Actions decomposition, Spec parity [T2+T3]
+
+### CLI Resume Bug — Confirmed
+- `aloop start <session-id> --launch resume` is broken. The `start.ts` script handles `--launch resume` by assigning it to `launchMode`, but then still blindly generates a *new* session ID via `resolveSessionId` and creates a fresh session directory. It does not look up the existing session to reuse its worktree or branch.
+  - Source: `aloop/cli/src/commands/start.ts:627-635` (T2 — direct inspection)
+
+### Orchestrator / GH Actions — Gap
+- Decomposition agents do not include "Set up GitHub Actions CI" as an early foundation task. There is no mention of `GitHub Actions` or workflows in `orchestrate.ts` or the `aloop/templates/` prompt files.
+  - Source: grep for `GitHub Actions` in `aloop/cli/src/commands/orchestrate.ts` and `aloop/templates/` returned 0 hits (T2)
+
+### Spec Parity — Resolved
+- The architecture drift regarding `.mjs` and zero npm deps has been resolved in the spec itself. `SPEC.md` was updated (commit `739d26c`) to officially document `TypeScript / Bun` as the standard, removing the outdated constraints. This task is completed.
+  - Source: `git log -S "zero npm deps"` and `SPEC.md` (T1/T3)
+
+### Proof Manifest Iter 43 — Still Missing
+- Artifacts required for iteration 43 (`gh-help.txt`, `gh-status-text.txt`, etc.) are still absent from the project.
+  - Source: glob for `**/{gh-help.txt,gh-status-text.txt,gh-status-json.json,gh-stop-all-success.json,gh-status-after-stop.txt,dashboard-api-state.json,dashboard-server.log,gh-stop-json.json}` returned no matches (T2)
+
+## 2026-03-14 17:58Z — Gap analysis: setup parity + dashboard command artifacts [T2+T3]
+
+### `aloop setup` parity gaps — confirmed
+- Interactive setup currently prompts for spec/providers/language/provider/mode/validation/safety only; it does **not** auto-detect `.github/workflows`, check Actions support, or ask about quality-gate workflow setup as required by spec.
+  - Source: `aloop/cli/src/commands/setup.ts:49-71` (T2 — direct inspection), `SPEC.md:676-679` (T3)
+- Setup does not currently expose explicit loop/orchestrator mode selection in CLI options for non-interactive use (`--mode loop|orchestrate`); command wiring only includes `--spec`, `--providers`, and `--non-interactive`.
+  - Source: `aloop/cli/src/commands/setup.ts:4-10` and `aloop/cli/src/index.ts:39-46` (T2 — direct inspection), `SPEC.md:684-687` (T3)
+
+### Dashboard command/prompt files — present
+- The spec-required dashboard command files exist: `claude/commands/aloop/dashboard.md` and `copilot/prompts/aloop-dashboard.prompt.md`.
+  - Source: glob matches `claude/**/dashboard.md` and `copilot/**/aloop-dashboard.prompt.md` (T2), `SPEC.md:856-857` (T3)
