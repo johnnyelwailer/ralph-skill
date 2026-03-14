@@ -2,7 +2,7 @@
 
 ## Desired Outcome
 
-Aloop is an autonomous coding agent orchestrator that runs plan-build-review loops with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops).
+Aloop is an autonomous coding agent orchestrator that runs configurable agent pipelines with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops). The default pipeline is `plan → build × 3 → proof → review`, but pipelines are fully configurable via agent YAML definitions (see Configurable Agent Pipeline).
 
 ## Scope
 
@@ -87,7 +87,7 @@ Aloop is an autonomous coding agent orchestrator that runs plan-build-review loo
 | Layer | Runs where | Tech | Deps |
 |-------|-----------|------|------|
 | `aloop` CLI (discover, scaffold, resolve) | Developer machine | Node.js `.mjs` | Node.js |
-| Loop scripts (plan-build-review cycle) | Anywhere — containers, sandboxes, CI | `loop.ps1` / `loop.sh` | Shell + git + provider CLI |
+| Loop scripts (execute compiled pipeline) | Anywhere — containers, sandboxes, CI | `loop.ps1` / `loop.sh` | Shell + git + provider CLI |
 
 ---
 
@@ -199,7 +199,7 @@ If ALL providers are in cooldown/degraded: sleep until the earliest cooldown exp
 
 ### Problem
 
-In `plan-build-review` mode, the loop currently exits as soon as a **build** phase finds all TODO tasks marked `[x]`. This means a builder agent can mark everything done and the loop terminates without a review phase ever validating the work. The review is the gatekeeper — it must always have the final say.
+When the pipeline includes a `review` agent, the loop currently exits as soon as a **build** phase finds all TODO tasks marked `[x]`. This means a builder agent can mark everything done and the loop terminates without a review phase ever validating the work. The review is the gatekeeper — it must always have the final say.
 
 **Current bug** (`loop.ps1` lines ~690-697):
 ```powershell
@@ -213,7 +213,7 @@ if ($iterationMode -eq 'build') {
 
 ### Design
 
-**Invariant**: In any mode that includes `review` (i.e. `plan-build-review`), the loop MUST NOT exit on task completion during a build phase. Instead:
+**Invariant**: In any pipeline that includes a `review` agent, the loop MUST NOT exit on task completion during a build phase. Instead:
 
 1. **Build detects all tasks complete** → set `$script:allTasksMarkedDone = $true`, log `tasks_marked_complete`, but **do not exit**
 2. **Next iteration becomes a forced review** → override the normal cycle to schedule a review phase (similar to how `$script:forcePlanNext` works for steering)
@@ -254,9 +254,9 @@ review approves?
 
 ### Acceptance Criteria
 
-- [ ] In `plan-build-review` mode, loop NEVER exits during a build phase due to all tasks being marked complete
+- [ ] In any pipeline with a `review` agent, loop NEVER exits during a build phase due to all tasks being marked complete
 - [ ] When all tasks are marked done in build, the next iteration is a forced review
-- [ ] Review approval is the only path to `state: "completed"` exit in `plan-build-review` mode
+- [ ] Review approval is the only path to `state: "completed"` exit in pipelines with a `review` agent
 - [ ] Review can reopen/add tasks, causing the loop to continue with a forced re-plan
 - [ ] In `build`-only mode, current early-exit behavior is preserved (no review exists)
 - [ ] Steering takes priority over the `forceReviewNext` flag
@@ -268,7 +268,7 @@ review approves?
 
 ### Problem
 
-The current loop advances the phase cycle on every iteration regardless of success or failure. In `plan-build-review` mode (cycle: plan → build × 3 → review), if iteration 1 (plan) fails, iteration 2 becomes build — but no plan/TODO.md exists. The build phase flies blind, produces unstructured work, and the loop wastes iterations.
+The current loop advances the phase cycle on every iteration regardless of success or failure. In the default pipeline (cycle: plan → build × 3 → review), if iteration 1 (plan) fails, iteration 2 becomes build — but no plan/TODO.md exists. The build phase flies blind, produces unstructured work, and the loop wastes iterations.
 
 **Current behavior (broken):**
 ```
@@ -292,7 +292,7 @@ iter 5: claude  build  → continues building
 
 #### Rule 1: Failed iterations do not advance the phase cycle
 
-The cycle position (`($iteration - 1) % 5` in plan-build-review) must be tracked independently from the iteration counter. A new variable `$script:cyclePosition` tracks where we are in the phase cycle. It only increments on successful iterations.
+The cycle position (index into the compiled loop plan) must be tracked independently from the iteration counter. A new variable `$script:cyclePosition` tracks where we are in the pipeline. It only increments on successful iterations.
 
 ```
 $script:cyclePosition = 0   # starts at plan
@@ -417,22 +417,14 @@ If the same phase fails `MAX_PHASE_RETRIES` times consecutively:
 
 A new loop phase (`proof`) where a dedicated agent autonomously decides what evidence to generate for the work completed in the preceding build iterations. The proof agent is not told what to prove via keyword matching or hardcoded rules — it inspects the actual work (TODO.md, commits, changed files, SPEC) and uses its judgment to determine what proof is possible, appropriate, and valuable.
 
-### Phase cycle
+### Default pipeline update
 
 ```
-Previous:  plan → build × 3 → review
-New:       plan → build × 3 → proof → review
-
-5-step cycle becomes 6-step:
-  0: plan
-  1: build
-  2: build
-  3: build
-  4: proof    ← new
-  5: review
+Previous default:  plan → build × 3 → review  (5-step)
+New default:       plan → build × 3 → proof → review  (6-step)
 ```
 
-The proof phase runs exactly once per cycle, after builds and before review. It gets its own prompt template (`PROMPT_proof.md`) and its own iteration, just like plan/build/review/steer.
+The proof agent is added to the default pipeline compiled into `loop-plan.json`. It runs exactly once per cycle, after builds and before review. It gets its own prompt template (`PROMPT_proof.md`) and its own entry in the pipeline config, just like any other agent.
 
 ### Proof Agent Behavior
 
@@ -637,7 +629,7 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 ### Acceptance Criteria
 
 - [ ] Proof is a first-class phase in the loop cycle, with its own `PROMPT_proof.md` template
-- [ ] Phase cycle in `plan-build-review` mode becomes: plan → build × 3 → proof → review (6-step)
+- [ ] Default pipeline becomes: plan → build × 3 → proof → review (6-step)
 - [ ] Proof agent autonomously decides what to prove, how, and whether to skip
 - [ ] Artifacts are saved to `~/.aloop/sessions/<session-id>/artifacts/iter-<N>/`
 - [ ] `proof-manifest.json` is written with structured artifact metadata and skip reasons
@@ -698,7 +690,7 @@ After global install, the end-to-end experience has significant UX gaps:
 Move the entire start orchestration into the CLI so it's a single command:
 
 ```bash
-aloop start [--mode plan-build-review] [--provider round-robin] [--max 30] [--in-place]
+aloop start [--pipeline default] [--provider round-robin] [--max 30] [--in-place]
 ```
 
 What it does internally:
@@ -723,7 +715,7 @@ aloop setup [--spec SPEC.md] [--providers claude,codex] [--non-interactive]
 
 **Dual-mode support**: setup must support configuring both loop mode and orchestrator mode. Based on the scope and complexity of the task the user describes, setup should recommend the appropriate mode:
 
-- **Loop mode** (default for simple/single-track work): one spec, one loop, plan-build-review cycle. Best for: single feature, bug fix, focused refactor, small-to-medium scope.
+- **Loop mode** (default for simple/single-track work): one spec, one loop, configurable agent pipeline. Best for: single feature, bug fix, focused refactor, small-to-medium scope.
 - **Orchestrator mode** (recommended for complex/multi-track work): spec decomposition into parallel issues, wave scheduling, concurrent child loops. Best for: large migrations, multi-component features, greenfield projects with many independent workstreams.
 
 Setup should analyze the spec file (if provided) or the user's description to gauge complexity — number of independent workstreams, estimated issue count, whether parallelism would help — and recommend one mode. The user can override the recommendation.
@@ -920,8 +912,8 @@ A meta-loop mode that decomposes a spec into **vertical slices** as GitHub issue
                SPEC.md (or specs/*.md)
                         │
                 ┌───────┴───────┐
-                │  ORCHESTRATOR  │
-                │   decompose    │
+                │  ORCHESTRATOR  │  ← TS/Bun program (aloop/cli/)
+                │   decompose    │     the brain
                 └───────┬───────┘
                         │
              creates vertical slices
@@ -934,8 +926,8 @@ A meta-loop mode that decomposes a spec into **vertical slices** as GitHub issue
      │  │  │        │  │            │  │
     #11 #12 #13   #21 #22        #31 #32
      │   │   │     │   │          │   │
-   loop loop loop loop loop    loop loop
-     │   │   │     │   │          │   │
+   loop loop loop loop loop    loop loop  ← loop.sh (inner loop)
+     │   │   │     │   │          │   │     dumb workers
    PR#1 PR#2 ...  PR#4 PR#5    PR#6 PR#7
      └───┴───┴─────┴───┴────────┴───┘
                     │
@@ -948,6 +940,70 @@ A meta-loop mode that decomposes a spec into **vertical slices** as GitHub issue
                     │
             (human promotes to main)
 ```
+
+### Two Distinct Loops
+
+The orchestrator and child loops are **completely different programs** with different responsibilities:
+
+**Orchestrator** (TS/Bun, `aloop/cli/`):
+- A proper application in the aloop Node/Bun TypeScript codebase
+- Manages the full fan-out lifecycle: decompose, schedule, dispatch, monitor, gate, replan
+- Talks to GitHub API (issues, PRs, dependencies, sub-issues)
+- Watches spec files for changes, triggers replan agents
+- Manages concurrency, budget, wave advancement
+- Spawns and supervises child loops
+
+**Inner loop** (`loop.sh`):
+- Dumb shell script. Reads a **compiled loop plan** (a simple ordered list of agents) and executes them sequentially by index
+- The aloop runtime compiles the pipeline YAML config into `loop-plan.json` — a flat array of `{agent, prompt, provider, reasoning}` entries
+- `loop.sh` reads the plan file each iteration, picks entry at `$cyclePosition`, invokes that agent — no YAML parsing, no transition logic in shell
+- The runtime can regenerate `loop-plan.json` at any time (steering, mutation, failure recovery) — loop.sh re-reads it every turn
+- Invokes providers via round-robin, writes `status.json`
+- Reads its sub-spec from the issue body (seeded into its worktree), NOT the repo's SPEC.md
+- Knows nothing about GitHub, other children, orchestration, or the full spec
+- Purely a worker — the orchestrator tells it what to work on, it executes
+
+```
+Orchestrator (TS/Bun)
+  ├── watches repo for spec changes (git diff on spec glob)
+  ├── polls GitHub for issue/PR state changes
+  ├── runs agent-powered decompose/schedule/replan
+  ├── spawns child inner loops:
+  │     ├── loop.sh (issue #11) ← reads issue body as its spec
+  │     ├── loop.sh (issue #12) ← reads issue body as its spec
+  │     └── loop.sh (issue #13) ← reads issue body as its spec
+  ├── gates completed PRs (automated checks + agent review)
+  └── manages concurrency cap, budget, wave advancement
+```
+
+### Child Loop Sub-Spec
+
+Each child loop does NOT read the repo's SPEC.md. The orchestrator extracts a **self-contained sub-spec** from the parent spec during decomposition and writes it into the sub-issue body. The child loop's plan agent reads this as its entire world:
+
+```
+Orchestrator reads:  specs/auth.md (full vertical slice spec)
+                          │
+                    decomposes into
+                          │
+              ┌───────────┼───────────┐
+              ▼           ▼           ▼
+         Issue #11    Issue #12    Issue #13
+      "Registration"  "Login"    "Password reset"
+      (sub-spec in    (sub-spec   (sub-spec in
+       issue body)    in body)     issue body)
+              │           │           │
+         child loop   child loop  child loop
+         reads #11    reads #12   reads #13
+         as its spec  as its spec as its spec
+```
+
+The sub-spec in the issue body contains:
+- Scope description — what this work unit delivers
+- Acceptance criteria — how to know it's done
+- Context — relevant architecture decisions from the parent spec
+- Boundaries — what NOT to touch (other slices' territory)
+
+This scoping is critical — the child loop shouldn't make system-wide decisions. It delivers its slice and nothing more.
 
 ### Multi-File Specs
 
@@ -1154,7 +1210,7 @@ The orchestrator picks up open sub-issues and launches child loops.
    - Create branch: `aloop/issue-<number>`
    - Create worktree: `~/.aloop/sessions/<session-id>/worktrees/issue-<number>/`
    - Seed the child's `TODO.md` from the issue body
-   - Launch child loop in `plan-build-review` mode
+   - Launch child loop with the configured pipeline (compiled into `loop-plan.json`)
    - Track child PID + session in orchestrator state
 3. Remaining issues queue until a slot opens or dependencies are met
 
@@ -1204,14 +1260,39 @@ The orchestrator reviews each PR against hard criteria before merging.
 
 #### Phase 6: Replan
 
-Triggered when a wave completes, when the spec changes, or when problems emerge.
+The orchestrator continuously watches for conditions that require replanning. This is part of the orchestrator's main event loop (TS/Bun), not the inner loop.
 
-1. **Spec change detected** (git diff on spec files) → decompose agent re-reads spec, diffs against existing issues, proposes: new issues to create, existing issues to close/modify, wave reassignments
-2. **Wave completion** → schedule agent re-evaluates remaining issues, adjusts waves based on what was learned
-3. **User creates issue** with `aloop/auto` label → orchestrator absorbs it into the current plan, assigns wave and dependencies
-4. **Persistent failures** → replan agent may split a failing sub-issue into smaller pieces, or merge multiple small issues
+**Trigger: Spec file changed**
 
-The spec files are the authoritative intent. Issues are the live execution plan. They can temporarily diverge (user adds an ad-hoc issue, agent discovers unexpected work) but replan reconciles them.
+The orchestrator tracks recent git commits on the repo. Each poll cycle, it checks `git log` for new commits and diffs changed files against the configured spec glob pattern (`SPEC.md`, `specs/*.md`, or custom). When a spec file is modified:
+
+1. Orchestrator extracts the specific diff: `git diff <prev>..<new> -- specs/auth.md`
+2. Passes to the **replan agent** with context:
+   - The diff itself (what changed in the spec)
+   - The commit message (human intent behind the change)
+   - Current issue state from GitHub (what's in-flight, done, queued)
+3. Replan agent reasons about the delta and outputs structured actions:
+   - `create_issue(parent, title, body, deps)` — new feature added to spec
+   - `update_issue(number, new_body)` — scope/criteria changed for existing slice
+   - `close_issue(number, reason)` — feature removed from spec
+   - `steer_child(number, instruction)` — in-flight child needs course correction
+   - `reprioritize(number, new_wave)` — dependencies shifted
+
+The replan agent reads the spec but does NOT modify it — the spec is human-owned. The agent translates spec changes into issue-tracker mutations.
+
+**Trigger: Wave completion**
+
+When all sub-issues in a wave are merged, the schedule agent re-evaluates remaining issues and adjusts waves based on what was learned during execution.
+
+**Trigger: External issue created**
+
+When a human creates an issue with the `aloop/auto` label, the orchestrator absorbs it into the current plan — assigns wave, links dependencies, and queues for dispatch.
+
+**Trigger: Persistent failures**
+
+When a child loop fails repeatedly, the replan agent may split the failing sub-issue into smaller pieces, adjust the approach in the issue body, or merge multiple small issues that turned out to be coupled.
+
+**Spec files are the authoritative intent. Issues are the live execution plan.** They can temporarily diverge (user adds an ad-hoc issue, agent discovers unexpected work) but replan reconciles them.
 
 #### Phase 7: Complete
 
@@ -1309,7 +1390,7 @@ aloop orchestrate --spec SPEC.md --plan-only
 | `loop.ps1` | Child loop — unchanged, runs per-issue |
 | Provider health subsystem | Shared across all child loops via `~/.aloop/health/` |
 | Final review gate | Per-child — each child's loop has its own review gate |
-| `PROMPT_{plan,build,review}.md` | Used by child loops as-is |
+| Agent prompt templates (`PROMPT_*.md`) | Used by child loops as configured in the pipeline |
 | `active.json` | Tracks all child sessions (orchestrator + children) |
 | Steering (`STEERING.md`) | Can steer individual children or the orchestrator |
 | `aloop status` | Shows orchestrator + children in a tree view |
@@ -1422,7 +1503,7 @@ aloop gh start --issue 42 --provider codex --max 30
 3. Create branch: `agent/issue-42-<slug>`
 4. Create session + worktree (same as `aloop start`)
 5. Inject issue content into the plan prompt as the requirement
-6. Run loop (plan-build-review)
+6. Compile pipeline config into `loop-plan.json`, run loop
 7. On completion → create PR against `agent/main` (or `main` if no agent trunk exists)
 8. Link PR to issue (`Closes #42`)
 9. Post a summary comment on the issue with results
@@ -1652,7 +1733,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 │                                                        │
 │  aloop start                                           │
 │    ├── loop.ps1/sh (may run in container)              │
-│    │     └── just: plan/build/review + provider invoke │
+│    │     └── just: read loop-plan.json + provider invoke│
 │    │                                                   │
 │    └── aloop monitor (host-side, always on host)       │
 │          ├── watches .aloop/requests/ → aloop gh       │
@@ -1665,7 +1746,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 ```
 
 **What stays in loop.ps1/loop.sh:**
-- Phase cycle (plan → build × 3 → proof → review)
+- Read `loop-plan.json` each iteration, pick agent at `$cyclePosition`
 - Provider invocation (direct — loop and providers run in the same environment)
 - Stuck detection and iteration counting
 - Status.json and log.jsonl writes
@@ -2530,6 +2611,60 @@ pipeline:
   - agent: docs-generator
 ```
 
+### Loop Plan Compilation (Runtime → Shell Bridge)
+
+The pipeline YAML config is **not parsed by the shell script**. Instead, the aloop runtime (TS/Bun) compiles it into a simple `loop-plan.json` that `loop.sh` can read with zero complexity.
+
+**`loop-plan.json` format:**
+```json
+{
+  "cycle": [
+    {"agent": "plan",   "prompt": "PROMPT_plan.md",   "reasoning": "high"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "reasoning": "medium"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "reasoning": "medium"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "reasoning": "medium"},
+    {"agent": "proof",  "prompt": "PROMPT_proof.md",  "reasoning": "medium"},
+    {"agent": "review", "prompt": "PROMPT_review.md", "reasoning": "xhigh"}
+  ],
+  "cyclePosition": 0,
+  "iteration": 1,
+  "version": 1
+}
+```
+
+**How `loop.sh` uses it:**
+```bash
+# Read the plan (re-read every iteration to pick up mutations)
+PLAN=$(cat "$SESSION_DIR/loop-plan.json")
+CYCLE_LENGTH=$(echo "$PLAN" | jq '.cycle | length')
+CYCLE_POS=$(echo "$PLAN" | jq '.cyclePosition')
+
+# Pick current agent by cycling through the plan
+ENTRY=$(echo "$PLAN" | jq ".cycle[$((CYCLE_POS % CYCLE_LENGTH))]")
+AGENT=$(echo "$ENTRY" | jq -r '.agent')
+PROMPT=$(echo "$ENTRY" | jq -r '.prompt')
+
+# After iteration completes: update position and iteration in the plan file
+jq ".cyclePosition = $((CYCLE_POS + 1)) | .iteration = $ITERATION" \
+  "$SESSION_DIR/loop-plan.json" > "$SESSION_DIR/loop-plan.json.tmp" \
+  && mv "$SESSION_DIR/loop-plan.json.tmp" "$SESSION_DIR/loop-plan.json"
+```
+
+**Key properties:**
+- The `cycle` array is a **short repeating pattern** (typically 5-7 entries), NOT an unrolled list of all iterations. `loop.sh` wraps around with `% length`.
+- `cyclePosition` and `iteration` live in the plan file — the runtime and shell share state through this single file. The shell updates position after each iteration; the runtime reads it when deciding mutations.
+- The runtime writes this file once at session start, then **rewrites it** whenever the pipeline mutates (steering, failure recovery, agent injection). It preserves `cyclePosition` and `iteration` (or adjusts them if the mutation requires it, e.g., `goto build` resets `cyclePosition`).
+- `loop.sh` re-reads the file every iteration, so mutations take effect on the next turn.
+- The `version` field increments on each runtime rewrite — loop.sh logs when it detects a plan change.
+- Transition rules (`onFailure: goto build`, escalation ladders) are **resolved by the runtime**, not the shell. When the runtime observes a failure via `status.json`, it rewrites the plan accordingly (e.g., inserting a `debugger` agent, or adjusting `cyclePosition` to point back to build).
+- This keeps all complex logic in TS/Bun and all shell logic trivial: read JSON, index into array, invoke, update index.
+
+**When the runtime rewrites the plan:**
+- Steering instruction received → recompile pipeline with modifications
+- Agent failure detected (via `status.json` polling) → apply `onFailure` transition rules, rewrite plan
+- Escalation threshold reached → inject recovery agents into the cycle
+- Host monitor detects stuck pattern → swap providers or inject debugger agent
+
 ### Runtime Mutation
 
 The pipeline is **mutable at runtime** — phases can be added, removed, or reordered while the loop is running. Two control surfaces:
@@ -2540,14 +2675,14 @@ The pipeline is **mutable at runtime** — phases can be added, removed, or reor
    Insert `security-audit` agent after `build` for remaining iterations.
    Remove `docs-generator` — not needed yet.
    ```
-   The host-side monitor interprets steering instructions and updates the pipeline.
+   The host-side monitor interprets steering instructions, recompiles the pipeline, and rewrites `loop-plan.json`. The loop picks up the change on its next iteration.
 
 2. **Host-side monitor** — observes loop patterns and injects agents automatically:
    - 3 consecutive build failures → inject `debugger` agent before next build
    - Verification failing on environment issues → inject `env-fix` agent
    - Provider consistently timing out → swap to different provider for next agent
 
-Agents do **not** modify the pipeline themselves — control stays with the user and host-side monitor (avoids perverse incentives like agents removing their own reviewers).
+All mutations flow through the same mechanism: recompile pipeline → rewrite `loop-plan.json` → loop picks up change. Agents do **not** modify the pipeline themselves — control stays with the user and host-side monitor (avoids perverse incentives like agents removing their own reviewers).
 
 ### Agent-Based Guarding
 
