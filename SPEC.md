@@ -629,6 +629,7 @@ Move the entire start orchestration into the CLI so it's a single command:
 
 ```bash
 aloop start [--pipeline default] [--provider round-robin] [--max 30] [--in-place]
+aloop start <session-id> --launch resume
 ```
 
 What it does internally:
@@ -640,6 +641,12 @@ What it does internally:
 6. Launch `loop.ps1`/`loop.sh` as a background process
 7. Auto-launch dashboard (see below)
 8. Print session summary + dashboard URL
+
+**Resume behavior (`--launch resume`):**
+- Should find the existing session directory and worktree
+- If the worktree still exists and is valid, reuse it (just re-launch loop.sh)
+- If the worktree was removed but the branch exists, recreate the worktree on that branch
+- Never create a new branch when resuming — the whole point is to continue where it left off
 
 The agent command `/aloop:start` becomes a thin wrapper that calls `aloop start` with the right flags. No more 7-step orchestration.
 
@@ -666,10 +673,13 @@ Setup should analyze the spec file (if provided) or the user's description to ga
 Interactive mode:
 1. Run `aloop discover`
 2. Prompt user for spec file, providers, validation level
-3. **Analyze scope and recommend loop vs orchestrator mode**
-4. If orchestrator: prompt for concurrency cap, trunk branch name, budget limits
-5. Run `aloop scaffold` with gathered options
-6. Print confirmation
+3. **Auto-detect if the target repo has `.github/workflows/` and what CI is configured**
+4. **Ask the user if quality gate workflows should be set up (test, lint, type-check, coverage)**
+5. **Check if the GitHub repo supports Actions (public vs private, org policy, etc.)**
+6. **Analyze scope and recommend loop vs orchestrator mode**
+7. If orchestrator: prompt for concurrency cap and budget limits
+8. Run `aloop scaffold` with gathered options
+9. Print confirmation summary with all chosen settings (including auto-suggested trunk branch name, e.g., `agent/trunk`) — user confirms or adjusts
 
 Non-interactive mode (for CI/automation):
 - All options passed as flags, no prompts
@@ -1353,8 +1363,9 @@ The decompose agent reads the spec(s) and current codebase, then produces the to
 2. Produce **vertical slices** as parent (epic) issues — each independently shippable, end-to-end
 3. High-level scope + acceptance criteria per epic
 4. Dependency hints between epics
-5. Write `requests/create-epics.json` → runtime creates GitHub issues
-6. Runtime queues per-epic refinement prompts into `queue/`
+5. **Include "Set up GitHub Actions CI" as an early foundation task when no CI exists. Build agents should be able to create/modify `.github/workflows/*.yml` files. The GH Actions setup should be treated as a technical build task, not a manual prerequisite.**
+6. Write `requests/create-epics.json` → runtime creates GitHub issues
+7. Runtime queues per-epic refinement prompts into `queue/`
 
 Labels: `aloop/epic`, `aloop/needs-refine`, `aloop/wave-N`
 
