@@ -1531,7 +1531,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 echo ""
                 echo "ALL TASKS COMPLETE"
                 stop_dashboard
-                write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
+                write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "exited"
                 write_log_entry "all_tasks_complete" "iteration" "$ITERATION"
                 generate_report "All tasks completed successfully."
                 exit 0
@@ -1630,7 +1630,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                     echo ""
                     echo "FINAL REVIEW APPROVED"
                     stop_dashboard
-                    write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
+                    write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "exited"
                     write_log_entry "final_review_approved" "iteration" "$ITERATION"
                     generate_report "All tasks completed and approved by final review."
                     exit 0

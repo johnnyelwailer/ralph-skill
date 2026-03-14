@@ -1669,7 +1669,7 @@ try {
                 } else {
                     Write-Host "`nALL TASKS COMPLETE" -ForegroundColor Green
                     Stop-DashboardProcess
-                    Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
+                    Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'exited'
                     Write-LogEntry -Event "all_tasks_complete" -Data @{ iteration = $iteration }
                     Generate-Report -ExitReason "All tasks completed successfully." -Iteration $iteration
                     exit 0
@@ -1771,7 +1771,7 @@ try {
                     if (Check-AllTasksComplete) {
                         Write-Host "`nFINAL REVIEW APPROVED" -ForegroundColor Green
                         Stop-DashboardProcess
-                        Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
+                        Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'exited'
                         Write-LogEntry -Event "final_review_approved" -Data @{ iteration = $iteration }
                         Generate-Report -ExitReason "All tasks completed and approved by final review." -Iteration $iteration
                         exit 0
