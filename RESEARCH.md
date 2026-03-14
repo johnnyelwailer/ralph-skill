@@ -438,3 +438,68 @@
 
 - `aloop start <session-id> --launch resume` now properly reuses existing session worktree/branch (commit `607edaa`).
   - Source: commit `607edaa` (T2)
+
+## 2026-03-14 20:20 — Gap analysis: Loop Script Completion + Orchestrator Implementation [T1+T2+T3]
+
+- `loop.sh` and `loop.ps1` **now implement** `queue/` folder check and `requests/` wait loop.
+  - Source: `aloop/bin/loop.sh:1684-1731`, `aloop/bin/loop.ps1:1779-1857` (T2 — direct inspection).
+- `gh.ts` branch coverage is now **81.59%**, meeting Gate 3 (>80%).
+  - Source: ran `node --import tsx --test --experimental-test-coverage src/commands/gh.test.ts` (T2).
+- `aloop/bin/loop_branch_coverage.tests.sh` **is missing** registrations and tests for:
+  - `queue.override_success`, `queue.override_failure`, `queue.provider_fallback`
+  - `requests.wait_drain`, `requests.timeout`
+  - `invoke.opencode` (only `claude` and `unsupported` are currently tested).
+  - Source: `aloop/bin/loop_branch_coverage.tests.sh:58-80` (T2 — direct inspection).
+- Proof artifacts for iteration 11 (`gh-test-output.txt`, `derive-mode-test.txt`, `cycle-resolution-test.txt`, `frontmatter-parse-test.txt`, `cycle-integration-test.txt`, `aloop-mention-grep.txt`) **are missing** from the workspace.
+  - Source: `ls` returned empty (T2).
+
+## 2026-03-14 20:30 — Planning recheck: exit-state parity gap, dashboard/GH remaining gaps [T2+T3]
+
+### Exit-State Parity — Still Non-Compliant
+
+- Both loop scripts write `"completed"` on success, NOT `"exited"` as SPEC requires. States used: `"running"` (default), `"completed"` (success), `"limit_reached"` (max iterations), `"interrupted"` (Ctrl+C). No `"exited"` or `"stopped"` states exist anywhere in either script.
+  - Source: `aloop/bin/loop.sh:549-554` (write_status default "running"), `loop.sh:1815,1914` (writes "completed"), `loop.sh:1960` (writes "limit_reached"), `loop.sh:1725` (trap writes "interrupted") (T2 — direct inspection)
+  - Source: `aloop/bin/loop.ps1:1016-1032` (Write-Status default 'running'), `loop.ps1:1935,2037` (writes 'completed'), `loop.ps1:2089` (writes 'limit_reached'), `loop.ps1:2080` (writes 'interrupted') (T2)
+- SPEC.md:900-924 requires: `"exited"` for successful completion (task-gated clean exit), `"stopped"` for manual stop/limit/interrupt.
+  - Source: `SPEC.md:900-924` (T3)
+- Dashboard dead-PID liveness correction (`dashboard.ts:177-225`) expects `"stopped"` or `"exited"` states to detect end-of-life — if scripts keep writing `"completed"`, the dashboard may not correctly distinguish live from dead sessions.
+  - Source: `aloop/cli/src/commands/dashboard.ts:177-225` (T2)
+
+### Dashboard Remaining Gaps
+
+- Provider health inline in header (App.tsx:385-389), not in dedicated sidebar tab as SPEC §6 requires
+  - Source: `aloop/cli/dashboard/src/App.tsx:385-389` (T2), `SPEC.md:794,798,839` (T3)
+- No per-iteration duration in log/artifact rows (App.tsx:920-930)
+  - Source: `aloop/cli/dashboard/src/App.tsx:920-930` (T2), `SPEC.md:796,805,846-847` (T3)
+- No sidebar expand/collapse toggle button
+  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — no toggle found), `SPEC.md:804,845` (T3)
+- No overflow ellipsis menu for docs (content filtered but no `...` menu for many docs)
+  - Source: `aloop/cli/dashboard/src/App.tsx:568-630` (T2), `SPEC.md:806,849` (T3)
+- No commit diffstat/change-type badges (M/A/D/R)
+  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — no diffstat), `SPEC.md:797,848` (T3)
+- Dashboard CSS grid layout, provider+model display, and docs empty-content filtering ARE implemented (per entry 16:00Z)
+
+### GH Remaining Gaps
+
+- No `gh stop-watch` subcommand for stopping the watch daemon
+  - Source: `aloop/cli/src/commands/gh.ts:967-975` (T2), `SPEC.md:1769` (T3)
+- `refreshWatchState()` does not create PRs or post issue summaries for sessions that complete after launch
+  - Source: `aloop/cli/src/commands/gh.ts:373-403` (T2)
+- Playwright config has Windows-only path separators (backslashes)
+  - Source: `aloop/cli/dashboard/playwright.config.ts:17-18` (T2)
+
+### Pipeline + Orchestrator Gaps
+
+- No `.aloop/pipeline.yml` or `.aloop/agents/` directory exists
+  - Source: glob for `**/pipeline.yml` and `**/.aloop/agents/**` (no matches) (T2)
+- No runtime `loop-plan.json` compiler (no TS code generates plan from pipeline config)
+  - Source: grep for `loop-plan|compile.*plan|pipeline.*compile` in aloop/cli/src/ returned 0 matches (T2)
+- Orchestrator runs one monitor cycle at init but has NO continuous monitoring loop
+  - Source: `aloop/cli/src/commands/orchestrate.ts:352-415` (T2 — no while/polling loop)
+- Full orchestrator pipeline (gap analysis → decompose → refine → dispatch → gate/merge) not implemented beyond triage helpers
+  - Source: TODO.md P1 orchestrator items all unmarked (T3)
+
+### Stale Research Corrections
+
+- Entry 15:45Z claiming exit-state parity is resolved is **incorrect** — superseded by this entry
+- Entry 19:15Z claiming queue/ and requests/ are missing is **superseded** by entry 20:20 (both now implemented)

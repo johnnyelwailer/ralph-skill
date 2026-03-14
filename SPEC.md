@@ -677,9 +677,13 @@ Interactive mode:
 4. **Ask the user if quality gate workflows should be set up (test, lint, type-check, coverage)**
 5. **Check if the GitHub repo supports Actions (public vs private, org policy, etc.)**
 6. **Analyze scope and recommend loop vs orchestrator mode**
-7. If orchestrator: prompt for concurrency cap and budget limits
-8. Run `aloop scaffold` with gathered options
-9. Print confirmation summary with all chosen settings (including auto-suggested trunk branch name, e.g., `agent/trunk`) — user confirms or adjusts
+7. **Ask about data privacy**: internal/private project vs public/open-source? How sensitive is the code/data? This determines:
+   - Which providers/models are appropriate (some have better data retention policies)
+   - Whether to enable Zero Data Retention (ZDR) flags (e.g., `--zdr` for opencode)
+   - May exclude certain providers from the round-robin if privacy requirements demand it
+8. If orchestrator: prompt for concurrency cap and budget limits
+9. Run `aloop scaffold` with gathered options
+10. Print confirmation summary with all chosen settings (including auto-suggested trunk branch name, e.g., `agent/trunk`, ZDR mode if enabled) — user confirms or adjusts
 
 Non-interactive mode (for CI/automation):
 - All options passed as flags, no prompts

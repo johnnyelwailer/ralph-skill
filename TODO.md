@@ -12,7 +12,7 @@
 - [x] [review] Gate 3: Update `loop_branch_coverage.tests.sh` to register and test `queue/` override, `requests/` wait-loop, and `opencode` provider paths in `loop.sh` (priority: high)
 - [x] [review] Gate 3: Update `loop.tests.ps1` to register and test `queue/` override, `requests/` wait-loop, and `opencode` provider paths in `loop.ps1` (priority: high)
 
-- [ ] [review] Gate 6: Regenerate proof artifacts or correct manifest paths so iteration 11 is verifiable (missing: gh-test-output.txt, derive-mode-test.txt, etc.) (priority: medium)
+- [x] [review] Gate 6: Regenerate proof artifacts or correct manifest paths so iteration 11 is verifiable (missing: gh-test-output.txt, derive-mode-test.txt, etc.) (priority: medium)
 
 ### Up Next (P1 — Orchestrator + Runtime + GH Integration)
 
