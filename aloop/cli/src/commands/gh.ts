@@ -833,9 +833,9 @@ export type { PrReviewComment, PrCheckRun, PrFeedback };
 async function finalizeWatchEntry(
   entry: GhWatchIssueEntry,
   options: GhWatchCommandOptions,
-): Promise<void> {
+): Promise<boolean> {
   if (!entry.repo || !entry.branch || !entry.session_id || !entry.completion_state) {
-    return;
+    return false;
   }
 
   const sessionDir = getSessionDir(options.homeDir, entry.session_id);
@@ -926,6 +926,10 @@ async function finalizeWatchEntry(
     }
   }
 
+  if (entry.pr_number === null) {
+    return false;
+  }
+
   const summary = [
     `Aloop session ${entry.session_id} completed for #${entry.issue_number}.`,
     entry.pr_url ? `Created PR: ${entry.pr_url}` : 'Created PR (URL unavailable).',
@@ -936,8 +940,10 @@ async function finalizeWatchEntry(
   try {
     await ghExecutor.exec(['issue', 'comment', String(entry.issue_number), '--repo', entry.repo, '--body', summary]);
   } catch {
-    // ignore
+    return false;
   }
+
+  return true;
 }
 
 async function runGhWatchCycle(options: GhWatchCommandOptions): Promise<GhWatchCycleSummary> {
@@ -969,9 +975,11 @@ async function runGhWatchCycle(options: GhWatchCommandOptions): Promise<GhWatchC
     (entry) => (entry.status === 'completed' || entry.status === 'stopped') && isTerminalState(entry.completion_state) && !entry.completion_finalized
   );
   for (const entry of newlyCompleted) {
-    await finalizeWatchEntry(entry, options);
-    entry.completion_finalized = true;
-    entry.updated_at = ghLoopRuntime.now();
+    const success = await finalizeWatchEntry(entry, options);
+    if (success) {
+      entry.completion_finalized = true;
+      entry.updated_at = ghLoopRuntime.now();
+    }
   }
 
   const started: number[] = [];
