@@ -1449,18 +1449,34 @@ The orchestrator scan agent checks child loop statuses and PR states each iterat
 
 | Gate | Method | Fail action |
 |------|--------|-------------|
-| CI pipeline | `gh pr checks` | Block merge |
-| Test coverage | Parse coverage from CI artifacts | Block if below threshold |
+| GitHub Actions CI | `gh pr checks --watch` | Block merge, extract failure logs via `gh run view --log-failed` |
+| Test coverage | Parse coverage from CI artifacts or GH Actions output | Block if below threshold |
 | No merge conflicts | `gh pr view --json mergeable` | Send rebase steering to child's `queue/` |
 | No spec regression | Contract checks against spec | Block merge |
-| Screenshot diff (UI) | Playwright visual comparison | Flag for human if delta > threshold |
-| Lint / type check | CI step | Block merge |
+| Screenshot diff (UI) | Playwright visual comparison (CI step or local) | Flag for human if delta > threshold |
+| Lint / type check | CI step (prefer GH Actions if available) | Block merge |
+
+**GitHub Actions integration:**
+
+The orchestrator leverages existing GitHub Actions workflows when available, rather than running quality checks locally:
+
+1. **Discovery**: On orchestrator start, check for workflow files via `ls .github/workflows/*.yml` or `gh api repos/OWNER/REPO/actions/workflows`. Record which quality gates are covered by CI.
+2. **Prefer CI over local**: If the repo has a test workflow, don't run tests locally — wait for CI results via `gh pr checks`. This avoids duplicating work and respects the project's actual CI configuration (matrix builds, specific node versions, env vars, secrets).
+3. **CI failure feedback loop**: When a check fails:
+   - `gh pr checks <number>` → identify which check failed
+   - `gh run view <run-id> --log-failed` → extract actionable error context (last 200 lines)
+   - Write failure context as steering to child's `queue/` → child loop fixes and pushes → CI re-runs automatically
+   - Max N re-iterations per CI failure (default 3). Same error persisting after N attempts → flag for human.
+4. **Required status checks**: If the repo has branch protection with required checks on `agent/trunk`, the orchestrator respects them — it cannot merge until all required checks pass. This is enforced by GitHub, not the orchestrator.
+5. **No CI available**: If the repo has no GitHub Actions workflows, the orchestrator falls back to local validation — running tests, lint, and type-check commands discovered during `aloop setup` or configured in `.aloop/config.yml`.
+6. **Custom quality gates**: Projects can define additional GH Actions workflows specifically for aloop (e.g., `.github/workflows/aloop-gate.yml`) that run spec-regression checks, coverage threshold enforcement, or screenshot comparisons. The orchestrator treats these like any other required check.
 
 **Agent review gate:**
 - Review agent runs against PR diff
 - Checks: code quality, spec compliance, no scope creep, test adequacy
 - Outputs: approve, request-changes, or flag-for-human
 - On request-changes: writes feedback to child's `queue/` as a steering prompt
+- Agent review is complementary to CI — CI checks correctness (tests pass), agent checks quality (code is good)
 
 **Merge:**
 - Squash merge into `agent/trunk`: runtime executes `gh pr merge --squash --delete-branch`
