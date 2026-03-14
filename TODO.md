@@ -7,7 +7,7 @@
 
 ### Up Next
 - [x] [gh-workflows][high] Implement high-level `aloop gh start --issue <N>` flow (issue fetch, branch/session/worktree setup, loop launch, PR creation/link-back summary) to match the P2 command surface.
-- [ ] [gh-workflows][high] Implement `aloop gh watch|status|stop` with persisted issue↔session mapping and concurrency-aware queueing (`~/.aloop/watch.json`) so GH-linked sessions are observable/controllable.
+- [x] [gh-workflows][high] Implement `aloop gh watch|status|stop` with persisted issue↔session mapping and concurrency-aware queueing (`~/.aloop/watch.json`) so GH-linked sessions are observable/controllable.
 - [ ] [gh-workflows][high] Implement PR feedback re-iteration loop (review comments + CI failure ingestion) with run/comment dedupe and max-iteration safety caps.
 - [ ] [dashboard][high] Replace header wrapping layout with CSS grid `fr` columns so provider/model/status/timestamp never clip on narrower widths.
 - [ ] [dashboard][high] Move per-provider health out of the top header into a dedicated left-pane tab and keep steer controls always visible.

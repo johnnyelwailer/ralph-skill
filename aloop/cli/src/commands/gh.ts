@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { startCommandWithDeps, type StartCommandOptions, type StartCommandResult } from './start.js';
+import { listActiveSessions, resolveHomeDir, stopSession, type SessionInfo } from './session.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -28,6 +29,69 @@ export interface GhStartCommandOptions {
   homeDir?: string;
   projectRoot?: string;
   output?: 'json' | 'text';
+}
+
+type GhOutputMode = 'json' | 'text';
+
+interface GhStatusCommandOptions {
+  homeDir?: string;
+  output?: GhOutputMode;
+}
+
+interface GhStopCommandOptions {
+  issue?: string | number;
+  all?: boolean;
+  homeDir?: string;
+  output?: GhOutputMode;
+}
+
+interface GhWatchCommandOptions {
+  label?: string[];
+  assignee?: string;
+  milestone?: string;
+  maxConcurrent?: string | number;
+  repo?: string;
+  interval?: string | number;
+  homeDir?: string;
+  projectRoot?: string;
+  provider?: string;
+  max?: string | number;
+  output?: GhOutputMode;
+  once?: boolean;
+}
+
+type GhWatchIssue = {
+  number: number;
+  title: string;
+  url: string;
+};
+
+type GhWatchIssueStatus = 'running' | 'queued' | 'completed' | 'stopped';
+
+interface GhWatchIssueEntry {
+  issue_number: number;
+  session_id: string | null;
+  branch: string | null;
+  repo: string | null;
+  pr_number: number | null;
+  pr_url: string | null;
+  status: GhWatchIssueStatus;
+  completion_state: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface GhWatchState {
+  version: 1;
+  issues: Record<string, GhWatchIssueEntry>;
+  queue: number[];
+}
+
+interface GhWatchCycleSummary {
+  started: number[];
+  queued: number[];
+  active: number;
+  tracked: number;
 }
 
 export interface GhStartResult {
@@ -87,6 +151,466 @@ const defaultGhStartDeps: GhStartDeps = {
   existsSync: (filePath) => fs.existsSync(filePath),
   cwd: () => process.cwd(),
 };
+
+const GH_WATCH_VERSION = 1 as const;
+const GH_WATCH_DEFAULT_LABEL = 'aloop';
+const GH_WATCH_DEFAULT_INTERVAL_SECONDS = 60;
+const GH_WATCH_DEFAULT_MAX_CONCURRENT = 3;
+
+export const ghLoopRuntime = {
+  listActiveSessions: async (homeDir: string): Promise<SessionInfo[]> => listActiveSessions(homeDir),
+  stopSession: async (homeDir: string, sessionId: string): Promise<{ success: boolean; reason?: string }> => stopSession(homeDir, sessionId),
+  startIssue: async (options: GhStartCommandOptions): Promise<GhStartResult> => ghStartCommandWithDeps(options),
+  now: (): string => new Date().toISOString(),
+};
+
+function createEmptyWatchState(): GhWatchState {
+  return {
+    version: GH_WATCH_VERSION,
+    issues: {},
+    queue: [],
+  };
+}
+
+function resolveAloopRoot(homeDir?: string): string {
+  return path.join(resolveHomeDir(homeDir), '.aloop');
+}
+
+function getWatchStatePath(homeDir?: string): string {
+  return path.join(resolveAloopRoot(homeDir), 'watch.json');
+}
+
+function normalizeWatchIssueEntry(value: unknown): GhWatchIssueEntry | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  const issueNumber = parsePositiveInteger(candidate.issue_number);
+  if (!issueNumber) {
+    return null;
+  }
+
+  const rawStatus = typeof candidate.status === 'string' ? candidate.status : '';
+  const status: GhWatchIssueStatus =
+    rawStatus === 'running' || rawStatus === 'queued' || rawStatus === 'completed' || rawStatus === 'stopped'
+      ? rawStatus
+      : 'queued';
+
+  return {
+    issue_number: issueNumber,
+    session_id: typeof candidate.session_id === 'string' && candidate.session_id.trim() ? candidate.session_id : null,
+    branch: typeof candidate.branch === 'string' && candidate.branch.trim() ? candidate.branch : null,
+    repo: typeof candidate.repo === 'string' && candidate.repo.trim() ? candidate.repo : null,
+    pr_number: parsePositiveInteger(candidate.pr_number) ?? null,
+    pr_url: typeof candidate.pr_url === 'string' && candidate.pr_url.trim() ? candidate.pr_url : null,
+    status,
+    completion_state: typeof candidate.completion_state === 'string' && candidate.completion_state.trim() ? candidate.completion_state : null,
+    created_at: typeof candidate.created_at === 'string' && candidate.created_at.trim() ? candidate.created_at : ghLoopRuntime.now(),
+    updated_at: typeof candidate.updated_at === 'string' && candidate.updated_at.trim() ? candidate.updated_at : ghLoopRuntime.now(),
+  };
+}
+
+function normalizeWatchState(value: unknown): GhWatchState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return createEmptyWatchState();
+  }
+
+  const record = value as Record<string, unknown>;
+  const state = createEmptyWatchState();
+  if (Array.isArray(record.queue)) {
+    state.queue = record.queue
+      .map((entry) => parsePositiveInteger(entry))
+      .filter((entry): entry is number => entry !== undefined);
+  }
+
+  if (record.issues && typeof record.issues === 'object' && !Array.isArray(record.issues)) {
+    for (const [key, rawEntry] of Object.entries(record.issues as Record<string, unknown>)) {
+      const normalized = normalizeWatchIssueEntry(rawEntry);
+      if (!normalized) {
+        continue;
+      }
+      state.issues[key] = normalized;
+    }
+  }
+
+  const queueFromEntries = Object.values(state.issues)
+    .filter((entry) => entry.status === 'queued')
+    .map((entry) => entry.issue_number);
+
+  const mergedQueue = [...state.queue, ...queueFromEntries];
+  const seen = new Set<number>();
+  state.queue = mergedQueue.filter((issueNumber) => {
+    if (seen.has(issueNumber)) {
+      return false;
+    }
+    seen.add(issueNumber);
+    return true;
+  });
+
+  return state;
+}
+
+function loadWatchState(homeDir?: string): GhWatchState {
+  const watchPath = getWatchStatePath(homeDir);
+  if (!fs.existsSync(watchPath)) {
+    return createEmptyWatchState();
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(watchPath, 'utf8')) as unknown;
+    return normalizeWatchState(parsed);
+  } catch {
+    return createEmptyWatchState();
+  }
+}
+
+function saveWatchState(homeDir: string | undefined, state: GhWatchState): void {
+  const watchPath = getWatchStatePath(homeDir);
+  fs.mkdirSync(path.dirname(watchPath), { recursive: true });
+  fs.writeFileSync(watchPath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+function parsePositiveIntegerOption(value: unknown, fallback: number, optionName: string): number {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+  const parsed = parsePositiveInteger(value);
+  if (!parsed) {
+    throw new Error(`${optionName} must be a positive integer.`);
+  }
+  return parsed;
+}
+
+function watchEntryFromStartResult(result: GhStartResult): GhWatchIssueEntry {
+  const now = ghLoopRuntime.now();
+  return {
+    issue_number: result.issue.number,
+    session_id: result.session.id,
+    branch: result.session.branch,
+    repo: result.issue.repo,
+    pr_number: result.pr?.number ?? null,
+    pr_url: result.pr?.url ?? null,
+    status: result.pending_completion ? 'running' : 'completed',
+    completion_state: result.completion_state,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+function getRunningTrackedCount(state: GhWatchState): number {
+  return Object.values(state.issues).filter((entry) => entry.status === 'running').length;
+}
+
+function setWatchEntry(state: GhWatchState, entry: GhWatchIssueEntry): void {
+  state.issues[String(entry.issue_number)] = entry;
+  state.queue = state.queue.filter((issueNumber) => issueNumber !== entry.issue_number);
+}
+
+function enqueueIssue(state: GhWatchState, issue: GhWatchIssue): void {
+  const now = ghLoopRuntime.now();
+  const existing = state.issues[String(issue.number)];
+  if (existing && (existing.status === 'running' || existing.status === 'completed')) {
+    return;
+  }
+  state.issues[String(issue.number)] = {
+    issue_number: issue.number,
+    session_id: existing?.session_id ?? null,
+    branch: existing?.branch ?? null,
+    repo: existing?.repo ?? extractRepoFromIssueUrl(issue.url),
+    pr_number: existing?.pr_number ?? null,
+    pr_url: existing?.pr_url ?? null,
+    status: 'queued',
+    completion_state: existing?.completion_state ?? null,
+    created_at: existing?.created_at ?? now,
+    updated_at: now,
+  };
+  if (!state.queue.includes(issue.number)) {
+    state.queue.push(issue.number);
+  }
+}
+
+function removeTrackedIssue(state: GhWatchState, issueNumber: number): void {
+  delete state.issues[String(issueNumber)];
+  state.queue = state.queue.filter((queuedIssue) => queuedIssue !== issueNumber);
+}
+
+function readSessionState(homeDir: string | undefined, sessionId: string): string | null {
+  const sessionDir = getSessionDir(homeDir, sessionId);
+  const statusFile = path.join(sessionDir, 'status.json');
+  if (!fs.existsSync(statusFile)) {
+    return null;
+  }
+  try {
+    const raw = JSON.parse(fs.readFileSync(statusFile, 'utf8')) as unknown;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return null;
+    }
+    const value = (raw as Record<string, unknown>).state;
+    return typeof value === 'string' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshWatchState(homeDir: string | undefined, state: GhWatchState): Promise<Map<string, SessionInfo>> {
+  const resolvedHomeDir = resolveHomeDir(homeDir);
+  const activeSessions = await ghLoopRuntime.listActiveSessions(resolvedHomeDir);
+  const byId = new Map<string, SessionInfo>(activeSessions.map((session) => [session.session_id, session]));
+
+  for (const entry of Object.values(state.issues)) {
+    if (!entry.session_id || entry.status === 'queued') {
+      continue;
+    }
+    const active = byId.get(entry.session_id);
+    if (active) {
+      entry.status = 'running';
+      entry.updated_at = ghLoopRuntime.now();
+      continue;
+    }
+
+    const sessionState = readSessionState(homeDir, entry.session_id);
+    if (sessionState === 'exited') {
+      entry.status = 'completed';
+      entry.completion_state = sessionState;
+      entry.updated_at = ghLoopRuntime.now();
+    } else if (sessionState === 'stopped') {
+      entry.status = 'stopped';
+      entry.completion_state = sessionState;
+      entry.updated_at = ghLoopRuntime.now();
+    }
+  }
+
+  state.queue = state.queue.filter((issueNumber) => state.issues[String(issueNumber)]?.status === 'queued');
+  return byId;
+}
+
+function parseGhIssueList(raw: string): GhWatchIssue[] {
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  const issues: GhWatchIssue[] = [];
+  for (const value of parsed) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      continue;
+    }
+    const record = value as Record<string, unknown>;
+    const number = parsePositiveInteger(record.number);
+    const title = typeof record.title === 'string' ? record.title.trim() : '';
+    const url = typeof record.url === 'string' ? record.url.trim() : '';
+    if (!number || !title || !url) {
+      continue;
+    }
+    issues.push({ number, title, url });
+  }
+  return issues;
+}
+
+async function fetchMatchingIssues(options: GhWatchCommandOptions): Promise<GhWatchIssue[]> {
+  const labels = Array.isArray(options.label) && options.label.length > 0 ? options.label : [GH_WATCH_DEFAULT_LABEL];
+  const args = ['issue', 'list', '--state', 'open', '--json', 'number,title,url', '--limit', '100'];
+  for (const label of labels) {
+    if (label.trim()) {
+      args.push('--label', label.trim());
+    }
+  }
+  if (typeof options.assignee === 'string' && options.assignee.trim()) {
+    args.push('--assignee', options.assignee.trim());
+  }
+  if (typeof options.milestone === 'string' && options.milestone.trim()) {
+    args.push('--milestone', options.milestone.trim());
+  }
+  if (typeof options.repo === 'string' && options.repo.trim()) {
+    args.push('--repo', options.repo.trim());
+  }
+
+  const response = await ghExecutor.exec(args);
+  return parseGhIssueList(response.stdout);
+}
+
+async function launchTrackedIssue(issueNumber: number, options: GhWatchCommandOptions, state: GhWatchState): Promise<GhWatchIssueEntry> {
+  const result = await ghLoopRuntime.startIssue({
+    issue: issueNumber,
+    repo: options.repo,
+    homeDir: options.homeDir,
+    projectRoot: options.projectRoot,
+    provider: options.provider,
+    max: options.max,
+    output: 'json',
+  });
+  const entry = watchEntryFromStartResult(result);
+  setWatchEntry(state, entry);
+  return entry;
+}
+
+async function runGhWatchCycle(options: GhWatchCommandOptions): Promise<GhWatchCycleSummary> {
+  const maxConcurrent = parsePositiveIntegerOption(options.maxConcurrent, GH_WATCH_DEFAULT_MAX_CONCURRENT, '--max-concurrent');
+  const state = loadWatchState(options.homeDir);
+  await refreshWatchState(options.homeDir, state);
+
+  const matchedIssues = await fetchMatchingIssues(options);
+  for (const issue of matchedIssues) {
+    if (!state.issues[String(issue.number)]) {
+      enqueueIssue(state, issue);
+    }
+  }
+
+  const started: number[] = [];
+  const queued = [...state.queue];
+  let running = getRunningTrackedCount(state);
+
+  while (running < maxConcurrent && state.queue.length > 0) {
+    const nextIssue = state.queue.shift();
+    if (!nextIssue) {
+      break;
+    }
+    const launched = await launchTrackedIssue(nextIssue, options, state);
+    started.push(nextIssue);
+    if (launched.status === 'running') {
+      running += 1;
+    }
+  }
+
+  saveWatchState(options.homeDir, state);
+  return {
+    started,
+    queued,
+    active: running,
+    tracked: Object.keys(state.issues).length,
+  };
+}
+
+async function ghWatchCommand(options: GhWatchCommandOptions): Promise<void> {
+  const outputMode = options.output ?? 'text';
+  const intervalSeconds = parsePositiveIntegerOption(options.interval, GH_WATCH_DEFAULT_INTERVAL_SECONDS, '--interval');
+  const runOnce = options.once === true;
+
+  if (runOnce) {
+    const summary = await runGhWatchCycle(options);
+    if (outputMode === 'json') {
+      console.log(JSON.stringify(summary, null, 2));
+      return;
+    }
+    console.log(`watch cycle complete: started=${summary.started.length} queued=${summary.queued.length} active=${summary.active} tracked=${summary.tracked}`);
+    return;
+  }
+
+  let stopping = false;
+  const markStopping = (): void => {
+    stopping = true;
+  };
+
+  process.on('SIGINT', markStopping);
+  process.on('SIGTERM', markStopping);
+
+  try {
+    while (!stopping) {
+      const summary = await runGhWatchCycle(options);
+      if (outputMode === 'json') {
+        console.log(JSON.stringify(summary));
+      } else {
+        console.log(`watch cycle complete: started=${summary.started.length} queued=${summary.queued.length} active=${summary.active} tracked=${summary.tracked}`);
+      }
+      if (stopping) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalSeconds * 1000));
+    }
+  } finally {
+    process.off('SIGINT', markStopping);
+    process.off('SIGTERM', markStopping);
+  }
+}
+
+function formatGhStatusRows(state: GhWatchState, sessionsById: Map<string, SessionInfo>): string {
+  const entries = Object.values(state.issues).sort((a, b) => a.issue_number - b.issue_number);
+  if (entries.length === 0) {
+    return 'No GH-linked sessions.';
+  }
+
+  const lines: string[] = [
+    'Issue  Branch                PR    Status      Iteration  Feedback',
+  ];
+  for (const entry of entries) {
+    const branch = entry.status === 'queued' ? '(queued)' : (entry.branch ?? '—');
+    const prRef = entry.pr_number ? `#${entry.pr_number}` : '—';
+    const session = entry.session_id ? sessionsById.get(entry.session_id) : undefined;
+    const iteration = session?.iteration !== null && session?.iteration !== undefined ? String(session.iteration) : '—';
+    const issueCell = `#${entry.issue_number}`.padEnd(6);
+    lines.push(`${issueCell} ${branch.padEnd(20)} ${prRef.padEnd(5)} ${entry.status.padEnd(11)} ${iteration.padEnd(9)} —`);
+  }
+  return lines.join('\n');
+}
+
+async function ghStatusCommand(options: GhStatusCommandOptions): Promise<void> {
+  const outputMode = options.output ?? 'text';
+  const state = loadWatchState(options.homeDir);
+  const sessionsById = await refreshWatchState(options.homeDir, state);
+  saveWatchState(options.homeDir, state);
+
+  const entries = Object.values(state.issues).sort((a, b) => a.issue_number - b.issue_number);
+  if (outputMode === 'json') {
+    console.log(JSON.stringify({ issues: entries }, null, 2));
+    return;
+  }
+  console.log(formatGhStatusRows(state, sessionsById));
+}
+
+async function ghStopCommand(options: GhStopCommandOptions): Promise<void> {
+  const outputMode = options.output ?? 'text';
+  const issueNumber = parsePositiveInteger(options.issue);
+  const stopAll = options.all === true;
+  if (!stopAll && !issueNumber) {
+    throw new Error('gh stop requires either --issue <number> or --all.');
+  }
+  if (stopAll && issueNumber) {
+    throw new Error('gh stop accepts either --issue or --all, not both.');
+  }
+
+  const state = loadWatchState(options.homeDir);
+  await refreshWatchState(options.homeDir, state);
+  const targets = stopAll
+    ? Object.values(state.issues)
+    : issueNumber
+      ? [state.issues[String(issueNumber)]].filter((entry): entry is GhWatchIssueEntry => Boolean(entry))
+      : [];
+
+  if (!stopAll && issueNumber && targets.length === 0) {
+    throw new Error(`No GH-linked session found for issue #${issueNumber}.`);
+  }
+
+  const resolvedHomeDir = resolveHomeDir(options.homeDir);
+  const results: Array<{ issue_number: number; session_id: string | null; success: boolean; reason?: string }> = [];
+  for (const entry of targets) {
+    if (entry.session_id && entry.status === 'running') {
+      const stopResult = await ghLoopRuntime.stopSession(resolvedHomeDir, entry.session_id);
+      results.push({ issue_number: entry.issue_number, session_id: entry.session_id, success: stopResult.success, reason: stopResult.reason });
+    } else {
+      results.push({ issue_number: entry.issue_number, session_id: entry.session_id, success: true });
+    }
+    removeTrackedIssue(state, entry.issue_number);
+  }
+  saveWatchState(options.homeDir, state);
+
+  const failed = results.filter((result) => !result.success);
+  if (outputMode === 'json') {
+    console.log(JSON.stringify({ stopped: results, failed: failed.length }, null, 2));
+  } else if (results.length === 0) {
+    console.log('No GH-linked sessions to stop.');
+  } else {
+    for (const result of results) {
+      if (result.success) {
+        console.log(`Stopped GH-linked issue #${result.issue_number}${result.session_id ? ` (${result.session_id})` : ''}.`);
+      } else {
+        console.log(`Failed to stop issue #${result.issue_number}: ${result.reason ?? 'unknown error'}`);
+      }
+    }
+  }
+
+  if (failed.length > 0) {
+    process.exit(1);
+  }
+}
 
 // Common options for gh subcommands
 function addGhRequestSubcommand(name: string, description: string) {
@@ -149,6 +673,45 @@ ghCommand
         console.log(`Warning: ${warning}`);
       }
     }
+  });
+
+ghCommand
+  .command('watch')
+  .description('Monitor matching issues and start GH-linked loops with queueing')
+  .option('--label <label...>', 'Issue labels to match (default: aloop)')
+  .option('--assignee <assignee>', 'Only include issues assigned to this user')
+  .option('--milestone <milestone>', 'Only include issues in this milestone')
+  .option('--max-concurrent <number>', 'Max running GH-linked loops', String(GH_WATCH_DEFAULT_MAX_CONCURRENT))
+  .option('--interval <seconds>', 'Polling interval in seconds', String(GH_WATCH_DEFAULT_INTERVAL_SECONDS))
+  .option('--repo <owner/repo>', 'Explicit GitHub repository (default: current)')
+  .option('--provider <provider>', 'Provider override for spawned loops')
+  .option('--max <number>', 'Max iteration override for spawned loops')
+  .option('--project-root <path>', 'Project root override for spawned loops')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--once', 'Run a single poll cycle and exit')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(async (options: GhWatchCommandOptions) => {
+    await ghWatchCommand(options);
+  });
+
+ghCommand
+  .command('status')
+  .description('Show GH-linked issue/session/PR state from watch tracking')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(async (options: GhStatusCommandOptions) => {
+    await ghStatusCommand(options);
+  });
+
+ghCommand
+  .command('stop')
+  .description('Stop GH-linked loops for one issue or all tracked issues')
+  .option('--issue <number>', 'GitHub issue number to stop')
+  .option('--all', 'Stop all tracked GH-linked loops')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(async (options: GhStopCommandOptions) => {
+    await ghStopCommand(options);
   });
 
 // Register subcommands
@@ -466,6 +1029,33 @@ export async function ghStartCommandWithDeps(options: GhStartCommandOptions, dep
   } else {
     pendingCompletion = true;
   }
+
+  const trackedState = loadWatchState(options.homeDir);
+  const trackedEntry = watchEntryFromStartResult({
+    issue: {
+      number: issue.number,
+      title: issue.title,
+      url: issue.url,
+      repo: issueRepo,
+    },
+    session: {
+      id: started.session_id,
+      dir: started.session_dir,
+      prompts_dir: started.prompts_dir,
+      work_dir: started.work_dir,
+      branch: desiredBranch,
+      worktree: started.worktree,
+      pid: started.pid,
+    },
+    base_branch: baseBranch,
+    pr,
+    issue_comment_posted: issueCommentPosted,
+    completion_state: completionState,
+    pending_completion: pendingCompletion,
+    warnings,
+  });
+  setWatchEntry(trackedState, trackedEntry);
+  saveWatchState(options.homeDir, trackedState);
 
   return {
     issue: {
