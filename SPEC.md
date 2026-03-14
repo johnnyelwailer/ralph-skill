@@ -2578,12 +2578,13 @@ The pipeline YAML config is **not parsed by the shell script**. Instead, the alo
 ```json
 {
   "cycle": [
-    {"agent": "plan",   "prompt": "PROMPT_plan.md",   "provider": "claude",  "model": "claude-opus-4-6",                      "reasoning": "high"},
-    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "opencode","model": "openrouter/openai/gpt-5.1",              "reasoning": "medium"},
-    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "codex",   "model": "codex-mini-latest",                      "reasoning": "medium"},
-    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "opencode","model": "openrouter/google/gemini-2.5-pro",       "reasoning": "medium"},
-    {"agent": "proof",  "prompt": "PROMPT_proof.md",  "provider": "opencode","model": "openrouter/anthropic/claude-sonnet-4-6", "reasoning": "medium"},
-    {"agent": "review", "prompt": "PROMPT_review.md", "provider": "claude",  "model": "claude-opus-4-6",                        "reasoning": "xhigh"}
+    "PROMPT_plan.md",
+    "PROMPT_build.md",
+    "PROMPT_build_opencode.md",
+    "PROMPT_build_codex.md",
+    "PROMPT_build_gemini.md",
+    "PROMPT_proof.md",
+    "PROMPT_review.md"
   ],
   "cyclePosition": 0,
   "iteration": 1,
@@ -2591,50 +2592,69 @@ The pipeline YAML config is **not parsed by the shell script**. Instead, the alo
 }
 ```
 
-Each cycle entry is a **complete instruction** — the loop script doesn't need to look anywhere else. The runtime resolves round-robin provider selection, per-agent model preferences, and reasoning config at compile time and bakes the result into each entry.
+The cycle is just a list of **prompt filenames**. All agent configuration lives in the prompt file's frontmatter — not in the JSON. This means cycle prompts and queue overrides use the exact same format and the loop parses them identically.
+
+**Prompt file format (frontmatter + prompt body):**
+
+Every prompt file — whether in the cycle or the override queue — is a markdown file with YAML frontmatter:
+
+```markdown
+---
+agent: build
+provider: opencode
+model: openrouter/openai/gpt-5.1
+reasoning: medium
+---
+
+# Build Mode
+
+You are Aloop, an autonomous build agent...
+```
+
+Frontmatter fields:
+- `agent` — agent type identifier (plan, build, review, proof, steer, debug, guard)
+- `provider` — which CLI to invoke (claude, opencode, codex, gemini, copilot)
+- `model` — model ID, provider-specific (e.g., `claude-opus-4-6`, `openrouter/openai/gpt-5.1`, `codex-mini-latest`)
+- `reasoning` — reasoning effort level (low, medium, high, xhigh)
+
+All fields are optional — defaults apply if omitted (`provider: claude`, `model: claude-opus-4-6`, `agent: build`, `reasoning: medium`).
 
 **How the loop script uses it:**
+
 ```bash
+# Shared frontmatter parser — used for both cycle prompts and queue overrides
+parse_frontmatter() {
+    local file="$1"
+    PROVIDER=$(sed -n '/^---$/,/^---$/{ /^provider:/s/provider: *//p }' "$file")
+    MODEL=$(sed -n '/^---$/,/^---$/{ /^model:/s/model: *//p }' "$file")
+    AGENT=$(sed -n '/^---$/,/^---$/{ /^agent:/s/agent: *//p }' "$file")
+    REASONING=$(sed -n '/^---$/,/^---$/{ /^reasoning:/s/reasoning: *//p }' "$file")
+    PROVIDER="${PROVIDER:-claude}"
+    MODEL="${MODEL:-claude-opus-4-6}"
+    AGENT="${AGENT:-build}"
+    REASONING="${REASONING:-medium}"
+}
+
 # Read the plan (re-read every iteration to pick up mutations)
 PLAN=$(cat "$SESSION_DIR/loop-plan.json")
 
 # Check the override queue first
 QUEUE_FILE=$(ls "$SESSION_DIR/queue/"*.md 2>/dev/null | sort | head -1)
 if [ -n "$QUEUE_FILE" ]; then
-    # Parse frontmatter (flat key: value between --- markers)
-    PROVIDER=$(sed -n '/^---$/,/^---$/{ /^provider:/s/provider: *//p }' "$QUEUE_FILE")
-    MODEL=$(sed -n '/^---$/,/^---$/{ /^model:/s/model: *//p }' "$QUEUE_FILE")
-    AGENT=$(sed -n '/^---$/,/^---$/{ /^agent:/s/agent: *//p }' "$QUEUE_FILE")
-    REASONING=$(sed -n '/^---$/,/^---$/{ /^reasoning:/s/reasoning: *//p }' "$QUEUE_FILE")
-
-    # Defaults if not specified in frontmatter
-    PROVIDER="${PROVIDER:-claude}"
-    MODEL="${MODEL:-claude-opus-4-6}"
-    AGENT="${AGENT:-steer}"
-    REASONING="${REASONING:-high}"
-
-    # The queue file IS the prompt — pass it directly to the agent
     PROMPT_FILE="$QUEUE_FILE"
-
-    # Consume: delete after reading config (agent will use the file path)
-    # Actual deletion happens after the agent completes
+    parse_frontmatter "$PROMPT_FILE"
     QUEUE_CONSUMED="$QUEUE_FILE"
-
     # Do NOT advance cyclePosition for queue items
 else
-    # Normal cycle — pick entry at cyclePosition
+    # Normal cycle — pick prompt at cyclePosition
     CYCLE_POS=$(echo "$PLAN" | jq '.cyclePosition')
     CYCLE_LENGTH=$(echo "$PLAN" | jq '.cycle | length')
-    ENTRY=$(echo "$PLAN" | jq ".cycle[$((CYCLE_POS % CYCLE_LENGTH))]")
-
-    AGENT=$(echo "$ENTRY" | jq -r '.agent')
-    PROMPT=$(echo "$ENTRY" | jq -r '.prompt')
-    PROVIDER=$(echo "$ENTRY" | jq -r '.provider')
-    MODEL=$(echo "$ENTRY" | jq -r '.model')
-    REASONING=$(echo "$ENTRY" | jq -r '.reasoning')
+    PROMPT_NAME=$(echo "$PLAN" | jq -r ".cycle[$((CYCLE_POS % CYCLE_LENGTH))]")
+    PROMPT_FILE="$PROMPTS_DIR/$PROMPT_NAME"
+    parse_frontmatter "$PROMPT_FILE"
 fi
 
-# ... invoke provider with AGENT/PROMPT/PROVIDER/MODEL/REASONING ...
+# ... invoke provider with AGENT/PROMPT_FILE/PROVIDER/MODEL/REASONING ...
 
 # After iteration: consume queue file or advance cycle
 if [ -n "${QUEUE_CONSUMED:-}" ]; then
@@ -2644,46 +2664,33 @@ else
 fi
 ```
 
-**Queue file format (`$SESSION_DIR/queue/*.md`):**
+The frontmatter parser is the same 6 lines of sed whether the file comes from the cycle or the queue. No jq needed for agent config — only for reading `cyclePosition` from the plan.
 
-Queue files are markdown prompts with optional YAML frontmatter for agent configuration:
+**Override queue (`$SESSION_DIR/queue/`):**
 
-```markdown
----
-agent: steer
-provider: claude
-model: claude-opus-4-6
-reasoning: high
----
+Queue files use the same frontmatter format as cycle prompts. The loop checks the queue folder before the cycle each iteration — if files exist, it picks the first (sorted), runs it, deletes it.
 
-# Steering Mode
-
-You are Aloop, an autonomous spec-update agent. The user has sent
-a live steering instruction while the loop was running...
-```
-
-If frontmatter is omitted, defaults apply (`provider: claude`, `model: claude-opus-4-6`, `agent: steer`, `reasoning: high`). The file content after the frontmatter is the prompt itself — passed directly to the agent.
-
-Files are sorted lexicographically and consumed in order. Naming convention: `NNN-description.md` (e.g., `001-steer.md`, `002-force-review.md`). After the agent completes, the consumed file is deleted.
+Files are sorted lexicographically and consumed in order. Naming convention: `NNN-description.md` (e.g., `001-steer.md`, `002-force-review.md`).
 
 **Who writes to the queue:**
-- **User** — drops a steering markdown into `queue/` and it gets picked up next iteration. Works without any runtime.
+- **User** — drops a prompt markdown into `queue/` and it gets picked up next iteration. Works without any runtime.
 - **CLI (`aloop steer`)** — writes the user's instruction into a queue file with appropriate frontmatter.
 - **Runtime** — injects forced review, debugger, escalation entries as queue files when it detects conditions via `status.json` polling.
 
 **Key properties:**
-- The `cycle` array is a **short repeating pattern** (typically 5-7 entries), NOT an unrolled list of all iterations. The loop script wraps around with `% length`.
+- The `cycle` array is a **short repeating pattern** of prompt filenames (typically 5-7 entries), NOT an unrolled list of all iterations. The loop script wraps around with `% length`.
 - `cyclePosition` and `iteration` live in the plan file — the runtime and shell share state through this single file. The shell updates position after each iteration; the runtime reads it when deciding mutations.
-- The runtime writes this file once at session start, then **rewrites it** whenever the pipeline mutates (failure recovery, agent injection). It preserves `cyclePosition` and `iteration` (or adjusts them if the mutation requires it, e.g., `goto build` resets `cyclePosition`).
+- The runtime compiles this file once at session start from the pipeline YAML config, then **rewrites it** whenever the pipeline mutates (failure recovery, agent injection). It preserves `cyclePosition` and `iteration` (or adjusts them if the mutation requires it, e.g., `goto build` resets `cyclePosition`).
 - The loop script re-reads the file every iteration, so mutations take effect on the next turn.
 - The `version` field increments on each runtime rewrite — the loop script logs when it detects a plan change.
-- Transition rules (`onFailure: goto build`, escalation ladders) are **resolved by the runtime**, not the shell. When the runtime observes a failure via `status.json`, it rewrites the plan accordingly (e.g., inserting a `debugger` agent, or adjusting `cyclePosition` to point back to build).
-- This keeps all complex logic in TS/Bun and all shell logic trivial: read JSON, index into array, check queue folder, invoke, update index.
+- To change an agent's provider/model/reasoning, edit its prompt file's frontmatter — no plan recompilation needed. Changes take effect on the next iteration that uses that prompt.
+- Transition rules (`onFailure: goto build`, escalation ladders) are **resolved by the runtime**, not the shell. When the runtime observes a failure via `status.json`, it rewrites the plan accordingly.
+- This keeps all complex logic in TS/Bun and all shell logic trivial: read JSON for cycle index, parse frontmatter for config, check queue folder, invoke, update index.
 
 **When the runtime modifies the plan:**
 - Agent failure detected (via `status.json` polling) → apply `onFailure` transition rules (write queue entry or adjust `cyclePosition`)
 - Escalation threshold reached → write recovery agent to queue, or inject into `cycle` if permanent
-- Host monitor detects stuck pattern → swap providers in cycle entries or write debugger to queue
+- Host monitor detects stuck pattern → swap provider in prompt frontmatter or write debugger to queue
 
 ### Runtime Mutation
 
@@ -2691,15 +2698,16 @@ The pipeline is **mutable at runtime** via two mechanisms:
 
 **Override queue** (`$SESSION_DIR/queue/`):
 - User drops steering prompt → loop picks it up next iteration, runs it, deletes it
-- Runtime detects all tasks done → writes `queue/NNN-review.md` with review agent config
-- 3 consecutive build failures → writes `queue/NNN-debug.md` with debugger agent config
+- Runtime detects all tasks done → writes `queue/NNN-review.md` with review agent frontmatter
+- 3 consecutive build failures → writes `queue/NNN-debug.md` with debugger agent frontmatter
 - Queue items do NOT modify the `cycle` array — they interrupt it without advancing `cyclePosition`
 - The loop handles this autonomously — no runtime required for basic steering
 
-**Permanent cycle changes** (via rewriting `cycle` in `loop-plan.json`):
-- User steering says "add `security-audit` after every `build` for remaining iterations" → runtime recompiles `cycle` array with the new agent inserted, rewrites `loop-plan.json`
-- User steering says "remove `docs-generator`" → runtime recompiles `cycle` without it
-- Provider consistently timing out → runtime swaps provider in affected cycle entries
+**Permanent pipeline changes** (via rewriting `loop-plan.json` and/or prompt files):
+- User steering says "add `security-audit` after every `build`" → runtime adds the prompt file and inserts its filename into the `cycle` array
+- User steering says "remove `docs-generator`" → runtime removes it from the `cycle` array
+- Provider consistently timing out → runtime edits that prompt file's frontmatter to swap providers
+- To change model/reasoning for an agent → edit the prompt file's frontmatter (no plan rewrite needed)
 
 Agents do **not** modify the pipeline themselves — control stays with the user and host-side monitor (avoids perverse incentives like agents removing their own reviewers).
 
