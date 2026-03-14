@@ -22,7 +22,11 @@ async function resetFixtures() {
   await mkdir(workdir, { recursive: true });
   await mkdir(runtimeDir, { recursive: true });
 
-  await writeFile(statusPath, JSON.stringify({ state: 'running', iteration: 1, mode: 'build' }), 'utf8');
+  await writeFile(
+    statusPath,
+    JSON.stringify({ state: 'running', iteration: 1, mode: 'build', provider: 'copilot', model: 'gpt-5.3-codex' }),
+    'utf8',
+  );
   await writeFile(logPath, '{"level":"info","message":"fixture log line"}\n', 'utf8');
   await writeFile(todoPath, '# Fixture TODO Heading\n\n- [ ] Example task\n', 'utf8');
   await writeFile(
@@ -99,8 +103,35 @@ test('shows fixture-backed session list and progress status', async ({ page }) =
 
   await expect(page.getByText('State: running')).toBeVisible();
   await expect(page.getByText('Iteration: 1')).toBeVisible();
+  await expect(page.getByText('Provider: copilot')).toBeVisible();
   await page.getByRole('tab', { name: 'Summary' }).click();
   await expect(page.getByText('Phase: build')).toBeVisible();
+});
+
+test('uses a grid header layout that keeps right-side metadata visible on narrow widths', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 720 });
+  await page.goto('/');
+
+  const headerGrid = page.getByTestId('session-header-grid');
+  await expect(headerGrid).toBeVisible();
+  await expect(headerGrid).toHaveCSS('display', 'grid');
+  await expect(page.getByTestId('header-provider-model')).toHaveText('copilot/gpt-5.3-codex');
+  await expect(page.getByTestId('header-status')).toHaveText('running');
+  await expect(page.getByTestId('header-updated-at')).toBeVisible();
+
+  const viewportWidth = page.viewportSize()?.width ?? 0;
+  const rightEdge = (element: Element) => element.getBoundingClientRect().right;
+  const leftEdge = (element: Element) => element.getBoundingClientRect().left;
+
+  const providerRight = await page.getByTestId('header-provider-model').evaluate(rightEdge);
+  const statusRight = await page.getByTestId('header-status').evaluate(rightEdge);
+  const timestampRight = await page.getByTestId('header-updated-at').evaluate(rightEdge);
+  const timestampLeft = await page.getByTestId('header-updated-at').evaluate(leftEdge);
+
+  expect(providerRight).toBeLessThanOrEqual(viewportWidth + 1);
+  expect(statusRight).toBeLessThanOrEqual(viewportWidth + 1);
+  expect(timestampRight).toBeLessThanOrEqual(viewportWidth + 1);
+  expect(timestampLeft).toBeGreaterThanOrEqual(0);
 });
 
 test('renders docs markdown and log view while navigating tabs', async ({ page }) => {

@@ -205,6 +205,7 @@ export function App() {
   const currentState = statusRecord ? readString(statusRecord, ['state', 'status'], 'unknown') : 'unknown';
   const currentIteration = statusRecord ? readNumberLike(statusRecord, ['iteration', 'iterations'], '--') : '--';
   const providerName = statusRecord ? readString(statusRecord, ['provider', 'current_provider'], '') : '';
+  const modelName = statusRecord ? readString(statusRecord, ['model', 'current_model'], '') : '';
   const isRunning = currentState === 'running';
 
   // Toast on phase transitions
@@ -292,12 +293,15 @@ export function App() {
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* ── Header: session info + progress bar + phase indicator ── */}
       <header className="border-b px-4 py-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <div
+          data-testid="session-header-grid"
+          className="grid items-center gap-x-3 gap-y-2 [grid-template-columns:minmax(0,1.4fr)_minmax(0,1fr)_minmax(7rem,1fr)_auto_auto_auto_auto_auto]"
+        >
           {/* Session name + switcher */}
-          <div className="relative">
+          <div className="relative min-w-0">
             <button
               type="button"
-              className="flex items-center gap-1.5 text-sm font-semibold hover:text-primary transition-colors"
+              className="flex min-w-0 items-center gap-1.5 text-sm font-semibold transition-colors hover:text-primary"
               onClick={() => setSessionSwitcherOpen(!sessionSwitcherOpen)}
             >
               {isRunning && (
@@ -366,7 +370,7 @@ export function App() {
           </HoverCard>
 
           {/* Progress bar (shadcn Progress component) */}
-          <div className="flex items-center gap-2 min-w-[120px]">
+          <div className="flex min-w-0 items-center gap-2">
             <Progress
               value={progressPercent}
               className="flex-1"
@@ -380,11 +384,13 @@ export function App() {
 
           {/* Provider */}
           {providerName && (
-            <span className="text-xs text-muted-foreground">{providerName}</span>
+            <span data-testid="header-provider-model" className="text-xs text-muted-foreground whitespace-nowrap">
+              {modelName ? `${providerName}/${modelName}` : providerName}
+            </span>
           )}
 
           {/* Status */}
-          <span className="text-xs text-muted-foreground">{currentState}</span>
+          <span data-testid="header-status" className="text-xs text-muted-foreground whitespace-nowrap">{currentState}</span>
 
           {/* Ctrl+K hint */}
           <button
@@ -396,7 +402,7 @@ export function App() {
           </button>
 
           {/* Updated timestamp */}
-          <span className="ml-auto text-xs text-muted-foreground">
+          <span data-testid="header-updated-at" className="justify-self-end text-xs text-muted-foreground whitespace-nowrap">
             {loading ? 'Loading...' : state?.updatedAt ?? ''}
             {loadError ? ` \u2022 ${loadError}` : ''}
           </span>
