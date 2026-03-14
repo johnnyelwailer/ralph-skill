@@ -13,6 +13,22 @@
 
 ---
 
+## Review — 2026-03-14 18:39 — commit 4caa6ca..2d119ab
+
+**Verdict: FAIL** (6 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/cli/src/commands/gh.ts`, `aloop/cli/src/commands/gh.test.ts`
+
+- Gate 1: `runGhWatchCycle` sets `completion_finalized=true` after `finalizeWatchEntry` regardless of whether PR creation/issue-summary side effects actually succeed; because `finalizeWatchEntry` swallows errors, completed issues can be permanently marked finalized without fulfilling spec-required completion actions.
+- Gate 2: New tests do not exercise `@aloop` issue-comment trigger behavior (`collectNewFeedback` tests at `gh.test.ts:1943-2070` pass empty issue-comment arrays), leaving mention-detection and processed-issue-comment paths unverified.
+- Gate 2: New tests do not validate CI failed-log ingestion/truncation paths added in `gh.ts` (`fetchFailedCheckLogs` + `buildFeedbackSteering` log block), so the `gh run view --log-failed` behavior is largely unproven.
+- Gate 3: Branch coverage for touched `aloop/cli/src/commands/gh.ts` is 63.32% (<80%) from `npx c8 --all --include=src/commands/gh.ts tsx --test src/commands/gh.test.ts`.
+- Gate 3: Touched loop runtime files `aloop/bin/loop.sh` and `aloop/bin/loop.ps1` have no branch-coverage evidence in this iteration, violating the per-touched-file coverage gate.
+- Gate 6: Proof manifest iteration 11 references artifacts that are missing from the workspace (`gh-test-output.txt`, `derive-mode-test.txt`, `cycle-resolution-test.txt`, `frontmatter-parse-test.txt`, `cycle-integration-test.txt`, `aloop-mention-grep.txt`), so evidence is not verifiable.
+
+- Gate 5 observation: validation is green after dependency restore (`cd aloop/cli && npm test && npm run type-check && npm run build` all pass).
+
+---
+
 ## Review — 2026-03-14 15:21 — commit f9cecb5..1b3e566
 
 **Verdict: FAIL** (8 findings → written to TODO.md as [review] tasks)
