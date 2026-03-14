@@ -955,7 +955,7 @@ The orchestrator and child loops are **completely different programs** with diff
 
 **Inner loop** (`loop.sh`):
 - Dumb shell script. Reads a **compiled loop plan** (a simple ordered list of agents) and executes them sequentially by index
-- The aloop runtime compiles the pipeline YAML config into `loop-plan.json` — a flat array of `{agent, prompt, provider, reasoning}` entries
+- The aloop runtime compiles the pipeline YAML config into `loop-plan.json` — a flat array of fully-resolved entries (`agent`, `prompt`, `provider`, `model`, `reasoning`)
 - `loop.sh` reads the plan file each iteration, picks entry at `$cyclePosition`, invokes that agent — no YAML parsing, no transition logic in shell
 - The runtime can regenerate `loop-plan.json` at any time (steering, mutation, failure recovery) — loop.sh re-reads it every turn
 - Invokes providers via round-robin, writes `status.json`
@@ -2619,18 +2619,20 @@ The pipeline YAML config is **not parsed by the shell script**. Instead, the alo
 ```json
 {
   "cycle": [
-    {"agent": "plan",   "prompt": "PROMPT_plan.md",   "reasoning": "high"},
-    {"agent": "build",  "prompt": "PROMPT_build.md",  "reasoning": "medium"},
-    {"agent": "build",  "prompt": "PROMPT_build.md",  "reasoning": "medium"},
-    {"agent": "build",  "prompt": "PROMPT_build.md",  "reasoning": "medium"},
-    {"agent": "proof",  "prompt": "PROMPT_proof.md",  "reasoning": "medium"},
-    {"agent": "review", "prompt": "PROMPT_review.md", "reasoning": "xhigh"}
+    {"agent": "plan",   "prompt": "PROMPT_plan.md",   "provider": "claude",  "model": "opus-4",           "reasoning": "high"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "opencode","model": "gpt-5.1",          "reasoning": "medium"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "codex",   "model": "codex-mini-latest", "reasoning": "medium"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "gemini",  "model": "gemini-3-pro",     "reasoning": "medium"},
+    {"agent": "proof",  "prompt": "PROMPT_proof.md",  "provider": "opencode","model": "gpt-5.1",          "reasoning": "medium"},
+    {"agent": "review", "prompt": "PROMPT_review.md", "provider": "claude",  "model": "opus-4",           "reasoning": "xhigh"}
   ],
   "cyclePosition": 0,
   "iteration": 1,
   "version": 1
 }
 ```
+
+Each entry is a **complete instruction** — `loop.sh` doesn't need to look anywhere else. The runtime resolves round-robin provider selection, per-agent model preferences, and reasoning config at compile time and bakes the result into each entry.
 
 **How `loop.sh` uses it:**
 ```bash
@@ -2639,10 +2641,13 @@ PLAN=$(cat "$SESSION_DIR/loop-plan.json")
 CYCLE_LENGTH=$(echo "$PLAN" | jq '.cycle | length')
 CYCLE_POS=$(echo "$PLAN" | jq '.cyclePosition')
 
-# Pick current agent by cycling through the plan
+# Pick current agent — everything needed is in the entry
 ENTRY=$(echo "$PLAN" | jq ".cycle[$((CYCLE_POS % CYCLE_LENGTH))]")
 AGENT=$(echo "$ENTRY" | jq -r '.agent')
 PROMPT=$(echo "$ENTRY" | jq -r '.prompt')
+PROVIDER=$(echo "$ENTRY" | jq -r '.provider')
+MODEL=$(echo "$ENTRY" | jq -r '.model')
+REASONING=$(echo "$ENTRY" | jq -r '.reasoning')
 
 # After iteration completes: update position and iteration in the plan file
 jq ".cyclePosition = $((CYCLE_POS + 1)) | .iteration = $ITERATION" \
