@@ -98,14 +98,90 @@ Cover these topics **in order**, but **skip what Phase 1 already answered**. For
   - General: env vars set outside the repo
 - Walk user through setup if needed, confirm accessibility
 
-### Topic 3: Testing & Proof Strategy
+### Topic 3: Verification Strategy (CRITICAL — spend time here)
+
+**This is the most important topic in the interview.** The loop is autonomous — if it can't verify its own work, it will silently produce broken output and mark tasks as done. Every layer of verification you design here directly prevents wasted iterations.
+
+#### 3a. Testing Philosophy
 - **TDD is the strong default.** Suggest it with reasoning; user can opt out (document why).
-- Define what "done" looks like — machine-verifiable acceptance criteria:
-  - **UI work:** Playwright screenshots at explicit viewport sizes (desktop 1920x1080, tablet 768x1024, mobile 375x812)
-  - **API work:** expected response shapes, status codes
-  - **CLI work:** expected command + output
-  - **Libraries:** test pass + coverage threshold
 - Coverage target (default: 80% line, 70% branch)
+- Define what test depth means for this project — no `toBeDefined()` / `toBeTruthy()` checks; tests must assert **specific concrete values**
+
+#### 3b. Multi-Layered Verification Plan
+
+Guide the user through designing **all applicable layers**. Each layer catches different failure classes:
+
+| Layer | What it catches | Tools | Required? |
+|-------|----------------|-------|-----------|
+| **Unit tests** | Logic bugs, regressions | vitest/jest/pytest/go test | Always |
+| **Integration tests** | Component interaction, API contract violations | Testing library + real deps | Always |
+| **E2E smoke tests** | User-facing flows broken, pages don't load | Playwright | When UI exists |
+| **Screenshot tests** | Layout regressions, visual breakage | Playwright `toHaveScreenshot()` | When UI exists |
+| **Layout verification** | CSS Grid/Flexbox structural bugs, sticky elements not sticking, panels not scrolling independently | Playwright bounding-box assertions | When UI exists |
+| **API contract tests** | Response shape changes, status code regressions | supertest/httpx/curl | When API exists |
+| **Build verification** | Type errors, import failures, bundle size | `tsc --noEmit`, build command | Always |
+| **Lint/format** | Style drift, dead code | ESLint/Prettier/ruff/clippy | Always |
+
+For each applicable layer, define:
+1. **What to test** — specific scenarios, not vague "test the UI"
+2. **How to run it** — exact command (`npm run test`, `npx playwright test`, etc.)
+3. **What passes** — concrete success criteria (exit code 0, all assertions pass, screenshot diff < 0.1%)
+4. **Where test data comes from** — see 3c below
+
+#### 3c. Test Data Strategy (MUST design both paths)
+
+The loop needs to verify its work, but it can't always rely on a live backend or real data. Design **two clear paths**:
+
+**Path 1: Local sample data (offline, fast, deterministic)**
+- Fixtures, seed files, or mock server that provides realistic data
+- Must be checked into the repo (not generated on the fly)
+- Used for: unit tests, integration tests, screenshot baselines, development
+- Examples: `fixtures/session-data.json`, `test/mocks/api-responses.ts`, SQLite seed, docker-compose with seeded DB
+- **The loop uses this path for self-verification during build iterations**
+
+**Path 2: Real integration data (live, slower, validates real contracts)**
+- Actual backend, database, or external service
+- Used for: E2E smoke tests, API contract validation, pre-deploy checks
+- Must document: how to start dependencies, what env vars are needed, how to reset state
+- **The loop uses this path for proof/QA iterations when available**
+
+**You design the test data strategy — don't ask the user to define it.** Based on Phase 1 discovery, you know the stack, the data shapes, and the API surface. Propose a concrete plan:
+
+- Analyze existing code to identify data models, API responses, and state shapes
+- Generate realistic fixture files that cover: happy path, empty state, error state, edge cases (many items, long strings, etc.)
+- If the project has a database: propose a seed script or SQLite fixture
+- If the project has an API: propose a mock server or response fixtures
+- If the project has UI: propose fixture data that produces meaningful screenshots (not empty screens)
+
+Present the plan to the user: **"Here's what I'll set up for test data: [plan]. Does this cover your main scenarios? Any reference I should look at (screenshots, staging URL, legacy app)?"**
+
+The user may optionally provide:
+- Screenshots of an existing app (to inform what realistic data looks like)
+- A link to a staging/legacy deployment
+- Example data exports
+- Or nothing — in which case you derive everything from the code
+
+#### 3d. Screenshot & Layout Verification Setup
+
+If the project has UI:
+- Define key viewports: desktop (1920x1080), tablet (768x1024), mobile (375x812)
+- Define key pages/states to screenshot (e.g., "dashboard loaded with 3 sessions", "empty state", "error state")
+- **Baseline workflow**: screenshots captured and committed to `screenshots/baselines/`. On each build, new screenshots compared against baselines. Diff > threshold = failure.
+- **Layout assertions**: define which elements must be side-by-side, which must be sticky, which must scroll independently. These become Playwright bounding-box checks.
+- **The proof agent generates screenshots. The review agent verifies them against baselines. If no baseline exists yet, the proof agent captures one.**
+
+#### 3e. Validation Command Design
+
+Define the exact commands that constitute "this build is verified":
+```bash
+# Example — adapt to project
+npm run typecheck          # types compile
+npm run lint               # no lint errors
+npm run test               # unit + integration pass
+npm run test:e2e           # playwright smoke + screenshot tests
+npm run build              # production build succeeds
+```
+These commands go into the spec as `{{VALIDATION_COMMANDS}}` and are run by the review agent at Gate 5.
 
 ### Topic 4: Approach & Constraints
 - Any technology constraints? ("must use X", "cannot use Y")
@@ -130,6 +206,12 @@ After interview is complete, generate all artifacts. Launch these subagents **in
 - Reference dependencies without versions: "Tailwind (see VERSIONS.md)"
 - Include integration scenarios for cross-feature user journeys
 - Include explicit viewport dimensions for all UI proof screenshots
+- **Include full verification plan** from Topic 3:
+  - Validation commands section (`{{VALIDATION_COMMANDS}}` block)
+  - Test data strategy: paths to fixtures/seeds, how to start mock servers
+  - Screenshot baselines: which pages, which viewports, where baselines live
+  - Layout assertions: which elements must be side-by-side, sticky, independently scrollable
+  - The spec is the contract the review agent enforces — if verification steps aren't in the spec, they won't be checked
 - **Output:** `SPEC.md`
 
 ### Subagent F: VERSIONS.md Generation
@@ -174,11 +256,16 @@ Present generated artifacts to user for review:
 1. **SPEC.md** — show full spec, ask for approval. This is the contract.
 2. **VERSIONS.md** — show version table, confirm.
 3. **Convention docs** — show list of generated files with brief summary of each. User can review in detail or approve as-is.
-4. **Summary of all decisions:**
+4. **Verification plan** — show the full multi-layer verification design:
+   - Which layers are active (unit, integration, e2e, screenshot, layout, API, build, lint)
+   - Test data strategy (local fixtures path, integration data path)
+   - Screenshot baselines setup (viewports, pages, baseline directory)
+   - Layout assertions (what's checked, how)
+   - Validation commands (the exact command sequence)
+5. **Summary of all decisions:**
    - Active agents and their triggers
    - Convention bindings per agent
-   - Testing strategy
-   - Proof strategy
+   - Verification layers and test data paths
 
 Ask: **"Ready to start the loop? Any changes needed?"**
 

@@ -1,8 +1,8 @@
-# SPEC: Rename ralph → aloop + Node.js CLI
+# SPEC: Aloop — Autonomous Multi-Provider Coding Agent
 
 ## Desired Outcome
 
-Rebrand the entire project from "ralph" to "aloop" (agent loop), and replace the PowerShell `setup-discovery.ps1` with a Node.js CLI (`aloop`) for developer-machine tasks. Loop scripts (`loop.ps1`/`loop.sh`) stay as-is for portable runtime execution.
+Aloop is an autonomous coding agent orchestrator that runs plan-build-review loops with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops).
 
 ## Scope
 
@@ -454,6 +454,8 @@ The proof agent has full autonomy over what to prove and how. It receives:
 3. **How to generate it** — the agent runs the actual commands: launches servers, runs Playwright, captures screenshots, diffs against baselines, saves artifacts. It uses whatever tools make sense.
 
 4. **What to skip** — not everything needs proof. The agent explicitly notes what it chose not to prove and why.
+
+**Subagent delegation**: The proof agent does not need to be a vision model itself. It captures screenshots and delegates visual analysis to a `vision-reviewer` subagent (running on a vision-capable model like Gemini Flash Lite or Seed-2.0-Lite). Similarly, it can delegate accessibility checks to an `accessibility-checker` subagent or performance analysis to a `perf-analyzer`. The proof agent orchestrates; subagents analyze. See [Subagent Delegation](#subagent-delegation-model-per-task).
 
 **Output:**
 
@@ -2195,9 +2197,171 @@ The current hardcoded `plan → build × 3 → review` cycle is replaced by a **
 An **agent** is a named unit with:
 - **Prompt** — instructions for what the agent does (a `PROMPT_*.md` file or inline)
 - **Provider/model preference** (optional) — which harness and model to use (falls back to session default)
+- **Reasoning effort** (optional) — controls reasoning depth for models that support it (see Reasoning Effort section below)
 - **Transition rules** — what happens on success, failure, and repeated failure
 
 Agents are NOT hardcoded. `plan`, `build`, `review`, `steer` are just the default agents that ship with aloop. Users and the setup agent can define custom agents (e.g., `verify`, `debugger`, `security-audit`, `docs-generator`, `guard`).
+
+### Subagent Delegation (model-per-task)
+
+A core principle: **agents delegate specialized work to subagents running best-fit models**. The primary agent orchestrates, while subagents execute tasks that require different capabilities (vision, deep reasoning, fast cheap analysis, domain-specific models). This is powered by opencode's native `task` tool, which spawns child sessions with independent model selection.
+
+**How it works in opencode:**
+
+1. Agents are defined in `.opencode/agents/` as markdown files with YAML frontmatter
+2. Any agent can invoke the built-in `task` tool targeting another agent by name
+3. Each agent declares its own `model` — the child session runs on that model regardless of the parent's model
+4. Results flow back to the parent agent's context
+
+**Agent definition format** (`.opencode/agents/<name>.md`):
+```yaml
+---
+description: When to use this agent (required — opencode uses this to suggest delegation)
+mode: subagent              # "primary", "subagent", or "all"
+model: openrouter/google/gemini-3.1-flash-lite-preview
+tools:
+  write: false              # restrict tools per agent
+  edit: false
+  bash: true
+temperature: 0.2
+maxSteps: 10
+---
+System prompt for the agent goes here.
+Supports {file:path/to/context.md} for file inclusion.
+```
+
+Equivalent JSON config in `opencode.json`:
+```json
+{
+  "agent": {
+    "vision-reviewer": {
+      "description": "Analyzes screenshots for layout and visual issues",
+      "mode": "subagent",
+      "model": "openrouter/google/gemini-3.1-flash-lite-preview",
+      "tools": { "write": false, "edit": false },
+      "prompt": "You are a vision-based UI reviewer..."
+    }
+  }
+}
+```
+
+**Subagent permission control** — restrict which subagents an agent can invoke:
+```json
+{
+  "agent": {
+    "build": {
+      "permission": {
+        "task": { "*": "deny", "vision-reviewer": "allow", "test-runner": "allow" }
+      }
+    }
+  }
+}
+```
+
+**Default subagent catalog** — agents that ship with aloop:
+
+| Subagent | Model Selection | Purpose | Used By |
+|---|---|---|---|
+| `vision-reviewer` | Vision model (Gemini Flash Lite, Seed-2.0-Lite) | Screenshot analysis — layout, whitespace, visual regressions | proof, review |
+| `vision-comparator` | Vision model | Baseline vs current screenshot comparison | proof |
+| `code-critic` | High-reasoning model (xhigh effort) | Deep code review — subtle bugs, security, edge cases | review |
+| `test-writer` | Fast cheap model (medium effort) | Generate test cases from spec/code | build, verify |
+| `error-analyst` | Fast cheap model | Parse error logs, stack traces, suggest fixes | build (on failure) |
+| `spec-checker` | Reasoning model (high effort) | Verify implementation matches spec acceptance criteria | review |
+| `docs-extractor` | Fast cheap model | Extract API docs, type signatures, usage examples from code | docs-generator |
+| `security-scanner` | Reasoning model | OWASP top-10 analysis, dependency audit, secret detection | review, guard |
+| `accessibility-checker` | Vision model | WCAG compliance check on screenshots | proof, verify |
+| `perf-analyzer` | Fast cheap model | Analyze bundle sizes, lighthouse scores, load times | proof |
+
+**Example: review agent delegating to subagents**
+
+The review agent (running on e.g. Claude) encounters a frontend PR. Instead of trying to review everything itself, it delegates:
+
+1. **Structural review** — the review agent itself checks code quality, architecture, spec compliance
+2. **Visual review** → delegates to `vision-reviewer` (Gemini Flash Lite) with screenshots
+3. **Security scan** → delegates to `security-scanner` (reasoning model with xhigh effort)
+4. **Accessibility** → delegates to `accessibility-checker` (vision model) with screenshots
+5. **Aggregates results** — the review agent combines all subagent findings into a unified review verdict
+
+Each subagent runs on the optimal model for its task. The review agent only pays for expensive reasoning on the parts that need it.
+
+**Example: build agent with error recovery**
+
+The build agent hits a compile error. Instead of burning expensive tokens trying to understand a long stack trace:
+
+1. **Delegates** to `error-analyst` (cheap fast model) with the error output
+2. Gets back a structured diagnosis: root cause, affected files, suggested fix
+3. Applies the fix using its own (potentially more capable) model
+
+**Cost optimization**: Subagent delegation is also a cost strategy. A $2/M output reasoning model should not spend tokens parsing stack traces or generating boilerplate — delegate those to a $0.15/M model and reserve the expensive model for decisions that matter.
+
+**Alternative invocation methods** (besides the `task` tool):
+
+- **Commands with `subtask: true`** — e.g., `/vision-review` runs as a child session with its own model
+- **Bash tool** — agent calls `opencode run --agent vision-reviewer -f screenshot.png -- "prompt"` as a nested process
+- **Plugin tools** — custom tools that programmatically create sessions via the opencode SDK with per-message model override
+
+### Subagent Integration into Aloop
+
+Subagent delegation is supported natively by most providers (opencode, claude, copilot, codex) in similar ways. For now, only opencode is implemented — other providers are out of scope but the architecture accommodates them. The integration must be lightweight and conditional.
+
+**Agent files**: A small set of ready-to-use opencode agent definitions ships with aloop at `aloop/agents/opencode/`:
+
+```
+aloop/agents/opencode/
+  vision-reviewer.md
+  error-analyst.md
+  code-critic.md
+```
+
+These are static markdown files with hardcoded model references — no templating, no catalog, no compiler. Users can edit models, delete agents they don't want, or add their own.
+
+**Installation**: `aloop setup` copies them into the worktree's `.opencode/agents/` directory when the user has opencode configured as a provider. They get committed in the worktree alongside the code — same as `.vscode/` or `.editorconfig`. The directory is inert for non-opencode providers.
+
+**Conditional prompt injection via `{{SUBAGENT_HINTS}}`**: Loop prompt templates already use provider-specific variables (`{{PROVIDER_HINTS}}`). A new `{{SUBAGENT_HINTS}}` variable is populated only when the current provider supports delegation:
+
+- **opencode** → `SUBAGENT_HINTS` populated with available agents and delegation instructions
+- **claude / copilot / codex** → `SUBAGENT_HINTS` set to empty string for now (support planned, out of scope)
+
+Resolution in `loop.sh`:
+```bash
+if [[ "$PROVIDER" == "opencode" ]] && [[ -d "$WORKTREE/.opencode/agents" ]]; then
+  SUBAGENT_HINTS=$(cat ~/.aloop/templates/subagent-hints-${PHASE}.md)
+else
+  SUBAGENT_HINTS=""
+fi
+```
+
+Per-phase hint files list only the subagents relevant to that phase:
+
+```markdown
+<!-- subagent-hints-proof.md -->
+## Available Subagents
+You can delegate specialized tasks using the task tool:
+- **vision-reviewer** — analyzes screenshots for layout/visual issues (vision model)
+- **accessibility-checker** — WCAG compliance checks on screenshots (vision model)
+```
+
+```markdown
+<!-- subagent-hints-review.md -->
+## Available Subagents
+You can delegate specialized tasks using the task tool:
+- **code-critic** — deep code review for subtle bugs and security issues (reasoning model)
+- **vision-reviewer** — visual review of UI changes (vision model)
+```
+
+```markdown
+<!-- subagent-hints-build.md -->
+## Available Subagents
+You can delegate specialized tasks using the task tool:
+- **error-analyst** — parse error logs and stack traces, suggest fixes (fast cheap model)
+```
+
+This approach is:
+- **Zero config for users** — setup copies agents, loop injects hints, it just works
+- **Provider-agnostic in the prompts** — non-opencode providers see no subagent instructions
+- **Extensible later** — when agent-forge is ready, it replaces the static agent files with discovered/compiled ones
+- **No templating engine** — just file copies and string substitution already used by `loop.sh`
 
 ### Pipeline Configuration
 
@@ -2293,11 +2457,154 @@ The verify agent runs Playwright tests, captures screenshots and video. On failu
 
 Test expectations ideally originate from the **plan agent** (derived from the slice spec), not the build agent — so the build agent is implementing to a contract it didn't write.
 
+The verify agent itself delegates visual comparison to subagents — it captures screenshots via Playwright, then delegates to `vision-comparator` (vision model) for baseline diffing and to `accessibility-checker` for WCAG compliance. This means the verify agent can run on a cheap text model while getting vision-quality analysis via delegation.
+
+### Reasoning Effort Configuration
+
+Reasoning models (OpenAI GPT-5 series, Grok, and via proxy Anthropic/Gemini) support configurable reasoning depth. Different agents benefit from different reasoning effort levels — a review agent should think harder than a build agent.
+
+**OpenAI reasoning effort levels** (from the Responses API):
+
+| Level | Token allocation | Use case |
+|-------|-----------------|----------|
+| `none` | Disabled | Non-reasoning tasks |
+| `minimal` | ~10% of max_tokens | Trivial operations |
+| `low` | ~20% | Simple tasks |
+| `medium` | ~50% (default) | Balanced speed/quality |
+| `high` | ~80% | Complex analysis |
+| `xhigh` | ~95% | Maximum reasoning depth |
+
+- `xhigh` is supported on models after `gpt-5.1-codex-max`
+- `gpt-5.1` defaults to `none`; models before `gpt-5.1` default to `medium`
+- `gpt-5-pro` defaults to and only supports `high`
+- Source: https://developers.openai.com/api/reference/resources/responses/methods/create
+
+**Agent-level configuration** in pipeline YAML:
+
+```yaml
+# .aloop/agents/plan.yml
+agent: plan
+prompt: PROMPT_plan.md
+reasoning:
+  effort: high          # deep gap analysis needs thorough reasoning
+
+# .aloop/agents/build.yml
+agent: build
+prompt: PROMPT_build.md
+reasoning:
+  effort: medium        # speed matters for implementation
+
+# .aloop/agents/review.yml
+agent: review
+prompt: PROMPT_review.md
+reasoning:
+  effort: xhigh         # thorough quality gate, catch subtle bugs
+
+# .aloop/agents/proof.yml
+agent: proof
+prompt: PROMPT_proof.md
+reasoning:
+  effort: medium        # artifact generation, not heavy reasoning
+```
+
+**Recommended defaults** (when no per-agent config exists):
+
+| Agent | Default effort | Rationale |
+|-------|---------------|-----------|
+| plan | `high` | Gap analysis, spec comparison |
+| build | `medium` | Implementation speed |
+| review | `xhigh` | Catch subtle quality issues |
+| proof | `medium` | Artifact generation |
+| steer | `medium` | Spec/TODO updates |
+
+**OpenRouter as unified proxy**: OpenRouter normalizes reasoning config across providers via its `reasoning` parameter. `effort` works natively for OpenAI/Grok models; for Anthropic/Gemini models it maps to `max_tokens`. This means the same agent config works regardless of which provider the round-robin selects — the loop passes `reasoning.effort` and OpenRouter translates.
+
+```json
+// OpenRouter reasoning parameter (in API request body)
+{
+  "reasoning": {
+    "effort": "xhigh",       // OpenAI-style (string enum)
+    "max_tokens": 32000,     // Anthropic-style (token count) — alternative to effort
+    "exclude": false          // whether to exclude reasoning tokens from response
+  }
+}
+```
+
+Source: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+
+**Provider-specific pass-through**: When using opencode CLI, reasoning effort maps to the `--variant` flag. When using providers directly (via OpenRouter or native APIs), the reasoning config is passed in the request body.
+
+### Vision Model Configuration
+
+The proof and review phases can use vision-capable models for automated UI review — analyzing screenshots for layout issues, whitespace problems, spatial relationships, and visual regressions. This requires models that accept image input.
+
+**Configuring vision models in opencode**: Models not in opencode's built-in registry need their modalities declared in `opencode.json` so opencode knows to send images as vision payloads:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "openrouter": {
+      "models": {
+        "bytedance-seed/seed-2.0-lite": {
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "bytedance-seed/seed-2.0-mini": {
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "qwen/qwen3.5-9b": {
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        }
+      }
+    }
+  }
+}
+```
+
+Without the `modalities` declaration, opencode defaults to `"image": false` for custom-registered models, and image attachments are passed as tool-call file reads instead of vision payloads — resulting in "this model does not support image input" errors even when the model does support vision via its provider API.
+
+Models already in opencode's built-in registry (e.g., `google/gemini-3.1-flash-lite-preview`) have capabilities auto-populated from the [models.dev](https://models.dev) catalog and need no extra config.
+
+**Headless image attachment**: In non-interactive `opencode run` mode, images are attached via the `-f` flag:
+```bash
+opencode run -m openrouter/google/gemini-3.1-flash-lite-preview \
+  -f screenshot.png -- "Analyze this UI screenshot..."
+```
+
+**Vision model comparison** (tested on 1920x1080 dashboard screenshot, spatial analysis prompt):
+
+| Model | Cost (input) | Spatial Quality | Notes |
+|---|---|---|---|
+| Seed-2.0-Lite | $0.25/M | Excellent — precise %, identified whitespace severity | Best structured output, no hallucinations |
+| Seed-2.0-Mini | $0.10/M | Very good — per-element padding estimates | Minor math error in one coordinate |
+| Gemini 3.1 Flash Lite | $0.25/M | Good — clean table format, correct proportions | Has ZDR via Google Vertex AI |
+| Qwen3.5-9B | $0.05/M | Good — correct structure, reasonable estimates | Cheapest option |
+| gpt-5-nano | free | Decent — correct proportions, less granular | Good baseline |
+| nemotron-nano-vl | free | Moderate | Hallucinated non-existent UI elements |
+
+**Important caveats**:
+- Pixel size estimates **drift significantly** across models — no model produces reliable absolute pixel measurements. Treat estimates as directional (relative proportions and "too much/too little whitespace") rather than precise pixel values.
+- "Stealth" or test models (e.g., models from unknown providers marked as free/testing) may collect all input data. Do not use them for production workloads with sensitive UI content.
+
+**ZDR (Zero Data Retention) for vision**:
+
+| Provider | ZDR covers images? | How to enable |
+|---|---|---|
+| **Anthropic (direct API)** | Yes — all inputs including images | Enterprise agreement with Anthropic |
+| **AWS Bedrock** | Yes — architectural default | No opt-in needed |
+| **Google Vertex AI / Gemini** | Yes — with config (disable caching, avoid File API) | ZDR opt-out form + invoiced billing |
+| **OpenRouter** | Depends on downstream provider | `zdr: true` per-request flag, routes to ZDR endpoints |
+| **OpenAI (direct + Azure)** | **No** — images explicitly excluded from ZDR | N/A |
+| **Mistral** | Likely but unconfirmed | Contact sales |
+| **ByteDance (Seed models)** | Unknown | Investigate before production use |
+
+For production visual review with data sensitivity requirements, use **Anthropic Claude** (direct API with ZDR), **AWS Bedrock** (default no-retention), or **Gemini via Vertex AI** (ZDR with config). OpenAI's ZDR explicitly carves out image inputs.
+
 ### Implementation Notes
 
 - Pipeline config lives in `.aloop/pipeline.yml` (or inline in `config.yml`)
 - Default pipeline (plan-build-review) is generated if no config exists — backward compatible
-- Agent definitions live in `.aloop/agents/` — each is a YAML file with prompt reference, provider preference, transition rules
+- Agent definitions live in `.aloop/agents/` — each is a YAML file with prompt reference, provider preference, reasoning effort, and transition rules
 - The loop script becomes a generic agent runner: read pipeline, resolve next agent, invoke, check transition rules, repeat
 - Runtime pipeline mutations are applied via the host-side monitor (same mechanism as steering)
 - Pipeline state (current position, escalation counts, mutation history) is persisted in `status.json`

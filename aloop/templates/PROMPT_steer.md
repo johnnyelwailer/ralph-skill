@@ -23,12 +23,15 @@ Read `STEERING.md`, update affected spec files and `TODO.md` to reflect the new 
 
 2. **Update TODO.md**
    - Mark tasks invalidated by the steering as `[~]` (cancelled) with a short reason
-   - Add new tasks the steering requires (they will be re-prioritized by the next plan iteration)
+   - Add new tasks the steering requires. **Position them based on the urgency expressed in the steering message:**
+     - If the steering says critical/blocking/urgent/do-this-first → insert at the **top** of "In Progress" as the first unchecked `[ ]` item (the build agent picks the first unchecked task, so position = priority)
+     - If the steering describes normal-priority work → insert after existing `[review]` tasks but before lower-priority items
+     - If the steering describes future/backlog work ("eventually", "later", "P2") → add to the appropriate "Up Next" section
    - If the steering says a completed `[x]` task is NOT actually implemented, **reopen it**: change `[x]` to `[ ]` and add `(reopened: not actually implemented — <reason from steering>)`
    - Otherwise leave completed `[x]` tasks untouched
-   - Do NOT re-prioritize the whole plan — that is the next plan iteration's job
+   - Do NOT re-prioritize unrelated tasks
 
-3. **Archive `STEERING.md`** — append its full contents (with timestamp) to `STEERING_LOG.md`, then delete `STEERING.md` from the work directory. This ensures steering history is never lost.
+3. **Delete `STEERING.md`** to signal completion.
 
 4. **Commit** all changes with message: `chore(steer): apply steering — <one-line summary>`
 
