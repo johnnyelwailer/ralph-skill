@@ -17,6 +17,9 @@ import {
   requestRebase,
   flagForHuman,
   processPrLifecycle,
+  applyTriageConfidenceFloor,
+  classifyTriageComment,
+  runTriageClassificationLoop,
   isWaveComplete,
   advanceWave,
   parseChildSessionCost,
@@ -35,6 +38,7 @@ import {
   type AgentReviewResult,
   type BudgetDeps,
   type BudgetSummary,
+  type TriageComment,
 } from './orchestrate.js';
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
@@ -636,6 +640,74 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const allOutput = logs.join('\n');
     assert.ok(allOutput.includes('Issues:'));
     assert.ok(allOutput.includes('2 (2 waves)'));
+  });
+});
+
+describe('triage classification loop', () => {
+  function triageComment(overrides: Partial<TriageComment> = {}): TriageComment {
+    return {
+      id: 1,
+      author: 'pj',
+      body: 'Please update the docs to include the new endpoint.',
+      context: 'issue',
+      ...overrides,
+    };
+  }
+
+  it('classifies explicit instructions as actionable', () => {
+    const result = classifyTriageComment(triageComment());
+    assert.equal(result.classification, 'actionable');
+    assert.ok(result.confidence >= 0.7);
+  });
+
+  it('classifies direct questions as question', () => {
+    const result = classifyTriageComment(triageComment({
+      id: 2,
+      body: 'Can you explain why this endpoint uses polling?',
+    }));
+    assert.equal(result.classification, 'question');
+    assert.ok(result.confidence >= 0.7);
+  });
+
+  it('classifies low-signal acknowledgements as out_of_scope', () => {
+    const result = classifyTriageComment(triageComment({ id: 3, body: 'Thanks!' }));
+    assert.equal(result.classification, 'out_of_scope');
+    assert.ok(result.confidence >= 0.7);
+  });
+
+  it('forces needs_clarification when confidence is below 0.7', () => {
+    const result = classifyTriageComment(triageComment({
+      id: 4,
+      body: 'hmm maybe we should use websockets instead',
+    }));
+    assert.equal(result.classification, 'needs_clarification');
+    assert.ok(result.confidence < 0.7);
+    assert.ok(result.reasoning.includes('forcing needs_clarification'));
+  });
+
+  it('applyTriageConfidenceFloor keeps high-confidence classifications unchanged', () => {
+    const result = applyTriageConfidenceFloor({
+      comment_id: 5,
+      classification: 'question',
+      confidence: 0.8,
+      reasoning: 'High confidence question.',
+    });
+    assert.equal(result.classification, 'question');
+    assert.equal(result.confidence, 0.8);
+  });
+
+  it('runTriageClassificationLoop classifies all comments in a batch', () => {
+    const results = runTriageClassificationLoop([
+      triageComment({ id: 10, body: 'Please add pagination to this endpoint.' }),
+      triageComment({ id: 11, body: 'What is the expected response shape?' }),
+      triageComment({ id: 12, body: 'LGTM' }),
+      triageComment({ id: 13, body: 'maybe adjust this?' }),
+    ]);
+    assert.equal(results.length, 4);
+    assert.deepStrictEqual(
+      results.map((r) => r.classification),
+      ['actionable', 'question', 'out_of_scope', 'needs_clarification'],
+    );
   });
 });
 

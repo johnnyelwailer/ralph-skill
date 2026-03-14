@@ -58,6 +58,23 @@ export interface OrchestratorState {
   updated_at: string;
 }
 
+export type TriageClassification = 'actionable' | 'needs_clarification' | 'question' | 'out_of_scope';
+
+export interface TriageComment {
+  id: number;
+  author: string;
+  body: string;
+  created_at?: string;
+  context?: 'issue' | 'pr';
+}
+
+export interface TriageClassificationResult {
+  comment_id: number;
+  classification: TriageClassification;
+  confidence: number;
+  reasoning: string;
+}
+
 export interface OrchestrateDeps {
   existsSync: (path: string) => boolean;
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
@@ -404,6 +421,101 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   if (result.state.budget_cap !== null) {
     console.log(`  Budget cap:   $${result.state.budget_cap.toFixed(2)}`);
   }
+}
+
+export function applyTriageConfidenceFloor(
+  result: TriageClassificationResult,
+  floor = 0.7,
+): TriageClassificationResult {
+  if (result.confidence >= floor) {
+    return result;
+  }
+
+  return {
+    ...result,
+    classification: 'needs_clarification',
+    reasoning: `${result.reasoning} Confidence ${result.confidence.toFixed(2)} is below ${floor.toFixed(2)}; forcing needs_clarification.`,
+  };
+}
+
+/**
+ * Deterministic triage classifier used by orchestrator monitor loops.
+ * The result is always normalized through applyTriageConfidenceFloor().
+ */
+export function classifyTriageComment(comment: TriageComment): TriageClassificationResult {
+  const rawBody = comment.body.trim();
+  const normalized = rawBody.toLowerCase();
+
+  const lowSignalPatterns = [
+    /^(thanks|thank you|lgtm|sgtm|nice work|great work|looks good|ok|okay|ack)[!. ]*$/i,
+    /^(\+1|👍|✅)[!. ]*$/i,
+  ];
+  const ambiguityPatterns = [
+    /\b(maybe|perhaps|not sure|unclear|i wonder|hmm|might|possibly)\b/i,
+    /\bshould we\b/i,
+  ];
+  const questionPatterns = [
+    /\?$/,
+    /^\s*(can|could|would|should|is|are|why|what|how|when|where)\b/i,
+  ];
+  const actionablePatterns = [
+    /\b(please|must|need to|required|fix|implement|add|remove|rename|switch|change|update|refactor)\b/i,
+    /\b(do|use)\s+[a-z0-9]/i,
+  ];
+
+  let result: TriageClassificationResult;
+  if (normalized.length === 0) {
+    result = {
+      comment_id: comment.id,
+      classification: 'out_of_scope',
+      confidence: 0.95,
+      reasoning: 'Empty comment; no actionable instruction.',
+    };
+  } else if (lowSignalPatterns.some((pattern) => pattern.test(normalized))) {
+    result = {
+      comment_id: comment.id,
+      classification: 'out_of_scope',
+      confidence: 0.9,
+      reasoning: 'Low-signal acknowledgment with no implementation instruction.',
+    };
+  } else if (ambiguityPatterns.some((pattern) => pattern.test(normalized))) {
+    result = {
+      comment_id: comment.id,
+      classification: 'needs_clarification',
+      confidence: 0.65,
+      reasoning: 'Comment is ambiguous or speculative and should be clarified before implementation.',
+    };
+  } else if (questionPatterns.some((pattern) => pattern.test(rawBody)) && !actionablePatterns.some((pattern) => pattern.test(normalized))) {
+    result = {
+      comment_id: comment.id,
+      classification: 'question',
+      confidence: 0.85,
+      reasoning: 'Comment asks a question rather than giving a direct implementation instruction.',
+    };
+  } else if (actionablePatterns.some((pattern) => pattern.test(normalized))) {
+    result = {
+      comment_id: comment.id,
+      classification: 'actionable',
+      confidence: 0.9,
+      reasoning: 'Comment contains explicit implementation direction.',
+    };
+  } else {
+    result = {
+      comment_id: comment.id,
+      classification: 'needs_clarification',
+      confidence: 0.6,
+      reasoning: 'Unable to confidently classify intent from comment text.',
+    };
+  }
+
+  return applyTriageConfidenceFloor(result);
+}
+
+/**
+ * Classify a batch of new comments in one orchestrator triage pass.
+ */
+export function runTriageClassificationLoop(comments: TriageComment[]): TriageClassificationResult[] {
+  return comments.map((comment) => classifyTriageComment(comment));
 }
 
 // --- Child-loop dispatch engine ---
