@@ -3,7 +3,11 @@
 ## Current Phase: P2 Dashboard UX + Orchestrator + GitHub Integration + Pipeline
 
 ### In Progress
-_(none)_
+- [ ] [review] Gate 1: `orchestrate.ts` exports triage helpers but never invokes them in the orchestrator monitor loop. Wire a real monitor-cycle triage step that polls `aloop gh issue-comments`/`pr-comments`, applies triage per issue, and persists `last_comment_check`/`triage_log` updates. (priority: high)
+- [ ] [review] Gate 1: `applyTriageResultsToIssue` does not implement spec-required comment actions for `needs_clarification` and `question` (no follow-up/answer comment, no triage footer marker, no authorship filtering for bot/external comments). Implement these behaviors per SPEC triage acceptance criteria. (priority: high)
+- [ ] [review] Gate 2: `orchestrate.test.ts` triage action tests (around lines 728-791) assert partial `ghCalls.includes(...)` only and cover only two classes. Add exact argument assertions and cover `question`/`out_of_scope` plus `deps.execGh` error-path behavior. (priority: high)
+- [ ] [review] Gate 3: `gh.ts` branch coverage is 78.46% (<80% threshold) from `node --experimental-test-coverage` on `gh.test.ts`. Add branch tests for uncovered paths (e.g., `issue-label` remove branch, `parseGhOutput` non-array/empty list branches, config parsing branches) until `gh.ts` branch coverage is >=80%. (priority: high)
+- [ ] [review] Gate 6: Proof manifest references missing artifacts (`test-output.txt`, `triage-tests.txt`, `typecheck-output.txt`, `triage-orchestrate-diff.txt`, `triage-gh-diff.txt` not present in workspace). Regenerate and publish the cited proof files or update manifest to verifiable artifact paths. (priority: high)
 
 ### Up Next
 
