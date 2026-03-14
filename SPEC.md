@@ -914,94 +914,208 @@ The current dashboard uses basic shadcn components with tabs per section. Redesi
 
 ### Concept
 
-A new meta-loop mode that decomposes a spec into GitHub issues, launches independent child loops per issue (each in its own worktree/branch), reviews the resulting PRs against hard proof criteria, and merges approved work into an agent-driven trunk branch. The human promotes agent/trunk to main when satisfied.
-
-This turns the existing single-loop architecture into a **fan-out/fan-in** pattern:
+A meta-loop mode that decomposes a spec into **vertical slices** as GitHub issues with sub-issue hierarchy, launches independent child loops per sub-issue (each in its own worktree/branch), reviews the resulting PRs against hard proof criteria, and merges approved work into an agent-driven trunk branch. The human promotes agent/trunk to main when satisfied.
 
 ```
-                           SPEC.md
-                              │
-                      ┌───────┴───────┐
-                      │  ORCHESTRATOR  │   meta-loop
-                      │  plan + split  │
-                      └───────┬───────┘
-                              │
-                creates GH issues from spec
-                              │
-              ┌───────┬───────┼───────┬───────┐
-              ▼       ▼       ▼       ▼       ▼
-           Issue#1  Issue#2  Issue#3  Issue#4  Issue#5
-              │       │       │       │       │
-           loop-1  loop-2  loop-3  loop-4  loop-5
-          (worktree)(worktree) ...  (each plan-build-review)
-              │       │       │       │       │
-            PR#1    PR#2    PR#3    PR#4    PR#5
-              │       │       │       │       │
-              └───────┴───────┼───────┴───────┘
-                              │
-                      ┌───────┴───────┐
-                      │  ORCHESTRATOR  │
-                      │  review+merge  │
-                      └───────┬───────┘
-                              │
-                       agent/trunk branch
-                              │
-                      (human promotes to main)
+               SPEC.md (or specs/*.md)
+                        │
+                ┌───────┴───────┐
+                │  ORCHESTRATOR  │
+                │   decompose    │
+                └───────┬───────┘
+                        │
+             creates vertical slices
+             as parent + sub-issues
+                        │
+         ┌──────────────┼──────────────┐
+         ▼              ▼              ▼
+    Parent #10     Parent #20     Parent #30
+   "User signup"  "Create posts" "Admin panel"
+     │  │  │        │  │            │  │
+    #11 #12 #13   #21 #22        #31 #32
+     │   │   │     │   │          │   │
+   loop loop loop loop loop    loop loop
+     │   │   │     │   │          │   │
+   PR#1 PR#2 ...  PR#4 PR#5    PR#6 PR#7
+     └───┴───┴─────┴───┴────────┴───┘
+                    │
+            ┌───────┴───────┐
+            │  ORCHESTRATOR  │
+            │  gate + merge  │
+            └───────┬───────┘
+                    │
+             agent/trunk branch
+                    │
+            (human promotes to main)
 ```
 
-### Orchestrator Lifecycle
+### Multi-File Specs
 
-#### Phase 1: Plan + Split
+Single `SPEC.md` breaks down at scale. The orchestrator supports multiple spec files:
 
-The orchestrator reads the spec and decomposes it into GitHub issues.
+```
+specs/
+  SPEC.md              ← master spec (architecture, constraints, non-goals)
+  auth.md              ← vertical slice group
+  posts.md             ← vertical slice group
+  admin.md             ← vertical slice group
+```
 
-1. Read `SPEC.md` (or a spec file specified in config)
-2. Invoke an agent (plan prompt) to decompose the spec into discrete work units
-3. Build a **dependency graph** — which issues can run in parallel vs which must be sequential
-4. Assign **concurrency waves**:
-   - Wave 1: independent issues (no file overlap, no logical dependency)
-   - Wave 2: depends on wave 1 outputs
-   - Wave N: depends on wave N-1
-5. Create issues on GitHub via `gh issue create`:
-   - Title: concise work unit description
-   - Body: spec excerpt, acceptance criteria, scope boundaries, file ownership hints
-   - Labels: `aloop/auto`, `aloop/wave-1`, priority label
-   - Milestone: links to the spec version / session
+The master spec defines the system — architecture, constraints, non-goals. Each additional spec file defines a group of related vertical slices. The orchestrator reads all spec files and produces the full issue set.
+
+Single `SPEC.md` still works — multi-file is optional for larger projects.
+
+### Vertical Slice Decomposition
+
+The orchestrator decomposes the spec into **vertical slices** — independently shippable, end-to-end user-facing features that cut through the full stack.
+
+**Correct decomposition** (vertical):
+```
+Parent #10: "User can sign up and log in"
+  Sub-issue #11: "Registration form + API endpoint + DB schema + validation"
+  Sub-issue #12: "Login flow + JWT issuance + session cookie"
+  Sub-issue #13: "Password reset email flow end-to-end"
+```
+
+**Wrong decomposition** (horizontal layers):
+```
+❌ Parent: "Database models"           ← all models, no user-facing outcome
+❌ Parent: "API endpoints"             ← all APIs, no shippable feature
+❌ Parent: "Frontend components"       ← all UI, can't run independently
+```
+
+Sub-issues should also be vertical where possible — each one delivers a runnable piece of the parent feature. Sometimes horizontal groundwork is unavoidable (e.g., "Set up database schema and ORM config" before any feature can use it). These are explicitly marked as **foundation** issues with dependencies.
+
+### Three-Level Hierarchy
+
+| Level | GitHub entity | What it represents | Who creates it |
+|-------|-------|---------|---|
+| Spec | `SPEC.md` / `specs/*.md` | Intent — what & why | Human |
+| Slice | Parent issue | Vertical slice — independently shippable feature | Orchestrator (decompose agent) |
+| Work unit | Sub-issue | Scoped piece of a slice — gets its own child loop | Orchestrator (decompose agent) |
+| Task | Child's `TODO.md` | Implementation steps within a work unit | Child loop's plan agent |
+
+The spec is the authoritative intent. Parent issues are vertical slices derived from the spec. Sub-issues are scoped work units within each slice. Tasks are ephemeral implementation steps that live and die within a child loop.
+
+### GitHub Sub-Issues
+
+Sub-issues are GA (since March 2025), available on all GitHub plans. Limits: 100 sub-issues per parent, 8 levels deep, cross-repo within org.
+
+**Creation via `gh api`** (no native `gh issue create --parent` yet):
 
 ```bash
-gh issue create \
-  --title "Implement provider health subsystem in loop.ps1" \
-  --body "$(cat issue-body.md)" \
-  --label "aloop/auto,aloop/wave-1,P1" \
-  --milestone "v0.2"
+# Create parent (vertical slice)
+PARENT=$(gh api --method POST /repos/OWNER/REPO/issues \
+  -f title="User can sign up and log in" \
+  -f body="$(cat slice-body.md)" \
+  --jq '.number')
+
+# Create sub-issue (work unit)
+CHILD_RESULT=$(gh api --method POST /repos/OWNER/REPO/issues \
+  -f title="Registration form + API + DB schema" \
+  -f body="$(cat workunit-body.md)")
+CHILD_ID=$(echo "$CHILD_RESULT" | jq -r '.id')
+
+# Link as sub-issue (uses parent NUMBER but child internal ID)
+gh api --method POST /repos/OWNER/REPO/issues/$PARENT/sub_issues \
+  -f sub_issue_id="$CHILD_ID"
 ```
 
-#### Phase 2: Dispatch
+**Gotchas**: The `sub_issue_id` requires the internal numeric `id` (not the `#number`). Occasional 500s on the sub-issues endpoint — retry logic needed. No atomic create-with-children — must create then link.
 
-The orchestrator picks up open issues and launches child loops.
+### Dependency Tracking
 
-1. Query: `gh issue list --label aloop/auto --state open --json number,title,labels`
-2. Filter to current wave (only dispatch wave N when wave N-1 is fully merged)
-3. For each issue (up to **concurrency cap**):
+Dependencies are tracked **in the issues themselves**, not just in orchestrator state. This makes them visible to humans and survives orchestrator restarts.
+
+**In issue body** (machine-readable metadata block):
+```markdown
+## Scope
+Registration form with email/password, API endpoint for account creation,
+database schema for users table. Includes input validation and error handling.
+
+## Acceptance Criteria
+- [ ] User can fill out registration form and submit
+- [ ] API validates input and creates user record
+- [ ] Duplicate email returns clear error
+- [ ] Success redirects to login page
+
+## Dependencies
+- Blocked by #14 (database schema setup)
+- Blocked by #15 (API framework bootstrap)
+
+<!-- aloop:meta
+wave: 2
+depends_on: [14, 15]
+files: [src/pages/register/*, src/api/auth/*, prisma/schema.prisma]
+slice_parent: 10
+-->
+```
+
+The `<!-- aloop:meta -->` HTML comment is invisible in the GitHub UI but machine-parseable by the orchestrator. Dependencies are also stated in human-readable form above it.
+
+### Orchestrator Phases
+
+The orchestrator itself is agent-powered at every phase — no deterministic decomposition or scheduling, since the dependency graph is semantic (no code exists yet to analyze structurally).
+
+#### Phase 1: Decompose
+
+The decompose agent reads the spec(s) and the current repo state, then produces the full issue hierarchy.
+
+1. Read all spec files (`SPEC.md` or `specs/*.md`)
+2. Read the codebase to understand what already exists
+3. Read existing GitHub issues (if resuming or extending)
+4. Produce vertical slices as parent issues, each with sub-issues
+5. For each issue: title, body with scope + acceptance criteria, dependency metadata, file ownership hints, wave assignment
+6. Create issues on GitHub via `gh api` with sub-issue linking
+7. Labels: `aloop/auto`, `aloop/wave-N`, `aloop/slice`
+
+The decompose agent reasons about:
+- **Vertical slicing** — each parent is an independently shippable user-facing feature
+- **Sub-issue granularity** — sized for 1-3 hours of human work equivalent (~5-15 build iterations per child loop)
+- **Dependencies** — semantic analysis: "auth must exist before protected routes"
+- **Parallelism** — which sub-issues touch completely separate files/modules
+- **Foundation work** — necessary horizontal groundwork explicitly marked and scheduled early
+
+#### Phase 2: Schedule
+
+The schedule agent builds the dependency graph and assigns waves. This is agent-powered because dependencies are semantic — with no code yet, only an agent can reason about "JWT validation must exist before session middleware can use it."
+
+1. Read all created issues and their dependency metadata
+2. Build a dependency graph (topological sort with semantic validation)
+3. Assign waves:
+   - Wave 1: foundation work + independent slices
+   - Wave 2+: slices that depend on wave 1 outputs
+4. Detect file ownership conflicts — two sub-issues in the same wave touching the same files → move one to next wave
+5. Update issue labels with wave assignments
+6. Write the schedule to `orchestrator.json`
+
+Wave scheduling rules:
+- Sub-issues in the same wave MAY run in parallel
+- Wave N+1 sub-issues only dispatch after their specific dependencies are merged (not necessarily ALL of wave N)
+- File ownership hints prevent parallel edits to the same files
+
+#### Phase 3: Dispatch
+
+The orchestrator picks up open sub-issues and launches child loops.
+
+1. Query sub-issues whose dependencies are all merged
+2. For each dispatchable sub-issue (up to **concurrency cap**):
    - Create branch: `aloop/issue-<number>`
    - Create worktree: `~/.aloop/sessions/<session-id>/worktrees/issue-<number>/`
    - Seed the child's `TODO.md` from the issue body
-   - Launch child loop (`loop.ps1` in `plan-build-review` mode)
+   - Launch child loop in `plan-build-review` mode
    - Track child PID + session in orchestrator state
-4. Remaining issues queue until a slot opens
+3. Remaining issues queue until a slot opens or dependencies are met
 
-**Concurrency cap**: Configurable, default 3. Prevents provider saturation. Works with the provider health subsystem — if providers are in cooldown, child loops naturally pause.
+**Concurrency cap**: Configurable, default 3. Prevents provider saturation.
 
-#### Phase 3: Monitor
+#### Phase 4: Monitor
 
 The orchestrator polls child loop status continuously.
 
 1. Read each child's `status.json` for state (running, completed, stuck, limit_reached)
-2. Detect stuck children (stuck_count >= threshold) → options:
-   - Reassign to different provider
-   - Add steering instruction
-   - Kill and reassign to a new loop
-3. Detect completed children → child creates PR automatically:
+2. Detect stuck children (stuck_count >= threshold) → steer, reassign provider, or kill and retry
+3. Detect completed children → child creates PR:
    ```bash
    gh pr create \
      --base agent/trunk \
@@ -1010,11 +1124,11 @@ The orchestrator polls child loop status continuously.
      --body "Closes #<number>\n\n<auto-generated summary>"
    ```
 4. Detect failed children → log, optionally retry with different provider mix
-5. When a slot opens → dispatch next queued issue
+5. When a slot opens → dispatch next eligible sub-issue
 
-#### Phase 4: Review + Merge
+#### Phase 5: Gate + Merge
 
-The orchestrator reviews each PR against hard proof criteria before merging.
+The orchestrator reviews each PR against hard criteria before merging.
 
 **Automated gates (must all pass):**
 
@@ -1022,76 +1136,42 @@ The orchestrator reviews each PR against hard proof criteria before merging.
 |------|--------|-------------|
 | CI pipeline | `gh pr checks <number> --watch` | Block merge |
 | Test coverage | Parse coverage report from CI artifacts | Block if below threshold |
-| No merge conflicts | `gh pr view <number> --json mergeable` | Send back to child loop for rebase |
-| No spec regression | `grep`-based contract checks | Block merge |
-| Screenshot diff (UI) | Playwright visual comparison before/after | Flag for human review if delta > threshold |
+| No merge conflicts | `gh pr view <number> --json mergeable` | Send back for rebase |
+| No spec regression | Contract checks against spec | Block merge |
+| Screenshot diff (UI) | Playwright visual comparison | Flag for human if delta > threshold |
 | Lint / type check | CI step | Block merge |
 
 **Agent review gate:**
-- Invoke an agent with the review prompt against the PR diff (`gh pr diff <number>`)
-- Agent checks: code quality, spec compliance, no scope creep, test adequacy
-- Agent outputs: approve, request-changes, or flag-for-human
+- Invoke review agent against the PR diff (`gh pr diff <number>`)
+- Checks: code quality, spec compliance, no scope creep, test adequacy
+- Outputs: approve, request-changes, or flag-for-human
 
 **Merge strategy:**
 - Squash merge into `agent/trunk`: `gh pr merge <number> --squash --delete-branch`
-- If merge conflict: reopen the issue, child loop rebases and re-submits
-- After merge: next wave issues may become unblocked
+- If merge conflict: child loop rebases and re-submits (max 2 attempts before human flag)
+- After merge: downstream sub-issues may become unblocked → dispatch them
 
-#### Phase 5: Complete
+#### Phase 6: Replan
 
-1. All issues closed, all PRs merged to `agent/trunk`
-2. Generate orchestrator report:
-   - Issues created / completed / failed
-   - Total time, provider usage breakdown
+Triggered when a wave completes, when the spec changes, or when problems emerge.
+
+1. **Spec change detected** (git diff on spec files) → decompose agent re-reads spec, diffs against existing issues, proposes: new issues to create, existing issues to close/modify, wave reassignments
+2. **Wave completion** → schedule agent re-evaluates remaining issues, adjusts waves based on what was learned
+3. **User creates issue** with `aloop/auto` label → orchestrator absorbs it into the current plan, assigns wave and dependencies
+4. **Persistent failures** → replan agent may split a failing sub-issue into smaller pieces, or merge multiple small issues
+
+The spec files are the authoritative intent. Issues are the live execution plan. They can temporarily diverge (user adds an ad-hoc issue, agent discovers unexpected work) but replan reconciles them.
+
+#### Phase 7: Complete
+
+1. All sub-issues closed, all PRs merged to `agent/trunk`
+2. Close parent issues (all sub-issues done)
+3. Generate orchestrator report:
+   - Slices created / completed / failed
+   - Total time, provider usage breakdown, cost estimates
    - Coverage delta (before/after)
    - File change summary
-3. Notify human (or just leave `agent/trunk` ready for review)
-
-### Issue Granularity
-
-Issues are **feature-level**, not task-level:
-
-| Level | Where | Example |
-|-------|-------|---------|
-| Spec | `SPEC.md` | "Implement provider health subsystem" |
-| Issue | GitHub Issue | "Add per-provider health files with exponential backoff" |
-| Task | Child's `TODO.md` | "Create `Update-ProviderHealth` function with file locking" |
-
-The orchestrator creates issues. Each child loop creates its own `TODO.md` tasks within its issue scope.
-
-### Dependency Graph + Wave Scheduling
-
-The orchestrator's planner identifies dependencies between issues:
-
-```yaml
-issues:
-  - id: 1
-    title: "Rename ralph → aloop directory tree"
-    wave: 1
-    files: ["aloop/**", "install.ps1"]
-
-  - id: 2
-    title: "Implement aloop resolve CLI"
-    wave: 2
-    depends_on: [1]
-    files: ["aloop/cli/**"]
-
-  - id: 3
-    title: "Add provider health to loop.ps1"
-    wave: 1          # no dependency on rename
-    files: ["aloop/bin/loop.ps1"]
-
-  - id: 4
-    title: "Dashboard E2E tests"
-    wave: 1          # independent
-    files: ["aloop/cli/dashboard/e2e/**"]
-```
-
-Wave scheduling rules:
-- Issues in the same wave MAY run in parallel
-- Wave N+1 issues only dispatch after ALL wave N issues are merged
-- File ownership hints help the planner avoid overlapping scopes
-- If two issues in the same wave touch the same files → move one to the next wave
+4. Notify human (or leave `agent/trunk` ready for review)
 
 ### Agent/Trunk Branch
 
@@ -1110,32 +1190,49 @@ Stored at `~/.aloop/sessions/<orchestrator-session-id>/orchestrator.json`:
 
 ```json
 {
-  "spec_file": "SPEC.md",
+  "spec_files": ["SPEC.md"],
   "trunk_branch": "agent/trunk",
   "concurrency_cap": 3,
-  "current_wave": 1,
-  "issues": [
+  "slices": [
     {
-      "number": 42,
-      "title": "Implement provider health subsystem",
-      "wave": 1,
-      "state": "merged",
-      "child_session": "ralph-skill-20260227-issue42",
-      "pr_number": 15,
-      "depends_on": []
+      "number": 10,
+      "title": "User can sign up and log in",
+      "type": "slice",
+      "state": "in_progress",
+      "sub_issues": [
+        {
+          "number": 11,
+          "title": "Registration form + API + DB schema",
+          "wave": 2,
+          "state": "merged",
+          "child_session": "myapp-20260315-issue11",
+          "pr_number": 3,
+          "depends_on": [14]
+        },
+        {
+          "number": 12,
+          "title": "Login flow + JWT + session cookie",
+          "wave": 2,
+          "state": "in_progress",
+          "child_session": "myapp-20260315-issue12",
+          "pr_number": null,
+          "depends_on": [14, 15]
+        }
+      ]
     },
     {
-      "number": 43,
-      "title": "Add aloop status CLI subcommand",
-      "wave": 2,
-      "state": "in_progress",
-      "child_session": "ralph-skill-20260227-issue43",
-      "pr_number": null,
-      "depends_on": [42]
+      "number": 14,
+      "title": "Database schema + ORM setup",
+      "type": "foundation",
+      "wave": 1,
+      "state": "merged",
+      "child_session": "myapp-20260315-issue14",
+      "pr_number": 1,
+      "depends_on": []
     }
   ],
-  "completed_waves": [1],
-  "created_at": "2026-02-27T12:00:00Z"
+  "created_at": "2026-03-15T12:00:00Z",
+  "last_replan": null
 }
 ```
 
@@ -1241,9 +1338,14 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 
 ### Acceptance Criteria
 
-- [ ] Orchestrator can decompose a spec into GitHub issues with dependency graph and wave assignment
-- [ ] Issues are created via `gh issue create` with `aloop/auto` label and wave labels
-- [ ] Child loops are launched per-issue, each in its own worktree and branch
+- [ ] Orchestrator decomposes spec(s) into vertical slices as parent issues with sub-issues
+- [ ] Sub-issues created via `gh api` with sub-issue linking to parent
+- [ ] Decomposition is vertical-slice-first — each parent is an independently shippable feature
+- [ ] Dependencies tracked in issue bodies (`<!-- aloop:meta -->`) and orchestrator state
+- [ ] Foundation (horizontal groundwork) issues explicitly marked and scheduled in early waves
+- [ ] Agent-powered scheduling builds dependency graph and assigns waves
+- [ ] Sub-issues dispatch when their specific dependencies are merged (not entire wave)
+- [ ] Child loops launched per sub-issue, each in its own worktree and branch
 - [ ] Concurrency cap limits simultaneous child loops (default 3)
 - [ ] Child loops create PRs targeting `agent/trunk` on completion
 - [ ] Orchestrator reviews PRs against automated gates (CI, coverage, conflicts, lint)
@@ -1251,16 +1353,18 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 - [ ] Approved PRs are squash-merged into `agent/trunk`
 - [ ] Rejected PRs reopen their issue with review comments for the child loop to address
 - [ ] Merge conflicts trigger automatic rebase attempts (max 2 before human flag)
-- [ ] Wave N+1 only dispatches after all wave N issues are merged
 - [ ] `aloop orchestrate --plan-only` creates issues without launching loops
-- [ ] Orchestrator state is persisted in `orchestrator.json`
-- [ ] `aloop status` shows orchestrator tree (orchestrator → children → issues → PRs)
-- [ ] Final report includes: issues created/completed/failed, time, provider usage, cost estimates
+- [ ] Orchestrator state persisted in `orchestrator.json` with slice hierarchy
+- [ ] `aloop status` shows orchestrator tree (orchestrator → slices → sub-issues → PRs)
+- [ ] Final report includes: slices created/completed/failed, time, provider usage, cost estimates
 - [ ] Provider health subsystem is shared across all child loops (file-lock safe)
 - [ ] Session-level budget cap can pause dispatch when threshold is approached
-- [ ] Orchestrator is resumable: kill + restart recovers full state from `orchestrator.json` and child `status.json` files, no duplicate issues or child sessions created
-- [ ] Per-task `sandbox` field controls whether child runs in devcontainer (`container`) or on host (`none`)
-- [ ] Per-task `requires` labels declare environment needs; dispatcher checks host capabilities before dispatch
+- [ ] Orchestrator is resumable: kill + restart recovers full state, no duplicate issues or sessions
+- [ ] Replan triggered by spec changes, wave completion, or user-created issues
+- [ ] User-created `aloop/auto` issues absorbed into the live plan
+- [ ] Multi-file specs supported (`specs/*.md` or single `SPEC.md`)
+- [ ] Per-task `sandbox` field controls whether child runs in devcontainer or on host
+- [ ] Per-task `requires` labels declare environment needs; dispatcher checks before dispatch
 - [ ] All GitHub operations work with GitHub Enterprise instances (no hardcoded `github.com`)
 
 ---
