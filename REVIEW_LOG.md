@@ -1,5 +1,24 @@
 # Review Log
 
+## Review — 2026-03-14 19:45 — commit 53c8ad2..105706f
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/cli/src/commands/gh.ts`, `aloop/cli/src/commands/gh.test.ts`, `aloop/cli/src/commands/gh_gate1.test.ts`, `aloop/bin/loop_branch_coverage.tests.sh`, `aloop/bin/loop.tests.ps1`
+
+- Gate 3: New queue/ override code (loop.sh:1684-1731, loop.ps1:1779-1857) has zero branch coverage in test harnesses — `loop_branch_coverage.tests.sh` and `loop.tests.ps1` do not register or test queue.override_success, queue.override_failure, or queue.provider_fallback branches.
+- Gate 3: New requests/ wait-loop code (loop.sh:1629-1655, loop.ps1:1745-1767) has zero branch coverage — neither harness registers or tests requests.wait_drain or requests.timeout branches.
+- Gate 3: New opencode provider branch in invoke_provider (loop.sh:1047-1076) and Invoke-Provider (loop.ps1:516-529) has zero branch coverage — shell harness only tests claude success/failure and unsupported-provider paths.
+
+Positive observations:
+- Gate 1: Queue implementation correctly does NOT advance cyclePosition (uses `continue`), parses frontmatter, falls back to iteration provider when frontmatter provider unavailable. Spec-compliant.
+- Gate 1: `finalizeWatchEntry` now returns `boolean`; `completion_finalized` only set on success. Prior finding resolved.
+- Gate 2: gh.test.ts @aloop mention tests assert exact IDs (11, 12) with dedup coverage. CI log truncation test asserts specific line content. gh_gate1.test.ts covers both success/failure finalization paths with exact boolean assertions.
+- Gate 3: gh.ts branch coverage is now 81.48% (was 63.32%), above 80% threshold. Prior finding resolved.
+- Gate 5: `npm test` 8/8 pass, `tsc --noEmit` clean.
+- Gate 6: All 7 proof artifacts exist at session artifacts/iter-5/ with internally consistent content (queue_file_deleted=true, cycle_position unchanged, waiting_logged=true, opencode model flag present).
+
+---
+
 ## Review — 2026-03-14 12:20 — commit b9b359b..deb2a20
 
 **Verdict: FAIL** (5 findings → written to TODO.md as [review] tasks)

@@ -9,6 +9,9 @@
 - [x] [review] Gate 3: Raise `gh.ts` branch coverage from 63.32% to >=80% (priority: medium)
 - [x] [review] Gate 3: Provide >=80% branch evidence for `loop.sh` and `loop.ps1` — cycle resolution + frontmatter paths (priority: medium)
 - [ ] [review] Gate 6: Regenerate proof artifacts or correct manifest paths so iteration 11 is verifiable (priority: medium)
+- [ ] [review] Gate 3: Add branch-coverage tests for queue/ override paths in `loop.sh` and `loop.ps1` — register and test `queue.override_success`, `queue.override_failure`, `queue.provider_fallback` branches in both harnesses (priority: high)
+- [ ] [review] Gate 3: Add branch-coverage tests for requests/ wait-loop paths in `loop.sh` and `loop.ps1` — register and test `requests.wait_drain`, `requests.timeout` branches in both harnesses (priority: high)
+- [ ] [review] Gate 3: Add branch-coverage test for opencode provider branch in `invoke_provider` (loop.sh) and `Invoke-Provider` (loop.ps1) — currently only claude and unsupported-provider paths are tested (priority: high)
 
 ### Up Next (P1 — Orchestrator + Runtime + GH Integration)
 
