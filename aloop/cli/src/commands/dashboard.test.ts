@@ -834,7 +834,7 @@ test('GET /api/state?session=<id> returns state for a different session', async 
       'other-session-42': {
         session_dir: otherSessionDir,
         work_dir: otherWorkdir,
-        pid: 12345,
+        pid: process.pid,
         started_at: '2026-03-09T10:00:00Z',
       },
     };
@@ -854,6 +854,40 @@ test('GET /api/state?session=<id> returns state for a different session', async 
     assert.equal(payload.status.phase, 'build');
     assert.equal(payload.status.iteration, 3);
     assert.match(payload.docs['TODO.md'], /Other Project TODO/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/state?session=<id> corrects stale running state when pid is dead', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const otherSessionDir = path.join(fixture.root, 'dead-pid-session');
+    const otherWorkdir = path.join(fixture.root, 'dead-pid-workdir');
+    await mkdir(otherSessionDir, { recursive: true });
+    await mkdir(otherWorkdir, { recursive: true });
+    await writeFile(
+      path.join(otherSessionDir, 'status.json'),
+      JSON.stringify({ state: 'running', phase: 'build', iteration: 4 }),
+      'utf8',
+    );
+
+    const activeSessions: Record<string, unknown> = {
+      'dead-pid-session': {
+        session_dir: otherSessionDir,
+        work_dir: otherWorkdir,
+        pid: 999_999_999,
+      },
+    };
+    await writeFile(path.join(fixture.runtimeDir, 'active.json'), JSON.stringify(activeSessions), 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/api/state?session=dead-pid-session`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as { status: { state: string; phase: string; iteration: number } };
+    assert.equal(payload.status.state, 'exited');
+    assert.equal(payload.status.phase, 'build');
+    assert.equal(payload.status.iteration, 4);
   } finally {
     await fixture.handle.close();
   }
@@ -981,6 +1015,28 @@ test('GET /api/state without session param returns default session state', async
   }
 });
 
+test('GET /api/state corrects stale running state for default session using meta pid', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    await writeFile(
+      path.join(fixture.sessionDir, 'status.json'),
+      JSON.stringify({ state: 'running', phase: 'plan', iteration: 2 }),
+      'utf8',
+    );
+    await writeFile(path.join(fixture.sessionDir, 'meta.json'), JSON.stringify({ pid: 999_999_999 }), 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as { status: { state: string; phase: string; iteration: number } };
+    assert.equal(payload.status.state, 'exited');
+    assert.equal(payload.status.phase, 'plan');
+    assert.equal(payload.status.iteration, 2);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test('resolveSessionContext returns null when active.json is an array instead of object', async () => {
   const fixture = await createServerFixture();
 
@@ -1038,7 +1094,7 @@ test('resolveSessionContext falls back to runtimeDir/sessions/<id> when entry mi
     // Entry has work_dir but no session_dir → session_dir falls back to runtimeDir/sessions/<id>
     await writeFile(
       path.join(fixture.runtimeDir, 'active.json'),
-      JSON.stringify({ 'no-dir-session': { work_dir: fixture.root, pid: 555 } }),
+      JSON.stringify({ 'no-dir-session': { work_dir: fixture.root, pid: process.pid } }),
       'utf8',
     );
 

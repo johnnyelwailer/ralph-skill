@@ -34,6 +34,7 @@ interface DashboardState {
 interface SessionContext {
   sessionDir: string;
   workdir: string;
+  pid?: number | null;
 }
 
 interface DashboardServerHandle {
@@ -167,7 +168,33 @@ async function resolveSessionContext(runtimeDir: string, sessionId: string): Pro
       ? entry.session_dir
       : path.join(runtimeDir, 'sessions', sessionId);
   const workdir = typeof entry.work_dir === 'string' ? entry.work_dir : process.cwd();
-  return { sessionDir, workdir };
+  const pid = typeof entry.pid === 'number' && Number.isInteger(entry.pid) && entry.pid > 0
+    ? entry.pid
+    : null;
+  return { sessionDir, workdir, pid };
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === 'EPERM';
+  }
+}
+
+function withLivenessCorrectedState(status: unknown | null, pid: number | null): unknown | null {
+  if (!isRecord(status) || status.state !== 'running' || pid === null) {
+    return status;
+  }
+  if (isProcessAlive(pid)) {
+    return status;
+  }
+  return {
+    ...status,
+    state: 'exited',
+  };
 }
 
 async function loadStateForContext(
@@ -175,12 +202,14 @@ async function loadStateForContext(
   runtimeDir: string,
 ): Promise<DashboardState> {
   const statusPath = path.join(ctx.sessionDir, 'status.json');
+  const metaPath = path.join(ctx.sessionDir, 'meta.json');
   const logPath = path.join(ctx.sessionDir, 'log.jsonl');
   const activeSessionsPath = path.join(runtimeDir, 'active.json');
   const recentSessionsPath = path.join(runtimeDir, 'history.json');
 
-  const [status, log, activeSessions, recentSessions, docsEntries, artifacts] = await Promise.all([
+  const [status, meta, log, activeSessions, recentSessions, docsEntries, artifacts] = await Promise.all([
     readJsonFile(statusPath),
+    readJsonFile(metaPath),
     readLogTail(logPath),
     readJsonArrayFile(activeSessionsPath),
     readJsonArrayFile(recentSessionsPath),
@@ -192,13 +221,15 @@ async function loadStateForContext(
     ),
     loadArtifactManifests(ctx.sessionDir),
   ]);
+  const pid = ctx.pid ?? extractPid(meta);
+  const correctedStatus = withLivenessCorrectedState(status, pid);
 
   return {
     sessionDir: ctx.sessionDir,
     workdir: ctx.workdir,
     runtimeDir,
     updatedAt: new Date().toISOString(),
-    status,
+    status: correctedStatus,
     log,
     docs: Object.fromEntries(docsEntries),
     activeSessions,

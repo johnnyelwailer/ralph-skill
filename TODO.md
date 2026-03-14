@@ -8,7 +8,7 @@
 ### Up Next
 - [x] [tests][high] Add a regression test for actionable comments on issues without `child_session` (assert deferred/pending steering behavior and no false “processed” outcome).
 - [x] [runtime][high] Align loop exit/state semantics to spec: emit `stopped`/`exited` in `status.json` and reset `stuck_count` on successful iterations (not only skip/unblock paths).
-- [ ] [dashboard-runtime][high] Add dead-PID liveness correction so dashboard state auto-flips stale `running` sessions to exited/stopped without manual intervention.
+- [x] [dashboard-runtime][high] Add dead-PID liveness correction so dashboard state auto-flips stale `running` sessions to exited/stopped without manual intervention.
 - [ ] [tests][high] Raise `gh.ts` branch coverage to >=80% with targeted missing branches (notably issue-label remove path and parse/error fallbacks).
 - [ ] [dashboard][medium] Show provider+model together and add timing context (per-iteration duration, elapsed since `session_start`, total iterations, average iteration duration).
 - [ ] [dashboard][medium] Update docs panel to render only non-empty docs and add overflow handling (`...`) for large doc sets.
