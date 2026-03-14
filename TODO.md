@@ -7,7 +7,7 @@
 - [ ] [loop][critical] Add `requests/` wait loop — after agent completes, if `requests/*.json` exist, poll until directory empties or timeout (default 300s). Must implement in both `loop.sh` and `loop.ps1`. (priority: critical)
 - [ ] [loop][high] Add opencode provider support to `loop.ps1` (already done in `loop.sh`). (priority: high)
 - [x] [review] Gate 3: Raise `gh.ts` branch coverage from 63.32% to >=80% (priority: medium)
-- [ ] [review] Gate 3: Provide >=80% branch evidence for `loop.sh` and `loop.ps1` — cycle resolution + frontmatter paths (priority: medium)
+- [x] [review] Gate 3: Provide >=80% branch evidence for `loop.sh` and `loop.ps1` — cycle resolution + frontmatter paths (priority: medium)
 - [ ] [review] Gate 6: Regenerate proof artifacts or correct manifest paths so iteration 11 is verifiable (priority: medium)
 
 ### Up Next (P1 — Orchestrator + Runtime + GH Integration)

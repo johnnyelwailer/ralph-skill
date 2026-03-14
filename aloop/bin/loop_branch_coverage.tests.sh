@@ -101,6 +101,15 @@ register_branch "provider.degraded_skip" "resolve_healthy_provider skips degrade
 register_branch "provider.all_degraded" "resolve_healthy_provider emits all_providers_degraded signal when all degraded"
 register_branch "provider.cooldown_expired" "resolve_healthy_provider treats expired cooldown provider as available"
 register_branch "provider.cooldown_wait" "resolve_healthy_provider waits/logs when all providers are in active cooldown"
+register_branch "cycle.resolve.success" "resolve_cycle_prompt_from_plan resolves prompt name from valid loop-plan.json"
+register_branch "cycle.resolve.missing_file" "resolve_cycle_prompt_from_plan returns 1 when file is missing"
+register_branch "cycle.resolve.invalid_cycle" "resolve_cycle_prompt_from_plan returns 1 when cycle array is empty"
+register_branch "cycle.resolve.modulo_wrap" "resolve_cycle_prompt_from_plan wraps cyclePosition via modulo"
+register_branch "frontmatter.all_fields" "parse_frontmatter extracts all four fields from valid frontmatter"
+register_branch "frontmatter.empty" "parse_frontmatter yields empty strings when no frontmatter block present"
+register_branch "frontmatter.partial" "parse_frontmatter handles partial frontmatter with missing fields"
+register_branch "advance.with_cycle_length" "advance_cycle_position uses CYCLE_LENGTH for modulo when set"
+register_branch "advance.fallback_mode" "advance_cycle_position falls back to MODE-based modulo when CYCLE_LENGTH unset"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -108,9 +117,17 @@ CLEANUP_FUNC="$(extract_function cleanup_gh_block)"
 INVOKE_FUNC="$(extract_function invoke_provider)"
 WAIT_FUNC="$(extract_function _wait_for_provider)"
 KILL_PROVIDER_FUNC="$(extract_function kill_active_provider)"
+CYCLE_RESOLVE_FUNC="$(extract_function resolve_cycle_prompt_from_plan)"
+FRONTMATTER_FUNC="$(extract_function parse_frontmatter)"
+ADVANCE_FUNC="$(extract_function advance_cycle_position)"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
+    exit 1
+fi
+
+if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$ADVANCE_FUNC" ]; then
+    echo "FAIL: could not extract cycle/frontmatter/advance functions from $LOOP_SH"
     exit 1
 fi
 
@@ -120,6 +137,9 @@ eval "$CLEANUP_FUNC"
 eval "$KILL_PROVIDER_FUNC"
 eval "$WAIT_FUNC"
 eval "$INVOKE_FUNC"
+eval "$CYCLE_RESOLVE_FUNC"
+eval "$FRONTMATTER_FUNC"
+eval "$ADVANCE_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
@@ -410,6 +430,154 @@ PATH="$ORIGINAL_PATH"
 cleanup_gh_block
 rm -rf "$FAKE_PROVIDER_DIR"
 rm -f "$PROVIDER_PATH_MARKER" "$LOG_FILE" "$LOG_FILE.raw" "$COVERAGE_LOG_FILE"
+
+# ---------------------------------------------------------------------------
+# Cycle resolution branches (resolve_cycle_prompt_from_plan)
+# ---------------------------------------------------------------------------
+
+CYCLE_TMPDIR="$(mktemp -d)"
+
+# cycle.resolve.success — valid loop-plan.json at position 0
+LOOP_PLAN_FILE="$CYCLE_TMPDIR/loop-plan.json"
+CYCLE_POSITION=0
+CYCLE_LENGTH=0
+RESOLVED_PROMPT_NAME=""
+cat > "$LOOP_PLAN_FILE" << 'JSON'
+{"cycle":["PROMPT_plan.md","PROMPT_build.md","PROMPT_review.md"],"cyclePosition":1}
+JSON
+if resolve_cycle_prompt_from_plan && [ "$RESOLVED_PROMPT_NAME" = "PROMPT_build.md" ] && [ "$CYCLE_LENGTH" -eq 3 ] && [ "$CYCLE_POSITION" -eq 1 ]; then
+    cover_branch "cycle.resolve.success"
+    pass_case "resolve_cycle_prompt_from_plan resolves prompt from valid JSON"
+else
+    fail_case "resolve_cycle_prompt_from_plan did not resolve expected prompt (got: $RESOLVED_PROMPT_NAME, len=$CYCLE_LENGTH, pos=$CYCLE_POSITION)"
+fi
+
+# cycle.resolve.missing_file — file does not exist
+LOOP_PLAN_FILE="$CYCLE_TMPDIR/nonexistent.json"
+CYCLE_POSITION=0
+RESOLVED_PROMPT_NAME=""
+if ! resolve_cycle_prompt_from_plan; then
+    cover_branch "cycle.resolve.missing_file"
+    pass_case "resolve_cycle_prompt_from_plan returns 1 for missing file"
+else
+    fail_case "resolve_cycle_prompt_from_plan should have returned 1 for missing file"
+fi
+
+# cycle.resolve.invalid_cycle — empty cycle array
+LOOP_PLAN_FILE="$CYCLE_TMPDIR/empty-cycle.json"
+cat > "$LOOP_PLAN_FILE" << 'JSON'
+{"cycle":[],"cyclePosition":0}
+JSON
+if ! resolve_cycle_prompt_from_plan; then
+    cover_branch "cycle.resolve.invalid_cycle"
+    pass_case "resolve_cycle_prompt_from_plan returns 1 for empty cycle"
+else
+    fail_case "resolve_cycle_prompt_from_plan should have returned 1 for empty cycle"
+fi
+
+# cycle.resolve.modulo_wrap — position > cycle length wraps correctly
+LOOP_PLAN_FILE="$CYCLE_TMPDIR/wrap.json"
+CYCLE_POSITION=0
+RESOLVED_PROMPT_NAME=""
+cat > "$LOOP_PLAN_FILE" << 'JSON'
+{"cycle":["PROMPT_plan.md","PROMPT_build.md"],"cyclePosition":5}
+JSON
+if resolve_cycle_prompt_from_plan && [ "$RESOLVED_PROMPT_NAME" = "PROMPT_build.md" ] && [ "$CYCLE_POSITION" -eq 5 ]; then
+    cover_branch "cycle.resolve.modulo_wrap"
+    pass_case "resolve_cycle_prompt_from_plan wraps position 5 modulo 2 to index 1"
+else
+    fail_case "resolve_cycle_prompt_from_plan modulo wrap failed (got: $RESOLVED_PROMPT_NAME, pos=$CYCLE_POSITION)"
+fi
+
+rm -rf "$CYCLE_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# Frontmatter parsing branches (parse_frontmatter)
+# ---------------------------------------------------------------------------
+
+FM_TMPDIR="$(mktemp -d)"
+
+# frontmatter.all_fields — file with all four fields
+FM_ALL="$FM_TMPDIR/all.md"
+cat > "$FM_ALL" << 'EOF'
+---
+provider: claude
+model: opus
+agent: coder
+reasoning: xhigh
+---
+Build the thing.
+EOF
+FRONTMATTER_PROVIDER="" FRONTMATTER_MODEL="" FRONTMATTER_AGENT="" FRONTMATTER_REASONING=""
+parse_frontmatter "$FM_ALL"
+if [ "$FRONTMATTER_PROVIDER" = "claude" ] && [ "$FRONTMATTER_MODEL" = "opus" ] && [ "$FRONTMATTER_AGENT" = "coder" ] && [ "$FRONTMATTER_REASONING" = "xhigh" ]; then
+    cover_branch "frontmatter.all_fields"
+    pass_case "parse_frontmatter extracts all four fields"
+else
+    fail_case "parse_frontmatter all_fields failed (provider=$FRONTMATTER_PROVIDER model=$FRONTMATTER_MODEL agent=$FRONTMATTER_AGENT reasoning=$FRONTMATTER_REASONING)"
+fi
+
+# frontmatter.empty — file with no frontmatter block
+FM_EMPTY="$FM_TMPDIR/empty.md"
+cat > "$FM_EMPTY" << 'EOF'
+Just a plain prompt file with no frontmatter.
+EOF
+FRONTMATTER_PROVIDER="leftover" FRONTMATTER_MODEL="leftover"
+parse_frontmatter "$FM_EMPTY"
+if [ -z "$FRONTMATTER_PROVIDER" ] && [ -z "$FRONTMATTER_MODEL" ] && [ -z "$FRONTMATTER_AGENT" ] && [ -z "$FRONTMATTER_REASONING" ]; then
+    cover_branch "frontmatter.empty"
+    pass_case "parse_frontmatter yields empty strings for no-frontmatter file"
+else
+    fail_case "parse_frontmatter empty failed (provider=$FRONTMATTER_PROVIDER)"
+fi
+
+# frontmatter.partial — file with only provider and reasoning
+FM_PARTIAL="$FM_TMPDIR/partial.md"
+cat > "$FM_PARTIAL" << 'EOF'
+---
+provider: opencode
+reasoning: medium
+---
+Do the partial thing.
+EOF
+FRONTMATTER_PROVIDER="" FRONTMATTER_MODEL="" FRONTMATTER_AGENT="" FRONTMATTER_REASONING=""
+parse_frontmatter "$FM_PARTIAL"
+if [ "$FRONTMATTER_PROVIDER" = "opencode" ] && [ -z "$FRONTMATTER_MODEL" ] && [ -z "$FRONTMATTER_AGENT" ] && [ "$FRONTMATTER_REASONING" = "medium" ]; then
+    cover_branch "frontmatter.partial"
+    pass_case "parse_frontmatter handles partial frontmatter correctly"
+else
+    fail_case "parse_frontmatter partial failed (provider=$FRONTMATTER_PROVIDER model=$FRONTMATTER_MODEL reasoning=$FRONTMATTER_REASONING)"
+fi
+
+rm -rf "$FM_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# advance_cycle_position branches
+# ---------------------------------------------------------------------------
+
+# advance.with_cycle_length — CYCLE_LENGTH drives modulo
+CYCLE_POSITION=2
+CYCLE_LENGTH=3
+MODE="plan-build-review"
+advance_cycle_position
+if [ "$CYCLE_POSITION" -eq 0 ]; then
+    cover_branch "advance.with_cycle_length"
+    pass_case "advance_cycle_position wraps via CYCLE_LENGTH (2+1 mod 3 = 0)"
+else
+    fail_case "advance_cycle_position with CYCLE_LENGTH failed (got $CYCLE_POSITION, expected 0)"
+fi
+
+# advance.fallback_mode — CYCLE_LENGTH=0 falls back to MODE
+CYCLE_POSITION=1
+CYCLE_LENGTH=0
+MODE="plan-build"
+advance_cycle_position
+if [ "$CYCLE_POSITION" -eq 0 ]; then
+    cover_branch "advance.fallback_mode"
+    pass_case "advance_cycle_position falls back to MODE plan-build (1+1 mod 2 = 0)"
+else
+    fail_case "advance_cycle_position fallback mode failed (got $CYCLE_POSITION, expected 0)"
+fi
 
 covered=0
 total=${#BRANCH_ORDER[@]}

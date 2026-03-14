@@ -2222,3 +2222,226 @@ exit 0
         $combined | Should -Match 'npm install -g @devcontainers/cli'
     }
 }
+
+# ============================================================================
+# loop.ps1 — cycle resolution + frontmatter branch evidence
+# ============================================================================
+Describe 'loop.ps1 — cycle resolution + frontmatter branch evidence' {
+
+    BeforeAll {
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+        $scriptContent = Get-Content $loopScript -Raw
+
+        # Extract Resolve-CyclePromptFromPlan function
+        if ($scriptContent -match '(?ms)(^function Resolve-CyclePromptFromPlan\s*\{.*?^})') {
+            $script:cycleFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Resolve-CyclePromptFromPlan from loop.ps1"
+        }
+
+        # Extract Parse-Frontmatter function
+        if ($scriptContent -match '(?ms)(^function Parse-Frontmatter\s*\{.*?^})') {
+            $script:frontmatterFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Parse-Frontmatter from loop.ps1"
+        }
+
+        $script:cfTempRoot = Join-Path ([IO.Path]::GetTempPath()) ("aloop-cf-tests-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force $script:cfTempRoot | Out-Null
+    }
+
+    AfterAll {
+        if ($script:cfTempRoot -and (Test-Path $script:cfTempRoot)) {
+            Remove-Item -Recurse -Force $script:cfTempRoot -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'Resolve-CyclePromptFromPlan resolves prompt from valid loop-plan.json' {
+        $SessionDir = Join-Path $script:cfTempRoot 'resolve-success'
+        New-Item -ItemType Directory -Force $SessionDir | Out-Null
+        $planFile = Join-Path $SessionDir 'loop-plan.json'
+        '{"cycle":["PROMPT_plan.md","PROMPT_build.md","PROMPT_review.md"],"cyclePosition":1}' | Set-Content $planFile
+
+        $script:cycleLength = 0
+        $script:cyclePosition = 0
+        $script:resolvedPromptName = ''
+        . ([scriptblock]::Create($script:cycleFuncSource))
+        $result = Resolve-CyclePromptFromPlan
+        $result | Should -BeTrue
+        $script:resolvedPromptName | Should -Be 'PROMPT_build.md'
+        $script:cycleLength | Should -Be 3
+        $script:cyclePosition | Should -Be 1
+    }
+
+    It 'Resolve-CyclePromptFromPlan returns false when file is missing' {
+        $SessionDir = Join-Path $script:cfTempRoot 'resolve-missing'
+        New-Item -ItemType Directory -Force $SessionDir | Out-Null
+
+        $script:cycleLength = 0
+        $script:cyclePosition = 0
+        $script:resolvedPromptName = ''
+        . ([scriptblock]::Create($script:cycleFuncSource))
+        $result = Resolve-CyclePromptFromPlan
+        $result | Should -BeFalse
+    }
+
+    It 'Resolve-CyclePromptFromPlan returns false for empty cycle array' {
+        $SessionDir = Join-Path $script:cfTempRoot 'resolve-empty'
+        New-Item -ItemType Directory -Force $SessionDir | Out-Null
+        $planFile = Join-Path $SessionDir 'loop-plan.json'
+        '{"cycle":[],"cyclePosition":0}' | Set-Content $planFile
+
+        $script:cycleLength = 0
+        $script:cyclePosition = 0
+        $script:resolvedPromptName = ''
+        . ([scriptblock]::Create($script:cycleFuncSource))
+        $result = Resolve-CyclePromptFromPlan
+        $result | Should -BeFalse
+    }
+
+    It 'Resolve-CyclePromptFromPlan wraps cyclePosition via modulo' {
+        $SessionDir = Join-Path $script:cfTempRoot 'resolve-wrap'
+        New-Item -ItemType Directory -Force $SessionDir | Out-Null
+        $planFile = Join-Path $SessionDir 'loop-plan.json'
+        '{"cycle":["PROMPT_plan.md","PROMPT_build.md"],"cyclePosition":5}' | Set-Content $planFile
+
+        $script:cycleLength = 0
+        $script:cyclePosition = 0
+        $script:resolvedPromptName = ''
+        . ([scriptblock]::Create($script:cycleFuncSource))
+        $result = Resolve-CyclePromptFromPlan
+        $result | Should -BeTrue
+        $script:resolvedPromptName | Should -Be 'PROMPT_build.md'
+        $script:cyclePosition | Should -Be 5
+    }
+
+    It 'Parse-Frontmatter extracts all four fields' {
+        $promptFile = Join-Path $script:cfTempRoot 'all-fields.md'
+        @"
+---
+provider: claude
+model: opus
+agent: coder
+reasoning: xhigh
+---
+Build the thing.
+"@ | Set-Content $promptFile
+
+        $script:frontmatter = @{}
+        . ([scriptblock]::Create($script:frontmatterFuncSource))
+        Parse-Frontmatter -PromptFile $promptFile
+        $script:frontmatter['provider'] | Should -Be 'claude'
+        $script:frontmatter['model'] | Should -Be 'opus'
+        $script:frontmatter['agent'] | Should -Be 'coder'
+        $script:frontmatter['reasoning'] | Should -Be 'xhigh'
+    }
+
+    It 'Parse-Frontmatter yields empty strings when no frontmatter block' {
+        $promptFile = Join-Path $script:cfTempRoot 'no-frontmatter.md'
+        'Just a plain prompt with no frontmatter.' | Set-Content $promptFile
+
+        $script:frontmatter = @{}
+        . ([scriptblock]::Create($script:frontmatterFuncSource))
+        Parse-Frontmatter -PromptFile $promptFile
+        $script:frontmatter['provider'] | Should -Be ''
+        $script:frontmatter['model'] | Should -Be ''
+    }
+
+    It 'Parse-Frontmatter handles partial frontmatter with missing fields' {
+        $promptFile = Join-Path $script:cfTempRoot 'partial.md'
+        @"
+---
+provider: opencode
+reasoning: medium
+---
+Do partial thing.
+"@ | Set-Content $promptFile
+
+        $script:frontmatter = @{}
+        . ([scriptblock]::Create($script:frontmatterFuncSource))
+        Parse-Frontmatter -PromptFile $promptFile
+        $script:frontmatter['provider'] | Should -Be 'opencode'
+        $script:frontmatter['model'] | Should -Be ''
+        $script:frontmatter['agent'] | Should -Be ''
+        $script:frontmatter['reasoning'] | Should -Be 'medium'
+    }
+
+    It 'records cycle+frontmatter branch coverage evidence at >=80%' {
+        $branches = [ordered]@{}
+
+        # cycle.resolve.success
+        $SessionDir = Join-Path $script:cfTempRoot 'ev-success'
+        New-Item -ItemType Directory -Force $SessionDir | Out-Null
+        '{"cycle":["PROMPT_plan.md","PROMPT_build.md","PROMPT_review.md"],"cyclePosition":1}' | Set-Content (Join-Path $SessionDir 'loop-plan.json')
+        $script:cycleLength = 0; $script:cyclePosition = 0; $script:resolvedPromptName = ''
+        . ([scriptblock]::Create($script:cycleFuncSource))
+        $branches['cycle.resolve.success'] = ((Resolve-CyclePromptFromPlan) -eq $true) -and ($script:resolvedPromptName -eq 'PROMPT_build.md')
+
+        # cycle.resolve.missing_file
+        $SessionDir = Join-Path $script:cfTempRoot 'ev-missing'
+        New-Item -ItemType Directory -Force $SessionDir | Out-Null
+        $script:cycleLength = 0; $script:cyclePosition = 0; $script:resolvedPromptName = ''
+        . ([scriptblock]::Create($script:cycleFuncSource))
+        $branches['cycle.resolve.missing_file'] = ((Resolve-CyclePromptFromPlan) -eq $false)
+
+        # cycle.resolve.invalid_cycle
+        $SessionDir = Join-Path $script:cfTempRoot 'ev-invalid'
+        New-Item -ItemType Directory -Force $SessionDir | Out-Null
+        '{"cycle":[],"cyclePosition":0}' | Set-Content (Join-Path $SessionDir 'loop-plan.json')
+        $script:cycleLength = 0; $script:cyclePosition = 0; $script:resolvedPromptName = ''
+        . ([scriptblock]::Create($script:cycleFuncSource))
+        $branches['cycle.resolve.invalid_cycle'] = ((Resolve-CyclePromptFromPlan) -eq $false)
+
+        # cycle.resolve.modulo_wrap
+        $SessionDir = Join-Path $script:cfTempRoot 'ev-wrap'
+        New-Item -ItemType Directory -Force $SessionDir | Out-Null
+        '{"cycle":["PROMPT_plan.md","PROMPT_build.md"],"cyclePosition":5}' | Set-Content (Join-Path $SessionDir 'loop-plan.json')
+        $script:cycleLength = 0; $script:cyclePosition = 0; $script:resolvedPromptName = ''
+        . ([scriptblock]::Create($script:cycleFuncSource))
+        $branches['cycle.resolve.modulo_wrap'] = ((Resolve-CyclePromptFromPlan) -eq $true) -and ($script:resolvedPromptName -eq 'PROMPT_build.md')
+
+        # frontmatter.all_fields
+        $fmAll = Join-Path $script:cfTempRoot 'ev-fm-all.md'
+        "---`nprovider: claude`nmodel: opus`nagent: coder`nreasoning: xhigh`n---`nBody." | Set-Content $fmAll
+        $script:frontmatter = @{}
+        . ([scriptblock]::Create($script:frontmatterFuncSource))
+        Parse-Frontmatter -PromptFile $fmAll
+        $branches['frontmatter.all_fields'] = ($script:frontmatter['provider'] -eq 'claude') -and ($script:frontmatter['model'] -eq 'opus') -and ($script:frontmatter['agent'] -eq 'coder') -and ($script:frontmatter['reasoning'] -eq 'xhigh')
+
+        # frontmatter.empty
+        $fmEmpty = Join-Path $script:cfTempRoot 'ev-fm-empty.md'
+        'No frontmatter here.' | Set-Content $fmEmpty
+        $script:frontmatter = @{}
+        . ([scriptblock]::Create($script:frontmatterFuncSource))
+        Parse-Frontmatter -PromptFile $fmEmpty
+        $branches['frontmatter.empty'] = ($script:frontmatter['provider'] -eq '') -and ($script:frontmatter['model'] -eq '')
+
+        # frontmatter.partial
+        $fmPartial = Join-Path $script:cfTempRoot 'ev-fm-partial.md'
+        "---`nprovider: opencode`nreasoning: medium`n---`nPartial." | Set-Content $fmPartial
+        $script:frontmatter = @{}
+        . ([scriptblock]::Create($script:frontmatterFuncSource))
+        Parse-Frontmatter -PromptFile $fmPartial
+        $branches['frontmatter.partial'] = ($script:frontmatter['provider'] -eq 'opencode') -and ($script:frontmatter['model'] -eq '') -and ($script:frontmatter['reasoning'] -eq 'medium')
+
+        # Write coverage report
+        $covered = @($branches.Values | Where-Object { $_ }).Count
+        $total = $branches.Count
+        $percent = if ($total -gt 0) { [math]::Floor(($covered * 100) / $total) } else { 0 }
+        $coverageDir = Join-Path (Join-Path $PSScriptRoot '..\..') 'coverage'
+        if (-not (Test-Path $coverageDir)) { New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null }
+        $reportFile = Join-Path $coverageDir 'ps1-cycle-frontmatter-branch-coverage.json'
+        $branchRows = foreach ($key in $branches.Keys) {
+            [pscustomobject]@{ id = $key; description = "loop.ps1 $key"; covered = [bool]$branches[$key] }
+        }
+        [pscustomobject]@{
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            target = 'aloop/bin/loop.ps1'
+            minimum_percent = 80
+            summary = [pscustomobject]@{ covered = $covered; total = $total; percent = $percent }
+            branches = $branchRows
+        } | ConvertTo-Json -Depth 6 | Set-Content -Path $reportFile
+
+        $percent | Should -BeGreaterOrEqual 80
+    }
+}
