@@ -5719,14 +5719,6 @@ async function launchTrackedIssue(issueNumber, options, state) {
   return entry;
 }
 async function fetchPrReviewComments(repo, prNumber) {
-  const response = await ghExecutor.exec([
-    "api",
-    `repos/${repo}/pulls/${prNumber}/reviews`,
-    "--method",
-    "GET",
-    "--jq",
-    ".[].id"
-  ]);
   const commentsResponse = await ghExecutor.exec([
     "api",
     `repos/${repo}/pulls/${prNumber}/comments`,

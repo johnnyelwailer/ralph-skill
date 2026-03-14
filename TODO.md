@@ -4,7 +4,7 @@
 
 ### In Progress
 - [x] [review] Gate 5: Fix regression in validation pipeline — `cd aloop/cli && npm run type-check` fails with TS2345 in `src/commands/gh.test.ts` (lines 1937, 1953, 1964, 2032, 2050; `buildWatchEntry().status` typed as `string` instead of `GhWatchIssueStatus`) (priority: high)
-- [ ] [review] Gate 4: Remove dead code in `aloop/cli/src/commands/gh.ts` — `fetchPrReviewComments` assigns `response` from `/reviews` API (line 489) but never uses it; either wire it into review-state handling or remove the unused call (priority: medium)
+- [x] [review] Gate 4: Remove dead code in `aloop/cli/src/commands/gh.ts` — `fetchPrReviewComments` assigns `response` from `/reviews` API (line 489) but never uses it; either wire it into review-state handling or remove the unused call (priority: medium)
 - [ ] [review] Gate 3: Raise `aloop/cli/src/commands/gh.ts` branch coverage to `>=80%` — currently at `65.80%` with large uncovered branch clusters in watch-state normalization, CLI option validation, feedback-resume, stop-policy, and new start/watch/status/stop command paths (priority: high)
 - [ ] [review] Gate 3: Produce branch-coverage evidence for touched dashboard files (`aloop/cli/dashboard/src/App.tsx`, `aloop/cli/dashboard/e2e/smoke.spec.ts`) at or above threshold (priority: high)
 - [ ] [review] Gate 3 Blocker: Fix hardcoded Windows path separators (`\\`) in `aloop/cli/dashboard/playwright.config.ts` webServer command (line 18) which break Linux execution (`MODULE_NOT_FOUND` for `..distindex.js`) (priority: high)

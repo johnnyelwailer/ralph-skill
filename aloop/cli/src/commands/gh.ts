@@ -486,12 +486,7 @@ interface PrFeedback {
 }
 
 async function fetchPrReviewComments(repo: string, prNumber: number): Promise<PrReviewComment[]> {
-  const response = await ghExecutor.exec([
-    'api', `repos/${repo}/pulls/${prNumber}/reviews`,
-    '--method', 'GET', '--jq', '.[].id',
-  ]);
-
-  // Fetch individual review comments via pulls/comments endpoint
+  // Fetch individual review comments via pulls/comments endpoint.
   const commentsResponse = await ghExecutor.exec([
     'api', `repos/${repo}/pulls/${prNumber}/comments`,
     '--method', 'GET',
