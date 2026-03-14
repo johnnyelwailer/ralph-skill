@@ -15,7 +15,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      'npm --prefix .. run build && node ..\\dist\\index.js dashboard --port 4173 --session-dir .\\e2e\\fixtures\\session --workdir .\\e2e\\fixtures\\workdir --assets-dir ..\\dist\\dashboard',
+      'npm --prefix .. run build && node ../dist/index.js dashboard --port 4173 --session-dir ./e2e/fixtures/session --workdir ./e2e/fixtures/workdir --assets-dir ../dist/dashboard',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
