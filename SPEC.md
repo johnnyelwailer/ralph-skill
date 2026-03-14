@@ -68,11 +68,7 @@ The inner loop (`loop.sh` / `loop.ps1`) and the aloop runtime (`aloop` CLI, TS/B
 
 ## Global Provider Health & Rate-Limit Resilience
 
-### Problem
-
-Multiple loops can run concurrently against the same providers. When a provider hits rate limits, auth expiry, or outages, every active session independently burns iterations retrying the same dead provider. There is no cross-session awareness.
-
-### Design
+All sessions share a cross-session provider health system so that when a provider hits rate limits, auth expiry, or outages, all loops skip it immediately instead of burning iterations retrying independently.
 
 **One health file per provider** to minimize lock contention:
 
@@ -174,23 +170,7 @@ If ALL providers are in cooldown/degraded: sleep until the earliest cooldown exp
 
 ## Mandatory Final Review Gate (Loop Exit Invariant)
 
-### Problem
-
-When the pipeline includes a `review` agent, the loop currently exits as soon as a **build** phase finds all TODO tasks marked `[x]`. This means a builder agent can mark everything done and the loop terminates without a review phase ever validating the work. The review is the gatekeeper — it must always have the final say.
-
-**Current bug** (`loop.ps1` lines ~690-697):
-```powershell
-if ($iterationMode -eq 'build') {
-    if (Check-AllTasksComplete) {
-        # Exits immediately — review never runs
-        exit 0
-    }
-}
-```
-
-### Design
-
-**Invariant**: In any pipeline that includes a `review` agent, the loop MUST NOT exit on task completion during a build phase. Instead:
+In any pipeline that includes a `review` agent, the loop MUST NOT exit on task completion during a build phase. The build agent can mark all tasks done, but only the review agent can approve a clean exit. Instead:
 
 1. **Build detects all tasks complete** → set `$script:allTasksMarkedDone = $true`, log `tasks_marked_complete`, but **do not exit**
 2. **Next iteration becomes a forced review** → override the normal cycle to schedule a review phase (similar to how `$script:forcePlanNext` works for steering)
@@ -243,20 +223,8 @@ review approves?
 
 ## Phase Advancement Only on Success (Retry-Same-Phase)
 
-### Problem
+Failed iterations retry the same pipeline phase with the next round-robin provider instead of blindly advancing. This prevents wasted iterations (e.g., building without a plan, reviewing unplanned work).
 
-The current loop advances the phase cycle on every iteration regardless of success or failure. In the default pipeline (cycle: plan → build × 3 → proof → review), if iteration 1 (plan) fails, iteration 2 becomes build — but no plan/TODO.md exists. The build phase flies blind, produces unstructured work, and the loop wastes iterations.
-
-**Current behavior (broken):**
-```
-iter 1: claude  plan   → FAIL (exit code 1)
-iter 2: codex   build  → no TODO.md exists, builds blind
-iter 3: gemini  build  → still no plan, random work
-iter 4: copilot build  → still no plan
-iter 5: claude  review → reviews unplanned work
-```
-
-**Correct behavior:**
 ```
 iter 1: claude  plan   → FAIL
 iter 2: codex   plan   → retry same phase, different provider
@@ -264,8 +232,6 @@ iter 3: gemini  plan   → SUCCESS, TODO.md created
 iter 4: copilot build  → NOW advance (plan exists)
 iter 5: claude  build  → continues building
 ```
-
-### Design
 
 #### Rule 1: Failed iterations do not advance the phase cycle
 
@@ -625,13 +591,7 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 
 ## CLAUDECODE Environment Variable Sanitization
 
-### Problem
-
-When aloop is invoked from inside a Claude Code session (which is the normal case — user types `/aloop:start` in Claude Code), the `CLAUDECODE` env var is set. This causes the Claude CLI provider to refuse to start: "Claude Code cannot be launched inside another Claude Code session." All entry points that may launch provider CLIs must unset this variable.
-
-### Design
-
-Unset `CLAUDECODE` in every process entry point that may launch provider CLIs:
+When aloop is invoked from inside a Claude Code session (the normal case — user types `/aloop:start`), the `CLAUDECODE` env var is inherited. All entry points that launch provider CLIs must unset it to prevent "cannot launch inside another session" errors:
 
 | Location | Fix |
 |----------|-----|
@@ -652,20 +612,9 @@ Unset `CLAUDECODE` in every process entry point that may launch provider CLIs:
 
 ---
 
-## UX Improvements: Dashboard, Start Flow, Auto-Monitoring
+## UX: Dashboard, Start Flow, Auto-Monitoring
 
-### Problem
-
-After global install, the end-to-end experience has significant UX gaps:
-
-1. **No `/aloop:dashboard` command** — the dashboard exists as `aloop dashboard` CLI but agents can't discover or invoke it. No command file, no copilot prompt.
-2. **Start flow is agent-orchestrated, not CLI-driven** — `/aloop:start` is a 7-step flow where the agent manually creates dirs, copies prompts, creates worktrees, and assembles a `loop.ps1` invocation with ~10 flags. There's no single `aloop start` CLI command.
-3. **No auto-monitoring on loop start** — when a loop starts, nothing happens visually. No dashboard opens, no terminal pops up. The user has to manually run `/aloop:status` to check progress.
-4. **Dashboard UI is rudimentary** — basic tabs per session, minimal content per view, no information density, underuses shadcn/ui component library.
-
-### Design
-
-#### 1. `aloop start` CLI subcommand
+#### `aloop start` CLI subcommand
 
 Move the entire start orchestration into the CLI so it's a single command:
 
@@ -1892,9 +1841,7 @@ Failed policy checks are logged as `gh_operation_denied`:
 
 ## User Feedback Triage Agent
 
-### Problem
-
-The orchestrator assumes issues are fully specified at creation time. In reality, humans comment on issues mid-flight — asking questions, clarifying scope, requesting changes, or providing feedback on PRs. Without triage, the system either ignores these comments (bad) or a child loop tries to interpret vague feedback on its own (worse — risks misinterpretation and wasted iterations).
+The orchestrator triages human comments on issues and PRs mid-flight — classifying them, routing actionable feedback to child loops via steering, and escalating ambiguous requests back to humans. Without this, comments are either ignored or misinterpreted by child loops.
 
 ### Where It Fits
 
