@@ -66,9 +66,9 @@ type GhWatchIssue = {
   url: string;
 };
 
-type GhWatchIssueStatus = 'running' | 'queued' | 'completed' | 'stopped';
+export type GhWatchIssueStatus = 'running' | 'queued' | 'completed' | 'stopped';
 
-interface GhWatchIssueEntry {
+export interface GhWatchIssueEntry {
   issue_number: number;
   session_id: string | null;
   branch: string | null;

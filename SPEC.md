@@ -4,90 +4,65 @@
 
 Aloop is an autonomous coding agent orchestrator that runs configurable agent pipelines with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops). The default pipeline is `plan → build × 3 → proof → review`, but pipelines are fully configurable via agent YAML definitions (see Configurable Agent Pipeline).
 
-## Scope
-
-### Phase 0: Rename ralph → aloop
-- Rename all directories, files, commands, prompts, config references
-- Use `git mv` to preserve file history
-- `~/.ralph/` → `~/.aloop/` in all references
-- Verify: `grep -ri "ralph"` returns 0 hits (excluding git history)
-- Verify: `install.ps1` installs to `~/.aloop/` and smoke-tests correctly
-
-### Phase 1: `aloop resolve` CLI
-- Create `aloop/cli/aloop.mjs` entry point + `lib/project.mjs`, `lib/config.mjs`
-- Minimal YAML parser (hand-rolled, only handles our config format)
-- Replace duplicated runtime-root resolution in 7 prompt/command files with `aloop resolve`
-- Update `install.ps1` to install CLI shims
-
-### Phase 2: Port setup-discovery → `aloop discover` + `aloop scaffold`
-- Create `lib/discover.mjs` and `lib/scaffold.mjs`
-- Match existing PS1 JSON output schema
-- Update setup prompts to call `aloop discover`/`aloop scaffold`
-- Delete `setup-discovery.ps1`
-
-### Phase 3: Convenience subcommands
-- `aloop status` — read active.json + status.json, print table
-- `aloop stop <session-id>` — kill PID, update state
-- `aloop active` — list active sessions
-
-## Non-Goals
-- npm publish / package.json (additive later)
-- Repo rename on GitHub (separate, GitHub handles redirects)
-- Changing loop.ps1/loop.sh internal logic (they're path-agnostic)
-- Backward compatibility with `~/.ralph/` (greenfield, no existing users)
-- Migration tooling from ralph → aloop installs
-
 ## Constraints
-- **Zero npm dependencies** — Node.js built-ins only (crypto, child_process, fs, path, os)
-- **`.mjs` extension** — native ESM without package.json
-- **No build step** — plain JS files
+- **TypeScript / Bun** — CLI source is TypeScript, built with Bun into a bundled `dist/index.js`
 - **Config stays YAML** — shell-friendly for loop.sh/loop.ps1 parsing
-- **Runtime state stays JSON** — active.json, status.json, session state
-- **`git mv` for renames** — preserve file history through the rename
-- **Clean break** — no migration from `~/.ralph/`, no backward compat shims
-
-## Acceptance Criteria
-
-### Phase 0
-- [ ] `grep -ri "ralph" . --include="*.md" --include="*.ps1" --include="*.sh" --include="*.yml" --include="*.mjs"` → 0 hits
-- [ ] `install.ps1` installs to `~/.aloop/` successfully
-- [ ] Commands register as `/aloop:setup`, `/aloop:start`, etc.
-- [ ] All file renames done via `git mv`
-
-### Phase 1
-- [ ] `aloop resolve` outputs correct JSON for configured project
-- [ ] `aloop resolve` outputs correct JSON for project-local config
-- [ ] `aloop resolve` gives clear error for unconfigured project
-- [ ] 7 prompt/command files no longer contain duplicated resolution logic
-- [ ] `install.ps1` creates platform shims (`aloop.cmd` / `aloop` shell wrapper)
-
-### Phase 2
-- [ ] `aloop discover --scope project` matches old PS1 JSON schema
-- [ ] `aloop discover --scope full` includes provider/model info
-- [ ] `aloop scaffold` writes config.yml + prompt templates
-- [ ] Full `/aloop:setup` → `/aloop:start` flow works end-to-end
-- [ ] `setup-discovery.ps1` is deleted
-
-### Phase 3
-- [ ] `aloop status` reads and displays session state
-- [ ] `aloop stop` terminates session and updates state
-- [ ] `aloop active` lists running sessions
-
-## Risks
-
-| Risk | Mitigation |
-|------|------------|
-| Phase 0 blast radius (every file changes) | grep verification + install.ps1 smoke test before proceeding |
-| Minimal YAML parser edge cases | Parser only handles our controlled config format, not general YAML |
-| CLI must be installed before prompts work (Phase 1+) | Prompts can fallback to `node ~/.aloop/cli/aloop.mjs` if not on PATH |
-| Self-referential work (renaming the tool while using it) | Ralph state is in `~/.ralph/` (global), not in repo — rename is safe |
+- **Runtime state stays JSON** — active.json, status.json, session state, loop-plan.json
 
 ## Architecture
 
 | Layer | Runs where | Tech | Deps |
 |-------|-----------|------|------|
-| `aloop` CLI (discover, scaffold, resolve) | Developer machine | Node.js `.mjs` | Node.js |
-| Loop scripts (execute compiled pipeline) | Anywhere — containers, sandboxes, CI | `loop.ps1` / `loop.sh` | Shell + git + provider CLI |
+| `aloop` CLI (discover, scaffold, resolve) | Developer machine | TypeScript / Bun (bundled `dist/index.js`) | Bun |
+| Loop scripts (execute compiled pipeline from `loop-plan.json`) | Anywhere — containers, sandboxes, CI | `loop.ps1` / `loop.sh` | Shell + git + provider CLI |
+
+### Cross-Platform Compatibility
+
+- PowerShell 5.1 requires careful string interpolation — avoid `($var text)` pattern (causes parse failures); use `$($var)` subexpression syntax instead
+- `.editorconfig` must enforce `end_of_line = crlf` for `*.ps1` files
+- `install.ps1` must normalize line endings when copying loop scripts to `~/.aloop/bin/`
+- Agents should use Write tool (full file) instead of Edit for `.ps1` files if line-ending corruption is detected
+- Path format must match target script expectations: POSIX paths for bash, Windows-native paths for PowerShell
+- `aloop start` must detect the current shell and convert paths to the target script's expected format
+
+---
+
+## Inner Loop vs Runtime (Boundary Contract)
+
+The inner loop (`loop.sh` / `loop.ps1`) and the aloop runtime (`aloop` CLI, TS/Bun) are **separate programs** with a strict boundary. The inner loop may run inside a container where the aloop CLI is not available.
+
+### Inner Loop Responsibilities (loop.sh / loop.ps1)
+- Read `loop-plan.json` each iteration, pick agent at `cyclePosition % cycle.length`
+- Invoke provider CLIs directly (claude, opencode, codex, gemini, copilot)
+- Write `status.json` and `log.jsonl` after each iteration
+- Update `cyclePosition` and `iteration` in `loop-plan.json`
+- Detect stuck iterations (same task failing repeatedly)
+- Read `TODO.md` for phase prerequisites
+- Hot-reload provider list from `meta.json` each iteration
+- Track and kill child processes (provider timeout, cleanup on exit)
+- Sanitize environment (`CLAUDECODE`, `PATH` hardening)
+
+### Inner Loop Does NOT
+- Parse pipeline YAML config
+- Evaluate transition rules (`onFailure`, escalation ladders)
+- Talk to GitHub API
+- Know about other child loops or the orchestrator
+- Run the dashboard
+- Process steering files (it reads them, but the runtime interprets and rewrites `loop-plan.json`)
+
+### Runtime Responsibilities (aloop CLI, TS/Bun)
+- Compile pipeline YAML into `loop-plan.json`
+- Rewrite `loop-plan.json` on mutations (steering, failure recovery, agent injection)
+- Manage sessions (create, resume, stop, cleanup, lockfiles)
+- Serve the dashboard
+- Process convention-file protocol (`.aloop/requests/` → `.aloop/responses/`)
+- Monitor provider health (cross-session)
+- GitHub operations (`aloop gh` subcommands)
+- Orchestrator mode: decompose, schedule, dispatch, monitor, gate, replan
+
+### Communication Contract
+- **Runtime → Inner Loop**: `loop-plan.json` (pipeline), `meta.json` (providers), `STEERING.md` (user intent)
+- **Inner Loop → Runtime**: `status.json` (current state), `log.jsonl` (history), `.aloop/requests/` (GH operations)
 
 ---
 
@@ -107,6 +82,7 @@ Multiple loops can run concurrently against the same providers. When a provider 
   codex.json
   gemini.json
   copilot.json
+  opencode.json
 ```
 
 Each file tracks:
@@ -177,6 +153,7 @@ If ALL providers are in cooldown/degraded: sleep until the earliest cooldown exp
     codex    cooldown    (3 failures, resumes in 12m)
     gemini   healthy     (last success: 5m ago)
     copilot  degraded    (auth error — run `gh auth login`)
+    opencode healthy     (last success: 3m ago)
   ```
 - Dashboard SSE includes provider health in session status events
 
@@ -221,7 +198,7 @@ if ($iterationMode -eq 'build') {
    - If review approves → loop exits with `state: "completed"`
    - If review finds issues → review reopens tasks (marks them `[ ]` again or adds new ones), resets `$script:allTasksMarkedDone`, and the loop continues with a forced re-plan
 
-This ensures the review phase is the **only** path to a clean exit when the mode includes review.
+This ensures the review phase is the **only** path to a clean exit when the pipeline includes a review agent.
 
 ### State machine
 
@@ -237,9 +214,9 @@ review approves?
 
 ### Edge cases
 
-- **Review-only mode** (`-Mode review`): No build phase exists, so this invariant doesn't apply. The single review runs and exits.
-- **Build-only mode** (`-Mode build`): No review phase exists. Current behavior (exit on all tasks done) is correct for this mode.
-- **Plan-build mode** (`-Mode plan-build`): No review phase. Current behavior is acceptable, but consider adding a final plan phase to verify completeness.
+- **Review-only pipeline**: No build phase exists, so this invariant doesn't apply. The single review runs and exits.
+- **Build-only pipeline**: No review phase exists. Current behavior (exit on all tasks done) is correct for this pipeline.
+- **Plan-build pipeline** (no review agent configured): No review phase. Current behavior is acceptable, but consider adding a final plan phase to verify completeness.
 - **Steering mid-flight**: If steering arrives while `allTasksMarkedDone` is set, the steer phase takes priority, the flag resets, and the loop continues normally.
 - **Builder re-marks after review reopen**: The flag can be set again after a review reopen. The same cycle repeats — forced review runs again.
 
@@ -258,7 +235,7 @@ review approves?
 - [ ] When all tasks are marked done in build, the next iteration is a forced review
 - [ ] Review approval is the only path to `state: "completed"` exit in pipelines with a `review` agent
 - [ ] Review can reopen/add tasks, causing the loop to continue with a forced re-plan
-- [ ] In `build`-only mode, current early-exit behavior is preserved (no review exists)
+- [ ] In `build`-only pipelines, current early-exit behavior is preserved (no review exists)
 - [ ] Steering takes priority over the `forceReviewNext` flag
 - [ ] `tasks_marked_complete`, `final_review_approved`, and `final_review_rejected` events are logged
 
@@ -268,7 +245,7 @@ review approves?
 
 ### Problem
 
-The current loop advances the phase cycle on every iteration regardless of success or failure. In the default pipeline (cycle: plan → build × 3 → review), if iteration 1 (plan) fails, iteration 2 becomes build — but no plan/TODO.md exists. The build phase flies blind, produces unstructured work, and the loop wastes iterations.
+The current loop advances the phase cycle on every iteration regardless of success or failure. In the default pipeline (cycle: plan → build × 3 → proof → review), if iteration 1 (plan) fails, iteration 2 becomes build — but no plan/TODO.md exists. The build phase flies blind, produces unstructured work, and the loop wastes iterations.
 
 **Current behavior (broken):**
 ```
@@ -292,17 +269,17 @@ iter 5: claude  build  → continues building
 
 #### Rule 1: Failed iterations do not advance the phase cycle
 
-The cycle position (index into the compiled loop plan) must be tracked independently from the iteration counter. A new variable `$script:cyclePosition` tracks where we are in the pipeline. It only increments on successful iterations.
+The cycle position (index into the compiled loop plan in `loop-plan.json`) must be tracked independently from the iteration counter. The `cyclePosition` field in `loop-plan.json` tracks where we are in the pipeline. It only increments on successful iterations.
 
 ```
-$script:cyclePosition = 0   # starts at plan
+cyclePosition = 0   # starts at plan (persisted in loop-plan.json)
 
-Resolve-IterationMode:
+Resolve next agent:
   if forced flags (steer, review, plan) → return those, don't touch cyclePosition
-  else → return phase from cycle[$script:cyclePosition % cycleLength]
+  else → return agent from cycle[cyclePosition % cycleLength]
 
 On iteration SUCCESS:
-  $script:cyclePosition++
+  cyclePosition++   (written back to loop-plan.json)
 
 On iteration FAILURE:
   cyclePosition stays the same
@@ -650,7 +627,7 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 
 ### Problem
 
-When aloop is invoked from inside a Claude Code session (which is the normal case — user types `/aloop:start` in Claude Code), the `CLAUDECODE` env var is set. This causes the Claude CLI provider to refuse to start: "Claude Code cannot be launched inside another Claude Code session." Currently only the repo's `ralph/bin/loop.ps1` has a manual `$env:CLAUDECODE = $null` at line 50. The worktree's renamed `aloop/bin/loop.ps1`, `aloop/bin/loop.sh`, and the aloop CLI itself all lack this fix.
+When aloop is invoked from inside a Claude Code session (which is the normal case — user types `/aloop:start` in Claude Code), the `CLAUDECODE` env var is set. This causes the Claude CLI provider to refuse to start: "Claude Code cannot be launched inside another Claude Code session." All entry points that may launch provider CLIs must unset this variable.
 
 ### Design
 
@@ -660,7 +637,7 @@ Unset `CLAUDECODE` in every process entry point that may launch provider CLIs:
 |----------|-----|
 | `aloop/bin/loop.ps1` | `$env:CLAUDECODE = $null` at script top |
 | `aloop/bin/loop.sh` | `unset CLAUDECODE` at script top |
-| `aloop/cli/aloop.mjs` | `delete process.env.CLAUDECODE` at entry |
+| `aloop/cli/src/index.ts` | `delete process.env.CLAUDECODE` at entry |
 | `Invoke-Provider` (loop.ps1) | Also unset in the provider invocation block (defense-in-depth, in case something re-sets it) |
 | `invoke_provider` (loop.sh) | Same — `unset CLAUDECODE` before each provider call |
 
@@ -668,7 +645,7 @@ Unset `CLAUDECODE` in every process entry point that may launch provider CLIs:
 
 - [ ] `CLAUDECODE` is unset at the top of `aloop/bin/loop.ps1`
 - [ ] `CLAUDECODE` is unset at the top of `aloop/bin/loop.sh`
-- [ ] `CLAUDECODE` is deleted from `process.env` at `aloop/cli/aloop.mjs` entry
+- [ ] `CLAUDECODE` is deleted from `process.env` at `aloop/cli/src/index.ts` entry
 - [ ] `Invoke-Provider` in loop.ps1 unsets `CLAUDECODE` before each provider call (defense-in-depth)
 - [ ] `invoke_provider` in loop.sh unsets `CLAUDECODE` before each provider call (defense-in-depth)
 - [ ] Loop launched from inside a Claude Code session can successfully invoke the `claude` provider
@@ -707,6 +684,11 @@ What it does internally:
 8. Print session summary + dashboard URL
 
 The agent command `/aloop:start` becomes a thin wrapper that calls `aloop start` with the right flags. No more 7-step orchestration.
+
+**Runtime staleness detection:**
+- CLI should detect when installed runtime (`~/.aloop/bin/`) is older than repo source and warn the user
+- `aloop update` command re-copies runtime files from repo to `~/.aloop/bin/`
+- Loop scripts must log their own version/timestamp at `session_start` for debugging
 
 #### 2. `aloop setup` CLI subcommand
 
@@ -966,7 +948,7 @@ A meta-loop mode that decomposes a spec into **vertical slices** as GitHub issue
 The orchestrator and child loops are **completely different programs** with different responsibilities:
 
 **Orchestrator** (TS/Bun, `aloop/cli/`):
-- A proper application in the aloop Node/Bun TypeScript codebase
+- A proper application in the aloop TypeScript/Bun codebase
 - Manages the full fan-out lifecycle: decompose, schedule, dispatch, monitor, gate, replan
 - Talks to GitHub API (issues, PRs, dependencies, sub-issues)
 - Watches spec files for changes, triggers replan agents
@@ -1768,8 +1750,12 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 **What stays in loop.ps1/loop.sh:**
 - Read `loop-plan.json` each iteration, pick agent at `$cyclePosition`
 - Provider invocation (direct — loop and providers run in the same environment)
+  - Must track child PIDs when invoking providers
+  - Per-iteration timeout (configurable via `ALOOP_PROVIDER_TIMEOUT`, default 10 min) — kill child process tree on timeout
+  - On loop exit (`finally`/`trap`), kill all spawned child processes
 - Stuck detection and iteration counting
 - Status.json and log.jsonl writes
+  - Each session run must include a unique `run_id` in all log entries, or rotate logs on session start
 - TODO.md reading for phase prerequisites
 - PATH hardening (defense in depth, even though container already isolates)
 
@@ -1780,7 +1766,11 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 - Steering file detection and injection
 - Dashboard server
 - Provider health file management (already cross-session)
-- Session lifecycle (start, stop, cleanup)
+- Session lifecycle (start, stop, cleanup, lockfile management)
+  - Session must use a PID lockfile (`session.lock`) in the session directory
+  - On start, check if lockfile exists and PID is alive — refuse to start or kill stale process
+  - On exit (including Ctrl+C and errors), clean up lockfile in `finally`/`trap` block
+  - Both `loop.ps1` and `loop.sh` must implement lockfile handling
 
 The monitor is a long-running process started by `aloop start` that watches the session directory via filesystem polling. It reads `status.json` to know the current iteration and processes requests/steering between iterations. This cleanly separates container-safe loop logic from host-privileged operations.
 
@@ -2203,6 +2193,7 @@ Generate a `postCreateCommand` or `onCreateCommand` script that installs the ena
 - `claude`: npm install -g @anthropic-ai/claude-code
 - `codex`: npm install -g @openai/codex
 - `gemini`: npm install -g @google/gemini-cli (or equivalent)
+- `opencode`: npm install -g opencode (or equivalent)
 - `copilot`: installed via VS Code extension, not CLI inside container
 
 Only install providers listed in the project's `config.yml` `enabled_providers`.
@@ -2332,6 +2323,7 @@ Only activated providers get forwarded — never expose unused credentials.
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` (preferred) or `ANTHROPIC_API_KEY` | `claude setup-token` (generates 1-year headless token from Pro/Max subscription) or [Anthropic Console](https://console.anthropic.com/) API Keys | See Claude-specific section below. `setup-token` uses existing subscription; `ANTHROPIC_API_KEY` switches to pay-as-you-go. |
 | Codex (OpenAI) | `OPENAI_API_KEY` or `CODEX_API_KEY` | [OpenAI Dashboard](https://platform.openai.com/api-keys) | Can also pipe to `codex login --with-api-key` inside container |
 | Gemini CLI | `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) | Also supports `.env` file in `~/.gemini/` but env var preferred |
+| OpenCode | `OPENCODE_API_KEY` or provider-specific keys | Varies by configured backend provider | OpenCode proxies to various providers; auth depends on which backend models are configured |
 | Copilot CLI | `GITHUB_TOKEN` or `GH_TOKEN` or `COPILOT_GITHUB_TOKEN` | GitHub Settings → Fine-grained PATs → enable "Copilot Requests" permission | Newer Copilot CLI supports PAT via env var; older `gh copilot` extension requires separate OAuth (not supported in unattended container) |
 | GitHub CLI (gh) | `GH_TOKEN` or `GITHUB_TOKEN` | GitHub Settings → PATs | For convention-file GH request processing on host-side monitor (not typically needed inside container) |
 
@@ -2424,7 +2416,7 @@ The skill's devcontainer generator MUST:
 
 ## Configurable Agent Pipeline (Priority: P2)
 
-The current hardcoded `plan → build × 3 → review` cycle is replaced by a **configurable, runtime-mutable pipeline of agents**. The existing cycle becomes just the default configuration — zero breaking change.
+The default `plan → build × 3 → proof → review` cycle is a **configurable, runtime-mutable pipeline of agents**. This cycle is the default configuration, compiled into `loop-plan.json` at session start. Pipelines are fully customizable via agent YAML definitions.
 
 ### Core Concept: Agents as the Unit
 
@@ -2602,7 +2594,7 @@ This approach is:
 The pipeline is a sequence of agent references with transition rules:
 
 ```yaml
-# Example: default plan-build-review (equivalent to current behavior)
+# Example: minimal plan-build-review pipeline (no proof phase)
 pipeline:
   - agent: plan
   - agent: build
@@ -2898,123 +2890,9 @@ For production visual review with data sensitivity requirements, use **Anthropic
 - Pipeline config lives in `.aloop/pipeline.yml` (or inline in `config.yml`) — this is the **source of truth**
 - `loop-plan.json` is a **compiled artifact** — never hand-edit it, always regenerate from config
 - The relationship is like TypeScript → JavaScript: you edit the source, the compiler produces the runtime artifact
-- Default pipeline (plan-build-review) is generated if no config exists — backward compatible
+- Default pipeline (plan → build × 3 → proof → review) is generated if no config exists — backward compatible
 - Agent definitions live in `.aloop/agents/` — each is a YAML file with prompt reference, provider preference, reasoning effort, and transition rules
 - The loop script becomes a generic agent runner: read `loop-plan.json`, resolve next agent, invoke, repeat
 - Runtime pipeline mutations are applied via the host-side monitor rewriting `loop-plan.json`
 - Pipeline state (`cyclePosition`, `iteration`, `version`, escalation counts, mutation history) lives in `loop-plan.json` itself
 - The parallel orchestrator creates per-slice pipelines — each child loop runs its own `loop-plan.json` independently
-
----
-
-## Known Issues & Required Fixes (from field testing)
-
-These issues were discovered when another agent attempted to set up and run aloop on a fresh Windows machine. They must be addressed before aloop can be considered reliably installable.
-
-### 1. loop.ps1 — Fatal parse error on last line
-
-`Write-Host "... ($iteration iterations) ..."` causes a cascading parse failure. PowerShell interprets `($iteration iterations)` as a sub-expression, chokes on `iterations` as an unexpected token, and then reports bogus "missing closing `}`" errors throughout the entire file. The file fails to load at all — no execution happens.
-
-**Fix:** Use `$($iteration)` subexpression syntax to avoid the parentheses-inside-string ambiguity. Applied to repo source but **the installed runtime at `~/.aloop/bin/loop.ps1` may still have the old version** — `install.ps1` must re-copy on next install.
-
-**Note:** This only affects Windows PowerShell 5.1. PowerShell 7 (pwsh) parses it differently but we must support both.
-
-### 2. Claude Code Edit tool corrupts line endings
-
-When Claude Code's Edit tool modifies `loop.ps1`, it writes edited lines with LF-only (`\n`) while the rest of the file uses CRLF (`\r\n`). Windows PowerShell cannot parse files with mixed line endings — it treats LF-only lines as continuation of the previous string, causing "missing string terminator" errors.
-
-Worse: attempting to fix with `Set-Content` can collapse the file into a single line.
-
-**Mitigations needed:**
-- [ ] Add `.editorconfig` to repo enforcing `end_of_line = crlf` for `*.ps1` files
-- [ ] Consider adding a line-ending self-check at the top of `loop.ps1` that detects and warns about mixed endings
-- [ ] `install.ps1` should normalize line endings when copying loop scripts to `~/.aloop/bin/`
-- [ ] Document in skill instructions that agents should use `Write` tool (full file) instead of `Edit` for `.ps1` files if line-ending corruption is detected
-
-### 3. Path format mismatch — Git Bash `$HOME` vs PowerShell paths
-
-When launching `loop.ps1` from Git Bash, `$HOME` resolves to `/c/Users/pj/` which PowerShell can't parse. Paths must be Windows-native (`C:\Users\pj\...`).
-
-**Mitigations needed:**
-- [ ] `aloop start` skill/CLI must detect the current shell and convert paths to the target script's expected format
-- [ ] `loop.ps1` should normalize any POSIX-style paths it receives in its parameters
-- [ ] Document that `loop.ps1` must always be invoked with Windows-native paths
-
-### 4. CLAUDECODE env var not unset in loop.sh
-
-When `aloop start` is invoked from within a Claude Code session, the `CLAUDECODE` env var is inherited by child processes. This causes `claude --print` (and potentially other provider CLIs) to fail with "Claude Code cannot be launched inside another Claude Code session."
-
-**Fix:** `unset CLAUDECODE` at the top of `loop.sh` and `Remove-Item Env:CLAUDECODE` at the top of `loop.ps1`. Applied to repo source but **installed runtime may be stale** — must be re-installed.
-
-**Defense in depth:** Also unset per-invocation in `Invoke-Provider` / `invoke_provider` blocks (already done in worktree versions).
-
-### 5. No session locking — multiple loops race on same session files
-
-**Severity: Critical**
-
-Starting a new loop on the same session doesn't detect or kill a previous loop. Both processes write to `log.jsonl`, `status.json`, and `report.md` simultaneously, corrupting all session state. The stale loop consumed its 50 iterations writing garbage while the new loop was blocked on a real provider call.
-
-**Mitigations needed:**
-- [ ] On startup, write a PID lockfile (`session.lock`) in `SessionDir`
-- [ ] Before starting, check if lockfile exists and if the PID is still alive — if so, either kill it or refuse to start with a clear error
-- [ ] On exit (including Ctrl+C and errors), clean up the lockfile in the `finally`/`trap` block
-- [ ] Both `loop.ps1` and `loop.sh` must implement this
-
-### 6. Log file never cleared between runs
-
-**Severity: Medium**
-
-`log.jsonl` is append-only across runs. Iteration numbers from run N carry into run N+1, making it impossible to tell which run an entry belongs to.
-
-**Mitigations needed (pick one):**
-- [ ] Option A: Add a unique `run_id` field to every log entry (generated at session start, included in all `write_log_entry` calls)
-- [ ] Option B: Rotate the log on `session_start` — rename existing `log.jsonl` to `log.jsonl.1` (or timestamped)
-- [ ] Whichever approach is chosen, apply to both `loop.ps1` and `loop.sh`
-
-### 7. Zombie child processes never cleaned up
-
-**Severity: High**
-
-When a provider call (`claude`/`codex`/`copilot`) hangs or errors, the child process is never killed. Over multiple iterations, dozens of zombie `claude.exe`, `codex.exe`, `pwsh.exe` processes accumulate, consuming memory and potentially holding file locks.
-
-Current `Invoke-Provider` / `invoke_provider` uses synchronous pipe (`|`) with no timeout and no PID tracking.
-
-**Mitigations needed:**
-- [ ] Track the child PID when invoking a provider (use `Start-Process` with `-PassThru` in PS1, `$!` in bash)
-- [ ] Implement per-iteration timeout (e.g., `ALOOP_PROVIDER_TIMEOUT` env var, default ~10 minutes) — kill child process tree on timeout
-- [ ] On loop exit (`finally`/`trap`), kill all spawned child processes
-- [ ] Consider the zombie dashboard process issue too (already partially mitigated by `ALOOP_NO_DASHBOARD` in tests, but production loops need cleanup)
-
-### 8. Installed runtime staleness
-
-The installed runtime at `~/.aloop/bin/` (or `~/.ralph/bin/` on older installs) is copied once during `install.ps1` and never auto-updated. When bugs are fixed in the repo, the installed copy stays broken until the user re-runs `install.ps1`.
-
-**Mitigations needed:**
-- [ ] `aloop` CLI should check if installed runtime is older than repo source and warn/offer to update
-- [ ] Consider `aloop update` command that re-copies runtime files from repo
-- [ ] `install.ps1` should print a version or timestamp so staleness is detectable
-- [ ] Loop scripts should log their own version/timestamp at `session_start` for debugging
-
-### 9. No distinction between start, restart, and resume
-
-**Severity: Medium**
-
-The loop always starts at iteration 1 (plan phase). There is no way to resume from where a previous run left off in the cycle. If stopped after `plan → build → review → plan` and restarted, it re-plans instead of continuing to build.
-
-Three session launch modes are needed:
-
-| Mode | Session | TODO/plan | Cycle position | Use case |
-|---|---|---|---|---|
-| **start** | New session | Fresh (no TODO) | Iteration 1 (plan) | New work from scratch |
-| **restart** | Existing session | Keeps existing TODO | Iteration 1 (plan) | Re-plan with existing work (current behavior) |
-| **resume** | Existing session | Keeps existing TODO | Continues from last position | Pick up where you left off |
-
-**Mitigations needed:**
-- [ ] Add `--mode start|restart|resume` flag (or equivalent) to loop scripts and `/aloop:start` skill
-- [ ] **resume**: read `status.json` (already has `iteration` and `phase`), calculate next cycle position, start there
-- [ ] **resume**: log the resume point: "Resuming from iteration N (phase: build)"
-- [ ] **restart**: current behavior, no changes needed
-- [ ] **start**: create new session directory, fresh state
-- [ ] All other params (provider, model, max iterations, mode) remain independently overridable regardless of launch mode — e.g., `resume --max-iterations 200` or `restart --provider codex --mode plan-build`
-- [ ] Both `loop.ps1` and `loop.sh` must implement this
-- [ ] `/aloop:start` and `/aloop:resume` as separate skills, or `/aloop:start` asks which mode

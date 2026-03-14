@@ -16,6 +16,8 @@ import {
   type PrReviewComment,
   type PrCheckRun,
   type PrFeedback,
+  type GhWatchIssueEntry,
+  type GhWatchIssueStatus,
 } from './gh.js';
 
 type GhFixture = {
@@ -1893,13 +1895,13 @@ function buildWatchEntry(overrides: Partial<{
   repo: string | null;
   pr_number: number | null;
   pr_url: string | null;
-  status: string;
+  status: GhWatchIssueStatus;
   completion_state: string | null;
   feedback_iteration: number;
   max_feedback_iterations: number;
   processed_comment_ids: number[];
   processed_run_ids: number[];
-}> = {}) {
+}> = {}): GhWatchIssueEntry {
   return {
     issue_number: overrides.issue_number ?? 42,
     session_id: overrides.session_id ?? 'sess-42',

@@ -264,3 +264,61 @@
   - Source: previous research entry 14:19Z confirmed (T2)
 - Dead-PID liveness correction in dashboard is implemented via `withLivenessCorrectedState()`.
   - Source: `aloop/cli/src/commands/dashboard.ts:187-198` (T2 — direct inspection)
+
+## 2026-03-14 16:00Z — Planning recheck: post-merge state — GH workflows landed, dashboard partially fixed, coverage still below gate [T2+T3]
+
+### Dashboard state — supersedes 15:45Z findings
+
+- Dashboard header NOW uses CSS grid layout (line 298: `className="grid items-center gap-x-3 gap-y-2 [grid-template-columns:...]"`). The earlier 15:45Z finding about flex-wrap is superseded.
+  - Source: `aloop/cli/dashboard/src/App.tsx:298` (T2 — direct inspection)
+- Provider+model ARE shown together in header (line 388: `providerName/modelName` format).
+  - Source: `aloop/cli/dashboard/src/App.tsx:388` (T2 — direct inspection)
+- Docs panel NOW filters empty content at the individual DocEntry level (line 620: `{content && (...)}`). Panel-level filtering for empty doc lists also exists (line 579).
+  - Source: `aloop/cli/dashboard/src/App.tsx:579,620` (T2 — direct inspection)
+- Provider health is NOT in a sidebar tab — still only shows provider name inline in header. No separate health panel/tab exists.
+  - Source: `aloop/cli/dashboard/src/App.tsx:387-390` (T2 — direct inspection)
+- No per-iteration timing/duration shown in artifact gallery rows (lines 920-927 show iteration number + artifact count only). No session elapsed/total iterations/average duration in header.
+  - Source: `aloop/cli/dashboard/src/App.tsx:341,366,920-927` (T2 — direct inspection)
+
+### GH workflow commands — now implemented
+
+- All four high-level GH workflow commands exist: `start` (line 904), `watch` (line 939), `status` (line 958), `stop` (line 967).
+  - Source: `aloop/cli/src/commands/gh.ts:904,939,958,967` (T2 — direct inspection)
+- Watch-cycle completion finalization gap: `refreshWatchState()` (lines 373-403) detects running→completed transitions by reading session state, but does NOT create PRs or post issue summary comments for sessions that completed after launch (where `pending_completion` was true at start time).
+  - Source: `aloop/cli/src/commands/gh.ts:373-403,925-926` (T2 — direct inspection)
+- Missing feedback signals: no `@aloop` mention detection, no manual trigger handling, no review-change semantics, no CI failure log context ingestion. PR feedback loop only checks review comments + check run conclusions.
+  - Source: grep for `@aloop|manual.trigger|review.change|CI.failure.detail` in gh.ts returned 0 matches (T2), `aloop/cli/src/commands/gh.ts:552-614,617-675` (T2 — direct inspection)
+- No `gh stop-watch` command or equivalent documented — `gh stop` stops individual issues/all tracked, but no command to stop the watch daemon itself (relies on SIGINT/SIGTERM).
+  - Source: `aloop/cli/src/commands/gh.ts:755-778,967-975` (T2 — direct inspection)
+
+### Type-check regression — still present
+
+- `npm run type-check` still fails with 5 TS2345 errors in `gh.test.ts` at lines 1937, 1953, 1964, 2032, 2050. Root cause: `buildWatchEntry()` helper (line 1889) returns `status: string` instead of `GhWatchIssueStatus` type.
+  - Source: command run `cd aloop/cli && npx tsc --noEmit` (T2)
+
+### Branch coverage — still below gate
+
+- `gh.ts` branch coverage is at 65.80% (gate target: >=80%). Key uncovered branches: lines 16-18, 24, 28-29, 32-33, 51, 54, 58, 100-101, 183-184, 226-227, 241-249, 274-279, 311-316, 370-375, 440, 515-516, 522-544, 587, 592-593, 603, 618-619, 626-627, 637-641, 696-718, 828-834, 914, 927, 968, 1085-1087, 1107, 1193-1199, 1258-1259, 1284-1287, 1304, 1323-1324.
+  - Source: command run `cd aloop/cli && node --experimental-test-coverage --import tsx --test src/commands/gh.test.ts` (branch % 65.80) (T2)
+- Tests for remove-label path (line 727) and parseGhOutput error/fallback (lines 841, 869) DO exist now. But many new branches from `start/watch/status/stop` commands remain untested.
+  - Source: `aloop/cli/src/commands/gh.test.ts:727,841,869` (T2 — direct inspection)
+
+### Dead code — still present
+
+- `fetchPrReviewComments` (lines 488-515): `response` variable assigned from `/reviews` API call at line 489 but never referenced. Only `commentsResponse` (line 495) is used.
+  - Source: `aloop/cli/src/commands/gh.ts:489-492` (T2 — direct inspection)
+
+### Playwright config — Windows path separators
+
+- `playwright.config.ts` line 18: webServer command uses backslash path separators (`..\\dist\\index.js`, `.\\e2e\\fixtures\\session`, etc.) which fail on Linux with `MODULE_NOT_FOUND`.
+  - Source: `aloop/cli/dashboard/playwright.config.ts:17-18` (T2 — direct inspection)
+
+### Pipeline — not yet implemented
+
+- loop-plan.json compiler does not exist. `loop.sh` lines 360-391 still use hardcoded phase cycle logic with modulo calculations.
+  - Source: `aloop/bin/loop.sh:360-391` (T2 — direct inspection), glob for `**/loop-plan.json` (no matches) (T2)
+
+### Proof manifest iter 43
+
+- Iteration 43 proof artifacts (`gh-help.txt`, `gh-status-text.txt`, `gh-status-json.json`, `gh-stop-all-success.json`, `gh-status-after-stop.txt`, `dashboard-api-state.json`, `dashboard-server.log`, `gh-stop-json.json`) remain missing. Iteration 45 proof artifacts are present.
+  - Source: glob for `**/{gh-help.txt,gh-status-text.txt,dashboard-api-state.json}` (no matches) (T2)
