@@ -816,7 +816,7 @@ The current dashboard has a sessions sidebar that renders session cards, but it'
 │              ├──────────────────────────────────────────────┤
 │  ● cal-v2    │                                              │
 │    iter 7/30 │  Main content area                           │
-│    build     │  (TODO + Log + Health + Commits)             │
+│    build     │  (TODO + Log + Commits)                      │
 │              │                                              │
 │  ○ ralph-sk  │                                              │
 │    completed │                                              │
@@ -866,16 +866,17 @@ The current dashboard uses basic shadcn components with tabs per section. Redesi
 ```
 
 **Key changes from current dashboard:**
-- **No tab switching for core info** — TODO, log, health, commits all visible simultaneously
+- **No tab switching for core info** — TODO, log, and commits stay visible simultaneously; per-provider health moves to a dedicated left-pane tab
 - **Live TODO.md** — rendered inline with checkboxes, current task highlighted
 - **Compact log** — one line per iteration: timestamp, phase, provider + model, result (✓/✗), commit hash or error, and iteration duration
 - **Commit detail context** — commit diffstat stays visible, and file lists include per-file change type badges (`M`, `A`, `D`, `R`)
-- **Provider health badges** — inline colored dots, time since last success
+- **Provider health tab in left pane** — per-provider status moves out of the top header into a dedicated sidebar tab to reduce header overload
 - **Recent commits** — scrolling list with hash + subject
 - **Steer input** — always visible at bottom, not hidden in a tab
 - **Progress bar** — visual at top showing tasks completed percentage
 - **Phase indicator** — color-coded (plan=purple, build=yellow, review=cyan)
 - **Header grid layout** — header bar uses CSS grid with `fr` columns (not flexbox wrapping) so that right-side content (provider/model, status, timestamp) is always visible and never clipped off the edge
+- **Sidebar expand/collapse alignment** — the sidebar toggle button is vertically centered with the header title row
 - **Session timing context** — header shows elapsed runtime since `session_start`, total iterations, and average iteration duration
 - **Docs tabs reflect real files only** — render tabs only for docs with non-empty content from server state; overflow extra docs into an end-of-row `...` menu
 
@@ -910,12 +911,13 @@ The current dashboard uses basic shadcn components with tabs per section. Redesi
 - [ ] `/aloop:setup` agent command delegates to `aloop setup` CLI (thin wrapper)
 - [ ] `/aloop:dashboard` command file exists in `claude/commands/aloop/`
 - [ ] `aloop-dashboard.prompt.md` exists in `copilot/prompts/`
-- [ ] Dashboard shows TODO, log, health, commits, steer in a single dense view (no tabs for core info)
+- [ ] Dashboard shows TODO, log, commits, steer in a single dense view (no tabs for core info); per-provider health is accessible via a dedicated left-pane tab
 - [ ] Dashboard updates in real-time via SSE for all state changes
 - [ ] Dashboard uses advanced shadcn components (ResizablePanel, HoverCard, Collapsible, Command, Sonner)
 - [ ] Steer input is always visible (not behind a tab)
 - [ ] Progress bar and phase indicator visible in dashboard header
 - [ ] Dashboard header uses CSS grid with fractional (`fr`) columns so right-side items (provider/model, status, timestamp) are never clipped — avoid flexbox wrapping that hides trailing content
+- [ ] Sidebar expand/collapse button is vertically centered with the header title bar
 - [ ] Iteration rows show provider and model together, plus per-iteration duration
 - [ ] Header shows elapsed session duration (`session_start`), total iterations, and average iteration duration
 - [ ] Commit detail view preserves diffstat and shows per-file change type (`M`/`A`/`D`/`R`)

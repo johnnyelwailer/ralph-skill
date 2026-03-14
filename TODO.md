@@ -10,7 +10,9 @@
 ### Up Next
 - [ ] [review][high] Extend branch-evidence gate to include touched `loop.ps1` runtime branches (not only `loop.sh`) so shell parity is provable on both platforms.
 - [ ] [dashboard][high] Replace header wrapping layout with CSS grid `fr` columns so provider/model/status/timestamp never clip on narrower widths.
+- [ ] [dashboard][high] Move per-provider health status out of the top header into a dedicated left-pane dashboard tab.
 - [ ] [dashboard][medium] Show provider+model together and add timing context (per-iteration duration, session elapsed, total iterations, average iteration duration) for quick health triage.
+- [ ] [dashboard][medium] Vertically center the sidebar expand/collapse button with the header title row.
 - [ ] [dashboard][medium] Filter docs tabs to non-empty content and add overflow/ellipsis behavior to keep docs panel usable with many files.
 - [ ] [gh-workflows][medium] Implement high-level GH workflow commands `aloop gh start|watch|status|stop` with persisted issue/session mapping to match P2 command surface.
 - [ ] [gh-workflows][medium] Implement PR feedback re-iteration loop (review comments + CI failure ingestion) with dedupe and max-iteration safety limits.
