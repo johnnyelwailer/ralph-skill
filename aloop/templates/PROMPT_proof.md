@@ -18,10 +18,11 @@ Examine recent build output (TODO.md, commits, changed files, specs), decide wha
    - Understand what was built and what acceptance criteria exist in the spec
 
 2. **Decide What to Prove**
-   - Determine which deliverables have provable, observable output
+   - Determine which deliverables have provable, **observable external output**
    - Consider what tooling is available (Playwright, curl, node, etc.)
-   - Prioritize proof that strengthens the reviewer's ability to judge quality
+   - Prioritize proof that a **human can verify visually or behaviorally**
    - Not everything needs proof — be selective and practical
+   - If nothing is externally observable (pure refactoring, type changes, internal plumbing), **skip** — do not generate filler
 
 3. **Generate Artifacts**
    - Run the actual commands: launch servers, capture screenshots, test endpoints, run CLI tools
@@ -29,17 +30,28 @@ Examine recent build output (TODO.md, commits, changed files, specs), decide wha
    - Use whatever tools and approaches make sense for the work at hand
    - If previous baselines exist in `<session-dir>/artifacts/baselines/`, diff against them
 
-4. **Write the Manifest**
+4. **Layout Verification (when UI/CSS was changed)**
+   If the build touched CSS, layout, or visual components, you MUST verify actual rendered layout — not just that CSS classes exist in source. Static code inspection cannot catch layout bugs (e.g., wrapper divs breaking CSS Grid parent-child relationships).
+   - Launch the app with Playwright
+   - Capture screenshots at key viewports (desktop 1920x1080, tablet 768x1024, mobile 375x812)
+   - **Check bounding boxes** of key layout elements to verify they're positioned correctly:
+     - Side-by-side panels share the same Y, different X
+     - Sticky footer remains at viewport bottom after scrolling
+     - Collapsed sidebar has zero width
+   - Save the bounding-box assertions as a JSON artifact (the review agent uses this for Gate 7)
+   - **Common trap:** a React context provider or wrapper component inserts a `<div>` between a CSS Grid container and its items, silently breaking all `grid-area` assignments. Always verify the rendered DOM tree, not just the JSX.
+
+5. **Write the Manifest**
    - Write `proof-manifest.json` to `<session-dir>/artifacts/iter-<N>/`
    - Include structured metadata for each artifact
    - Document what was skipped and why
 
-5. **Handle Nothing-to-Prove**
+6. **Handle Nothing-to-Prove**
    - If all completed tasks involve internal logic with no observable external output, that is a valid outcome
    - Write the manifest with an empty `artifacts` array and explanations in `skipped`
    - Do not generate fake or low-value proof just to have something
 
-6. **Exit**
+7. **Exit**
    - Do not fix code, do not implement features
    - Your only output is artifacts and the proof manifest
 
@@ -79,6 +91,26 @@ Examine recent build output (TODO.md, commits, changed files, specs), decide wha
 - **Do not fix code or implement features.** You are the proof agent, not a builder.
 - **Do not create commits.** Your output is artifacts and the manifest file only.
 - **Artifacts must be real.** Run actual commands and capture actual output.
+
+## What is NOT proof (do not generate these)
+
+- **Test output summaries** — "343/345 tests pass" is CI output, not proof. The reviewer can run tests themselves.
+- **Type-check results** — `tsc --noEmit` passing is a build check, not evidence of behavior.
+- **Git diffs** — the reviewer reads diffs themselves. Do not restate code changes as artifacts.
+- **Restated commit messages** — the reviewer has the git log. Do not copy commit descriptions.
+- **Filtered test output** — "16 triage-related tests pass" is still just CI output, not observable behavior.
+
+If the only "evidence" you can produce falls into the above categories, the correct action is to **skip the proof phase** with "nothing externally observable to prove."
+
+## What IS good proof
+
+- **Screenshots** of new/changed UI features (via Playwright, puppeteer, or headless browser)
+- **API response captures** — actual curl/fetch output showing endpoints return expected data
+- **CLI recordings** — actual terminal output of new commands in action
+- **Before/after visual comparisons** — baseline screenshot vs current screenshot
+- **Playwright video** of a user flow working end-to-end
+- **Accessibility audit output** (axe-core, lighthouse) with scores
+- **Performance captures** — bundle sizes, lighthouse scores, load time measurements
 
 {{SAFETY_RULES}}
 

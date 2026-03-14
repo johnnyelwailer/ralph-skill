@@ -1,8 +1,8 @@
-# SPEC: Rename ralph → aloop + Node.js CLI
+# SPEC: Aloop — Autonomous Multi-Provider Coding Agent
 
 ## Desired Outcome
 
-Rebrand the entire project from "ralph" to "aloop" (agent loop), and replace the PowerShell `setup-discovery.ps1` with a Node.js CLI (`aloop`) for developer-machine tasks. Loop scripts (`loop.ps1`/`loop.sh`) stay as-is for portable runtime execution.
+Aloop is an autonomous coding agent orchestrator that runs configurable agent pipelines with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops). The default pipeline is `plan → build × 3 → proof → review`, but pipelines are fully configurable via agent YAML definitions (see Configurable Agent Pipeline).
 
 ## Scope
 
@@ -87,7 +87,7 @@ Rebrand the entire project from "ralph" to "aloop" (agent loop), and replace the
 | Layer | Runs where | Tech | Deps |
 |-------|-----------|------|------|
 | `aloop` CLI (discover, scaffold, resolve) | Developer machine | Node.js `.mjs` | Node.js |
-| Loop scripts (plan-build-review cycle) | Anywhere — containers, sandboxes, CI | `loop.ps1` / `loop.sh` | Shell + git + provider CLI |
+| Loop scripts (execute compiled pipeline) | Anywhere — containers, sandboxes, CI | `loop.ps1` / `loop.sh` | Shell + git + provider CLI |
 
 ---
 
@@ -199,7 +199,7 @@ If ALL providers are in cooldown/degraded: sleep until the earliest cooldown exp
 
 ### Problem
 
-In `plan-build-review` mode, the loop currently exits as soon as a **build** phase finds all TODO tasks marked `[x]`. This means a builder agent can mark everything done and the loop terminates without a review phase ever validating the work. The review is the gatekeeper — it must always have the final say.
+When the pipeline includes a `review` agent, the loop currently exits as soon as a **build** phase finds all TODO tasks marked `[x]`. This means a builder agent can mark everything done and the loop terminates without a review phase ever validating the work. The review is the gatekeeper — it must always have the final say.
 
 **Current bug** (`loop.ps1` lines ~690-697):
 ```powershell
@@ -213,7 +213,7 @@ if ($iterationMode -eq 'build') {
 
 ### Design
 
-**Invariant**: In any mode that includes `review` (i.e. `plan-build-review`), the loop MUST NOT exit on task completion during a build phase. Instead:
+**Invariant**: In any pipeline that includes a `review` agent, the loop MUST NOT exit on task completion during a build phase. Instead:
 
 1. **Build detects all tasks complete** → set `$script:allTasksMarkedDone = $true`, log `tasks_marked_complete`, but **do not exit**
 2. **Next iteration becomes a forced review** → override the normal cycle to schedule a review phase (similar to how `$script:forcePlanNext` works for steering)
@@ -254,9 +254,9 @@ review approves?
 
 ### Acceptance Criteria
 
-- [ ] In `plan-build-review` mode, loop NEVER exits during a build phase due to all tasks being marked complete
+- [ ] In any pipeline with a `review` agent, loop NEVER exits during a build phase due to all tasks being marked complete
 - [ ] When all tasks are marked done in build, the next iteration is a forced review
-- [ ] Review approval is the only path to `state: "completed"` exit in `plan-build-review` mode
+- [ ] Review approval is the only path to `state: "completed"` exit in pipelines with a `review` agent
 - [ ] Review can reopen/add tasks, causing the loop to continue with a forced re-plan
 - [ ] In `build`-only mode, current early-exit behavior is preserved (no review exists)
 - [ ] Steering takes priority over the `forceReviewNext` flag
@@ -268,7 +268,7 @@ review approves?
 
 ### Problem
 
-The current loop advances the phase cycle on every iteration regardless of success or failure. In `plan-build-review` mode (cycle: plan → build × 3 → review), if iteration 1 (plan) fails, iteration 2 becomes build — but no plan/TODO.md exists. The build phase flies blind, produces unstructured work, and the loop wastes iterations.
+The current loop advances the phase cycle on every iteration regardless of success or failure. In the default pipeline (cycle: plan → build × 3 → review), if iteration 1 (plan) fails, iteration 2 becomes build — but no plan/TODO.md exists. The build phase flies blind, produces unstructured work, and the loop wastes iterations.
 
 **Current behavior (broken):**
 ```
@@ -292,7 +292,7 @@ iter 5: claude  build  → continues building
 
 #### Rule 1: Failed iterations do not advance the phase cycle
 
-The cycle position (`($iteration - 1) % 5` in plan-build-review) must be tracked independently from the iteration counter. A new variable `$script:cyclePosition` tracks where we are in the phase cycle. It only increments on successful iterations.
+The cycle position (index into the compiled loop plan) must be tracked independently from the iteration counter. A new variable `$script:cyclePosition` tracks where we are in the pipeline. It only increments on successful iterations.
 
 ```
 $script:cyclePosition = 0   # starts at plan
@@ -417,22 +417,14 @@ If the same phase fails `MAX_PHASE_RETRIES` times consecutively:
 
 A new loop phase (`proof`) where a dedicated agent autonomously decides what evidence to generate for the work completed in the preceding build iterations. The proof agent is not told what to prove via keyword matching or hardcoded rules — it inspects the actual work (TODO.md, commits, changed files, SPEC) and uses its judgment to determine what proof is possible, appropriate, and valuable.
 
-### Phase cycle
+### Default pipeline update
 
 ```
-Previous:  plan → build × 3 → review
-New:       plan → build × 3 → proof → review
-
-5-step cycle becomes 6-step:
-  0: plan
-  1: build
-  2: build
-  3: build
-  4: proof    ← new
-  5: review
+Previous default:  plan → build × 3 → review  (5-step)
+New default:       plan → build × 3 → proof → review  (6-step)
 ```
 
-The proof phase runs exactly once per cycle, after builds and before review. It gets its own prompt template (`PROMPT_proof.md`) and its own iteration, just like plan/build/review/steer.
+The proof agent is added to the default pipeline compiled into `loop-plan.json`. It runs exactly once per cycle, after builds and before review. It gets its own prompt template (`PROMPT_proof.md`) and its own entry in the pipeline config, just like any other agent.
 
 ### Proof Agent Behavior
 
@@ -454,6 +446,8 @@ The proof agent has full autonomy over what to prove and how. It receives:
 3. **How to generate it** — the agent runs the actual commands: launches servers, runs Playwright, captures screenshots, diffs against baselines, saves artifacts. It uses whatever tools make sense.
 
 4. **What to skip** — not everything needs proof. The agent explicitly notes what it chose not to prove and why.
+
+**Subagent delegation**: The proof agent does not need to be a vision model itself. It captures screenshots and delegates visual analysis to a `vision-reviewer` subagent (running on a vision-capable model like Gemini Flash Lite or Seed-2.0-Lite). Similarly, it can delegate accessibility checks to an `accessibility-checker` subagent or performance analysis to a `perf-analyzer`. The proof agent orchestrates; subagents analyze. See [Subagent Delegation](#subagent-delegation-model-per-task).
 
 **Output:**
 
@@ -638,7 +632,7 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 ### Acceptance Criteria
 
 - [ ] Proof is a first-class phase in the loop cycle, with its own `PROMPT_proof.md` template
-- [ ] Phase cycle in `plan-build-review` mode becomes: plan → build × 3 → proof → review (6-step)
+- [ ] Default pipeline becomes: plan → build × 3 → proof → review (6-step)
 - [ ] Proof agent autonomously decides what to prove, how, and whether to skip
 - [ ] Artifacts are saved to `~/.aloop/sessions/<session-id>/artifacts/iter-<N>/`
 - [ ] `proof-manifest.json` is written with structured artifact metadata and skip reasons
@@ -699,7 +693,7 @@ After global install, the end-to-end experience has significant UX gaps:
 Move the entire start orchestration into the CLI so it's a single command:
 
 ```bash
-aloop start [--mode plan-build-review] [--provider round-robin] [--max 30] [--in-place]
+aloop start [--pipeline default] [--provider round-robin] [--max 30] [--in-place]
 ```
 
 What it does internally:
@@ -724,7 +718,7 @@ aloop setup [--spec SPEC.md] [--providers claude,codex] [--non-interactive]
 
 **Dual-mode support**: setup must support configuring both loop mode and orchestrator mode. Based on the scope and complexity of the task the user describes, setup should recommend the appropriate mode:
 
-- **Loop mode** (default for simple/single-track work): one spec, one loop, plan-build-review cycle. Best for: single feature, bug fix, focused refactor, small-to-medium scope.
+- **Loop mode** (default for simple/single-track work): one spec, one loop, configurable agent pipeline. Best for: single feature, bug fix, focused refactor, small-to-medium scope.
 - **Orchestrator mode** (recommended for complex/multi-track work): spec decomposition into parallel issues, wave scheduling, concurrent child loops. Best for: large migrations, multi-component features, greenfield projects with many independent workstreams.
 
 Setup should analyze the spec file (if provided) or the user's description to gauge complexity — number of independent workstreams, estimated issue count, whether parallelism would help — and recommend one mode. The user can override the recommendation.
@@ -932,94 +926,323 @@ The current dashboard uses basic shadcn components with tabs per section. Redesi
 
 ### Concept
 
-A new meta-loop mode that decomposes a spec into GitHub issues, launches independent child loops per issue (each in its own worktree/branch), reviews the resulting PRs against hard proof criteria, and merges approved work into an agent-driven trunk branch. The human promotes agent/trunk to main when satisfied.
-
-This turns the existing single-loop architecture into a **fan-out/fan-in** pattern:
+A meta-loop mode that decomposes a spec into **vertical slices** as GitHub issues with sub-issue hierarchy, launches independent child loops per sub-issue (each in its own worktree/branch), reviews the resulting PRs against hard proof criteria, and merges approved work into an agent-driven trunk branch. The human promotes agent/trunk to main when satisfied.
 
 ```
-                           SPEC.md
-                              │
-                      ┌───────┴───────┐
-                      │  ORCHESTRATOR  │   meta-loop
-                      │  plan + split  │
-                      └───────┬───────┘
-                              │
-                creates GH issues from spec
-                              │
-              ┌───────┬───────┼───────┬───────┐
-              ▼       ▼       ▼       ▼       ▼
-           Issue#1  Issue#2  Issue#3  Issue#4  Issue#5
-              │       │       │       │       │
-           loop-1  loop-2  loop-3  loop-4  loop-5
-          (worktree)(worktree) ...  (each plan-build-review)
-              │       │       │       │       │
-            PR#1    PR#2    PR#3    PR#4    PR#5
-              │       │       │       │       │
-              └───────┴───────┼───────┴───────┘
-                              │
-                      ┌───────┴───────┐
-                      │  ORCHESTRATOR  │
-                      │  review+merge  │
-                      └───────┬───────┘
-                              │
-                       agent/trunk branch
-                              │
-                      (human promotes to main)
+               SPEC.md (or specs/*.md)
+                        │
+                ┌───────┴───────┐
+                │  ORCHESTRATOR  │  ← TS/Bun program (aloop/cli/)
+                │   decompose    │     the brain
+                └───────┬───────┘
+                        │
+             creates vertical slices
+             as parent + sub-issues
+                        │
+         ┌──────────────┼──────────────┐
+         ▼              ▼              ▼
+    Parent #10     Parent #20     Parent #30
+   "User signup"  "Create posts" "Admin panel"
+     │  │  │        │  │            │  │
+    #11 #12 #13   #21 #22        #31 #32
+     │   │   │     │   │          │   │
+   loop loop loop loop loop    loop loop  ← loop.sh (inner loop)
+     │   │   │     │   │          │   │     dumb workers
+   PR#1 PR#2 ...  PR#4 PR#5    PR#6 PR#7
+     └───┴───┴─────┴───┴────────┴───┘
+                    │
+            ┌───────┴───────┐
+            │  ORCHESTRATOR  │
+            │  gate + merge  │
+            └───────┬───────┘
+                    │
+             agent/trunk branch
+                    │
+            (human promotes to main)
 ```
 
-### Orchestrator Lifecycle
+### Two Distinct Loops
 
-#### Phase 1: Plan + Split
+The orchestrator and child loops are **completely different programs** with different responsibilities:
 
-The orchestrator reads the spec and decomposes it into GitHub issues.
+**Orchestrator** (TS/Bun, `aloop/cli/`):
+- A proper application in the aloop Node/Bun TypeScript codebase
+- Manages the full fan-out lifecycle: decompose, schedule, dispatch, monitor, gate, replan
+- Talks to GitHub API (issues, PRs, dependencies, sub-issues)
+- Watches spec files for changes, triggers replan agents
+- Manages concurrency, budget, wave advancement
+- Spawns and supervises child loops
 
-1. Read `SPEC.md` (or a spec file specified in config)
-2. Invoke an agent (plan prompt) to decompose the spec into discrete work units
-3. Build a **dependency graph** — which issues can run in parallel vs which must be sequential
-4. Assign **concurrency waves**:
-   - Wave 1: independent issues (no file overlap, no logical dependency)
-   - Wave 2: depends on wave 1 outputs
-   - Wave N: depends on wave N-1
-5. Create issues on GitHub via `gh issue create`:
-   - Title: concise work unit description
-   - Body: spec excerpt, acceptance criteria, scope boundaries, file ownership hints
-   - Labels: `aloop/auto`, `aloop/wave-1`, priority label
-   - Milestone: links to the spec version / session
+**Inner loop** (`loop.sh`):
+- Dumb shell script. Reads a **compiled loop plan** (a simple ordered list of agents) and executes them sequentially by index
+- The aloop runtime compiles the pipeline YAML config into `loop-plan.json` — a flat array of fully-resolved entries (`agent`, `prompt`, `provider`, `model`, `reasoning`)
+- `loop.sh` reads the plan file each iteration, picks entry at `$cyclePosition`, invokes that agent — no YAML parsing, no transition logic in shell
+- The runtime can regenerate `loop-plan.json` at any time (steering, mutation, failure recovery) — loop.sh re-reads it every turn
+- Invokes providers via round-robin, writes `status.json`
+- Reads its sub-spec from the issue body (seeded into its worktree), NOT the repo's SPEC.md
+- Knows nothing about GitHub, other children, orchestration, or the full spec
+- Purely a worker — the orchestrator tells it what to work on, it executes
+
+```
+Orchestrator (TS/Bun)
+  ├── watches repo for spec changes (git diff on spec glob)
+  ├── polls GitHub for issue/PR state changes
+  ├── runs agent-powered decompose/schedule/replan
+  ├── spawns child inner loops:
+  │     ├── loop.sh (issue #11) ← reads issue body as its spec
+  │     ├── loop.sh (issue #12) ← reads issue body as its spec
+  │     └── loop.sh (issue #13) ← reads issue body as its spec
+  ├── gates completed PRs (automated checks + agent review)
+  └── manages concurrency cap, budget, wave advancement
+```
+
+### Child Loop Sub-Spec
+
+Each child loop does NOT read the repo's SPEC.md. The orchestrator extracts a **self-contained sub-spec** from the parent spec during decomposition and writes it into the sub-issue body. The child loop's plan agent reads this as its entire world:
+
+```
+Orchestrator reads:  specs/auth.md (full vertical slice spec)
+                          │
+                    decomposes into
+                          │
+              ┌───────────┼───────────┐
+              ▼           ▼           ▼
+         Issue #11    Issue #12    Issue #13
+      "Registration"  "Login"    "Password reset"
+      (sub-spec in    (sub-spec   (sub-spec in
+       issue body)    in body)     issue body)
+              │           │           │
+         child loop   child loop  child loop
+         reads #11    reads #12   reads #13
+         as its spec  as its spec as its spec
+```
+
+The sub-spec in the issue body contains:
+- Scope description — what this work unit delivers
+- Acceptance criteria — how to know it's done
+- Context — relevant architecture decisions from the parent spec
+- Boundaries — what NOT to touch (other slices' territory)
+
+This scoping is critical — the child loop shouldn't make system-wide decisions. It delivers its slice and nothing more.
+
+### Multi-File Specs
+
+Single `SPEC.md` breaks down at scale. The orchestrator supports multiple spec files:
+
+```
+specs/
+  SPEC.md              ← master spec (architecture, constraints, non-goals)
+  auth.md              ← vertical slice group
+  posts.md             ← vertical slice group
+  admin.md             ← vertical slice group
+```
+
+The master spec defines the system — architecture, constraints, non-goals. Each additional spec file defines a group of related vertical slices. The orchestrator reads all spec files and produces the full issue set.
+
+Single `SPEC.md` still works — multi-file is optional for larger projects.
+
+### Vertical Slice Decomposition
+
+The orchestrator decomposes the spec into **vertical slices** — independently shippable, end-to-end user-facing features that cut through the full stack.
+
+**Correct decomposition** (vertical):
+```
+Parent #10: "User can sign up and log in"
+  Sub-issue #11: "Registration form + API endpoint + DB schema + validation"
+  Sub-issue #12: "Login flow + JWT issuance + session cookie"
+  Sub-issue #13: "Password reset email flow end-to-end"
+```
+
+**Wrong decomposition** (horizontal layers):
+```
+❌ Parent: "Database models"           ← all models, no user-facing outcome
+❌ Parent: "API endpoints"             ← all APIs, no shippable feature
+❌ Parent: "Frontend components"       ← all UI, can't run independently
+```
+
+Sub-issues should also be vertical where possible — each one delivers a runnable piece of the parent feature. Sometimes horizontal groundwork is unavoidable (e.g., "Set up database schema and ORM config" before any feature can use it). These are explicitly marked as **foundation** issues with dependencies.
+
+### Three-Level Hierarchy
+
+| Level | GitHub entity | What it represents | Who creates it |
+|-------|-------|---------|---|
+| Spec | `SPEC.md` / `specs/*.md` | Intent — what & why | Human |
+| Slice | Parent issue | Vertical slice — independently shippable feature | Orchestrator (decompose agent) |
+| Work unit | Sub-issue | Scoped piece of a slice — gets its own child loop | Orchestrator (decompose agent) |
+| Task | Child's `TODO.md` | Implementation steps within a work unit | Child loop's plan agent |
+
+The spec is the authoritative intent. Parent issues are vertical slices derived from the spec. Sub-issues are scoped work units within each slice. Tasks are ephemeral implementation steps that live and die within a child loop.
+
+### GitHub Sub-Issues
+
+Sub-issues are GA (since March 2025), available on all GitHub plans. Limits: 100 sub-issues per parent, 8 levels deep, cross-repo within org.
+
+**Creation via `gh api`** (no native `gh issue create --parent` yet):
 
 ```bash
-gh issue create \
-  --title "Implement provider health subsystem in loop.ps1" \
-  --body "$(cat issue-body.md)" \
-  --label "aloop/auto,aloop/wave-1,P1" \
-  --milestone "v0.2"
+# Create parent (vertical slice)
+PARENT=$(gh api --method POST /repos/OWNER/REPO/issues \
+  -f title="User can sign up and log in" \
+  -f body="$(cat slice-body.md)" \
+  --jq '.number')
+
+# Create sub-issue (work unit)
+CHILD_RESULT=$(gh api --method POST /repos/OWNER/REPO/issues \
+  -f title="Registration form + API + DB schema" \
+  -f body="$(cat workunit-body.md)")
+CHILD_ID=$(echo "$CHILD_RESULT" | jq -r '.id')
+
+# Link as sub-issue (uses parent NUMBER but child internal ID)
+gh api --method POST /repos/OWNER/REPO/issues/$PARENT/sub_issues \
+  -f sub_issue_id="$CHILD_ID"
 ```
 
-#### Phase 2: Dispatch
+**Gotchas**: The `sub_issue_id` requires the internal numeric `id` (not the `#number`). Occasional 500s on the sub-issues endpoint — retry logic needed. No atomic create-with-children — must create then link.
 
-The orchestrator picks up open issues and launches child loops.
+### GitHub as Source of Truth
 
-1. Query: `gh issue list --label aloop/auto --state open --json number,title,labels`
-2. Filter to current wave (only dispatch wave N when wave N-1 is fully merged)
-3. For each issue (up to **concurrency cap**):
+**GitHub is the authoritative state for the orchestrator.** There is no local `orchestrator.json` that duplicates issue state. The orchestrator queries GitHub for the plan, and all changes — human or automated — are visible immediately.
+
+Local state is minimal: `sessions.json` maps `{issue_number → child_session_id + PID}`. Everything else — issue status, dependencies, wave assignments, PR state — lives in GitHub.
+
+Benefits:
+- Human edits an issue (close, reopen, relabel) → orchestrator sees it next poll
+- Orchestrator crashes and restarts → reads everything from GitHub, local mapping reconnects running children
+- Multiple people can interact with the issues → single source of truth
+- `--plan-only` just creates issues, done
+
+### Dependency Tracking
+
+Dependencies use **GitHub's native issue dependency tracking** (`blocked_by` / `blocking` relationships), not custom metadata. The orchestrator creates dependencies via the API, and GitHub surfaces them natively in the issue UI.
+
+**Issue body format:**
+```markdown
+## Scope
+Registration form with email/password, API endpoint for account creation,
+database schema for users table. Includes input validation and error handling.
+
+## Acceptance Criteria
+- [ ] User can fill out registration form and submit
+- [ ] API validates input and creates user record
+- [ ] Duplicate email returns clear error
+- [ ] Success redirects to login page
+
+## Aloop Metadata
+- Wave: 2
+- Files: `src/pages/register/*`, `src/api/auth/*`, `prisma/schema.prisma`
+- Type: vertical-slice
+```
+
+Dependencies are managed via GitHub's native feature, not embedded in the issue body. Wave assignment and file ownership hints live in the issue body as human-readable metadata. Labels (`aloop/wave-2`, `aloop/auto`, `aloop/foundation`) provide machine-queryable categorization.
+
+### Efficient GitHub Monitoring
+
+The orchestrator avoids expensive polling by combining ETag-guarded REST checks with targeted GraphQL queries.
+
+**Strategy:**
+
+1. **Change detection** (every 30-60s): REST call with `since` parameter and ETag caching
+   ```bash
+   gh api '/repos/OWNER/REPO/issues?sort=updated&since=LAST_CHECK&per_page=1' \
+     -H 'If-None-Match: PREVIOUS_ETAG'
+   ```
+   Returns `304 Not Modified` when nothing changed — does NOT count against rate limit.
+
+2. **Full state fetch** (only when changes detected): Single GraphQL query fetching all open issues + sub-issues + linked PRs + labels + dependency status
+   ```graphql
+   query {
+     repository(owner: "OWNER", name: "REPO") {
+       issues(first: 50, states: OPEN, labels: ["aloop/auto"], orderBy: {field: UPDATED_AT, direction: DESC}) {
+         nodes {
+           number, title, state, updatedAt
+           labels(first: 10) { nodes { name } }
+           subIssues(first: 20) {
+             nodes { number, title, state, labels(first: 5) { nodes { name } } }
+           }
+           timelineItems(first: 5, itemTypes: [CROSS_REFERENCED_EVENT]) {
+             nodes { ... on CrossReferencedEvent { source { ... on PullRequest { number, state, url } } } }
+           }
+         }
+       }
+     }
+   }
+   ```
+   Cost: **~7 rate-limit points** per query. At 5,000/hr, this can run 714 times/hour.
+
+3. **Optional: webhook push** (for instant event notification during active sessions):
+   ```bash
+   gh webhook forward --repo=OWNER/REPO --events=issues,pull_request --url=http://localhost:PORT/webhook
+   ```
+   Uses GitHub's own CLI extension (`gh extension install cli/gh-webhook`). No public server needed. Falls back to polling when not running.
+
+**Rate limit budget** (60s polling interval, 50 issues):
+- REST change-detection with ETag: ~5-10 counted requests/hr (most are free 304s)
+- GraphQL full fetch (only on change): ~5-20 queries/hr = 35-140 points/hr
+- **Total: well under 1% of rate limit**
+
+### Orchestrator Phases
+
+The orchestrator itself is agent-powered at every phase — no deterministic decomposition or scheduling, since the dependency graph is semantic (no code exists yet to analyze structurally).
+
+#### Phase 1: Decompose
+
+The decompose agent reads the spec(s) and the current repo state, then produces the full issue hierarchy.
+
+1. Read all spec files (`SPEC.md` or `specs/*.md`)
+2. Read the codebase to understand what already exists
+3. Read existing GitHub issues (if resuming or extending)
+4. Produce vertical slices as parent issues, each with sub-issues
+5. For each issue: title, body with scope + acceptance criteria, dependency metadata, file ownership hints, wave assignment
+6. Create issues on GitHub via `gh api` with sub-issue linking
+7. Labels: `aloop/auto`, `aloop/wave-N`, `aloop/slice`
+
+The decompose agent reasons about:
+- **Vertical slicing** — each parent is an independently shippable user-facing feature
+- **Sub-issue granularity** — sized for 1-3 hours of human work equivalent (~5-15 build iterations per child loop)
+- **Dependencies** — semantic analysis: "auth must exist before protected routes"
+- **Parallelism** — which sub-issues touch completely separate files/modules
+- **Foundation work** — necessary horizontal groundwork explicitly marked and scheduled early
+
+#### Phase 2: Schedule
+
+The schedule agent builds the dependency graph and assigns waves. This is agent-powered because dependencies are semantic — with no code yet, only an agent can reason about "JWT validation must exist before session middleware can use it."
+
+1. Read all created issues and their dependency metadata
+2. Build a dependency graph (topological sort with semantic validation)
+3. Assign waves:
+   - Wave 1: foundation work + independent slices
+   - Wave 2+: slices that depend on wave 1 outputs
+4. Detect file ownership conflicts — two sub-issues in the same wave touching the same files → move one to next wave
+5. Update issue labels with wave assignments
+6. Write the schedule to `orchestrator.json`
+
+Wave scheduling rules:
+- Sub-issues in the same wave MAY run in parallel
+- Wave N+1 sub-issues only dispatch after their specific dependencies are merged (not necessarily ALL of wave N)
+- File ownership hints prevent parallel edits to the same files
+
+#### Phase 3: Dispatch
+
+The orchestrator picks up open sub-issues and launches child loops.
+
+1. Query sub-issues whose dependencies are all merged
+2. For each dispatchable sub-issue (up to **concurrency cap**):
    - Create branch: `aloop/issue-<number>`
    - Create worktree: `~/.aloop/sessions/<session-id>/worktrees/issue-<number>/`
    - Seed the child's `TODO.md` from the issue body
-   - Launch child loop (`loop.ps1` in `plan-build-review` mode)
+   - Launch child loop with the configured pipeline (compiled into `loop-plan.json`)
    - Track child PID + session in orchestrator state
-4. Remaining issues queue until a slot opens
+3. Remaining issues queue until a slot opens or dependencies are met
 
-**Concurrency cap**: Configurable, default 3. Prevents provider saturation. Works with the provider health subsystem — if providers are in cooldown, child loops naturally pause.
+**Concurrency cap**: Configurable, default 3. Prevents provider saturation.
 
-#### Phase 3: Monitor
+#### Phase 4: Monitor
 
 The orchestrator polls child loop status continuously.
 
 1. Read each child's `status.json` for state (running, completed, stuck, limit_reached)
-2. Detect stuck children (stuck_count >= threshold) → options:
-   - Reassign to different provider
-   - Add steering instruction
-   - Kill and reassign to a new loop
-3. Detect completed children → child creates PR automatically:
+2. Detect stuck children (stuck_count >= threshold) → steer, reassign provider, or kill and retry
+3. Detect completed children → child creates PR:
    ```bash
    gh pr create \
      --base agent/trunk \
@@ -1028,11 +1251,11 @@ The orchestrator polls child loop status continuously.
      --body "Closes #<number>\n\n<auto-generated summary>"
    ```
 4. Detect failed children → log, optionally retry with different provider mix
-5. When a slot opens → dispatch next queued issue
+5. When a slot opens → dispatch next eligible sub-issue
 
-#### Phase 4: Review + Merge
+#### Phase 5: Gate + Merge
 
-The orchestrator reviews each PR against hard proof criteria before merging.
+The orchestrator reviews each PR against hard criteria before merging.
 
 **Automated gates (must all pass):**
 
@@ -1040,76 +1263,67 @@ The orchestrator reviews each PR against hard proof criteria before merging.
 |------|--------|-------------|
 | CI pipeline | `gh pr checks <number> --watch` | Block merge |
 | Test coverage | Parse coverage report from CI artifacts | Block if below threshold |
-| No merge conflicts | `gh pr view <number> --json mergeable` | Send back to child loop for rebase |
-| No spec regression | `grep`-based contract checks | Block merge |
-| Screenshot diff (UI) | Playwright visual comparison before/after | Flag for human review if delta > threshold |
+| No merge conflicts | `gh pr view <number> --json mergeable` | Send back for rebase |
+| No spec regression | Contract checks against spec | Block merge |
+| Screenshot diff (UI) | Playwright visual comparison | Flag for human if delta > threshold |
 | Lint / type check | CI step | Block merge |
 
 **Agent review gate:**
-- Invoke an agent with the review prompt against the PR diff (`gh pr diff <number>`)
-- Agent checks: code quality, spec compliance, no scope creep, test adequacy
-- Agent outputs: approve, request-changes, or flag-for-human
+- Invoke review agent against the PR diff (`gh pr diff <number>`)
+- Checks: code quality, spec compliance, no scope creep, test adequacy
+- Outputs: approve, request-changes, or flag-for-human
 
 **Merge strategy:**
 - Squash merge into `agent/trunk`: `gh pr merge <number> --squash --delete-branch`
-- If merge conflict: reopen the issue, child loop rebases and re-submits
-- After merge: next wave issues may become unblocked
+- If merge conflict: child loop rebases and re-submits (max 2 attempts before human flag)
+- After merge: downstream sub-issues may become unblocked → dispatch them
 
-#### Phase 5: Complete
+#### Phase 6: Replan
 
-1. All issues closed, all PRs merged to `agent/trunk`
-2. Generate orchestrator report:
-   - Issues created / completed / failed
-   - Total time, provider usage breakdown
+The orchestrator continuously watches for conditions that require replanning. This is part of the orchestrator's main event loop (TS/Bun), not the inner loop.
+
+**Trigger: Spec file changed**
+
+The orchestrator tracks recent git commits on the repo. Each poll cycle, it checks `git log` for new commits and diffs changed files against the configured spec glob pattern (`SPEC.md`, `specs/*.md`, or custom). When a spec file is modified:
+
+1. Orchestrator extracts the specific diff: `git diff <prev>..<new> -- specs/auth.md`
+2. Passes to the **replan agent** with context:
+   - The diff itself (what changed in the spec)
+   - The commit message (human intent behind the change)
+   - Current issue state from GitHub (what's in-flight, done, queued)
+3. Replan agent reasons about the delta and outputs structured actions:
+   - `create_issue(parent, title, body, deps)` — new feature added to spec
+   - `update_issue(number, new_body)` — scope/criteria changed for existing slice
+   - `close_issue(number, reason)` — feature removed from spec
+   - `steer_child(number, instruction)` — in-flight child needs course correction
+   - `reprioritize(number, new_wave)` — dependencies shifted
+
+The replan agent reads the spec but does NOT modify it — the spec is human-owned. The agent translates spec changes into issue-tracker mutations.
+
+**Trigger: Wave completion**
+
+When all sub-issues in a wave are merged, the schedule agent re-evaluates remaining issues and adjusts waves based on what was learned during execution.
+
+**Trigger: External issue created**
+
+When a human creates an issue with the `aloop/auto` label, the orchestrator absorbs it into the current plan — assigns wave, links dependencies, and queues for dispatch.
+
+**Trigger: Persistent failures**
+
+When a child loop fails repeatedly, the replan agent may split the failing sub-issue into smaller pieces, adjust the approach in the issue body, or merge multiple small issues that turned out to be coupled.
+
+**Spec files are the authoritative intent. Issues are the live execution plan.** They can temporarily diverge (user adds an ad-hoc issue, agent discovers unexpected work) but replan reconciles them.
+
+#### Phase 7: Complete
+
+1. All sub-issues closed, all PRs merged to `agent/trunk`
+2. Close parent issues (all sub-issues done)
+3. Generate orchestrator report:
+   - Slices created / completed / failed
+   - Total time, provider usage breakdown, cost estimates
    - Coverage delta (before/after)
    - File change summary
-3. Notify human (or just leave `agent/trunk` ready for review)
-
-### Issue Granularity
-
-Issues are **feature-level**, not task-level:
-
-| Level | Where | Example |
-|-------|-------|---------|
-| Spec | `SPEC.md` | "Implement provider health subsystem" |
-| Issue | GitHub Issue | "Add per-provider health files with exponential backoff" |
-| Task | Child's `TODO.md` | "Create `Update-ProviderHealth` function with file locking" |
-
-The orchestrator creates issues. Each child loop creates its own `TODO.md` tasks within its issue scope.
-
-### Dependency Graph + Wave Scheduling
-
-The orchestrator's planner identifies dependencies between issues:
-
-```yaml
-issues:
-  - id: 1
-    title: "Rename ralph → aloop directory tree"
-    wave: 1
-    files: ["aloop/**", "install.ps1"]
-
-  - id: 2
-    title: "Implement aloop resolve CLI"
-    wave: 2
-    depends_on: [1]
-    files: ["aloop/cli/**"]
-
-  - id: 3
-    title: "Add provider health to loop.ps1"
-    wave: 1          # no dependency on rename
-    files: ["aloop/bin/loop.ps1"]
-
-  - id: 4
-    title: "Dashboard E2E tests"
-    wave: 1          # independent
-    files: ["aloop/cli/dashboard/e2e/**"]
-```
-
-Wave scheduling rules:
-- Issues in the same wave MAY run in parallel
-- Wave N+1 issues only dispatch after ALL wave N issues are merged
-- File ownership hints help the planner avoid overlapping scopes
-- If two issues in the same wave touch the same files → move one to the next wave
+4. Notify human (or leave `agent/trunk` ready for review)
 
 ### Agent/Trunk Branch
 
@@ -1122,39 +1336,36 @@ Wave scheduling rules:
   - Human can cherry-pick from `agent/trunk` if needed
   - Easy rollback: just delete `agent/trunk` and recreate from main
 
-### Orchestrator State
+### Orchestrator Local State
 
-Stored at `~/.aloop/sessions/<orchestrator-session-id>/orchestrator.json`:
+The orchestrator stores only session-mapping data locally. Issue state, dependencies, waves, and PR status are all read from GitHub.
+
+Stored at `~/.aloop/sessions/<orchestrator-session-id>/sessions.json`:
 
 ```json
 {
-  "spec_file": "SPEC.md",
+  "spec_files": ["SPEC.md"],
   "trunk_branch": "agent/trunk",
   "concurrency_cap": 3,
-  "current_wave": 1,
-  "issues": [
-    {
-      "number": 42,
-      "title": "Implement provider health subsystem",
-      "wave": 1,
-      "state": "merged",
-      "child_session": "ralph-skill-20260227-issue42",
-      "pr_number": 15,
-      "depends_on": []
+  "repo": "owner/repo",
+  "children": {
+    "11": {
+      "session_id": "myapp-20260315-issue11",
+      "pid": 12345,
+      "worktree": "~/.aloop/sessions/myapp-20260315-issue11/worktree"
     },
-    {
-      "number": 43,
-      "title": "Add aloop status CLI subcommand",
-      "wave": 2,
-      "state": "in_progress",
-      "child_session": "ralph-skill-20260227-issue43",
-      "pr_number": null,
-      "depends_on": [42]
+    "12": {
+      "session_id": "myapp-20260315-issue12",
+      "pid": 12346,
+      "worktree": "~/.aloop/sessions/myapp-20260315-issue12/worktree"
     }
-  ],
-  "completed_waves": [1],
-  "created_at": "2026-02-27T12:00:00Z"
+  },
+  "created_at": "2026-03-15T12:00:00Z",
+  "last_poll_etag": "W/\"07ad6948c94b...\""
 }
+```
+
+Everything else — which issues exist, their state, dependencies, wave labels, linked PRs — comes from GitHub via the GraphQL query described above.
 ```
 
 ### Conflict Resolution
@@ -1199,7 +1410,7 @@ aloop orchestrate --spec SPEC.md --plan-only
 | `loop.ps1` | Child loop — unchanged, runs per-issue |
 | Provider health subsystem | Shared across all child loops via `~/.aloop/health/` |
 | Final review gate | Per-child — each child's loop has its own review gate |
-| `PROMPT_{plan,build,review}.md` | Used by child loops as-is |
+| Agent prompt templates (`PROMPT_*.md`) | Used by child loops as configured in the pipeline |
 | `active.json` | Tracks all child sessions (orchestrator + children) |
 | Steering (`STEERING.md`) | Can steer individual children or the orchestrator |
 | `aloop status` | Shows orchestrator + children in a tree view |
@@ -1208,14 +1419,10 @@ aloop orchestrate --spec SPEC.md --plan-only
 
 The orchestrator MUST be resumable. If the process is killed (SIGTERM, crash, OOM, user Ctrl-C) and restarted, it picks up exactly where it left off:
 
-1. **State persistence**: `orchestrator.json` is the single source of truth. It is written atomically (write-to-temp + rename) after every state transition (issue created, child dispatched, PR merged, wave advanced).
-2. **On restart**, the orchestrator:
-   - Reads `orchestrator.json` to recover task graph, wave progress, and child session states
-   - Checks each child session's `status.json` to detect children that completed/failed while the orchestrator was down
-   - Resumes monitoring live children, dispatches queued issues, advances waves as appropriate
-   - Does NOT re-create issues or re-launch children that are already running or completed
-3. **Idempotency**: every orchestrator operation must be safe to re-execute. Creating an issue checks if one already exists for that task (by title/label match). Dispatching checks if a child session already exists. Merging checks if PR is already merged.
-4. **No work lost**: in-flight child loops continue running independently of the orchestrator process. They write their own `status.json` and commits. The orchestrator is a coordinator, not a parent process — children are orphan-safe.
+1. **GitHub is the source of truth.** On restart, the orchestrator queries GitHub for all `aloop/auto` issues, their states, dependencies, and linked PRs. The full plan is reconstructed from GitHub, not from local files.
+2. **Local `sessions.json`** maps issue numbers to child session IDs and PIDs. On restart, the orchestrator checks which children are still alive (`kill -0 PID`), reconnects to live ones, and detects children that completed/failed while the orchestrator was down (via their `status.json`).
+3. **Idempotency**: every orchestrator operation must be safe to re-execute. Creating an issue checks if one already exists (by title/label match). Dispatching checks if a child session already exists. Merging checks if PR is already merged.
+4. **No work lost**: in-flight child loops continue running independently. They write their own `status.json` and commits. The orchestrator is a coordinator, not a parent process — children are orphan-safe.
 
 ### Per-Task Environment Requirements
 
@@ -1259,9 +1466,16 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 
 ### Acceptance Criteria
 
-- [ ] Orchestrator can decompose a spec into GitHub issues with dependency graph and wave assignment
-- [ ] Issues are created via `gh issue create` with `aloop/auto` label and wave labels
-- [ ] Child loops are launched per-issue, each in its own worktree and branch
+- [ ] Orchestrator decomposes spec(s) into vertical slices as parent issues with sub-issues
+- [ ] Sub-issues created via `gh api` with sub-issue linking to parent
+- [ ] Decomposition is vertical-slice-first — each parent is an independently shippable feature
+- [ ] Dependencies use GitHub's native issue dependency tracking (blocked_by/blocking)
+- [ ] GitHub is the source of truth — local state is only session-to-issue mapping
+- [ ] Efficient monitoring: ETag-guarded REST polling + single GraphQL query on change
+- [ ] Foundation (horizontal groundwork) issues explicitly marked and scheduled in early waves
+- [ ] Agent-powered scheduling builds dependency graph and assigns waves
+- [ ] Sub-issues dispatch when their specific dependencies are merged (not entire wave)
+- [ ] Child loops launched per sub-issue, each in its own worktree and branch
 - [ ] Concurrency cap limits simultaneous child loops (default 3)
 - [ ] Child loops create PRs targeting `agent/trunk` on completion
 - [ ] Orchestrator reviews PRs against automated gates (CI, coverage, conflicts, lint)
@@ -1269,16 +1483,18 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 - [ ] Approved PRs are squash-merged into `agent/trunk`
 - [ ] Rejected PRs reopen their issue with review comments for the child loop to address
 - [ ] Merge conflicts trigger automatic rebase attempts (max 2 before human flag)
-- [ ] Wave N+1 only dispatches after all wave N issues are merged
 - [ ] `aloop orchestrate --plan-only` creates issues without launching loops
-- [ ] Orchestrator state is persisted in `orchestrator.json`
-- [ ] `aloop status` shows orchestrator tree (orchestrator → children → issues → PRs)
-- [ ] Final report includes: issues created/completed/failed, time, provider usage, cost estimates
+- [ ] Local `sessions.json` maps issue numbers to child sessions/PIDs (minimal local state)
+- [ ] `aloop status` shows orchestrator tree (orchestrator → slices → sub-issues → PRs)
+- [ ] Final report includes: slices created/completed/failed, time, provider usage, cost estimates
 - [ ] Provider health subsystem is shared across all child loops (file-lock safe)
 - [ ] Session-level budget cap can pause dispatch when threshold is approached
-- [ ] Orchestrator is resumable: kill + restart recovers full state from `orchestrator.json` and child `status.json` files, no duplicate issues or child sessions created
-- [ ] Per-task `sandbox` field controls whether child runs in devcontainer (`container`) or on host (`none`)
-- [ ] Per-task `requires` labels declare environment needs; dispatcher checks host capabilities before dispatch
+- [ ] Orchestrator is resumable: restart reads plan from GitHub, reconnects to live children, no duplicates
+- [ ] Replan triggered by spec changes, wave completion, or user-created issues
+- [ ] User-created `aloop/auto` issues absorbed into the live plan
+- [ ] Multi-file specs supported (`specs/*.md` or single `SPEC.md`)
+- [ ] Per-task `sandbox` field controls whether child runs in devcontainer or on host
+- [ ] Per-task `requires` labels declare environment needs; dispatcher checks before dispatch
 - [ ] All GitHub operations work with GitHub Enterprise instances (no hardcoded `github.com`)
 
 ---
@@ -1307,7 +1523,7 @@ aloop gh start --issue 42 --provider codex --max 30
 3. Create branch: `agent/issue-42-<slug>`
 4. Create session + worktree (same as `aloop start`)
 5. Inject issue content into the plan prompt as the requirement
-6. Run loop (plan-build-review)
+6. Compile pipeline config into `loop-plan.json`, run loop
 7. On completion → create PR against `agent/main` (or `main` if no agent trunk exists)
 8. Link PR to issue (`Closes #42`)
 9. Post a summary comment on the issue with results
@@ -1537,7 +1753,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 │                                                        │
 │  aloop start                                           │
 │    ├── loop.ps1/sh (may run in container)              │
-│    │     └── just: plan/build/review + provider invoke │
+│    │     └── just: read loop-plan.json + provider invoke│
 │    │                                                   │
 │    └── aloop monitor (host-side, always on host)       │
 │          ├── watches .aloop/requests/ → aloop gh       │
@@ -1550,7 +1766,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 ```
 
 **What stays in loop.ps1/loop.sh:**
-- Phase cycle (plan → build × 3 → proof → review)
+- Read `loop-plan.json` each iteration, pick agent at `$cyclePosition`
 - Provider invocation (direct — loop and providers run in the same environment)
 - Stuck detection and iteration counting
 - Status.json and log.jsonl writes
@@ -2215,9 +2431,171 @@ The current hardcoded `plan → build × 3 → review` cycle is replaced by a **
 An **agent** is a named unit with:
 - **Prompt** — instructions for what the agent does (a `PROMPT_*.md` file or inline)
 - **Provider/model preference** (optional) — which harness and model to use (falls back to session default)
+- **Reasoning effort** (optional) — controls reasoning depth for models that support it (see Reasoning Effort section below)
 - **Transition rules** — what happens on success, failure, and repeated failure
 
 Agents are NOT hardcoded. `plan`, `build`, `review`, `steer` are just the default agents that ship with aloop. Users and the setup agent can define custom agents (e.g., `verify`, `debugger`, `security-audit`, `docs-generator`, `guard`).
+
+### Subagent Delegation (model-per-task)
+
+A core principle: **agents delegate specialized work to subagents running best-fit models**. The primary agent orchestrates, while subagents execute tasks that require different capabilities (vision, deep reasoning, fast cheap analysis, domain-specific models). This is powered by opencode's native `task` tool, which spawns child sessions with independent model selection.
+
+**How it works in opencode:**
+
+1. Agents are defined in `.opencode/agents/` as markdown files with YAML frontmatter
+2. Any agent can invoke the built-in `task` tool targeting another agent by name
+3. Each agent declares its own `model` — the child session runs on that model regardless of the parent's model
+4. Results flow back to the parent agent's context
+
+**Agent definition format** (`.opencode/agents/<name>.md`):
+```yaml
+---
+description: When to use this agent (required — opencode uses this to suggest delegation)
+mode: subagent              # "primary", "subagent", or "all"
+model: openrouter/google/gemini-3.1-flash-lite-preview
+tools:
+  write: false              # restrict tools per agent
+  edit: false
+  bash: true
+temperature: 0.2
+maxSteps: 10
+---
+System prompt for the agent goes here.
+Supports {file:path/to/context.md} for file inclusion.
+```
+
+Equivalent JSON config in `opencode.json`:
+```json
+{
+  "agent": {
+    "vision-reviewer": {
+      "description": "Analyzes screenshots for layout and visual issues",
+      "mode": "subagent",
+      "model": "openrouter/google/gemini-3.1-flash-lite-preview",
+      "tools": { "write": false, "edit": false },
+      "prompt": "You are a vision-based UI reviewer..."
+    }
+  }
+}
+```
+
+**Subagent permission control** — restrict which subagents an agent can invoke:
+```json
+{
+  "agent": {
+    "build": {
+      "permission": {
+        "task": { "*": "deny", "vision-reviewer": "allow", "test-runner": "allow" }
+      }
+    }
+  }
+}
+```
+
+**Default subagent catalog** — agents that ship with aloop:
+
+| Subagent | Model Selection | Purpose | Used By |
+|---|---|---|---|
+| `vision-reviewer` | Vision model (Gemini Flash Lite, Seed-2.0-Lite) | Screenshot analysis — layout, whitespace, visual regressions | proof, review |
+| `vision-comparator` | Vision model | Baseline vs current screenshot comparison | proof |
+| `code-critic` | High-reasoning model (xhigh effort) | Deep code review — subtle bugs, security, edge cases | review |
+| `test-writer` | Fast cheap model (medium effort) | Generate test cases from spec/code | build, verify |
+| `error-analyst` | Fast cheap model | Parse error logs, stack traces, suggest fixes | build (on failure) |
+| `spec-checker` | Reasoning model (high effort) | Verify implementation matches spec acceptance criteria | review |
+| `docs-extractor` | Fast cheap model | Extract API docs, type signatures, usage examples from code | docs-generator |
+| `security-scanner` | Reasoning model | OWASP top-10 analysis, dependency audit, secret detection | review, guard |
+| `accessibility-checker` | Vision model | WCAG compliance check on screenshots | proof, verify |
+| `perf-analyzer` | Fast cheap model | Analyze bundle sizes, lighthouse scores, load times | proof |
+
+**Example: review agent delegating to subagents**
+
+The review agent (running on e.g. Claude) encounters a frontend PR. Instead of trying to review everything itself, it delegates:
+
+1. **Structural review** — the review agent itself checks code quality, architecture, spec compliance
+2. **Visual review** → delegates to `vision-reviewer` (Gemini Flash Lite) with screenshots
+3. **Security scan** → delegates to `security-scanner` (reasoning model with xhigh effort)
+4. **Accessibility** → delegates to `accessibility-checker` (vision model) with screenshots
+5. **Aggregates results** — the review agent combines all subagent findings into a unified review verdict
+
+Each subagent runs on the optimal model for its task. The review agent only pays for expensive reasoning on the parts that need it.
+
+**Example: build agent with error recovery**
+
+The build agent hits a compile error. Instead of burning expensive tokens trying to understand a long stack trace:
+
+1. **Delegates** to `error-analyst` (cheap fast model) with the error output
+2. Gets back a structured diagnosis: root cause, affected files, suggested fix
+3. Applies the fix using its own (potentially more capable) model
+
+**Cost optimization**: Subagent delegation is also a cost strategy. A $2/M output reasoning model should not spend tokens parsing stack traces or generating boilerplate — delegate those to a $0.15/M model and reserve the expensive model for decisions that matter.
+
+**Alternative invocation methods** (besides the `task` tool):
+
+- **Commands with `subtask: true`** — e.g., `/vision-review` runs as a child session with its own model
+- **Bash tool** — agent calls `opencode run --agent vision-reviewer -f screenshot.png -- "prompt"` as a nested process
+- **Plugin tools** — custom tools that programmatically create sessions via the opencode SDK with per-message model override
+
+### Subagent Integration into Aloop
+
+Subagent delegation is supported natively by most providers (opencode, claude, copilot, codex) in similar ways. For now, only opencode is implemented — other providers are out of scope but the architecture accommodates them. The integration must be lightweight and conditional.
+
+**Agent files**: A small set of ready-to-use opencode agent definitions ships with aloop at `aloop/agents/opencode/`:
+
+```
+aloop/agents/opencode/
+  vision-reviewer.md
+  error-analyst.md
+  code-critic.md
+```
+
+These are static markdown files with hardcoded model references — no templating, no catalog, no compiler. Users can edit models, delete agents they don't want, or add their own.
+
+**Installation**: `aloop setup` copies them into the worktree's `.opencode/agents/` directory when the user has opencode configured as a provider. They get committed in the worktree alongside the code — same as `.vscode/` or `.editorconfig`. The directory is inert for non-opencode providers.
+
+**Conditional prompt injection via `{{SUBAGENT_HINTS}}`**: Loop prompt templates already use provider-specific variables (`{{PROVIDER_HINTS}}`). A new `{{SUBAGENT_HINTS}}` variable is populated only when the current provider supports delegation:
+
+- **opencode** → `SUBAGENT_HINTS` populated with available agents and delegation instructions
+- **claude / copilot / codex** → `SUBAGENT_HINTS` set to empty string for now (support planned, out of scope)
+
+Resolution in `loop.sh`:
+```bash
+if [[ "$PROVIDER" == "opencode" ]] && [[ -d "$WORKTREE/.opencode/agents" ]]; then
+  SUBAGENT_HINTS=$(cat ~/.aloop/templates/subagent-hints-${PHASE}.md)
+else
+  SUBAGENT_HINTS=""
+fi
+```
+
+Per-phase hint files list only the subagents relevant to that phase:
+
+```markdown
+<!-- subagent-hints-proof.md -->
+## Available Subagents
+You can delegate specialized tasks using the task tool:
+- **vision-reviewer** — analyzes screenshots for layout/visual issues (vision model)
+- **accessibility-checker** — WCAG compliance checks on screenshots (vision model)
+```
+
+```markdown
+<!-- subagent-hints-review.md -->
+## Available Subagents
+You can delegate specialized tasks using the task tool:
+- **code-critic** — deep code review for subtle bugs and security issues (reasoning model)
+- **vision-reviewer** — visual review of UI changes (vision model)
+```
+
+```markdown
+<!-- subagent-hints-build.md -->
+## Available Subagents
+You can delegate specialized tasks using the task tool:
+- **error-analyst** — parse error logs and stack traces, suggest fixes (fast cheap model)
+```
+
+This approach is:
+- **Zero config for users** — setup copies agents, loop injects hints, it just works
+- **Provider-agnostic in the prompts** — non-opencode providers see no subagent instructions
+- **Extensible later** — when agent-forge is ready, it replaces the static agent files with discovered/compiled ones
+- **No templating engine** — just file copies and string substitution already used by `loop.sh`
 
 ### Pipeline Configuration
 
@@ -2253,6 +2631,65 @@ pipeline:
   - agent: docs-generator
 ```
 
+### Loop Plan Compilation (Runtime → Shell Bridge)
+
+The pipeline YAML config is **not parsed by the shell script**. Instead, the aloop runtime (TS/Bun) compiles it into a simple `loop-plan.json` that `loop.sh` can read with zero complexity.
+
+**`loop-plan.json` format:**
+```json
+{
+  "cycle": [
+    {"agent": "plan",   "prompt": "PROMPT_plan.md",   "provider": "claude",  "model": "claude-opus-4-6",                      "reasoning": "high"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "opencode","model": "openrouter/openai/gpt-5.1",              "reasoning": "medium"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "codex",   "model": "codex-mini-latest",                      "reasoning": "medium"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "opencode","model": "openrouter/google/gemini-2.5-pro",       "reasoning": "medium"},
+    {"agent": "proof",  "prompt": "PROMPT_proof.md",  "provider": "opencode","model": "openrouter/anthropic/claude-sonnet-4-6", "reasoning": "medium"},
+    {"agent": "review", "prompt": "PROMPT_review.md", "provider": "claude",  "model": "claude-opus-4-6",                        "reasoning": "xhigh"}
+  ],
+  "cyclePosition": 0,
+  "iteration": 1,
+  "version": 1
+}
+```
+
+Each entry is a **complete instruction** — `loop.sh` doesn't need to look anywhere else. The runtime resolves round-robin provider selection, per-agent model preferences, and reasoning config at compile time and bakes the result into each entry.
+
+**How `loop.sh` uses it:**
+```bash
+# Read the plan (re-read every iteration to pick up mutations)
+PLAN=$(cat "$SESSION_DIR/loop-plan.json")
+CYCLE_LENGTH=$(echo "$PLAN" | jq '.cycle | length')
+CYCLE_POS=$(echo "$PLAN" | jq '.cyclePosition')
+
+# Pick current agent — everything needed is in the entry
+ENTRY=$(echo "$PLAN" | jq ".cycle[$((CYCLE_POS % CYCLE_LENGTH))]")
+AGENT=$(echo "$ENTRY" | jq -r '.agent')
+PROMPT=$(echo "$ENTRY" | jq -r '.prompt')
+PROVIDER=$(echo "$ENTRY" | jq -r '.provider')
+MODEL=$(echo "$ENTRY" | jq -r '.model')
+REASONING=$(echo "$ENTRY" | jq -r '.reasoning')
+
+# After iteration completes: update position and iteration in the plan file
+jq ".cyclePosition = $((CYCLE_POS + 1)) | .iteration = $ITERATION" \
+  "$SESSION_DIR/loop-plan.json" > "$SESSION_DIR/loop-plan.json.tmp" \
+  && mv "$SESSION_DIR/loop-plan.json.tmp" "$SESSION_DIR/loop-plan.json"
+```
+
+**Key properties:**
+- The `cycle` array is a **short repeating pattern** (typically 5-7 entries), NOT an unrolled list of all iterations. `loop.sh` wraps around with `% length`.
+- `cyclePosition` and `iteration` live in the plan file — the runtime and shell share state through this single file. The shell updates position after each iteration; the runtime reads it when deciding mutations.
+- The runtime writes this file once at session start, then **rewrites it** whenever the pipeline mutates (steering, failure recovery, agent injection). It preserves `cyclePosition` and `iteration` (or adjusts them if the mutation requires it, e.g., `goto build` resets `cyclePosition`).
+- `loop.sh` re-reads the file every iteration, so mutations take effect on the next turn.
+- The `version` field increments on each runtime rewrite — loop.sh logs when it detects a plan change.
+- Transition rules (`onFailure: goto build`, escalation ladders) are **resolved by the runtime**, not the shell. When the runtime observes a failure via `status.json`, it rewrites the plan accordingly (e.g., inserting a `debugger` agent, or adjusting `cyclePosition` to point back to build).
+- This keeps all complex logic in TS/Bun and all shell logic trivial: read JSON, index into array, invoke, update index.
+
+**When the runtime rewrites the plan:**
+- Steering instruction received → recompile pipeline with modifications
+- Agent failure detected (via `status.json` polling) → apply `onFailure` transition rules, rewrite plan
+- Escalation threshold reached → inject recovery agents into the cycle
+- Host monitor detects stuck pattern → swap providers or inject debugger agent
+
 ### Runtime Mutation
 
 The pipeline is **mutable at runtime** — phases can be added, removed, or reordered while the loop is running. Two control surfaces:
@@ -2263,14 +2700,14 @@ The pipeline is **mutable at runtime** — phases can be added, removed, or reor
    Insert `security-audit` agent after `build` for remaining iterations.
    Remove `docs-generator` — not needed yet.
    ```
-   The host-side monitor interprets steering instructions and updates the pipeline.
+   The host-side monitor interprets steering instructions, recompiles the pipeline, and rewrites `loop-plan.json`. The loop picks up the change on its next iteration.
 
 2. **Host-side monitor** — observes loop patterns and injects agents automatically:
    - 3 consecutive build failures → inject `debugger` agent before next build
    - Verification failing on environment issues → inject `env-fix` agent
    - Provider consistently timing out → swap to different provider for next agent
 
-Agents do **not** modify the pipeline themselves — control stays with the user and host-side monitor (avoids perverse incentives like agents removing their own reviewers).
+All mutations flow through the same mechanism: recompile pipeline → rewrite `loop-plan.json` → loop picks up change. Agents do **not** modify the pipeline themselves — control stays with the user and host-side monitor (avoids perverse incentives like agents removing their own reviewers).
 
 ### Agent-Based Guarding
 
@@ -2313,50 +2750,148 @@ The verify agent runs Playwright tests, captures screenshots and video. On failu
 
 Test expectations ideally originate from the **plan agent** (derived from the slice spec), not the build agent — so the build agent is implementing to a contract it didn't write.
 
-### `loop-plan.json` — the Runtime-to-Shell Bridge
+The verify agent itself delegates visual comparison to subagents — it captures screenshots via Playwright, then delegates to `vision-comparator` (vision model) for baseline diffing and to `accessibility-checker` for WCAG compliance. This means the verify agent can run on a cheap text model while getting vision-quality analysis via delegation.
 
-The aloop runtime (TS/Bun) compiles pipeline YAML config into a `loop-plan.json` file placed in the session directory. `loop.sh` / `loop.ps1` read this file each iteration — no YAML parsing, no transition logic in shell.
+### Reasoning Effort Configuration
 
-Each entry in the `cycle` array is a **fully-resolved instruction**:
+Reasoning models (OpenAI GPT-5 series, Grok, and via proxy Anthropic/Gemini) support configurable reasoning depth. Different agents benefit from different reasoning effort levels — a review agent should think harder than a build agent.
+
+**OpenAI reasoning effort levels** (from the Responses API):
+
+| Level | Token allocation | Use case |
+|-------|-----------------|----------|
+| `none` | Disabled | Non-reasoning tasks |
+| `minimal` | ~10% of max_tokens | Trivial operations |
+| `low` | ~20% | Simple tasks |
+| `medium` | ~50% (default) | Balanced speed/quality |
+| `high` | ~80% | Complex analysis |
+| `xhigh` | ~95% | Maximum reasoning depth |
+
+- `xhigh` is supported on models after `gpt-5.1-codex-max`
+- `gpt-5.1` defaults to `none`; models before `gpt-5.1` default to `medium`
+- `gpt-5-pro` defaults to and only supports `high`
+- Source: https://developers.openai.com/api/reference/resources/responses/methods/create
+
+**Agent-level configuration** in pipeline YAML:
+
+```yaml
+# .aloop/agents/plan.yml
+agent: plan
+prompt: PROMPT_plan.md
+reasoning:
+  effort: high          # deep gap analysis needs thorough reasoning
+
+# .aloop/agents/build.yml
+agent: build
+prompt: PROMPT_build.md
+reasoning:
+  effort: medium        # speed matters for implementation
+
+# .aloop/agents/review.yml
+agent: review
+prompt: PROMPT_review.md
+reasoning:
+  effort: xhigh         # thorough quality gate, catch subtle bugs
+
+# .aloop/agents/proof.yml
+agent: proof
+prompt: PROMPT_proof.md
+reasoning:
+  effort: medium        # artifact generation, not heavy reasoning
+```
+
+**Recommended defaults** (when no per-agent config exists):
+
+| Agent | Default effort | Rationale |
+|-------|---------------|-----------|
+| plan | `high` | Gap analysis, spec comparison |
+| build | `medium` | Implementation speed |
+| review | `xhigh` | Catch subtle quality issues |
+| proof | `medium` | Artifact generation |
+| steer | `medium` | Spec/TODO updates |
+
+**OpenRouter as unified proxy**: OpenRouter normalizes reasoning config across providers via its `reasoning` parameter. `effort` works natively for OpenAI/Grok models; for Anthropic/Gemini models it maps to `max_tokens`. This means the same agent config works regardless of which provider the round-robin selects — the loop passes `reasoning.effort` and OpenRouter translates.
 
 ```json
+// OpenRouter reasoning parameter (in API request body)
 {
-  "cycle": [
-    {"agent": "plan",  "prompt": "PROMPT_plan.md", "provider": "claude", "model": "claude-opus-4-6", "reasoning": "high"},
-    {"agent": "build", "prompt": "PROMPT_build.md", "provider": "opencode", "model": "openrouter/openai/gpt-5.1", "reasoning": "medium"},
-    {"agent": "build", "prompt": "PROMPT_build.md", "provider": "opencode", "model": "openrouter/openai/gpt-5.1", "reasoning": "medium"},
-    {"agent": "build", "prompt": "PROMPT_build.md", "provider": "opencode", "model": "openrouter/openai/gpt-5.1", "reasoning": "medium"},
-    {"agent": "review","prompt": "PROMPT_review.md","provider": "claude", "model": "claude-opus-4-6", "reasoning": "high"}
-  ],
-  "cyclePosition": 0,
-  "iteration": 1,
-  "version": 1
+  "reasoning": {
+    "effort": "xhigh",       // OpenAI-style (string enum)
+    "max_tokens": 32000,     // Anthropic-style (token count) — alternative to effort
+    "exclude": false          // whether to exclude reasoning tokens from response
+  }
 }
 ```
 
-- `cycle` is a **short repeating pattern** (typically 5–7 entries). Shell wraps with `cyclePosition % cycle.length`.
-- `cyclePosition` and `iteration` are shared state between runtime and shell — shell updates them after each turn, runtime rewrites the file on mutations (steering, failure recovery).
-- Shell **re-reads** the file every iteration to pick up runtime mutations.
-- `version` increments on runtime rewrites — shell logs when it detects a plan change.
+Source: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
 
-### Shell Script Behavior (loop.sh / loop.ps1)
+**Provider-specific pass-through**: When using opencode CLI, reasoning effort maps to the `--variant` flag. When using providers directly (via OpenRouter or native APIs), the reasoning config is passed in the request body.
 
-Loop scripts must **NOT** contain hardcoded phase sequences like `plan → build × 3 → review`. Instead:
+### Vision Model Configuration
 
-1. Read `loop-plan.json` each iteration
-2. Pick agent at `cyclePosition % cycle.length`
-3. Use `provider`, `model`, `prompt`, `reasoning` from the entry
-4. Invoke the provider, then update `cyclePosition` and `iteration` in the file
+The proof and review phases can use vision-capable models for automated UI review — analyzing screenshots for layout issues, whitespace problems, spatial relationships, and visual regressions. This requires models that accept image input.
 
-### Pipeline Mutation via `loop-plan.json`
+**Configuring vision models in opencode**: Models not in opencode's built-in registry need their modalities declared in `opencode.json` so opencode knows to send images as vision payloads:
 
-All mutations (steering, failure recovery, agent injection) work by the runtime **rewriting** `loop-plan.json`:
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "openrouter": {
+      "models": {
+        "bytedance-seed/seed-2.0-lite": {
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "bytedance-seed/seed-2.0-mini": {
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "qwen/qwen3.5-9b": {
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        }
+      }
+    }
+  }
+}
+```
 
-- Steering says "add security-audit after build" → runtime recompiles cycle array, writes new plan
-- Build fails 3× → runtime applies `onFailure` rules, adjusts `cyclePosition` or injects debugger agent
-- Loop picks up changes on next iteration (re-reads file)
+Without the `modalities` declaration, opencode defaults to `"image": false` for custom-registered models, and image attachments are passed as tool-call file reads instead of vision payloads — resulting in "this model does not support image input" errors even when the model does support vision via its provider API.
 
-Transition rules (`onFailure: goto build`, escalation ladders, `repeat` counts) are resolved by the runtime when it observes failures via `status.json`. The runtime rewrites `loop-plan.json` accordingly. **Shell never evaluates transition logic.**
+Models already in opencode's built-in registry (e.g., `google/gemini-3.1-flash-lite-preview`) have capabilities auto-populated from the [models.dev](https://models.dev) catalog and need no extra config.
+
+**Headless image attachment**: In non-interactive `opencode run` mode, images are attached via the `-f` flag:
+```bash
+opencode run -m openrouter/google/gemini-3.1-flash-lite-preview \
+  -f screenshot.png -- "Analyze this UI screenshot..."
+```
+
+**Vision model comparison** (tested on 1920x1080 dashboard screenshot, spatial analysis prompt):
+
+| Model | Cost (input) | Spatial Quality | Notes |
+|---|---|---|---|
+| Seed-2.0-Lite | $0.25/M | Excellent — precise %, identified whitespace severity | Best structured output, no hallucinations |
+| Seed-2.0-Mini | $0.10/M | Very good — per-element padding estimates | Minor math error in one coordinate |
+| Gemini 3.1 Flash Lite | $0.25/M | Good — clean table format, correct proportions | Has ZDR via Google Vertex AI |
+| Qwen3.5-9B | $0.05/M | Good — correct structure, reasonable estimates | Cheapest option |
+| gpt-5-nano | free | Decent — correct proportions, less granular | Good baseline |
+| nemotron-nano-vl | free | Moderate | Hallucinated non-existent UI elements |
+
+**Important caveats**:
+- Pixel size estimates **drift significantly** across models — no model produces reliable absolute pixel measurements. Treat estimates as directional (relative proportions and "too much/too little whitespace") rather than precise pixel values.
+- "Stealth" or test models (e.g., models from unknown providers marked as free/testing) may collect all input data. Do not use them for production workloads with sensitive UI content.
+
+**ZDR (Zero Data Retention) for vision**:
+
+| Provider | ZDR covers images? | How to enable |
+|---|---|---|
+| **Anthropic (direct API)** | Yes — all inputs including images | Enterprise agreement with Anthropic |
+| **AWS Bedrock** | Yes — architectural default | No opt-in needed |
+| **Google Vertex AI / Gemini** | Yes — with config (disable caching, avoid File API) | ZDR opt-out form + invoiced billing |
+| **OpenRouter** | Depends on downstream provider | `zdr: true` per-request flag, routes to ZDR endpoints |
+| **OpenAI (direct + Azure)** | **No** — images explicitly excluded from ZDR | N/A |
+| **Mistral** | Likely but unconfirmed | Contact sales |
+| **ByteDance (Seed models)** | Unknown | Investigate before production use |
+
+For production visual review with data sensitivity requirements, use **Anthropic Claude** (direct API with ZDR), **AWS Bedrock** (default no-retention), or **Gemini via Vertex AI** (ZDR with config). OpenAI's ZDR explicitly carves out image inputs.
 
 ### Implementation Notes
 
@@ -2364,7 +2899,7 @@ Transition rules (`onFailure: goto build`, escalation ladders, `repeat` counts) 
 - `loop-plan.json` is a **compiled artifact** — never hand-edit it, always regenerate from config
 - The relationship is like TypeScript → JavaScript: you edit the source, the compiler produces the runtime artifact
 - Default pipeline (plan-build-review) is generated if no config exists — backward compatible
-- Agent definitions live in `.aloop/agents/` — each is a YAML file with prompt reference, provider preference, transition rules
+- Agent definitions live in `.aloop/agents/` — each is a YAML file with prompt reference, provider preference, reasoning effort, and transition rules
 - The loop script becomes a generic agent runner: read `loop-plan.json`, resolve next agent, invoke, repeat
 - Runtime pipeline mutations are applied via the host-side monitor rewriting `loop-plan.json`
 - Pipeline state (`cyclePosition`, `iteration`, `version`, escalation counts, mutation history) lives in `loop-plan.json` itself
