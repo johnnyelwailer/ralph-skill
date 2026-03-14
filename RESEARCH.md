@@ -322,3 +322,53 @@
 
 - Iteration 43 proof artifacts (`gh-help.txt`, `gh-status-text.txt`, `gh-status-json.json`, `gh-stop-all-success.json`, `gh-status-after-stop.txt`, `dashboard-api-state.json`, `dashboard-server.log`, `gh-stop-json.json`) remain missing. Iteration 45 proof artifacts are present.
   - Source: glob for `**/{gh-help.txt,gh-status-text.txt,dashboard-api-state.json}` (no matches) (T2)
+
+## 2026-03-14 17:45Z — Planning recheck: dead code resolved, dashboard/GH/pipeline gaps remain [T2+T3]
+
+### Dead code — resolved
+
+- The previously flagged dead code in `fetchPrReviewComments` (unused `response` from `/reviews` API) has been removed. Function at line ~489 no longer has the unused assignment.
+  - Source: `aloop/cli/src/commands/gh.ts:489` (T2 — direct inspection via subagent)
+
+### Dashboard — remaining gaps vs spec
+
+- **Provider health NOT in sidebar tab**: Provider info is still inline in the header grid (lines 385-389). Spec §6 requires it to be in a "dedicated left-pane tab" to reduce header overload. No sidebar tab structure exists.
+  - Source: `aloop/cli/dashboard/src/App.tsx:385-389` (T2 — direct inspection), `SPEC.md:794,798,839` (T3)
+- **No per-iteration duration**: Iteration/artifact gallery rows (lines 920-930) show iteration number + artifact count only, no duration. Spec §6 requires per-iteration duration in log rows and average duration in header.
+  - Source: `aloop/cli/dashboard/src/App.tsx:920-930,341,366` (T2 — direct inspection), `SPEC.md:796,805,846-847` (T3)
+- **No sidebar expand/collapse button**: No sidebar toggle button exists at all. Spec §6 requires it vertically centered with header title row.
+  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — subagent searched, no match), `SPEC.md:804,845` (T3)
+- **No overflow ellipsis menu for docs**: Docs panel filters empty content (resolved) but does not overflow large doc sets into an `...` menu.
+  - Source: `aloop/cli/dashboard/src/App.tsx:568-630` (T2 — direct inspection), `SPEC.md:806,849` (T3)
+- **No commit diffstat/change-type badges**: No per-file M/A/D/R markers in commit detail views.
+  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — no commit detail component found), `SPEC.md:797,848` (T3)
+
+### GH workflow — remaining gaps vs spec
+
+- **No `@aloop` mention detection**: `gh.ts` has no code for detecting `@aloop` mentions in PR/issue comments as a re-trigger signal.
+  - Source: grep for `@aloop|mention|trigger` in `gh.ts` (T2 — no matches), `SPEC.md:1808` (T3)
+- **No CI failure log ingestion**: No `gh run view --log-failed` call exists. PR feedback loop checks review comments + check run conclusions but does not extract CI failure logs for steering.
+  - Source: grep for `log-failed|run view|CI failure` in `gh.ts` (T2 — no matches), `SPEC.md:1821-1837` (T3)
+- **No `gh stop-watch` command**: Watch daemon relies on SIGINT/SIGTERM only; no dedicated `stop-watch` subcommand.
+  - Source: `aloop/cli/src/commands/gh.ts:967-975` (T2 — `stop` command stops issues, not watch daemon), `SPEC.md:1769` (T3)
+- **Watch-cycle completion finalization**: `refreshWatchState()` detects running→completed transitions but does NOT create PRs or post issue summary comments for sessions that completed after launch.
+  - Source: `aloop/cli/src/commands/gh.ts:373-403` (T2 — direct inspection), `SPEC.md:1767` (T3)
+
+### Pipeline — still not implemented
+
+- `loop-plan.json` compiler does not exist. `loop.sh` lines 360-376 still use hardcoded phase cycle logic with modulo-based `CYCLE_POSITION % 6` calculations. Not reading from any compiled plan file.
+  - Source: `aloop/bin/loop.sh:360-376` (T2 — direct inspection via subagent), glob for `**/loop-plan.json` (no matches) (T2)
+- No `.aloop/pipeline.yml` or `.aloop/agents/` directory exists.
+  - Source: glob for `**/pipeline.yml` and `**/.aloop/agents/**` (no matches) (T2)
+- Spec requires inner loop to "Read `loop-plan.json` each iteration, pick agent at `cyclePosition % cycle.length`" — currently loop scripts hardcode the cycle.
+  - Source: `SPEC.md:35-38` (T3)
+
+### Status tree — still flat
+
+- `aloop status` (status.ts) renders flat active sessions + provider health. No orchestrator→child session→issue/PR tree rendering.
+  - Source: `aloop/cli/src/commands/status.ts:44-70` (T2 — prior research confirmed, no new changes detected)
+
+### Branch coverage — still below gate
+
+- `gh.ts` branch coverage remains at ~65.80%, well below the >=80% gate target. Many uncovered branches from start/watch/status/stop command paths.
+  - Source: prior research entry 16:00Z (T2), no new test additions detected
