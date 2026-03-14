@@ -1544,7 +1544,7 @@ The replan agent reads the spec but does NOT modify it — the spec is human-own
 
 Triggered by: spec backfill, replan agent spec edits, detected spec file commits. Queued as a follow-up after any spec-modifying operation.
 
-**Infinite loop guard:** The consistency agent's own commits use a tagged message prefix (`chore(spec-consistency):`). The spec watcher ignores commits with this prefix — they do not re-trigger analysis, gap detection, or another consistency pass. Same applies to spec backfill commits (`chore(spec-backfill):`). Only substantive spec changes (new requirements, changed requirements, user edits) trigger the pipeline. This prevents: consistency agent edits spec → watcher detects change → queues another consistency run → infinite loop.
+**Infinite loop guard:** Protected by the general [Infinite Loop Prevention](#infinite-loop-prevention) mechanism — provenance tagging ensures the consistency agent's own commits don't re-trigger the spec change pipeline.
 
 **Spec files are the authoritative intent. Issues are the live execution plan.** They can temporarily diverge (user adds an ad-hoc issue, agent discovers unexpected work) but replan reconciles them.
 
@@ -3035,6 +3035,41 @@ This is preferable to hardcoded file-permission enforcement because:
 - The guard can make judgment calls (e.g., "this test change is legitimate because the API contract changed")
 - Protection rules are configurable per project, not baked into loop machinery
 - It follows the same agent model — no special-case infrastructure
+
+### Infinite Loop Prevention
+
+With a flexible agent pipeline where agents can modify files that trigger other agents, infinite loops are easy to create accidentally. Two mechanisms prevent this:
+
+**1. Provenance tagging**
+
+Every agent commit includes a provenance trailer:
+```
+Aloop-Agent: spec-consistency
+Aloop-Iteration: 14
+Aloop-Session: ralph-skill-20260314-173930
+```
+
+The runtime's file-change watcher reads provenance before triggering follow-up agents:
+- Housekeeping agents (spec-consistency, spec-backfill, guard) never re-trigger themselves
+- An agent's output does not re-trigger the same agent type unless explicitly configured
+- Only commits without aloop provenance (human edits) or from substantive agents (build, plan) trigger the full reactive pipeline
+
+**2. Loop health supervisor agent**
+
+A lightweight supervisor agent (`PROMPT_loop_health.md`) runs every N iterations (configurable, default: every 5) as part of the normal cycle. It reads `log.jsonl` and detects unhealthy patterns:
+
+- **Repetitive agent cycling** — same agent type running repeatedly without progress (e.g., spec-consistency triggered 4 times in 6 iterations)
+- **Queue thrashing** — queue depth growing instead of draining, or same prompts being re-queued
+- **Stuck cascades** — agent A triggers B triggers A triggers B with no net progress
+- **Wasted iterations** — agents running but producing no meaningful commits or changes
+- **Resource burn** — disproportionate token/iteration spend on non-build agents
+
+When the supervisor detects an unhealthy pattern, it can:
+- **Trip a circuit breaker** — suspend the offending agent type by removing it from the cycle or blocking its queue entries, with a log entry explaining why
+- **Alert the user** — create an `aloop/health-alert` issue or post a comment describing the pattern
+- **Adjust the pipeline** — write a request to reduce trigger sensitivity or increase cooldowns
+
+The supervisor is itself provenance-tagged and excluded from re-triggering — it cannot cause the loops it's designed to prevent.
 
 ### Vertical Slice Verification (built on the pipeline)
 
