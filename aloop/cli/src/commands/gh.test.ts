@@ -1897,9 +1897,11 @@ function buildWatchEntry(overrides: Partial<{
   pr_url: string | null;
   status: GhWatchIssueStatus;
   completion_state: string | null;
+  completion_finalized: boolean;
   feedback_iteration: number;
   max_feedback_iterations: number;
   processed_comment_ids: number[];
+  processed_issue_comment_ids: number[];
   processed_run_ids: number[];
 }> = {}): GhWatchIssueEntry {
   return {
@@ -1911,11 +1913,13 @@ function buildWatchEntry(overrides: Partial<{
     pr_url: overrides.pr_url ?? 'https://github.com/test/repo/pull/51',
     status: overrides.status ?? 'completed',
     completion_state: overrides.completion_state ?? 'exited',
+    completion_finalized: overrides.completion_finalized ?? false,
     created_at: '2026-03-14T12:00:00Z',
     updated_at: '2026-03-14T12:00:00Z',
     feedback_iteration: overrides.feedback_iteration ?? 0,
     max_feedback_iterations: overrides.max_feedback_iterations ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
     processed_comment_ids: overrides.processed_comment_ids ?? [],
+    processed_issue_comment_ids: overrides.processed_issue_comment_ids ?? [],
     processed_run_ids: overrides.processed_run_ids ?? [],
   };
 }
@@ -1936,7 +1940,7 @@ test('collectNewFeedback filters out already-processed comment and run IDs', () 
     { id: 202, name: 'test', status: 'completed', conclusion: 'success' },
   ];
 
-  const feedback = collectNewFeedback(entry, comments, checkRuns);
+  const feedback = collectNewFeedback(entry, comments, [], checkRuns);
   assert.equal(feedback.new_comments.length, 1);
   assert.equal(feedback.new_comments[0].id, 102);
   assert.equal(feedback.failed_checks.length, 1);
@@ -1952,7 +1956,7 @@ test('collectNewFeedback returns empty when all items already processed', () => 
   const comments: PrReviewComment[] = [{ id: 100, body: 'old' }];
   const checkRuns: PrCheckRun[] = [{ id: 200, name: 'build', status: 'completed', conclusion: 'failure' }];
 
-  const feedback = collectNewFeedback(entry, comments, checkRuns);
+  const feedback = collectNewFeedback(entry, comments, [], checkRuns);
   assert.equal(hasFeedback(feedback), false);
 });
 
@@ -1963,7 +1967,7 @@ test('collectNewFeedback ignores passing checks', () => {
     { id: 301, name: 'lint', status: 'in_progress', conclusion: null },
   ];
 
-  const feedback = collectNewFeedback(entry, [], checkRuns);
+  const feedback = collectNewFeedback(entry, [], [], checkRuns);
   assert.equal(feedback.failed_checks.length, 0);
   assert.equal(hasFeedback(feedback), false);
 });
@@ -1971,6 +1975,7 @@ test('collectNewFeedback ignores passing checks', () => {
 test('hasFeedback returns true when there are new comments', () => {
   const feedback: PrFeedback = {
     new_comments: [{ id: 1, body: 'fix this' }],
+    new_issue_comments: [],
     failed_checks: [],
   };
   assert.equal(hasFeedback(feedback), true);
@@ -1979,6 +1984,7 @@ test('hasFeedback returns true when there are new comments', () => {
 test('hasFeedback returns true when there are failed checks', () => {
   const feedback: PrFeedback = {
     new_comments: [],
+    new_issue_comments: [],
     failed_checks: [{ id: 1, name: 'build', status: 'completed', conclusion: 'failure' }],
   };
   assert.equal(hasFeedback(feedback), true);
@@ -1990,6 +1996,7 @@ test('buildFeedbackSteering formats review comments and CI failures', () => {
       { id: 1, body: 'Please fix the null check', user: { login: 'reviewer1' }, path: 'src/main.ts', line: 42 },
       { id: 2, body: 'Needs error handling', user: { login: 'reviewer2' } },
     ],
+    new_issue_comments: [],
     failed_checks: [
       { id: 10, name: 'build-and-test', status: 'completed', conclusion: 'failure', html_url: 'https://github.com/test/repo/actions/runs/123' },
     ],
@@ -2010,6 +2017,7 @@ test('buildFeedbackSteering formats review comments and CI failures', () => {
 test('buildFeedbackSteering handles comments without path or user', () => {
   const feedback: PrFeedback = {
     new_comments: [{ id: 1, body: 'Some feedback' }],
+    new_issue_comments: [],
     failed_checks: [],
   };
 
@@ -2022,17 +2030,20 @@ test('buildFeedbackSteering handles comments without path or user', () => {
 test('markFeedbackProcessed updates entry with processed IDs and increments iteration', () => {
   const entry = buildWatchEntry({
     processed_comment_ids: [100],
+    processed_issue_comment_ids: [],
     processed_run_ids: [],
     feedback_iteration: 1,
   });
 
   const feedback: PrFeedback = {
     new_comments: [{ id: 102, body: 'fix' }, { id: 103, body: 'also fix' }],
+    new_issue_comments: [],
     failed_checks: [{ id: 200, name: 'test', status: 'completed', conclusion: 'failure' }],
   };
 
   markFeedbackProcessed(entry, feedback);
   assert.deepStrictEqual(entry.processed_comment_ids, [100, 102, 103]);
+  assert.deepStrictEqual(entry.processed_issue_comment_ids, []);
   assert.deepStrictEqual(entry.processed_run_ids, [200]);
   assert.equal(entry.feedback_iteration, 2);
 });
@@ -2040,20 +2051,24 @@ test('markFeedbackProcessed updates entry with processed IDs and increments iter
 test('markFeedbackProcessed does not duplicate already-tracked IDs', () => {
   const entry = buildWatchEntry({
     processed_comment_ids: [100],
+    processed_issue_comment_ids: [],
     processed_run_ids: [200],
     feedback_iteration: 0,
   });
 
   const feedback: PrFeedback = {
     new_comments: [{ id: 100, body: 'already tracked' }],
+    new_issue_comments: [],
     failed_checks: [{ id: 200, name: 'build', status: 'completed', conclusion: 'failure' }],
   };
 
   markFeedbackProcessed(entry, feedback);
   assert.deepStrictEqual(entry.processed_comment_ids, [100]);
+  assert.deepStrictEqual(entry.processed_issue_comment_ids, []);
   assert.deepStrictEqual(entry.processed_run_ids, [200]);
   assert.equal(entry.feedback_iteration, 1);
 });
+
 
 test('watch.json normalizes feedback tracking fields from persisted state', async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-feedback-persist-'));

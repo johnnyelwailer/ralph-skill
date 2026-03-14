@@ -19,8 +19,8 @@
 - [ ] [orchestrator][medium] Add spec gap analyst agents (product + architecture) with autonomy-level-aware resolver.
 - [ ] [orchestrator][medium] Add spec consistency agent — runs after spec changes to reorganize, verify cross-references, remove contradictions, and ensure clean structure.
 - [ ] [orchestrator][medium] Add Definition of Ready gate with specialist planners (FE/BE/infra) and estimation agent.
-- [ ] [gh-workflows][high] Implement watch-cycle completion finalization (completed sessions → PR creation + issue summary).
-- [ ] [gh-workflows][high] Close PR feedback trigger gaps (`@aloop` mention detection, CI failed-log ingestion).
+- [x] [gh-workflows][high] Implement watch-cycle completion finalization (completed sessions → PR creation + issue summary).
+- [x] [gh-workflows][high] Close PR feedback trigger gaps (`@aloop` mention detection, CI failed-log ingestion).
 - [ ] [gh-workflows][high] Add `aloop gh stop-watch` control path.
 - [ ] [gh-workflows][high] Integrate GitHub Actions for quality gates — discover workflows, prefer CI over local, CI failure feedback loop.
 

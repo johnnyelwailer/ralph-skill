@@ -77,11 +77,13 @@ export interface GhWatchIssueEntry {
   pr_url: string | null;
   status: GhWatchIssueStatus;
   completion_state: string | null;
+  completion_finalized: boolean;
   created_at: string;
   updated_at: string;
   feedback_iteration: number;
   max_feedback_iterations: number;
   processed_comment_ids: number[];
+  processed_issue_comment_ids: number[];
   processed_run_ids: number[];
 }
 
@@ -211,14 +213,17 @@ function normalizeWatchIssueEntry(value: unknown): GhWatchIssueEntry | null {
     pr_url: typeof candidate.pr_url === 'string' && candidate.pr_url.trim() ? candidate.pr_url : null,
     status,
     completion_state: typeof candidate.completion_state === 'string' && candidate.completion_state.trim() ? candidate.completion_state : null,
+    completion_finalized: candidate.completion_finalized === true,
     created_at: typeof candidate.created_at === 'string' && candidate.created_at.trim() ? candidate.created_at : ghLoopRuntime.now(),
     updated_at: typeof candidate.updated_at === 'string' && candidate.updated_at.trim() ? candidate.updated_at : ghLoopRuntime.now(),
     feedback_iteration: typeof candidate.feedback_iteration === 'number' && Number.isInteger(candidate.feedback_iteration) && candidate.feedback_iteration >= 0 ? candidate.feedback_iteration : 0,
     max_feedback_iterations: parsePositiveInteger(candidate.max_feedback_iterations) ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
     processed_comment_ids: extractPositiveIntegers(candidate.processed_comment_ids),
+    processed_issue_comment_ids: extractPositiveIntegers(candidate.processed_issue_comment_ids),
     processed_run_ids: extractPositiveIntegers(candidate.processed_run_ids),
   };
 }
+
 
 function normalizeWatchState(value: unknown): GhWatchState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -302,11 +307,13 @@ function watchEntryFromStartResult(result: GhStartResult): GhWatchIssueEntry {
     pr_url: result.pr?.url ?? null,
     status: result.pending_completion ? 'running' : 'completed',
     completion_state: result.completion_state,
+    completion_finalized: !result.pending_completion,
     created_at: now,
     updated_at: now,
     feedback_iteration: 0,
     max_feedback_iterations: GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
     processed_comment_ids: [],
+    processed_issue_comment_ids: [],
     processed_run_ids: [],
   };
 }
@@ -335,17 +342,20 @@ function enqueueIssue(state: GhWatchState, issue: GhWatchIssue): void {
     pr_url: existing?.pr_url ?? null,
     status: 'queued',
     completion_state: existing?.completion_state ?? null,
+    completion_finalized: existing?.completion_finalized ?? false,
     created_at: existing?.created_at ?? now,
     updated_at: now,
     feedback_iteration: existing?.feedback_iteration ?? 0,
     max_feedback_iterations: existing?.max_feedback_iterations ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
     processed_comment_ids: existing?.processed_comment_ids ?? [],
+    processed_issue_comment_ids: existing?.processed_issue_comment_ids ?? [],
     processed_run_ids: existing?.processed_run_ids ?? [],
   };
   if (!state.queue.includes(issue.number)) {
     state.queue.push(issue.number);
   }
 }
+
 
 function removeTrackedIssue(state: GhWatchState, issueNumber: number): void {
   delete state.issues[String(issueNumber)];
@@ -472,16 +482,24 @@ interface PrReviewComment {
   state?: string;
 }
 
+interface PrIssueComment {
+  id: number;
+  body: string;
+  user?: { login?: string };
+}
+
 interface PrCheckRun {
   id: number;
   name: string;
   status: string;
   conclusion: string | null;
   html_url?: string;
+  log?: string;
 }
 
 interface PrFeedback {
   new_comments: PrReviewComment[];
+  new_issue_comments: PrIssueComment[];
   failed_checks: PrCheckRun[];
 }
 
@@ -509,6 +527,51 @@ async function fetchPrReviewComments(repo: string, prNumber: number): Promise<Pr
     .filter((comment) => comment.id > 0);
 }
 
+async function fetchPrIssueComments(repo: string, prNumber: number): Promise<PrIssueComment[]> {
+  const response = await ghExecutor.exec([
+    'api', `repos/${repo}/issues/${prNumber}/comments`,
+    '--method', 'GET',
+  ]);
+
+  const parsed = JSON.parse(response.stdout || '[]') as unknown;
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  return parsed
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+    .map((entry) => ({
+      id: typeof entry.id === 'number' ? entry.id : 0,
+      body: typeof entry.body === 'string' ? entry.body : '',
+      user: entry.user && typeof entry.user === 'object' ? { login: typeof (entry.user as Record<string, unknown>).login === 'string' ? (entry.user as Record<string, unknown>).login as string : undefined } : undefined,
+    }))
+    .filter((comment) => comment.id > 0);
+}
+
+async function fetchFailedCheckLogs(repo: string, sha: string): Promise<Map<number, string>> {
+  const logs = new Map<number, string>();
+  try {
+    const runsResponse = await ghExecutor.exec([
+      'run', 'list', '--repo', repo, '--commit', sha, '--status', 'failure', '--json', 'databaseId', '--limit', '5'
+    ]);
+    const runs = JSON.parse(runsResponse.stdout || '[]') as { databaseId: number }[];
+    for (const run of runs) {
+      try {
+        const logResponse = await ghExecutor.exec([
+          'run', 'view', String(run.databaseId), '--repo', repo, '--log-failed'
+        ]);
+        if (logResponse.stdout.trim()) {
+          logs.set(run.databaseId, logResponse.stdout.trim());
+        }
+      } catch {
+        // ignore
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return logs;
+}
+
 async function fetchPrCheckRuns(repo: string, prNumber: number): Promise<PrCheckRun[]> {
   // Get the PR head SHA first, then check runs for that commit
   const prResponse = await ghExecutor.exec([
@@ -532,7 +595,8 @@ async function fetchPrCheckRuns(repo: string, prNumber: number): Promise<PrCheck
   if (!Array.isArray(checkRuns)) {
     return [];
   }
-  return checkRuns
+
+  const runs: PrCheckRun[] = checkRuns
     .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
     .map((entry) => ({
       id: typeof entry.id === 'number' ? entry.id : 0,
@@ -540,24 +604,57 @@ async function fetchPrCheckRuns(repo: string, prNumber: number): Promise<PrCheck
       status: typeof entry.status === 'string' ? entry.status : '',
       conclusion: typeof entry.conclusion === 'string' ? entry.conclusion : null,
       html_url: typeof entry.html_url === 'string' ? entry.html_url : undefined,
+      log: undefined as string | undefined,
     }))
     .filter((run) => run.id > 0);
+
+  const hasFailures = runs.some(r => r.status === 'completed' && r.conclusion === 'failure');
+  if (hasFailures) {
+    const logs = await fetchFailedCheckLogs(repo, sha);
+    // We don't have a direct mapping from check-run ID to GHA run ID here easily,
+    // so we'll just attach the failed logs to any failed check run for context.
+    // In practice, buildFeedbackSteering will collect these.
+    if (logs.size > 0) {
+      const combinedLog = Array.from(logs.values()).join('\n---\n');
+      for (const run of runs) {
+        if (run.status === 'completed' && run.conclusion === 'failure') {
+          run.log = combinedLog;
+        }
+      }
+    }
+  }
+
+  return runs;
 }
 
-function collectNewFeedback(entry: GhWatchIssueEntry, comments: PrReviewComment[], checkRuns: PrCheckRun[]): PrFeedback {
+function collectNewFeedback(
+  entry: GhWatchIssueEntry,
+  reviewComments: PrReviewComment[],
+  issueComments: PrIssueComment[],
+  checkRuns: PrCheckRun[]
+): PrFeedback {
   const processedCommentSet = new Set(entry.processed_comment_ids);
+  const processedIssueCommentSet = new Set(entry.processed_issue_comment_ids);
   const processedRunSet = new Set(entry.processed_run_ids);
 
-  const newComments = comments.filter((comment) => !processedCommentSet.has(comment.id));
+  const newReviewComments = reviewComments.filter((comment) => !processedCommentSet.has(comment.id));
+  const newIssueComments = issueComments
+    .filter((comment) => !processedIssueCommentSet.has(comment.id))
+    .filter((comment) => comment.body.toLowerCase().includes('@aloop'));
+
   const failedChecks = checkRuns
     .filter((run) => run.status === 'completed' && run.conclusion === 'failure')
     .filter((run) => !processedRunSet.has(run.id));
 
-  return { new_comments: newComments, failed_checks: failedChecks };
+  return {
+    new_comments: newReviewComments,
+    new_issue_comments: newIssueComments,
+    failed_checks: failedChecks
+  };
 }
 
 function hasFeedback(feedback: PrFeedback): boolean {
-  return feedback.new_comments.length > 0 || feedback.failed_checks.length > 0;
+  return feedback.new_comments.length > 0 || feedback.new_issue_comments.length > 0 || feedback.failed_checks.length > 0;
 }
 
 function buildFeedbackSteering(feedback: PrFeedback, prNumber: number): string {
@@ -580,10 +677,35 @@ function buildFeedbackSteering(feedback: PrFeedback, prNumber: number): string {
     }
   }
 
+  if (feedback.new_issue_comments.length > 0) {
+    parts.push('## Mentions (@aloop)', '');
+    for (const comment of feedback.new_issue_comments) {
+      const author = comment.user?.login ?? 'unknown';
+      parts.push(`### @${author} (comment)`);
+      parts.push('');
+      parts.push(comment.body.trim());
+      parts.push('');
+    }
+  }
+
   if (feedback.failed_checks.length > 0) {
     parts.push('## CI Failures', '');
     for (const check of feedback.failed_checks) {
       parts.push(`- **${check.name}** failed${check.html_url ? ` ([view](${check.html_url}))` : ''}`);
+      if (check.log) {
+        parts.push('');
+        parts.push('```');
+        // Extract last 200 lines if too long
+        const logLines = check.log.split('\n');
+        if (logLines.length > 200) {
+          parts.push('... (truncated)');
+          parts.push(...logLines.slice(-200));
+        } else {
+          parts.push(check.log);
+        }
+        parts.push('```');
+        parts.push('');
+      }
     }
     parts.push('');
     parts.push('Fix the CI failures above. Review the error logs and address root causes.');
@@ -598,6 +720,11 @@ function markFeedbackProcessed(entry: GhWatchIssueEntry, feedback: PrFeedback): 
   for (const comment of feedback.new_comments) {
     if (!entry.processed_comment_ids.includes(comment.id)) {
       entry.processed_comment_ids.push(comment.id);
+    }
+  }
+  for (const comment of feedback.new_issue_comments) {
+    if (!entry.processed_issue_comment_ids.includes(comment.id)) {
+      entry.processed_issue_comment_ids.push(comment.id);
     }
   }
   for (const check of feedback.failed_checks) {
@@ -623,19 +750,39 @@ async function checkAndApplyPrFeedback(
     return false;
   }
 
-  let comments: PrReviewComment[];
+  let reviewComments: PrReviewComment[];
+  let issueComments: PrIssueComment[];
   let checkRuns: PrCheckRun[];
   try {
-    [comments, checkRuns] = await Promise.all([
+    [reviewComments, issueComments, checkRuns] = await Promise.all([
       fetchPrReviewComments(entry.repo, entry.pr_number),
+      fetchPrIssueComments(entry.repo, entry.pr_number),
       fetchPrCheckRuns(entry.repo, entry.pr_number),
     ]);
   } catch {
     return false;
   }
 
-  const feedback = collectNewFeedback(entry, comments, checkRuns);
+  const feedback = collectNewFeedback(entry, reviewComments, issueComments, checkRuns);
   if (!hasFeedback(feedback)) {
+    // Even if no feedback matches our triggers, we should mark all seen comments as processed
+    // to avoid re-scanning them every cycle.
+    let updated = false;
+    for (const c of reviewComments) {
+      if (!entry.processed_comment_ids.includes(c.id)) {
+        entry.processed_comment_ids.push(c.id);
+        updated = true;
+      }
+    }
+    for (const c of issueComments) {
+      if (!entry.processed_issue_comment_ids.includes(c.id)) {
+        entry.processed_issue_comment_ids.push(c.id);
+        updated = true;
+      }
+    }
+    if (updated) {
+      entry.updated_at = ghLoopRuntime.now();
+    }
     return false;
   }
 
@@ -669,6 +816,7 @@ async function checkAndApplyPrFeedback(
   return true;
 }
 
+
 export {
   collectNewFeedback,
   hasFeedback,
@@ -681,6 +829,116 @@ export {
 };
 
 export type { PrReviewComment, PrCheckRun, PrFeedback };
+
+async function finalizeWatchEntry(
+  entry: GhWatchIssueEntry,
+  options: GhWatchCommandOptions,
+): Promise<void> {
+  if (!entry.repo || !entry.branch || !entry.session_id || !entry.completion_state) {
+    return;
+  }
+
+  const sessionDir = getSessionDir(options.homeDir, entry.session_id);
+  const metaPath = path.join(sessionDir, 'meta.json');
+  let projectRoot = options.projectRoot ?? process.cwd();
+  if (fs.existsSync(metaPath)) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as Record<string, unknown>;
+      if (typeof meta.project_root === 'string' && meta.project_root.trim()) {
+        projectRoot = meta.project_root;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  let issueTitle = `Issue ${entry.issue_number}`;
+  try {
+    const issueRaw = await ghExecutor.exec(['issue', 'view', String(entry.issue_number), '--json', 'title', '--repo', entry.repo]);
+    const issuePayload = JSON.parse(issueRaw.stdout) as { title: string };
+    if (issuePayload.title) {
+      issueTitle = issuePayload.title;
+    }
+  } catch {
+    // ignore
+  }
+
+  let baseBranch: 'agent/main' | 'main' = 'main';
+  try {
+    await execFileAsync('git', ['-C', projectRoot, 'rev-parse', '--verify', 'agent/main']);
+    baseBranch = 'agent/main';
+  } catch {
+    try {
+      await execFileAsync('git', ['-C', projectRoot, 'branch', 'agent/main', 'main']);
+      baseBranch = 'agent/main';
+    } catch {
+      baseBranch = 'main';
+    }
+  }
+
+  const prTitle = `[aloop] ${issueTitle}`;
+  const prBody = `Automated implementation for issue #${entry.issue_number}.\n\nCloses #${entry.issue_number}`;
+
+  try {
+    const prCreate = await ghExecutor.exec([
+      'pr', 'create',
+      '--repo', entry.repo,
+      '--base', baseBranch,
+      '--head', entry.branch,
+      '--title', prTitle,
+      '--body', prBody,
+    ]);
+    const pr = parsePrReference(prCreate.stdout);
+    if (pr.number !== null) {
+      entry.pr_number = pr.number;
+      entry.pr_url = pr.url;
+
+      const configPath = path.join(sessionDir, 'config.json');
+      if (fs.existsSync(configPath)) {
+        try {
+          const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+          const createdPrNumbers = extractPositiveIntegers(config.created_pr_numbers);
+          const next = new Set<number>(createdPrNumbers);
+          next.add(pr.number);
+          config.created_pr_numbers = Array.from(next.values());
+          config.childCreatedPrNumbers = Array.from(next.values());
+          fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+        } catch {
+          // ignore
+        }
+      }
+    }
+  } catch (err: any) {
+    try {
+      const prList = await ghExecutor.exec([
+        'pr', 'list',
+        '--repo', entry.repo,
+        '--head', entry.branch,
+        '--json', 'number,url'
+      ]);
+      const existing = JSON.parse(prList.stdout) as { number: number; url: string }[];
+      if (existing.length > 0) {
+        entry.pr_number = existing[0].number;
+        entry.pr_url = existing[0].url;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const summary = [
+    `Aloop session ${entry.session_id} completed for #${entry.issue_number}.`,
+    entry.pr_url ? `Created PR: ${entry.pr_url}` : 'Created PR (URL unavailable).',
+    `Branch: ${entry.branch}`,
+    `State: ${entry.completion_state}`,
+  ].join('\n');
+
+  try {
+    await ghExecutor.exec(['issue', 'comment', String(entry.issue_number), '--repo', entry.repo, '--body', summary]);
+  } catch {
+    // ignore
+  }
+}
 
 async function runGhWatchCycle(options: GhWatchCommandOptions): Promise<GhWatchCycleSummary> {
   const maxConcurrent = parsePositiveIntegerOption(options.maxConcurrent, GH_WATCH_DEFAULT_MAX_CONCURRENT, '--max-concurrent');
@@ -704,6 +962,16 @@ async function runGhWatchCycle(options: GhWatchCommandOptions): Promise<GhWatchC
     if (resumed) {
       feedbackResumed.push(entry.issue_number);
     }
+  }
+
+  // Check newly completed entries that need PR creation and finalization
+  const newlyCompleted = Object.values(state.issues).filter(
+    (entry) => (entry.status === 'completed' || entry.status === 'stopped') && isTerminalState(entry.completion_state) && !entry.completion_finalized
+  );
+  for (const entry of newlyCompleted) {
+    await finalizeWatchEntry(entry, options);
+    entry.completion_finalized = true;
+    entry.updated_at = ghLoopRuntime.now();
   }
 
   const started: number[] = [];
