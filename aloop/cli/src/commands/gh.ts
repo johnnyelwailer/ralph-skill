@@ -79,6 +79,10 @@ interface GhWatchIssueEntry {
   completion_state: string | null;
   created_at: string;
   updated_at: string;
+  feedback_iteration: number;
+  max_feedback_iterations: number;
+  processed_comment_ids: number[];
+  processed_run_ids: number[];
 }
 
 interface GhWatchState {
@@ -92,6 +96,7 @@ interface GhWatchCycleSummary {
   queued: number[];
   active: number;
   tracked: number;
+  feedback_resumed: number[];
 }
 
 export interface GhStartResult {
@@ -156,6 +161,7 @@ const GH_WATCH_VERSION = 1 as const;
 const GH_WATCH_DEFAULT_LABEL = 'aloop';
 const GH_WATCH_DEFAULT_INTERVAL_SECONDS = 60;
 const GH_WATCH_DEFAULT_MAX_CONCURRENT = 3;
+const GH_FEEDBACK_DEFAULT_MAX_ITERATIONS = 5;
 
 export const ghLoopRuntime = {
   listActiveSessions: async (homeDir: string): Promise<SessionInfo[]> => listActiveSessions(homeDir),
@@ -207,6 +213,10 @@ function normalizeWatchIssueEntry(value: unknown): GhWatchIssueEntry | null {
     completion_state: typeof candidate.completion_state === 'string' && candidate.completion_state.trim() ? candidate.completion_state : null,
     created_at: typeof candidate.created_at === 'string' && candidate.created_at.trim() ? candidate.created_at : ghLoopRuntime.now(),
     updated_at: typeof candidate.updated_at === 'string' && candidate.updated_at.trim() ? candidate.updated_at : ghLoopRuntime.now(),
+    feedback_iteration: typeof candidate.feedback_iteration === 'number' && Number.isInteger(candidate.feedback_iteration) && candidate.feedback_iteration >= 0 ? candidate.feedback_iteration : 0,
+    max_feedback_iterations: parsePositiveInteger(candidate.max_feedback_iterations) ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+    processed_comment_ids: extractPositiveIntegers(candidate.processed_comment_ids),
+    processed_run_ids: extractPositiveIntegers(candidate.processed_run_ids),
   };
 }
 
@@ -294,6 +304,10 @@ function watchEntryFromStartResult(result: GhStartResult): GhWatchIssueEntry {
     completion_state: result.completion_state,
     created_at: now,
     updated_at: now,
+    feedback_iteration: 0,
+    max_feedback_iterations: GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+    processed_comment_ids: [],
+    processed_run_ids: [],
   };
 }
 
@@ -323,6 +337,10 @@ function enqueueIssue(state: GhWatchState, issue: GhWatchIssue): void {
     completion_state: existing?.completion_state ?? null,
     created_at: existing?.created_at ?? now,
     updated_at: now,
+    feedback_iteration: existing?.feedback_iteration ?? 0,
+    max_feedback_iterations: existing?.max_feedback_iterations ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+    processed_comment_ids: existing?.processed_comment_ids ?? [],
+    processed_run_ids: existing?.processed_run_ids ?? [],
   };
   if (!state.queue.includes(issue.number)) {
     state.queue.push(issue.number);
@@ -443,6 +461,232 @@ async function launchTrackedIssue(issueNumber: number, options: GhWatchCommandOp
   return entry;
 }
 
+// --- PR Feedback Loop ---
+
+interface PrReviewComment {
+  id: number;
+  body: string;
+  user?: { login?: string };
+  path?: string;
+  line?: number;
+  state?: string;
+}
+
+interface PrCheckRun {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url?: string;
+}
+
+interface PrFeedback {
+  new_comments: PrReviewComment[];
+  failed_checks: PrCheckRun[];
+}
+
+async function fetchPrReviewComments(repo: string, prNumber: number): Promise<PrReviewComment[]> {
+  const response = await ghExecutor.exec([
+    'api', `repos/${repo}/pulls/${prNumber}/reviews`,
+    '--method', 'GET', '--jq', '.[].id',
+  ]);
+
+  // Fetch individual review comments via pulls/comments endpoint
+  const commentsResponse = await ghExecutor.exec([
+    'api', `repos/${repo}/pulls/${prNumber}/comments`,
+    '--method', 'GET',
+  ]);
+
+  const parsed = JSON.parse(commentsResponse.stdout || '[]') as unknown;
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  return parsed
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+    .map((entry) => ({
+      id: typeof entry.id === 'number' ? entry.id : 0,
+      body: typeof entry.body === 'string' ? entry.body : '',
+      user: entry.user && typeof entry.user === 'object' ? { login: typeof (entry.user as Record<string, unknown>).login === 'string' ? (entry.user as Record<string, unknown>).login as string : undefined } : undefined,
+      path: typeof entry.path === 'string' ? entry.path : undefined,
+      line: typeof entry.line === 'number' ? entry.line : undefined,
+      state: typeof entry.state === 'string' ? entry.state : undefined,
+    }))
+    .filter((comment) => comment.id > 0);
+}
+
+async function fetchPrCheckRuns(repo: string, prNumber: number): Promise<PrCheckRun[]> {
+  // Get the PR head SHA first, then check runs for that commit
+  const prResponse = await ghExecutor.exec([
+    'api', `repos/${repo}/pulls/${prNumber}`,
+    '--method', 'GET', '--jq', '.head.sha',
+  ]);
+  const sha = prResponse.stdout.trim();
+  if (!sha) {
+    return [];
+  }
+
+  const checksResponse = await ghExecutor.exec([
+    'api', `repos/${repo}/commits/${sha}/check-runs`,
+    '--method', 'GET',
+  ]);
+  const parsed = JSON.parse(checksResponse.stdout || '{}') as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return [];
+  }
+  const checkRuns = (parsed as Record<string, unknown>).check_runs;
+  if (!Array.isArray(checkRuns)) {
+    return [];
+  }
+  return checkRuns
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+    .map((entry) => ({
+      id: typeof entry.id === 'number' ? entry.id : 0,
+      name: typeof entry.name === 'string' ? entry.name : '',
+      status: typeof entry.status === 'string' ? entry.status : '',
+      conclusion: typeof entry.conclusion === 'string' ? entry.conclusion : null,
+      html_url: typeof entry.html_url === 'string' ? entry.html_url : undefined,
+    }))
+    .filter((run) => run.id > 0);
+}
+
+function collectNewFeedback(entry: GhWatchIssueEntry, comments: PrReviewComment[], checkRuns: PrCheckRun[]): PrFeedback {
+  const processedCommentSet = new Set(entry.processed_comment_ids);
+  const processedRunSet = new Set(entry.processed_run_ids);
+
+  const newComments = comments.filter((comment) => !processedCommentSet.has(comment.id));
+  const failedChecks = checkRuns
+    .filter((run) => run.status === 'completed' && run.conclusion === 'failure')
+    .filter((run) => !processedRunSet.has(run.id));
+
+  return { new_comments: newComments, failed_checks: failedChecks };
+}
+
+function hasFeedback(feedback: PrFeedback): boolean {
+  return feedback.new_comments.length > 0 || feedback.failed_checks.length > 0;
+}
+
+function buildFeedbackSteering(feedback: PrFeedback, prNumber: number): string {
+  const parts: string[] = [
+    '# PR Feedback — Automated Re-iteration',
+    '',
+    `PR #${prNumber} received feedback that requires fixes.`,
+    '',
+  ];
+
+  if (feedback.new_comments.length > 0) {
+    parts.push('## Review Comments', '');
+    for (const comment of feedback.new_comments) {
+      const author = comment.user?.login ?? 'unknown';
+      const location = comment.path ? `${comment.path}${comment.line ? `:${comment.line}` : ''}` : '';
+      parts.push(`### ${author}${location ? ` — \`${location}\`` : ''}`);
+      parts.push('');
+      parts.push(comment.body.trim());
+      parts.push('');
+    }
+  }
+
+  if (feedback.failed_checks.length > 0) {
+    parts.push('## CI Failures', '');
+    for (const check of feedback.failed_checks) {
+      parts.push(`- **${check.name}** failed${check.html_url ? ` ([view](${check.html_url}))` : ''}`);
+    }
+    parts.push('');
+    parts.push('Fix the CI failures above. Review the error logs and address root causes.');
+    parts.push('');
+  }
+
+  parts.push('Address all feedback above, then commit and push.');
+  return parts.join('\n');
+}
+
+function markFeedbackProcessed(entry: GhWatchIssueEntry, feedback: PrFeedback): void {
+  for (const comment of feedback.new_comments) {
+    if (!entry.processed_comment_ids.includes(comment.id)) {
+      entry.processed_comment_ids.push(comment.id);
+    }
+  }
+  for (const check of feedback.failed_checks) {
+    if (!entry.processed_run_ids.includes(check.id)) {
+      entry.processed_run_ids.push(check.id);
+    }
+  }
+  entry.feedback_iteration += 1;
+  entry.updated_at = ghLoopRuntime.now();
+}
+
+async function checkAndApplyPrFeedback(
+  entry: GhWatchIssueEntry,
+  options: GhWatchCommandOptions,
+): Promise<boolean> {
+  if (!entry.repo || !entry.pr_number || !entry.session_id) {
+    return false;
+  }
+  if (entry.status !== 'completed') {
+    return false;
+  }
+  if (entry.feedback_iteration >= entry.max_feedback_iterations) {
+    return false;
+  }
+
+  let comments: PrReviewComment[];
+  let checkRuns: PrCheckRun[];
+  try {
+    [comments, checkRuns] = await Promise.all([
+      fetchPrReviewComments(entry.repo, entry.pr_number),
+      fetchPrCheckRuns(entry.repo, entry.pr_number),
+    ]);
+  } catch {
+    return false;
+  }
+
+  const feedback = collectNewFeedback(entry, comments, checkRuns);
+  if (!hasFeedback(feedback)) {
+    return false;
+  }
+
+  // Write STEERING.md to the session worktree
+  const sessionDir = getSessionDir(options.homeDir, entry.session_id);
+  const worktreePath = path.join(sessionDir, 'worktree');
+  const steeringPath = path.join(worktreePath, 'STEERING.md');
+  const steeringContent = buildFeedbackSteering(feedback, entry.pr_number);
+
+  fs.mkdirSync(path.dirname(steeringPath), { recursive: true });
+  fs.writeFileSync(steeringPath, steeringContent, 'utf8');
+
+  // Resume the session by starting a new loop in-place on the worktree
+  try {
+    await ghLoopRuntime.startIssue({
+      issue: entry.issue_number,
+      repo: entry.repo,
+      homeDir: options.homeDir,
+      projectRoot: worktreePath,
+      provider: options.provider,
+      max: options.max,
+      output: 'json',
+    });
+  } catch {
+    // If resume fails, leave steering in place for manual pickup
+    return false;
+  }
+
+  markFeedbackProcessed(entry, feedback);
+  entry.status = 'running';
+  return true;
+}
+
+export {
+  collectNewFeedback,
+  hasFeedback,
+  buildFeedbackSteering,
+  markFeedbackProcessed,
+  checkAndApplyPrFeedback,
+  fetchPrReviewComments,
+  fetchPrCheckRuns,
+  GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+};
+
+export type { PrReviewComment, PrCheckRun, PrFeedback };
+
 async function runGhWatchCycle(options: GhWatchCommandOptions): Promise<GhWatchCycleSummary> {
   const maxConcurrent = parsePositiveIntegerOption(options.maxConcurrent, GH_WATCH_DEFAULT_MAX_CONCURRENT, '--max-concurrent');
   const state = loadWatchState(options.homeDir);
@@ -452,6 +696,18 @@ async function runGhWatchCycle(options: GhWatchCommandOptions): Promise<GhWatchC
   for (const issue of matchedIssues) {
     if (!state.issues[String(issue.number)]) {
       enqueueIssue(state, issue);
+    }
+  }
+
+  // Check completed entries with PRs for feedback re-iteration
+  const feedbackResumed: number[] = [];
+  const completedWithPr = Object.values(state.issues).filter(
+    (entry) => entry.status === 'completed' && entry.pr_number !== null,
+  );
+  for (const entry of completedWithPr) {
+    const resumed = await checkAndApplyPrFeedback(entry, options);
+    if (resumed) {
+      feedbackResumed.push(entry.issue_number);
     }
   }
 
@@ -477,6 +733,7 @@ async function runGhWatchCycle(options: GhWatchCommandOptions): Promise<GhWatchC
     queued,
     active: running,
     tracked: Object.keys(state.issues).length,
+    feedback_resumed: feedbackResumed,
   };
 }
 
@@ -491,7 +748,7 @@ async function ghWatchCommand(options: GhWatchCommandOptions): Promise<void> {
       console.log(JSON.stringify(summary, null, 2));
       return;
     }
-    console.log(`watch cycle complete: started=${summary.started.length} queued=${summary.queued.length} active=${summary.active} tracked=${summary.tracked}`);
+    console.log(`watch cycle complete: started=${summary.started.length} queued=${summary.queued.length} active=${summary.active} tracked=${summary.tracked} feedback_resumed=${summary.feedback_resumed.length}`);
     return;
   }
 
@@ -509,7 +766,7 @@ async function ghWatchCommand(options: GhWatchCommandOptions): Promise<void> {
       if (outputMode === 'json') {
         console.log(JSON.stringify(summary));
       } else {
-        console.log(`watch cycle complete: started=${summary.started.length} queued=${summary.queued.length} active=${summary.active} tracked=${summary.tracked}`);
+        console.log(`watch cycle complete: started=${summary.started.length} queued=${summary.queued.length} active=${summary.active} tracked=${summary.tracked} feedback_resumed=${summary.feedback_resumed.length}`);
       }
       if (stopping) {
         break;
@@ -537,7 +794,10 @@ function formatGhStatusRows(state: GhWatchState, sessionsById: Map<string, Sessi
     const session = entry.session_id ? sessionsById.get(entry.session_id) : undefined;
     const iteration = session?.iteration !== null && session?.iteration !== undefined ? String(session.iteration) : '—';
     const issueCell = `#${entry.issue_number}`.padEnd(6);
-    lines.push(`${issueCell} ${branch.padEnd(20)} ${prRef.padEnd(5)} ${entry.status.padEnd(11)} ${iteration.padEnd(9)} —`);
+    const feedbackCell = entry.feedback_iteration > 0
+      ? `${entry.feedback_iteration}/${entry.max_feedback_iterations}`
+      : '—';
+    lines.push(`${issueCell} ${branch.padEnd(20)} ${prRef.padEnd(5)} ${entry.status.padEnd(11)} ${iteration.padEnd(9)} ${feedbackCell}`);
   }
   return lines.join('\n');
 }

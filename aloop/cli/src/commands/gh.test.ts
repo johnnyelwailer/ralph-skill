@@ -3,7 +3,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ghCommand, ghExecutor, ghLoopRuntime, ghStartCommandWithDeps } from './gh.js';
+import {
+  ghCommand,
+  ghExecutor,
+  ghLoopRuntime,
+  ghStartCommandWithDeps,
+  collectNewFeedback,
+  hasFeedback,
+  buildFeedbackSteering,
+  markFeedbackProcessed,
+  GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+  type PrReviewComment,
+  type PrCheckRun,
+  type PrFeedback,
+} from './gh.js';
 
 type GhFixture = {
   tmpHome: string;
@@ -1866,6 +1879,386 @@ test('gh watch --once starts up to max-concurrent and queues remaining issues', 
     assert.deepStrictEqual(state.queue, [42]);
     assert.equal(state.issues?.['41']?.status, 'running');
     assert.equal(state.issues?.['42']?.status, 'queued');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+// --- PR Feedback Loop Tests ---
+
+function buildWatchEntry(overrides: Partial<{
+  issue_number: number;
+  session_id: string | null;
+  branch: string | null;
+  repo: string | null;
+  pr_number: number | null;
+  pr_url: string | null;
+  status: string;
+  completion_state: string | null;
+  feedback_iteration: number;
+  max_feedback_iterations: number;
+  processed_comment_ids: number[];
+  processed_run_ids: number[];
+}> = {}) {
+  return {
+    issue_number: overrides.issue_number ?? 42,
+    session_id: overrides.session_id ?? 'sess-42',
+    branch: overrides.branch ?? 'agent/issue-42',
+    repo: overrides.repo ?? 'test/repo',
+    pr_number: overrides.pr_number ?? 51,
+    pr_url: overrides.pr_url ?? 'https://github.com/test/repo/pull/51',
+    status: overrides.status ?? 'completed',
+    completion_state: overrides.completion_state ?? 'exited',
+    created_at: '2026-03-14T12:00:00Z',
+    updated_at: '2026-03-14T12:00:00Z',
+    feedback_iteration: overrides.feedback_iteration ?? 0,
+    max_feedback_iterations: overrides.max_feedback_iterations ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+    processed_comment_ids: overrides.processed_comment_ids ?? [],
+    processed_run_ids: overrides.processed_run_ids ?? [],
+  };
+}
+
+test('collectNewFeedback filters out already-processed comment and run IDs', () => {
+  const entry = buildWatchEntry({
+    processed_comment_ids: [100, 101],
+    processed_run_ids: [200],
+  });
+
+  const comments: PrReviewComment[] = [
+    { id: 100, body: 'old comment' },
+    { id: 102, body: 'new comment' },
+  ];
+  const checkRuns: PrCheckRun[] = [
+    { id: 200, name: 'build', status: 'completed', conclusion: 'failure' },
+    { id: 201, name: 'lint', status: 'completed', conclusion: 'failure' },
+    { id: 202, name: 'test', status: 'completed', conclusion: 'success' },
+  ];
+
+  const feedback = collectNewFeedback(entry, comments, checkRuns);
+  assert.equal(feedback.new_comments.length, 1);
+  assert.equal(feedback.new_comments[0].id, 102);
+  assert.equal(feedback.failed_checks.length, 1);
+  assert.equal(feedback.failed_checks[0].id, 201);
+});
+
+test('collectNewFeedback returns empty when all items already processed', () => {
+  const entry = buildWatchEntry({
+    processed_comment_ids: [100],
+    processed_run_ids: [200],
+  });
+
+  const comments: PrReviewComment[] = [{ id: 100, body: 'old' }];
+  const checkRuns: PrCheckRun[] = [{ id: 200, name: 'build', status: 'completed', conclusion: 'failure' }];
+
+  const feedback = collectNewFeedback(entry, comments, checkRuns);
+  assert.equal(hasFeedback(feedback), false);
+});
+
+test('collectNewFeedback ignores passing checks', () => {
+  const entry = buildWatchEntry();
+  const checkRuns: PrCheckRun[] = [
+    { id: 300, name: 'build', status: 'completed', conclusion: 'success' },
+    { id: 301, name: 'lint', status: 'in_progress', conclusion: null },
+  ];
+
+  const feedback = collectNewFeedback(entry, [], checkRuns);
+  assert.equal(feedback.failed_checks.length, 0);
+  assert.equal(hasFeedback(feedback), false);
+});
+
+test('hasFeedback returns true when there are new comments', () => {
+  const feedback: PrFeedback = {
+    new_comments: [{ id: 1, body: 'fix this' }],
+    failed_checks: [],
+  };
+  assert.equal(hasFeedback(feedback), true);
+});
+
+test('hasFeedback returns true when there are failed checks', () => {
+  const feedback: PrFeedback = {
+    new_comments: [],
+    failed_checks: [{ id: 1, name: 'build', status: 'completed', conclusion: 'failure' }],
+  };
+  assert.equal(hasFeedback(feedback), true);
+});
+
+test('buildFeedbackSteering formats review comments and CI failures', () => {
+  const feedback: PrFeedback = {
+    new_comments: [
+      { id: 1, body: 'Please fix the null check', user: { login: 'reviewer1' }, path: 'src/main.ts', line: 42 },
+      { id: 2, body: 'Needs error handling', user: { login: 'reviewer2' } },
+    ],
+    failed_checks: [
+      { id: 10, name: 'build-and-test', status: 'completed', conclusion: 'failure', html_url: 'https://github.com/test/repo/actions/runs/123' },
+    ],
+  };
+
+  const steering = buildFeedbackSteering(feedback, 51);
+  assert.match(steering, /PR #51/);
+  assert.match(steering, /reviewer1/);
+  assert.match(steering, /src\/main\.ts:42/);
+  assert.match(steering, /null check/);
+  assert.match(steering, /reviewer2/);
+  assert.match(steering, /error handling/);
+  assert.match(steering, /build-and-test/);
+  assert.match(steering, /CI Failures/);
+  assert.match(steering, /\[view\]/);
+});
+
+test('buildFeedbackSteering handles comments without path or user', () => {
+  const feedback: PrFeedback = {
+    new_comments: [{ id: 1, body: 'Some feedback' }],
+    failed_checks: [],
+  };
+
+  const steering = buildFeedbackSteering(feedback, 10);
+  assert.match(steering, /unknown/);
+  assert.match(steering, /Some feedback/);
+  assert.doesNotMatch(steering, /CI Failures/);
+});
+
+test('markFeedbackProcessed updates entry with processed IDs and increments iteration', () => {
+  const entry = buildWatchEntry({
+    processed_comment_ids: [100],
+    processed_run_ids: [],
+    feedback_iteration: 1,
+  });
+
+  const feedback: PrFeedback = {
+    new_comments: [{ id: 102, body: 'fix' }, { id: 103, body: 'also fix' }],
+    failed_checks: [{ id: 200, name: 'test', status: 'completed', conclusion: 'failure' }],
+  };
+
+  markFeedbackProcessed(entry, feedback);
+  assert.deepStrictEqual(entry.processed_comment_ids, [100, 102, 103]);
+  assert.deepStrictEqual(entry.processed_run_ids, [200]);
+  assert.equal(entry.feedback_iteration, 2);
+});
+
+test('markFeedbackProcessed does not duplicate already-tracked IDs', () => {
+  const entry = buildWatchEntry({
+    processed_comment_ids: [100],
+    processed_run_ids: [200],
+    feedback_iteration: 0,
+  });
+
+  const feedback: PrFeedback = {
+    new_comments: [{ id: 100, body: 'already tracked' }],
+    failed_checks: [{ id: 200, name: 'build', status: 'completed', conclusion: 'failure' }],
+  };
+
+  markFeedbackProcessed(entry, feedback);
+  assert.deepStrictEqual(entry.processed_comment_ids, [100]);
+  assert.deepStrictEqual(entry.processed_run_ids, [200]);
+  assert.equal(entry.feedback_iteration, 1);
+});
+
+test('watch.json normalizes feedback tracking fields from persisted state', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-feedback-persist-'));
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': {
+        issue_number: 42,
+        session_id: 'sess-42',
+        branch: 'agent/issue-42',
+        repo: 'test/repo',
+        pr_number: 51,
+        pr_url: 'https://github.com/test/repo/pull/51',
+        status: 'completed',
+        completion_state: 'exited',
+        created_at: '2026-03-14T12:00:00Z',
+        updated_at: '2026-03-14T12:00:00Z',
+        feedback_iteration: 2,
+        max_feedback_iterations: 3,
+        processed_comment_ids: [100, 101],
+        processed_run_ids: [200],
+      },
+    },
+    queue: [],
+  });
+
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => {
+    output.push(String(line ?? ''));
+  });
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '[]', stderr: '' }));
+
+  try {
+    await ghCommand.parseAsync([
+      'status',
+      '--home-dir', tmpHome,
+      '--output', 'json',
+    ], { from: 'user' });
+
+    const parsed = JSON.parse(output[0]) as { issues: Array<{ feedback_iteration: number; max_feedback_iterations: number; processed_comment_ids: number[] }> };
+    assert.equal(parsed.issues[0].feedback_iteration, 2);
+    assert.equal(parsed.issues[0].max_feedback_iterations, 3);
+    assert.deepStrictEqual(parsed.issues[0].processed_comment_ids, [100, 101]);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('gh watch --once triggers feedback re-iteration for completed entry with PR and new comments', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-feedback-watch-'));
+
+  // Pre-populate watch state with a completed entry that has a PR
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': buildWatchEntry({ pr_number: 51 }),
+    },
+    queue: [],
+  });
+
+  // Create the session dir so feedback can write STEERING.md
+  const sessionDir = path.join(tmpHome, '.aloop', 'sessions', 'sess-42');
+  const worktreeDir = path.join(sessionDir, 'worktree');
+  fs.mkdirSync(worktreeDir, { recursive: true });
+
+  const ghCalls: string[][] = [];
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    ghCalls.push(args);
+    // issue list → no new issues
+    if (args[0] === 'issue' && args[1] === 'list') {
+      return { stdout: '[]', stderr: '' };
+    }
+    // PR review comments (reviews endpoint)
+    if (args[1]?.includes('/reviews')) {
+      return { stdout: '[]', stderr: '' };
+    }
+    // PR review comments (comments endpoint)
+    if (args[1]?.includes('/pulls/51/comments')) {
+      return {
+        stdout: JSON.stringify([
+          { id: 500, body: 'Fix the null check here', user: { login: 'reviewer' }, path: 'src/app.ts', line: 10 },
+        ]),
+        stderr: '',
+      };
+    }
+    // PR head SHA
+    if (args[1]?.includes('/pulls/51') && args[5] === '.head.sha') {
+      return { stdout: 'abc123', stderr: '' };
+    }
+    // Check runs → all passing
+    if (args[1]?.includes('/check-runs')) {
+      return { stdout: JSON.stringify({ check_runs: [] }), stderr: '' };
+    }
+    return { stdout: '{}', stderr: '' };
+  });
+
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+  t.mock.method(ghLoopRuntime, 'startIssue', async () => buildStartResult(42, 'sess-42-fb1', 'running'));
+
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => {
+    output.push(String(line ?? ''));
+  });
+
+  try {
+    await ghCommand.parseAsync([
+      'watch', '--once',
+      '--home-dir', tmpHome,
+      '--output', 'json',
+    ], { from: 'user' });
+
+    // Verify STEERING.md was written
+    const steeringPath = path.join(worktreeDir, 'STEERING.md');
+    assert.ok(fs.existsSync(steeringPath), 'STEERING.md should be written to worktree');
+    const steeringContent = fs.readFileSync(steeringPath, 'utf8');
+    assert.match(steeringContent, /null check/);
+    assert.match(steeringContent, /reviewer/);
+    assert.match(steeringContent, /PR #51/);
+
+    // Verify watch state updated
+    const state = readWatchState(tmpHome) as {
+      issues: Record<string, {
+        status: string;
+        feedback_iteration: number;
+        processed_comment_ids: number[];
+      }>;
+    };
+    assert.equal(state.issues['42'].status, 'running');
+    assert.equal(state.issues['42'].feedback_iteration, 1);
+    assert.deepStrictEqual(state.issues['42'].processed_comment_ids, [500]);
+
+    // Verify summary includes feedback_resumed
+    const summary = JSON.parse(output[0]) as { feedback_resumed: number[] };
+    assert.deepStrictEqual(summary.feedback_resumed, [42]);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('gh watch --once skips feedback when max_feedback_iterations reached', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-feedback-max-'));
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': buildWatchEntry({
+        pr_number: 51,
+        feedback_iteration: 5,
+        max_feedback_iterations: 5,
+      }),
+    },
+    queue: [],
+  });
+
+  t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '[]', stderr: '' }));
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => {
+    output.push(String(line ?? ''));
+  });
+
+  try {
+    await ghCommand.parseAsync([
+      'watch', '--once',
+      '--home-dir', tmpHome,
+      '--output', 'json',
+    ], { from: 'user' });
+
+    const summary = JSON.parse(output[0]) as { feedback_resumed: number[] };
+    assert.deepStrictEqual(summary.feedback_resumed, []);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('gh status shows feedback iteration count for entries with feedback', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-feedback-status-'));
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': buildWatchEntry({
+        feedback_iteration: 2,
+        max_feedback_iterations: 5,
+      }),
+    },
+    queue: [],
+  });
+
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => {
+    output.push(String(line ?? ''));
+  });
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+
+  try {
+    await ghCommand.parseAsync([
+      'status',
+      '--home-dir', tmpHome,
+      '--output', 'text',
+    ], { from: 'user' });
+
+    const statusOutput = output.join('\n');
+    assert.match(statusOutput, /2\/5/, 'Should show feedback iteration as 2/5');
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
