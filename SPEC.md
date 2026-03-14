@@ -875,6 +875,7 @@ The current dashboard uses basic shadcn components with tabs per section. Redesi
 - **Steer input** — always visible at bottom, not hidden in a tab
 - **Progress bar** — visual at top showing tasks completed percentage
 - **Phase indicator** — color-coded (plan=purple, build=yellow, review=cyan)
+- **Header grid layout** — header bar uses CSS grid with `fr` columns (not flexbox wrapping) so that right-side content (provider/model, status, timestamp) is always visible and never clipped off the edge
 - **Session timing context** — header shows elapsed runtime since `session_start`, total iterations, and average iteration duration
 - **Docs tabs reflect real files only** — render tabs only for docs with non-empty content from server state; overflow extra docs into an end-of-row `...` menu
 
@@ -914,6 +915,7 @@ The current dashboard uses basic shadcn components with tabs per section. Redesi
 - [ ] Dashboard uses advanced shadcn components (ResizablePanel, HoverCard, Collapsible, Command, Sonner)
 - [ ] Steer input is always visible (not behind a tab)
 - [ ] Progress bar and phase indicator visible in dashboard header
+- [ ] Dashboard header uses CSS grid with fractional (`fr`) columns so right-side items (provider/model, status, timestamp) are never clipped — avoid flexbox wrapping that hides trailing content
 - [ ] Iteration rows show provider and model together, plus per-iteration duration
 - [ ] Header shows elapsed session duration (`session_start`), total iterations, and average iteration duration
 - [ ] Commit detail view preserves diffstat and shows per-file change type (`M`/`A`/`D`/`R`)
