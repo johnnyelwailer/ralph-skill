@@ -61,7 +61,7 @@ The inner loop (`loop.sh` / `loop.ps1`) and the aloop runtime (`aloop` CLI, TS/B
 - Orchestrator mode: decompose, schedule, dispatch, monitor, gate, replan
 
 ### Communication Contract
-- **Runtime → Inner Loop**: `loop-plan.json` (pipeline), `meta.json` (providers), `STEERING.md` (user intent)
+- **Runtime → Inner Loop**: `loop-plan.json` (pipeline), `meta.json` (providers), `queue/` folder (steering, overrides)
 - **Inner Loop → Runtime**: `status.json` (current state), `log.jsonl` (history), `.aloop/requests/` (GH operations)
 
 ---
@@ -172,11 +172,11 @@ If ALL providers are in cooldown/degraded: sleep until the earliest cooldown exp
 
 In any pipeline that includes a `review` agent, the loop MUST NOT exit on task completion during a build phase. The build agent can mark all tasks done, but only the review agent can approve a clean exit. Instead:
 
-1. **Build detects all tasks complete** → set `$script:allTasksMarkedDone = $true`, log `tasks_marked_complete`, but **do not exit**
-2. **Next iteration becomes a forced review** → override the normal cycle to schedule a review phase (similar to how `$script:forcePlanNext` works for steering)
+1. **Build detects all tasks complete** → set `allTasksMarkedDone` flag in `loop-plan.json`, log `tasks_marked_complete`, but **do not exit**
+2. **Next iteration becomes a forced review** → override the normal cycle to schedule a review phase (similar to how `forcePlanNext` works for steering)
 3. **Review decides**:
    - If review approves → loop exits with `state: "completed"`
-   - If review finds issues → review reopens tasks (marks them `[ ]` again or adds new ones), resets `$script:allTasksMarkedDone`, and the loop continues with a forced re-plan
+   - If review finds issues → review reopens tasks (marks them `[ ]` again or adds new ones), resets `allTasksMarkedDone` in `loop-plan.json`, and the loop continues with a forced re-plan
 
 This ensures the review phase is the **only** path to a clean exit when the pipeline includes a review agent.
 
@@ -202,10 +202,10 @@ review approves?
 
 ### Implementation notes
 
-- New script-scoped flag: `$script:allTasksMarkedDone = $false`
-- New script-scoped flag: `$script:forceReviewNext = $false`
-- In `Resolve-IterationMode`: if `$script:forceReviewNext` is set, return `'review'` and clear the flag
-- In the build completion check: instead of `exit 0`, set both flags and `continue`
+- New `loop-plan.json` field: `"allTasksMarkedDone": false`
+- New `loop-plan.json` field: `"forceReviewNext": false`
+- In iteration mode resolution: if `forceReviewNext` is set in `loop-plan.json`, return `'review'` and clear the flag
+- In the build completion check: instead of `exit 0`, set both flags in `loop-plan.json` and `continue`
 - The review prompt (`PROMPT_review.md`) must already instruct the reviewer to reopen tasks or add new ones if quality gates fail — verify this is the case
 - Log events: `tasks_marked_complete` (build), `final_review_approved` (review exits), `final_review_rejected` (review reopens tasks)
 
@@ -283,7 +283,7 @@ function Check-PhasePrerequisites {
     if ($Phase -eq 'review') {
         # Check if any commits exist since last plan
         # (implementation: compare HEAD against stored last-plan-commit)
-        if (-not $script:hasBuildsToReview) {
+        if (-not (Get-HasBuildsToReview)) {
             Write-Warning "No builds since last plan — forcing build phase"
             Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
                 requested = "review"; actual = "build"; reason = "no_builds"
@@ -673,7 +673,7 @@ When `aloop start` launches a loop, it should automatically open a monitoring wi
 **Option A: Dashboard auto-launch (preferred)**
 ```
 aloop start
-  → spawns loop.ps1 in background
+  → spawns loop script in background
   → spawns dashboard server on random available port
   → opens browser to http://localhost:<port>
   → prints "Dashboard: http://localhost:<port>"
@@ -687,7 +687,7 @@ Browser auto-open:
 **Option B: Terminal popup (fallback if no browser)**
 ```
 aloop start
-  → spawns loop.ps1 in background
+  → spawns loop script in background
   → opens new terminal window with live `aloop status --watch` (auto-refreshing)
 ```
 
@@ -877,7 +877,7 @@ A meta-loop mode that decomposes a spec into **vertical slices** as GitHub issue
      │  │  │        │  │            │  │
     #11 #12 #13   #21 #22        #31 #32
      │   │   │     │   │          │   │
-   loop loop loop loop loop    loop loop  ← loop.sh (inner loop)
+   loop loop loop loop loop    loop loop  ← loop scripts (inner loop)
      │   │   │     │   │          │   │     dumb workers
    PR#1 PR#2 ...  PR#4 PR#5    PR#6 PR#7
      └───┴───┴─────┴───┴────────┴───┘
@@ -904,11 +904,11 @@ The orchestrator and child loops are **completely different programs** with diff
 - Manages concurrency, budget, wave advancement
 - Spawns and supervises child loops
 
-**Inner loop** (`loop.sh`):
+**Inner loop** (`loop.sh` / `loop.ps1`):
 - Dumb shell script. Reads a **compiled loop plan** (a simple ordered list of agents) and executes them sequentially by index
 - The aloop runtime compiles the pipeline YAML config into `loop-plan.json` — a flat array of fully-resolved entries (`agent`, `prompt`, `provider`, `model`, `reasoning`)
-- `loop.sh` reads the plan file each iteration, picks entry at `$cyclePosition`, invokes that agent — no YAML parsing, no transition logic in shell
-- The runtime can regenerate `loop-plan.json` at any time (steering, mutation, failure recovery) — loop.sh re-reads it every turn
+- The loop script reads the plan file each iteration, picks entry at `cyclePosition`, invokes that agent — no YAML parsing, no transition logic in shell
+- The runtime can regenerate `loop-plan.json` at any time (steering, mutation, failure recovery) — the loop script re-reads it every turn
 - Invokes providers via round-robin, writes `status.json`
 - Reads its sub-spec from the issue body (seeded into its worktree), NOT the repo's SPEC.md
 - Knows nothing about GitHub, other children, orchestration, or the full spec
@@ -920,9 +920,9 @@ Orchestrator (TS/Bun)
   ├── polls GitHub for issue/PR state changes
   ├── runs agent-powered decompose/schedule/replan
   ├── spawns child inner loops:
-  │     ├── loop.sh (issue #11) ← reads issue body as its spec
-  │     ├── loop.sh (issue #12) ← reads issue body as its spec
-  │     └── loop.sh (issue #13) ← reads issue body as its spec
+  │     ├── loop script (issue #11) ← reads issue body as its spec
+  │     ├── loop script (issue #12) ← reads issue body as its spec
+  │     └── loop script (issue #13) ← reads issue body as its spec
   ├── gates completed PRs (automated checks + agent review)
   └── manages concurrency cap, budget, wave advancement
 ```
@@ -1338,12 +1338,12 @@ aloop orchestrate --spec SPEC.md --plan-only
 
 | Existing Component | Role in Orchestrator |
 |-------------------|---------------------|
-| `loop.ps1` | Child loop — unchanged, runs per-issue |
+| `loop.ps1` / `loop.sh` | Child loop — unchanged, runs per-issue |
 | Provider health subsystem | Shared across all child loops via `~/.aloop/health/` |
 | Final review gate | Per-child — each child's loop has its own review gate |
 | Agent prompt templates (`PROMPT_*.md`) | Used by child loops as configured in the pipeline |
 | `active.json` | Tracks all child sessions (orchestrator + children) |
-| Steering (`STEERING.md`) | Can steer individual children or the orchestrator |
+| Override queue (`queue/`) | Can steer individual children or the orchestrator |
 | `aloop status` | Shows orchestrator + children in a tree view |
 
 ### Resumability
@@ -1547,7 +1547,7 @@ When the watch daemon detects a failed CI check on a PR:
    Error log:
    <truncated CI log output — last 200 lines>
    ```
-3. **Resume loop** — inject as STEERING.md, resume the loop on the PR branch
+3. **Resume loop** — inject as queue entry (`queue/NNN-ci-fix.md`), resume the loop on the PR branch
 4. **Loop fixes** → pushes new commits → CI re-runs automatically
 5. **Watch daemon re-checks** — if CI fails again with a *different* error, repeat. If same error persists after N attempts (default 3), flag for human review and stop re-iterating on CI for this PR.
 
@@ -1594,7 +1594,7 @@ Agents are untrusted. The aloop CLI is the single trust boundary. Agents never h
 ┌──────────────────────────────────────────────┐
 │  LAYER 1: HOST (where harness runs)          │
 │                                              │
-│  loop.ps1 / orchestrator.ps1 (harness)       │
+│  loop.ps1 / loop.sh (harness)                │
 │    ├─ aloop CLI (single trust boundary)      │
 │    │    ├─ aloop gh      (GH operations)     │
 │    │    ├─ aloop resolve (project config)    │
@@ -1688,7 +1688,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 │    │                                                   │
 │    └── aloop monitor (host-side, always on host)       │
 │          ├── watches .aloop/requests/ → aloop gh       │
-│          ├── watches STEERING.md → injects into loop   │
+│          ├── writes to queue/ → loop picks up next iter  │
 │          ├── serves dashboard                          │
 │          ├── processes convention-file protocol         │
 │          └── manages provider health (cross-session)   │
@@ -1708,7 +1708,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 - TODO.md reading for phase prerequisites
 - PATH hardening (defense in depth, even though container already isolates)
 
-**Execution model:** The loop script and provider CLIs always run in the same environment. When containerized, `aloop start` on the host launches the loop **inside** the container via `devcontainer exec -- loop.sh ...`. From that point, the loop invokes providers directly (they're co-located). The loop never calls `devcontainer exec` itself — that's the host's job.
+**Execution model:** The loop script and provider CLIs always run in the same environment. When containerized, `aloop start` on the host launches the loop **inside** the container via `devcontainer exec -- loop.sh` (or `loop.ps1`). From that point, the loop invokes providers directly (they're co-located). The loop never calls `devcontainer exec` itself — that's the host's job.
 
 **What moves to aloop monitor (host-side):**
 - Convention-file request processing (`.aloop/requests/` → `aloop gh` → `.aloop/responses/`)
@@ -1868,7 +1868,7 @@ New comment on issue/PR
    └────┬────┘
         │
         ├─► ACTIONABLE — clear instruction, no ambiguity
-        │     → inject as steering into child loop (STEERING.md)
+        │     → write steering prompt to child's queue/ folder
         │     → or append to child's TODO.md directly
         │     → child loop picks up on next iteration
         │
@@ -1922,8 +1922,8 @@ The critical flow for preventing misinterpretation:
 
 8. Orchestrator:
    - Removes aloop/blocked-on-human label
-   - Injects steering into child loop's STEERING.md
-   - Child loop resumes on next monitor cycle
+   - Writes steering prompt to child loop's queue/ folder
+   - Child loop picks it up on next iteration
 ```
 
 ### Triage Agent Input / Output
@@ -2534,7 +2534,7 @@ This approach is:
 - **Zero config for users** — setup copies agents, loop injects hints, it just works
 - **Provider-agnostic in the prompts** — non-opencode providers see no subagent instructions
 - **Extensible later** — when agent-forge is ready, it replaces the static agent files with discovered/compiled ones
-- **No templating engine** — just file copies and string substitution already used by `loop.sh`
+- **No templating engine** — just file copies and string substitution already used by the loop scripts
 
 ### Pipeline Configuration
 
@@ -2572,7 +2572,7 @@ pipeline:
 
 ### Loop Plan Compilation (Runtime → Shell Bridge)
 
-The pipeline YAML config is **not parsed by the shell script**. Instead, the aloop runtime (TS/Bun) compiles it into a simple `loop-plan.json` that `loop.sh` can read with zero complexity.
+The pipeline YAML config is **not parsed by the shell script**. Instead, the aloop runtime (TS/Bun) compiles it into a simple `loop-plan.json` that the loop scripts can read with zero complexity.
 
 **`loop-plan.json` format:**
 ```json
@@ -2591,62 +2591,117 @@ The pipeline YAML config is **not parsed by the shell script**. Instead, the alo
 }
 ```
 
-Each entry is a **complete instruction** — `loop.sh` doesn't need to look anywhere else. The runtime resolves round-robin provider selection, per-agent model preferences, and reasoning config at compile time and bakes the result into each entry.
+Each cycle entry is a **complete instruction** — the loop script doesn't need to look anywhere else. The runtime resolves round-robin provider selection, per-agent model preferences, and reasoning config at compile time and bakes the result into each entry.
 
-**How `loop.sh` uses it:**
+**How the loop script uses it:**
 ```bash
 # Read the plan (re-read every iteration to pick up mutations)
 PLAN=$(cat "$SESSION_DIR/loop-plan.json")
-CYCLE_LENGTH=$(echo "$PLAN" | jq '.cycle | length')
-CYCLE_POS=$(echo "$PLAN" | jq '.cyclePosition')
 
-# Pick current agent — everything needed is in the entry
-ENTRY=$(echo "$PLAN" | jq ".cycle[$((CYCLE_POS % CYCLE_LENGTH))]")
-AGENT=$(echo "$ENTRY" | jq -r '.agent')
-PROMPT=$(echo "$ENTRY" | jq -r '.prompt')
-PROVIDER=$(echo "$ENTRY" | jq -r '.provider')
-MODEL=$(echo "$ENTRY" | jq -r '.model')
-REASONING=$(echo "$ENTRY" | jq -r '.reasoning')
+# Check the override queue first
+QUEUE_FILE=$(ls "$SESSION_DIR/queue/"*.md 2>/dev/null | sort | head -1)
+if [ -n "$QUEUE_FILE" ]; then
+    # Parse frontmatter (flat key: value between --- markers)
+    PROVIDER=$(sed -n '/^---$/,/^---$/{ /^provider:/s/provider: *//p }' "$QUEUE_FILE")
+    MODEL=$(sed -n '/^---$/,/^---$/{ /^model:/s/model: *//p }' "$QUEUE_FILE")
+    AGENT=$(sed -n '/^---$/,/^---$/{ /^agent:/s/agent: *//p }' "$QUEUE_FILE")
+    REASONING=$(sed -n '/^---$/,/^---$/{ /^reasoning:/s/reasoning: *//p }' "$QUEUE_FILE")
 
-# After iteration completes: update position and iteration in the plan file
-jq ".cyclePosition = $((CYCLE_POS + 1)) | .iteration = $ITERATION" \
-  "$SESSION_DIR/loop-plan.json" > "$SESSION_DIR/loop-plan.json.tmp" \
-  && mv "$SESSION_DIR/loop-plan.json.tmp" "$SESSION_DIR/loop-plan.json"
+    # Defaults if not specified in frontmatter
+    PROVIDER="${PROVIDER:-claude}"
+    MODEL="${MODEL:-claude-opus-4-6}"
+    AGENT="${AGENT:-steer}"
+    REASONING="${REASONING:-high}"
+
+    # The queue file IS the prompt — pass it directly to the agent
+    PROMPT_FILE="$QUEUE_FILE"
+
+    # Consume: delete after reading config (agent will use the file path)
+    # Actual deletion happens after the agent completes
+    QUEUE_CONSUMED="$QUEUE_FILE"
+
+    # Do NOT advance cyclePosition for queue items
+else
+    # Normal cycle — pick entry at cyclePosition
+    CYCLE_POS=$(echo "$PLAN" | jq '.cyclePosition')
+    CYCLE_LENGTH=$(echo "$PLAN" | jq '.cycle | length')
+    ENTRY=$(echo "$PLAN" | jq ".cycle[$((CYCLE_POS % CYCLE_LENGTH))]")
+
+    AGENT=$(echo "$ENTRY" | jq -r '.agent')
+    PROMPT=$(echo "$ENTRY" | jq -r '.prompt')
+    PROVIDER=$(echo "$ENTRY" | jq -r '.provider')
+    MODEL=$(echo "$ENTRY" | jq -r '.model')
+    REASONING=$(echo "$ENTRY" | jq -r '.reasoning')
+fi
+
+# ... invoke provider with AGENT/PROMPT/PROVIDER/MODEL/REASONING ...
+
+# After iteration: consume queue file or advance cycle
+if [ -n "${QUEUE_CONSUMED:-}" ]; then
+    rm "$QUEUE_CONSUMED"
+else
+    # Advance cyclePosition for normal cycle iterations
+fi
 ```
 
-**Key properties:**
-- The `cycle` array is a **short repeating pattern** (typically 5-7 entries), NOT an unrolled list of all iterations. `loop.sh` wraps around with `% length`.
-- `cyclePosition` and `iteration` live in the plan file — the runtime and shell share state through this single file. The shell updates position after each iteration; the runtime reads it when deciding mutations.
-- The runtime writes this file once at session start, then **rewrites it** whenever the pipeline mutates (steering, failure recovery, agent injection). It preserves `cyclePosition` and `iteration` (or adjusts them if the mutation requires it, e.g., `goto build` resets `cyclePosition`).
-- `loop.sh` re-reads the file every iteration, so mutations take effect on the next turn.
-- The `version` field increments on each runtime rewrite — loop.sh logs when it detects a plan change.
-- Transition rules (`onFailure: goto build`, escalation ladders) are **resolved by the runtime**, not the shell. When the runtime observes a failure via `status.json`, it rewrites the plan accordingly (e.g., inserting a `debugger` agent, or adjusting `cyclePosition` to point back to build).
-- This keeps all complex logic in TS/Bun and all shell logic trivial: read JSON, index into array, invoke, update index.
+**Queue file format (`$SESSION_DIR/queue/*.md`):**
 
-**When the runtime rewrites the plan:**
-- Steering instruction received → recompile pipeline with modifications
-- Agent failure detected (via `status.json` polling) → apply `onFailure` transition rules, rewrite plan
-- Escalation threshold reached → inject recovery agents into the cycle
-- Host monitor detects stuck pattern → swap providers or inject debugger agent
+Queue files are markdown prompts with optional YAML frontmatter for agent configuration:
+
+```markdown
+---
+agent: steer
+provider: claude
+model: claude-opus-4-6
+reasoning: high
+---
+
+# Steering Mode
+
+You are Aloop, an autonomous spec-update agent. The user has sent
+a live steering instruction while the loop was running...
+```
+
+If frontmatter is omitted, defaults apply (`provider: claude`, `model: claude-opus-4-6`, `agent: steer`, `reasoning: high`). The file content after the frontmatter is the prompt itself — passed directly to the agent.
+
+Files are sorted lexicographically and consumed in order. Naming convention: `NNN-description.md` (e.g., `001-steer.md`, `002-force-review.md`). After the agent completes, the consumed file is deleted.
+
+**Who writes to the queue:**
+- **User** — drops a steering markdown into `queue/` and it gets picked up next iteration. Works without any runtime.
+- **CLI (`aloop steer`)** — writes the user's instruction into a queue file with appropriate frontmatter.
+- **Runtime** — injects forced review, debugger, escalation entries as queue files when it detects conditions via `status.json` polling.
+
+**Key properties:**
+- The `cycle` array is a **short repeating pattern** (typically 5-7 entries), NOT an unrolled list of all iterations. The loop script wraps around with `% length`.
+- `cyclePosition` and `iteration` live in the plan file — the runtime and shell share state through this single file. The shell updates position after each iteration; the runtime reads it when deciding mutations.
+- The runtime writes this file once at session start, then **rewrites it** whenever the pipeline mutates (failure recovery, agent injection). It preserves `cyclePosition` and `iteration` (or adjusts them if the mutation requires it, e.g., `goto build` resets `cyclePosition`).
+- The loop script re-reads the file every iteration, so mutations take effect on the next turn.
+- The `version` field increments on each runtime rewrite — the loop script logs when it detects a plan change.
+- Transition rules (`onFailure: goto build`, escalation ladders) are **resolved by the runtime**, not the shell. When the runtime observes a failure via `status.json`, it rewrites the plan accordingly (e.g., inserting a `debugger` agent, or adjusting `cyclePosition` to point back to build).
+- This keeps all complex logic in TS/Bun and all shell logic trivial: read JSON, index into array, check queue folder, invoke, update index.
+
+**When the runtime modifies the plan:**
+- Agent failure detected (via `status.json` polling) → apply `onFailure` transition rules (write queue entry or adjust `cyclePosition`)
+- Escalation threshold reached → write recovery agent to queue, or inject into `cycle` if permanent
+- Host monitor detects stuck pattern → swap providers in cycle entries or write debugger to queue
 
 ### Runtime Mutation
 
-The pipeline is **mutable at runtime** — phases can be added, removed, or reordered while the loop is running. Two control surfaces:
+The pipeline is **mutable at runtime** via two mechanisms:
 
-1. **User via steering** — drop a steering file that modifies the pipeline:
-   ```markdown
-   # STEERING.md
-   Insert `security-audit` agent after `build` for remaining iterations.
-   Remove `docs-generator` — not needed yet.
-   ```
-   The host-side monitor interprets steering instructions, recompiles the pipeline, and rewrites `loop-plan.json`. The loop picks up the change on its next iteration.
+**Override queue** (`$SESSION_DIR/queue/`):
+- User drops steering prompt → loop picks it up next iteration, runs it, deletes it
+- Runtime detects all tasks done → writes `queue/NNN-review.md` with review agent config
+- 3 consecutive build failures → writes `queue/NNN-debug.md` with debugger agent config
+- Queue items do NOT modify the `cycle` array — they interrupt it without advancing `cyclePosition`
+- The loop handles this autonomously — no runtime required for basic steering
 
-2. **Host-side monitor** — observes loop patterns and injects agents automatically:
-   - 3 consecutive build failures → inject `debugger` agent before next build
-   - Verification failing on environment issues → inject `env-fix` agent
-   - Provider consistently timing out → swap to different provider for next agent
+**Permanent cycle changes** (via rewriting `cycle` in `loop-plan.json`):
+- User steering says "add `security-audit` after every `build` for remaining iterations" → runtime recompiles `cycle` array with the new agent inserted, rewrites `loop-plan.json`
+- User steering says "remove `docs-generator`" → runtime recompiles `cycle` without it
+- Provider consistently timing out → runtime swaps provider in affected cycle entries
 
-All mutations flow through the same mechanism: recompile pipeline → rewrite `loop-plan.json` → loop picks up change. Agents do **not** modify the pipeline themselves — control stays with the user and host-side monitor (avoids perverse incentives like agents removing their own reviewers).
+Agents do **not** modify the pipeline themselves — control stays with the user and host-side monitor (avoids perverse incentives like agents removing their own reviewers).
 
 ### Agent-Based Guarding
 

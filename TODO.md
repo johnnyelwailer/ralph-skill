@@ -50,3 +50,7 @@
 - [x] [orchestrator][high] Delivered PR lifecycle gates (mergeability/checks/review) with squash-merge handling.
 - [x] [dashboard-runtime][high] Added dead-PID liveness correction in dashboard state loading/publish path so stale `running` states auto-correct.
 - [x] [dashboard][medium] Added multi-session dashboard APIs/session switching and proof artifact rendering.
+
+## Blocked
+
+- [review] Gate 3: Raise `aloop/cli/src/commands/gh.ts` branch coverage to `>=80%` — currently at `65.80%` with large uncovered branch clusters in watch-state normalization, CLI option validation, feedback-resume, stop-policy, and new start/watch/status/stop command paths (priority: high) (stuck after 3 attempts)
