@@ -13,6 +13,22 @@
 
 ---
 
+## Review — 2026-03-14 15:21 — commit f9cecb5..1b3e566
+
+**Verdict: FAIL** (8 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/cli/src/commands/gh.ts`, `aloop/cli/src/commands/gh.test.ts`, `aloop/cli/dashboard/src/App.tsx`, `aloop/cli/dashboard/e2e/smoke.spec.ts`, proof artifacts
+
+- Gate 1: `gh watch` never finalizes completed tracked sessions that started as `pending_completion` (no PR creation/issue summary when entries later flip to `completed`), which misses the spec flow for watch completion handling.
+- Gate 1: GH feedback/re-trigger flow is partial vs spec: no `gh stop-watch` parity command, no explicit `@aloop`-mention/manual feedback trigger handling, and no CI failure-log ingestion path (`gh run view --log-failed`) despite spec requirements.
+- Gate 2: New GH tests still contain weak assertions (`gh.test.ts:1877` checks `output.length > 0`) and do not directly cover several failure branches in `checkAndApplyPrFeedback` (fetch/parse/resume error paths swallowed by `catch`).
+- Gate 3: Branch coverage for touched `aloop/cli/src/commands/gh.ts` is 65.30% (<80%) from `c8`; uncovered branch clusters include normalization/option parsing/feedback-resume/stop-policy paths (e.g., line ranges around 190-239, 284-343, 621-667, 820-858, 1703-1741).
+- Gate 3: Touched dashboard files were not proven at threshold in submitted coverage evidence (`dashboard/src/App.tsx` and `dashboard/e2e/smoke.spec.ts` both reported 0% branch coverage in the run used for this review).
+- Gate 4: Dead code remains in `gh.ts` (`fetchPrReviewComments` stores `/reviews` response in `response` but never uses it).
+- Gate 5: Validation is not fully green: `cd aloop/cli && npm run type-check` fails with TS2345 in `src/commands/gh.test.ts` (lines 1937, 1953, 1964, 2032, 2050).
+- Gate 6: Proof manifest iteration 43 is not verifiable in workspace (multiple declared artifacts missing), and the dashboard UI proof skipped screenshot evidence for a visual layout change.
+
+---
+
 ## Review — 2026-03-14 13:58 — commit 34bf396..34bf5f0
 
 **Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)

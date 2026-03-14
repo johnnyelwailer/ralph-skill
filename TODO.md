@@ -3,6 +3,14 @@
 ## Current Phase: P2 Spec Parity Closure (GH workflows + dashboard + pipeline)
 
 ### In Progress
+- [ ] [review] Gate 1: Implement watch-cycle completion finalization in `aloop/cli/src/commands/gh.ts` so GH-linked sessions that transition from `running`→`completed` create/link PRs and post issue summaries (not only sessions that are already terminal inside `gh start`) (priority: high)
+- [ ] [review] Gate 1: Close GH workflow spec gaps in `gh watch` feedback handling — support spec-required feedback signals (`@aloop` mention/manual trigger, review-change semantics, CI failure detail ingestion/log context) and add missing control surface (`gh stop-watch` or equivalent documented command parity) (priority: high)
+- [ ] [review] Gate 2: Strengthen `aloop/cli/src/commands/gh.test.ts` for non-happy/error branches — replace weak assertions like `output.length > 0` with concrete payload checks and add explicit tests for feedback fetch/parse/resume failure branches currently swallowed by `checkAndApplyPrFeedback` catch paths (priority: high)
+- [ ] [review] Gate 3: Raise branch coverage for touched files to threshold — `aloop/cli/src/commands/gh.ts` is `65.30%` branches (<80%) with uncovered branch clusters around watch-state normalization/CLI option validation/feedback-resume/stop-policy paths (e.g. lines 190-239, 284-343, 621-667, 820-858, 1703-1741); add targeted tests and publish updated branch report (priority: high)
+- [ ] [review] Gate 3: Produce branch-coverage evidence for touched dashboard files (`aloop/cli/dashboard/src/App.tsx`, `aloop/cli/dashboard/e2e/smoke.spec.ts`) at or above threshold; current report shows `0%` branch coverage for both in the submitted run (priority: high)
+- [ ] [review] Gate 4: Remove dead code in `aloop/cli/src/commands/gh.ts` (`fetchPrReviewComments` assigns `response` from `/reviews` but never uses it) or wire it into actual review-state handling per spec intent (priority: medium)
+- [ ] [review] Gate 5: Fix regression in validation pipeline — `cd aloop/cli && npm run type-check` fails with TS2345 in `src/commands/gh.test.ts` (lines 1937, 1953, 1964, 2032, 2050; `buildWatchEntry().status` typed as `string` instead of `GhWatchIssueStatus`) (priority: high)
+- [ ] [review] Gate 6: Reconcile proof manifest iteration 43 with real artifacts — listed files (`gh-help.txt`, `gh-status-text.txt`, `gh-status-json.json`, `gh-stop-all-success.json`, `gh-status-after-stop.txt`, `dashboard-api-state.json`, `dashboard-server.log`, `gh-stop-json.json`) are missing, and dashboard UI change proof skipped the required screenshot evidence (priority: high)
 - [x] [tests][high] Raise `aloop/cli/src/commands/gh.ts` branch coverage from `78.46%` to `>=80%` with targeted branch tests (remove-label path, parser fallback/error paths, and throw/default branches) to clear review gate failures.
 
 ### Up Next
