@@ -4,6 +4,8 @@
 
 ### In Progress
 - [x] [review][high] Restore green baseline by fixing `resolveHomeDir` trailing-separator behavior (`session.test.ts` currently failing on Linux/Git-Bash path case).
+- [ ] [review] Gate 1: `applyTriageResultsToIssue` records `action_taken: "steering_injected"` even when no child loop exists (`issue.child_session` missing) because `injectSteeringToChildLoop` no-ops; actionable guidance is then marked processed and lost. Persist pending steering for pre-dispatch issues (or defer processing) so actionable comments are actually injected once a child session exists (priority: high).
+- [ ] [review] Gate 2: add a regression test for actionable triage on issues without `child_session` to prove steering is not silently dropped (assert either deferred queue write or comment remains unprocessed until injection is possible) (priority: high).
 
 ### Up Next
 - [x] [review][high] Regenerate and attach missing proof artifacts (`proof-run.log`, `monitor-cycle-proof.json`, `triage-action-policy-proof.json`) so review gate evidence is verifiable.

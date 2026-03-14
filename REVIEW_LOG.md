@@ -25,3 +25,16 @@
 - Gate 3 observation: measured with `c8` on `orchestrate.test.ts` run, `orchestrate.ts` branch coverage is 88.49% (>80% threshold).
 
 ---
+
+## Review — 2026-03-14 13:18 — commit 6983165..48281d8
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/lib/session.mjs`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, proof artifacts
+
+- Gate 1: `applyTriageResultsToIssue` marks actionable comments as `steering_injected` even when `issue.child_session` is absent; `injectSteeringToChildLoop` then no-ops, but the comment is still marked processed, so actionable guidance can be lost pre-dispatch.
+- Gate 2: New steering tests only cover the path where `child_session` exists; there is no regression test for the no-child-session branch where steering injection is currently skipped.
+- Gate 3 observation: Coverage evidence from `c8` shows touched production files above threshold (`lib/session.mjs` branches 93.33%, `src/commands/orchestrate.ts` branches 88.66%).
+- Gate 5 observation: `cd aloop/cli && npm test && npm run type-check && npm run build` all pass.
+- Gate 6 observation: previously missing proof artifacts now exist (`proof-run.log`, `monitor-cycle-proof.json`, `triage-action-policy-proof.json`) and are internally consistent with the triage/session work claimed in this range.
+
+---
