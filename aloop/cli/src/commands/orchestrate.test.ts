@@ -20,6 +20,9 @@ import {
   applyTriageConfidenceFloor,
   classifyTriageComment,
   runTriageClassificationLoop,
+  shouldPauseForHumanFeedback,
+  getUnprocessedTriageComments,
+  applyTriageResultsToIssue,
   isWaveComplete,
   advanceWave,
   parseChildSessionCost,
@@ -39,6 +42,7 @@ import {
   type BudgetDeps,
   type BudgetSummary,
   type TriageComment,
+  type TriageDeps,
 } from './orchestrate.js';
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
@@ -709,6 +713,82 @@ describe('triage classification loop', () => {
       ['actionable', 'question', 'out_of_scope', 'needs_clarification'],
     );
   });
+
+  it('getUnprocessedTriageComments excludes processed comment IDs', () => {
+    const issue = makeIssue({ processed_comment_ids: [11] });
+    const comments = [
+      triageComment({ id: 10, body: 'Please update API docs.' }),
+      triageComment({ id: 11, body: 'Already triaged comment.' }),
+      triageComment({ id: 12, body: 'Can we add examples?' }),
+    ];
+    const result = getUnprocessedTriageComments(issue, comments);
+    assert.deepStrictEqual(result.map((c) => c.id), [10, 12]);
+  });
+
+  it('applyTriageResultsToIssue tracks processed IDs and blocks on clarification', async () => {
+    const issue = makeIssue({
+      number: 42,
+      processed_comment_ids: [1],
+      blocked_on_human: false,
+      triage_log: [],
+    });
+    const comments = [
+      triageComment({ id: 1, body: 'old comment' }),
+      triageComment({ id: 2, body: 'hmm maybe we should switch to polling?' }),
+    ];
+    const ghCalls: string[][] = [];
+    const deps: TriageDeps = {
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
+      now: () => new Date('2026-03-14T12:00:00.000Z'),
+    };
+
+    const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
+
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].classification, 'needs_clarification');
+    assert.equal(entries[0].action_taken, 'post_reply_and_block');
+    assert.equal(issue.blocked_on_human, true);
+    assert.deepStrictEqual(issue.processed_comment_ids, [1, 2]);
+    assert.equal(issue.triage_log?.length, 1);
+    assert.equal(issue.last_comment_check, '2026-03-14T12:00:00.000Z');
+    assert.equal(ghCalls.length, 1);
+    assert.ok(ghCalls[0].includes('--add-label'));
+    assert.ok(ghCalls[0].includes('aloop/blocked-on-human'));
+  });
+
+  it('applyTriageResultsToIssue auto-unblocks on actionable human response', async () => {
+    const issue = makeIssue({
+      number: 43,
+      blocked_on_human: true,
+      processed_comment_ids: [],
+      triage_log: [],
+    });
+    const comments = [
+      triageComment({ id: 20, body: 'Please switch to WebSockets for updates.' }),
+    ];
+    const ghCalls: string[][] = [];
+    const deps: TriageDeps = {
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
+      now: () => new Date('2026-03-14T12:05:00.000Z'),
+    };
+
+    const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
+
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].classification, 'actionable');
+    assert.equal(entries[0].action_taken, 'unblock_and_steering');
+    assert.equal(issue.blocked_on_human, false);
+    assert.deepStrictEqual(issue.processed_comment_ids, [20]);
+    assert.equal(ghCalls.length, 1);
+    assert.ok(ghCalls[0].includes('--remove-label'));
+    assert.ok(ghCalls[0].includes('aloop/blocked-on-human'));
+  });
 });
 
 // --- Dispatch engine tests ---
@@ -812,6 +892,20 @@ describe('getDispatchableIssues', () => {
     const result = getDispatchableIssues(state);
     assert.equal(result.length, 1);
     assert.equal(result[0].number, 20);
+  });
+
+  it('excludes issues blocked on human feedback', () => {
+    const state = makeState({
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'pending', blocked_on_human: true }),
+        makeIssue({ number: 2, wave: 1, state: 'pending', blocked_on_human: false }),
+      ],
+    });
+    const result = getDispatchableIssues(state);
+    assert.deepStrictEqual(result.map((i) => i.number), [2]);
+    assert.equal(shouldPauseForHumanFeedback(state.issues[0]), true);
+    assert.equal(shouldPauseForHumanFeedback(state.issues[1]), false);
   });
 });
 

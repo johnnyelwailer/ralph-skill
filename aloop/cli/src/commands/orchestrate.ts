@@ -40,6 +40,10 @@ export interface OrchestratorIssue {
   pr_number: number | null;
   depends_on: number[];
   rebase_attempts?: number;
+  last_comment_check?: string;
+  blocked_on_human?: boolean;
+  processed_comment_ids?: number[];
+  triage_log?: TriageLogEntry[];
 }
 
 export interface OrchestratorState {
@@ -59,6 +63,12 @@ export interface OrchestratorState {
 }
 
 export type TriageClassification = 'actionable' | 'needs_clarification' | 'question' | 'out_of_scope';
+export type TriageActionTaken =
+  | 'post_reply_and_block'
+  | 'unblock_and_steering'
+  | 'steering_injected'
+  | 'question_answered'
+  | 'triaged_no_action';
 
 export interface TriageComment {
   id: number;
@@ -73,6 +83,20 @@ export interface TriageClassificationResult {
   classification: TriageClassification;
   confidence: number;
   reasoning: string;
+}
+
+export interface TriageLogEntry {
+  comment_id: number;
+  author: string;
+  classification: TriageClassification;
+  confidence: number;
+  action_taken: TriageActionTaken;
+  timestamp: string;
+}
+
+export interface TriageDeps {
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  now: () => Date;
 }
 
 export interface OrchestrateDeps {
@@ -303,6 +327,9 @@ export async function applyDecompositionPlan(
       child_session: null,
       pr_number: null,
       depends_on: planIssue.depends_on.map((depId) => idToGhNumber.get(depId) ?? depId),
+      blocked_on_human: false,
+      processed_comment_ids: [],
+      triage_log: [],
     });
   }
 
@@ -518,6 +545,83 @@ export function runTriageClassificationLoop(comments: TriageComment[]): TriageCl
   return comments.map((comment) => classifyTriageComment(comment));
 }
 
+export function shouldPauseForHumanFeedback(issue: OrchestratorIssue): boolean {
+  return issue.blocked_on_human === true;
+}
+
+export function getUnprocessedTriageComments(
+  issue: OrchestratorIssue,
+  comments: TriageComment[],
+): TriageComment[] {
+  const processed = new Set(issue.processed_comment_ids ?? []);
+  return comments.filter((comment) => !processed.has(comment.id));
+}
+
+export async function applyTriageResultsToIssue(
+  issue: OrchestratorIssue,
+  comments: TriageComment[],
+  repo: string,
+  deps: TriageDeps,
+): Promise<TriageLogEntry[]> {
+  const newComments = getUnprocessedTriageComments(issue, comments);
+  if (newComments.length === 0) {
+    return [];
+  }
+
+  const classifications = runTriageClassificationLoop(newComments);
+  const timestamp = deps.now().toISOString();
+  const processed = new Set(issue.processed_comment_ids ?? []);
+  const triageLog = issue.triage_log ?? [];
+  const entries: TriageLogEntry[] = [];
+
+  for (let i = 0; i < newComments.length; i++) {
+    const comment = newComments[i];
+    const result = classifications[i];
+    let actionTaken: TriageActionTaken;
+
+    if (result.classification === 'needs_clarification') {
+      if (!issue.blocked_on_human) {
+        await deps.execGh([
+          'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+        ]);
+      }
+      issue.blocked_on_human = true;
+      actionTaken = 'post_reply_and_block';
+    } else if (result.classification === 'actionable') {
+      if (issue.blocked_on_human) {
+        await deps.execGh([
+          'issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', 'aloop/blocked-on-human',
+        ]);
+        issue.blocked_on_human = false;
+        actionTaken = 'unblock_and_steering';
+      } else {
+        actionTaken = 'steering_injected';
+      }
+    } else if (result.classification === 'question') {
+      actionTaken = 'question_answered';
+    } else {
+      actionTaken = 'triaged_no_action';
+    }
+
+    processed.add(comment.id);
+    const entry: TriageLogEntry = {
+      comment_id: comment.id,
+      author: comment.author,
+      classification: result.classification,
+      confidence: result.confidence,
+      action_taken: actionTaken,
+      timestamp,
+    };
+    triageLog.push(entry);
+    entries.push(entry);
+  }
+
+  issue.processed_comment_ids = Array.from(processed);
+  issue.triage_log = triageLog;
+  issue.last_comment_check = timestamp;
+  return entries;
+}
+
 // --- Child-loop dispatch engine ---
 
 /**
@@ -540,6 +644,7 @@ export function getDispatchableIssues(state: OrchestratorState): OrchestratorIss
   return state.issues.filter((issue) => {
     if (issue.wave !== state.current_wave) return false;
     if (issue.state !== 'pending') return false;
+    if (shouldPauseForHumanFeedback(issue)) return false;
     // All dependencies must be merged
     for (const depNumber of issue.depends_on) {
       const dep = issueByNumber.get(depNumber);
