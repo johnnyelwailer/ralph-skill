@@ -516,6 +516,19 @@ function Invoke-Provider {
                     throw "claude exited with code $($result.ExitCode)`nStderr: $($result.Error)"
                 }
             }
+            'opencode' {
+                $opencodeArgs = "run"
+                if (-not [string]::IsNullOrWhiteSpace($ModelOverride)) {
+                    $opencodeArgs = "run -m $ModelOverride"
+                }
+                $result = Invoke-ProviderProcess -Command 'opencode' `
+                    -Arguments $opencodeArgs `
+                    -StdinContent $PromptContent
+                if ($result.ExitCode -ne 0) {
+                    $script:lastProviderOutputText = $result.Output
+                    throw "opencode exited with code $($result.ExitCode)`nStderr: $($result.Error)"
+                }
+            }
             'codex' {
                 $selectedModel = if ([string]::IsNullOrWhiteSpace($ModelOverride)) { $CodexModel } else { $ModelOverride }
                 $result = Invoke-ProviderProcess -Command 'codex' `
@@ -1732,6 +1745,30 @@ $handler = [ConsoleCancelEventHandler]{
 }
 [Console]::add_CancelKeyPress($handler)
 
+function Wait-ForRequests {
+    $requestsDir = Join-Path $SessionDir "requests"
+    if (Test-Path $requestsDir) {
+        $pendingRequests = Get-ChildItem -Path $requestsDir -Filter '*.json' -File -ErrorAction SilentlyContinue
+        if ($pendingRequests) {
+            Write-LogEntry -Event "waiting_for_requests" -Data @{ count = $pendingRequests.Count }
+            Write-Host "Waiting for $($pendingRequests.Count) pending requests to be processed..." -ForegroundColor Yellow
+            $waitStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
+            $timeout = if ($env:REQUEST_TIMEOUT) { [int]$env:REQUEST_TIMEOUT } else { 300 }
+
+            while (Get-ChildItem -Path $requestsDir -Filter '*.json' -File -ErrorAction SilentlyContinue) {
+                Start-Sleep -Seconds 2
+                $elapsed = [int][DateTimeOffset]::Now.ToUnixTimeSeconds() - $waitStart
+                if ($elapsed -gt $timeout) {
+                    Write-LogEntry -Event "request_timeout" -Data @{ elapsed = $elapsed }
+                    Write-Warning "Timeout waiting for requests to be processed ($elapsed s)"
+                    break
+                }
+            }
+            Write-Host "Requests processed." -ForegroundColor Green
+        }
+    }
+}
+
 try {
     while (-not $cancelled -and $iteration -lt $MaxIterations) {
         $iteration++
@@ -1807,9 +1844,10 @@ try {
                     provider = $queueIterProvider
                     error = "$_"
                 }
-                Write-Warning "Queue override iteration failed for $queueBasename: $_"
+                Write-Warning "Queue override iteration failed for $($queueBasename): $_"
             }
 
+            Wait-ForRequests
             Start-Sleep -Seconds 3
             continue
         }
@@ -2029,6 +2067,7 @@ try {
             }
         }
 
+        Wait-ForRequests
         Start-Sleep -Seconds 3
     }
 } finally {

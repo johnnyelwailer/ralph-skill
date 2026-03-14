@@ -1629,6 +1629,31 @@ echo "Starting loop..."
 echo "---"
 echo ""
 
+# Wait for pending requests before next iteration
+wait_for_requests() {
+    local requests_dir="$SESSION_DIR/requests"
+    if [ -d "$requests_dir" ] && ls "$requests_dir"/*.json 2>/dev/null | grep -q .; then
+        local count
+        count=$(ls "$requests_dir"/*.json | wc -l)
+        write_log_entry "waiting_for_requests" "count" "$count"
+        echo "Waiting for $count pending requests to be processed..."
+        local wait_start
+        wait_start=$(date +%s)
+        local timeout=${REQUEST_TIMEOUT:-300}
+        while ls "$requests_dir"/*.json 2>/dev/null | grep -q .; do
+            sleep 2
+            local elapsed
+            elapsed=$(( $(date +%s) - wait_start ))
+            if [ "$elapsed" -gt "$timeout" ]; then
+                write_log_entry "request_timeout" "elapsed" "$elapsed"
+                echo "Warning: Timeout waiting for requests to be processed ($elapsed s)"
+                break
+            fi
+        done
+        echo "Requests processed."
+    fi
+}
+
 # Cleanup on exit
 cleanup() {
     local reason="${1:-interrupted}"
@@ -1700,6 +1725,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
             echo "Warning: Queue override iteration failed for $QUEUE_BASENAME"
         fi
 
+        wait_for_requests
         sleep 3
         continue
     fi
@@ -1915,6 +1941,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider"
     fi
 
+    wait_for_requests
     sleep 3
 done
 
