@@ -20,6 +20,7 @@ import {
   applyTriageConfidenceFloor,
   classifyTriageComment,
   runTriageClassificationLoop,
+  runTriageMonitorCycle,
   shouldPauseForHumanFeedback,
   getUnprocessedTriageComments,
   applyTriageResultsToIssue,
@@ -170,6 +171,60 @@ describe('orchestrateCommandWithDeps', () => {
 
     assert.ok(mockDeps._createdDirs.length > 0);
     assert.ok(mockDeps._createdDirs.some((d) => d.includes('orchestrator-')));
+  });
+
+  it('runs triage monitor cycle when repo and gh executor are available', async () => {
+    const samplePlan = JSON.stringify({
+      issues: [
+        { id: 1, title: 'Task A', body: 'Do A', depends_on: [] },
+      ],
+    });
+    const ghCalls: string[][] = [];
+    const deps = createMockDeps({
+      existsSync: () => true,
+      readFile: async () => samplePlan,
+      execGh: async (args) => {
+        ghCalls.push(args);
+        if (args[0] === 'issue-comments') {
+          return {
+            stdout: JSON.stringify({
+              comments: [
+                {
+                  id: 201,
+                  body: 'Please add tests for this behavior.',
+                  author: 'pj',
+                  author_association: 'COLLABORATOR',
+                  issue_url: 'https://api.github.com/repos/owner/repo/issues/1',
+                },
+              ],
+            }),
+            stderr: '',
+          };
+        }
+        if (args[0] === 'pr-comments') {
+          return { stdout: JSON.stringify({ comments: [] }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps({ plan: 'plan.json', repo: 'owner/repo' }, deps);
+
+    assert.equal(result.state.issues.length, 1);
+    assert.deepStrictEqual(result.state.issues[0].processed_comment_ids, [201]);
+    assert.equal(result.state.issues[0].triage_log?.length, 1);
+    assert.equal(result.state.issues[0].triage_log?.[0]?.classification, 'actionable');
+    assert.equal(result.state.issues[0].triage_log?.[0]?.action_taken, 'steering_injected');
+    assert.equal(result.state.issues[0].last_comment_check, '2026-03-09T10:30:00.000Z');
+    assert.equal(ghCalls.length, 2);
+    assert.deepStrictEqual(
+      ghCalls[0],
+      ['issue-comments', '--session', 'orchestrator-20260309-103000', '--since', '2026-03-09T10:30:00.000Z', '--role', 'orchestrator'],
+    );
+    assert.deepStrictEqual(
+      ghCalls[1],
+      ['pr-comments', '--session', 'orchestrator-20260309-103000', '--since', '2026-03-09T10:30:00.000Z', '--role', 'orchestrator'],
+    );
   });
 });
 
@@ -902,6 +957,112 @@ Based on the current issue context, this requires human clarification before imp
     assert.equal(entries[0].action_taken, 'untriaged_external_comment');
     assert.deepStrictEqual(issue.processed_comment_ids, [23]);
     assert.equal(ghCalls.length, 0);
+  });
+});
+
+describe('runTriageMonitorCycle', () => {
+  it('polls issue and PR comments per issue and applies triage to matching records', async () => {
+    const state = makeState({
+      created_at: '2026-03-14T10:00:00.000Z',
+      updated_at: '2026-03-14T10:00:00.000Z',
+      issues: [
+        makeIssue({
+          number: 42,
+          pr_number: 77,
+          blocked_on_human: false,
+          processed_comment_ids: [],
+          triage_log: [],
+          last_comment_check: '2026-03-14T11:00:00.000Z',
+        }),
+        makeIssue({
+          number: 43,
+          pr_number: null,
+          blocked_on_human: false,
+          processed_comment_ids: [],
+          triage_log: [],
+        }),
+      ],
+    });
+
+    const ghCalls: string[][] = [];
+    const deps: Pick<OrchestrateDeps, 'execGh' | 'now'> = {
+      execGh: async (args) => {
+        ghCalls.push(args);
+        if (args[0] === 'issue-comments') {
+          return {
+            stdout: JSON.stringify({
+              comments: [
+                {
+                  id: 501,
+                  body: 'Please update docs and tests.',
+                  user: { login: 'pj' },
+                  author_association: 'COLLABORATOR',
+                  issue_url: 'https://api.github.com/repos/owner/repo/issues/42',
+                },
+                {
+                  id: 999,
+                  body: 'Not for this issue',
+                  user: { login: 'pj' },
+                  author_association: 'COLLABORATOR',
+                  issue_url: 'https://api.github.com/repos/owner/repo/issues/99',
+                },
+              ],
+            }),
+            stderr: '',
+          };
+        }
+        return {
+          stdout: JSON.stringify({
+            comments: [
+              {
+                id: 502,
+                body: 'Can we simplify this API?',
+                user: { login: 'alice' },
+                author_association: 'COLLABORATOR',
+                pull_request_url: 'https://api.github.com/repos/owner/repo/pulls/77',
+              },
+            ],
+          }),
+          stderr: '',
+        };
+      },
+      now: () => new Date('2026-03-14T12:00:00.000Z'),
+    };
+
+    const result = await runTriageMonitorCycle(state, 'orchestrator-20260314-120000', 'owner/repo', deps);
+
+    assert.equal(result.processed_issues, 2);
+    assert.equal(result.triaged_entries, 2);
+    assert.equal(state.issues[0].processed_comment_ids?.length, 2);
+    assert.ok(state.issues[0].processed_comment_ids?.includes(501));
+    assert.ok(state.issues[0].processed_comment_ids?.includes(502));
+    assert.equal(state.issues[1].processed_comment_ids?.length, 0);
+    assert.equal(state.issues[0].last_comment_check, '2026-03-14T12:00:00.000Z');
+    assert.equal(state.issues[1].last_comment_check, '2026-03-14T12:00:00.000Z');
+    assert.equal(state.updated_at, '2026-03-14T12:00:00.000Z');
+    assert.equal(ghCalls.length, 5);
+    assert.ok(ghCalls.some((call) => JSON.stringify(call) === JSON.stringify(
+      ['issue-comments', '--session', 'orchestrator-20260314-120000', '--since', '2026-03-14T11:00:00.000Z', '--role', 'orchestrator'],
+    )));
+    assert.ok(ghCalls.some((call) => JSON.stringify(call) === JSON.stringify(
+      ['issue-comments', '--session', 'orchestrator-20260314-120000', '--since', '2026-03-14T10:00:00.000Z', '--role', 'orchestrator'],
+    )));
+  });
+
+  it('returns no-op result when gh executor is not provided', async () => {
+    const state = makeState({
+      issues: [makeIssue({ number: 42, triage_log: [], processed_comment_ids: [] })],
+    });
+
+    const result = await runTriageMonitorCycle(
+      state,
+      'orchestrator-20260314-120000',
+      'owner/repo',
+      { now: () => new Date('2026-03-14T12:00:00.000Z') },
+    );
+
+    assert.deepStrictEqual(result, { processed_issues: 0, triaged_entries: 0 });
+    assert.equal(state.issues[0].last_comment_check, undefined);
   });
 });
 

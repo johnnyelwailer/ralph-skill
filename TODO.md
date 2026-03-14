@@ -6,12 +6,14 @@
 - [x] [review][high] Complete triage comment actions in `applyTriageResultsToIssue`: post clarification/question replies, include required triage footer, and skip bot/external-author comments per spec.
 
 ### Up Next
-- [ ] [orchestrator][high] Wire a real monitor-cycle triage step into orchestrator flow: poll `aloop gh issue-comments`/`pr-comments`, apply triage per issue, and persist `last_comment_check` + `triage_log` updates.
+- [x] [orchestrator][high] Wire a real monitor-cycle triage step into orchestrator flow: poll `aloop gh issue-comments`/`pr-comments`, apply triage per issue, and persist `last_comment_check` + `triage_log` updates.
 - [ ] [tests][high] Harden triage tests in `orchestrate.test.ts` with exact GH-arg assertions and add coverage for `question`, `out_of_scope`, and `execGh` failure paths.
 - [ ] [tests][high] Raise `gh.ts` branch coverage to >=80% by adding missing branch tests (`issue-label` remove path, parse fallbacks/error branches, default-throw branches).
 - [ ] [runtime+dashboard][high] Align loop exit/status behavior with spec: emit `stopped`/`exited` where required, reset `stuck_count` on successful iteration, and make dashboard detect dead PID instead of stale running state.
 - [ ] [dashboard][high] Add activity/timing context: provider+model together, per-iteration duration, elapsed since `session_start`, total iterations, and average iteration duration.
+- [ ] [tests][medium] Fix pre-existing `session.test.ts` failure for `resolveHomeDir` trailing-separator handling on this Linux/Git-Bash path case.
 - [ ] [dashboard][medium] Refine docs panel behavior: render only non-empty docs and add overflow handling (`...`) for large doc sets.
+- [ ] [build][low] Ensure dashboard build prerequisites are present (`vite` in `aloop/cli/dashboard`) so `npm run build` is runnable in a fresh environment.
 - [ ] [gh-workflows][medium] Implement high-level GH workflow commands: `aloop gh start --issue`, `aloop gh watch`, `aloop gh status`, and `aloop gh stop` with persisted watch/status state.
 - [ ] [gh-workflows][medium] Implement PR feedback re-iteration loop (review comments + CI failures) with configurable max feedback iterations.
 - [ ] [pipeline][medium] Implement configurable agent pipeline (`pipeline.yml` / config inline) with named agents, transitions (`retry|goto`), and backward-compatible defaults.

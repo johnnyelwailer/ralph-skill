@@ -108,6 +108,7 @@ export interface OrchestrateDeps {
   mkdir: (path: string, options?: { recursive?: boolean }) => Promise<string | undefined>;
   now: () => Date;
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
+  execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
 }
 
 export interface SpawnSyncResult {
@@ -410,6 +411,10 @@ export async function orchestrateCommandWithDeps(
     state = await applyDecompositionPlan(plan, state, sessionDir, filterRepo, deps);
   }
 
+  if (filterRepo && state.issues.length > 0 && deps.execGh) {
+    await runTriageMonitorCycle(state, path.basename(sessionDir), filterRepo, deps);
+  }
+
   const stateFile = path.join(sessionDir, 'orchestrator.json');
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
@@ -682,6 +687,153 @@ export async function applyTriageResultsToIssue(
   issue.triage_log = triageLog;
   issue.last_comment_check = timestamp;
   return entries;
+}
+
+interface ParsedMonitorComment {
+  issueNumber: number | null;
+  comment: TriageComment;
+}
+
+export interface TriageMonitorCycleResult {
+  processed_issues: number;
+  triaged_entries: number;
+}
+
+function parsePositiveInteger(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    return null;
+  }
+  return value;
+}
+
+function parseNumberFromUrl(url: unknown, pattern: RegExp): number | null {
+  if (typeof url !== 'string') {
+    return null;
+  }
+  const match = url.match(pattern);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number.parseInt(match[1]!, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function extractCommentsPayload(stdout: string): unknown[] {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { comments?: unknown[] }).comments)) {
+      return (parsed as { comments: unknown[] }).comments;
+    }
+  } catch {
+    return [];
+  }
+
+  return [];
+}
+
+function normalizeMonitorComments(rawComments: unknown[], context: 'issue' | 'pr'): ParsedMonitorComment[] {
+  const result: ParsedMonitorComment[] = [];
+
+  for (const raw of rawComments) {
+    if (!raw || typeof raw !== 'object') {
+      continue;
+    }
+    const obj = raw as Record<string, unknown>;
+    const id = parsePositiveInteger(obj.id);
+    const body = typeof obj.body === 'string' ? obj.body : '';
+    const author = typeof obj.author === 'string'
+      ? obj.author
+      : typeof (obj.user as { login?: unknown } | undefined)?.login === 'string'
+        ? (obj.user as { login: string }).login
+        : 'unknown';
+    if (id === null) {
+      continue;
+    }
+
+    let issueNumber: number | null = null;
+    if (context === 'issue') {
+      issueNumber = parsePositiveInteger(obj.issue_number)
+        ?? parseNumberFromUrl(obj.issue_url, /\/issues\/(\d+)(?:\/)?$/);
+    } else {
+      issueNumber = parsePositiveInteger(obj.pull_request_number)
+        ?? parseNumberFromUrl(obj.pull_request_url, /\/pulls\/(\d+)(?:\/)?$/);
+    }
+
+    result.push({
+      issueNumber,
+      comment: {
+        id,
+        author,
+        body,
+        context,
+        created_at: typeof obj.created_at === 'string' ? obj.created_at : undefined,
+        author_association: typeof obj.author_association === 'string' ? obj.author_association : undefined,
+      },
+    });
+  }
+
+  return result;
+}
+
+export async function runTriageMonitorCycle(
+  state: OrchestratorState,
+  sessionId: string,
+  repo: string,
+  deps: Pick<OrchestrateDeps, 'execGh' | 'now'>,
+): Promise<TriageMonitorCycleResult> {
+  if (!deps.execGh) {
+    return { processed_issues: 0, triaged_entries: 0 };
+  }
+
+  let triagedEntries = 0;
+  for (const issue of state.issues) {
+    const since = issue.last_comment_check ?? state.created_at;
+    const issueCommentsResponse = await deps.execGh([
+      'issue-comments',
+      '--session', sessionId,
+      '--since', since,
+      '--role', 'orchestrator',
+    ]);
+    const prCommentsResponse = await deps.execGh([
+      'pr-comments',
+      '--session', sessionId,
+      '--since', since,
+      '--role', 'orchestrator',
+    ]);
+
+    const normalizedIssueComments = normalizeMonitorComments(
+      extractCommentsPayload(issueCommentsResponse.stdout),
+      'issue',
+    ).filter((entry) => entry.issueNumber === issue.number)
+      .map((entry) => entry.comment);
+
+    const normalizedPrComments = normalizeMonitorComments(
+      extractCommentsPayload(prCommentsResponse.stdout),
+      'pr',
+    ).filter((entry) => issue.pr_number !== null && entry.issueNumber === issue.pr_number)
+      .map((entry) => entry.comment);
+
+    const entries = await applyTriageResultsToIssue(
+      issue,
+      [...normalizedIssueComments, ...normalizedPrComments],
+      repo,
+      { execGh: deps.execGh, now: deps.now },
+    );
+    triagedEntries += entries.length;
+
+    issue.last_comment_check = deps.now().toISOString();
+  }
+
+  state.updated_at = deps.now().toISOString();
+  return { processed_issues: state.issues.length, triaged_entries: triagedEntries };
 }
 
 // --- Child-loop dispatch engine ---
