@@ -1157,19 +1157,21 @@ Every request file follows the same envelope:
 
 **Defined request types:**
 
+All markdown content (issue bodies, PR descriptions, comments, sub-specs) is passed as **file path references** to `.md` files in the session directory — never inline in the JSON. The agent writes the markdown file, then references its path in the request payload.
+
 | Type | Payload | Runtime action | Queues |
 |------|---------|----------------|--------|
-| `create_issues` | `{issues: [{title, body, labels, parent?}]}` | Creates GitHub issues, links sub-issues to parent | Per-issue refinement prompts |
-| `update_issue` | `{number, body?, labels_add?, labels_remove?, state?}` | Updates issue on GitHub | None (or re-analysis prompt if body changed) |
+| `create_issues` | `{issues: [{title, body_file, labels, parent?}]}` | Creates GitHub issues (reads body from file), links sub-issues to parent | Per-issue refinement prompts |
+| `update_issue` | `{number, body_file?, labels_add?, labels_remove?, state?}` | Updates issue on GitHub (reads body from file if provided) | None (or re-analysis prompt if body changed) |
 | `close_issue` | `{number, reason}` | Closes issue with comment | None |
-| `create_pr` | `{head, base, title, body, issue_number}` | Creates PR via `gh pr create`, links to issue | Gate/review prompt |
+| `create_pr` | `{head, base, title, body_file, issue_number}` | Creates PR via `gh pr create` (reads description from file), links to issue | Gate/review prompt |
 | `merge_pr` | `{number, strategy: "squash"\|"merge"\|"rebase"}` | Merges PR via `gh pr merge` | Downstream dispatch prompts |
-| `dispatch_child` | `{issue_number, branch, pipeline, sub_spec}` | Creates worktree, compiles child `loop-plan.json`, launches child `loop.sh` | Monitor prompt |
-| `steer_child` | `{issue_number, instruction, agent?, provider?, model?}` | Writes prompt file to child's `queue/` | None |
+| `dispatch_child` | `{issue_number, branch, pipeline, sub_spec_file}` | Creates worktree, compiles child `loop-plan.json`, seeds sub-spec from file, launches child `loop.sh` | Monitor prompt |
+| `steer_child` | `{issue_number, prompt_file}` | Copies prompt file to child's `queue/` | None |
 | `stop_child` | `{issue_number, reason}` | Sends SIGTERM to child loop PID | Cleanup prompt |
-| `post_comment` | `{issue_number, body}` | Posts comment on GitHub issue/PR | None |
+| `post_comment` | `{issue_number, body_file}` | Posts comment on GitHub issue/PR (reads from file) | None |
 | `query_issues` | `{labels?, state?, since?}` | Queries GitHub issues, writes result to queue as context | Analysis prompt with results |
-| `spec_backfill` | `{file, section, content}` | Writes resolved decision back into spec file, commits | None |
+| `spec_backfill` | `{file, section, content_file}` | Reads content from file, writes into spec file at section, commits | None |
 
 **Payload validation:** The runtime validates each request against the contract before processing. Malformed requests are moved to `$SESSION_DIR/requests/failed/` with an error annotation. The loop picks up the failure on next scan.
 
@@ -1200,24 +1202,27 @@ Request files are deleted by the runtime after processing. The loop waits for th
 **Example flow — epic decomposition:**
 ```
 1. Orchestrator agent (PROMPT_orch_decompose.md) analyzes spec
-2. Writes: requests/req-007-create_issues.json
+2. Writes markdown files:
+   - requests/bodies/epic-auth.md  (issue body for auth epic)
+   - requests/bodies/epic-cms.md   (issue body for CMS epic)
+3. Writes: requests/req-007-create_issues.json
    {
      "id": "req-007",
      "type": "create_issues",
      "payload": {
        "issues": [
-         {"title": "Epic: User Authentication", "body": "...", "labels": ["aloop/epic", "aloop/needs-refine"]},
-         {"title": "Epic: Content Management", "body": "...", "labels": ["aloop/epic", "aloop/needs-refine"]}
+         {"title": "Epic: User Authentication", "body_file": "requests/bodies/epic-auth.md", "labels": ["aloop/epic", "aloop/needs-refine"]},
+         {"title": "Epic: Content Management", "body_file": "requests/bodies/epic-cms.md", "labels": ["aloop/epic", "aloop/needs-refine"]}
        ]
      }
    }
-3. loop.sh waits for requests/ to empty
-4. Runtime picks up request, creates issues #42 and #43 on GitHub
-5. Runtime deletes request file
-6. Runtime queues:
+4. loop.sh waits for requests/ to empty
+5. Runtime picks up request, reads body markdown files, creates issues #42 and #43 on GitHub
+6. Runtime deletes request file (and body files)
+7. Runtime queues:
    - queue/008-refine-epic-42.md (product analyst prompt with epic #42 context)
    - queue/009-refine-epic-43.md (product analyst prompt with epic #43 context)
-7. loop.sh sees requests/ empty, picks up queue/008-refine-epic-42.md
+8. loop.sh sees requests/ empty, picks up queue/008-refine-epic-42.md
 ```
 
 ### Autonomy Levels
@@ -1530,6 +1535,15 @@ The replan agent reads the spec but does NOT modify it — the spec is human-own
 
 **Spec backfill:** When gap analysis resolves a question (whether by user answer or autonomous decision), the resolution is written back into `SPEC.md` so the spec stays authoritative.
 
+**Spec consistency agent** (`PROMPT_orch_spec_consistency.md`): Runs after any spec change (backfill, steering, user edit) to reorganize and verify the spec:
+- Check cross-references between sections (does section A still agree with section B after the change?)
+- Remove contradictions introduced by the change
+- Verify acceptance criteria are still testable and consistent with updated requirements
+- Ensure clean structure (no orphaned sections, no duplicated concepts, no stale references)
+- This is housekeeping — the agent does not add requirements or change intent, only reorganizes and fixes inconsistencies
+
+Triggered by: spec backfill, replan agent spec edits, detected spec file commits. Queued as a follow-up after any spec-modifying operation.
+
 **Spec files are the authoritative intent. Issues are the live execution plan.** They can temporarily diverge (user adds an ad-hoc issue, agent discovers unexpected work) but replan reconciles them.
 
 #### Phase 7: Complete
@@ -1679,7 +1693,7 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 
 - The `gh` CLI already handles GHE via `gh auth login --hostname ghes.company.com` — aloop must not hardcode `github.com` anywhere
 - Repository URLs, issue URLs, PR URLs, and commit URLs must be derived from the repo's actual remote origin, not constructed with a hardcoded `github.com` prefix
-- The convention-file response format (`url` fields in `.aloop/responses/`) must use the actual GHE hostname
+- The convention-file response format (`url` fields in `queue/`) must use the actual GHE hostname
 - `aloop orchestrate`, `aloop gh`, and the dashboard's contextual links must all work with any GH-compatible hostname
 - No validation or parsing should assume `github.com` as the only valid GitHub host
 
@@ -1917,8 +1931,7 @@ Agents are untrusted. The aloop CLI is the single trust boundary. Agents never h
 │    ├─ git (commit, push to own branch only)  │
 │    ├─ file read/write (worktree only)        │
 │    ├─ test runner                            │
-│    └─ .aloop/requests/ (write intent)        │
-│       .aloop/responses/ (read results)       │
+│    └─ requests/ (write side-effect requests)  │
 │                                              │
 │  ✗ no `gh` CLI (stripped from PATH)          │
 │  ✗ no `aloop` CLI                            │
@@ -1941,42 +1954,32 @@ In every case: **aloop CLI lives where the harness lives**. The agent never need
 
 ### Convention-File Protocol
 
-Agents communicate GH intent via filesystem — the only interface that crosses all sandbox boundaries (Docker volumes, bind mounts, NFS, etc.).
+Agents communicate intent via filesystem — the only interface that crosses all sandbox boundaries (Docker volumes, bind mounts, NFS, etc.).
 
-**Request files** (agent writes):
-```
-<worktree>/.aloop/requests/
-  001-pr-create.json
-  002-issue-comment.json
-```
+This is the same [Request/Response Protocol](#requestresponse-protocol) described in the orchestrator section — `requests/*.json` for side effects, `queue/*.md` for follow-up prompts. Markdown content is always passed as file path references (`body_file`), never inline in the JSON.
 
+**Request files** (agent writes to `$SESSION_DIR/requests/`):
 ```json
 {
-  "type": "pr-create",
-  "title": "Issue #42: Add provider health subsystem",
-  "body": "Closes #42\n\nImplemented per-provider health files...",
-  "labels": ["aloop/auto"]
+  "id": "req-001",
+  "type": "create_pr",
+  "payload": {
+    "head": "aloop/issue-42",
+    "base": "agent/trunk",
+    "title": "Issue #42: Add provider health subsystem",
+    "body_file": "requests/bodies/pr-42.md",
+    "issue_number": 42
+  }
 }
 ```
 
-**Response files** (harness writes):
-```
-<worktree>/.aloop/responses/
-  001-pr-create.json
-```
-
-```json
-{
-  "status": "success",
-  "pr_number": 15,
-  "url": "https://github.com/owner/repo/pull/15"
-}
-```
+**Follow-up prompts** (runtime writes to `$SESSION_DIR/queue/`): response data is baked into the next prompt's body. No separate response files — the queue IS the response channel.
 
 **Protocol rules:**
-- Sequential numbering (`001-`, `002-`) preserves ordering
-- Request files are archived after processing (moved to `.aloop/requests/processed/`)
-- Unrecognized request types are rejected and logged
+- Request files: `req-<NNN>-<type>.json`, monotonic counter, processed in order
+- Markdown content: always file path references (`body_file`, `sub_spec_file`, `prompt_file`, `content_file`)
+- Request files deleted by runtime after processing
+- Malformed requests moved to `requests/failed/` with error annotation
 
 ### Architecture: Keep loop scripts lean — GH/steering/requests are host-side plugins
 
@@ -1992,7 +1995,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 │    │     └── just: read loop-plan.json + provider invoke│
 │    │                                                   │
 │    └── aloop monitor (host-side, always on host)       │
-│          ├── watches .aloop/requests/ → aloop gh       │
+│          ├── watches requests/ → executes side effects  │
 │          ├── writes to queue/ → loop picks up next iter  │
 │          ├── serves dashboard                          │
 │          ├── processes convention-file protocol         │
@@ -2016,7 +2019,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 **Execution model:** The loop script and provider CLIs always run in the same environment. When containerized, `aloop start` on the host launches the loop **inside** the container via `devcontainer exec -- loop.sh` (or `loop.ps1`). From that point, the loop invokes providers directly (they're co-located). The loop never calls `devcontainer exec` itself — that's the host's job.
 
 **What moves to aloop monitor (host-side):**
-- Convention-file request processing (`.aloop/requests/` → `aloop gh` → `.aloop/responses/`)
+- Convention-file request processing (`requests/` → `aloop gh` → `queue/`)
 - Steering file detection and injection
 - Dashboard server
 - Provider health file management (already cross-session)
@@ -2129,7 +2132,7 @@ Failed policy checks are logged as `gh_operation_denied`:
 ### Acceptance Criteria
 
 - [ ] Agents have no access to `gh` CLI (stripped from PATH before provider invocation)
-- [ ] Agents communicate GH intent exclusively via `.aloop/requests/` convention files
+- [ ] Agents communicate GH intent exclusively via `requests/` convention files
 - [ ] Harness reads request files at iteration boundaries and delegates to `aloop gh`
 - [ ] `aloop gh` enforces hardcoded policy per role (child-loop vs orchestrator)
 - [ ] Child loops cannot merge PRs, create/close issues, delete branches, or use raw API
@@ -2380,7 +2383,7 @@ Enable aloop loops to run inside VS Code devcontainers for full isolation. Provi
 
 - Security boundary: devcontainer is the natural sandbox for Layer 2 (agent execution) — agents can't access host GH tokens, filesystem, or network beyond what's mounted
 - Reproducibility: identical environment across machines, no "works on my machine" provider/tool version drift
-- Required for convention-file protocol: the harness runs on host, the agent runs in container, `.aloop/requests/` and `.aloop/responses/` cross the boundary via bind mount
+- Required for convention-file protocol: the harness runs on host, the agent runs in container, `requests/` and `queue/` cross the boundary via bind mount
 
 ### Prerequisite: Devcontainer Spec Research (MUST DO FIRST)
 
@@ -2479,7 +2482,7 @@ Once a devcontainer is set up for a project, the loop **automatically** uses it 
 │    ├── reads TODO.md, SPEC.md, status.json             │
 │    ├── decides phase, provider, iteration              │
 │    ├── dashboard server (node)                         │
-│    ├── processes .aloop/requests/ (convention-file)     │
+│    ├── runtime processes requests/ (convention-file)    │
 │    └── invokes provider via:                           │
 │         devcontainer exec -- claude --print ...        │
 │                                                        │
@@ -2537,7 +2540,7 @@ When running multiple loops in parallel (orchestrator mode or manual), do NOT st
 **Concurrency safety:**
 - Provider CLIs are stateless per-invocation — safe to run N in parallel
 - Each worktree has its own `.git` lock — no git conflicts between loops
-- `.aloop/requests/` and `.aloop/responses/` are per-session — no cross-contamination
+- `requests/` and `queue/` are per-session — no cross-contamination
 
 ### `aloop start` with Devcontainer (automatic)
 
@@ -2546,7 +2549,7 @@ When running multiple loops in parallel (orchestrator mode or manual), do NOT st
 3. Harness creates session, worktree (on host)
 4. Harness runs loop iterations, wrapping each provider call in `devcontainer exec`
 5. Host monitors `status.json` directly (host filesystem)
-6. Host processes `.aloop/requests/*.json` (convention-file protocol)
+6. Runtime processes `requests/*.json` (convention-file protocol)
 7. Dashboard runs on host, reads session data from host filesystem
 
 ### Provider Auth in Container
@@ -2655,7 +2658,7 @@ The skill's devcontainer generator MUST:
 - [ ] If container not running, harness starts it automatically via `devcontainer up`
 - [ ] Harness itself (loop.ps1/loop.sh) always runs on host, only agent CLIs run inside container
 - [ ] Dashboard runs on host and reads session data directly from host filesystem
-- [ ] Host processes convention-file requests (`.aloop/requests/`) — agents in container write requests, harness on host fulfills them
+- [ ] Host processes convention-file requests (`requests/`) — agents in container write requests, harness on host fulfills them
 
 **Shared container:**
 - [ ] Multiple parallel loops reuse a single running container instance
