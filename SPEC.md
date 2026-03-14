@@ -1207,20 +1207,33 @@ Gap resolution behavior is configurable per session, set during `aloop setup`:
 
 | Level | Behavior | When to use |
 |-------|----------|-------------|
-| `cautious` | Block on any ambiguity, create `aloop/spec-question` issue, wait for user | High-stakes, unfamiliar domain, vague spec |
-| `balanced` | Resolve low-risk gaps autonomously, block on high-risk | Default — good spec with some gaps |
-| `autonomous` | Resolve everything, only block on true contradictions | High-quality spec, trusted agent judgment |
+| `cautious` | All questions block, wait for user to answer | High-stakes, unfamiliar domain, vague spec |
+| `balanced` | Low-risk questions auto-resolved, high-risk block for user | Default — good spec with some gaps |
+| `autonomous` | All questions auto-resolved, only true contradictions block | High-quality spec, trusted agent judgment |
 
-When resolving autonomously, the agent:
-1. Makes the best-guess decision based on spec context and codebase conventions
-2. Documents the reasoning in a `aloop/decision` issue (informational, doesn't block)
-3. Updates the spec with the chosen interpretation
-4. User can review decisions async and override via steering if they disagree
+**Two-agent model:** Gap analysis always creates `aloop/spec-question` issues — regardless of autonomy level. This ensures every gap is recorded. A separate **resolver agent** (`PROMPT_orch_resolver.md`) then runs and, based on the autonomy level, either:
+- **Waits** — leaves the issue open and blocking (cautious mode, or high-risk in balanced mode)
+- **Resolves** — comments on the issue with its reasoning and chosen approach, updates the spec with the decision, closes the issue to unblock downstream work
 
-Risk classification (determines block vs resolve):
-- **Low-risk**: naming conventions, error message wording, UI spacing, log levels → resolve autonomously
-- **Medium-risk**: API contract details, data model choices, auth flow specifics → depends on autonomy level
-- **High-risk**: architectural boundaries, security model, data privacy, billing logic → always block unless `autonomous`
+This means:
+1. Every question is visible on GitHub — the user always sees what was asked
+2. Every autonomous decision has a documented rationale in the issue comments
+3. The user can reopen any auto-resolved issue to override the decision
+4. The same issue thread serves as the conversation — whether human or agent answered
+5. `aloop/spec-question` label means "unresolved"; closing means "resolved" (by human or agent)
+
+**Resolver agent behavior by autonomy level:**
+
+| Autonomy | Low-risk gap | Medium-risk gap | High-risk gap |
+|----------|-------------|-----------------|---------------|
+| `cautious` | Wait for user | Wait for user | Wait for user |
+| `balanced` | Auto-resolve + comment | Wait for user | Wait for user |
+| `autonomous` | Auto-resolve + comment | Auto-resolve + comment | Auto-resolve + comment |
+
+Risk classification:
+- **Low-risk**: naming conventions, error message wording, UI spacing, log levels, file organization
+- **Medium-risk**: API contract details, data model choices, auth flow specifics, error handling strategy
+- **High-risk**: architectural boundaries, security model, data privacy, billing logic, breaking changes
 
 ### Orchestrator State Machine
 
@@ -1294,7 +1307,7 @@ The orchestrator is **reactive and queue-driven**. Instead of numbered phases, e
 |-------|---------|-------------------|
 | `aloop/needs-analysis` | Spec or epic needs gap analysis | Product + arch analyst agents run |
 | `aloop/spec-question` | Blocking question for user | Waits for user response (or auto-resolves based on autonomy level) |
-| `aloop/decision` | Agent made autonomous decision | Informational — user can override |
+| `aloop/auto-resolved` | Spec question resolved by agent (not human) | User can reopen to override |
 | `aloop/needs-decompose` | Ready for decomposition into sub-items | Decompose agent runs |
 | `aloop/needs-refine` | Needs specialist planning | Specialist planner + estimation agents run |
 | `aloop/ready` | Definition of Ready passed | Eligible for dispatch to child loop |
@@ -1653,7 +1666,7 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 - [ ] Definition of Ready gate before dispatch (acceptance criteria, no open questions, approach defined, estimated)
 - [ ] Refinement budget cap prevents infinite question loops
 - [ ] Spec gap analysis re-triggers on spec file changes, blocking only affected items
-- [ ] Autonomous decisions documented in `aloop/decision` issues
+- [ ] Auto-resolved questions documented with reasoning in issue comments, labeled `aloop/auto-resolved`
 
 **Label-driven state machine:**
 - [ ] Issues progress through labels: `needs-analysis` → `needs-decompose` → `needs-refine` → `ready` → `in-progress` → `in-review` → `done`
