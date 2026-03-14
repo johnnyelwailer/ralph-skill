@@ -7,7 +7,7 @@
 
 ### Up Next
 - [x] [orchestrator][high] Wire a real monitor-cycle triage step into orchestrator flow: poll `aloop gh issue-comments`/`pr-comments`, apply triage per issue, and persist `last_comment_check` + `triage_log` updates.
-- [ ] [tests][high] Harden triage tests in `orchestrate.test.ts` with exact GH-arg assertions and add coverage for `question`, `out_of_scope`, and `execGh` failure paths.
+- [x] [tests][high] Harden triage tests in `orchestrate.test.ts` with exact GH-arg assertions and add coverage for `question`, `out_of_scope`, and `execGh` failure paths.
 - [ ] [tests][high] Raise `gh.ts` branch coverage to >=80% by adding missing branch tests (`issue-label` remove path, parse fallbacks/error branches, default-throw branches).
 - [ ] [runtime+dashboard][high] Align loop exit/status behavior with spec: emit `stopped`/`exited` where required, reset `stuck_count` on successful iteration, and make dashboard detect dead PID instead of stale running state.
 - [ ] [dashboard][high] Add activity/timing context: provider+model together, per-iteration duration, elapsed since `session_start`, total iterations, and average iteration duration.

@@ -958,6 +958,222 @@ Based on the current issue context, this requires human clarification before imp
     assert.deepStrictEqual(issue.processed_comment_ids, [23]);
     assert.equal(ghCalls.length, 0);
   });
+
+  it('applyTriageResultsToIssue records triaged_no_action for out_of_scope collaborator comments', async () => {
+    const issue = makeIssue({
+      number: 47,
+      blocked_on_human: false,
+      processed_comment_ids: [],
+      triage_log: [],
+    });
+    const comments = [
+      triageComment({ id: 30, body: 'Thanks!', author: 'alice', author_association: 'COLLABORATOR' }),
+    ];
+    const ghCalls: string[][] = [];
+    const deps: TriageDeps = {
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
+      now: () => new Date('2026-03-14T12:10:00.000Z'),
+    };
+
+    const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].classification, 'out_of_scope');
+    assert.equal(entries[0].action_taken, 'triaged_no_action');
+    assert.equal(entries[0].author, 'alice');
+    assert.equal(issue.blocked_on_human, false);
+    assert.deepStrictEqual(issue.processed_comment_ids, [30]);
+    assert.equal(ghCalls.length, 0, 'out_of_scope should not trigger any GH calls');
+  });
+
+  it('applyTriageResultsToIssue injects steering without unblocking for actionable when not blocked', async () => {
+    const issue = makeIssue({
+      number: 48,
+      blocked_on_human: false,
+      processed_comment_ids: [],
+      triage_log: [],
+    });
+    const comments = [
+      triageComment({ id: 31, body: 'Please implement pagination for this endpoint.' }),
+    ];
+    const ghCalls: string[][] = [];
+    const deps: TriageDeps = {
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
+      now: () => new Date('2026-03-14T12:11:00.000Z'),
+    };
+
+    const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].classification, 'actionable');
+    assert.equal(entries[0].action_taken, 'steering_injected');
+    assert.equal(issue.blocked_on_human, false);
+    assert.deepStrictEqual(issue.processed_comment_ids, [31]);
+    assert.equal(ghCalls.length, 0, 'steering_injected should not call GH when not blocked');
+  });
+
+  it('applyTriageResultsToIssue propagates execGh errors on needs_clarification comment post', async () => {
+    const issue = makeIssue({
+      number: 49,
+      blocked_on_human: false,
+      processed_comment_ids: [],
+      triage_log: [],
+    });
+    const comments = [
+      triageComment({ id: 32, body: 'hmm maybe we should rethink this approach?' }),
+    ];
+    const deps: TriageDeps = {
+      execGh: async () => {
+        throw new Error('gh CLI rate limited');
+      },
+      now: () => new Date('2026-03-14T12:12:00.000Z'),
+    };
+
+    await assert.rejects(
+      () => applyTriageResultsToIssue(issue, comments, 'owner/repo', deps),
+      (err: Error) => {
+        assert.ok(err.message.includes('gh CLI rate limited'));
+        return true;
+      },
+    );
+  });
+
+  it('applyTriageResultsToIssue propagates execGh errors on label add', async () => {
+    const issue = makeIssue({
+      number: 50,
+      blocked_on_human: false,
+      processed_comment_ids: [],
+      triage_log: [],
+    });
+    const comments = [
+      triageComment({ id: 33, body: 'hmm not sure about this direction' }),
+    ];
+    let callCount = 0;
+    const deps: TriageDeps = {
+      execGh: async () => {
+        callCount++;
+        if (callCount === 2) {
+          throw new Error('label add failed');
+        }
+        return { stdout: '', stderr: '' };
+      },
+      now: () => new Date('2026-03-14T12:13:00.000Z'),
+    };
+
+    await assert.rejects(
+      () => applyTriageResultsToIssue(issue, comments, 'owner/repo', deps),
+      (err: Error) => {
+        assert.ok(err.message.includes('label add failed'));
+        return true;
+      },
+    );
+  });
+
+  it('applyTriageResultsToIssue propagates execGh errors on question reply', async () => {
+    const issue = makeIssue({
+      number: 51,
+      blocked_on_human: false,
+      processed_comment_ids: [],
+      triage_log: [],
+    });
+    const comments = [
+      triageComment({ id: 34, body: 'What is the deployment process?', author: 'bob' }),
+    ];
+    const deps: TriageDeps = {
+      execGh: async () => {
+        throw new Error('comment post forbidden');
+      },
+      now: () => new Date('2026-03-14T12:14:00.000Z'),
+    };
+
+    await assert.rejects(
+      () => applyTriageResultsToIssue(issue, comments, 'owner/repo', deps),
+      (err: Error) => {
+        assert.ok(err.message.includes('comment post forbidden'));
+        return true;
+      },
+    );
+  });
+
+  it('applyTriageResultsToIssue handles mixed classifications in a single batch', async () => {
+    const issue = makeIssue({
+      number: 52,
+      blocked_on_human: false,
+      processed_comment_ids: [],
+      triage_log: [],
+    });
+    const comments = [
+      triageComment({ id: 40, body: 'LGTM', author: 'alice' }),
+      triageComment({ id: 41, body: 'Please add retry logic for flaky requests.', author: 'bob' }),
+      triageComment({ id: 42, body: 'What error codes does this return?', author: 'carol' }),
+      triageComment({ id: 43, body: 'hmm maybe we should rethink this?', author: 'dave' }),
+      triageComment({
+        id: 44,
+        author: 'aloop-bot[bot]',
+        body: 'Auto-reply.\n---\n*This comment was generated by aloop triage agent.*',
+      }),
+      triageComment({ id: 45, author: 'random', author_association: 'NONE', body: 'Drive-by comment.' }),
+    ];
+    const ghCalls: string[][] = [];
+    const deps: TriageDeps = {
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
+      now: () => new Date('2026-03-14T12:15:00.000Z'),
+    };
+
+    const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
+
+    // Agent comment (id 44) is skipped entirely — no entry
+    // External comment (id 45) logged as untriaged_external_comment
+    // Remaining 4 collaborator comments produce entries
+    assert.equal(entries.length, 5);
+
+    assert.equal(entries[0].comment_id, 40);
+    assert.equal(entries[0].classification, 'out_of_scope');
+    assert.equal(entries[0].action_taken, 'triaged_no_action');
+
+    assert.equal(entries[1].comment_id, 41);
+    assert.equal(entries[1].classification, 'actionable');
+    assert.equal(entries[1].action_taken, 'steering_injected');
+
+    assert.equal(entries[2].comment_id, 42);
+    assert.equal(entries[2].classification, 'question');
+    assert.equal(entries[2].action_taken, 'question_answered');
+
+    assert.equal(entries[3].comment_id, 43);
+    assert.equal(entries[3].classification, 'needs_clarification');
+    assert.equal(entries[3].action_taken, 'post_reply_and_block');
+
+    assert.equal(entries[4].comment_id, 45);
+    assert.equal(entries[4].action_taken, 'untriaged_external_comment');
+
+    // Verify all non-agent IDs processed
+    assert.deepStrictEqual(issue.processed_comment_ids, [40, 41, 42, 43, 44, 45]);
+    assert.equal(issue.blocked_on_human, true);
+    assert.equal(issue.triage_log?.length, 5);
+    assert.equal(issue.last_comment_check, '2026-03-14T12:15:00.000Z');
+
+    // Exact GH calls: question reply, needs_clarification reply + label add = 3 calls
+    assert.equal(ghCalls.length, 3);
+    assert.deepStrictEqual(
+      ghCalls[0],
+      ['issue', 'comment', '52', '--repo', 'owner/repo', '--body', `Thanks for the question, @carol.\n\nBased on the current issue context, this requires human clarification before implementation can proceed safely. Please provide specific direction and expected outcome.\n---\n*This comment was generated by aloop triage agent.*`],
+    );
+    assert.deepStrictEqual(
+      ghCalls[1],
+      ['issue', 'comment', '52', '--repo', 'owner/repo', '--body', `Thanks for the feedback, @dave.\n\nI want to make sure we implement exactly what you intended. Could you clarify the requested change with concrete acceptance criteria?\n---\n*This comment was generated by aloop triage agent.*`],
+    );
+    assert.deepStrictEqual(
+      ghCalls[2],
+      ['issue', 'edit', '52', '--repo', 'owner/repo', '--add-label', 'aloop/blocked-on-human'],
+    );
+  });
 });
 
 describe('runTriageMonitorCycle', () => {
