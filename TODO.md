@@ -11,7 +11,8 @@
 - [ ] [review] Gate 4: Remove dead code in `aloop/cli/src/commands/gh.ts` (`fetchPrReviewComments` assigns `response` from `/reviews` but never uses it) or wire it into actual review-state handling per spec intent (priority: medium)
 - [ ] [review] Gate 5: Fix regression in validation pipeline — `cd aloop/cli && npm run type-check` fails with TS2345 in `src/commands/gh.test.ts` (lines 1937, 1953, 1964, 2032, 2050; `buildWatchEntry().status` typed as `string` instead of `GhWatchIssueStatus`) (priority: high)
 - [ ] [review] Gate 6: Reconcile proof manifest iteration 43 with real artifacts — listed files (`gh-help.txt`, `gh-status-text.txt`, `gh-status-json.json`, `gh-stop-all-success.json`, `gh-status-after-stop.txt`, `dashboard-api-state.json`, `dashboard-server.log`, `gh-stop-json.json`) are missing, and dashboard UI change proof skipped the required screenshot evidence (priority: high)
-- [x] [tests][high] Raise `aloop/cli/src/commands/gh.ts` branch coverage from `78.46%` to `>=80%` with targeted branch tests (remove-label path, parser fallback/error paths, and throw/default branches) to clear review gate failures.
+- [ ] [review] Gate 3 Blocker: Fix hardcoded Windows path separators (`\\`) in `aloop/cli/dashboard/playwright.config.ts` webServer command which break Linux execution (`MODULE_NOT_FOUND` for `..distindex.js`).
+- [ ] [tests][high] Raise `aloop/cli/src/commands/gh.ts` branch coverage to `>=80%` with targeted branch tests (remove-label path, parser fallback/error paths, and throw/default branches) to clear review gate failures (currently at 65.80%).
 
 ### Up Next
 - [x] [gh-workflows][high] Implement high-level `aloop gh start --issue <N>` flow (issue fetch, branch/session/worktree setup, loop launch, PR creation/link-back summary) to match the P2 command surface.

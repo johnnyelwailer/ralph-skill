@@ -25,10 +25,10 @@ param(
     [ValidateSet('plan', 'build', 'review', 'plan-build', 'plan-build-review')]
     [string]$Mode = 'plan-build-review',
 
-    [ValidateSet('claude', 'codex', 'gemini', 'copilot', 'round-robin')]
+    [ValidateSet('claude', 'opencode', 'codex', 'gemini', 'copilot', 'round-robin')]
     [string]$Provider = 'claude',
 
-    [string[]]$RoundRobinProviders = @('claude', 'codex', 'gemini', 'copilot'),
+    [string[]]$RoundRobinProviders = @('claude', 'opencode', 'codex', 'gemini', 'copilot'),
 
     # Model defaults — keep in sync with ~/.aloop/config.yml (source of truth)
     [string]$ClaudeModel = 'opus',
@@ -1474,7 +1474,7 @@ if ($Provider -eq 'round-robin') {
         Write-Error "Round-robin mode requires at least two providers."
         exit 1
     }
-    $supportedProviders = @('claude', 'codex', 'gemini', 'copilot')
+    $supportedProviders = @('claude', 'opencode', 'codex', 'gemini', 'copilot')
     foreach ($p in $RoundRobinProviders) {
         if ($supportedProviders -notcontains $p) {
             Write-Error "Unsupported round-robin provider '$p'. Supported: $($supportedProviders -join ', ')"
@@ -1561,6 +1561,32 @@ if ($DangerouslySkipContainer -and (Test-Path $devcontainerJsonPath)) {
     }
 }
 
+# Re-read provider list from meta.json each iteration (supports hot-reload)
+function Refresh-ProvidersFromMeta {
+    $metaFile = Join-Path $SessionDir "meta.json"
+    if (-not (Test-Path $metaFile)) { return }
+    try {
+        $meta = Get-Content $metaFile -Raw | ConvertFrom-Json
+        $newProviders = $meta.enabled_providers
+        if (-not $newProviders) { $newProviders = $meta.round_robin_order }
+        if (-not $newProviders -or $newProviders.Count -eq 0) { return }
+        $oldCsv = $RoundRobinProviders -join ','
+        $newCsv = $newProviders -join ','
+        if ($oldCsv -ne $newCsv) {
+            $available = @($newProviders | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue })
+            if ($available.Count -gt 0) {
+                $script:RoundRobinProviders = $available
+                Write-LogEntry -Event "providers_refreshed" -Data @{
+                    old = $oldCsv
+                    new = ($available -join ',')
+                }
+            }
+        }
+    } catch {
+        # Silently ignore parse errors — keep current provider list
+    }
+}
+
 $iteration = 0
 
 # ============================================================================
@@ -1626,6 +1652,10 @@ try {
         $iteration++
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $iterationStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
+        # Hot-reload provider list from meta.json (supports runtime changes)
+        if ($Provider -eq 'round-robin') {
+            Refresh-ProvidersFromMeta
+        }
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
         $iterationMode = Resolve-IterationMode -IterationNumber $iteration
 
@@ -1669,7 +1699,7 @@ try {
                 } else {
                     Write-Host "`nALL TASKS COMPLETE" -ForegroundColor Green
                     Stop-DashboardProcess
-                    Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'exited'
+                    Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
                     Write-LogEntry -Event "all_tasks_complete" -Data @{ iteration = $iteration }
                     Generate-Report -ExitReason "All tasks completed successfully." -Iteration $iteration
                     exit 0
@@ -1756,7 +1786,6 @@ try {
             }
 
             if ($iterationMode -eq 'build') {
-                $stuckState.StuckCount = 0
                 Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
                 Push-ToBackup
             } elseif ($iterationMode -eq 'review') {
@@ -1771,7 +1800,7 @@ try {
                     if (Check-AllTasksComplete) {
                         Write-Host "`nFINAL REVIEW APPROVED" -ForegroundColor Green
                         Stop-DashboardProcess
-                        Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'exited'
+                        Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
                         Write-LogEntry -Event "final_review_approved" -Data @{ iteration = $iteration }
                         Generate-Report -ExitReason "All tasks completed and approved by final review." -Iteration $iteration
                         exit 0
@@ -1812,7 +1841,7 @@ try {
     Stop-DashboardProcess
     if ($cancelled) {
         Write-Host "`nInterrupted" -ForegroundColor Yellow
-        Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
+        Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'interrupted'
         Write-LogEntry -Event "interrupted" -Data @{ iteration = $iteration }
         Generate-Report -ExitReason "Manually interrupted (Ctrl+C)." -Iteration $iteration
         exit 130
@@ -1821,7 +1850,7 @@ try {
 
 if ($iteration -ge $MaxIterations) {
     Write-Host "`nReached iteration limit ($MaxIterations)" -ForegroundColor Yellow
-    Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
+    Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'limit_reached'
     Write-LogEntry -Event "limit_reached" -Data @{ iteration = $iteration; limit = $MaxIterations }
     Generate-Report -ExitReason "Reached iteration limit ($MaxIterations)." -Iteration $iteration
 }

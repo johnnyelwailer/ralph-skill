@@ -26,7 +26,7 @@ SESSION_DIR=""
 WORK_DIR=""
 MODE="plan-build-review"
 PROVIDER="claude"
-ROUND_ROBIN_PROVIDERS="claude,codex,gemini,copilot"
+ROUND_ROBIN_PROVIDERS="claude,opencode,codex,gemini,copilot"
 # Model defaults — keep in sync with ~/.aloop/config.yml (source of truth)
 CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-opus}"
 CODEX_MODEL="${ALOOP_CODEX_MODEL:-gpt-5.3-codex}"
@@ -246,6 +246,48 @@ DASHBOARD_URL=""
 
 # Parse round-robin providers into array
 IFS=',' read -ra RR_PROVIDERS <<< "$ROUND_ROBIN_PROVIDERS"
+
+# Re-read provider list from meta.json each iteration (supports hot-reload)
+refresh_providers_from_meta() {
+    local meta_file="$SESSION_DIR/meta.json"
+    if [ ! -f "$meta_file" ]; then
+        return
+    fi
+    # Extract enabled_providers array as comma-separated string using python
+    # (no jq dependency — python3 is always available)
+    local new_providers
+    new_providers=$(python3 -c "
+import json, sys
+try:
+    with open('$meta_file') as f:
+        m = json.load(f)
+    providers = m.get('enabled_providers') or m.get('round_robin_order')
+    if providers:
+        print(','.join(providers))
+except Exception:
+    sys.exit(1)
+" 2>/dev/null) || return
+    if [ -n "$new_providers" ]; then
+        local old_csv
+        old_csv="$(IFS=,; echo "${RR_PROVIDERS[*]}")"
+        if [ "$new_providers" != "$old_csv" ]; then
+            IFS=',' read -ra RR_PROVIDERS <<< "$new_providers"
+            # Re-validate availability
+            local available=()
+            for p in "${RR_PROVIDERS[@]}"; do
+                if command -v "$p" &>/dev/null; then
+                    available+=("$p")
+                fi
+            done
+            if [ ${#available[@]} -gt 0 ]; then
+                RR_PROVIDERS=("${available[@]}")
+                write_log_entry "providers_refreshed" \
+                    "old" "$old_csv" \
+                    "new" "$(IFS=,; echo "${RR_PROVIDERS[*]}")"
+            fi
+        fi
+    fi
+}
 
 resolve_iteration_provider() {
     local iteration=$1
@@ -1462,7 +1504,7 @@ echo ""
 
 # Cleanup on exit
 cleanup() {
-    local reason="${1:-exited}"
+    local reason="${1:-interrupted}"
     kill_active_provider
     remove_session_lock
     stop_dashboard
@@ -1473,14 +1515,18 @@ cleanup() {
     generate_report "$reason"
 }
 
-trap 'cleanup "stopped"; exit 130' INT
-trap 'cleanup "exited"; exit $?' ERR
+trap 'cleanup "interrupted"; exit 130' INT
+trap 'cleanup "error"; exit $?' ERR
 trap 'kill_active_provider; remove_session_lock' EXIT
 
 ITERATION=0
 while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
+    # Hot-reload provider list from meta.json (supports runtime changes)
+    if [ "$PROVIDER" = "round-robin" ]; then
+        refresh_providers_from_meta
+    fi
     iter_provider=$(resolve_iteration_provider $ITERATION)
     # Call directly (not via subshell) so flag-clearing affects the main shell
     resolve_iteration_mode "$ITERATION" > /dev/null
@@ -1531,7 +1577,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 echo ""
                 echo "ALL TASKS COMPLETE"
                 stop_dashboard
-                write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "exited"
+                write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
                 write_log_entry "all_tasks_complete" "iteration" "$ITERATION"
                 generate_report "All tasks completed successfully."
                 exit 0
@@ -1614,7 +1660,6 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider"
 
         if [ "$iter_mode" = "build" ]; then
-            STUCK_COUNT=0
             print_iteration_summary "$ITERATION_START"
             push_to_backup
         elif [ "$iter_mode" = "review" ]; then
@@ -1630,7 +1675,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                     echo ""
                     echo "FINAL REVIEW APPROVED"
                     stop_dashboard
-                    write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "exited"
+                    write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
                     write_log_entry "final_review_approved" "iteration" "$ITERATION"
                     generate_report "All tasks completed and approved by final review."
                     exit 0
@@ -1664,7 +1709,7 @@ done
 
 echo ""
 echo "Reached iteration limit ($MAX_ITERATIONS)"
-write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "stopped"
+write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "limit_reached"
 write_log_entry "limit_reached" "iteration" "$ITERATION" "limit" "$MAX_ITERATIONS"
 generate_report "Reached iteration limit ($MAX_ITERATIONS)."
 stop_dashboard

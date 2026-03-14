@@ -187,3 +187,80 @@
   - Source: `aloop/cli/src/commands/dashboard.ts:519-679` (state loading/publishing path reads status/active without pid liveness probe), `aloop/cli/src/commands/dashboard.ts:817-854` (PID signal handling only in stop endpoint) (T2), `SPEC.md:900-901,921` (T3)
 - Prior low-priority task about missing dashboard `vite` prerequisite is stale: dashboard package already declares `vite` and `build` script.
   - Source: `aloop/cli/dashboard/package.json:7-9,34-40` (T2)
+
+## 2026-03-14 13:24Z — Planning recheck: triage corrections + remaining spec gaps [T2+T3]
+
+- Earlier triage-footer/filtering gap is now resolved: orchestrator triage replies include the required footer marker, and comment filtering skips agent-generated/bot comments plus external authors.
+  - Source: `aloop/cli/src/commands/orchestrate.ts:569-601,659-686` (T2 — direct inspection), `SPEC.md:1835-1850` (T3)
+- Remaining high-priority triage gap: actionable comments without `issue.child_session` still log `action_taken: "steering_injected"` even though `injectSteeringToChildLoop()` no-ops when no child exists, so guidance is effectively dropped.
+  - Source: `aloop/cli/src/commands/orchestrate.ts:612-615,678-681` (T2 — direct inspection), `SPEC.md:1713-1716,1897` (T3)
+- Regression coverage gap remains for that pre-dispatch path: no test currently asserts actionable triage behavior when `child_session` is missing.
+  - Source: command run `rg "child_session|without child|pre-dispatch|steering_injected should" aloop/cli/src/commands/orchestrate.test.ts -n` (T2)
+- Runtime/state parity gaps remain: loop status still writes `completed`/`limit_reached`/`interrupted` instead of required `stopped`/`exited`, and `STUCK_COUNT` reset is tied to skip handling rather than successful iteration completion.
+  - Source: `aloop/bin/loop.sh:1145,1471,1534,1632,1666` (T2 — direct inspection), `SPEC.md:899-902,921-922` (T3)
+- Dashboard/runtime gaps remain open: no dead-PID auto-correction in publish/state path; header still shows provider but not model/timing aggregates; docs panel still lists all non-TODO docs without non-empty filtering/overflow handling.
+  - Source: `aloop/cli/src/commands/dashboard.ts:556-589,664-677` (T2), `aloop/cli/dashboard/src/App.tsx:207,359,382-384,572-586` (T2), `SPEC.md:900,917-920` (T3)
+- GH workflow surface remains incomplete versus spec: `gh.ts` exposes low-level policy commands (including triage helpers) but still lacks `aloop gh start/watch/status/stop` orchestration commands.
+  - Source: `aloop/cli/src/commands/gh.ts:48-58` (T2), `SPEC.md:1290-1361,1418-1428` (T3)
+- Pipeline config model from spec is still not present in-repo (`.aloop/pipeline.yml`, `.aloop/agents/` missing).
+  - Source: command run `glob "**/pipeline.yml"` (no matches) and `glob "**/.aloop/agents/**"` (no matches) in repo root (T2), `SPEC.md:2314-2317` (T3)
+- `gh.ts` targeted branch-coverage gaps likely remain in tests: no evidence of `issue-label` remove-path assertions or parser error/fallback-path tests.
+  - Source: command run `rg "(--remove-label|label_action:\\s*'remove'|Unknown operation|Cannot build gh args|gh_operation_error)" aloop/cli/src/commands/gh.test.ts -n` (no matches) (T2)
+
+## 2026-03-14 14:05Z — Planning recheck: newly landed fixes vs remaining parity gaps [T2+T3]
+
+- Previously open triage-loss gap is now fixed: actionable comments with no `child_session` are queued as deferred steering (`steering_deferred` + `pending_steering_comments`) and flushed when a child session appears.
+  - Source: `aloop/cli/src/commands/orchestrate.ts:630-707` (T2 — direct inspection), `aloop/cli/src/commands/orchestrate.test.ts:1040-1102` (T2 — direct inspection)
+- Dashboard dead-PID auto-correction is now implemented in state loading/publish path via liveness probing (`process.kill(pid, 0)` + `withLivenessCorrectedState`).
+  - Source: `aloop/cli/src/commands/dashboard.ts:177-225` (T2 — direct inspection)
+- Runtime exit-state parity is still incomplete vs spec: loop scripts still write `state: "completed"` on successful completion paths, while spec requires exit reporting as `stopped`/`exited`.
+  - Source: `aloop/bin/loop.sh:1534,1633` (T2), `aloop/bin/loop.ps1:1672,1774` (T2), `SPEC.md:900-924` (T3)
+- `gh.ts` branch coverage remains below the >=80 target (currently `78.46%` branches) despite all current `gh.test.ts` tests passing.
+  - Source: command run `cd aloop/cli && node --experimental-test-coverage --import tsx --test src/commands/gh.test.ts` (coverage line: `gh.ts ... branch % 78.46`) (T2)
+- High-level GH workflow commands remain missing from `gh.ts` (`start`, `watch`, `status`, `stop` command surface not present).
+  - Source: `aloop/cli/src/commands/gh.ts:48-58` (T2), command run `rg "command\\('start'\\)|command\\('watch'\\)|command\\('status'\\)|command\\('stop'\\)" aloop/cli/src/commands/gh.ts -n` (no matches) (T2), `SPEC.md` GH workflow sections (T3)
+- Dashboard UI parity gaps remain: header still uses wrapping flex layout (not required grid), provider/model are not shown together, and docs tab list still includes all non-TODO doc keys without non-empty filtering or overflow menu behavior.
+  - Source: `aloop/cli/dashboard/src/App.tsx:295,359,382-384,399-402,572-589` (T2), `SPEC.md:918-923` (T3)
+- Loop branch-evidence state: shell harness now produces verifiable >=80 branch coverage (`100%`) for `loop.sh`; however, the proof gate still expects additional named artifacts not currently present in workspace.
+  - Source: command run `cd aloop/cli && cd ../bin && bash loop_branch_coverage.tests.sh coverage/shell-branch-coverage.json` (T2), `coverage/shell-branch-coverage.json:1-6` (T2), command run `glob "**/{dashboard-dead-pid-proof.json,triage-steering-proof.json,loop-exit-state-proof.txt}"` (no matches) (T2)
+
+## 2026-03-14 14:06Z — Planning recheck: status/watch coverage + runtime-state nuance [T2+T3]
+
+- `aloop status --watch` is already implemented (2s refresh loop with terminal re-render), so this acceptance item is not a current blocker.
+  - Source: `aloop/cli/src/commands/status.ts:11,87-103` (T2 — direct inspection), `SPEC.md:925` (T3)
+- Runtime exit-state behavior is partially aligned but still non-compliant on success paths: both loop scripts emit `stopped` for manual/limit exits, but still write `completed` on successful completion where spec requires `stopped`/`exited` semantics.
+  - Source: `aloop/bin/loop.sh:1534,1667` (T2), `aloop/bin/loop.ps1:1672,1774,1815,1824` (T2), `SPEC.md:900-924` (T3)
+- GH command surface remains policy-only (request/since operations) and still does not expose high-level workflow entrypoints `aloop gh start|watch|status|stop`.
+  - Source: `aloop/cli/src/commands/gh.ts:48-58` (T2 — direct inspection), `SPEC.md:1290-1364,1418-1431` (T3)
+
+## 2026-03-14 14:19Z — Planning recheck: dashboard/GH parity and evidence drift [T2+T3]
+
+- Proof artifacts previously flagged missing are now present in the repo root, so the proof-artifact presence gate is no longer a blocker.
+  - Source: command run `glob "**/{dashboard-dead-pid-proof.json,triage-steering-proof.json,loop-exit-state-proof.txt}"` (matches all three files) (T2)
+- GH command surface is still policy-level only (`pr-create`, `issue-label`, `issue-comments`, etc.) and still does not implement high-level `aloop gh start|watch|status|stop` workflows required by spec.
+  - Source: `aloop/cli/src/commands/gh.ts:49-58` (T2 — direct inspection), `SPEC.md:1294-1366,1422-1433` (T3)
+- `gh.ts` branch coverage remains below the file-level gate target for touched code (`78.46%` branches), despite all `gh.test.ts` tests passing.
+  - Source: command run `cd aloop/cli && node --experimental-test-coverage --import tsx --test src/commands/gh.test.ts` (coverage report line `gh.ts ... branch % 78.46`) (T2), review gate target in `TODO.md` current phase (T3)
+- `aloop status` still renders only flat active sessions plus provider health and does not show orchestrator→child issue/PR tree data.
+  - Source: `aloop/cli/src/commands/status.ts:44-70` (T2 — direct inspection), `SPEC.md:1205,1275` (T3)
+- Dashboard parity gaps remain open: header uses wrapping flex layout, provider/model are not shown together, and docs tabs are not filtered for non-empty content.
+  - Source: `aloop/cli/dashboard/src/App.tsx:295,359,382-384,572-589` (T2 — direct inspection), `SPEC.md:878-882,919-924` (T3)
+- Pipeline config/mutation surfaces are still absent (`.aloop/pipeline.yml` and `.aloop/agents/` not found), so configurable agent pipeline work remains open.
+  - Source: command run `glob "**/.aloop/pipeline.yml"` (no matches) and `glob "**/.aloop/agents/**"` (no matches) (T2), `SPEC.md:2211-2225,2318-2323` (T3)
+- Branch-evidence parity for PowerShell is now materially present via `loop.tests.ps1` generating `coverage/ps1-proof-branch-coverage.json` targeting `aloop/bin/loop.ps1` at `>=80%` threshold, reducing urgency of a dedicated "add ps1 branch-evidence gate" task.
+  - Source: `aloop/bin/loop.tests.ps1:816-855` (T2 — direct inspection)
+
+## 2026-03-14 15:45Z — Planning recheck: exit-state parity resolved; dashboard steering not yet applied to code [T2+T3]
+
+- Loop exit-state parity is NOW COMPLIANT: both `loop.sh` and `loop.ps1` emit `exited` for success paths and `stopped` for limit/interrupt exits. `stuck_count` resets on successful build iterations (not just skip paths). The earlier research entries flagging this as non-compliant are superseded by commits `ca10e4a` and `13a993c`.
+  - Source: `aloop/bin/loop.sh:1534,1617,1633,1667` (T2), `aloop/bin/loop.ps1:1672,1759,1774,1815,1824` (T2)
+- Steering commits `8719b63` (provider health sidebar) and `ffd05fe` (header grid layout) only modified `SPEC.md` and `TODO.md` — they did NOT touch dashboard source code (`App.tsx`). The dashboard still uses flex-wrap layout (line 295) and provider health is still inline in the header (lines 382-384), not in a sidebar tab.
+  - Source: `git show 8719b63 --stat` (only SPEC.md, TODO.md changed) (T2), `git show ffd05fe --stat` (only SPEC.md, TODO.md changed) (T2), `aloop/cli/dashboard/src/App.tsx:295,382-384` (T2 — direct inspection)
+- `gh.ts` branch coverage remains at 78.46%. Key untested branches: remove-label path (line 162), issue-create without labels (lines 142-144), `childCreatedPrNumbers` fallback (lines 228-234), `parseGhOutput` error handling (lines 324-325), `evaluatePolicy` default return (lines 368-369).
+  - Source: command run `cd aloop/cli && node --experimental-test-coverage --import tsx --test src/commands/gh.test.ts` (branch % 78.46) (T2)
+- Docs panel filters out `TODO.md` by name and returns null when no docs exist, but does NOT filter docs with empty string content. Spec requires filtering non-empty.
+  - Source: `aloop/cli/dashboard/src/App.tsx:572-573,585` (T2 — direct inspection)
+- Proof artifacts are present and no longer blocking: `dashboard-dead-pid-proof.json`, `triage-steering-proof.json`, `loop-exit-state-proof.txt` all exist.
+  - Source: previous research entry 14:19Z confirmed (T2)
+- Dead-PID liveness correction in dashboard is implemented via `withLivenessCorrectedState()`.
+  - Source: `aloop/cli/src/commands/dashboard.ts:187-198` (T2 — direct inspection)
