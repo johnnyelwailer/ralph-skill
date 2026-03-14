@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ghCommand, ghExecutor } from './gh.js';
+import { ghCommand, ghExecutor, ghStartCommandWithDeps } from './gh.js';
 
 type GhFixture = {
   tmpHome: string;
@@ -1420,5 +1420,191 @@ test('ghCommand enforces session repo on allowed orchestrator pr-create', async 
     assert.equal((entries[0].enforced as { base?: string }).base, 'agent/trunk');
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghStartCommandWithDeps injects issue/spec context and prepares branch/session metadata', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-start-test-'));
+  const promptsDir = path.join(tmpRoot, 'prompts');
+  const sessionDir = path.join(tmpRoot, 'session');
+  const specPath = path.join(tmpRoot, 'SPEC.slice.md');
+  fs.mkdirSync(promptsDir, { recursive: true });
+  fs.mkdirSync(sessionDir, { recursive: true });
+  fs.writeFileSync(path.join(promptsDir, 'PROMPT_plan.md'), '# Existing planner prompt\n', 'utf8');
+  fs.writeFileSync(path.join(sessionDir, 'meta.json'), JSON.stringify({ project_root: '/repo/root' }), 'utf8');
+  fs.writeFileSync(path.join(sessionDir, 'status.json'), JSON.stringify({ state: 'running' }), 'utf8');
+  fs.writeFileSync(specPath, '# Additional spec context\n', 'utf8');
+
+  const ghCalls: string[][] = [];
+  const gitCalls: string[][] = [];
+  let startOptions: { provider?: string; maxIterations?: string | number } = {};
+
+  try {
+    const result = await ghStartCommandWithDeps(
+      { issue: '42', spec: specPath, provider: 'codex', max: '30', output: 'json' },
+      {
+        startSession: async (options: any) => {
+          startOptions = options as { provider?: string; maxIterations?: string | number };
+          return {
+            session_id: 'sess-42',
+            session_dir: sessionDir,
+            prompts_dir: promptsDir,
+            work_dir: path.join(sessionDir, 'worktree'),
+            worktree: true,
+            worktree_path: path.join(sessionDir, 'worktree'),
+            branch: 'aloop/sess-42',
+            provider: 'codex',
+            mode: 'plan-build-review',
+            launch_mode: 'start',
+            max_iterations: 30,
+            max_stuck: 3,
+            pid: 1234,
+            started_at: '2026-03-14T12:00:00.000Z',
+            monitor_mode: 'none',
+            monitor_auto_open: false,
+            monitor_pid: null,
+            dashboard_url: null,
+            warnings: [],
+          };
+        },
+        execGh: async (args: string[]) => {
+          ghCalls.push(args);
+          if (args[0] === 'issue' && args[1] === 'view') {
+            return {
+              stdout: JSON.stringify({
+                number: 42,
+                title: 'Fix auth flow',
+                body: 'Implement auth handling for X',
+                url: 'https://github.com/test/repo/issues/42',
+                labels: [{ name: 'bug' }],
+                comments: [{ author: { login: 'alice' }, body: 'Please include tests.' }],
+              }),
+              stderr: '',
+            };
+          }
+          throw new Error(`Unexpected gh call: ${args.join(' ')}`);
+        },
+        execGit: async (args: string[]) => {
+          gitCalls.push(args);
+          if (args.includes('rev-parse')) {
+            throw new Error('branch missing');
+          }
+          return { stdout: '', stderr: '' };
+        },
+        readFile: (filePath: string, encoding: BufferEncoding) => fs.readFileSync(filePath, encoding),
+        writeFile: (filePath: string, content: string) => fs.writeFileSync(filePath, content, 'utf8'),
+        existsSync: (filePath: string) => fs.existsSync(filePath),
+        cwd: () => tmpRoot,
+      } as any,
+    );
+
+    assert.equal(result.issue.number, 42);
+    assert.equal(result.issue.repo, 'test/repo');
+    assert.equal(result.pending_completion, true);
+    assert.equal(result.base_branch, 'agent/main');
+    assert.equal(startOptions.provider, 'codex');
+    assert.equal(startOptions.maxIterations, '30');
+
+    const updatedPrompt = fs.readFileSync(path.join(promptsDir, 'PROMPT_plan.md'), 'utf8');
+    assert.match(updatedPrompt, /GitHub Issue Requirements/);
+    assert.match(updatedPrompt, /Issue: #42/);
+    assert.match(updatedPrompt, /Additional Spec Context/);
+    assert.match(updatedPrompt, /# Additional spec context/);
+
+    const updatedConfig = JSON.parse(fs.readFileSync(path.join(sessionDir, 'config.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(updatedConfig.repo, 'test/repo');
+    assert.equal(updatedConfig.issue_number, 42);
+    assert.deepStrictEqual(updatedConfig.created_pr_numbers, []);
+
+    const updatedMeta = JSON.parse(fs.readFileSync(path.join(sessionDir, 'meta.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(updatedMeta.branch, 'agent/issue-42-fix-auth-flow');
+    assert.equal(updatedMeta.gh_issue_number, 42);
+    assert.equal(ghCalls.length, 1);
+    assert.equal(gitCalls[0][2], 'branch');
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test('ghStartCommandWithDeps creates PR and issue summary comment when session already exited', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-start-finalize-'));
+  const promptsDir = path.join(tmpRoot, 'prompts');
+  const sessionDir = path.join(tmpRoot, 'session');
+  fs.mkdirSync(promptsDir, { recursive: true });
+  fs.mkdirSync(sessionDir, { recursive: true });
+  fs.writeFileSync(path.join(promptsDir, 'PROMPT_plan.md'), '# planner\n', 'utf8');
+  fs.writeFileSync(path.join(sessionDir, 'meta.json'), JSON.stringify({ project_root: '/repo/root' }), 'utf8');
+  fs.writeFileSync(path.join(sessionDir, 'status.json'), JSON.stringify({ state: 'exited' }), 'utf8');
+
+  const ghCalls: string[][] = [];
+
+  try {
+    const result = await ghStartCommandWithDeps(
+      { issue: 7, repo: 'octo/repo', output: 'json' },
+      {
+        startSession: async () => ({
+          session_id: 'sess-7',
+          session_dir: sessionDir,
+          prompts_dir: promptsDir,
+          work_dir: path.join(sessionDir, 'worktree'),
+          worktree: true,
+          worktree_path: path.join(sessionDir, 'worktree'),
+          branch: 'aloop/sess-7',
+          provider: 'claude',
+          mode: 'plan-build-review',
+          launch_mode: 'start',
+          max_iterations: 50,
+          max_stuck: 3,
+          pid: 4321,
+          started_at: '2026-03-14T12:00:00.000Z',
+          monitor_mode: 'none',
+          monitor_auto_open: false,
+          monitor_pid: null,
+          dashboard_url: null,
+          warnings: [],
+        }),
+        execGh: async (args: string[]) => {
+          ghCalls.push(args);
+          if (args[0] === 'issue' && args[1] === 'view') {
+            return {
+              stdout: JSON.stringify({
+                number: 7,
+                title: 'Improve docs',
+                body: 'Do docs work',
+                url: 'https://github.com/octo/repo/issues/7',
+                labels: [],
+                comments: [],
+              }),
+              stderr: '',
+            };
+          }
+          if (args[0] === 'pr' && args[1] === 'create') {
+            return { stdout: 'https://github.com/octo/repo/pull/99\n', stderr: '' };
+          }
+          if (args[0] === 'issue' && args[1] === 'comment') {
+            return { stdout: '', stderr: '' };
+          }
+          throw new Error(`Unexpected gh call: ${args.join(' ')}`);
+        },
+        execGit: async () => ({ stdout: '', stderr: '' }),
+        readFile: (filePath: string, encoding: BufferEncoding) => fs.readFileSync(filePath, encoding),
+        writeFile: (filePath: string, content: string) => fs.writeFileSync(filePath, content, 'utf8'),
+        existsSync: (filePath: string) => fs.existsSync(filePath),
+        cwd: () => tmpRoot,
+      } as any,
+    );
+
+    assert.equal(result.pending_completion, false);
+    assert.equal(result.issue_comment_posted, true);
+    assert.equal(result.pr?.number, 99);
+    assert.equal(result.pr?.url, 'https://github.com/octo/repo/pull/99');
+    assert.equal(ghCalls.filter((args) => args[0] === 'pr' && args[1] === 'create').length, 1);
+    assert.equal(ghCalls.filter((args) => args[0] === 'issue' && args[1] === 'comment').length, 1);
+
+    const config = JSON.parse(fs.readFileSync(path.join(sessionDir, 'config.json'), 'utf8')) as Record<string, unknown>;
+    assert.deepStrictEqual(config.created_pr_numbers, [99]);
+    assert.deepStrictEqual(config.childCreatedPrNumbers, [99]);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
 });

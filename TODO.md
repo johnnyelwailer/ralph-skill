@@ -6,7 +6,7 @@
 - [x] [tests][high] Raise `aloop/cli/src/commands/gh.ts` branch coverage from `78.46%` to `>=80%` with targeted branch tests (remove-label path, parser fallback/error paths, and throw/default branches) to clear review gate failures.
 
 ### Up Next
-- [ ] [gh-workflows][high] Implement high-level `aloop gh start --issue <N>` flow (issue fetch, branch/session/worktree setup, loop launch, PR creation/link-back summary) to match the P2 command surface.
+- [x] [gh-workflows][high] Implement high-level `aloop gh start --issue <N>` flow (issue fetch, branch/session/worktree setup, loop launch, PR creation/link-back summary) to match the P2 command surface.
 - [ ] [gh-workflows][high] Implement `aloop gh watch|status|stop` with persisted issue↔session mapping and concurrency-aware queueing (`~/.aloop/watch.json`) so GH-linked sessions are observable/controllable.
 - [ ] [gh-workflows][high] Implement PR feedback re-iteration loop (review comments + CI failure ingestion) with run/comment dedupe and max-iteration safety caps.
 - [ ] [dashboard][high] Replace header wrapping layout with CSS grid `fr` columns so provider/model/status/timestamp never clip on narrower widths.

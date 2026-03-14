@@ -4,6 +4,7 @@ import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { startCommandWithDeps, type StartCommandOptions, type StartCommandResult } from './start.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -17,6 +18,75 @@ export const ghExecutor = {
 // Define the gh command
 export const ghCommand = new Command('gh')
   .description('Policy-enforced GitHub operations');
+
+export interface GhStartCommandOptions {
+  issue: string | number;
+  spec?: string;
+  provider?: string;
+  max?: string | number;
+  repo?: string;
+  homeDir?: string;
+  projectRoot?: string;
+  output?: 'json' | 'text';
+}
+
+export interface GhStartResult {
+  issue: {
+    number: number;
+    title: string;
+    url: string;
+    repo: string | null;
+  };
+  session: {
+    id: string;
+    dir: string;
+    prompts_dir: string;
+    work_dir: string;
+    branch: string | null;
+    worktree: boolean;
+    pid: number;
+  };
+  base_branch: 'agent/main' | 'main';
+  pr: { number: number | null; url: string | null } | null;
+  issue_comment_posted: boolean;
+  completion_state: string | null;
+  pending_completion: boolean;
+  warnings: string[];
+}
+
+interface GhIssueCommentView {
+  author?: { login?: string };
+  body?: string;
+}
+
+interface GhIssueView {
+  number: number;
+  title: string;
+  body?: string;
+  url: string;
+  labels?: Array<{ name?: string }>;
+  comments?: GhIssueCommentView[];
+}
+
+interface GhStartDeps {
+  startSession: (options: StartCommandOptions) => Promise<StartCommandResult>;
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  execGit: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  readFile: (filePath: string, encoding: BufferEncoding) => string;
+  writeFile: (filePath: string, content: string) => void;
+  existsSync: (filePath: string) => boolean;
+  cwd: () => string;
+}
+
+const defaultGhStartDeps: GhStartDeps = {
+  startSession: (options) => startCommandWithDeps(options),
+  execGh: (args) => ghExecutor.exec(args),
+  execGit: (args) => execFileAsync('git', args),
+  readFile: (filePath, encoding) => fs.readFileSync(filePath, encoding),
+  writeFile: (filePath, content) => fs.writeFileSync(filePath, content, 'utf8'),
+  existsSync: (filePath) => fs.existsSync(filePath),
+  cwd: () => process.cwd(),
+};
 
 // Common options for gh subcommands
 function addGhRequestSubcommand(name: string, description: string) {
@@ -44,6 +114,42 @@ function addGhSinceSubcommand(name: string, description: string) {
       await executeGhOperation(name, options);
     });
 }
+
+
+ghCommand
+  .command('start')
+  .description('Start a GitHub-linked aloop session for an issue')
+  .requiredOption('--issue <number>', 'GitHub issue number')
+  .option('--spec <path>', 'Additional specification file to include in prompt context')
+  .option('--provider <provider>', 'Provider override for the launched loop')
+  .option('--max <number>', 'Max iteration override')
+  .option('--repo <owner/repo>', 'Explicit GitHub repository (defaults to issue URL owner/repo)')
+  .option('--project-root <path>', 'Project root override')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(async (options: GhStartCommandOptions) => {
+    const result = await ghStartCommandWithDeps(options);
+    if (options.output === 'json') {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    console.log(`Started GH-linked session ${result.session.id} for issue #${result.issue.number}.`);
+    console.log(`Branch: ${result.session.branch}`);
+    console.log(`Base branch: ${result.base_branch}`);
+    console.log(`Work dir: ${result.session.work_dir}`);
+    if (result.pending_completion) {
+      console.log('Loop is still running; PR creation and issue summary comment will occur when the session reaches a terminal state.');
+    } else if (result.pr?.url) {
+      console.log(`PR: ${result.pr.url}`);
+      console.log('Posted summary comment back to the source issue.');
+    }
+    if (result.warnings.length > 0) {
+      for (const warning of result.warnings) {
+        console.log(`Warning: ${warning}`);
+      }
+    }
+  });
 
 // Register subcommands
 addGhRequestSubcommand('pr-create', 'Create a pull request');
@@ -81,6 +187,309 @@ function parsePositiveInteger(value: unknown): number | undefined {
   }
 
   return undefined;
+}
+
+
+function sanitizeBranchSlug(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (!slug) {
+    return 'issue';
+  }
+  return slug.slice(0, 40).replace(/-+$/g, '');
+}
+
+function extractRepoFromIssueUrl(url: string): string | null {
+  const match = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/issues\/\d+/i);
+  if (!match) {
+    return null;
+  }
+  return `${match[1]}/${match[2]}`;
+}
+
+function parsePrReference(raw: string): { number: number | null; url: string | null } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { number: null, url: null };
+  }
+  const match = trimmed.match(/\/pull\/(\d+)/);
+  return {
+    number: match ? Number.parseInt(match[1], 10) : null,
+    url: trimmed,
+  };
+}
+
+function extractPositiveIntegers(values: unknown): number[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return values
+    .map((value) => parsePositiveInteger(value))
+    .filter((value): value is number => value !== undefined);
+}
+
+function normalizeIssuePayload(payload: unknown, expectedIssueNumber: number): GhIssueView {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Invalid issue payload returned by gh issue view.');
+  }
+
+  const issue = payload as Record<string, unknown>;
+  const number = parsePositiveInteger(issue.number);
+  if (number !== expectedIssueNumber) {
+    throw new Error(`gh issue view returned unexpected issue number: ${String(issue.number)}`);
+  }
+
+  const title = typeof issue.title === 'string' ? issue.title.trim() : '';
+  const url = typeof issue.url === 'string' ? issue.url.trim() : '';
+  if (!title || !url) {
+    throw new Error('Issue payload is missing required title/url fields.');
+  }
+
+  const labels = Array.isArray(issue.labels)
+    ? issue.labels
+      .filter((entry): entry is { name?: string } => Boolean(entry) && typeof entry === 'object')
+      .map((entry) => ({ name: typeof entry.name === 'string' ? entry.name : undefined }))
+    : [];
+
+  const comments = Array.isArray(issue.comments)
+    ? issue.comments
+      .filter((entry): entry is { author?: { login?: string }; body?: string } => Boolean(entry) && typeof entry === 'object')
+      .map((entry) => ({
+        author: entry.author && typeof entry.author === 'object' ? { login: typeof entry.author.login === 'string' ? entry.author.login : undefined } : undefined,
+        body: typeof entry.body === 'string' ? entry.body : undefined,
+      }))
+    : [];
+
+  return {
+    number,
+    title,
+    body: typeof issue.body === 'string' ? issue.body : '',
+    url,
+    labels,
+    comments,
+  };
+}
+
+function buildIssueContextBlock(issue: GhIssueView, specContent: string | null): string {
+  const labels = (issue.labels ?? [])
+    .map((label) => label.name)
+    .filter((name): name is string => Boolean(name));
+
+  const commentLines = (issue.comments ?? [])
+    .slice(-10)
+    .map((comment, index) => {
+      const author = comment.author?.login ?? 'unknown';
+      const body = (comment.body ?? '').trim().replace(/\s+/g, ' ');
+      const snippet = body.length > 160 ? `${body.slice(0, 157)}...` : body;
+      return `${index + 1}. @${author}: ${snippet}`;
+    });
+
+  const parts: string[] = [
+    '<!-- aloop-gh-issue-context:start -->',
+    '# GitHub Issue Requirements',
+    '',
+    `Issue: #${issue.number} — ${issue.title}`,
+    `URL: ${issue.url}`,
+    `Labels: ${labels.length > 0 ? labels.join(', ') : '(none)'}`,
+    '',
+    '## Issue Body',
+    '',
+    (issue.body ?? '').trim() || '(empty)',
+  ];
+
+  if (commentLines.length > 0) {
+    parts.push('', '## Recent Comments', '', ...commentLines);
+  }
+
+  if (specContent !== null) {
+    parts.push('', '## Additional Spec Context (--spec)', '', specContent.trim() || '(empty)');
+  }
+
+  parts.push('', '<!-- aloop-gh-issue-context:end -->', '');
+  return parts.join('\n');
+}
+
+function upsertIssueContextPrompt(existingContent: string, contextBlock: string): string {
+  const pattern = /<!-- aloop-gh-issue-context:start -->[\s\S]*?<!-- aloop-gh-issue-context:end -->\n*/g;
+  const stripped = existingContent.replace(pattern, '').trimStart();
+  return `${contextBlock}${stripped.endsWith('\n') ? stripped : `${stripped}\n`}`;
+}
+
+function isTerminalState(value: unknown): value is 'exited' | 'stopped' {
+  return value === 'exited' || value === 'stopped';
+}
+
+function loadJsonObject(filePath: string, deps: GhStartDeps): Record<string, unknown> {
+  if (!deps.existsSync(filePath)) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(deps.readFile(filePath, 'utf8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+export async function ghStartCommandWithDeps(options: GhStartCommandOptions, deps: GhStartDeps = defaultGhStartDeps): Promise<GhStartResult> {
+  const issueNumber = parsePositiveInteger(options.issue);
+  if (!issueNumber) {
+    throw new Error('gh start requires --issue <number>.');
+  }
+
+  const warnings: string[] = [];
+  const issueViewArgs = ['issue', 'view', String(issueNumber), '--json', 'number,title,body,url,labels,comments'];
+  const requestedRepo = typeof options.repo === 'string' && options.repo.trim() ? options.repo.trim() : null;
+  if (requestedRepo) {
+    issueViewArgs.push('--repo', requestedRepo);
+  }
+  const issueRaw = await deps.execGh(issueViewArgs);
+  const issuePayload = JSON.parse(issueRaw.stdout) as unknown;
+  const issue = normalizeIssuePayload(issuePayload, issueNumber);
+
+  const issueRepo = requestedRepo ?? extractRepoFromIssueUrl(issue.url);
+  if (!issueRepo) {
+    warnings.push('Could not infer repository from issue URL; PR creation/link-back will require --repo.');
+  }
+
+  let specContent: string | null = null;
+  if (typeof options.spec === 'string' && options.spec.trim()) {
+    const specPath = path.isAbsolute(options.spec) ? options.spec : path.join(deps.cwd(), options.spec);
+    if (!deps.existsSync(specPath)) {
+      throw new Error(`--spec file not found: ${specPath}`);
+    }
+    specContent = deps.readFile(specPath, 'utf8');
+  }
+
+  const started = await deps.startSession({
+    projectRoot: options.projectRoot,
+    homeDir: options.homeDir,
+    provider: options.provider,
+    maxIterations: options.max,
+  });
+
+  if (!started.worktree || !started.worktree_path || !started.branch) {
+    throw new Error('gh start requires a git worktree session. Remove in-place/worktree fallback constraints and retry.');
+  }
+
+  const desiredBranch = `agent/issue-${issue.number}-${sanitizeBranchSlug(issue.title)}`;
+  if (started.branch !== desiredBranch) {
+    await deps.execGit(['-C', started.worktree_path, 'branch', '-m', desiredBranch]);
+  }
+
+  const planPromptPath = path.join(started.prompts_dir, 'PROMPT_plan.md');
+  if (!deps.existsSync(planPromptPath)) {
+    throw new Error(`Missing planner prompt: ${planPromptPath}`);
+  }
+  const currentPlanPrompt = deps.readFile(planPromptPath, 'utf8');
+  const issueContext = buildIssueContextBlock(issue, specContent);
+  deps.writeFile(planPromptPath, upsertIssueContextPrompt(currentPlanPrompt, issueContext));
+
+  const metaPath = path.join(started.session_dir, 'meta.json');
+  const statusPath = path.join(started.session_dir, 'status.json');
+  const configPath = path.join(started.session_dir, 'config.json');
+
+  const meta = loadJsonObject(metaPath, deps);
+  meta.branch = desiredBranch;
+  meta.gh_issue_number = issue.number;
+  meta.gh_issue_url = issue.url;
+  meta.gh_repo = issueRepo;
+  deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+
+  const config = loadJsonObject(configPath, deps);
+  const createdPrNumbers = extractPositiveIntegers(config.created_pr_numbers);
+  config.repo = issueRepo;
+  config.issue_number = issue.number;
+  config.assignedIssueNumber = issue.number;
+  config.created_pr_numbers = createdPrNumbers;
+  config.childCreatedPrNumbers = createdPrNumbers;
+  config.role = 'child-loop';
+  config.issue_url = issue.url;
+  deps.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
+  let baseBranch: 'agent/main' | 'main' = 'main';
+  const projectRoot = typeof meta.project_root === 'string' && meta.project_root.trim() ? meta.project_root : (options.projectRoot ?? deps.cwd());
+  try {
+    await deps.execGit(['-C', projectRoot, 'rev-parse', '--verify', 'agent/main']);
+    baseBranch = 'agent/main';
+  } catch {
+    try {
+      await deps.execGit(['-C', projectRoot, 'branch', 'agent/main', 'main']);
+      baseBranch = 'agent/main';
+    } catch {
+      warnings.push('Unable to create agent/main from main; PR base will remain main.');
+      baseBranch = 'main';
+    }
+  }
+
+  const status = loadJsonObject(statusPath, deps);
+  const completionState = typeof status.state === 'string' ? status.state : null;
+  let pr: { number: number | null; url: string | null } | null = null;
+  let issueCommentPosted = false;
+  let pendingCompletion = true;
+
+  if (isTerminalState(completionState) && issueRepo) {
+    const prTitle = `[aloop] ${issue.title}`;
+    const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}`;
+    const prCreate = await deps.execGh([
+      'pr', 'create',
+      '--repo', issueRepo,
+      '--base', baseBranch,
+      '--head', desiredBranch,
+      '--title', prTitle,
+      '--body', prBody,
+    ]);
+    pr = parsePrReference(prCreate.stdout);
+
+    if (pr.number !== null) {
+      const next = new Set<number>(createdPrNumbers);
+      next.add(pr.number);
+      config.created_pr_numbers = Array.from(next.values());
+      config.childCreatedPrNumbers = Array.from(next.values());
+      deps.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+    }
+
+    const summary = [
+      `Aloop session ${started.session_id} completed for #${issue.number}.`,
+      pr?.url ? `Created PR: ${pr.url}` : 'Created PR (URL unavailable).',
+      `Branch: ${desiredBranch}`,
+      `State: ${completionState}`,
+    ].join('\n');
+    await deps.execGh(['issue', 'comment', String(issue.number), '--repo', issueRepo, '--body', summary]);
+    issueCommentPosted = true;
+    pendingCompletion = false;
+  } else {
+    pendingCompletion = true;
+  }
+
+  return {
+    issue: {
+      number: issue.number,
+      title: issue.title,
+      url: issue.url,
+      repo: issueRepo,
+    },
+    session: {
+      id: started.session_id,
+      dir: started.session_dir,
+      prompts_dir: started.prompts_dir,
+      work_dir: started.work_dir,
+      branch: desiredBranch,
+      worktree: started.worktree,
+      pid: started.pid,
+    },
+    base_branch: baseBranch,
+    pr,
+    issue_comment_posted: issueCommentPosted,
+    completion_state: completionState,
+    pending_completion: pendingCompletion,
+    warnings,
+  };
 }
 
 function includesAloopAutoLabel(targetLabels: unknown): boolean {
