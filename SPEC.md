@@ -58,7 +58,7 @@ The inner loop (`loop.sh` / `loop.ps1`) and the aloop runtime (`aloop` CLI, TS/B
 - Process convention-file protocol (`.aloop/requests/` → `.aloop/responses/`)
 - Monitor provider health (cross-session)
 - GitHub operations (`aloop gh` subcommands)
-- Orchestrator mode: decompose, schedule, dispatch, monitor, gate, replan
+- Orchestrator mode: spec gap analysis, decompose, schedule, dispatch, monitor, gate, replan
 
 ### Communication Contract
 - **Runtime → Inner Loop**: `loop-plan.json` (pipeline), `meta.json` (providers), `queue/` folder (steering, overrides)
@@ -898,7 +898,7 @@ The orchestrator and child loops are **completely different programs** with diff
 
 **Orchestrator** (TS/Bun, `aloop/cli/`):
 - A proper application in the aloop TypeScript/Bun codebase
-- Manages the full fan-out lifecycle: decompose, schedule, dispatch, monitor, gate, replan
+- Manages the full fan-out lifecycle: spec gap analysis, decompose, schedule, dispatch, monitor, gate, replan
 - Talks to GitHub API (issues, PRs, dependencies, sub-issues)
 - Watches spec files for changes, triggers replan agents
 - Manages concurrency, budget, wave advancement
@@ -918,7 +918,7 @@ The orchestrator and child loops are **completely different programs** with diff
 Orchestrator (TS/Bun)
   ├── watches repo for spec changes (git diff on spec glob)
   ├── polls GitHub for issue/PR state changes
-  ├── runs agent-powered decompose/schedule/replan
+  ├── runs agent-powered spec-analysis/decompose/schedule/replan
   ├── spawns child inner loops:
   │     ├── loop script (issue #11) ← reads issue body as its spec
   │     ├── loop script (issue #12) ← reads issue body as its spec
@@ -1114,6 +1114,35 @@ The orchestrator avoids expensive polling by combining ETag-guarded REST checks 
 ### Orchestrator Phases
 
 The orchestrator itself is agent-powered at every phase — no deterministic decomposition or scheduling, since the dependency graph is semantic (no code exists yet to analyze structurally).
+
+#### Phase 0: Spec Gap Analysis
+
+Before any decomposition, the **spec analyst agent** reviews the spec for contradictions, ambiguities, missing acceptance criteria, and unstated assumptions that would cause wasted build iterations downstream. This runs:
+- At orchestrator start (before first decompose)
+- After spec changes are detected (re-triggered by the spec watcher)
+
+**Process:**
+1. Read all spec files (`SPEC.md` or `specs/*.md`)
+2. Read the codebase to understand existing state and constraints
+3. Identify gaps: contradictions between sections, ambiguous requirements, missing edge cases, unstated dependencies, acceptance criteria that can't be objectively verified
+4. For each gap, create a GitHub issue labeled `aloop/spec-question` with:
+   - The contradiction or ambiguity (quoted from spec)
+   - Why it matters (what would go wrong during implementation)
+   - Suggested resolution options (if possible)
+   - `@mention` the user for a decision
+5. **Block decomposition** until all `aloop/spec-question` issues are resolved (closed)
+
+**What the analyst looks for:**
+- **Contradictions** — section A says X, section B says Y
+- **Ambiguous requirements** — "should handle errors gracefully" (how? retry? log? abort?)
+- **Missing acceptance criteria** — feature described but no way to verify it's done
+- **Unstated assumptions** — "uses the database" (which one? what schema?)
+- **Impossible constraints** — requirements that conflict with stated constraints
+- **Scope gaps** — features referenced but never defined
+
+**Interview style:** Each issue is a focused question, not a dump of all problems. The user answers by commenting, the analyst (or orchestrator triage) picks up the answer and updates the spec accordingly. Once all questions are resolved, decomposition proceeds.
+
+**Re-triggering:** When the spec watcher detects changes to spec files (git diff on spec glob), the analyst re-runs on the changed sections only. New questions block affected slices, not the entire pipeline — already-dispatched work on unaffected slices continues.
 
 #### Phase 1: Decompose
 
@@ -1397,6 +1426,9 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 
 ### Acceptance Criteria
 
+- [ ] Spec analyst agent runs before decomposition, creates `aloop/spec-question` issues for contradictions/ambiguities
+- [ ] Decomposition blocks until all `aloop/spec-question` issues are resolved
+- [ ] Spec analyst re-triggers on spec file changes, blocking only affected slices
 - [ ] Orchestrator decomposes spec(s) into vertical slices as parent issues with sub-issues
 - [ ] Sub-issues created via `gh api` with sub-issue linking to parent
 - [ ] Decomposition is vertical-slice-first — each parent is an independently shippable feature
