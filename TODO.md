@@ -4,6 +4,9 @@
 
 ### In Progress
 - [x] [review][high] Complete triage comment actions in `applyTriageResultsToIssue`: post clarification/question replies, include required triage footer, and skip bot/external-author comments per spec.
+- [ ] [review] Gate 1: `runTriageMonitorCycle` is only invoked during `orchestrateCommandWithDeps` initialization (`orchestrate.ts:414-416`) and actionable comments marked `steering_injected` are not actually written to `STEERING.md`/child TODO; implement true monitor-loop integration and real steering injection per SPEC triage intent (priority: high).
+- [ ] [review] Gate 5: repository validation is still red (`aloop/cli npm test` fails at `src/commands/session.test.ts` — `resolveHomeDir trims trailing separators...`), so regression gate cannot pass; fix or stabilize this test to restore green baseline (priority: high).
+- [ ] [review] Gate 6: proof manifest artifacts are not present (`proof-run.log`, `monitor-cycle-proof.json`, `triage-action-policy-proof.json` not found in workspace); regenerate and attach verifiable artifacts at declared paths (priority: high).
 
 ### Up Next
 - [x] [orchestrator][high] Wire a real monitor-cycle triage step into orchestrator flow: poll `aloop gh issue-comments`/`pr-comments`, apply triage per issue, and persist `last_comment_check` + `triage_log` updates.
