@@ -1742,6 +1742,78 @@ try {
             Refresh-ProvidersFromMeta
         }
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
+
+        # Check queue/ folder for override prompts (takes priority over cycle)
+        $queueDir = Join-Path $SessionDir "queue"
+        $queueItem = $null
+        if (Test-Path $queueDir) {
+            $queueItem = Get-ChildItem -Path $queueDir -Filter '*.md' -File -ErrorAction SilentlyContinue |
+                Sort-Object Name | Select-Object -First 1
+        }
+
+        if ($queueItem) {
+            $queueBasename = $queueItem.Name
+            Write-Host "`n--- Queue Override: $queueBasename [$timestamp] [$iterationProvider] ---" -ForegroundColor Blue
+
+            Parse-Frontmatter -PromptFile $queueItem.FullName
+            $queueIterMode = if ($script:frontmatter.agent) { $script:frontmatter.agent } else { 'queue' }
+            $queueIterProvider = $iterationProvider
+            if (-not [string]::IsNullOrWhiteSpace($script:frontmatter.provider)) {
+                if (Get-Command $script:frontmatter.provider -ErrorAction SilentlyContinue) {
+                    $queueIterProvider = $script:frontmatter.provider
+                } else {
+                    Write-LogEntry -Event "queue_frontmatter_provider_unavailable" -Data @{
+                        requested_provider = $script:frontmatter.provider
+                        fallback_provider = $iterationProvider
+                        queue_file = $queueBasename
+                    }
+                }
+            }
+
+            Write-Status -Iteration $iteration -Phase $queueIterMode -CurrentProvider $queueIterProvider -StuckCount $stuckState.StuckCount
+            Write-LogEntry -Event "queue_override_start" -Data @{
+                iteration = $iteration
+                queue_file = $queueBasename
+                agent = $queueIterMode
+                provider = $queueIterProvider
+            }
+
+            try {
+                $queuePromptContent = Get-Content -Path $queueItem.FullName -Raw
+                Push-Location $WorkDir
+                try {
+                    $providerOutput = Invoke-Provider -ProviderName $queueIterProvider -PromptContent $queuePromptContent -ModelOverride ([string]$script:frontmatter.model)
+                }
+                finally {
+                    Pop-Location
+                }
+                Show-AgentSummary -ProviderName $queueIterProvider -ProviderOutput $providerOutput
+                Update-ProviderHealthOnSuccess -ProviderName $queueIterProvider
+                Remove-Item $queueItem.FullName -Force -ErrorAction SilentlyContinue
+                Write-LogEntry -Event "queue_override_complete" -Data @{
+                    iteration = $iteration
+                    queue_file = $queueBasename
+                    provider = $queueIterProvider
+                }
+                Write-Host "`n[Queue override complete: $queueBasename]" -ForegroundColor Green
+            }
+            catch {
+                $errorContext = "$_ $script:lastProviderOutputText"
+                Update-ProviderHealthOnFailure -ProviderName $queueIterProvider -ErrorText $errorContext
+                Remove-Item $queueItem.FullName -Force -ErrorAction SilentlyContinue
+                Write-LogEntry -Event "queue_override_error" -Data @{
+                    iteration = $iteration
+                    queue_file = $queueBasename
+                    provider = $queueIterProvider
+                    error = "$_"
+                }
+                Write-Warning "Queue override iteration failed for $queueBasename: $_"
+            }
+
+            Start-Sleep -Seconds 3
+            continue
+        }
+
         $iterationMode = Resolve-IterationMode -IterationNumber $iteration
 
         # Check for live steering instruction (overrides normal mode)

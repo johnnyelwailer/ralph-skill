@@ -1655,6 +1655,55 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         refresh_providers_from_meta
     fi
     iter_provider=$(resolve_iteration_provider $ITERATION)
+
+    # Check queue/ folder for override prompts (takes priority over cycle)
+    QUEUE_DIR="$SESSION_DIR/queue"
+    QUEUE_ITEM=""
+    if [ -d "$QUEUE_DIR" ]; then
+        QUEUE_ITEM=$(find "$QUEUE_DIR" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort | head -n1)
+    fi
+
+    if [ -n "$QUEUE_ITEM" ] && [ -f "$QUEUE_ITEM" ]; then
+        QUEUE_BASENAME=$(basename "$QUEUE_ITEM")
+        echo ""
+        echo -e "\033[34m--- Queue Override: $QUEUE_BASENAME [$(date '+%Y-%m-%d %H:%M:%S')] [$iter_provider] ---\033[0m"
+
+        parse_frontmatter "$QUEUE_ITEM"
+        queue_iter_mode="${FRONTMATTER_AGENT:-queue}"
+        queue_iter_provider="$iter_provider"
+        if [ -n "$FRONTMATTER_PROVIDER" ]; then
+            if command -v "$FRONTMATTER_PROVIDER" >/dev/null 2>&1; then
+                queue_iter_provider="$FRONTMATTER_PROVIDER"
+            else
+                write_log_entry "queue_frontmatter_provider_unavailable" \
+                    "requested_provider" "$FRONTMATTER_PROVIDER" \
+                    "fallback_provider" "$iter_provider" \
+                    "queue_file" "$QUEUE_BASENAME"
+            fi
+        fi
+
+        write_status "$ITERATION" "$queue_iter_mode" "$queue_iter_provider" "$STUCK_COUNT"
+        write_log_entry "queue_override_start" "iteration" "$ITERATION" "queue_file" "$QUEUE_BASENAME" "agent" "$queue_iter_mode" "provider" "$queue_iter_provider"
+
+        queue_prompt_content=$(cat "$QUEUE_ITEM")
+        cd "$WORK_DIR"
+        if invoke_provider "$queue_iter_provider" "$queue_prompt_content" "$FRONTMATTER_MODEL"; then
+            update_provider_health_on_success "$queue_iter_provider"
+            rm -f "$QUEUE_ITEM"
+            write_log_entry "queue_override_complete" "iteration" "$ITERATION" "queue_file" "$QUEUE_BASENAME" "provider" "$queue_iter_provider"
+            echo ""
+            echo "[Queue override complete: $QUEUE_BASENAME]"
+        else
+            update_provider_health_on_failure "$queue_iter_provider" "${LAST_PROVIDER_ERROR:-provider_failed}"
+            rm -f "$QUEUE_ITEM"
+            write_log_entry "queue_override_error" "iteration" "$ITERATION" "queue_file" "$QUEUE_BASENAME" "provider" "$queue_iter_provider" "error" "${LAST_PROVIDER_ERROR:-provider_failed}"
+            echo "Warning: Queue override iteration failed for $QUEUE_BASENAME"
+        fi
+
+        sleep 3
+        continue
+    fi
+
     # Call directly (not via subshell) so flag-clearing affects the main shell
     resolve_iteration_mode "$ITERATION" > /dev/null
     iter_mode="$RESOLVED_MODE"
