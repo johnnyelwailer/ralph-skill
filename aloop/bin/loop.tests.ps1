@@ -1387,8 +1387,9 @@ json_escape "`$file_contents"
         $jsonStr = '{{ "value": "{0}" }}' -f $escaped
         $parsed = $jsonStr | ConvertFrom-Json -ErrorAction Stop
         
+        $normalizedParsed = $parsed.value -replace "`r`n", "`n"
         $normalizedExpected = $testInput -replace "`r`n", "`n"
-        $parsed.value.TrimEnd("`n") | Should -BeExactly $normalizedExpected.TrimEnd("`n")
+        $normalizedParsed.TrimEnd("`n") | Should -BeExactly $normalizedExpected.TrimEnd("`n")
     }
 
     It 'handles empty input correctly' {
@@ -2516,10 +2517,12 @@ exit 0
         Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
         Set-Content (Join-Path $fakeBinDir 'opencode.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
         # Create plain executable shims for Linux
+        # Note: PowerShell escapes '!' in double-quoted strings, so build shebang via char codes
+        $script:shebang = [char]35, [char]33 -join ''  # '#!'
         if (-not $IsWindows) {
             foreach ($provName in @('claude', 'opencode')) {
                 $shimPath = Join-Path $fakeBinDir $provName
-                Set-Content $shimPath "#!/bin/sh`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
+                [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n")
                 chmod +x $shimPath
             }
         }
@@ -2551,9 +2554,13 @@ exit 0
             $prevPath    = $env:PATH
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
             $prevNoDash  = $env:ALOOP_NO_DASHBOARD
-            $env:PATH              = "$fakeBinDir;$prevPath"
+            $prevReqTimeout = $env:REQUEST_TIMEOUT
+            $pathSep     = [System.IO.Path]::PathSeparator
+            $env:PATH              = "$fakeBinDir$pathSep$prevPath"
             $env:ALOOP_RUNTIME_DIR = Join-Path $Env.SessionDir '_runtime_stub'
             $env:ALOOP_NO_DASHBOARD = '1'
+            # Set a short request timeout for tests unless already set
+            if (-not $env:REQUEST_TIMEOUT) { $env:REQUEST_TIMEOUT = '15' }
             try {
                 $output = & $pwshPath -NoProfile -File $loopScript `
                     -PromptsDir    $Env.PromptsDir `
@@ -2566,8 +2573,9 @@ exit 0
                 return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
             } finally {
                 $env:PATH = $prevPath
-                if ($null -eq $prevRuntime) { Remove-Item Env:ALOOP_RUNTIME_DIR -EA SilentlyContinue } else { $env:ALOOP_RUNTIME_DIR = $prevRuntime }
-                if ($null -eq $prevNoDash)  { Remove-Item Env:ALOOP_NO_DASHBOARD -EA SilentlyContinue } else { $env:ALOOP_NO_DASHBOARD = $prevNoDash }
+                if ($null -eq $prevRuntime)    { Remove-Item Env:ALOOP_RUNTIME_DIR -EA SilentlyContinue } else { $env:ALOOP_RUNTIME_DIR = $prevRuntime }
+                if ($null -eq $prevNoDash)     { Remove-Item Env:ALOOP_NO_DASHBOARD -EA SilentlyContinue } else { $env:ALOOP_NO_DASHBOARD = $prevNoDash }
+                if ($null -eq $prevReqTimeout) { Remove-Item Env:REQUEST_TIMEOUT -EA SilentlyContinue } else { $env:REQUEST_TIMEOUT = $prevReqTimeout }
             }
         }
     }
@@ -2715,13 +2723,13 @@ exit 0
     }
 
     It 'logs queue_override_error when queue provider fails' {
-        # Create a provider that fails
+        # Create a provider that fails — use a script that exits non-zero
         $failPs1 = Join-Path $fakeBinDir '_fail_provider.ps1'
-        Set-Content $failPs1 'Write-Error "simulated failure"; exit 1'
+        [IO.File]::WriteAllText($failPs1, "Write-Error `"simulated failure`"`nexit 1`n")
         Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$failPs1`" %*`r`n"
         if (-not $IsWindows) {
             $shimPath = Join-Path $fakeBinDir 'claude'
-            Set-Content $shimPath "#!/bin/sh`npwsh -NoProfile -File `"$failPs1`" `"`$@`"`n"
+            [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$failPs1`" `"`$@`"`n")
             chmod +x $shimPath
         }
 
@@ -2738,8 +2746,12 @@ exit 0
         Test-Path (Join-Path $e.QueueDir '05-fail.md') | Should -Be $false
 
         # Restore default provider for other tests
-        $fakePs1 = Join-Path $fakeBinDir '_fake_provider.ps1'
-        Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+        $restorePs1 = Join-Path $fakeBinDir '_fake_provider.ps1'
+        Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$restorePs1`" %*`r`n"
+        if (-not $IsWindows) {
+            [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$restorePs1`" `"`$@`"`n")
+            chmod +x $shimPath
+        }
     }
 
     It 'opencode as direct provider executes a normal build iteration' {
@@ -2814,7 +2826,7 @@ exit 0
             'queue.override_success'             = ($events -contains 'queue_override_start') -and ($events -contains 'queue_override_complete')
             'queue.frontmatter_provider'         = ($log | Where-Object { $_.event -eq 'queue_override_start' -and $_.provider -eq 'opencode' }).Count -gt 0
             'queue.frontmatter_unavailable'      = ($events -contains 'queue_frontmatter_provider_unavailable')
-            'queue.empty_fallthrough'            = ($events -contains 'iteration_start')
+            'queue.empty_fallthrough'            = ($events -contains 'iteration_complete')
             'requests.wait_until_empty'          = ($events -contains 'waiting_for_requests')
             'opencode.direct_provider'           = ($log | Where-Object { $_.event -eq 'iteration_complete' -and $_.provider -eq 'opencode' }).Count -gt 0
         }
