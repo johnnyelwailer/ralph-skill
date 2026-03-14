@@ -1462,7 +1462,7 @@ echo ""
 
 # Cleanup on exit
 cleanup() {
-    local reason="${1:-interrupted}"
+    local reason="${1:-exited}"
     kill_active_provider
     remove_session_lock
     stop_dashboard
@@ -1473,8 +1473,8 @@ cleanup() {
     generate_report "$reason"
 }
 
-trap 'cleanup "interrupted"; exit 130' INT
-trap 'cleanup "error"; exit $?' ERR
+trap 'cleanup "stopped"; exit 130' INT
+trap 'cleanup "exited"; exit $?' ERR
 trap 'kill_active_provider; remove_session_lock' EXIT
 
 ITERATION=0
@@ -1614,6 +1614,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider"
 
         if [ "$iter_mode" = "build" ]; then
+            STUCK_COUNT=0
             print_iteration_summary "$ITERATION_START"
             push_to_backup
         elif [ "$iter_mode" = "review" ]; then
@@ -1663,7 +1664,7 @@ done
 
 echo ""
 echo "Reached iteration limit ($MAX_ITERATIONS)"
-write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "limit_reached"
+write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "stopped"
 write_log_entry "limit_reached" "iteration" "$ITERATION" "limit" "$MAX_ITERATIONS"
 generate_report "Reached iteration limit ($MAX_ITERATIONS)."
 stop_dashboard

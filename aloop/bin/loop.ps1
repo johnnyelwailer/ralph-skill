@@ -1756,6 +1756,7 @@ try {
             }
 
             if ($iterationMode -eq 'build') {
+                $stuckState.StuckCount = 0
                 Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
                 Push-ToBackup
             } elseif ($iterationMode -eq 'review') {
@@ -1811,7 +1812,7 @@ try {
     Stop-DashboardProcess
     if ($cancelled) {
         Write-Host "`nInterrupted" -ForegroundColor Yellow
-        Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'interrupted'
+        Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
         Write-LogEntry -Event "interrupted" -Data @{ iteration = $iteration }
         Generate-Report -ExitReason "Manually interrupted (Ctrl+C)." -Iteration $iteration
         exit 130
@@ -1820,7 +1821,7 @@ try {
 
 if ($iteration -ge $MaxIterations) {
     Write-Host "`nReached iteration limit ($MaxIterations)" -ForegroundColor Yellow
-    Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'limit_reached'
+    Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
     Write-LogEntry -Event "limit_reached" -Data @{ iteration = $iteration; limit = $MaxIterations }
     Generate-Report -ExitReason "Reached iteration limit ($MaxIterations)." -Iteration $iteration
 }
