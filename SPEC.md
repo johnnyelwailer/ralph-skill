@@ -2619,12 +2619,12 @@ The pipeline YAML config is **not parsed by the shell script**. Instead, the alo
 ```json
 {
   "cycle": [
-    {"agent": "plan",   "prompt": "PROMPT_plan.md",   "provider": "claude",  "model": "opus-4",           "reasoning": "high"},
-    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "opencode","model": "gpt-5.1",          "reasoning": "medium"},
-    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "codex",   "model": "codex-mini-latest", "reasoning": "medium"},
-    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "gemini",  "model": "gemini-3-pro",     "reasoning": "medium"},
-    {"agent": "proof",  "prompt": "PROMPT_proof.md",  "provider": "opencode","model": "gpt-5.1",          "reasoning": "medium"},
-    {"agent": "review", "prompt": "PROMPT_review.md", "provider": "claude",  "model": "opus-4",           "reasoning": "xhigh"}
+    {"agent": "plan",   "prompt": "PROMPT_plan.md",   "provider": "claude",  "model": "claude-opus-4-6",                      "reasoning": "high"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "opencode","model": "openrouter/openai/gpt-5.1",              "reasoning": "medium"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "codex",   "model": "codex-mini-latest",                      "reasoning": "medium"},
+    {"agent": "build",  "prompt": "PROMPT_build.md",  "provider": "opencode","model": "openrouter/google/gemini-2.5-pro",       "reasoning": "medium"},
+    {"agent": "proof",  "prompt": "PROMPT_proof.md",  "provider": "opencode","model": "openrouter/anthropic/claude-sonnet-4-6", "reasoning": "medium"},
+    {"agent": "review", "prompt": "PROMPT_review.md", "provider": "claude",  "model": "claude-opus-4-6",                        "reasoning": "xhigh"}
   ],
   "cyclePosition": 0,
   "iteration": 1,
