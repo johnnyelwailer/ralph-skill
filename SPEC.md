@@ -447,9 +447,9 @@ The proof agent has full autonomy over what to prove and how. It receives:
 
 **The agent decides:**
 
-1. **What needs proof** — inspects the work and determines which deliverables have provable, observable output. Could be UI screenshots, API responses, CLI output captures, test result summaries, build artifacts, accessibility reports — whatever is appropriate.
+1. **What needs proof** — inspects the work and determines which deliverables have provable, observable output. Could be UI screenshots, API response captures, CLI behavior captures, before/after visual comparisons, accessibility reports, or videos — whatever is appropriate and human-verifiable.
 
-2. **What proof is possible** — considers what tooling is available. If Playwright is installed and there's a frontend, screenshots are possible. If it's a CLI tool, output captures. If it's a library, test output. If nothing is provable (pure refactoring, config changes), the agent says "nothing to prove" and the phase completes as a skip.
+2. **What proof is possible** — considers what tooling is available. If Playwright is installed and there's a frontend, screenshots are possible. If it's a CLI tool, output captures. If nothing is visually or behaviorally provable (pure refactoring, type-only/internal plumbing changes), the agent says "nothing to prove" and the phase completes as a skip.
 
 3. **How to generate it** — the agent runs the actual commands: launches servers, runs Playwright, captures screenshots, diffs against baselines, saves artifacts. It uses whatever tools make sense.
 
@@ -587,7 +587,7 @@ This lets the reviewer see how the UI evolved across the entire session, not jus
 - `Dialog` for full-screen expanded view
 - `Badge` showing diff percentage (green <5%, yellow 5-20%, red >20%)
 
-**Non-image artifacts**: API responses, CLI output, test summaries render as syntax-highlighted code blocks.
+**Non-image artifacts**: API responses and CLI output captures render as syntax-highlighted code blocks.
 
 ### Review Integration
 
@@ -626,9 +626,12 @@ The reviewer sees this and can agree (approve) or disagree (reject with "actuall
 - Read recent commits for changed files
 - Inspect what tooling is available (Playwright, curl, etc.)
 - Decide what proof is valuable and possible
+- Produce observable, human-verifiable artifacts (screenshots, API captures, CLI behavior output, visual comparisons, videos when appropriate)
+- Do **not** treat CI output as proof (`npm test` pass counts, `tsc --noEmit`, lint summaries)
+- Do **not** treat git diffs or commit summaries as proof artifacts
 - Generate artifacts, save to `<session-dir>/artifacts/iter-<N>/`
 - Write `proof-manifest.json`
-- If nothing to prove, write manifest with empty artifacts and explanations in skipped
+- If nothing is visually or behaviorally provable, write "nothing to prove" with empty artifacts and explanations in skipped
 
 The prompt does NOT prescribe what types of proof to generate or what tools to use — that's the agent's judgment call.
 
@@ -836,16 +839,17 @@ The current dashboard uses basic shadcn components with tabs per section. Redesi
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  🔄 Session: cal-v2-20260302  │  iter 7/30  │  ■■■■□ 23%  │
-│  Provider: codex (healthy)     │  Phase: build │  3m ago    │
+│  Provider: codex · gpt-5.3-codex (healthy)  │  Phase: build │
+│  Elapsed: 1h 24m since session_start  │  14 iters · avg 5m 40s │
 ├──────────────────────────┬──────────────────────────────────┤
 │  TODO.md (live)          │  Log (live, auto-scroll)         │
 │                          │                                  │
-│  ✅ Setup base component │  19:53 plan   claude  ✗ exit 1  │
-│  ✅ Add state management │  19:54 build  codex   ✓ 2fb5095 │
-│  🔨 Wire API integration │  19:58 build  gemini  ✗ model   │
-│  ☐ Add error handling    │  20:02 build  copilot ✓ a3f1bc2 │
-│  ☐ Write tests           │  20:06 review codex   ✓ approve │
-│  ☐ Update docs           │  20:10 build  claude  ✓ 8bc4d21 │
+│  ✅ Setup base component │  19:53 plan   claude·sonnet-4.6 ✗ exit 1  2m12s │
+│  ✅ Add state management │  19:54 build  codex·gpt-5.3     ✓ 2fb5095  4m10s │
+│  🔨 Wire API integration │  19:58 build  gemini·2.5-pro    ✗ model    5m40s │
+│  ☐ Add error handling    │  20:02 build  copilot·o1        ✓ a3f1bc2  3m55s │
+│  ☐ Write tests           │  20:06 review codex·gpt-5.3     ✓ approve  2m03s │
+│  ☐ Update docs           │  20:10 build  claude·sonnet-4.6 ✓ 8bc4d21  3m22s │
 │                          │                                  │
 ├──────────────────────────┼──────────────────────────────────┤
 │  Provider Health         │  Recent Commits                  │
@@ -864,12 +868,15 @@ The current dashboard uses basic shadcn components with tabs per section. Redesi
 **Key changes from current dashboard:**
 - **No tab switching for core info** — TODO, log, health, commits all visible simultaneously
 - **Live TODO.md** — rendered inline with checkboxes, current task highlighted
-- **Compact log** — one line per iteration: timestamp, phase, provider, result (✓/✗), commit hash or error
+- **Compact log** — one line per iteration: timestamp, phase, provider + model, result (✓/✗), commit hash or error, and iteration duration
+- **Commit detail context** — commit diffstat stays visible, and file lists include per-file change type badges (`M`, `A`, `D`, `R`)
 - **Provider health badges** — inline colored dots, time since last success
 - **Recent commits** — scrolling list with hash + subject
 - **Steer input** — always visible at bottom, not hidden in a tab
 - **Progress bar** — visual at top showing tasks completed percentage
 - **Phase indicator** — color-coded (plan=purple, build=yellow, review=cyan)
+- **Session timing context** — header shows elapsed runtime since `session_start`, total iterations, and average iteration duration
+- **Docs tabs reflect real files only** — render tabs only for docs with non-empty content from server state; overflow extra docs into an end-of-row `...` menu
 
 **Advanced shadcn components to use:**
 - `Sheet` / `Drawer` — for expanded log view or full commit diff
@@ -889,6 +896,9 @@ The current dashboard uses basic shadcn components with tabs per section. Redesi
 - New commit → prepend to commits list
 - Phase transition → update header, flash indicator
 - Stuck alert → toast notification
+- Loop exit updates status to `stopped`/`exited` and emits SSE update immediately
+- Dashboard detects dead session PID and flips state from running to exited without waiting for manual refresh
+- `stuck_count` clears on successful iteration and is visible in dashboard state/details
 
 ### Acceptance Criteria
 
@@ -904,6 +914,12 @@ The current dashboard uses basic shadcn components with tabs per section. Redesi
 - [ ] Dashboard uses advanced shadcn components (ResizablePanel, HoverCard, Collapsible, Command, Sonner)
 - [ ] Steer input is always visible (not behind a tab)
 - [ ] Progress bar and phase indicator visible in dashboard header
+- [ ] Iteration rows show provider and model together, plus per-iteration duration
+- [ ] Header shows elapsed session duration (`session_start`), total iterations, and average iteration duration
+- [ ] Commit detail view preserves diffstat and shows per-file change type (`M`/`A`/`D`/`R`)
+- [ ] Docs tab bar renders only docs with non-empty server content and overflows extras into an ellipsis menu
+- [ ] Loop exit writes `status.json` as `stopped`/`exited`, dashboard detects dead PID, and running state is corrected automatically
+- [ ] `stuck_count` resets on successful iterations and is visible in dashboard status/details
 - [ ] `aloop status --watch` provides terminal-based live monitoring (auto-refresh)
 
 ---

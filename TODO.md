@@ -7,7 +7,7 @@
 - [ ] [review] Gate 1: `applyTriageResultsToIssue` does not implement spec-required comment actions for `needs_clarification` and `question` (no follow-up/answer comment, no triage footer marker, no authorship filtering for bot/external comments). Implement these behaviors per SPEC triage acceptance criteria. (priority: high)
 - [ ] [review] Gate 2: `orchestrate.test.ts` triage action tests (around lines 728-791) assert partial `ghCalls.includes(...)` only and cover only two classes. Add exact argument assertions and cover `question`/`out_of_scope` plus `deps.execGh` error-path behavior. (priority: high)
 - [ ] [review] Gate 3: `gh.ts` branch coverage is 78.46% (<80% threshold) from `node --experimental-test-coverage` on `gh.test.ts`. Add branch tests for uncovered paths (e.g., `issue-label` remove branch, `parseGhOutput` non-array/empty list branches, config parsing branches) until `gh.ts` branch coverage is >=80%. (priority: high)
-- [ ] [review] Gate 6: Proof manifest references missing artifacts (`test-output.txt`, `triage-tests.txt`, `typecheck-output.txt`, `triage-orchestrate-diff.txt`, `triage-gh-diff.txt` not present in workspace). Regenerate and publish the cited proof files or update manifest to verifiable artifact paths. (priority: high)
+- [~] [review] Gate 6: Proof manifest references missing artifacts (`test-output.txt`, `triage-tests.txt`, `typecheck-output.txt`, `triage-orchestrate-diff.txt`, `triage-gh-diff.txt` not present in workspace). Regenerate and publish the cited proof files or update manifest to verifiable artifact paths. (cancelled: steering changed proof criteria; CI/diff-style artifacts are no longer valid proof targets)
 
 ### Up Next
 
@@ -35,6 +35,13 @@
 
 #### Operational Visibility (depends on orchestrator dispatch for tree data)
 - [ ] [status/P2] Extend `aloop status` to show orchestrator tree state (orchestrator -> child sessions -> issue/PR mapping). (priority: medium, operational visibility)
+
+#### Steering Follow-ups — Dashboard Activity Log + Proof Quality
+- [ ] [dashboard/P2] Show iteration provider + model together in log rows, include per-iteration duration, and add header timing context (elapsed since `session_start`, total iterations, average iteration duration). (priority: high, steering regression fix)
+- [ ] [dashboard/P2] Keep commit diffstat in commit detail views and add per-file change type markers (`M`/`A`/`D`/`R`). (priority: high, steering regression fix)
+- [ ] [dashboard/P2] Render docs tabs only when server `docs` entries have non-empty content; move overflow docs into `...` dropdown at end of tab row. (priority: high, steering correctness fix)
+- [ ] [proof/P2] Update `PROMPT_proof.md` behavior to require observable human-verifiable artifacts and explicitly ban CI output / typecheck summaries / git diffs as proof artifacts. (priority: high, steering proof-quality fix)
+- [ ] [runtime+dashboard/P2] Ensure loop exit writes `status.json` with `stopped`/`exited`, dashboard detects dead PID instead of stale running state, and `stuck_count` resets on successful iteration and is visible in dashboard status UI. (priority: medium, prior steering carry-over)
 
 #### P3 — Spec Parity & Acceptance
 - [ ] [architecture/P3] Reconcile spec constraints (`zero npm dependencies`, `no build step`, `lib/config.mjs`) with current TypeScript/bundled CLI architecture, or explicitly update spec. (priority: low, spec parity risk)
