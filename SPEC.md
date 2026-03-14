@@ -2313,15 +2313,62 @@ The verify agent runs Playwright tests, captures screenshots and video. On failu
 
 Test expectations ideally originate from the **plan agent** (derived from the slice spec), not the build agent — so the build agent is implementing to a contract it didn't write.
 
+### `loop-plan.json` — the Runtime-to-Shell Bridge
+
+The aloop runtime (TS/Bun) compiles pipeline YAML config into a `loop-plan.json` file placed in the session directory. `loop.sh` / `loop.ps1` read this file each iteration — no YAML parsing, no transition logic in shell.
+
+Each entry in the `cycle` array is a **fully-resolved instruction**:
+
+```json
+{
+  "cycle": [
+    {"agent": "plan",  "prompt": "PROMPT_plan.md", "provider": "claude", "model": "claude-opus-4-6", "reasoning": "high"},
+    {"agent": "build", "prompt": "PROMPT_build.md", "provider": "opencode", "model": "openrouter/openai/gpt-5.1", "reasoning": "medium"},
+    {"agent": "build", "prompt": "PROMPT_build.md", "provider": "opencode", "model": "openrouter/openai/gpt-5.1", "reasoning": "medium"},
+    {"agent": "build", "prompt": "PROMPT_build.md", "provider": "opencode", "model": "openrouter/openai/gpt-5.1", "reasoning": "medium"},
+    {"agent": "review","prompt": "PROMPT_review.md","provider": "claude", "model": "claude-opus-4-6", "reasoning": "high"}
+  ],
+  "cyclePosition": 0,
+  "iteration": 1,
+  "version": 1
+}
+```
+
+- `cycle` is a **short repeating pattern** (typically 5–7 entries). Shell wraps with `cyclePosition % cycle.length`.
+- `cyclePosition` and `iteration` are shared state between runtime and shell — shell updates them after each turn, runtime rewrites the file on mutations (steering, failure recovery).
+- Shell **re-reads** the file every iteration to pick up runtime mutations.
+- `version` increments on runtime rewrites — shell logs when it detects a plan change.
+
+### Shell Script Behavior (loop.sh / loop.ps1)
+
+Loop scripts must **NOT** contain hardcoded phase sequences like `plan → build × 3 → review`. Instead:
+
+1. Read `loop-plan.json` each iteration
+2. Pick agent at `cyclePosition % cycle.length`
+3. Use `provider`, `model`, `prompt`, `reasoning` from the entry
+4. Invoke the provider, then update `cyclePosition` and `iteration` in the file
+
+### Pipeline Mutation via `loop-plan.json`
+
+All mutations (steering, failure recovery, agent injection) work by the runtime **rewriting** `loop-plan.json`:
+
+- Steering says "add security-audit after build" → runtime recompiles cycle array, writes new plan
+- Build fails 3× → runtime applies `onFailure` rules, adjusts `cyclePosition` or injects debugger agent
+- Loop picks up changes on next iteration (re-reads file)
+
+Transition rules (`onFailure: goto build`, escalation ladders, `repeat` counts) are resolved by the runtime when it observes failures via `status.json`. The runtime rewrites `loop-plan.json` accordingly. **Shell never evaluates transition logic.**
+
 ### Implementation Notes
 
-- Pipeline config lives in `.aloop/pipeline.yml` (or inline in `config.yml`)
+- Pipeline config lives in `.aloop/pipeline.yml` (or inline in `config.yml`) — this is the **source of truth**
+- `loop-plan.json` is a **compiled artifact** — never hand-edit it, always regenerate from config
+- The relationship is like TypeScript → JavaScript: you edit the source, the compiler produces the runtime artifact
 - Default pipeline (plan-build-review) is generated if no config exists — backward compatible
 - Agent definitions live in `.aloop/agents/` — each is a YAML file with prompt reference, provider preference, transition rules
-- The loop script becomes a generic agent runner: read pipeline, resolve next agent, invoke, check transition rules, repeat
-- Runtime pipeline mutations are applied via the host-side monitor (same mechanism as steering)
-- Pipeline state (current position, escalation counts, mutation history) is persisted in `status.json`
-- The parallel orchestrator creates per-slice pipelines — each child loop runs its own pipeline independently
+- The loop script becomes a generic agent runner: read `loop-plan.json`, resolve next agent, invoke, repeat
+- Runtime pipeline mutations are applied via the host-side monitor rewriting `loop-plan.json`
+- Pipeline state (`cyclePosition`, `iteration`, `version`, escalation counts, mutation history) lives in `loop-plan.json` itself
+- The parallel orchestrator creates per-slice pipelines — each child loop runs its own `loop-plan.json` independently
 
 ---
 

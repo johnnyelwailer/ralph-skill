@@ -23,8 +23,12 @@
 - [ ] [dashboard][medium] Filter docs tabs to non-empty content (currently filters `TODO.md` by name and empty arrays, but not empty-string content) and add overflow ellipsis menu for large doc sets.
 - [ ] [dashboard][medium] Vertically center the sidebar expand/collapse button with the header title row.
 - [ ] [status][medium] Extend `aloop status` to render orchestrator tree output (orchestrator session -> child sessions -> issue/PR mapping).
-- [ ] [pipeline][medium] Add configurable pipeline support (`.aloop/pipeline.yml` or inline config) with named agents/transitions and backward-compatible defaults.
-- [ ] [pipeline][medium] Add runtime pipeline mutation + guard-agent escalation ladder behavior per spec.
+- [~] [pipeline][medium] Add configurable pipeline support (`.aloop/pipeline.yml` or inline config) with named agents/transitions and backward-compatible defaults. — cancelled: replaced by loop-plan.json compiler approach per steering
+- [~] [pipeline][medium] Add runtime pipeline mutation + guard-agent escalation ladder behavior per spec. — cancelled: replaced by loop-plan.json mutation approach per steering
+- [ ] [pipeline][medium] Create `loop-plan.json` compiler in runtime — takes pipeline YAML config (or defaults), resolves providers/models/reasoning per agent, outputs compiled JSON file to session directory.
+- [ ] [pipeline][medium] Update `loop.sh` and `loop.ps1` to read `loop-plan.json` each iteration instead of hardcoded phase calculation — pick agent at `cyclePosition % cycle.length`, use entry's provider/model/prompt/reasoning.
+- [ ] [pipeline][medium] Add runtime mutation — host monitor watches `status.json`, applies transition rules from pipeline config, rewrites `loop-plan.json` when needed (failure recovery, steering, agent injection).
+- [ ] [pipeline][medium] Add guard agent and escalation ladder as pipeline configs handled by the compiler and mutator.
 - [ ] [spec-parity][low] Reconcile architecture constraints (`zero npm deps`, `.mjs`-only/no-build, `lib/config.mjs`) with current TypeScript/bundled CLI reality, or update spec explicitly.
 - [ ] [acceptance][low] Add automated legacy-name guard and run final full SPEC acceptance sweep.
 
