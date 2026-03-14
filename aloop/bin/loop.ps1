@@ -25,10 +25,10 @@ param(
     [ValidateSet('plan', 'build', 'review', 'plan-build', 'plan-build-review')]
     [string]$Mode = 'plan-build-review',
 
-    [ValidateSet('claude', 'codex', 'gemini', 'copilot', 'round-robin')]
+    [ValidateSet('claude', 'opencode', 'codex', 'gemini', 'copilot', 'round-robin')]
     [string]$Provider = 'claude',
 
-    [string[]]$RoundRobinProviders = @('claude', 'codex', 'gemini', 'copilot'),
+    [string[]]$RoundRobinProviders = @('claude', 'opencode', 'codex', 'gemini', 'copilot'),
 
     # Model defaults — keep in sync with ~/.aloop/config.yml (source of truth)
     [string]$ClaudeModel = 'opus',
@@ -1474,7 +1474,7 @@ if ($Provider -eq 'round-robin') {
         Write-Error "Round-robin mode requires at least two providers."
         exit 1
     }
-    $supportedProviders = @('claude', 'codex', 'gemini', 'copilot')
+    $supportedProviders = @('claude', 'opencode', 'codex', 'gemini', 'copilot')
     foreach ($p in $RoundRobinProviders) {
         if ($supportedProviders -notcontains $p) {
             Write-Error "Unsupported round-robin provider '$p'. Supported: $($supportedProviders -join ', ')"
@@ -1561,6 +1561,32 @@ if ($DangerouslySkipContainer -and (Test-Path $devcontainerJsonPath)) {
     }
 }
 
+# Re-read provider list from meta.json each iteration (supports hot-reload)
+function Refresh-ProvidersFromMeta {
+    $metaFile = Join-Path $SessionDir "meta.json"
+    if (-not (Test-Path $metaFile)) { return }
+    try {
+        $meta = Get-Content $metaFile -Raw | ConvertFrom-Json
+        $newProviders = $meta.enabled_providers
+        if (-not $newProviders) { $newProviders = $meta.round_robin_order }
+        if (-not $newProviders -or $newProviders.Count -eq 0) { return }
+        $oldCsv = $RoundRobinProviders -join ','
+        $newCsv = $newProviders -join ','
+        if ($oldCsv -ne $newCsv) {
+            $available = @($newProviders | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue })
+            if ($available.Count -gt 0) {
+                $script:RoundRobinProviders = $available
+                Write-LogEntry -Event "providers_refreshed" -Data @{
+                    old = $oldCsv
+                    new = ($available -join ',')
+                }
+            }
+        }
+    } catch {
+        # Silently ignore parse errors — keep current provider list
+    }
+}
+
 $iteration = 0
 
 # ============================================================================
@@ -1626,6 +1652,10 @@ try {
         $iteration++
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $iterationStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
+        # Hot-reload provider list from meta.json (supports runtime changes)
+        if ($Provider -eq 'round-robin') {
+            Refresh-ProvidersFromMeta
+        }
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
         $iterationMode = Resolve-IterationMode -IterationNumber $iteration
 

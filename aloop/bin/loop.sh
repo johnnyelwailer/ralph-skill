@@ -26,7 +26,7 @@ SESSION_DIR=""
 WORK_DIR=""
 MODE="plan-build-review"
 PROVIDER="claude"
-ROUND_ROBIN_PROVIDERS="claude,codex,gemini,copilot"
+ROUND_ROBIN_PROVIDERS="claude,opencode,codex,gemini,copilot"
 # Model defaults — keep in sync with ~/.aloop/config.yml (source of truth)
 CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-opus}"
 CODEX_MODEL="${ALOOP_CODEX_MODEL:-gpt-5.3-codex}"
@@ -246,6 +246,48 @@ DASHBOARD_URL=""
 
 # Parse round-robin providers into array
 IFS=',' read -ra RR_PROVIDERS <<< "$ROUND_ROBIN_PROVIDERS"
+
+# Re-read provider list from meta.json each iteration (supports hot-reload)
+refresh_providers_from_meta() {
+    local meta_file="$SESSION_DIR/meta.json"
+    if [ ! -f "$meta_file" ]; then
+        return
+    fi
+    # Extract enabled_providers array as comma-separated string using python
+    # (no jq dependency — python3 is always available)
+    local new_providers
+    new_providers=$(python3 -c "
+import json, sys
+try:
+    with open('$meta_file') as f:
+        m = json.load(f)
+    providers = m.get('enabled_providers') or m.get('round_robin_order')
+    if providers:
+        print(','.join(providers))
+except Exception:
+    sys.exit(1)
+" 2>/dev/null) || return
+    if [ -n "$new_providers" ]; then
+        local old_csv
+        old_csv="$(IFS=,; echo "${RR_PROVIDERS[*]}")"
+        if [ "$new_providers" != "$old_csv" ]; then
+            IFS=',' read -ra RR_PROVIDERS <<< "$new_providers"
+            # Re-validate availability
+            local available=()
+            for p in "${RR_PROVIDERS[@]}"; do
+                if command -v "$p" &>/dev/null; then
+                    available+=("$p")
+                fi
+            done
+            if [ ${#available[@]} -gt 0 ]; then
+                RR_PROVIDERS=("${available[@]}")
+                write_log_entry "providers_refreshed" \
+                    "old" "$old_csv" \
+                    "new" "$(IFS=,; echo "${RR_PROVIDERS[*]}")"
+            fi
+        fi
+    fi
+}
 
 resolve_iteration_provider() {
     local iteration=$1
@@ -1481,6 +1523,10 @@ ITERATION=0
 while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
+    # Hot-reload provider list from meta.json (supports runtime changes)
+    if [ "$PROVIDER" = "round-robin" ]; then
+        refresh_providers_from_meta
+    fi
     iter_provider=$(resolve_iteration_provider $ITERATION)
     # Call directly (not via subshell) so flag-clearing affects the main shell
     resolve_iteration_mode "$ITERATION" > /dev/null
