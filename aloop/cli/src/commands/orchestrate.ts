@@ -99,6 +99,8 @@ export interface TriageLogEntry {
 export interface TriageDeps {
   execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   now: () => Date;
+  writeFile?: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
+  aloopRoot?: string;
 }
 
 export interface OrchestrateDeps {
@@ -412,7 +414,7 @@ export async function orchestrateCommandWithDeps(
   }
 
   if (filterRepo && state.issues.length > 0 && deps.execGh) {
-    await runTriageMonitorCycle(state, path.basename(sessionDir), filterRepo, deps);
+    await runTriageMonitorCycle(state, path.basename(sessionDir), filterRepo, deps, aloopRoot);
   }
 
   const stateFile = path.join(sessionDir, 'orchestrator.json');
@@ -598,6 +600,20 @@ function isExternalAuthor(comment: TriageComment): boolean {
   return !trustedAssociations.has(association);
 }
 
+function formatSteeringContent(comment: TriageComment, issue: OrchestratorIssue): string {
+  return `# Steering Injection\n\nFrom issue #${issue.number} comment by @${comment.author}:\n\n${comment.body}\n`;
+}
+
+async function injectSteeringToChildLoop(
+  issue: OrchestratorIssue,
+  comment: TriageComment,
+  deps: TriageDeps,
+): Promise<void> {
+  if (!deps.writeFile || !deps.aloopRoot || !issue.child_session) return;
+  const steeringPath = path.join(deps.aloopRoot, 'sessions', issue.child_session, 'worktree', 'STEERING.md');
+  await deps.writeFile(steeringPath, formatSteeringContent(comment, issue), 'utf8');
+}
+
 export async function applyTriageResultsToIssue(
   issue: OrchestratorIssue,
   comments: TriageComment[],
@@ -661,6 +677,7 @@ export async function applyTriageResultsToIssue(
       } else {
         actionTaken = 'steering_injected';
       }
+      await injectSteeringToChildLoop(issue, comment, deps);
     } else if (result.classification === 'question') {
       await deps.execGh([
         'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatQuestionReply(comment),
@@ -787,7 +804,8 @@ export async function runTriageMonitorCycle(
   state: OrchestratorState,
   sessionId: string,
   repo: string,
-  deps: Pick<OrchestrateDeps, 'execGh' | 'now'>,
+  deps: Pick<OrchestrateDeps, 'execGh' | 'now'> & { writeFile?: OrchestrateDeps['writeFile'] },
+  aloopRoot?: string,
 ): Promise<TriageMonitorCycleResult> {
   if (!deps.execGh) {
     return { processed_issues: 0, triaged_entries: 0 };
@@ -825,7 +843,7 @@ export async function runTriageMonitorCycle(
       issue,
       [...normalizedIssueComments, ...normalizedPrComments],
       repo,
-      { execGh: deps.execGh, now: deps.now },
+      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, aloopRoot },
     );
     triagedEntries += entries.length;
 

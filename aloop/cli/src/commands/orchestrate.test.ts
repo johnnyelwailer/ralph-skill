@@ -831,17 +831,21 @@ I want to make sure we implement exactly what you intended. Could you clarify th
       blocked_on_human: true,
       processed_comment_ids: [],
       triage_log: [],
+      child_session: 'proj-issue-43-20260314-120000',
     });
     const comments = [
       triageComment({ id: 20, body: 'Please switch to WebSockets for updates.' }),
     ];
     const ghCalls: string[][] = [];
+    const writtenFiles: Record<string, string> = {};
     const deps: TriageDeps = {
       execGh: async (args) => {
         ghCalls.push(args);
         return { stdout: '', stderr: '' };
       },
       now: () => new Date('2026-03-14T12:05:00.000Z'),
+      writeFile: async (p, data) => { writtenFiles[p] = data; },
+      aloopRoot: '/home/user/.aloop',
     };
 
     const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
@@ -856,6 +860,10 @@ I want to make sure we implement exactly what you intended. Could you clarify th
       ghCalls[0],
       ['issue', 'edit', '43', '--repo', 'owner/repo', '--remove-label', 'aloop/blocked-on-human'],
     );
+
+    const expectedPath = '/home/user/.aloop/sessions/proj-issue-43-20260314-120000/worktree/STEERING.md';
+    assert.ok(writtenFiles[expectedPath], 'unblock_and_steering should also write STEERING.md');
+    assert.ok(writtenFiles[expectedPath].includes('WebSockets'), 'steering content includes comment body');
   });
 
   it('applyTriageResultsToIssue answers question comments without blocking', async () => {
@@ -994,17 +1002,21 @@ Based on the current issue context, this requires human clarification before imp
       blocked_on_human: false,
       processed_comment_ids: [],
       triage_log: [],
+      child_session: 'proj-issue-48-20260314-120000',
     });
     const comments = [
       triageComment({ id: 31, body: 'Please implement pagination for this endpoint.' }),
     ];
     const ghCalls: string[][] = [];
+    const writtenFiles: Record<string, string> = {};
     const deps: TriageDeps = {
       execGh: async (args) => {
         ghCalls.push(args);
         return { stdout: '', stderr: '' };
       },
       now: () => new Date('2026-03-14T12:11:00.000Z'),
+      writeFile: async (p, data) => { writtenFiles[p] = data; },
+      aloopRoot: '/home/user/.aloop',
     };
 
     const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
@@ -1014,6 +1026,11 @@ Based on the current issue context, this requires human clarification before imp
     assert.equal(issue.blocked_on_human, false);
     assert.deepStrictEqual(issue.processed_comment_ids, [31]);
     assert.equal(ghCalls.length, 0, 'steering_injected should not call GH when not blocked');
+
+    const expectedPath = '/home/user/.aloop/sessions/proj-issue-48-20260314-120000/worktree/STEERING.md';
+    assert.ok(writtenFiles[expectedPath], 'should write STEERING.md to child worktree');
+    assert.ok(writtenFiles[expectedPath].includes('Please implement pagination'), 'steering content includes comment body');
+    assert.ok(writtenFiles[expectedPath].includes('#48'), 'steering content references issue number');
   });
 
   it('applyTriageResultsToIssue propagates execGh errors on needs_clarification comment post', async () => {
