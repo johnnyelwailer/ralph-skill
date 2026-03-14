@@ -427,6 +427,46 @@ test('ghCommand denies child-loop pr-comment with non-numeric pr_number', async 
   }
 });
 
+test('ghCommand denies child-loop pr-comment when created_pr_numbers is not an array', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  fs.writeFileSync(path.join(fixture.sessionDir, 'config.json'), JSON.stringify({
+    repo: 'test/repo',
+    issue_number: 42,
+    created_pr_numbers: '15',
+  }), 'utf8');
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'pr-comment',
+    repo: 'test/repo',
+    pr_number: 15,
+  }), 'utf8');
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'pr-comment',
+        '--session', 'test-session',
+        '--request', fixture.requestFile,
+        '--role', 'child-loop',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_denied');
+    assert.match(String(entries[0].reason), /created by this session/i);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
 test('ghCommand denies orchestrator issue-close without aloop/auto target validation', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'error', () => {});
@@ -633,6 +673,47 @@ test('ghCommand allows orchestrator issue-label add for aloop/blocked-on-human',
   }
 });
 
+test('ghCommand allows orchestrator issue-label remove for aloop/blocked-on-human', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+  let capturedArgs: string[] | undefined;
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    capturedArgs = args;
+    return { stdout: '', stderr: '' };
+  });
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'issue-label',
+    repo: 'test/repo',
+    issue_number: 42,
+    label_action: 'remove',
+    label: 'aloop/blocked-on-human',
+    target_labels: ['aloop/auto'],
+  }), 'utf8');
+
+  try {
+    await ghCommand.parseAsync([
+      'issue-label',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'orchestrator',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    assert.deepStrictEqual(capturedArgs, [
+      'issue', 'edit', '42', '--repo', 'test/repo', '--remove-label', 'aloop/blocked-on-human'
+    ]);
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation');
+    assert.equal(entries[0].type, 'issue-label');
+    assert.equal((entries[0].enforced as { label_action?: string }).label_action, 'remove');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
 test('ghCommand denies orchestrator issue-label when label is not aloop/blocked-on-human', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'error', () => {});
@@ -701,6 +782,67 @@ test('ghCommand allows orchestrator issue-comments with --since and no request f
     assert.equal(entries[0].type, 'issue-comments');
     assert.equal(entries[0].request_file, undefined);
     assert.equal(entries[0].comment_count, 1);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand normalizes issue-comments output when GH API returns a non-array JSON payload', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(ghExecutor, 'exec', async () => ({
+    stdout: JSON.stringify({ id: 123, body: 'hello' }),
+    stderr: '',
+  }));
+
+  try {
+    await ghCommand.parseAsync([
+      'issue-comments',
+      '--session', 'test-session',
+      '--since', '2026-03-14T11:00:00Z',
+      '--role', 'orchestrator',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation');
+    assert.equal(entries[0].type, 'issue-comments');
+    assert.deepStrictEqual(entries[0].comments, []);
+    assert.equal(entries[0].comment_count, 0);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand logs gh_operation_error when issue-comments output is invalid JSON', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+  t.mock.method(ghExecutor, 'exec', async () => ({
+    stdout: '{not valid json',
+    stderr: '',
+  }));
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync([
+        'issue-comments',
+        '--session', 'test-session',
+        '--since', '2026-03-14T11:00:00Z',
+        '--role', 'orchestrator',
+        '--home-dir', fixture.tmpHome,
+      ], { from: 'user' }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation_error');
+    assert.equal(entries[0].type, 'issue-comments');
+    assert.match(String(entries[0].error), /Unexpected token|JSON|position/i);
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }
@@ -1114,6 +1256,42 @@ test('ghCommand allows orchestrator issue-create with aloop/auto label', async (
     assert.equal(entries[0].event, 'gh_operation');
     assert.equal(entries[0].type, 'issue-create');
     assert.equal((entries[0].enforced as { repo?: string }).repo, 'test/repo');
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghCommand allows orchestrator issue-create when labels is a string containing aloop/auto', async (t) => {
+  const fixture = createFixture();
+  t.mock.method(console, 'log', () => {});
+  let capturedArgs: string[] | undefined;
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    capturedArgs = args;
+    return { stdout: 'https://github.com/test/repo/issues/8\n', stderr: '' };
+  });
+
+  fs.writeFileSync(fixture.requestFile, JSON.stringify({
+    type: 'issue-create',
+    repo: 'test/repo',
+    labels: 'aloop/auto',
+  }), 'utf8');
+
+  try {
+    await ghCommand.parseAsync([
+      'issue-create',
+      '--session', 'test-session',
+      '--request', fixture.requestFile,
+      '--role', 'orchestrator',
+      '--home-dir', fixture.tmpHome,
+    ], { from: 'user' });
+
+    assert.deepStrictEqual(capturedArgs, ['issue', 'create', '--repo', 'test/repo']);
+
+    const entries = readLogEntries(fixture.sessionDir);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'gh_operation');
+    assert.equal(entries[0].type, 'issue-create');
+    assert.equal(entries[0].url, 'https://github.com/test/repo/issues/8');
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }
