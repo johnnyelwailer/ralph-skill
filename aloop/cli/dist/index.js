@@ -4937,6 +4937,20 @@ function normalizeGitBashPathForWindows(value) {
   const tail = (match[2] ?? "").replace(/[\\/]+/g, "\\");
   return tail.length > 0 ? `${drive}:\\${tail}` : `${drive}:\\`;
 }
+async function readSessionMeta(sessionDir, deps) {
+  const metaPath = path4.join(sessionDir, "meta.json");
+  if (!deps.existsSync(metaPath))
+    return null;
+  try {
+    const content = await deps.readFile(metaPath, "utf8");
+    const parsed = JSON.parse(content);
+    if (!parsed || typeof parsed !== "object" || !parsed.session_id)
+      return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 async function readActiveMap(activePath, deps) {
   if (!deps.existsSync(activePath)) {
     return {};
@@ -5147,35 +5161,76 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     )
   };
   const copilotRetryModel = String(selectValue(projectConfig.retry_models.copilot, globalConfig.retry_models.copilot, "claude-sonnet-4.6") ?? "claude-sonnet-4.6");
-  const sessionId = resolveSessionId(discovery.project.name, sessionsRoot, deps);
-  const sessionDir = path4.join(sessionsRoot, sessionId);
-  const promptsSourceDir = path4.join(discovery.setup.project_dir, "prompts");
-  const promptsDir = path4.join(sessionDir, "prompts");
   const startedAt = deps.now().toISOString();
+  let sessionId;
+  let sessionDir;
+  let promptsDir;
   let workDir = discovery.project.root;
   let worktreePath = null;
   let branchName = null;
   let useWorktree = !options.inPlace && worktreeDefault;
-  await deps.mkdir(sessionDir, { recursive: true });
-  if (!deps.existsSync(promptsSourceDir)) {
-    throw new Error(`Project prompts not found: ${promptsSourceDir}. Run \`aloop setup\` first.`);
-  }
-  await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
-  if (useWorktree) {
-    if (!discovery.project.is_git_repo) {
-      warnings.push("Worktree requested but project is not a git repository; using in-place execution.");
-      useWorktree = false;
+  if (launchMode === "resume" && options.sessionId) {
+    sessionId = options.sessionId;
+    sessionDir = path4.join(sessionsRoot, sessionId);
+    if (!deps.existsSync(sessionDir)) {
+      throw new Error(`Session not found: ${sessionId}. Cannot resume a non-existent session.`);
+    }
+    const existingMeta = await readSessionMeta(sessionDir, deps);
+    if (!existingMeta) {
+      throw new Error(`Session meta.json not found or invalid for session: ${sessionId}.`);
+    }
+    promptsDir = existingMeta.prompts_dir ?? path4.join(sessionDir, "prompts");
+    branchName = existingMeta.branch ?? null;
+    if (existingMeta.worktree && existingMeta.worktree_path) {
+      if (deps.existsSync(existingMeta.worktree_path)) {
+        worktreePath = existingMeta.worktree_path;
+        workDir = existingMeta.worktree_path;
+        useWorktree = true;
+      } else if (branchName && discovery.project.is_git_repo) {
+        const candidatePath = existingMeta.worktree_path;
+        const worktreeResult = deps.spawnSync("git", ["-C", discovery.project.root, "worktree", "add", candidatePath, branchName], { encoding: "utf8" });
+        if (worktreeResult.status === 0) {
+          worktreePath = candidatePath;
+          workDir = candidatePath;
+          useWorktree = true;
+        } else {
+          warnings.push(createGitFailureWarning(String(worktreeResult.stderr ?? ""), String(worktreeResult.stdout ?? "")));
+          useWorktree = false;
+        }
+      } else {
+        warnings.push("Original worktree was removed and branch is unavailable; resuming in-place.");
+        useWorktree = false;
+      }
     } else {
-      const candidatePath = path4.join(sessionDir, "worktree");
-      const candidateBranch = `aloop/${sessionId}`;
-      const worktreeResult = deps.spawnSync("git", ["-C", discovery.project.root, "worktree", "add", candidatePath, "-b", candidateBranch], { encoding: "utf8" });
-      if (worktreeResult.status !== 0) {
-        warnings.push(createGitFailureWarning(String(worktreeResult.stderr ?? ""), String(worktreeResult.stdout ?? "")));
+      workDir = existingMeta.work_dir ?? discovery.project.root;
+      useWorktree = false;
+    }
+  } else {
+    sessionId = resolveSessionId(discovery.project.name, sessionsRoot, deps);
+    sessionDir = path4.join(sessionsRoot, sessionId);
+    const promptsSourceDir = path4.join(discovery.setup.project_dir, "prompts");
+    promptsDir = path4.join(sessionDir, "prompts");
+    await deps.mkdir(sessionDir, { recursive: true });
+    if (!deps.existsSync(promptsSourceDir)) {
+      throw new Error(`Project prompts not found: ${promptsSourceDir}. Run \`aloop setup\` first.`);
+    }
+    await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
+    if (useWorktree) {
+      if (!discovery.project.is_git_repo) {
+        warnings.push("Worktree requested but project is not a git repository; using in-place execution.");
         useWorktree = false;
       } else {
-        worktreePath = candidatePath;
-        workDir = candidatePath;
-        branchName = candidateBranch;
+        const candidatePath = path4.join(sessionDir, "worktree");
+        const candidateBranch = `aloop/${sessionId}`;
+        const worktreeResult = deps.spawnSync("git", ["-C", discovery.project.root, "worktree", "add", candidatePath, "-b", candidateBranch], { encoding: "utf8" });
+        if (worktreeResult.status !== 0) {
+          warnings.push(createGitFailureWarning(String(worktreeResult.stderr ?? ""), String(worktreeResult.stdout ?? "")));
+          useWorktree = false;
+        } else {
+          worktreePath = candidatePath;
+          workDir = candidatePath;
+          branchName = candidateBranch;
+        }
       }
     }
   }
@@ -5406,7 +5461,10 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     warnings
   };
 }
-async function startCommand(options = {}) {
+async function startCommand(sessionIdArg, options = {}) {
+  if (sessionIdArg) {
+    options.sessionId = sessionIdArg;
+  }
   const outputMode = options.output ?? "text";
   const result = await startCommandWithDeps(options);
   if (outputMode === "json") {
@@ -5496,11 +5554,13 @@ function normalizeWatchIssueEntry(value) {
     pr_url: typeof candidate.pr_url === "string" && candidate.pr_url.trim() ? candidate.pr_url : null,
     status,
     completion_state: typeof candidate.completion_state === "string" && candidate.completion_state.trim() ? candidate.completion_state : null,
+    completion_finalized: candidate.completion_finalized === true,
     created_at: typeof candidate.created_at === "string" && candidate.created_at.trim() ? candidate.created_at : ghLoopRuntime.now(),
     updated_at: typeof candidate.updated_at === "string" && candidate.updated_at.trim() ? candidate.updated_at : ghLoopRuntime.now(),
     feedback_iteration: typeof candidate.feedback_iteration === "number" && Number.isInteger(candidate.feedback_iteration) && candidate.feedback_iteration >= 0 ? candidate.feedback_iteration : 0,
     max_feedback_iterations: parsePositiveInteger(candidate.max_feedback_iterations) ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
     processed_comment_ids: extractPositiveIntegers(candidate.processed_comment_ids),
+    processed_issue_comment_ids: extractPositiveIntegers(candidate.processed_issue_comment_ids),
     processed_run_ids: extractPositiveIntegers(candidate.processed_run_ids)
   };
 }
@@ -5573,11 +5633,13 @@ function watchEntryFromStartResult(result) {
     pr_url: result.pr?.url ?? null,
     status: result.pending_completion ? "running" : "completed",
     completion_state: result.completion_state,
+    completion_finalized: !result.pending_completion,
     created_at: now,
     updated_at: now,
     feedback_iteration: 0,
     max_feedback_iterations: GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
     processed_comment_ids: [],
+    processed_issue_comment_ids: [],
     processed_run_ids: []
   };
 }
@@ -5603,11 +5665,13 @@ function enqueueIssue(state, issue) {
     pr_url: existing?.pr_url ?? null,
     status: "queued",
     completion_state: existing?.completion_state ?? null,
+    completion_finalized: existing?.completion_finalized ?? false,
     created_at: existing?.created_at ?? now,
     updated_at: now,
     feedback_iteration: existing?.feedback_iteration ?? 0,
     max_feedback_iterations: existing?.max_feedback_iterations ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
     processed_comment_ids: existing?.processed_comment_ids ?? [],
+    processed_issue_comment_ids: existing?.processed_issue_comment_ids ?? [],
     processed_run_ids: existing?.processed_run_ids ?? []
   };
   if (!state.queue.includes(issue.number)) {
@@ -5738,6 +5802,61 @@ async function fetchPrReviewComments(repo, prNumber) {
     state: typeof entry.state === "string" ? entry.state : void 0
   })).filter((comment) => comment.id > 0);
 }
+async function fetchPrIssueComments(repo, prNumber) {
+  const response = await ghExecutor.exec([
+    "api",
+    `repos/${repo}/issues/${prNumber}/comments`,
+    "--method",
+    "GET"
+  ]);
+  const parsed = JSON.parse(response.stdout || "[]");
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  return parsed.filter((entry) => Boolean(entry) && typeof entry === "object").map((entry) => ({
+    id: typeof entry.id === "number" ? entry.id : 0,
+    body: typeof entry.body === "string" ? entry.body : "",
+    user: entry.user && typeof entry.user === "object" ? { login: typeof entry.user.login === "string" ? entry.user.login : void 0 } : void 0
+  })).filter((comment) => comment.id > 0);
+}
+async function fetchFailedCheckLogs(repo, sha) {
+  const logs = /* @__PURE__ */ new Map();
+  try {
+    const runsResponse = await ghExecutor.exec([
+      "run",
+      "list",
+      "--repo",
+      repo,
+      "--commit",
+      sha,
+      "--status",
+      "failure",
+      "--json",
+      "databaseId",
+      "--limit",
+      "5"
+    ]);
+    const runs = JSON.parse(runsResponse.stdout || "[]");
+    for (const run of runs) {
+      try {
+        const logResponse = await ghExecutor.exec([
+          "run",
+          "view",
+          String(run.databaseId),
+          "--repo",
+          repo,
+          "--log-failed"
+        ]);
+        if (logResponse.stdout.trim()) {
+          logs.set(run.databaseId, logResponse.stdout.trim());
+        }
+      } catch {
+      }
+    }
+  } catch {
+  }
+  return logs;
+}
 async function fetchPrCheckRuns(repo, prNumber) {
   const prResponse = await ghExecutor.exec([
     "api",
@@ -5765,23 +5884,43 @@ async function fetchPrCheckRuns(repo, prNumber) {
   if (!Array.isArray(checkRuns)) {
     return [];
   }
-  return checkRuns.filter((entry) => Boolean(entry) && typeof entry === "object").map((entry) => ({
+  const runs = checkRuns.filter((entry) => Boolean(entry) && typeof entry === "object").map((entry) => ({
     id: typeof entry.id === "number" ? entry.id : 0,
     name: typeof entry.name === "string" ? entry.name : "",
     status: typeof entry.status === "string" ? entry.status : "",
     conclusion: typeof entry.conclusion === "string" ? entry.conclusion : null,
-    html_url: typeof entry.html_url === "string" ? entry.html_url : void 0
+    html_url: typeof entry.html_url === "string" ? entry.html_url : void 0,
+    log: void 0
   })).filter((run) => run.id > 0);
+  const hasFailures = runs.some((r) => r.status === "completed" && r.conclusion === "failure");
+  if (hasFailures) {
+    const logs = await fetchFailedCheckLogs(repo, sha);
+    if (logs.size > 0) {
+      const combinedLog = Array.from(logs.values()).join("\n---\n");
+      for (const run of runs) {
+        if (run.status === "completed" && run.conclusion === "failure") {
+          run.log = combinedLog;
+        }
+      }
+    }
+  }
+  return runs;
 }
-function collectNewFeedback(entry, comments, checkRuns) {
+function collectNewFeedback(entry, reviewComments, issueComments, checkRuns) {
   const processedCommentSet = new Set(entry.processed_comment_ids);
+  const processedIssueCommentSet = new Set(entry.processed_issue_comment_ids);
   const processedRunSet = new Set(entry.processed_run_ids);
-  const newComments = comments.filter((comment) => !processedCommentSet.has(comment.id));
+  const newReviewComments = reviewComments.filter((comment) => !processedCommentSet.has(comment.id));
+  const newIssueComments = issueComments.filter((comment) => !processedIssueCommentSet.has(comment.id)).filter((comment) => comment.body.toLowerCase().includes("@aloop"));
   const failedChecks = checkRuns.filter((run) => run.status === "completed" && run.conclusion === "failure").filter((run) => !processedRunSet.has(run.id));
-  return { new_comments: newComments, failed_checks: failedChecks };
+  return {
+    new_comments: newReviewComments,
+    new_issue_comments: newIssueComments,
+    failed_checks: failedChecks
+  };
 }
 function hasFeedback(feedback) {
-  return feedback.new_comments.length > 0 || feedback.failed_checks.length > 0;
+  return feedback.new_comments.length > 0 || feedback.new_issue_comments.length > 0 || feedback.failed_checks.length > 0;
 }
 function buildFeedbackSteering(feedback, prNumber) {
   const parts = [
@@ -5801,10 +5940,33 @@ function buildFeedbackSteering(feedback, prNumber) {
       parts.push("");
     }
   }
+  if (feedback.new_issue_comments.length > 0) {
+    parts.push("## Mentions (@aloop)", "");
+    for (const comment of feedback.new_issue_comments) {
+      const author = comment.user?.login ?? "unknown";
+      parts.push(`### @${author} (comment)`);
+      parts.push("");
+      parts.push(comment.body.trim());
+      parts.push("");
+    }
+  }
   if (feedback.failed_checks.length > 0) {
     parts.push("## CI Failures", "");
     for (const check of feedback.failed_checks) {
       parts.push(`- **${check.name}** failed${check.html_url ? ` ([view](${check.html_url}))` : ""}`);
+      if (check.log) {
+        parts.push("");
+        parts.push("```");
+        const logLines = check.log.split("\n");
+        if (logLines.length > 200) {
+          parts.push("... (truncated)");
+          parts.push(...logLines.slice(-200));
+        } else {
+          parts.push(check.log);
+        }
+        parts.push("```");
+        parts.push("");
+      }
     }
     parts.push("");
     parts.push("Fix the CI failures above. Review the error logs and address root causes.");
@@ -5817,6 +5979,11 @@ function markFeedbackProcessed(entry, feedback) {
   for (const comment of feedback.new_comments) {
     if (!entry.processed_comment_ids.includes(comment.id)) {
       entry.processed_comment_ids.push(comment.id);
+    }
+  }
+  for (const comment of feedback.new_issue_comments) {
+    if (!entry.processed_issue_comment_ids.includes(comment.id)) {
+      entry.processed_issue_comment_ids.push(comment.id);
     }
   }
   for (const check of feedback.failed_checks) {
@@ -5837,18 +6004,36 @@ async function checkAndApplyPrFeedback(entry, options) {
   if (entry.feedback_iteration >= entry.max_feedback_iterations) {
     return false;
   }
-  let comments;
+  let reviewComments;
+  let issueComments;
   let checkRuns;
   try {
-    [comments, checkRuns] = await Promise.all([
+    [reviewComments, issueComments, checkRuns] = await Promise.all([
       fetchPrReviewComments(entry.repo, entry.pr_number),
+      fetchPrIssueComments(entry.repo, entry.pr_number),
       fetchPrCheckRuns(entry.repo, entry.pr_number)
     ]);
   } catch {
     return false;
   }
-  const feedback = collectNewFeedback(entry, comments, checkRuns);
+  const feedback = collectNewFeedback(entry, reviewComments, issueComments, checkRuns);
   if (!hasFeedback(feedback)) {
+    let updated = false;
+    for (const c of reviewComments) {
+      if (!entry.processed_comment_ids.includes(c.id)) {
+        entry.processed_comment_ids.push(c.id);
+        updated = true;
+      }
+    }
+    for (const c of issueComments) {
+      if (!entry.processed_issue_comment_ids.includes(c.id)) {
+        entry.processed_issue_comment_ids.push(c.id);
+        updated = true;
+      }
+    }
+    if (updated) {
+      entry.updated_at = ghLoopRuntime.now();
+    }
     return false;
   }
   const sessionDir = getSessionDir(options.homeDir, entry.session_id);
@@ -5874,6 +6059,112 @@ async function checkAndApplyPrFeedback(entry, options) {
   entry.status = "running";
   return true;
 }
+async function finalizeWatchEntry(entry, options) {
+  if (!entry.repo || !entry.branch || !entry.session_id || !entry.completion_state) {
+    return;
+  }
+  const sessionDir = getSessionDir(options.homeDir, entry.session_id);
+  const metaPath = path5.join(sessionDir, "meta.json");
+  let projectRoot = options.projectRoot ?? process.cwd();
+  if (fs2.existsSync(metaPath)) {
+    try {
+      const meta = JSON.parse(fs2.readFileSync(metaPath, "utf8"));
+      if (typeof meta.project_root === "string" && meta.project_root.trim()) {
+        projectRoot = meta.project_root;
+      }
+    } catch {
+    }
+  }
+  let issueTitle = `Issue ${entry.issue_number}`;
+  try {
+    const issueRaw = await ghExecutor.exec(["issue", "view", String(entry.issue_number), "--json", "title", "--repo", entry.repo]);
+    const issuePayload = JSON.parse(issueRaw.stdout);
+    if (issuePayload.title) {
+      issueTitle = issuePayload.title;
+    }
+  } catch {
+  }
+  let baseBranch = "main";
+  try {
+    await execFileAsync("git", ["-C", projectRoot, "rev-parse", "--verify", "agent/main"]);
+    baseBranch = "agent/main";
+  } catch {
+    try {
+      await execFileAsync("git", ["-C", projectRoot, "branch", "agent/main", "main"]);
+      baseBranch = "agent/main";
+    } catch {
+      baseBranch = "main";
+    }
+  }
+  const prTitle = `[aloop] ${issueTitle}`;
+  const prBody = `Automated implementation for issue #${entry.issue_number}.
+
+Closes #${entry.issue_number}`;
+  try {
+    const prCreate = await ghExecutor.exec([
+      "pr",
+      "create",
+      "--repo",
+      entry.repo,
+      "--base",
+      baseBranch,
+      "--head",
+      entry.branch,
+      "--title",
+      prTitle,
+      "--body",
+      prBody
+    ]);
+    const pr = parsePrReference(prCreate.stdout);
+    if (pr.number !== null) {
+      entry.pr_number = pr.number;
+      entry.pr_url = pr.url;
+      const configPath = path5.join(sessionDir, "config.json");
+      if (fs2.existsSync(configPath)) {
+        try {
+          const config = JSON.parse(fs2.readFileSync(configPath, "utf8"));
+          const createdPrNumbers = extractPositiveIntegers(config.created_pr_numbers);
+          const next = new Set(createdPrNumbers);
+          next.add(pr.number);
+          config.created_pr_numbers = Array.from(next.values());
+          config.childCreatedPrNumbers = Array.from(next.values());
+          fs2.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}
+`, "utf8");
+        } catch {
+        }
+      }
+    }
+  } catch (err) {
+    try {
+      const prList = await ghExecutor.exec([
+        "pr",
+        "list",
+        "--repo",
+        entry.repo,
+        "--head",
+        entry.branch,
+        "--json",
+        "number,url"
+      ]);
+      const existing = JSON.parse(prList.stdout);
+      if (existing.length > 0) {
+        entry.pr_number = existing[0].number;
+        entry.pr_url = existing[0].url;
+      }
+    } catch {
+    }
+  }
+  const summary = [
+    `Aloop session ${entry.session_id} completed for #${entry.issue_number}.`,
+    entry.pr_url ? `Created PR: ${entry.pr_url}` : "Created PR (URL unavailable).",
+    `Branch: ${entry.branch}`,
+    `State: ${entry.completion_state}`
+  ].join("\n");
+  try {
+    await ghExecutor.exec(["issue", "comment", String(entry.issue_number), "--repo", entry.repo, "--body", summary]);
+  } catch {
+  }
+}
 async function runGhWatchCycle(options) {
   const maxConcurrent = parsePositiveIntegerOption(options.maxConcurrent, GH_WATCH_DEFAULT_MAX_CONCURRENT, "--max-concurrent");
   const state = loadWatchState(options.homeDir);
@@ -5893,6 +6184,14 @@ async function runGhWatchCycle(options) {
     if (resumed) {
       feedbackResumed.push(entry.issue_number);
     }
+  }
+  const newlyCompleted = Object.values(state.issues).filter(
+    (entry) => (entry.status === "completed" || entry.status === "stopped") && isTerminalState(entry.completion_state) && !entry.completion_finalized
+  );
+  for (const entry of newlyCompleted) {
+    await finalizeWatchEntry(entry, options);
+    entry.completion_finalized = true;
+    entry.updated_at = ghLoopRuntime.now();
   }
   const started = [];
   const queued = [...state.queue];
@@ -8084,7 +8383,7 @@ program2.command("resolve").description("Resolve project workspace and configura
 program2.command("discover").description("Discover workspace specs, files, and validation commands").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(discoverCommand);
 program2.command("setup").description("Interactive setup and scaffold for aloop project").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--spec <path>", "Specification file to use").option("--providers <providers>", "Comma-separated list of providers to enable").option("--non-interactive", "Skip interactive prompts and use defaults").action(setupCommand);
 program2.command("scaffold").description("Scaffold project workdir and prompts").option("--project-root <path>", "Project root override").option("--language <language>", "Language override").option("--provider <provider>", "Provider override").option("--enabled-providers <providers...>", "Enabled providers list or csv values").option("--round-robin-order <providers...>", "Round-robin provider order list or csv values").option("--spec-files <files...>", "Spec file list or csv values").option("--reference-files <files...>", "Reference file list or csv values").option("--validation-commands <commands...>", "Validation command list or csv values").option("--safety-rules <rules...>", "Safety rule list or csv values").option("--mode <mode>", "Loop mode", "plan-build-review").option("--templates-dir <path>", "Template directory override").option("--output <mode>", "Output format: json or text", "json").action(scaffoldCommand);
-program2.command("start").description("Start an aloop session for the current project").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--provider <provider>", "Provider override").option("--mode <mode>", "Loop mode override").option("--launch <mode>", "Session launch mode: start, restart, or resume").option("--plan", "Shortcut for --mode plan").option("--build", "Shortcut for --mode build").option("--review", "Shortcut for --mode review").option("--in-place", "Run in project root instead of creating a git worktree").option("--max-iterations <number>", "Max iteration override").option("--output <mode>", "Output format: json or text", "text").action(startCommand);
+program2.command("start").description("Start an aloop session for the current project").argument("[session-id]", "Session ID to resume (used with --launch resume)").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--provider <provider>", "Provider override").option("--mode <mode>", "Loop mode override").option("--launch <mode>", "Session launch mode: start, restart, or resume").option("--plan", "Shortcut for --mode plan").option("--build", "Shortcut for --mode build").option("--review", "Shortcut for --mode review").option("--in-place", "Run in project root instead of creating a git worktree").option("--max-iterations <number>", "Max iteration override").option("--output <mode>", "Output format: json or text", "text").action(startCommand);
 program2.command("dashboard").description("Launch real-time progress dashboard").option("-p, --port <number>", "Port to run the dashboard on", "3000").option("--session-dir <path>", "Session directory containing status.json and log.jsonl").option("--workdir <path>", "Project work directory containing TODO.md and related docs").option("--assets-dir <path>", "Directory containing bundled dashboard frontend assets").action(dashboardCommand);
 program2.command("status").description("Show all active sessions and provider health").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").option("--watch", "Auto-refresh status display").action(statusCommand);
 program2.command("active").description("List active sessions").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(activeCommand);

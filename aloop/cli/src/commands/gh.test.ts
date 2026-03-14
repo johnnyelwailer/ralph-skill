@@ -12,6 +12,7 @@ import {
   hasFeedback,
   buildFeedbackSteering,
   markFeedbackProcessed,
+  fetchPrCheckRuns,
   GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
   type PrReviewComment,
   type PrCheckRun,
@@ -1972,6 +1973,39 @@ test('collectNewFeedback ignores passing checks', () => {
   assert.equal(hasFeedback(feedback), false);
 });
 
+test('collectNewFeedback filters issue comments by @aloop mention', () => {
+  const entry = buildWatchEntry();
+
+  const issueComments = [
+    { id: 10, body: 'Just a regular comment', user: { login: 'user1' }, created_at: '2026-03-14T13:00:00Z' },
+    { id: 11, body: 'Hey @aloop, please fix this', user: { login: 'user2' }, created_at: '2026-03-14T13:01:00Z' },
+    { id: 12, body: '@ALOOP do something', user: { login: 'user3' }, created_at: '2026-03-14T13:02:00Z' },
+    { id: 13, body: 'Another comment without mention', user: { login: 'user4' }, created_at: '2026-03-14T13:03:00Z' },
+  ];
+
+  const feedback = collectNewFeedback(entry, [], issueComments, []);
+
+  assert.equal(feedback.new_issue_comments.length, 2);
+  assert.equal(feedback.new_issue_comments[0].id, 11);
+  assert.equal(feedback.new_issue_comments[1].id, 12);
+});
+
+test('collectNewFeedback filters out already processed issue comments even if they mention @aloop', () => {
+  const entry = buildWatchEntry({
+    processed_issue_comment_ids: [11],
+  });
+
+  const issueComments = [
+    { id: 11, body: 'Hey @aloop, please fix this', user: { login: 'user2' }, created_at: '2026-03-14T13:01:00Z' },
+    { id: 12, body: '@ALOOP do something new', user: { login: 'user3' }, created_at: '2026-03-14T13:02:00Z' },
+  ];
+
+  const feedback = collectNewFeedback(entry, [], issueComments, []);
+
+  assert.equal(feedback.new_issue_comments.length, 1);
+  assert.equal(feedback.new_issue_comments[0].id, 12);
+});
+
 test('hasFeedback returns true when there are new comments', () => {
   const feedback: PrFeedback = {
     new_comments: [{ id: 1, body: 'fix this' }],
@@ -2012,6 +2046,25 @@ test('buildFeedbackSteering formats review comments and CI failures', () => {
   assert.match(steering, /build-and-test/);
   assert.match(steering, /CI Failures/);
   assert.match(steering, /\[view\]/);
+});
+
+test('buildFeedbackSteering truncates logs over 200 lines', () => {
+  const logLines = Array.from({ length: 250 }, (_, i) => `Line ${i + 1}`);
+  const log = logLines.join('\n');
+
+  const feedback: PrFeedback = {
+    new_comments: [],
+    new_issue_comments: [],
+    failed_checks: [
+      { id: 10, name: 'build', status: 'completed', conclusion: 'failure', log: log },
+    ],
+  };
+
+  const steering = buildFeedbackSteering(feedback, 51);
+  assert.match(steering, /Line 250/);
+  assert.match(steering, /Line 51/);
+  assert.doesNotMatch(steering, /Line 50\n/);
+  assert.match(steering, /\.\.\. \(truncated\)/);
 });
 
 test('buildFeedbackSteering handles comments without path or user', () => {
@@ -2279,4 +2332,49 @@ test('gh status shows feedback iteration count for entries with feedback', async
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
+});
+
+test('fetchPrCheckRuns calls gh run view --log-failed and ingests logs on failure', async (t) => {
+  const repo = 'test/repo';
+  const prNumber = 51;
+  const sha = 'abcdef123';
+
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    // 1. Get PR head SHA
+    if (args.includes(`repos/${repo}/pulls/${prNumber}`)) {
+      return { stdout: sha, stderr: '' };
+    }
+    // 2. Get check-runs for SHA
+    if (args.includes(`repos/${repo}/commits/${sha}/check-runs`)) {
+      return {
+        stdout: JSON.stringify({
+          check_runs: [
+            { id: 100, name: 'build', status: 'completed', conclusion: 'failure' }
+          ]
+        }),
+        stderr: ''
+      };
+    }
+    // 3. List runs for commit
+    if (args[0] === 'run' && args[1] === 'list') {
+      return {
+        stdout: JSON.stringify([{ databaseId: 12345 }]),
+        stderr: ''
+      };
+    }
+    // 4. View failed log
+    if (args[0] === 'run' && args[1] === 'view' && args[2] === '12345') {
+      assert.ok(args.includes('--log-failed'));
+      return {
+        stdout: 'Actual failure log content',
+        stderr: ''
+      };
+    }
+    return { stdout: '[]', stderr: '' };
+  });
+
+  const runs = await fetchPrCheckRuns(repo, prNumber);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].conclusion, 'failure');
+  assert.equal(runs[0].log, 'Actual failure log content');
 });
