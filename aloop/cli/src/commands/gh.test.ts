@@ -14,6 +14,29 @@ import {
   markFeedbackProcessed,
   fetchPrCheckRuns,
   GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+  normalizeWatchIssueEntry,
+  normalizeWatchState,
+  loadWatchState,
+  parsePositiveIntegerOption,
+  enqueueIssue,
+  parseGhIssueList,
+  readSessionState,
+  refreshWatchState,
+  fetchMatchingIssues,
+  fetchPrReviewComments,
+  fetchPrIssueComments,
+  fetchFailedCheckLogs,
+  finalizeWatchEntry,
+  runGhWatchCycle,
+  ghWatchCommand,
+  ghStatusCommand,
+  includesAloopAutoLabel,
+  buildGhArgs,
+  parseGhOutput,
+  executeGhOperation,
+  evaluatePolicy,
+  formatGhStatusRows,
+  ghStopCommand,
   type PrReviewComment,
   type PrCheckRun,
   type PrFeedback,
@@ -2377,4 +2400,556 @@ test('fetchPrCheckRuns calls gh run view --log-failed and ingests logs on failur
   assert.equal(runs.length, 1);
   assert.equal(runs[0].conclusion, 'failure');
   assert.equal(runs[0].log, 'Actual failure log content');
+});
+
+test('normalizeWatchIssueEntry and normalizeWatchState sanitize malformed persisted watch state', () => {
+  assert.equal(normalizeWatchIssueEntry(null), null);
+
+  const normalizedEntry = normalizeWatchIssueEntry({
+    issue_number: '42',
+    status: 'bogus',
+    session_id: '  ',
+    branch: 'feature/test',
+    repo: 'test/repo',
+    pr_number: '17',
+    completion_state: '',
+    completion_finalized: true,
+    feedback_iteration: -2,
+    max_feedback_iterations: '0',
+    processed_comment_ids: [1, '2', 'oops'],
+  });
+  assert.ok(normalizedEntry);
+  assert.equal(normalizedEntry?.issue_number, 42);
+  assert.equal(normalizedEntry?.status, 'queued');
+  assert.equal(normalizedEntry?.session_id, null);
+  assert.equal(normalizedEntry?.pr_number, 17);
+  assert.deepEqual(normalizedEntry?.processed_comment_ids, [1, 2]);
+  assert.equal(normalizedEntry?.max_feedback_iterations, GH_FEEDBACK_DEFAULT_MAX_ITERATIONS);
+
+  const state = normalizeWatchState({
+    queue: ['7', 7, 9],
+    issues: {
+      '7': { issue_number: 7, status: 'queued' },
+      '8': { issue_number: 8, status: 'running' },
+      bad: { issue_number: 'nope' },
+    },
+  });
+  assert.deepEqual(state.queue, [7, 9]);
+  assert.equal(state.issues['7'].status, 'queued');
+  assert.equal(state.issues['8'].status, 'running');
+});
+
+test('parsePositiveIntegerOption validates values and honors fallback', () => {
+  assert.equal(parsePositiveIntegerOption(undefined, 5, '--max'), 5);
+  assert.equal(parsePositiveIntegerOption('7', 5, '--max'), 7);
+  assert.throws(() => parsePositiveIntegerOption('abc', 5, '--max'), /must be a positive integer/i);
+});
+
+test('enqueueIssue does not requeue running/completed entries and infers repo from URL', () => {
+  const state = normalizeWatchState({ issues: {}, queue: [] });
+  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10' });
+  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10' });
+  assert.deepEqual(state.queue, [10]);
+  assert.equal(state.issues['10'].repo, 'test/repo');
+
+  state.issues['10'].status = 'running';
+  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10' });
+  assert.deepEqual(state.queue, [10]);
+});
+
+test('parseGhIssueList filters non-issue payloads', () => {
+  assert.deepEqual(parseGhIssueList('{}'), []);
+  const issues = parseGhIssueList(JSON.stringify([
+    null,
+    { number: 1, title: '', url: 'https://github.com/test/repo/issues/1' },
+    { number: 2, title: 'Valid', url: 'https://github.com/test/repo/issues/2' },
+  ]));
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].number, 2);
+});
+
+test('policy and parser helpers cover denied and unknown operation branches', () => {
+  const sessionPolicy = {
+    repo: 'test/repo',
+    assignedIssueNumber: 42,
+    childCreatedPrNumbers: [15],
+  };
+
+  assert.equal(includesAloopAutoLabel(undefined), false);
+  assert.equal(includesAloopAutoLabel(['foo', 'aloop/auto']), true);
+
+  const childUnknown = evaluatePolicy('mystery-op', 'child-loop', { repo: 'test/repo' }, sessionPolicy);
+  assert.equal(childUnknown.allowed, false);
+  assert.match(String(childUnknown.reason), /Unknown operation/i);
+
+  const labelMissingTarget = evaluatePolicy('issue-label', 'orchestrator', { issue_number: 42 }, sessionPolicy);
+  assert.equal(labelMissingTarget.allowed, false);
+  assert.match(String(labelMissingTarget.reason), /aloop\/auto-scoped/i);
+
+  const labelBadNumber = evaluatePolicy(
+    'issue-label',
+    'orchestrator',
+    { target_labels: ['aloop/auto'], issue_number: 'abc', label_action: 'add', label: 'aloop/blocked-on-human' },
+    sessionPolicy,
+  );
+  assert.equal(labelBadNumber.allowed, false);
+  assert.match(String(labelBadNumber.reason), /numeric issue_number/i);
+
+  const labelBadAction = evaluatePolicy(
+    'issue-label',
+    'orchestrator',
+    { target_labels: ['aloop/auto'], issue_number: 42, label_action: 'replace', label: 'aloop/blocked-on-human' },
+    sessionPolicy,
+  );
+  assert.equal(labelBadAction.allowed, false);
+  assert.match(String(labelBadAction.reason), /label_action/i);
+
+  const commentsMissingSince = evaluatePolicy('issue-comments', 'orchestrator', { since: '' }, sessionPolicy);
+  assert.equal(commentsMissingSince.allowed, false);
+  assert.match(String(commentsMissingSince.reason), /requires --since/i);
+
+  const orchestratorUnknown = evaluatePolicy('weird-op', 'orchestrator', { repo: 'test/repo' }, sessionPolicy);
+  assert.equal(orchestratorUnknown.allowed, false);
+  assert.match(String(orchestratorUnknown.reason), /Unknown operation/i);
+
+  assert.deepEqual(parseGhOutput('issue-comments', ''), { comments: [], comment_count: 0 });
+  assert.throws(() => buildGhArgs('unknown-op', {}, { repo: 'test/repo' }), /Cannot build gh args/i);
+});
+
+test('formatGhStatusRows renders empty and populated states', () => {
+  const empty = normalizeWatchState({ issues: {}, queue: [] });
+  assert.equal(formatGhStatusRows(empty, new Map()), 'No GH-linked sessions.');
+
+  const state = normalizeWatchState({
+    issues: {
+      '42': {
+        issue_number: 42,
+        status: 'queued',
+        branch: null,
+        pr_number: null,
+        feedback_iteration: 1,
+        max_feedback_iterations: 5,
+      },
+    },
+    queue: [42],
+  });
+  const rows = formatGhStatusRows(state, new Map());
+  assert.match(rows, /#42/);
+  assert.match(rows, /\(queued\)/);
+  assert.match(rows, /1\/5/);
+});
+
+test('ghStopCommand validates arguments, handles missing targets, and exits on failed stop', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-stop-branches-'));
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => output.push(String(line ?? '')));
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  try {
+    await assert.rejects(() => ghStopCommand({ homeDir: tmpHome }), /requires either --issue/i);
+    await assert.rejects(() => ghStopCommand({ homeDir: tmpHome, all: true, issue: '42' }), /either --issue or --all/i);
+    await assert.rejects(() => ghStopCommand({ homeDir: tmpHome, issue: '999' }), /No GH-linked session found/i);
+
+    writeWatchState(tmpHome, {
+      version: 1,
+      issues: {
+        '42': {
+          issue_number: 42,
+          session_id: 'sess-42',
+          branch: 'agent/issue-42',
+          repo: 'test/repo',
+          pr_number: null,
+          pr_url: null,
+          status: 'running',
+          completion_state: null,
+          completion_finalized: false,
+          created_at: '2026-03-14T12:00:00.000Z',
+          updated_at: '2026-03-14T12:00:00.000Z',
+          feedback_iteration: 0,
+          max_feedback_iterations: 5,
+          processed_comment_ids: [],
+          processed_issue_comment_ids: [],
+          processed_run_ids: [],
+        },
+      },
+      queue: [],
+    });
+    t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+    t.mock.method(ghLoopRuntime, 'stopSession', async () => ({ success: false, reason: 'boom' }));
+
+    await assert.rejects(() => ghStopCommand({ homeDir: tmpHome, all: true }), /process\.exit:1/);
+    assert.match(output.join('\n'), /Failed to stop issue #42: boom/);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('loadWatchState returns empty state for missing/invalid files', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-load-watch-'));
+  try {
+    const missing = loadWatchState(tmpHome);
+    assert.deepEqual(missing.queue, []);
+    assert.deepEqual(missing.issues, {});
+
+    const watchPath = path.join(tmpHome, '.aloop', 'watch.json');
+    fs.mkdirSync(path.dirname(watchPath), { recursive: true });
+    fs.writeFileSync(watchPath, '{broken', 'utf8');
+    const invalid = loadWatchState(tmpHome);
+    assert.deepEqual(invalid.queue, []);
+    assert.deepEqual(invalid.issues, {});
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('readSessionState handles missing and malformed status payloads', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-read-state-'));
+  const sessionDir = path.join(tmpHome, '.aloop', 'sessions', 'sess-1');
+  try {
+    assert.equal(readSessionState(tmpHome, 'sess-1'), null);
+    fs.mkdirSync(sessionDir, { recursive: true });
+    fs.writeFileSync(path.join(sessionDir, 'status.json'), JSON.stringify([]), 'utf8');
+    assert.equal(readSessionState(tmpHome, 'sess-1'), null);
+    fs.writeFileSync(path.join(sessionDir, 'status.json'), JSON.stringify({ state: 5 }), 'utf8');
+    assert.equal(readSessionState(tmpHome, 'sess-1'), null);
+    fs.writeFileSync(path.join(sessionDir, 'status.json'), JSON.stringify({ state: 'exited' }), 'utf8');
+    assert.equal(readSessionState(tmpHome, 'sess-1'), 'exited');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('refreshWatchState syncs running/completed/stopped statuses and queue', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-refresh-state-'));
+  const state = normalizeWatchState({
+    queue: [99, 100],
+    issues: {
+      '42': { issue_number: 42, session_id: 'active', status: 'running' },
+      '43': { issue_number: 43, session_id: 'done', status: 'running' },
+      '44': { issue_number: 44, session_id: 'halted', status: 'running' },
+      '99': { issue_number: 99, status: 'queued' },
+      '100': { issue_number: 100, status: 'completed' },
+    },
+  });
+  const doneDir = path.join(tmpHome, '.aloop', 'sessions', 'done');
+  const haltedDir = path.join(tmpHome, '.aloop', 'sessions', 'halted');
+  fs.mkdirSync(doneDir, { recursive: true });
+  fs.mkdirSync(haltedDir, { recursive: true });
+  fs.writeFileSync(path.join(doneDir, 'status.json'), JSON.stringify({ state: 'exited' }), 'utf8');
+  fs.writeFileSync(path.join(haltedDir, 'status.json'), JSON.stringify({ state: 'stopped' }), 'utf8');
+
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => [
+    { session_id: 'active', session_dir: '/tmp/a', work_dir: '/tmp/a', prompts_dir: '/tmp/a/prompts', pid: 1, state: 'running', completion_state: null, branch: 'agent/x', issue_number: 42, repo: 'test/repo', launch_mode: 'start', started_at: 'now', updated_at: 'now', iteration: 1, max_iterations: 30 },
+  ] as any);
+
+  try {
+    await refreshWatchState(tmpHome, state);
+    assert.equal(state.issues['42'].status, 'running');
+    assert.equal(state.issues['43'].status, 'completed');
+    assert.equal(state.issues['44'].status, 'stopped');
+    assert.deepEqual(state.queue, [99]);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('fetchMatchingIssues applies filters and keeps valid issues only', async (t) => {
+  let seenArgs: string[] = [];
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    seenArgs = args;
+    return {
+      stdout: JSON.stringify([
+        { number: 7, title: 'Valid', url: 'https://github.com/test/repo/issues/7' },
+        { number: 0, title: 'Invalid', url: 'https://github.com/test/repo/issues/0' },
+      ]),
+      stderr: '',
+    };
+  });
+
+  const issues = await fetchMatchingIssues({
+    label: ['aloop', ''],
+    assignee: 'alice',
+    milestone: 'M1',
+    repo: 'test/repo',
+  });
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].number, 7);
+  assert.ok(seenArgs.includes('--assignee'));
+  assert.ok(seenArgs.includes('--milestone'));
+  assert.ok(seenArgs.includes('--repo'));
+});
+
+test('fetchPrReviewComments and fetchPrIssueComments normalize malformed API results', async (t) => {
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    if (args.join(' ').includes('/pulls/1/comments')) {
+      return {
+        stdout: JSON.stringify([{ id: 10, body: 'x', line: 2, path: 'a.ts', user: { login: 'u' } }, { id: 0, body: 'bad' }]),
+        stderr: '',
+      };
+    }
+    return {
+      stdout: JSON.stringify([{ id: 20, body: '@aloop ping', user: { login: 'u2' } }, { id: 0 }]),
+      stderr: '',
+    };
+  });
+
+  const review = await fetchPrReviewComments('test/repo', 1);
+  const issue = await fetchPrIssueComments('test/repo', 1);
+  assert.equal(review.length, 1);
+  assert.equal(review[0].id, 10);
+  assert.equal(issue.length, 1);
+  assert.equal(issue[0].id, 20);
+});
+
+test('fetchFailedCheckLogs handles nested and top-level failures safely', async (t) => {
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    if (args[0] === 'run' && args[1] === 'list') {
+      return { stdout: JSON.stringify([{ databaseId: 10 }, { databaseId: 11 }]), stderr: '' };
+    }
+    if (args[0] === 'run' && args[1] === 'view' && args[2] === '10') {
+      throw new Error('log unavailable');
+    }
+    if (args[0] === 'run' && args[1] === 'view' && args[2] === '11') {
+      return { stdout: 'failure-log', stderr: '' };
+    }
+    throw new Error('unexpected');
+  });
+
+  const logs = await fetchFailedCheckLogs('test/repo', 'abc');
+  assert.equal(logs.size, 1);
+  assert.equal(logs.get(11), 'failure-log');
+});
+
+test('finalizeWatchEntry supports success and fallback failure paths', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-finalize-'));
+  const sessionId = 'sess-finalize';
+  const sessionDir = path.join(tmpHome, '.aloop', 'sessions', sessionId);
+  fs.mkdirSync(sessionDir, { recursive: true });
+  fs.writeFileSync(path.join(sessionDir, 'config.json'), JSON.stringify({ created_pr_numbers: [1] }), 'utf8');
+
+  const entry: GhWatchIssueEntry = {
+    issue_number: 55,
+    session_id: sessionId,
+    branch: 'agent/issue-55',
+    repo: 'test/repo',
+    pr_number: null,
+    pr_url: null,
+    status: 'completed',
+    completion_state: 'exited',
+    completion_finalized: false,
+    created_at: '2026-03-14T12:00:00.000Z',
+    updated_at: '2026-03-14T12:00:00.000Z',
+    feedback_iteration: 0,
+    max_feedback_iterations: 5,
+    processed_comment_ids: [],
+    processed_issue_comment_ids: [],
+    processed_run_ids: [],
+  };
+
+  let call = 0;
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    call += 1;
+    if (args[0] === 'issue' && args[1] === 'view') {
+      return { stdout: JSON.stringify({ title: 'Finalize me' }), stderr: '' };
+    }
+    if (args[0] === 'pr' && args[1] === 'create') {
+      return { stdout: 'https://github.com/test/repo/pull/77', stderr: '' };
+    }
+    if (args[0] === 'issue' && args[1] === 'comment') {
+      return { stdout: '', stderr: '' };
+    }
+    throw new Error(`unexpected args: ${args.join(' ')}`);
+  });
+
+  try {
+    const success = await finalizeWatchEntry(entry, { homeDir: tmpHome, output: 'text' });
+    assert.equal(success, true);
+    assert.equal(entry.pr_number, 77);
+    assert.ok(call >= 3);
+
+    // Fallback path: pr create fails, pr list empty, finalization should fail.
+    entry.pr_number = null;
+    t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ title: 'Finalize me' }), stderr: '' };
+      }
+      if (args[0] === 'pr' && args[1] === 'create') {
+        throw new Error('create failed');
+      }
+      if (args[0] === 'pr' && args[1] === 'list') {
+        return { stdout: '[]', stderr: '' };
+      }
+      return { stdout: '', stderr: '' };
+    });
+    const failed = await finalizeWatchEntry(entry, { homeDir: tmpHome, output: 'text' });
+    assert.equal(failed, false);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('ghStartCommandWithDeps throws when planner prompt is missing', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-start-missing-plan-'));
+  const issuePayload = {
+    number: 42,
+    title: 'Missing planner prompt',
+    body: 'Body',
+    url: 'https://github.com/test/repo/issues/42',
+    labels: [],
+    comments: [],
+  };
+
+  try {
+    await assert.rejects(
+      () => ghStartCommandWithDeps(
+        { issue: '42', homeDir: tmpRoot },
+        {
+          startSession: async () => ({
+            session_id: 'sess-42',
+            session_dir: path.join(tmpRoot, 'sessions', 'sess-42'),
+            prompts_dir: path.join(tmpRoot, 'sessions', 'sess-42', 'prompts'),
+            work_dir: path.join(tmpRoot, 'sessions', 'sess-42', 'worktree'),
+            worktree_path: path.join(tmpRoot, 'sessions', 'sess-42', 'worktree'),
+            branch: 'agent/issue-42',
+            worktree: true,
+            pid: 1234,
+          } as any),
+          execGh: async (args: string[]) => {
+            if (args[0] === 'issue' && args[1] === 'view') {
+              return { stdout: JSON.stringify(issuePayload), stderr: '' };
+            }
+            return { stdout: '', stderr: '' };
+          },
+          execGit: async () => ({ stdout: '', stderr: '' }),
+          readFile: () => '',
+          writeFile: () => {},
+          existsSync: (filePath: string) => filePath.endsWith('config.json') || filePath.endsWith('meta.json') || filePath.endsWith('status.json'),
+          cwd: () => tmpRoot,
+        } as any,
+      ),
+      /Missing planner prompt/i,
+    );
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test('ghStartCommandWithDeps keeps base branch main and warns when creating agent/main fails', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-start-main-warning-'));
+  const planPrompt = path.join(tmpRoot, 'sessions', 'sess-43', 'prompts', 'PROMPT_plan.md');
+  const files = new Map<string, string>([
+    [planPrompt, '# plan'],
+    [path.join(tmpRoot, 'sessions', 'sess-43', 'meta.json'), JSON.stringify({ project_root: tmpRoot })],
+    [path.join(tmpRoot, 'sessions', 'sess-43', 'status.json'), JSON.stringify({ state: 'running' })],
+    [path.join(tmpRoot, 'sessions', 'sess-43', 'config.json'), JSON.stringify({})],
+  ]);
+
+  try {
+    const result = await ghStartCommandWithDeps(
+      { issue: '43', homeDir: tmpRoot, projectRoot: tmpRoot },
+      {
+        startSession: async () => ({
+          session_id: 'sess-43',
+          session_dir: path.join(tmpRoot, 'sessions', 'sess-43'),
+          prompts_dir: path.join(tmpRoot, 'sessions', 'sess-43', 'prompts'),
+          work_dir: path.join(tmpRoot, 'sessions', 'sess-43', 'worktree'),
+          worktree_path: path.join(tmpRoot, 'sessions', 'sess-43', 'worktree'),
+          branch: 'agent/issue-43-different',
+          worktree: true,
+          pid: 4321,
+        } as any),
+        execGh: async (args: string[]) => {
+          if (args[0] === 'issue' && args[1] === 'view') {
+            return {
+              stdout: JSON.stringify({
+                number: 43,
+                title: 'Cannot create agent main',
+                body: '',
+                url: 'https://github.com/test/repo/issues/43',
+                labels: [],
+                comments: [],
+              }),
+              stderr: '',
+            };
+          }
+          return { stdout: '', stderr: '' };
+        },
+        execGit: async (args: string[]) => {
+          const joined = args.join(' ');
+          if (joined.includes('rev-parse --verify agent/main') || joined.includes('branch agent/main main')) {
+            throw new Error('git failed');
+          }
+          return { stdout: '', stderr: '' };
+        },
+        readFile: (filePath: string) => files.get(filePath) ?? '',
+        writeFile: (filePath: string, content: string) => void files.set(filePath, content),
+        existsSync: (filePath: string) => files.has(filePath),
+        cwd: () => tmpRoot,
+      } as any,
+    );
+    assert.equal(result.base_branch, 'main');
+    assert.equal(result.warnings.length > 0, true);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test('executeGhOperation covers missing request, gh execution errors, and parse errors with request_file', async (t) => {
+  const fixture = createFixture();
+  const errors: string[] = [];
+  t.mock.method(console, 'error', (line?: unknown) => errors.push(String(line ?? '')));
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+
+  try {
+    await assert.rejects(
+      () => executeGhOperation('pr-create', {
+        session: 'test-session',
+        role: 'child-loop',
+        homeDir: fixture.tmpHome,
+        request: '   ',
+      }),
+      /process\.exit:1/,
+    );
+
+    t.mock.method(ghExecutor, 'exec', async () => {
+      throw Object.assign(new Error('gh failed'), { stderr: 'boom' });
+    });
+    await assert.rejects(
+      () => executeGhOperation('pr-create', {
+        session: 'test-session',
+        role: 'child-loop',
+        homeDir: fixture.tmpHome,
+        request: fixture.requestFile,
+      }),
+      /process\.exit:1/,
+    );
+
+    t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '{broken', stderr: '' }));
+    await assert.rejects(
+      () => executeGhOperation('issue-comments', {
+        session: 'test-session',
+        role: 'orchestrator',
+        homeDir: fixture.tmpHome,
+        since: '2026-03-14T11:00:00Z',
+        request: fixture.requestFile,
+      }),
+      /process\.exit:1/,
+    );
+
+    const entries = readLogEntries(fixture.sessionDir);
+    const parseError = entries.find((entry) => entry.event === 'gh_operation_error' && entry.type === 'issue-comments');
+    assert.equal(parseError?.request_file, path.basename(fixture.requestFile));
+    assert.match(errors.join('\n'), /Request file not provided|gh_operation_error/);
+  } finally {
+    fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('buildGhArgs supports pr-comments operation', () => {
+  const args = buildGhArgs('pr-comments', {}, { repo: 'test/repo', since: '2026-03-14T00:00:00Z' });
+  assert.deepEqual(args, ['api', 'repos/test/repo/pulls/comments', '--method', 'GET', '-f', 'since=2026-03-14T00:00:00Z']);
 });

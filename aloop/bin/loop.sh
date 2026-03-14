@@ -1047,6 +1047,30 @@ invoke_provider() {
                 LAST_PROVIDER_ERROR=""
             fi
             ;;
+        opencode)
+            local opencode_args=()
+            if [ -n "${model_override:-}" ]; then
+                opencode_args+=(-m "$model_override")
+            fi
+            {
+                echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" opencode run "${opencode_args[@]}" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                exit ${PIPESTATUS[1]}
+            } &
+            ACTIVE_PROVIDER_PID=$!
+            _wait_for_provider
+            exit_code=$?
+            if [ "$exit_code" -eq 124 ]; then
+                LAST_PROVIDER_ERROR="opencode timed out after $PROVIDER_TIMEOUT seconds"
+                echo "opencode timed out after $PROVIDER_TIMEOUT seconds" >&2
+                invoke_rc=1
+            elif [ "$exit_code" -ne 0 ]; then
+                LAST_PROVIDER_ERROR="opencode exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
+                echo "opencode exited with code $exit_code" >&2
+                invoke_rc=$exit_code
+            else
+                LAST_PROVIDER_ERROR=""
+            fi
+            ;;
         gemini)
             local gemini_model="${model_override:-$GEMINI_MODEL}"
             {

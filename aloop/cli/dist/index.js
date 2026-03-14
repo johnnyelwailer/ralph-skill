@@ -6061,7 +6061,7 @@ async function checkAndApplyPrFeedback(entry, options) {
 }
 async function finalizeWatchEntry(entry, options) {
   if (!entry.repo || !entry.branch || !entry.session_id || !entry.completion_state) {
-    return;
+    return false;
   }
   const sessionDir = getSessionDir(options.homeDir, entry.session_id);
   const metaPath = path5.join(sessionDir, "meta.json");
@@ -6154,6 +6154,9 @@ Closes #${entry.issue_number}`;
     } catch {
     }
   }
+  if (entry.pr_number === null) {
+    return false;
+  }
   const summary = [
     `Aloop session ${entry.session_id} completed for #${entry.issue_number}.`,
     entry.pr_url ? `Created PR: ${entry.pr_url}` : "Created PR (URL unavailable).",
@@ -6163,7 +6166,9 @@ Closes #${entry.issue_number}`;
   try {
     await ghExecutor.exec(["issue", "comment", String(entry.issue_number), "--repo", entry.repo, "--body", summary]);
   } catch {
+    return false;
   }
+  return true;
 }
 async function runGhWatchCycle(options) {
   const maxConcurrent = parsePositiveIntegerOption(options.maxConcurrent, GH_WATCH_DEFAULT_MAX_CONCURRENT, "--max-concurrent");
@@ -6189,9 +6194,11 @@ async function runGhWatchCycle(options) {
     (entry) => (entry.status === "completed" || entry.status === "stopped") && isTerminalState(entry.completion_state) && !entry.completion_finalized
   );
   for (const entry of newlyCompleted) {
-    await finalizeWatchEntry(entry, options);
-    entry.completion_finalized = true;
-    entry.updated_at = ghLoopRuntime.now();
+    const success = await finalizeWatchEntry(entry, options);
+    if (success) {
+      entry.completion_finalized = true;
+      entry.updated_at = ghLoopRuntime.now();
+    }
   }
   const started = [];
   const queued = [...state.queue];
