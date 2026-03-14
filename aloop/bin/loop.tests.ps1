@@ -983,9 +983,22 @@ exit 0
     }
 
     AfterAll {
-        Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-            Where-Object { $_.CommandLine -match [regex]::Escape($tempRoot) } |
-            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        if ($IsWindows) {
+            Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+                Where-Object { $_.CommandLine -match [regex]::Escape($tempRoot) } |
+                ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        } else {
+            # On Linux, try to find node processes with tempRoot in their command line
+            Get-Process node -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    try {
+                        $cmdLine = Get-Content "/proc/$($_.Id)/cmdline" -Raw -ErrorAction SilentlyContinue
+                        if ($cmdLine -match [regex]::Escape($tempRoot)) {
+                            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+                        }
+                    } catch {}
+                }
+        }
         if (Test-Path $tempRoot) { Remove-Item -Recurse -Force $tempRoot }
     }
 
@@ -1150,10 +1163,22 @@ switch ($scenario) {
     }
 
     AfterAll {
-        # Kill any orphaned dashboard node processes spawned from this test's temp dirs
-        Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-            Where-Object { $_.CommandLine -match [regex]::Escape($tempRoot) } |
-            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        if ($IsWindows) {
+            Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+                Where-Object { $_.CommandLine -match [regex]::Escape($tempRoot) } |
+                ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        } else {
+            # On Linux, try to find node processes with tempRoot in their command line
+            Get-Process node -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    try {
+                        $cmdLine = Get-Content "/proc/$($_.Id)/cmdline" -Raw -ErrorAction SilentlyContinue
+                        if ($cmdLine -match [regex]::Escape($tempRoot)) {
+                            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+                        }
+                    } catch {}
+                }
+        }
         if (Test-Path $tempRoot) { Remove-Item -Recurse -Force $tempRoot }
     }
 
@@ -1423,11 +1448,19 @@ Describe 'loop.ps1 — PATH hardening' {
         Test-Path (Join-Path $dir 'gh.exe') | Should -BeTrue
     }
 
-    It 'gh.cmd shim exits with code 127 and prints blocked message' {
+    It 'gh shim exits with code 127 and prints blocked message' {
         $dir = Setup-GhBlock
-        $ghCmd = Join-Path $dir 'gh.cmd'
-        $output = & cmd /c $ghCmd 2>&1
-        $LASTEXITCODE | Should -Be 127
+        if ($IsWindows) {
+            $ghCmd = Join-Path $dir 'gh.cmd'
+            $output = & cmd /c $ghCmd 2>&1
+            $exitCode = $LASTEXITCODE
+        } else {
+            $ghShim = Join-Path $dir 'gh'
+            chmod +x $ghShim
+            $output = & $ghShim 2>&1
+            $exitCode = $LASTEXITCODE
+        }
+        $exitCode | Should -Be 127
         ($output | Out-String) | Should -Match 'blocked by aloop PATH hardening'
     }
 
@@ -1451,20 +1484,36 @@ Describe 'loop.ps1 — PATH hardening' {
         $colocDir = Join-Path ([IO.Path]::GetTempPath()) ("aloop-coloc-test-" + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Force $colocDir | Out-Null
         try {
-            # Real gh in coloc dir
-            Set-Content (Join-Path $colocDir 'gh.cmd') "@echo off`r`necho real-gh`r`n"
-            # Provider binary in same dir
-            Set-Content (Join-Path $colocDir 'myprovider.cmd') "@echo off`r`necho provider-ok`r`n"
+            if ($IsWindows) {
+                # Real gh in coloc dir
+                Set-Content (Join-Path $colocDir 'gh.cmd') "@echo off`r`necho real-gh`r`n"
+                # Provider binary in same dir
+                Set-Content (Join-Path $colocDir 'myprovider.cmd') "@echo off`r`necho provider-ok`r`n"
+            } else {
+                Set-Content (Join-Path $colocDir 'gh') "#!/bin/sh`necho real-gh`n"
+                Set-Content (Join-Path $colocDir 'myprovider') "#!/bin/sh`necho provider-ok`n"
+                chmod +x (Join-Path $colocDir 'gh')
+                chmod +x (Join-Path $colocDir 'myprovider')
+            }
 
             $savedPath = $env:PATH
             $env:PATH = "$dir$([IO.Path]::PathSeparator)$colocDir$([IO.Path]::PathSeparator)$env:PATH"
             try {
-                # gh should resolve to shim (blocked)
-                $ghOut = & cmd /c gh.cmd 2>&1
-                $LASTEXITCODE | Should -Be 127
+                if ($IsWindows) {
+                    # gh should resolve to shim (blocked)
+                    $ghOut = & cmd /c gh.cmd 2>&1
+                    $ghExit = $LASTEXITCODE
 
-                # provider should still resolve to coloc dir
-                $provOut = & cmd /c myprovider.cmd 2>&1
+                    # provider should still resolve to coloc dir
+                    $provOut = & cmd /c myprovider.cmd 2>&1
+                    $provExit = $LASTEXITCODE
+                } else {
+                    $ghOut = & gh 2>&1
+                    $ghExit = $LASTEXITCODE
+                    $provOut = & myprovider 2>&1
+                    $provExit = $LASTEXITCODE
+                }
+                $ghExit | Should -Be 127
                 ($provOut | Out-String).Trim() | Should -BeExactly 'provider-ok'
             } finally {
                 $env:PATH = $savedPath
@@ -2433,6 +2482,352 @@ Do partial thing.
         $reportFile = Join-Path $coverageDir 'ps1-cycle-frontmatter-branch-coverage.json'
         $branchRows = foreach ($key in $branches.Keys) {
             [pscustomobject]@{ id = $key; description = "loop.ps1 $key"; covered = [bool]$branches[$key] }
+        }
+        [pscustomobject]@{
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            target = 'aloop/bin/loop.ps1'
+            minimum_percent = 80
+            summary = [pscustomobject]@{ covered = $covered; total = $total; percent = $percent }
+            branches = $branchRows
+        } | ConvertTo-Json -Depth 6 | Set-Content -Path $reportFile
+
+        $percent | Should -BeGreaterOrEqual 80
+    }
+}
+
+# ============================================================================
+# 7. loop.ps1 — queue/ and requests/ behavioral
+# ============================================================================
+Describe 'loop.ps1 — queue and requests behavioral' {
+
+    BeforeAll {
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+        $pwshPath   = (Get-Command pwsh -ErrorAction Stop).Source
+
+        $tempRoot   = Join-Path ([IO.Path]::GetTempPath()) ("aloop-queue-tests-" + [guid]::NewGuid().ToString('N'))
+        $fakeBinDir = Join-Path $tempRoot 'fake-bin'
+        New-Item -ItemType Directory -Force $fakeBinDir | Out-Null
+
+        $fakePs1 = Join-Path $fakeBinDir '_fake_provider.ps1'
+        @'
+Write-Output "Fake provider: ok"
+exit 0
+'@ | Set-Content $fakePs1
+        Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+        Set-Content (Join-Path $fakeBinDir 'opencode.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+        # Create plain executable shims for Linux
+        if (-not $IsWindows) {
+            foreach ($provName in @('claude', 'opencode')) {
+                $shimPath = Join-Path $fakeBinDir $provName
+                Set-Content $shimPath "#!/bin/sh`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
+                chmod +x $shimPath
+            }
+        }
+
+        function script:New-QueueEnv {
+            $testDir   = Join-Path $tempRoot ("env-" + [guid]::NewGuid().ToString('N'))
+            $workDir   = Join-Path $testDir 'work'
+            $sessDir   = Join-Path $testDir 'session'
+            $promptDir = Join-Path $testDir 'prompts'
+            $queueDir  = Join-Path $sessDir 'queue'
+            $reqDir    = Join-Path $sessDir 'requests'
+            foreach ($d in $workDir, $sessDir, $promptDir, $queueDir, $reqDir) {
+                New-Item -ItemType Directory -Force $d | Out-Null
+            }
+            Set-Content (Join-Path $workDir   'TODO.md')         "- [ ] Task A"
+            Set-Content (Join-Path $promptDir 'PROMPT_build.md') "# Building Mode`nDo tasks."
+            return [pscustomobject]@{
+                WorkDir    = $workDir
+                SessionDir = $sessDir
+                PromptsDir = $promptDir
+                QueueDir   = $queueDir
+                ReqDir     = $reqDir
+                LogFile    = Join-Path $sessDir 'log.jsonl'
+            }
+        }
+
+        function script:Invoke-QueueLoop {
+            param($Env, [int]$MaxIter = 1, [string]$Provider = 'claude')
+            $prevPath    = $env:PATH
+            $prevRuntime = $env:ALOOP_RUNTIME_DIR
+            $prevNoDash  = $env:ALOOP_NO_DASHBOARD
+            $env:PATH              = "$fakeBinDir;$prevPath"
+            $env:ALOOP_RUNTIME_DIR = Join-Path $Env.SessionDir '_runtime_stub'
+            $env:ALOOP_NO_DASHBOARD = '1'
+            try {
+                $output = & $pwshPath -NoProfile -File $loopScript `
+                    -PromptsDir    $Env.PromptsDir `
+                    -SessionDir    $Env.SessionDir `
+                    -WorkDir       $Env.WorkDir    `
+                    -Mode          'build'         `
+                    -Provider      $Provider       `
+                    -MaxIterations $MaxIter        `
+                    2>&1
+                return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
+            } finally {
+                $env:PATH = $prevPath
+                if ($null -eq $prevRuntime) { Remove-Item Env:ALOOP_RUNTIME_DIR -EA SilentlyContinue } else { $env:ALOOP_RUNTIME_DIR = $prevRuntime }
+                if ($null -eq $prevNoDash)  { Remove-Item Env:ALOOP_NO_DASHBOARD -EA SilentlyContinue } else { $env:ALOOP_NO_DASHBOARD = $prevNoDash }
+            }
+        }
+    }
+
+    AfterAll {
+        if (Test-Path $tempRoot) { Remove-Item -Recurse -Force $tempRoot }
+    }
+
+    It 'picks up and executes prompts from queue/ directory' {
+        $e = New-QueueEnv
+        Set-Content (Join-Path $e.QueueDir '01-override.md') "Override prompt"
+        
+        $result = Invoke-QueueLoop -Env $e -MaxIter 1
+        $result.ExitCode | Should -Be 0
+        
+        $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $events = $log | ForEach-Object { $_.event }
+        $events | Should -Contain 'queue_override_start'
+        $events | Should -Contain 'queue_override_complete'
+        
+        # Original task should NOT be completed because build mode was skipped
+        (Get-Content (Join-Path $e.WorkDir 'TODO.md')) | Should -Not -Match '- \[x\]'
+        # Queue item should be deleted
+        Test-Path (Join-Path $e.QueueDir '01-override.md') | Should -Be $false
+    }
+
+    It 'respects frontmatter provider in queue item' {
+        $e = New-QueueEnv
+        Set-Content (Join-Path $e.QueueDir '02-provider.md') "---`nprovider: opencode`n---`nPrompt"
+        
+        $result = Invoke-QueueLoop -Env $e -MaxIter 1 -Provider 'claude'
+        
+        $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $start = $log | Where-Object { $_.event -eq 'queue_override_start' } | Select-Object -First 1
+        $start.provider | Should -Be 'opencode'
+    }
+
+    It 'Wait-ForRequests polls until requests directory is empty' {
+        $e = New-QueueEnv
+        Set-Content (Join-Path $e.ReqDir 'request.json') '{"type":"test"}'
+
+        # Remove the request file after a short delay so Wait-ForRequests detects and then clears
+        $job = Start-Job -ScriptBlock {
+            param($path)
+            Start-Sleep -Seconds 8
+            Remove-Item $path -Force -ErrorAction SilentlyContinue
+        } -ArgumentList (Join-Path $e.ReqDir 'request.json')
+
+        # Set a short timeout so the test doesn't block for 300s if the job fails
+        $prevTimeout = $env:REQUEST_TIMEOUT
+        $env:REQUEST_TIMEOUT = '30'
+        try {
+            $result = Invoke-QueueLoop -Env $e -MaxIter 1
+        } finally {
+            if ($null -eq $prevTimeout) {
+                Remove-Item Env:REQUEST_TIMEOUT -ErrorAction SilentlyContinue
+            } else {
+                $env:REQUEST_TIMEOUT = $prevTimeout
+            }
+        }
+
+        $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $events = $log | ForEach-Object { $_.event }
+        $events | Should -Contain 'waiting_for_requests'
+
+        Stop-Job $job -ErrorAction SilentlyContinue
+        Remove-Job $job -ErrorAction SilentlyContinue
+    }
+
+    It 'empty queue falls through to normal cycle iteration' {
+        $e = New-QueueEnv
+        # queue/ directory exists but contains no .md files
+        $result = Invoke-QueueLoop -Env $e -MaxIter 1
+        $result.ExitCode | Should -Be 0
+
+        $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $events = $log | ForEach-Object { $_.event }
+        # Should NOT contain queue events — should fall through to normal cycle
+        $events | Should -Not -Contain 'queue_override_start'
+        # Normal iteration should have completed
+        $events | Should -Contain 'iteration_complete'
+    }
+
+    It 'logs fallback when queue frontmatter provider is unavailable' {
+        $e = New-QueueEnv
+        Set-Content (Join-Path $e.QueueDir '03-unavailable.md') "---`nprovider: nonexistent-provider`n---`nFallback test prompt"
+
+        $result = Invoke-QueueLoop -Env $e -MaxIter 1 -Provider 'claude'
+        $result.ExitCode | Should -Be 0
+
+        $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $events = $log | ForEach-Object { $_.event }
+
+        # Should log the unavailable provider event
+        $unavailEntry = $log | Where-Object { $_.event -eq 'queue_frontmatter_provider_unavailable' } | Select-Object -First 1
+        $unavailEntry | Should -Not -BeNullOrEmpty
+        $unavailEntry.requested_provider | Should -Be 'nonexistent-provider'
+        $unavailEntry.fallback_provider | Should -Be 'claude'
+
+        # Should still execute with fallback provider
+        $startEntry = $log | Where-Object { $_.event -eq 'queue_override_start' } | Select-Object -First 1
+        $startEntry.provider | Should -Be 'claude'
+
+        # Queue item should be deleted
+        Test-Path (Join-Path $e.QueueDir '03-unavailable.md') | Should -Be $false
+    }
+
+    It 'Wait-ForRequests times out and logs request_timeout' {
+        $e = New-QueueEnv
+        Set-Content (Join-Path $e.ReqDir 'stuck.json') '{"type":"stuck"}'
+
+        # Use REQUEST_TIMEOUT=1 to force a quick timeout
+        $prevTimeout = $env:REQUEST_TIMEOUT
+        $env:REQUEST_TIMEOUT = '1'
+        try {
+            $result = Invoke-QueueLoop -Env $e -MaxIter 1
+        } finally {
+            if ($null -eq $prevTimeout) {
+                Remove-Item Env:REQUEST_TIMEOUT -ErrorAction SilentlyContinue
+            } else {
+                $env:REQUEST_TIMEOUT = $prevTimeout
+            }
+        }
+
+        $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $events = $log | ForEach-Object { $_.event }
+        $events | Should -Contain 'request_timeout'
+    }
+
+    It 'opencode provider path executes successfully' {
+        $e = New-QueueEnv
+        # Use queue with frontmatter requesting opencode provider
+        Set-Content (Join-Path $e.QueueDir '04-opencode.md') "---`nprovider: opencode`n---`nOpencode test prompt"
+
+        $result = Invoke-QueueLoop -Env $e -MaxIter 1 -Provider 'claude'
+        $result.ExitCode | Should -Be 0
+
+        $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $startEntry = $log | Where-Object { $_.event -eq 'queue_override_start' } | Select-Object -First 1
+        $startEntry | Should -Not -BeNullOrEmpty
+        $startEntry.provider | Should -Be 'opencode'
+
+        # Queue item should be deleted after execution
+        Test-Path (Join-Path $e.QueueDir '04-opencode.md') | Should -Be $false
+    }
+
+    It 'logs queue_override_error when queue provider fails' {
+        # Create a provider that fails
+        $failPs1 = Join-Path $fakeBinDir '_fail_provider.ps1'
+        Set-Content $failPs1 'Write-Error "simulated failure"; exit 1'
+        Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$failPs1`" %*`r`n"
+        if (-not $IsWindows) {
+            $shimPath = Join-Path $fakeBinDir 'claude'
+            Set-Content $shimPath "#!/bin/sh`npwsh -NoProfile -File `"$failPs1`" `"`$@`"`n"
+            chmod +x $shimPath
+        }
+
+        $e = New-QueueEnv
+        Set-Content (Join-Path $e.QueueDir '05-fail.md') "Failing prompt"
+
+        $result = Invoke-QueueLoop -Env $e -MaxIter 1 -Provider 'claude'
+
+        $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $events = $log | ForEach-Object { $_.event }
+        $events | Should -Contain 'queue_override_error'
+
+        # Queue item should still be deleted after failure
+        Test-Path (Join-Path $e.QueueDir '05-fail.md') | Should -Be $false
+
+        # Restore default provider for other tests
+        $fakePs1 = Join-Path $fakeBinDir '_fake_provider.ps1'
+        Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+    }
+
+    It 'opencode as direct provider executes a normal build iteration' {
+        $e = New-QueueEnv
+        # No queue items — should fall through to normal build iteration with opencode
+        $result = Invoke-QueueLoop -Env $e -MaxIter 1 -Provider 'opencode'
+        $result.ExitCode | Should -Be 0
+
+        $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $completeEntry = $log | Where-Object { $_.event -eq 'iteration_complete' } | Select-Object -First 1
+        $completeEntry | Should -Not -BeNullOrEmpty
+        $completeEntry.provider | Should -Be 'opencode'
+    }
+
+    It 'queue override does not advance cycle position' {
+        $e = New-QueueEnv
+        # Set up a loop-plan.json with a known cycle position
+        $planFile = Join-Path $e.SessionDir 'loop-plan.json'
+        '{"cycle":["PROMPT_build.md"],"cyclePosition":0}' | Set-Content $planFile
+
+        Set-Content (Join-Path $e.QueueDir '06-cycle.md') "Queue prompt"
+
+        $result = Invoke-QueueLoop -Env $e -MaxIter 1
+        $result.ExitCode | Should -Be 0
+
+        # cyclePosition should remain 0 because queue items don't advance it
+        $plan = Get-Content $planFile -Raw | ConvertFrom-Json
+        $plan.cyclePosition | Should -Be 0
+    }
+
+    It 'records queue-requests-opencode branch coverage evidence at >=80%' {
+        $e = New-QueueEnv
+
+        # Exercise queue override
+        Set-Content (Join-Path $e.QueueDir '07-cover.md') "Cover queue"
+        $r1 = Invoke-QueueLoop -Env $e -MaxIter 1
+        $r1.ExitCode | Should -Be 0
+
+        # Exercise requests wait-loop
+        Set-Content (Join-Path $e.ReqDir 'cover-req.json') '{"type":"test"}'
+        $job = Start-Job -ScriptBlock {
+            param($path)
+            Start-Sleep -Seconds 2
+            Remove-Item $path -Force
+        } -ArgumentList (Join-Path $e.ReqDir 'cover-req.json')
+        $r2 = Invoke-QueueLoop -Env $e -MaxIter 1
+        Stop-Job $job -ErrorAction SilentlyContinue
+        Remove-Job $job -ErrorAction SilentlyContinue
+
+        # Exercise opencode as direct provider
+        $r3 = Invoke-QueueLoop -Env $e -MaxIter 1 -Provider 'opencode'
+        $r3.ExitCode | Should -Be 0
+
+        # Exercise queue frontmatter provider (opencode via frontmatter)
+        Set-Content (Join-Path $e.QueueDir '08-fm.md') "---`nprovider: opencode`n---`nCover frontmatter"
+        $r4 = Invoke-QueueLoop -Env $e -MaxIter 1 -Provider 'claude'
+        $r4.ExitCode | Should -Be 0
+
+        # Exercise empty queue fallthrough
+        $r5 = Invoke-QueueLoop -Env $e -MaxIter 1
+        $r5.ExitCode | Should -Be 0
+
+        # Exercise queue frontmatter provider unavailable
+        Set-Content (Join-Path $e.QueueDir '09-unavail.md') "---`nprovider: no-such-provider`n---`nUnavail"
+        $r6 = Invoke-QueueLoop -Env $e -MaxIter 1 -Provider 'claude'
+        $r6.ExitCode | Should -Be 0
+
+        $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $events = $log | ForEach-Object { $_.event }
+
+        $branches = [ordered]@{
+            'queue.override_success'             = ($events -contains 'queue_override_start') -and ($events -contains 'queue_override_complete')
+            'queue.frontmatter_provider'         = ($log | Where-Object { $_.event -eq 'queue_override_start' -and $_.provider -eq 'opencode' }).Count -gt 0
+            'queue.frontmatter_unavailable'      = ($events -contains 'queue_frontmatter_provider_unavailable')
+            'queue.empty_fallthrough'            = ($events -contains 'iteration_start')
+            'requests.wait_until_empty'          = ($events -contains 'waiting_for_requests')
+            'opencode.direct_provider'           = ($log | Where-Object { $_.event -eq 'iteration_complete' -and $_.provider -eq 'opencode' }).Count -gt 0
+        }
+
+        $covered = @($branches.Values | Where-Object { $_ }).Count
+        $total = $branches.Count
+        $percent = if ($total -gt 0) { [math]::Floor(($covered * 100) / $total) } else { 0 }
+
+        $coverageDir = Join-Path (Join-Path $PSScriptRoot '..\..') 'coverage'
+        if (-not (Test-Path $coverageDir)) { New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null }
+        $reportFile = Join-Path $coverageDir 'ps1-queue-requests-opencode-coverage.json'
+        $branchRows = foreach ($key in $branches.Keys) {
+            [pscustomobject]@{ id = $key; covered = [bool]$branches[$key] }
         }
         [pscustomobject]@{
             generated_at = (Get-Date).ToUniversalTime().ToString('o')
