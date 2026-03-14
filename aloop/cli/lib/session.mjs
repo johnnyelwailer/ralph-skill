@@ -5,7 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 
 export function resolveHomeDir(explicitHomeDir) {
-  return path.resolve(explicitHomeDir ?? os.homedir()).replace(/[\/]+$/, '');
+  const resolved = path.resolve(explicitHomeDir ?? os.homedir());
+  const { root } = path.parse(resolved);
+  if (resolved === root) return resolved;
+  return resolved.replace(/[\\/]+$/, '');
 }
 
 async function readJsonFile(filePath) {

@@ -3,7 +3,7 @@
 ## Current Phase: P2 Triage + Runtime/Dashboard Spec Parity
 
 ### In Progress
-- [ ] [review][high] Restore green baseline by fixing `resolveHomeDir` trailing-separator behavior (`session.test.ts` currently failing on Linux/Git-Bash path case).
+- [x] [review][high] Restore green baseline by fixing `resolveHomeDir` trailing-separator behavior (`session.test.ts` currently failing on Linux/Git-Bash path case).
 
 ### Up Next
 - [ ] [review][high] Regenerate and attach missing proof artifacts (`proof-run.log`, `monitor-cycle-proof.json`, `triage-action-policy-proof.json`) so review gate evidence is verifiable.
