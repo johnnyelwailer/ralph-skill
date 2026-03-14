@@ -1023,11 +1023,23 @@ gh api --method POST /repos/OWNER/REPO/issues/$PARENT/sub_issues \
 
 **Gotchas**: The `sub_issue_id` requires the internal numeric `id` (not the `#number`). Occasional 500s on the sub-issues endpoint — retry logic needed. No atomic create-with-children — must create then link.
 
+### GitHub as Source of Truth
+
+**GitHub is the authoritative state for the orchestrator.** There is no local `orchestrator.json` that duplicates issue state. The orchestrator queries GitHub for the plan, and all changes — human or automated — are visible immediately.
+
+Local state is minimal: `sessions.json` maps `{issue_number → child_session_id + PID}`. Everything else — issue status, dependencies, wave assignments, PR state — lives in GitHub.
+
+Benefits:
+- Human edits an issue (close, reopen, relabel) → orchestrator sees it next poll
+- Orchestrator crashes and restarts → reads everything from GitHub, local mapping reconnects running children
+- Multiple people can interact with the issues → single source of truth
+- `--plan-only` just creates issues, done
+
 ### Dependency Tracking
 
-Dependencies are tracked **in the issues themselves**, not just in orchestrator state. This makes them visible to humans and survives orchestrator restarts.
+Dependencies use **GitHub's native issue dependency tracking** (`blocked_by` / `blocking` relationships), not custom metadata. The orchestrator creates dependencies via the API, and GitHub surfaces them natively in the issue UI.
 
-**In issue body** (machine-readable metadata block):
+**Issue body format:**
 ```markdown
 ## Scope
 Registration form with email/password, API endpoint for account creation,
@@ -1039,19 +1051,58 @@ database schema for users table. Includes input validation and error handling.
 - [ ] Duplicate email returns clear error
 - [ ] Success redirects to login page
 
-## Dependencies
-- Blocked by #14 (database schema setup)
-- Blocked by #15 (API framework bootstrap)
-
-<!-- aloop:meta
-wave: 2
-depends_on: [14, 15]
-files: [src/pages/register/*, src/api/auth/*, prisma/schema.prisma]
-slice_parent: 10
--->
+## Aloop Metadata
+- Wave: 2
+- Files: `src/pages/register/*`, `src/api/auth/*`, `prisma/schema.prisma`
+- Type: vertical-slice
 ```
 
-The `<!-- aloop:meta -->` HTML comment is invisible in the GitHub UI but machine-parseable by the orchestrator. Dependencies are also stated in human-readable form above it.
+Dependencies are managed via GitHub's native feature, not embedded in the issue body. Wave assignment and file ownership hints live in the issue body as human-readable metadata. Labels (`aloop/wave-2`, `aloop/auto`, `aloop/foundation`) provide machine-queryable categorization.
+
+### Efficient GitHub Monitoring
+
+The orchestrator avoids expensive polling by combining ETag-guarded REST checks with targeted GraphQL queries.
+
+**Strategy:**
+
+1. **Change detection** (every 30-60s): REST call with `since` parameter and ETag caching
+   ```bash
+   gh api '/repos/OWNER/REPO/issues?sort=updated&since=LAST_CHECK&per_page=1' \
+     -H 'If-None-Match: PREVIOUS_ETAG'
+   ```
+   Returns `304 Not Modified` when nothing changed — does NOT count against rate limit.
+
+2. **Full state fetch** (only when changes detected): Single GraphQL query fetching all open issues + sub-issues + linked PRs + labels + dependency status
+   ```graphql
+   query {
+     repository(owner: "OWNER", name: "REPO") {
+       issues(first: 50, states: OPEN, labels: ["aloop/auto"], orderBy: {field: UPDATED_AT, direction: DESC}) {
+         nodes {
+           number, title, state, updatedAt
+           labels(first: 10) { nodes { name } }
+           subIssues(first: 20) {
+             nodes { number, title, state, labels(first: 5) { nodes { name } } }
+           }
+           timelineItems(first: 5, itemTypes: [CROSS_REFERENCED_EVENT]) {
+             nodes { ... on CrossReferencedEvent { source { ... on PullRequest { number, state, url } } } }
+           }
+         }
+       }
+     }
+   }
+   ```
+   Cost: **~7 rate-limit points** per query. At 5,000/hr, this can run 714 times/hour.
+
+3. **Optional: webhook push** (for instant event notification during active sessions):
+   ```bash
+   gh webhook forward --repo=OWNER/REPO --events=issues,pull_request --url=http://localhost:PORT/webhook
+   ```
+   Uses GitHub's own CLI extension (`gh extension install cli/gh-webhook`). No public server needed. Falls back to polling when not running.
+
+**Rate limit budget** (60s polling interval, 50 issues):
+- REST change-detection with ETag: ~5-10 counted requests/hr (most are free 304s)
+- GraphQL full fetch (only on change): ~5-20 queries/hr = 35-140 points/hr
+- **Total: well under 1% of rate limit**
 
 ### Orchestrator Phases
 
@@ -1184,56 +1235,36 @@ The spec files are the authoritative intent. Issues are the live execution plan.
   - Human can cherry-pick from `agent/trunk` if needed
   - Easy rollback: just delete `agent/trunk` and recreate from main
 
-### Orchestrator State
+### Orchestrator Local State
 
-Stored at `~/.aloop/sessions/<orchestrator-session-id>/orchestrator.json`:
+The orchestrator stores only session-mapping data locally. Issue state, dependencies, waves, and PR status are all read from GitHub.
+
+Stored at `~/.aloop/sessions/<orchestrator-session-id>/sessions.json`:
 
 ```json
 {
   "spec_files": ["SPEC.md"],
   "trunk_branch": "agent/trunk",
   "concurrency_cap": 3,
-  "slices": [
-    {
-      "number": 10,
-      "title": "User can sign up and log in",
-      "type": "slice",
-      "state": "in_progress",
-      "sub_issues": [
-        {
-          "number": 11,
-          "title": "Registration form + API + DB schema",
-          "wave": 2,
-          "state": "merged",
-          "child_session": "myapp-20260315-issue11",
-          "pr_number": 3,
-          "depends_on": [14]
-        },
-        {
-          "number": 12,
-          "title": "Login flow + JWT + session cookie",
-          "wave": 2,
-          "state": "in_progress",
-          "child_session": "myapp-20260315-issue12",
-          "pr_number": null,
-          "depends_on": [14, 15]
-        }
-      ]
+  "repo": "owner/repo",
+  "children": {
+    "11": {
+      "session_id": "myapp-20260315-issue11",
+      "pid": 12345,
+      "worktree": "~/.aloop/sessions/myapp-20260315-issue11/worktree"
     },
-    {
-      "number": 14,
-      "title": "Database schema + ORM setup",
-      "type": "foundation",
-      "wave": 1,
-      "state": "merged",
-      "child_session": "myapp-20260315-issue14",
-      "pr_number": 1,
-      "depends_on": []
+    "12": {
+      "session_id": "myapp-20260315-issue12",
+      "pid": 12346,
+      "worktree": "~/.aloop/sessions/myapp-20260315-issue12/worktree"
     }
-  ],
+  },
   "created_at": "2026-03-15T12:00:00Z",
-  "last_replan": null
+  "last_poll_etag": "W/\"07ad6948c94b...\""
 }
+```
+
+Everything else — which issues exist, their state, dependencies, wave labels, linked PRs — comes from GitHub via the GraphQL query described above.
 ```
 
 ### Conflict Resolution
@@ -1287,14 +1318,10 @@ aloop orchestrate --spec SPEC.md --plan-only
 
 The orchestrator MUST be resumable. If the process is killed (SIGTERM, crash, OOM, user Ctrl-C) and restarted, it picks up exactly where it left off:
 
-1. **State persistence**: `orchestrator.json` is the single source of truth. It is written atomically (write-to-temp + rename) after every state transition (issue created, child dispatched, PR merged, wave advanced).
-2. **On restart**, the orchestrator:
-   - Reads `orchestrator.json` to recover task graph, wave progress, and child session states
-   - Checks each child session's `status.json` to detect children that completed/failed while the orchestrator was down
-   - Resumes monitoring live children, dispatches queued issues, advances waves as appropriate
-   - Does NOT re-create issues or re-launch children that are already running or completed
-3. **Idempotency**: every orchestrator operation must be safe to re-execute. Creating an issue checks if one already exists for that task (by title/label match). Dispatching checks if a child session already exists. Merging checks if PR is already merged.
-4. **No work lost**: in-flight child loops continue running independently of the orchestrator process. They write their own `status.json` and commits. The orchestrator is a coordinator, not a parent process — children are orphan-safe.
+1. **GitHub is the source of truth.** On restart, the orchestrator queries GitHub for all `aloop/auto` issues, their states, dependencies, and linked PRs. The full plan is reconstructed from GitHub, not from local files.
+2. **Local `sessions.json`** maps issue numbers to child session IDs and PIDs. On restart, the orchestrator checks which children are still alive (`kill -0 PID`), reconnects to live ones, and detects children that completed/failed while the orchestrator was down (via their `status.json`).
+3. **Idempotency**: every orchestrator operation must be safe to re-execute. Creating an issue checks if one already exists (by title/label match). Dispatching checks if a child session already exists. Merging checks if PR is already merged.
+4. **No work lost**: in-flight child loops continue running independently. They write their own `status.json` and commits. The orchestrator is a coordinator, not a parent process — children are orphan-safe.
 
 ### Per-Task Environment Requirements
 
@@ -1341,7 +1368,9 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 - [ ] Orchestrator decomposes spec(s) into vertical slices as parent issues with sub-issues
 - [ ] Sub-issues created via `gh api` with sub-issue linking to parent
 - [ ] Decomposition is vertical-slice-first — each parent is an independently shippable feature
-- [ ] Dependencies tracked in issue bodies (`<!-- aloop:meta -->`) and orchestrator state
+- [ ] Dependencies use GitHub's native issue dependency tracking (blocked_by/blocking)
+- [ ] GitHub is the source of truth — local state is only session-to-issue mapping
+- [ ] Efficient monitoring: ETag-guarded REST polling + single GraphQL query on change
 - [ ] Foundation (horizontal groundwork) issues explicitly marked and scheduled in early waves
 - [ ] Agent-powered scheduling builds dependency graph and assigns waves
 - [ ] Sub-issues dispatch when their specific dependencies are merged (not entire wave)
@@ -1354,12 +1383,12 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 - [ ] Rejected PRs reopen their issue with review comments for the child loop to address
 - [ ] Merge conflicts trigger automatic rebase attempts (max 2 before human flag)
 - [ ] `aloop orchestrate --plan-only` creates issues without launching loops
-- [ ] Orchestrator state persisted in `orchestrator.json` with slice hierarchy
+- [ ] Local `sessions.json` maps issue numbers to child sessions/PIDs (minimal local state)
 - [ ] `aloop status` shows orchestrator tree (orchestrator → slices → sub-issues → PRs)
 - [ ] Final report includes: slices created/completed/failed, time, provider usage, cost estimates
 - [ ] Provider health subsystem is shared across all child loops (file-lock safe)
 - [ ] Session-level budget cap can pause dispatch when threshold is approached
-- [ ] Orchestrator is resumable: kill + restart recovers full state, no duplicate issues or sessions
+- [ ] Orchestrator is resumable: restart reads plan from GitHub, reconnects to live children, no duplicates
 - [ ] Replan triggered by spec changes, wave completion, or user-created issues
 - [ ] User-created `aloop/auto` issues absorbed into the live plan
 - [ ] Multi-file specs supported (`specs/*.md` or single `SPEC.md`)
