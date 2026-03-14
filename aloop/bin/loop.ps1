@@ -229,6 +229,7 @@ function Resolve-IterationProvider {
 function Resolve-IterationMode {
     param([int]$IterationNumber)
     $script:lastModeWasForced = $false
+    $script:resolvedPromptName = $null
     if ($script:forceReviewNext) {
         $script:forceReviewNext = $false
         $script:lastModeWasForced = $true
@@ -243,6 +244,9 @@ function Resolve-IterationMode {
         $script:forcePlanNext = $false
         $script:lastModeWasForced = $true
         return 'plan'
+    }
+    if (Resolve-CyclePromptFromPlan) {
+        return (Get-ModeFromPromptName -PromptName $script:resolvedPromptName)
     }
     $requestedMode = $Mode
     if ($Mode -eq 'plan-build') {
@@ -271,6 +275,74 @@ function Resolve-IterationMode {
     }
 
     return $requestedMode
+}
+
+function Get-ModeFromPromptName {
+    param([Parameter(Mandatory)][string]$PromptName)
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($PromptName)
+    if ($base.StartsWith('PROMPT_')) {
+        $base = $base.Substring('PROMPT_'.Length)
+    }
+    if ($base.Contains('_')) {
+        return $base.Split('_')[0]
+    }
+    return $base
+}
+
+function Resolve-CyclePromptFromPlan {
+    $loopPlanFile = Join-Path $SessionDir "loop-plan.json"
+    if (-not (Test-Path $loopPlanFile)) { return $false }
+    try {
+        $plan = Get-Content -Path $loopPlanFile -Raw | ConvertFrom-Json
+        if (-not $plan.cycle -or $plan.cycle.Count -eq 0) { return $false }
+        $script:cycleLength = [int]$plan.cycle.Count
+        $rawCyclePos = if ($null -ne $plan.cyclePosition) { [int]$plan.cyclePosition } else { $script:cyclePosition }
+        $script:cyclePosition = $rawCyclePos
+        $promptIndex = $rawCyclePos % $script:cycleLength
+        $script:resolvedPromptName = [string]$plan.cycle[$promptIndex]
+        return (-not [string]::IsNullOrWhiteSpace($script:resolvedPromptName))
+    } catch {
+        return $false
+    }
+}
+
+function Parse-Frontmatter {
+    param([Parameter(Mandatory)][string]$PromptFile)
+    $script:frontmatter = @{
+        provider = ''
+        model = ''
+        agent = ''
+        reasoning = ''
+    }
+    if (-not (Test-Path $PromptFile)) { return }
+    $content = Get-Content -Path $PromptFile -Raw
+    if (-not $content.StartsWith("---")) { return }
+    $parts = $content -split "(?ms)^---\s*$"
+    if ($parts.Count -lt 3) { return }
+    $header = $parts[1] -split "`r?`n"
+    foreach ($line in $header) {
+        if ($line -match '^\s*(provider|model|agent|reasoning)\s*:\s*(.+?)\s*$') {
+            $script:frontmatter[$Matches[1].ToLowerInvariant()] = $Matches[2].Trim()
+        }
+    }
+}
+
+function Persist-LoopPlanState {
+    param([int]$Iteration = 0)
+    $loopPlanFile = Join-Path $SessionDir "loop-plan.json"
+    if (-not (Test-Path $loopPlanFile)) { return }
+    try {
+        $plan = Get-Content -Path $loopPlanFile -Raw | ConvertFrom-Json
+        $plan.cyclePosition = [int]$script:cyclePosition
+        if ($Iteration -gt 0) {
+            $plan.iteration = [int]$Iteration
+        }
+        $plan.forcePlanNext = [bool]$script:forcePlanNext
+        $plan.forceProofNext = [bool]$script:forceProofNext
+        $plan.forceReviewNext = [bool]$script:forceReviewNext
+        $plan.allTasksMarkedDone = [bool]$script:allTasksMarkedDone
+        $plan | ConvertTo-Json -Depth 12 | Set-Content -Encoding utf8 $loopPlanFile
+    } catch { }
 }
 
 function Assert-ProviderInstalled {
@@ -414,7 +486,8 @@ function Invoke-ProviderProcess {
 function Invoke-Provider {
     param(
         [string]$ProviderName,
-        [string]$PromptContent
+        [string]$PromptContent,
+        [string]$ModelOverride = ''
     )
 
     # PATH hardening: prepend gh-blocking shim directory so gh resolves to a
@@ -434,8 +507,9 @@ function Invoke-Provider {
         $result = $null
         switch ($ProviderName) {
             'claude' {
+                $selectedModel = if ([string]::IsNullOrWhiteSpace($ModelOverride)) { $ClaudeModel } else { $ModelOverride }
                 $result = Invoke-ProviderProcess -Command 'claude' `
-                    -Arguments "--model $ClaudeModel --dangerously-skip-permissions --print" `
+                    -Arguments "--model $selectedModel --dangerously-skip-permissions --print" `
                     -StdinContent $PromptContent
                 if ($result.ExitCode -ne 0) {
                     $script:lastProviderOutputText = $result.Output
@@ -443,8 +517,9 @@ function Invoke-Provider {
                 }
             }
             'codex' {
+                $selectedModel = if ([string]::IsNullOrWhiteSpace($ModelOverride)) { $CodexModel } else { $ModelOverride }
                 $result = Invoke-ProviderProcess -Command 'codex' `
-                    -Arguments "exec -m $CodexModel --dangerously-bypass-approvals-and-sandbox -" `
+                    -Arguments "exec -m $selectedModel --dangerously-bypass-approvals-and-sandbox -" `
                     -StdinContent $PromptContent
                 if ($result.ExitCode -ne 0) {
                     $script:lastProviderOutputText = $result.Output
@@ -452,11 +527,12 @@ function Invoke-Provider {
                 }
             }
             'gemini' {
+                $selectedModel = if ([string]::IsNullOrWhiteSpace($ModelOverride)) { $GeminiModel } else { $ModelOverride }
                 $result = Invoke-ProviderProcess -Command 'gemini' `
-                    -Arguments "-m $GeminiModel --yolo" `
+                    -Arguments "-m $selectedModel --yolo" `
                     -StdinContent $PromptContent
                 if ($result.ExitCode -ne 0) {
-                    Write-Warning "Gemini -m $GeminiModel failed (exit $($result.ExitCode)). Retrying without explicit model."
+                    Write-Warning "Gemini -m $selectedModel failed (exit $($result.ExitCode)). Retrying without explicit model."
                     $result = Invoke-ProviderProcess -Command 'gemini' `
                         -Arguments "--yolo" `
                         -StdinContent $PromptContent
@@ -467,12 +543,13 @@ function Invoke-Provider {
                 }
             }
             'copilot' {
+                $selectedModel = if ([string]::IsNullOrWhiteSpace($ModelOverride)) { $CopilotModel } else { $ModelOverride }
                 $result = Invoke-ProviderProcess -Command 'copilot' `
-                    -Arguments "--model $CopilotModel --yolo" `
+                    -Arguments "--model $selectedModel --yolo" `
                     -StdinContent $PromptContent
                 $outputText = $result.Output
                 if ($result.ExitCode -ne 0) {
-                    Write-Warning "Copilot --model $CopilotModel failed (exit $($result.ExitCode)). Retrying with --model $CopilotRetryModel."
+                    Write-Warning "Copilot --model $selectedModel failed (exit $($result.ExitCode)). Retrying with --model $CopilotRetryModel."
                     $result = Invoke-ProviderProcess -Command 'copilot' `
                         -Arguments "--model $CopilotRetryModel --yolo" `
                         -StdinContent $PromptContent
@@ -680,8 +757,11 @@ $script:forceReviewNext = $false
 $script:lastProofIteration = 0
 $script:lastProviderOutputText = $null
 $script:cyclePosition = 0
+$script:cycleLength = 0
+$script:resolvedPromptName = $null
 $script:lastModeWasForced = $false
 $script:hasBuildsSinceLastPlan = $false
+$script:frontmatter = @{ provider = ''; model = ''; agent = ''; reasoning = '' }
 $script:phaseRetryState = @{
     phase = ''
     consecutive = 0
@@ -709,7 +789,9 @@ function Update-ProofBaselines {
 }
 
 function Advance-CyclePosition {
-    if ($Mode -eq 'plan-build') {
+    if ($script:cycleLength -gt 0) {
+        $script:cyclePosition = ($script:cyclePosition + 1) % $script:cycleLength
+    } elseif ($Mode -eq 'plan-build') {
         $script:cyclePosition = ($script:cyclePosition + 1) % 2
     } elseif ($Mode -eq 'plan-build-review') {
         $script:cyclePosition = ($script:cyclePosition + 1) % 6
@@ -1637,6 +1719,9 @@ if ($LaunchMode -eq 'resume') {
     Write-LogEntry -Event "session_restart" -Data @{}
 }
 
+# Prime cycle position from loop-plan.json if present.
+[void](Resolve-CyclePromptFromPlan)
+
 Write-Host "`nStarting loop..." -ForegroundColor Green
 Write-Host "---`n"
 $cancelled = $false
@@ -1672,10 +1757,48 @@ try {
             Write-Warning "STEERING.md found but PROMPT_steer.md is missing in $PromptsDir — steering skipped."
         }
 
-        $iterationPromptFile = Join-Path $PromptsDir "PROMPT_$iterationMode.md"
+        if (-not [string]::IsNullOrWhiteSpace($script:resolvedPromptName)) {
+            $iterationPromptFile = Join-Path $PromptsDir $script:resolvedPromptName
+        } else {
+            $iterationPromptFile = Join-Path $PromptsDir "PROMPT_$iterationMode.md"
+        }
+        if (-not (Test-Path $iterationPromptFile)) {
+            Write-Warning "Prompt file not found: $iterationPromptFile"
+            Write-LogEntry -Event "iteration_error" -Data @{
+                iteration = $iteration
+                mode = $iterationMode
+                provider = $iterationProvider
+                error = 'prompt_missing'
+                prompt_file = $iterationPromptFile
+            }
+            break
+        }
+        Parse-Frontmatter -PromptFile $iterationPromptFile
+        if (-not [string]::IsNullOrWhiteSpace($script:frontmatter.agent)) {
+            $iterationMode = $script:frontmatter.agent
+        }
+        if (-not [string]::IsNullOrWhiteSpace($script:frontmatter.provider)) {
+            if (Get-Command $script:frontmatter.provider -ErrorAction SilentlyContinue) {
+                $iterationProvider = $script:frontmatter.provider
+            } else {
+                Write-LogEntry -Event "frontmatter_provider_unavailable" -Data @{
+                    requested_provider = $script:frontmatter.provider
+                    fallback_provider = $iterationProvider
+                    prompt_file = $iterationPromptFile
+                }
+            }
+        }
+        Write-LogEntry -Event "frontmatter_applied" -Data @{
+            prompt_file = $iterationPromptFile
+            agent = [string]$script:frontmatter.agent
+            provider = [string]$script:frontmatter.provider
+            model = [string]$script:frontmatter.model
+            reasoning = [string]$script:frontmatter.reasoning
+        }
 
         # Update session status
         Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount $stuckState.StuckCount
+        Persist-LoopPlanState -Iteration $iteration
 
         $modeColor = switch ($iterationMode) {
             'plan'   { 'Magenta' }
@@ -1761,7 +1884,7 @@ try {
 
             Push-Location $WorkDir
             try {
-                $providerOutput = Invoke-Provider -ProviderName $iterationProvider -PromptContent $promptContent
+                $providerOutput = Invoke-Provider -ProviderName $iterationProvider -PromptContent $promptContent -ModelOverride ([string]$script:frontmatter.model)
             }
             finally {
                 Pop-Location
@@ -1771,6 +1894,7 @@ try {
 
             Update-ProviderHealthOnSuccess -ProviderName $iterationProvider
             Register-IterationSuccess -IterationMode $iterationMode -WasForced $script:lastModeWasForced
+            Persist-LoopPlanState -Iteration $iteration
 
             # Steer mode: remove any leftover steering file if the agent did not delete it
             if ($iterationMode -eq 'steer') {
@@ -1823,6 +1947,7 @@ try {
             $errorContext = "$_ $script:lastProviderOutputText"
             Update-ProviderHealthOnFailure -ProviderName $iterationProvider -ErrorText $errorContext
             Register-IterationFailure -IterationMode $iterationMode -ErrorText $errorContext
+            Persist-LoopPlanState -Iteration $iteration
             Write-Warning "Iteration $iteration failed: $_"
             Write-LogEntry -Event "iteration_error" -Data @{
                 iteration = $iteration

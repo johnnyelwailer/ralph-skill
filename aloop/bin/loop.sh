@@ -224,6 +224,7 @@ sed_i() {
 }
 
 PLAN_FILE="$WORK_DIR/TODO.md"
+LOOP_PLAN_FILE="$SESSION_DIR/loop-plan.json"
 STATUS_FILE="$SESSION_DIR/status.json"
 LOG_FILE="$SESSION_DIR/log.jsonl"
 REPORT_FILE="$SESSION_DIR/report.md"
@@ -343,6 +344,7 @@ check_phase_prerequisite() {
 resolve_iteration_mode() {
     local iteration=$1
     LAST_MODE_WAS_FORCED=false
+    RESOLVED_PROMPT_NAME=""
     if [ "$FORCE_REVIEW_NEXT" = true ]; then
         FORCE_REVIEW_NEXT=false
         LAST_MODE_WAS_FORCED=true
@@ -356,37 +358,124 @@ resolve_iteration_mode() {
         LAST_MODE_WAS_FORCED=true
         RESOLVED_MODE="plan"
     else
-        case "$MODE" in
-            plan-build)
-                if (( CYCLE_POSITION % 2 == 0 )); then RESOLVED_MODE="plan"; else RESOLVED_MODE="build"; fi
-                ;;
-            plan-build-review)
-                # 6-step cycle: plan -> build -> build -> build -> proof -> review
-                local phase=$(( CYCLE_POSITION % 6 ))
-                case $phase in
-                    0) RESOLVED_MODE="plan" ;;
-                    1|2|3) RESOLVED_MODE="build" ;;
-                    4) RESOLVED_MODE="proof" ;;
-                    5) RESOLVED_MODE="review" ;;
-                esac
-                ;;
-            *)
-                RESOLVED_MODE="$MODE"
-                ;;
-        esac
+        if resolve_cycle_prompt_from_plan; then
+            RESOLVED_MODE=$(derive_mode_from_prompt_name "$RESOLVED_PROMPT_NAME")
+        else
+            case "$MODE" in
+                plan-build)
+                    if (( CYCLE_POSITION % 2 == 0 )); then RESOLVED_MODE="plan"; else RESOLVED_MODE="build"; fi
+                    ;;
+                plan-build-review)
+                    # 6-step cycle: plan -> build -> build -> build -> proof -> review
+                    local phase=$(( CYCLE_POSITION % 6 ))
+                    case $phase in
+                        0) RESOLVED_MODE="plan" ;;
+                        1|2|3) RESOLVED_MODE="build" ;;
+                        4) RESOLVED_MODE="proof" ;;
+                        5) RESOLVED_MODE="review" ;;
+                    esac
+                    ;;
+                *)
+                    RESOLVED_MODE="$MODE"
+                    ;;
+            esac
+        fi
     fi
     RESOLVED_MODE=$(check_phase_prerequisite "$RESOLVED_MODE")
     echo "$RESOLVED_MODE"
 }
 
+derive_mode_from_prompt_name() {
+    local prompt_name="$1"
+    local base
+    base=$(basename "$prompt_name")
+    base="${base%.md}"
+    base="${base#PROMPT_}"
+    echo "${base%%_*}"
+}
+
+resolve_cycle_prompt_from_plan() {
+    if [ ! -f "$LOOP_PLAN_FILE" ]; then
+        return 1
+    fi
+    local parsed
+    parsed=$(python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" <<'PY'
+import json, sys
+path = sys.argv[1]
+fallback_pos = int(sys.argv[2])
+with open(path, encoding="utf-8") as f:
+    payload = json.load(f)
+cycle = payload.get("cycle")
+if not isinstance(cycle, list) or not cycle:
+    raise SystemExit(1)
+cycle = [entry for entry in cycle if isinstance(entry, str) and entry.strip()]
+if not cycle:
+    raise SystemExit(1)
+raw_pos = payload.get("cyclePosition", fallback_pos)
+try:
+    cycle_pos = int(raw_pos)
+except Exception:
+    cycle_pos = fallback_pos
+index = cycle_pos % len(cycle)
+print(cycle_pos)
+print(len(cycle))
+print(cycle[index].strip())
+PY
+) || return 1
+    local parsed_cycle_pos parsed_cycle_len parsed_prompt_name
+    parsed_cycle_pos=$(printf '%s\n' "$parsed" | sed -n '1p')
+    parsed_cycle_len=$(printf '%s\n' "$parsed" | sed -n '2p')
+    parsed_prompt_name=$(printf '%s\n' "$parsed" | sed -n '3p')
+    CYCLE_POSITION="${parsed_cycle_pos:-$CYCLE_POSITION}"
+    CYCLE_LENGTH="${parsed_cycle_len:-0}"
+    RESOLVED_PROMPT_NAME="$parsed_prompt_name"
+    return 0
+}
+
+persist_loop_plan_state() {
+    if [ ! -f "$LOOP_PLAN_FILE" ]; then
+        return
+    fi
+    python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" "$ITERATION" "$FORCE_PLAN_NEXT" "$FORCE_PROOF_NEXT" "$FORCE_REVIEW_NEXT" "$ALL_TASKS_MARKED_DONE" <<'PY'
+import json, os, sys, tempfile
+path, cycle_pos, iteration, force_plan, force_proof, force_review, all_done = sys.argv[1:]
+with open(path, encoding="utf-8") as f:
+    payload = json.load(f)
+payload["cyclePosition"] = int(cycle_pos)
+payload["iteration"] = int(iteration)
+payload["forcePlanNext"] = force_plan.lower() == "true"
+payload["forceProofNext"] = force_proof.lower() == "true"
+payload["forceReviewNext"] = force_review.lower() == "true"
+payload["allTasksMarkedDone"] = all_done.lower() == "true"
+fd, tmp = tempfile.mkstemp(prefix=".loop-plan.", suffix=".json", dir=os.path.dirname(path))
+os.close(fd)
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(payload, f, indent=2)
+    f.write("\n")
+os.replace(tmp, path)
+PY
+}
+
+parse_frontmatter() {
+    local file="$1"
+    FRONTMATTER_PROVIDER=$(sed -n '/^---$/,/^---$/{ /^provider:/s/provider: *//p }' "$file" | head -n1)
+    FRONTMATTER_MODEL=$(sed -n '/^---$/,/^---$/{ /^model:/s/model: *//p }' "$file" | head -n1)
+    FRONTMATTER_AGENT=$(sed -n '/^---$/,/^---$/{ /^agent:/s/agent: *//p }' "$file" | head -n1)
+    FRONTMATTER_REASONING=$(sed -n '/^---$/,/^---$/{ /^reasoning:/s/reasoning: *//p }' "$file" | head -n1)
+    FRONTMATTER_PROVIDER="${FRONTMATTER_PROVIDER:-}"
+    FRONTMATTER_MODEL="${FRONTMATTER_MODEL:-}"
+    FRONTMATTER_AGENT="${FRONTMATTER_AGENT:-}"
+    FRONTMATTER_REASONING="${FRONTMATTER_REASONING:-}"
+}
+
 advance_cycle_position() {
+    if [ -n "${CYCLE_LENGTH:-}" ] && [ "$CYCLE_LENGTH" -gt 0 ] 2>/dev/null; then
+        CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % CYCLE_LENGTH ))
+        return
+    fi
     case "$MODE" in
-        plan-build)
-            CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 2 ))
-            ;;
-        plan-build-review)
-            CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 6 ))
-            ;;
+        plan-build) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 2 )) ;;
+        plan-build-review) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 6 )) ;;
     esac
 }
 
@@ -899,6 +988,7 @@ _wait_for_provider() {
 invoke_provider() {
     local provider_name=$1
     local prompt_content=$2
+    local model_override="${3:-}"
     local tmp_stderr
     tmp_stderr=$(mktemp)
 
@@ -916,8 +1006,9 @@ invoke_provider() {
 
     case "$provider_name" in
         claude)
+            local claude_model="${model_override:-$CLAUDE_MODEL}"
             {
-                echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" claude --model "$CLAUDE_MODEL" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" claude --model "$claude_model" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
                 exit ${PIPESTATUS[1]}
             } &
             ACTIVE_PROVIDER_PID=$!
@@ -936,8 +1027,9 @@ invoke_provider() {
             fi
             ;;
         codex)
+            local codex_model="${model_override:-$CODEX_MODEL}"
             {
-                echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" codex exec -m "$CODEX_MODEL" --dangerously-bypass-approvals-and-sandbox - 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" codex exec -m "$codex_model" --dangerously-bypass-approvals-and-sandbox - 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
                 exit ${PIPESTATUS[1]}
             } &
             ACTIVE_PROVIDER_PID=$!
@@ -956,8 +1048,9 @@ invoke_provider() {
             fi
             ;;
         gemini)
+            local gemini_model="${model_override:-$GEMINI_MODEL}"
             {
-                env -u CLAUDECODE "${DC_EXEC[@]}" gemini -m "$GEMINI_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                env -u CLAUDECODE "${DC_EXEC[@]}" gemini -m "$gemini_model" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
                 exit ${PIPESTATUS[0]}
             } &
             ACTIVE_PROVIDER_PID=$!
@@ -991,9 +1084,10 @@ invoke_provider() {
             fi
             ;;
         copilot)
+            local copilot_model="${model_override:-$COPILOT_MODEL}"
             copilot_output_file=$(mktemp)
             {
-                env -u CLAUDECODE "${DC_EXEC[@]}" copilot --model "$COPILOT_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" "$copilot_output_file"
+                env -u CLAUDECODE "${DC_EXEC[@]}" copilot --model "$copilot_model" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" "$copilot_output_file"
                 exit ${PIPESTATUS[0]}
             } &
             ACTIVE_PROVIDER_PID=$!
@@ -1004,7 +1098,7 @@ invoke_provider() {
                 echo "copilot timed out after $PROVIDER_TIMEOUT seconds" >&2
                 invoke_rc=1
             elif [ "$exit_code" -ne 0 ]; then
-                echo "Copilot --model $COPILOT_MODEL failed. Retrying with $COPILOT_RETRY_MODEL." >&2
+                echo "Copilot --model $copilot_model failed. Retrying with $COPILOT_RETRY_MODEL." >&2
                 {
                     env -u CLAUDECODE "${DC_EXEC[@]}" copilot --model "$COPILOT_RETRY_MODEL" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" "$copilot_output_file"
                     exit ${PIPESTATUS[0]}
@@ -1136,6 +1230,8 @@ FORCE_REVIEW_NEXT=false
 RESOLVED_MODE=""
 CYCLE_POSITION=0
 LAST_MODE_WAS_FORCED=false
+RESOLVED_PROMPT_NAME=""
+CYCLE_LENGTH=0
 HAS_BUILDS_SINCE_LAST_PLAN=false
 PHASE_RETRY_PHASE=""
 PHASE_RETRY_CONSECUTIVE=0
@@ -1143,6 +1239,10 @@ MAX_PHASE_RETRIES=2
 LAST_PROVIDER_ERROR=""
 LAST_ITER_MODE="$MODE"
 LAST_PROOF_ITERATION=0
+FRONTMATTER_PROVIDER=""
+FRONTMATTER_MODEL=""
+FRONTMATTER_AGENT=""
+FRONTMATTER_REASONING=""
 
 update_proof_baselines() {
     local proof_iteration="$1"
@@ -1497,6 +1597,9 @@ elif [ "$LAUNCH_MODE" = "restart" ]; then
     write_log_entry "session_restart"
 fi
 
+# Prime cycle position from loop-plan.json if present.
+resolve_cycle_prompt_from_plan >/dev/null 2>&1 || true
+
 echo ""
 echo "Starting loop..."
 echo "---"
@@ -1547,10 +1650,43 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         echo "Warning: STEERING.md found but PROMPT_steer.md is missing in $PROMPTS_DIR — steering skipped."
     fi
 
-    iter_prompt_file="$PROMPTS_DIR/PROMPT_$iter_mode.md"
+    if [ -n "$RESOLVED_PROMPT_NAME" ]; then
+        iter_prompt_file="$PROMPTS_DIR/$RESOLVED_PROMPT_NAME"
+    else
+        iter_prompt_file="$PROMPTS_DIR/PROMPT_$iter_mode.md"
+    fi
+
+    if [ ! -f "$iter_prompt_file" ]; then
+        echo "Error: Prompt file not found: $iter_prompt_file" >&2
+        write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "error" "prompt_missing"
+        break
+    fi
+
+    parse_frontmatter "$iter_prompt_file"
+    if [ -n "$FRONTMATTER_AGENT" ]; then
+        iter_mode="$FRONTMATTER_AGENT"
+        LAST_ITER_MODE="$iter_mode"
+    fi
+    if [ -n "$FRONTMATTER_PROVIDER" ]; then
+        if command -v "$FRONTMATTER_PROVIDER" >/dev/null 2>&1; then
+            iter_provider="$FRONTMATTER_PROVIDER"
+        else
+            write_log_entry "frontmatter_provider_unavailable" \
+                "requested_provider" "$FRONTMATTER_PROVIDER" \
+                "fallback_provider" "$iter_provider" \
+                "prompt_file" "$iter_prompt_file"
+        fi
+    fi
+    write_log_entry "frontmatter_applied" \
+        "prompt_file" "$iter_prompt_file" \
+        "agent" "${FRONTMATTER_AGENT:-}" \
+        "provider" "${FRONTMATTER_PROVIDER:-}" \
+        "model" "${FRONTMATTER_MODEL:-}" \
+        "reasoning" "${FRONTMATTER_REASONING:-}"
 
     # Update session status
     write_status "$ITERATION" "$iter_mode" "$iter_provider" "$STUCK_COUNT"
+    persist_loop_plan_state
 
     # Color output by mode
     case "$iter_mode" in
@@ -1636,9 +1772,10 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     fi
 
     cd "$WORK_DIR"
-    if invoke_provider "$iter_provider" "$prompt_content"; then
+    if invoke_provider "$iter_provider" "$prompt_content" "$FRONTMATTER_MODEL"; then
         update_provider_health_on_success "$iter_provider"
         register_iteration_success "$iter_mode" "$LAST_MODE_WAS_FORCED"
+        persist_loop_plan_state
 
         # Steer mode: archive leftover steering file if the agent did not delete it
         if [ "$iter_mode" = "steer" ]; then
@@ -1700,6 +1837,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     else
         update_provider_health_on_failure "$iter_provider" "${LAST_PROVIDER_ERROR:-provider_failed}"
         register_iteration_failure "$iter_mode" "${LAST_PROVIDER_ERROR:-provider_failed}"
+        persist_loop_plan_state
         echo "Warning: Iteration $ITERATION failed"
         write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider"
     fi

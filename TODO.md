@@ -3,7 +3,7 @@
 ## Current Phase: Loop Script Refactoring + Orchestrator Implementation
 
 ### In Progress (P0 — Loop Script Refactoring)
-- [ ] [loop][critical] Replace hardcoded `plan/build/proof/review` modulo logic in `loop.sh` + `loop.ps1` with `loop-plan.json` cycle resolution — read prompt filename at `cyclePosition % cycle.length`, parse frontmatter for provider/model/agent/reasoning.
+- [x] [loop][critical] Replace hardcoded `plan/build/proof/review` modulo logic in `loop.sh` + `loop.ps1` with `loop-plan.json` cycle resolution — read prompt filename at `cyclePosition % cycle.length`, parse frontmatter for provider/model/agent/reasoning.
 - [ ] [loop][critical] Add `queue/` folder check before cycle — if queue has `.md` files, pick first (sorted), parse frontmatter, run it, delete after. Do NOT advance `cyclePosition` for queue items.
 - [ ] [loop][critical] Add shared `parse_frontmatter()` function (sed-based, ~6 lines) — extracts provider/model/agent/reasoning from `---` delimited YAML header. Same parser for cycle prompts and queue prompts.
 - [ ] [loop][high] Add `requests/` wait loop — after agent completes, if `requests/*.json` exist, poll until directory empties or timeout (default 300s).
