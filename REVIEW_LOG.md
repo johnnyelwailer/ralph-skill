@@ -13,6 +13,17 @@
 
 ---
 
+## Review — 2026-03-14 13:58 — commit 34bf396..34bf5f0
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/cli/src/commands/dashboard.ts`, `aloop/cli/src/commands/dashboard.test.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `TODO.md`
+
+- Gate 3: Branch-coverage evidence is present for touched TypeScript files (`dashboard.ts` 82.98%, `orchestrate.ts` 88.25%), but no branch-coverage evidence was produced for touched runtime loop scripts `aloop/bin/loop.sh` and `aloop/bin/loop.ps1`; this violates the gate requirement for every touched file.
+- Gate 6: Proof manifest iteration 27 references `dashboard-dead-pid-proof.json`, `triage-steering-proof.json`, and `loop-exit-state-proof.txt`, but all three files are missing in the workspace, so claimed evidence is not verifiable.
+- Gate 5 observation: validation is green for this range (`cd aloop/cli && npm test && npm run type-check && npm run build` all pass).
+
+---
+
 ## Review — 2026-03-14 13:48 — commit 1ea560a..a31cc39
 
 **Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)

@@ -4,6 +4,8 @@
 
 ### In Progress
 - [x] [triage][high] Prevent actionable triage loss before child dispatch: when `issue.child_session` is missing, do not finalize as `steering_injected` unless steering is durably queued/deferred. This protects human guidance from being silently dropped.
+- [ ] [review] Gate 3: `aloop/bin/loop.sh` and `aloop/bin/loop.ps1` changed in commit range `34bf396..34bf5f0`, but no branch-coverage evidence was produced for these touched runtime paths; add/extend loop-script tests to demonstrate >=80% branch coverage for the modified exit-state and stuck-count-reset branches (priority: high).
+- [ ] [review] Gate 6: proof manifest (iteration 27) references `dashboard-dead-pid-proof.json`, `triage-steering-proof.json`, and `loop-exit-state-proof.txt`, but these artifacts are missing from the workspace; regenerate or attach those exact files (or update manifest paths) so evidence is verifiable (priority: high).
 
 ### Up Next
 - [x] [tests][high] Add a regression test for actionable comments on issues without `child_session` (assert deferred/pending steering behavior and no false “processed” outcome).
