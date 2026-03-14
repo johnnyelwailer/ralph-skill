@@ -1544,6 +1544,8 @@ The replan agent reads the spec but does NOT modify it — the spec is human-own
 
 Triggered by: spec backfill, replan agent spec edits, detected spec file commits. Queued as a follow-up after any spec-modifying operation.
 
+**Infinite loop guard:** The consistency agent's own commits use a tagged message prefix (`chore(spec-consistency):`). The spec watcher ignores commits with this prefix — they do not re-trigger analysis, gap detection, or another consistency pass. Same applies to spec backfill commits (`chore(spec-backfill):`). Only substantive spec changes (new requirements, changed requirements, user edits) trigger the pipeline. This prevents: consistency agent edits spec → watcher detects change → queues another consistency run → infinite loop.
+
 **Spec files are the authoritative intent. Issues are the live execution plan.** They can temporarily diverge (user adds an ad-hoc issue, agent discovers unexpected work) but replan reconciles them.
 
 #### Phase 7: Complete
