@@ -32,37 +32,46 @@ Aloop is an autonomous coding agent orchestrator that runs configurable agent pi
 The inner loop (`loop.sh` / `loop.ps1`) and the aloop runtime (`aloop` CLI, TS/Bun) are **separate programs** with a strict boundary. The inner loop may run inside a container where the aloop CLI is not available.
 
 ### Inner Loop Responsibilities (loop.sh / loop.ps1)
-- Read `loop-plan.json` each iteration, pick agent at `cyclePosition % cycle.length`
+- Check `queue/` folder for override prompts before checking cycle (queue takes priority)
+- Read `loop-plan.json` each iteration, pick prompt file at `cyclePosition % cycle.length` (when queue is empty)
+- Parse frontmatter from prompt files (provider, model, agent, reasoning) — same parser for cycle and queue prompts
 - Invoke provider CLIs directly (claude, opencode, codex, gemini, copilot)
 - Write `status.json` and `log.jsonl` after each iteration
-- Update `cyclePosition` and `iteration` in `loop-plan.json`
+- Update `cyclePosition` and `iteration` in `loop-plan.json` (only for cycle iterations, not queue)
+- Delete consumed queue files after agent completes
+- Wait for pending `requests/*.json` to be processed by runtime before next iteration (with timeout)
 - Detect stuck iterations (same task failing repeatedly)
 - Read `TODO.md` for phase prerequisites
-- Hot-reload provider list from `meta.json` each iteration
+- Hot-reload provider list from `meta.json` each iteration (for round-robin fallback when frontmatter provider is unavailable)
 - Track and kill child processes (provider timeout, cleanup on exit)
 - Sanitize environment (`CLAUDECODE`, `PATH` hardening)
 
 ### Inner Loop Does NOT
 - Parse pipeline YAML config
 - Evaluate transition rules (`onFailure`, escalation ladders)
-- Talk to GitHub API
+- Talk to GitHub API or any external service
 - Know about other child loops or the orchestrator
 - Run the dashboard
-- Process steering files (it reads them, but the runtime interprets and rewrites `loop-plan.json`)
+- Process requests (it writes them; the runtime processes them)
+- Decide what work to do next (cycle order and queue contents are controlled externally)
 
 ### Runtime Responsibilities (aloop CLI, TS/Bun)
-- Compile pipeline YAML into `loop-plan.json`
-- Rewrite `loop-plan.json` on mutations (steering, failure recovery, agent injection)
+- Compile pipeline YAML into `loop-plan.json` (cycle of prompt filenames)
+- Generate prompt files with frontmatter from pipeline config
+- Rewrite `loop-plan.json` on permanent mutations (cycle changes, position adjustments)
+- Write prompt files to `queue/` for one-shot overrides (steering, forced review, debugger)
+- Process `requests/*.json` from agents — execute side effects (GitHub API, child dispatch, PR ops)
+- Queue follow-up prompts into `queue/` after processing requests (response baked into prompt)
 - Manage sessions (create, resume, stop, cleanup, lockfiles)
 - Serve the dashboard
-- Process convention-file protocol (`.aloop/requests/` → `.aloop/responses/`)
 - Monitor provider health (cross-session)
 - GitHub operations (`aloop gh` subcommands)
 - Orchestrator mode: spec gap analysis, decompose, schedule, dispatch, monitor, gate, replan
 
 ### Communication Contract
-- **Runtime → Inner Loop**: `loop-plan.json` (pipeline), `meta.json` (providers), `queue/` folder (steering, overrides)
-- **Inner Loop → Runtime**: `status.json` (current state), `log.jsonl` (history), `.aloop/requests/` (GH operations)
+- **Runtime → Inner Loop**: `loop-plan.json` (cycle), `meta.json` (providers), `queue/*.md` (overrides with frontmatter)
+- **Inner Loop → Runtime**: `status.json` (current state), `log.jsonl` (history), `requests/*.json` (side-effect requests)
+- **Prompt files** (shared): frontmatter carries agent config (provider, model, reasoning); body is the prompt. Same format for cycle prompts and queue prompts.
 
 ---
 
