@@ -402,3 +402,39 @@
 ### Dashboard command/prompt files — present
 - The spec-required dashboard command files exist: `claude/commands/aloop/dashboard.md` and `copilot/prompts/aloop-dashboard.prompt.md`.
   - Source: glob matches `claude/**/dashboard.md` and `copilot/**/aloop-dashboard.prompt.md` (T2), `SPEC.md:856-857` (T3)
+
+## 2026-03-14 19:15Z — Planning recheck: loop-plan frontmatter landed, @aloop/CI-log landed, review gates still open [T2+T3]
+
+### Loop Script — Cycle Resolution Landed, Queue/Requests Still Missing
+
+- `loop.sh` now reads `loop-plan.json` and resolves cycle prompts via frontmatter (commit `2d119ab`). `parse_frontmatter()` exists at line ~459. `LOOP_PLAN_FILE` defined at line ~227.
+  - Source: `aloop/bin/loop.sh:227,459,1600,1665` (T2 — direct inspection)
+- **queue/ folder check is NOT implemented** in either `loop.sh` or `loop.ps1`. No references to `queue/`, `queue_dir`, or `QUEUE` found.
+  - Source: grep for `queue/|queue_dir|QUEUE` in `aloop/bin/loop.sh` returned 0 matches (T2)
+- **requests/ wait loop is NOT implemented** in either script. No references to `requests/`, `REQUESTS`, or `request_dir` found.
+  - Source: grep for `requests/|REQUESTS|request_dir` in `aloop/bin/loop.sh` returned 0 matches (T2)
+- Spec requires both queue/ check (SPEC.md:35) and requests/ wait (SPEC.md:42) as inner loop responsibilities.
+  - Source: `SPEC.md:35,42` (T3)
+
+### GH Workflow — @aloop Mention + CI Log Ingestion Landed
+
+- `@aloop` mention detection implemented at `gh.ts:643` — filters issue comments by `body.toLowerCase().includes('@aloop')`.
+  - Source: `aloop/cli/src/commands/gh.ts:643` (T2 — direct inspection), commit `4caa6ca` (T2)
+- CI failed-log ingestion implemented via `fetchFailedCheckLogs()` at `gh.ts:550-573` — calls `gh run view <id> --repo <repo> --log-failed`.
+  - Source: `aloop/cli/src/commands/gh.ts:550-573` (T2 — direct inspection), commit `4caa6ca` (T2)
+
+### Review Gates — Status Update
+
+- **Gate 1**: [FIXED] `completion_finalized` is now only set if `finalizeWatchEntry()` returns `true`. The return type of `finalizeWatchEntry()` was changed from `void` to `boolean` to indicate success (PR created/found and issue commented).
+  - Source: `aloop/cli/src/commands/gh.ts:833,972-975` (T2 — direct inspection), commit `c3295ee` (T2)
+- **Gate 2**: Tests for `@aloop` mention detection and CI failed-log ingestion are still absent. `gh.test.ts` tests at lines 1943-2068 pass empty `[]` for issue comments and don't exercise mention filtering. No `fetchFailedCheckLogs` unit tests or >200-line truncation assertions.
+  - Source: `aloop/cli/src/commands/gh.test.ts:1943-2068` (T2 — direct inspection)
+- **Gate 3**: Branch coverage at 63.32% (c8 report), well below the >=80% target. Many untested branches from start/watch/status/stop commands.
+  - Source: command run `cd aloop/cli && npx c8 --all --include=src/commands/gh.ts tsx --test src/commands/gh.test.ts` (branch % 63.32) (T2)
+- **Gate 6**: Proof manifest artifacts (`gh-test-output.txt`, `derive-mode-test.txt`, `cycle-resolution-test.txt`, `frontmatter-parse-test.txt`, `cycle-integration-test.txt`, `aloop-mention-grep.txt`) not found in workspace.
+  - Source: grep for these filenames returned 0 matches (T2)
+
+### CLI Resume — Fixed
+
+- `aloop start <session-id> --launch resume` now properly reuses existing session worktree/branch (commit `607edaa`).
+  - Source: commit `607edaa` (T2)
