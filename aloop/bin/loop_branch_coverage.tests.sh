@@ -92,6 +92,7 @@ register_branch "path.setup.reuse" "setup_gh_block reuses existing shim director
 register_branch "path.cleanup.remove" "cleanup_gh_block removes shim directory and resets marker"
 register_branch "path.cleanup.noop" "cleanup_gh_block safely no-ops when nothing is active"
 register_branch "path.invoke.success" "invoke_provider claude success path returns 0 and clears error"
+register_branch "path.invoke.opencode" "invoke_provider opencode success path"
 register_branch "path.invoke.restore_success" "invoke_provider success restores PATH and keeps provider dir reachable"
 register_branch "path.invoke.failure" "invoke_provider claude non-zero sets LAST_PROVIDER_ERROR and returns non-zero"
 register_branch "path.invoke.restore_failure" "invoke_provider failure restores PATH"
@@ -110,6 +111,13 @@ register_branch "frontmatter.empty" "parse_frontmatter yields empty strings when
 register_branch "frontmatter.partial" "parse_frontmatter handles partial frontmatter with missing fields"
 register_branch "advance.with_cycle_length" "advance_cycle_position uses CYCLE_LENGTH for modulo when set"
 register_branch "advance.fallback_mode" "advance_cycle_position falls back to MODE-based modulo when CYCLE_LENGTH unset"
+register_branch "requests.wait.empty" "wait_for_requests returns immediately when no requests exist"
+register_branch "requests.wait.success" "wait_for_requests polls until requests directory is empty"
+register_branch "requests.wait.timeout" "wait_for_requests breaks loop after timeout"
+register_branch "queue.empty" "run_queue_if_present returns 1 when queue is empty"
+register_branch "queue.success" "run_queue_if_present runs item from queue and returns 0"
+register_branch "queue.frontmatter" "run_queue_if_present respects frontmatter provider in queue item"
+register_branch "queue.frontmatter_unavailable" "run_queue_if_present logs fallback when frontmatter provider is unavailable"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -120,14 +128,16 @@ KILL_PROVIDER_FUNC="$(extract_function kill_active_provider)"
 CYCLE_RESOLVE_FUNC="$(extract_function resolve_cycle_prompt_from_plan)"
 FRONTMATTER_FUNC="$(extract_function parse_frontmatter)"
 ADVANCE_FUNC="$(extract_function advance_cycle_position)"
+WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
+RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
     exit 1
 fi
 
-if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$ADVANCE_FUNC" ]; then
-    echo "FAIL: could not extract cycle/frontmatter/advance functions from $LOOP_SH"
+if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ]; then
+    echo "FAIL: could not extract cycle/frontmatter/advance/requests/queue functions from $LOOP_SH"
     exit 1
 fi
 
@@ -140,6 +150,8 @@ eval "$INVOKE_FUNC"
 eval "$CYCLE_RESOLVE_FUNC"
 eval "$FRONTMATTER_FUNC"
 eval "$ADVANCE_FUNC"
+eval "$WAIT_FOR_REQUESTS_FUNC"
+eval "$RUN_QUEUE_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
@@ -151,6 +163,11 @@ LOG_FILE="$(mktemp)"
 COVERAGE_LOG_FILE="$(mktemp)"
 PROVIDER_PATH_MARKER="$(mktemp)"
 FAKE_PROVIDER_DIR="$(mktemp -d)"
+DC_EXEC=()
+SESSION_DIR=""
+WORK_DIR=""
+ITERATION=1
+STUCK_COUNT=0
 
 # Minimal dependencies for tested functions.
 write_log_entry() {
@@ -163,6 +180,10 @@ write_log_entry() {
     done
     echo "$line" >> "$COVERAGE_LOG_FILE"
 }
+
+write_status() { :; }
+update_provider_health_on_success() { :; }
+update_provider_health_on_failure() { :; }
 
 declare -A STATUS_BY_PROVIDER=()
 declare -A COOLDOWN_BY_PROVIDER=()
@@ -243,6 +264,12 @@ echo "ok"
 exit 0
 SCRIPT
 chmod +x "$FAKE_PROVIDER_DIR/claude"
+cat > "$FAKE_PROVIDER_DIR/opencode" << 'SCRIPT'
+#!/bin/bash
+echo "ok"
+exit 0
+SCRIPT
+chmod +x "$FAKE_PROVIDER_DIR/opencode"
 cat > "$FAKE_PROVIDER_DIR/gh" << 'SCRIPT'
 #!/bin/bash
 echo "real-gh"
@@ -264,6 +291,14 @@ if run_invoke_provider "claude" "test prompt"; then
     fi
 else
     fail_case "invoke_provider success branch returned non-zero"
+fi
+
+if run_invoke_provider "opencode" "test prompt"; then
+    assert_no_return_trap
+    cover_branch "path.invoke.opencode"
+    pass_case "invoke_provider opencode success path"
+else
+    fail_case "invoke_provider opencode failed"
 fi
 
 provider_saw_path="$(cat "$PROVIDER_PATH_MARKER" 2>/dev/null || true)"
@@ -578,6 +613,145 @@ if [ "$CYCLE_POSITION" -eq 0 ]; then
 else
     fail_case "advance_cycle_position fallback mode failed (got $CYCLE_POSITION, expected 0)"
 fi
+
+# ---------------------------------------------------------------------------
+# wait_for_requests branches
+# ---------------------------------------------------------------------------
+
+REQ_TMPDIR="$(mktemp -d)"
+SESSION_DIR="$REQ_TMPDIR"
+
+# requests.wait.empty — no requests directory
+rm -rf "$SESSION_DIR/requests"
+wait_for_requests
+cover_branch "requests.wait.empty"
+pass_case "wait_for_requests returns immediately when no requests directory"
+
+# requests.wait.success — polls until empty
+mkdir -p "$SESSION_DIR/requests"
+touch "$SESSION_DIR/requests/req1.json"
+SLEEP_CALLS=0
+SLEEP_HOOK="rm -f $SESSION_DIR/requests/req1.json"
+wait_for_requests
+if [ "$SLEEP_CALLS" -ge 1 ] && [ ! -f "$SESSION_DIR/requests/req1.json" ]; then
+    cover_branch "requests.wait.success"
+    pass_case "wait_for_requests polls until requests directory is empty"
+else
+    fail_case "wait_for_requests did not poll or directory not empty (sleeps=$SLEEP_CALLS)"
+fi
+
+# requests.wait.timeout — breaks loop after timeout
+mkdir -p "$SESSION_DIR/requests"
+touch "$SESSION_DIR/requests/req2.json"
+SLEEP_CALLS=0
+REQUEST_TIMEOUT=1
+# Mock date to simulate timeout
+date() {
+    if [ "$1" = "+%s" ]; then
+        if [ "$SLEEP_CALLS" -eq 0 ]; then
+            echo 1000
+        else
+            echo 2000
+        fi
+    else
+        command date "$@"
+    fi
+}
+wait_for_requests
+if contains_log "request_timeout"; then
+    cover_branch "requests.wait.timeout"
+    pass_case "wait_for_requests breaks loop after timeout"
+else
+    fail_case "wait_for_requests did not timeout"
+fi
+unset -f date
+
+rm -rf "$REQ_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# run_queue_if_present branches
+# ---------------------------------------------------------------------------
+
+QUEUE_TMPDIR="$(mktemp -d)"
+SESSION_DIR="$QUEUE_TMPDIR"
+WORK_DIR="$QUEUE_TMPDIR/work"
+mkdir -p "$WORK_DIR"
+
+# queue.empty — no queue directory
+rm -rf "$SESSION_DIR/queue"
+if ! run_queue_if_present "claude"; then
+    cover_branch "queue.empty"
+    pass_case "run_queue_if_present returns 1 when queue is empty"
+else
+    fail_case "run_queue_if_present should return 1 for empty queue"
+fi
+
+# queue.success — runs item and returns 0
+mkdir -p "$SESSION_DIR/queue"
+cat > "$SESSION_DIR/queue/01-test.md" << 'EOF'
+Test prompt
+EOF
+if run_queue_if_present "claude"; then
+    if [ ! -f "$SESSION_DIR/queue/01-test.md" ]; then
+        cover_branch "queue.success"
+        pass_case "run_queue_if_present runs item and deletes it"
+    else
+        fail_case "run_queue_if_present did not delete item"
+    fi
+else
+    fail_case "run_queue_if_present failed to run existing item"
+fi
+
+# queue.frontmatter — respects frontmatter provider
+cat > "$SESSION_DIR/queue/02-test.md" << 'EOF'
+---
+provider: opencode
+---
+Frontmatter test
+EOF
+# Mock command -v for opencode
+command() {
+    if [ "$2" = "opencode" ]; then
+        return 0
+    fi
+    builtin command "$@"
+}
+if run_queue_if_present "claude"; then
+    if contains_log "queue_override_start|iteration=1|queue_file=02-test.md|agent=queue|provider=opencode"; then
+        cover_branch "queue.frontmatter"
+        pass_case "run_queue_if_present respects frontmatter provider"
+    else
+        fail_case "run_queue_if_present did not use frontmatter provider"
+    fi
+else
+    fail_case "run_queue_if_present failed with frontmatter"
+fi
+unset -f command
+
+# queue.frontmatter_unavailable — logs fallback when frontmatter provider isn't installed
+cat > "$SESSION_DIR/queue/03-test.md" << 'EOF'
+---
+provider: unavailable-provider
+---
+Fallback provider test
+EOF
+if run_queue_if_present "claude"; then
+    if contains_log "queue_frontmatter_provider_unavailable|requested_provider=unavailable-provider|fallback_provider=claude|queue_file=03-test.md" \
+        && contains_log "queue_override_start|iteration=1|queue_file=03-test.md|agent=queue|provider=claude"; then
+        cover_branch "queue.frontmatter_unavailable"
+        pass_case "run_queue_if_present logs and falls back when frontmatter provider is unavailable"
+    else
+        fail_case "run_queue_if_present did not log frontmatter provider fallback"
+    fi
+else
+    fail_case "run_queue_if_present failed with unavailable frontmatter provider"
+fi
+
+rm -rf "$QUEUE_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# Final summary
+# ---------------------------------------------------------------------------
 
 covered=0
 total=${#BRANCH_ORDER[@]}
