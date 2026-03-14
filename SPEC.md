@@ -892,39 +892,45 @@ A meta-loop mode that decomposes a spec into **vertical slices** as GitHub issue
             (human promotes to main)
 ```
 
-### Two Distinct Loops
+### Shared Loop Mechanism
 
-The orchestrator and child loops are **completely different programs** with different responsibilities:
+The orchestrator and child implementation loops use the **same `loop.sh`/`loop.ps1`** — same `loop-plan.json`, same `queue/` folder, same frontmatter prompts. The difference is what prompts are in the cycle and queue.
 
-**Orchestrator** (TS/Bun, `aloop/cli/`):
-- A proper application in the aloop TypeScript/Bun codebase
-- Manages the full fan-out lifecycle: spec gap analysis, decompose, schedule, dispatch, monitor, gate, replan
-- Talks to GitHub API (issues, PRs, dependencies, sub-issues)
-- Watches spec files for changes, triggers replan agents
-- Manages concurrency, budget, wave advancement
-- Spawns and supervises child loops
+**Orchestrator loop** — a `loop.sh` instance with orchestrator prompts:
+- Cycle: single scan prompt as heartbeat (`PROMPT_orch_scan.md`)
+- Primarily **queue-driven** — reactive, not cyclical. The scan checks state; the runtime generates per-item work prompts into `queue/`.
+- Agents write `requests/*.json` for side effects (GitHub API calls, child loop launches). Runtime processes requests and queues follow-up prompts.
+- Manages the full refinement pipeline: spec gap analysis → epic decomposition → epic refinement → sub-issue decomposition → sub-issue refinement → dispatch
 
-**Inner loop** (`loop.sh` / `loop.ps1`):
-- Dumb shell script. Reads a **compiled loop plan** (a simple ordered list of agents) and executes them sequentially by index
-- The aloop runtime compiles the pipeline YAML config into `loop-plan.json` — a flat array of fully-resolved entries (`agent`, `prompt`, `provider`, `model`, `reasoning`)
-- The loop script reads the plan file each iteration, picks entry at `cyclePosition`, invokes that agent — no YAML parsing, no transition logic in shell
-- The runtime can regenerate `loop-plan.json` at any time (steering, mutation, failure recovery) — the loop script re-reads it every turn
-- Invokes providers via round-robin, writes `status.json`
+**Child implementation loop** — a `loop.sh` instance with build prompts:
+- Cycle: fixed rotation (plan → build → build → proof → review)
+- Primarily **cycle-driven** — proactive, predictable. Queue used only for steering/overrides.
 - Reads its sub-spec from the issue body (seeded into its worktree), NOT the repo's SPEC.md
 - Knows nothing about GitHub, other children, orchestration, or the full spec
-- Purely a worker — the orchestrator tells it what to work on, it executes
+
+**Aloop runtime** (TS/Bun, `aloop/cli/`) — the host-side process:
+- Processes `requests/*.json` from both orchestrator and child loops
+- Executes side effects: GitHub API, child loop spawning, PR operations
+- Queues follow-up prompts into the requesting loop's `queue/` folder
+- Monitors provider health, manages concurrency cap, budget
+- Watches spec files for changes (git diff on spec glob)
 
 ```
-Orchestrator (TS/Bun)
-  ├── watches repo for spec changes (git diff on spec glob)
-  ├── polls GitHub for issue/PR state changes
-  ├── runs agent-powered spec-analysis/decompose/schedule/replan
-  ├── spawns child inner loops:
-  │     ├── loop script (issue #11) ← reads issue body as its spec
-  │     ├── loop script (issue #12) ← reads issue body as its spec
-  │     └── loop script (issue #13) ← reads issue body as its spec
-  ├── gates completed PRs (automated checks + agent review)
-  └── manages concurrency cap, budget, wave advancement
+Aloop Runtime (TS/Bun) ← host process, always running
+  │
+  ├── Orchestrator loop.sh instance
+  │     ├── cycle: [PROMPT_orch_scan.md]  (heartbeat)
+  │     ├── queue/: per-item work prompts  (reactive)
+  │     ├── requests/: side effect requests → runtime
+  │     └── scans GitHub state, refines issues, decides dispatch
+  │
+  ├── Child loop.sh (issue #11)
+  │     ├── cycle: [plan, build, build, proof, review]
+  │     ├── queue/: steering overrides only
+  │     └── reads sub-issue body as its spec
+  │
+  ├── Child loop.sh (issue #12)  ... same
+  └── Child loop.sh (issue #13)  ... same
 ```
 
 ### Child Loop Sub-Spec
@@ -1111,166 +1117,369 @@ The orchestrator avoids expensive polling by combining ETag-guarded REST checks 
 - GraphQL full fetch (only on change): ~5-20 queries/hr = 35-140 points/hr
 - **Total: well under 1% of rate limit**
 
-### Orchestrator Phases
+### Request/Response Protocol
 
-The orchestrator itself is agent-powered at every phase — no deterministic decomposition or scheduling, since the dependency graph is semantic (no code exists yet to analyze structurally).
+Agents inside `loop.sh` cannot call external APIs directly (inner loop boundary). When an agent needs a side effect (create GitHub issue, launch child loop, merge PR), it writes a **request file** with a predefined structured contract. The runtime processes it and queues follow-up prompts.
 
-#### Phase 0: Spec Gap Analysis
+**Direction:**
+- `$SESSION_DIR/requests/*.json` — agent → runtime (structured side-effect requests)
+- `$SESSION_DIR/queue/*.md` — runtime → loop (follow-up prompts with results baked in)
 
-Before any decomposition, the **spec analyst agent** reviews the spec for contradictions, ambiguities, missing acceptance criteria, and unstated assumptions that would cause wasted build iterations downstream. This runs:
-- At orchestrator start (before first decompose)
-- After spec changes are detected (re-triggered by the spec watcher)
+**Request file contract:**
 
-**Process:**
-1. Read all spec files (`SPEC.md` or `specs/*.md`)
-2. Read the codebase to understand existing state and constraints
-3. Identify gaps: contradictions between sections, ambiguous requirements, missing edge cases, unstated dependencies, acceptance criteria that can't be objectively verified
-4. For each gap, create a GitHub issue labeled `aloop/spec-question` with:
-   - The contradiction or ambiguity (quoted from spec)
-   - Why it matters (what would go wrong during implementation)
-   - Suggested resolution options (if possible)
-   - `@mention` the user for a decision
-5. **Block decomposition** until all `aloop/spec-question` issues are resolved (closed)
+Every request file follows the same envelope:
+```json
+{
+  "id": "req-<monotonic-counter>",
+  "type": "<request_type>",
+  "payload": { ... }
+}
+```
 
-**What the analyst looks for:**
-- **Contradictions** — section A says X, section B says Y
-- **Ambiguous requirements** — "should handle errors gracefully" (how? retry? log? abort?)
-- **Missing acceptance criteria** — feature described but no way to verify it's done
-- **Unstated assumptions** — "uses the database" (which one? what schema?)
-- **Impossible constraints** — requirements that conflict with stated constraints
-- **Scope gaps** — features referenced but never defined
+**Defined request types:**
 
-**Interview style:** Each issue is a focused question, not a dump of all problems. The user answers by commenting, the analyst (or orchestrator triage) picks up the answer and updates the spec accordingly. Once all questions are resolved, decomposition proceeds.
+| Type | Payload | Runtime action | Queues |
+|------|---------|----------------|--------|
+| `create_issues` | `{issues: [{title, body, labels, parent?}]}` | Creates GitHub issues, links sub-issues to parent | Per-issue refinement prompts |
+| `update_issue` | `{number, body?, labels_add?, labels_remove?, state?}` | Updates issue on GitHub | None (or re-analysis prompt if body changed) |
+| `close_issue` | `{number, reason}` | Closes issue with comment | None |
+| `create_pr` | `{head, base, title, body, issue_number}` | Creates PR via `gh pr create`, links to issue | Gate/review prompt |
+| `merge_pr` | `{number, strategy: "squash"\|"merge"\|"rebase"}` | Merges PR via `gh pr merge` | Downstream dispatch prompts |
+| `dispatch_child` | `{issue_number, branch, pipeline, sub_spec}` | Creates worktree, compiles child `loop-plan.json`, launches child `loop.sh` | Monitor prompt |
+| `steer_child` | `{issue_number, instruction, agent?, provider?, model?}` | Writes prompt file to child's `queue/` | None |
+| `stop_child` | `{issue_number, reason}` | Sends SIGTERM to child loop PID | Cleanup prompt |
+| `post_comment` | `{issue_number, body}` | Posts comment on GitHub issue/PR | None |
+| `query_issues` | `{labels?, state?, since?}` | Queries GitHub issues, writes result to queue as context | Analysis prompt with results |
+| `spec_backfill` | `{file, section, content}` | Writes resolved decision back into spec file, commits | None |
 
-**Re-triggering:** When the spec watcher detects changes to spec files (git diff on spec glob), the analyst re-runs on the changed sections only. New questions block affected slices, not the entire pipeline — already-dispatched work on unaffected slices continues.
+**Payload validation:** The runtime validates each request against the contract before processing. Malformed requests are moved to `$SESSION_DIR/requests/failed/` with an error annotation. The loop picks up the failure on next scan.
 
-#### Phase 1: Decompose
+**Idempotency:** Every request type is designed to be safe to re-execute. `create_issues` checks for existing issues by title+label match. `merge_pr` checks if already merged. `dispatch_child` checks if session already exists. This ensures resumability after crashes.
 
-The decompose agent reads the spec(s) and the current repo state, then produces the full issue hierarchy.
+**Request file naming:** `req-<NNN>-<type>.json` (e.g., `req-001-create_issues.json`). Counter is monotonic per session. Runtime processes in order.
 
-1. Read all spec files (`SPEC.md` or `specs/*.md`)
-2. Read the codebase to understand what already exists
-3. Read existing GitHub issues (if resuming or extending)
-4. Produce vertical slices as parent issues, each with sub-issues
-5. For each issue: title, body with scope + acceptance criteria, dependency metadata, file ownership hints, wave assignment
-6. Create issues on GitHub via `gh api` with sub-issue linking
-7. Labels: `aloop/auto`, `aloop/wave-N`, `aloop/slice`
+**Loop script addition** — wait for pending requests before next iteration:
+```bash
+REQUESTS_DIR="$SESSION_DIR/requests"
+if ls "$REQUESTS_DIR"/*.json 2>/dev/null | grep -q .; then
+    write_log_entry "waiting_for_requests" "count" "$(ls "$REQUESTS_DIR"/*.json | wc -l)"
+    WAIT_START=$(date +%s)
+    TIMEOUT=${REQUEST_TIMEOUT:-300}
+    while ls "$REQUESTS_DIR"/*.json 2>/dev/null | grep -q .; do
+        sleep 2
+        ELAPSED=$(( $(date +%s) - WAIT_START ))
+        if [ "$ELAPSED" -gt "$TIMEOUT" ]; then
+            write_log_entry "request_timeout" "elapsed" "$ELAPSED"
+            break
+        fi
+    done
+fi
+```
 
-The decompose agent reasons about:
-- **Vertical slicing** — each parent is an independently shippable user-facing feature
-- **Sub-issue granularity** — sized for 1-3 hours of human work equivalent (~5-15 build iterations per child loop)
-- **Dependencies** — semantic analysis: "auth must exist before protected routes"
-- **Parallelism** — which sub-issues touch completely separate files/modules
-- **Foundation work** — necessary horizontal groundwork explicitly marked and scheduled early
+Request files are deleted by the runtime after processing. The loop waits for the directory to empty, then picks up whatever the runtime queued.
 
-#### Phase 2: Schedule
+**Example flow — epic decomposition:**
+```
+1. Orchestrator agent (PROMPT_orch_decompose.md) analyzes spec
+2. Writes: requests/req-007-create_issues.json
+   {
+     "id": "req-007",
+     "type": "create_issues",
+     "payload": {
+       "issues": [
+         {"title": "Epic: User Authentication", "body": "...", "labels": ["aloop/epic", "aloop/needs-refine"]},
+         {"title": "Epic: Content Management", "body": "...", "labels": ["aloop/epic", "aloop/needs-refine"]}
+       ]
+     }
+   }
+3. loop.sh waits for requests/ to empty
+4. Runtime picks up request, creates issues #42 and #43 on GitHub
+5. Runtime deletes request file
+6. Runtime queues:
+   - queue/008-refine-epic-42.md (product analyst prompt with epic #42 context)
+   - queue/009-refine-epic-43.md (product analyst prompt with epic #43 context)
+7. loop.sh sees requests/ empty, picks up queue/008-refine-epic-42.md
+```
 
-The schedule agent builds the dependency graph and assigns waves. This is agent-powered because dependencies are semantic — with no code yet, only an agent can reason about "JWT validation must exist before session middleware can use it."
+### Autonomy Levels
 
-1. Read all created issues and their dependency metadata
-2. Build a dependency graph (topological sort with semantic validation)
-3. Assign waves:
-   - Wave 1: foundation work + independent slices
-   - Wave 2+: slices that depend on wave 1 outputs
-4. Detect file ownership conflicts — two sub-issues in the same wave touching the same files → move one to next wave
-5. Update issue labels with wave assignments
-6. Write the schedule to `orchestrator.json`
+Gap resolution behavior is configurable per session, set during `aloop setup`:
 
-Wave scheduling rules:
-- Sub-issues in the same wave MAY run in parallel
-- Wave N+1 sub-issues only dispatch after their specific dependencies are merged (not necessarily ALL of wave N)
-- File ownership hints prevent parallel edits to the same files
+| Level | Behavior | When to use |
+|-------|----------|-------------|
+| `cautious` | Block on any ambiguity, create `aloop/spec-question` issue, wait for user | High-stakes, unfamiliar domain, vague spec |
+| `balanced` | Resolve low-risk gaps autonomously, block on high-risk | Default — good spec with some gaps |
+| `autonomous` | Resolve everything, only block on true contradictions | High-quality spec, trusted agent judgment |
 
-#### Phase 3: Dispatch
+When resolving autonomously, the agent:
+1. Makes the best-guess decision based on spec context and codebase conventions
+2. Documents the reasoning in a `aloop/decision` issue (informational, doesn't block)
+3. Updates the spec with the chosen interpretation
+4. User can review decisions async and override via steering if they disagree
 
-The orchestrator picks up open sub-issues and launches child loops.
+Risk classification (determines block vs resolve):
+- **Low-risk**: naming conventions, error message wording, UI spacing, log levels → resolve autonomously
+- **Medium-risk**: API contract details, data model choices, auth flow specifics → depends on autonomy level
+- **High-risk**: architectural boundaries, security model, data privacy, billing logic → always block unless `autonomous`
 
-1. Query sub-issues whose dependencies are all merged
-2. For each dispatchable sub-issue (up to **concurrency cap**):
-   - Create branch: `aloop/issue-<number>`
-   - Create worktree: `~/.aloop/sessions/<session-id>/worktrees/issue-<number>/`
-   - Seed the child's `TODO.md` from the issue body
-   - Launch child loop with the configured pipeline (compiled into `loop-plan.json`)
-   - Track child PID + session in orchestrator state
-3. Remaining issues queue until a slot opens or dependencies are met
+### Orchestrator State Machine
 
-**Concurrency cap**: Configurable, default 3. Prevents provider saturation.
+The orchestrator is **reactive and queue-driven**. Instead of numbered phases, each issue progresses through a **label-driven state machine**. The orchestrator scan agent checks state each iteration and the runtime queues work for items ready for their next step.
 
-#### Phase 4: Monitor
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    ISSUE STATE MACHINE                            │
+│                                                                  │
+│  Spec file(s)                                                    │
+│       │                                                          │
+│       ▼                                                          │
+│  ┌─────────────────┐     ┌──────────────────┐                    │
+│  │  GLOBAL SPEC     │────▶│  EPIC DECOMPOSE   │                   │
+│  │  GAP ANALYSIS    │     │                  │                    │
+│  │  (product +      │     │  Spec → vertical │                    │
+│  │   architecture)  │     │  slice epics     │                    │
+│  └─────────────────┘     └────────┬─────────┘                    │
+│          ▲ re-trigger              │                              │
+│          │ on spec change          │ per epic:                    │
+│          │                         ▼                              │
+│  ┌───────┴──────┐        ┌──────────────────┐                    │
+│  │ SPEC CHANGED  │        │  EPIC REFINEMENT  │                   │
+│  │ (git diff     │        │                  │                    │
+│  │  watcher)     │        │  Product analyst │                    │
+│  └──────────────┘        │  Arch analyst    │                    │
+│                           │  Cross-epic deps │                    │
+│                           └────────┬─────────┘                    │
+│                                    │                              │
+│                                    ▼                              │
+│                           ┌──────────────────┐                    │
+│                           │  SUB-ISSUE        │                   │
+│                           │  DECOMPOSITION    │                   │
+│                           │                  │                    │
+│                           │  Epic → scoped   │                    │
+│                           │  work units      │                    │
+│                           └────────┬─────────┘                    │
+│                                    │                              │
+│                                    │ per sub-issue:               │
+│                                    ▼                              │
+│                           ┌──────────────────┐                    │
+│                           │  SUB-ISSUE        │                   │
+│                           │  REFINEMENT       │                   │
+│                           │                  │                    │
+│                           │  Specialist plan │                    │
+│                           │  (FE/BE/infra)   │                    │
+│                           │  Estimation      │                    │
+│                           │  DoR check       │                    │
+│                           └────────┬─────────┘                    │
+│                                    │                              │
+│                                    │ Definition of Ready passes   │
+│                                    ▼                              │
+│                           ┌──────────────────┐                    │
+│                           │  READY            │──── dispatch ────▶│
+│                           └──────────────────┘    child loop.sh  │
+│                                                        │         │
+│                                                        ▼         │
+│                           ┌──────────────────┐  ┌────────────┐   │
+│                           │  INTEGRATION      │◀─│ CHILD DONE │   │
+│                           │  Gate + Merge     │  └────────────┘   │
+│                           └────────┬─────────┘                    │
+│                                    │                              │
+│                                    ▼                              │
+│                              agent/trunk                          │
+└──────────────────────────────────────────────────────────────────┘
+```
 
-The orchestrator polls child loop status continuously.
+**Label-driven state transitions:**
 
-1. Read each child's `status.json` for state (running, completed, stuck, limit_reached)
-2. Detect stuck children (stuck_count >= threshold) → steer, reassign provider, or kill and retry
-3. Detect completed children → child creates PR:
-   ```bash
-   gh pr create \
-     --base agent/trunk \
-     --head aloop/issue-<number> \
-     --title "Issue #<number>: <title>" \
-     --body "Closes #<number>\n\n<auto-generated summary>"
-   ```
-4. Detect failed children → log, optionally retry with different provider mix
-5. When a slot opens → dispatch next eligible sub-issue
+| Label | Meaning | What happens next |
+|-------|---------|-------------------|
+| `aloop/needs-analysis` | Spec or epic needs gap analysis | Product + arch analyst agents run |
+| `aloop/spec-question` | Blocking question for user | Waits for user response (or auto-resolves based on autonomy level) |
+| `aloop/decision` | Agent made autonomous decision | Informational — user can override |
+| `aloop/needs-decompose` | Ready for decomposition into sub-items | Decompose agent runs |
+| `aloop/needs-refine` | Needs specialist planning | Specialist planner + estimation agents run |
+| `aloop/ready` | Definition of Ready passed | Eligible for dispatch to child loop |
+| `aloop/in-progress` | Child loop running | Monitor watches status |
+| `aloop/in-review` | PR created, gates running | Gate + merge process |
+| `aloop/done` | Merged to agent/trunk | Complete |
+| `aloop/blocked` | Waiting on dependency or question | Unblocks when dependency merges or question resolves |
 
-#### Phase 5: Gate + Merge
+#### Global Spec Analysis
 
-The orchestrator reviews each PR against hard criteria before merging.
+Before any decomposition, specialist agents review the spec for issues that would waste build iterations downstream. Two perspectives run in sequence:
 
-**Automated gates (must all pass):**
+**Product Analyst Agent** (`PROMPT_orch_product_analyst.md`):
+- Missing user stories / personas
+- Unclear acceptance criteria — "should handle errors gracefully" (how?)
+- Scope gaps — features referenced but never defined
+- Conflicting requirements between sections
+
+**Architecture Analyst Agent** (`PROMPT_orch_arch_analyst.md`):
+- Infeasible constraints — requirements that conflict with stated constraints
+- Unstated technical dependencies — "uses the database" (which one?)
+- Missing system boundaries and integration points
+- Scale/performance assumptions that need quantifying
+
+Each gap becomes a focused `aloop/spec-question` issue — interview style, one question per issue, with context on why it matters and suggested resolution options. Blocking behavior depends on the configured [autonomy level](#autonomy-levels).
+
+**Re-triggering:** When the spec watcher detects changes (git diff on spec glob), analysis re-runs on changed sections only. New questions block affected items, not the entire pipeline.
+
+#### Epic Decomposition
+
+The decompose agent reads the spec(s) and current codebase, then produces the top-level issue hierarchy.
+
+1. Read all spec files and codebase state
+2. Produce **vertical slices** as parent (epic) issues — each independently shippable, end-to-end
+3. High-level scope + acceptance criteria per epic
+4. Dependency hints between epics
+5. Write `requests/create-epics.json` → runtime creates GitHub issues
+6. Runtime queues per-epic refinement prompts into `queue/`
+
+Labels: `aloop/epic`, `aloop/needs-refine`, `aloop/wave-N`
+
+#### Epic Refinement (per epic)
+
+Each epic gets two specialist passes before being decomposed further:
+
+**Product Analyst** (per epic):
+- Edge cases and error flows
+- User journey completeness
+- Acceptance criteria sharpening — each criterion must be objectively testable
+
+**Architecture Analyst** (per epic):
+- API contracts and data models
+- Integration points with other epics
+- Shared infrastructure needs
+- Migration / backwards-compatibility concerns
+
+**Cross-Epic Dependency Analyst:**
+- Interfaces between epics — where two epics assume conflicting designs
+- Shared types, DB schema, API contracts that must be agreed before either builds
+- Flags conflicting assumptions as `aloop/spec-question`
+
+Creates `aloop/spec-question` issues if gaps found (blocks THIS epic only). Updates epic issue body with refined requirements. Labels epic `aloop/needs-decompose` when done.
+
+#### Sub-Issue Decomposition (per epic)
+
+The decompose agent breaks each refined epic into scoped work units:
+
+1. Each sub-issue sized for ~1-3 hours of human work equivalent (~5-15 build iterations)
+2. Scoped: clear input → clear output
+3. File ownership hints (prevents parallel edit conflicts)
+4. Dependency ordering within and across epics
+5. Write `requests/create-sub-issues.json` → runtime creates and links to parent
+6. Runtime queues per-sub-issue refinement prompts
+
+Labels: `aloop/sub-issue`, `aloop/needs-refine`
+
+#### Sub-Issue Refinement (per sub-issue)
+
+Each sub-issue gets specialist planning based on its type:
+
+**Specialist Planner** (one of, based on sub-issue content):
+- `PROMPT_orch_planner_frontend.md` — component structure, state management, UI flow, routing
+- `PROMPT_orch_planner_backend.md` — API endpoints, data access, business logic, validation
+- `PROMPT_orch_planner_infra.md` — deployment, configuration, migrations, CI/CD
+- `PROMPT_orch_planner_fullstack.md` — when sub-issue spans both layers
+
+**Estimation Agent** (`PROMPT_orch_estimate.md`):
+- Complexity score (S / M / L / XL)
+- Estimated iteration count for child loop
+- Risk flags (novel tech, unclear requirements, high coupling)
+
+**Definition of Ready (DoR) Check:**
+
+| Criterion | Description |
+|-----------|-------------|
+| Acceptance criteria | Specific and objectively testable — not vague |
+| No open questions | No unresolved `aloop/spec-question` linked to this sub-issue |
+| Dependencies resolved | All dependencies either merged or scheduled in an earlier wave |
+| Implementation approach | Specialist planner has outlined the approach |
+| Estimation complete | Complexity scored and iteration count estimated |
+| Interface contracts | Inputs consumed and outputs produced are specified |
+
+If DoR fails → creates `aloop/spec-question` issues for the gaps, blocks THIS sub-issue only.
+If DoR passes → labels `aloop/ready`.
+
+**Re-estimation:** The estimation agent runs again after specialist planning, since complexity often changes once the approach is defined.
+
+**Refinement budget cap:** Max N analysis iterations per item (configurable, default 5) before forcing a decision. Prevents infinite question loops — after the cap, remaining ambiguities are resolved at the configured autonomy level regardless.
+
+#### Dispatch
+
+The orchestrator scan agent identifies `aloop/ready` sub-issues and writes dispatch requests.
+
+1. Query sub-issues labeled `aloop/ready` whose dependencies are all merged
+2. Respect **concurrency cap** (configurable, default 3) and **wave scheduling**:
+   - Sub-issues in the same wave MAY run in parallel
+   - Wave N+1 sub-issues dispatch only after their specific dependencies merge (not all of wave N)
+   - File ownership hints prevent parallel edits to the same files
+3. Write `requests/dispatch.json` → runtime:
+   - Creates branch: `aloop/issue-<number>`
+   - Creates worktree
+   - Seeds child's working directory with sub-spec from issue body
+   - Compiles child's `loop-plan.json` with implementation cycle (plan-build-proof-review)
+   - Launches child `loop.sh` instance
+   - Labels issue `aloop/in-progress`
+4. Remaining issues queue until a slot opens or dependencies merge
+
+#### Monitor + Gate + Merge
+
+The orchestrator scan agent checks child loop statuses and PR states each iteration:
+
+**Child monitoring:**
+- Read each child's `status.json` for state (running, completed, stuck, limit_reached)
+- Stuck children (stuck_count >= threshold) → write steering to child's `queue/`, reassign provider, or kill and retry
+- Completed children → write `requests/create-pr.json` → runtime creates PR targeting `agent/trunk`
+- Failed children → log, optionally retry with different provider mix or re-decompose
+
+**PR gates (automated, must all pass):**
 
 | Gate | Method | Fail action |
 |------|--------|-------------|
-| CI pipeline | `gh pr checks <number> --watch` | Block merge |
-| Test coverage | Parse coverage report from CI artifacts | Block if below threshold |
-| No merge conflicts | `gh pr view <number> --json mergeable` | Send back for rebase |
+| CI pipeline | `gh pr checks` | Block merge |
+| Test coverage | Parse coverage from CI artifacts | Block if below threshold |
+| No merge conflicts | `gh pr view --json mergeable` | Send rebase steering to child's `queue/` |
 | No spec regression | Contract checks against spec | Block merge |
 | Screenshot diff (UI) | Playwright visual comparison | Flag for human if delta > threshold |
 | Lint / type check | CI step | Block merge |
 
 **Agent review gate:**
-- Invoke review agent against the PR diff (`gh pr diff <number>`)
+- Review agent runs against PR diff
 - Checks: code quality, spec compliance, no scope creep, test adequacy
 - Outputs: approve, request-changes, or flag-for-human
+- On request-changes: writes feedback to child's `queue/` as a steering prompt
 
-**Merge strategy:**
-- Squash merge into `agent/trunk`: `gh pr merge <number> --squash --delete-branch`
-- If merge conflict: child loop rebases and re-submits (max 2 attempts before human flag)
-- After merge: downstream sub-issues may become unblocked → dispatch them
+**Merge:**
+- Squash merge into `agent/trunk`: runtime executes `gh pr merge --squash --delete-branch`
+- Merge conflict: steering to child's `queue/` for rebase (max 2 attempts before human flag)
+- After merge: downstream sub-issues may become unblocked → next scan dispatches them
+- Label issue `aloop/done`
 
-#### Phase 6: Replan
+#### Replan (Event-Driven)
 
-The orchestrator continuously watches for conditions that require replanning. This is part of the orchestrator's main event loop (TS/Bun), not the inner loop.
+The runtime watches for conditions that trigger replanning. When detected, it queues the appropriate prompt into the orchestrator's `queue/`.
 
 **Trigger: Spec file changed**
-
-The orchestrator tracks recent git commits on the repo. Each poll cycle, it checks `git log` for new commits and diffs changed files against the configured spec glob pattern (`SPEC.md`, `specs/*.md`, or custom). When a spec file is modified:
-
-1. Orchestrator extracts the specific diff: `git diff <prev>..<new> -- specs/auth.md`
-2. Passes to the **replan agent** with context:
-   - The diff itself (what changed in the spec)
-   - The commit message (human intent behind the change)
-   - Current issue state from GitHub (what's in-flight, done, queued)
-3. Replan agent reasons about the delta and outputs structured actions:
-   - `create_issue(parent, title, body, deps)` — new feature added to spec
-   - `update_issue(number, new_body)` — scope/criteria changed for existing slice
-   - `close_issue(number, reason)` — feature removed from spec
+1. Runtime detects new commits touching spec glob pattern
+2. Extracts diff: `git diff <prev>..<new> -- specs/*.md`
+3. Queues `PROMPT_orch_replan.md` with the diff as context
+4. Replan agent outputs structured actions:
+   - `create_issue(parent, title, body, deps)` — new feature added
+   - `update_issue(number, new_body)` — scope changed
+   - `close_issue(number, reason)` — feature removed
    - `steer_child(number, instruction)` — in-flight child needs course correction
    - `reprioritize(number, new_wave)` — dependencies shifted
+5. Re-triggers spec gap analysis on changed sections
 
-The replan agent reads the spec but does NOT modify it — the spec is human-owned. The agent translates spec changes into issue-tracker mutations.
+The replan agent reads the spec but does NOT modify it — the spec is human-owned.
 
-**Trigger: Wave completion**
+**Trigger: Wave completion** — when all sub-issues in a wave merge, queues schedule re-evaluation.
 
-When all sub-issues in a wave are merged, the schedule agent re-evaluates remaining issues and adjusts waves based on what was learned during execution.
+**Trigger: External issue** — human creates issue with `aloop/auto` label → orchestrator absorbs it into plan.
 
-**Trigger: External issue created**
+**Trigger: Persistent failures** — child fails repeatedly → replan agent may split the sub-issue, adjust approach, or merge coupled issues.
 
-When a human creates an issue with the `aloop/auto` label, the orchestrator absorbs it into the current plan — assigns wave, links dependencies, and queues for dispatch.
-
-**Trigger: Persistent failures**
-
-When a child loop fails repeatedly, the replan agent may split the failing sub-issue into smaller pieces, adjust the approach in the issue body, or merge multiple small issues that turned out to be coupled.
+**Spec backfill:** When gap analysis resolves a question (whether by user answer or autonomous decision), the resolution is written back into `SPEC.md` so the spec stays authoritative.
 
 **Spec files are the authoritative intent. Issues are the live execution plan.** They can temporarily diverge (user adds an ad-hoc issue, agent discovers unexpected work) but replan reconciles them.
 
@@ -1367,12 +1576,13 @@ aloop orchestrate --spec SPEC.md --plan-only
 
 | Existing Component | Role in Orchestrator |
 |-------------------|---------------------|
-| `loop.ps1` / `loop.sh` | Child loop — unchanged, runs per-issue |
-| Provider health subsystem | Shared across all child loops via `~/.aloop/health/` |
-| Final review gate | Per-child — each child's loop has its own review gate |
-| Agent prompt templates (`PROMPT_*.md`) | Used by child loops as configured in the pipeline |
-| `active.json` | Tracks all child sessions (orchestrator + children) |
-| Override queue (`queue/`) | Can steer individual children or the orchestrator |
+| `loop.ps1` / `loop.sh` | Runs BOTH orchestrator loop AND child loops — same script, different prompts |
+| `loop-plan.json` | Orchestrator: single scan prompt cycle. Children: plan-build-proof-review cycle |
+| `queue/` folder | Orchestrator: primary work driver (reactive). Children: steering overrides only |
+| `requests/` folder | Orchestrator agents write side-effect requests → runtime processes |
+| Frontmatter prompts | Orchestrator has `PROMPT_orch_*.md`, children have `PROMPT_plan/build/review.md` |
+| Provider health subsystem | Shared across all loops via `~/.aloop/health/` |
+| `active.json` | Tracks all sessions (orchestrator + children) |
 | `aloop status` | Shows orchestrator + children in a tree view |
 
 ### Resumability
@@ -1426,39 +1636,53 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 
 ### Acceptance Criteria
 
-- [ ] Spec analyst agent runs before decomposition, creates `aloop/spec-question` issues for contradictions/ambiguities
-- [ ] Decomposition blocks until all `aloop/spec-question` issues are resolved
-- [ ] Spec analyst re-triggers on spec file changes, blocking only affected slices
-- [ ] Orchestrator decomposes spec(s) into vertical slices as parent issues with sub-issues
-- [ ] Sub-issues created via `gh api` with sub-issue linking to parent
-- [ ] Decomposition is vertical-slice-first — each parent is an independently shippable feature
-- [ ] Dependencies use GitHub's native issue dependency tracking (blocked_by/blocking)
-- [ ] GitHub is the source of truth — local state is only session-to-issue mapping
-- [ ] Efficient monitoring: ETag-guarded REST polling + single GraphQL query on change
-- [ ] Foundation (horizontal groundwork) issues explicitly marked and scheduled in early waves
-- [ ] Agent-powered scheduling builds dependency graph and assigns waves
-- [ ] Sub-issues dispatch when their specific dependencies are merged (not entire wave)
-- [ ] Child loops launched per sub-issue, each in its own worktree and branch
+**Shared loop mechanism:**
+- [ ] Orchestrator runs as a `loop.sh`/`loop.ps1` instance with orchestrator prompts
+- [ ] Same `loop-plan.json` + `queue/` + frontmatter mechanism as child loops
+- [ ] Orchestrator is queue-driven (reactive); child loops are cycle-driven (proactive)
+- [ ] Request/response protocol: agents write `requests/*.json`, runtime processes, queues follow-up prompts
+- [ ] Loop script waits for pending requests before next iteration (with timeout)
+
+**Refinement pipeline:**
+- [ ] Global spec gap analysis runs before decomposition (product + architecture analysts)
+- [ ] Configurable autonomy levels (cautious/balanced/autonomous) control block vs auto-resolve
+- [ ] Epic decomposition produces vertical slice parent issues
+- [ ] Per-epic refinement: product analyst + architecture analyst + cross-epic dependency check
+- [ ] Sub-issue decomposition produces scoped work units per epic
+- [ ] Per-sub-issue refinement: specialist planner (FE/BE/infra/fullstack) + estimation agent
+- [ ] Definition of Ready gate before dispatch (acceptance criteria, no open questions, approach defined, estimated)
+- [ ] Refinement budget cap prevents infinite question loops
+- [ ] Spec gap analysis re-triggers on spec file changes, blocking only affected items
+- [ ] Autonomous decisions documented in `aloop/decision` issues
+
+**Label-driven state machine:**
+- [ ] Issues progress through labels: `needs-analysis` → `needs-decompose` → `needs-refine` → `ready` → `in-progress` → `in-review` → `done`
+- [ ] Each label transition triggers appropriate agent work via queue
+
+**Dispatch + execution:**
+- [ ] Sub-issues labeled `aloop/ready` dispatched as child `loop.sh` instances
 - [ ] Concurrency cap limits simultaneous child loops (default 3)
+- [ ] Wave scheduling: sub-issues dispatch when specific dependencies merge
+- [ ] File ownership hints prevent parallel edits to same files
+
+**Integration:**
 - [ ] Child loops create PRs targeting `agent/trunk` on completion
-- [ ] Orchestrator reviews PRs against automated gates (CI, coverage, conflicts, lint)
-- [ ] Orchestrator runs agent review on PR diffs
-- [ ] Approved PRs are squash-merged into `agent/trunk`
-- [ ] Rejected PRs reopen their issue with review comments for the child loop to address
-- [ ] Merge conflicts trigger automatic rebase attempts (max 2 before human flag)
-- [ ] `aloop orchestrate --plan-only` creates issues without launching loops
-- [ ] Local `sessions.json` maps issue numbers to child sessions/PIDs (minimal local state)
-- [ ] `aloop status` shows orchestrator tree (orchestrator → slices → sub-issues → PRs)
-- [ ] Final report includes: slices created/completed/failed, time, provider usage, cost estimates
-- [ ] Provider health subsystem is shared across all child loops (file-lock safe)
-- [ ] Session-level budget cap can pause dispatch when threshold is approached
-- [ ] Orchestrator is resumable: restart reads plan from GitHub, reconnects to live children, no duplicates
-- [ ] Replan triggered by spec changes, wave completion, or user-created issues
-- [ ] User-created `aloop/auto` issues absorbed into the live plan
+- [ ] Automated gates: CI, coverage, conflicts, lint, spec regression, screenshot diff
+- [ ] Agent review on PR diffs: approve, request-changes, or flag-for-human
+- [ ] Squash-merge approved PRs into `agent/trunk`
+- [ ] Rejected PRs: feedback written to child's `queue/` for re-iteration
+- [ ] Merge conflicts: rebase steering to child's `queue/` (max 2 attempts)
+
+**Infrastructure:**
+- [ ] GitHub is source of truth — local state is only session-to-issue mapping
+- [ ] Efficient monitoring: ETag-guarded REST + GraphQL on change
+- [ ] Orchestrator resumable: reads plan from GitHub, reconnects live children
+- [ ] Session-level budget cap pauses dispatch when threshold approached
 - [ ] Multi-file specs supported (`specs/*.md` or single `SPEC.md`)
-- [ ] Per-task `sandbox` field controls whether child runs in devcontainer or on host
-- [ ] Per-task `requires` labels declare environment needs; dispatcher checks before dispatch
-- [ ] All GitHub operations work with GitHub Enterprise instances (no hardcoded `github.com`)
+- [ ] Per-task `sandbox`/`requires` for environment routing
+- [ ] All GitHub operations work with GitHub Enterprise (no hardcoded `github.com`)
+- [ ] Replan triggered by spec changes, wave completion, user-created issues, persistent failures
+- [ ] Spec backfill: resolved questions written back to SPEC.md
 
 ---
 
