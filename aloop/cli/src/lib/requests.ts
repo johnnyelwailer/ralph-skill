@@ -304,7 +304,6 @@ async function handleUpdateIssue(request: UpdateIssueRequest, fileName: string, 
       await fs.unlink(tempBodyPath);
     }
   } else {
-    if (request.payload.title) args.push('--title', request.payload.title);
     if (request.payload.state) args.push('--state', request.payload.state);
     if (request.payload.labels_add) {
       for (const l of request.payload.labels_add) args.push('--add-label', l);

@@ -13,7 +13,9 @@
 - [x] [review] Gate 3: Update `loop.tests.ps1` to register and test `queue/` override, `requests/` wait-loop, and `opencode` provider paths in `loop.ps1` (priority: high)
 
 - [x] [review] Gate 6: Regenerate proof artifacts or correct manifest paths so iteration 11 is verifiable (missing: gh-test-output.txt, derive-mode-test.txt, etc.) (priority: medium)
-- [ ] [review] Gate 5: Fix TypeScript error in requests.ts:307 — `request.payload.title` accessed but `UpdateIssueRequest.payload` has no `title` field. Either add `title?: string` to the interface or remove the dead code branch. (priority: high)
+- [x] [loop][critical] Fix exit state parity: success → `exited`, interrupt/limit → `stopped` in both `loop.sh` and `loop.ps1`. (priority: critical)
+- [ ] [loop][high] Fix `STUCK_COUNT` reset: reset to 0 on every successful build iteration in `loop.sh` (already correct in `loop.ps1`?). (priority: high)
+- [x] [review] Gate 5: Fix TypeScript error in requests.ts:307 — `request.payload.title` accessed but `UpdateIssueRequest.payload` has no `title` field. Either add `title?: string` to the interface or remove the dead code branch. (priority: high)
 - [ ] [review] Gate 5: Fix 6 dashboard test failures — `processGhConventionRequests` was refactored to delegate to `processAgentRequests` (writes to `queue/` instead of `responses/`), but dashboard tests at dashboard.test.ts:16-21 still check for `.aloop/responses/` files. Update tests for new response path or update test expectations. (priority: high)
 - [ ] [review] Gate 3: Raise `requests.ts` branch coverage from 52.5% to >=80% — add tests for `handleUpdateIssue`, `handleDispatchChild`, `handleStopChild`, `handleQueryIssues`, `handleCreatePr`, `handleMergePr` and error paths in `handleCreateIssues`, `handleCloseIssue`, `handlePostComment`, `handleSpecBackfill`. (priority: high)
 - [ ] [review] Gate 3: Raise `plan.ts` branch coverage from 40% to >=80% — add tests for error paths: `readLoopPlan` returning null on missing file, `mutateLoopPlan` throwing on missing plan, `writeQueueOverride` edge cases (no frontmatter, empty content). (priority: high)
@@ -54,4 +56,3 @@
 - [ ] [dashboard][medium] Add per-iteration timing/duration in log rows and session elapsed context in header.
 - [ ] [dashboard][medium] Add sidebar expand/collapse toggle button.
 - [ ] [status][medium] Extend `aloop status` for orchestrator→child session→issue/PR tree output.
-
