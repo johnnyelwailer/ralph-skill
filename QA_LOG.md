@@ -608,3 +608,156 @@ $ cat ~/.aloop/health/codex.json
 - Full raw transcript: `/home/pj/.copilot/session-state/5d8f4244-333d-4aba-86fe-381e40a29c8f/files/qa-iter47/command-transcript.txt`
 - Dashboard screenshot: `/home/pj/.copilot/session-state/5d8f4244-333d-4aba-86fe-381e40a29c8f/files/qa-iter47/dashboard-desktop-1920x1080.png`
 - API response snapshot: `/home/pj/.copilot/session-state/5d8f4244-333d-4aba-86fe-381e40a29c8f/files/qa-iter47/api-state.json`
+
+---
+
+## QA Session — 2026-03-15 (iteration 48)
+
+### Test Environment
+- Temp dir: `/tmp/aloop-qa-20260315-iter48` (cleaned up)
+- Session dir: `/home/pj/.aloop/sessions/ralph-skill-20260314-173930`
+- Commit: `bdf3d32`
+- Features tested: 5 (3 re-tests, 2 new)
+
+### Results
+- PASS: `aloop active` (text, json, no-sessions), `aloop setup --non-interactive` (happy path), `aloop setup --help`
+- FAIL: Provider health backoff (4th consecutive FAIL), `aloop steer` CLI (4th consecutive FAIL), `aloop orchestrate --spec NONEXISTENT.md` (4th consecutive FAIL), `aloop setup --spec NONEXISTENT.md` (no validation), `aloop setup --providers fakeprovider` (no validation), `aloop setup --autonomy-level invalid` (stack trace)
+
+### Bugs Filed
+- [qa/P2] `aloop setup --spec NONEXISTENT.md` accepts nonexistent spec without validation
+- [qa/P2] `aloop setup --providers fakeprovider` accepts invalid provider name
+- [qa/P2] `aloop setup --autonomy-level invalid` leaks raw stack trace
+
+### Re-tests (all still FAIL — bugs unfixed since iter 26)
+- Provider health backoff: codex `consecutive_failures=1` with `cooldown_until=2026-03-17T00:00:00Z` (~30h). Spec: 1 failure = no cooldown.
+- `aloop steer` CLI: `error: unknown command 'steer'`. Dashboard API `/api/steer` works and queues correctly.
+- `aloop orchestrate --spec NONEXISTENT.md`: exits 0, initializes session with bogus spec path. Both relative and absolute paths.
+
+### Command Transcript
+
+#### Test 1: Provider health backoff (re-test)
+
+```
+$ cat ~/.aloop/health/codex.json
+{"status":"cooldown","last_success":"2026-03-13T12:39:26Z","last_failure":"2026-03-13T12:54:46Z","failure_reason":"rate_limit","consecutive_failures":1,"cooldown_until":"2026-03-17T00:00:00Z"}
+
+$ node aloop/cli/dist/index.js status
+Active Sessions:
+  ralph-skill-20260314-173930  pid=1682112  running  iter 31, qa  (24h ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree
+
+Provider Health:
+  claude     healthy      (last success: 37m ago)
+  codex      cooldown     (1 failure, resumes in 1772m)
+  copilot    healthy      (last success: 1m ago)
+  gemini     healthy      (last success: 6m ago)
+  opencode   healthy      (last success: 22m ago)
+Exit code: 0
+```
+
+FAIL: codex shows 1772m (~29.5h) cooldown with only 1 failure. Spec says 1 failure = no cooldown.
+
+#### Test 2: aloop steer CLI (re-test)
+
+```
+$ node aloop/cli/dist/index.js steer "QA test instruction"
+error: unknown command 'steer'
+Exit code: 1
+
+$ node aloop/cli/dist/index.js --help | grep steer
+(no output — steer not in help)
+
+$ curl -s -X POST http://localhost:4040/api/steer -H "Content-Type: application/json" -d '{"instruction": "QA test from iter 48"}'
+{"queued":true,"path":"/home/pj/.aloop/sessions/ralph-skill-20260314-173930/queue/1773599313973-steering.md","steeringPath":"...STEERING.md"}
+```
+
+FAIL: CLI command not registered. Dashboard API works correctly.
+
+#### Test 3: aloop orchestrate --spec nonexistent (re-test)
+
+```
+$ cd /tmp/aloop-qa-20260315-iter48/project && node aloop/cli/dist/index.js orchestrate --spec NONEXISTENT.md --plan-only
+Orchestrator session initialized.
+  Spec:         NONEXISTENT.md
+  Plan only:    true
+Exit code: 0
+
+$ node aloop/cli/dist/index.js orchestrate --spec /nonexistent/path/SPEC.md --plan-only
+Orchestrator session initialized.
+  Spec:         /nonexistent/path/SPEC.md
+  Plan only:    true
+Exit code: 0
+```
+
+FAIL: Both relative and absolute nonexistent paths accepted. Exits 0 with session initialized.
+
+#### Test 4: aloop setup (new — never tested)
+
+```
+$ node aloop/cli/dist/index.js setup --help
+Usage: aloop setup [options]
+Interactive setup and scaffold for aloop project
+Options:
+  --project-root <path>, --home-dir <path>, --spec <path>, --providers <providers>,
+  --autonomy-level <level>, --non-interactive, -h --help
+Exit code: 0
+```
+PASS: Help displays correctly.
+
+```
+$ cd /tmp/aloop-qa-20260315-iter48/project && node aloop/cli/dist/index.js setup --non-interactive --spec SPEC.md --providers claude
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.aloop/projects/3a09d2e0/config.yml
+Exit code: 0
+```
+PASS: Config created with correct project_name, project_root, provider, spec_files.
+
+```
+$ node aloop/cli/dist/index.js setup --non-interactive --spec NONEXISTENT.md --providers claude
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.aloop/projects/3a09d2e0/config.yml
+Exit code: 0
+```
+FAIL: Accepted nonexistent spec file without validation.
+
+```
+$ node aloop/cli/dist/index.js setup --non-interactive --providers fakeprovider
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.aloop/projects/3a09d2e0/config.yml
+Exit code: 0
+```
+FAIL: Wrote `fakeprovider` to enabled_providers without validating against known providers.
+
+```
+$ node aloop/cli/dist/index.js setup --non-interactive --autonomy-level invalid
+file:///...aloop/cli/dist/index.js:8014
+  throw new Error(`Invalid autonomy level: invalid (must be cautious, balanced, or autonomous)`);
+        ^
+Error: Invalid autonomy level: invalid (must be cautious, balanced, or autonomous)
+    at parseAutonomyLevel (file:///...aloop/cli/dist/index.js:8014:9)
+    ...
+Exit code: 1
+```
+FAIL: Leaks raw stack trace instead of clean error message.
+
+#### Test 5: aloop active (new — never tested)
+
+```
+$ node aloop/cli/dist/index.js active
+ralph-skill-20260314-173930  pid=1682112  running  /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree  (24h ago)
+Exit code: 0
+
+$ node aloop/cli/dist/index.js active --output json
+[{"session_id":"ralph-skill-20260314-173930","pid":1682112,"work_dir":"...","started_at":"2026-03-14T17:40:00Z","provider":"round-robin","mode":"plan-build-review","state":"running","phase":"qa","iteration":31,"stuck_count":0,"updated_at":"2026-03-15T18:26:56Z"}]
+Exit code: 0
+
+$ node aloop/cli/dist/index.js active --home-dir /tmp/aloop-qa-20260315-iter48
+No active sessions.
+Exit code: 0
+
+$ node aloop/cli/dist/index.js active --home-dir /tmp/aloop-qa-20260315-iter48 --output json
+[]
+Exit code: 0
+```
+
+PASS: All paths work correctly — text/json output, with/without sessions.

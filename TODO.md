@@ -17,6 +17,11 @@ Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboa
 - [ ] [qa/P2] CLI error handling leaks stack traces for user errors — `aloop orchestrate --autonomy-level foo`, `aloop gh watch` (when failing to invoke gh), and `aloop start` (when no config found) all throw raw Node.js stack traces instead of clean user-friendly errors. Tested at iter 46. (priority: medium)
 - [ ] [qa/P2] Dashboard layout panel detection failure — Playwright test found 0 panels even though stop button was visible. Indicates possible selector drift or layout bug. Tested at iter 46. (priority: medium)
 
+### QA Bugs (iter 48)
+- [ ] [qa/P2] `aloop setup --spec NONEXISTENT.md` accepts nonexistent spec file — writes config referencing a file that doesn't exist, no validation or warning. Should either error or warn. Tested at iter 48. (priority: medium)
+- [ ] [qa/P2] `aloop setup --providers fakeprovider` accepts invalid provider — writes `fakeprovider` to `enabled_providers` in config with no validation against the 5 known providers (claude, codex, gemini, copilot, opencode). Tested at iter 48. (priority: medium)
+- [ ] [qa/P2] `aloop setup --autonomy-level invalid` leaks raw stack trace — throws unhandled Error with full Node.js stack instead of clean user-facing error message. Tested at iter 48. (priority: medium)
+
 ### QA Bugs (iter 47)
 - [ ] [qa/P1] [P0 severity] Dashboard desktop layout mismatches spec wireframe — at 1920x1080 the page renders `stop` + steer input but expected persistent `SESSIONS` / `DOCUMENTS` / `ACTIVITY` shell is not visible (`aside: 0`, no expected panel labels in body text). Layout mismatch at required breakpoint is a release blocker. Tested at iter 47. (priority: high)
 - [ ] [qa/P1] Dashboard docs tabs still empty — `/api/state` reports `workdir=/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli` and returns zero-length `TODO.md`, `SPEC.md`, `RESEARCH.md`, `REVIEW_LOG.md`, `STEERING.md`, violating dashboard document viewer expectations. Tested at iter 47. (priority: high)
