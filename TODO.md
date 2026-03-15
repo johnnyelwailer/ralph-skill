@@ -22,6 +22,10 @@ Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle 
 - [x] [review] Gate 4: Queue file leak — `processQueuedPrompts` (`orchestrate.ts:3936-3939`) writes empty string to consumed queue files instead of deleting them. Infinite re-processing. Add `unlink` or filter empty files. (priority: high)
 - [x] [review] Gate 4: Committed test artifact — `aloop/cli/dashboard/test-results/` (60KB Playwright dump) committed to repo. Remove and add to `.gitignore`. (priority: high)
 - [x] [review] Gate 9: README.md still says "8 gates" — update to "9 gates" and add Gate 9 (Documentation Freshness) to the table. (priority: high)
+- [ ] [review] Gate 1: `aloop steer` spec deviation — when `PROMPT_steer.md` exists, queue file contains only template text and omits the user’s steering instruction. Spec requires `aloop steer` to write the user instruction into queue payload/frontmatter path; align implementation so queued prompt includes the actual instruction while preserving template behavior. (priority: high)
+- [ ] [review] Gate 3: new module `aloop/cli/src/commands/steer.ts` lacks demonstrated >=90% branch coverage. Add tests for uncovered branches: multiple active sessions (`--session` required path), text output mode success/error paths, and session/workdir fallback resolution when `active.json` omits `session_dir`/`work_dir`; verify branch coverage report shows >=90%. (priority: high)
+- [ ] [review] Gate 6: proof manifest contains test-output filler (`queue-unlink-verification.txt`, `ansi-strip-verification.txt` with test metadata). Replace with human-verifiable artifacts (real CLI capture for steer flow, visual/log before-after evidence for ANSI rendering), and skip proof for purely internal changes instead of attaching test output. (priority: high)
+- [ ] [review] Gate 9: README drift remains in Key Features — bullet still says “8 review gates” (`README.md`, Key Features section). Update to 9 gates and keep docs consistent across all sections. (priority: high)
 
 ### QA Bugs (deduplicated — latest iteration referenced)
 Each bug listed once with iteration history for context.

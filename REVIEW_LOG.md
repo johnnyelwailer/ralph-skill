@@ -131,3 +131,19 @@
 ---
 
 
+## Review — 2026-03-15 21:09 UTC — commit 3d3fd5d..438c124
+
+**Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/commands/steer.ts`, `aloop/cli/src/commands/steer.test.ts`, `aloop/cli/src/index.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/bin/loop.sh`, `aloop/cli/dashboard/src/App.tsx`, `README.md`, `.gitignore`, `aloop/templates/PROMPT_qa.md`
+
+- Gate 1: `steer.ts` template path deviates from spec intent — when `PROMPT_steer.md` exists, queued content is template-only and does not include the user instruction in the queue payload, despite spec requiring `aloop steer` to write instruction into queue.
+- Gate 3: `steer.ts` is a new module and does not have demonstrated >=90% branch coverage; tests miss key branches (multi-session ambiguity path, text output path, and `active.json` fallback path for missing `session_dir`/`work_dir`).
+- Gate 6: Proof manifest includes test-output-style artifacts (`queue-unlink-verification.txt`, `ansi-strip-verification.txt` with test metadata), which are invalid as proof; requires human-verifiable capture or explicit skip for internal-only changes.
+- Gate 9: README still has stale text in Key Features (`8 review gates`) even after quality-gates table update to 9.
+
+**Positive observations:**
+- Gate 5: Required validation commands pass end-to-end: `cd aloop/cli && npm test && npm run type-check && npm run build`.
+- Gate 2: `steer.test.ts` uses concrete assertions (file contents, exact JSON fields, and explicit error message matching) and includes multiple error-path tests.
+- Gate 8: Version declarations remain aligned with package majors (`commander@12.x`, `react@18.x`, `tailwindcss@3.x`).
+
+---
