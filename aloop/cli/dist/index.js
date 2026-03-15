@@ -8726,7 +8726,7 @@ async function devcontainerCommand(options = {}, deps = defaultDeps3) {
 }
 
 // src/commands/orchestrate.ts
-import { mkdir as mkdir6, readFile as readFile8, readdir as readdir4, writeFile as writeFile8 } from "node:fs/promises";
+import { mkdir as mkdir6, readFile as readFile8, readdir as readdir4, unlink as unlink2, writeFile as writeFile8 } from "node:fs/promises";
 import { existsSync as existsSync9 } from "node:fs";
 import path12 from "node:path";
 var HOUSEKEEPING_AGENTS = /* @__PURE__ */ new Set(["spec-consistency", "spec-backfill", "guard", "loop-health-supervisor"]);
@@ -8735,6 +8735,7 @@ var defaultDeps4 = {
   readFile: readFile8,
   writeFile: writeFile8,
   mkdir: mkdir6,
+  unlink: unlink2,
   now: () => /* @__PURE__ */ new Date()
 };
 function parseConcurrency(value) {
@@ -9386,6 +9387,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
       readFile: deps.readFile,
       writeFile: deps.writeFile,
       readdir: async (p) => readdir4(p),
+      unlink: deps.unlink,
       now: deps.now,
       execGh: deps.execGh,
       appendLog: appendLog2,
@@ -11343,6 +11345,12 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
   const filePath = path12.join(queueDir, fileName);
   try {
     const content = await deps.readFile(filePath, "utf8");
+    if (content.trim().length === 0) {
+      if (deps.unlink) {
+        await deps.unlink(filePath);
+      }
+      return result;
+    }
     const requestsDir = path12.join(sessionDir, "requests");
     const baseName = fileName.replace(/\.md$/, "");
     const requestFile = path12.join(requestsDir, `${baseName}-pending.json`);
@@ -11417,7 +11425,11 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
       });
       child.unref();
     }
-    await deps.writeFile(filePath, "", "utf8");
+    if (deps.unlink) {
+      await deps.unlink(filePath);
+    } else {
+      await deps.writeFile(filePath, "", "utf8");
+    }
     result.processed++;
     result.files.push(fileName);
     deps.appendLog(sessionDir, {

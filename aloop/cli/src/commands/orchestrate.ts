@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
@@ -176,6 +176,7 @@ export interface OrchestrateDeps {
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   mkdir: (path: string, options?: { recursive?: boolean }) => Promise<string | undefined>;
+  unlink?: (path: string) => Promise<void>;
   now: () => Date;
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
@@ -225,6 +226,7 @@ const defaultDeps: OrchestrateDeps = {
   readFile,
   writeFile,
   mkdir,
+  unlink,
   now: () => new Date(),
 };
 
@@ -1049,6 +1051,7 @@ export async function orchestrateCommandWithDeps(
       readFile: deps.readFile,
       writeFile: deps.writeFile,
       readdir: async (p: string) => readdir(p),
+      unlink: deps.unlink,
       now: deps.now,
       execGh: deps.execGh,
       appendLog,
@@ -3510,6 +3513,7 @@ export interface ScanLoopDeps {
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   readdir?: (path: string) => Promise<string[]>;
+  unlink?: (path: string) => Promise<void>;
   now: () => Date;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   execGit?: (args: string[], cwd?: string) => Promise<{ stdout: string; stderr: string }>;
@@ -3867,6 +3871,14 @@ export async function processQueuedPrompts(
   try {
     const content = await deps.readFile(filePath, 'utf8');
 
+    // Skip empty files (leaked from previous bug)
+    if (content.trim().length === 0) {
+      if (deps.unlink) {
+        await deps.unlink(filePath);
+      }
+      return result;
+    }
+
     // Write the prompt content to a pending request file so it can be
     // picked up by an external agent or the next child loop invocation.
     const requestsDir = path.join(sessionDir, 'requests');
@@ -3934,9 +3946,12 @@ export async function processQueuedPrompts(
     }
 
     // Remove the consumed queue file
-    // (Write empty string to signal consumption since we don't have unlink in deps)
-    // Actually, overwrite with empty content and mark as consumed via the request file
-    await deps.writeFile(filePath, '', 'utf8');
+    if (deps.unlink) {
+      await deps.unlink(filePath);
+    } else {
+      // Fallback: write empty string if unlink not available (should not happen with defaultDeps)
+      await deps.writeFile(filePath, '', 'utf8');
+    }
 
     result.processed++;
     result.files.push(fileName);
