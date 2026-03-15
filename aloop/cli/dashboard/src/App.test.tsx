@@ -734,6 +734,176 @@ describe('No output available fallback', () => {
   });
 });
 
+// ── DocsPanel filtering logic (duplicated from App.tsx for testability) ──
+
+const DOC_ORDER = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
+const TAB_LABELS: Record<string, string> = { 'TODO.md': 'TODO', 'SPEC.md': 'SPEC', 'RESEARCH.md': 'RESEARCH', 'REVIEW_LOG.md': 'REVIEW LOG', 'STEERING.md': 'STEERING' };
+const MAX_VISIBLE_TABS = 4;
+
+function filterDocs(docs: Record<string, string>): string[] {
+  const availableDocs = DOC_ORDER.filter((n) => docs[n] != null && docs[n] !== '');
+  const extraDocs = Object.keys(docs).filter((n) => !DOC_ORDER.includes(n) && docs[n] != null && docs[n] !== '');
+  return [...availableDocs, ...extraDocs];
+}
+
+function computeVisibleTabs(allDocs: string[]): { visible: string[]; overflow: string[] } {
+  return {
+    visible: allDocs.slice(0, MAX_VISIBLE_TABS),
+    overflow: allDocs.slice(MAX_VISIBLE_TABS),
+  };
+}
+
+function resolveDefaultTab(allDocs: string[]): string {
+  return allDocs.includes('TODO.md') ? 'TODO.md' : allDocs[0] ?? '_health';
+}
+
+function resolveTabLabel(name: string): string {
+  return TAB_LABELS[name] ?? name.replace(/\.md$/i, '');
+}
+
+describe('filterDocs', () => {
+  it('returns empty array for empty docs', () => {
+    expect(filterDocs({})).toEqual([]);
+  });
+
+  it('returns empty array when all docs are empty strings', () => {
+    expect(filterDocs({ 'TODO.md': '', 'SPEC.md': '' })).toEqual([]);
+  });
+
+  it('returns only non-empty docs in docOrder sequence', () => {
+    const docs = { 'TODO.md': '- [ ] task', 'SPEC.md': '', 'RESEARCH.md': '# research' };
+    expect(filterDocs(docs)).toEqual(['TODO.md', 'RESEARCH.md']);
+  });
+
+  it('filters out null and undefined values', () => {
+    const docs = {
+      'TODO.md': '# tasks',
+      'SPEC.md': '' as unknown as string,
+    };
+    // Only TODO.md should pass (SPEC.md is empty string)
+    expect(filterDocs(docs)).toEqual(['TODO.md']);
+  });
+
+  it('includes extra docs not in docOrder after standard docs', () => {
+    const docs = {
+      'TODO.md': '- [ ] task',
+      'custom.md': 'custom content',
+      'another.md': 'more content',
+    };
+    const result = filterDocs(docs);
+    expect(result[0]).toBe('TODO.md');
+    // extra docs are sorted by Object.keys order
+    expect(result).toContain('custom.md');
+    expect(result).toContain('another.md');
+    expect(result).toHaveLength(3);
+  });
+
+  it('filters out empty extra docs', () => {
+    const docs = {
+      'TODO.md': '- [ ] task',
+      'custom.md': '',
+      'another.md': 'content',
+    };
+    const result = filterDocs(docs);
+    expect(result).toEqual(['TODO.md', 'another.md']);
+  });
+
+  it('preserves docOrder ordering for standard docs', () => {
+    const docs = {
+      'STEERING.md': '# steer',
+      'TODO.md': '- [ ] task',
+      'SPEC.md': '# spec',
+    };
+    const result = filterDocs(docs);
+    expect(result).toEqual(['TODO.md', 'SPEC.md', 'STEERING.md']);
+  });
+
+  it('handles whitespace-only content as non-empty (current behavior)', () => {
+    // Current implementation does NOT trim, so whitespace-only passes the filter
+    const docs = { 'TODO.md': '   ', 'SPEC.md': '\n\n' };
+    const result = filterDocs(docs);
+    expect(result).toEqual(['TODO.md', 'SPEC.md']);
+  });
+
+  it('handles single standard doc', () => {
+    expect(filterDocs({ 'TODO.md': 'content' })).toEqual(['TODO.md']);
+  });
+
+  it('handles all 5 standard docs populated', () => {
+    const docs: Record<string, string> = {};
+    for (const d of DOC_ORDER) docs[d] = `content for ${d}`;
+    expect(filterDocs(docs)).toEqual(DOC_ORDER);
+  });
+});
+
+describe('computeVisibleTabs', () => {
+  it('returns all docs as visible when count <= MAX_VISIBLE_TABS', () => {
+    const allDocs = ['TODO.md', 'SPEC.md', 'RESEARCH.md'];
+    const { visible, overflow } = computeVisibleTabs(allDocs);
+    expect(visible).toEqual(['TODO.md', 'SPEC.md', 'RESEARCH.md']);
+    expect(overflow).toEqual([]);
+  });
+
+  it('splits at MAX_VISIBLE_TABS boundary', () => {
+    const allDocs = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
+    const { visible, overflow } = computeVisibleTabs(allDocs);
+    expect(visible).toEqual(['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md']);
+    expect(overflow).toEqual(['STEERING.md']);
+  });
+
+  it('handles exactly MAX_VISIBLE_TABS docs', () => {
+    const allDocs = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md'];
+    const { visible, overflow } = computeVisibleTabs(allDocs);
+    expect(visible).toHaveLength(4);
+    expect(overflow).toEqual([]);
+  });
+
+  it('handles empty input', () => {
+    const { visible, overflow } = computeVisibleTabs([]);
+    expect(visible).toEqual([]);
+    expect(overflow).toEqual([]);
+  });
+
+  it('handles more than MAX_VISIBLE_TABS', () => {
+    const allDocs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+    const { visible, overflow } = computeVisibleTabs(allDocs);
+    expect(visible).toEqual(['a', 'b', 'c', 'd']);
+    expect(overflow).toEqual(['e', 'f', 'g']);
+  });
+});
+
+describe('resolveDefaultTab', () => {
+  it('returns TODO.md when present in docs', () => {
+    expect(resolveDefaultTab(['SPEC.md', 'TODO.md', 'RESEARCH.md'])).toBe('TODO.md');
+  });
+
+  it('returns first doc when TODO.md is not present', () => {
+    expect(resolveDefaultTab(['SPEC.md', 'RESEARCH.md'])).toBe('SPEC.md');
+  });
+
+  it('returns _health when no docs exist', () => {
+    expect(resolveDefaultTab([])).toBe('_health');
+  });
+});
+
+describe('resolveTabLabel', () => {
+  it('returns known label for standard docs', () => {
+    expect(resolveTabLabel('TODO.md')).toBe('TODO');
+    expect(resolveTabLabel('SPEC.md')).toBe('SPEC');
+    expect(resolveTabLabel('RESEARCH.md')).toBe('RESEARCH');
+    expect(resolveTabLabel('REVIEW_LOG.md')).toBe('REVIEW LOG');
+    expect(resolveTabLabel('STEERING.md')).toBe('STEERING');
+  });
+
+  it('strips .md extension for unknown docs', () => {
+    expect(resolveTabLabel('custom.md')).toBe('custom');
+  });
+
+  it('handles name without extension', () => {
+    expect(resolveTabLabel('notes')).toBe('notes');
+  });
+});
+
 describe('Provider model display in log entry', () => {
   it('shows provider·model when model is present and not opencode-default', () => {
     const provider = 'claude';

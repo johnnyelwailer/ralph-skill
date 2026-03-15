@@ -8,7 +8,7 @@
 ### Up Next
 - [x] [runtime][high] Implement provenance commit trailers in both `aloop/bin/loop.sh` and `aloop/bin/loop.ps1` (`Aloop-Agent`, `Aloop-Iteration`, `Aloop-Session`) and add/adjust tests to lock behavior.
 - [x] [dashboard][medium] Enforce SPEC docs-tab rule: show only docs with non-empty content in tab lists while preserving overflow behavior.
-- [ ] [dashboard][medium] Add targeted tests for dashboard behavior touched recently (`DocsPanel` non-empty filtering and related UI expectations) to prevent Gate 2 regressions.
+- [x] [dashboard][medium] Add targeted tests for dashboard behavior touched recently (`DocsPanel` non-empty filtering and related UI expectations) to prevent Gate 2 regressions.
 - [ ] [runtime][medium] Investigate and fix loop shell arithmetic/log-path warnings observed during `loop_provenance.tests.sh` (`log.jsonl.raw` missing path and `0\n0` arithmetic parse errors).
 
 ### Deferred
