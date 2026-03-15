@@ -39,6 +39,7 @@ Major version mismatches are a gate failure; minor/patch differences are accepta
 | tailwindcss                    | 3.x    |
 | marked                         | 15.x   |
 | lucide-react                   | 0.577.x|
+| @radix-ui/react-dropdown-menu  | 2.x    |
 | @radix-ui/react-tabs           | 1.x    |
 | @radix-ui/react-tooltip        | 1.x    |
 | @radix-ui/react-hover-card     | 1.x    |
