@@ -20,6 +20,14 @@ Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboa
 - [ ] [qa/P2] CLI error handling leaks stack traces for user errors — `aloop setup --autonomy-level invalid` and `aloop start` (no config) leak raw Node.js stack traces. Tested at iter 50. (priority: medium)
 - [ ] [qa/P1] `aloop steer` CLI command still missing — README and spec claim live steering command exists, but CLI returns `unknown command 'steer'`. Tested at iter 50. (priority: high)
 
+### QA Bugs (iter 52)
+- [ ] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — spec requires 9-step default pipeline (plan → build × 5 → proof → qa → review) but scaffold only generates 5 prompts (plan, build, proof, review, steer) with no `PROMPT_qa.md`. Tested at iter 52. (priority: high)
+- [ ] [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` writes nonexistent spec file path to config without any validation or warning. Tested at iter 52. (priority: medium)
+- [ ] [qa/P2] `aloop resolve --project-root /nonexistent/path` leaks raw Node.js stack trace (`Error: No Aloop configuration found`) instead of clean user-facing error. Tested at iter 52. (priority: medium)
+- [ ] [qa/P1] `aloop steer` CLI command still missing from command registry — 7th consecutive FAIL across iters 26-52. Not in `--help` output, returns `error: unknown command 'steer'`. Tested at iter 52. (priority: high)
+- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md --plan-only` still initializes session and exits 0 — 7th consecutive FAIL across iters 26-52. Both relative and absolute nonexistent paths accepted. Tested at iter 52. (priority: high)
+- [ ] [qa/P1] Provider health backoff still violates spec — 7th consecutive FAIL. codex has `consecutive_failures=1` with `cooldown_until=2026-03-17T00:00:00Z` (~29h). Spec says 1 failure = no cooldown, hard cap 60 min. Tested at iter 52. (priority: high)
+
 ### QA Bugs (iter 51)
 - [ ] [qa/P1] [P0 severity] Dashboard desktop layout still mismatches wireframe: `npx playwright screenshot --browser chromium --viewport-size=1920,1080 http://localhost:4040 ...` + Playwright DOM check showed `asideVisible=false` and no Documents panel content at required desktop breakpoint. Spec requires persistent sidebar + docs + activity shell at 1920×1080. Tested at iter 51. (priority: high)
 - [ ] [qa/P1] Dashboard docs data still empty: `GET /api/state` reports `workdir=/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli` and returns zero-length `TODO.md`, `SPEC.md`, `RESEARCH.md`, `REVIEW_LOG.md`, `STEERING.md`, violating document viewer expectations. Tested at iter 51. (priority: high)

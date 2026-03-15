@@ -1142,3 +1142,162 @@ STEERING.md len 0
 workdir /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli
 [exit_code] 0
 ```
+
+## QA Session — 2026-03-15 (iteration 52)
+
+### Test Environment
+- Temp dir: `/tmp/aloop-qa-iter52-1773600998` (cleaned up)
+- Session dir: `/home/pj/.aloop/sessions/ralph-skill-20260314-173930`
+- Commit: `295091c`
+- Features tested: 5 (3 re-tests, 2 new)
+
+### Results
+- PASS: `aloop scaffold` (happy path), `aloop resolve` (happy path, json, text, non-git dir)
+- FAIL: `aloop steer` CLI (7th consecutive FAIL), `aloop orchestrate --spec NONEXISTENT.md` (7th consecutive FAIL), provider health backoff (7th consecutive FAIL), `aloop scaffold` missing `PROMPT_qa.md`, `aloop scaffold --spec-files NONEXISTENT.md` (no validation), `aloop resolve --project-root /nonexistent` (stack trace)
+
+### Bugs Filed
+- [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — spec's 9-step pipeline requires it
+- [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` no validation
+- [qa/P2] `aloop resolve --project-root /nonexistent` leaks stack trace
+- [qa/P1] `aloop steer` CLI still missing (7th FAIL)
+- [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` still exits 0 (7th FAIL)
+- [qa/P1] Provider health backoff still violates spec (7th FAIL)
+
+### Command Transcript
+
+#### Test 1: aloop steer CLI (re-test)
+
+```
+$ node aloop/cli/dist/index.js steer --help
+Usage: aloop [options] [command]
+...
+Commands:
+  resolve, discover, setup, scaffold, start, dashboard, status, active, stop,
+  update, devcontainer, devcontainer-verify, orchestrate, gh, help
+(no 'steer' subcommand listed)
+[exit_code] 0
+
+$ node aloop/cli/dist/index.js steer 'QA test instruction from iter 52'
+error: unknown command 'steer'
+[exit_code] 1
+
+$ node aloop/cli/dist/index.js --help | grep -i steer
+(no output)
+```
+FAIL: `steer` command not registered in CLI. 7th consecutive FAIL since iter 26.
+
+#### Test 2: aloop orchestrate --spec NONEXISTENT.md (re-test)
+
+```
+$ cd /tmp/aloop-qa-iter52-*/project && node aloop/cli/dist/index.js orchestrate --spec NONEXISTENT.md --plan-only
+Orchestrator session initialized.
+  Spec:         NONEXISTENT.md
+  Plan only:    true
+[exit_code] 0
+
+$ node aloop/cli/dist/index.js orchestrate --spec /nonexistent/path/SPEC.md --plan-only
+Orchestrator session initialized.
+  Spec:         /nonexistent/path/SPEC.md
+  Plan only:    true
+[exit_code] 0
+```
+FAIL: Both relative and absolute nonexistent paths accepted. Exits 0 with session initialized. 7th consecutive FAIL.
+
+#### Test 3: Provider health backoff (re-test)
+
+```
+$ cat ~/.aloop/health/codex.json
+{"status":"cooldown","last_success":"2026-03-13T12:39:26Z","last_failure":"2026-03-13T12:54:46Z","failure_reason":"rate_limit","consecutive_failures":1,"cooldown_until":"2026-03-17T00:00:00Z"}
+
+$ node aloop/cli/dist/index.js status
+Provider Health:
+  claude     healthy      (last success: 24m ago)
+  codex      cooldown     (1 failure, resumes in 1744m)
+  copilot    healthy      (last success: 1m ago)
+  gemini     healthy      (last success: 6m ago)
+  opencode   healthy      (last success: 19m ago)
+[exit_code] 0
+```
+FAIL: codex shows 1744m (~29h) cooldown with only 1 failure. Spec says 1 failure = no cooldown, hard cap 60 min. 7th consecutive FAIL.
+
+#### Test 4: aloop scaffold (new — never tested)
+
+```
+$ node aloop/cli/dist/index.js scaffold --help
+Usage: aloop scaffold [options]
+Options: --project-root, --language, --provider, --enabled-providers,
+         --autonomy-level, --round-robin-order, --spec-files, --reference-files,
+         --validation-commands, --safety-rules, --mode, --templates-dir, --output
+[exit_code] 0
+```
+PASS: Help displays correctly.
+
+```
+$ cd /tmp/aloop-qa-iter52-*/project && node aloop/cli/dist/index.js scaffold
+{"config_path":"/home/pj/.aloop/projects/e7ba10f7/config.yml","prompts_dir":"/home/pj/.aloop/projects/e7ba10f7/prompts","project_dir":"/home/pj/.aloop/projects/e7ba10f7","project_hash":"e7ba10f7"}
+[exit_code] 0
+```
+PASS: Creates config and prompts.
+
+```
+$ ls /home/pj/.aloop/projects/e7ba10f7/prompts/
+PROMPT_build.md  PROMPT_plan.md  PROMPT_proof.md  PROMPT_review.md  PROMPT_steer.md
+```
+FAIL: Only 5 prompts generated. Spec's default 9-step pipeline (plan → build × 5 → proof → qa → review) requires `PROMPT_qa.md` but it is missing.
+
+```
+$ node aloop/cli/dist/index.js scaffold --autonomy-level invalid
+{"config_path":"...","prompts_dir":"..."}
+[exit_code] 0
+```
+Note: Invalid autonomy level silently ignored (kept default `balanced`). Not necessarily a bug — scaffold may intentionally be permissive and delegate validation to `setup`.
+
+```
+$ node aloop/cli/dist/index.js scaffold --spec-files NONEXISTENT.md
+[exit_code] 0
+$ cat config.yml | grep spec
+spec_files:
+  - 'NONEXISTENT.md'
+```
+FAIL: Nonexistent spec file written to config without validation.
+
+```
+$ mkdir -p /tmp/aloop-qa-iter52-*/empty && cd /tmp/aloop-qa-iter52-*/empty
+$ node aloop/cli/dist/index.js scaffold
+[exit_code] 0
+```
+PASS: Scaffold works in non-git directory (acceptable behavior).
+
+#### Test 5: aloop resolve (new — never tested)
+
+```
+$ cd /tmp/aloop-qa-iter52-*/project && node aloop/cli/dist/index.js resolve
+{"project":{"root":"/tmp/.../project","name":"project","hash":"e7ba10f7","is_git_repo":true,"git_branch":"master"},"setup":{"project_dir":"...","config_path":"...","config_exists":true,"templates_dir":"..."}}
+[exit_code] 0
+```
+PASS: JSON output works correctly.
+
+```
+$ node aloop/cli/dist/index.js resolve --output text
+Project: project [e7ba10f7]
+Root: /tmp/.../project
+Project config: /home/pj/.aloop/projects/e7ba10f7/config.yml
+[exit_code] 0
+```
+PASS: Text output works correctly.
+
+```
+$ cd /tmp/aloop-qa-iter52-*/empty && node aloop/cli/dist/index.js resolve
+{"project":{"root":"...","name":"empty","hash":"39d6782a","is_git_repo":false,"git_branch":null},...}
+[exit_code] 0
+```
+PASS: Works in non-git dir, reports `is_git_repo: false`.
+
+```
+$ node aloop/cli/dist/index.js resolve --project-root /nonexistent/path
+Error: No Aloop configuration found for this project. Run `aloop setup` first.
+    at assertProjectConfigured (file:///...aloop/cli/dist/index.js:3282:11)
+    at _Command.resolveCommand (file:///...aloop/cli/dist/index.js:3459:3)
+[exit_code] 1
+```
+FAIL: Leaks raw stack trace for nonexistent project root instead of clean user-facing error.
