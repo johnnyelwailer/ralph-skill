@@ -21,7 +21,7 @@ Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle 
 - [x] [review] Gate 4: Dead import — `App.tsx:7` imports `X` from `lucide-react` but it is never used in JSX. Remove the unused import. (priority: high)
 - [x] [review] Gate 4: Queue file leak — `processQueuedPrompts` (`orchestrate.ts:3936-3939`) writes empty string to consumed queue files instead of deleting them. Infinite re-processing. Add `unlink` or filter empty files. (priority: high)
 - [x] [review] Gate 4: Committed test artifact — `aloop/cli/dashboard/test-results/` (60KB Playwright dump) committed to repo. Remove and add to `.gitignore`. (priority: high)
-- [ ] [review] Gate 9: README.md still says "8 gates" — update to "9 gates" and add Gate 9 (Documentation Freshness) to the table. (priority: high)
+- [x] [review] Gate 9: README.md still says "8 gates" — update to "9 gates" and add Gate 9 (Documentation Freshness) to the table. (priority: high)
 
 ### QA Bugs (deduplicated — latest iteration referenced)
 Each bug listed once with iteration history for context.

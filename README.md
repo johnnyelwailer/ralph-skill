@@ -10,7 +10,7 @@ A single autonomous coding session. The agent cycles through three phases until 
 
 1. **Plan** — Gap analysis between spec and code, outputs prioritized `TODO.md`
 2. **Build** — Picks one task, implements, validates (types/tests/lint), commits
-3. **Review** — Audits the build against 8 quality gates, writes fix tasks or approves
+3. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
 
 Additional agents run between cycles:
 - **Proof** — Captures screenshots, API responses, test output as evidence
@@ -70,7 +70,7 @@ aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
 
 ## Quality Gates
 
-The review agent enforces 8 gates on every build iteration:
+The review agent enforces 9 gates on every build iteration:
 
 | Gate | What it checks |
 |------|---------------|
@@ -82,6 +82,7 @@ The review agent enforces 8 gates on every build iteration:
 | 6. Proof Verification | Evidence matches changes, screenshots consistent with spec |
 | 7. Layout Verification | Playwright bounding-box checks for CSS/layout changes |
 | 8. Version Compliance | Installed versions match VERSIONS.md declarations |
+| 9. Documentation Freshness | README/docs reflect actual commands, flags, and behavior |
 
 Failed gates produce `[review]` fix tasks that the next build iteration picks up before any new work.
 
@@ -181,7 +182,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
   templates/
     PROMPT_plan.md              # Plan agent template
     PROMPT_build.md             # Build agent template
-    PROMPT_review.md            # Review agent (8 gates)
+    PROMPT_review.md            # Review agent (9 gates)
     PROMPT_proof.md             # Proof agent template
     PROMPT_steer.md             # Steering agent template
     PROMPT_setup.md             # Setup/discovery agent
