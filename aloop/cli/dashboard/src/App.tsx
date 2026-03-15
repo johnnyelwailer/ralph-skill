@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import {
   Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock,
   GitBranch, GitCommit, Image, FileText, Menu, MoreHorizontal, PanelLeftClose,
-  PanelLeftOpen, Play, Search, Send, Square, Terminal, Timer, X, XCircle, Zap, Loader2,
+  PanelLeftOpen, Play, Search, Send, Square, Terminal, Timer, XCircle, Zap, Loader2,
   Heart, AlertTriangle, Pause, ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';

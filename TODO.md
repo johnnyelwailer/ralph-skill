@@ -1,72 +1,10 @@
 # Project TODO
 
-## Current Phase: Spec-Compliance — P1 Core Completion (Loop/Orchestrator first)
+## Current Phase: Loop Decoupling + Bug Fixes
 
-Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboard UX/test polish, (4) P2 enhancements.
+Priority: (1) loop decoupling refactor, (2) review fixes, (3) deduplicated QA bugs, (4) P2 enhancements.
 
-### In Progress
-- [x] [review] Gate 4: Dead import — `App.tsx:7` imports `X` from `lucide-react` but it is never used in JSX. Remove the unused import. (priority: high)
-- [ ] [review] Gate 4: Queue file leak — `processQueuedPrompts` (`orchestrate.ts:3936-3939`) writes empty string to consumed queue files instead of deleting them. On the next scan pass, `readdir` re-lists the empty `.md` file, it gets "re-processed" infinitely. Add `unlink` to `ScanLoopDeps` and delete consumed files, or filter out empty files before processing. (priority: high)
-- [ ] [review] Gate 4: Committed test artifact — `aloop/cli/dashboard/test-results/qa-layout-dashboard-layout-verification/error-context.md` (60KB) is a Playwright error dump committed to the repo. Remove it and add `test-results/` to `.gitignore`. (priority: high)
-- [ ] [review] Gate 9: README.md still says "8 gates" (lines 73, 184) and the quality gates table only lists 8 entries. Gate 9 (Documentation Freshness) was added in `fd14392` but README was not updated. Update all references to "9 gates" and add Gate 9 to the table. (priority: high)
-
-#### Resolved from prior review
-- [x] [review] Gate 1: Spec Compliance — GitHub Project status interaction is missing. Implement `gh project item-edit` calls for issue progression. (priority: high)
-- [x] [review] Gate 4: Dead Logic — `runSpecChangeReplan` queues prompts in `queue/` but nothing in the CLI processes them. Implement a prompt processor or trigger the agent. (priority: high)
-- [x] [review] Gate 4: Copy-paste Duplication — Consolidate `spec_backfill` logic between `requests.ts` and `orchestrate.ts`, ensuring provenance trailers are always included. (priority: high)
-- [x] [review] Gate 6: Proof missing for Spec Change Replan. Verified via `proof_gate6.test.ts` (Pass 1: Detect/Queue, Pass 2: Process Queue). (priority: high)
-- [x] [fix] `orchestrateCommand` dependency injection — correctly handle Commander `Command` object vs `OrchestrateDeps`.
-- [x] [review] Gate 8: VERSIONS.md Drift — Add `git` to the Runtime section of `VERSIONS.md`. (priority: high)
-
-### QA Bugs (iter 50)
-- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` initializes session and exits 0 instead of failing. Tested at iter 50. (priority: high)
-- [ ] [qa/P2] `aloop setup --non-interactive --spec NONEXISTENT.md` accepts nonexistent file without validation. Tested at iter 50. (priority: medium)
-- [ ] [qa/P2] `aloop setup --non-interactive --providers fakeprovider` accepts invalid provider name without validation. Tested at iter 50. (priority: medium)
-- [ ] [qa/P2] `aloop devcontainer` crashes with `TypeError: deps.discover is not a function`. Tested at iter 50. (priority: medium)
-- [ ] [qa/P2] CLI error handling leaks stack traces for user errors — `aloop setup --autonomy-level invalid` and `aloop start` (no config) leak raw Node.js stack traces. Tested at iter 50. (priority: medium)
-- [ ] [qa/P1] `aloop steer` CLI command still missing — README and spec claim live steering command exists, but CLI returns `unknown command 'steer'`. Tested at iter 50. (priority: high)
-
-### QA Bugs (iter 52)
-- [ ] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — spec requires 9-step default pipeline (plan → build × 5 → proof → qa → review) but scaffold only generates 5 prompts (plan, build, proof, review, steer) with no `PROMPT_qa.md`. Tested at iter 52. (priority: high)
-- [ ] [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` writes nonexistent spec file path to config without any validation or warning. Tested at iter 52. (priority: medium)
-- [ ] [qa/P2] `aloop resolve --project-root /nonexistent/path` leaks raw Node.js stack trace (`Error: No Aloop configuration found`) instead of clean user-facing error. Tested at iter 52. (priority: medium)
-- [ ] [qa/P1] `aloop steer` CLI command still missing from command registry — 7th consecutive FAIL across iters 26-52. Not in `--help` output, returns `error: unknown command 'steer'`. Tested at iter 52. (priority: high)
-- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md --plan-only` still initializes session and exits 0 — 7th consecutive FAIL across iters 26-52. Both relative and absolute nonexistent paths accepted. Tested at iter 52. (priority: high)
-- [ ] [qa/P1] Provider health backoff still violates spec — 7th consecutive FAIL. codex has `consecutive_failures=1` with `cooldown_until=2026-03-17T00:00:00Z` (~29h). Spec says 1 failure = no cooldown, hard cap 60 min. Tested at iter 52. (priority: high)
-
-### QA Bugs (iter 51)
-- [ ] [qa/P1] [P0 severity] Dashboard desktop layout still mismatches wireframe: `npx playwright screenshot --browser chromium --viewport-size=1920,1080 http://localhost:4040 ...` + Playwright DOM check showed `asideVisible=false` and no Documents panel content at required desktop breakpoint. Spec requires persistent sidebar + docs + activity shell at 1920×1080. Tested at iter 51. (priority: high)
-- [ ] [qa/P1] Dashboard docs data still empty: `GET /api/state` reports `workdir=/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli` and returns zero-length `TODO.md`, `SPEC.md`, `RESEARCH.md`, `REVIEW_LOG.md`, `STEERING.md`, violating document viewer expectations. Tested at iter 51. (priority: high)
-- [ ] [qa/P1] `aloop gh watch --max-concurrent 1` crashes with raw Node stack trace when `gh` invocation fails (`gh: blocked by aloop PATH hardening`) instead of a clean user-facing error. Tested at iter 51. (priority: high)
-- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md --plan-only` still initializes a session and exits 0 rather than failing fast on missing spec path. Tested at iter 51. (priority: high)
-- [ ] [qa/P1] `aloop steer` CLI command is still missing from command registry (`aloop steer --help` falls back to top-level help with no `steer` subcommand). Tested at iter 51. (priority: high)
-- [ ] [qa/P1] `aloop setup --non-interactive` fails for a fresh `HOME` with missing runtime templates and raw stack trace (`Template not found: ~/.aloop/templates/PROMPT_plan.md`) instead of guided setup/runtime bootstrap behavior. Tested at iter 51. (priority: high)
-
-### QA Bugs (iter 46)
-- [ ] [qa/P1] `aloop orchestrate --spec` doesn't check for file existence — it initializes a session with an empty spec if the provided file is missing, leading to failed decomposition later. Should exit with clear error. Tested at iter 46. (priority: high)
-- [ ] [qa/P2] CLI error handling leaks stack traces for user errors — `aloop orchestrate --autonomy-level foo`, `aloop gh watch` (when failing to invoke gh), and `aloop start` (when no config found) all throw raw Node.js stack traces instead of clean user-friendly errors. Tested at iter 46. (priority: medium)
-- [ ] [qa/P2] Dashboard layout panel detection failure — Playwright test found 0 panels even though stop button was visible. Indicates possible selector drift or layout bug. Tested at iter 46. (priority: medium)
-
-### QA Bugs (iter 48)
-- [ ] [qa/P2] `aloop setup --spec NONEXISTENT.md` accepts nonexistent spec file — writes config referencing a file that doesn't exist, no validation or warning. Should either error or warn. Tested at iter 48. (priority: medium)
-- [ ] [qa/P2] `aloop setup --providers fakeprovider` accepts invalid provider — writes `fakeprovider` to `enabled_providers` in config with no validation against the 5 known providers (claude, codex, gemini, copilot, opencode). Tested at iter 48. (priority: medium)
-- [ ] [qa/P2] `aloop setup --autonomy-level invalid` leaks raw stack trace — throws unhandled Error with full Node.js stack instead of clean user-facing error message. Tested at iter 48. (priority: medium)
-
-### QA Bugs (iter 47)
-- [ ] [qa/P1] [P0 severity] Dashboard desktop layout mismatches spec wireframe — at 1920x1080 the page renders `stop` + steer input but expected persistent `SESSIONS` / `DOCUMENTS` / `ACTIVITY` shell is not visible (`aside: 0`, no expected panel labels in body text). Layout mismatch at required breakpoint is a release blocker. Tested at iter 47. (priority: high)
-- [ ] [qa/P1] Dashboard docs tabs still empty — `/api/state` reports `workdir=/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli` and returns zero-length `TODO.md`, `SPEC.md`, `RESEARCH.md`, `REVIEW_LOG.md`, `STEERING.md`, violating dashboard document viewer expectations. Tested at iter 47. (priority: high)
-- [ ] [qa/P1] `aloop steer` CLI command still missing — README and spec claim live steering command exists, but CLI returns `unknown command 'steer'`. Tested at iter 47. (priority: high)
-- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md --plan-only` still exits 0 and initializes a session instead of failing fast for missing spec file. Tested at iter 47. (priority: high)
-- [ ] [qa/P1] Provider health backoff still violates spec — `codex` remains `cooldown` with `consecutive_failures=1` and `cooldown_until=2026-03-17T00:00:00Z` (~30h), but spec requires no cooldown for first failure and max 60m cap. Tested at iter 47. (priority: high)
-
-### QA Bugs (iter 26)
-- [ ] [qa/P1] Dashboard docs tabs empty — API `/api/state` returns 0-char content for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md because `workdir` points to `aloop/cli/` subdirectory instead of worktree root. Spec says dashboard shows "Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md". Tested at iter 26. (priority: high)
-- [ ] [qa/P1] `aloop steer` CLI command missing — README lists `aloop steer` as a CLI command ("Send live instruction to a running loop") but running `aloop steer` returns "unknown command". Dashboard steer API works at `/api/steer` but CLI subcommand is not registered. Tested at iter 26. (priority: high)
-- [ ] [qa/P1] Provider health backoff violates spec — codex has `consecutive_failures: 1` but `cooldown_until: 2026-03-17T00:00:00Z` (~30h from now). Spec says 1 failure = "none (could be flaky)", cooldown only triggers at 2+ failures, and hard cap is 60 min. Tested at iter 26. (priority: high)
-- [ ] [qa/P1] Dashboard health tab missing codex — Health tab shows only 4 providers (claude, copilot, gemini, opencode). Codex in cooldown state is omitted. Spec says all 5 providers should be displayed with their current status. Tested at iter 26. (priority: high)
-- [ ] [qa/P2] `aloop orchestrate --spec /nonexistent` leaks stack trace — missing spec file throws raw Error with full stack trace instead of user-friendly error message. Tested at iter 26. (priority: medium)
-
-### Loop Decoupling — Event-Driven Queue Dispatch
+### In Progress — Loop Decoupling (Event-Driven Queue Dispatch)
 Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle + queue. The runtime handles all intelligence (event detection → catalog scan → queue injection).
 
 - [ ] [loop/P1] Remove `FORCE_PLAN_NEXT`, `FORCE_PROOF_NEXT`, `FORCE_REVIEW_NEXT` flags — replace with direct queue writes. When a condition triggers (e.g., all tasks done), write the appropriate prompt file to `$SESSION_DIR/queue/` instead of setting a boolean. (~lines 378-389, 1324-1327) (priority: high)
@@ -80,12 +18,44 @@ Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle 
 - [ ] [loop/P2] Add `trigger` frontmatter field to agent prompt templates — agents declare which events they respond to (e.g., `trigger: all_tasks_done`). Runtime scans catalog for matching triggers when events fire. (priority: medium)
 - [ ] [runtime/P2] Implement event→catalog→queue dispatch in runtime monitor — when runtime detects a condition, emit an event key, scan `aloop/templates/` for prompts with matching `trigger` frontmatter, copy to `$SESSION_DIR/queue/`. (priority: medium)
 
-### Up Next — P0/P1 (Blocking Core)
+### In Progress — Review Fixes
+- [x] [review] Gate 4: Dead import — `App.tsx:7` imports `X` from `lucide-react` but it is never used in JSX. Remove the unused import. (priority: high)
+- [ ] [review] Gate 4: Queue file leak — `processQueuedPrompts` (`orchestrate.ts:3936-3939`) writes empty string to consumed queue files instead of deleting them. Infinite re-processing. Add `unlink` or filter empty files. (priority: high)
+- [ ] [review] Gate 4: Committed test artifact — `aloop/cli/dashboard/test-results/` (60KB Playwright dump) committed to repo. Remove and add to `.gitignore`. (priority: high)
+- [ ] [review] Gate 9: README.md still says "8 gates" — update to "9 gates" and add Gate 9 (Documentation Freshness) to the table. (priority: high)
+
+### QA Bugs (deduplicated — latest iteration referenced)
+Each bug listed once with iteration history for context.
+
+#### P1 — CLI Missing Features
+- [ ] [qa/P1] `aloop steer` CLI command missing — README and spec claim it exists, CLI returns `unknown command 'steer'`. (iters 26-52, 7 consecutive fails) (priority: high)
+- [ ] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — spec requires 9-step pipeline but scaffold only generates 5 prompts (no qa). (iter 52) (priority: high)
+
+#### P1 — Input Validation
+- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` exits 0 instead of failing — initializes session with empty spec. (iters 26-52, 7 consecutive fails) (priority: high)
+- [ ] [qa/P1] Provider health backoff violates spec — 1 failure triggers ~29h cooldown. Spec says 1 failure = no cooldown, hard cap 60 min. (iters 26-52, 3 reports) (priority: high)
+
+#### P1 — Dashboard
+- [ ] [qa/P1] Dashboard docs tabs empty — `/api/state` `workdir` points to `aloop/cli/` subdirectory instead of worktree root, so all docs return zero-length content. (iters 26-51, 4 reports) (priority: high)
+- [ ] [qa/P1] Dashboard desktop layout mismatches spec wireframe — at 1920x1080, sidebar and docs panel not visible. Spec requires persistent sidebar + docs + activity. (iters 47, 51) (priority: high)
+- [ ] [qa/P1] Dashboard health tab missing codex — shows 4 providers, codex in cooldown state omitted. (iter 26) (priority: high)
+
+#### P1 — Runtime
+- [ ] [qa/P1] `aloop setup --non-interactive` fails for fresh HOME — missing runtime templates, raw stack trace instead of guided bootstrap. (iter 51) (priority: high)
+- [ ] [qa/P1] `aloop gh watch` crashes with raw stack trace when `gh` invocation fails. (iter 51) (priority: high)
+
+#### P2 — Error Handling / Validation
+- [ ] [qa/P2] CLI error handling leaks stack traces — `aloop setup --autonomy-level invalid`, `aloop start` (no config), `aloop orchestrate --autonomy-level foo`, `aloop resolve --project-root /nonexistent`. Should show clean user-facing errors. (iters 46-52, multiple reports) (priority: medium)
+- [ ] [qa/P2] `aloop setup` accepts invalid inputs without validation — nonexistent spec files and unknown provider names written to config silently. (iters 48-50) (priority: medium)
+- [ ] [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` writes nonexistent path to config without warning. (iter 52) (priority: medium)
+- [ ] [qa/P2] `aloop devcontainer` crashes with `TypeError: deps.discover is not a function`. (iter 50) (priority: medium)
+
+### Up Next — P0/P1 (After Refactor)
 - [ ] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating consistently and add same-error persistence checks before re-iteration caps.
 - [ ] [setup/P1] Data privacy setup question — ask internal/private vs public/open-source and apply provider/model/ZDR constraints from answer.
 
 ### Up Next — P1 (After Core)
-- [ ] [dashboard/P1] Proof artifact comparison modes — add before/after comparison UX (side-by-side, slider, diff overlay) and history scrubbing. (Diff badge already implemented.)
+- [ ] [dashboard/P1] Proof artifact comparison modes — add before/after comparison UX (side-by-side, slider, diff overlay) and history scrubbing.
 
 ### Up Next — P2
 - [ ] [orchestrator/P2] Multi-file spec support — `specs/*.md` globbing, merge logic, master-spec + vertical-slice-group pattern.
@@ -98,26 +68,26 @@ Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle 
 - [ ] [dashboard/low] Broader unit coverage expansion for `App.tsx` interaction paths.
 - [ ] [dashboard/low] Raise/verify branch coverage in `aloop/cli/src/commands/dashboard.ts` beyond current gate minimums.
 - [ ] [dashboard/low] Repair broken E2E `smoke.spec.ts` flow once core P0/P1 gates are green.
-- [~] [dashboard/low] Docs-tab trigger filtering task cancelled — already implemented (`App.tsx` now filters non-empty docs via `docs[n] != null && docs[n] !== ''`).
 
 ### Cancelled / Superseded
 - [~] [orchestrator/P0] Label-driven state machine — superseded by GitHub-native status/project-state progression with minimal-label fallback.
+- [~] [dashboard/low] Docs-tab trigger filtering — already implemented (`App.tsx` filters non-empty docs).
 
 ### Completed
 - [x] [orchestrator/P1] Autonomy levels (cautious/balanced/autonomous) — wire setup/config to resolver behavior, risk classification, autonomous decision logging, and user override.
-- [x] [orchestrator/P0] [research] GitHub-native state model feasibility — finalized: use Project status + issue state for progression; keep only minimal labels (`aloop`, `aloop/spec-question`, `aloop/blocked-on-human`, `aloop/auto-resolved`, `aloop/wave-*`).
-- [x] [orchestrator/P1] Replan on spec change — add spec diff watcher (`SPEC.md` + `specs/*.md`), trigger replan agent, apply spec backfill flow, and add loop-prevention provenance.
+- [x] [orchestrator/P0] [research] GitHub-native state model feasibility — finalized: use Project status + issue state for progression; keep only minimal labels.
+- [x] [orchestrator/P1] Replan on spec change — spec diff watcher, replan agent trigger, spec backfill flow, loop-prevention provenance.
 - [x] [review] Gate 4: `dashboard.ts:568` — `sendToDefaultSessionClients` dead code removed.
 - [x] [review] Gate 4: `dashboard.ts:582-615` — duplicate `publishState` branch logic consolidated.
 - [x] [review] Gate 8: added missing `@radix-ui/react-dropdown-menu@^2.1.16` entry to `VERSIONS.md`.
-- [x] [orchestrator/P0] Definition of Ready (DoR) gate wired and enforced before dispatch (`validateDoR()` in dispatch eligibility).
+- [x] [orchestrator/P0] Definition of Ready (DoR) gate wired and enforced before dispatch.
 - [x] [orchestrator/P0] Global spec gap analysis wired (product + architecture analysts, request/queue plumbing).
-- [x] [orchestrator/P0] Orchestrator scan loop implemented (state read, transition detection, queue/request work dispatch).
+- [x] [orchestrator/P0] Orchestrator scan loop implemented.
 - [x] [orchestrator/P1] Epic + sub-issue decomposition logic implemented.
-- [x] [orchestrator/P1] Missing orchestrator prompts added (`PROMPT_orch_resolver.md`, `PROMPT_orch_replan.md`, `PROMPT_orch_spec_consistency.md`).
-- [x] [orchestrator/P1] Orchestrator dispatch logic implemented (worktree/loop-plan/sub-spec launch with concurrency + ownership checks).
-- [x] [orchestrator/P1] Monitor/gate/merge cycle implemented (child status, PR create, gate checks, squash merge, downstream unblocking).
-- [x] [gh/P1] GitHub Enterprise support hardened for host-agnostic URL generation in loop runtime outputs.
+- [x] [orchestrator/P1] Missing orchestrator prompts added.
+- [x] [orchestrator/P1] Orchestrator dispatch logic implemented.
+- [x] [orchestrator/P1] Monitor/gate/merge cycle implemented.
+- [x] [gh/P1] GitHub Enterprise support hardened.
 - [x] [loop/P0] Retry same phase on failure with `MAX_PHASE_RETRIES` safety valve.
 - [x] [loop/P0] Queue file deletion on both success and failure paths.
 - [x] [security/P0] PATH sanitization blocks `gh` from agent invocations.
@@ -126,16 +96,22 @@ Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle 
 - [x] [loop/P1] File locking for provider health implemented.
 - [x] [loop/P1] Child process tracking + timeout handling implemented.
 - [x] [gh/P1] PR feedback loop + CI failure handling (`aloop gh watch`) implemented.
-- [x] [cli/P1] Agent dashboard command routing implemented (`/aloop:dashboard` + Copilot prompt).
+- [x] [cli/P1] Agent dashboard command routing implemented.
 - [x] [cli/P2] `aloop status --watch` live-updating terminal view implemented.
 - [x] [runtime/medium] Loop shell arithmetic/log-path warning fixes completed.
-- [x] [runtime] Provenance commit trailers implemented in `loop.sh` and `loop.ps1`.
+- [x] [runtime] Provenance commit trailers implemented.
 - [x] [review] Gate 6 artifact drift for iter-11 resolved.
 - [x] [dashboard] Provider health retained as docs-panel tab.
 - [x] [dashboard] `M/A/D/R` file-type indicators in expanded commit rows.
 - [x] [dashboard] Per-iteration duration display in activity rows.
-- [x] [review] Gate 3 branch coverage thresholds met for `plan.ts`, `yaml.ts`, `compile-loop-plan.ts`, `requests.ts`, and `gh.ts`.
+- [x] [review] Gate 3 branch coverage thresholds met.
 - [x] [review] `VERSIONS.md` created for Gate 8 compliance.
 - [x] [dashboard] Docs-tab non-empty filtering.
 - [x] [pipeline] Configurable agent pipeline (`pipeline.yml`, `.aloop/agents/`).
 - [x] [orchestrator] Orchestrator prompt templates (14 files).
+- [x] [review] Gate 1: GitHub Project status interaction implemented.
+- [x] [review] Gate 4: `runSpecChangeReplan` queue processing implemented.
+- [x] [review] Gate 4: `spec_backfill` duplication consolidated.
+- [x] [review] Gate 6: Proof for Spec Change Replan verified.
+- [x] [fix] `orchestrateCommand` dependency injection fixed.
+- [x] [review] Gate 8: VERSIONS.md — added `git` to Runtime section.
