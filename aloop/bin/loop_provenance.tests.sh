@@ -42,6 +42,7 @@ git commit -m "chore: seed repo" -q
 echo "- [ ] A task" > TODO.md
 
 echo "Running loop.sh..."
+LOOP_OUTPUT="$TEST_ROOT/loop-output.log"
 bash "$LOOP_SH" \
     --prompts-dir "$PROMPT_DIR" \
     --session-dir "$SESS_DIR" \
@@ -49,7 +50,8 @@ bash "$LOOP_SH" \
     --mode build \
     --provider claude \
     --max-iterations 1 \
-    --dangerously-skip-container
+    --dangerously-skip-container >"$LOOP_OUTPUT" 2>&1
+cat "$LOOP_OUTPUT"
 
 # Check agent commit
 echo "Checking agent commit..."
@@ -72,6 +74,19 @@ if ! echo "$AGENT_COMMIT_MSG" | grep -q "Aloop-Iteration: 1"; then
 fi
 if ! echo "$AGENT_COMMIT_MSG" | grep -q "Aloop-Session:"; then
     echo "FAIL: Agent commit missing Aloop-Session"
+    failed=1
+fi
+
+if grep -q "log.jsonl.raw: No such file or directory" "$LOOP_OUTPUT"; then
+    echo "FAIL: loop.sh emitted missing log.jsonl.raw warning"
+    failed=1
+fi
+if grep -q "syntax error in expression" "$LOOP_OUTPUT"; then
+    echo "FAIL: loop.sh emitted arithmetic parse warning"
+    failed=1
+fi
+if grep -q "local: can only be used in a function" "$LOOP_OUTPUT"; then
+    echo "FAIL: loop.sh emitted top-level local warning"
     failed=1
 fi
 

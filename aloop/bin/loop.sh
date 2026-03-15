@@ -235,6 +235,9 @@ REVIEW_VERDICT_FILE="$SESSION_DIR/review-verdict.json"
 START_TIME=$(date +%s)
 RUN_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || date +%s%N)
 
+# Ensure raw output log exists before offset reads (avoids missing-file warnings).
+touch "$LOG_FILE.raw"
+
 # Runtime version: read version.json written by install.ps1
 RUNTIME_VERSION_DIR="${ALOOP_RUNTIME_DIR:-$HOME/.aloop}"
 RUNTIME_VERSION_FILE="$RUNTIME_VERSION_DIR/version.json"
@@ -1347,8 +1350,10 @@ print_iteration_summary() {
         commit_msg="$last_commit"
     fi
 
-    local completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null || echo "0")
-    local total_tasks=$(grep -c '^\s*- \[' "$PLAN_FILE" 2>/dev/null || echo "0")
+    local completed
+    local total_tasks
+    completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null) || completed=0
+    total_tasks=$(grep -c '^\s*- \[' "$PLAN_FILE" 2>/dev/null) || total_tasks=0
     local pct=0
     if [ "$total_tasks" -gt 0 ]; then
         pct=$((completed * 100 / total_tasks))
@@ -1376,9 +1381,12 @@ generate_report() {
     local minutes=$((duration / 60))
     local seconds=$((duration % 60))
 
-    local completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null || echo "0")
-    local skipped=$(grep -c '^\s*- \[S\]' "$PLAN_FILE" 2>/dev/null || echo "0")
-    local remaining=$(grep -c '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null || echo "0")
+    local completed
+    local skipped
+    local remaining
+    completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null) || completed=0
+    skipped=$(grep -c '^\s*- \[S\]' "$PLAN_FILE" 2>/dev/null) || skipped=0
+    remaining=$(grep -c '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null) || remaining=0
     local total=$((completed + skipped + remaining))
 
     cd "$WORK_DIR"
@@ -2007,7 +2015,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
             echo "[Iteration $ITERATION complete - $iter_mode]"
         fi
     else
-        local _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
+        _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
         update_provider_health_on_failure "$iter_provider" "${LAST_PROVIDER_ERROR:-provider_failed}"
         register_iteration_failure "$iter_mode" "${LAST_PROVIDER_ERROR:-provider_failed}"
         persist_loop_plan_state
@@ -2017,7 +2025,6 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
 
     # Extract per-iteration output from LOG_FILE.raw for dashboard parsing
     mkdir -p "$SESSION_DIR/artifacts/iter-$ITERATION"
-    local _raw_offset_after
     _raw_offset_after=$(wc -c < "$LOG_FILE.raw" 2>/dev/null || echo 0)
     if [ "$_raw_offset_after" -gt "$_raw_offset_before" ]; then
         tail -c +"$((_raw_offset_before + 1))" "$LOG_FILE.raw" | head -c "$((_raw_offset_after - _raw_offset_before))" > "$SESSION_DIR/artifacts/iter-$ITERATION/output.txt" 2>/dev/null

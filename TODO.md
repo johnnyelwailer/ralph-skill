@@ -29,7 +29,7 @@ Priority: Loop engine correctness → Orchestrator core → GitHub integration �
 - [ ] [dashboard/P1] Proof artifact comparison modes — expandable lightbox, before/after comparison (side-by-side, slider, diff overlay), history scrubbing dropdown, diff percentage badge.
 - [ ] [cli/P1] Agent commands — create `/aloop:dashboard` command file and `aloop-dashboard.prompt.md` for Copilot.
 - [ ] [setup/P1] Data privacy setup question — ask internal vs public, affect model choice and ZDR flags, may exclude providers.
-- [ ] [runtime/medium] Investigate and fix loop shell arithmetic/log-path warnings observed during `loop_provenance.tests.sh` (`log.jsonl.raw` missing path and `0\n0` arithmetic parse errors).
+- [x] [runtime/medium] Investigate and fix loop shell arithmetic/log-path warnings observed during `loop_provenance.tests.sh` (`log.jsonl.raw` missing path and `0\n0` arithmetic parse errors).
 
 ### Up Next — P2
 - [ ] [orchestrator/P2] Multi-file spec support — `specs/*.md` globbing, merging logic, master spec + vertical-slice-group pattern.
