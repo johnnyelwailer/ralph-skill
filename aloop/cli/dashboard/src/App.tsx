@@ -832,8 +832,9 @@ function ActivityPanel({ log, artifacts, currentIteration, currentPhase, current
   // Add synthetic "in progress" entry for currently running iteration
   const withCurrent = useMemo(() => {
     if (!isRunning || currentIteration === null) return deduped;
-    // Check if the current iteration already has a complete/error entry
-    const hasResult = deduped.some((e) => e.iteration === currentIteration && (e.isSuccess || e.isError));
+    // Check if the current iteration already has a complete/error entry from THIS run
+    // (iteration numbers reset on resume, so old runs may have the same iteration number)
+    const hasResult = deduped.some((e) => e.iteration === currentIteration && (e.isSuccess || e.isError) && (!iterationStartedAt || e.timestamp >= iterationStartedAt));
     if (hasResult) return deduped;
     // Add a synthetic running entry — use real iteration start time, fall back to last log entry time
     const lastEntryTime = deduped.length > 0 ? deduped[deduped.length - 1].timestamp : '';
