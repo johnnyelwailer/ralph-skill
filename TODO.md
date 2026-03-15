@@ -5,13 +5,14 @@
 Priority: Loop engine correctness → Orchestrator core → GitHub integration → Dashboard polish → Test coverage
 
 ### In Progress
-- [x] [loop/P0] Retry same phase on failure — phase cycle should only advance on success, not error. Failed iterations retry same phase with next round-robin provider. Add `MAX_PHASE_RETRIES` safety valve.
+- [x] [loop/P0] Retry same phase on failure — phase cycle should only advance on success, not error. Failed iterations retry same phase with next round-robin provider. Add `MAX_PHASE_RETRIES` safety valve. [reviewed: gates 1-8 pass]
+- [ ] [orchestrator/P0] [research] GitHub-native state model feasibility — verify whether issue state + Project status can replace `aloop/*` progression labels; target single tracking label `aloop` unless native states cannot represent required transitions.
 - [ ] [loop/P0] Queue file deletion — queue files must be deleted after agent completes, otherwise steering breaks on next iteration.
 
 ### Up Next — P0 (Blocking)
 - [ ] [security/P0] PATH sanitization — strip `gh` binary from agent PATH before provider invocation (defense-in-depth per spec Security Model).
 - [ ] [loop/P0] Provider stderr capture & failure classification — separate stderr from stdout, classify failures as rate_limit/auth/timeout/unknown for accurate health tracking.
-- [ ] [orchestrator/P0] Label-driven state machine — state transitions triggered by GitHub label changes (`aloop/needs-analysis`, `aloop/ready`, `aloop/in-progress`, etc.) not wired.
+- [~] [orchestrator/P0] Label-driven state machine — cancelled: superseded by steering to research GitHub-native status/project-state progression with minimal labels.
 - [ ] [orchestrator/P0] Definition of Ready (DoR) gate — validate acceptance criteria clarity, dependencies resolved, approach defined, estimated, interface contracts before dispatching to build.
 - [ ] [orchestrator/P0] Global spec gap analysis — wire product analyst + architecture analyst agents to run before decomposition, creating `aloop/spec-question` issues for gaps.
 

@@ -1309,7 +1309,7 @@ Risk classification:
 
 ### Orchestrator State Machine
 
-The orchestrator is **reactive and queue-driven**. Instead of numbered phases, each issue progresses through a **label-driven state machine**. The orchestrator scan agent checks state each iteration and the runtime queues work for items ready for their next step.
+The orchestrator is **reactive and queue-driven**. Instead of numbered phases, each issue progresses through a **GitHub-native state model** (issue state + Project status field), with labels used only when no native signal can represent the state. The orchestrator scan agent checks state each iteration and the runtime queues work for items ready for their next step.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -1373,20 +1373,22 @@ The orchestrator is **reactive and queue-driven**. Instead of numbered phases, e
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Label-driven state transitions:**
+**GitHub-native state transitions (status-first):**
 
-| Label | Meaning | What happens next |
-|-------|---------|-------------------|
-| `aloop/needs-analysis` | Spec or epic needs gap analysis | Product + arch analyst agents run |
-| `aloop/spec-question` | Blocking question for user | Waits for user response (or auto-resolves based on autonomy level) |
-| `aloop/auto-resolved` | Spec question resolved by agent (not human) | User can reopen to override |
-| `aloop/needs-decompose` | Ready for decomposition into sub-items | Decompose agent runs |
-| `aloop/needs-refine` | Needs specialist planning | Specialist planner + estimation agents run |
-| `aloop/ready` | Definition of Ready passed | Eligible for dispatch to child loop |
-| `aloop/in-progress` | Child loop running | Monitor watches status |
-| `aloop/in-review` | PR created, gates running | Gate + merge process |
-| `aloop/done` | Merged to agent/trunk | Complete |
-| `aloop/blocked` | Waiting on dependency or question | Unblocks when dependency merges or question resolves |
+| GitHub signal | Meaning | What happens next |
+|--------------|---------|-------------------|
+| Label `aloop` + Project status `Needs analysis` | Spec or epic needs gap analysis | Product + arch analyst agents run |
+| Label `aloop/spec-question` | Blocking question for user | Waits for user response (or auto-resolves based on autonomy level) |
+| Label `aloop/auto-resolved` | Spec question resolved by agent (not human) | User can reopen to override |
+| Label `aloop` + Project status `Needs decomposition` | Ready for decomposition into sub-items | Decompose agent runs |
+| Label `aloop` + Project status `Needs refinement` | Needs specialist planning | Specialist planner + estimation agents run |
+| Label `aloop` + Project status `Ready` | Definition of Ready passed | Eligible for dispatch to child loop |
+| Label `aloop` + Project status `In progress` | Child loop running | Monitor watches status |
+| Label `aloop` + Project status `In review` | PR created, gates running | Gate + merge process |
+| Label `aloop` + Project status `Done` or issue `state=closed` | Merged to agent/trunk | Complete |
+| Label `aloop` + Project status `Blocked` | Waiting on dependency or question | Unblocks when dependency merges or question resolves |
+
+The orchestrator MUST prefer native GitHub status signals over workflow labels for progression. If a repository has no compatible Project status field, it MAY use legacy `aloop/*` progression labels as a fallback compatibility mode.
 
 #### Global Spec Analysis
 
@@ -1484,7 +1486,7 @@ Each sub-issue gets specialist planning based on its type:
 | Interface contracts | Inputs consumed and outputs produced are specified |
 
 If DoR fails → creates `aloop/spec-question` issues for the gaps, blocks THIS sub-issue only.
-If DoR passes → labels `aloop/ready`.
+If DoR passes → sets Project status to `Ready` (and keeps the single tracking label `aloop`).
 
 **Re-estimation:** The estimation agent runs again after specialist planning, since complexity often changes once the approach is defined.
 
@@ -1492,9 +1494,9 @@ If DoR passes → labels `aloop/ready`.
 
 #### Dispatch
 
-The orchestrator scan agent identifies `aloop/ready` sub-issues and writes dispatch requests.
+The orchestrator scan agent identifies `Ready` sub-issues (Project status) and writes dispatch requests.
 
-1. Query sub-issues labeled `aloop/ready` whose dependencies are all merged
+1. Query sub-issues with Project status `Ready` whose dependencies are all merged
 2. Respect **concurrency cap** (configurable, default 3) and **wave scheduling**:
    - Sub-issues in the same wave MAY run in parallel
    - Wave N+1 sub-issues dispatch only after their specific dependencies merge (not all of wave N)
@@ -1505,7 +1507,7 @@ The orchestrator scan agent identifies `aloop/ready` sub-issues and writes dispa
    - Seeds child's working directory with sub-spec from issue body
    - Compiles child's `loop-plan.json` with implementation cycle (plan-build-proof-review)
    - Launches child `loop.sh` instance
-   - Labels issue `aloop/in-progress`
+   - Sets Project status to `In progress`
 4. Remaining issues queue until a slot opens or dependencies merge
 
 #### Monitor + Gate + Merge
@@ -1768,12 +1770,12 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 - [ ] Spec gap analysis re-triggers on spec file changes, blocking only affected items
 - [ ] Auto-resolved questions documented with reasoning in issue comments, labeled `aloop/auto-resolved`
 
-**Label-driven state machine:**
-- [ ] Issues progress through labels: `needs-analysis` → `needs-decompose` → `needs-refine` → `ready` → `in-progress` → `in-review` → `done`
-- [ ] Each label transition triggers appropriate agent work via queue
+**GitHub-native state machine:**
+- [ ] Issues progress through Project status values: `Needs analysis` → `Needs decomposition` → `Needs refinement` → `Ready` → `In progress` → `In review` → `Done` (with label `aloop` as tracker)
+- [ ] Each status transition triggers appropriate agent work via queue
 
 **Dispatch + execution:**
-- [ ] Sub-issues labeled `aloop/ready` dispatched as child `loop.sh` instances
+- [ ] Sub-issues with Project status `Ready` dispatched as child `loop.sh` instances
 - [ ] Concurrency cap limits simultaneous child loops (default 3)
 - [ ] Wave scheduling: sub-issues dispatch when specific dependencies merge
 - [ ] File ownership hints prevent parallel edits to same files
