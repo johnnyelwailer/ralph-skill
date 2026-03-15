@@ -611,8 +611,25 @@ export async function startDashboardServer(
           }
         }
       } else {
-        const statePayload = toStateEventPayload(await loadState());
-        sendToDefaultSessionClients('state', statePayload);
+        // Notify all connected clients — each gets state for their own session context
+        const contextPayloads = new Map<string, string>();
+        for (const [client, ctx] of clients) {
+          const key = ctx.sessionDir;
+          let payload = contextPayloads.get(key);
+          if (payload === undefined) {
+            const state = ctx === defaultContext
+              ? await loadState()
+              : await loadStateForContext(ctx, runtimeDir);
+            payload = toStateEventPayload(state);
+            contextPayloads.set(key, payload);
+          }
+          try {
+            sendSseEvent(client, 'state', payload);
+          } catch {
+            clients.delete(client);
+            client.destroy();
+          }
+        }
       }
     } catch (error) {
       console.warn(`dashboard: failed to publish state: ${(error as Error).message}`);

@@ -115,7 +115,10 @@ export function App() {
   const [steerInstruction, setSteerInstruction] = useState('');
   const [steerSubmitting, setSteerSubmitting] = useState(false);
   const [stopSubmitting, setStopSubmitting] = useState(false);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('session');
+  });
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
   const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -126,6 +129,13 @@ export function App() {
     setLoading(true);
     setLoadError(null);
     setSessionSwitcherOpen(false);
+    const url = new URL(window.location.href);
+    if (id) {
+      url.searchParams.set('session', id);
+    } else {
+      url.searchParams.delete('session');
+    }
+    window.history.replaceState(null, '', url.toString());
   }, []);
 
   useEffect(() => {
@@ -558,7 +568,7 @@ function TodoPanel({ content }: { content: string }) {
   return (
     <ScrollArea className="h-full">
       <div
-        className="text-sm [&_code]:text-xs [&_pre]:overflow-auto [&_li]:leading-relaxed [&_ul]:space-y-0.5 pr-3"
+        className="text-sm [&_code]:text-xs [&_pre]:overflow-x-auto [&_li]:leading-relaxed [&_ul]:space-y-0.5 pr-3 overflow-x-auto"
         dangerouslySetInnerHTML={{ __html: rendered }}
       />
     </ScrollArea>
@@ -967,7 +977,7 @@ function LogPanel({ log, artifacts }: { log: string; artifacts: ArtifactManifest
       <ScrollArea className="flex-1 min-h-0">
         <pre
           ref={logRef}
-          className="rounded-md bg-muted p-2 text-xs"
+          className="rounded-md bg-muted p-2 text-xs overflow-x-auto"
         >
           {log || 'No log entries available.'}
         </pre>
