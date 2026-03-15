@@ -565,20 +565,6 @@ export async function startDashboardServer(
     }
   };
 
-  const sendToDefaultSessionClients = (event: string, payload: string) => {
-    for (const [client, ctx] of clients) {
-      if (ctx.sessionDir !== defaultContext.sessionDir) {
-        continue;
-      }
-      try {
-        sendSseEvent(client, event, payload);
-      } catch {
-        clients.delete(client);
-        client.destroy();
-      }
-    }
-  };
-
   const publishState = async () => {
     publishPending = false;
     publishTimer = null;
