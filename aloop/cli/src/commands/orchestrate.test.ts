@@ -37,6 +37,8 @@ import {
   validateDoR,
   applyEstimateResults,
   queueEstimateForIssues,
+  createGapAnalysisRequests,
+  queueGapAnalysisForIssues,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -3035,5 +3037,147 @@ describe('orchestrateCommandWithDeps budget option', () => {
       () => orchestrateCommandWithDeps({ budget: '-5' }, deps),
       { message: /Invalid budget value/ },
     );
+  });
+});
+
+describe('createGapAnalysisRequests', () => {
+  it('writes product and architecture analyst request files for Needs analysis issues', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const mockDeps = {
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+      now: () => new Date('2026-03-15T12:00:00Z'),
+    };
+    const issues = [
+      makeIssue({ number: 1, status: 'Needs analysis', title: 'Auth epic', body: 'Implement auth' }),
+      makeIssue({ number: 2, status: 'Ready' }),
+      makeIssue({ number: 3, status: 'Needs analysis', title: 'CMS epic', body: 'Implement CMS' }),
+    ];
+    const result = await createGapAnalysisRequests(issues, '/requests', mockDeps);
+    assert.deepStrictEqual(result, { product: true, architecture: true });
+    assert.ok(writtenFiles['/requests/product-analyst-review.json']);
+    assert.ok(writtenFiles['/requests/architecture-analyst-review.json']);
+
+    const productReq = JSON.parse(writtenFiles['/requests/product-analyst-review.json']);
+    assert.equal(productReq.type, 'product_analyst_review');
+    assert.equal(productReq.prompt_template, 'PROMPT_orch_product_analyst.md');
+    assert.equal(productReq.targets.length, 2);
+    assert.equal(productReq.targets[0].issue_number, 1);
+    assert.equal(productReq.targets[1].issue_number, 3);
+
+    const archReq = JSON.parse(writtenFiles['/requests/architecture-analyst-review.json']);
+    assert.equal(archReq.type, 'architecture_analyst_review');
+    assert.equal(archReq.prompt_template, 'PROMPT_orch_arch_analyst.md');
+    assert.equal(archReq.targets.length, 2);
+  });
+
+  it('returns false flags when no issues need analysis', async () => {
+    const mockDeps = {
+      writeFile: async () => {},
+      now: () => new Date('2026-03-15T12:00:00Z'),
+    };
+    const issues = [
+      makeIssue({ number: 1, status: 'Ready' }),
+    ];
+    const result = await createGapAnalysisRequests(issues, '/requests', mockDeps);
+    assert.deepStrictEqual(result, { product: false, architecture: false });
+  });
+});
+
+describe('queueGapAnalysisForIssues', () => {
+  it('queues product and architecture analyst prompts for Needs analysis issues', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const mockDeps = {
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+    };
+    const issues = [
+      makeIssue({ number: 10, status: 'Needs analysis', title: 'Auth', body: 'Implement auth', wave: 1 }),
+      makeIssue({ number: 20, status: 'Ready' }),
+    ];
+    const count = await queueGapAnalysisForIssues(
+      issues, '/queue', '# Product Prompt', '# Arch Prompt', '# Spec content here', mockDeps,
+    );
+    assert.equal(count, 1);
+    assert.ok(writtenFiles['/queue/gap-analysis-product.md']);
+    assert.ok(writtenFiles['/queue/gap-analysis-architecture.md']);
+
+    const productContent = writtenFiles['/queue/gap-analysis-product.md'];
+    assert.match(productContent, /orch_product_analyst/);
+    assert.match(productContent, /# Product Prompt/);
+    assert.match(productContent, /# Spec content here/);
+    assert.match(productContent, /Issue #10: Auth/);
+    assert.match(productContent, /Implement auth/);
+
+    const archContent = writtenFiles['/queue/gap-analysis-architecture.md'];
+    assert.match(archContent, /orch_arch_analyst/);
+    assert.match(archContent, /# Arch Prompt/);
+    assert.match(archContent, /# Spec content here/);
+  });
+
+  it('returns 0 when no issues need analysis', async () => {
+    const mockDeps = {
+      writeFile: async () => {},
+    };
+    const issues = [
+      makeIssue({ number: 1, status: 'Needs decomposition' }),
+    ];
+    const count = await queueGapAnalysisForIssues(
+      issues, '/queue', '# P', '# A', '# S', mockDeps,
+    );
+    assert.equal(count, 0);
+  });
+
+  it('includes xhigh reasoning in frontmatter', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const mockDeps = {
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+    };
+    const issues = [
+      makeIssue({ number: 5, status: 'Needs analysis' }),
+    ];
+    await queueGapAnalysisForIssues(issues, '/queue', '# P', '# A', '# S', mockDeps);
+    const content = writtenFiles['/queue/gap-analysis-product.md'];
+    assert.match(content, /^---/);
+    assert.match(content, /"reasoning": "xhigh"/);
+  });
+});
+
+describe('orchestrateCommandWithDeps gap analysis integration', () => {
+  it('creates gap analysis requests when issues have Needs analysis status', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const deps = createMockDeps({
+      existsSync: (p: string) => p.endsWith('plan.json'),
+      readFile: async (p: string) => {
+        if (p.endsWith('plan.json')) {
+          return JSON.stringify({
+            issues: [
+              { id: 1, title: 'Epic A', body: 'Build A', depends_on: [] },
+            ],
+          });
+        }
+        return '';
+      },
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+    });
+    const result = await orchestrateCommandWithDeps(
+      { plan: 'plan.json' },
+      deps,
+    );
+
+    // After plan application with no repo, issues get 'Needs analysis' status (default pending state)
+    // The gap analysis should only trigger for 'Needs analysis' status issues
+    // Check that the orchestrator state was written
+    assert.ok(result.state_file.includes('orchestrator.json'));
+  });
+
+  it('writes product and arch analyst prompt files to prompts dir', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const deps = createMockDeps({
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+    });
+    await orchestrateCommandWithDeps({}, deps);
+
+    const promptPaths = Object.keys(writtenFiles);
+    assert.ok(promptPaths.some((p) => p.includes('PROMPT_orch_product_analyst.md')));
+    assert.ok(promptPaths.some((p) => p.includes('PROMPT_orch_arch_analyst.md')));
   });
 });

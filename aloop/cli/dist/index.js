@@ -8764,14 +8764,17 @@ async function applyDecompositionPlan(plan, state, sessionDir, repo, deps) {
     updatedIssues.push({
       number: ghNumber,
       title: planIssue.title,
+      body: planIssue.body,
       wave,
       state: "pending",
+      status: "Needs refinement",
       child_session: null,
       pr_number: null,
       depends_on: planIssue.depends_on.map((depId) => idToGhNumber.get(depId) ?? depId),
       blocked_on_human: false,
       processed_comment_ids: [],
-      triage_log: []
+      triage_log: [],
+      dor_validated: false
     });
   }
   const updatedState = {
@@ -8783,6 +8786,86 @@ async function applyDecompositionPlan(plan, state, sessionDir, repo, deps) {
   return updatedState;
 }
 var ORCH_SCAN_PROMPT_FILENAME = "PROMPT_orch_scan.md";
+var ORCH_ESTIMATE_PROMPT_FILENAME = "PROMPT_orch_estimate.md";
+var ORCH_PRODUCT_ANALYST_PROMPT_FILENAME = "PROMPT_orch_product_analyst.md";
+var ORCH_ARCH_ANALYST_PROMPT_FILENAME = "PROMPT_orch_arch_analyst.md";
+var ORCH_ESTIMATE_PROMPT_FALLBACK = `# Orchestrator Estimation Agent
+
+You are Aloop, the estimation agent for orchestrator readiness checks.
+
+## Objective
+
+Estimate implementation effort and risk for one refined sub-issue.
+
+## Required Outputs
+
+- Complexity tier: \`S\`, \`M\`, \`L\`, or \`XL\`
+- Estimated child-loop iteration count
+- Key risk flags (novel tech, unclear requirements, high coupling, external dependency)
+- Confidence note (high/medium/low) with rationale
+
+## Readiness Check
+
+Confirm whether the item satisfies Definition of Ready:
+
+- Acceptance criteria are specific and testable
+- No unresolved linked \`aloop/spec-question\` blockers
+- Dependencies are resolved/scheduled
+- Planner approach is present
+- Interface contracts are explicit
+
+If DoR passes, recommend label \`aloop/ready\`; otherwise keep blocked and list gaps.
+`;
+var ORCH_PRODUCT_ANALYST_FALLBACK = `# Orchestrator Product Analyst
+
+You are Aloop, the product analyst agent for orchestrator refinement.
+
+## Objective
+
+Find product-level gaps that would cause rework during implementation.
+
+## Review Focus
+
+- Missing user stories/personas
+- Ambiguous acceptance criteria
+- Scope holes and undefined referenced features
+- Conflicting product requirements between sections/issues
+- Edge cases and error flows that are not specified
+
+## Output
+
+For each actionable gap:
+
+1. Create one focused \`aloop/spec-question\` issue payload (interview style).
+2. Include: the question, why this gap matters, concrete resolution options, which epic/sub-issue is blocked.
+3. Write requests to \`requests/*.json\` using runtime-supported request formats.
+
+If no material gap exists, write no-op updates only (no filler questions).
+`;
+var ORCH_ARCH_ANALYST_FALLBACK = `# Orchestrator Architecture Analyst
+
+You are Aloop, the architecture analyst agent for orchestrator refinement.
+
+## Objective
+
+Find architecture and technical gaps before decomposition or dispatch.
+
+## Review Focus
+
+- Infeasible constraints
+- Missing system boundaries and integration points
+- Unstated technical dependencies (data stores, services, auth, queues)
+- Undefined API/data contracts
+- Performance/scale assumptions lacking measurable targets
+- Migration/backward-compatibility risks
+
+## Output
+
+- Raise focused \`aloop/spec-question\` issues for unresolved architecture gaps.
+- Update affected issue body text with clarified constraints/contracts when possible.
+- Write only concrete runtime requests to \`requests/*.json\`.
+- Do not emit broad or speculative redesign work.
+`;
 function buildOrchestratorScanPrompt() {
   return `---
 agent: orch_scan
@@ -8821,6 +8904,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const requestsDir = path11.join(sessionDir, "requests");
   const loopPlanFile = path11.join(sessionDir, "loop-plan.json");
   const orchScanPromptFile = path11.join(promptsDir, ORCH_SCAN_PROMPT_FILENAME);
+  const orchEstimatePromptFile = path11.join(promptsDir, ORCH_ESTIMATE_PROMPT_FILENAME);
   await deps.mkdir(sessionDir, { recursive: true });
   await deps.mkdir(promptsDir, { recursive: true });
   await deps.mkdir(queueDir, { recursive: true });
@@ -8834,6 +8918,16 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   await deps.writeFile(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}
 `, "utf8");
   await deps.writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(), "utf8");
+  const templateRoot = options.projectRoot ? path11.resolve(options.projectRoot) : process.cwd();
+  const estimateTemplatePath = path11.join(templateRoot, "aloop", "templates", ORCH_ESTIMATE_PROMPT_FILENAME);
+  const estimatePrompt = deps.existsSync(estimateTemplatePath) ? await deps.readFile(estimateTemplatePath, "utf8") : ORCH_ESTIMATE_PROMPT_FALLBACK;
+  await deps.writeFile(orchEstimatePromptFile, estimatePrompt, "utf8");
+  const productAnalystTemplatePath = path11.join(templateRoot, "aloop", "templates", ORCH_PRODUCT_ANALYST_PROMPT_FILENAME);
+  const productAnalystPrompt = deps.existsSync(productAnalystTemplatePath) ? await deps.readFile(productAnalystTemplatePath, "utf8") : ORCH_PRODUCT_ANALYST_FALLBACK;
+  await deps.writeFile(path11.join(promptsDir, ORCH_PRODUCT_ANALYST_PROMPT_FILENAME), productAnalystPrompt, "utf8");
+  const archAnalystTemplatePath = path11.join(templateRoot, "aloop", "templates", ORCH_ARCH_ANALYST_PROMPT_FILENAME);
+  const archAnalystPrompt = deps.existsSync(archAnalystTemplatePath) ? await deps.readFile(archAnalystTemplatePath, "utf8") : ORCH_ARCH_ANALYST_FALLBACK;
+  await deps.writeFile(path11.join(promptsDir, ORCH_ARCH_ANALYST_PROMPT_FILENAME), archAnalystPrompt, "utf8");
   let state = {
     spec_file: specFile,
     trunk_branch: trunkBranch,
@@ -8866,8 +8960,58 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     }
     state = await applyDecompositionPlan(plan, state, sessionDir, filterRepo, deps);
   }
+  const gapAnalysisTargets = state.issues.filter((issue) => issue.status === "Needs analysis");
+  if (gapAnalysisTargets.length > 0) {
+    await createGapAnalysisRequests(state.issues, requestsDir, deps);
+    const specPath = path11.resolve(specFile);
+    const specContent = deps.existsSync(specPath) ? await deps.readFile(specPath, "utf8") : "";
+    await queueGapAnalysisForIssues(
+      state.issues,
+      queueDir,
+      productAnalystPrompt,
+      archAnalystPrompt,
+      specContent,
+      deps
+    );
+  }
   if (filterRepo && state.issues.length > 0 && deps.execGh) {
     await runTriageMonitorCycle(state, path11.basename(sessionDir), filterRepo, deps, aloopRoot);
+  }
+  const dorTargets = state.issues.filter((issue) => issue.status === "Needs refinement" && issue.dor_validated !== true).map((issue) => ({
+    issue_number: issue.number,
+    title: issue.title,
+    wave: issue.wave,
+    depends_on: issue.depends_on
+  }));
+  if (dorTargets.length > 0) {
+    const estimateRequestFile = path11.join(requestsDir, "estimate-readiness.json");
+    const estimateRequest = {
+      type: "definition_of_ready_estimate",
+      prompt_template: ORCH_ESTIMATE_PROMPT_FILENAME,
+      generated_at: deps.now().toISOString(),
+      targets: dorTargets
+    };
+    await deps.writeFile(estimateRequestFile, `${JSON.stringify(estimateRequest, null, 2)}
+`, "utf8");
+    await queueEstimateForIssues(
+      state.issues,
+      queueDir,
+      estimatePrompt,
+      deps
+    );
+  }
+  const estimateResponseFile = path11.join(requestsDir, "estimate-results.json");
+  if (deps.existsSync(estimateResponseFile)) {
+    const responseContent = await deps.readFile(estimateResponseFile, "utf8");
+    try {
+      const estimateResults = JSON.parse(responseContent);
+      await applyEstimateResults(state, estimateResults, {
+        execGhIssueCreate: deps.execGhIssueCreate,
+        repo: filterRepo ?? void 0,
+        sessionId
+      });
+    } catch {
+    }
   }
   const stateFile = path11.join(sessionDir, "orchestrator.json");
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
@@ -9289,6 +9433,174 @@ async function runTriageMonitorCycle(state, sessionId, repo, deps, aloopRoot) {
   }
   state.updated_at = deps.now().toISOString();
   return { processed_issues: state.issues.length, triaged_entries: triagedEntries };
+}
+async function applyEstimateResults(state, results, deps) {
+  const outcome = { updated: [], blocked: [] };
+  const issueByNumber = /* @__PURE__ */ new Map();
+  for (const issue of state.issues) {
+    issueByNumber.set(issue.number, issue);
+  }
+  for (const result of results) {
+    const issue = issueByNumber.get(result.issue_number);
+    if (!issue)
+      continue;
+    if (result.dor_passed) {
+      issue.dor_validated = true;
+      if (issue.status === "Needs refinement") {
+        issue.status = "Ready";
+      }
+      outcome.updated.push(result.issue_number);
+    } else {
+      issue.dor_validated = false;
+      outcome.blocked.push(result.issue_number);
+      if (result.gaps && result.gaps.length > 0 && deps?.execGhIssueCreate && deps.repo && deps.sessionId) {
+        for (const gap of result.gaps) {
+          await deps.execGhIssueCreate(
+            deps.repo,
+            deps.sessionId,
+            `[spec-question] #${result.issue_number}: ${gap}`,
+            `Blocking issue #${result.issue_number} (${issue.title}).
+
+**DoR gap:** ${gap}
+
+This spec-question must be resolved before the parent issue can be dispatched.`,
+            ["aloop/spec-question"]
+          );
+        }
+      }
+    }
+  }
+  return outcome;
+}
+async function queueEstimateForIssues(issues, queueDir, estimatePrompt, deps) {
+  const targets = issues.filter(
+    (issue) => issue.status === "Needs refinement" && issue.dor_validated !== true
+  );
+  if (targets.length === 0)
+    return 0;
+  for (const issue of targets) {
+    const contextBlock = [
+      `## Issue #${issue.number}: ${issue.title}`,
+      "",
+      issue.body ?? "(no body)",
+      "",
+      `**Wave:** ${issue.wave}`,
+      `**Dependencies:** ${issue.depends_on.length > 0 ? issue.depends_on.map((d) => `#${d}`).join(", ") : "none"}`
+    ].join("\n");
+    const content = [
+      "---",
+      JSON.stringify({
+        agent: "orch_estimate",
+        reasoning: "high",
+        type: "estimate_override",
+        issue_number: issue.number
+      }, null, 2),
+      "---",
+      "",
+      estimatePrompt,
+      "",
+      "## Context",
+      "",
+      contextBlock,
+      "",
+      "Produce your output as a JSON code block with fields: `issue_number`, `dor_passed`, `complexity_tier`, `iteration_estimate`, `risk_flags`, `confidence`, `gaps`."
+    ].join("\n");
+    const fileName = `estimate-issue-${issue.number}.md`;
+    await deps.writeFile(path11.join(queueDir, fileName), content, "utf8");
+  }
+  return targets.length;
+}
+async function createGapAnalysisRequests(issues, requestsDir, deps) {
+  const targets = issues.filter((issue) => issue.status === "Needs analysis").map((issue) => ({
+    issue_number: issue.number,
+    title: issue.title,
+    body: issue.body ?? "",
+    wave: issue.wave
+  }));
+  if (targets.length === 0)
+    return { product: false, architecture: false };
+  const productRequest = {
+    type: "product_analyst_review",
+    prompt_template: ORCH_PRODUCT_ANALYST_PROMPT_FILENAME,
+    generated_at: deps.now().toISOString(),
+    targets
+  };
+  await deps.writeFile(
+    path11.join(requestsDir, "product-analyst-review.json"),
+    `${JSON.stringify(productRequest, null, 2)}
+`,
+    "utf8"
+  );
+  const archRequest = {
+    type: "architecture_analyst_review",
+    prompt_template: ORCH_ARCH_ANALYST_PROMPT_FILENAME,
+    generated_at: deps.now().toISOString(),
+    targets
+  };
+  await deps.writeFile(
+    path11.join(requestsDir, "architecture-analyst-review.json"),
+    `${JSON.stringify(archRequest, null, 2)}
+`,
+    "utf8"
+  );
+  return { product: true, architecture: true };
+}
+async function queueGapAnalysisForIssues(issues, queueDir, productAnalystPrompt, archAnalystPrompt, specContent, deps) {
+  const targets = issues.filter((issue) => issue.status === "Needs analysis");
+  if (targets.length === 0)
+    return 0;
+  const issueContext = targets.map(
+    (issue) => `### Issue #${issue.number}: ${issue.title}
+
+${issue.body ?? "(no body)"}
+
+**Wave:** ${issue.wave}`
+  ).join("\n\n---\n\n");
+  const productContent = [
+    "---",
+    JSON.stringify(
+      { agent: "orch_product_analyst", reasoning: "xhigh", type: "gap_analysis" },
+      null,
+      2
+    ),
+    "---",
+    "",
+    productAnalystPrompt,
+    "",
+    "## Spec",
+    "",
+    specContent,
+    "",
+    "## Issues Under Analysis",
+    "",
+    issueContext,
+    "",
+    "For each gap found, write a `requests/req-NNN-create_issues.json` file with `aloop/spec-question` label. If no gaps, do nothing."
+  ].join("\n");
+  await deps.writeFile(path11.join(queueDir, "gap-analysis-product.md"), productContent, "utf8");
+  const archContent = [
+    "---",
+    JSON.stringify(
+      { agent: "orch_arch_analyst", reasoning: "xhigh", type: "gap_analysis" },
+      null,
+      2
+    ),
+    "---",
+    "",
+    archAnalystPrompt,
+    "",
+    "## Spec",
+    "",
+    specContent,
+    "",
+    "## Issues Under Analysis",
+    "",
+    issueContext,
+    "",
+    "For each gap found, write a `requests/req-NNN-create_issues.json` file with `aloop/spec-question` label. If no gaps, do nothing."
+  ].join("\n");
+  await deps.writeFile(path11.join(queueDir, "gap-analysis-architecture.md"), archContent, "utf8");
+  return targets.length;
 }
 
 // src/index.ts

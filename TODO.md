@@ -10,12 +10,12 @@ Priority: Loop engine correctness -> Orchestrator core -> GitHub integration -> 
 
 ### Up Next — P0 (Blocking)
 - [~] [orchestrator/P0] Label-driven state machine — cancelled: superseded by steering to research GitHub-native status/project-state progression with minimal labels.
-- [ ] [orchestrator/P0] Global spec gap analysis — wire product analyst + architecture analyst agents to run before decomposition, creating `aloop/spec-question` issues for gaps. Templates exist (`PROMPT_orch_product_analyst.md`, `PROMPT_orch_arch_analyst.md`) but are never invoked from orchestrate.ts.
+- [x] [orchestrator/P0] Global spec gap analysis — wire product analyst + architecture analyst agents to run before decomposition, creating `aloop/spec-question` issues for gaps. Templates loaded, written to prompts dir, and invoked via `createGapAnalysisRequests()` + `queueGapAnalysisForIssues()` for issues in `Needs analysis` status.
 - [ ] [orchestrator/P0] Orchestrator scan loop — orchestrate.ts initializes state and applies decomposition but has no main processing loop. Implement the scan-agent heartbeat cycle: read GitHub state each iteration, identify items ready for their next state transition, and queue work via `requests/*.json` and `queue/*.md`.
 
 ### Up Next — P1 (Core Features)
 - [ ] [orchestrator/P1] Epic & sub-issue decomposition logic — vertical slice decomposition, sub-issue creation/linking via GitHub API, file ownership hints for parallel edit conflict prevention. Templates exist (`PROMPT_orch_decompose.md`, `PROMPT_orch_sub_decompose.md`) and `applyDecompositionPlan()` applies a pre-computed plan, but no code invokes the decomposition agents or manages label workflow transitions (`aloop/needs-refine` → `aloop/needs-decompose` → `aloop/ready`).
-- [ ] [orchestrator/P1] Missing orchestrator prompts — add remaining templates not present: `PROMPT_orch_resolver.md` (spec-question resolution per autonomy level), `PROMPT_orch_replan.md` (event-driven replanning), `PROMPT_orch_spec_consistency.md` (spec reorganization after changes). 11 of 14 spec-referenced templates exist.
+- [x] [orchestrator/P1] Missing orchestrator prompts — add remaining templates not present: `PROMPT_orch_resolver.md` (spec-question resolution per autonomy level), `PROMPT_orch_replan.md` (event-driven replanning), `PROMPT_orch_spec_consistency.md` (spec reorganization after changes). 11 of 14 spec-referenced templates exist.
 - [ ] [orchestrator/P1] Orchestrator dispatch logic — when sub-issues reach `Ready` status, create worktree, compile child `loop-plan.json` with implementation cycle, seed sub-spec, launch child `loop.sh`. Respect concurrency cap and wave scheduling. File ownership hints prevent parallel edit conflicts.
 - [ ] [orchestrator/P1] Monitor/gate/merge cycle — child status monitoring (read `status.json`), stuck-child steering, PR creation on completion, gate enforcement (CI, coverage, merge conflicts, spec regression), squash merge to `agent/trunk`, downstream unblocking.
 - [ ] [orchestrator/P1] Autonomy levels (cautious/balanced/autonomous) — config in setup, resolver agent, risk classification, autonomous decision logging, user override.
@@ -63,7 +63,9 @@ Priority: Loop engine correctness -> Orchestrator core -> GitHub integration -> 
 - [x] [review] `VERSIONS.md` created for Gate 8 compliance.
 - [x] [dashboard] Docs-tab non-empty filtering.
 - [x] [pipeline] Configurable agent pipeline (`pipeline.yml`, `.aloop/agents/`).
-- [x] [orchestrator] Orchestrator prompt templates (11 files).
+- [x] [orchestrator] Orchestrator prompt templates (14 files).
+- [x] [orchestrator/P0] Definition of Ready (DoR) gate — `validateDoR()` enforces DoR criteria before dispatch in `getDispatchableIssues()`.
+- [x] [orchestrator/P1] Missing orchestrator prompts — added `PROMPT_orch_resolver.md`, `PROMPT_orch_replan.md`, `PROMPT_orch_spec_consistency.md`.
 
 ## Blocked
 - [orchestrator/P0] [research] GitHub-native state model feasibility — verify whether issue state + Project status can replace `aloop/*` progression labels; target single tracking label `aloop` unless native states cannot represent required transitions. Current orchestrate.ts uses label-based state (`pending`/`in_progress`/`pr_open`/`merged`/`failed`); spec requires Project status field (`Needs analysis`/`Needs decomposition`/`Ready`/`In progress`/`Done`) with label fallback. (stuck after 3 attempts)
