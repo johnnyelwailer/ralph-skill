@@ -21,3 +21,45 @@
 - Gate 7: Layout verification for dashboard (header/main vertical stack) successfully proven via artifact.
 
 ---
+
+## Review — 2026-03-15 — commit 6ee6653..e3d7f17
+
+**Verdict: PASS** (all 8 gates pass, 1 observation)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/cli/dashboard/src/App.tsx`, `aloop/cli/dashboard/src/App.test.tsx`, `aloop/cli/src/commands/dashboard.ts`, `aloop/templates/PROMPT_plan.md`, `VERSIONS.md`
+
+**Resolved from prior reviews:**
+- Gate 8 ✅: `VERSIONS.md` created with authoritative version table (major versions verified against actual package.json).
+- Gate 4 ✅: Provenance trailers implemented in both `loop.sh` and `loop.ps1` via `prepare-commit-msg` hook. Integration test (`loop_provenance.tests.sh`) passes, verifying `Aloop-Agent`, `Aloop-Iteration`, `Aloop-Session` trailers on agent commits and harness initialization commit.
+
+**Positive observations:**
+- Gate 2: `App.test.tsx` new `filterDocs` suite (10 tests) asserts concrete array outputs with ordering, empty/null handling, extra docs, whitespace edge cases — thorough.
+- Gate 5: 79/79 dashboard unit tests pass (smoke.spec.ts failure is pre-existing Playwright/Vitest import conflict). CLI 8/8 tests pass. Type-check clean. Build succeeds. Provenance integration test passes end-to-end with real git repo.
+- Gate 6: Proof manifest correctly skipped all 5 internal bug fixes (no externally observable changes). No filler artifacts generated.
+- Gate 1: Loop failure reason persistence (`PHASE_RETRY_FAILURE_REASONS` array, `write_phase_retry_exhausted_entry` JSON function in shell, `phaseRetryState.failureReasons` in PS1) tracks all failure reasons per the retry-same-phase spec. Dashboard `withCurrent` memo fix prevents synthetic running entries from colliding with stale iteration numbers. Dashboard `enrichedRecent` populates sidebar status from `status.json` for stopped sessions. PROMPT_plan.md priority reordering now defers low-priority `[review]` tasks per spec authority.
+
+---
+
+## Review — 2026-03-15 — commit e3d7f17..61de8af
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/dashboard/src/App.tsx`, `aloop/cli/src/commands/dashboard.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/src/lib/requests.ts`, `aloop/cli/dashboard/src/components/ui/dropdown-menu.tsx`, `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/templates/PROMPT_orch_replan.md`, `aloop/templates/PROMPT_orch_resolver.md`, `aloop/templates/PROMPT_orch_spec_consistency.md`
+
+- Gate 4: **Dead code** — `sendToDefaultSessionClients` (`dashboard.ts:568`) is defined but never called anywhere in the file.
+- Gate 4: **Copy-paste duplication** — `publishState` (`dashboard.ts:582-615`) has identical logic in the `isGlobal` branch and the `else` branch. Both iterate clients, build per-context payloads, and send SSE events with the exact same code.
+- Gate 8: **VERSIONS.md drift** — `@radix-ui/react-dropdown-menu@^2.1.16` was added to `dashboard/package.json` but not declared in `VERSIONS.md`.
+
+**Resolved from prior reviews:**
+- Gate 8 ✅: `VERSIONS.md` created (prior review).
+- Gate 4 ✅: Provenance trailers implemented (prior review).
+
+**Positive observations:**
+- Gate 1: Footer rework correctly implements stop dropdown (SIGTERM/SIGKILL) and Resume button for stopped sessions. Docs panel filters empty content (line 727: `!= null && !== ''`) and overflows into `⋯` dropdown. Provider cooldown shows remaining duration. Open-in-IDE uses server-side `/api/open-ide` to avoid browser `vscode://` URI restrictions.
+- Gate 2: orchestrate.test.ts has 226 tests covering decomposition, dispatch, triage, monitoring, budget, and scan loop — thorough and well-structured.
+- Gate 3: orchestrate.ts branch coverage 86.19% (target >=80%). requests.ts branch coverage 84.78% (target >=80%). Both pass.
+- Gate 5: 8/8 CLI tests, 226/226 orchestrate tests, 32/32 requests tests, 79/79 dashboard unit tests all pass. Type-check clean. Build succeeds (393.1kb).
+- Gate 6: Proof manifest iter-5 artifacts all present — API captures for `/api/resume` (GET 405, POST 202 with PID), screenshots at desktop/tablet/mobile viewports, stopped-state screenshot showing Resume button, bounding-box layout assertions JSON confirming side-by-side panels, sticky footer, and collapsed sidebar zero width.
+- Gate 7: Layout bounding-box checks confirm `side_by_side_same_y: true`, `side_by_side_different_x: true`, `footer_at_viewport_bottom_after_scroll: true`, `collapsed_sidebar_zero_width: true`. Screenshots visually verify the layout.
+
+---
+
+
