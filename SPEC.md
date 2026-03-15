@@ -2060,7 +2060,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 - Read `loop-plan.json` each iteration, pick agent at `$cyclePosition`
 - Provider invocation (direct — loop and providers run in the same environment)
   - Must track child PIDs when invoking providers
-  - Per-iteration timeout (configurable via `ALOOP_PROVIDER_TIMEOUT`, default 2 hours) — kill child process tree on timeout; only acts as a safety net for truly hung processes
+  - Per-iteration timeout (configurable via `ALOOP_PROVIDER_TIMEOUT`, default 8 hours) — catastrophic safety net only; not a behavioral limit on agent runtime
   - On loop exit (`finally`/`trap`), kill all spawned child processes
 - Stuck detection and iteration counting
 - Status.json and log.jsonl writes
