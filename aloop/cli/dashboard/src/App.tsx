@@ -552,7 +552,7 @@ function Sidebar({
   );
 
   return (
-    <div className="flex flex-col border-r border-border bg-sidebar w-56 shrink-0 animate-slide-in-left">
+    <div className="flex flex-col border-r border-border bg-sidebar w-64 shrink-0 animate-slide-in-left">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
         <Tooltip>
@@ -565,7 +565,7 @@ function Sidebar({
         </Tooltip>
       </div>
       <ScrollArea className="flex-1">
-        <div className="p-2">
+        <div className="p-2 overflow-hidden">
           {Array.from(projectGroups.entries()).map(([project, items]) => (
             <Collapsible key={project} defaultOpen>
               <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider hover:text-muted-foreground">
