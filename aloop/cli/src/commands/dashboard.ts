@@ -222,6 +222,32 @@ function withLivenessCorrectedState(status: unknown | null, pid: number | null):
   };
 }
 
+/**
+ * Resolves the current PID for a session, preferring the one from context or meta.json
+ * but falling back to active.json if the resolved PID is missing or dead.
+ */
+async function resolvePid(
+  ctx: SessionContext,
+  meta: unknown,
+  runtimeDir: string,
+): Promise<number | null> {
+  let pid: number | null = ctx.pid ?? extractPid(meta) ?? null;
+
+  if (pid === null || !isProcessAlive(pid)) {
+    // PID is missing or dead — try active.json for a fresh/current PID
+    const sessionId = path.basename(ctx.sessionDir);
+    const active = await readJsonFile(path.join(runtimeDir, 'active.json'));
+    if (isRecord(active)) {
+      const entry = active[sessionId];
+      if (isRecord(entry) && typeof entry.pid === 'number' && entry.pid > 0) {
+        pid = entry.pid;
+      }
+    }
+  }
+
+  return pid;
+}
+
 async function loadStateForContext(
   ctx: SessionContext,
   runtimeDir: string,
@@ -246,31 +272,12 @@ async function loadStateForContext(
     ),
     loadArtifactManifests(ctx.sessionDir),
   ]);
+
   // Resolve PID: prefer ctx.pid (from session resolution), fall back to
   // meta.json, then active.json.  If the resolved PID is dead, also try
   // active.json — meta.json may hold a stale PID from a previous run while
   // active.json has the current one.
-  let pid: number | null = ctx.pid ?? extractPid(meta) ?? null;
-  if (pid !== null && !isProcessAlive(pid)) {
-    // PID from meta is stale — try active.json for a fresh PID
-    const sessionId = path.basename(ctx.sessionDir);
-    const active = await readJsonFile(path.join(runtimeDir, 'active.json'));
-    if (isRecord(active)) {
-      const entry = active[sessionId];
-      if (isRecord(entry) && typeof entry.pid === 'number' && entry.pid > 0) {
-        pid = entry.pid;
-      }
-    }
-  } else if (pid === null) {
-    const sessionId = path.basename(ctx.sessionDir);
-    const active = await readJsonFile(path.join(runtimeDir, 'active.json'));
-    if (isRecord(active)) {
-      const entry = active[sessionId];
-      if (isRecord(entry) && typeof entry.pid === 'number' && entry.pid > 0) {
-        pid = entry.pid;
-      }
-    }
-  }
+  const pid = await resolvePid(ctx, meta, runtimeDir);
   const correctedStatus = withLivenessCorrectedState(status, pid);
 
   return {

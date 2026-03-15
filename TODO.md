@@ -6,8 +6,8 @@
 
 - [x] [review] Gate 3: Raise `plan.ts` branch coverage from 73.91% to >=80% — add tests for options: `cycle`, `allTasksMarkedDone`, `forceReviewNext`, `forceProofNext`, `forcePlanNext`. Uncovered branches at lines 58, 61-64. (priority: critical)
 - [x] [review] Gate 1: Dashboard is missing spec-required `stuck_count` visibility in session status/details. (priority: high)
-- [ ] [review] Gate 1: Dashboard is missing session elapsed context (avg duration) in header. (priority: high)
-- [ ] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — extract PID lookup into a helper. (priority: high)
+- [x] [review] Gate 1: Dashboard is missing session elapsed context (avg duration) in header. (priority: high)
+- [x] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — extract PID lookup into a helper. (priority: high)
 - [ ] [review] Gate 6: Regenerate proof artifacts for iteration 11 (`gh-test-output.txt`, `derive-mode-test.txt`, etc. are missing). (priority: medium)
 
 ### Up Next (P1 — Dashboard UX + Test Infrastructure)
