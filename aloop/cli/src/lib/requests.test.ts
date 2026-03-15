@@ -440,6 +440,422 @@ test('processAgentRequests - invalid JSON', async () => {
   }
 });
 
+test('processAgentRequests - steer_child no active.json', async () => {
+  const env = await setupTestEnv();
+  try {
+    await fs.writeFile(path.join(env.workdir, 'prompt.md'), 'Steer me');
+    const req = {
+      id: 'req-steer-noactive',
+      type: 'steer_child',
+      payload: { issue_number: 101, prompt_file: 'prompt.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-steer-noactive.json'), JSON.stringify(req));
+
+    await processAgentRequests({ ...env, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
+    assert.ok(failedFiles.includes('req-steer-noactive.json'));
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    assert.strictEqual(queueFiles.length, 1);
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('No active sessions found'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - steer_child child not found anywhere', async () => {
+  const env = await setupTestEnv();
+  try {
+    // Create active.json with no matching sessions
+    await fs.writeFile(path.join(env.aloopDir, 'active.json'), JSON.stringify({ 'other-session': {} }));
+    // Create a meta.json for 'other-session' with different issue
+    const otherDir = path.join(env.aloopDir, 'sessions', 'other-session');
+    await fs.mkdir(otherDir, { recursive: true });
+    await fs.writeFile(path.join(otherDir, 'meta.json'), JSON.stringify({ issue_number: 999 }));
+
+    await fs.writeFile(path.join(env.workdir, 'prompt.md'), 'Steer me');
+    const req = {
+      id: 'req-steer-notfound',
+      type: 'steer_child',
+      payload: { issue_number: 101, prompt_file: 'prompt.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-steer-notfound.json'), JSON.stringify(req));
+
+    await processAgentRequests({ ...env, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
+    assert.ok(failedFiles.includes('req-steer-notfound.json'));
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('Could not find child session for issue #101'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - steer_child found in history.json', async () => {
+  const env = await setupTestEnv();
+  try {
+    // active.json with no matching session (session without meta.json)
+    await fs.writeFile(path.join(env.aloopDir, 'active.json'), JSON.stringify({ 'no-meta-session': {} }));
+
+    // history.json with matching session
+    await fs.writeFile(path.join(env.aloopDir, 'history.json'), JSON.stringify([
+      { session_id: 'hist-session', issue_number: 101 }
+    ]));
+
+    // Create child session dir for the history match
+    const childDir = path.join(env.aloopDir, 'sessions', 'hist-session');
+    await fs.mkdir(childDir, { recursive: true });
+
+    await fs.writeFile(path.join(env.workdir, 'prompt.md'), 'Steer from history');
+    const req = {
+      id: 'req-steer-hist',
+      type: 'steer_child',
+      payload: { issue_number: 101, prompt_file: 'prompt.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-steer-hist.json'), JSON.stringify(req));
+
+    await processAgentRequests({ ...env, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    // Should succeed - queue override written to child session
+    const childQueueDir = path.join(childDir, 'queue');
+    const queueFiles = await fs.readdir(childQueueDir);
+    assert.strictEqual(queueFiles.length, 1);
+    const content = await fs.readFile(path.join(childQueueDir, queueFiles[0]), 'utf8');
+    assert.ok(content.includes('Steer from history'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - steer_child matches gh_issue_number', async () => {
+  const env = await setupTestEnv();
+  try {
+    const childSessionId = 'child-gh-issue';
+    const childDir = path.join(env.aloopDir, 'sessions', childSessionId);
+    await fs.mkdir(childDir, { recursive: true });
+    await fs.writeFile(path.join(childDir, 'meta.json'), JSON.stringify({ gh_issue_number: 101 }));
+    await fs.writeFile(path.join(env.aloopDir, 'active.json'), JSON.stringify({ [childSessionId]: {} }));
+
+    await fs.writeFile(path.join(env.workdir, 'prompt.md'), 'Steer via gh_issue');
+    const req = {
+      id: 'req-steer-gh',
+      type: 'steer_child',
+      payload: { issue_number: 101, prompt_file: 'prompt.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-steer-gh.json'), JSON.stringify(req));
+
+    await processAgentRequests({ ...env, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const childQueueDir = path.join(childDir, 'queue');
+    const queueFiles = await fs.readdir(childQueueDir);
+    assert.strictEqual(queueFiles.length, 1);
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - dispatch_child spawn failure', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = {
+      id: 'req-dispatch-fail',
+      type: 'dispatch_child',
+      payload: { issue_number: 101, branch: 'feat/x', pipeline: 'build', sub_spec_file: 'sub.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-dispatch-fail.json'), JSON.stringify(req));
+
+    const spawnSync = ((_cmd: string, _args: string[]) => ({
+      status: 1,
+      stdout: '',
+      stderr: 'dispatch error'
+    })) as any;
+
+    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
+    assert.ok(failedFiles.includes('req-dispatch-fail.json'));
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('Failed to dispatch child'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - dispatch_child spawn failure stderr fallback to stdout', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = {
+      id: 'req-dispatch-fail2',
+      type: 'dispatch_child',
+      payload: { issue_number: 101, branch: 'feat/x', pipeline: 'build', sub_spec_file: 'sub.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-dispatch-fail2.json'), JSON.stringify(req));
+
+    const spawnSync = ((_cmd: string, _args: string[]) => ({
+      status: 1,
+      stdout: 'stdout error info',
+      stderr: ''
+    })) as any;
+
+    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('stdout error info'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - stop_child spawn failure', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = {
+      id: 'req-stop-fail',
+      type: 'stop_child',
+      payload: { issue_number: 101, reason: 'cancel' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-stop-fail.json'), JSON.stringify(req));
+
+    const spawnSync = ((_cmd: string, _args: string[]) => ({
+      status: 1,
+      stdout: '',
+      stderr: 'stop error'
+    })) as any;
+
+    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
+    assert.ok(failedFiles.includes('req-stop-fail.json'));
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('Failed to stop child'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - update_issue body_file spawn failure', async () => {
+  const env = await setupTestEnv();
+  try {
+    await fs.writeFile(path.join(env.workdir, 'body.md'), 'Body content');
+    const req = {
+      id: 'req-upd-fail-body',
+      type: 'update_issue',
+      payload: { number: 101, body_file: 'body.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-upd-fail-body.json'), JSON.stringify(req));
+
+    const spawnSync = ((_cmd: string, _args: string[]) => ({
+      status: 1,
+      stderr: 'gh edit failed'
+    })) as any;
+
+    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
+    assert.ok(failedFiles.includes('req-upd-fail-body.json'));
+    // Verify temp file was cleaned up (finally block)
+    const reqFiles = await fs.readdir(env.requestsDir);
+    const tmpFiles = reqFiles.filter(f => f.startsWith('_tmp_'));
+    assert.strictEqual(tmpFiles.length, 0);
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - update_issue no body_file spawn failure', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = {
+      id: 'req-upd-fail-nobody',
+      type: 'update_issue',
+      payload: { number: 101, state: 'closed' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-upd-fail-nobody.json'), JSON.stringify(req));
+
+    const spawnSync = ((_cmd: string, _args: string[]) => ({
+      status: 1,
+      stderr: 'gh edit no body failed'
+    })) as any;
+
+    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
+    assert.ok(failedFiles.includes('req-upd-fail-nobody.json'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - query_issues spawn failure', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = {
+      id: 'req-query-fail',
+      type: 'query_issues',
+      payload: { labels: ['aloop'], state: 'open' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-query-fail.json'), JSON.stringify(req));
+
+    const spawnSync = ((_cmd: string, _args: string[]) => ({
+      status: 1,
+      stderr: 'gh issue list failed'
+    })) as any;
+
+    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
+    assert.ok(failedFiles.includes('req-query-fail.json'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - spec_backfill append new section', async () => {
+  const env = await setupTestEnv();
+  try {
+    const specPath = path.join(env.workdir, 'SPEC.md');
+    await fs.writeFile(specPath, '# Spec\n\n## Existing\nContent here');
+    await fs.writeFile(path.join(env.workdir, 'new-section.md'), 'Brand new content');
+
+    const req = {
+      id: 'req-backfill-append',
+      type: 'spec_backfill',
+      payload: { file: 'SPEC.md', section: 'New Section', content_file: 'new-section.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-backfill-append.json'), JSON.stringify(req));
+
+    const spawnSync = ((_cmd: string, _args: string[]) => ({ status: 0 })) as any;
+    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const updatedSpec = await fs.readFile(specPath, 'utf8');
+    assert.ok(updatedSpec.includes('## New Section'));
+    assert.ok(updatedSpec.includes('Brand new content'));
+    // Original content preserved
+    assert.ok(updatedSpec.includes('## Existing'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - spec_backfill replace last section (no next header)', async () => {
+  const env = await setupTestEnv();
+  try {
+    const specPath = path.join(env.workdir, 'SPEC.md');
+    await fs.writeFile(specPath, '# Spec\n\n## Last Section\nOld content\nMore old');
+    await fs.writeFile(path.join(env.workdir, 'replace.md'), 'Replaced content');
+
+    const req = {
+      id: 'req-backfill-last',
+      type: 'spec_backfill',
+      payload: { file: 'SPEC.md', section: 'Last Section', content_file: 'replace.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-backfill-last.json'), JSON.stringify(req));
+
+    const spawnSync = ((_cmd: string, _args: string[]) => ({ status: 0 })) as any;
+    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const updatedSpec = await fs.readFile(specPath, 'utf8');
+    assert.ok(updatedSpec.includes('Replaced content'));
+    assert.ok(!updatedSpec.includes('Old content'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - unsupported request type', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = { id: 'req-bad-type', type: 'unknown_type', payload: {} };
+    await fs.writeFile(path.join(env.requestsDir, 'req-bad-type.json'), JSON.stringify(req));
+
+    await processAgentRequests({ ...env, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
+    assert.ok(failedFiles.includes('req-bad-type.json'));
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('Unsupported request type'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - duplicate archive path collision', async () => {
+  const env = await setupTestEnv();
+  try {
+    // Create two requests that will both go to processed with the same name
+    const req1 = { id: 'req-dup', type: 'close_issue', payload: { number: 1, reason: 'done' } };
+    const req2 = { id: 'req-dup2', type: 'close_issue', payload: { number: 2, reason: 'done' } };
+    // Use same filename via sequential processing — first gets archived, then second
+    await fs.writeFile(path.join(env.requestsDir, 'dup.json'), JSON.stringify(req1));
+
+    const ghRunner = async () => ({ exitCode: 0, output: 'closed' });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+
+    // Now process another request — pre-seed processedDir with dup.json to force collision
+    await fs.writeFile(path.join(env.requestsDir, 'dup.json'), JSON.stringify(req2));
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+
+    const processedFiles = await fs.readdir(path.join(env.requestsDir, 'processed'));
+    assert.ok(processedFiles.includes('dup.json'));
+    assert.ok(processedFiles.includes('dup.dup1.json'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - no requests directory', async () => {
+  const env = await setupTestEnv();
+  try {
+    await fs.rm(env.requestsDir, { recursive: true });
+    // Should return early without error
+    await processAgentRequests({ ...env, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - empty requests directory', async () => {
+  const env = await setupTestEnv();
+  try {
+    // requestsDir exists but empty — should return early
+    await processAgentRequests({ ...env, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+    // No processed/failed dirs created since we return early
+    assert.ok(!existsSync(path.join(env.requestsDir, 'processed')));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - steer_child history.json not array', async () => {
+  const env = await setupTestEnv();
+  try {
+    await fs.writeFile(path.join(env.aloopDir, 'active.json'), JSON.stringify({}));
+    await fs.writeFile(path.join(env.aloopDir, 'history.json'), JSON.stringify({ not: 'array' }));
+
+    await fs.writeFile(path.join(env.workdir, 'prompt.md'), 'Steer');
+    const req = {
+      id: 'req-steer-badhistory',
+      type: 'steer_child',
+      payload: { issue_number: 101, prompt_file: 'prompt.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-steer-badhistory.json'), JSON.stringify(req));
+
+    await processAgentRequests({ ...env, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
+    assert.ok(failedFiles.includes('req-steer-badhistory.json'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test('processAgentRequests - handler failure', async () => {
   const env = await setupTestEnv();
   try {

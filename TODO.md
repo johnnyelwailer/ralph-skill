@@ -6,7 +6,7 @@
 
 - [x] [review] Gate 5: Fix duplicate `import path` in `orchestrate.test.ts` — line 3 and line 2408 both import `path from 'node:path'`, causing `tsc --noEmit` TS2300 error. Remove the duplicate at line 2408. (priority: critical)
 - [x] [review] Gate 3: Raise `plan.ts` branch coverage from 40% to >=80% — add tests for error paths: `readLoopPlan` returning null on missing file, `mutateLoopPlan` throwing on missing plan, `writeQueueOverride` edge cases (no frontmatter, empty content). Uncovered branches at lines 14, 19-21, 47-49, 51. (priority: high)
-- [ ] [review] Gate 3: Raise `requests.ts` branch coverage from 57.38% to >=80% — add tests for `handleSteerChild` child session lookup failure, `handleSpecBackfill` missing section/file error paths, and `handleDispatchChild`/`handleStopChild` spawn failure paths. (priority: high)
+- [x] [review] Gate 3: Raise `requests.ts` branch coverage from 57.38% to >=80% — add tests for `handleSteerChild` child session lookup failure, `handleSpecBackfill` missing section/file error paths, and `handleDispatchChild`/`handleStopChild` spawn failure paths. (priority: high)
 
 ### Up Next (P1 — Dashboard UX + Test Infrastructure)
 
