@@ -186,6 +186,30 @@ fi
 # Write our PID to the lockfile
 echo $$ > "$SESSION_LOCK_FILE"
 
+# Update meta.json and active.json with current PID so dashboard can track us
+if [ -f "$SESSION_DIR/meta.json" ] && command -v python3 >/dev/null 2>&1; then
+    python3 -c "
+import json, os
+# Update meta.json
+mp = os.path.join('$SESSION_DIR', 'meta.json')
+with open(mp) as f: m = json.load(f)
+m['pid'] = $$
+with open(mp, 'w') as f: json.dump(m, f, indent=2)
+# Update active.json
+ap = os.path.join(os.path.expanduser('~'), '.aloop', 'active.json')
+if os.path.isfile(ap):
+    with open(ap) as f: a = json.load(f)
+    sid = m.get('session_id', os.path.basename('$SESSION_DIR'))
+    if isinstance(a, dict) and sid in a:
+        a[sid]['pid'] = $$
+    elif isinstance(a, list):
+        for e in a:
+            if isinstance(e, dict) and e.get('session_id') == sid:
+                e['pid'] = $$
+    with open(ap, 'w') as f: json.dump(a, f, indent=2)
+" 2>/dev/null || true
+fi
+
 remove_session_lock() {
     if [ -f "$SESSION_LOCK_FILE" ]; then
         local lock_pid
