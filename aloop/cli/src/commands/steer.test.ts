@@ -245,6 +245,100 @@ test('steer with affects-completed-work flag', async () => {
   assert.match(content, /\*\*Affects completed work:\*\* yes/);
 });
 
+test('steer fails with ambiguity error when multiple active sessions and no --session', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'steer-multi-'));
+  const homeDir = path.join(root, 'home');
+  const aloopDir = path.join(homeDir, '.aloop');
+  const session1 = 'session-alpha';
+  const session2 = 'session-beta';
+
+  // Create dirs for both sessions
+  await mkdir(path.join(aloopDir, 'sessions', session1, 'worktree'), { recursive: true });
+  await mkdir(path.join(aloopDir, 'sessions', session2, 'worktree'), { recursive: true });
+
+  // Write active.json with two sessions
+  await writeFile(
+    path.join(aloopDir, 'active.json'),
+    JSON.stringify({
+      [session1]: { pid: 111, started_at: new Date().toISOString() },
+      [session2]: { pid: 222, started_at: new Date().toISOString() },
+    }),
+    'utf8',
+  );
+
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (msg: string) => logs.push(msg);
+
+  const origExit = process.exit;
+  let exitCode: number | undefined;
+  process.exit = ((code: number) => { exitCode = code; }) as never;
+
+  try {
+    await steerCommand('ambiguous instruction', { homeDir, output: 'json' });
+  } finally {
+    console.log = origLog;
+    process.exit = origExit;
+  }
+
+  assert.equal(exitCode, 1);
+  const output = JSON.parse(logs[0]);
+  assert.equal(output.success, false);
+  assert.match(output.error, /Multiple active sessions/);
+  assert.match(output.error, /session-alpha/);
+  assert.match(output.error, /session-beta/);
+});
+
+test('steer text output mode shows plain error on failure', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'steer-text-fail-'));
+  const homeDir = path.join(root, 'home');
+  await mkdir(path.join(homeDir, '.aloop'), { recursive: true });
+  await writeFile(path.join(homeDir, '.aloop', 'active.json'), '{}', 'utf8');
+
+  const errors: string[] = [];
+  const origError = console.error;
+  console.error = (msg: string) => errors.push(msg);
+
+  const origExit = process.exit;
+  let exitCode: number | undefined;
+  process.exit = ((code: number) => { exitCode = code; }) as never;
+
+  try {
+    // No output option → defaults to 'text'
+    await steerCommand('will fail', { homeDir });
+  } finally {
+    console.error = origError;
+    process.exit = origExit;
+  }
+
+  assert.equal(exitCode, 1);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /No active sessions/);
+  // Ensure it's NOT JSON
+  assert.throws(() => JSON.parse(errors[0]), 'text mode error should not be JSON');
+});
+
+test('steer text output mode shows plain success message', async () => {
+  const { homeDir, sessionId } = await setupHome('steer-text-ok-');
+
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (msg: string) => logs.push(msg);
+
+  try {
+    // No output option → defaults to 'text'
+    await steerCommand('text mode instruction', { homeDir });
+  } finally {
+    console.log = origLog;
+  }
+
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /Steering instruction queued for session/);
+  assert.match(logs[0], new RegExp(sessionId));
+  // Ensure it's NOT JSON
+  assert.throws(() => JSON.parse(logs[0]), 'text mode output should not be JSON');
+});
+
 test('steer uses fallback paths when session_dir and work_dir are omitted from active.json', async () => {
   const { homeDir, sessionDir, workdir, sessionId } = await setupHome('steer-fallback-paths-');
 
