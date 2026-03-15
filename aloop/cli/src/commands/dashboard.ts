@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { watch, type FSWatcher } from 'node:fs';
 import { promises as fs } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { processAgentRequests } from '../lib/requests.js';
@@ -934,6 +934,56 @@ export async function startDashboardServer(
           pid,
           signal,
         });
+        return;
+      }
+
+      // ── Resume endpoint ──
+      if (requestUrl.pathname === '/api/resume') {
+        if (request.method !== 'POST') {
+          writeJson(response, 405, { error: 'Method not allowed. Use POST /api/resume.' });
+          return;
+        }
+
+        const meta = await readJsonFile(metaPath);
+        if (!isRecord(meta)) {
+          writeJson(response, 409, { error: 'No meta.json found for this session.' });
+          return;
+        }
+
+        // Check if already running
+        const existingPid = extractPid(meta);
+        if (existingPid !== null) {
+          try { process.kill(existingPid, 0); writeJson(response, 409, { error: `Session is already running (PID ${existingPid}).` }); return; } catch { /* not running, ok to resume */ }
+        }
+
+        // Remove stale lock
+        const lockFile = path.join(sessionDir, 'session.lock');
+        try { await fs.unlink(lockFile); } catch { /* no lock */ }
+
+        // Build loop.sh args from meta.json
+        const loopScript = path.join(workdir, 'aloop', 'bin', 'loop.sh');
+        const promptsDir = typeof meta.prompts_dir === 'string' ? meta.prompts_dir : path.join(sessionDir, 'prompts');
+        const maxIter = typeof meta.max_iterations === 'number' ? String(meta.max_iterations) : '500';
+        const provider = typeof meta.provider === 'string' ? meta.provider : 'round-robin';
+        const mode = typeof meta.mode === 'string' ? meta.mode : 'plan-build-review';
+
+        const child = spawn('bash', [
+          loopScript,
+          '--prompts-dir', promptsDir,
+          '--session-dir', sessionDir,
+          '--work-dir', workdir,
+          '--max-iterations', maxIter,
+          '--provider', provider,
+          '--launch-mode', 'resume',
+          '--mode', mode,
+        ], {
+          cwd: workdir,
+          detached: true,
+          stdio: 'ignore',
+        });
+        child.unref();
+
+        writeJson(response, 202, { resumed: true, pid: child.pid });
         return;
       }
 

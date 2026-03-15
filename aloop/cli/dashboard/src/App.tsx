@@ -4,11 +4,12 @@ import { toast } from 'sonner';
 import {
   Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock,
   GitBranch, GitCommit, Image, FileText, MoreHorizontal, PanelLeftClose,
-  PanelLeftOpen, Search, Send, Square, Terminal, Timer, XCircle, Zap, Loader2,
+  PanelLeftOpen, Play, Search, Send, Square, Terminal, Timer, XCircle, Zap, Loader2,
   Heart, AlertTriangle, Pause,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
@@ -1241,11 +1242,13 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
 // ── Footer ──
 
 function Footer({
-  steerInstruction, setSteerInstruction, onSteer, steerSubmitting, onStop, stopSubmitting,
+  steerInstruction, setSteerInstruction, onSteer, steerSubmitting, onStop, stopSubmitting, onResume, resumeSubmitting, isRunning,
 }: {
   steerInstruction: string; setSteerInstruction: (v: string) => void;
   onSteer: () => void; steerSubmitting: boolean;
   onStop: (force: boolean) => void; stopSubmitting: boolean;
+  onResume: () => void; resumeSubmitting: boolean;
+  isRunning: boolean;
 }) {
   return (
     <footer className="border-t border-border px-4 py-2 shrink-0">
@@ -1268,22 +1271,35 @@ function Footer({
           </Tooltip>
         </div>
         <div className="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="destructive" size="sm" className="h-8" disabled={stopSubmitting} onClick={() => onStop(false)}>
-                <Square className="h-3 w-3 mr-1" />{stopSubmitting ? '...' : 'Stop'}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent><p>Gracefully stop after current iteration (SIGTERM)</p></TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 text-destructive hover:text-destructive" disabled={stopSubmitting} onClick={() => onStop(true)}>
-                <Zap className="h-3 w-3 mr-1" />Force
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent><p>Kill immediately without cleanup (SIGKILL)</p></TooltipContent>
-          </Tooltip>
+          {isRunning ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="destructive" size="sm" className="h-8" disabled={stopSubmitting}>
+                  <Square className="h-3 w-3 mr-1" />{stopSubmitting ? '...' : 'Stop'}
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onStop(false)}>
+                  <Square className="h-3.5 w-3.5 mr-2" /> Stop after iteration
+                  <span className="ml-auto text-[10px] text-muted-foreground">SIGTERM</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onStop(true)}>
+                  <Zap className="h-3.5 w-3.5 mr-2" /> Kill immediately
+                  <span className="ml-auto text-[10px] text-muted-foreground">SIGKILL</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="default" size="sm" className="h-8" disabled={resumeSubmitting} onClick={onResume}>
+                  <Play className="h-3 w-3 mr-1" />{resumeSubmitting ? '...' : 'Resume'}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Resume loop from where it left off</p></TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
     </footer>
@@ -1469,6 +1485,19 @@ export function App() {
     finally { setStopSubmitting(false); }
   }, [stopSubmitting]);
 
+  const [resumeSubmitting, setResumeSubmitting] = useState(false);
+  const handleResume = useCallback(async () => {
+    if (resumeSubmitting) return;
+    setResumeSubmitting(true);
+    try {
+      const r = await fetch('/api/resume', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+      if (!r.ok) { const p = await r.json() as { error?: string }; throw new Error(p.error ?? `HTTP ${r.status}`); }
+      const p = await r.json() as { pid?: number };
+      toast.success(`Loop resumed (PID ${p.pid}).`);
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setResumeSubmitting(false); }
+  }, [resumeSubmitting]);
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
@@ -1518,7 +1547,7 @@ export function App() {
                 )}
               </div>
             </main>
-            <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} />
+            <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} onResume={() => void handleResume()} resumeSubmitting={resumeSubmitting} isRunning={isRunning} />
           </div>
         </div>
         <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} sessions={sessions} onSelectSession={selectSession} onStop={(f) => void handleStop(f)} />

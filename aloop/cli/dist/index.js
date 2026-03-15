@@ -3501,7 +3501,7 @@ async function scaffoldCommand(options = {}) {
 import { createServer } from "node:http";
 import { watch } from "node:fs";
 import { promises as fs3 } from "node:fs";
-import { spawnSync as spawnSync3 } from "node:child_process";
+import { spawn, spawnSync as spawnSync3 } from "node:child_process";
 import os2 from "node:os";
 import path4 from "node:path";
 
@@ -3711,9 +3711,9 @@ async function handleUpdateIssue(request, fileName, options) {
     const tempBodyPath = path3.join(options.aloopDir, "requests", `_tmp_body_${request.id}.md`);
     await fs2.writeFile(tempBodyPath, body);
     args.push("--body-file", tempBodyPath);
-    const spawn2 = options.spawnSync || spawnSync2;
+    const spawn3 = options.spawnSync || spawnSync2;
     try {
-      const result = spawn2("gh", args, { encoding: "utf8" });
+      const result = spawn3("gh", args, { encoding: "utf8" });
       if (result.status !== 0)
         throw new Error(result.stderr);
     } finally {
@@ -3730,8 +3730,8 @@ async function handleUpdateIssue(request, fileName, options) {
       for (const l of request.payload.labels_remove)
         args.push("--remove-label", l);
     }
-    const spawn2 = options.spawnSync || spawnSync2;
-    const result = spawn2("gh", args, { encoding: "utf8" });
+    const spawn3 = options.spawnSync || spawnSync2;
+    const result = spawn3("gh", args, { encoding: "utf8" });
     if (result.status !== 0)
       throw new Error(result.stderr);
   }
@@ -3791,8 +3791,8 @@ async function handleDispatchChild(request, fileName, options) {
     "--output",
     "json"
   ];
-  const spawn2 = options.spawnSync || spawnSync2;
-  const result = spawn2("aloop", args, { encoding: "utf8" });
+  const spawn3 = options.spawnSync || spawnSync2;
+  const result = spawn3("aloop", args, { encoding: "utf8" });
   if (result.status !== 0) {
     throw new Error(`Failed to dispatch child: ${result.stderr || result.stdout}`);
   }
@@ -3853,8 +3853,8 @@ async function handleStopChild(request, fileName, options) {
     "--output",
     "json"
   ];
-  const spawn2 = options.spawnSync || spawnSync2;
-  const result = spawn2("aloop", args, { encoding: "utf8" });
+  const spawn3 = options.spawnSync || spawnSync2;
+  const result = spawn3("aloop", args, { encoding: "utf8" });
   if (result.status !== 0) {
     throw new Error(`Failed to stop child: ${result.stderr || result.stdout}`);
   }
@@ -3882,8 +3882,8 @@ async function handleQueryIssues(request, fileName, options) {
   }
   if (request.payload.state)
     args.push("--state", request.payload.state);
-  const spawn2 = options.spawnSync || spawnSync2;
-  const result = spawn2("gh", args, { encoding: "utf8" });
+  const spawn3 = options.spawnSync || spawnSync2;
+  const result = spawn3("gh", args, { encoding: "utf8" });
   if (result.status !== 0)
     throw new Error(result.stderr);
   await writeSuccessToQueue(request, { issues: JSON.parse(result.stdout) }, options, fileName);
@@ -3910,9 +3910,9 @@ ${content}
 `;
   }
   await fs2.writeFile(specPath, specContent, "utf8");
-  const spawn2 = options.spawnSync || spawnSync2;
-  spawn2("git", ["-C", options.workdir, "add", request.payload.file], { stdio: "ignore" });
-  spawn2("git", ["-C", options.workdir, "commit", "-m", `docs: backfill spec section ${request.payload.section} [aloop]`], { stdio: "ignore" });
+  const spawn3 = options.spawnSync || spawnSync2;
+  spawn3("git", ["-C", options.workdir, "add", request.payload.file], { stdio: "ignore" });
+  spawn3("git", ["-C", options.workdir, "commit", "-m", `docs: backfill spec section ${request.payload.section} [aloop]`], { stdio: "ignore" });
   await writeSuccessToQueue(request, { status: "backfilled", file: request.payload.file }, options, fileName);
 }
 async function writeSuccessToQueue(request, payload, options, sourceFileName) {
@@ -4698,6 +4698,60 @@ async function startDashboardServer(options, runtimeOptions = {}) {
         });
         return;
       }
+      if (requestUrl.pathname === "/api/resume") {
+        if (request.method !== "POST") {
+          writeJson(response, 405, { error: "Method not allowed. Use POST /api/resume." });
+          return;
+        }
+        const meta = await readJsonFile(metaPath);
+        if (!isRecord(meta)) {
+          writeJson(response, 409, { error: "No meta.json found for this session." });
+          return;
+        }
+        const existingPid = extractPid(meta);
+        if (existingPid !== null) {
+          try {
+            process.kill(existingPid, 0);
+            writeJson(response, 409, { error: `Session is already running (PID ${existingPid}).` });
+            return;
+          } catch {
+          }
+        }
+        const lockFile = path4.join(sessionDir, "session.lock");
+        try {
+          await fs3.unlink(lockFile);
+        } catch {
+        }
+        const loopScript = path4.join(workdir, "aloop", "bin", "loop.sh");
+        const promptsDir = typeof meta.prompts_dir === "string" ? meta.prompts_dir : path4.join(sessionDir, "prompts");
+        const maxIter = typeof meta.max_iterations === "number" ? String(meta.max_iterations) : "500";
+        const provider = typeof meta.provider === "string" ? meta.provider : "round-robin";
+        const mode = typeof meta.mode === "string" ? meta.mode : "plan-build-review";
+        const child = spawn("bash", [
+          loopScript,
+          "--prompts-dir",
+          promptsDir,
+          "--session-dir",
+          sessionDir,
+          "--work-dir",
+          workdir,
+          "--max-iterations",
+          maxIter,
+          "--provider",
+          provider,
+          "--launch-mode",
+          "resume",
+          "--mode",
+          mode
+        ], {
+          cwd: workdir,
+          detached: true,
+          stdio: "ignore"
+        });
+        child.unref();
+        writeJson(response, 202, { resumed: true, pid: child.pid });
+        return;
+      }
       const artifactMatch = requestUrl.pathname.match(/^\/api\/artifacts\/(\d+)\/(.+)$/);
       if (artifactMatch && request.method === "GET") {
         const iteration = artifactMatch[1];
@@ -5125,7 +5179,7 @@ import * as path8 from "path";
 import * as os4 from "os";
 
 // src/commands/start.ts
-import { spawn, spawnSync as spawnSync5 } from "node:child_process";
+import { spawn as spawn2, spawnSync as spawnSync5 } from "node:child_process";
 import { cp, mkdir as mkdir4, readFile as readFile6, writeFile as writeFile6 } from "node:fs/promises";
 import { existsSync as existsSync6 } from "node:fs";
 import { createServer as createServer2 } from "node:net";
@@ -5511,7 +5565,7 @@ var defaultDeps = {
   mkdir: mkdir4,
   cp,
   existsSync: existsSync6,
-  spawn,
+  spawn: spawn2,
   spawnSync: spawnSync5,
   platform: process.platform,
   env: process.env,
@@ -10436,6 +10490,211 @@ async function aggregateChildCosts(state, aloopRoot, deps) {
 function shouldPauseForBudget(budget) {
   return budget.budget_exceeded || budget.budget_approaching;
 }
+function parsePrCreateOutput(stdout) {
+  const match = stdout.match(/\/pull\/(\d+)/);
+  return {
+    number: match ? Number.parseInt(match[1], 10) : null,
+    url: stdout.trim()
+  };
+}
+async function createPrForChild(issue, childSession, childDir, state, repo, deps) {
+  const metaPath = path11.join(childDir, "meta.json");
+  let branch = `aloop/issue-${issue.number}`;
+  let projectRoot = "";
+  if (deps.existsSync(metaPath)) {
+    try {
+      const meta = JSON.parse(await deps.readFile(metaPath, "utf8"));
+      if (typeof meta.branch === "string")
+        branch = meta.branch;
+      if (typeof meta.project_root === "string")
+        projectRoot = meta.project_root;
+    } catch {
+    }
+  }
+  const baseBranch = state.trunk_branch || "agent/trunk";
+  let effectiveBase = baseBranch;
+  try {
+    await deps.execGh(["api", `repos/${repo}/branches/${baseBranch}`, "--jq", ".name"]);
+  } catch {
+    effectiveBase = "main";
+  }
+  const issueTitle = issue.title || `Issue ${issue.number}`;
+  const prTitle = `[aloop] ${issueTitle}`;
+  const prBody = `Automated implementation for issue #${issue.number}.
+
+Closes #${issue.number}`;
+  try {
+    const result = await deps.execGh([
+      "pr",
+      "create",
+      "--repo",
+      repo,
+      "--base",
+      effectiveBase,
+      "--head",
+      branch,
+      "--title",
+      prTitle,
+      "--body",
+      prBody
+    ]);
+    const parsed = parsePrCreateOutput(result.stdout);
+    return { pr_number: parsed.number, branch, baseBranch: effectiveBase };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    try {
+      const listResult = await deps.execGh([
+        "pr",
+        "list",
+        "--repo",
+        repo,
+        "--head",
+        branch,
+        "--json",
+        "number",
+        "--jq",
+        ".[0].number"
+      ]);
+      const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
+      if (Number.isFinite(existingNumber) && existingNumber > 0) {
+        return { pr_number: existingNumber, branch, baseBranch: effectiveBase };
+      }
+    } catch {
+    }
+    return { pr_number: null, branch, baseBranch: effectiveBase, error: msg };
+  }
+}
+async function monitorChildSessions(state, sessionDir, repo, deps) {
+  const result = {
+    monitored: 0,
+    prs_created: 0,
+    failed: 0,
+    still_running: 0,
+    errors: 0,
+    entries: []
+  };
+  const inProgressIssues = state.issues.filter(
+    (i) => i.state === "in_progress" && i.child_session !== null
+  );
+  for (const issue of inProgressIssues) {
+    const childSession = issue.child_session;
+    const childDir = path11.join(deps.aloopRoot, "sessions", childSession);
+    const statusPath = path11.join(childDir, "status.json");
+    result.monitored++;
+    let childStatus = null;
+    try {
+      if (deps.existsSync(statusPath)) {
+        const raw = await deps.readFile(statusPath, "utf8");
+        childStatus = JSON.parse(raw);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      result.errors++;
+      result.entries.push({
+        issue_number: issue.number,
+        child_session: childSession,
+        child_state: "unknown",
+        stuck_count: 0,
+        action: "status_unreadable",
+        error: msg
+      });
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: "child_monitor_error",
+        issue_number: issue.number,
+        child_session: childSession,
+        error: msg
+      });
+      continue;
+    }
+    if (!childStatus) {
+      result.errors++;
+      result.entries.push({
+        issue_number: issue.number,
+        child_session: childSession,
+        child_state: "unknown",
+        stuck_count: 0,
+        action: "status_unreadable",
+        error: "status.json not found"
+      });
+      continue;
+    }
+    const entry = {
+      issue_number: issue.number,
+      child_session: childSession,
+      child_state: childStatus.state,
+      stuck_count: childStatus.stuck_count ?? 0,
+      action: "still_running"
+    };
+    if (childStatus.state === "exited") {
+      const prResult = await createPrForChild(issue, childSession, childDir, state, repo, deps);
+      if (prResult.pr_number !== null) {
+        const stateIssue = state.issues.find((i) => i.number === issue.number);
+        if (stateIssue) {
+          stateIssue.state = "pr_open";
+          stateIssue.pr_number = prResult.pr_number;
+          stateIssue.status = "In review";
+        }
+        result.prs_created++;
+        entry.action = "pr_created";
+        entry.pr_number = prResult.pr_number;
+        entry.branch = prResult.branch;
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "child_pr_created",
+          issue_number: issue.number,
+          child_session: childSession,
+          pr_number: prResult.pr_number,
+          branch: prResult.branch,
+          base_branch: prResult.baseBranch
+        });
+      } else {
+        result.errors++;
+        entry.action = "exited_no_pr";
+        entry.error = prResult.error ?? "PR creation returned no number";
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "child_pr_create_failed",
+          issue_number: issue.number,
+          child_session: childSession,
+          error: entry.error
+        });
+      }
+    } else if (childStatus.state === "stopped") {
+      const stateIssue = state.issues.find((i) => i.number === issue.number);
+      if (stateIssue) {
+        stateIssue.state = "failed";
+        stateIssue.status = "Blocked";
+      }
+      result.failed++;
+      entry.action = "failed";
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: "child_failed",
+        issue_number: issue.number,
+        child_session: childSession,
+        stuck_count: childStatus.stuck_count,
+        last_phase: childStatus.phase,
+        last_provider: childStatus.provider
+      });
+    } else {
+      result.still_running++;
+      entry.action = "still_running";
+      if ((childStatus.stuck_count ?? 0) >= 2) {
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "child_stuck_warning",
+          issue_number: issue.number,
+          child_session: childSession,
+          stuck_count: childStatus.stuck_count,
+          phase: childStatus.phase
+        });
+      }
+    }
+    result.entries.push(entry);
+  }
+  return result;
+}
 async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, projectName, promptsSourceDir, aloopRoot, repo, iteration, deps) {
   const stateContent = await deps.readFile(stateFile, "utf8");
   const state = JSON.parse(stateContent);
@@ -10443,6 +10702,7 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
     iteration,
     triage: { processed_issues: 0, triaged_entries: 0 },
     dispatched: 0,
+    childMonitoring: null,
     prLifecycles: [],
     waveAdvanced: false,
     budgetExceeded: false,
@@ -10497,6 +10757,32 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
           error: msg
         });
       }
+    }
+  }
+  if (repo && deps.execGh && deps.aloopRoot) {
+    try {
+      result.childMonitoring = await monitorChildSessions(
+        state,
+        sessionDir,
+        repo,
+        {
+          existsSync: deps.existsSync,
+          readFile: deps.readFile,
+          writeFile: deps.writeFile,
+          execGh: deps.execGh,
+          now: deps.now,
+          appendLog: deps.appendLog,
+          aloopRoot: deps.aloopRoot
+        }
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: "scan_monitor_error",
+        iteration,
+        error: msg
+      });
     }
   }
   if (repo && deps.prLifecycleDeps) {
@@ -10568,6 +10854,9 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
     event: "scan_pass_complete",
     iteration,
     dispatched: result.dispatched,
+    monitored: result.childMonitoring?.monitored ?? 0,
+    prs_created: result.childMonitoring?.prs_created ?? 0,
+    child_failed: result.childMonitoring?.failed ?? 0,
     pr_lifecycles: result.prLifecycles.length,
     triage_entries: result.triage.triaged_entries,
     all_done: result.allDone

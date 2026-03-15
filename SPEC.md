@@ -40,7 +40,7 @@ The inner loop (`loop.sh` / `loop.ps1`) and the aloop runtime (`aloop` CLI, TS/B
 - Update `cyclePosition` and `iteration` in `loop-plan.json` (only for cycle iterations, not queue)
 - Delete consumed queue files after agent completes
 - Wait for pending `requests/*.json` to be processed by runtime before next iteration (with timeout)
-- Detect stuck iterations (same task failing repeatedly)
+- Iteration counting and status tracking
 - Read `TODO.md` for phase prerequisites
 - Hot-reload provider list from `meta.json` each iteration (for round-robin fallback when frontmatter provider is unavailable)
 - Track and kill child processes (provider timeout, cleanup on exit)
@@ -331,7 +331,7 @@ This feeds into the provider health failure classification system, which can dis
 |---------|-------------|
 | **Forced flags** (`forcePlanNext`, `forceReviewNext`) | Take priority over cycle position. When a forced flag fires, the phase overrides regardless of cycle position. Cycle position is NOT advanced. |
 | **Steering** | Sets `forcePlanNext` after steer phase. Cycle position resets to 0 (plan) so the new plan reflects the steering. |
-| **Stuck detection** | Stuck count tracks task-level stuck, not phase-level. A phase repeatedly failing with different providers is a different problem — after all providers fail the same phase, log `phase_all_providers_failed` and advance anyway (avoid infinite retry). |
+| **Phase retry** | A phase repeatedly failing with different providers is handled by `MAX_PHASE_RETRIES` — after all providers fail the same phase, log `phase_all_providers_failed` and advance anyway (avoid infinite retry). |
 | **Provider health** | Failed iterations feed into provider health. If claude fails plan, its health degrades. Next retry tries codex (healthy). Provider health + retry-same-phase work together naturally. |
 | **Round-robin** | Round-robin still rotates on every iteration. So retry-same-phase with round-robin = same phase, different provider. This is the desired behavior. |
 
@@ -764,7 +764,7 @@ Collapsible sidebar (Ctrl+B) showing all sessions in a tree grouped by project.
 ```
 
 **Session card details:**
-- **Dot color**: green=running (pulsing), gray=stopped/exited, red=unhealthy (stuck_count>0 or dead PID), orange=stopping/cooldown
+- **Dot color**: green=running (pulsing), gray=stopped/exited, red=unhealthy (dead PID), orange=stopping/cooldown
 - **Fields**: project name, session ID (truncated), branch name, phase badge (color-coded), iteration count, last activity (relative time), elapsed duration
 - **Tooltip** on hover: full session ID, PID, provider config, started_at, ended_at, work_dir, state
 - Active sessions sorted to top; sessions with no activity >24h auto-collapse into "Older" group
@@ -912,7 +912,7 @@ HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
 - [ ] Docs tab bar renders only docs with non-empty content; overflow extras into `⋯` dropdown
 - [ ] Provider health shown as a tab in docs panel, derived from log events
 - [ ] Loop exit writes `status.json` as `stopped`/`exited`, dashboard detects dead PID automatically
-- [ ] `stuck_count` resets on successful iterations and is visible in dashboard status/details
+- [ ] Dead PID detection visible in dashboard status/details
 - [ ] System theme adaptation via `.dark` class + `prefers-color-scheme` detection
 - [ ] `aloop status --watch` provides terminal-based live monitoring (auto-refresh)
 
@@ -1515,8 +1515,8 @@ The orchestrator scan agent identifies `Ready` sub-issues (Project status) and w
 The orchestrator scan agent checks child loop statuses and PR states each iteration:
 
 **Child monitoring:**
-- Read each child's `status.json` for state (running, completed, stuck, limit_reached)
-- Stuck children (stuck_count >= threshold) → write steering to child's `queue/`, reassign provider, or kill and retry
+- Read each child's `status.json` for state (running, completed, failed, limit_reached)
+- Failed or stalled children → write steering to child's `queue/`, reassign provider, or kill and retry
 - Completed children → write `requests/create-pr.json` → runtime creates PR targeting `agent/trunk`
 - Failed children → log, optionally retry with different provider mix or re-decompose
 
@@ -2035,7 +2035,9 @@ This is the same [Request/Response Protocol](#requestresponse-protocol) describe
 
 ### Architecture: Keep loop scripts lean — GH/steering/requests are host-side plugins
 
-**Critical design rule:** `loop.ps1` and `loop.sh` must NOT contain convention-file processing, GH logic, or any host-only operations directly. The loop scripts run inside containers and must stay minimal: iterate phases, invoke providers, write status/logs, detect stuck. That's it.
+**Critical design rule:** `loop.ps1` and `loop.sh` must NOT contain convention-file processing, GH logic, or any host-only operations directly. The loop scripts run inside containers and must stay minimal: iterate phases, invoke providers, write status/logs. That's it.
+
+> **Note:** `loop.sh` currently contains `setup_remote_backup()` which uses `gh` to create a backup repo. This should be moved to `aloop start` (low priority).
 
 All host-side operations (GH requests, steering injection, dashboard, request processing) are handled by the **aloop host monitor** — a separate process that runs alongside the loop on the host:
 
@@ -2062,7 +2064,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
   - Must track child PIDs when invoking providers
   - Per-iteration timeout (configurable via `ALOOP_PROVIDER_TIMEOUT`, default 8 hours) — catastrophic safety net only; not a behavioral limit on agent runtime
   - On loop exit (`finally`/`trap`), kill all spawned child processes
-- Stuck detection and iteration counting
+- Iteration counting
 - Status.json and log.jsonl writes
   - Each session run must include a unique `run_id` in all log entries, or rotate logs on session start
 - TODO.md reading for phase prerequisites
@@ -3050,7 +3052,7 @@ Files are sorted lexicographically and consumed in order. Naming convention: `NN
 **When the runtime modifies the plan:**
 - Agent failure detected (via `status.json` polling) → apply `onFailure` transition rules (write queue entry or adjust `cyclePosition`)
 - Escalation threshold reached → write recovery agent to queue, or inject into `cycle` if permanent
-- Host monitor detects stuck pattern → swap provider in prompt frontmatter or write debugger to queue
+- Host monitor detects repeated failures → swap provider in prompt frontmatter or write debugger to queue
 
 ### Runtime Mutation
 
@@ -3059,7 +3061,7 @@ The pipeline is **mutable at runtime** via two mechanisms:
 **Override queue** (`$SESSION_DIR/queue/`):
 - User drops steering prompt → loop picks it up next iteration, runs it, deletes it
 - Runtime detects all tasks done → writes `queue/NNN-review.md` with review agent frontmatter
-- 3 consecutive build failures → writes `queue/NNN-debug.md` with debugger agent frontmatter
+- Repeated build failures → writes `queue/NNN-debug.md` with debugger agent frontmatter
 - Queue items do NOT modify the `cycle` array — they interrupt it without advancing `cyclePosition`
 - The loop handles this autonomously — no runtime required for basic steering
 
