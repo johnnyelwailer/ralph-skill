@@ -861,7 +861,7 @@ function ActivityPanel({ log, artifacts, currentIteration, currentPhase, current
     for (const g of groups) g.entries.reverse();
     groups.reverse();
     return groups;
-  }, [deduped]);
+  }, [withCurrent]);
 
   const manifests = useMemo(() => artifacts.map(parseManifest).filter((m): m is ManifestPayload => m !== null), [artifacts]);
   const iterArtifacts = useMemo(() => {
