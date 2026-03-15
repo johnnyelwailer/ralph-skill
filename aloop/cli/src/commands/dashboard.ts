@@ -294,6 +294,20 @@ async function loadStateForContext(
     }),
   );
 
+  // Enrich recent sessions with their status.json too (history.json hardcodes state:'stopped')
+  const enrichedRecent = await Promise.all(
+    recentSessions.map(async (entry) => {
+      if (!isRecord(entry)) return entry;
+      const dir = typeof entry.session_dir === 'string' ? entry.session_dir : null;
+      if (!dir) return entry;
+      const sStatus = await readJsonFile(path.join(dir, 'status.json'));
+      if (isRecord(sStatus)) {
+        return { ...entry, ...sStatus };
+      }
+      return entry;
+    }),
+  );
+
   return {
     sessionDir: ctx.sessionDir,
     workdir: ctx.workdir,
@@ -303,7 +317,7 @@ async function loadStateForContext(
     log,
     docs: Object.fromEntries(docsEntries),
     activeSessions: enrichedActive,
-    recentSessions,
+    recentSessions: enrichedRecent,
     artifacts,
   };
 }
