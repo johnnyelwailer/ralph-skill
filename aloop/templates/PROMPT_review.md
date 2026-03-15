@@ -75,7 +75,7 @@ Audit the last build iteration's changes against 8 quality gates. Write actionab
 - Are screenshots or API captures consistent with the spec's visual/functional requirements?
 - If the proof agent skipped work that SHOULD have been proven (e.g., a UI change with no screenshot), that is a failure — request **human-verifiable** proof (screenshots, API captures, CLI recordings), NOT test output.
 - If no proof was generated at all but the work had observable output, reject.
-- **IMPORTANT: Test output is NOT proof.** Files like `*-test-output.txt`, test pass counts, `tsc --noEmit` results, and filtered test summaries are CI artifacts, not proof. Do NOT request these as proof artifacts. Valid proof = screenshots, API response captures, CLI recordings, before/after comparisons, Playwright videos. If the work is purely internal (refactoring, type changes, test improvements), skipping proof is the correct outcome — do not reject for that.
+- **IMPORTANT: Test output is NOT proof.** If the proof manifest contains files like `*-tests.txt`, `*-test-output.txt`, test pass counts, file listings, config content dumps, or `tsc --noEmit` results — **that is a Gate 6 FAIL**. Write a `[review]` task telling the proof agent to skip instead of producing filler. Valid proof = screenshots, API response captures, CLI recordings, before/after comparisons, Playwright videos. If the work is purely internal (config files, templates, refactoring, type changes, plumbing), skipping proof with an empty artifacts array is the **expected correct outcome** — do not reject for that.
 
 ### Gate 7: Runtime Layout Verification (UI changes only)
 

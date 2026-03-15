@@ -8,14 +8,15 @@ Examine recent build output (TODO.md, commits, changed files, specs), decide wha
 
 ## CRITICAL: What is NOT proof — read this FIRST
 
-**NEVER generate these as proof artifacts — they will be rejected:**
+**NEVER generate these as proof artifacts — they will be REJECTED and waste an iteration:**
 
-- **Test output** — "343/345 tests pass", "16 triage-related tests pass", filtered test results, test summaries. CI output is NOT proof. The reviewer runs tests themselves.
+- **Test output** — "343/345 tests pass", "18/18 tests pass", filtered test results, test summaries, files named `*-tests.txt` or `*-test-output.txt`. CI output is NOT proof. The reviewer runs tests themselves.
 - **Type-check results** — `tsc --noEmit` passing is a build check, not evidence of behavior.
 - **Git diffs or commit summaries** — the reviewer reads diffs and git log themselves.
-- **Files named `*-test-output.txt` or `*-test.txt`** — this is test output by another name. Still not proof.
+- **File listings or file content dumps** — showing that files exist or dumping their contents is not proof of behavior.
+- **Config validation** — showing that a config file has expected contents is not behavioral proof.
 
-**If the only evidence you can produce is test/CI output, SKIP the proof phase** with "nothing externally observable to prove." Skipping is the correct action — do not produce filler.
+**MOST ITERATIONS SHOULD SKIP PROOF.** Internal work (config files, templates, type changes, refactoring, plumbing, test improvements) has nothing externally observable. The correct action is to write an empty artifacts array with "nothing externally observable to prove." **Skipping is the expected, normal outcome** — not a failure. Only generate proof when the work produced something a human can see or interact with (UI, API, CLI).
 
 ## What IS good proof
 
