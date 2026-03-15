@@ -70,6 +70,40 @@ test('mutateLoopPlan throws when loop-plan.json is missing', async () => {
   await fs.rm(tmpDir, { recursive: true, force: true });
 });
 
+test('mutateLoopPlan updates cycle and optional one-shot flags', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-plan-options-'));
+  const initialPlan = {
+    cycle: ['plan.md', 'build.md'],
+    cyclePosition: 0,
+    iteration: 1,
+    version: 1,
+    allTasksMarkedDone: true,
+    forceReviewNext: false,
+    forceProofNext: false,
+    forcePlanNext: true
+  };
+  await writeLoopPlan(tmpDir, initialPlan);
+
+  const mutated = await mutateLoopPlan(tmpDir, {
+    cycle: ['review.md', 'proof.md'],
+    allTasksMarkedDone: false,
+    forceReviewNext: true,
+    forceProofNext: true,
+    forcePlanNext: false
+  });
+
+  assert.deepEqual(mutated.cycle, ['review.md', 'proof.md']);
+  assert.equal(mutated.allTasksMarkedDone, false);
+  assert.equal(mutated.forceReviewNext, true);
+  assert.equal(mutated.forceProofNext, true);
+  assert.equal(mutated.forcePlanNext, false);
+  assert.equal(mutated.version, 2);
+
+  const read = await readLoopPlan(tmpDir);
+  assert.deepEqual(read, mutated);
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
 test('writeQueueOverride writes raw content when no frontmatter provided', async () => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-queue-raw-'));
   const queuePath = await writeQueueOverride(tmpDir, 'plain', 'just content');
