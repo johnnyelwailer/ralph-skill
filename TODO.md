@@ -1,8 +1,8 @@
 # Project TODO
 
-## Current Phase: Pipeline Config + Orchestrator Prompts + Dashboard Polish
+## Current Phase: Loop & Orchestrator Core → then Dashboard
 
-### In Progress (P0 — Core Features)
+### In Progress (P0 — Loop & Orchestrator)
 
 **Configurable pipeline:**
 - [ ] [pipeline][high] Create `.aloop/pipeline.yml` schema and default config (plan → build × 3 → proof → review). (priority: high)
@@ -15,20 +15,19 @@
 **Infinite loop prevention:**
 - [ ] [runtime][high] Add provenance tagging — every agent commit includes `Aloop-Agent`, `Aloop-Iteration`, `Aloop-Session` trailers in both `loop.sh` and `loop.ps1`. (priority: high)
 
-### Up Next (P1 — Dashboard UX Polish)
+**GH integration:**
+- [ ] [gh-workflows][medium] Add `aloop gh stop-watch` control path — current `stop` command stops individual issues but not the watch daemon. (priority: medium)
 
-- [ ] [dashboard][high] Move per-provider health to dedicated left-pane sidebar tab — currently inline in header grid. Spec §6 requires sidebar tab. (priority: high)
+### After Loop/Orchestrator Done (P1 — Dashboard UX Polish)
+
+- [ ] [dashboard][medium] Move per-provider health to dedicated left-pane sidebar tab. (priority: medium)
 - [ ] [dashboard][medium] Move sidebar expand/collapse toggle button to be vertically centered with header title row. (priority: medium)
 - [ ] [dashboard][medium] Filter out empty documentation files from Docs panel ("Only tabs with non-empty content shown"). (priority: medium)
 - [ ] [dashboard][medium] Fix broken E2E tests in `smoke.spec.ts` (selectors, placeholders, headings outdated after dashboard rewrite). (priority: medium)
 
-### Up Next (P2 — GH Integration + Misc)
+### Deferred (P2 — Dashboard Test Coverage)
 
-- [ ] [gh-workflows][medium] Add `aloop gh stop-watch` control path — current `stop` command stops individual issues but not the watch daemon. (priority: medium)
-
-### Deferred — Dashboard Test Coverage
-
-Dashboard test coverage (unit tests for App.tsx logic, backend dashboard.ts branches, E2E tests) is deferred to a later phase — after all core features and UX polish are complete. See SPEC for details.
+Dashboard test coverage (unit tests for App.tsx logic, backend dashboard.ts branches, E2E tests) is lowest priority — after all core features and dashboard UX polish are complete. See SPEC for details.
 
 ### Completed
 
