@@ -5,7 +5,7 @@
 ### In Progress (P0 — Core Reliability & Coverage)
 
 - [x] [review] Gate 3: Raise `plan.ts` branch coverage to >=80% (currently 73.91%). Add tests for `forceReviewNext`, `forceProofNext`, `forcePlanNext` mutation branches. (priority: high)
-- [ ] [review] Gate 3: Raise `yaml.ts` branch coverage to >=90% (currently 73.33%). (priority: high)
+- [x] [review] Gate 3: Raise `yaml.ts` branch coverage to >=90% (currently 73.33%). (priority: high)
 - [ ] [review] Gate 3: Raise `compile-loop-plan.ts` branch coverage to >=80% (currently 78.66%). (priority: medium)
 - [ ] [review] Gate 6: Missing proof artifacts for iteration 11 (`gh-test-output.txt`, `derive-mode-test.txt`, `cycle-resolution-test.txt`, `frontmatter-parse-test.txt`, `cycle-integration-test.txt`, `aloop-mention-grep.txt`). (priority: high)
 - [ ] [review] Gate 8: `VERSIONS.md` is missing — create authoritative version table for the project. (priority: medium)

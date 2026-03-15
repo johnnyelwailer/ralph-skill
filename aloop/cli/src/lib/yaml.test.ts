@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseYaml } from './yaml.js';
+import { parseYaml, parseYamlScalar } from './yaml.js';
 
 test('parseYaml — parses simple key-value pairs', () => {
   const content = `
@@ -50,4 +50,54 @@ foo: bar
   `;
   const result = parseYaml(content);
   assert.equal(result.foo, 'bar');
+});
+
+test('parseYaml — strips inline comments', () => {
+  const content = `
+name: hello # this is a comment
+count: 42 # another comment
+  `;
+  const result = parseYaml(content);
+  assert.equal(result.name, 'hello');
+  assert.equal(result.count, 42);
+});
+
+test('parseYaml — preserves hash inside double-quoted strings', () => {
+  const content = `
+color: "red #FF0000"
+  `;
+  const result = parseYaml(content);
+  assert.equal(result.color, 'red #FF0000');
+});
+
+test('parseYamlScalar — parses double-quoted strings', () => {
+  assert.equal(parseYamlScalar('"hello world"'), 'hello world');
+  assert.equal(parseYamlScalar('"escaped \\"quote\\""'), 'escaped "quote"');
+});
+
+test('parseYamlScalar — parses null, booleans, and empty', () => {
+  assert.equal(parseYamlScalar('null'), null);
+  assert.equal(parseYamlScalar('true'), true);
+  assert.equal(parseYamlScalar('false'), false);
+  assert.equal(parseYamlScalar(''), '');
+});
+
+test('parseYaml — parses lists of scalars', () => {
+  const content = `
+tags:
+  - alpha
+  - beta
+  - gamma
+  `;
+  const result = parseYaml(content);
+  assert.ok(Array.isArray(result.tags));
+  assert.deepEqual(result.tags, ['alpha', 'beta', 'gamma']);
+});
+
+test('parseYaml — hash without preceding space is not a comment', () => {
+  const content = `
+channel: foo#bar
+  `;
+  const result = parseYaml(content);
+  assert.equal(result.channel, 'foo#bar');
 });
