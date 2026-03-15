@@ -987,6 +987,18 @@ export async function startDashboardServer(
         return;
       }
 
+      // ── Open in IDE endpoint ──
+      if (requestUrl.pathname === '/api/open-ide') {
+        if (request.method !== 'POST') { writeJson(response, 405, { error: 'Method not allowed.' }); return; }
+        try {
+          spawnSync('code', [workdir], { stdio: 'ignore', timeout: 5000 });
+          writeJson(response, 200, { opened: true, path: workdir });
+        } catch {
+          writeJson(response, 500, { error: 'Failed to launch VS Code.' });
+        }
+        return;
+      }
+
       const artifactMatch = requestUrl.pathname.match(/^\/api\/artifacts\/(\d+)\/(.+)$/);
       if (artifactMatch && request.method === 'GET') {
         const iteration = artifactMatch[1];
