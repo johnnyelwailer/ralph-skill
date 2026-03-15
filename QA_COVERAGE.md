@@ -21,3 +21,15 @@
 | `aloop discover` (empty repo) | 2026-03-15 | b612aa4 | PASS | Gracefully handles empty repo with no specs |
 | Provider health backoff | 2026-03-15 | b612aa4 | FAIL | codex: 1 failure → 30h cooldown (spec says no cooldown for 1 failure) |
 | `aloop stop` (invalid session) | 2026-03-15 | b612aa4 | PASS | Clean error message: "Session not found" |
+| `aloop stop` (no argument) | 2026-03-15 | bfecfb5 | PASS | Clear error: "session-id required for stop command." |
+| Provider health backoff (re-test) | 2026-03-15 | bfecfb5 | FAIL | Still broken: codex consecutive_failures=1 with 30h cooldown |
+| Dashboard docs tabs (re-test) | 2026-03-15 | bfecfb5 | FAIL | Still broken: all docs 0 chars, workdir=aloop/cli/ |
+| Dashboard health API (re-test) | 2026-03-15 | bfecfb5 | FAIL | Still broken: health API returns empty object |
+| `aloop steer` CLI (re-test) | 2026-03-15 | bfecfb5 | FAIL | Still broken: "unknown command 'steer'" |
+| VERSIONS.md (Gate 8) | 2026-03-15 | bfecfb5 | PASS | Git 2.x present in Runtime section |
+| `aloop update` | 2026-03-15 | bfecfb5 | PASS | Copies 46 files, reports version + timestamp |
+| `aloop stop` --help | 2026-03-15 | bfecfb5 | PASS | Shows main help (no dedicated stop help, acceptable) |
+| `aloop orchestrate --autonomy-level` | 2026-03-15 | b7af2ec4 | FAIL | Works for valid inputs, but invalid inputs leak stack trace |
+| `aloop orchestrate` (DI fix) | 2026-03-15 | b7af2ec4 | PASS | Runs successfully without Commander Command object DI error |
+| `aloop gh status` | 2026-03-15 | b7af2ec4 | PASS | Outputs correct status table for GitHub integration |
+| `aloop gh watch` | 2026-03-15 | b7af2ec4 | FAIL | Fails due to mocked gh and leaks raw Node.js stack trace |

@@ -12,6 +12,9 @@ Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboa
 - [x] [fix] `orchestrateCommand` dependency injection — correctly handle Commander `Command` object vs `OrchestrateDeps`.
 - [x] [review] Gate 8: VERSIONS.md Drift — Add `git` to the Runtime section of `VERSIONS.md`. (priority: high)
 
+### QA Bugs (iter 46)
+- [ ] [qa/P2] CLI error handling leaks stack traces for user errors — `aloop orchestrate --autonomy-level foo`, `aloop gh watch` (when failing to invoke gh), and `aloop start` (when no config found) all throw raw Node.js stack traces instead of clean user-friendly errors. Tested at iter 46. (priority: medium)
+
 ### QA Bugs (iter 26)
 - [ ] [qa/P1] Dashboard docs tabs empty — API `/api/state` returns 0-char content for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md because `workdir` points to `aloop/cli/` subdirectory instead of worktree root. Spec says dashboard shows "Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md". Tested at iter 26. (priority: high)
 - [ ] [qa/P1] `aloop steer` CLI command missing — README lists `aloop steer` as a CLI command ("Send live instruction to a running loop") but running `aloop steer` returns "unknown command". Dashboard steer API works at `/api/steer` but CLI subcommand is not registered. Tested at iter 26. (priority: high)
