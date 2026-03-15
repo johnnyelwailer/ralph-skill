@@ -5,8 +5,8 @@
 ### In Progress (P0 — Loop & Orchestrator)
 
 **Configurable pipeline:**
-- [ ] [pipeline][high] Create `.aloop/pipeline.yml` schema and default config (plan → build × 3 → proof → review). (priority: high)
-- [ ] [pipeline][high] Create `.aloop/agents/` directory with agent YAML definitions (plan.yml, build.yml, proof.yml, review.yml, steer.yml). (priority: high)
+- [x] [pipeline][high] Create `.aloop/pipeline.yml` schema and default config (plan → build × 3 → proof → review). (priority: high)
+- [x] [pipeline][high] Create `.aloop/agents/` directory with agent YAML definitions (plan.yml, build.yml, proof.yml, review.yml, steer.yml). (priority: high)
 - [ ] [pipeline][high] Update `compile-loop-plan.ts` to read `.aloop/pipeline.yml` instead of hardcoded cycle arrays. (priority: high)
 
 **Orchestrator prompt templates (prompt-based components):**

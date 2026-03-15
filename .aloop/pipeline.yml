@@ -1,0 +1,8 @@
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 3
+    onFailure: retry
+  - agent: proof
+  - agent: review
+    onFailure: goto build
