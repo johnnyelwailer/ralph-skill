@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, writeFile, chmod } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, chmod, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { startDashboardServer } from './dashboard.js';
 
@@ -162,30 +162,55 @@ test('host monitor processes GH convention requests outside loop runtime', async
 
   const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
   const processedDir = path.join(requestsDir, 'processed');
-  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+  const queueDir = path.join(fixture.sessionDir, 'queue');
 
   try {
     await mkdir(requestsDir, { recursive: true });
-    await writeFile(path.join(requestsDir, '002-pr-comment.json'), '{"type":"pr-comment","pr_number":15}', 'utf8');
-    await writeFile(path.join(requestsDir, '001-pr-create.json'), '{"type":"pr-create","title":"x"}', 'utf8');
+    await writeFile(path.join(fixture.workdir, 'body.md'), 'test body', 'utf8');
+    
+    await writeFile(path.join(requestsDir, '001-create-pr.json'), JSON.stringify({
+      id: 'req-1',
+      type: 'create_pr',
+      payload: {
+        head: 'feat',
+        base: 'main',
+        title: 'x',
+        body_file: 'body.md',
+        issue_number: 15
+      }
+    }), 'utf8');
+    
+    await writeFile(path.join(requestsDir, '002-post-comment.json'), JSON.stringify({
+      id: 'req-2',
+      type: 'post_comment',
+      payload: {
+        issue_number: 15,
+        body_file: 'body.md'
+      }
+    }), 'utf8');
 
     await waitFor(async () => {
       try {
-        await readFile(path.join(processedDir, '001-pr-create.json'), 'utf8');
-        await readFile(path.join(processedDir, '002-pr-comment.json'), 'utf8');
+        await readFile(path.join(processedDir, '001-create-pr.json'), 'utf8');
+        await readFile(path.join(processedDir, '002-post-comment.json'), 'utf8');
         return true;
       } catch {
         return false;
       }
     });
 
-    assert.deepEqual(calls, ['pr-create|001-pr-create.json', 'pr-comment|002-pr-comment.json']);
-    const createResponse = JSON.parse(await readFile(path.join(responsesDir, '001-pr-create.json'), 'utf8')) as Record<string, unknown>;
-    const commentResponse = JSON.parse(await readFile(path.join(responsesDir, '002-pr-comment.json'), 'utf8')) as Record<string, unknown>;
-    assert.equal(createResponse.status, 'success');
-    assert.equal(commentResponse.status, 'success');
-    assert.deepEqual(createResponse.gh, { pr_number: 15 });
-    assert.equal(commentResponse.gh, 'commented');
+    assert.deepEqual(calls, ['pr-create|_tmp_req-1.json', 'issue-comment|_tmp_req-2.json']);
+    
+    const queueFiles = (await readdir(queueDir)).filter(f => f.endsWith('.md')).sort();
+    assert.equal(queueFiles.length, 2);
+
+    const createResponse = await readFile(path.join(queueDir, queueFiles[0]), 'utf8');
+    const commentResponse = await readFile(path.join(queueDir, queueFiles[1]), 'utf8');
+    
+    assert.match(createResponse, /"status": "success"/);
+    assert.match(createResponse, /"pr_number": 15/);
+    assert.match(commentResponse, /"status": "success"/);
+    assert.match(commentResponse, /posted/);
 
     const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
       .trim()
@@ -209,8 +234,8 @@ test('GH request processor writes error response for malformed JSON request', as
   });
 
   const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
-  const processedDir = path.join(requestsDir, 'processed');
-  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+  const failedDir = path.join(requestsDir, 'failed');
+  const queueDir = path.join(fixture.sessionDir, 'queue');
 
   try {
     await mkdir(requestsDir, { recursive: true });
@@ -218,7 +243,7 @@ test('GH request processor writes error response for malformed JSON request', as
 
     await waitFor(async () => {
       try {
-        await readFile(path.join(processedDir, '001-bad.json'), 'utf8');
+        await readFile(path.join(failedDir, '001-bad.json'), 'utf8');
         return true;
       } catch {
         return false;
@@ -226,21 +251,38 @@ test('GH request processor writes error response for malformed JSON request', as
     });
 
     assert.deepEqual(calls, []);
-    const response = JSON.parse(await readFile(path.join(responsesDir, '001-bad.json'), 'utf8')) as Record<string, unknown>;
-    assert.equal(response.status, 'error');
-    assert.equal(typeof response.error, 'string');
-    assert.equal(typeof response.processed_at, 'string');
+    // No queue entry for malformed JSON as we have no request object
+    if (await exists(queueDir)) {
+      const queueFiles = (await readdir(queueDir)).filter(f => f.endsWith('.md'));
+      assert.equal(queueFiles.length, 0);
+    }
 
     const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
       .trim()
       .split('\n')
       .filter(Boolean)
-      .map((line) => JSON.parse(line) as { event?: string });
-    assert.equal(logs.filter((entry) => entry.event === 'gh_request_failed').length, 1);
+      .map((line) => JSON.parse(line) as { event?: string; error?: string });
+    const failedLog = logs.find((entry) => entry.event === 'gh_request_failed');
+    assert.ok(failedLog);
+    assert.match(failedLog.error as string, /Invalid JSON/);
   } finally {
     await fixture.handle.close();
   }
 });
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await readFile(path);
+    return true;
+  } catch {
+    try {
+      await readdir(path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
 
 test('GH request processor writes error response for unsupported request type', async () => {
   const calls: string[] = [];
@@ -253,16 +295,16 @@ test('GH request processor writes error response for unsupported request type', 
   });
 
   const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
-  const processedDir = path.join(requestsDir, 'processed');
-  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+  const failedDir = path.join(requestsDir, 'failed');
+  const queueDir = path.join(fixture.sessionDir, 'queue');
 
   try {
     await mkdir(requestsDir, { recursive: true });
-    await writeFile(path.join(requestsDir, '001-unknown.json'), '{"type":"repo-delete","target":"foo"}', 'utf8');
+    await writeFile(path.join(requestsDir, '001-unknown.json'), '{"id":"req-unsupp","type":"repo-delete","target":"foo"}', 'utf8');
 
     await waitFor(async () => {
       try {
-        await readFile(path.join(processedDir, '001-unknown.json'), 'utf8');
+        await readFile(path.join(failedDir, '001-unknown.json'), 'utf8');
         return true;
       } catch {
         return false;
@@ -270,10 +312,12 @@ test('GH request processor writes error response for unsupported request type', 
     });
 
     assert.deepEqual(calls, []);
-    const response = JSON.parse(await readFile(path.join(responsesDir, '001-unknown.json'), 'utf8')) as Record<string, unknown>;
-    assert.equal(response.status, 'error');
-    assert.equal(response.type, 'repo-delete');
-    assert.match(response.error as string, /Unsupported request type/);
+    const queueFiles = (await readdir(queueDir)).filter(f => f.endsWith('.md')).sort();
+    assert.equal(queueFiles.length, 1);
+    const response = await readFile(path.join(queueDir, queueFiles[0]), 'utf8');
+    assert.match(response, /"status": "error"/);
+    assert.match(response, /"request_type": "repo-delete"/);
+    assert.match(response, /Unsupported request type/);
 
     const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
       .trim()
@@ -295,27 +339,39 @@ test('GH request processor writes error response when aloop gh returns non-zero 
   });
 
   const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
-  const processedDir = path.join(requestsDir, 'processed');
-  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+  const failedDir = path.join(requestsDir, 'failed');
+  const queueDir = path.join(fixture.sessionDir, 'queue');
 
   try {
     await mkdir(requestsDir, { recursive: true });
-    await writeFile(path.join(requestsDir, '001-pr-create.json'), '{"type":"pr-create","title":"x"}', 'utf8');
+    await writeFile(path.join(fixture.workdir, 'body.md'), 'body', 'utf8');
+    await writeFile(path.join(requestsDir, '001-create-pr.json'), JSON.stringify({
+      id: 'req-rate',
+      type: 'create_pr',
+      payload: {
+        head: 'f',
+        base: 'm',
+        title: 'x',
+        body_file: 'body.md',
+        issue_number: 1
+      }
+    }), 'utf8');
 
     await waitFor(async () => {
       try {
-        await readFile(path.join(processedDir, '001-pr-create.json'), 'utf8');
+        await readFile(path.join(failedDir, '001-create-pr.json'), 'utf8');
         return true;
       } catch {
         return false;
       }
     });
 
-    const response = JSON.parse(await readFile(path.join(responsesDir, '001-pr-create.json'), 'utf8')) as Record<string, unknown>;
-    assert.equal(response.status, 'error');
-    assert.equal(response.type, 'pr-create');
-    assert.match(response.error as string, /failed with exit code 1/);
-    assert.match(response.error as string, /rate limit exceeded/);
+    const queueFiles = (await readdir(queueDir)).filter(f => f.endsWith('.md')).sort();
+    assert.equal(queueFiles.length, 1);
+    const response = await readFile(path.join(queueDir, queueFiles[0]), 'utf8');
+    assert.match(response, /"status": "error"/);
+    assert.match(response, /"request_type": "create_pr"/);
+    assert.match(response, /rate limit exceeded/);
 
     const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
       .trim()
@@ -339,18 +395,30 @@ test('GH request processor handles archive collision with duplicate file names',
 
   const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
   const processedDir = path.join(requestsDir, 'processed');
-  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+  const queueDir = path.join(fixture.sessionDir, 'queue');
 
   try {
     await mkdir(processedDir, { recursive: true });
+    await mkdir(path.join(fixture.workdir, '.aloop', 'requests'), { recursive: true });
     // Pre-populate processed dir with a file that will collide
-    await writeFile(path.join(processedDir, '001-pr-create.json'), '{"old":"archive"}', 'utf8');
+    await writeFile(path.join(processedDir, '001-create-pr.json'), '{"old":"archive"}', 'utf8');
 
-    await writeFile(path.join(requestsDir, '001-pr-create.json'), '{"type":"pr-create","title":"new"}', 'utf8');
+    await writeFile(path.join(fixture.workdir, 'body.md'), 'body', 'utf8');
+    await writeFile(path.join(requestsDir, '001-create-pr.json'), JSON.stringify({
+      id: 'req-dup',
+      type: 'create_pr',
+      payload: {
+        head: 'f',
+        base: 'm',
+        title: 'x',
+        body_file: 'body.md',
+        issue_number: 1
+      }
+    }), 'utf8');
 
     await waitFor(async () => {
       try {
-        await readFile(path.join(processedDir, '001-pr-create.dup1.json'), 'utf8');
+        await readFile(path.join(processedDir, '001-create-pr.dup1.json'), 'utf8');
         return true;
       } catch {
         return false;
@@ -358,17 +426,19 @@ test('GH request processor handles archive collision with duplicate file names',
     });
 
     // Original archive file should be untouched
-    const oldArchive = JSON.parse(await readFile(path.join(processedDir, '001-pr-create.json'), 'utf8')) as Record<string, unknown>;
+    const oldArchive = JSON.parse(await readFile(path.join(processedDir, '001-create-pr.json'), 'utf8')) as Record<string, unknown>;
     assert.equal(oldArchive.old, 'archive');
 
     // New request should be archived with .dup1 suffix
-    const newArchive = JSON.parse(await readFile(path.join(processedDir, '001-pr-create.dup1.json'), 'utf8')) as Record<string, unknown>;
-    assert.equal(newArchive.type, 'pr-create');
+    const newArchive = JSON.parse(await readFile(path.join(processedDir, '001-create-pr.dup1.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(newArchive.id, 'req-dup');
 
     // Response should still be written with success
-    const response = JSON.parse(await readFile(path.join(responsesDir, '001-pr-create.json'), 'utf8')) as Record<string, unknown>;
-    assert.equal(response.status, 'success');
-    assert.deepEqual(response.gh, { ok: true });
+    const queueFiles = (await readdir(queueDir)).filter(f => f.endsWith('.md')).sort();
+    assert.equal(queueFiles.length, 1);
+    const response = await readFile(path.join(queueDir, queueFiles[0]), 'utf8');
+    assert.match(response, /"status": "success"/);
+    assert.match(response, /"ok": true/);
 
     const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
       .trim()
@@ -396,16 +466,17 @@ test('host monitor processes requests while loop.sh runtime path executes', asyn
       if (operation === 'pr-create') {
         return { exitCode: 0, output: '{"pr_number":22}' };
       }
-      if (operation === 'pr-comment') {
-        return { exitCode: 0, output: 'comment saved' };
+      if (requestPath.includes('req-4')) {
+        return { exitCode: 1, output: 'permission denied' };
       }
-      return { exitCode: 1, output: 'permission denied' };
+      return { exitCode: 0, output: 'comment saved' };
     },
   });
 
   const requestsDir = path.join(fixture.workdir, '.aloop', 'requests');
   const processedDir = path.join(requestsDir, 'processed');
-  const responsesDir = path.join(fixture.workdir, '.aloop', 'responses');
+  const failedDir = path.join(requestsDir, 'failed');
+  const queueDir = path.join(fixture.sessionDir, 'queue');
   const promptsDir = path.join(fixture.root, 'prompts');
   const fakeBinDir = path.join(fixture.root, 'fake-bin');
   const providerStateFile = path.join(fixture.root, 'provider-state.txt');
@@ -420,6 +491,7 @@ test('host monitor processes requests while loop.sh runtime path executes', asyn
 
     await writeFile(path.join(fixture.workdir, 'TODO.md'), '- [ ] Build something\n', 'utf8');
     await writeFile(path.join(promptsDir, 'PROMPT_build.md'), '# Building Mode\nBuild the task.\n', 'utf8');
+    await writeFile(path.join(fixture.workdir, 'body.md'), 'test content', 'utf8');
 
     await writeFile(
       path.join(fakeBinDir, 'claude'),
@@ -444,11 +516,34 @@ test('host monitor processes requests while loop.sh runtime path executes', asyn
     );
     await chmod(path.join(fakeBinDir, 'claude'), 0o755);
 
-    await writeFile(path.join(requestsDir, '002-pr-comment.json'), '{"type":"pr-comment","pr_number":22}', 'utf8');
-    await writeFile(path.join(requestsDir, '001-pr-create.json'), '{"type":"pr-create","title":"demo"}', 'utf8');
+    await writeFile(path.join(requestsDir, '001-create-pr.json'), JSON.stringify({
+      id: 'req-1',
+      type: 'create_pr',
+      payload: {
+        head: 'f', base: 'm', title: 't', body_file: 'body.md', issue_number: 22
+      }
+    }), 'utf8');
+    
+    await writeFile(path.join(requestsDir, '002-post-comment.json'), JSON.stringify({
+      id: 'req-2',
+      type: 'post_comment',
+      payload: {
+        issue_number: 22,
+        body_file: 'body.md'
+      }
+    }), 'utf8');
+    
     await writeFile(path.join(requestsDir, '003-bad.json'), 'not valid json {{{', 'utf8');
-    await writeFile(path.join(requestsDir, '004-issue-comment.json'), '{"type":"issue-comment","issue_number":9}', 'utf8');
-
+    
+    await writeFile(path.join(requestsDir, '004-post-comment-fail.json'), JSON.stringify({
+      id: 'req-4',
+      type: 'post_comment',
+      payload: {
+        issue_number: 99,
+        body_file: 'body.md'
+      }
+    }), 'utf8');
+    
     const loopCommand = [
       `export PATH=${quoteBash(toBashPath(fakeBinDir))}:$PATH`,
       `export FAKE_LOOP_PROVIDER_STATE=${quoteBash(toBashPath(providerStateFile))}`,
@@ -459,10 +554,10 @@ test('host monitor processes requests while loop.sh runtime path executes', asyn
 
     await waitFor(async () => {
       try {
-        await readFile(path.join(processedDir, '001-pr-create.json'), 'utf8');
-        await readFile(path.join(processedDir, '002-pr-comment.json'), 'utf8');
-        await readFile(path.join(processedDir, '003-bad.json'), 'utf8');
-        await readFile(path.join(processedDir, '004-issue-comment.json'), 'utf8');
+        await readFile(path.join(processedDir, '001-create-pr.json'), 'utf8');
+        await readFile(path.join(processedDir, '002-post-comment.json'), 'utf8');
+        await readFile(path.join(failedDir, '003-bad.json'), 'utf8');
+        await readFile(path.join(failedDir, '004-post-comment-fail.json'), 'utf8');
         return true;
       } catch {
         return false;
@@ -470,25 +565,25 @@ test('host monitor processes requests while loop.sh runtime path executes', asyn
     }, 5_000);
 
     assert.deepEqual(calls, [
-      'pr-create|001-pr-create.json',
-      'pr-comment|002-pr-comment.json',
-      'issue-comment|004-issue-comment.json',
+      'pr-create|_tmp_req-1.json',
+      'issue-comment|_tmp_req-2.json',
+      'issue-comment|_tmp_req-4.json',
     ]);
 
-    const createResponse = JSON.parse(await readFile(path.join(responsesDir, '001-pr-create.json'), 'utf8')) as Record<string, unknown>;
-    const commentResponse = JSON.parse(await readFile(path.join(responsesDir, '002-pr-comment.json'), 'utf8')) as Record<string, unknown>;
-    const malformedResponse = JSON.parse(await readFile(path.join(responsesDir, '003-bad.json'), 'utf8')) as Record<string, unknown>;
-    const failedResponse = JSON.parse(await readFile(path.join(responsesDir, '004-issue-comment.json'), 'utf8')) as Record<string, unknown>;
+    const queueFiles = (await readdir(queueDir)).filter(f => f.endsWith('.md')).sort();
+    // 001, 002, 004 should have queue entries. 003 (malformed) doesn't.
+    assert.equal(queueFiles.length, 3);
+    
+    const res1 = await readFile(path.join(queueDir, queueFiles[0]), 'utf8');
+    const res2 = await readFile(path.join(queueDir, queueFiles[1]), 'utf8');
+    const res4 = await readFile(path.join(queueDir, queueFiles[2]), 'utf8');
 
-    assert.equal(createResponse.status, 'success');
-    assert.deepEqual(createResponse.gh, { pr_number: 22 });
-    assert.equal(commentResponse.status, 'success');
-    assert.equal(commentResponse.gh, 'comment saved');
-    assert.equal(malformedResponse.status, 'error');
-    assert.equal(typeof malformedResponse.error, 'string');
-    assert.equal(failedResponse.status, 'error');
-    assert.match(String(failedResponse.error), /failed with exit code 1/);
-    assert.match(String(failedResponse.error), /permission denied/);
+    assert.match(res1, /"status": "success"/);
+    assert.match(res1, /"pr_number": 22/);
+    assert.match(res2, /"status": "success"/);
+    assert.match(res2, /posted/); // Updated from 'comment saved' to 'posted' as per requests.ts behavior
+    assert.match(res4, /"status": "error"/);
+    assert.match(res4, /permission denied/);
 
     const providerCallCount = Number.parseInt((await readFile(providerStateFile, 'utf8')).trim(), 10);
     assert.ok(Number.isFinite(providerCallCount) && providerCallCount >= 1);

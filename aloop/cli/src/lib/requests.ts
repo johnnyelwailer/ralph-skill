@@ -173,8 +173,14 @@ export async function processAgentRequests(options: RequestProcessorOptions): Pr
       const content = await fs.readFile(requestPath, 'utf8');
       request = JSON.parse(content) as AgentRequest;
     } catch (e) {
-      const archivePath = getArchivePath(processedDir, fileName, reservedArchivePaths);
+      const archivePath = getArchivePath(failedDir, fileName, new Set());
       await fs.rename(requestPath, archivePath);
+      await writeSessionLogEntry(options.logPath, 'gh_request_failed', {
+        type: 'unknown',
+        id: 'unknown',
+        request_file: fileName,
+        error: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`
+      });
       continue;
     }
 

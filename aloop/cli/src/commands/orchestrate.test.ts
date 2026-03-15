@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import os from 'node:os';
+import { mkdtemp, mkdir } from 'node:fs/promises';
 import {
   orchestrateCommand,
   orchestrateCommandWithDeps,
@@ -872,14 +875,19 @@ I want to make sure we implement exactly what you intended. Could you clarify th
     ];
     const ghCalls: string[][] = [];
     const writtenFiles: Record<string, string> = {};
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-triage-'));
+    const aloopRoot = path.join(tempDir, '.aloop');
     const deps: TriageDeps = {
       execGh: async (args) => {
         ghCalls.push(args);
         return { stdout: '', stderr: '' };
       },
       now: () => new Date('2026-03-14T12:05:00.000Z'),
-      writeFile: async (p, data) => { writtenFiles[p] = data; },
-      aloopRoot: '/home/user/.aloop',
+      writeFile: async (p, data) => { 
+        await mkdir(path.dirname(p), { recursive: true });
+        writtenFiles[p] = data; 
+      },
+      aloopRoot,
     };
 
     const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
@@ -895,7 +903,7 @@ I want to make sure we implement exactly what you intended. Could you clarify th
       ['issue', 'edit', '43', '--repo', 'owner/repo', '--remove-label', 'aloop/blocked-on-human'],
     );
 
-    const expectedPath = '/home/user/.aloop/sessions/proj-issue-43-20260314-120000/worktree/STEERING.md';
+    const expectedPath = path.join(aloopRoot, 'sessions/proj-issue-43-20260314-120000/worktree/STEERING.md');
     assert.ok(writtenFiles[expectedPath], 'unblock_and_steering should also write STEERING.md');
     assert.ok(writtenFiles[expectedPath].includes('WebSockets'), 'steering content includes comment body');
   });
@@ -1043,14 +1051,19 @@ Based on the current issue context, this requires human clarification before imp
     ];
     const ghCalls: string[][] = [];
     const writtenFiles: Record<string, string> = {};
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-triage-'));
+    const aloopRoot = path.join(tempDir, '.aloop');
     const deps: TriageDeps = {
       execGh: async (args) => {
         ghCalls.push(args);
         return { stdout: '', stderr: '' };
       },
       now: () => new Date('2026-03-14T12:11:00.000Z'),
-      writeFile: async (p, data) => { writtenFiles[p] = data; },
-      aloopRoot: '/home/user/.aloop',
+      writeFile: async (p, data) => { 
+        await mkdir(path.dirname(p), { recursive: true });
+        writtenFiles[p] = data; 
+      },
+      aloopRoot,
     };
 
     const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
@@ -1061,7 +1074,7 @@ Based on the current issue context, this requires human clarification before imp
     assert.deepStrictEqual(issue.processed_comment_ids, [31]);
     assert.equal(ghCalls.length, 0, 'steering_injected should not call GH when not blocked');
 
-    const expectedPath = '/home/user/.aloop/sessions/proj-issue-48-20260314-120000/worktree/STEERING.md';
+    const expectedPath = path.join(aloopRoot, 'sessions/proj-issue-48-20260314-120000/worktree/STEERING.md');
     assert.ok(writtenFiles[expectedPath], 'should write STEERING.md to child worktree');
     assert.ok(writtenFiles[expectedPath].includes('Please implement pagination'), 'steering content includes comment body');
     assert.ok(writtenFiles[expectedPath].includes('#48'), 'steering content references issue number');
@@ -1080,14 +1093,19 @@ Based on the current issue context, this requires human clarification before imp
     ];
     const ghCalls: string[][] = [];
     const writtenFiles: Record<string, string> = {};
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-triage-'));
+    const aloopRoot = path.join(tempDir, '.aloop');
     const deps: TriageDeps = {
       execGh: async (args) => {
         ghCalls.push(args);
         return { stdout: '', stderr: '' };
       },
       now: () => new Date('2026-03-14T12:18:00.000Z'),
-      writeFile: async (p, data) => { writtenFiles[p] = data; },
-      aloopRoot: '/home/user/.aloop',
+      writeFile: async (p, data) => { 
+        await mkdir(path.dirname(p), { recursive: true });
+        writtenFiles[p] = data; 
+      },
+      aloopRoot,
     };
 
     const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
@@ -1116,18 +1134,23 @@ Based on the current issue context, this requires human clarification before imp
       ],
     });
     const writtenFiles: Record<string, string> = {};
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-triage-'));
+    const aloopRoot = path.join(tempDir, '.aloop');
     const deps: TriageDeps = {
       execGh: async () => ({ stdout: '', stderr: '' }),
       now: () => new Date('2026-03-14T12:19:00.000Z'),
-      writeFile: async (p, data) => { writtenFiles[p] = data; },
-      aloopRoot: '/home/user/.aloop',
+      writeFile: async (p, data) => { 
+        await mkdir(path.dirname(p), { recursive: true });
+        writtenFiles[p] = data; 
+      },
+      aloopRoot,
     };
 
     const entries = await applyTriageResultsToIssue(issue, [], 'owner/repo', deps);
 
     assert.deepStrictEqual(entries, []);
     assert.deepStrictEqual(issue.pending_steering_comments, []);
-    const expectedPath = '/home/user/.aloop/sessions/proj-issue-59-20260314-120000/worktree/STEERING.md';
+    const expectedPath = path.join(aloopRoot, 'sessions/proj-issue-59-20260314-120000/worktree/STEERING.md');
     assert.ok(writtenFiles[expectedPath], 'should write deferred steering once child_session exists');
     assert.ok(writtenFiles[expectedPath].includes('configurable'), 'deferred steering content should be preserved');
   });
