@@ -12,6 +12,7 @@
 - Gate 8: **VERSIONS.md Drift** — `git` is a required runtime dependency but is missing from `VERSIONS.md`.
 
 **Resolved from prior reviews:**
+- Gate 4 ✅: `spec_backfill` duplication consolidated — extracted shared `writeSpecBackfill` into `lib/specBackfill.ts`, both `requests.ts` and `orchestrate.ts` now use it. `requests.ts` now includes provenance trailers (`Aloop-Agent`, `Aloop-Iteration`, `Aloop-Session`).
 - Gate 4 ✅: `sendToDefaultSessionClients` dead code removed.
 - Gate 4 ✅: `publishState` duplication consolidated.
 - Gate 8 ✅: `@radix-ui/react-dropdown-menu@^2.1.16` added to `VERSIONS.md`.

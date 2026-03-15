@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { writeQueueOverride } from './plan.js';
+import { writeSpecBackfill } from './specBackfill.js';
 
 export type RequestType =
   | 'create_issues'
@@ -111,7 +112,6 @@ export interface QueryIssuesRequest extends BaseRequest {
   payload: {
     labels?: string[];
     state?: 'open' | 'closed' | 'all';
-    since?: string;
   };
 }
 
@@ -485,32 +485,34 @@ async function handleQueryIssues(request: QueryIssuesRequest, fileName: string, 
 }
 
 async function handleSpecBackfill(request: SpecBackfillRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  const specPath = path.join(options.workdir, request.payload.file);
   const content = await fs.readFile(path.join(options.workdir, request.payload.content_file), 'utf8');
-  
-  let specContent = await fs.readFile(specPath, 'utf8');
-  // Simple replacement or append for now. SPEC says "at section"
-  // Assuming section is a header name
-  const sectionHeader = `## ${request.payload.section}`;
-  if (specContent.includes(sectionHeader)) {
-    // Replace section content until next header or end
-    const lines = specContent.split('\n');
-    const startIdx = lines.findIndex(l => l.startsWith(sectionHeader));
-    let endIdx = lines.findIndex((l, i) => i > startIdx && l.startsWith('## '));
-    if (endIdx === -1) endIdx = lines.length;
-    
-    lines.splice(startIdx + 1, endIdx - startIdx - 1, '', content, '');
-    specContent = lines.join('\n');
-  } else {
-    specContent += `\n\n${sectionHeader}\n\n${content}\n`;
-  }
-  
-  await fs.writeFile(specPath, specContent, 'utf8');
-  // Commit the change
+
+  // Read iteration from session status.json (default 0 if unavailable)
+  let iteration = 0;
+  try {
+    const statusRaw = await fs.readFile(path.join(options.sessionDir, 'status.json'), 'utf8');
+    const status = JSON.parse(statusRaw);
+    if (typeof status.iteration === 'number') iteration = status.iteration;
+  } catch { /* status.json may not exist yet */ }
+
+  // Wrap sync spawnSync as async execGit for provenance support
   const spawn = options.spawnSync || spawnSync;
-  spawn('git', ['-C', options.workdir, 'add', request.payload.file], { stdio: 'ignore' });
-  spawn('git', ['-C', options.workdir, 'commit', '-m', `docs: backfill spec section ${request.payload.section} [aloop]`], { stdio: 'ignore' });
-  
+  const execGit = async (args: string[], cwd?: string) => {
+    const result = spawn('git', cwd ? ['-C', cwd, ...args] : args, { encoding: 'utf8' });
+    if (result.status !== 0) throw new Error(result.stderr || 'git failed');
+    return { stdout: result.stdout || '', stderr: result.stderr || '' };
+  };
+
+  await writeSpecBackfill({
+    specFile: request.payload.file,
+    section: request.payload.section,
+    content,
+    sessionId: options.sessionId,
+    iteration,
+    projectRoot: options.workdir,
+    deps: { readFile: (p, enc) => fs.readFile(p, enc), writeFile: (p, d, enc) => fs.writeFile(p, d, enc), execGit },
+  });
+
   await writeSuccessToQueue(request, { status: 'backfilled', file: request.payload.file }, options, fileName);
 }
 

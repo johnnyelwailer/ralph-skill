@@ -6,6 +6,7 @@ import { getProjectHash, resolveProjectRoot } from './project.js';
 import type { OutputMode } from './status.js';
 import { writeQueueOverride } from '../lib/plan.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
+import { writeSpecBackfill } from '../lib/specBackfill.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -3751,6 +3752,7 @@ export function applyReplanActions(
 /**
  * Write a spec backfill entry: append resolved question content to the spec file.
  * Commits with provenance trailers to avoid re-triggering.
+ * Delegates to shared writeSpecBackfill in lib/specBackfill.ts.
  */
 export async function applySpecBackfill(
   specFile: string,
@@ -3765,46 +3767,7 @@ export async function applySpecBackfill(
     execGit?: (args: string[], cwd?: string) => Promise<{ stdout: string; stderr: string }>;
   },
 ): Promise<boolean> {
-  const specPath = path.resolve(projectRoot, specFile);
-  try {
-    const existingContent = await deps.readFile(specPath, 'utf8');
-
-    // Find the section header and append content after it
-    const sectionPattern = new RegExp(`(^#{1,6}\\s+${section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*$)`, 'm');
-    const match = existingContent.match(sectionPattern);
-
-    let updatedContent: string;
-    if (match && match.index !== undefined) {
-      const insertPos = match.index + match[0].length;
-      updatedContent =
-        existingContent.slice(0, insertPos) +
-        '\n\n' +
-        content +
-        existingContent.slice(insertPos);
-    } else {
-      // Section not found — append at end
-      updatedContent = existingContent + '\n\n## ' + section + '\n\n' + content + '\n';
-    }
-
-    await deps.writeFile(specPath, updatedContent, 'utf8');
-
-    // Commit with provenance trailers if git is available
-    if (deps.execGit) {
-      await deps.execGit(['add', specFile], projectRoot);
-      const commitMsg = [
-        `docs: backfill spec section "${section}"`,
-        '',
-        `Aloop-Agent: spec-backfill`,
-        `Aloop-Iteration: ${iteration}`,
-        `Aloop-Session: ${sessionId}`,
-      ].join('\n');
-      await deps.execGit(['commit', '-m', commitMsg, '--allow-empty'], projectRoot);
-    }
-
-    return true;
-  } catch {
-    return false;
-  }
+  return writeSpecBackfill({ specFile, section, content, sessionId, iteration, projectRoot, deps });
 }
 
 /**
