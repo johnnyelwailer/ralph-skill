@@ -231,21 +231,6 @@ function Resolve-IterationMode {
     param([int]$IterationNumber)
     $script:lastModeWasForced = $false
     $script:resolvedPromptName = $null
-    if ($script:forceReviewNext) {
-        $script:forceReviewNext = $false
-        $script:lastModeWasForced = $true
-        return 'review'
-    }
-    if ($script:forceProofNext) {
-        $script:forceProofNext = $false
-        $script:lastModeWasForced = $true
-        return 'proof'
-    }
-    if ($script:forcePlanNext) {
-        $script:forcePlanNext = $false
-        $script:lastModeWasForced = $true
-        return 'plan'
-    }
     if (Resolve-CyclePromptFromPlan) {
         return (Get-ModeFromPromptName -PromptName $script:resolvedPromptName)
     }
@@ -338,9 +323,6 @@ function Persist-LoopPlanState {
         if ($Iteration -gt 0) {
             $plan.iteration = [int]$Iteration
         }
-        $plan.forcePlanNext = [bool]$script:forcePlanNext
-        $plan.forceProofNext = [bool]$script:forceProofNext
-        $plan.forceReviewNext = [bool]$script:forceReviewNext
         $plan.allTasksMarkedDone = [bool]$script:allTasksMarkedDone
         $plan | ConvertTo-Json -Depth 12 | Set-Content -Encoding utf8 $loopPlanFile
     } catch { }
@@ -769,10 +751,7 @@ function Get-ReviewVerdict {
 # ============================================================================
 
 $stuckState = @{ LastTask = ""; StuckCount = 0 }
-$script:forcePlanNext = $false
 $script:allTasksMarkedDone = $false
-$script:forceProofNext = $false
-$script:forceReviewNext = $false
 $script:lastProofIteration = 0
 $script:lastProviderOutputText = $null
 $script:cyclePosition = 0
@@ -827,7 +806,10 @@ function Register-IterationSuccess {
     } elseif ($IterationMode -eq 'build') {
         $script:hasBuildsSinceLastPlan = $true
     } elseif ($IterationMode -eq 'proof' -and $script:allTasksMarkedDone) {
-        $script:forceReviewNext = $true
+        $timestamp = (Get-Date -UFormat %s) -replace '\..*'
+        $queuePath = Join-Path $SessionDir "queue/$($timestamp)-PROMPT_review.md"
+        if (-not (Test-Path (Join-Path $SessionDir "queue"))) { New-Item -ItemType Directory -Path (Join-Path $SessionDir "queue") -Force | Out-Null }
+        Copy-Item (Join-Path $PromptsDir "PROMPT_review.md") $queuePath -Force
     }
 
     $script:phaseRetryState.phase = ''
@@ -1955,7 +1937,10 @@ try {
         $steerPromptFile = Join-Path $PromptsDir "PROMPT_steer.md"
         if ((Test-Path $steeringFile) -and (Test-Path $steerPromptFile)) {
             $iterationMode = 'steer'
-            $script:forcePlanNext = $true
+            $timestamp = (Get-Date -UFormat %s) -replace '\..*'
+            $queuePath = Join-Path $SessionDir "queue/$($timestamp)-PROMPT_plan.md"
+            if (-not (Test-Path (Join-Path $SessionDir "queue"))) { New-Item -ItemType Directory -Path (Join-Path $SessionDir "queue") -Force | Out-Null }
+            Copy-Item (Join-Path $PromptsDir "PROMPT_plan.md") $queuePath -Force
             $script:allTasksMarkedDone = $false
             $script:cyclePosition = 0
             Write-LogEntry -Event "steering_detected" -Data @{ iteration = $iteration }
@@ -2022,7 +2007,10 @@ try {
                 if ($Mode -eq 'plan-build-review') {
                     Write-Host "`nALL TASKS MARKED DONE - forcing final proof + review" -ForegroundColor Cyan
                     $script:allTasksMarkedDone = $true
-                    $script:forceProofNext = $true
+                    $timestamp = (Get-Date -UFormat %s) -replace '\..*'
+                    $queuePath = Join-Path $SessionDir "queue/$($timestamp)-PROMPT_proof.md"
+                    if (-not (Test-Path (Join-Path $SessionDir "queue"))) { New-Item -ItemType Directory -Path (Join-Path $SessionDir "queue") -Force | Out-Null }
+                    Copy-Item (Join-Path $PromptsDir "PROMPT_proof.md") $queuePath -Force
                     Write-LogEntry -Event "tasks_marked_complete" -Data @{ iteration = $iteration }
                     continue
                 } else {
@@ -2139,7 +2127,10 @@ try {
                     } else {
                         Write-Host "`nFINAL REVIEW REJECTED - reopened tasks, continuing loop" -ForegroundColor Yellow
                         $script:allTasksMarkedDone = $false
-                        $script:forcePlanNext = $true
+                        $timestamp = (Get-Date -UFormat %s) -replace '\..*'
+                        $queuePath = Join-Path $SessionDir "queue/$($timestamp)-PROMPT_plan.md"
+                        if (-not (Test-Path (Join-Path $SessionDir "queue"))) { New-Item -ItemType Directory -Path (Join-Path $SessionDir "queue") -Force | Out-Null }
+                        Copy-Item (Join-Path $PromptsDir "PROMPT_plan.md") $queuePath -Force
                         $script:cyclePosition = 0
                         Write-LogEntry -Event "final_review_rejected" -Data @{ iteration = $iteration }
                         Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green

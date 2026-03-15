@@ -8,9 +8,6 @@ export interface LoopPlan {
   iteration: number;
   version: number;
   allTasksMarkedDone?: boolean;
-  forceReviewNext?: boolean;
-  forceProofNext?: boolean;
-  forcePlanNext?: boolean;
 }
 
 export interface MutateLoopPlanOptions {
@@ -18,9 +15,6 @@ export interface MutateLoopPlanOptions {
   cyclePosition?: number;
   iteration?: number;
   allTasksMarkedDone?: boolean;
-  forceReviewNext?: boolean;
-  forceProofNext?: boolean;
-  forcePlanNext?: boolean;
 }
 
 /**
@@ -59,9 +53,6 @@ export async function mutateLoopPlan(sessionDir: string, options: MutateLoopPlan
   if (options.cyclePosition !== undefined) plan.cyclePosition = options.cyclePosition;
   if (options.iteration !== undefined) plan.iteration = options.iteration;
   if (options.allTasksMarkedDone !== undefined) plan.allTasksMarkedDone = options.allTasksMarkedDone;
-  if (options.forceReviewNext !== undefined) plan.forceReviewNext = options.forceReviewNext;
-  if (options.forceProofNext !== undefined) plan.forceProofNext = options.forceProofNext;
-  if (options.forcePlanNext !== undefined) plan.forcePlanNext = options.forcePlanNext;
 
   plan.version = (plan.version || 1) + 1;
 

@@ -70,33 +70,24 @@ test('mutateLoopPlan throws when loop-plan.json is missing', async () => {
   await fs.rm(tmpDir, { recursive: true, force: true });
 });
 
-test('mutateLoopPlan updates cycle and optional one-shot flags', async () => {
+test('mutateLoopPlan updates cycle and optional flags', async () => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-plan-options-'));
   const initialPlan = {
     cycle: ['plan.md', 'build.md'],
     cyclePosition: 0,
     iteration: 1,
     version: 1,
-    allTasksMarkedDone: true,
-    forceReviewNext: false,
-    forceProofNext: false,
-    forcePlanNext: true
+    allTasksMarkedDone: true
   };
   await writeLoopPlan(tmpDir, initialPlan);
 
   const mutated = await mutateLoopPlan(tmpDir, {
     cycle: ['review.md', 'proof.md'],
-    allTasksMarkedDone: false,
-    forceReviewNext: true,
-    forceProofNext: true,
-    forcePlanNext: false
+    allTasksMarkedDone: false
   });
 
   assert.deepEqual(mutated.cycle, ['review.md', 'proof.md']);
   assert.equal(mutated.allTasksMarkedDone, false);
-  assert.equal(mutated.forceReviewNext, true);
-  assert.equal(mutated.forceProofNext, true);
-  assert.equal(mutated.forcePlanNext, false);
   assert.equal(mutated.version, 2);
 
   const read = await readLoopPlan(tmpDir);
@@ -104,25 +95,21 @@ test('mutateLoopPlan updates cycle and optional one-shot flags', async () => {
   await fs.rm(tmpDir, { recursive: true, force: true });
 });
 
-test('mutateLoopPlan leaves force flags unchanged when options omit them', async () => {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-plan-force-flags-'));
+test('mutateLoopPlan leaves flags unchanged when options omit them', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-plan-flags-'));
   const initialPlan = {
     cycle: ['plan.md', 'build.md', 'review.md'],
     cyclePosition: 1,
     iteration: 5,
     version: 3,
-    forceReviewNext: true,
-    forceProofNext: false,
-    forcePlanNext: true
+    allTasksMarkedDone: true
   };
   await writeLoopPlan(tmpDir, initialPlan);
 
   const mutated = await mutateLoopPlan(tmpDir, { iteration: 6 });
   assert.equal(mutated.iteration, 6);
   assert.equal(mutated.version, 4);
-  assert.equal(mutated.forceReviewNext, true);
-  assert.equal(mutated.forceProofNext, false);
-  assert.equal(mutated.forcePlanNext, true);
+  assert.equal(mutated.allTasksMarkedDone, true);
 
   const read = await readLoopPlan(tmpDir);
   assert.deepEqual(read, mutated);

@@ -374,20 +374,7 @@ resolve_iteration_mode() {
     local iteration=$1
     LAST_MODE_WAS_FORCED=false
     RESOLVED_PROMPT_NAME=""
-    if [ "$FORCE_REVIEW_NEXT" = true ]; then
-        FORCE_REVIEW_NEXT=false
-        LAST_MODE_WAS_FORCED=true
-        RESOLVED_MODE="review"
-    elif [ "$FORCE_PROOF_NEXT" = true ]; then
-        FORCE_PROOF_NEXT=false
-        LAST_MODE_WAS_FORCED=true
-        RESOLVED_MODE="proof"
-    elif [ "$FORCE_PLAN_NEXT" = true ]; then
-        FORCE_PLAN_NEXT=false
-        LAST_MODE_WAS_FORCED=true
-        RESOLVED_MODE="plan"
-    else
-        if resolve_cycle_prompt_from_plan; then
+    if resolve_cycle_prompt_from_plan; then
             RESOLVED_MODE=$(derive_mode_from_prompt_name "$RESOLVED_PROMPT_NAME")
         else
             case "$MODE" in
@@ -409,7 +396,6 @@ resolve_iteration_mode() {
                     ;;
             esac
         fi
-    fi
     RESOLVED_MODE=$(check_phase_prerequisite "$RESOLVED_MODE")
     echo "$RESOLVED_MODE"
 }
@@ -465,16 +451,13 @@ persist_loop_plan_state() {
     if [ ! -f "$LOOP_PLAN_FILE" ]; then
         return
     fi
-    python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" "$ITERATION" "$FORCE_PLAN_NEXT" "$FORCE_PROOF_NEXT" "$FORCE_REVIEW_NEXT" "$ALL_TASKS_MARKED_DONE" <<'PY'
+    python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" "$ITERATION" "$ALL_TASKS_MARKED_DONE" <<'PY'
 import json, os, sys, tempfile
-path, cycle_pos, iteration, force_plan, force_proof, force_review, all_done = sys.argv[1:]
+path, cycle_pos, iteration, all_done = sys.argv[1:]
 with open(path, encoding="utf-8") as f:
     payload = json.load(f)
 payload["cyclePosition"] = int(cycle_pos)
 payload["iteration"] = int(iteration)
-payload["forcePlanNext"] = force_plan.lower() == "true"
-payload["forceProofNext"] = force_proof.lower() == "true"
-payload["forceReviewNext"] = force_review.lower() == "true"
 payload["allTasksMarkedDone"] = all_done.lower() == "true"
 fd, tmp = tempfile.mkstemp(prefix=".loop-plan.", suffix=".json", dir=os.path.dirname(path))
 os.close(fd)
@@ -517,7 +500,8 @@ register_iteration_success() {
     elif [ "$iteration_mode" = "build" ]; then
         HAS_BUILDS_SINCE_LAST_PLAN=true
     elif [ "$iteration_mode" = "proof" ] && [ "$ALL_TASKS_MARKED_DONE" = true ]; then
-        FORCE_REVIEW_NEXT=true
+        mkdir -p "$SESSION_DIR/queue"
+        cp "$PROMPTS_DIR/PROMPT_review.md" "$SESSION_DIR/queue/$(date +%s)-PROMPT_review.md"
     fi
 
     PHASE_RETRY_PHASE=""
@@ -1331,10 +1315,7 @@ get_review_verdict() {
 LAST_TASK=""
 STUCK_COUNT=0
 RR_NEXT_INDEX=0
-FORCE_PLAN_NEXT=false
 ALL_TASKS_MARKED_DONE=false
-FORCE_PROOF_NEXT=false
-FORCE_REVIEW_NEXT=false
 RESOLVED_MODE=""
 CYCLE_POSITION=0
 LAST_MODE_WAS_FORCED=false
@@ -1925,7 +1906,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     STEER_PROMPT_FILE="$PROMPTS_DIR/PROMPT_steer.md"
     if [ -f "$STEERING_FILE" ] && [ -f "$STEER_PROMPT_FILE" ]; then
         iter_mode="steer"
-        FORCE_PLAN_NEXT=true
+        mkdir -p "$SESSION_DIR/queue"
+        cp "$PROMPTS_DIR/PROMPT_plan.md" "$SESSION_DIR/queue/$(date +%s)-PROMPT_plan.md"
         ALL_TASKS_MARKED_DONE=false
         CYCLE_POSITION=0
         LAST_ITER_MODE="$iter_mode"
@@ -1990,7 +1972,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 echo ""
                 echo "ALL TASKS MARKED DONE - forcing final proof + review"
                 ALL_TASKS_MARKED_DONE=true
-                FORCE_PROOF_NEXT=true
+                mkdir -p "$SESSION_DIR/queue"
+                cp "$PROMPTS_DIR/PROMPT_proof.md" "$SESSION_DIR/queue/$(date +%s)-PROMPT_proof.md"
                 write_log_entry "tasks_marked_complete" "iteration" "$ITERATION"
                 continue
             else
@@ -2096,7 +2079,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                     echo ""
                     echo "FINAL REVIEW REJECTED - reopened tasks, continuing loop"
                     ALL_TASKS_MARKED_DONE=false
-                    FORCE_PLAN_NEXT=true
+                    mkdir -p "$SESSION_DIR/queue"
+                    cp "$PROMPTS_DIR/PROMPT_plan.md" "$SESSION_DIR/queue/$(date +%s)-PROMPT_plan.md"
                     CYCLE_POSITION=0
                     write_log_entry "final_review_rejected" "iteration" "$ITERATION"
                     echo ""
