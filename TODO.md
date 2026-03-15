@@ -9,6 +9,10 @@
 - [x] [review] Gate 1: Dashboard is missing session elapsed context (avg duration) in header. (priority: high)
 - [x] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — extract PID lookup into a helper. (priority: high)
 - [ ] [review] Gate 6: Regenerate proof artifacts for iteration 11 (`gh-test-output.txt`, `derive-mode-test.txt`, etc. are missing). (priority: medium)
+- [ ] [review] Gate 2: Add tests for dashboard UI logic added in this iteration (`iteration_running` synthetic entry, output.txt fetch/render, output-header model extraction, and "No output available" fallback in `App.tsx`). Use concrete value assertions, not shape-only checks. (priority: high)
+- [ ] [review] Gate 2: Add/extend `dashboard.test.ts` coverage for new backend branches in `dashboard.ts` (`loadArtifactManifests` with missing manifest + present `output.txt`, `resolvePid` fallback to `active.json`, and active-session `status.json` enrichment). (priority: high)
+- [ ] [review] Gate 3: Produce >=80% branch coverage evidence for touched files `aloop/bin/loop.sh`, `aloop/cli/src/commands/dashboard.ts`, and `aloop/cli/dashboard/src/App.tsx`; current iteration includes no branch-coverage report for these files. (priority: critical)
+- [ ] [review] Gate 6: Proof manifest iteration 29 references missing artifacts (`plan-coverage.txt`, `requests-coverage.txt`, `gh-coverage.txt`, `dashboard-tests.txt`, `dashboard-props-implementation.txt`, `dashboard-pid-resolution.txt`, `stuck-reset-implementation.txt`, `dashboard-sidebar-width.txt`, `dashboard-overflow-tabs.txt`, `dashboard-health-tab.txt`) — regenerate and publish verifiable files. (priority: high)
 
 ### Up Next (P1 — Dashboard UX + Test Infrastructure)
 

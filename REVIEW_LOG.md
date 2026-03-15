@@ -177,3 +177,19 @@ Positive observations:
 **Positive observations:**
 - Gate 2: `requests.test.ts` has excellent depth, covering all 11 request types and numerous failure/edge cases (archive collisions, spawn failures, history lookup fallbacks).
 - Gate 4: Dashboard UI rewrite is highly polished with tree sidebar, Lucide icons, and a rich activity log.
+
+---
+
+## Review — 2026-03-15 10:03 — commit e70cfd5..0fdfae9
+
+**Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/cli/src/commands/dashboard.ts`, `aloop/cli/dashboard/src/App.tsx`, `aloop/cli/src/lib/plan.test.ts`, plus related spec/todo/research updates
+
+- Gate 2: No tests were added for newly introduced dashboard behavior in this range (`iteration_running` synthetic rows, per-iteration `output.txt` fetch/render, output-header model extraction, and "No output available" fallback in `App.tsx`). Search across test files shows no assertions covering these paths.
+- Gate 2: New backend branches in `dashboard.ts` (`loadArtifactManifests` output-header fallback, `resolvePid` fallback behavior, active-session status enrichment) were changed without corresponding test additions in this range.
+- Gate 3: Branch-coverage evidence for touched files is missing. Iteration 29 proof only reports coverage for `plan.ts`, `requests.ts`, and `gh.ts`; there is no >=80% branch report for touched `loop.sh`, `dashboard.ts`, or `App.tsx`.
+- Gate 6: Proof manifest iteration 29 is not verifiable in this workspace. All declared artifacts are missing (`plan-coverage.txt`, `requests-coverage.txt`, `gh-coverage.txt`, `dashboard-tests.txt`, `dashboard-props-implementation.txt`, `dashboard-pid-resolution.txt`, `stuck-reset-implementation.txt`, `dashboard-sidebar-width.txt`, `dashboard-overflow-tabs.txt`, `dashboard-health-tab.txt`).
+
+**Positive observations:**
+- Gate 1: Spec alignment improved in concrete areas — `stuck_count` visibility is now present in status/details, docs overflow is implemented (`MAX_VISIBLE_TABS` + overflow menu), and Health is surfaced as a docs tab in `App.tsx`.
+- Gate 5: Validation is green for this range (`cd aloop/cli && npm test && npm run type-check && npm run build` all passed in this review run).
