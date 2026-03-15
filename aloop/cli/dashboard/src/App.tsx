@@ -522,20 +522,16 @@ function Sidebar({
           className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
           onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
         >
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
             <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} stuckCount={s.stuckCount} />
-            <span className="truncate font-medium">{s.name}</span>
+            <span className="truncate font-medium flex-1 min-w-0">{s.name}</span>
+            <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
           </div>
-          {s.branch && (
-            <div className="flex items-center gap-1 mt-0.5 ml-4 text-muted-foreground/60">
-              <GitBranch className="h-3 w-3" />
-              <span className="truncate text-[10px]">{s.branch}</span>
-            </div>
-          )}
-          <div className="flex items-center gap-1.5 mt-0.5 ml-4">
+          <div className="flex items-center gap-1.5 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 min-w-0">
+            {s.branch && <><GitBranch className="h-2.5 w-2.5 shrink-0" /><span className="truncate min-w-0">{s.branch}</span></>}
+            {s.branch && s.phase && <span className="shrink-0">·</span>}
             {s.phase && <PhaseBadge phase={s.phase} small />}
-            <span className="text-muted-foreground text-[10px]">iter {s.iterations}</span>
-            <span className="text-muted-foreground/50 text-[10px]">{relativeTime(s.endedAt || s.startedAt)}</span>
+            <span className="shrink-0">#{s.iterations}</span>
           </div>
         </button>
       </TooltipTrigger>
