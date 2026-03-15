@@ -804,7 +804,7 @@ function DocContent({ content, name }: { content: string; name: string }) {
               <ChevronRight className="h-3 w-3 collapsible-chevron" /> Table of Contents
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <nav className="mt-1 mb-2 border-l-2 border-border pl-2 space-y-0.5 text-[11px] max-h-[300px] overflow-y-auto">
+              <nav className="mt-1 mb-2 border-l-2 border-border pl-2 space-y-0.5 text-[11px]">
                 {toc.map((h) => (
                   <a key={h.id} href={`#${h.id}`} className="block text-muted-foreground hover:text-foreground transition-colors truncate" style={{ paddingLeft: `${(h.level - minLevel) * 12}px` }}>
                     {h.text}
