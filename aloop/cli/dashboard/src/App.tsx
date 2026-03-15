@@ -54,6 +54,7 @@ interface SessionSummary {
   pid: string;
   provider: string;
   workDir: string;
+  stuckCount: number;
 }
 
 interface LogEntry {
@@ -145,6 +146,7 @@ function toSession(source: Record<string, unknown>, fallback: string, isActive: 
     pid: numStr(source, ['pid'], ''),
     provider: str(source, ['provider'], ''),
     workDir: str(source, ['work_dir'], ''),
+    stuckCount: typeof source.stuck_count === 'number' ? source.stuck_count : 0,
   };
 }
 
@@ -268,8 +270,9 @@ function PhaseBadge({ phase, small }: { phase: string; small?: boolean }) {
   return <span className={`inline-block rounded border font-medium ${colors} ${size}`}>{phase}</span>;
 }
 
-function StatusDot({ status, className = '' }: { status: string; className?: string }) {
-  if (status === 'running') {
+function StatusDot({ status, className = '', stuckCount = 0 }: { status: string; className?: string; stuckCount?: number }) {
+  const isStuck = stuckCount > 0;
+  if (status === 'running' && !isStuck) {
     return (
       <span className={`relative flex h-2.5 w-2.5 shrink-0 ${className}`}>
         <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-green-400" />
@@ -277,7 +280,7 @@ function StatusDot({ status, className = '' }: { status: string; className?: str
       </span>
     );
   }
-  const color = status === 'stopped' || status === 'exited' ? 'bg-muted-foreground/50' : status === 'unhealthy' ? 'bg-red-500' : 'bg-orange-400';
+  const color = isStuck ? 'bg-red-500' : status === 'stopped' || status === 'exited' ? 'bg-muted-foreground/50' : status === 'unhealthy' ? 'bg-red-500' : 'bg-orange-400';
   return <span className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${color} ${className}`} />;
 }
 
@@ -444,7 +447,7 @@ function Sidebar({
             <Tooltip key={s.id}>
               <TooltipTrigger asChild>
                 <button type="button" className="block" onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}>
-                  <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
+                  <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} stuckCount={s.stuckCount} />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right"><p>{s.name} ({s.status})</p></TooltipContent>
@@ -467,7 +470,7 @@ function Sidebar({
           onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
         >
           <div className="flex items-center gap-1.5">
-            <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
+            <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} stuckCount={s.stuckCount} />
             <span className="truncate font-medium">{s.name}</span>
           </div>
           {s.branch && (
@@ -488,6 +491,7 @@ function Sidebar({
           <p className="font-medium">{s.id}</p>
           {s.pid && <p>PID: {s.pid}</p>}
           <p>Status: {s.status}</p>
+          {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
           <p>Provider: {s.provider}</p>
           {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
           {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
@@ -551,19 +555,21 @@ function Header({
   sessionName, isRunning, currentState, currentPhase, currentIteration,
   providerName, modelName, tasksCompleted, tasksTotal, progressPercent,
   updatedAt, loading, loadError, connectionStatus, onOpenCommand, onOpenSwitcher,
+  stuckCount,
 }: {
   sessionName: string; isRunning: boolean; currentState: string; currentPhase: string;
   currentIteration: string; providerName: string; modelName: string;
   tasksCompleted: number; tasksTotal: number; progressPercent: number;
   updatedAt: string; loading: boolean; loadError: string | null;
   connectionStatus: ConnectionStatus; onOpenCommand: () => void; onOpenSwitcher: () => void;
+  stuckCount: number;
 }) {
   const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
   return (
     <header className="border-b border-border px-4 py-2.5 shrink-0">
       <div className="flex items-center gap-4">
         <button type="button" className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors" onClick={onOpenSwitcher}>
-          <StatusDot status={isRunning ? 'running' : currentState} />
+          <StatusDot status={isRunning ? 'running' : currentState} stuckCount={stuckCount} />
           <span className="text-sm font-semibold truncate max-w-[200px]">{sessionName}</span>
         </button>
 
@@ -580,6 +586,7 @@ function Header({
               <p><span className="text-muted-foreground">Status:</span> {currentState}</p>
               <p><span className="text-muted-foreground">Provider:</span> {providerName || 'none'}</p>
               <p><span className="text-muted-foreground">Tasks:</span> {tasksCompleted}/{tasksTotal} ({progressPercent}%)</p>
+              <p><span className="text-muted-foreground">Stuck:</span> <span className={stuckCount > 0 ? 'text-red-500 font-medium' : ''}>{stuckCount}</span></p>
             </div>
           </HoverCardContent>
         </HoverCard>
@@ -1072,7 +1079,7 @@ function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
               {sessions.map((s) => (
                 <CommandItem key={s.id} onSelect={() => { onClose(); onSelectSession(s.id === 'current' ? null : s.id); }}>
                   <div className="flex items-center gap-2">
-                    {s.isActive && s.status === 'running' && <StatusDot status="running" />}
+                    {s.isActive && s.status === 'running' && <StatusDot status="running" stuckCount={s.stuckCount} />}
                     <span>{s.name}</span>
                     {s.phase && <PhaseBadge phase={s.phase} small />}
                   </div>
@@ -1161,13 +1168,13 @@ export function App() {
   }, [selectedSessionId]);
 
   const sessions = useMemo<SessionSummary[]>(() => {
-    if (!state) return [{ id: 'current', name: 'Current', projectName: 'Unknown', status: 'unknown', phase: '', elapsed: '--', iterations: '--', isActive: false, branch: '', startedAt: '', endedAt: '', pid: '', provider: '', workDir: '' }];
+    if (!state) return [{ id: 'current', name: 'Current', projectName: 'Unknown', status: 'unknown', phase: '', elapsed: '--', iterations: '--', isActive: false, branch: '', startedAt: '', endedAt: '', pid: '', provider: '', workDir: '', stuckCount: 0 }];
     const active = (state.activeSessions ?? []).filter(isRecord).map((e, i) => toSession(e, `active-${i}`, true));
     const recent = (state.recentSessions ?? []).filter(isRecord).slice(-10).reverse().map((e, i) => toSession(e, `recent-${i}`, false));
     const combined = [...active, ...recent];
     if (combined.length > 0) return combined;
     if (isRecord(state.status)) return [toSession(state.status, state.workdir, true)];
-    return [{ id: 'current', name: state.workdir, projectName: 'Unknown', status: 'unknown', phase: '', elapsed: '--', iterations: '--', isActive: false, branch: '', startedAt: '', endedAt: '', pid: '', provider: '', workDir: '' }];
+    return [{ id: 'current', name: state.workdir, projectName: 'Unknown', status: 'unknown', phase: '', elapsed: '--', iterations: '--', isActive: false, branch: '', startedAt: '', endedAt: '', pid: '', provider: '', workDir: '', stuckCount: 0 }];
   }, [state]);
 
   const statusRecord = isRecord(state?.status) ? state.status : null;
@@ -1177,6 +1184,7 @@ export function App() {
   const currentIterationNum = statusRecord ? (typeof statusRecord.iteration === 'number' ? statusRecord.iteration : null) : null;
   const providerName = statusRecord ? str(statusRecord, ['provider', 'current_provider']) : '';
   const modelName = statusRecord ? str(statusRecord, ['model', 'current_model']) : '';
+  const stuckCount = statusRecord && typeof statusRecord.stuck_count === 'number' ? statusRecord.stuck_count : 0;
   const isRunning = currentState === 'running';
 
   useEffect(() => {
@@ -1224,7 +1232,7 @@ export function App() {
         <div className="flex flex-1 min-h-0">
           <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
           <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} />
+            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} stuckCount={stuckCount} />
             <main className="flex-1 min-h-0 p-3">
               <div className="grid grid-cols-2 gap-3 h-full" style={{ gridTemplateColumns: '1fr 1fr' }}>
                 <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden">

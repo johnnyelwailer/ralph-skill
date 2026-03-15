@@ -5,14 +5,16 @@
 ### In Progress (P0 — Blockers: Coverage Gates + Spec Gaps)
 
 - [x] [review] Gate 3: Raise `plan.ts` branch coverage from 73.91% to >=80% — add tests for options: `cycle`, `allTasksMarkedDone`, `forceReviewNext`, `forceProofNext`, `forcePlanNext`. Uncovered branches at lines 58, 61-64. (priority: critical)
-- [ ] [review] Gate 1: Dashboard is missing spec-required `stuck_count` visibility in session status/details. (priority: high)
+- [x] [review] Gate 1: Dashboard is missing spec-required `stuck_count` visibility in session status/details. (priority: high)
 - [ ] [review] Gate 1: Dashboard is missing session elapsed context (avg duration) in header. (priority: high)
 - [ ] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — extract PID lookup into a helper. (priority: high)
+- [ ] [review] Gate 6: Regenerate proof artifacts for iteration 11 (`gh-test-output.txt`, `derive-mode-test.txt`, etc. are missing). (priority: medium)
 
 ### Up Next (P1 — Dashboard UX + Test Infrastructure)
 
 - [ ] [dashboard][high] Move per-provider health to dedicated left-pane sidebar tab — currently inline in header grid (App.tsx:385-389). Spec §6 requires sidebar tab. (priority: high)
 - [ ] [dashboard][medium] Move sidebar expand/collapse toggle button to be vertically centered with header title row. Currently at top. Spec §6. (priority: medium)
+- [ ] [dashboard][medium] Filter out empty documentation files from Docs panel. Spec §6. (priority: medium)
 - [ ] [dashboard][low] Add overflow ellipsis menu for docs panel when doc set is large. Spec §6. (priority: low)
 - [ ] [review] Gate 2: Fix broken E2E tests in `smoke.spec.ts` (selectors, placeholders, headings). (priority: high)
 - [ ] [review] Gate 2: Extract and unit test dashboard logic (log parsing, state normalization, etc.). (priority: medium)
@@ -60,8 +62,6 @@
 - [x] [review] Gate 5: Fix TypeScript error in `requests.ts:307` (UpdateIssueRequest.payload.title).
 - [x] [review] Gate 5: Fix 6 dashboard test failures.
 - [x] [review] Gate 3: Raise `requests.ts` branch coverage from 52.5% to >=80% (handler tests).
-- [x] [review] Gate 6: Regenerate proof artifacts for iteration 11.
 - [x] [review] Gate 2: Add test coverage for all 11 request types in `requests.test.ts`.
-- [x] [review] Gate 1: Add `M/A/D/R` change type badges to commit detail view.
 - [x] [review] Gate 3: Update `loop_branch_coverage.tests.sh` for queue/requests/opencode.
 - [x] [review] Gate 3: Update `loop.tests.ps1` for queue/requests/opencode.
