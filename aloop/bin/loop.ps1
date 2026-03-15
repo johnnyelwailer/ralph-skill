@@ -75,6 +75,7 @@ function ConvertTo-NativePath {
 $PromptsDir = ConvertTo-NativePath $PromptsDir
 $SessionDir = ConvertTo-NativePath $SessionDir
 $WorkDir    = ConvertTo-NativePath $WorkDir
+$sessionId  = Split-Path -Leaf $SessionDir
 
 # ============================================================================
 # VALIDATION
@@ -502,6 +503,11 @@ function Invoke-Provider {
     $claudeCodeValue = $null
     if ($hadClaudeCode) { $claudeCodeValue = $env:CLAUDECODE }
     Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue
+
+    # Provenance: export for prepare-commit-msg hook
+    $env:ALOOP_AGENT = if ($script:frontmatter -and $script:frontmatter.agent) { [string]$script:frontmatter.agent } else { 'unknown' }
+    $env:ALOOP_ITERATION = if ($script:iteration) { "$script:iteration" } else { '0' }
+    $env:ALOOP_SESSION = $sessionId
 
     try {
         $result = $null
@@ -1351,6 +1357,42 @@ function Resolve-HealthyProvider {
 }
 
 # ============================================================================
+# PROVENANCE COMMIT TRAILERS
+# ============================================================================
+
+function Setup-ProvenanceHook {
+    $hooksDir = Join-Path $WorkDir '.git' 'hooks'
+    if (-not (Test-Path (Join-Path $WorkDir '.git'))) {
+        return
+    }
+    if (-not (Test-Path $hooksDir)) {
+        New-Item -ItemType Directory -Path $hooksDir -Force | Out-Null
+    }
+    $hookPath = Join-Path $hooksDir 'prepare-commit-msg'
+    $hookContent = @'
+#!/bin/sh
+# Aloop provenance trailer hook — appends agent/iteration/session trailers.
+COMMIT_MSG_FILE="$1"
+if [ -z "$ALOOP_AGENT" ] || [ -z "$ALOOP_ITERATION" ] || [ -z "$ALOOP_SESSION" ]; then
+    exit 0
+fi
+if grep -q "^Aloop-Session:" "$COMMIT_MSG_FILE" 2>/dev/null; then
+    exit 0
+fi
+{
+    echo ""
+    echo "Aloop-Agent: $ALOOP_AGENT"
+    echo "Aloop-Iteration: $ALOOP_ITERATION"
+    echo "Aloop-Session: $ALOOP_SESSION"
+} >> "$COMMIT_MSG_FILE"
+'@
+    # Use ASCII encoding to avoid BOM; line endings handled by git on checkout
+    [System.IO.File]::WriteAllText($hookPath, $hookContent, [System.Text.Encoding]::ASCII)
+    # Ensure executable bit (no-op on Windows, needed for Git Bash / WSL)
+    try { & chmod +x $hookPath 2>$null } catch { }
+}
+
+# ============================================================================
 # REMOTE BACKUP
 # ============================================================================
 
@@ -1366,7 +1408,13 @@ function Setup-RemoteBackup {
             Write-Host "Initializing git repository..."
             git init | Out-Null
             git add -A | Out-Null
-            try { git commit -m "Initial commit" | Out-Null } catch { }
+            $trailerSession = if ([string]::IsNullOrWhiteSpace($sessionId)) { (Split-Path -Leaf $SessionDir) } else { $sessionId }
+            try {
+                git commit -m "Initial commit" `
+                    -m "Aloop-Agent: harness" `
+                    -m "Aloop-Iteration: 0" `
+                    -m "Aloop-Session: $trailerSession" | Out-Null
+            } catch { }
         }
 
         try {
@@ -1636,6 +1684,7 @@ if (-not $DryRun) {
 $backupResult = Setup-RemoteBackup
 if (-not $backupResult) { $BackupEnabled = $false }
 Start-DashboardProcess
+Setup-ProvenanceHook
 
 # Initialize session
 Write-LogEntry -Event "session_start" -Data @{

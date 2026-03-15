@@ -44,6 +44,7 @@ LAUNCH_MODE="start"
 PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-600}"
 PROVIDER_HEALTH_DIR="${ALOOP_HEALTH_DIR:-$HOME/.aloop/health}"
 HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
+SESSION_ID=""
 
 # ============================================================================
 # ARGUMENT PARSING
@@ -155,7 +156,7 @@ initialize_devcontainer_routing() {
     fi
 
     DEVCONTAINER_ACTIVE=true
-    DC_EXEC=(devcontainer exec --workspace-folder "$WORK_DIR" --)
+    DC_EXEC=(devcontainer exec --workspace-folder "$WORK_DIR")
     echo "Provider calls will be routed through devcontainer."
 }
 
@@ -1007,6 +1008,11 @@ invoke_provider() {
     local copilot_output_file=""
     local exit_code=0
 
+    # Provenance: export for prepare-commit-msg hook
+    export ALOOP_AGENT="${iter_mode:-unknown}"
+    export ALOOP_ITERATION="${ITERATION:-0}"
+    export ALOOP_SESSION="${SESSION_ID:-unknown}"
+
     case "$provider_name" in
         claude)
             local claude_model="${model_override:-$CLAUDE_MODEL}"
@@ -1430,6 +1436,39 @@ EOF
 }
 
 # ============================================================================
+# PROVENANCE COMMIT TRAILERS
+# ============================================================================
+
+# Install a prepare-commit-msg hook that appends Aloop provenance trailers
+# (Aloop-Agent, Aloop-Iteration, Aloop-Session) to every commit made in the
+# worktree.  The hook reads environment variables set by invoke_provider().
+setup_provenance_hook() {
+    local hooks_dir="$WORK_DIR/.git/hooks"
+    if [ ! -d "$WORK_DIR/.git" ]; then
+        return
+    fi
+    mkdir -p "$hooks_dir"
+    cat > "$hooks_dir/prepare-commit-msg" << 'PROVENANCE_HOOK'
+#!/bin/sh
+# Aloop provenance trailer hook — appends agent/iteration/session trailers.
+COMMIT_MSG_FILE="$1"
+if [ -z "$ALOOP_AGENT" ] || [ -z "$ALOOP_ITERATION" ] || [ -z "$ALOOP_SESSION" ]; then
+    exit 0
+fi
+if grep -q "^Aloop-Session:" "$COMMIT_MSG_FILE" 2>/dev/null; then
+    exit 0
+fi
+{
+    echo ""
+    echo "Aloop-Agent: $ALOOP_AGENT"
+    echo "Aloop-Iteration: $ALOOP_ITERATION"
+    echo "Aloop-Session: $ALOOP_SESSION"
+} >> "$COMMIT_MSG_FILE"
+PROVENANCE_HOOK
+    chmod +x "$hooks_dir/prepare-commit-msg"
+}
+
+# ============================================================================
 # REMOTE BACKUP
 # ============================================================================
 
@@ -1445,7 +1484,11 @@ setup_remote_backup() {
         echo "Initializing git repository..."
         git init
         git add -A
-        git commit -m "Initial commit" 2>/dev/null || true
+        local trailer_session="${SESSION_ID:-$(basename "$SESSION_DIR")}"
+        git commit -m "Initial commit" \
+            -m "Aloop-Agent: harness" \
+            -m "Aloop-Iteration: 0" \
+            -m "Aloop-Session: $trailer_session" 2>/dev/null || true
     fi
 
     if git remote get-url origin &>/dev/null; then
@@ -1579,8 +1622,10 @@ else
 fi
 
 # Setup remote backup
+SESSION_ID=$(basename "$SESSION_DIR")
 setup_remote_backup || true
 start_dashboard
+setup_provenance_hook
 
 # Initialize session
 write_log_entry "session_start" "mode" "$MODE" "provider" "$PROVIDER" "work_dir" "$WORK_DIR" "launch_mode" "$LAUNCH_MODE" "runtime_commit" "$RUNTIME_COMMIT" "runtime_installed_at" "$RUNTIME_INSTALLED_AT" "devcontainer" "$DEVCONTAINER_ACTIVE"
@@ -1895,10 +1940,9 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
 
     cd "$WORK_DIR"
     # Record LOG_FILE.raw offset so we can extract per-iteration output after
-    local _raw_offset_before
     _raw_offset_before=$(wc -c < "$LOG_FILE.raw" 2>/dev/null || echo 0)
     if invoke_provider "$iter_provider" "$prompt_content" "$FRONTMATTER_MODEL"; then
-        local _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
+        _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
         update_provider_health_on_success "$iter_provider"
         register_iteration_success "$iter_mode" "$LAST_MODE_WAS_FORCED"
         persist_loop_plan_state
