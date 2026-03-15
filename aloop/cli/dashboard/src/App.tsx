@@ -237,7 +237,8 @@ function parseLogLine(line: string): LogEntry | null {
     return { timestamp: ts, phase, event, provider, model, duration, message, raw: trimmed, rawObj, iteration, dateKey: formatDateKey(ts), isSuccess, isError, commitHash, resultDetail, filesChanged, isSignificant };
   }
 
-  return { timestamp: '', phase: '', event: '', provider: '', model: '', duration: '', message: trimmed, raw: trimmed, rawObj: null, iteration: null, dateKey: 'Log', isSuccess: false, isError: false, commitHash: '', resultDetail: '', filesChanged: [], isSignificant: true };
+  // Plain text lines (provider stderr, stack traces) are not significant — hide from activity view
+  return { timestamp: '', phase: '', event: '', provider: '', model: '', duration: '', message: trimmed, raw: trimmed, rawObj: null, iteration: null, dateKey: 'Log', isSuccess: false, isError: false, commitHash: '', resultDetail: '', filesChanged: [], isSignificant: false };
 }
 
 // ── Phase colors ──
