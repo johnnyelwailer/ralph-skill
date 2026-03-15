@@ -550,8 +550,9 @@ assert_copilot_auth() {
 
 write_status() {
     local iteration=$1 phase=$2 provider=$3 stuck_count=$4 state=${5:-running}
+    local iter_started="${ITERATION_START_ISO:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
     cat > "$STATUS_FILE" << EOF
-{"iteration":$iteration,"phase":"$phase","provider":"$provider","stuck_count":$stuck_count,"state":"$state","updated_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+{"iteration":$iteration,"phase":"$phase","provider":"$provider","stuck_count":$stuck_count,"state":"$state","updated_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","iteration_started_at":"$iter_started"}
 EOF
 }
 
@@ -1741,6 +1742,7 @@ ITERATION=0
 while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
+    ITERATION_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     # Hot-reload provider list from meta.json (supports runtime changes)
     if [ "$PROVIDER" = "round-robin" ]; then
         refresh_providers_from_meta

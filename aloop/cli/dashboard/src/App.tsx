@@ -137,7 +137,7 @@ function toSession(source: Record<string, unknown>, fallback: string, isActive: 
     name: str(source, ['session_id', 'name', 'session_name'], fallback),
     projectName: str(source, ['project_name'], fallback.split('-').slice(0, -1).join('-') || fallback),
     status: str(source, ['state', 'status'], 'unknown'),
-    phase: str(source, ['mode', 'phase'], ''),
+    phase: str(source, ['phase', 'mode'], ''),
     elapsed: str(source, ['elapsed', 'elapsed_time', 'duration'], '--'),
     iterations: numStr(source, ['iteration', 'iterations']),
     isActive,
@@ -805,7 +805,7 @@ function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
 
 // ── Activity Panel ──
 
-function ActivityPanel({ log, artifacts, currentIteration, currentPhase, currentProvider, isRunning }: { log: string; artifacts: ArtifactManifest[]; currentIteration: number | null; currentPhase: string; currentProvider: string; isRunning: boolean }) {
+function ActivityPanel({ log, artifacts, currentIteration, currentPhase, currentProvider, isRunning, iterationStartedAt }: { log: string; artifacts: ArtifactManifest[]; currentIteration: number | null; currentPhase: string; currentProvider: string; isRunning: boolean; iterationStartedAt?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
 
@@ -834,16 +834,16 @@ function ActivityPanel({ log, artifacts, currentIteration, currentPhase, current
     // Check if the current iteration already has a complete/error entry
     const hasResult = deduped.some((e) => e.iteration === currentIteration && (e.isSuccess || e.isError));
     if (hasResult) return deduped;
-    // Add a synthetic running entry
-    const now = new Date().toISOString();
+    // Add a synthetic running entry — use real iteration start time if available
+    const ts = iterationStartedAt || new Date().toISOString();
     const syntheticEntry: LogEntry = {
-      timestamp: now, phase: currentPhase, event: 'iteration_running', provider: currentProvider, model: '',
+      timestamp: ts, phase: currentPhase, event: 'iteration_running', provider: currentProvider, model: '',
       duration: '', message: 'Running...', raw: '', rawObj: null, iteration: currentIteration,
       dateKey: formatDateKey(now), isSuccess: false, isError: false, commitHash: '', resultDetail: '',
       filesChanged: [], isSignificant: true,
     };
     return [...deduped, syntheticEntry];
-  }, [deduped, isRunning, currentIteration, currentPhase, currentProvider]);
+  }, [deduped, isRunning, currentIteration, currentPhase, currentProvider, iterationStartedAt]);
 
   // Group by date, newest first
   const grouped = useMemo(() => {
@@ -1309,6 +1309,7 @@ export function App() {
   const stuckCount = statusRecord && typeof statusRecord.stuck_count === 'number' ? statusRecord.stuck_count : 0;
   const isRunning = currentState === 'running';
   const startedAt = statusRecord ? str(statusRecord, ['started_at', 'startedAt']) : '';
+  const iterationStartedAt = statusRecord ? str(statusRecord, ['iteration_started_at']) : '';
   const avgDuration = useMemo(() => computeAvgDuration(state?.log ?? ''), [state?.log]);
 
   useEffect(() => {
@@ -1372,7 +1373,7 @@ export function App() {
                     <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</CardTitle>
                   </CardHeader>
                   <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-                    <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} currentIteration={isRunning ? currentIterationNum : null} currentPhase={currentPhase} currentProvider={providerName} isRunning={isRunning} />
+                    <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} currentIteration={isRunning ? currentIterationNum : null} currentPhase={currentPhase} currentProvider={providerName} isRunning={isRunning} iterationStartedAt={iterationStartedAt} />
                   </CardContent>
                 </Card>
               </div>
