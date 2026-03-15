@@ -424,7 +424,7 @@ export function App() {
         <ResizablePanelGroup orientation="horizontal" className="h-full rounded-lg">
           {/* Left panel: TODO.md (live) + docs */}
           <ResizablePanel defaultSize={50} minSize={25}>
-            <div className="flex flex-col gap-3 h-full pr-3">
+            <div className="flex flex-col gap-3 h-full pr-3 min-w-0">
               <Card className="flex-1 flex flex-col min-h-0">
                 <CardHeader className="py-3 px-4">
                   <CardTitle className="text-sm">TODO.md</CardTitle>
@@ -447,7 +447,7 @@ export function App() {
 
           {/* Right panel: Log + artifacts */}
           <ResizablePanel defaultSize={50} minSize={25}>
-            <div className="flex flex-col gap-3 h-full pl-3">
+            <div className="flex flex-col gap-3 h-full pl-3 min-w-0">
               <Card className="flex-1 flex flex-col min-h-0">
                 <CardHeader className="py-3 px-4">
                   <CardTitle className="text-sm">Log</CardTitle>
@@ -568,7 +568,7 @@ function TodoPanel({ content }: { content: string }) {
   return (
     <ScrollArea className="h-full">
       <div
-        className="text-sm [&_code]:text-xs [&_pre]:overflow-x-auto [&_li]:leading-relaxed [&_ul]:space-y-0.5 pr-3 overflow-x-auto"
+        className="text-sm [&_code]:text-xs [&_pre]:overflow-auto [&_li]:leading-relaxed [&_ul]:space-y-0.5 pr-3"
         dangerouslySetInnerHTML={{ __html: rendered }}
       />
     </ScrollArea>
@@ -977,7 +977,7 @@ function LogPanel({ log, artifacts }: { log: string; artifacts: ArtifactManifest
       <ScrollArea className="flex-1 min-h-0">
         <pre
           ref={logRef}
-          className="rounded-md bg-muted p-2 text-xs overflow-x-auto"
+          className="rounded-md bg-muted p-2 text-xs"
         >
           {log || 'No log entries available.'}
         </pre>

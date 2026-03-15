@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
+import { processAgentRequests } from '../lib/requests.js';
 
 interface DashboardOptions {
   port: string;
@@ -56,6 +57,18 @@ const MAX_BODY_BYTES = 64 * 1024;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const DEFAULT_REQUEST_POLL_INTERVAL_MS = 1_000;
 const GH_REQUEST_TYPES = new Set([
+  'create_issues',
+  'update_issue',
+  'close_issue',
+  'create_pr',
+  'merge_pr',
+  'dispatch_child',
+  'steer_child',
+  'stop_child',
+  'post_comment',
+  'query_issues',
+  'spec_backfill',
+  // legacy names
   'pr-create',
   'pr-comment',
   'issue-comment',
@@ -295,95 +308,16 @@ async function processGhConventionRequests(
   ghCommandRunner: GhCommandRunner,
 ): Promise<void> {
   const aloopDir = path.join(workdir, '.aloop');
-  const requestsDir = path.join(aloopDir, 'requests');
-  try {
-    const requestStats = await fs.stat(requestsDir);
-    if (!requestStats.isDirectory()) {
-      return;
-    }
-  } catch {
-    return;
-  }
-
-  const responsesDir = path.join(aloopDir, 'responses');
-  const processedDir = path.join(requestsDir, 'processed');
-  await fs.mkdir(responsesDir, { recursive: true });
-  await fs.mkdir(processedDir, { recursive: true });
-
-  const entries = await fs.readdir(requestsDir, { withFileTypes: true });
-  const requestFiles = entries
-    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
-    .map((entry) => entry.name)
-    .sort((a, b) => a.localeCompare(b));
-  if (requestFiles.length === 0) {
-    return;
-  }
-
-  const processedEntries = await fs.readdir(processedDir, { withFileTypes: true });
-  const reservedArchivePaths = new Set(
-    processedEntries
-      .filter((entry) => entry.isFile())
-      .map((entry) => path.join(processedDir, entry.name).toLowerCase()),
-  );
-
-  for (const fileName of requestFiles) {
-    const requestPath = path.join(requestsDir, fileName);
-    const responsePath = path.join(responsesDir, fileName);
-    const archivePath = getGhArchivePath(processedDir, fileName, reservedArchivePaths);
-    const processedAt = new Date().toISOString();
-    let requestType = '';
-
-    try {
-      const rawRequest = await fs.readFile(requestPath, 'utf8');
-      const parsedRequest = JSON.parse(rawRequest) as Record<string, unknown>;
-      requestType = typeof parsedRequest.type === 'string' ? parsedRequest.type : '';
-      if (!GH_REQUEST_TYPES.has(requestType)) {
-        throw new Error(`Unsupported request type '${requestType}'.`);
-      }
-
-      const result = await ghCommandRunner(requestType, sessionId, requestPath);
-      if (result.exitCode !== 0) {
-        throw new Error(`aloop gh ${requestType} failed with exit code ${result.exitCode}. ${result.output}`.trim());
-      }
-
-      const responsePayload: Record<string, unknown> = {
-        status: 'success',
-        type: requestType,
-        request_file: fileName,
-        processed_at: processedAt,
-      };
-      if (result.output.length > 0) {
-        try {
-          responsePayload.gh = JSON.parse(result.output);
-        } catch {
-          responsePayload.gh = result.output;
-        }
-      }
-      await fs.writeFile(responsePath, `${JSON.stringify(responsePayload, null, 2)}\n`, 'utf8');
-      await writeSessionLogEntry(logPath, 'gh_request_processed', {
-        type: requestType,
-        request_file: fileName,
-        response_file: path.basename(responsePath),
-      });
-    } catch (error) {
-      const message = (error as Error).message;
-      const responsePayload = {
-        status: 'error',
-        type: requestType,
-        request_file: fileName,
-        error: message,
-        processed_at: processedAt,
-      };
-      await fs.writeFile(responsePath, `${JSON.stringify(responsePayload, null, 2)}\n`, 'utf8');
-      await writeSessionLogEntry(logPath, 'gh_request_failed', {
-        type: requestType,
-        request_file: fileName,
-        error: message,
-      });
-    } finally {
-      await fs.rename(requestPath, archivePath);
-    }
-  }
+  const sessionDir = path.dirname(logPath);
+  
+  await processAgentRequests({
+    workdir,
+    sessionId,
+    aloopDir,
+    sessionDir,
+    logPath,
+    ghCommandRunner
+  });
 }
 
 async function resolveDefaultAssetsDir(): Promise<string> {
