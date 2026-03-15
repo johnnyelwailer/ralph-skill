@@ -858,7 +858,14 @@ HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
    - Image artifacts: clickable → lightbox overlay (ESC to close)
    - Diff badge if `diff_percentage` present: green <5%, yellow <20%, red >=20%
 
-3. **Raw JSON fallback** (if no commit/artifacts, show parsed event data)
+3. **Provider output** (for `iteration_complete`/`iteration_error` entries):
+   - "Show output" / "Hide output" toggle with Terminal icon
+   - Lazy-loaded from `/api/artifacts/{iteration}/output.txt` on first expand
+   - Scrollable `<pre>` block (max 300px height), monospace, word-wrap
+   - Dashboard parses output header for model info (e.g. opencode `> build · openrouter/model-name`)
+   - Future: extract token usage and cost from provider-specific output formats
+
+4. **Raw JSON fallback** (if no commit/artifacts/output, show parsed event data)
 
 **Footer (always visible):**
 - Steer textarea with Send button

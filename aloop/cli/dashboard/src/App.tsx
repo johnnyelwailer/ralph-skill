@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import {
   Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock,
   GitBranch, GitCommit, Image, FileText, MoreHorizontal, PanelLeftClose,
-  PanelLeftOpen, Search, Send, Square, Timer, XCircle, Zap, Loader2,
+  PanelLeftOpen, Search, Send, Square, Terminal, Timer, XCircle, Zap, Loader2,
   Heart, AlertTriangle, Pause,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -835,9 +835,30 @@ function ActivityPanel({ log, artifacts, currentIteration, currentPhase, current
 function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry; artifacts: ManifestPayload | null; isCurrentIteration: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [outputText, setOutputText] = useState<string | null>(null);
+  const [outputExpanded, setOutputExpanded] = useState(false);
+  const [outputLoading, setOutputLoading] = useState(false);
   const phaseColor = phaseDotColors[entry.phase?.toLowerCase()] ?? 'text-muted-foreground';
   const isRunningEntry = entry.event === 'iteration_running';
-  const hasExpandable = !isRunningEntry && (entry.filesChanged.length > 0 || (artifacts && artifacts.artifacts.length > 0) || entry.rawObj);
+  const hasOutput = entry.iteration !== null && (entry.event.includes('complete') || entry.event.includes('error'));
+  const hasExpandable = !isRunningEntry && (entry.filesChanged.length > 0 || (artifacts && artifacts.artifacts.length > 0) || hasOutput || entry.rawObj);
+
+  const loadOutput = useCallback(async () => {
+    if (outputText !== null || outputLoading || entry.iteration === null) return;
+    setOutputLoading(true);
+    try {
+      const res = await fetch(`/api/artifacts/${entry.iteration}/output.txt`);
+      if (res.ok) {
+        setOutputText(await res.text());
+      } else {
+        setOutputText('');
+      }
+    } catch {
+      setOutputText('');
+    } finally {
+      setOutputLoading(false);
+    }
+  }, [entry.iteration, outputText, outputLoading]);
 
   return (
     <>
@@ -981,8 +1002,32 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
             </div>
           )}
 
+          {/* Provider output */}
+          {hasOutput && (
+            <div className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1">
+              <button
+                type="button"
+                className="text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1 hover:underline text-[11px]"
+                onClick={(e) => { e.stopPropagation(); setOutputExpanded(!outputExpanded); if (!outputExpanded) loadOutput(); }}
+              >
+                <Terminal className="h-3 w-3" />
+                {outputExpanded ? 'Hide' : 'Show'} output
+                {outputExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              </button>
+              {outputExpanded && (
+                outputLoading ? (
+                  <div className="text-muted-foreground/50 py-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
+                ) : outputText ? (
+                  <pre className="bg-muted rounded-md p-2 mt-1 overflow-auto max-h-[300px] text-[10px] font-mono text-foreground/80 whitespace-pre-wrap break-words">{outputText}</pre>
+                ) : (
+                  <div className="text-muted-foreground/50 py-1 italic">No output available</div>
+                )
+              )}
+            </div>
+          )}
+
           {/* Event detail fallback — structured summary instead of raw JSON */}
-          {!entry.filesChanged.length && !artifacts && entry.rawObj && (
+          {!entry.filesChanged.length && !artifacts && !hasOutput && entry.rawObj && (
             <div className="border-l-2 border-border pl-2 py-1 space-y-0.5">
               {Object.entries(entry.rawObj)
                 .filter(([k]) => !['timestamp', 'ts', 'run_id', 'event', 'type'].includes(k))
