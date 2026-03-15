@@ -48,6 +48,7 @@ import {
   queueGapAnalysisForIssues,
   runOrchestratorScanPass,
   runOrchestratorScanLoop,
+  monitorChildSessions,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -3716,6 +3717,78 @@ describe('runOrchestratorScanPass', () => {
 
     assert.equal(result.triage.processed_issues, 1);
   });
+
+  it('monitors in-progress child sessions when execGh and aloopRoot are available', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 10,
+          wave: 1,
+          state: 'in_progress',
+          child_session: 'session-mon',
+        }),
+      ],
+    });
+
+    const deps = createMockScanDeps({
+      aloopRoot: '/home/.aloop',
+      execGh: async (args: string[]) => {
+        const key = args.join(' ');
+        if (key.includes('branches/agent/trunk')) return { stdout: 'agent/trunk', stderr: '' };
+        if (key.includes('pr create')) return { stdout: 'https://github.com/owner/repo/pull/50', stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/home/.aloop/sessions/session-mon/status.json'] = JSON.stringify({
+      iteration: 5,
+      phase: 'build',
+      provider: 'claude',
+      stuck_count: 0,
+      state: 'exited',
+      updated_at: '2026-03-15T12:00:00Z',
+    });
+    deps.files['/home/.aloop/sessions/session-mon/meta.json'] = JSON.stringify({
+      branch: 'aloop/issue-10',
+    });
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    assert.ok(result.childMonitoring);
+    assert.equal(result.childMonitoring!.monitored, 1);
+    assert.equal(result.childMonitoring!.prs_created, 1);
+
+    // Issue state should be updated to pr_open
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].state, 'pr_open');
+    assert.equal(writtenState.issues[0].pr_number, 50);
+  });
+
+  it('does not monitor when execGh is not available', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 10,
+          wave: 1,
+          state: 'in_progress',
+          child_session: 'session-mon',
+        }),
+      ],
+    });
+
+    const deps = createMockScanDeps({ aloopRoot: '/home/.aloop' });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    assert.equal(result.childMonitoring, null);
+  });
 });
 
 describe('runOrchestratorScanLoop', () => {
@@ -3893,5 +3966,262 @@ describe('orchestrateCommandWithDeps with --run-scan-loop', () => {
     );
 
     assert.equal(result.scan_loop, undefined);
+  });
+});
+
+// --- monitorChildSessions tests ---
+
+function createMockMonitorDeps(overrides: {
+  files?: Record<string, string>;
+  ghResponses?: Record<string, string>;
+} = {}) {
+  const logEntries: Array<Record<string, unknown>> = [];
+  const files = overrides.files ?? {};
+  const ghResponses = overrides.ghResponses ?? {};
+
+  const deps = {
+    existsSync: (p: string) => p in files,
+    readFile: async (p: string) => {
+      if (p in files) return files[p];
+      throw new Error(`ENOENT: ${p}`);
+    },
+    writeFile: async () => {},
+    execGh: async (args: string[]) => {
+      const key = args.join(' ');
+      for (const [pattern, response] of Object.entries(ghResponses)) {
+        if (key.includes(pattern)) return { stdout: response, stderr: '' };
+      }
+      throw new Error(`gh not mocked for: ${key}`);
+    },
+    now: () => new Date('2026-03-15T12:00:00Z'),
+    appendLog: (_sessionDir: string, entry: Record<string, unknown>) => {
+      logEntries.push(entry);
+    },
+    aloopRoot: '/home/.aloop',
+  };
+
+  return { deps, logEntries, files };
+}
+
+describe('monitorChildSessions', () => {
+  it('creates PR for exited child and updates state to pr_open', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({
+          number: 1,
+          state: 'in_progress',
+          child_session: 'session-abc',
+          title: 'Add feature X',
+        }),
+      ],
+    });
+
+    const files: Record<string, string> = {
+      '/home/.aloop/sessions/session-abc/status.json': JSON.stringify({
+        iteration: 5,
+        phase: 'build',
+        provider: 'claude',
+        stuck_count: 0,
+        state: 'exited',
+        updated_at: '2026-03-15T12:00:00Z',
+      }),
+      '/home/.aloop/sessions/session-abc/meta.json': JSON.stringify({
+        branch: 'aloop/issue-1',
+        project_root: '/project',
+      }),
+    };
+
+    const { deps, logEntries } = createMockMonitorDeps({
+      files,
+      ghResponses: {
+        'branches/agent/trunk': 'agent/trunk',
+        'pr create': 'https://github.com/owner/repo/pull/42',
+      },
+    });
+
+    const result = await monitorChildSessions(state, '/session', 'owner/repo', deps);
+
+    assert.equal(result.monitored, 1);
+    assert.equal(result.prs_created, 1);
+    assert.equal(result.failed, 0);
+
+    // State should be updated
+    assert.equal(state.issues[0].state, 'pr_open');
+    assert.equal(state.issues[0].pr_number, 42);
+    assert.equal(state.issues[0].status, 'In review');
+
+    // Log should contain child_pr_created
+    assert.ok(logEntries.some((e) => e.event === 'child_pr_created'));
+  });
+
+  it('marks stopped child as failed', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({
+          number: 2,
+          state: 'in_progress',
+          child_session: 'session-def',
+        }),
+      ],
+    });
+
+    const files: Record<string, string> = {
+      '/home/.aloop/sessions/session-def/status.json': JSON.stringify({
+        iteration: 10,
+        phase: 'build',
+        provider: 'codex',
+        stuck_count: 3,
+        state: 'stopped',
+        updated_at: '2026-03-15T12:00:00Z',
+      }),
+    };
+
+    const { deps, logEntries } = createMockMonitorDeps({ files });
+    const result = await monitorChildSessions(state, '/session', 'owner/repo', deps);
+
+    assert.equal(result.monitored, 1);
+    assert.equal(result.failed, 1);
+    assert.equal(state.issues[0].state, 'failed');
+    assert.equal(state.issues[0].status, 'Blocked');
+    assert.ok(logEntries.some((e) => e.event === 'child_failed'));
+  });
+
+  it('keeps running child as in_progress', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({
+          number: 3,
+          state: 'in_progress',
+          child_session: 'session-ghi',
+        }),
+      ],
+    });
+
+    const files: Record<string, string> = {
+      '/home/.aloop/sessions/session-ghi/status.json': JSON.stringify({
+        iteration: 2,
+        phase: 'build',
+        provider: 'gemini',
+        stuck_count: 0,
+        state: 'running',
+        updated_at: '2026-03-15T12:00:00Z',
+      }),
+    };
+
+    const { deps } = createMockMonitorDeps({ files });
+    const result = await monitorChildSessions(state, '/session', 'owner/repo', deps);
+
+    assert.equal(result.monitored, 1);
+    assert.equal(result.still_running, 1);
+    assert.equal(state.issues[0].state, 'in_progress');
+  });
+
+  it('logs stuck warning when stuck_count >= 2', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({
+          number: 4,
+          state: 'in_progress',
+          child_session: 'session-stuck',
+        }),
+      ],
+    });
+
+    const files: Record<string, string> = {
+      '/home/.aloop/sessions/session-stuck/status.json': JSON.stringify({
+        iteration: 8,
+        phase: 'review',
+        provider: 'claude',
+        stuck_count: 3,
+        state: 'running',
+        updated_at: '2026-03-15T12:00:00Z',
+      }),
+    };
+
+    const { deps, logEntries } = createMockMonitorDeps({ files });
+    await monitorChildSessions(state, '/session', 'owner/repo', deps);
+
+    assert.ok(logEntries.some((e) => e.event === 'child_stuck_warning'));
+  });
+
+  it('handles missing status.json gracefully', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({
+          number: 5,
+          state: 'in_progress',
+          child_session: 'session-missing',
+        }),
+      ],
+    });
+
+    const { deps } = createMockMonitorDeps({});
+    const result = await monitorChildSessions(state, '/session', 'owner/repo', deps);
+
+    assert.equal(result.monitored, 1);
+    assert.equal(result.errors, 1);
+    assert.equal(result.entries[0].action, 'status_unreadable');
+  });
+
+  it('falls back to existing PR when pr create fails', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({
+          number: 6,
+          state: 'in_progress',
+          child_session: 'session-existing',
+          title: 'Existing PR task',
+        }),
+      ],
+    });
+
+    const files: Record<string, string> = {
+      '/home/.aloop/sessions/session-existing/status.json': JSON.stringify({
+        iteration: 3,
+        phase: 'build',
+        provider: 'claude',
+        stuck_count: 0,
+        state: 'exited',
+        updated_at: '2026-03-15T12:00:00Z',
+      }),
+      '/home/.aloop/sessions/session-existing/meta.json': JSON.stringify({
+        branch: 'aloop/issue-6',
+      }),
+    };
+
+    const { deps, logEntries } = createMockMonitorDeps({
+      files,
+      ghResponses: {
+        'branches/agent/trunk': 'agent/trunk',
+        'pr list': '99',
+      },
+    });
+
+    // Make pr create fail
+    const origExecGh = deps.execGh;
+    deps.execGh = async (args: string[]) => {
+      if (args.includes('create')) throw new Error('PR already exists');
+      return origExecGh(args);
+    };
+
+    const result = await monitorChildSessions(state, '/session', 'owner/repo', deps);
+
+    assert.equal(result.prs_created, 1);
+    assert.equal(state.issues[0].pr_number, 99);
+    assert.ok(logEntries.some((e) => e.event === 'child_pr_created'));
+  });
+
+  it('skips issues without child_session', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 7, state: 'pending', child_session: null }),
+        makeIssue({ number: 8, state: 'in_progress', child_session: null }),
+      ],
+    });
+
+    const { deps } = createMockMonitorDeps({});
+    const result = await monitorChildSessions(state, '/session', 'owner/repo', deps);
+
+    assert.equal(result.monitored, 0);
   });
 });

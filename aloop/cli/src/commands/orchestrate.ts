@@ -2698,6 +2698,297 @@ export function formatFinalReportText(report: FinalReport): string {
   return lines.join('\n');
 }
 
+// --- Child session monitoring ---
+
+export interface ChildStatus {
+  iteration: number;
+  phase: string;
+  provider: string;
+  stuck_count: number;
+  state: string;
+  updated_at: string;
+  iteration_started_at?: string;
+}
+
+export interface ChildMonitorEntry {
+  issue_number: number;
+  child_session: string;
+  child_state: string;
+  stuck_count: number;
+  action: 'pr_created' | 'exited_no_pr' | 'failed' | 'still_running' | 'status_unreadable';
+  pr_number?: number;
+  branch?: string;
+  error?: string;
+}
+
+export interface MonitorChildResult {
+  monitored: number;
+  prs_created: number;
+  failed: number;
+  still_running: number;
+  errors: number;
+  entries: ChildMonitorEntry[];
+}
+
+export interface MonitorChildDeps {
+  existsSync: (path: string) => boolean;
+  readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
+  writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  now: () => Date;
+  appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
+  aloopRoot: string;
+}
+
+/**
+ * Parse the PR number and URL from `gh pr create` output.
+ */
+function parsePrCreateOutput(stdout: string): { number: number | null; url: string } {
+  // gh pr create outputs a URL like https://github.com/owner/repo/pull/123
+  const match = stdout.match(/\/pull\/(\d+)/);
+  return {
+    number: match ? Number.parseInt(match[1], 10) : null,
+    url: stdout.trim(),
+  };
+}
+
+/**
+ * Create a PR for a completed child session's branch.
+ */
+async function createPrForChild(
+  issue: OrchestratorIssue,
+  childSession: string,
+  childDir: string,
+  state: OrchestratorState,
+  repo: string,
+  deps: MonitorChildDeps,
+): Promise<{ pr_number: number | null; branch: string; baseBranch: string; error?: string }> {
+  // Read child's meta.json to get branch info
+  const metaPath = path.join(childDir, 'meta.json');
+  let branch = `aloop/issue-${issue.number}`;
+  let projectRoot = '';
+
+  if (deps.existsSync(metaPath)) {
+    try {
+      const meta = JSON.parse(await deps.readFile(metaPath, 'utf8'));
+      if (typeof meta.branch === 'string') branch = meta.branch;
+      if (typeof meta.project_root === 'string') projectRoot = meta.project_root;
+    } catch {
+      // Use defaults
+    }
+  }
+
+  // Determine base branch: prefer agent/trunk, fall back to trunk_branch
+  const baseBranch = state.trunk_branch || 'agent/trunk';
+
+  // Check if base branch exists remotely
+  let effectiveBase = baseBranch;
+  try {
+    await deps.execGh(['api', `repos/${repo}/branches/${baseBranch}`, '--jq', '.name']);
+  } catch {
+    effectiveBase = 'main';
+  }
+
+  const issueTitle = issue.title || `Issue ${issue.number}`;
+  const prTitle = `[aloop] ${issueTitle}`;
+  const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}`;
+
+  try {
+    const result = await deps.execGh([
+      'pr', 'create',
+      '--repo', repo,
+      '--base', effectiveBase,
+      '--head', branch,
+      '--title', prTitle,
+      '--body', prBody,
+    ]);
+    const parsed = parsePrCreateOutput(result.stdout);
+    return { pr_number: parsed.number, branch, baseBranch: effectiveBase };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Check if PR already exists for this branch
+    try {
+      const listResult = await deps.execGh([
+        'pr', 'list',
+        '--repo', repo,
+        '--head', branch,
+        '--json', 'number',
+        '--jq', '.[0].number',
+      ]);
+      const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
+      if (Number.isFinite(existingNumber) && existingNumber > 0) {
+        return { pr_number: existingNumber, branch, baseBranch: effectiveBase };
+      }
+    } catch {
+      // PR list also failed
+    }
+    return { pr_number: null, branch, baseBranch: effectiveBase, error: msg };
+  }
+}
+
+/**
+ * Monitor all in-progress child sessions:
+ * - Reads child status.json to detect completion, failure, or stuck state
+ * - Creates PRs for successfully completed children
+ * - Marks failed/stopped children as failed
+ * - Logs monitoring results
+ */
+export async function monitorChildSessions(
+  state: OrchestratorState,
+  sessionDir: string,
+  repo: string,
+  deps: MonitorChildDeps,
+): Promise<MonitorChildResult> {
+  const result: MonitorChildResult = {
+    monitored: 0,
+    prs_created: 0,
+    failed: 0,
+    still_running: 0,
+    errors: 0,
+    entries: [],
+  };
+
+  const inProgressIssues = state.issues.filter(
+    (i) => i.state === 'in_progress' && i.child_session !== null,
+  );
+
+  for (const issue of inProgressIssues) {
+    const childSession = issue.child_session!;
+    const childDir = path.join(deps.aloopRoot, 'sessions', childSession);
+    const statusPath = path.join(childDir, 'status.json');
+    result.monitored++;
+
+    // Try to read child status.json
+    let childStatus: ChildStatus | null = null;
+    try {
+      if (deps.existsSync(statusPath)) {
+        const raw = await deps.readFile(statusPath, 'utf8');
+        childStatus = JSON.parse(raw);
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      result.errors++;
+      result.entries.push({
+        issue_number: issue.number,
+        child_session: childSession,
+        child_state: 'unknown',
+        stuck_count: 0,
+        action: 'status_unreadable',
+        error: msg,
+      });
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'child_monitor_error',
+        issue_number: issue.number,
+        child_session: childSession,
+        error: msg,
+      });
+      continue;
+    }
+
+    if (!childStatus) {
+      result.errors++;
+      result.entries.push({
+        issue_number: issue.number,
+        child_session: childSession,
+        child_state: 'unknown',
+        stuck_count: 0,
+        action: 'status_unreadable',
+        error: 'status.json not found',
+      });
+      continue;
+    }
+
+    const entry: ChildMonitorEntry = {
+      issue_number: issue.number,
+      child_session: childSession,
+      child_state: childStatus.state,
+      stuck_count: childStatus.stuck_count ?? 0,
+      action: 'still_running',
+    };
+
+    // Check for terminal states
+    if (childStatus.state === 'exited') {
+      // Child completed successfully — create PR
+      const prResult = await createPrForChild(issue, childSession, childDir, state, repo, deps);
+
+      if (prResult.pr_number !== null) {
+        // Update issue state to pr_open
+        const stateIssue = state.issues.find((i) => i.number === issue.number);
+        if (stateIssue) {
+          stateIssue.state = 'pr_open';
+          stateIssue.pr_number = prResult.pr_number;
+          stateIssue.status = 'In review';
+        }
+        result.prs_created++;
+        entry.action = 'pr_created';
+        entry.pr_number = prResult.pr_number;
+        entry.branch = prResult.branch;
+
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_pr_created',
+          issue_number: issue.number,
+          child_session: childSession,
+          pr_number: prResult.pr_number,
+          branch: prResult.branch,
+          base_branch: prResult.baseBranch,
+        });
+      } else {
+        result.errors++;
+        entry.action = 'exited_no_pr';
+        entry.error = prResult.error ?? 'PR creation returned no number';
+
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_pr_create_failed',
+          issue_number: issue.number,
+          child_session: childSession,
+          error: entry.error,
+        });
+      }
+    } else if (childStatus.state === 'stopped') {
+      // Child stopped (limit reached, interrupted, or error) — mark failed
+      const stateIssue = state.issues.find((i) => i.number === issue.number);
+      if (stateIssue) {
+        stateIssue.state = 'failed';
+        stateIssue.status = 'Blocked';
+      }
+      result.failed++;
+      entry.action = 'failed';
+
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'child_failed',
+        issue_number: issue.number,
+        child_session: childSession,
+        stuck_count: childStatus.stuck_count,
+        last_phase: childStatus.phase,
+        last_provider: childStatus.provider,
+      });
+    } else {
+      // Still running — log stuck count if high
+      result.still_running++;
+      entry.action = 'still_running';
+
+      if ((childStatus.stuck_count ?? 0) >= 2) {
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_stuck_warning',
+          issue_number: issue.number,
+          child_session: childSession,
+          stuck_count: childStatus.stuck_count,
+          phase: childStatus.phase,
+        });
+      }
+    }
+
+    result.entries.push(entry);
+  }
+
+  return result;
+}
+
 // --- Orchestrator scan loop ---
 
 export interface ScanLoopDeps {
@@ -2709,6 +3000,7 @@ export interface ScanLoopDeps {
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   dispatchDeps?: DispatchDeps;
   prLifecycleDeps?: PrLifecycleDeps;
+  aloopRoot?: string;
   sleep?: (ms: number) => Promise<void>;
   signalStop?: () => boolean;
 }
@@ -2717,6 +3009,7 @@ export interface ScanPassResult {
   iteration: number;
   triage: TriageMonitorCycleResult;
   dispatched: number;
+  childMonitoring: MonitorChildResult | null;
   prLifecycles: PrLifecycleResult[];
   waveAdvanced: boolean;
   budgetExceeded: boolean;
@@ -2752,6 +3045,7 @@ export async function runOrchestratorScanPass(
     iteration,
     triage: { processed_issues: 0, triaged_entries: 0 },
     dispatched: 0,
+    childMonitoring: null,
     prLifecycles: [],
     waveAdvanced: false,
     budgetExceeded: false,
@@ -2812,6 +3106,34 @@ export async function runOrchestratorScanPass(
           error: msg,
         });
       }
+    }
+  }
+
+  // 2.5. Monitor in-progress child sessions: detect completion, create PRs, flag failures
+  if (repo && deps.execGh && deps.aloopRoot) {
+    try {
+      result.childMonitoring = await monitorChildSessions(
+        state,
+        sessionDir,
+        repo,
+        {
+          existsSync: deps.existsSync,
+          readFile: deps.readFile,
+          writeFile: deps.writeFile,
+          execGh: deps.execGh,
+          now: deps.now,
+          appendLog: deps.appendLog,
+          aloopRoot: deps.aloopRoot,
+        },
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'scan_monitor_error',
+        iteration,
+        error: msg,
+      });
     }
   }
 
@@ -2896,6 +3218,9 @@ export async function runOrchestratorScanPass(
     event: 'scan_pass_complete',
     iteration,
     dispatched: result.dispatched,
+    monitored: result.childMonitoring?.monitored ?? 0,
+    prs_created: result.childMonitoring?.prs_created ?? 0,
+    child_failed: result.childMonitoring?.failed ?? 0,
     pr_lifecycles: result.prLifecycles.length,
     triage_entries: result.triage.triaged_entries,
     all_done: result.allDone,
