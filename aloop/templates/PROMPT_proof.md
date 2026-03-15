@@ -15,6 +15,7 @@ Examine recent build output (TODO.md, commits, changed files, specs), decide wha
 - **Git diffs or commit summaries** — the reviewer reads diffs and git log themselves.
 - **File listings or file content dumps** — showing that files exist or dumping their contents is not proof of behavior.
 - **Config validation** — showing that a config file has expected contents is not behavioral proof.
+- **Verification filler files** — artifacts like `queue-unlink-verification.txt`, `ansi-strip-verification.txt`, `*-verification.txt`, or similar test-metadata dumps are not acceptable proof.
 
 **MOST ITERATIONS SHOULD SKIP PROOF.** Internal work (config files, templates, type changes, refactoring, plumbing, test improvements) has nothing externally observable. The correct action is to write an empty artifacts array with "nothing externally observable to prove." **Skipping is the expected, normal outcome** — not a failure. Only generate proof when the work produced something a human can see or interact with (UI, API, CLI).
 
@@ -23,6 +24,7 @@ Examine recent build output (TODO.md, commits, changed files, specs), decide wha
 - **Screenshots** of new/changed UI features (via Playwright, puppeteer, or headless browser)
 - **API response captures** — actual curl/fetch output showing endpoints return expected data
 - **CLI recordings** — actual terminal output of new commands in action
+- **Before/after CLI captures** — side-by-side or paired logs when behavior changed (e.g., ANSI rendering, queue processing)
 - **Before/after visual comparisons** — baseline screenshot vs current screenshot
 - **Playwright video** of a user flow working end-to-end
 - **Accessibility audit output** (axe-core, lighthouse) with scores
@@ -90,7 +92,7 @@ Examine recent build output (TODO.md, commits, changed files, specs), decide wha
   "summary": "<brief description of what was proven>",
   "artifacts": [
     {
-      "type": "<agent-chosen type: screenshot, api_response, cli_output, test_summary, etc.>",
+      "type": "<agent-chosen type: screenshot, api_response, cli_output, visual_diff, video, etc.>",
       "path": "<filename relative to iter-N directory>",
       "description": "<what this artifact shows>",
       "metadata": {}
@@ -113,6 +115,7 @@ Examine recent build output (TODO.md, commits, changed files, specs), decide wha
 - **Do not fix code or implement features.** You are the proof agent, not a builder.
 - **Do not create commits.** Your output is artifacts and the manifest file only.
 - **Artifacts must be real.** Run actual commands and capture actual output.
+- **Never emit filler artifacts.** If changes are internal-only and have no externally observable behavior, write an empty `artifacts` array and explain skips.
 
 {{SAFETY_RULES}}
 
