@@ -109,7 +109,10 @@ async function readJsonFile(filePath: string): Promise<unknown | null> {
 
 async function readJsonArrayFile(filePath: string): Promise<unknown[]> {
   const value = await readJsonFile(filePath);
-  return Array.isArray(value) ? value : [];
+  if (Array.isArray(value)) return value;
+  // active.json is an object keyed by session ID — convert to array of entries
+  if (isRecord(value)) return Object.values(value);
+  return [];
 }
 
 async function readTextFile(filePath: string): Promise<string> {
@@ -235,7 +238,31 @@ async function loadStateForContext(
     ),
     loadArtifactManifests(ctx.sessionDir),
   ]);
-  const pid = ctx.pid ?? extractPid(meta);
+  // Resolve PID: prefer ctx.pid (from session resolution), fall back to
+  // meta.json, then active.json.  If the resolved PID is dead, also try
+  // active.json — meta.json may hold a stale PID from a previous run while
+  // active.json has the current one.
+  let pid: number | null = ctx.pid ?? extractPid(meta) ?? null;
+  if (pid !== null && !isProcessAlive(pid)) {
+    // PID from meta is stale — try active.json for a fresh PID
+    const sessionId = path.basename(ctx.sessionDir);
+    const active = await readJsonFile(path.join(runtimeDir, 'active.json'));
+    if (isRecord(active)) {
+      const entry = active[sessionId];
+      if (isRecord(entry) && typeof entry.pid === 'number' && entry.pid > 0) {
+        pid = entry.pid;
+      }
+    }
+  } else if (pid === null) {
+    const sessionId = path.basename(ctx.sessionDir);
+    const active = await readJsonFile(path.join(runtimeDir, 'active.json'));
+    if (isRecord(active)) {
+      const entry = active[sessionId];
+      if (isRecord(entry) && typeof entry.pid === 'number' && entry.pid > 0) {
+        pid = entry.pid;
+      }
+    }
+  }
   const correctedStatus = withLivenessCorrectedState(status, pid);
 
   return {

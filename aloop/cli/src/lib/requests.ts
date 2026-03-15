@@ -144,6 +144,7 @@ export interface RequestProcessorOptions {
   sessionDir: string;
   logPath: string;
   ghCommandRunner: (operation: string, sessionId: string, requestPath: string) => Promise<{ exitCode: number; output: string }>;
+  spawnSync?: typeof spawnSync;
 }
 
 export async function processAgentRequests(options: RequestProcessorOptions): Promise<void> {
@@ -197,7 +198,7 @@ export async function processAgentRequests(options: RequestProcessorOptions): Pr
       const errorMsg = error instanceof Error ? error.message : String(error);
       const archivePath = getArchivePath(failedDir, fileName, new Set());
       await fs.rename(requestPath, archivePath);
-      await writeFailureToQueue(request, errorMsg, options);
+      await writeFailureToQueue(request, errorMsg, options, fileName);
       await writeSessionLogEntry(options.logPath, 'gh_request_failed', {
         type: request.type,
         id: request.id,
@@ -293,7 +294,7 @@ async function handleCreateIssues(request: CreateIssuesRequest, fileName: string
     results.push(JSON.parse(result.output));
   }
 
-  await writeSuccessToQueue(request, { issues: results }, options);
+  await writeSuccessToQueue(request, { issues: results }, options, fileName);
 }
 
 async function handleUpdateIssue(request: UpdateIssueRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -303,8 +304,9 @@ async function handleUpdateIssue(request: UpdateIssueRequest, fileName: string, 
     const tempBodyPath = path.join(options.aloopDir, 'requests', `_tmp_body_${request.id}.md`);
     await fs.writeFile(tempBodyPath, body);
     args.push('--body-file', tempBodyPath);
+    const spawn = options.spawnSync || spawnSync;
     try {
-      const result = spawnSync('gh', args, { encoding: 'utf8' });
+      const result = spawn('gh', args, { encoding: 'utf8' });
       if (result.status !== 0) throw new Error(result.stderr);
     } finally {
       await fs.unlink(tempBodyPath);
@@ -317,11 +319,12 @@ async function handleUpdateIssue(request: UpdateIssueRequest, fileName: string, 
     if (request.payload.labels_remove) {
       for (const l of request.payload.labels_remove) args.push('--remove-label', l);
     }
-    const result = spawnSync('gh', args, { encoding: 'utf8' });
+    const spawn = options.spawnSync || spawnSync;
+    const result = spawn('gh', args, { encoding: 'utf8' });
     if (result.status !== 0) throw new Error(result.stderr);
   }
 
-  await writeSuccessToQueue(request, { status: 'updated' }, options);
+  await writeSuccessToQueue(request, { status: 'updated' }, options, fileName);
 }
 
 async function handleCloseIssue(request: CloseIssueRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -334,7 +337,7 @@ async function handleCloseIssue(request: CloseIssueRequest, fileName: string, op
   const result = await options.ghCommandRunner('issue-close', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);
   if (result.exitCode !== 0) throw new Error(result.output);
-  await writeSuccessToQueue(request, { status: 'closed' }, options);
+  await writeSuccessToQueue(request, { status: 'closed' }, options, fileName);
 }
 
 async function handleCreatePr(request: CreatePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -349,7 +352,7 @@ async function handleCreatePr(request: CreatePrRequest, fileName: string, option
   const result = await options.ghCommandRunner('pr-create', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);
   if (result.exitCode !== 0) throw new Error(result.output);
-  await writeSuccessToQueue(request, JSON.parse(result.output), options);
+  await writeSuccessToQueue(request, JSON.parse(result.output), options, fileName);
 }
 
 async function handleMergePr(request: MergePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -361,7 +364,7 @@ async function handleMergePr(request: MergePrRequest, fileName: string, options:
   const result = await options.ghCommandRunner('pr-merge', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);
   if (result.exitCode !== 0) throw new Error(result.output);
-  await writeSuccessToQueue(request, { status: 'merged' }, options);
+  await writeSuccessToQueue(request, { status: 'merged' }, options, fileName);
 }
 
 async function handleDispatchChild(request: DispatchChildRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -376,13 +379,14 @@ async function handleDispatchChild(request: DispatchChildRequest, fileName: stri
     '--output', 'json'
   ];
   
-  const result = spawnSync('aloop', args, { encoding: 'utf8' });
+  const spawn = options.spawnSync || spawnSync;
+  const result = spawn('aloop', args, { encoding: 'utf8' });
   if (result.status !== 0) {
     throw new Error(`Failed to dispatch child: ${result.stderr || result.stdout}`);
   }
   
   const output = JSON.parse(result.stdout);
-  await writeSuccessToQueue(request, output, options);
+  await writeSuccessToQueue(request, output, options, fileName);
 }
 
 async function handleSteerChild(request: SteerChildRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -433,7 +437,7 @@ async function handleSteerChild(request: SteerChildRequest, fileName: string, op
     request_id: request.id
   });
 
-  await writeSuccessToQueue(request, { status: 'steered', session_id: childSessionId }, options);
+  await writeSuccessToQueue(request, { status: 'steered', session_id: childSessionId }, options, fileName);
 }
 
 async function handleStopChild(request: StopChildRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -443,11 +447,12 @@ async function handleStopChild(request: StopChildRequest, fileName: string, opti
     '--home-dir', path.dirname(options.aloopDir),
     '--output', 'json'
   ];
-  const result = spawnSync('aloop', args, { encoding: 'utf8' });
+  const spawn = options.spawnSync || spawnSync;
+  const result = spawn('aloop', args, { encoding: 'utf8' });
   if (result.status !== 0) {
     throw new Error(`Failed to stop child: ${result.stderr || result.stdout}`);
   }
-  await writeSuccessToQueue(request, { status: 'stopped' }, options);
+  await writeSuccessToQueue(request, { status: 'stopped' }, options, fileName);
 }
 
 async function handlePostComment(request: PostCommentRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -461,7 +466,7 @@ async function handlePostComment(request: PostCommentRequest, fileName: string, 
   const result = await options.ghCommandRunner('issue-comment', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);
   if (result.exitCode !== 0) throw new Error(result.output);
-  await writeSuccessToQueue(request, { status: 'posted' }, options);
+  await writeSuccessToQueue(request, { status: 'posted' }, options, fileName);
 }
 
 async function handleQueryIssues(request: QueryIssuesRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -472,11 +477,11 @@ async function handleQueryIssues(request: QueryIssuesRequest, fileName: string, 
   }
   if (request.payload.state) args.push('--state', request.payload.state);
   
-  // We'll use ghExecutor from gh.ts if we could, but let's just use spawnSync for now
-  const result = spawnSync('gh', args, { encoding: 'utf8' });
+  const spawn = options.spawnSync || spawnSync;
+  const result = spawn('gh', args, { encoding: 'utf8' });
   if (result.status !== 0) throw new Error(result.stderr);
   
-  await writeSuccessToQueue(request, { issues: JSON.parse(result.stdout) }, options);
+  await writeSuccessToQueue(request, { issues: JSON.parse(result.stdout) }, options, fileName);
 }
 
 async function handleSpecBackfill(request: SpecBackfillRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -502,18 +507,20 @@ async function handleSpecBackfill(request: SpecBackfillRequest, fileName: string
   
   await fs.writeFile(specPath, specContent, 'utf8');
   // Commit the change
-  spawnSync('git', ['-C', options.workdir, 'add', request.payload.file], { stdio: 'ignore' });
-  spawnSync('git', ['-C', options.workdir, 'commit', '-m', `docs: backfill spec section ${request.payload.section} [aloop]`], { stdio: 'ignore' });
+  const spawn = options.spawnSync || spawnSync;
+  spawn('git', ['-C', options.workdir, 'add', request.payload.file], { stdio: 'ignore' });
+  spawn('git', ['-C', options.workdir, 'commit', '-m', `docs: backfill spec section ${request.payload.section} [aloop]`], { stdio: 'ignore' });
   
-  await writeSuccessToQueue(request, { status: 'backfilled', file: request.payload.file }, options);
+  await writeSuccessToQueue(request, { status: 'backfilled', file: request.payload.file }, options, fileName);
 }
 
-async function writeSuccessToQueue(request: AgentRequest, payload: any, options: RequestProcessorOptions): Promise<void> {
+async function writeSuccessToQueue(request: AgentRequest, payload: any, options: RequestProcessorOptions, sourceFileName: string): Promise<void> {
   const queueDir = path.join(options.sessionDir, 'queue');
   await fs.mkdir(queueDir, { recursive: true });
   
   const timestamp = new Date().toISOString();
-  const fileName = `${new Date().getTime()}-${request.type}-${request.id}.md`;
+  const baseName = path.basename(sourceFileName, path.extname(sourceFileName));
+  const fileName = `${baseName}-${new Date().getTime()}-${request.type}-${request.id}.md`;
   const queuePath = path.join(queueDir, fileName);
   
   const frontmatter = {
@@ -540,12 +547,13 @@ async function writeSuccessToQueue(request: AgentRequest, payload: any, options:
   await fs.writeFile(queuePath, content, 'utf8');
 }
 
-async function writeFailureToQueue(request: AgentRequest, error: string, options: RequestProcessorOptions): Promise<void> {
+async function writeFailureToQueue(request: AgentRequest, error: string, options: RequestProcessorOptions, sourceFileName: string): Promise<void> {
   const queueDir = path.join(options.sessionDir, 'queue');
   await fs.mkdir(queueDir, { recursive: true });
   
   const timestamp = new Date().toISOString();
-  const fileName = `${new Date().getTime()}-failed-${request.type}-${request.id}.md`;
+  const baseName = path.basename(sourceFileName, path.extname(sourceFileName));
+  const fileName = `${baseName}-failed-${new Date().getTime()}-${request.type}-${request.id}.md`;
   const queuePath = path.join(queueDir, fileName);
   
   const frontmatter = {
