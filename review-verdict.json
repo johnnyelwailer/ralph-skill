@@ -1,5 +1,5 @@
 {
-  "iteration": 44,
+  "iteration": 18,
   "verdict": "FAIL",
-  "summary": "Gate 8 FAIL (VERSIONS.md missing) and Gate 4 FAIL (Provenance Tagging missing in runtime scripts)."
+  "summary": "Spec Change Replan feature is non-functional (queued but not processed) and lacks proof; GitHub Project status not implemented."
 }

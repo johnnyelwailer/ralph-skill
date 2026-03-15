@@ -1160,7 +1160,9 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
   // Scroll output to bottom when it loads (summary is usually at the end)
   useEffect(() => {
     if (outputText && outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+      requestAnimationFrame(() => {
+        if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
+      });
     }
   }, [outputText]);
 
