@@ -37,6 +37,11 @@ import {
   validateDoR,
   applyEstimateResults,
   queueEstimateForIssues,
+  createEpicDecompositionRequest,
+  queueEpicDecomposition,
+  createSubDecompositionRequests,
+  queueSubDecompositionForIssues,
+  applySubDecompositionResults,
   createGapAnalysisRequests,
   queueGapAnalysisForIssues,
   runOrchestratorScanPass,
@@ -58,6 +63,7 @@ import {
   type ScanLoopDeps,
   type ScanPassResult,
   type ScanLoopResult,
+  type SubDecompositionResult,
 } from './orchestrate.js';
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
@@ -783,7 +789,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
   it('calls execGhIssueCreate when repo is provided', async () => {
     const calls: string[] = [];
     const deps = createMockDeps({
-      existsSync: () => true,
+      existsSync: (p: string) => p.endsWith('plan.json'),
       readFile: async () => samplePlan,
       execGhIssueCreate: async (_repo, _sid, title) => {
         calls.push(title);
@@ -3146,7 +3152,116 @@ describe('queueGapAnalysisForIssues', () => {
   });
 });
 
+describe('epic and sub-issue decomposition helpers', () => {
+  it('writes epic decomposition request file', async () => {
+    const writtenFiles: Record<string, string> = {};
+    await createEpicDecompositionRequest('SPEC.md', '/requests', {
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+      now: () => new Date('2026-03-15T12:00:00Z'),
+    });
+
+    assert.ok(writtenFiles['/requests/epic-decomposition.json']);
+    const request = JSON.parse(writtenFiles['/requests/epic-decomposition.json']);
+    assert.equal(request.type, 'epic_decomposition');
+    assert.equal(request.prompt_template, 'PROMPT_orch_decompose.md');
+    assert.equal(request.spec_file, 'SPEC.md');
+  });
+
+  it('queues epic decomposition prompt with orch_decompose frontmatter', async () => {
+    const writtenFiles: Record<string, string> = {};
+    await queueEpicDecomposition(
+      'SPEC.md',
+      '# Spec body',
+      '/queue',
+      '# Decompose prompt',
+      { writeFile: async (p: string, data: string) => { writtenFiles[p] = data; } },
+    );
+
+    const content = writtenFiles['/queue/decompose-epics.md'];
+    assert.ok(content);
+    assert.match(content, /orch_decompose/);
+    assert.match(content, /# Decompose prompt/);
+    assert.match(content, /# Spec body/);
+  });
+
+  it('writes sub-issue decomposition request for Needs decomposition targets only', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const issues = [
+      makeIssue({ number: 10, status: 'Needs decomposition', title: 'Epic A', file_hints: ['src/a.ts'] }),
+      makeIssue({ number: 20, status: 'Ready', title: 'Other' }),
+    ];
+    const count = await createSubDecompositionRequests(issues, '/requests', {
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+      now: () => new Date('2026-03-15T12:00:00Z'),
+    });
+
+    assert.equal(count, 1);
+    const request = JSON.parse(writtenFiles['/requests/sub-issue-decomposition.json']);
+    assert.equal(request.type, 'sub_issue_decomposition');
+    assert.equal(request.prompt_template, 'PROMPT_orch_sub_decompose.md');
+    assert.equal(request.targets.length, 1);
+    assert.equal(request.targets[0].issue_number, 10);
+    assert.deepStrictEqual(request.targets[0].file_hints, ['src/a.ts']);
+  });
+
+  it('queues per-issue sub decomposition prompts', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const issues = [
+      makeIssue({ number: 11, status: 'Needs decomposition', title: 'Epic B', wave: 2, depends_on: [5] }),
+      makeIssue({ number: 12, status: 'Needs decomposition', title: 'Epic C', wave: 2, depends_on: [] }),
+    ];
+    const count = await queueSubDecompositionForIssues(
+      issues,
+      '/queue',
+      '# Sub-decompose prompt',
+      { writeFile: async (p: string, data: string) => { writtenFiles[p] = data; } },
+    );
+
+    assert.equal(count, 2);
+    assert.ok(writtenFiles['/queue/sub-decompose-issue-11.md']);
+    assert.ok(writtenFiles['/queue/sub-decompose-issue-12.md']);
+    assert.match(writtenFiles['/queue/sub-decompose-issue-11.md'], /orch_sub_decompose/);
+    assert.match(writtenFiles['/queue/sub-decompose-issue-11.md'], /# Sub-decompose prompt/);
+  });
+
+  it('applies sub decomposition results by transitioning to Needs refinement', () => {
+    const state = makeState({
+      updated_at: '2026-03-15T10:00:00.000Z',
+      issues: [
+        makeIssue({ number: 21, status: 'Needs decomposition', dor_validated: true, body: 'old body' }),
+        makeIssue({ number: 22, status: 'Ready', dor_validated: true }),
+      ],
+    });
+    const results: SubDecompositionResult[] = [
+      {
+        parent_issue_number: 21,
+        refined_body: 'new body',
+        file_hints: ['src/new.ts'],
+      },
+    ];
+
+    const updated = applySubDecompositionResults(state, results, new Date('2026-03-15T13:00:00.000Z'));
+    assert.equal(updated.issues[0].status, 'Needs refinement');
+    assert.equal(updated.issues[0].dor_validated, false);
+    assert.equal(updated.issues[0].body, 'new body');
+    assert.deepStrictEqual(updated.issues[0].file_hints, ['src/new.ts']);
+    assert.equal(updated.updated_at, '2026-03-15T13:00:00.000Z');
+    assert.equal(updated.issues[1].status, 'Ready');
+  });
+});
+
 describe('orchestrateCommandWithDeps gap analysis integration', () => {
+  it('queues epic decomposition bootstrap when no plan/issues exist', async () => {
+    const deps = createMockDeps();
+    const mockDeps = deps as OrchestrateDeps & { _writtenFiles: Record<string, string> };
+    await orchestrateCommandWithDeps({}, deps);
+
+    const requestPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/requests/epic-decomposition.json'));
+    const queuePath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/queue/decompose-epics.md'));
+    assert.ok(requestPath, 'epic decomposition request should be written');
+    assert.ok(queuePath, 'epic decomposition queue prompt should be written');
+  });
+
   it('creates gap analysis requests when issues have Needs analysis status', async () => {
     const writtenFiles: Record<string, string> = {};
     const deps = createMockDeps({
@@ -3174,7 +3289,7 @@ describe('orchestrateCommandWithDeps gap analysis integration', () => {
     assert.ok(result.state_file.includes('orchestrator.json'));
   });
 
-  it('writes product and arch analyst prompt files to prompts dir', async () => {
+  it('writes decomposition and analyst prompt files to prompts dir', async () => {
     const writtenFiles: Record<string, string> = {};
     const deps = createMockDeps({
       writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
@@ -3182,6 +3297,8 @@ describe('orchestrateCommandWithDeps gap analysis integration', () => {
     await orchestrateCommandWithDeps({}, deps);
 
     const promptPaths = Object.keys(writtenFiles);
+    assert.ok(promptPaths.some((p) => p.includes('PROMPT_orch_decompose.md')));
+    assert.ok(promptPaths.some((p) => p.includes('PROMPT_orch_sub_decompose.md')));
     assert.ok(promptPaths.some((p) => p.includes('PROMPT_orch_product_analyst.md')));
     assert.ok(promptPaths.some((p) => p.includes('PROMPT_orch_arch_analyst.md')));
   });

@@ -50,6 +50,7 @@ export interface OrchestratorIssue {
   number: number;
   title: string;
   body?: string;
+  file_hints?: string[];
   wave: number;
   state: OrchestratorIssueState;
   status?: OrchestratorIssueStatus;
@@ -348,6 +349,7 @@ export async function applyDecompositionPlan(
       number: ghNumber,
       title: planIssue.title,
       body: planIssue.body,
+      file_hints: planIssue.file_hints ?? [],
       wave,
       state: 'pending',
       status: 'Needs refinement',
@@ -391,6 +393,8 @@ interface LoopPlan {
 
 const ORCH_SCAN_PROMPT_FILENAME = 'PROMPT_orch_scan.md';
 const ORCH_ESTIMATE_PROMPT_FILENAME = 'PROMPT_orch_estimate.md';
+const ORCH_DECOMPOSE_PROMPT_FILENAME = 'PROMPT_orch_decompose.md';
+const ORCH_SUB_DECOMPOSE_PROMPT_FILENAME = 'PROMPT_orch_sub_decompose.md';
 const ORCH_PRODUCT_ANALYST_PROMPT_FILENAME = 'PROMPT_orch_product_analyst.md';
 const ORCH_ARCH_ANALYST_PROMPT_FILENAME = 'PROMPT_orch_arch_analyst.md';
 const ORCH_ESTIMATE_PROMPT_FALLBACK = `# Orchestrator Estimation Agent
@@ -473,6 +477,22 @@ Find architecture and technical gaps before decomposition or dispatch.
 - Do not emit broad or speculative redesign work.
 `;
 
+const ORCH_DECOMPOSE_FALLBACK = `# Orchestrator Decompose (Epic Creation)
+
+You are Aloop, the epic decomposition agent.
+
+Convert the spec into top-level vertical slices (epics) with acceptance criteria and dependency hints.
+Write concrete \`requests/*.json\` files for issue creation, and prefer coherent end-to-end slices.
+`;
+
+const ORCH_SUB_DECOMPOSE_FALLBACK = `# Orchestrator Sub-Issue Decompose
+
+You are Aloop, the sub-issue decomposition agent.
+
+Break one refined epic into scoped work units suitable for child loops.
+Each sub-issue must be independently actionable with clear file ownership hints.
+`;
+
 function buildOrchestratorScanPrompt(): string {
   return `---
 agent: orch_scan
@@ -552,6 +572,18 @@ export async function orchestrateCommandWithDeps(
     : ORCH_ARCH_ANALYST_FALLBACK;
   await deps.writeFile(path.join(promptsDir, ORCH_ARCH_ANALYST_PROMPT_FILENAME), archAnalystPrompt, 'utf8');
 
+  const decomposeTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_DECOMPOSE_PROMPT_FILENAME);
+  const decomposePrompt = deps.existsSync(decomposeTemplatePath)
+    ? await deps.readFile(decomposeTemplatePath, 'utf8')
+    : ORCH_DECOMPOSE_FALLBACK;
+  await deps.writeFile(path.join(promptsDir, ORCH_DECOMPOSE_PROMPT_FILENAME), decomposePrompt, 'utf8');
+
+  const subDecomposeTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_SUB_DECOMPOSE_PROMPT_FILENAME);
+  const subDecomposePrompt = deps.existsSync(subDecomposeTemplatePath)
+    ? await deps.readFile(subDecomposeTemplatePath, 'utf8')
+    : ORCH_SUB_DECOMPOSE_FALLBACK;
+  await deps.writeFile(path.join(promptsDir, ORCH_SUB_DECOMPOSE_PROMPT_FILENAME), subDecomposePrompt, 'utf8');
+
   let state: OrchestratorState = {
     spec_file: specFile,
     trunk_branch: trunkBranch,
@@ -585,6 +617,54 @@ export async function orchestrateCommandWithDeps(
       throw new Error('Plan file must contain a non-empty "issues" array');
     }
     state = await applyDecompositionPlan(plan, state, sessionDir, filterRepo, deps);
+  }
+
+  // Apply pre-computed epic decomposition output when available.
+  const epicDecompositionResultsFile = path.join(requestsDir, 'epic-decomposition-results.json');
+  if (deps.existsSync(epicDecompositionResultsFile)) {
+    const epicResultsContent = await deps.readFile(epicDecompositionResultsFile, 'utf8');
+    try {
+      const epicPlan = JSON.parse(epicResultsContent) as DecompositionPlan;
+      if (Array.isArray(epicPlan.issues) && epicPlan.issues.length > 0) {
+        state = await applyDecompositionPlan(epicPlan, state, sessionDir, filterRepo, deps);
+      }
+    } catch {
+      // Malformed response — skip; scan agent will retry
+    }
+  }
+
+  // If no decomposition has been applied yet, queue epic decomposition from spec.
+  if (!options.plan && state.issues.length === 0) {
+    await createEpicDecompositionRequest(specFile, requestsDir, { writeFile: deps.writeFile, now: deps.now });
+    const specPath = path.resolve(specFile);
+    const specContent = deps.existsSync(specPath)
+      ? await deps.readFile(specPath, 'utf8')
+      : '';
+    await queueEpicDecomposition(specFile, specContent, queueDir, decomposePrompt, { writeFile: deps.writeFile });
+  }
+
+  // Apply sub-issue decomposition results before creating new decomposition requests.
+  const subDecompositionResultsFile = path.join(requestsDir, 'sub-decomposition-results.json');
+  if (deps.existsSync(subDecompositionResultsFile)) {
+    const subResultsContent = await deps.readFile(subDecompositionResultsFile, 'utf8');
+    try {
+      const subResults = JSON.parse(subResultsContent) as SubDecompositionResult[];
+      applySubDecompositionResults(state, subResults, deps.now());
+    } catch {
+      // Malformed response — skip; scan agent will retry
+    }
+  }
+
+  // Queue sub-issue decomposition for refined epics.
+  const decompositionTargets = state.issues.filter((issue) => issue.status === 'Needs decomposition');
+  if (decompositionTargets.length > 0) {
+    await createSubDecompositionRequests(state.issues, requestsDir, { writeFile: deps.writeFile, now: deps.now });
+    await queueSubDecompositionForIssues(
+      state.issues,
+      queueDir,
+      subDecomposePrompt,
+      { writeFile: deps.writeFile },
+    );
   }
 
   // Global spec gap analysis — queue product + architecture analyst agents for issues needing analysis
@@ -1496,6 +1576,166 @@ export async function queueGapAnalysisForIssues(
   await deps.writeFile(path.join(queueDir, 'gap-analysis-architecture.md'), archContent, 'utf8');
 
   return targets.length;
+}
+
+// --- Epic and sub-issue decomposition wiring ---
+
+export interface SubDecompositionResult {
+  parent_issue_number: number;
+  refined_body?: string;
+  file_hints?: string[];
+  status?: OrchestratorIssueStatus;
+}
+
+export async function createEpicDecompositionRequest(
+  specFile: string,
+  requestsDir: string,
+  deps: { writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>; now: () => Date },
+): Promise<void> {
+  const request = {
+    type: 'epic_decomposition',
+    prompt_template: ORCH_DECOMPOSE_PROMPT_FILENAME,
+    generated_at: deps.now().toISOString(),
+    spec_file: specFile,
+  };
+  await deps.writeFile(
+    path.join(requestsDir, 'epic-decomposition.json'),
+    `${JSON.stringify(request, null, 2)}\n`,
+    'utf8',
+  );
+}
+
+export async function queueEpicDecomposition(
+  specFile: string,
+  specContent: string,
+  queueDir: string,
+  decomposePrompt: string,
+  deps: { writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void> },
+): Promise<void> {
+  const content = [
+    '---',
+    JSON.stringify(
+      { agent: 'orch_decompose', reasoning: 'xhigh', type: 'epic_decomposition' },
+      null,
+      2,
+    ),
+    '---',
+    '',
+    decomposePrompt,
+    '',
+    `## Spec File`,
+    '',
+    specFile,
+    '',
+    '## Spec',
+    '',
+    specContent,
+    '',
+    'Write decomposition output to `requests/epic-decomposition-results.json` as a `{"issues":[...]}` plan object.',
+  ].join('\n');
+  await deps.writeFile(path.join(queueDir, 'decompose-epics.md'), content, 'utf8');
+}
+
+export async function createSubDecompositionRequests(
+  issues: OrchestratorIssue[],
+  requestsDir: string,
+  deps: { writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>; now: () => Date },
+): Promise<number> {
+  const targets = issues
+    .filter((issue) => issue.status === 'Needs decomposition')
+    .map((issue) => ({
+      issue_number: issue.number,
+      title: issue.title,
+      body: issue.body ?? '',
+      depends_on: issue.depends_on,
+      wave: issue.wave,
+      file_hints: issue.file_hints ?? [],
+    }));
+  if (targets.length === 0) return 0;
+
+  const request = {
+    type: 'sub_issue_decomposition',
+    prompt_template: ORCH_SUB_DECOMPOSE_PROMPT_FILENAME,
+    generated_at: deps.now().toISOString(),
+    targets,
+  };
+
+  await deps.writeFile(
+    path.join(requestsDir, 'sub-issue-decomposition.json'),
+    `${JSON.stringify(request, null, 2)}\n`,
+    'utf8',
+  );
+  return targets.length;
+}
+
+export async function queueSubDecompositionForIssues(
+  issues: OrchestratorIssue[],
+  queueDir: string,
+  subDecomposePrompt: string,
+  deps: { writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void> },
+): Promise<number> {
+  const targets = issues.filter((issue) => issue.status === 'Needs decomposition');
+  if (targets.length === 0) return 0;
+
+  for (const issue of targets) {
+    const content = [
+      '---',
+      JSON.stringify(
+        { agent: 'orch_sub_decompose', reasoning: 'xhigh', type: 'sub_issue_decomposition', issue_number: issue.number },
+        null,
+        2,
+      ),
+      '---',
+      '',
+      subDecomposePrompt,
+      '',
+      `## Epic Issue #${issue.number}: ${issue.title}`,
+      '',
+      issue.body ?? '(no body)',
+      '',
+      `## Wave`,
+      '',
+      String(issue.wave),
+      '',
+      `## Dependency Issue Numbers`,
+      '',
+      issue.depends_on.length > 0 ? issue.depends_on.join(', ') : '(none)',
+      '',
+      'Write decomposition output to `requests/sub-decomposition-results.json` as an array of parent issue updates.',
+    ].join('\n');
+    await deps.writeFile(path.join(queueDir, `sub-decompose-issue-${issue.number}.md`), content, 'utf8');
+  }
+
+  return targets.length;
+}
+
+export function applySubDecompositionResults(
+  state: OrchestratorState,
+  results: SubDecompositionResult[],
+  now: Date,
+): OrchestratorState {
+  if (!Array.isArray(results) || results.length === 0) return state;
+
+  const byParent = new Map<number, SubDecompositionResult>();
+  for (const result of results) {
+    byParent.set(result.parent_issue_number, result);
+  }
+
+  let touched = false;
+  for (const issue of state.issues) {
+    const result = byParent.get(issue.number);
+    if (!result) continue;
+    issue.status = result.status ?? 'Needs refinement';
+    issue.dor_validated = false;
+    if (result.refined_body) issue.body = result.refined_body;
+    if (result.file_hints) issue.file_hints = [...result.file_hints];
+    touched = true;
+  }
+
+  if (touched) {
+    state.updated_at = now.toISOString();
+  }
+  return state;
 }
 
 // --- Child-loop dispatch engine ---
