@@ -4143,6 +4143,20 @@ async function loadStateForContext(ctx, runtimeDir) {
       return entry;
     })
   );
+  const enrichedRecent = await Promise.all(
+    recentSessions.map(async (entry) => {
+      if (!isRecord(entry))
+        return entry;
+      const dir = typeof entry.session_dir === "string" ? entry.session_dir : null;
+      if (!dir)
+        return entry;
+      const sStatus = await readJsonFile(path4.join(dir, "status.json"));
+      if (isRecord(sStatus)) {
+        return { ...entry, ...sStatus };
+      }
+      return entry;
+    })
+  );
   return {
     sessionDir: ctx.sessionDir,
     workdir: ctx.workdir,
@@ -4152,8 +4166,9 @@ async function loadStateForContext(ctx, runtimeDir) {
     log,
     docs: Object.fromEntries(docsEntries),
     activeSessions: enrichedActive,
-    recentSessions,
-    artifacts
+    recentSessions: enrichedRecent,
+    artifacts,
+    meta
   };
 }
 function normalizeProcessOutput(stdout, stderr) {

@@ -561,7 +561,7 @@ function Sidebar({
           </div>
         </button>
       </TooltipTrigger>
-      <TooltipContent side="right" className="max-w-xs">
+      <TooltipContent side="right" className="max-w-lg">
         <div className="space-y-0.5 text-xs">
           <p className="font-medium">{s.id}</p>
           {s.pid && <p>PID: {s.pid}</p>}
@@ -570,7 +570,7 @@ function Sidebar({
           <p>Provider: {s.provider}</p>
           {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
           {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
-          {s.workDir && <p className="truncate">Dir: {s.workDir}</p>}
+          {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
         </div>
       </TooltipContent>
     </Tooltip>
@@ -630,29 +630,34 @@ function Header({
   sessionName, isRunning, currentState, currentPhase, currentIteration,
   providerName, modelName, tasksCompleted, tasksTotal, progressPercent,
   updatedAt, loading, loadError, connectionStatus, onOpenCommand, onOpenSwitcher,
-  stuckCount, startedAt, avgDuration,
+  stuckCount, startedAt, avgDuration, maxIterations,
 }: {
   sessionName: string; isRunning: boolean; currentState: string; currentPhase: string;
   currentIteration: string; providerName: string; modelName: string;
   tasksCompleted: number; tasksTotal: number; progressPercent: number;
   updatedAt: string; loading: boolean; loadError: string | null;
   connectionStatus: ConnectionStatus; onOpenCommand: () => void; onOpenSwitcher: () => void;
-  stuckCount: number; startedAt: string; avgDuration: string;
+  stuckCount: number; startedAt: string; avgDuration: string; maxIterations: number | null;
 }) {
   const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
   return (
     <header className="border-b border-border px-4 py-2.5 shrink-0">
       <div className="flex items-center gap-4">
-        <button type="button" className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors" onClick={onOpenSwitcher}>
-          <StatusDot status={isRunning ? 'running' : currentState} />
-          <span className="text-sm font-semibold truncate max-w-[200px]">{sessionName}</span>
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors" onClick={onOpenSwitcher}>
+              <StatusDot status={isRunning ? 'running' : currentState} />
+              <span className="text-sm font-semibold truncate max-w-[200px]">{sessionName}</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent><p>{sessionName}</p></TooltipContent>
+        </Tooltip>
 
         <HoverCard>
           <HoverCardTrigger asChild>
             <span className="text-xs text-muted-foreground cursor-help whitespace-nowrap flex items-center gap-1">
               <Activity className="h-3 w-3" />
-              iter {currentIteration}{tasksTotal > 0 ? ` / ${tasksTotal} tasks` : ''}
+              iter {currentIteration}{maxIterations ? `/${maxIterations}` : '/\u221E'}{tasksTotal > 0 ? ` \u00B7 ${tasksTotal} tasks` : ''}
             </span>
           </HoverCardTrigger>
           <HoverCardContent className="w-56 text-xs">
@@ -684,7 +689,14 @@ function Header({
         </div>
 
         <PhaseBadge phase={currentPhase} />
-        {providerName && <span className="text-xs text-muted-foreground whitespace-nowrap">{modelName ? `${providerName}/${modelName}` : providerName}</span>}
+        {providerName && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-xs text-muted-foreground whitespace-nowrap truncate max-w-[160px]">{modelName ? `${providerName}/${modelName}` : providerName}</span>
+            </TooltipTrigger>
+            <TooltipContent><p>{modelName ? `${providerName}/${modelName}` : providerName}</p></TooltipContent>
+          </Tooltip>
+        )}
         <span className={`text-xs whitespace-nowrap font-medium ${statusColors[currentState] ?? 'text-muted-foreground'}`}>{currentState}</span>
 
         <div className="flex-1" />
@@ -963,19 +975,30 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
         )}
 
         {/* Phase label */}
-        {entry.phase && <span className="text-muted-foreground shrink-0 w-12 truncate">{entry.phase}</span>}
+        {entry.phase && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-muted-foreground shrink-0 w-12 truncate">{entry.phase}</span>
+            </TooltipTrigger>
+            <TooltipContent><p>{entry.phase}</p></TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Provider·model */}
-        {entry.provider && (
-          <span className="text-muted-foreground/70 shrink-0 max-w-[140px] truncate">
-            {(() => {
-              const model = entry.model && entry.model !== 'opencode-default'
-                ? entry.model
-                : extractModelFromOutput(artifacts?.outputHeader);
-              return model ? `${entry.provider}\u00b7${model}` : entry.provider;
-            })()}
-          </span>
-        )}
+        {entry.provider && (() => {
+          const model = entry.model && entry.model !== 'opencode-default'
+            ? entry.model
+            : extractModelFromOutput(artifacts?.outputHeader);
+          const label = model ? `${entry.provider}\u00b7${model}` : entry.provider;
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-muted-foreground/70 shrink-0 max-w-[140px] truncate">{label}</span>
+              </TooltipTrigger>
+              <TooltipContent><p>{label}</p></TooltipContent>
+            </Tooltip>
+          );
+        })()}
 
         {/* Result icon */}
         {entry.isSuccess && (
@@ -993,14 +1016,24 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
 
         {/* Result detail */}
         {entry.resultDetail && (
-          <span className={`min-w-0 truncate ${entry.commitHash ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-muted-foreground/70'}`}>
-            {entry.resultDetail}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={`min-w-0 truncate ${entry.commitHash ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-muted-foreground/70'}`}>
+                {entry.resultDetail}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-lg"><p className="break-all">{entry.resultDetail}</p></TooltipContent>
+          </Tooltip>
         )}
 
         {/* Message for non-iteration events (skip for running entry — timer is enough) */}
         {!isRunningEntry && !entry.resultDetail && entry.message && entry.message !== entry.event && (
-          <span className="text-foreground/70 min-w-0 truncate flex-1">{entry.message}</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-foreground/70 min-w-0 truncate flex-1">{entry.message}</span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-lg"><p className="break-words">{entry.message}</p></TooltipContent>
+          </Tooltip>
         )}
 
         <span className="flex-1 min-w-0" />
@@ -1068,12 +1101,24 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
               {artifacts.artifacts.map((a) => (
                 <div key={a.path} className="flex items-center gap-2">
                   {isImageArtifact(a) ? <Image className="h-3 w-3 text-muted-foreground" /> : <FileText className="h-3 w-3 text-muted-foreground" />}
-                  {isImageArtifact(a) ? (
-                    <button type="button" className="text-blue-600 dark:text-blue-400 hover:underline truncate" onClick={(e) => { e.stopPropagation(); setLightboxSrc(artifactUrl(artifacts.iteration, a.path)); }}>
-                      {a.path}
-                    </button>
-                  ) : <span className="text-foreground/80 truncate">{a.path}</span>}
-                  <span className="text-muted-foreground/60 truncate">{a.description}</span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      {isImageArtifact(a) ? (
+                        <button type="button" className="text-blue-600 dark:text-blue-400 hover:underline truncate" onClick={(e) => { e.stopPropagation(); setLightboxSrc(artifactUrl(artifacts.iteration, a.path)); }}>
+                          {a.path}
+                        </button>
+                      ) : <span className="text-foreground/80 truncate">{a.path}</span>}
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-lg"><p className="break-all">{a.path}</p></TooltipContent>
+                  </Tooltip>
+                  {a.description && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-muted-foreground/60 truncate">{a.description}</span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-lg"><p className="break-words">{a.description}</p></TooltipContent>
+                    </Tooltip>
+                  )}
                   {a.metadata?.diff_percentage !== undefined && (
                     <span className={`shrink-0 text-[9px] px-1 rounded ${a.metadata.diff_percentage < 5 ? 'bg-green-500/20 text-green-500' : a.metadata.diff_percentage < 20 ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'}`}>
                       diff: {a.metadata.diff_percentage.toFixed(1)}%
@@ -1105,7 +1150,12 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
                 .map(([k, v]) => (
                   <div key={k} className="flex items-baseline gap-2 font-mono">
                     <span className="text-muted-foreground/50 shrink-0">{k}:</span>
-                    <span className="text-foreground/70 truncate">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-foreground/70 truncate">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-lg"><p className="break-all font-mono text-xs">{typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)}</p></TooltipContent>
+                    </Tooltip>
                   </div>
                 ))}
             </div>
@@ -1319,6 +1369,8 @@ export function App() {
   const isRunning = currentState === 'running';
   const startedAt = statusRecord ? str(statusRecord, ['started_at', 'startedAt']) : '';
   const iterationStartedAt = statusRecord ? str(statusRecord, ['iteration_started_at']) : '';
+  const metaRecord = isRecord(state?.meta) ? state.meta : null;
+  const maxIterations = metaRecord && typeof metaRecord.max_iterations === 'number' ? metaRecord.max_iterations : null;
   const avgDuration = useMemo(() => computeAvgDuration(state?.log ?? ''), [state?.log]);
 
   useEffect(() => {
@@ -1366,7 +1418,7 @@ export function App() {
         <div className="flex flex-1 min-h-0">
           <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
           <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} />
+            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} />
             <main className="flex-1 min-h-0 p-3">
               <div className="grid grid-cols-2 gap-3 h-full" style={{ gridTemplateColumns: '1fr 1fr' }}>
                 <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden">

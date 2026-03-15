@@ -32,6 +32,7 @@ interface DashboardState {
   activeSessions: unknown[];
   recentSessions: unknown[];
   artifacts: ArtifactManifest[];
+  meta: unknown | null;
 }
 
 interface SessionContext {
@@ -319,6 +320,7 @@ async function loadStateForContext(
     activeSessions: enrichedActive,
     recentSessions: enrichedRecent,
     artifacts,
+    meta,
   };
 }
 
