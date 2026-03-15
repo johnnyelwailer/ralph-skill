@@ -1,7 +1,7 @@
 pipeline:
   - agent: plan
   - agent: build
-    repeat: 3
+    repeat: 5
     onFailure: retry
   - agent: proof
   - agent: qa

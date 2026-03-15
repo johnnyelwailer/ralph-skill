@@ -2,7 +2,7 @@
 
 ## Desired Outcome
 
-Aloop is an autonomous coding agent orchestrator that runs configurable agent pipelines with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops). The default pipeline is `plan → build × 3 → proof → qa → review`, but pipelines are fully configurable via agent YAML definitions (see Configurable Agent Pipeline).
+Aloop is an autonomous coding agent orchestrator that runs configurable agent pipelines with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops). The default pipeline is `plan → build × 5 → proof → qa → review`, but pipelines are fully configurable via agent YAML definitions (see Configurable Agent Pipeline).
 
 ## Constraints
 - **TypeScript / Bun** — CLI source is TypeScript, built with Bun into a bundled `dist/index.js`
@@ -372,8 +372,8 @@ A new loop phase (`proof`) where a dedicated agent autonomously decides what evi
 ### Default pipeline update
 
 ```
-Previous default:  plan → build × 3 → review  (5-step)
-Current default:   plan → build × 3 → proof → qa → review  (7-step)
+Previous default:  plan → build × 5 → review  (5-step)
+Current default:   plan → build × 5 → proof → qa → review  (9-step)
 ```
 
 The proof and QA agents are added to the default pipeline compiled into `loop-plan.json`. They run once per cycle, after builds and before review. Each gets its own prompt template (`PROMPT_proof.md`, `PROMPT_qa.md`) and its own entry in the pipeline config, just like any other agent.
@@ -585,7 +585,7 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 ### Acceptance Criteria
 
 - [ ] Proof is a first-class phase in the loop cycle, with its own `PROMPT_proof.md` template
-- [ ] Default pipeline becomes: plan → build × 3 → proof → qa → review (7-step)
+- [ ] Default pipeline becomes: plan → build × 5 → proof → qa → review (9-step)
 - [ ] Proof agent autonomously decides what to prove, how, and whether to skip
 - [ ] Artifacts are saved to `~/.aloop/sessions/<session-id>/artifacts/iter-<N>/`
 - [ ] `proof-manifest.json` is written with structured artifact metadata and skip reasons
@@ -643,7 +643,7 @@ The QA agent is a **black-box tester**. It:
 ### Acceptance Criteria
 
 - [ ] QA is a first-class phase in the loop cycle, with its own `PROMPT_qa.md` template
-- [ ] Default pipeline includes QA: plan → build × 3 → proof → qa → review (7-step)
+- [ ] Default pipeline includes QA: plan → build × 5 → proof → qa → review (9-step)
 - [ ] QA agent never reads source code — tests only through public interfaces
 - [ ] Bugs filed as `[qa/P1]` tasks with reproduction steps
 - [ ] QA_COVERAGE.md tracks per-feature test history
@@ -702,7 +702,7 @@ What it does internally:
 - If the worktree was removed but the branch exists, recreate the worktree on that branch
 - Never create a new branch when resuming — the whole point is to continue where it left off
 
-The agent command `/aloop:start` becomes a thin wrapper that calls `aloop start` with the right flags. No more 7-step orchestration.
+The agent command `/aloop:start` becomes a thin wrapper that calls `aloop start` with the right flags. No more multi-step orchestration.
 
 **Runtime staleness detection:**
 - CLI should detect when installed runtime (`~/.aloop/bin/`) is older than repo source and warn the user
@@ -1045,7 +1045,7 @@ Aloop Runtime (TS/Bun) ← host process, always running
   │     └── scans GitHub state, refines issues, decides dispatch
   │
   ├── Child loop.sh (issue #11)
-  │     ├── cycle: [plan, build, build, proof, qa, review]
+  │     ├── cycle: [plan, build×5, proof, qa, review]
   │     ├── queue/: steering overrides only
   │     └── reads sub-issue body as its spec
   │
@@ -2776,7 +2776,7 @@ The skill's devcontainer generator MUST:
 
 ## Configurable Agent Pipeline (Priority: P2)
 
-The default `plan → build × 3 → proof → qa → review` cycle is a **configurable, runtime-mutable pipeline of agents**. This cycle is the default configuration, compiled into `loop-plan.json` at session start. Pipelines are fully customizable via agent YAML definitions.
+The default `plan → build × 5 → proof → qa → review` cycle is a **configurable, runtime-mutable pipeline of agents**. This cycle is the default configuration, compiled into `loop-plan.json` at session start. Pipelines are fully customizable via agent YAML definitions.
 
 ### Core Concept: Agents as the Unit
 
@@ -3348,7 +3348,7 @@ For production visual review with data sensitivity requirements, use **Anthropic
 - Pipeline config lives in `.aloop/pipeline.yml` (or inline in `config.yml`) — this is the **source of truth**
 - `loop-plan.json` is a **compiled artifact** — never hand-edit it, always regenerate from config
 - The relationship is like TypeScript → JavaScript: you edit the source, the compiler produces the runtime artifact
-- Default pipeline (plan → build × 3 → proof → qa → review) is generated if no config exists — backward compatible
+- Default pipeline (plan → build × 5 → proof → qa → review) is generated if no config exists — backward compatible
 - Agent definitions live in `.aloop/agents/` — each is a YAML file with prompt reference, provider preference, reasoning effort, and transition rules
 - The loop script becomes a generic agent runner: read `loop-plan.json`, resolve next agent, invoke, repeat
 - Runtime pipeline mutations are applied via the host-side monitor rewriting `loop-plan.json`
