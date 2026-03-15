@@ -1009,6 +1009,7 @@ invoke_provider() {
     case "$provider_name" in
         claude)
             local claude_model="${model_override:-$CLAUDE_MODEL}"
+            LAST_PROVIDER_MODEL="$claude_model"
             {
                 echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" claude --model "$claude_model" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
                 exit ${PIPESTATUS[1]}
@@ -1030,6 +1031,7 @@ invoke_provider() {
             ;;
         codex)
             local codex_model="${model_override:-$CODEX_MODEL}"
+            LAST_PROVIDER_MODEL="$codex_model"
             {
                 echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" codex exec -m "$codex_model" --dangerously-bypass-approvals-and-sandbox - 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
                 exit ${PIPESTATUS[1]}
@@ -1050,6 +1052,7 @@ invoke_provider() {
             fi
             ;;
         opencode)
+            LAST_PROVIDER_MODEL="${model_override:-opencode-default}"
             local opencode_args=()
             if [ -n "${model_override:-}" ]; then
                 opencode_args+=(-m "$model_override")
@@ -1075,6 +1078,7 @@ invoke_provider() {
             ;;
         gemini)
             local gemini_model="${model_override:-$GEMINI_MODEL}"
+            LAST_PROVIDER_MODEL="$gemini_model"
             {
                 env -u CLAUDECODE "${DC_EXEC[@]}" gemini -m "$gemini_model" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
                 exit ${PIPESTATUS[0]}
@@ -1111,6 +1115,7 @@ invoke_provider() {
             ;;
         copilot)
             local copilot_model="${model_override:-$COPILOT_MODEL}"
+            LAST_PROVIDER_MODEL="$copilot_model"
             copilot_output_file=$(mktemp)
             {
                 env -u CLAUDECODE "${DC_EXEC[@]}" copilot --model "$copilot_model" --yolo -p "$prompt_content" 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw" "$copilot_output_file"
@@ -1263,6 +1268,7 @@ PHASE_RETRY_PHASE=""
 PHASE_RETRY_CONSECUTIVE=0
 MAX_PHASE_RETRIES=2
 LAST_PROVIDER_ERROR=""
+LAST_PROVIDER_MODEL=""
 LAST_ITER_MODE="$MODE"
 LAST_PROOF_ITERATION=0
 FRONTMATTER_PROVIDER=""
@@ -1772,7 +1778,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
 
     if [ ! -f "$iter_prompt_file" ]; then
         echo "Error: Prompt file not found: $iter_prompt_file" >&2
-        write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "error" "prompt_missing"
+        write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "error" "prompt_missing"
         break
     fi
 
@@ -1910,7 +1916,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
             write_log_entry "steering_processed" "iteration" "$ITERATION"
         fi
 
-        write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider"
+        write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL"
 
         if [ "$iter_mode" = "build" ]; then
             print_iteration_summary "$ITERATION_START"
@@ -1955,7 +1961,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         register_iteration_failure "$iter_mode" "${LAST_PROVIDER_ERROR:-provider_failed}"
         persist_loop_plan_state
         echo "Warning: Iteration $ITERATION failed"
-        write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider"
+        write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL"
     fi
 
     wait_for_requests

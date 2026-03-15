@@ -827,9 +827,9 @@ HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
 ```
 
 - **Timestamp**: HH:MM (locale-aware)
-- **Status dot**: centered vertically, colored by phase, pulsing animation if currently active iteration
+- **Status dot**: centered vertically, colored by phase, subtle opacity pulse (`animate-pulse-dot`: opacity 1→0.5→1, 2s cycle) if currently active iteration
 - **Phase**: 5-char label (plan, build, proof, review)
-- **Provider·model**: e.g. `claude·sonnet-4.6`, truncated to max width
+- **Provider·model**: e.g. `claude·sonnet-4.6`, truncated to max width. Model is tracked via `LAST_PROVIDER_MODEL` in loop.sh and logged in `iteration_complete`/`iteration_error` events
 - **Result icon**: CheckCircle (green) for success, XCircle (red) for error — with tooltip showing full detail
 - **Result detail**: 7-char commit hash (blue, monospace) or error reason
 - **Duration**: right-aligned; live counting up with timer if currently active iteration

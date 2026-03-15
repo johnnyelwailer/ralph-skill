@@ -272,7 +272,7 @@ function StatusDot({ status, className = '' }: { status: string; className?: str
   if (status === 'running') {
     return (
       <span className={`relative flex h-2.5 w-2.5 shrink-0 ${className}`}>
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+        <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-green-400" />
         <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
       </span>
     );
@@ -836,7 +836,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
         {/* Phase dot — centered with items-center on parent */}
         {isRunningEntry ? (
           <span className="relative flex h-2.5 w-2.5 shrink-0">
-            <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${phaseColor === 'text-muted-foreground' ? 'bg-green-400' : ''}`} style={phaseColor !== 'text-muted-foreground' ? { backgroundColor: 'currentColor' } : undefined} />
+            <span className={`absolute inline-flex h-full w-full animate-pulse-dot rounded-full ${phaseColor === 'text-muted-foreground' ? 'bg-green-400' : ''}`} style={phaseColor !== 'text-muted-foreground' ? { backgroundColor: 'currentColor' } : undefined} />
             <Circle className={`relative h-2.5 w-2.5 fill-current ${phaseColor}`} />
           </span>
         ) : (
