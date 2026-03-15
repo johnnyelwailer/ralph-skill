@@ -14,7 +14,7 @@ Audit the last build iteration's changes against 9 quality gates. Write actionab
 RESEARCH.md
 
 1. Read the git log to identify files changed in the last build commit(s)
-2. Audit every changed file against the 8 gates below
+2. Audit every changed file against the 9 gates below
 3. If any gate fails, write `[review]` fix tasks to TODO.md (see Rejection Flow)
 4. If all gates pass, add a review-approved note to TODO.md
 5. Append your review entry to REVIEW_LOG.md (see Review Log below)

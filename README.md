@@ -210,7 +210,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 
 - **Two modes**: Single-session loop for focused work, orchestrator for spec-to-ship parallelism
 - **5 providers**: Claude, Codex, Gemini, Copilot, OpenCode — single or round-robin
-- **8 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance
+- **9 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance, documentation freshness
 - **Live steering**: Change direction mid-flight without stopping the loop
 - **Real-time dashboard**: SSE-powered UI with activity log, docs, proof gallery, and steering controls
 - **GitHub integration**: Issue decomposition, PR lifecycle, squash-merge, conflict rebase, agent review
