@@ -528,3 +528,53 @@
 - `loadStateForContext` now calls `resolvePid` to handle multi-source PID resolution (context -> meta.json -> active.json) with liveness checking.
 - Verified with `npx tsx --test src/commands/dashboard.test.ts` (38/38 pass) and `npm run type-check`.
   - Source: `aloop/cli/src/commands/dashboard.ts:230-254` (T2 — direct inspection)
+
+## 2026-03-15 14:30 — Gap analysis: review gate status, dashboard UX completion, and P2 pipeline/orchestrator readiness [T2+T3]
+
+### Stale TODO corrections — items now resolved
+
+- **`stuck_count` visibility**: Fully implemented in `App.tsx`. Extracted at line 150 and 1292, displayed in sidebar tooltip (line 544), header HoverCard (line 639), StatusDot (lines 274-275). TODO item is stale — can be marked complete.
+  - Source: `aloop/cli/dashboard/src/App.tsx:150,544,639,1292` (T2 — direct inspection)
+- **Session elapsed context / avg duration**: Implemented. `startedAt` extracted at line 1294, `avgDuration` computed via `computeAvgDuration` at line 1295, both passed to Header at line 1342.
+  - Source: `aloop/cli/dashboard/src/App.tsx:1294-1295,1342` (T2 — direct inspection)
+- **Docs overflow ellipsis menu**: Implemented with `MAX_VISIBLE_TABS = 4` at line 693, overflow tabs at line 695, dropdown menu at lines 712-726.
+  - Source: `aloop/cli/dashboard/src/App.tsx:693-726` (T2 — direct inspection)
+- **PID lookup duplication**: Resolved — `resolvePid` helper extracted (dashboard.ts:229-254).
+  - Source: `aloop/cli/src/commands/dashboard.ts:229-254` (T2 — direct inspection)
+- **Duplicate import in orchestrate.test.ts**: Fixed (confirmed by prior review log entry).
+  - Source: `REVIEW_LOG.md` review 2026-03-15 10:15 (T2)
+
+### Open review gates — confirmed still failing
+
+- **Gate 2: Dashboard UI tests missing**: No unit tests for `iteration_running` synthetic entry, `output.txt` fetch/render, output-header model extraction, "No output available" fallback. `App.tsx` has 1371 lines of complex logic with zero test coverage.
+  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — no test file exists for App.tsx)
+- **Gate 2: Dashboard backend tests missing for new branches**: `dashboard.test.ts` has 38 tests but does not cover `loadArtifactManifests` with missing manifest + present `output.txt`, `resolvePid` fallback to `active.json`, or active-session `status.json` enrichment.
+  - Source: `aloop/cli/src/commands/dashboard.test.ts` (T2 — direct inspection)
+- **Gate 2: E2E tests broken**: `smoke.spec.ts` uses outdated selectors from pre-rewrite UI.
+  - Source: `aloop/cli/dashboard/e2e/smoke.spec.ts` (T2 — direct inspection)
+- **Gate 3: Branch coverage for `dashboard.ts` and `App.tsx`**: No branch-coverage report exists for these files. They were touched this iteration but coverage evidence is missing.
+  - Source: `coverage/` directory listing (T2 — no dashboard coverage file found)
+- **Gate 6: Proof manifest references missing artifacts**: Multiple artifacts referenced in proof manifests don't exist in the workspace.
+  - Source: `TODO.md` (T3), prior review findings (T2)
+
+### Provenance tagging — not implemented
+
+- Neither `loop.sh` nor `loop.ps1` add `Aloop-Agent`, `Aloop-Iteration`, or `Aloop-Session` trailers to commits. Grep for these strings returned 0 hits.
+  - Source: `aloop/bin/loop.sh` (T2 — grep returned no matches)
+
+### Pipeline infrastructure — not started
+
+- No `.aloop/pipeline.yml` schema or file exists.
+- No `.aloop/agents/` directory with agent YAML definitions.
+- `compile-loop-plan.ts` reads hardcoded cycle arrays, not pipeline YAML.
+  - Source: `aloop/cli/src/commands/compile-loop-plan.ts` (T2 — direct inspection)
+
+### Orchestrator prompt templates — not started
+
+- No `PROMPT_orch_*.md` files exist in `aloop/templates/`. Only `PROMPT_plan.md`, `PROMPT_build.md`, `PROMPT_proof.md`, `PROMPT_review.md`, `PROMPT_setup.md`, `PROMPT_steer.md`.
+  - Source: `aloop/templates/` directory listing (T2)
+
+### `aloop gh stop-watch` — not implemented
+
+- `gh stop` stops individual sessions or all with `--all` flag. No dedicated `stop-watch` subcommand to stop the watch daemon specifically.
+  - Source: `aloop/cli/src/commands/gh.ts` (T2 — direct inspection)

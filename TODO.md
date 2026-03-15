@@ -7,7 +7,7 @@
 **Configurable pipeline:**
 - [x] [pipeline][high] Create `.aloop/pipeline.yml` schema and default config (plan → build × 3 → proof → review). (priority: high)
 - [x] [pipeline][high] Create `.aloop/agents/` directory with agent YAML definitions (plan.yml, build.yml, proof.yml, review.yml, steer.yml). (priority: high)
-- [ ] [pipeline][high] Update `compile-loop-plan.ts` to read `.aloop/pipeline.yml` instead of hardcoded cycle arrays. (priority: high)
+- [x] [pipeline][high] Update `compile-loop-plan.ts` to read `.aloop/pipeline.yml` instead of hardcoded cycle arrays. (priority: high)
 
 **Orchestrator prompt templates (prompt-based components):**
 - [ ] [orchestrator][high] Create `PROMPT_orch_scan.md`, `PROMPT_orch_product_analyst.md`, `PROMPT_orch_arch_analyst.md`, `PROMPT_orch_decompose.md`, `PROMPT_orch_refine.md`, `PROMPT_orch_sub_decompose.md`, `PROMPT_orch_planner_*.md`, `PROMPT_orch_estimate.md`. (priority: high)

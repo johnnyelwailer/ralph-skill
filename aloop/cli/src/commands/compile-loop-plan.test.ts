@@ -287,6 +287,119 @@ test('compileLoopPlan — loop-plan.json is valid JSON with correct structure', 
   assert.equal(planJson.version, 1);
 });
 
+test('compileLoopPlan — loads cycle from .aloop/pipeline.yml', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-pipeline-yaml-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 2
+  - agent: review
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  assert.deepStrictEqual(plan.cycle, [
+    'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_review.md',
+  ]);
+});
+
+test('compileLoopPlan — loads reasoning from .aloop/agents/*.yml', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-agent-yaml-');
+  const agentsDir = path.join(root, '.aloop', 'agents');
+  await mkdir(agentsDir, { recursive: true });
+  await writeFile(path.join(agentsDir, 'build.yml'), `
+agent: build
+prompt: PROMPT_build.md
+reasoning:
+  effort: high
+  `, 'utf8');
+
+  await compileLoopPlan({
+    mode: 'build',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  const content = await readFile(path.join(promptsDir, 'PROMPT_build.md'), 'utf8');
+  assert.ok(content.includes('reasoning: high'), 'should use high reasoning from build.yml');
+});
+
+test('compileLoopPlan — uses custom prompt from .aloop/agents/*.yml', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-custom-prompt-');
+  const agentsDir = path.join(root, '.aloop', 'agents');
+  await mkdir(agentsDir, { recursive: true });
+  await writeFile(path.join(agentsDir, 'plan.yml'), `
+agent: plan
+prompt: CUSTOM_PLAN.md
+  `, 'utf8');
+  await writeFile(path.join(promptsDir, 'CUSTOM_PLAN.md'), '# Custom Plan\n', 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  assert.deepStrictEqual(plan.cycle, ['CUSTOM_PLAN.md']);
+  const content = await readFile(path.join(promptsDir, 'CUSTOM_PLAN.md'), 'utf8');
+  assert.ok(content.includes('agent: plan'));
+});
+
+test('compileLoopPlan — round-robin uses pipeline.yml as template', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-rr-pipeline-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline:
+  - agent: plan
+  - agent: build
+  - agent: review
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'round-robin',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude', 'codex'],
+    roundRobinOrder: ['claude', 'codex'],
+    models: { claude: 'opus', codex: 'gpt-5.3' },
+    projectRoot: root,
+  });
+
+  assert.deepStrictEqual(plan.cycle, [
+    'PROMPT_plan.md',
+    'PROMPT_build_claude.md',
+    'PROMPT_build_codex.md',
+    'PROMPT_review.md',
+  ]);
+});
+
 test('compileLoopPlan — uses deps for file I/O', async () => {
   const files: Record<string, string> = {
     '/prompts/PROMPT_build.md': '# Build\n',

@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { parseYaml } from '../lib/yaml.js';
 
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode';
 type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review';
@@ -20,6 +21,7 @@ interface CompileLoopPlanOptions {
   enabledProviders: string[];
   roundRobinOrder: string[];
   models: Record<string, string>;
+  projectRoot?: string;
 }
 
 interface CompileLoopPlanDeps {
@@ -28,18 +30,23 @@ interface CompileLoopPlanDeps {
   existsSync: (path: string) => boolean;
 }
 
+interface CycleEntry {
+  filename: string;
+  agent: string;
+}
+
 const defaultCompileDeps: CompileLoopPlanDeps = {
   readFile,
   writeFile,
   existsSync,
 };
 
-const AGENT_FOR_PROMPT: Record<string, string> = {
-  plan: 'plan',
-  build: 'build',
-  proof: 'proof',
-  review: 'review',
-  steer: 'steer',
+const DEFAULT_AGENT_PROMPT: Record<string, string> = {
+  plan: 'PROMPT_plan.md',
+  build: 'PROMPT_build.md',
+  proof: 'PROMPT_proof.md',
+  review: 'PROMPT_review.md',
+  steer: 'PROMPT_steer.md',
 };
 
 const DEFAULT_REASONING: Record<string, string> = {
@@ -50,72 +57,189 @@ const DEFAULT_REASONING: Record<string, string> = {
   steer: 'medium',
 };
 
-function buildCycleForMode(mode: LoopMode): string[] {
+async function getAgentConfig(
+  agentName: string,
+  projectRoot: string | undefined,
+  deps: CompileLoopPlanDeps,
+): Promise<{ prompt: string; reasoning: string }> {
+  const config: { prompt: string; reasoning: string } = {
+    prompt: DEFAULT_AGENT_PROMPT[agentName] ?? `PROMPT_${agentName}.md`,
+    reasoning: DEFAULT_REASONING[agentName] ?? 'medium',
+  };
+
+  if (projectRoot) {
+    const agentYamlPath = path.join(projectRoot, '.aloop', 'agents', `${agentName}.yml`);
+    if (deps.existsSync(agentYamlPath)) {
+      try {
+        const content = await deps.readFile(agentYamlPath, 'utf8');
+        const parsed = parseYaml(content);
+        if (parsed.prompt) {
+          config.prompt = parsed.prompt;
+        }
+        if (parsed.reasoning) {
+          if (typeof parsed.reasoning === 'string') {
+            config.reasoning = parsed.reasoning;
+          } else if (typeof parsed.reasoning === 'object' && parsed.reasoning.effort) {
+            config.reasoning = parsed.reasoning.effort;
+          }
+        }
+      } catch (err) {
+        // Fallback to defaults on error
+        console.error(`Error parsing agent config for ${agentName}:`, err);
+      }
+    }
+  }
+
+  return config;
+}
+
+async function buildCycleFromPipeline(
+  projectRoot: string,
+  deps: CompileLoopPlanDeps,
+): Promise<CycleEntry[] | null> {
+  const pipelineYamlPath = path.join(projectRoot, '.aloop', 'pipeline.yml');
+  if (!deps.existsSync(pipelineYamlPath)) {
+    return null;
+  }
+
+  try {
+    const content = await deps.readFile(pipelineYamlPath, 'utf8');
+    const parsed = parseYaml(content);
+    if (!parsed.pipeline || !Array.isArray(parsed.pipeline)) {
+      return null;
+    }
+
+    const cycle: CycleEntry[] = [];
+    for (const step of parsed.pipeline) {
+      const agentName = step.agent;
+      if (!agentName) continue;
+
+      const agentConfig = await getAgentConfig(agentName, projectRoot, deps);
+      const repeat = typeof step.repeat === 'number' ? step.repeat : 1;
+      for (let i = 0; i < repeat; i++) {
+        cycle.push({ filename: agentConfig.prompt, agent: agentName });
+      }
+    }
+    return cycle.length > 0 ? cycle : null;
+  } catch (err) {
+    console.error('Error parsing pipeline.yml:', err);
+    return null;
+  }
+}
+
+async function buildCycleForMode(
+  mode: LoopMode,
+  projectRoot: string | undefined,
+  deps: CompileLoopPlanDeps,
+): Promise<CycleEntry[]> {
+  const getEntry = async (name: string) => ({
+    filename: (await getAgentConfig(name, projectRoot, deps)).prompt,
+    agent: name,
+  });
+
   switch (mode) {
     case 'plan':
-      return ['PROMPT_plan.md'];
+      return [await getEntry('plan')];
     case 'build':
-      return ['PROMPT_build.md'];
+      return [await getEntry('build')];
     case 'review':
-      return ['PROMPT_review.md'];
+      return [await getEntry('review')];
     case 'plan-build':
-      return ['PROMPT_plan.md', 'PROMPT_build.md'];
+      return [await getEntry('plan'), await getEntry('build')];
     case 'plan-build-review':
       return [
-        'PROMPT_plan.md',
-        'PROMPT_build.md',
-        'PROMPT_build.md',
-        'PROMPT_build.md',
-        'PROMPT_proof.md',
-        'PROMPT_review.md',
+        await getEntry('plan'),
+        await getEntry('build'),
+        await getEntry('build'),
+        await getEntry('build'),
+        await getEntry('proof'),
+        await getEntry('review'),
       ];
   }
 }
 
-function buildRoundRobinCycle(
+async function buildRoundRobinCycle(
   mode: LoopMode,
   roundRobinOrder: string[],
   promptsDir: string,
+  projectRoot: string | undefined,
   deps: CompileLoopPlanDeps,
-): string[] {
+): Promise<CycleEntry[]> {
   if (mode !== 'plan-build-review' && mode !== 'plan-build') {
-    return buildCycleForMode(mode);
+    return buildCycleForMode(mode, projectRoot, deps);
   }
 
   const providers = roundRobinOrder.length > 0 ? roundRobinOrder : ['claude'];
 
   if (mode === 'plan-build') {
-    // 2 × providers.length cycle: plan then one build per provider
-    const cycle: string[] = ['PROMPT_plan.md'];
+    const planEntry = await (async () => {
+      const config = await getAgentConfig('plan', projectRoot, deps);
+      return { filename: config.prompt, agent: 'plan' };
+    })();
+    
+    const buildConfig = await getAgentConfig('build', projectRoot, deps);
+    const agentPrefix = buildConfig.prompt.replace(/\.md$/, '');
+
+    const cycle: CycleEntry[] = [planEntry];
     for (const provider of providers) {
-      const filename = `PROMPT_build_${provider}.md`;
-      cycle.push(filename);
+      const filename = `${agentPrefix}_${provider}.md`;
+      cycle.push({ filename, agent: 'build' });
     }
     return cycle;
   }
 
-  // plan-build-review: plan + N builds (one per provider) + proof + review
-  const cycle: string[] = ['PROMPT_plan.md'];
+  // If pipeline.yml exists, we use it as a template for round-robin
+  if (projectRoot && mode === 'plan-build-review') {
+    const pipelineYamlPath = path.join(projectRoot, '.aloop', 'pipeline.yml');
+    if (deps.existsSync(pipelineYamlPath)) {
+      const content = await deps.readFile(pipelineYamlPath, 'utf8');
+      const parsed = parseYaml(content);
+      if (parsed.pipeline && Array.isArray(parsed.pipeline)) {
+        const cycle: CycleEntry[] = [];
+        for (const step of parsed.pipeline) {
+          const agentName = step.agent;
+          if (!agentName) continue;
+
+          const agentConfig = await getAgentConfig(agentName, projectRoot, deps);
+          const promptBase = agentConfig.prompt;
+
+          if (agentName === 'build') {
+            const agentPrefix = promptBase.replace(/\.md$/, '');
+            for (const provider of providers) {
+              cycle.push({ filename: `${agentPrefix}_${provider}.md`, agent: 'build' });
+            }
+          } else {
+            cycle.push({ filename: promptBase, agent: agentName });
+          }
+        }
+        return cycle;
+      }
+    }
+  }
+
+  // Fallback to hardcoded round-robin
+  const cycle: CycleEntry[] = [{ filename: 'PROMPT_plan.md', agent: 'plan' }];
   for (const provider of providers) {
     const filename = `PROMPT_build_${provider}.md`;
-    cycle.push(filename);
+    cycle.push({ filename, agent: 'build' });
   }
-  cycle.push('PROMPT_proof.md', 'PROMPT_review.md');
+  cycle.push(
+    { filename: 'PROMPT_proof.md', agent: 'proof' },
+    { filename: 'PROMPT_review.md', agent: 'review' }
+  );
   return cycle;
 }
 
-function extractAgentFromFilename(filename: string): string {
-  // PROMPT_build_claude.md -> build
-  // PROMPT_plan.md -> plan
-  const match = filename.match(/^PROMPT_([a-z]+)(?:_[a-z]+)?\.md$/);
-  return match ? match[1] : 'build';
-}
-
-function extractProviderSuffixFromFilename(filename: string): string | null {
+function extractProviderSuffixFromFilename(filename: string, roundRobinOrder: string[]): string | null {
   // PROMPT_build_claude.md -> claude
-  // PROMPT_plan.md -> null
   const match = filename.match(/^PROMPT_[a-z]+_([a-z]+)\.md$/);
-  return match ? match[1] : null;
+  if (match && roundRobinOrder.includes(match[1])) return match[1];
+  
+  // Also check for custom prefixes if they followed the same pattern
+  const customMatch = filename.match(/_([a-z]+)\.md$/);
+  if (customMatch && roundRobinOrder.includes(customMatch[1])) return customMatch[1];
+  
+  return null;
 }
 
 function buildFrontmatter(
@@ -136,7 +260,6 @@ function buildFrontmatter(
 }
 
 function prependFrontmatter(content: string, frontmatter: string): string {
-  // If content already has frontmatter, replace it
   if (content.startsWith('---\n') || content.startsWith('---\r\n')) {
     const endIndex = content.indexOf('\n---', 3);
     if (endIndex !== -1) {
@@ -151,60 +274,58 @@ export async function compileLoopPlan(
   options: CompileLoopPlanOptions,
   deps: CompileLoopPlanDeps = defaultCompileDeps,
 ): Promise<LoopPlan> {
-  const { mode, provider, promptsDir, sessionDir, enabledProviders, roundRobinOrder, models } = options;
+  const { mode, provider, promptsDir, sessionDir, enabledProviders, roundRobinOrder, models, projectRoot } = options;
 
   const isRoundRobin = provider === 'round-robin';
 
-  // Build the cycle array
-  let cycle: string[];
+  let cycleEntries: CycleEntry[];
   if (isRoundRobin) {
-    cycle = buildRoundRobinCycle(mode, roundRobinOrder, promptsDir, deps);
+    cycleEntries = await buildRoundRobinCycle(mode, roundRobinOrder, promptsDir, projectRoot, deps);
+  } else if (mode === 'plan-build-review' && projectRoot) {
+    cycleEntries = (await buildCycleFromPipeline(projectRoot, deps)) ?? await buildCycleForMode(mode, projectRoot, deps);
   } else {
-    cycle = buildCycleForMode(mode);
+    cycleEntries = await buildCycleForMode(mode, projectRoot, deps);
   }
 
-  // Add frontmatter to each prompt file
+  const cycle = cycleEntries.map(e => e.filename);
+
   const processed = new Set<string>();
-  for (const filename of cycle) {
+  for (const entry of cycleEntries) {
+    const { filename, agent } = entry;
     if (processed.has(filename)) continue;
     processed.add(filename);
 
-    const agent = extractAgentFromFilename(filename);
-    const providerSuffix = extractProviderSuffixFromFilename(filename);
+    const providerSuffix = extractProviderSuffixFromFilename(filename, roundRobinOrder);
 
     let promptProvider: string;
     let promptModel: string;
 
     if (providerSuffix) {
-      // Provider-specific build prompt (round-robin)
       promptProvider = providerSuffix;
       promptModel = models[providerSuffix] ?? '';
     } else {
-      // Standard prompt — use the configured provider
       promptProvider = isRoundRobin ? (roundRobinOrder[0] ?? 'claude') : provider;
       promptModel = models[promptProvider] ?? '';
     }
 
-    const reasoning = DEFAULT_REASONING[agent] ?? 'medium';
+    const agentConfig = await getAgentConfig(agent, projectRoot, deps);
+    const reasoning = agentConfig.reasoning;
     const frontmatter = buildFrontmatter(agent, promptProvider, promptModel, reasoning);
 
     const filePath = path.join(promptsDir, filename);
     if (providerSuffix) {
-      // Create provider-specific prompt from base template
-      const baseFilename = `PROMPT_${agent}.md`;
+      const baseFilename = agentConfig.prompt;
       const basePath = path.join(promptsDir, baseFilename);
       if (deps.existsSync(basePath)) {
         const baseContent = await deps.readFile(basePath, 'utf8');
         await deps.writeFile(filePath, prependFrontmatter(baseContent, frontmatter), 'utf8');
       }
     } else if (deps.existsSync(filePath)) {
-      // Add frontmatter to existing prompt file
       const content = await deps.readFile(filePath, 'utf8');
       await deps.writeFile(filePath, prependFrontmatter(content, frontmatter), 'utf8');
     }
   }
 
-  // Write loop-plan.json
   const plan: LoopPlan = {
     cycle,
     cyclePosition: 0,

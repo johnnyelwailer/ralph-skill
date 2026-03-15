@@ -753,6 +753,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     enabledProviders,
     roundRobinOrder,
     models: mergedModels,
+    projectRoot: discovery.project.root,
   }, {
     readFile: (p, enc) => deps.readFile(p, enc),
     writeFile: (p, data, enc) => deps.writeFile(p, data, enc),
