@@ -1,37 +1,27 @@
 # Project TODO
 
-## Current Phase: Loop & Orchestrator Core → then Dashboard
+## Current Phase: Review Gate Closure (P0) + Spec-Compliance Cleanup
 
-### In Progress (P0 — Core Reliability & Coverage)
+### In Progress
+- [x] [review][high] Create root `VERSIONS.md` with authoritative dependency/runtime version table so Gate 8 can validate version compliance.
 
-- [ ] [review] Gate 8: `VERSIONS.md` is missing — create authoritative version table for the project. (priority: medium)
-- [ ] [runtime][high] Add provenance tagging — every agent commit includes `Aloop-Agent`, `Aloop-Iteration`, `Aloop-Session` trailers in both `loop.sh` and `loop.ps1`. (priority: high)
-- [x] [review] Gate 6: Missing proof artifacts for iteration 11 — verified they ARE present in artifacts/iter-11/. (priority: low)
+### Up Next
+- [ ] [runtime][high] Implement provenance commit trailers in both `aloop/bin/loop.sh` and `aloop/bin/loop.ps1` (`Aloop-Agent`, `Aloop-Iteration`, `Aloop-Session`) and add/adjust tests to lock behavior.
+- [ ] [dashboard][medium] Enforce SPEC docs-tab rule: show only docs with non-empty content in tab lists while preserving overflow behavior.
+- [ ] [dashboard][medium] Add targeted tests for dashboard behavior touched recently (`DocsPanel` non-empty filtering and related UI expectations) to prevent Gate 2 regressions.
 
-### Up Next (P1 — Dashboard UX Polish)
-
-- [ ] [dashboard][medium] Move per-provider health to dedicated left-pane sidebar tab (separate from Docs). (priority: medium)
-- [ ] [dashboard][medium] Move sidebar expand/collapse toggle button to be vertically centered with header title row. (priority: medium)
-- [ ] [dashboard][medium] Filter out empty documentation files from Docs tab list. (priority: medium)
-- [ ] [dashboard][medium] Add `M/A/D/R` change type badges to commit detail view. (priority: medium)
-- [ ] [dashboard][medium] Add per-iteration duration to log rows. (priority: medium)
-
-### Deferred (P2 — Dashboard Test Coverage)
-
-- [ ] [dashboard][low] Unit tests for `App.tsx` logic.
-- [ ] [dashboard][low] Backend `dashboard.ts` branch coverage.
-- [ ] [dashboard][low] Fix broken E2E tests in `smoke.spec.ts`.
+### Deferred
+- [ ] [dashboard][low] Broader unit coverage expansion for `App.tsx` interaction paths.
+- [ ] [dashboard][low] Raise/verify branch coverage in `aloop/cli/src/commands/dashboard.ts` beyond current gate minimums.
+- [ ] [dashboard][low] Repair broken E2E `smoke.spec.ts` flow once core P0 gates are green.
 
 ### Completed
-
-- [x] [review] Gate 3: Raise `plan.ts` branch coverage to >=80% (verified at 96.29%). [reviewed: gates 1-7 pass]
-- [x] [review] Gate 3: Raise `yaml.ts` branch coverage to >=90% (verified at 96.29%). [reviewed: gates 1-7 pass]
-- [x] [review] Gate 3: Raise `compile-loop-plan.ts` branch coverage to >=80% (verified at 90.58%). [reviewed: gates 1-7 pass]
-- [x] [review] Gate 1: Dashboard `stuck_count` visible in sidebar tooltip, header HoverCard, and StatusDot indicator. [reviewed: gates 1-7 pass]
-- [x] [review] Gate 1: Dashboard session elapsed context (avg duration) in header. [reviewed: gates 1-7 pass]
-- [x] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — extracted `resolvePid` helper. [reviewed: gates 1-7 pass]
-- [x] [review] Gate 1: Docs overflow ellipsis menu implemented. [reviewed: gates 1-7 pass]
-- [x] [review] Gate 5: Fix duplicate `import path` in `orchestrate.test.ts`. [reviewed: gates 1-7 pass]
-- [x] [review] Gate 3: Raise `requests.ts` branch coverage to >=80% (verified at 84.09%). [reviewed: gates 1-7 pass]
-- [x] [review] Gate 3: Verify `gh.ts` branch coverage is >=80% (verified at 81.59%). [reviewed: gates 1-7 pass]
-
+- [x] [review] Gate 6 artifact drift for iter-11 resolved (artifacts verified present).
+- [x] [dashboard] Keep provider health as docs-panel tab (spec-aligned; no sidebar move needed).
+- [x] [dashboard] `M/A/D/R` file-type indicators are present in expanded commit rows.
+- [x] [dashboard] Per-iteration duration display is present in activity rows.
+- [x] [review] Gate 3: `plan.ts` branch coverage >=80% (verified 96.29%).
+- [x] [review] Gate 3: `yaml.ts` branch coverage >=90% (verified 96.29%).
+- [x] [review] Gate 3: `compile-loop-plan.ts` branch coverage >=80% (verified 90.58%).
+- [x] [review] Gate 3: `requests.ts` branch coverage >=80% (verified 84.09%).
+- [x] [review] Gate 3: `gh.ts` branch coverage >=80% (verified 81.59%).
