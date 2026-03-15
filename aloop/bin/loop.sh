@@ -1966,7 +1966,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         register_iteration_failure "$iter_mode" "${LAST_PROVIDER_ERROR:-provider_failed}"
         persist_loop_plan_state
         echo "Warning: Iteration $ITERATION failed"
-        write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "duration" "$_iter_duration"
+        write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "duration" "$_iter_duration" "error" "${LAST_PROVIDER_ERROR:-unknown}"
     fi
 
     # Extract per-iteration output from LOG_FILE.raw for dashboard parsing

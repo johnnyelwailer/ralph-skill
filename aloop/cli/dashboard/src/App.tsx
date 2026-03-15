@@ -1071,8 +1071,8 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
             ) : null
           )}
 
-          {/* Event detail fallback — structured summary instead of raw JSON */}
-          {!entry.filesChanged.length && !artifacts && !hasOutput && entry.rawObj && (
+          {/* Event detail — structured key-value pairs from log entry */}
+          {entry.rawObj && (entry.isError || (!entry.filesChanged.length && !artifacts && !hasOutput)) && (
             <div className="border-l-2 border-border pl-2 py-1 space-y-0.5">
               {Object.entries(entry.rawObj)
                 .filter(([k]) => !['timestamp', 'ts', 'run_id', 'event', 'type'].includes(k))
