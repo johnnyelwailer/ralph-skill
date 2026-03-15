@@ -859,7 +859,15 @@ function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
                 {p.status === 'cooldown' && <Pause className="h-3 w-3 text-orange-500" />}
                 {p.status === 'failed' && <XCircle className="h-3 w-3 text-red-500" />}
                 <span className="font-medium">{p.name}</span>
-                <span className="text-muted-foreground ml-auto">{p.status}</span>
+                <span className="text-muted-foreground ml-auto">
+                  {p.status === 'cooldown' && p.cooldownUntil ? (() => {
+                    const remaining = Math.max(0, Math.floor((new Date(p.cooldownUntil).getTime() - Date.now()) / 1000));
+                    if (remaining <= 0) return 'cooldown ending…';
+                    const h = Math.floor(remaining / 3600);
+                    const m = Math.floor((remaining % 3600) / 60);
+                    return `cooldown for ${h > 0 ? `${h}h ` : ''}${m}min`;
+                  })() : p.status}
+                </span>
                 <span className="text-muted-foreground/50 text-[10px]">{relativeTime(p.lastEvent)}</span>
               </div>
             </TooltipTrigger>
@@ -869,7 +877,7 @@ function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
                 <p>Status: {p.status}</p>
                 {p.reason && <p>Reason: {p.reason}</p>}
                 {p.consecutiveFailures && <p>Failures: {p.consecutiveFailures}</p>}
-                {p.cooldownUntil && <p>Cooldown until: {new Date(p.cooldownUntil).toLocaleTimeString()}</p>}
+                {p.cooldownUntil && <p>Cooldown until: {new Date(p.cooldownUntil).toLocaleTimeString()} ({(() => { const r = Math.max(0, Math.floor((new Date(p.cooldownUntil).getTime() - Date.now()) / 1000)); const h = Math.floor(r / 3600); const m = Math.floor((r % 3600) / 60); return r <= 0 ? 'ending' : `${h > 0 ? `${h}h ` : ''}${m}min left`; })()})</p>}
                 {p.lastEvent && <p>Last event: {new Date(p.lastEvent).toLocaleString()}</p>}
               </div>
             </TooltipContent>
