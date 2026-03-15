@@ -833,7 +833,7 @@ HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
 - **Provider·model**: e.g. `claude·sonnet-4.6`, truncated to max 140px. Model sourced from: (1) `LAST_PROVIDER_MODEL` in log entry, (2) parsed from per-iteration `output.txt` header (e.g. opencode `> build · openrouter/hunter-alpha`). For opencode, `LAST_PROVIDER_MODEL` is `opencode-default` since the actual model is resolved by opencode; dashboard extracts the real model from the output header
 - **Result icon**: CheckCircle (green) for success, XCircle (red) for error — with tooltip showing full detail
 - **Result detail**: 7-char commit hash (blue, monospace) or error reason
-- **Duration**: right-aligned; live counting up with timer if currently active iteration
+- **Duration**: right-aligned; computed as `$(date +%s) - ITERATION_START` and logged in `iteration_complete`/`iteration_error` events; live counting up with ElapsedTimer if currently active iteration
 - **Expand chevron**: ChevronRight → ChevronDown (lucide) if entry has expandable content
 
 **Expanded entry detail** (indented, border-left accent):
@@ -859,8 +859,8 @@ HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
    - Diff badge if `diff_percentage` present: green <5%, yellow <20%, red >=20%
 
 3. **Provider output** (for `iteration_complete`/`iteration_error` entries):
-   - "Show output" / "Hide output" toggle with Terminal icon
-   - Lazy-loaded from `/api/artifacts/{iteration}/output.txt` on first expand
+   - Rendered inline when entry is expanded (no extra toggle — shown alongside commits and artifacts)
+   - Auto-loaded from `/api/artifacts/{iteration}/output.txt` on expand
    - Scrollable `<pre>` block (max 300px height), monospace, word-wrap
    - Dashboard parses output header for model info (e.g. opencode `> build · openrouter/model-name`)
    - Future: extract token usage and cost from provider-specific output formats

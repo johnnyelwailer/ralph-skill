@@ -1896,6 +1896,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     local _raw_offset_before
     _raw_offset_before=$(wc -c < "$LOG_FILE.raw" 2>/dev/null || echo 0)
     if invoke_provider "$iter_provider" "$prompt_content" "$FRONTMATTER_MODEL"; then
+        local _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
         update_provider_health_on_success "$iter_provider"
         register_iteration_success "$iter_mode" "$LAST_MODE_WAS_FORCED"
         persist_loop_plan_state
@@ -1919,7 +1920,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
             write_log_entry "steering_processed" "iteration" "$ITERATION"
         fi
 
-        write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL"
+        write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "duration" "$_iter_duration"
 
         if [ "$iter_mode" = "build" ]; then
             print_iteration_summary "$ITERATION_START"
@@ -1960,11 +1961,12 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
             echo "[Iteration $ITERATION complete - $iter_mode]"
         fi
     else
+        local _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
         update_provider_health_on_failure "$iter_provider" "${LAST_PROVIDER_ERROR:-provider_failed}"
         register_iteration_failure "$iter_mode" "${LAST_PROVIDER_ERROR:-provider_failed}"
         persist_loop_plan_state
         echo "Warning: Iteration $ITERATION failed"
-        write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL"
+        write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "duration" "$_iter_duration"
     fi
 
     # Extract per-iteration output from LOG_FILE.raw for dashboard parsing

@@ -360,6 +360,49 @@ function extractModelFromOutput(header?: string): string {
   return match ? match[1].trim() : '';
 }
 
+// ── Average iteration duration from log ──
+
+function parseDurationSeconds(raw: string): number | null {
+  if (!raw) return null;
+  const msMatch = raw.match(/^(\d+(?:\.\d+)?)ms$/);
+  if (msMatch) return parseFloat(msMatch[1]) / 1000;
+  const sMatch = raw.match(/^(\d+(?:\.\d+)?)s$/);
+  if (sMatch) return parseFloat(sMatch[1]);
+  const mixedMatch = raw.match(/^(\d+)m\s*(\d+(?:\.\d+)?)s$/);
+  if (mixedMatch) return parseInt(mixedMatch[1], 10) * 60 + parseFloat(mixedMatch[2]);
+  const plainMatch = raw.match(/^(\d+(?:\.\d+)?)$/);
+  if (plainMatch) return parseFloat(plainMatch[1]);
+  return null;
+}
+
+function computeAvgDuration(log: string): string {
+  if (!log) return '';
+  let totalSec = 0;
+  let count = 0;
+  for (const line of log.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const obj = JSON.parse(trimmed);
+      if (!isRecord(obj)) continue;
+      const event = str(obj, ['event']);
+      if (event !== 'iteration_complete') continue;
+      const dur = str(obj, ['duration', 'elapsed', 'took']);
+      const secs = parseDurationSeconds(dur);
+      if (secs !== null && secs > 0) {
+        totalSec += secs;
+        count++;
+      }
+    } catch { /* skip */ }
+  }
+  if (count === 0) return '';
+  const avg = totalSec / count;
+  if (avg < 60) return `${Math.round(avg)}s`;
+  const m = Math.floor(avg / 60);
+  const s = Math.round(avg % 60);
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
 // ── Provider health derived from log ──
 
 function deriveProviderHealth(log: string): ProviderHealth[] {
@@ -565,14 +608,14 @@ function Header({
   sessionName, isRunning, currentState, currentPhase, currentIteration,
   providerName, modelName, tasksCompleted, tasksTotal, progressPercent,
   updatedAt, loading, loadError, connectionStatus, onOpenCommand, onOpenSwitcher,
-  stuckCount,
+  stuckCount, startedAt, avgDuration,
 }: {
   sessionName: string; isRunning: boolean; currentState: string; currentPhase: string;
   currentIteration: string; providerName: string; modelName: string;
   tasksCompleted: number; tasksTotal: number; progressPercent: number;
   updatedAt: string; loading: boolean; loadError: string | null;
   connectionStatus: ConnectionStatus; onOpenCommand: () => void; onOpenSwitcher: () => void;
-  stuckCount: number;
+  stuckCount: number; startedAt: string; avgDuration: string;
 }) {
   const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
   return (
@@ -590,16 +633,28 @@ function Header({
               iter {currentIteration}{tasksTotal > 0 ? ` / ${tasksTotal} tasks` : ''}
             </span>
           </HoverCardTrigger>
-          <HoverCardContent className="w-52 text-xs">
+          <HoverCardContent className="w-56 text-xs">
             <div className="space-y-1">
               <p><span className="text-muted-foreground">Phase:</span> {currentPhase || 'none'}</p>
               <p><span className="text-muted-foreground">Status:</span> {currentState}</p>
               <p><span className="text-muted-foreground">Provider:</span> {providerName || 'none'}</p>
               <p><span className="text-muted-foreground">Tasks:</span> {tasksCompleted}/{tasksTotal} ({progressPercent}%)</p>
               <p><span className="text-muted-foreground">Stuck:</span> <span className={stuckCount > 0 ? 'text-red-500 font-medium' : ''}>{stuckCount}</span></p>
+              {startedAt && <p><span className="text-muted-foreground">Elapsed:</span> <ElapsedTimer since={startedAt} /></p>}
+              {avgDuration && <p><span className="text-muted-foreground">Avg iter:</span> {avgDuration}</p>}
             </div>
           </HoverCardContent>
         </HoverCard>
+
+        {startedAt && (
+          <span className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            <ElapsedTimer since={startedAt} />
+          </span>
+        )}
+        {avgDuration && (
+          <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap">~{avgDuration}/iter</span>
+        )}
 
         <div className="flex items-center gap-2 min-w-0 flex-1 max-w-xs">
           <Progress value={progressPercent} className="flex-1 h-1.5" indicatorClassName={phaseBarColor} />
@@ -836,7 +891,6 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
   const [expanded, setExpanded] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [outputText, setOutputText] = useState<string | null>(null);
-  const [outputExpanded, setOutputExpanded] = useState(false);
   const [outputLoading, setOutputLoading] = useState(false);
   const phaseColor = phaseDotColors[entry.phase?.toLowerCase()] ?? 'text-muted-foreground';
   const isRunningEntry = entry.event === 'iteration_running';
@@ -859,6 +913,11 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
       setOutputLoading(false);
     }
   }, [entry.iteration, outputText, outputLoading]);
+
+  // Auto-load output when expanded
+  useEffect(() => {
+    if (expanded && hasOutput) loadOutput();
+  }, [expanded, hasOutput, loadOutput]);
 
   return (
     <>
@@ -945,7 +1004,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
 
       {/* Expanded details */}
       {expanded && (
-        <div className="ml-14 mr-2 mb-1.5 animate-fade-in text-[11px]">
+        <div className="ml-14 mr-2 mb-1.5 animate-fade-in text-[11px] overflow-hidden min-w-0">
           {/* File changes */}
           {entry.filesChanged.length > 0 && (
             <div className="border-l-2 border-border pl-2 py-1 space-y-0.5">
@@ -1002,27 +1061,19 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
             </div>
           )}
 
-          {/* Provider output */}
+          {/* Provider output — rendered inline */}
           {hasOutput && (
             <div className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1">
-              <button
-                type="button"
-                className="text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1 hover:underline text-[11px]"
-                onClick={(e) => { e.stopPropagation(); setOutputExpanded(!outputExpanded); if (!outputExpanded) loadOutput(); }}
-              >
-                <Terminal className="h-3 w-3" />
-                {outputExpanded ? 'Hide' : 'Show'} output
-                {outputExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              </button>
-              {outputExpanded && (
-                outputLoading ? (
-                  <div className="text-muted-foreground/50 py-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
-                ) : outputText ? (
-                  <pre className="bg-muted rounded-md p-2 mt-1 overflow-auto max-h-[300px] text-[10px] font-mono text-foreground/80 whitespace-pre-wrap break-words">{outputText}</pre>
-                ) : (
-                  <div className="text-muted-foreground/50 py-1 italic">No output available</div>
-                )
-              )}
+              <span className="text-muted-foreground font-medium flex items-center gap-1 text-[11px] mb-1">
+                <Terminal className="h-3 w-3" /> Output
+              </span>
+              {outputLoading ? (
+                <div className="text-muted-foreground/50 py-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
+              ) : outputText ? (
+                <pre className="bg-muted rounded-md p-2 overflow-auto max-h-[300px] text-[10px] font-mono text-foreground/80 whitespace-pre-wrap break-words">{outputText}</pre>
+              ) : outputText === '' ? (
+                <div className="text-muted-foreground/50 py-1 italic">No output available</div>
+              ) : null}
             </div>
           )}
 
@@ -1246,6 +1297,8 @@ export function App() {
   const modelName = statusRecord ? str(statusRecord, ['model', 'current_model']) : '';
   const stuckCount = statusRecord && typeof statusRecord.stuck_count === 'number' ? statusRecord.stuck_count : 0;
   const isRunning = currentState === 'running';
+  const startedAt = statusRecord ? str(statusRecord, ['started_at', 'startedAt']) : '';
+  const avgDuration = useMemo(() => computeAvgDuration(state?.log ?? ''), [state?.log]);
 
   useEffect(() => {
     if (currentPhase && prevPhaseRef.current && currentPhase !== prevPhaseRef.current) {
@@ -1292,7 +1345,7 @@ export function App() {
         <div className="flex flex-1 min-h-0">
           <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
           <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} stuckCount={stuckCount} />
+            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} stuckCount={stuckCount} startedAt={startedAt} avgDuration={avgDuration} />
             <main className="flex-1 min-h-0 p-3">
               <div className="grid grid-cols-2 gap-3 h-full" style={{ gridTemplateColumns: '1fr 1fr' }}>
                 <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden">
