@@ -18,6 +18,9 @@ export interface OrchestrateCommandOptions {
   projectRoot?: string;
   output?: OutputMode;
   budget?: string;
+  interval?: string;
+  maxIterations?: string;
+  runScanLoop?: boolean;
 }
 
 export interface DecompositionPlanIssue {
@@ -376,6 +379,7 @@ export interface OrchestrateCommandResult {
   loop_plan_file: string;
   state_file: string;
   state: OrchestratorState;
+  scan_loop?: ScanLoopResult;
 }
 
 interface LoopPlan {
@@ -654,6 +658,65 @@ export async function orchestrateCommandWithDeps(
   const stateFile = path.join(sessionDir, 'orchestrator.json');
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
+  let scanLoopResult: ScanLoopResult | undefined;
+
+  if (options.runScanLoop && !planOnly && state.issues.length > 0) {
+    const intervalMs = parseInterval(options.interval);
+    const maxIter = parseMaxIterations(options.maxIterations);
+
+    // Build appendLog helper using writeFile
+    const logFile = path.join(sessionDir, 'log.jsonl');
+    const appendLog = async (_dir: string, entry: Record<string, unknown>) => {
+      let existing = '';
+      try {
+        if (deps.existsSync(logFile)) {
+          existing = await deps.readFile(logFile, 'utf8');
+        }
+      } catch {
+        // File doesn't exist yet
+      }
+      await deps.writeFile(logFile, `${existing}${JSON.stringify(entry)}\n`, 'utf8');
+    };
+
+    // Build scan loop deps from orchestrate deps
+    const scanDeps: ScanLoopDeps = {
+      existsSync: deps.existsSync,
+      readFile: deps.readFile,
+      writeFile: deps.writeFile,
+      now: deps.now,
+      execGh: deps.execGh,
+      appendLog,
+      prLifecycleDeps: deps.execGh ? {
+        execGh: deps.execGh,
+        readFile: deps.readFile,
+        writeFile: deps.writeFile,
+        now: deps.now,
+        appendLog: (dir: string, entry: Record<string, unknown>) => {
+          appendLog(dir, entry);
+        },
+      } : undefined,
+      sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+    };
+
+    const promptsSourceDir = promptsDir;
+
+    scanLoopResult = await runOrchestratorScanLoop(
+      stateFile,
+      sessionDir,
+      templateRoot,
+      path.basename(sessionDir),
+      promptsSourceDir,
+      aloopRoot,
+      filterRepo,
+      intervalMs,
+      maxIter,
+      scanDeps,
+    );
+
+    // Update state from scan loop result
+    state = scanLoopResult.finalState;
+  }
+
   return {
     session_dir: sessionDir,
     prompts_dir: promptsDir,
@@ -662,6 +725,7 @@ export async function orchestrateCommandWithDeps(
     loop_plan_file: loopPlanFile,
     state_file: stateFile,
     state,
+    scan_loop: scanLoopResult,
   };
 }
 
@@ -2325,4 +2389,316 @@ export function formatFinalReportText(report: FinalReport): string {
   }
 
   return lines.join('\n');
+}
+
+// --- Orchestrator scan loop ---
+
+export interface ScanLoopDeps {
+  existsSync: (path: string) => boolean;
+  readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
+  writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
+  now: () => Date;
+  execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
+  dispatchDeps?: DispatchDeps;
+  prLifecycleDeps?: PrLifecycleDeps;
+  sleep?: (ms: number) => Promise<void>;
+  signalStop?: () => boolean;
+}
+
+export interface ScanPassResult {
+  iteration: number;
+  triage: TriageMonitorCycleResult;
+  dispatched: number;
+  prLifecycles: PrLifecycleResult[];
+  waveAdvanced: boolean;
+  budgetExceeded: boolean;
+  allDone: boolean;
+  shouldStop: boolean;
+}
+
+export interface ScanLoopResult {
+  iterations: number;
+  finalState: OrchestratorState;
+  reason: 'all_done' | 'budget_exceeded' | 'max_iterations' | 'stopped' | 'plan_only';
+}
+
+/**
+ * Run a single scan pass: triage monitoring, dispatch, PR lifecycle, wave advancement.
+ * Reads state from disk, performs all scan actions, writes state back.
+ */
+export async function runOrchestratorScanPass(
+  stateFile: string,
+  sessionDir: string,
+  projectRoot: string,
+  projectName: string,
+  promptsSourceDir: string,
+  aloopRoot: string,
+  repo: string | null,
+  iteration: number,
+  deps: ScanLoopDeps,
+): Promise<ScanPassResult> {
+  const stateContent = await deps.readFile(stateFile, 'utf8');
+  const state: OrchestratorState = JSON.parse(stateContent);
+
+  const result: ScanPassResult = {
+    iteration,
+    triage: { processed_issues: 0, triaged_entries: 0 },
+    dispatched: 0,
+    prLifecycles: [],
+    waveAdvanced: false,
+    budgetExceeded: false,
+    allDone: false,
+    shouldStop: false,
+  };
+
+  // 1. Triage monitoring cycle
+  if (repo && deps.execGh) {
+    result.triage = await runTriageMonitorCycle(
+      state,
+      path.basename(sessionDir),
+      repo,
+      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile },
+      aloopRoot,
+    );
+  }
+
+  // 2. Dispatch child loops for ready issues
+  if (deps.dispatchDeps && !state.plan_only) {
+    const dispatchable = getDispatchableIssues(state);
+    const slots = availableSlots(state);
+    const toDispatch = dispatchable.slice(0, slots);
+
+    for (const issue of toDispatch) {
+      try {
+        const launchResult = await launchChildLoop(
+          issue,
+          sessionDir,
+          projectRoot,
+          projectName,
+          promptsSourceDir,
+          aloopRoot,
+          deps.dispatchDeps,
+        );
+        const stateIssue = state.issues.find((i) => i.number === issue.number);
+        if (stateIssue) {
+          stateIssue.state = 'in_progress';
+          stateIssue.child_session = launchResult.session_id;
+        }
+        result.dispatched++;
+
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'scan_child_dispatched',
+          iteration,
+          issue_number: issue.number,
+          session_id: launchResult.session_id,
+        });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'scan_dispatch_error',
+          iteration,
+          issue_number: issue.number,
+          error: msg,
+        });
+      }
+    }
+  }
+
+  // 3. Process PR lifecycles for issues with open PRs
+  if (repo && deps.prLifecycleDeps) {
+    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open');
+    for (const issue of prIssues) {
+      try {
+        const lifecycleResult = await processPrLifecycle(
+          issue,
+          state,
+          stateFile,
+          sessionDir,
+          repo,
+          deps.prLifecycleDeps,
+        );
+        result.prLifecycles.push(lifecycleResult);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'scan_pr_lifecycle_error',
+          iteration,
+          issue_number: issue.number,
+          pr_number: issue.pr_number,
+          error: msg,
+        });
+      }
+    }
+  }
+
+  // 4. Advance waves
+  const waveAdvanced = advanceWave(state);
+  result.waveAdvanced = waveAdvanced;
+  if (waveAdvanced) {
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: 'scan_wave_advanced',
+      iteration,
+      new_wave: state.current_wave,
+      completed_waves: state.completed_waves,
+    });
+  }
+
+  // 5. Check budget
+  if (state.budget_cap !== null) {
+    try {
+      const budget = await aggregateChildCosts(state, aloopRoot, {
+        readFile: deps.readFile,
+        existsSync: deps.existsSync,
+      });
+      if (shouldPauseForBudget(budget)) {
+        result.budgetExceeded = true;
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'scan_budget_exceeded',
+          iteration,
+          total_cost: budget.total_estimated_cost_usd,
+          budget_cap: budget.budget_cap,
+        });
+      }
+    } catch {
+      // Budget check failed — non-fatal
+    }
+  }
+
+  // 6. Check if all issues are done
+  const allMerged = state.issues.length > 0 && state.issues.every((i) => i.state === 'merged' || i.state === 'failed');
+  result.allDone = allMerged;
+
+  // 7. Check external stop signal
+  if (deps.signalStop?.()) {
+    result.shouldStop = true;
+  }
+
+  // 8. Persist state
+  state.updated_at = deps.now().toISOString();
+  await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+
+  deps.appendLog(sessionDir, {
+    timestamp: deps.now().toISOString(),
+    event: 'scan_pass_complete',
+    iteration,
+    dispatched: result.dispatched,
+    pr_lifecycles: result.prLifecycles.length,
+    triage_entries: result.triage.triaged_entries,
+    all_done: result.allDone,
+  });
+
+  return result;
+}
+
+/**
+ * Run the orchestrator scan loop: periodic heartbeat cycles that monitor state,
+ * dispatch children, process PRs, and advance waves until completion or stop.
+ */
+export async function runOrchestratorScanLoop(
+  stateFile: string,
+  sessionDir: string,
+  projectRoot: string,
+  projectName: string,
+  promptsSourceDir: string,
+  aloopRoot: string,
+  repo: string | null,
+  intervalMs: number,
+  maxIterations: number,
+  deps: ScanLoopDeps,
+): Promise<ScanLoopResult> {
+  // Check if state is plan-only — no loop needed
+  const stateContent = await deps.readFile(stateFile, 'utf8');
+  const initialState: OrchestratorState = JSON.parse(stateContent);
+  if (initialState.plan_only) {
+    return {
+      iterations: 0,
+      finalState: initialState,
+      reason: 'plan_only',
+    };
+  }
+
+  for (let iter = 1; iter <= maxIterations; iter++) {
+    const passResult = await runOrchestratorScanPass(
+      stateFile,
+      sessionDir,
+      projectRoot,
+      projectName,
+      promptsSourceDir,
+      aloopRoot,
+      repo,
+      iter,
+      deps,
+    );
+
+    if (passResult.allDone) {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'scan_loop_complete',
+        reason: 'all_done',
+        iterations: iter,
+      });
+      const finalContent = await deps.readFile(stateFile, 'utf8');
+      return { iterations: iter, finalState: JSON.parse(finalContent), reason: 'all_done' };
+    }
+
+    if (passResult.budgetExceeded) {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'scan_loop_complete',
+        reason: 'budget_exceeded',
+        iterations: iter,
+      });
+      const finalContent = await deps.readFile(stateFile, 'utf8');
+      return { iterations: iter, finalState: JSON.parse(finalContent), reason: 'budget_exceeded' };
+    }
+
+    if (passResult.shouldStop) {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'scan_loop_complete',
+        reason: 'stopped',
+        iterations: iter,
+      });
+      const finalContent = await deps.readFile(stateFile, 'utf8');
+      return { iterations: iter, finalState: JSON.parse(finalContent), reason: 'stopped' };
+    }
+
+    // Sleep before next iteration (unless this is the last iteration)
+    if (iter < maxIterations && deps.sleep) {
+      await deps.sleep(intervalMs);
+    }
+  }
+
+  deps.appendLog(sessionDir, {
+    timestamp: deps.now().toISOString(),
+    event: 'scan_loop_complete',
+    reason: 'max_iterations',
+    iterations: maxIterations,
+  });
+  const finalContent = await deps.readFile(stateFile, 'utf8');
+  return { iterations: maxIterations, finalState: JSON.parse(finalContent), reason: 'max_iterations' };
+}
+
+function parseInterval(value: string | undefined): number {
+  if (!value) return 30000; // 30 seconds default
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1000) {
+    throw new Error(`Invalid interval value: ${value} (must be >= 1000ms)`);
+  }
+  return parsed;
+}
+
+function parseMaxIterations(value: string | undefined): number {
+  if (!value) return 100; // default
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error(`Invalid max-iterations value: ${value} (must be a positive integer)`);
+  }
+  return parsed;
 }

@@ -39,6 +39,8 @@ import {
   queueEstimateForIssues,
   createGapAnalysisRequests,
   queueGapAnalysisForIssues,
+  runOrchestratorScanPass,
+  runOrchestratorScanLoop,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -53,6 +55,9 @@ import {
   type BudgetSummary,
   type TriageComment,
   type TriageDeps,
+  type ScanLoopDeps,
+  type ScanPassResult,
+  type ScanLoopResult,
 } from './orchestrate.js';
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
@@ -61,7 +66,7 @@ function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDe
 
   return {
     existsSync: () => false,
-    readFile: async () => '',
+    readFile: async (path: string) => writtenFiles[path] ?? '',
     writeFile: async (path: string, data: string) => {
       writtenFiles[path] = data;
     },
@@ -3179,5 +3184,462 @@ describe('orchestrateCommandWithDeps gap analysis integration', () => {
     const promptPaths = Object.keys(writtenFiles);
     assert.ok(promptPaths.some((p) => p.includes('PROMPT_orch_product_analyst.md')));
     assert.ok(promptPaths.some((p) => p.includes('PROMPT_orch_arch_analyst.md')));
+  });
+});
+
+// --- Orchestrator scan loop tests ---
+
+function createMockScanDeps(overrides: Partial<ScanLoopDeps> = {}): ScanLoopDeps & {
+  logEntries: Record<string, unknown>[];
+  files: Record<string, string>;
+} {
+  const logEntries: Record<string, unknown>[] = [];
+  const files: Record<string, string> = {};
+
+  const deps: ScanLoopDeps = {
+    existsSync: (p: string) => p in files,
+    readFile: async (p: string) => {
+      if (p in files) return files[p];
+      throw new Error(`File not found: ${p}`);
+    },
+    writeFile: async (p: string, data: string) => { files[p] = data; },
+    now: () => new Date('2026-03-15T12:00:00Z'),
+    appendLog: (_dir: string, entry: Record<string, unknown>) => { logEntries.push(entry); },
+    ...overrides,
+  };
+
+  return Object.assign(deps, { logEntries, files });
+}
+
+function makeScanState(overrides: Partial<OrchestratorState> = {}): OrchestratorState {
+  return {
+    spec_file: 'SPEC.md',
+    trunk_branch: 'agent/trunk',
+    concurrency_cap: 3,
+    current_wave: 1,
+    plan_only: false,
+    issues: [],
+    completed_waves: [],
+    filter_issues: null,
+    filter_label: null,
+    filter_repo: null,
+    budget_cap: null,
+    created_at: '2026-03-15T10:00:00.000Z',
+    updated_at: '2026-03-15T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('runOrchestratorScanPass', () => {
+  it('runs a scan pass with no issues and marks allDone as false', async () => {
+    const state = makeScanState({ issues: [] });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.iteration, 1);
+    assert.equal(result.allDone, false);
+    assert.equal(result.dispatched, 0);
+    assert.equal(result.triage.processed_issues, 0);
+  });
+
+  it('marks allDone when all issues are merged', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'merged' }),
+        makeIssue({ number: 2, wave: 1, state: 'merged' }),
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.allDone, true);
+  });
+
+  it('marks allDone when all issues are merged or failed', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'merged' }),
+        makeIssue({ number: 2, wave: 1, state: 'failed' }),
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.allDone, true);
+  });
+
+  it('dispatches pending issues when dispatchDeps are provided', async () => {
+    const state = makeScanState({
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 10, wave: 1, state: 'pending' }),
+        makeIssue({ number: 20, wave: 1, state: 'pending' }),
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const dispatchDeps = createMockDispatchDeps();
+    deps.dispatchDeps = dispatchDeps;
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.dispatched, 2);
+    // State should be updated in written files
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].state, 'in_progress');
+    assert.equal(writtenState.issues[1].state, 'in_progress');
+  });
+
+  it('respects concurrency cap during dispatch', async () => {
+    const state = makeScanState({
+      concurrency_cap: 1,
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 10, wave: 1, state: 'pending' }),
+        makeIssue({ number: 20, wave: 1, state: 'pending' }),
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.dispatchDeps = createMockDispatchDeps();
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.dispatched, 1);
+  });
+
+  it('does not dispatch when plan_only is true', async () => {
+    const state = makeScanState({
+      plan_only: true,
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 10, wave: 1, state: 'pending' }),
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.dispatchDeps = createMockDispatchDeps();
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.dispatched, 0);
+  });
+
+  it('detects budget exceeded when budget cap is set', async () => {
+    const state = makeScanState({
+      budget_cap: 0.5,
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'merged', child_session: 'child-1' }),
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/home/.aloop/sessions/child-1/log.jsonl'] = [
+      JSON.stringify({ event: 'iteration_complete', provider: 'claude' }),
+      JSON.stringify({ event: 'iteration_complete', provider: 'claude' }),
+    ].join('\n');
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    // 2 iterations * $0.50 = $1.00, cap = $0.50 → exceeded
+    assert.equal(result.budgetExceeded, true);
+  });
+
+  it('sets shouldStop when signalStop returns true', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'in_progress' })],
+    });
+    const deps = createMockScanDeps({
+      signalStop: () => true,
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.shouldStop, true);
+  });
+
+  it('advances wave when current wave is complete', async () => {
+    const state = makeScanState({
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'merged' }),
+        makeIssue({ number: 2, wave: 2, state: 'pending' }),
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.waveAdvanced, true);
+  });
+
+  it('persists state after scan pass', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'merged' })],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 3, deps,
+    );
+
+    assert.ok(deps.files['/state.json']);
+    const written = JSON.parse(deps.files['/state.json']);
+    assert.equal(written.updated_at, '2026-03-15T12:00:00.000Z');
+  });
+
+  it('logs scan_pass_complete event', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'merged' })],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 5, deps,
+    );
+
+    const completeEvent = deps.logEntries.find((e) => e.event === 'scan_pass_complete');
+    assert.ok(completeEvent);
+    assert.equal(completeEvent.iteration, 5);
+    assert.equal(completeEvent.all_done, true);
+  });
+
+  it('runs triage when repo and execGh are available', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pending' })],
+    });
+    const deps = createMockScanDeps({
+      execGh: async (args) => {
+        if (args[0] === 'issue-comments') return { stdout: JSON.stringify({ comments: [] }), stderr: '' };
+        if (args[0] === 'pr-comments') return { stdout: JSON.stringify({ comments: [] }), stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    assert.equal(result.triage.processed_issues, 1);
+  });
+});
+
+describe('runOrchestratorScanLoop', () => {
+  it('returns immediately with plan_only reason when state is plan-only', async () => {
+    const state = makeScanState({ plan_only: true, issues: [] });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanLoop(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1000, 10, deps,
+    );
+
+    assert.equal(result.reason, 'plan_only');
+    assert.equal(result.iterations, 0);
+  });
+
+  it('runs until all issues are done', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'in_progress' }),
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+    // Track reads to override state on the second scan pass
+    // Read 1: initial check in runOrchestratorScanLoop (before loop)
+    // Read 2: scan pass 1
+    // Read 3: scan pass 2 → override to merged
+    let totalReads = 0;
+    const origReadFile = deps.readFile;
+    deps.readFile = async (p: string, enc: BufferEncoding) => {
+      const content = await origReadFile(p, enc);
+      if (p === '/state.json') {
+        totalReads++;
+        if (totalReads >= 3) {
+          const s = JSON.parse(content);
+          s.issues[0].state = 'merged';
+          return JSON.stringify(s);
+        }
+      }
+      return content;
+    };
+
+    const result = await runOrchestratorScanLoop(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 100, 5, deps,
+    );
+
+    assert.equal(result.reason, 'all_done');
+    assert.equal(result.iterations, 2);
+  });
+
+  it('stops at max iterations', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'in_progress' })],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanLoop(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 100, 3, deps,
+    );
+
+    assert.equal(result.reason, 'max_iterations');
+    assert.equal(result.iterations, 3);
+  });
+
+  it('stops when signalStop is triggered', async () => {
+    let stopAfter = 2;
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'in_progress' })],
+    });
+    const deps = createMockScanDeps({
+      signalStop: () => {
+        stopAfter--;
+        return stopAfter <= 0;
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanLoop(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 100, 10, deps,
+    );
+
+    assert.equal(result.reason, 'stopped');
+    assert.equal(result.iterations, 2);
+  });
+
+  it('calls sleep between iterations', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'in_progress' })],
+    });
+    const sleepCalls: number[] = [];
+    const deps = createMockScanDeps({
+      sleep: async (ms: number) => { sleepCalls.push(ms); },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanLoop(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 5000, 3, deps,
+    );
+
+    // Should sleep between iteration 1→2 and 2→3 (not after iteration 3 since it's the last)
+    assert.equal(sleepCalls.length, 2);
+    assert.ok(sleepCalls.every((ms) => ms === 5000));
+  });
+
+  it('logs scan_loop_complete on finish', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'merged' })],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanLoop(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 100, 5, deps,
+    );
+
+    const completeEvent = deps.logEntries.find((e) => e.event === 'scan_loop_complete');
+    assert.ok(completeEvent);
+    assert.equal(completeEvent.reason, 'all_done');
+  });
+});
+
+describe('orchestrateCommandWithDeps with --run-scan-loop', () => {
+  it('runs scan loop after initialization when runScanLoop is true and issues exist', async () => {
+    const samplePlan = JSON.stringify({
+      issues: [
+        { id: 1, title: 'Task A', body: 'Do A', depends_on: [] },
+      ],
+    });
+    const writtenFiles: Record<string, string> = {};
+    const deps = createMockDeps({
+      existsSync: (p: string) => p in writtenFiles || p.endsWith('plan.json') || p.endsWith('estimate-results.json'),
+      readFile: async (p: string) => {
+        if (p in writtenFiles) return writtenFiles[p];
+        if (p.endsWith('plan.json')) return samplePlan;
+        if (p.endsWith('estimate-results.json')) return JSON.stringify([
+          { issue_number: 1, dor_passed: true },
+        ]);
+        return '';
+      },
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+    });
+
+    const result = await orchestrateCommandWithDeps(
+      { plan: 'plan.json', runScanLoop: true, maxIterations: '1' },
+      deps,
+    );
+
+    assert.ok(result.scan_loop);
+    assert.equal(result.scan_loop!.iterations, 1);
+  });
+
+  it('does not run scan loop when planOnly is true', async () => {
+    const deps = createMockDeps();
+    const result = await orchestrateCommandWithDeps(
+      { planOnly: true, runScanLoop: true },
+      deps,
+    );
+
+    assert.equal(result.scan_loop, undefined);
+  });
+
+  it('does not run scan loop when no issues exist', async () => {
+    const deps = createMockDeps();
+    const result = await orchestrateCommandWithDeps(
+      { runScanLoop: true },
+      deps,
+    );
+
+    assert.equal(result.scan_loop, undefined);
   });
 });
