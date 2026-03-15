@@ -4,5 +4,6 @@ pipeline:
     repeat: 3
     onFailure: retry
   - agent: proof
+  - agent: qa
   - agent: review
     onFailure: goto build
