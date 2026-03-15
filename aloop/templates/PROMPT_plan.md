@@ -47,8 +47,9 @@ Study specifications and existing code, then generate or update a prioritized im
    - Add new tasks discovered during analysis
    - **NEVER remove or drop uncompleted tasks.** If a task seems irrelevant, mark it `[~]` (cancelled) with a reason — do not silently delete it
    - **NEVER mark a task `[x]` without verifying it works.** "Component exists" is not "component works correctly." Check actual behavior, not just file existence.
-   - Tasks added by steering must be preserved at their current position — they represent explicit user direction. The steer agent already placed them at the correct priority level. Do not move steering tasks down unless their declared priority is clearly lower than surrounding tasks.
-   - Priority order: (1) `[review]` fix tasks, (2) tasks marked `(priority: critical)` or `CRITICAL`, (3) everything else by dependency order
+   - **Reordering is expected.** Move completed tasks to the Completed section. Reprioritize tasks based on the spec's stated priorities — if the spec says dashboard tests are low priority, move `[review]` tasks about dashboard tests to Deferred even if the reviewer marked them high. The spec is the authority on priority, not the reviewer.
+   - Steering tasks represent explicit user direction — preserve their intent but you may reorder them relative to other tasks based on spec priorities.
+   - Priority order: (1) `[review]` fix tasks that block spec-priority work, (2) tasks marked `(priority: critical)` or `CRITICAL`, (3) spec-priority features by dependency order, (4) `[review]` fix tasks for low-priority areas (move to Deferred)
 
 4. **Exit**
    - Do NOT implement anything
