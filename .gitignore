@@ -27,3 +27,4 @@ Thumbs.db
 .env.*.local
 coverage/
 aloop/cli/coverage/
+aloop/cli/dashboard/test-results/
