@@ -12,6 +12,13 @@ Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboa
 - [x] [fix] `orchestrateCommand` dependency injection — correctly handle Commander `Command` object vs `OrchestrateDeps`.
 - [x] [review] Gate 8: VERSIONS.md Drift — Add `git` to the Runtime section of `VERSIONS.md`. (priority: high)
 
+### QA Bugs (iter 26)
+- [ ] [qa/P1] Dashboard docs tabs empty — API `/api/state` returns 0-char content for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md because `workdir` points to `aloop/cli/` subdirectory instead of worktree root. Spec says dashboard shows "Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md". Tested at iter 26. (priority: high)
+- [ ] [qa/P1] `aloop steer` CLI command missing — README lists `aloop steer` as a CLI command ("Send live instruction to a running loop") but running `aloop steer` returns "unknown command". Dashboard steer API works at `/api/steer` but CLI subcommand is not registered. Tested at iter 26. (priority: high)
+- [ ] [qa/P1] Provider health backoff violates spec — codex has `consecutive_failures: 1` but `cooldown_until: 2026-03-17T00:00:00Z` (~30h from now). Spec says 1 failure = "none (could be flaky)", cooldown only triggers at 2+ failures, and hard cap is 60 min. Tested at iter 26. (priority: high)
+- [ ] [qa/P1] Dashboard health tab missing codex — Health tab shows only 4 providers (claude, copilot, gemini, opencode). Codex in cooldown state is omitted. Spec says all 5 providers should be displayed with their current status. Tested at iter 26. (priority: high)
+- [ ] [qa/P2] `aloop orchestrate --spec /nonexistent` leaks stack trace — missing spec file throws raw Error with full stack trace instead of user-friendly error message. Tested at iter 26. (priority: medium)
+
 ### Up Next — P0/P1 (Blocking Core)
 - [ ] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating consistently and add same-error persistence checks before re-iteration caps.
 - [ ] [setup/P1] Data privacy setup question — ask internal/private vs public/open-source and apply provider/model/ZDR constraints from answer.
