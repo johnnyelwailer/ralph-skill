@@ -121,7 +121,7 @@ exit 0
         }
 
         function script:Invoke-ShLoopScript {
-            param($LoopEnv, [int]$MaxIter = 8)
+            param($LoopEnv, [int]$MaxIter = 8, [string]$Mode = 'plan-build-review')
             $prevPath  = $env:PATH
             $prevState = $env:FAKE_CLAUDE_STATE
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
@@ -142,7 +142,7 @@ exit 0
                         --prompts-dir '$promptBash' \
                         --session-dir '$sessBash' \
                         --work-dir '$workBash' \
-                        --mode plan-build-review \
+                        --mode '$Mode' \
                         --provider claude \
                         --max-iterations $MaxIter
                 " 2>&1
@@ -219,6 +219,23 @@ exit 0
         $proofIdx | Should -BeLessThan $appIdx
         $events | Should -Contain 'final_review_approved'
         $events | Should -Not -Contain 'final_review_rejected'
+    }
+
+    It 'iteration limit writes stopped session state' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e      = New-ShLoopEnv -Scenario 'approve'
+        $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 1
+        $status = Get-Content (Join-Path $e.SessionDir 'status.json') -Raw | ConvertFrom-Json
+        $result.ExitCode | Should -Be 0
+        $status.state | Should -Be 'stopped'
+    }
+
+    It 'loop.sh source maps success and stop states to exited/stopped' {
+        $loopSource = Get-Content (Join-Path $PSScriptRoot 'loop.sh') -Raw
+        ($loopSource | Select-String -Pattern 'write_status "\$ITERATION" "\$iter_mode" "\$iter_provider" 0 "exited"' -AllMatches).Matches.Count | Should -Be 2
+        $loopSource | Should -Not -Match 'write_status "\$ITERATION" "\$iter_mode" "\$iter_provider" 0 "completed"'
+        $loopSource | Should -Match 'write_status "\$ITERATION" "\$LAST_ITER_MODE" "\$\(resolve_iteration_provider \$ITERATION\)" "\$STUCK_COUNT" "stopped"'
+        $loopSource | Should -Match 'trap ''cleanup "interrupted" "stopped"; exit 130'' INT'
     }
 
     It 'review rejection emits final_review_rejected then final_review_approved in order' {
@@ -643,7 +660,7 @@ exit 0
 
         # ── Helper: run loop.ps1 with the fake provider injected into PATH ──
         function script:Invoke-LoopScript {
-            param($LoopEnv, [int]$MaxIter = 6)
+            param($LoopEnv, [int]$MaxIter = 6, [string]$Mode = 'plan-build-review')
             $prevPath  = $env:PATH
             $prevState = $env:FAKE_CLAUDE_STATE
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
@@ -659,7 +676,7 @@ exit 0
                     -PromptsDir    $LoopEnv.PromptsDir `
                     -SessionDir    $LoopEnv.SessionDir `
                     -WorkDir       $LoopEnv.WorkDir    `
-                    -Mode          'plan-build-review'  `
+                    -Mode          $Mode                `
                     -Provider      'claude'             `
                     -MaxIterations $MaxIter             `
                     2>&1
@@ -767,6 +784,23 @@ exit 0
         $proofIdx | Should -BeLessThan $appIdx
         $events | Should -Contain 'final_review_approved'
         $events | Should -Not -Contain 'final_review_rejected'
+    }
+
+    It 'iteration limit writes stopped session state' {
+        $e      = New-LoopEnv -Scenario 'approve'
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 1
+        $status = Get-Content (Join-Path $e.SessionDir 'status.json') -Raw | ConvertFrom-Json
+        $result.ExitCode | Should -Be 0
+        $status.state | Should -Be 'stopped'
+    }
+
+    It 'loop.ps1 source maps success and stop states to exited/stopped' {
+        $loopSource = Get-Content (Join-Path $PSScriptRoot 'loop.ps1') -Raw
+        ($loopSource | Select-String -Pattern "-State 'exited'" -AllMatches).Matches.Count | Should -Be 2
+        $loopSource | Should -Not -Match "-State 'completed'"
+        ($loopSource | Select-String -Pattern "-State 'stopped'" -AllMatches).Matches.Count | Should -Be 2
+        $loopSource | Should -Not -Match "-State 'interrupted'"
+        $loopSource | Should -Not -Match "-State 'limit_reached'"
     }
 
     It 'review rejection emits final_review_rejected, re-plans, then final_review_approved' {
