@@ -703,8 +703,8 @@ function DocsPanel({ docs, providerHealth }: { docs: Record<string, string>; pro
   const docOrder = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
   const tabLabels: Record<string, string> = { 'TODO.md': 'TODO', 'SPEC.md': 'SPEC', 'RESEARCH.md': 'RESEARCH', 'REVIEW_LOG.md': 'REVIEW LOG', 'STEERING.md': 'STEERING' };
 
-  const availableDocs = docOrder.filter((n) => docs[n] !== undefined);
-  const extraDocs = Object.keys(docs).filter((n) => !docOrder.includes(n));
+  const availableDocs = docOrder.filter((n) => docs[n] != null && docs[n] !== '');
+  const extraDocs = Object.keys(docs).filter((n) => !docOrder.includes(n) && docs[n] != null && docs[n] !== '');
   const allDocs = [...availableDocs, ...extraDocs];
 
   const MAX_VISIBLE_TABS = 4;

@@ -5120,10 +5120,129 @@ import path7 from "node:path";
 import { readFile as readFile5, writeFile as writeFile5 } from "node:fs/promises";
 import { existsSync as existsSync5 } from "node:fs";
 import path6 from "node:path";
+
+// src/lib/yaml.ts
+function stripInlineComment(raw) {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i];
+    if (char === "'" && !inDouble) {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (char === '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (char === "#" && !inSingle && !inDouble) {
+      const prev = i > 0 ? raw[i - 1] : " ";
+      if (prev === " " || prev === "	") {
+        return raw.slice(0, i).trimEnd();
+      }
+    }
+  }
+  return raw.trimEnd();
+}
+function parseYamlScalar(raw) {
+  const cleaned = stripInlineComment(raw).trim();
+  if (cleaned === "")
+    return "";
+  if (/^null$/i.test(cleaned))
+    return null;
+  if (/^true$/i.test(cleaned))
+    return true;
+  if (/^false$/i.test(cleaned))
+    return false;
+  if (/^-?\d+$/.test(cleaned))
+    return Number.parseInt(cleaned, 10);
+  if (cleaned.startsWith("'") && cleaned.endsWith("'") && cleaned.length >= 2) {
+    return cleaned.slice(1, -1).replace(/''/g, "'");
+  }
+  if (cleaned.startsWith('"') && cleaned.endsWith('"') && cleaned.length >= 2) {
+    return cleaned.slice(1, -1).replace(/\\"/g, '"');
+  }
+  return cleaned;
+}
+function parseYaml(content) {
+  const lines = content.split(/\r?\n/);
+  const result = {};
+  let currentKey = null;
+  let currentList = null;
+  let currentObject = null;
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (trimmed === "" || trimmed.startsWith("#"))
+      continue;
+    const indent = rawLine.length - rawLine.trimStart().length;
+    if (indent === 0) {
+      const match = trimmed.match(/^([A-Za-z0-9_]+):(?:\s*(.*))?$/);
+      if (match) {
+        currentKey = match[1];
+        const rawValue = (match[2] ?? "").trim();
+        if (rawValue === "") {
+          result[currentKey] = null;
+        } else {
+          result[currentKey] = parseYamlScalar(rawValue);
+          currentKey = null;
+        }
+        currentList = null;
+        currentObject = null;
+        continue;
+      }
+    }
+    if (indent >= 2 && currentKey) {
+      const listMatch = trimmed.match(/^-\s+(.+)$/);
+      if (listMatch) {
+        if (!Array.isArray(result[currentKey])) {
+          result[currentKey] = [];
+        }
+        currentList = result[currentKey];
+        const scalarValue = parseYamlScalar(listMatch[1]);
+        if (currentList) {
+          const objectMatch = listMatch[1].match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+          if (objectMatch) {
+            currentObject = {};
+            currentObject[objectMatch[1]] = parseYamlScalar(objectMatch[2]);
+            currentList.push(currentObject);
+          } else {
+            currentList.push(scalarValue);
+            currentObject = null;
+          }
+        }
+        continue;
+      }
+      const propMatch = trimmed.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+      if (propMatch) {
+        const propKey = propMatch[1];
+        const propValue = parseYamlScalar(propMatch[2]);
+        if (currentObject && indent >= 4) {
+          currentObject[propKey] = propValue;
+        } else {
+          if (result[currentKey] === null || typeof result[currentKey] !== "object") {
+            result[currentKey] = {};
+          }
+          result[currentKey][propKey] = propValue;
+        }
+        continue;
+      }
+    }
+  }
+  return result;
+}
+
+// src/commands/compile-loop-plan.ts
 var defaultCompileDeps = {
   readFile: readFile5,
   writeFile: writeFile5,
   existsSync: existsSync5
+};
+var DEFAULT_AGENT_PROMPT = {
+  plan: "PROMPT_plan.md",
+  build: "PROMPT_build.md",
+  proof: "PROMPT_proof.md",
+  review: "PROMPT_review.md",
+  steer: "PROMPT_steer.md"
 };
 var DEFAULT_REASONING = {
   plan: "high",
@@ -5132,55 +5251,151 @@ var DEFAULT_REASONING = {
   review: "high",
   steer: "medium"
 };
-function buildCycleForMode(mode) {
+async function getAgentConfig(agentName, projectRoot, deps) {
+  const config = {
+    prompt: DEFAULT_AGENT_PROMPT[agentName] ?? `PROMPT_${agentName}.md`,
+    reasoning: DEFAULT_REASONING[agentName] ?? "medium"
+  };
+  if (projectRoot) {
+    const agentYamlPath = path6.join(projectRoot, ".aloop", "agents", `${agentName}.yml`);
+    if (deps.existsSync(agentYamlPath)) {
+      try {
+        const content = await deps.readFile(agentYamlPath, "utf8");
+        const parsed = parseYaml(content);
+        if (parsed.prompt) {
+          config.prompt = parsed.prompt;
+        }
+        if (parsed.reasoning) {
+          if (typeof parsed.reasoning === "string") {
+            config.reasoning = parsed.reasoning;
+          } else if (typeof parsed.reasoning === "object" && parsed.reasoning.effort) {
+            config.reasoning = parsed.reasoning.effort;
+          }
+        }
+      } catch (err) {
+        console.error(`Error parsing agent config for ${agentName}:`, err);
+      }
+    }
+  }
+  return config;
+}
+async function buildCycleFromPipeline(projectRoot, deps) {
+  const pipelineYamlPath = path6.join(projectRoot, ".aloop", "pipeline.yml");
+  if (!deps.existsSync(pipelineYamlPath)) {
+    return null;
+  }
+  try {
+    const content = await deps.readFile(pipelineYamlPath, "utf8");
+    const parsed = parseYaml(content);
+    if (!parsed.pipeline || !Array.isArray(parsed.pipeline)) {
+      return null;
+    }
+    const cycle = [];
+    for (const step of parsed.pipeline) {
+      const agentName = step.agent;
+      if (!agentName)
+        continue;
+      const agentConfig = await getAgentConfig(agentName, projectRoot, deps);
+      const repeat = typeof step.repeat === "number" ? step.repeat : 1;
+      for (let i = 0; i < repeat; i++) {
+        cycle.push({ filename: agentConfig.prompt, agent: agentName });
+      }
+    }
+    return cycle.length > 0 ? cycle : null;
+  } catch (err) {
+    console.error("Error parsing pipeline.yml:", err);
+    return null;
+  }
+}
+async function buildCycleForMode(mode, projectRoot, deps) {
+  const getEntry = async (name) => ({
+    filename: (await getAgentConfig(name, projectRoot, deps)).prompt,
+    agent: name
+  });
   switch (mode) {
     case "plan":
-      return ["PROMPT_plan.md"];
+      return [await getEntry("plan")];
     case "build":
-      return ["PROMPT_build.md"];
+      return [await getEntry("build")];
     case "review":
-      return ["PROMPT_review.md"];
+      return [await getEntry("review")];
     case "plan-build":
-      return ["PROMPT_plan.md", "PROMPT_build.md"];
+      return [await getEntry("plan"), await getEntry("build")];
     case "plan-build-review":
       return [
-        "PROMPT_plan.md",
-        "PROMPT_build.md",
-        "PROMPT_build.md",
-        "PROMPT_build.md",
-        "PROMPT_proof.md",
-        "PROMPT_review.md"
+        await getEntry("plan"),
+        await getEntry("build"),
+        await getEntry("build"),
+        await getEntry("build"),
+        await getEntry("proof"),
+        await getEntry("review")
       ];
   }
 }
-function buildRoundRobinCycle(mode, roundRobinOrder, promptsDir, deps) {
+async function buildRoundRobinCycle(mode, roundRobinOrder, promptsDir, projectRoot, deps) {
   if (mode !== "plan-build-review" && mode !== "plan-build") {
-    return buildCycleForMode(mode);
+    return buildCycleForMode(mode, projectRoot, deps);
   }
   const providers = roundRobinOrder.length > 0 ? roundRobinOrder : ["claude"];
   if (mode === "plan-build") {
-    const cycle2 = ["PROMPT_plan.md"];
+    const planEntry = await (async () => {
+      const config = await getAgentConfig("plan", projectRoot, deps);
+      return { filename: config.prompt, agent: "plan" };
+    })();
+    const buildConfig = await getAgentConfig("build", projectRoot, deps);
+    const agentPrefix = buildConfig.prompt.replace(/\.md$/, "");
+    const cycle2 = [planEntry];
     for (const provider of providers) {
-      const filename = `PROMPT_build_${provider}.md`;
-      cycle2.push(filename);
+      const filename = `${agentPrefix}_${provider}.md`;
+      cycle2.push({ filename, agent: "build" });
     }
     return cycle2;
   }
-  const cycle = ["PROMPT_plan.md"];
+  if (projectRoot && mode === "plan-build-review") {
+    const pipelineYamlPath = path6.join(projectRoot, ".aloop", "pipeline.yml");
+    if (deps.existsSync(pipelineYamlPath)) {
+      const content = await deps.readFile(pipelineYamlPath, "utf8");
+      const parsed = parseYaml(content);
+      if (parsed.pipeline && Array.isArray(parsed.pipeline)) {
+        const cycle2 = [];
+        for (const step of parsed.pipeline) {
+          const agentName = step.agent;
+          if (!agentName)
+            continue;
+          const agentConfig = await getAgentConfig(agentName, projectRoot, deps);
+          const promptBase = agentConfig.prompt;
+          if (agentName === "build") {
+            const agentPrefix = promptBase.replace(/\.md$/, "");
+            for (const provider of providers) {
+              cycle2.push({ filename: `${agentPrefix}_${provider}.md`, agent: "build" });
+            }
+          } else {
+            cycle2.push({ filename: promptBase, agent: agentName });
+          }
+        }
+        return cycle2;
+      }
+    }
+  }
+  const cycle = [{ filename: "PROMPT_plan.md", agent: "plan" }];
   for (const provider of providers) {
     const filename = `PROMPT_build_${provider}.md`;
-    cycle.push(filename);
+    cycle.push({ filename, agent: "build" });
   }
-  cycle.push("PROMPT_proof.md", "PROMPT_review.md");
+  cycle.push(
+    { filename: "PROMPT_proof.md", agent: "proof" },
+    { filename: "PROMPT_review.md", agent: "review" }
+  );
   return cycle;
 }
-function extractAgentFromFilename(filename) {
-  const match = filename.match(/^PROMPT_([a-z]+)(?:_[a-z]+)?\.md$/);
-  return match ? match[1] : "build";
-}
-function extractProviderSuffixFromFilename(filename) {
+function extractProviderSuffixFromFilename(filename, roundRobinOrder) {
   const match = filename.match(/^PROMPT_[a-z]+_([a-z]+)\.md$/);
-  return match ? match[1] : null;
+  if (match && roundRobinOrder.includes(match[1]))
+    return match[1];
+  const customMatch = filename.match(/_([a-z]+)\.md$/);
+  if (customMatch && roundRobinOrder.includes(customMatch[1]))
+    return customMatch[1];
+  return null;
 }
 function buildFrontmatter(agent, provider, model, reasoning) {
   const lines = ["---"];
@@ -5208,21 +5423,24 @@ ${afterFrontmatter}`;
 ${content}`;
 }
 async function compileLoopPlan(options, deps = defaultCompileDeps) {
-  const { mode, provider, promptsDir, sessionDir, enabledProviders, roundRobinOrder, models } = options;
+  const { mode, provider, promptsDir, sessionDir, enabledProviders, roundRobinOrder, models, projectRoot } = options;
   const isRoundRobin = provider === "round-robin";
-  let cycle;
+  let cycleEntries;
   if (isRoundRobin) {
-    cycle = buildRoundRobinCycle(mode, roundRobinOrder, promptsDir, deps);
+    cycleEntries = await buildRoundRobinCycle(mode, roundRobinOrder, promptsDir, projectRoot, deps);
+  } else if (mode === "plan-build-review" && projectRoot) {
+    cycleEntries = await buildCycleFromPipeline(projectRoot, deps) ?? await buildCycleForMode(mode, projectRoot, deps);
   } else {
-    cycle = buildCycleForMode(mode);
+    cycleEntries = await buildCycleForMode(mode, projectRoot, deps);
   }
+  const cycle = cycleEntries.map((e) => e.filename);
   const processed = /* @__PURE__ */ new Set();
-  for (const filename of cycle) {
+  for (const entry of cycleEntries) {
+    const { filename, agent } = entry;
     if (processed.has(filename))
       continue;
     processed.add(filename);
-    const agent = extractAgentFromFilename(filename);
-    const providerSuffix = extractProviderSuffixFromFilename(filename);
+    const providerSuffix = extractProviderSuffixFromFilename(filename, roundRobinOrder);
     let promptProvider;
     let promptModel;
     if (providerSuffix) {
@@ -5232,11 +5450,12 @@ async function compileLoopPlan(options, deps = defaultCompileDeps) {
       promptProvider = isRoundRobin ? roundRobinOrder[0] ?? "claude" : provider;
       promptModel = models[promptProvider] ?? "";
     }
-    const reasoning = DEFAULT_REASONING[agent] ?? "medium";
+    const agentConfig = await getAgentConfig(agent, projectRoot, deps);
+    const reasoning = agentConfig.reasoning;
     const frontmatter = buildFrontmatter(agent, promptProvider, promptModel, reasoning);
     const filePath = path6.join(promptsDir, filename);
     if (providerSuffix) {
-      const baseFilename = `PROMPT_${agent}.md`;
+      const baseFilename = agentConfig.prompt;
       const basePath = path6.join(promptsDir, baseFilename);
       if (deps.existsSync(basePath)) {
         const baseContent = await deps.readFile(basePath, "utf8");
@@ -5283,7 +5502,7 @@ var defaultDeps = {
   env: process.env,
   now: () => /* @__PURE__ */ new Date()
 };
-function stripInlineComment(raw) {
+function stripInlineComment2(raw) {
   let inSingle = false;
   let inDouble = false;
   for (let i = 0; i < raw.length; i += 1) {
@@ -5305,8 +5524,8 @@ function stripInlineComment(raw) {
   }
   return raw.trimEnd();
 }
-function parseYamlScalar(raw) {
-  const cleaned = stripInlineComment(raw).trim();
+function parseYamlScalar2(raw) {
+  const cleaned = stripInlineComment2(raw).trim();
   if (cleaned === "")
     return "";
   if (/^null$/i.test(cleaned))
@@ -5369,7 +5588,7 @@ function parseAloopConfig(content) {
         activeSection = null;
         continue;
       }
-      parsed.values[key] = parseYamlScalar(rawValue);
+      parsed.values[key] = parseYamlScalar2(rawValue);
       activeSection = null;
       continue;
     }
@@ -5381,7 +5600,7 @@ function parseAloopConfig(content) {
       if (!listMatch) {
         continue;
       }
-      const value = parseYamlScalar(listMatch[1]);
+      const value = parseYamlScalar2(listMatch[1]);
       if (typeof value === "string" && value.length > 0) {
         if (activeSection === "enabled_providers") {
           parsed.enabled_providers.push(value);
@@ -5397,7 +5616,7 @@ function parseAloopConfig(content) {
         continue;
       }
       const mapKey = mapMatch[1];
-      const mapValue = parseYamlScalar(mapMatch[2]);
+      const mapValue = parseYamlScalar2(mapMatch[2]);
       if (activeSection === "models") {
         if (typeof mapValue === "string" && mapValue.length > 0) {
           parsed.models[mapKey] = mapValue;
@@ -5843,7 +6062,8 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     sessionDir,
     enabledProviders,
     roundRobinOrder,
-    models: mergedModels
+    models: mergedModels,
+    projectRoot: discovery.project.root
   }, {
     readFile: (p, enc) => deps.readFile(p, enc),
     writeFile: (p, data, enc) => deps.writeFile(p, data, enc),
