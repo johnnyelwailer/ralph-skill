@@ -163,6 +163,19 @@ function formatTimeShort(ts: string): string {
   catch { return ts; }
 }
 
+function formatSecs(total: number): string {
+  const m = Math.floor(total / 60);
+  const s = Math.round(total % 60);
+  if (m === 0) return `${s}s`;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
+function formatDuration(raw: string): string {
+  const match = raw.match(/^(\d+)s$/);
+  if (!match) return raw;
+  return formatSecs(parseInt(match[1], 10));
+}
+
 function formatDateKey(ts: string): string {
   if (!ts) return 'Unknown';
   try { return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }); }
@@ -330,9 +343,7 @@ function ElapsedTimer({ since }: { since: string }) {
     const start = new Date(since).getTime();
     const tick = () => {
       const diff = Math.max(0, Math.floor((Date.now() - start) / 1000));
-      const m = Math.floor(diff / 60);
-      const s = diff % 60;
-      setElapsed(m > 0 ? `${m}m ${s}s` : `${s}s`);
+      setElapsed(formatSecs(diff));
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -414,11 +425,7 @@ function computeAvgDuration(log: string): string {
     } catch { /* skip */ }
   }
   if (count === 0) return '';
-  const avg = totalSec / count;
-  if (avg < 60) return `${Math.round(avg)}s`;
-  const m = Math.floor(avg / 60);
-  const s = Math.round(avg % 60);
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  return formatSecs(totalSec / count);
 }
 
 // ── Provider health derived from log ──
@@ -876,30 +883,28 @@ function ActivityPanel({ log, artifacts, currentIteration, currentPhase, current
       <div className="flex items-center justify-between px-1 pb-1.5 shrink-0">
         <span className="text-[10px] text-muted-foreground">{deduped.length} events</span>
       </div>
-      <ScrollArea className="flex-1 min-h-0" ref={containerRef}>
-        <div className="pr-4">
-          <div ref={topRef} />
-          {grouped.map((group) => (
-            <div key={group.dateKey} className="mb-2">
-              <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm pb-1 mb-0.5">
-                <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> {group.dateKey}
-                </span>
-              </div>
-              <div>
-                {group.entries.map((entry, i) => (
-                  <LogEntryRow
-                    key={`${group.dateKey}-${i}`}
-                    entry={entry}
-                    artifacts={entry.iteration !== null ? iterArtifacts.get(entry.iteration) ?? null : null}
-                    isCurrentIteration={entry.iteration !== null && entry.iteration === currentIteration}
-                  />
-                ))}
-              </div>
+      <div className="flex-1 min-h-0 overflow-y-auto" ref={containerRef}>
+        <div ref={topRef} />
+        {grouped.map((group) => (
+          <div key={group.dateKey} className="mb-2">
+            <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm pb-1 mb-0.5">
+              <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                <Clock className="h-3 w-3" /> {group.dateKey}
+              </span>
             </div>
-          ))}
-        </div>
-      </ScrollArea>
+            <div>
+              {group.entries.map((entry, i) => (
+                <LogEntryRow
+                  key={`${group.dateKey}-${i}`}
+                  entry={entry}
+                  artifacts={entry.iteration !== null ? iterArtifacts.get(entry.iteration) ?? null : null}
+                  isCurrentIteration={entry.iteration !== null && entry.iteration === currentIteration}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -962,7 +967,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
 
         {/* Provider·model */}
         {entry.provider && (
-          <span className="text-muted-foreground/70 max-w-[140px] truncate">
+          <span className="text-muted-foreground/70 shrink-0 max-w-[140px] truncate">
             {(() => {
               const model = entry.model && entry.model !== 'opencode-default'
                 ? entry.model
@@ -998,20 +1003,19 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
           <span className="text-foreground/70 min-w-0 truncate flex-1">{entry.message}</span>
         )}
 
-        {/* Elapsed timer for running entry — placed inline right after provider */}
+        <span className="flex-1 min-w-0" />
+
+        {/* Duration — right-aligned */}
+        {entry.duration && (
+          <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap flex items-center gap-0.5">
+            <Timer className="h-3 w-3" />{formatDuration(entry.duration)}
+          </span>
+        )}
+        {/* Elapsed timer for running entry — right-aligned */}
         {isRunningEntry && (
           <span className="text-green-600 dark:text-green-400 shrink-0 whitespace-nowrap flex items-center gap-0.5 font-medium">
             <Loader2 className="h-3 w-3 animate-spin" />
             <ElapsedTimer since={entry.timestamp} />
-          </span>
-        )}
-
-        <span className="flex-1" />
-
-        {/* Duration */}
-        {entry.duration && (
-          <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap flex items-center gap-0.5">
-            <Timer className="h-3 w-3" />{entry.duration}
           </span>
         )}
 
