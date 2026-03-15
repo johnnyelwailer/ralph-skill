@@ -32,11 +32,24 @@ export interface DecompositionPlan {
   issues: DecompositionPlanIssue[];
 }
 
+export type OrchestratorIssueState = 'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed';
+export type OrchestratorIssueStatus =
+  | 'Needs analysis'
+  | 'Needs decomposition'
+  | 'Needs refinement'
+  | 'Ready'
+  | 'In progress'
+  | 'In review'
+  | 'Done'
+  | 'Blocked';
+
 export interface OrchestratorIssue {
   number: number;
   title: string;
+  body?: string;
   wave: number;
-  state: 'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed';
+  state: OrchestratorIssueState;
+  status?: OrchestratorIssueStatus;
   child_session: string | null;
   pr_number: number | null;
   depends_on: number[];
@@ -46,6 +59,7 @@ export interface OrchestratorIssue {
   processed_comment_ids?: number[];
   triage_log?: TriageLogEntry[];
   pending_steering_comments?: TriageComment[];
+  dor_validated?: boolean;
 }
 
 export interface OrchestratorState {
@@ -330,14 +344,17 @@ export async function applyDecompositionPlan(
     updatedIssues.push({
       number: ghNumber,
       title: planIssue.title,
+      body: planIssue.body,
       wave,
       state: 'pending',
+      status: 'Needs refinement',
       child_session: null,
       pr_number: null,
       depends_on: planIssue.depends_on.map((depId) => idToGhNumber.get(depId) ?? depId),
       blocked_on_human: false,
       processed_comment_ids: [],
       triage_log: [],
+      dor_validated: false,
     });
   }
 
@@ -369,6 +386,34 @@ interface LoopPlan {
 }
 
 const ORCH_SCAN_PROMPT_FILENAME = 'PROMPT_orch_scan.md';
+const ORCH_ESTIMATE_PROMPT_FILENAME = 'PROMPT_orch_estimate.md';
+const ORCH_ESTIMATE_PROMPT_FALLBACK = `# Orchestrator Estimation Agent
+
+You are Aloop, the estimation agent for orchestrator readiness checks.
+
+## Objective
+
+Estimate implementation effort and risk for one refined sub-issue.
+
+## Required Outputs
+
+- Complexity tier: \`S\`, \`M\`, \`L\`, or \`XL\`
+- Estimated child-loop iteration count
+- Key risk flags (novel tech, unclear requirements, high coupling, external dependency)
+- Confidence note (high/medium/low) with rationale
+
+## Readiness Check
+
+Confirm whether the item satisfies Definition of Ready:
+
+- Acceptance criteria are specific and testable
+- No unresolved linked \`aloop/spec-question\` blockers
+- Dependencies are resolved/scheduled
+- Planner approach is present
+- Interface contracts are explicit
+
+If DoR passes, recommend label \`aloop/ready\`; otherwise keep blocked and list gaps.
+`;
 
 function buildOrchestratorScanPrompt(): string {
   return `---
@@ -414,6 +459,7 @@ export async function orchestrateCommandWithDeps(
   const requestsDir = path.join(sessionDir, 'requests');
   const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
   const orchScanPromptFile = path.join(promptsDir, ORCH_SCAN_PROMPT_FILENAME);
+  const orchEstimatePromptFile = path.join(promptsDir, ORCH_ESTIMATE_PROMPT_FILENAME);
 
   await deps.mkdir(sessionDir, { recursive: true });
   await deps.mkdir(promptsDir, { recursive: true });
@@ -428,6 +474,12 @@ export async function orchestrateCommandWithDeps(
   };
   await deps.writeFile(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}\n`, 'utf8');
   await deps.writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(), 'utf8');
+  const templateRoot = options.projectRoot ? path.resolve(options.projectRoot) : process.cwd();
+  const estimateTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_ESTIMATE_PROMPT_FILENAME);
+  const estimatePrompt = deps.existsSync(estimateTemplatePath)
+    ? await deps.readFile(estimateTemplatePath, 'utf8')
+    : ORCH_ESTIMATE_PROMPT_FALLBACK;
+  await deps.writeFile(orchEstimatePromptFile, estimatePrompt, 'utf8');
 
   let state: OrchestratorState = {
     spec_file: specFile,
@@ -466,6 +518,25 @@ export async function orchestrateCommandWithDeps(
 
   if (filterRepo && state.issues.length > 0 && deps.execGh) {
     await runTriageMonitorCycle(state, path.basename(sessionDir), filterRepo, deps, aloopRoot);
+  }
+
+  const dorTargets = state.issues
+    .filter((issue) => issue.status === 'Needs refinement' && issue.dor_validated !== true)
+    .map((issue) => ({
+      issue_number: issue.number,
+      title: issue.title,
+      wave: issue.wave,
+      depends_on: issue.depends_on,
+    }));
+  if (dorTargets.length > 0) {
+    const estimateRequestFile = path.join(requestsDir, 'estimate-readiness.json');
+    const estimateRequest = {
+      type: 'definition_of_ready_estimate',
+      prompt_template: ORCH_ESTIMATE_PROMPT_FILENAME,
+      generated_at: deps.now().toISOString(),
+      targets: dorTargets,
+    };
+    await deps.writeFile(estimateRequestFile, `${JSON.stringify(estimateRequest, null, 2)}\n`, 'utf8');
   }
 
   const stateFile = path.join(sessionDir, 'orchestrator.json');
@@ -958,6 +1029,62 @@ export async function runTriageMonitorCycle(
   return { processed_issues: state.issues.length, triaged_entries: triagedEntries };
 }
 
+// --- Definition of Ready (DoR) gate ---
+
+export interface DoRValidationResult {
+  passed: boolean;
+  gaps: string[];
+}
+
+const SPEC_QUESTION_BLOCKER = /aloop\/spec-question/i;
+
+/**
+ * Validate whether an issue satisfies Definition of Ready criteria per
+ * PROMPT_orch_estimate.md.  Checks are deterministic (no agent invocation)
+ * so they can run inline during dispatch filtering.
+ *
+ * Criteria:
+ *  1. Acceptance criteria present (explicit section or checkbox list)
+ *  2. No unresolved spec-question blockers referenced in body
+ *  3. Dependencies are resolved / scheduled (checked at dispatch level)
+ *  4. Planner approach is present (heuristic: body has implementation notes or "Approach" section)
+ *  5. Interface contracts are explicit (body length sufficient to contain them)
+ */
+export function validateDoR(issue: OrchestratorIssue): DoRValidationResult {
+  const gaps: string[] = [];
+  const body = `${issue.title}\n${issue.body ?? ''}`;
+
+  // Criterion 1: Acceptance criteria
+  const hasAcceptanceCriteria =
+    /acceptance\s*criteria/i.test(body) ||
+    /\[ \]/.test(body) ||
+    /accepts?/i.test(body);
+  if (!hasAcceptanceCriteria) {
+    gaps.push('Missing acceptance criteria');
+  }
+
+  // Criterion 2: No unresolved spec-question blockers
+  if (SPEC_QUESTION_BLOCKER.test(body)) {
+    gaps.push('Has unresolved spec-question blocker reference');
+  }
+
+  // Criterion 4: Planner approach (body should have meaningful content)
+  const hasPlannerApproach =
+    /approach/i.test(body) ||
+    /implementation/i.test(body) ||
+    body.trim().length > 200;
+  if (!hasPlannerApproach) {
+    gaps.push('Missing planner approach or implementation notes');
+  }
+
+  // Criterion 5: Estimation complete
+  if (issue.dor_validated !== true) {
+    gaps.push('Estimation/DoR validation not completed');
+  }
+
+  return { passed: gaps.length === 0, gaps };
+}
+
 // --- Child-loop dispatch engine ---
 
 /**
@@ -979,8 +1106,18 @@ export function getDispatchableIssues(state: OrchestratorState): OrchestratorIss
 
   return state.issues.filter((issue) => {
     if (issue.wave !== state.current_wave) return false;
+
+    // Primary signal: Project status 'Ready'
+    if (issue.status && issue.status !== 'Ready') return false;
+
+    // Legacy/fallback signal: state 'pending'
     if (issue.state !== 'pending') return false;
+
     if (shouldPauseForHumanFeedback(issue)) return false;
+
+    // Definition of Ready gate must pass before dispatch.
+    if (!validateDoR(issue).passed) return false;
+
     // All dependencies must be merged
     for (const depNumber of issue.depends_on) {
       const dep = issueByNumber.get(depNumber);

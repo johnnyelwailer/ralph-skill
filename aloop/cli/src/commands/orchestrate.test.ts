@@ -34,6 +34,7 @@ import {
   shouldPauseForBudget,
   generateFinalReport,
   formatFinalReportText,
+  validateDoR,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
   type DispatchDeps,
@@ -114,6 +115,17 @@ describe('orchestrateCommandWithDeps', () => {
     assert.ok(orchPromptPath, 'PROMPT_orch_scan.md should be written');
     assert.match(mockDeps._writtenFiles[orchPromptPath!], /agent:\s+orch_scan/);
     assert.match(mockDeps._writtenFiles[orchPromptPath!], /Orchestrator Scan \(Heartbeat\)/);
+  });
+
+  it('writes estimation prompt template for DoR checks', async () => {
+    const deps = createMockDeps();
+    const mockDeps = deps as OrchestrateDeps & { _writtenFiles: Record<string, string> };
+
+    await orchestrateCommandWithDeps({}, deps);
+
+    const estimatePromptPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/prompts/PROMPT_orch_estimate.md'));
+    assert.ok(estimatePromptPath, 'PROMPT_orch_estimate.md should be written');
+    assert.match(mockDeps._writtenFiles[estimatePromptPath!], /Orchestrator Estimation Agent/);
   });
 
   it('respects --spec, --trunk, --concurrency options', async () => {
@@ -558,6 +570,8 @@ describe('applyDecompositionPlan', () => {
 
     for (const issue of result.issues) {
       assert.equal(issue.state, 'pending');
+      assert.equal(issue.status, 'Needs refinement');
+      assert.equal(issue.dor_validated, false);
       assert.equal(issue.child_session, null);
       assert.equal(issue.pr_number, null);
     }
@@ -670,6 +684,23 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const persisted = JSON.parse(mockDeps._writtenFiles[stateFiles[0]]);
     assert.equal(persisted.issues.length, 2);
     assert.equal(persisted.current_wave, 1);
+  });
+
+  it('writes estimate-readiness request for unvalidated refinement issues', async () => {
+    const deps = createMockDeps({
+      existsSync: () => true,
+      readFile: async () => samplePlan,
+    });
+    const mockDeps = deps as OrchestrateDeps & { _writtenFiles: Record<string, string> };
+
+    await orchestrateCommandWithDeps({ plan: 'plan.json' }, deps);
+
+    const requestPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/requests/estimate-readiness.json'));
+    assert.ok(requestPath, 'estimate-readiness.json should be written');
+    const request = JSON.parse(mockDeps._writtenFiles[requestPath!]);
+    assert.equal(request.type, 'definition_of_ready_estimate');
+    assert.equal(request.prompt_template, 'PROMPT_orch_estimate.md');
+    assert.equal(request.targets.length, 2);
   });
 
   it('throws when plan file does not exist', async () => {
@@ -1428,11 +1459,13 @@ function makeIssue(overrides: Partial<OrchestratorIssue> = {}): OrchestratorIssu
   return {
     number: 1,
     title: 'Test issue',
+    body: '## Acceptance Criteria\n- [ ] Scenario is testable\n\n## Approach\nImplementation details are documented for dispatch readiness.',
     wave: 1,
     state: 'pending',
     child_session: null,
     pr_number: null,
     depends_on: [],
+    dor_validated: true,
     ...overrides,
   };
 }
@@ -1537,6 +1570,102 @@ describe('getDispatchableIssues', () => {
     assert.deepStrictEqual(result.map((i) => i.number), [2]);
     assert.equal(shouldPauseForHumanFeedback(state.issues[0]), true);
     assert.equal(shouldPauseForHumanFeedback(state.issues[1]), false);
+  });
+
+  it('excludes issues that fail Definition of Ready validation', () => {
+    const state = makeState({
+      current_wave: 1,
+      issues: [
+        makeIssue({
+          number: 1,
+          wave: 1,
+          state: 'pending',
+          dor_validated: false,
+          body: 'Approach only, missing testable acceptance criteria.',
+        }),
+        makeIssue({
+          number: 2,
+          wave: 1,
+          state: 'pending',
+        }),
+      ],
+    });
+    assert.equal(validateDoR(state.issues[0]).passed, false);
+    const result = getDispatchableIssues(state);
+    assert.deepStrictEqual(result.map((i) => i.number), [2]);
+  });
+
+  it('excludes issues that have not passed DoR validation', () => {
+    const state = makeState({
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'pending', dor_validated: false }),
+        makeIssue({ number: 2, wave: 1, state: 'pending', dor_validated: true }),
+      ],
+    });
+    const result = getDispatchableIssues(state);
+    assert.deepStrictEqual(result.map((i) => i.number), [2]);
+  });
+});
+
+describe('validateDoR', () => {
+  it('passes when acceptance criteria, approach, and content are present', () => {
+    const issue = makeIssue({
+      title: 'Add login form',
+      body: '## Approach\n\nUse react-hook-form with zod validation.\n\n## Acceptance Criteria\n- [ ] Form renders with email and password fields\n- [ ] Validation errors display inline\n\nImplementation details: Set up form state management and integrate with the auth API endpoint.',
+    });
+    const result = validateDoR(issue);
+    assert.equal(result.passed, true);
+    assert.deepStrictEqual(result.gaps, []);
+  });
+
+  it('fails when acceptance criteria are missing', () => {
+    const issue = makeIssue({
+      title: 'Add login form',
+      body: '## Approach\n\nUse react-hook-form with zod validation. Implement form state management and integrate with the auth API endpoint for authentication flow.',
+    });
+    const result = validateDoR(issue);
+    assert.equal(result.passed, false);
+    assert.ok(result.gaps.some((g) => g.includes('acceptance criteria')));
+  });
+
+  it('fails when spec-question blocker is referenced', () => {
+    const issue = makeIssue({
+      title: 'Add login form',
+      body: '## Approach\n\nUse react-hook-form. Blocked by aloop/spec-question regarding auth method.\n\n## Acceptance Criteria\n- [ ] Form renders with email field',
+    });
+    const result = validateDoR(issue);
+    assert.equal(result.passed, false);
+    assert.ok(result.gaps.some((g) => g.includes('spec-question')));
+  });
+
+  it('fails when planner approach is missing', () => {
+    const issue = makeIssue({
+      title: 'Add login form',
+      body: '## Acceptance Criteria\n- [ ] Form renders with email field',
+    });
+    const result = validateDoR(issue);
+    assert.equal(result.passed, false);
+    assert.ok(result.gaps.some((g) => g.includes('planner approach')));
+  });
+
+  it('detects acceptance criteria via checkbox patterns', () => {
+    const issue = makeIssue({
+      title: 'Fix bug',
+      body: 'Fix the null pointer exception.\n\nAcceptance Criteria:\n- [ ] Crash is prevented for null input.\n\nImplementation approach: add a null check before dereferencing the input parameter.',
+    });
+    const result = validateDoR(issue);
+    assert.equal(result.passed, true);
+  });
+
+  it('fails with multiple gaps when criteria are broadly missing', () => {
+    const issue = makeIssue({
+      title: 'Todo',
+      body: 'Something',
+    });
+    const result = validateDoR(issue);
+    assert.equal(result.passed, false);
+    assert.ok(result.gaps.length >= 2);
   });
 });
 
