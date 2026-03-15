@@ -1892,6 +1892,9 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     fi
 
     cd "$WORK_DIR"
+    # Record LOG_FILE.raw offset so we can extract per-iteration output after
+    local _raw_offset_before
+    _raw_offset_before=$(wc -c < "$LOG_FILE.raw" 2>/dev/null || echo 0)
     if invoke_provider "$iter_provider" "$prompt_content" "$FRONTMATTER_MODEL"; then
         update_provider_health_on_success "$iter_provider"
         register_iteration_success "$iter_mode" "$LAST_MODE_WAS_FORCED"
@@ -1962,6 +1965,14 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         persist_loop_plan_state
         echo "Warning: Iteration $ITERATION failed"
         write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL"
+    fi
+
+    # Extract per-iteration output from LOG_FILE.raw for dashboard parsing
+    mkdir -p "$SESSION_DIR/artifacts/iter-$ITERATION"
+    local _raw_offset_after
+    _raw_offset_after=$(wc -c < "$LOG_FILE.raw" 2>/dev/null || echo 0)
+    if [ "$_raw_offset_after" -gt "$_raw_offset_before" ]; then
+        tail -c +"$((_raw_offset_before + 1))" "$LOG_FILE.raw" | head -c "$((_raw_offset_after - _raw_offset_before))" > "$SESSION_DIR/artifacts/iter-$ITERATION/output.txt" 2>/dev/null
     fi
 
     wait_for_requests

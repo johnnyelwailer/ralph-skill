@@ -24,7 +24,7 @@ import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 
 type SessionStatus = Record<string, unknown>;
 
-interface ArtifactManifest { iteration: number; manifest: unknown }
+interface ArtifactManifest { iteration: number; manifest: unknown; outputHeader?: string }
 
 interface DashboardState {
   sessionDir: string;
@@ -96,6 +96,7 @@ interface ManifestPayload {
   phase: string;
   summary: string;
   artifacts: ArtifactEntry[];
+  outputHeader?: string;
 }
 
 interface ProviderHealth {
@@ -333,12 +334,13 @@ function artifactUrl(iter: number, file: string) { return `/api/artifacts/${iter
 
 function parseManifest(am: ArtifactManifest): ManifestPayload | null {
   const m = am.manifest;
-  if (!isRecord(m)) return null;
+  if (!isRecord(m) && !am.outputHeader) return null;
+  const manifest = isRecord(m) ? m : null;
   return {
     iteration: am.iteration,
-    phase: typeof m.phase === 'string' ? m.phase : 'proof',
-    summary: typeof m.summary === 'string' ? m.summary : '',
-    artifacts: Array.isArray(m.artifacts) ? (m.artifacts as unknown[]).filter(isRecord).map((a) => ({
+    phase: manifest && typeof manifest.phase === 'string' ? manifest.phase : 'proof',
+    summary: manifest && typeof manifest.summary === 'string' ? manifest.summary : '',
+    artifacts: manifest && Array.isArray(manifest.artifacts) ? (manifest.artifacts as unknown[]).filter(isRecord).map((a) => ({
       type: typeof a.type === 'string' ? a.type : 'unknown',
       path: typeof a.path === 'string' ? a.path : '',
       description: typeof a.description === 'string' ? a.description : '',
@@ -347,7 +349,15 @@ function parseManifest(am: ArtifactManifest): ManifestPayload | null {
         diff_percentage: typeof a.metadata.diff_percentage === 'number' ? a.metadata.diff_percentage : undefined,
       } : undefined,
     })) : [],
+    outputHeader: am.outputHeader,
   };
+}
+
+/** Extract model from opencode output header like "> build · openrouter/hunter-alpha" */
+function extractModelFromOutput(header?: string): string {
+  if (!header) return '';
+  const match = header.match(/^>\s*\w+\s*·\s*(.+)$/m);
+  return match ? match[1].trim() : '';
 }
 
 // ── Provider health derived from log ──
@@ -855,8 +865,13 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
 
         {/* Provider·model */}
         {entry.provider && (
-          <span className="text-muted-foreground/70 shrink-0 max-w-[100px] truncate">
-            {entry.model ? `${entry.provider}\u00b7${entry.model}` : entry.provider}
+          <span className="text-muted-foreground/70 shrink-0 max-w-[140px] truncate">
+            {(() => {
+              const model = entry.model && entry.model !== 'opencode-default'
+                ? entry.model
+                : extractModelFromOutput(artifacts?.outputHeader);
+              return model ? `${entry.provider}\u00b7${model}` : entry.provider;
+            })()}
           </span>
         )}
 

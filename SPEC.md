@@ -577,6 +577,7 @@ The reviewer sees this and can agree (approve) or disagree (reject with "actuall
 - Do **not** treat git diffs or commit summaries as proof artifacts
 - Generate artifacts, save to `<session-dir>/artifacts/iter-<N>/`
 - Write `proof-manifest.json`
+- `output.txt` is saved per-iteration (extracted from `LOG_FILE.raw` by byte offset after provider invocation) — contains raw provider output for dashboard parsing (model, tokens, cost)
 - If nothing is visually or behaviorally provable, write "nothing to prove" with empty artifacts and explanations in skipped
 
 The prompt does NOT prescribe what types of proof to generate or what tools to use — that's the agent's judgment call.
@@ -829,7 +830,7 @@ HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
 - **Timestamp**: HH:MM (locale-aware)
 - **Status dot**: centered vertically, colored by phase, subtle opacity pulse (`animate-pulse-dot`: opacity 1→0.5→1, 2s cycle) if currently active iteration
 - **Phase**: 5-char label (plan, build, proof, review)
-- **Provider·model**: e.g. `claude·sonnet-4.6`, truncated to max width. Model is tracked via `LAST_PROVIDER_MODEL` in loop.sh and logged in `iteration_complete`/`iteration_error` events
+- **Provider·model**: e.g. `claude·sonnet-4.6`, truncated to max 140px. Model sourced from: (1) `LAST_PROVIDER_MODEL` in log entry, (2) parsed from per-iteration `output.txt` header (e.g. opencode `> build · openrouter/hunter-alpha`). For opencode, `LAST_PROVIDER_MODEL` is `opencode-default` since the actual model is resolved by opencode; dashboard extracts the real model from the output header
 - **Result icon**: CheckCircle (green) for success, XCircle (red) for error — with tooltip showing full detail
 - **Result detail**: 7-char commit hash (blue, monospace) or error reason
 - **Duration**: right-aligned; live counting up with timer if currently active iteration

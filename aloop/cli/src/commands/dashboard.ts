@@ -18,6 +18,7 @@ interface DashboardOptions {
 interface ArtifactManifest {
   iteration: number;
   manifest: unknown;
+  outputHeader?: string;
 }
 
 interface DashboardState {
@@ -160,11 +161,18 @@ async function loadArtifactManifests(sessionDir: string): Promise<ArtifactManife
 
   const results: ArtifactManifest[] = [];
   for (const dir of iterDirs) {
+    const iteration = Number.parseInt(dir.name.slice(5), 10);
     const manifestPath = path.join(artifactsDir, dir.name, 'proof-manifest.json');
+    const outputPath = path.join(artifactsDir, dir.name, 'output.txt');
     const manifest = await readJsonFile(manifestPath);
-    if (manifest !== null) {
-      const iteration = Number.parseInt(dir.name.slice(5), 10);
-      results.push({ iteration, manifest });
+    // Read first few lines of output.txt for model/provider info
+    let outputHeader: string | undefined;
+    try {
+      const buf = await fs.readFile(outputPath, 'utf-8');
+      outputHeader = buf.slice(0, 500).split('\n').slice(0, 5).join('\n');
+    } catch { /* no output file yet */ }
+    if (manifest !== null || outputHeader) {
+      results.push({ iteration, manifest: manifest ?? null, outputHeader });
     }
   }
   return results;
