@@ -22,6 +22,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 
 // ── ANSI + Markdown rendering ──
+// Strip ANSI escape codes from text (for compact log entries)
+const STRIP_ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
+function stripAnsi(text: string): string {
+  return text.replace(STRIP_ANSI_RE, '');
+}
 // Parses ANSI SGR escape codes into styled segments, runs each segment's
 // text through marked (markdown→HTML), and wraps the result in <span>s
 // with inline styles. Based on ansi_up's palette and SGR handling.
@@ -369,11 +374,11 @@ function parseLogLine(line: string): LogEntry | null {
       }
     }
 
-    return { timestamp: ts, phase, event, provider, model, duration, message, raw: trimmed, rawObj, iteration, dateKey: formatDateKey(ts), isSuccess, isError, commitHash, resultDetail, filesChanged, isSignificant };
+    return { timestamp: ts, phase, event, provider, model, duration, message: stripAnsi(message), raw: trimmed, rawObj, iteration, dateKey: formatDateKey(ts), isSuccess, isError, commitHash, resultDetail, filesChanged, isSignificant };
   }
 
   // Plain text lines (provider stderr, stack traces) are not significant — hide from activity view
-  return { timestamp: '', phase: '', event: '', provider: '', model: '', duration: '', message: trimmed, raw: trimmed, rawObj: null, iteration: null, dateKey: 'Log', isSuccess: false, isError: false, commitHash: '', resultDetail: '', filesChanged: [], isSignificant: false };
+  return { timestamp: '', phase: '', event: '', provider: '', model: '', duration: '', message: stripAnsi(trimmed), raw: trimmed, rawObj: null, iteration: null, dateKey: 'Log', isSuccess: false, isError: false, commitHash: '', resultDetail: '', filesChanged: [], isSignificant: false };
 }
 
 // ── Phase colors ──
