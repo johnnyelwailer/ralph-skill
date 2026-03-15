@@ -30,7 +30,7 @@ import {
   runGhWatchCycle,
   ghWatchCommand,
   ghStatusCommand,
-  includesAloopAutoLabel,
+  includesAloopTrackingLabel,
   buildGhArgs,
   parseGhOutput,
   executeGhOperation,
@@ -66,7 +66,7 @@ function createFixture(): GhFixture {
   fs.writeFileSync(requestFile, JSON.stringify({
     type: 'pr-create',
     repo: 'test/repo',
-    labels: ['aloop/auto'],
+    labels: ['aloop'],
   }), 'utf8');
 
   return { tmpHome, sessionDir, requestFile };
@@ -544,7 +544,7 @@ test('ghCommand denies child-loop pr-comment when created_pr_numbers is not an a
   }
 });
 
-test('ghCommand denies orchestrator issue-close without aloop/auto target validation', async (t) => {
+test('ghCommand denies orchestrator issue-close without aloop target validation', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'error', () => {});
   t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
@@ -572,13 +572,13 @@ test('ghCommand denies orchestrator issue-close without aloop/auto target valida
     const entries = readLogEntries(fixture.sessionDir);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].event, 'gh_operation_denied');
-    assert.match(String(entries[0].reason), /aloop\/auto/i);
+    assert.match(String(entries[0].reason), /aloop/i);
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }
 });
 
-test('ghCommand allows orchestrator issue-close with aloop/auto-scoped target labels', async (t) => {
+test('ghCommand allows orchestrator issue-close with aloop-scoped target labels', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
   t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '', stderr: '' }));
@@ -587,7 +587,7 @@ test('ghCommand allows orchestrator issue-close with aloop/auto-scoped target la
     type: 'issue-close',
     repo: 'test/repo',
     issue_number: 42,
-    target_labels: ['aloop/auto'],
+    target_labels: ['aloop'],
   }), 'utf8');
 
   try {
@@ -609,7 +609,7 @@ test('ghCommand allows orchestrator issue-close with aloop/auto-scoped target la
   }
 });
 
-test('ghCommand allows orchestrator comment operations with aloop/auto-scoped targets', async (t) => {
+test('ghCommand allows orchestrator comment operations with aloop-scoped targets', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
   t.mock.method(ghExecutor, 'exec', async () => ({ stdout: '', stderr: '' }));
@@ -618,7 +618,7 @@ test('ghCommand allows orchestrator comment operations with aloop/auto-scoped ta
     type: 'issue-comment',
     repo: 'test/repo',
     issue_number: 42,
-    target_labels: ['aloop/auto'],
+    target_labels: ['aloop'],
   }), 'utf8');
 
   try {
@@ -640,7 +640,7 @@ test('ghCommand allows orchestrator comment operations with aloop/auto-scoped ta
   }
 });
 
-test('ghCommand denies orchestrator issue-comment when aloop/auto is only in request labels', async (t) => {
+test('ghCommand denies orchestrator issue-comment when aloop is only in request labels', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'error', () => {});
   t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
@@ -651,7 +651,7 @@ test('ghCommand denies orchestrator issue-comment when aloop/auto is only in req
     type: 'issue-comment',
     repo: 'test/repo',
     issue_number: 42,
-    labels: ['aloop/auto'],
+    labels: ['aloop'],
   }), 'utf8');
 
   try {
@@ -669,13 +669,13 @@ test('ghCommand denies orchestrator issue-comment when aloop/auto is only in req
     const entries = readLogEntries(fixture.sessionDir);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].event, 'gh_operation_denied');
-    assert.match(String(entries[0].reason), /aloop\/auto/i);
+    assert.match(String(entries[0].reason), /aloop/i);
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }
 });
 
-test('ghCommand denies orchestrator pr-comment without aloop/auto-scoped target validation', async (t) => {
+test('ghCommand denies orchestrator pr-comment without aloop-scoped target validation', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'error', () => {});
   t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
@@ -703,7 +703,7 @@ test('ghCommand denies orchestrator pr-comment without aloop/auto-scoped target 
     const entries = readLogEntries(fixture.sessionDir);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].event, 'gh_operation_denied');
-    assert.match(String(entries[0].reason), /aloop\/auto/i);
+    assert.match(String(entries[0].reason), /aloop/i);
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }
@@ -724,7 +724,7 @@ test('ghCommand allows orchestrator issue-label add for aloop/blocked-on-human',
     issue_number: 42,
     label_action: 'add',
     label: 'aloop/blocked-on-human',
-    target_labels: ['aloop/auto'],
+    target_labels: ['aloop'],
   }), 'utf8');
 
   try {
@@ -765,7 +765,7 @@ test('ghCommand allows orchestrator issue-label remove for aloop/blocked-on-huma
     issue_number: 42,
     label_action: 'remove',
     label: 'aloop/blocked-on-human',
-    target_labels: ['aloop/auto'],
+    target_labels: ['aloop'],
   }), 'utf8');
 
   try {
@@ -804,7 +804,7 @@ test('ghCommand denies orchestrator issue-label when label is not aloop/blocked-
     issue_number: 42,
     label_action: 'add',
     label: 'bug',
-    target_labels: ['aloop/auto'],
+    target_labels: ['aloop'],
   }), 'utf8');
 
   try {
@@ -1274,7 +1274,7 @@ test('ghCommand hard-fails when config.json contains invalid JSON', async (t) =>
 
 // --- Orchestrator issue-create label guards ---
 
-test('ghCommand denies orchestrator issue-create without aloop/auto label', async (t) => {
+test('ghCommand denies orchestrator issue-create without aloop label', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'error', () => {});
   t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
@@ -1302,13 +1302,13 @@ test('ghCommand denies orchestrator issue-create without aloop/auto label', asyn
     const entries = readLogEntries(fixture.sessionDir);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].event, 'gh_operation_denied');
-    assert.match(String(entries[0].reason), /aloop\/auto/i);
+    assert.match(String(entries[0].reason), /aloop/i);
   } finally {
     fs.rmSync(fixture.tmpHome, { recursive: true, force: true });
   }
 });
 
-test('ghCommand allows orchestrator issue-create with aloop/auto label', async (t) => {
+test('ghCommand allows orchestrator issue-create with aloop label', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
   t.mock.method(ghExecutor, 'exec', async () => ({ stdout: 'https://github.com/test/repo/issues/7\n', stderr: '' }));
@@ -1316,7 +1316,7 @@ test('ghCommand allows orchestrator issue-create with aloop/auto label', async (
   fs.writeFileSync(fixture.requestFile, JSON.stringify({
     type: 'issue-create',
     repo: 'test/repo',
-    labels: ['aloop/auto'],
+    labels: ['aloop'],
   }), 'utf8');
 
   try {
@@ -1338,7 +1338,7 @@ test('ghCommand allows orchestrator issue-create with aloop/auto label', async (
   }
 });
 
-test('ghCommand allows orchestrator issue-create when labels is a string containing aloop/auto', async (t) => {
+test('ghCommand allows orchestrator issue-create when labels is a string containing aloop', async (t) => {
   const fixture = createFixture();
   t.mock.method(console, 'log', () => {});
   let capturedArgs: string[] | undefined;
@@ -1350,7 +1350,7 @@ test('ghCommand allows orchestrator issue-create when labels is a string contain
   fs.writeFileSync(fixture.requestFile, JSON.stringify({
     type: 'issue-create',
     repo: 'test/repo',
-    labels: 'aloop/auto',
+    labels: 'aloop',
   }), 'utf8');
 
   try {
@@ -2475,8 +2475,8 @@ test('policy and parser helpers cover denied and unknown operation branches', ()
     childCreatedPrNumbers: [15],
   };
 
-  assert.equal(includesAloopAutoLabel(undefined), false);
-  assert.equal(includesAloopAutoLabel(['foo', 'aloop/auto']), true);
+  assert.equal(includesAloopTrackingLabel(undefined), false);
+  assert.equal(includesAloopTrackingLabel(['foo', 'aloop']), true);
 
   const childUnknown = evaluatePolicy('mystery-op', 'child-loop', { repo: 'test/repo' }, sessionPolicy);
   assert.equal(childUnknown.allowed, false);
@@ -2484,12 +2484,12 @@ test('policy and parser helpers cover denied and unknown operation branches', ()
 
   const labelMissingTarget = evaluatePolicy('issue-label', 'orchestrator', { issue_number: 42 }, sessionPolicy);
   assert.equal(labelMissingTarget.allowed, false);
-  assert.match(String(labelMissingTarget.reason), /aloop\/auto-scoped/i);
+  assert.match(String(labelMissingTarget.reason), /aloop-scoped/i);
 
   const labelBadNumber = evaluatePolicy(
     'issue-label',
     'orchestrator',
-    { target_labels: ['aloop/auto'], issue_number: 'abc', label_action: 'add', label: 'aloop/blocked-on-human' },
+    { target_labels: ['aloop'], issue_number: 'abc', label_action: 'add', label: 'aloop/blocked-on-human' },
     sessionPolicy,
   );
   assert.equal(labelBadNumber.allowed, false);
@@ -2498,7 +2498,7 @@ test('policy and parser helpers cover denied and unknown operation branches', ()
   const labelBadAction = evaluatePolicy(
     'issue-label',
     'orchestrator',
-    { target_labels: ['aloop/auto'], issue_number: 42, label_action: 'replace', label: 'aloop/blocked-on-human' },
+    { target_labels: ['aloop'], issue_number: 42, label_action: 'replace', label: 'aloop/blocked-on-human' },
     sessionPolicy,
   );
   assert.equal(labelBadAction.allowed, false);

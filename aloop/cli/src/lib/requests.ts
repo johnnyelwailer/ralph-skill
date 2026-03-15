@@ -282,7 +282,7 @@ async function handleCreateIssues(request: CreateIssuesRequest, fileName: string
       type: 'issue-create',
       title: issueReq.title,
       body: await fs.readFile(path.join(options.workdir, issueReq.body_file), 'utf8'),
-      labels: [...(issueReq.labels || []), 'aloop/auto']
+      labels: [...(issueReq.labels || []), 'aloop']
     }));
     
     const result = await options.ghCommandRunner('issue-create', options.sessionId, tempRequestPath);
@@ -332,7 +332,7 @@ async function handleCloseIssue(request: CloseIssueRequest, fileName: string, op
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'issue-close',
     issue_number: request.payload.number,
-    target_labels: ['aloop/auto'] // Policy check requires this
+    target_labels: ['aloop'] // Policy check requires this
   }));
   const result = await options.ghCommandRunner('issue-close', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);

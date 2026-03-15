@@ -1,5 +1,20 @@
 # Research Log
 
+## 2026-03-15 15:29Z — P0 research decision: GitHub-native progression with minimal-label fallback [T3+T2]
+
+- Decision finalized: issue progression is represented by **Project status + issue state** (`open/closed`) as primary truth; progression labels are not required for normal state transitions.
+- Required minimal labels retained where native signals are insufficient:
+  - `aloop` (single tracker scope label for orchestrator-owned issues)
+  - `aloop/spec-question` (blocking clarification artifact)
+  - `aloop/blocked-on-human` (explicit human-blocked condition)
+  - `aloop/auto-resolved` (autonomy-resolution provenance)
+  - `aloop/wave-*` (scheduling metadata, not progression)
+- Implementation alignment completed in this iteration:
+  - Orchestrator issue creation now uses `aloop` + `aloop/wave-*` labels (removed `aloop/auto` issuance).
+  - GH policy enforcement now validates an `aloop` tracking scope (with legacy acceptance of `aloop/auto` for compatibility).
+  - Request processor defaults switched from `aloop/auto` to `aloop` for issue-create/issue-close scoping.
+  - Tests updated to assert `aloop` tracking behavior.
+
 ## 2026-03-07 18:33 +01:00 — Devcontainer spec baseline for `/aloop:devcontainer` [T1+T2+T3]
 
 - Confirmed authoritative sources and scope for implementation:

@@ -8,7 +8,7 @@ Priority: Loop engine correctness -> Orchestrator core -> GitHub integration -> 
 - [x] [review] Gate 4: `dashboard.ts:568` — `sendToDefaultSessionClients` is dead code (defined but never called). Remove it. (priority: high)
 - [x] [review] Gate 4: `dashboard.ts:582-615` — `publishState` has identical logic in both `isGlobal` and `else` branches (copy-paste duplication). Consolidate into a single code path. (priority: high)
 - [x] [review] Gate 8: `@radix-ui/react-dropdown-menu@^2.1.16` was added to `dashboard/package.json` but is missing from `VERSIONS.md`. Add it to the Dashboard production dependencies table. (priority: high)
-- [ ] [orchestrator/P0] [research] GitHub-native state model feasibility — verify whether issue state + Project status can replace `aloop/*` progression labels; target single tracking label `aloop` unless native states cannot represent required transitions. Current orchestrate.ts uses label-based state (`pending`/`in_progress`/`pr_open`/`merged`/`failed`); spec requires Project status field (`Needs analysis`/`Needs decomposition`/`Ready`/`In progress`/`Done`) with label fallback.
+- [x] [orchestrator/P0] [research] GitHub-native state model feasibility — finalized: progression now uses Project status + issue state with `aloop` as the tracking label; minimal fallback labels retained only where native states cannot represent transitions (`aloop/spec-question`, `aloop/blocked-on-human`, `aloop/auto-resolved`, `aloop/wave-*`).
 - [x] [orchestrator/P0] Definition of Ready (DoR) gate — `PROMPT_orch_estimate.md` template defines DoR criteria but orchestrate.ts does not invoke the estimate agent or enforce DoR validation before dispatch. Wire the template into the orchestrator flow.
 
 ### Up Next — P0 (Blocking)

@@ -616,7 +616,7 @@ describe('applyDecompositionPlan', () => {
     assert.deepStrictEqual(result.issues[1].depends_on, [100]);
   });
 
-  it('calls execGhIssueCreate with correct labels (aloop/auto + wave)', async () => {
+  it('calls execGhIssueCreate with correct labels (aloop + wave)', async () => {
     const calls: { title: string; labels: string[] }[] = [];
     const deps: OrchestrateDeps = {
       ...baseDeps(),
@@ -631,8 +631,8 @@ describe('applyDecompositionPlan', () => {
     await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
     assert.equal(calls.length, 2);
-    assert.deepStrictEqual(calls[0].labels, ['aloop/auto', 'aloop/wave-1']);
-    assert.deepStrictEqual(calls[1].labels, ['aloop/auto', 'aloop/wave-2']);
+    assert.deepStrictEqual(calls[0].labels, ['aloop', 'aloop/wave-1']);
+    assert.deepStrictEqual(calls[1].labels, ['aloop', 'aloop/wave-2']);
     assert.equal(calls[0].title, 'Wave1');
     assert.equal(calls[1].title, 'Wave2');
   });

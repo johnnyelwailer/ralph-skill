@@ -382,7 +382,7 @@ export async function applyDecompositionPlan(
 
   for (const planIssue of plan.issues) {
     const wave = waveMap.get(planIssue.id)!;
-    const labels = ['aloop/auto', `aloop/wave-${wave}`];
+    const labels = ['aloop', `aloop/wave-${wave}`];
 
     let ghNumber: number;
     if (deps.execGhIssueCreate && repo) {
@@ -472,7 +472,7 @@ Confirm whether the item satisfies Definition of Ready:
 - Planner approach is present
 - Interface contracts are explicit
 
-If DoR passes, recommend label \`aloop/ready\`; otherwise keep blocked and list gaps.
+If DoR passes, recommend Project status \`Ready\` while keeping tracking label \`aloop\`; otherwise keep blocked and list gaps.
 `;
 
 const ORCH_PRODUCT_ANALYST_FALLBACK = `# Orchestrator Product Analyst

@@ -841,7 +841,7 @@ export {
   runGhWatchCycle,
   ghWatchCommand,
   ghStatusCommand,
-  includesAloopAutoLabel,
+  includesAloopTrackingLabel,
   buildGhArgs,
   parseGhOutput,
   executeGhOperation,
@@ -1635,12 +1635,19 @@ export async function ghStartCommandWithDeps(options: GhStartCommandOptions, dep
   };
 }
 
-function includesAloopAutoLabel(targetLabels: unknown): boolean {
-  if (!Array.isArray(targetLabels)) {
-    return false;
+function includesAloopTrackingLabel(targetLabels: unknown): boolean {
+  if (Array.isArray(targetLabels)) {
+    return targetLabels.some((label) => label === 'aloop' || label === 'aloop/auto');
   }
 
-  return targetLabels.some((label) => label === 'aloop/auto');
+  if (typeof targetLabels === 'string') {
+    return targetLabels
+      .split(',')
+      .map((label) => label.trim())
+      .some((label) => label === 'aloop' || label === 'aloop/auto');
+  }
+
+  return false;
 }
 
 function appendLog(sessionDir: string, entry: any) {
@@ -1977,13 +1984,13 @@ function evaluatePolicy(
   } else if (role === 'orchestrator') {
     switch (operation) {
       case 'issue-create':
-        if (!payload.labels || !payload.labels.includes('aloop/auto')) {
-           return { allowed: false, reason: 'Must include aloop/auto label' };
+        if (!includesAloopTrackingLabel(payload.labels)) {
+           return { allowed: false, reason: 'Must include aloop tracking label' };
         }
         return { allowed: true, enforced: { repo: sessionPolicy.repo } };
       case 'issue-close':
-        if (!includesAloopAutoLabel(payload.target_labels)) {
-          return { allowed: false, reason: 'issue-close requires aloop/auto-scoped target validation' };
+        if (!includesAloopTrackingLabel(payload.target_labels)) {
+          return { allowed: false, reason: 'issue-close requires aloop-scoped target validation' };
         }
         return { allowed: true, enforced: { repo: sessionPolicy.repo } };
       case 'pr-create':
@@ -1992,8 +1999,8 @@ function evaluatePolicy(
         // Only to agent/trunk, only squash merge
         return { allowed: true, enforced: { base: 'agent/trunk', merge_method: 'squash', repo: sessionPolicy.repo } };
       case 'issue-label': {
-        if (!includesAloopAutoLabel(payload.target_labels)) {
-          return { allowed: false, reason: 'issue-label requires aloop/auto-scoped target validation' };
+        if (!includesAloopTrackingLabel(payload.target_labels)) {
+          return { allowed: false, reason: 'issue-label requires aloop-scoped target validation' };
         }
         const issueNumber = parsePositiveInteger(payload.issue_number);
         if (issueNumber === undefined) {
@@ -2024,8 +2031,8 @@ function evaluatePolicy(
         return { allowed: true, enforced: { repo: sessionPolicy.repo, since: payload.since.trim() } };
       case 'pr-comment':
       case 'issue-comment':
-        if (!includesAloopAutoLabel(payload.target_labels)) {
-          return { allowed: false, reason: `${operation} requires aloop/auto-scoped target validation` };
+        if (!includesAloopTrackingLabel(payload.target_labels)) {
+          return { allowed: false, reason: `${operation} requires aloop-scoped target validation` };
         }
         return { allowed: true, enforced: { repo: sessionPolicy.repo } };
       case 'branch-delete':
