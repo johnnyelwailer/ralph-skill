@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
 import { toast } from 'sonner';
+import {
+  Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock,
+  GitBranch, GitCommit, Image, FileText, MoreHorizontal, PanelLeftClose,
+  PanelLeftOpen, Search, Send, Square, Timer, XCircle, Zap, Loader2,
+  Heart, AlertTriangle, Pause,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Progress } from '@/components/ui/progress';
@@ -17,10 +24,7 @@ import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 
 type SessionStatus = Record<string, unknown>;
 
-interface ArtifactManifest {
-  iteration: number;
-  manifest: unknown;
-}
+interface ArtifactManifest { iteration: number; manifest: unknown }
 
 interface DashboardState {
   sessionDir: string;
@@ -38,11 +42,18 @@ interface DashboardState {
 interface SessionSummary {
   id: string;
   name: string;
+  projectName: string;
   status: string;
   phase: string;
   elapsed: string;
   iterations: string;
   isActive: boolean;
+  branch: string;
+  startedAt: string;
+  endedAt: string;
+  pid: string;
+  provider: string;
+  workDir: string;
 }
 
 interface LogEntry {
@@ -62,6 +73,7 @@ interface LogEntry {
   commitHash: string;
   resultDetail: string;
   filesChanged: FileChange[];
+  isSignificant: boolean;
 }
 
 interface FileChange {
@@ -85,70 +97,94 @@ interface ManifestPayload {
   artifacts: ArtifactEntry[];
 }
 
+interface ProviderHealth {
+  name: string;
+  status: 'healthy' | 'cooldown' | 'failed';
+  lastEvent: string;
+  reason?: string;
+  consecutiveFailures?: number;
+  cooldownUntil?: string;
+}
+
 // ── Helpers ──
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-function readString(source: Record<string, unknown>, keys: string[], fallback: string): string {
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === 'string' && value.trim().length > 0) return value;
+function str(source: Record<string, unknown>, keys: string[], fb = ''): string {
+  for (const k of keys) {
+    const v = source[k];
+    if (typeof v === 'string' && v.trim()) return v;
   }
-  return fallback;
+  return fb;
 }
 
-function readNumberLike(source: Record<string, unknown>, keys: string[], fallback: string): string {
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+function numStr(source: Record<string, unknown>, keys: string[], fb = '--'): string {
+  for (const k of keys) {
+    const v = source[k];
+    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+    if (typeof v === 'string' && v.trim()) return v.trim();
   }
-  return fallback;
+  return fb;
 }
 
-function toSessionSummary(source: Record<string, unknown>, fallbackName: string, isActive: boolean): SessionSummary {
+function toSession(source: Record<string, unknown>, fallback: string, isActive: boolean): SessionSummary {
   return {
-    id: readString(source, ['session_id', 'id'], fallbackName),
-    name: readString(source, ['project_name', 'name', 'session_name'], fallbackName),
-    status: readString(source, ['state', 'status'], 'unknown'),
-    phase: readString(source, ['mode', 'phase'], ''),
-    elapsed: readString(source, ['elapsed', 'elapsed_time', 'duration'], '--'),
-    iterations: readNumberLike(source, ['iteration', 'iterations'], '--'),
+    id: str(source, ['session_id', 'id'], fallback),
+    name: str(source, ['session_id', 'name', 'session_name'], fallback),
+    projectName: str(source, ['project_name'], fallback.split('-').slice(0, -1).join('-') || fallback),
+    status: str(source, ['state', 'status'], 'unknown'),
+    phase: str(source, ['mode', 'phase'], ''),
+    elapsed: str(source, ['elapsed', 'elapsed_time', 'duration'], '--'),
+    iterations: numStr(source, ['iteration', 'iterations']),
     isActive,
+    branch: str(source, ['branch'], ''),
+    startedAt: str(source, ['started_at'], ''),
+    endedAt: str(source, ['ended_at'], ''),
+    pid: numStr(source, ['pid'], ''),
+    provider: str(source, ['provider'], ''),
+    workDir: str(source, ['work_dir'], ''),
   };
 }
 
 function formatTime(ts: string): string {
   if (!ts) return '';
-  try {
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  } catch {
-    return ts;
-  }
+  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+  catch { return ts; }
 }
 
 function formatTimeShort(ts: string): string {
   if (!ts) return '';
-  try {
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return ts;
-  }
+  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  catch { return ts; }
 }
 
 function formatDateKey(ts: string): string {
   if (!ts) return 'Unknown';
-  try {
-    const d = new Date(ts);
-    return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return 'Unknown';
-  }
+  try { return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }); }
+  catch { return 'Unknown'; }
 }
+
+function relativeTime(ts: string): string {
+  if (!ts) return '';
+  try {
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  } catch { return ''; }
+}
+
+const SIGNIFICANT_EVENTS = new Set([
+  'iteration_complete', 'iteration_error', 'provider_cooldown', 'provider_recovered',
+  'review_verdict_read', 'session_start', 'session_end', 'session_restart',
+  'queue_override_applied', 'queue_override_error',
+]);
 
 function parseLogLine(line: string): LogEntry | null {
   const trimmed = line.trim();
@@ -158,30 +194,28 @@ function parseLogLine(line: string): LogEntry | null {
   try {
     const obj = JSON.parse(trimmed);
     if (isRecord(obj)) rawObj = obj;
-  } catch {
-    // plain text
-  }
+  } catch { /* plain text */ }
 
   if (rawObj) {
-    const ts = readString(rawObj, ['timestamp', 'ts', 'time', 'created_at'], '');
-    const phase = readString(rawObj, ['phase', 'mode'], '');
-    const event = readString(rawObj, ['event', 'type', 'action'], '');
-    const provider = readString(rawObj, ['provider'], '');
-    const model = readString(rawObj, ['model'], '');
-    const duration = readString(rawObj, ['duration', 'elapsed', 'took'], '');
-    const message = readString(rawObj, ['message', 'msg', 'detail', 'description', 'text'], event);
+    const event = str(rawObj, ['event', 'type', 'action'], '');
+    const isSignificant = SIGNIFICANT_EVENTS.has(event);
+    const ts = str(rawObj, ['timestamp', 'ts', 'time', 'created_at']);
+    const phase = str(rawObj, ['phase', 'mode']);
+    const provider = str(rawObj, ['provider']);
+    const model = str(rawObj, ['model']);
+    const duration = str(rawObj, ['duration', 'elapsed', 'took']);
+    const message = str(rawObj, ['message', 'msg', 'detail', 'description', 'text'], event);
     const iterRaw = rawObj.iteration;
     const iteration = typeof iterRaw === 'number' ? iterRaw : (typeof iterRaw === 'string' ? parseInt(iterRaw, 10) || null : null);
-    const commitHash = readString(rawObj, ['commit', 'commit_hash', 'sha'], '');
-    const isSuccess = event.includes('complete') || event.includes('success') || event.includes('approved');
+    const commitHash = str(rawObj, ['commit', 'commit_hash', 'sha']);
+    const isSuccess = event.includes('complete') || event.includes('success') || event.includes('approved') || event.includes('recovered');
     const isError = event.includes('error') || event.includes('fail') || event.includes('cooldown');
 
     let resultDetail = '';
     if (commitHash) resultDetail = commitHash.slice(0, 7);
-    else if (isError) resultDetail = readString(rawObj, ['reason', 'error', 'exit_code'], 'error');
-    else if (event.includes('verdict')) resultDetail = readString(rawObj, ['verdict'], '');
+    else if (event.includes('verdict')) resultDetail = str(rawObj, ['verdict']);
+    else if (isError) resultDetail = str(rawObj, ['reason', 'error', 'exit_code'], 'error');
 
-    // Parse file changes if present
     const filesChanged: FileChange[] = [];
     const files = rawObj.files ?? rawObj.files_changed;
     if (Array.isArray(files)) {
@@ -197,44 +231,10 @@ function parseLogLine(line: string): LogEntry | null {
       }
     }
 
-    return {
-      timestamp: ts,
-      phase,
-      event,
-      provider,
-      model,
-      duration,
-      message,
-      raw: trimmed,
-      rawObj,
-      iteration,
-      dateKey: formatDateKey(ts),
-      isSuccess,
-      isError,
-      commitHash,
-      resultDetail,
-      filesChanged,
-    };
+    return { timestamp: ts, phase, event, provider, model, duration, message, raw: trimmed, rawObj, iteration, dateKey: formatDateKey(ts), isSuccess, isError, commitHash, resultDetail, filesChanged, isSignificant };
   }
 
-  return {
-    timestamp: '',
-    phase: '',
-    event: '',
-    provider: '',
-    model: '',
-    duration: '',
-    message: trimmed,
-    raw: trimmed,
-    rawObj: null,
-    iteration: null,
-    dateKey: 'Log',
-    isSuccess: false,
-    isError: false,
-    commitHash: '',
-    resultDetail: '',
-    filesChanged: [],
-  };
+  return { timestamp: '', phase: '', event: '', provider: '', model: '', duration: '', message: trimmed, raw: trimmed, rawObj: null, iteration: null, dateKey: 'Log', isSuccess: false, isError: false, commitHash: '', resultDetail: '', filesChanged: [], isSignificant: true };
 }
 
 // ── Phase colors ──
@@ -247,17 +247,11 @@ const phaseColors: Record<string, string> = {
 };
 
 const phaseBarColors: Record<string, string> = {
-  plan: 'bg-purple-500',
-  build: 'bg-yellow-500',
-  proof: 'bg-amber-500',
-  review: 'bg-cyan-500',
+  plan: 'bg-purple-500', build: 'bg-yellow-500', proof: 'bg-amber-500', review: 'bg-cyan-500',
 };
 
 const phaseDotColors: Record<string, string> = {
-  plan: 'bg-purple-400',
-  build: 'bg-yellow-400',
-  proof: 'bg-amber-400',
-  review: 'bg-cyan-400',
+  plan: 'text-purple-500', build: 'text-yellow-500', proof: 'text-amber-500', review: 'text-cyan-500',
 };
 
 const statusColors: Record<string, string> = {
@@ -271,61 +265,49 @@ function PhaseBadge({ phase, small }: { phase: string; small?: boolean }) {
   if (!phase) return null;
   const colors = phaseColors[phase.toLowerCase()] ?? 'bg-muted text-muted-foreground border-border';
   const size = small ? 'px-1 py-0 text-[10px]' : 'px-1.5 py-0.5 text-xs';
-  return (
-    <span className={`inline-block rounded border font-medium ${colors} ${size}`}>
-      {phase}
-    </span>
-  );
+  return <span className={`inline-block rounded border font-medium ${colors} ${size}`}>{phase}</span>;
 }
 
-function StatusDot({ status }: { status: string }) {
+function StatusDot({ status, className = '' }: { status: string; className?: string }) {
   if (status === 'running') {
     return (
-      <span className="relative flex h-2 w-2 shrink-0">
+      <span className={`relative flex h-2.5 w-2.5 shrink-0 ${className}`}>
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
       </span>
     );
   }
-  const color = status === 'stopped' || status === 'exited' ? 'bg-muted-foreground' : 'bg-orange-400';
-  return <span className={`inline-flex h-2 w-2 shrink-0 rounded-full ${color}`} />;
+  const color = status === 'stopped' || status === 'exited' ? 'bg-muted-foreground/50' : status === 'unhealthy' ? 'bg-red-500' : 'bg-orange-400';
+  return <span className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${color} ${className}`} />;
 }
-
-// ── Connection status ──
 
 type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
 function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
-  const colors: Record<ConnectionStatus, string> = {
-    connected: 'bg-green-500',
-    connecting: 'bg-yellow-500 animate-pulse-dot',
-    disconnected: 'bg-red-500',
-  };
-  const labels: Record<ConnectionStatus, string> = {
-    connected: 'Live',
-    connecting: 'Connecting...',
-    disconnected: 'Disconnected',
-  };
+  const Icon = status === 'connected' ? Zap : status === 'connecting' ? Loader2 : AlertTriangle;
+  const color = status === 'connected' ? 'text-green-500' : status === 'connecting' ? 'text-yellow-500 animate-spin' : 'text-red-500';
+  const label = status === 'connected' ? 'Live' : status === 'connecting' ? 'Connecting...' : 'Disconnected';
   return (
-    <div className="flex items-center gap-1.5">
-      <span className={`h-1.5 w-1.5 rounded-full ${colors[status]}`} />
-      <span className="text-[10px] text-muted-foreground">{labels[status]}</span>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex items-center gap-1">
+          <Icon className={`h-3 w-3 ${color}`} />
+          <span className="text-[10px] text-muted-foreground">{label}</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent><p>SSE connection: {label}</p></TooltipContent>
+    </Tooltip>
   );
 }
 
 // ── Artifact helpers ──
 
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
-
-function isImageArtifact(artifact: ArtifactEntry): boolean {
-  const ext = artifact.path.lastIndexOf('.') >= 0 ? artifact.path.slice(artifact.path.lastIndexOf('.')).toLowerCase() : '';
-  return IMAGE_EXTENSIONS.has(ext) || artifact.type === 'screenshot' || artifact.type === 'visual_diff';
+const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+function isImageArtifact(a: ArtifactEntry) {
+  const ext = a.path.includes('.') ? a.path.slice(a.path.lastIndexOf('.')).toLowerCase() : '';
+  return IMAGE_EXT.has(ext) || a.type === 'screenshot' || a.type === 'visual_diff';
 }
-
-function artifactUrl(iteration: number, filename: string): string {
-  return `/api/artifacts/${iteration}/${encodeURIComponent(filename)}`;
-}
+function artifactUrl(iter: number, file: string) { return `/api/artifacts/${iter}/${encodeURIComponent(file)}`; }
 
 function parseManifest(am: ArtifactManifest): ManifestPayload | null {
   const m = am.manifest;
@@ -334,30 +316,64 @@ function parseManifest(am: ArtifactManifest): ManifestPayload | null {
     iteration: am.iteration,
     phase: typeof m.phase === 'string' ? m.phase : 'proof',
     summary: typeof m.summary === 'string' ? m.summary : '',
-    artifacts: Array.isArray(m.artifacts)
-      ? (m.artifacts as unknown[]).filter(isRecord).map((a) => ({
-          type: typeof a.type === 'string' ? a.type : 'unknown',
-          path: typeof a.path === 'string' ? a.path : '',
-          description: typeof a.description === 'string' ? a.description : '',
-          metadata: isRecord(a.metadata)
-            ? {
-                baseline: typeof a.metadata.baseline === 'string' ? a.metadata.baseline : undefined,
-                diff_percentage: typeof a.metadata.diff_percentage === 'number' ? a.metadata.diff_percentage : undefined,
-              }
-            : undefined,
-        }))
-      : [],
+    artifacts: Array.isArray(m.artifacts) ? (m.artifacts as unknown[]).filter(isRecord).map((a) => ({
+      type: typeof a.type === 'string' ? a.type : 'unknown',
+      path: typeof a.path === 'string' ? a.path : '',
+      description: typeof a.description === 'string' ? a.description : '',
+      metadata: isRecord(a.metadata) ? {
+        baseline: typeof a.metadata.baseline === 'string' ? a.metadata.baseline : undefined,
+        diff_percentage: typeof a.metadata.diff_percentage === 'number' ? a.metadata.diff_percentage : undefined,
+      } : undefined,
+    })) : [],
   };
+}
+
+// ── Provider health derived from log ──
+
+function deriveProviderHealth(log: string): ProviderHealth[] {
+  const providers = new Map<string, ProviderHealth>();
+  for (const line of log.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const obj = JSON.parse(trimmed);
+      if (!isRecord(obj)) continue;
+      const event = str(obj, ['event']);
+      const provider = str(obj, ['provider']);
+      const ts = str(obj, ['timestamp']);
+      if (!provider) continue;
+
+      if (event === 'provider_cooldown') {
+        providers.set(provider, {
+          name: provider,
+          status: 'cooldown',
+          lastEvent: ts,
+          reason: str(obj, ['reason']),
+          consecutiveFailures: typeof obj.consecutive_failures === 'number' ? obj.consecutive_failures : undefined,
+          cooldownUntil: str(obj, ['cooldown_until']),
+        });
+      } else if (event === 'provider_recovered') {
+        providers.set(provider, { name: provider, status: 'healthy', lastEvent: ts });
+      } else if (event === 'iteration_complete' || event === 'iteration_error') {
+        if (!providers.has(provider)) {
+          providers.set(provider, { name: provider, status: 'healthy', lastEvent: ts });
+        } else {
+          const existing = providers.get(provider)!;
+          if (event === 'iteration_complete' && existing.status !== 'cooldown') {
+            existing.status = 'healthy';
+          }
+          existing.lastEvent = ts;
+        }
+      }
+    } catch { /* skip */ }
+  }
+  return Array.from(providers.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // ── Sidebar ──
 
 function Sidebar({
-  sessions,
-  selectedSessionId,
-  onSelectSession,
-  collapsed,
-  onToggle,
+  sessions, selectedSessionId, onSelectSession, collapsed, onToggle,
 }: {
   sessions: SessionSummary[];
   selectedSessionId: string | null;
@@ -365,115 +381,145 @@ function Sidebar({
   collapsed: boolean;
   onToggle: () => void;
 }) {
-  const activeSessions = sessions.filter((s) => s.isActive);
-  const recentSessions = sessions.filter((s) => !s.isActive);
+  // Group by project
+  const { projectGroups, olderSessions } = useMemo(() => {
+    const now = Date.now();
+    const cutoff = 24 * 60 * 60 * 1000; // 24h
+    const active: SessionSummary[] = [];
+    const older: SessionSummary[] = [];
+
+    for (const s of sessions) {
+      const lastActivity = s.endedAt || s.startedAt;
+      const age = lastActivity ? now - new Date(lastActivity).getTime() : Infinity;
+      if (s.isActive || s.status === 'running' || age < cutoff) {
+        active.push(s);
+      } else {
+        older.push(s);
+      }
+    }
+
+    const groups = new Map<string, SessionSummary[]>();
+    for (const s of active) {
+      const key = s.projectName || 'Unknown';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(s);
+    }
+    return { projectGroups: groups, olderSessions: older };
+  }, [sessions]);
+
+  const [olderOpen, setOlderOpen] = useState(false);
 
   if (collapsed) {
     return (
       <div className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
-        <button
-          type="button"
-          className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-          onClick={onToggle}
-          title="Expand sidebar (Ctrl+B)"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M6 3l5 5-5 5" />
-          </svg>
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggle}>
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right"><p>Expand sidebar (Ctrl+B)</p></TooltipContent>
+        </Tooltip>
         <div className="mt-3 space-y-2">
           {sessions.slice(0, 8).map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className="block"
-              title={`${s.name} (${s.status})`}
-              onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
-            >
-              <StatusDot status={s.isActive && s.status === 'running' ? 'running' : 'stopped'} />
-            </button>
+            <Tooltip key={s.id}>
+              <TooltipTrigger asChild>
+                <button type="button" className="block" onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}>
+                  <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right"><p>{s.name} ({s.status})</p></TooltipContent>
+            </Tooltip>
           ))}
         </div>
       </div>
     );
   }
 
-  const renderSessionCard = (session: SessionSummary) => {
-    const isSelected = selectedSessionId === null
-      ? session.id === 'current' || sessions.indexOf(session) === 0
-      : session.id === selectedSessionId;
-    return (
-      <button
-        key={session.id}
-        type="button"
-        className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${
-          isSelected ? 'bg-accent' : ''
-        }`}
-        onClick={() => onSelectSession(session.id === 'current' ? null : session.id)}
-      >
-        <div className="flex items-center gap-1.5">
-          {session.isActive && session.status === 'running' ? (
-            <StatusDot status="running" />
-          ) : (
-            <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${session.isActive ? 'bg-muted-foreground' : 'bg-muted-foreground/40'}`} />
+  const isSelected = (s: SessionSummary) =>
+    selectedSessionId === null ? sessions.indexOf(s) === 0 : s.id === selectedSessionId;
+
+  const renderCard = (s: SessionSummary) => (
+    <Tooltip key={s.id}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
+          onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
+        >
+          <div className="flex items-center gap-1.5">
+            <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
+            <span className="truncate font-medium">{s.name}</span>
+          </div>
+          {s.branch && (
+            <div className="flex items-center gap-1 mt-0.5 ml-4 text-muted-foreground/60">
+              <GitBranch className="h-3 w-3" />
+              <span className="truncate text-[10px]">{s.branch}</span>
+            </div>
           )}
-          <span className="truncate font-medium">{session.name}</span>
+          <div className="flex items-center gap-1.5 mt-0.5 ml-4">
+            {s.phase && <PhaseBadge phase={s.phase} small />}
+            <span className="text-muted-foreground text-[10px]">iter {s.iterations}</span>
+            <span className="text-muted-foreground/50 text-[10px]">{relativeTime(s.endedAt || s.startedAt)}</span>
+          </div>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-xs">
+        <div className="space-y-0.5 text-xs">
+          <p className="font-medium">{s.id}</p>
+          {s.pid && <p>PID: {s.pid}</p>}
+          <p>Status: {s.status}</p>
+          <p>Provider: {s.provider}</p>
+          {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
+          {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
+          {s.workDir && <p className="truncate">Dir: {s.workDir}</p>}
         </div>
-        <div className="flex items-center gap-1.5 mt-0.5 ml-3.5">
-          {session.phase && <PhaseBadge phase={session.phase} small />}
-          <span className="text-muted-foreground">iter {session.iterations}</span>
-          {session.elapsed !== '--' && (
-            <span className="text-muted-foreground/60">{session.elapsed}</span>
-          )}
-        </div>
-      </button>
-    );
-  };
+      </TooltipContent>
+    </Tooltip>
+  );
 
   return (
     <div className="flex flex-col border-r border-border bg-sidebar w-56 shrink-0 animate-slide-in-left">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
-        <button
-          type="button"
-          className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-          onClick={onToggle}
-          title="Collapse sidebar (Ctrl+B)"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M10 3l-5 5 5 5" />
-          </svg>
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggle}>
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent><p>Collapse (Ctrl+B)</p></TooltipContent>
+        </Tooltip>
       </div>
       <ScrollArea className="flex-1">
         <div className="p-2">
-          {/* Active sessions group */}
-          {activeSessions.length > 0 && (
-            <div className="mb-2">
-              <div className="px-1 pb-1">
-                <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Active</span>
-              </div>
-              <div className="space-y-0.5">
-                {activeSessions.map(renderSessionCard)}
-              </div>
-            </div>
+          {Array.from(projectGroups.entries()).map(([project, items]) => (
+            <Collapsible key={project} defaultOpen>
+              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider hover:text-muted-foreground">
+                <ChevronDown className="h-3 w-3 transition-transform group-data-[state=closed]:rotate-[-90deg]" />
+                {project}
+                <span className="ml-auto text-muted-foreground/40">{items.length}</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="space-y-0.5 mb-2">{items.map(renderCard)}</div>
+              </CollapsibleContent>
+            </Collapsible>
+          ))}
+
+          {olderSessions.length > 0 && (
+            <Collapsible open={olderOpen} onOpenChange={setOlderOpen}>
+              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-wider hover:text-muted-foreground">
+                {olderOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                Older
+                <span className="ml-auto">{olderSessions.length}</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="space-y-0.5 mb-2">{olderSessions.map(renderCard)}</div>
+              </CollapsibleContent>
+            </Collapsible>
           )}
 
-          {/* Recent sessions group */}
-          {recentSessions.length > 0 && (
-            <div>
-              <div className="px-1 pb-1">
-                <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Recent</span>
-              </div>
-              <div className="space-y-0.5">
-                {recentSessions.map(renderSessionCard)}
-              </div>
-            </div>
-          )}
-
-          {sessions.length === 0 && (
-            <p className="text-xs text-muted-foreground p-2">No sessions found.</p>
-          )}
+          {sessions.length === 0 && <p className="text-xs text-muted-foreground p-2">No sessions.</p>}
         </div>
       </ScrollArea>
     </div>
@@ -483,57 +529,29 @@ function Sidebar({
 // ── Header ──
 
 function Header({
-  sessionName,
-  isRunning,
-  currentState,
-  currentPhase,
-  currentIteration,
-  providerName,
-  modelName,
-  tasksCompleted,
-  tasksTotal,
-  progressPercent,
-  updatedAt,
-  loading,
-  loadError,
-  connectionStatus,
-  onOpenCommand,
-  onOpenSwitcher,
+  sessionName, isRunning, currentState, currentPhase, currentIteration,
+  providerName, modelName, tasksCompleted, tasksTotal, progressPercent,
+  updatedAt, loading, loadError, connectionStatus, onOpenCommand, onOpenSwitcher,
 }: {
-  sessionName: string;
-  isRunning: boolean;
-  currentState: string;
-  currentPhase: string;
-  currentIteration: string;
-  providerName: string;
-  modelName: string;
-  tasksCompleted: number;
-  tasksTotal: number;
-  progressPercent: number;
-  updatedAt: string;
-  loading: boolean;
-  loadError: string | null;
-  connectionStatus: ConnectionStatus;
-  onOpenCommand: () => void;
-  onOpenSwitcher: () => void;
+  sessionName: string; isRunning: boolean; currentState: string; currentPhase: string;
+  currentIteration: string; providerName: string; modelName: string;
+  tasksCompleted: number; tasksTotal: number; progressPercent: number;
+  updatedAt: string; loading: boolean; loadError: string | null;
+  connectionStatus: ConnectionStatus; onOpenCommand: () => void; onOpenSwitcher: () => void;
 }) {
   const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
-
   return (
     <header className="border-b border-border px-4 py-2.5 shrink-0">
       <div className="flex items-center gap-4">
-        <button
-          type="button"
-          className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors"
-          onClick={onOpenSwitcher}
-        >
+        <button type="button" className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors" onClick={onOpenSwitcher}>
           <StatusDot status={isRunning ? 'running' : currentState} />
           <span className="text-sm font-semibold truncate max-w-[200px]">{sessionName}</span>
         </button>
 
         <HoverCard>
           <HoverCardTrigger asChild>
-            <span className="text-xs text-muted-foreground cursor-help whitespace-nowrap">
+            <span className="text-xs text-muted-foreground cursor-help whitespace-nowrap flex items-center gap-1">
+              <Activity className="h-3 w-3" />
               iter {currentIteration}{tasksTotal > 0 ? ` / ${tasksTotal} tasks` : ''}
             </span>
           </HoverCardTrigger>
@@ -553,77 +571,80 @@ function Header({
         </div>
 
         <PhaseBadge phase={currentPhase} />
-
-        {providerName && (
-          <span className="text-xs text-muted-foreground whitespace-nowrap">
-            {modelName ? `${providerName}/${modelName}` : providerName}
-          </span>
-        )}
-
-        <span className={`text-xs whitespace-nowrap font-medium ${statusColors[currentState] ?? 'text-muted-foreground'}`}>
-          {currentState}
-        </span>
+        {providerName && <span className="text-xs text-muted-foreground whitespace-nowrap">{modelName ? `${providerName}/${modelName}` : providerName}</span>}
+        <span className={`text-xs whitespace-nowrap font-medium ${statusColors[currentState] ?? 'text-muted-foreground'}`}>{currentState}</span>
 
         <div className="flex-1" />
-
         <ConnectionIndicator status={connectionStatus} />
-
-        <button
-          type="button"
-          className="text-muted-foreground hover:text-foreground transition-colors"
-          onClick={onOpenCommand}
-        >
-          <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] font-mono">Ctrl+K</kbd>
-        </button>
-
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="text-muted-foreground hover:text-foreground transition-colors" onClick={onOpenCommand}>
+              <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] font-mono flex items-center gap-1"><Search className="h-3 w-3" /> K</kbd>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent><p>Command palette (Ctrl+K)</p></TooltipContent>
+        </Tooltip>
         <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-          {loading ? 'Loading...' : updatedAt ? formatTime(updatedAt) : ''}
-          {loadError && !loading ? ' \u2022 err' : ''}
+          {loading ? 'Loading...' : updatedAt ? formatTime(updatedAt) : ''}{loadError && !loading ? ' \u2022 err' : ''}
         </span>
       </div>
     </header>
   );
 }
 
-// ── Docs Panel (Tabbed) ──
+// ── Docs Panel ──
 
-function DocsPanel({ docs }: { docs: Record<string, string> }) {
+function DocsPanel({ docs, providerHealth }: { docs: Record<string, string>; providerHealth: ProviderHealth[] }) {
   const docOrder = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
-  const tabLabels: Record<string, string> = {
-    'TODO.md': 'TODO',
-    'SPEC.md': 'SPEC',
-    'RESEARCH.md': 'RESEARCH',
-    'REVIEW_LOG.md': 'REVIEW LOG',
-    'STEERING.md': 'STEERING',
-  };
+  const tabLabels: Record<string, string> = { 'TODO.md': 'TODO', 'SPEC.md': 'SPEC', 'RESEARCH.md': 'RESEARCH', 'REVIEW_LOG.md': 'REVIEW LOG', 'STEERING.md': 'STEERING' };
 
-  const availableDocs = docOrder.filter((name) => docs[name] !== undefined);
-  const extraDocs = Object.keys(docs).filter((name) => !docOrder.includes(name));
+  const availableDocs = docOrder.filter((n) => docs[n] !== undefined);
+  const extraDocs = Object.keys(docs).filter((n) => !docOrder.includes(n));
   const allDocs = [...availableDocs, ...extraDocs];
-  const defaultTab = allDocs.includes('TODO.md') ? 'TODO.md' : allDocs[0] ?? '';
 
-  if (allDocs.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
-        No documents available.
-      </div>
-    );
-  }
+  const MAX_VISIBLE_TABS = 4;
+  const visibleTabs = allDocs.slice(0, MAX_VISIBLE_TABS);
+  const overflowTabs = allDocs.slice(MAX_VISIBLE_TABS);
+
+  // Always add Health as a special tab
+  const defaultTab = allDocs.includes('TODO.md') ? 'TODO.md' : allDocs[0] ?? '_health';
 
   return (
     <Tabs defaultValue={defaultTab} className="flex flex-col h-full">
-      <TabsList className="h-8 bg-muted/50 shrink-0 flex-wrap justify-start">
-        {allDocs.map((name) => (
-          <TabsTrigger key={name} value={name} className="text-[11px] px-2 py-1 h-6 data-[state=active]:bg-background">
-            {tabLabels[name] ?? name.replace(/\.md$/i, '')}
+      <div className="flex items-center shrink-0">
+        <TabsList className="h-8 bg-muted/50 flex-wrap justify-start flex-1">
+          {visibleTabs.map((n) => (
+            <TabsTrigger key={n} value={n} className="text-[11px] px-2 py-1 h-6 data-[state=active]:bg-background">
+              {tabLabels[n] ?? n.replace(/\.md$/i, '')}
+            </TabsTrigger>
+          ))}
+          <TabsTrigger value="_health" className="text-[11px] px-2 py-1 h-6 data-[state=active]:bg-background">
+            <Heart className="h-3 w-3 mr-1" /> Health
           </TabsTrigger>
-        ))}
-      </TabsList>
-      {allDocs.map((name) => (
-        <TabsContent key={name} value={name} className="flex-1 min-h-0 mt-0">
-          <DocContent content={docs[name] ?? ''} name={name} />
+          {overflowTabs.length > 0 && (
+            <div className="relative group">
+              <button type="button" className="px-2 py-1 h-6 text-[11px] text-muted-foreground hover:text-foreground">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+              <div className="absolute right-0 top-full z-20 hidden group-hover:block bg-popover border rounded-md shadow-md py-1 min-w-[120px]">
+                {overflowTabs.map((n) => (
+                  <TabsTrigger key={n} value={n} className="w-full text-left text-[11px] px-3 py-1.5 hover:bg-accent data-[state=active]:bg-accent">
+                    {tabLabels[n] ?? n.replace(/\.md$/i, '')}
+                  </TabsTrigger>
+                ))}
+              </div>
+            </div>
+          )}
+        </TabsList>
+      </div>
+      {allDocs.map((n) => (
+        <TabsContent key={n} value={n} className="flex-1 min-h-0 mt-0">
+          <DocContent content={docs[n] ?? ''} name={n} />
         </TabsContent>
       ))}
+      <TabsContent value="_health" className="flex-1 min-h-0 mt-0">
+        <HealthPanel providers={providerHealth} />
+      </TabsContent>
     </Tabs>
   );
 }
@@ -633,219 +654,259 @@ function DocContent({ content, name }: { content: string; name: string }) {
     if (!content) return '';
     return marked.parse(content, { gfm: true, breaks: true }) as string;
   }, [content]);
-
-  if (!content) {
-    return <p className="text-xs text-muted-foreground p-3">No content for {name}.</p>;
-  }
-
+  if (!content) return <p className="text-xs text-muted-foreground p-3">No content for {name}.</p>;
   return (
     <ScrollArea className="h-full">
-      <div
-        className="prose-dashboard p-3 pr-4"
-        dangerouslySetInnerHTML={{ __html: rendered }}
-      />
+      <div className="prose-dashboard p-3 pr-4" dangerouslySetInnerHTML={{ __html: rendered }} />
+    </ScrollArea>
+  );
+}
+
+function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
+  if (providers.length === 0) {
+    return <p className="text-xs text-muted-foreground p-3">No provider data yet.</p>;
+  }
+  return (
+    <ScrollArea className="h-full">
+      <div className="p-3 space-y-2">
+        {providers.map((p) => (
+          <Tooltip key={p.name}>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2 text-xs py-1 px-2 rounded hover:bg-accent/30 cursor-default">
+                {p.status === 'healthy' && <Circle className="h-3 w-3 text-green-500 fill-green-500" />}
+                {p.status === 'cooldown' && <Pause className="h-3 w-3 text-orange-500" />}
+                {p.status === 'failed' && <XCircle className="h-3 w-3 text-red-500" />}
+                <span className="font-medium">{p.name}</span>
+                <span className="text-muted-foreground ml-auto">{p.status}</span>
+                <span className="text-muted-foreground/50 text-[10px]">{relativeTime(p.lastEvent)}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <div className="text-xs space-y-0.5">
+                <p>Provider: {p.name}</p>
+                <p>Status: {p.status}</p>
+                {p.reason && <p>Reason: {p.reason}</p>}
+                {p.consecutiveFailures && <p>Failures: {p.consecutiveFailures}</p>}
+                {p.cooldownUntil && <p>Cooldown until: {new Date(p.cooldownUntil).toLocaleTimeString()}</p>}
+                {p.lastEvent && <p>Last event: {new Date(p.lastEvent).toLocaleString()}</p>}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
     </ScrollArea>
   );
 }
 
 // ── Activity Panel ──
 
-function ActivityPanel({ log, artifacts }: { log: string; artifacts: ArtifactManifest[] }) {
-  const endRef = useRef<HTMLDivElement>(null);
+function ActivityPanel({ log, artifacts, currentIteration }: { log: string; artifacts: ArtifactManifest[]; currentIteration: number | null }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const topRef = useRef<HTMLDivElement>(null);
 
   const entries = useMemo(() => {
     if (!log) return [];
-    return log.split('\n').map(parseLogLine).filter((e): e is LogEntry => e !== null);
+    const all = log.split('\n').map(parseLogLine).filter((e): e is LogEntry => e !== null);
+    // Filter to significant events only
+    return all.filter((e) => e.isSignificant);
   }, [log]);
+
+  // Deduplicate session_start — keep only first
+  const deduped = useMemo(() => {
+    let seenStart = false;
+    return entries.filter((e) => {
+      if (e.event === 'session_start') {
+        if (seenStart) return false;
+        seenStart = true;
+      }
+      return true;
+    });
+  }, [entries]);
 
   // Group by date, newest first
   const grouped = useMemo(() => {
     const groups: Array<{ dateKey: string; entries: LogEntry[] }> = [];
     let current: { dateKey: string; entries: LogEntry[] } | null = null;
-    for (const entry of entries) {
+    for (const entry of deduped) {
       if (!current || current.dateKey !== entry.dateKey) {
         current = { dateKey: entry.dateKey, entries: [] };
         groups.push(current);
       }
       current.entries.push(entry);
     }
-    // Reverse groups: newest day first. Entries within each group: newest first.
-    for (const group of groups) {
-      group.entries.reverse();
-    }
+    for (const g of groups) g.entries.reverse();
     groups.reverse();
     return groups;
-  }, [entries]);
+  }, [deduped]);
 
-  const manifests = useMemo(
-    () => artifacts.map(parseManifest).filter((m): m is ManifestPayload => m !== null),
-    [artifacts],
-  );
-
-  // Build a map of iteration → artifacts for inline display
-  const iterationArtifacts = useMemo(() => {
+  const manifests = useMemo(() => artifacts.map(parseManifest).filter((m): m is ManifestPayload => m !== null), [artifacts]);
+  const iterArtifacts = useMemo(() => {
     const map = new Map<number, ManifestPayload>();
-    for (const m of manifests) {
-      map.set(m.iteration, m);
-    }
+    for (const m of manifests) map.set(m.iteration, m);
     return map;
   }, [manifests]);
-
-  // Auto-scroll on new entries
-  useEffect(() => {
-    if (autoScroll && endRef.current) {
-      endRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [entries.length, autoScroll]);
-
-  // Detect manual scroll
-  const handleScroll = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const viewport = el.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
-    if (!viewport) return;
-    const isAtBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 40;
-    setAutoScroll(isAtBottom);
-  }, []);
 
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex items-center justify-between px-1 pb-1.5 shrink-0">
-        <span className="text-[10px] text-muted-foreground">{entries.length} entries</span>
-        {!autoScroll && (
-          <button
-            type="button"
-            className="text-[10px] text-blue-500 dark:text-blue-400 hover:opacity-80"
-            onClick={() => {
-              setAutoScroll(true);
-              endRef.current?.scrollIntoView({ behavior: 'smooth' });
-            }}
-          >
-            Scroll to latest
-          </button>
-        )}
+        <span className="text-[10px] text-muted-foreground">{deduped.length} events</span>
       </div>
-      <ScrollArea className="flex-1 min-h-0" ref={containerRef} onScrollCapture={handleScroll}>
-        <div className="space-y-3 pr-3">
+      <ScrollArea className="flex-1 min-h-0" ref={containerRef}>
+        <div className="pr-3">
+          <div ref={topRef} />
           {grouped.map((group) => (
-            <div key={group.dateKey}>
-              <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm pb-1 mb-1">
-                <span className="text-[10px] text-muted-foreground font-medium">{group.dateKey}</span>
+            <div key={group.dateKey} className="mb-2">
+              <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm pb-1 mb-0.5">
+                <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> {group.dateKey}
+                </span>
               </div>
-              <div className="space-y-0">
+              <div>
                 {group.entries.map((entry, i) => (
                   <LogEntryRow
                     key={`${group.dateKey}-${i}`}
                     entry={entry}
-                    artifacts={entry.iteration !== null ? iterationArtifacts.get(entry.iteration) ?? null : null}
+                    artifacts={entry.iteration !== null ? iterArtifacts.get(entry.iteration) ?? null : null}
+                    isCurrentIteration={entry.iteration !== null && entry.iteration === currentIteration}
                   />
                 ))}
               </div>
             </div>
           ))}
-          <div ref={endRef} />
         </div>
       </ScrollArea>
     </div>
   );
 }
 
-function LogEntryRow({ entry, artifacts }: { entry: LogEntry; artifacts: ManifestPayload | null }) {
+function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry; artifacts: ManifestPayload | null; isCurrentIteration: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const phaseDot = entry.phase ? phaseDotColors[entry.phase.toLowerCase()] ?? 'bg-muted-foreground' : '';
+  const phaseColor = phaseDotColors[entry.phase?.toLowerCase()] ?? 'text-muted-foreground';
   const hasExpandable = entry.filesChanged.length > 0 || (artifacts && artifacts.artifacts.length > 0) || entry.rawObj;
-  const isIteration = entry.event.includes('iteration_complete') || entry.event.includes('iteration_error');
-
-  // Result indicator
-  let resultIcon = '';
-  if (entry.isSuccess) resultIcon = '\u2713';
-  else if (entry.isError) resultIcon = '\u2717';
 
   return (
     <>
       <div
-        className={`flex items-start gap-2 py-0.5 text-[11px] font-mono leading-relaxed rounded px-1 transition-colors group ${
+        className={`flex items-center gap-1.5 py-1 px-1.5 text-[11px] font-mono rounded transition-colors ${
           hasExpandable ? 'cursor-pointer hover:bg-accent/30' : 'hover:bg-accent/20'
         } ${expanded ? 'bg-accent/20' : ''}`}
         onClick={() => hasExpandable && setExpanded(!expanded)}
       >
         {/* Timestamp */}
-        <span className="text-muted-foreground/60 whitespace-nowrap shrink-0 w-12">
-          {entry.timestamp ? formatTimeShort(entry.timestamp) : ''}
-        </span>
+        <span className="text-muted-foreground/60 shrink-0 w-11 text-right">{entry.timestamp ? formatTimeShort(entry.timestamp) : ''}</span>
 
-        {/* Phase dot */}
-        <span className="mt-1.5 shrink-0">
-          {phaseDot ? <span className={`inline-block h-1.5 w-1.5 rounded-full ${phaseDot}`} /> : <span className="inline-block h-1.5 w-1.5" />}
-        </span>
+        {/* Phase dot — centered with items-center on parent */}
+        <Circle className={`h-2.5 w-2.5 shrink-0 fill-current ${phaseColor} ${isCurrentIteration ? 'animate-pulse' : ''}`} />
 
         {/* Phase label */}
-        {entry.phase && (
-          <span className="text-muted-foreground shrink-0 w-10">{entry.phase}</span>
-        )}
+        {entry.phase && <span className="text-muted-foreground shrink-0 w-12 truncate">{entry.phase}</span>}
 
         {/* Provider·model */}
         {entry.provider && (
-          <span className="text-muted-foreground/70 shrink-0 whitespace-nowrap max-w-[120px] truncate">
+          <span className="text-muted-foreground/70 shrink-0 max-w-[100px] truncate">
             {entry.model ? `${entry.provider}\u00b7${entry.model}` : entry.provider}
           </span>
         )}
 
-        {/* Result indicator */}
-        {resultIcon && (
-          <span className={`shrink-0 font-bold ${entry.isSuccess ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-            {resultIcon}
-          </span>
+        {/* Result icon */}
+        {entry.isSuccess && (
+          <Tooltip>
+            <TooltipTrigger asChild><CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" /></TooltipTrigger>
+            <TooltipContent><p>Success</p></TooltipContent>
+          </Tooltip>
+        )}
+        {entry.isError && (
+          <Tooltip>
+            <TooltipTrigger asChild><XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" /></TooltipTrigger>
+            <TooltipContent><p>{entry.resultDetail || 'Error'}</p></TooltipContent>
+          </Tooltip>
         )}
 
-        {/* Result detail (commit hash or error) */}
+        {/* Result detail */}
         {entry.resultDetail && (
           <span className={`shrink-0 whitespace-nowrap ${entry.commitHash ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-muted-foreground/70'}`}>
             {entry.resultDetail}
           </span>
         )}
 
-        {/* Message (only for non-iteration events or if no result detail) */}
-        {!isIteration && !entry.resultDetail && entry.message && entry.message !== entry.event && (
-          <span className="text-foreground/80 min-w-0 break-words flex-1 truncate">{entry.message}</span>
+        {/* Message for non-iteration events */}
+        {!entry.resultDetail && entry.message && entry.message !== entry.event && (
+          <span className="text-foreground/70 min-w-0 truncate flex-1">{entry.message}</span>
         )}
 
-        {/* Spacer */}
         <span className="flex-1" />
 
         {/* Duration */}
         {entry.duration && (
-          <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap">{entry.duration}</span>
+          <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap flex items-center gap-0.5">
+            <Timer className="h-3 w-3" />{entry.duration}
+          </span>
+        )}
+        {isCurrentIteration && !entry.duration && (
+          <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap flex items-center gap-0.5 animate-pulse">
+            <Loader2 className="h-3 w-3 animate-spin" />
+          </span>
         )}
 
-        {/* Expand indicator */}
+        {/* Expand chevron */}
         {hasExpandable && (
-          <span className="text-muted-foreground/40 shrink-0 text-[10px]">
-            {expanded ? '\u25BC' : '\u25B6'}
-          </span>
+          expanded ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/40" /> : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
         )}
       </div>
 
       {/* Expanded details */}
       {expanded && (
-        <div className="ml-16 mr-2 mb-2 animate-fade-in">
+        <div className="ml-14 mr-2 mb-1.5 animate-fade-in text-[11px]">
           {/* File changes */}
           {entry.filesChanged.length > 0 && (
             <div className="border-l-2 border-border pl-2 py-1 space-y-0.5">
+              <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+                <GitCommit className="h-3 w-3" />
+                <span className="font-medium">{entry.commitHash && `${entry.commitHash.slice(0, 7)} — `}{entry.filesChanged.length} files</span>
+              </div>
               {entry.filesChanged.map((f, i) => (
-                <div key={i} className="flex items-center gap-2 text-[10px] font-mono">
-                  <span className={`shrink-0 w-3 text-center font-bold ${
-                    f.type === 'A' ? 'text-green-500' : f.type === 'D' ? 'text-red-500' : f.type === 'R' ? 'text-blue-500' : 'text-yellow-500'
-                  }`}>{f.type}</span>
-                  <span className="text-foreground/80 truncate flex-1">{f.path}</span>
-                  {(f.additions > 0 || f.deletions > 0) && (
-                    <span className="text-muted-foreground/60 shrink-0">
-                      {f.additions > 0 && <span className="text-green-500">+{f.additions}</span>}
-                      {f.additions > 0 && f.deletions > 0 && ' '}
-                      {f.deletions > 0 && <span className="text-red-500">-{f.deletions}</span>}
+                <Tooltip key={i}>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-2 font-mono">
+                      <span className={`shrink-0 w-3 text-center font-bold ${
+                        f.type === 'A' ? 'text-green-500' : f.type === 'D' ? 'text-red-500' : f.type === 'R' ? 'text-blue-500' : 'text-yellow-500'
+                      }`}>{f.type}</span>
+                      <span className="text-foreground/80 truncate flex-1">{f.path}</span>
+                      {(f.additions > 0 || f.deletions > 0) && (
+                        <span className="text-muted-foreground/60 shrink-0">
+                          {f.additions > 0 && <span className="text-green-500">+{f.additions}</span>}
+                          {f.additions > 0 && f.deletions > 0 && ' '}
+                          {f.deletions > 0 && <span className="text-red-500">-{f.deletions}</span>}
+                        </span>
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent><p>{f.path}</p></TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
+          )}
+
+          {/* Artifacts */}
+          {artifacts && artifacts.artifacts.length > 0 && (
+            <div className="border-l-2 border-amber-500/30 pl-2 py-1 space-y-0.5 mt-1">
+              <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                <Image className="h-3 w-3" /> {artifacts.artifacts.length} artifact{artifacts.artifacts.length !== 1 ? 's' : ''}
+              </span>
+              {artifacts.summary && <p className="text-muted-foreground italic text-[10px]">{artifacts.summary}</p>}
+              {artifacts.artifacts.map((a) => (
+                <div key={a.path} className="flex items-center gap-2">
+                  {isImageArtifact(a) ? <Image className="h-3 w-3 text-muted-foreground" /> : <FileText className="h-3 w-3 text-muted-foreground" />}
+                  {isImageArtifact(a) ? (
+                    <button type="button" className="text-blue-600 dark:text-blue-400 hover:underline truncate" onClick={(e) => { e.stopPropagation(); setLightboxSrc(artifactUrl(artifacts.iteration, a.path)); }}>
+                      {a.path}
+                    </button>
+                  ) : <span className="text-foreground/80 truncate">{a.path}</span>}
+                  <span className="text-muted-foreground/60 truncate">{a.description}</span>
+                  {a.metadata?.diff_percentage !== undefined && (
+                    <span className={`shrink-0 text-[9px] px-1 rounded ${a.metadata.diff_percentage < 5 ? 'bg-green-500/20 text-green-500' : a.metadata.diff_percentage < 20 ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'}`}>
+                      diff: {a.metadata.diff_percentage.toFixed(1)}%
                     </span>
                   )}
                 </div>
@@ -853,50 +914,7 @@ function LogEntryRow({ entry, artifacts }: { entry: LogEntry; artifacts: Manifes
             </div>
           )}
 
-          {/* Artifacts inline */}
-          {artifacts && artifacts.artifacts.length > 0 && (
-            <div className="border-l-2 border-amber-500/30 pl-2 py-1 space-y-1 mt-1">
-              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                {artifacts.artifacts.length} artifact{artifacts.artifacts.length !== 1 ? 's' : ''}
-              </span>
-              {artifacts.summary && (
-                <p className="text-[10px] text-muted-foreground italic">{artifacts.summary}</p>
-              )}
-              <div className="space-y-1">
-                {artifacts.artifacts.map((artifact) => (
-                  <div key={artifact.path} className="flex items-center gap-2 text-[10px]">
-                    <span className="shrink-0">{isImageArtifact(artifact) ? '\uD83D\uDCF7' : '\uD83D\uDCC4'}</span>
-                    {isImageArtifact(artifact) ? (
-                      <button
-                        type="button"
-                        className="text-blue-600 dark:text-blue-400 hover:underline truncate"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setLightboxSrc(artifactUrl(artifacts.iteration, artifact.path));
-                        }}
-                      >
-                        {artifact.path}
-                      </button>
-                    ) : (
-                      <span className="text-foreground/80 truncate">{artifact.path}</span>
-                    )}
-                    <span className="text-muted-foreground/60 truncate">{artifact.description}</span>
-                    {artifact.metadata?.diff_percentage !== undefined && (
-                      <span className={`shrink-0 text-[9px] px-1 rounded ${
-                        artifact.metadata.diff_percentage < 5 ? 'bg-green-500/20 text-green-500' :
-                        artifact.metadata.diff_percentage < 20 ? 'bg-yellow-500/20 text-yellow-500' :
-                        'bg-red-500/20 text-red-500'
-                      }`}>
-                        diff: {artifact.metadata.diff_percentage.toFixed(1)}%
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Raw JSON (for debugging/detail) */}
+          {/* Raw JSON fallback */}
           {!entry.filesChanged.length && !artifacts && entry.rawObj && (
             <div className="border-l-2 border-border pl-2 py-1">
               <pre className="text-[10px] text-muted-foreground/70 font-mono whitespace-pre-wrap max-h-24 overflow-auto">
@@ -907,10 +925,7 @@ function LogEntryRow({ entry, artifacts }: { entry: LogEntry; artifacts: Manifes
         </div>
       )}
 
-      {/* Image lightbox */}
-      {lightboxSrc && (
-        <ImageLightbox src={lightboxSrc} alt="Artifact" onClose={() => setLightboxSrc(null)} />
-      )}
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="Artifact" onClose={() => setLightboxSrc(null)} />}
     </>
   );
 }
@@ -921,12 +936,9 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 animate-fade-in" onClick={onClose}>
-      <button type="button" className="absolute right-4 top-4 text-white text-2xl font-bold hover:text-gray-300" onClick={onClose}>
-        &times;
-      </button>
+      <button type="button" className="absolute right-4 top-4 text-white text-2xl font-bold hover:text-gray-300" onClick={onClose}>&times;</button>
       <img src={src} alt={alt} className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
     </div>
   );
@@ -935,91 +947,62 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
 // ── Footer ──
 
 function Footer({
-  steerInstruction,
-  setSteerInstruction,
-  onSteer,
-  steerSubmitting,
-  onStop,
-  stopSubmitting,
+  steerInstruction, setSteerInstruction, onSteer, steerSubmitting, onStop, stopSubmitting,
 }: {
-  steerInstruction: string;
-  setSteerInstruction: (v: string) => void;
-  onSteer: () => void;
-  steerSubmitting: boolean;
-  onStop: (force: boolean) => void;
-  stopSubmitting: boolean;
+  steerInstruction: string; setSteerInstruction: (v: string) => void;
+  onSteer: () => void; steerSubmitting: boolean;
+  onStop: (force: boolean) => void; stopSubmitting: boolean;
 }) {
   return (
-    <TooltipProvider>
-      <footer className="border-t border-border px-4 py-2 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex-1 flex gap-2">
-            <Textarea
-              className="min-h-[32px] h-8 resize-none text-xs flex-1"
-              placeholder="Steer: enter guidance for the next iteration..."
-              value={steerInstruction}
-              onChange={(e) => setSteerInstruction(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  onSteer();
-                }
-              }}
-            />
-            <Button
-              size="sm"
-              className="h-8"
-              disabled={steerSubmitting || steerInstruction.trim().length === 0}
-              onClick={onSteer}
-            >
-              {steerSubmitting ? '...' : 'Send'}
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="destructive" size="sm" className="h-8" disabled={stopSubmitting} onClick={() => onStop(false)}>
-                  {stopSubmitting ? '...' : 'Stop'}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Gracefully stop after current iteration (SIGTERM)</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 text-destructive hover:text-destructive" disabled={stopSubmitting} onClick={() => onStop(true)}>
-                  Force
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Kill immediately without cleanup (SIGKILL)</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
+    <footer className="border-t border-border px-4 py-2 shrink-0">
+      <div className="flex items-center gap-3">
+        <div className="flex-1 flex gap-2">
+          <Textarea
+            className="min-h-[32px] h-8 resize-none text-xs flex-1"
+            placeholder="Steer: enter guidance for the next iteration..."
+            value={steerInstruction}
+            onChange={(e) => setSteerInstruction(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSteer(); } }}
+          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="sm" className="h-8" disabled={steerSubmitting || !steerInstruction.trim()} onClick={onSteer}>
+                <Send className="h-3.5 w-3.5 mr-1" />{steerSubmitting ? '...' : 'Send'}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent><p>Send steering instruction (Enter)</p></TooltipContent>
+          </Tooltip>
         </div>
-      </footer>
-    </TooltipProvider>
+        <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="destructive" size="sm" className="h-8" disabled={stopSubmitting} onClick={() => onStop(false)}>
+                <Square className="h-3 w-3 mr-1" />{stopSubmitting ? '...' : 'Stop'}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent><p>Gracefully stop after current iteration (SIGTERM)</p></TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 text-destructive hover:text-destructive" disabled={stopSubmitting} onClick={() => onStop(true)}>
+                <Zap className="h-3 w-3 mr-1" />Force
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent><p>Kill immediately without cleanup (SIGKILL)</p></TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    </footer>
   );
 }
 
 // ── Command Palette ──
 
-function CommandPalette({
-  open,
-  onClose,
-  sessions,
-  onSelectSession,
-  onStop,
-}: {
-  open: boolean;
-  onClose: () => void;
-  sessions: SessionSummary[];
-  onSelectSession: (id: string | null) => void;
-  onStop: (force: boolean) => void;
+function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
+  open: boolean; onClose: () => void; sessions: SessionSummary[];
+  onSelectSession: (id: string | null) => void; onStop: (force: boolean) => void;
 }) {
   if (!open) return null;
-
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 animate-fade-in" onClick={onClose}>
       <div className="w-full max-w-md rounded-lg border bg-popover shadow-lg" onClick={(e) => e.stopPropagation()}>
@@ -1029,25 +1012,19 @@ function CommandPalette({
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup heading="Actions">
               <CommandItem onSelect={() => { onClose(); onStop(false); }}>
-                Stop session (graceful)
+                <Square className="h-4 w-4 mr-2" /> Stop session (graceful)
               </CommandItem>
               <CommandItem onSelect={() => { onClose(); onStop(true); }}>
-                Force stop session (SIGKILL)
+                <Zap className="h-4 w-4 mr-2" /> Force stop (SIGKILL)
               </CommandItem>
             </CommandGroup>
             <CommandGroup heading="Sessions">
-              {sessions.map((session) => (
-                <CommandItem
-                  key={session.id}
-                  onSelect={() => {
-                    onClose();
-                    onSelectSession(session.id === 'current' ? null : session.id);
-                  }}
-                >
+              {sessions.map((s) => (
+                <CommandItem key={s.id} onSelect={() => { onClose(); onSelectSession(s.id === 'current' ? null : s.id); }}>
                   <div className="flex items-center gap-2">
-                    {session.isActive && session.status === 'running' && <StatusDot status="running" />}
-                    <span>Switch to: {session.name}</span>
-                    {session.phase && <PhaseBadge phase={session.phase} small />}
+                    {s.isActive && s.status === 'running' && <StatusDot status="running" />}
+                    <span>{s.name}</span>
+                    {s.phase && <PhaseBadge phase={s.phase} small />}
                   </div>
                 </CommandItem>
               ))}
@@ -1068,26 +1045,16 @@ export function App() {
   const [steerInstruction, setSteerInstruction] = useState('');
   const [steerSubmitting, setSteerSubmitting] = useState(false);
   const [stopSubmitting, setStopSubmitting] = useState(false);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('session');
-  });
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('session'));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const prevPhaseRef = useRef<string>('');
 
-  // Ctrl+B sidebar toggle, Ctrl+K command palette
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'b' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setSidebarCollapsed((prev) => !prev);
-      }
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setCommandOpen((prev) => !prev);
-      }
+      if (e.key === 'b' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setSidebarCollapsed((p) => !p); }
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setCommandOpen((p) => !p); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -1098,267 +1065,142 @@ export function App() {
     setLoading(true);
     setLoadError(null);
     const url = new URL(window.location.href);
-    if (id) {
-      url.searchParams.set('session', id);
-    } else {
-      url.searchParams.delete('session');
-    }
+    if (id) url.searchParams.set('session', id); else url.searchParams.delete('session');
     window.history.replaceState(null, '', url.toString());
   }, []);
 
-  // SSE + initial fetch with auto-reconnect
+  // SSE + initial fetch
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
     let eventSource: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelay = 1000;
+    const sp = selectedSessionId ? `?session=${encodeURIComponent(selectedSessionId)}` : '';
 
-    const sessionParam = selectedSessionId ? `?session=${encodeURIComponent(selectedSessionId)}` : '';
-
-    async function loadInitialState() {
+    async function load() {
       try {
-        const response = await fetch(`/api/state${sessionParam}`, { signal: controller.signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const nextState = (await response.json()) as DashboardState;
-        if (cancelled) return;
-        setState(nextState);
-      } catch (error) {
-        if (cancelled) return;
-        setLoadError((error as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+        const r = await fetch(`/api/state${sp}`, { signal: controller.signal });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (!cancelled) setState(await r.json() as DashboardState);
+      } catch (e) { if (!cancelled) setLoadError((e as Error).message); }
+      finally { if (!cancelled) setLoading(false); }
     }
 
     function connectSSE() {
       if (cancelled) return;
       setConnectionStatus('connecting');
-
-      eventSource = new EventSource(`/events${sessionParam}`);
-
-      eventSource.addEventListener('state', (event) => {
+      eventSource = new EventSource(`/events${sp}`);
+      eventSource.addEventListener('state', (evt) => {
         try {
-          const messageEvent = event as MessageEvent<string>;
-          const payload = JSON.parse(messageEvent.data) as DashboardState;
-          setState(payload);
-          setLoadError(null);
-          setConnectionStatus('connected');
-          reconnectDelay = 1000;
-        } catch (error) {
-          setLoadError((error as Error).message);
-        }
+          setState(JSON.parse((evt as MessageEvent<string>).data) as DashboardState);
+          setLoadError(null); setConnectionStatus('connected'); reconnectDelay = 1000;
+        } catch (e) { setLoadError((e as Error).message); }
       });
-
-      eventSource.addEventListener('heartbeat', () => {
-        setConnectionStatus('connected');
-      });
-
-      eventSource.onopen = () => {
-        setConnectionStatus('connected');
-        reconnectDelay = 1000;
-      };
-
+      eventSource.addEventListener('heartbeat', () => { setConnectionStatus('connected'); });
+      eventSource.onopen = () => { setConnectionStatus('connected'); reconnectDelay = 1000; };
       eventSource.onerror = () => {
-        setConnectionStatus('disconnected');
-        eventSource?.close();
-        eventSource = null;
-
-        if (!cancelled) {
-          reconnectTimer = setTimeout(() => {
-            connectSSE();
-          }, reconnectDelay);
-          reconnectDelay = Math.min(reconnectDelay * 2, 30000);
-        }
+        setConnectionStatus('disconnected'); eventSource?.close(); eventSource = null;
+        if (!cancelled) { reconnectTimer = setTimeout(connectSSE, reconnectDelay); reconnectDelay = Math.min(reconnectDelay * 2, 30000); }
       };
     }
 
-    loadInitialState().catch(() => undefined);
+    load().catch(() => undefined);
     connectSSE();
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-      eventSource?.close();
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-    };
+    return () => { cancelled = true; controller.abort(); eventSource?.close(); if (reconnectTimer) clearTimeout(reconnectTimer); };
   }, [selectedSessionId]);
 
-  // Sessions list
   const sessions = useMemo<SessionSummary[]>(() => {
-    if (!state) {
-      return [{
-        id: 'current', name: 'Current workspace', status: 'unknown',
-        phase: '', elapsed: '--', iterations: '--', isActive: false,
-      }];
-    }
-    const active = (state.activeSessions ?? [])
-      .filter(isRecord)
-      .map((entry, index) => toSessionSummary(entry, `Active session ${index + 1}`, true));
-    const recent = (state.recentSessions ?? [])
-      .filter(isRecord)
-      .slice(-5)
-      .reverse()
-      .map((entry, index) => toSessionSummary(entry, `Recent session ${index + 1}`, false));
+    if (!state) return [{ id: 'current', name: 'Current', projectName: 'Unknown', status: 'unknown', phase: '', elapsed: '--', iterations: '--', isActive: false, branch: '', startedAt: '', endedAt: '', pid: '', provider: '', workDir: '' }];
+    const active = (state.activeSessions ?? []).filter(isRecord).map((e, i) => toSession(e, `active-${i}`, true));
+    const recent = (state.recentSessions ?? []).filter(isRecord).slice(-10).reverse().map((e, i) => toSession(e, `recent-${i}`, false));
     const combined = [...active, ...recent];
     if (combined.length > 0) return combined;
-    if (isRecord(state.status)) return [toSessionSummary(state.status, state.workdir, true)];
-    return [{
-      id: 'current', name: state.workdir, status: 'unknown',
-      phase: '', elapsed: '--', iterations: '--', isActive: false,
-    }];
+    if (isRecord(state.status)) return [toSession(state.status, state.workdir, true)];
+    return [{ id: 'current', name: state.workdir, projectName: 'Unknown', status: 'unknown', phase: '', elapsed: '--', iterations: '--', isActive: false, branch: '', startedAt: '', endedAt: '', pid: '', provider: '', workDir: '' }];
   }, [state]);
 
-  // Extract status fields
   const statusRecord = isRecord(state?.status) ? state.status : null;
-  const currentPhase = statusRecord ? readString(statusRecord, ['mode', 'phase'], '') : '';
-  const currentState = statusRecord ? readString(statusRecord, ['state', 'status'], 'unknown') : 'unknown';
-  const currentIteration = statusRecord ? readNumberLike(statusRecord, ['iteration', 'iterations'], '--') : '--';
-  const providerName = statusRecord ? readString(statusRecord, ['provider', 'current_provider'], '') : '';
-  const modelName = statusRecord ? readString(statusRecord, ['model', 'current_model'], '') : '';
+  const currentPhase = statusRecord ? str(statusRecord, ['mode', 'phase']) : '';
+  const currentState = statusRecord ? str(statusRecord, ['state', 'status'], 'unknown') : 'unknown';
+  const currentIteration = statusRecord ? numStr(statusRecord, ['iteration', 'iterations']) : '--';
+  const currentIterationNum = statusRecord ? (typeof statusRecord.iteration === 'number' ? statusRecord.iteration : null) : null;
+  const providerName = statusRecord ? str(statusRecord, ['provider', 'current_provider']) : '';
+  const modelName = statusRecord ? str(statusRecord, ['model', 'current_model']) : '';
   const isRunning = currentState === 'running';
 
-  // Toast on phase transitions
   useEffect(() => {
     if (currentPhase && prevPhaseRef.current && currentPhase !== prevPhaseRef.current) {
-      toast(`Phase: ${prevPhaseRef.current} \u2192 ${currentPhase}`, {
-        description: `Iteration ${currentIteration}`,
-      });
+      toast(`Phase: ${prevPhaseRef.current} \u2192 ${currentPhase}`, { description: `Iteration ${currentIteration}` });
     }
     prevPhaseRef.current = currentPhase;
   }, [currentPhase, currentIteration]);
 
-  // Parse TODO.md for progress
   const todoContent = state?.docs?.['TODO.md'] ?? '';
   const { completed: tasksCompleted, total: tasksTotal } = useMemo(() => parseTodoProgress(todoContent), [todoContent]);
   const progressPercent = tasksTotal > 0 ? Math.round((tasksCompleted / tasksTotal) * 100) : 0;
 
-  // Current session name
-  const currentSession = sessions.find((s) =>
-    selectedSessionId === null
-      ? s.id === 'current' || sessions.indexOf(s) === 0
-      : s.id === selectedSessionId,
-  );
+  const providerHealth = useMemo(() => deriveProviderHealth(state?.log ?? ''), [state?.log]);
+
+  const currentSession = sessions.find((s) => selectedSessionId === null ? sessions.indexOf(s) === 0 : s.id === selectedSessionId);
   const sessionName = currentSession?.name ?? 'No session';
 
-  // Handlers
   const handleSteer = useCallback(async () => {
-    if (steerInstruction.trim().length === 0 || steerSubmitting) return;
+    if (!steerInstruction.trim() || steerSubmitting) return;
     setSteerSubmitting(true);
     try {
-      const response = await fetch('/api/steer', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ instruction: steerInstruction.trim() }),
-      });
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error ?? `HTTP ${response.status}`);
-      }
-      setSteerInstruction('');
-      toast.success('Steering instruction queued.');
-    } catch (error) {
-      toast.error((error as Error).message);
-    } finally {
-      setSteerSubmitting(false);
-    }
+      const r = await fetch('/api/steer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ instruction: steerInstruction.trim() }) });
+      if (!r.ok) { const p = await r.json() as { error?: string }; throw new Error(p.error ?? `HTTP ${r.status}`); }
+      setSteerInstruction(''); toast.success('Steering instruction queued.');
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setSteerSubmitting(false); }
   }, [steerInstruction, steerSubmitting]);
 
   const handleStop = useCallback(async (force: boolean) => {
     if (stopSubmitting) return;
     setStopSubmitting(true);
     try {
-      const response = await fetch('/api/stop', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(force ? { force: true } : {}),
-      });
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error ?? `HTTP ${response.status}`);
-      }
-      const payload = (await response.json()) as { signal?: string };
-      toast.info(`Stop requested (${payload.signal ?? 'SIGTERM'}).`);
-    } catch (error) {
-      toast.error((error as Error).message);
-    } finally {
-      setStopSubmitting(false);
-    }
+      const r = await fetch('/api/stop', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(force ? { force: true } : {}) });
+      if (!r.ok) { const p = await r.json() as { error?: string }; throw new Error(p.error ?? `HTTP ${r.status}`); }
+      const p = await r.json() as { signal?: string };
+      toast.info(`Stop requested (${p.signal ?? 'SIGTERM'}).`);
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setStopSubmitting(false); }
   }, [stopSubmitting]);
 
   return (
-    <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
-      <div className="flex flex-1 min-h-0">
-        <Sidebar
-          sessions={sessions}
-          selectedSessionId={selectedSessionId}
-          onSelectSession={selectSession}
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-        />
-
-        <div className="flex flex-col flex-1 min-w-0">
-          <Header
-            sessionName={sessionName}
-            isRunning={isRunning}
-            currentState={currentState}
-            currentPhase={currentPhase}
-            currentIteration={currentIteration}
-            providerName={providerName}
-            modelName={modelName}
-            tasksCompleted={tasksCompleted}
-            tasksTotal={tasksTotal}
-            progressPercent={progressPercent}
-            updatedAt={state?.updatedAt ?? ''}
-            loading={loading}
-            loadError={loadError}
-            connectionStatus={connectionStatus}
-            onOpenCommand={() => setCommandOpen(true)}
-            onOpenSwitcher={() => setSidebarCollapsed(false)}
-          />
-
-          <main className="flex-1 min-h-0 p-3">
-            <div className="grid grid-cols-2 gap-3 h-full" style={{ gridTemplateColumns: '1fr 1fr' }}>
-              <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden">
-                <CardHeader className="py-2 px-3 shrink-0">
-                  <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Documents</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-                  <DocsPanel docs={state?.docs ?? {}} />
-                </CardContent>
-              </Card>
-
-              <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden">
-                <CardHeader className="py-2 px-3 shrink-0">
-                  <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Activity</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-                  <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} />
-                </CardContent>
-              </Card>
-            </div>
-          </main>
-
-          <Footer
-            steerInstruction={steerInstruction}
-            setSteerInstruction={setSteerInstruction}
-            onSteer={() => void handleSteer()}
-            steerSubmitting={steerSubmitting}
-            onStop={(force) => void handleStop(force)}
-            stopSubmitting={stopSubmitting}
-          />
+    <TooltipProvider delayDuration={300}>
+      <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
+        <div className="flex flex-1 min-h-0">
+          <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
+          <div className="flex flex-col flex-1 min-w-0">
+            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} />
+            <main className="flex-1 min-h-0 p-3">
+              <div className="grid grid-cols-2 gap-3 h-full" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden">
+                  <CardHeader className="py-2 px-3 shrink-0">
+                    <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> Documents</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
+                    <DocsPanel docs={state?.docs ?? {}} providerHealth={providerHealth} />
+                  </CardContent>
+                </Card>
+                <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden">
+                  <CardHeader className="py-2 px-3 shrink-0">
+                    <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
+                    <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} currentIteration={isRunning ? currentIterationNum : null} />
+                  </CardContent>
+                </Card>
+              </div>
+            </main>
+            <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} />
+          </div>
         </div>
+        <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} sessions={sessions} onSelectSession={selectSession} onStop={(f) => void handleStop(f)} />
+        <Toaster />
       </div>
-
-      <CommandPalette
-        open={commandOpen}
-        onClose={() => setCommandOpen(false)}
-        sessions={sessions}
-        onSelectSession={(id) => { selectSession(id); }}
-        onStop={(force) => void handleStop(force)}
-      />
-
-      <Toaster />
-    </div>
+    </TooltipProvider>
   );
 }

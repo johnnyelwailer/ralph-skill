@@ -738,117 +738,149 @@ Add the missing command files:
 **`copilot/prompts/aloop-dashboard.prompt.md`:**
 - Same behavior for Copilot
 
-#### 5. Multi-session switching (left sidebar)
+#### 5. Session sidebar (left panel — tree view)
 
-The current dashboard has a sessions sidebar that renders session cards, but it's non-functional — no click handler, no session switching. The backend is also single-session (bound to one `--session-dir` at startup).
+Collapsible sidebar (Ctrl+B) showing all sessions in a tree grouped by project.
 
-**Backend changes:**
-- Dashboard server reads `~/.aloop/active.json` on startup to discover all sessions
-- New API: `GET /api/state?session=<id>` — returns state for any session
-- New SSE: `GET /events?session=<id>` — reconnects live stream to a different session
-- Server watches `active.json` for new/removed sessions (auto-updates sidebar)
-- Default: serves the session it was launched for, but can switch to any active session
+**Backend:**
+- Reads `~/.aloop/active.json` (object keyed by session ID) and `~/.aloop/history.json` (array) on startup
+- Watches both files for changes → pushes SSE updates to all clients
+- `GET /api/state?session=<id>` — returns state for any session
+- `GET /events?session=<id>` — reconnects live stream to a different session
+- PID liveness: checks `active.json` PID first, falls back to `meta.json`, uses `kill -0` to detect dead processes
+- Includes `branch` from `meta.json` in session data
 
-**Frontend changes:**
-- Session cards in sidebar get `onClick` → sets `selectedSessionId` state
-- Selected session highlighted with ring/border
-- Switching session: refetch `/api/state?session=<id>`, reconnect SSE to `/events?session=<id>`
-- Session cards show: project name, iteration N/max, phase badge (color-coded), state badge, elapsed time
-- Active sessions at top, recent/completed sessions below (dimmed)
-- Running sessions show a pulsing indicator
-
-**Layout with sidebar:**
+**Tree structure:**
 ```
-┌──────────────┬──────────────────────────────────────────────┐
-│  Sessions    │  Header: session name, iter, phase, progress │
-│              ├──────────────────────────────────────────────┤
-│  ● cal-v2    │                                              │
-│    iter 7/30 │  Main content area                           │
-│    build     │  (TODO + Log + Commits)                      │
-│              │                                              │
-│  ○ ralph-sk  │                                              │
-│    completed │                                              │
-│    115 iters │                                              │
-│              │                                              │
-│  ○ api-svc   │                                              │
-│    iter 3/20 │                                              │
-│    plan      ├──────────────────────────────────────────────┤
-│              │  Steer: [                        ] Send      │
-│              │  [ Stop ]                                    │
-└──────────────┴──────────────────────────────────────────────┘
+▾ ralph-skill                          ← project group (from project_name)
+  ● ralph-skill-20260314-173930        ← active session, green pulsing dot
+    ⌥ aloop/ralph-skill-20260314-...     branch
+    build · iter 16 · 16h ago            phase badge, iter, last activity
+
+▸ Older (12)                           ← collapsed group for sessions
+  ○ ralph-skill-20260310-091729            ended_at > 24h ago
+  ○ ralph-skill-20260309-...
 ```
 
-#### 6. Dashboard UI redesign
+**Session card details:**
+- **Dot color**: green=running (pulsing), gray=stopped/exited, red=unhealthy (stuck_count>0 or dead PID), orange=stopping/cooldown
+- **Fields**: project name, session ID (truncated), branch name, phase badge (color-coded), iteration count, last activity (relative time), elapsed duration
+- **Tooltip** on hover: full session ID, PID, provider config, started_at, ended_at, work_dir, state
+- Active sessions sorted to top; sessions with no activity >24h auto-collapse into "Older" group
+- Click to switch; selected session highlighted with accent background
+- URL persistence: `?session=<id>` query param, updated on switch via `history.replaceState`
 
-The current dashboard uses basic shadcn components with tabs per section. Redesign for information density:
+**Collapsed state:** 40px icon-only bar with status dots stacked vertically, tooltip on hover with session name and status.
 
-**Layout: Single-page dense view (no tab switching for core info)**
+#### 6. Dashboard UI
 
+**Icon library:** `lucide-react` — all icons use Lucide components, no inline SVGs or pseudo-icons.
+
+**Layout:** Two-column with sidebar, header, and footer.
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  🔄 Session: cal-v2-20260302  │  iter 7/30  │  ■■■■□ 23%  │
-│  Provider: codex · gpt-5.3-codex (healthy)  │  Phase: build │
-│  Elapsed: 1h 24m since session_start  │  14 iters · avg 5m 40s │
-├──────────────────────────┬──────────────────────────────────┤
-│  TODO.md (live)          │  Log (live, auto-scroll)         │
-│                          │                                  │
-│  ✅ Setup base component │  19:53 plan   claude·sonnet-4.6 ✗ exit 1  2m12s │
-│  ✅ Add state management │  19:54 build  codex·gpt-5.3     ✓ 2fb5095  4m10s │
-│  🔨 Wire API integration │  19:58 build  gemini·2.5-pro    ✗ model    5m40s │
-│  ☐ Add error handling    │  20:02 build  copilot·o1        ✓ a3f1bc2  3m55s │
-│  ☐ Write tests           │  20:06 review codex·gpt-5.3     ✓ approve  2m03s │
-│  ☐ Update docs           │  20:10 build  claude·sonnet-4.6 ✓ 8bc4d21  3m22s │
-│                          │                                  │
-├──────────────────────────┼──────────────────────────────────┤
-│  Provider Health         │  Recent Commits                  │
-│                          │                                  │
-│  claude  ● healthy  2m   │  8bc4d21 feat: wire API calls    │
-│  codex   ● healthy  1m   │  a3f1bc2 fix: null check on resp │
-│  gemini  ◐ cooldown 8m   │  2fb5095 feat: add state mgmt   │
-│  copilot ● healthy  4m   │  1a2b3c4 chore: initial plan    │
-│                          │                                  │
-├──────────────────────────┴──────────────────────────────────┤
-│  Steer: [                                            ] Send │
-│  [ Stop Session ]                                           │
-└─────────────────────────────────────────────────────────────┘
+┌──────────┬─────────────────────────────────────────────────┐
+│ Sidebar  │  Header: session · iter · progress · phase ·    │
+│ (tree)   │          provider · status · connection · Ctrl+K │
+│          ├────────────────────┬────────────────────────────┤
+│ ▾ proj   │  Docs (tabbed)     │  Activity Log              │
+│   ● sess │  TODO | SPEC | ... │  (grouped by date,         │
+│     info │  [Health] [⋯]      │   newest first)            │
+│          │                    │                            │
+│ ▸ Older  │  Rendered markdown │  09:40 ● build gemini ✗    │
+│   ○ old1 │  with live updates │  09:30 ● build opencode ✓  │
+│   ○ old2 │                    │  09:14 ● review gemini ✓   │
+│          ├────────────────────┴────────────────────────────┤
+│          │  Steer: [                          ] Send       │
+│          │  [Stop (SIGTERM)]  [Force (SIGKILL)]            │
+└──────────┴────────────────────────────────────────────────┘
 ```
 
-**Key changes from current dashboard:**
-- **No tab switching for core info** — TODO, log, and commits stay visible simultaneously; per-provider health moves to a dedicated left-pane tab
-- **Live TODO.md** — rendered inline with checkboxes, current task highlighted
-- **Compact log** — one line per iteration: timestamp, phase, provider + model, result (✓/✗), commit hash or error, and iteration duration
-- **Commit detail context** — commit diffstat stays visible, and file lists include per-file change type badges (`M`, `A`, `D`, `R`)
-- **Provider health tab in left pane** — per-provider status moves out of the top header into a dedicated sidebar tab to reduce header overload
-- **Recent commits** — scrolling list with hash + subject
-- **Steer input** — always visible at bottom, not hidden in a tab
-- **Progress bar** — visual at top showing tasks completed percentage
-- **Phase indicator** — color-coded (plan=purple, build=yellow, review=cyan)
-- **Header grid layout** — header bar uses CSS grid with `fr` columns (not flexbox wrapping) so that right-side content (provider/model, status, timestamp) is always visible and never clipped off the edge
-- **Sidebar expand/collapse alignment** — the sidebar toggle button is vertically centered with the header title row
-- **Session timing context** — header shows elapsed runtime since `session_start`, total iterations, and average iteration duration
-- **Docs tabs reflect real files only** — render tabs only for docs with non-empty content from server state; overflow extra docs into an end-of-row `...` menu
+**Header bar:**
+- Session name (clickable → expands sidebar), running dot (pulsing if active)
+- Iteration counter with hover card showing phase, status, provider, task progress
+- Progress bar (color matches phase: plan=purple, build=yellow, proof=amber, review=cyan)
+- Phase badge, provider/model, state text (colored)
+- Connection indicator (Live/Connecting/Disconnected)
+- Ctrl+K hint button → opens command palette
+- Last updated timestamp
 
-**Advanced shadcn components to use:**
-- `Sheet` / `Drawer` — for expanded log view or full commit diff
-- `Collapsible` — for TODO sections (In Progress / Up Next / Completed)
-- `Progress` — for task completion bar
-- `HoverCard` — hover on commit hash to see diff summary
-- `Tooltip` — hover on provider health for failure details
-- `Command` (cmdk) — keyboard-driven steer/stop actions
-- `Sonner` (toast) — notifications for phase transitions, stuck alerts
-- `ResizablePanel` — user can resize the TODO vs Log panels
-- `ScrollArea` — smooth scrolling for log and commits
+**Docs panel (left column):**
+- Tabbed: TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md, STEERING.md
+- Only tabs with non-empty content shown
+- When >5 tabs: first 4 visible + `⋯` overflow dropdown (DropdownMenu) for the rest
+- **"Health" tab**: per-provider status derived from log events
+  - Provider name, status dot (green=healthy, orange=cooldown, red=failed), last event time
+  - Tooltip: failure reason, cooldown duration, consecutive failures
+  - Derived from `provider_cooldown` / `provider_recovered` log events
+- Live markdown rendering via `marked`, custom `.prose-dashboard` styles
+- ScrollArea per tab content
+
+**Activity log (right column):**
+
+Log entries from JSONL, parsed and filtered. Skip noise events (`frontmatter_applied`, duplicate `session_start`). Show only meaningful events: `iteration_complete`, `iteration_error`, `provider_cooldown`, `provider_recovered`, `review_verdict_read`, first `session_start`.
+
+Grouped by date (sticky headers with backdrop blur), **newest first** within each group and across groups.
+
+**Compact entry format** (monospace, single line):
+```
+HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
+```
+
+- **Timestamp**: HH:MM (locale-aware)
+- **Status dot**: centered vertically, colored by phase, pulsing animation if currently active iteration
+- **Phase**: 5-char label (plan, build, proof, review)
+- **Provider·model**: e.g. `claude·sonnet-4.6`, truncated to max width
+- **Result icon**: CheckCircle (green) for success, XCircle (red) for error — with tooltip showing full detail
+- **Result detail**: 7-char commit hash (blue, monospace) or error reason
+- **Duration**: right-aligned; live counting up with timer if currently active iteration
+- **Expand chevron**: ChevronRight → ChevronDown (lucide) if entry has expandable content
+
+**Expanded entry detail** (indented, border-left accent):
+
+1. **Commit section** (if iteration produced a commit):
+   ```
+   Commit: a3f1bc2 — feat: add request processing
+   ├─ M  aloop/cli/src/commands/dashboard.ts    +31 -8
+   ├─ A  aloop/cli/src/lib/requests.ts          +142
+   └─ M  TODO.md                                +2 -1
+   ```
+   - File type badge: `A` (green), `M` (yellow), `D` (red), `R` (blue)
+   - Diffstat: green `+N`, red `-N`
+   - File paths truncated with tooltip for full path
+
+2. **Artifacts section** (if iteration has proof artifacts):
+   ```
+   Artifacts (3):
+   📷 dashboard-main.png  1920×1080
+   📄 health-check.json   200 OK
+   ```
+   - Image artifacts: clickable → lightbox overlay (ESC to close)
+   - Diff badge if `diff_percentage` present: green <5%, yellow <20%, red >=20%
+
+3. **Raw JSON fallback** (if no commit/artifacts, show parsed event data)
+
+**Footer (always visible):**
+- Steer textarea with Send button
+- Stop button (destructive, tooltip: "Gracefully stop after current iteration — SIGTERM")
+- Force button (outline, tooltip: "Kill immediately without cleanup — SIGKILL")
+
+**Keyboard shortcuts:**
+- `Ctrl+B` / `Cmd+B` — toggle sidebar
+- `Ctrl+K` / `Cmd+K` — command palette (fuzzy search: stop, force stop, switch session)
+- `Escape` — close lightbox / command palette
+- `Enter` in steer input — submit; `Shift+Enter` — newline
+
+**Theme:** System theme adaptation via `prefers-color-scheme`. Light vars in `:root`, dark vars in `.dark` class. Inline `<script>` in `index.html` detects system preference and toggles `.dark` class before first paint. Standard shadcn/Tailwind/Radix theming pattern.
+
+**shadcn components:** Tooltip, HoverCard, Collapsible, Progress, ScrollArea, Tabs, Command (cmdk), Sonner (toast), Card, Button, Textarea, DropdownMenu.
 
 **Real-time updates via SSE:**
-- TODO.md changes → re-render task list
-- New log entry → append to log panel, auto-scroll
-- Provider health change → update badge
-- New commit → prepend to commits list
-- Phase transition → update header, flash indicator
-- Stuck alert → toast notification
-- Loop exit updates status to `stopped`/`exited` and emits SSE update immediately
-- Dashboard detects dead session PID and flips state from running to exited without waiting for manual refresh
-- `stuck_count` clears on successful iteration and is visible in dashboard state/details
+- State changes → full state push to all connected clients
+- Each client gets state for its own session context
+- Heartbeat every 5s to detect disconnects
+- Auto-reconnect with exponential backoff (1s → 30s max)
+- Phase transitions → toast notification
+- Dead PID detection → auto-correct state from running to exited
 
 ### Acceptance Criteria
 
@@ -859,19 +891,21 @@ The current dashboard uses basic shadcn components with tabs per section. Redesi
 - [ ] `/aloop:setup` agent command delegates to `aloop setup` CLI (thin wrapper)
 - [ ] `/aloop:dashboard` command file exists in `claude/commands/aloop/`
 - [ ] `aloop-dashboard.prompt.md` exists in `copilot/prompts/`
-- [ ] Dashboard shows TODO, log, commits, steer in a single dense view (no tabs for core info); per-provider health is accessible via a dedicated left-pane tab
+- [ ] Dashboard sidebar shows sessions in tree view grouped by project, with Active/Older sections
+- [ ] Session cards show dot status (pulsing green=running, gray=stopped, red=unhealthy), branch, phase badge, iteration count, relative last activity
+- [ ] Tooltips on all interactive elements (session cards, status dots, buttons, provider health)
+- [ ] Activity log filters noise events, shows compact one-liner per iteration with expand/collapse
+- [ ] Expanded log entries show commit diffstat with file type badges and artifact thumbnails
+- [ ] `lucide-react` icons throughout — no inline SVGs or pseudo-icons
 - [ ] Dashboard updates in real-time via SSE for all state changes
-- [ ] Dashboard uses advanced shadcn components (ResizablePanel, HoverCard, Collapsible, Command, Sonner)
+- [ ] Dashboard uses advanced shadcn components (Tooltip, HoverCard, Collapsible, Command, Sonner, ScrollArea, Tabs, DropdownMenu)
 - [ ] Steer input is always visible (not behind a tab)
 - [ ] Progress bar and phase indicator visible in dashboard header
-- [ ] Dashboard header uses CSS grid with fractional (`fr`) columns so right-side items (provider/model, status, timestamp) are never clipped — avoid flexbox wrapping that hides trailing content
-- [ ] Sidebar expand/collapse button is vertically centered with the header title bar
-- [ ] Iteration rows show provider and model together, plus per-iteration duration
-- [ ] Header shows elapsed session duration (`session_start`), total iterations, and average iteration duration
-- [ ] Commit detail view preserves diffstat and shows per-file change type (`M`/`A`/`D`/`R`)
-- [ ] Docs tab bar renders only docs with non-empty server content and overflows extras into an ellipsis menu
-- [ ] Loop exit writes `status.json` as `stopped`/`exited`, dashboard detects dead PID, and running state is corrected automatically
+- [ ] Docs tab bar renders only docs with non-empty content; overflow extras into `⋯` dropdown
+- [ ] Provider health shown as a tab in docs panel, derived from log events
+- [ ] Loop exit writes `status.json` as `stopped`/`exited`, dashboard detects dead PID automatically
 - [ ] `stuck_count` resets on successful iterations and is visible in dashboard status/details
+- [ ] System theme adaptation via `.dark` class + `prefers-color-scheme` detection
 - [ ] `aloop status --watch` provides terminal-based live monitoring (auto-refresh)
 
 ---
