@@ -324,8 +324,7 @@ resolve_iteration_provider() {
     local iteration=$1
     if [ "$PROVIDER" = "round-robin" ]; then
         local count=${#RR_PROVIDERS[@]}
-        local index=$(( (iteration - 1) % count ))
-        resolve_healthy_provider "$index"
+        resolve_healthy_provider "$RR_NEXT_INDEX"
     else
         echo "$PROVIDER"
     fi
@@ -920,6 +919,16 @@ resolve_healthy_provider() {
         done
 
         if [ -n "$available_provider" ]; then
+            # Advance RR_NEXT_INDEX to the slot AFTER the one we picked,
+            # so the next iteration starts from the next provider — no repeats
+            # even when unhealthy providers were skipped.
+            local picked_idx
+            for ((picked_idx=0; picked_idx<count; picked_idx++)); do
+                if [ "${RR_PROVIDERS[$picked_idx]}" = "$available_provider" ]; then
+                    RR_NEXT_INDEX=$(( (picked_idx + 1) % count ))
+                    break
+                fi
+            done
             echo "$available_provider"
             return
         fi
@@ -1321,6 +1330,7 @@ get_review_verdict() {
 
 LAST_TASK=""
 STUCK_COUNT=0
+RR_NEXT_INDEX=0
 FORCE_PLAN_NEXT=false
 ALL_TASKS_MARKED_DONE=false
 FORCE_PROOF_NEXT=false
