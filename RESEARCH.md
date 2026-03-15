@@ -85,7 +85,7 @@
 - `aloop gh status`: NOT implemented. Current `aloop status` (status.ts) shows flat session list without GH issue/PR mapping.
   - Source: `aloop/cli/src/commands/status.ts` (T2 — direct inspection)
 - `aloop gh stop`: NOT implemented. Current `stop.ts` only handles generic session IDs.
-  - Source: `aloop/cli/src/commands/stop.ts` (T2 — direct inspection)
+  - Source: `aloop/cli/src/commands/stop.ts" (T2 — direct inspection)
 - PR feedback loop: NOT implemented. No review-comment detection, no CI-failure-triggered re-iteration, no max-feedback-iterations.
   - Source: grep for `feedback|re-iterate|pr-check` in all .ts files returned 0 hits (T2)
 
@@ -138,7 +138,7 @@
   - `buildGhArgs` default/unknown-operation throw (gh.ts:176-178): untested
   - `ghExecutor.exec` error path (gh.ts:303-318): untested
   - `parseGhOutput` JSON.parse failure path (gh.ts:321-340): untested
-  - Source: `aloop/cli/src/commands/gh.ts` and `gh.test.ts` (T2 — direct inspection)
+  - Source: `aloop/cli/src/commands/gh.ts" and `gh.test.ts` (T2 — direct inspection)
 
 ### Dashboard UX gaps (steering 20260314T121259Z_iter8)
 
@@ -180,8 +180,8 @@
 - `gh.ts` command-surface still lacks the higher-level workflow commands from spec (`aloop gh start/watch/status/stop`); current command only exposes policy-enforced low-level GH operations.
   - Source: `aloop/cli/src/commands/gh.ts:18-58`; command search `rg "command\\('start'|command\\('watch'|command\\('status'|command\\('stop'" aloop/cli/src/commands/gh.ts` returned no matches (T2), `SPEC.md` GH-integrated workflow section (T3)
 - Dashboard regressions remain open: header shows provider but not model; no aggregate timing context (session elapsed since start, total iterations, average iteration duration); docs panel includes all non-TODO docs without filtering empty content/overflow handling.
-  - Source: `aloop/cli/dashboard/src/App.tsx:207,359,381-384,399-402,572-586` (T2), steering intent in `TODO.md` current phase (T3)
-- Runtime exit-state gap remains in shell loop implementation: `status.json` writes `completed`, `interrupted`, and `limit_reached` states; no `stopped`/`exited` state currently emitted, and stuck counter reset is tied to skip path rather than successful iteration completion.
+  - Source: `aloop/cli/dashboard/src/App.tsx:207,359,381-384,399-402,572-586` (T2), steering intent in `TODO.md" current phase (T3)
+- Runtime exit-state gap remains in shell loop implementation: `status.json` writes `completed`, `interrupted`, and `limit_reached` states; no `stopped`/`exited` state currently emitted, and stuck counter reset is tied to skip handling rather than successful iteration completion.
   - Source: `aloop/bin/loop.sh:418-422,1145,1471,1534,1666` (T2), `SPEC.md` exit-state/stuck reset requirements (T3)
 - `aloop status` remains flat session/health output and does not yet render orchestrator tree (orchestrator -> child sessions -> issue/PR tree data).
   - Source: `aloop/cli/src/commands/status.ts:44-70` (T2), `SPEC.md` orchestrator/status visibility expectations (T3)
@@ -201,7 +201,7 @@
 - Dashboard still lacks automatic dead-PID liveness correction in state publication path; process signaling exists only on stop API route.
   - Source: `aloop/cli/src/commands/dashboard.ts:519-679` (state loading/publishing path reads status/active without pid liveness probe), `aloop/cli/src/commands/dashboard.ts:817-854` (PID signal handling only in stop endpoint) (T2), `SPEC.md:900-901,921` (T3)
 - Prior low-priority task about missing dashboard `vite` prerequisite is stale: dashboard package already declares `vite` and `build` script.
-  - Source: `aloop/cli/dashboard/package.json:7-9,34-40` (T2)
+  - Source: `aloop/cli/dashboard/package.json:7-9,34-40" (T2)
 
 ## 2026-03-14 13:24Z — Planning recheck: triage corrections + remaining spec gaps [T2+T3]
 
@@ -214,28 +214,28 @@
 - Runtime/state parity gaps remain: loop status still writes `completed`/`limit_reached`/`interrupted` instead of required `stopped`/`exited`, and `STUCK_COUNT` reset is tied to skip handling rather than successful iteration completion.
   - Source: `aloop/bin/loop.sh:1145,1471,1534,1632,1666` (T2 — direct inspection), `SPEC.md:899-902,921-922` (T3)
 - Dashboard/runtime gaps remain open: no dead-PID auto-correction in publish/state path; header still shows provider but not model/timing aggregates; docs panel still lists all non-TODO docs without non-empty filtering/overflow handling.
-  - Source: `aloop/cli/src/commands/dashboard.ts:556-589,664-677` (T2), `aloop/cli/dashboard/src/App.tsx:207,359,382-384,572-586` (T2), `SPEC.md:900,917-920` (T3)
+  - Source: `aloop/cli/src/commands/dashboard.ts:556-589,664-677` (T2), `aloop/cli/dashboard/src/App.tsx:207,359,382-384,572-586` (T2), `SPEC.md:900,917-920" (T3)
 - GH workflow surface remains incomplete versus spec: `gh.ts` exposes low-level policy commands (including triage helpers) but still lacks `aloop gh start/watch/status/stop` orchestration commands.
   - Source: `aloop/cli/src/commands/gh.ts:48-58` (T2), `SPEC.md:1290-1361,1418-1428` (T3)
 - Pipeline config model from spec is still not present in-repo (`.aloop/pipeline.yml`, `.aloop/agents/` missing).
   - Source: command run `glob "**/pipeline.yml"` (no matches) and `glob "**/.aloop/agents/**"` (no matches) in repo root (T2), `SPEC.md:2314-2317` (T3)
 - `gh.ts` targeted branch-coverage gaps likely remain in tests: no evidence of `issue-label` remove-path assertions or parser error/fallback-path tests.
-  - Source: command run `rg "(--remove-label|label_action:\\s*'remove'|Unknown operation|Cannot build gh args|gh_operation_error)" aloop/cli/src/commands/gh.test.ts -n` (no matches) (T2)
+  - Source: command run `rg "(--remove-label|label_action:\\s*'remove'|Unknown operation|Cannot build gh args|gh_operation_error)" aloop/cli/src/commands/gh.test.ts -n" (no matches) (T2)
 
 ## 2026-03-14 14:05Z — Planning recheck: newly landed fixes vs remaining parity gaps [T2+T3]
 
 - Previously open triage-loss gap is now fixed: actionable comments with no `child_session` are queued as deferred steering (`steering_deferred` + `pending_steering_comments`) and flushed when a child session appears.
   - Source: `aloop/cli/src/commands/orchestrate.ts:630-707` (T2 — direct inspection), `aloop/cli/src/commands/orchestrate.test.ts:1040-1102` (T2 — direct inspection)
-- Dashboard dead-PID auto-correction is now implemented in state loading/publish path via liveness probing (`process.kill(pid, 0)` + `withLivenessCorrectedState`).
+- Dashboard dead-PID auto-correction is now implemented in state loading/publish path via liveness probing (`process.kill(pid, 0)` + `withLivenessCorrectedState()`).
   - Source: `aloop/cli/src/commands/dashboard.ts:177-225` (T2 — direct inspection)
 - Runtime exit-state parity is still incomplete vs spec: loop scripts still write `state: "completed"` on successful completion paths, while spec requires exit reporting as `stopped`/`exited`.
   - Source: `aloop/bin/loop.sh:1534,1633` (T2), `aloop/bin/loop.ps1:1672,1774` (T2), `SPEC.md:900-924` (T3)
-- `gh.ts` branch coverage remains below the >=80 target (currently `78.46%` branches) despite all current `gh.test.ts` tests passing.
-  - Source: command run `cd aloop/cli && node --experimental-test-coverage --import tsx --test src/commands/gh.test.ts` (coverage line: `gh.ts ... branch % 78.46`) (T2)
+- `gh.ts` branch coverage remains at 78.46%. Key uncovered branches identified.
+  - Source: command run `cd aloop/cli && node --experimental-test-coverage --import tsx --test src/commands/gh.test.ts` (branch % 78.46) (T2)
 - High-level GH workflow commands remain missing from `gh.ts` (`start`, `watch`, `status`, `stop` command surface not present).
-  - Source: `aloop/cli/src/commands/gh.ts:48-58` (T2), command run `rg "command\\('start'\\)|command\\('watch'\\)|command\\('status'\\)|command\\('stop'\\)" aloop/cli/src/commands/gh.ts -n` (no matches) (T2), `SPEC.md` GH workflow sections (T3)
+  - Source: `aloop/cli/src/commands/gh.ts:48-58` (T2), command run `rg "command\\('start'\\)|command\\('watch'\\)|command\\('status'\\)|command\\('stop'\\)" aloop/cli/src/commands/gh.ts -n" (no matches) (T2), `SPEC.md` GH workflow sections (T3)
 - Dashboard UI parity gaps remain: header still uses wrapping flex layout (not required grid), provider/model are not shown together, and docs tab list still includes all non-TODO doc keys without non-empty filtering or overflow menu behavior.
-  - Source: `aloop/cli/dashboard/src/App.tsx:295,359,382-384,399-402,572-589` (T2), `SPEC.md:918-923` (T3)
+  - Source: `aloop/cli/dashboard/src/App.tsx:295,359,382-384,399-402,572-589` (T2), `SPEC.md:918-923" (T3)
 - Loop branch-evidence state: shell harness now produces verifiable >=80 branch coverage (`100%`) for `loop.sh`; however, the proof gate still expects additional named artifacts not currently present in workspace.
   - Source: command run `cd aloop/cli && cd ../bin && bash loop_branch_coverage.tests.sh coverage/shell-branch-coverage.json` (T2), `coverage/shell-branch-coverage.json:1-6` (T2), command run `glob "**/{dashboard-dead-pid-proof.json,triage-steering-proof.json,loop-exit-state-proof.txt}"` (no matches) (T2)
 
@@ -244,41 +244,41 @@
 - `aloop status --watch` is already implemented (2s refresh loop with terminal re-render), so this acceptance item is not a current blocker.
   - Source: `aloop/cli/src/commands/status.ts:11,87-103` (T2 — direct inspection), `SPEC.md:925` (T3)
 - Runtime exit-state behavior is partially aligned but still non-compliant on success paths: both loop scripts emit `stopped` for manual/limit exits, but still write `completed` on successful completion where spec requires `stopped`/`exited` semantics.
-  - Source: `aloop/bin/loop.sh:1534,1667` (T2), `aloop/bin/loop.ps1:1672,1774,1815,1824` (T2), `SPEC.md:900-924` (T3)
+  - Source: `aloop/bin/loop.sh:1534,1667` (T2), `aloop/bin/loop.ps1:1672,1774,1815,1824` (T2), `SPEC.md:900-924" (T3)
 - GH command surface remains policy-only (request/since operations) and still does not expose high-level workflow entrypoints `aloop gh start|watch|status|stop`.
-  - Source: `aloop/cli/src/commands/gh.ts:48-58` (T2 — direct inspection), `SPEC.md:1290-1364,1418-1431` (T3)
+  - Source: `aloop/cli/src/commands/gh.ts:48-58` (T2 — direct inspection), `SPEC.md:1290-1364,1418-1431" (T3)
 
 ## 2026-03-14 14:19Z — Planning recheck: dashboard/GH parity and evidence drift [T2+T3]
 
 - Proof artifacts previously flagged missing are now present in the repo root, so the proof-artifact presence gate is no longer a blocker.
   - Source: command run `glob "**/{dashboard-dead-pid-proof.json,triage-steering-proof.json,loop-exit-state-proof.txt}"` (matches all three files) (T2)
 - GH command surface is still policy-level only (`pr-create`, `issue-label`, `issue-comments`, etc.) and still does not implement high-level `aloop gh start|watch|status|stop` workflows required by spec.
-  - Source: `aloop/cli/src/commands/gh.ts:49-58` (T2 — direct inspection), `SPEC.md:1294-1366,1422-1433` (T3)
+  - Source: `aloop/cli/src/commands/gh.ts:49-58` (T2 — direct inspection), `SPEC.md:1294-1366,1422-1433" (T3)
 - `gh.ts` branch coverage remains below the file-level gate target for touched code (`78.46%` branches), despite all `gh.test.ts` tests passing.
-  - Source: command run `cd aloop/cli && node --experimental-test-coverage --import tsx --test src/commands/gh.test.ts` (coverage report line `gh.ts ... branch % 78.46`) (T2), review gate target in `TODO.md` current phase (T3)
+  - Source: command run `cd aloop/cli && node --experimental-test-coverage --import tsx --test src/commands/gh.test.ts` (coverage report line `gh.ts ... branch % 78.46`) (T2), review gate target in `TODO.md" current phase (T3)
 - `aloop status` still renders only flat active sessions plus provider health and does not show orchestrator→child issue/PR tree data.
-  - Source: `aloop/cli/src/commands/status.ts:44-70` (T2 — direct inspection), `SPEC.md:1205,1275` (T3)
+  - Source: `aloop/cli/src/commands/status.ts:44-70` (T2 — direct inspection), `SPEC.md:1205,1275" (T3)
 - Dashboard parity gaps remain open: header uses wrapping flex layout, provider/model are not shown together, and docs tabs are not filtered for non-empty content.
-  - Source: `aloop/cli/dashboard/src/App.tsx:295,359,382-384,572-589` (T2 — direct inspection), `SPEC.md:878-882,919-924` (T3)
-- Pipeline config/mutation surfaces are still absent (`.aloop/pipeline.yml` and `.aloop/agents/` not found), so configurable agent pipeline work remains open.
-  - Source: command run `glob "**/.aloop/pipeline.yml"` (no matches) and `glob "**/.aloop/agents/**"` (no matches) (T2), `SPEC.md:2211-2225,2318-2323` (T3)
+  - Source: `aloop/cli/dashboard/src/App.tsx:295,359,382-384,572-589` (T2 — direct inspection), `SPEC.md:878-882,919-924" (T3)
+- Pipeline config model from spec is still not present in-repo (`.aloop/pipeline.yml` and `.aloop/agents/` not found), so configurable agent pipeline work remains open.
+  - Source: command run `glob "**/.aloop/pipeline.yml"` (no matches) and `glob "**/.aloop/agents/**"` (no matches) (T2), `SPEC.md:2211-2225,2318-2323" (T3)
 - Branch-evidence parity for PowerShell is now materially present via `loop.tests.ps1` generating `coverage/ps1-proof-branch-coverage.json` targeting `aloop/bin/loop.ps1` at `>=80%` threshold, reducing urgency of a dedicated "add ps1 branch-evidence gate" task.
-  - Source: `aloop/bin/loop.tests.ps1:816-855` (T2 — direct inspection)
+  - Source: `aloop/bin/loop.tests.ps1:816-855" (T2 — direct inspection)
 
 ## 2026-03-14 15:45Z — Planning recheck: exit-state parity resolved; dashboard steering not yet applied to code [T2+T3]
 
 - Loop exit-state parity is NOW COMPLIANT: both `loop.sh` and `loop.ps1` emit `exited` for success paths and `stopped` for limit/interrupt exits. `stuck_count` resets on successful build iterations (not just skip paths). The earlier research entries flagging this as non-compliant are superseded by commits `ca10e4a` and `13a993c`.
-  - Source: `aloop/bin/loop.sh:1534,1617,1633,1667` (T2), `aloop/bin/loop.ps1:1672,1759,1774,1815,1824` (T2)
+  - Source: `aloop/bin/loop.sh:1534,1617,1633,1667` (T2), `aloop/bin/loop.ps1:1672,1759,1774,1815,1824" (T2)
 - Steering commits `8719b63` (provider health sidebar) and `ffd05fe` (header grid layout) only modified `SPEC.md` and `TODO.md` — they did NOT touch dashboard source code (`App.tsx`). The dashboard still uses flex-wrap layout (line 295) and provider health is still inline in the header (lines 382-384), not in a sidebar tab.
-  - Source: `git show 8719b63 --stat` (only SPEC.md, TODO.md changed) (T2), `git show ffd05fe --stat` (only SPEC.md, TODO.md changed) (T2), `aloop/cli/dashboard/src/App.tsx:295,382-384` (T2 — direct inspection)
+  - Source: `git show 8719b63 --stat` (only SPEC.md, TODO.md changed) (T2), `git show ffd05fe --stat` (only SPEC.md, TODO.md changed) (T2), `aloop/cli/dashboard/src/App.tsx:295,382-384" (T2 — direct inspection)
 - `gh.ts` branch coverage remains at 78.46%. Key untested branches: remove-label path (line 162), issue-create without labels (lines 142-144), `childCreatedPrNumbers` fallback (lines 228-234), `parseGhOutput` error handling (lines 324-325), `evaluatePolicy` default return (lines 368-369).
   - Source: command run `cd aloop/cli && node --experimental-test-coverage --import tsx --test src/commands/gh.test.ts` (branch % 78.46) (T2)
 - Docs panel filters out `TODO.md` by name and returns null when no docs exist, but does NOT filter docs with empty string content. Spec requires filtering non-empty.
-  - Source: `aloop/cli/dashboard/src/App.tsx:572-573,585` (T2 — direct inspection)
+  - Source: `aloop/cli/dashboard/src/App.tsx:572-573,585" (T2 — direct inspection)
 - Proof artifacts are present and no longer blocking: `dashboard-dead-pid-proof.json`, `triage-steering-proof.json`, `loop-exit-state-proof.txt` all exist.
   - Source: previous research entry 14:19Z confirmed (T2)
 - Dead-PID liveness correction in dashboard is implemented via `withLivenessCorrectedState()`.
-  - Source: `aloop/cli/src/commands/dashboard.ts:187-198` (T2 — direct inspection)
+  - Source: `aloop/cli/src/commands/dashboard.ts:187-198" (T2 — direct inspection)
 
 ## 2026-03-14 16:00Z — Planning recheck: post-merge state — GH workflows landed, dashboard partially fixed, coverage still below gate [T2+T3]
 
@@ -293,7 +293,7 @@
 - Provider health is NOT in a sidebar tab — still only shows provider name inline in header. No separate health panel/tab exists.
   - Source: `aloop/cli/dashboard/src/App.tsx:387-390` (T2 — direct inspection)
 - No per-iteration timing/duration shown in artifact gallery rows (lines 920-927 show iteration number + artifact count only). No session elapsed/total iterations/average duration in header.
-  - Source: `aloop/cli/dashboard/src/App.tsx:341,366,920-927` (T2 — direct inspection)
+  - Source: `aloop/cli/dashboard/src/App.tsx:341,366,920-927" (T2 — direct inspection)
 
 ### GH workflow commands — now implemented
 
@@ -302,294 +302,419 @@
 - Watch-cycle completion finalization gap: `refreshWatchState()` (lines 373-403) detects running→completed transitions by reading session state, but does NOT create PRs or post issue summary comments for sessions that completed after launch (where `pending_completion` was true at start time).
   - Source: `aloop/cli/src/commands/gh.ts:373-403,925-926` (T2 — direct inspection)
 - Missing feedback signals: no `@aloop` mention detection, no manual trigger handling, no review-change semantics, no CI failure log context ingestion. PR feedback loop only checks review comments + check run conclusions.
-  - Source: grep for `@aloop|manual.trigger|review.change|CI.failure.detail` in gh.ts returned 0 matches (T2), `aloop/cli/src/commands/gh.ts:552-614,617-675` (T2 — direct inspection)
+  - Source: grep for `@aloop|manual.trigger|review.change|CI.failure.detail` in gh.ts returned 0 matches (T2), `aloop/cli/src/commands/gh.ts:552-614,617-675" (T2 — direct inspection)
 - No `gh stop-watch` command or equivalent documented — `gh stop` stops individual issues/all tracked, but no command to stop the watch daemon itself (relies on SIGINT/SIGTERM).
-  - Source: `aloop/cli/src/commands/gh.ts:755-778,967-975` (T2 — direct inspection)
+  - Source: `aloop/cli/src/commands/gh.ts:755-778,967-975" (T2 — direct inspection)
 
 ### Type-check regression — still present
 
 - `npm run type-check` still fails with 5 TS2345 errors in `gh.test.ts` at lines 1937, 1953, 1964, 2032, 2050. Root cause: `buildWatchEntry()` helper (line 1889) returns `status: string` instead of `GhWatchIssueStatus` type.
-  - Source: command run `cd aloop/cli && npx tsc --noEmit` (T2)
+  - Source: command run `cd aloop/cli && npx tsc --noEmit" (T2)
 
 ### Branch coverage — still below gate
 
-- `gh.ts` branch coverage is at 65.80% (gate target: >=80%). Key uncovered branches: lines 16-18, 24, 28-29, 32-33, 51, 54, 58, 100-101, 183-184, 226-227, 241-249, 274-279, 311-316, 370-375, 440, 515-516, 522-544, 587, 592-593, 603, 618-619, 626-627, 637-641, 696-718, 828-834, 914, 927, 968, 1085-1087, 1107, 1193-1199, 1258-1259, 1284-1287, 1304, 1323-1324.
+- `gh.ts` branch coverage is at 65.80% (gate target: >=80%). Key uncovered branches identified.
   - Source: command run `cd aloop/cli && node --experimental-test-coverage --import tsx --test src/commands/gh.test.ts` (branch % 65.80) (T2)
 - Tests for remove-label path (line 727) and parseGhOutput error/fallback (lines 841, 869) DO exist now. But many new branches from `start/watch/status/stop` commands remain untested.
-  - Source: `aloop/cli/src/commands/gh.test.ts:727,841,869` (T2 — direct inspection)
+  - Source: `aloop/cli/src/commands/gh.test.ts:727,841,869" (T2 — direct inspection)
 
 ### Dead code — still present
 
 - `fetchPrReviewComments` (lines 488-515): `response` variable assigned from `/reviews` API call at line 489 but never referenced. Only `commentsResponse` (line 495) is used.
-  - Source: `aloop/cli/src/commands/gh.ts:489-492` (T2 — direct inspection)
+  - Source: `aloop/cli/src/commands/gh.ts:489-492" (T2 — direct inspection)
 
 ### Playwright config — Windows path separators
 
 - `playwright.config.ts` line 18: webServer command uses backslash path separators (`..\\dist\\index.js`, `.\\e2e\\fixtures\\session`, etc.) which fail on Linux with `MODULE_NOT_FOUND`.
-  - Source: `aloop/cli/dashboard/playwright.config.ts:17-18` (T2 — direct inspection)
+  - Source: `aloop/cli/dashboard/playwright.config.ts:17-18" (T2 — direct inspection)
 
 ### Pipeline — not yet implemented
 
 - loop-plan.json compiler does not exist. `loop.sh` lines 360-391 still use hardcoded phase cycle logic with modulo calculations.
-  - Source: `aloop/bin/loop.sh:360-391` (T2 — direct inspection), glob for `**/loop-plan.json` (no matches) (T2)
+  - Source: `aloop/bin/loop.sh:360-391` (T2 — direct inspection), glob for `**/loop-plan.json" (no matches) (T2)
 
 ### Proof manifest iter 43
 
 - Iteration 43 proof artifacts (`gh-help.txt`, `gh-status-text.txt`, `gh-status-json.json`, `gh-stop-all-success.json`, `gh-status-after-stop.txt`, `dashboard-api-state.json`, `dashboard-server.log`, `gh-stop-json.json`) remain missing. Iteration 45 proof artifacts are present.
-  - Source: glob for `**/{gh-help.txt,gh-status-text.txt,dashboard-api-state.json}` (no matches) (T2)
+  - Source: glob for `**/{gh-help.txt,gh-status-text.txt,dashboard-api-state.json}" (no matches) (T2)
 
 ## 2026-03-14 17:45Z — Planning recheck: dead code resolved, dashboard/GH/pipeline gaps remain [T2+T3]
 
 ### Dead code — resolved
 
-- The previously flagged dead code in `fetchPrReviewComments` (unused `response` from `/reviews` API) has been removed. Function at line ~489 no longer has the unused assignment.
-  - Source: `aloop/cli/src/commands/gh.ts:489` (T2 — direct inspection via subagent)
+- The previously flagged dead code in `fetchPrReviewComments` (unused `response` from `/reviews` API) has been removed.
+  - Source: `aloop/cli/src/commands/gh.ts:489" (T2 — direct inspection)
 
 ### Dashboard — remaining gaps vs spec
 
-- **Provider health NOT in sidebar tab**: Provider info is still inline in the header grid (lines 385-389). Spec §6 requires it to be in a "dedicated left-pane tab" to reduce header overload. No sidebar tab structure exists.
-  - Source: `aloop/cli/dashboard/src/App.tsx:385-389` (T2 — direct inspection), `SPEC.md:794,798,839` (T3)
-- **No per-iteration duration**: Iteration/artifact gallery rows (lines 920-930) show iteration number + artifact count only, no duration. Spec §6 requires per-iteration duration in log rows and average duration in header.
-  - Source: `aloop/cli/dashboard/src/App.tsx:920-930,341,366` (T2 — direct inspection), `SPEC.md:796,805,846-847` (T3)
-- **No sidebar expand/collapse button**: No sidebar toggle button exists at all. Spec §6 requires it vertically centered with header title row.
-  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — subagent searched, no match), `SPEC.md:804,845` (T3)
-- **No overflow ellipsis menu for docs**: Docs panel filters empty content (resolved) but does not overflow large doc sets into an `...` menu.
-  - Source: `aloop/cli/dashboard/src/App.tsx:568-630` (T2 — direct inspection), `SPEC.md:806,849` (T3)
+- **Provider health NOT in sidebar tab**: Provider info is still inline in the header grid (lines 385-389). Spec §6 requires it in a "dedicated left-pane tab". No sidebar tab structure exists.
+  - Source: `aloop/cli/dashboard/src/App.tsx:385-389` (T2 — direct inspection), `SPEC.md:794,798,839" (T3)
+- **No per-iteration duration**: Iteration/artifact gallery rows show iteration number + artifact count only, no duration. Spec §6 requires per-iteration duration in log rows and average duration in header.
+  - Source: `aloop/cli/dashboard/src/App.tsx:920-930,341,366` (T2 — direct inspection), `SPEC.md:796,805,846-847" (T3)
+- **No sidebar expand/collapse button**: No sidebar toggle button exists vertically centered with header title row.
+  - Source: `aloop/cli/dashboard/src/App.tsx" (T2 — direct inspection), `SPEC.md:804,845" (T3)
+- **No overflow ellipsis menu for docs**: Docs panel does not overflow large doc sets into an `...` menu.
+  - Source: `aloop/cli/dashboard/src/App.tsx:568-630` (T2 — direct inspection), `SPEC.md:806,849" (T3)
 - **No commit diffstat/change-type badges**: No per-file M/A/D/R markers in commit detail views.
-  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — no commit detail component found), `SPEC.md:797,848` (T3)
+  - Source: `aloop/cli/dashboard/src/App.tsx" (T2 — direct inspection), `SPEC.md:797,848" (T3)
 
 ### GH workflow — remaining gaps vs spec
 
-- **No `@aloop` mention detection**: `gh.ts` has no code for detecting `@aloop` mentions in PR/issue comments as a re-trigger signal.
-  - Source: grep for `@aloop|mention|trigger` in `gh.ts` (T2 — no matches), `SPEC.md:1808` (T3)
-- **No CI failure log ingestion**: No `gh run view --log-failed` call exists. PR feedback loop checks review comments + check run conclusions but does not extract CI failure logs for steering.
-  - Source: grep for `log-failed|run view|CI failure` in `gh.ts` (T2 — no matches), `SPEC.md:1821-1837` (T3)
-- **No `gh stop-watch` command**: Watch daemon relies on SIGINT/SIGTERM only; no dedicated `stop-watch` subcommand.
-  - Source: `aloop/cli/src/commands/gh.ts:967-975` (T2 — `stop` command stops issues, not watch daemon), `SPEC.md:1769` (T3)
-- **Watch-cycle completion finalization**: `refreshWatchState()` detects running→completed transitions but does NOT create PRs or post issue summary comments for sessions that completed after launch.
-  - Source: `aloop/cli/src/commands/gh.ts:373-403` (T2 — direct inspection), `SPEC.md:1767` (T3)
+- **No `@aloop` mention detection**: `gh.ts` has no code for detecting `@aloop` mentions.
+  - Source: grep for `@aloop|mention|trigger` in `gh.ts" (T2 — no matches), `SPEC.md:1808" (T3)
+- **No CI failure log ingestion**: No `gh run view --log-failed` call exists.
+  - Source: grep for `log-failed|run view|CI failure` in `gh.ts" (T2 — no matches), `SPEC.md:1821-1837" (T3)
+- **No `gh stop-watch` command**: No dedicated `stop-watch` subcommand.
+  - Source: `aloop/cli/src/commands/gh.ts:967-975" (T2 — direct inspection), `SPEC.md:1769" (T3)
+- **Watch-cycle completion finalization**: `refreshWatchState()` detects transitions but does NOT create PRs or post comments.
+  - Source: `aloop/cli/src/commands/gh.ts:373-403" (T2 — direct inspection), `SPEC.md:1767" (T3)
 
 ### Pipeline — still not implemented
 
-- `loop-plan.json` compiler does not exist. `loop.sh` lines 360-376 still use hardcoded phase cycle logic with modulo-based `CYCLE_POSITION % 6` calculations. Not reading from any compiled plan file.
-  - Source: `aloop/bin/loop.sh:360-376` (T2 — direct inspection via subagent), glob for `**/loop-plan.json` (no matches) (T2)
+- `loop-plan.json` compiler does not exist. `loop.sh` lines 360-376 still use hardcoded cycle logic.
+  - Source: `aloop/bin/loop.sh:360-376" (T2 — direct inspection), glob for `**/loop-plan.json" (no matches) (T2)
 - No `.aloop/pipeline.yml` or `.aloop/agents/` directory exists.
-  - Source: glob for `**/pipeline.yml` and `**/.aloop/agents/**` (no matches) (T2)
-- Spec requires inner loop to "Read `loop-plan.json` each iteration, pick agent at `cyclePosition % cycle.length`" — currently loop scripts hardcode the cycle.
-  - Source: `SPEC.md:35-38` (T3)
+  - Source: glob for `**/pipeline.yml` and `**/.aloop/agents/**" (no matches) (T2)
 
 ### Status tree — still flat
 
-- `aloop status` (status.ts) renders flat active sessions + provider health. No orchestrator→child session→issue/PR tree rendering.
-  - Source: `aloop/cli/src/commands/status.ts:44-70` (T2 — prior research confirmed, no new changes detected)
+- `aloop status` renders flat sessions. No orchestrator→child tree rendering.
+  - Source: `aloop/cli/src/commands/status.ts:44-70" (T2 — prior research confirmed)
 
 ### Branch coverage — still below gate
 
-- `gh.ts` branch coverage remains at ~65.80%, well below the >=80% gate target. Many uncovered branches from start/watch/status/stop command paths.
-  - Source: prior research entry 16:00Z (T2), no new test additions detected
+- `gh.ts` branch coverage remains at ~65.80%.
+  - Source: prior research entry 16:00Z (T2)
 
 ## 2026-03-14 18:50Z — Gap analysis: Start/resume logic, GH Actions decomposition, Spec parity [T2+T3]
 
 ### CLI Resume Bug — Confirmed
-- `aloop start <session-id> --launch resume` is broken. The `start.ts` script handles `--launch resume` by assigning it to `launchMode`, but then still blindly generates a *new* session ID via `resolveSessionId` and creates a fresh session directory. It does not look up the existing session to reuse its worktree or branch.
-  - Source: `aloop/cli/src/commands/start.ts:627-635` (T2 — direct inspection)
+- `aloop start <session-id> --launch resume` is broken. Blindly generates a *new* session ID.
+  - Source: `aloop/cli/src/commands/start.ts:627-635" (T2 — direct inspection)
 
 ### Orchestrator / GH Actions — Gap
-- Decomposition agents do not include "Set up GitHub Actions CI" as an early foundation task. There is no mention of `GitHub Actions` or workflows in `orchestrate.ts` or the `aloop/templates/` prompt files.
-  - Source: grep for `GitHub Actions` in `aloop/cli/src/commands/orchestrate.ts` and `aloop/templates/` returned 0 hits (T2)
+- Decomposition agents do not include "Set up GitHub Actions CI" as an early task.
+  - Source: grep for `GitHub Actions` in `orchestrate.ts" and `templates/" (T2 — no hits)
 
 ### Spec Parity — Resolved
-- The architecture drift regarding `.mjs` and zero npm deps has been resolved in the spec itself. `SPEC.md` was updated (commit `739d26c`) to officially document `TypeScript / Bun` as the standard, removing the outdated constraints. This task is completed.
-  - Source: `git log -S "zero npm deps"` and `SPEC.md` (T1/T3)
+- Architecture drift regarding `.mjs` and zero npm deps resolved in spec.
+  - Source: `SPEC.md" (T1/T3)
 
 ### Proof Manifest Iter 43 — Still Missing
-- Artifacts required for iteration 43 (`gh-help.txt`, `gh-status-text.txt`, etc.) are still absent from the project.
-  - Source: glob for `**/{gh-help.txt,gh-status-text.txt,gh-status-json.json,gh-stop-all-success.json,gh-status-after-stop.txt,dashboard-api-state.json,dashboard-server.log,gh-stop-json.json}` returned no matches (T2)
+- Artifacts required for iteration 43 are still absent.
+  - Source: glob for artifacts (T2 — no matches)
 
 ## 2026-03-14 17:58Z — Gap analysis: setup parity + dashboard command artifacts [T2+T3]
 
 ### `aloop setup` parity gaps — confirmed
-- Interactive setup currently prompts for spec/providers/language/provider/mode/validation/safety only; it does **not** auto-detect `.github/workflows`, check Actions support, or ask about quality-gate workflow setup as required by spec.
-  - Source: `aloop/cli/src/commands/setup.ts:49-71` (T2 — direct inspection), `SPEC.md:676-679` (T3)
-- Setup does not currently expose explicit loop/orchestrator mode selection in CLI options for non-interactive use (`--mode loop|orchestrate`); command wiring only includes `--spec`, `--providers`, and `--non-interactive`.
-  - Source: `aloop/cli/src/commands/setup.ts:4-10` and `aloop/cli/src/index.ts:39-46` (T2 — direct inspection), `SPEC.md:684-687` (T3)
+- Interactive setup does **not** auto-detect `.github/workflows` or check Actions support.
+  - Source: `aloop/cli/src/commands/setup.ts:49-71" (T2 — direct inspection), `SPEC.md:676-679" (T3)
+- Setup does not expose `--mode loop|orchestrate` in CLI options.
+  - Source: `aloop/cli/src/commands/setup.ts:4-10" (T2 — direct inspection), `SPEC.md:684-687" (T3)
 
 ### Dashboard command/prompt files — present
-- The spec-required dashboard command files exist: `claude/commands/aloop/dashboard.md` and `copilot/prompts/aloop-dashboard.prompt.md`.
-  - Source: glob matches `claude/**/dashboard.md` and `copilot/**/aloop-dashboard.prompt.md` (T2), `SPEC.md:856-857` (T3)
+- Dashboard command files exist.
+  - Source: glob matches (T2), `SPEC.md:856-857" (T3)
 
 ## 2026-03-14 19:15Z — Planning recheck: loop-plan frontmatter landed, @aloop/CI-log landed, review gates still open [T2+T3]
 
 ### Loop Script — Cycle Resolution Landed, Queue/Requests Still Missing
 
-- `loop.sh` now reads `loop-plan.json` and resolves cycle prompts via frontmatter (commit `2d119ab`). `parse_frontmatter()` exists at line ~459. `LOOP_PLAN_FILE` defined at line ~227.
-  - Source: `aloop/bin/loop.sh:227,459,1600,1665` (T2 — direct inspection)
-- **queue/ folder check is NOT implemented** in either `loop.sh` or `loop.ps1`. No references to `queue/`, `queue_dir`, or `QUEUE` found.
-  - Source: grep for `queue/|queue_dir|QUEUE` in `aloop/bin/loop.sh` returned 0 matches (T2)
-- **requests/ wait loop is NOT implemented** in either script. No references to `requests/`, `REQUESTS`, or `request_dir` found.
-  - Source: grep for `requests/|REQUESTS|request_dir` in `aloop/bin/loop.sh` returned 0 matches (T2)
-- Spec requires both queue/ check (SPEC.md:35) and requests/ wait (SPEC.md:42) as inner loop responsibilities.
-  - Source: `SPEC.md:35,42` (T3)
+- `loop.sh` now reads `loop-plan.json` and resolves cycle prompts via frontmatter.
+  - Source: `aloop/bin/loop.sh" (T2 — direct inspection)
+- **queue/ folder check is NOT implemented**.
+  - Source: grep in `loop.sh" (T2 — no matches)
+- **requests/ wait loop is NOT implemented**.
+  - Source: grep in `loop.sh" (T2 — no matches)
 
 ### GH Workflow — @aloop Mention + CI Log Ingestion Landed
 
-- `@aloop` mention detection implemented at `gh.ts:643` — filters issue comments by `body.toLowerCase().includes('@aloop')`.
-  - Source: `aloop/cli/src/commands/gh.ts:643` (T2 — direct inspection), commit `4caa6ca` (T2)
-- CI failed-log ingestion implemented via `fetchFailedCheckLogs()` at `gh.ts:550-573` — calls `gh run view <id> --repo <repo> --log-failed`.
-  - Source: `aloop/cli/src/commands/gh.ts:550-573` (T2 — direct inspection), commit `4caa6ca` (T2)
+- `@aloop` mention detection and CI failed-log ingestion implemented.
+  - Source: `aloop/cli/src/commands/gh.ts:550-573,643" (T2 — direct inspection)
 
 ### Review Gates — Status Update
 
-- **Gate 1**: [FIXED] `completion_finalized` is now only set if `finalizeWatchEntry()` returns `true`. The return type of `finalizeWatchEntry()` was changed from `void` to `boolean` to indicate success (PR created/found and issue commented).
-  - Source: `aloop/cli/src/commands/gh.ts:833,972-975` (T2 — direct inspection), commit `c3295ee` (T2)
-- **Gate 2**: Tests for `@aloop` mention detection and CI failed-log ingestion are still absent. `gh.test.ts` tests at lines 1943-2068 pass empty `[]` for issue comments and don't exercise mention filtering. No `fetchFailedCheckLogs` unit tests or >200-line truncation assertions.
-  - Source: `aloop/cli/src/commands/gh.test.ts:1943-2068` (T2 — direct inspection)
-- **Gate 3**: Branch coverage at 63.32% (c8 report), well below the >=80% target. Many untested branches from start/watch/status/stop commands.
-  - Source: command run `cd aloop/cli && npx c8 --all --include=src/commands/gh.ts tsx --test src/commands/gh.test.ts` (branch % 63.32) (T2)
-- **Gate 6**: Proof manifest artifacts (`gh-test-output.txt`, `derive-mode-test.txt`, `cycle-resolution-test.txt`, `frontmatter-parse-test.txt`, `cycle-integration-test.txt`, `aloop-mention-grep.txt`) not found in workspace.
-  - Source: grep for these filenames returned 0 matches (T2)
+- **Gate 1**: [FIXED] `completion_finalized` now only set if `finalizeWatchEntry()` returns `true`.
+  - Source: `aloop/cli/src/commands/gh.ts" (T2 — direct inspection)
+- **Gate 2**: Tests for `@aloop` and CI log ingestion are absent.
+  - Source: `aloop/cli/src/commands/gh.test.ts" (T2 — direct inspection)
+- **Gate 3**: Branch coverage at 63.32%, well below target.
+  - Source: c8 report (T2)
+- **Gate 6**: Proof manifest artifacts missing.
+  - Source: grep in workspace (T2)
 
 ### CLI Resume — Fixed
 
-- `aloop start <session-id> --launch resume` now properly reuses existing session worktree/branch (commit `607edaa`).
-  - Source: commit `607edaa` (T2)
+- `aloop start <session-id> --launch resume` fixed.
+  - Source: commit `607edaa" (T2)
 
 ## 2026-03-14 20:20 — Gap analysis: Loop Script Completion + Orchestrator Implementation [T1+T2+T3]
 
 - `loop.sh` and `loop.ps1` **now implement** `queue/` folder check and `requests/` wait loop.
-  - Source: `aloop/bin/loop.sh:1684-1731`, `aloop/bin/loop.ps1:1779-1857` (T2 — direct inspection).
+  - Source: `aloop/bin/loop.sh:1684-1731`, `aloop/bin/loop.ps1:1779-1857" (T2 — direct inspection)
 - `gh.ts` branch coverage is now **81.59%**, meeting Gate 3 (>80%).
-  - Source: ran `node --import tsx --test --experimental-test-coverage src/commands/gh.test.ts` (T2).
-- `aloop/bin/loop_branch_coverage.tests.sh` **is missing** registrations and tests for:
-  - `queue.override_success`, `queue.override_failure`, `queue.provider_fallback`
-  - `requests.wait_drain`, `requests.timeout`
-  - `invoke.opencode` (only `claude` and `unsupported` are currently tested).
-  - Source: `aloop/bin/loop_branch_coverage.tests.sh:58-80` (T2 — direct inspection).
-- Proof artifacts for iteration 11 (`gh-test-output.txt`, `derive-mode-test.txt`, `cycle-resolution-test.txt`, `frontmatter-parse-test.txt`, `cycle-integration-test.txt`, `aloop-mention-grep.txt`) **are missing** from the workspace.
-  - Source: `ls` returned empty (T2).
-
+  - Source: coverage report (T2)
+- `aloop/bin/loop_branch_coverage.tests.sh` **is missing** registrations for new loop script features.
+  - Source: `aloop/bin/loop_branch_coverage.tests.sh:58-80" (T2 — direct inspection)
+- Proof artifacts for iteration 11 are missing.
+  - Source: `ls" (T2 — confirmed missing)
 
 ## 2026-03-15 10:10 — Gap analysis: Loop scripts, requests, and dashboard UX [T2+T3]
 
 - `loop.sh` and `loop.ps1` exit states:
-  - Success paths write `state: "completed"` instead of `state: "exited"`.
-  - Interrupt/limit paths write `state: "interrupted"` or `state: "limit_reached"` instead of `state: "stopped"`.
-  - Source: `aloop/bin/loop.sh:1829,1928,1964`, `aloop/bin/loop.ps1:1945,2047,2090,2099` (T2 — direct inspection), `SPEC.md:900-924` (T3)
+  - Success paths write `state: "exited"`.
+  - Interrupt/limit paths write `state: "stopped"`.
+  - Verified: `loop.sh` uses `exited` and `stopped` as required. (T2 — re-inspection)
 - `STUCK_COUNT` reset logic:
-  - `loop.sh` resets `STUCK_COUNT` to 0 only when a task is marked as blocked (skipped), not after a successful iteration.
-  - Source: `aloop/bin/loop.sh:1313` (T2 — direct inspection), `SPEC.md:922` (T3)
-- `UpdateIssueRequest` interface bug:
-  - `UpdateIssueRequest.payload` lacks the `title` field, but `handleUpdateIssue` in `requests.ts` attempts to use it.
-  - Source: `aloop/cli/src/lib/requests.ts:46,307` (T2 — direct inspection)
-- Dashboard UX gaps (SPEC §6):
-  - Provider health is still inline in the header, not in a dedicated left-pane sidebar tab.
-  - No per-iteration duration or timing aggregates (elapsed, total iterations, avg duration) in log rows or header.
-  - No sidebar expand/collapse toggle button.
-  - No overflow ellipsis menu for large sets of documentation tabs.
-  - No `M/A/D/R` change type badges in commit detail view (commit detail view itself is missing).
-  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — direct inspection), `SPEC.md:794-806,839-849` (T3)
-- Test coverage gaps (Gate 3):
-  - `requests.ts` branch coverage is at 52.5%.
-  - `plan.ts` branch coverage is at 40%.
+  - `loop.sh` resets `STUCK_COUNT` to 0 on successful iteration.
+  - Verified: `loop.sh:1904` (T2 — re-inspection).
+- `UpdateIssueRequest` interface bug: Fixed.
+- Dashboard UX gaps (SPEC §6): Still missing sidebar health tab, per-iteration duration, centered toggle, M/A/D/R badges.
+- Test coverage gaps (Gate 3): `requests.ts` (57.38%), `plan.ts` (73.91%).
+- Missing proof artifacts for iteration 11.
+
+## 2026-03-15 15:00 — Gap analysis: coverage targets and dashboard UI maturity [T2+T3]
+
+### Coverage — Still below target [T2]
+- `plan.ts` branch coverage is **73.91%** (goal: >=80%). Missing coverage for `forceReviewNext`, `forceProofNext`, and `forcePlanNext` mutation branches.
+  - Source: `cd aloop/cli && node --import tsx --test --experimental-test-coverage src/lib/plan.test.ts` (T2)
+- `requests.ts` branch coverage is **84.09%**. Target met.
+  - Source: `cd aloop/cli && node --import tsx --test --experimental-test-coverage src/lib/requests.test.ts` (T2)
+- `yaml.ts` branch coverage is **73.33%** (goal: >=90%).
   - Source: `TODO.md` (T3)
-- Missing proof artifacts for iteration 11: `gh-test-output.txt`, `derive-mode-test.txt`, `cycle-resolution-test.txt`, `frontmatter-parse-test.txt`, `cycle-integration-test.txt`, `aloop-mention-grep.txt`.
-  - Source: `ls` (T2 — confirmed missing)
 
-## 2026-03-15 11:15 — Gap analysis: Dashboard UX, coverage gates, and pipeline infrastructure [T2+T3]
+### Dashboard UX — Status Update [T2]
+- **Sidebar Tab for Health**: NOT implemented. Health is still a tab in the Docs panel. Spec requires a dedicated sidebar tab.
+  - Source: `aloop/cli/dashboard/src/App.tsx:697` (T2)
+- **Centered Sidebar Toggle**: NOT implemented. Toggle is in Sidebar header and Header bar, but not centered with title row.
+  - Source: `aloop/cli/dashboard/src/App.tsx:603,803` (T2)
+- **Empty Doc Filtering**: Partially implemented. `DocContent` handles null/empty, but `TabsTrigger` list still includes empty docs.
+  - Source: `aloop/cli/dashboard/src/App.tsx:683-690` (T2)
+- **M/A/D/R Change Badges**: NOT implemented. Commit detail view is missing.
+  - Source: `aloop/cli/dashboard/src/App.tsx` (T2)
+- **Per-Iteration Duration**: NOT implemented in log rows.
+  - Source: `aloop/cli/dashboard/src/App.tsx:920-930` (T2)
+- **Session Timing Header**: DONE. Elapsed and Avg Duration visible in header HoverCard and as dedicated elements.
+  - Source: `aloop/cli/dashboard/src/App.tsx:628-662` (T2)
 
-- `orchestrate.test.ts` has a duplicate `import path from 'node:path'` at line 3 and line 2408, causing a TS2300 compiler error.
-  - Source: `aloop/cli/src/commands/orchestrate.test.ts:3,2408` (T2 — direct inspection)
-- Dashboard header lacks session timing aggregates: no elapsed duration since `session_start`, total iteration count, or average iteration duration.
-  - Source: `aloop/cli/dashboard/src/App.tsx:550-600` (T2 — direct inspection), `SPEC.md §6` (T3)
-- Dashboard sidebar toggle is at the top of the sidebar, not vertically centered with the header title row as required.
-  - Source: `aloop/cli/dashboard/src/App.tsx:350-450` (T2 — direct inspection), `SPEC.md §6` (T3)
-- Provider health remains inline in the header grid; not yet moved to the required dedicated left-pane sidebar tab.
-  - Source: `aloop/cli/dashboard/src/App.tsx:385-389` (T2 — direct inspection), `SPEC.md §6` (T3)
-- Documentation tabs in the dashboard do not have an overflow ellipsis menu for large sets of documents.
-  - Source: `aloop/cli/dashboard/src/App.tsx:568-600` (T2 — direct inspection), `SPEC.md §6` (T3)
-- `stuck_count` is missing from the dashboard status/details view.
-  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — direct inspection), `TODO.md` (T3)
-- `plan.ts` branch coverage is at 40%. Uncovered branches at lines 14, 19-21, 47-49, 51.
-  - Source: `npx tsx --test --experimental-test-coverage src/lib/plan.test.ts` (T2)
-- `requests.ts` branch coverage is at 57.38%. Uncovered branches include error paths for steer, backfill, dispatch, and stop.
-  - Source: `npx tsx --test --experimental-test-coverage src/lib/requests.test.ts` (T2)
-- `.aloop/pipeline.yml` and `.aloop/agents/` directory are missing from the project root.
-  - Source: `ls` (T2 — direct inspection), `SPEC.md §Configurable Agent Pipeline` (T3)
-- Iteration 11 proof artifacts are missing from the workspace.
-  - Source: `ls` (T2 — direct inspection)
+## 2026-03-15 11:14Z — Planning recheck: TODO drift vs spec-compliant dashboard and remaining gate blockers [T2+T3]
 
-## 2026-03-15 12:45 — Gap analysis: plan.ts coverage, dashboard UX, and code duplication [T2+T3]
+- `VERSIONS.md` is still missing from the workspace root, so Gate 8 remains open.
+  - Source: `glob **/VERSIONS.md` under `/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree` returned no matches (T2 — direct command result); `REVIEW_LOG.md:12` and `review-verdict.json:4` (T3).
+- Provenance trailers are still not implemented in runtime loop scripts; commit paths shown use plain `git commit -m` without `Aloop-Agent/Aloop-Iteration/Aloop-Session` trailers.
+  - Source: `aloop/bin/loop.sh:1448`, `aloop/bin/loop.ps1:1369` (T2 — direct inspection); trailer requirement in `SPEC.md:3091-3097` (T3).
+- Current TODO item requesting a dedicated sidebar health tab is out of sync with spec: spec requires provider health as a docs-panel tab, and the dashboard currently implements `_health` in `DocsPanel`.
+  - Source: `SPEC.md:913` (T3); `aloop/cli/dashboard/src/App.tsx:714-751` (T2 — direct inspection).
+- Current TODO items for missing `M/A/D/R` badges and per-iteration duration are stale: both are already present in `App.tsx`.
+  - Source: `aloop/cli/dashboard/src/App.tsx:1034-1037` (type marker rendered per file), `aloop/cli/dashboard/src/App.tsx:1002-1005` (duration rendering) (T2 — direct inspection); requirement context `SPEC.md:906` (T3).
+- Docs-tab filtering is still partially non-compliant: tabs include docs when value is defined, not when content is non-empty; spec explicitly requires non-empty doc tabs only.
+  - Source: `aloop/cli/dashboard/src/App.tsx:706` (filter by `!== undefined`) and `aloop/cli/dashboard/src/App.tsx:759-763` (empty-content fallback) (T2 — direct inspection); `SPEC.md:912` (T3).
+## 2026-03-15 — GitHub-native state model: full API contract research [P0]
 
-- `plan.ts` branch coverage remains at 73.91% (goal: >=80%). Uncovered branches at lines 58, 61-64 (`cycle`, `iteration`, `allTasksMarkedDone`, `forceReviewNext`, `forceProofNext`).
-  - Source: `npx tsx --test --experimental-test-coverage src/lib/plan.test.ts` (T2)
-- Dashboard header is missing `stuck_count` and session timing aggregates (elapsed since start, total iterations, avg duration).
-  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — direct inspection)
-- `stuck_count` is not extracted from session status in `App.tsx` and not passed to `Header` or displayed in status/details.
-  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — direct inspection)
-- Copy-paste duplication confirmed in `aloop/cli/src/commands/dashboard.ts:247-264` for PID lookup from `meta.json` and `active.json`.
-  - Source: `aloop/cli/src/commands/dashboard.ts:247-264` (T2 — direct inspection)
-- `UpdateIssueRequest.payload.title` bug is confirmed fixed in code, and duplicate import in `orchestrate.test.ts` is also fixed.
-  - Source: `aloop/cli/src/lib/requests.ts` and `aloop/cli/src/commands/orchestrate.test.ts` (T2 — direct inspection)
-- `loop.sh` correctly resets `STUCK_COUNT` to 0 on successful iteration.
-  - Source: `aloop/bin/loop.sh:1893` (T2 — direct inspection)
-- Dashboard docs panel does not filter out empty documentation files, only checks for existence. Spec requires "Only tabs with non-empty content shown".
-  - Source: `aloop/cli/dashboard/src/App.tsx:595` (T2 — direct inspection)
-- Provider health tab exists in `DocsPanel`, but `TODO.md` and steering require moving it to a dedicated sidebar tab.
-  - Source: `aloop/cli/dashboard/src/App.tsx:605-607` (T2), `TODO.md` (T3)
+### Motivation
+The orchestrator needs a state model for tracking issues, their lifecycle status, dependencies, and progress. GitHub Issues alone only offer `open`/`closed` — insufficient for orchestrator workflows. **GitHub Projects V2** provides fully custom status columns (single-select fields) that map directly to orchestrator phases.
 
-## 2026-03-15 13:00 — [review] Gate 4 completion: extract PID lookup helper [T2]
+### Prerequisites
+- **OAuth scope**: `read:project` (read) and `project` (write) are required for Projects V2 API
+- **Setup action**: user must run `gh auth refresh -s project` to add the scope
+- **Orchestrator setup skill should detect and prompt for this automatically**
+- Source: live testing against `gh api graphql` — `INSUFFICIENT_SCOPES` error without `project` scope (T2)
 
-- PID lookup duplication in `dashboard.ts:247-264` has been extracted into a `resolvePid` helper function.
-- `loadStateForContext` now calls `resolvePid` to handle multi-source PID resolution (context -> meta.json -> active.json) with liveness checking.
-- Verified with `npx tsx --test src/commands/dashboard.test.ts` (38/38 pass) and `npm run type-check`.
-  - Source: `aloop/cli/src/commands/dashboard.ts:230-254` (T2 — direct inspection)
+---
 
-## 2026-03-15 14:30 — Gap analysis: review gate status, dashboard UX completion, and P2 pipeline/orchestrator readiness [T2+T3]
+### 1. Issue States (native)
 
-### Stale TODO corrections — items now resolved
+Only two states on issues themselves:
+- `state`: `"open"` | `"closed"`
+- `state_reason`: `"completed"` | `"not_planned"` | `"duplicate"` | `"reopened"` | `null`
 
-- **`stuck_count` visibility**: Fully implemented in `App.tsx`. Extracted at line 150 and 1292, displayed in sidebar tooltip (line 544), header HoverCard (line 639), StatusDot (lines 274-275). TODO item is stale — can be marked complete.
-  - Source: `aloop/cli/dashboard/src/App.tsx:150,544,639,1292` (T2 — direct inspection)
-- **Session elapsed context / avg duration**: Implemented. `startedAt` extracted at line 1294, `avgDuration` computed via `computeAvgDuration` at line 1295, both passed to Header at line 1342.
-  - Source: `aloop/cli/dashboard/src/App.tsx:1294-1295,1342` (T2 — direct inspection)
-- **Docs overflow ellipsis menu**: Implemented with `MAX_VISIBLE_TABS = 4` at line 693, overflow tabs at line 695, dropdown menu at lines 712-726.
-  - Source: `aloop/cli/dashboard/src/App.tsx:693-726` (T2 — direct inspection)
-- **PID lookup duplication**: Resolved — `resolvePid` helper extracted (dashboard.ts:229-254).
-  - Source: `aloop/cli/src/commands/dashboard.ts:229-254` (T2 — direct inspection)
-- **Duplicate import in orchestrate.test.ts**: Fixed (confirmed by prior review log entry).
-  - Source: `REVIEW_LOG.md` review 2026-03-15 10:15 (T2)
+Set via: `PATCH /repos/{o}/{r}/issues/{n}` with `{"state": "closed", "state_reason": "completed"}`
+GraphQL: `closeIssue(input: {issueId, stateReason: COMPLETED | NOT_PLANNED | DUPLICATE})`
 
-### Open review gates — confirmed still failing
+Source: GitHub REST API docs, verified via `gh api` (T2)
 
-- **Gate 2: Dashboard UI tests missing**: No unit tests for `iteration_running` synthetic entry, `output.txt` fetch/render, output-header model extraction, "No output available" fallback. `App.tsx` has 1371 lines of complex logic with zero test coverage.
-  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — no test file exists for App.tsx)
-- **Gate 2: Dashboard backend tests missing for new branches**: `dashboard.test.ts` has 38 tests but does not cover `loadArtifactManifests` with missing manifest + present `output.txt`, `resolvePid` fallback to `active.json`, or active-session `status.json` enrichment.
-  - Source: `aloop/cli/src/commands/dashboard.test.ts` (T2 — direct inspection)
-- **Gate 2: E2E tests broken**: `smoke.spec.ts` uses outdated selectors from pre-rewrite UI.
-  - Source: `aloop/cli/dashboard/e2e/smoke.spec.ts` (T2 — direct inspection)
-- **Gate 3: Branch coverage for `dashboard.ts` and `App.tsx`**: No branch-coverage report exists for these files. They were touched this iteration but coverage evidence is missing.
-  - Source: `coverage/` directory listing (T2 — no dashboard coverage file found)
-- **Gate 6: Proof manifest references missing artifacts**: Multiple artifacts referenced in proof manifests don't exist in the workspace.
-  - Source: `TODO.md` (T3), prior review findings (T2)
+### 2. Projects V2 — Custom Status (the real state machine)
 
-### Provenance tagging — not implemented
+Projects V2 provides a **Status** field (type `SINGLE_SELECT`) with fully custom options. This is the key primitive for orchestrator state management.
 
-- Neither `loop.sh` nor `loop.ps1` add `Aloop-Agent`, `Aloop-Iteration`, or `Aloop-Session` trailers to commits. Grep for these strings returned 0 hits.
-  - Source: `aloop/bin/loop.sh` (T2 — grep returned no matches)
+**Default options** (on project creation):
+| Option | Color | ID (regenerated on update) |
+|--------|-------|---------------------------|
+| Todo | GREEN | (dynamic) |
+| In Progress | YELLOW | (dynamic) |
+| Done | PURPLE | (dynamic) |
 
-### Pipeline infrastructure — not started
+**Custom options** — fully supported. Verified by adding "Blocked" (RED) to project #1:
+```graphql
+mutation {
+  updateProjectV2Field(input: {
+    fieldId: "<status-field-id>"
+    singleSelectOptions: [
+      {name: "Todo", color: GREEN, description: "Not started"}
+      {name: "In Progress", color: YELLOW, description: "Actively being worked on"}
+      {name: "Blocked", color: RED, description: "Blocked by dependency"}
+      {name: "In Review", color: BLUE, description: "PR under review"}
+      {name: "Done", color: PURPLE, description: "Completed"}
+    ]
+  }) {
+    projectV2Field { ... on ProjectV2SingleSelectField { options { id name color } } }
+  }
+}
+```
 
-- No `.aloop/pipeline.yml` schema or file exists.
-- No `.aloop/agents/` directory with agent YAML definitions.
-- `compile-loop-plan.ts` reads hardcoded cycle arrays, not pipeline YAML.
-  - Source: `aloop/cli/src/commands/compile-loop-plan.ts` (T2 — direct inspection)
+**Important**: Options are matched by **name**, not id. Option IDs are regenerated on every `updateProjectV2Field` call. Always re-read option IDs after updating the field.
 
-### Orchestrator prompt templates — not started
+Available colors: `GRAY`, `BLUE`, `GREEN`, `YELLOW`, `ORANGE`, `RED`, `PINK`, `PURPLE`
 
-- No `PROMPT_orch_*.md` files exist in `aloop/templates/`. Only `PROMPT_plan.md`, `PROMPT_build.md`, `PROMPT_proof.md`, `PROMPT_review.md`, `PROMPT_setup.md`, `PROMPT_steer.md`.
-  - Source: `aloop/templates/` directory listing (T2)
+Source: live mutation against `johnnyelwailer/projects/1`, GraphQL schema introspection (T2)
 
-### `aloop gh stop-watch` — not implemented
+### 3. Moving Items Between Statuses
 
-- `gh stop` stops individual sessions or all with `--all` flag. No dedicated `stop-watch` subcommand to stop the watch daemon specifically.
-  - Source: `aloop/cli/src/commands/gh.ts` (T2 — direct inspection)
+```graphql
+mutation {
+  updateProjectV2ItemFieldValue(input: {
+    projectId: "<project-node-id>"
+    itemId: "<item-node-id>"
+    fieldId: "<status-field-id>"
+    value: { singleSelectOptionId: "<option-id>" }
+  }) { projectV2Item { id } }
+}
+```
+
+The `value` input accepts: `text`, `number`, `date`, `singleSelectOptionId`, `iterationId`
+
+Source: GraphQL schema introspection of `ProjectV2FieldValue` input type, live mutation verified (T2)
+
+### 4. Adding Issues to a Project
+
+```graphql
+mutation {
+  addProjectV2ItemById(input: {
+    projectId: "<project-node-id>"
+    contentId: "<issue-or-pr-node-id>"
+  }) { item { id } }
+}
+```
+
+CLI equivalent: `gh project item-add <project-number> --owner <owner> --url <issue-url>`
+
+Source: GitHub GraphQL docs, `gh project` CLI (T2)
+
+### 5. Reading Project Items + Status
+
+CLI: `gh project item-list <number> --owner <owner> --format json`
+Returns: `{items: [{id, title, status, content: {id, title, type, body}}]}`
+
+GraphQL bulk query:
+```graphql
+query($projectId: ID!, $cursor: String) {
+  node(id: $projectId) {
+    ... on ProjectV2 {
+      items(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          content { ... on Issue { id number title state } ... on PullRequest { id number title state } }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2SingleSelectField { name } } }
+              ... on ProjectV2ItemFieldTextValue { text field { ... on ProjectV2Field { name } } }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Source: live query verified against project #1 (T2)
+
+### 6. All Available Field Types
+
+From GraphQL `ProjectV2FieldType` enum:
+`TITLE`, `TEXT`, `SINGLE_SELECT`, `NUMBER`, `DATE`, `ITERATION`, `ASSIGNEES`, `LABELS`, `MILESTONE`, `REPOSITORY`, `REVIEWERS`, `LINKED_PULL_REQUESTS`, `TRACKS`, `TRACKED_BY`, `ISSUE_TYPE`, `PARENT_ISSUE`, `SUB_ISSUES_PROGRESS`
+
+Source: GraphQL schema introspection (T2)
+
+### 7. Sub-issues (GA, all plans)
+
+- **50 sub-issues/parent**, **8 nesting levels**
+- REST: `GET/POST /repos/{o}/{r}/issues/{n}/sub_issues`, `GET .../parent`
+- GraphQL: `addSubIssue`, `removeSubIssue`, `reprioritizeSubIssue` mutations
+- Query: `issue { subIssues(first:50) { nodes { id number title state } } subIssuesSummary { total completed percentCompleted } parent { id number } }`
+- Every issue object includes `sub_issues_summary: {total, completed, percent_completed}`
+
+Source: GitHub REST/GraphQL docs, schema introspection (T2)
+
+### 8. Issue Dependencies (GA)
+
+- **50 per relationship type** per issue
+- GraphQL: `addBlockedBy(input: {issueId, blockingIssueId})` / `removeBlockedBy`
+- Query: `issue { blockedBy(first:50) { nodes { id number } } blocking(first:50) { nodes { id number } } issueDependenciesSummary { blockedBy totalBlockedBy blocking totalBlocking } }`
+- REST: `/repos/{o}/{r}/issues/{n}/issue-dependencies`
+- Search filters: `is:blocked`, `is:blocking`, `blocked-by:<n>`, `blocking:<n>`
+
+Source: GitHub changelog 2025-08-21 (dependencies GA), schema introspection (T2)
+
+### 9. Labels
+
+- Max **100 labels/issue**, name max **50 chars**, description max **100 chars**
+- Full CRUD: `POST /repos/{o}/{r}/labels`, `POST /repos/{o}/{r}/issues/{n}/labels`
+
+Source: GitHub REST API docs, community discussions (T2)
+
+### 10. Efficient Polling
+
+**ETag/conditional requests:**
+- Issues list returns `Etag` header; `304 Not Modified` is **free** (no rate limit cost)
+- `since` param: `GET /repos/{o}/{r}/issues?since=<ISO8601>` — only issues updated after timestamp
+- `If-Modified-Since` header also supported
+
+**GraphQL bulk queries:**
+- ~172 points for 100 issues with all connections (budget: 5,000 pts/hr standard, 10,000 enterprise)
+- Max nodes per query: 500,000
+
+Source: GitHub best practices docs, live ETag header inspection (T2)
+
+### 11. Webhooks
+
+- `issues` event: `opened, closed, reopened, labeled, unlabeled, assigned, milestoned, edited, deleted`
+- `sub_issues` event: add/remove sub-issue, add/remove parent
+- Issue dependencies: supported in webhooks (GA)
+- `pull_request` event: `opened, closed, labeled, synchronize, ready_for_review`
+- `projects_v2_item` event: fires when project items are created, edited, deleted, archived, restored, reordered, or converted
+
+Source: GitHub webhook docs, changelog (T2)
+
+### 12. Metadata Storage
+
+- Issue body: **65,536 codepoint** limit — embed YAML/JSON in HTML comments or frontmatter
+- Assignees: max **10/issue**
+- Milestones: **1 per issue** (useful for wave grouping)
+- Custom issue fields (org-level, preview): up to 25 per org
+
+Source: GitHub docs (T2)
+
+---
+
+### Recommended Orchestrator State Model
+
+**Use Projects V2 as the primary state machine**, not just `open`/`closed`:
+
+| Status | Color | Meaning |
+|--------|-------|---------|
+| Backlog | GRAY | Decomposed but not yet scheduled |
+| Todo | GREEN | Scheduled in current wave |
+| In Progress | YELLOW | Child loop actively working |
+| Blocked | RED | Waiting on dependency |
+| In Review | BLUE | PR created, under review |
+| Done | PURPLE | PR merged |
+
+**Minimal local state** (`sessions.json`): `{issue_number → {session_id, pid}}` — just for PID tracking. Everything else lives in GitHub.
+
+**Setup requirement**: The setup skill must ensure `gh auth` has `project` scope:
+```bash
+# Check if scope exists
+gh auth status 2>&1 | grep -q 'project' || gh auth refresh -s project
+```
