@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Toaster } from '@/components/ui/sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 
 // ── Types ──
@@ -49,11 +50,39 @@ interface LogEntry {
   phase: string;
   event: string;
   provider: string;
+  model: string;
   duration: string;
   message: string;
   raw: string;
+  rawObj: Record<string, unknown> | null;
   iteration: number | null;
   dateKey: string;
+  isSuccess: boolean;
+  isError: boolean;
+  commitHash: string;
+  resultDetail: string;
+  filesChanged: FileChange[];
+}
+
+interface FileChange {
+  path: string;
+  type: 'M' | 'A' | 'D' | 'R';
+  additions: number;
+  deletions: number;
+}
+
+interface ArtifactEntry {
+  type: string;
+  path: string;
+  description: string;
+  metadata?: { baseline?: string; diff_percentage?: number };
+}
+
+interface ManifestPayload {
+  iteration: number;
+  phase: string;
+  summary: string;
+  artifacts: ArtifactEntry[];
 }
 
 // ── Helpers ──
@@ -101,6 +130,16 @@ function formatTime(ts: string): string {
   }
 }
 
+function formatTimeShort(ts: string): string {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return ts;
+  }
+}
+
 function formatDateKey(ts: string): string {
   if (!ts) return 'Unknown';
   try {
@@ -115,32 +154,67 @@ function parseLogLine(line: string): LogEntry | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
 
+  let rawObj: Record<string, unknown> | null = null;
   try {
     const obj = JSON.parse(trimmed);
-    if (isRecord(obj)) {
-      const ts = readString(obj, ['timestamp', 'ts', 'time', 'created_at'], '');
-      const phase = readString(obj, ['phase', 'mode'], '');
-      const event = readString(obj, ['event', 'type', 'action', 'msg', 'message'], '');
-      const provider = readString(obj, ['provider', 'model'], '');
-      const duration = readString(obj, ['duration', 'elapsed', 'took'], '');
-      const message = readString(obj, ['message', 'msg', 'detail', 'description', 'text'], event);
-      const iterRaw = obj.iteration;
-      const iteration = typeof iterRaw === 'number' ? iterRaw : null;
-
-      return {
-        timestamp: ts,
-        phase,
-        event,
-        provider,
-        duration,
-        message,
-        raw: trimmed,
-        iteration,
-        dateKey: formatDateKey(ts),
-      };
-    }
+    if (isRecord(obj)) rawObj = obj;
   } catch {
-    // Not JSON, treat as plain text
+    // plain text
+  }
+
+  if (rawObj) {
+    const ts = readString(rawObj, ['timestamp', 'ts', 'time', 'created_at'], '');
+    const phase = readString(rawObj, ['phase', 'mode'], '');
+    const event = readString(rawObj, ['event', 'type', 'action'], '');
+    const provider = readString(rawObj, ['provider'], '');
+    const model = readString(rawObj, ['model'], '');
+    const duration = readString(rawObj, ['duration', 'elapsed', 'took'], '');
+    const message = readString(rawObj, ['message', 'msg', 'detail', 'description', 'text'], event);
+    const iterRaw = rawObj.iteration;
+    const iteration = typeof iterRaw === 'number' ? iterRaw : (typeof iterRaw === 'string' ? parseInt(iterRaw, 10) || null : null);
+    const commitHash = readString(rawObj, ['commit', 'commit_hash', 'sha'], '');
+    const isSuccess = event.includes('complete') || event.includes('success') || event.includes('approved');
+    const isError = event.includes('error') || event.includes('fail') || event.includes('cooldown');
+
+    let resultDetail = '';
+    if (commitHash) resultDetail = commitHash.slice(0, 7);
+    else if (isError) resultDetail = readString(rawObj, ['reason', 'error', 'exit_code'], 'error');
+    else if (event.includes('verdict')) resultDetail = readString(rawObj, ['verdict'], '');
+
+    // Parse file changes if present
+    const filesChanged: FileChange[] = [];
+    const files = rawObj.files ?? rawObj.files_changed;
+    if (Array.isArray(files)) {
+      for (const f of files) {
+        if (isRecord(f)) {
+          filesChanged.push({
+            path: typeof f.path === 'string' ? f.path : typeof f.file === 'string' ? f.file : '?',
+            type: (typeof f.status === 'string' ? f.status[0]?.toUpperCase() : 'M') as FileChange['type'],
+            additions: typeof f.additions === 'number' ? f.additions : 0,
+            deletions: typeof f.deletions === 'number' ? f.deletions : 0,
+          });
+        }
+      }
+    }
+
+    return {
+      timestamp: ts,
+      phase,
+      event,
+      provider,
+      model,
+      duration,
+      message,
+      raw: trimmed,
+      rawObj,
+      iteration,
+      dateKey: formatDateKey(ts),
+      isSuccess,
+      isError,
+      commitHash,
+      resultDetail,
+      filesChanged,
+    };
   }
 
   return {
@@ -148,21 +222,28 @@ function parseLogLine(line: string): LogEntry | null {
     phase: '',
     event: '',
     provider: '',
+    model: '',
     duration: '',
     message: trimmed,
     raw: trimmed,
+    rawObj: null,
     iteration: null,
     dateKey: 'Log',
+    isSuccess: false,
+    isError: false,
+    commitHash: '',
+    resultDetail: '',
+    filesChanged: [],
   };
 }
 
 // ── Phase colors ──
 
 const phaseColors: Record<string, string> = {
-  plan: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  build: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  proof: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  review: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  plan: 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border-purple-500/30',
+  build: 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30',
+  proof: 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30',
+  review: 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border-cyan-500/30',
 };
 
 const phaseBarColors: Record<string, string> = {
@@ -180,10 +261,10 @@ const phaseDotColors: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  running: 'text-green-400',
+  running: 'text-green-600 dark:text-green-400',
   exited: 'text-muted-foreground',
-  stopped: 'text-red-400',
-  stopping: 'text-orange-400',
+  stopped: 'text-red-600 dark:text-red-400',
+  stopping: 'text-orange-600 dark:text-orange-400',
 };
 
 function PhaseBadge({ phase, small }: { phase: string; small?: boolean }) {
@@ -235,20 +316,6 @@ function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
 
 // ── Artifact helpers ──
 
-interface ArtifactEntry {
-  type: string;
-  path: string;
-  description: string;
-  metadata?: { baseline?: string; diff_percentage?: number };
-}
-
-interface ManifestPayload {
-  iteration: number;
-  phase: string;
-  summary: string;
-  artifacts: ArtifactEntry[];
-}
-
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 
 function isImageArtifact(artifact: ArtifactEntry): boolean {
@@ -298,9 +365,12 @@ function Sidebar({
   collapsed: boolean;
   onToggle: () => void;
 }) {
+  const activeSessions = sessions.filter((s) => s.isActive);
+  const recentSessions = sessions.filter((s) => !s.isActive);
+
   if (collapsed) {
     return (
-      <div className="flex flex-col items-center border-r border-border bg-card/50 py-2 px-1 w-10 shrink-0">
+      <div className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
         <button
           type="button"
           className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
@@ -317,7 +387,7 @@ function Sidebar({
               key={s.id}
               type="button"
               className="block"
-              title={s.name}
+              title={`${s.name} (${s.status})`}
               onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
             >
               <StatusDot status={s.isActive && s.status === 'running' ? 'running' : 'stopped'} />
@@ -328,8 +398,40 @@ function Sidebar({
     );
   }
 
+  const renderSessionCard = (session: SessionSummary) => {
+    const isSelected = selectedSessionId === null
+      ? session.id === 'current' || sessions.indexOf(session) === 0
+      : session.id === selectedSessionId;
+    return (
+      <button
+        key={session.id}
+        type="button"
+        className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${
+          isSelected ? 'bg-accent' : ''
+        }`}
+        onClick={() => onSelectSession(session.id === 'current' ? null : session.id)}
+      >
+        <div className="flex items-center gap-1.5">
+          {session.isActive && session.status === 'running' ? (
+            <StatusDot status="running" />
+          ) : (
+            <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${session.isActive ? 'bg-muted-foreground' : 'bg-muted-foreground/40'}`} />
+          )}
+          <span className="truncate font-medium">{session.name}</span>
+        </div>
+        <div className="flex items-center gap-1.5 mt-0.5 ml-3.5">
+          {session.phase && <PhaseBadge phase={session.phase} small />}
+          <span className="text-muted-foreground">iter {session.iterations}</span>
+          {session.elapsed !== '--' && (
+            <span className="text-muted-foreground/60">{session.elapsed}</span>
+          )}
+        </div>
+      </button>
+    );
+  };
+
   return (
-    <div className="flex flex-col border-r border-border bg-card/50 w-56 shrink-0 animate-slide-in-left">
+    <div className="flex flex-col border-r border-border bg-sidebar w-56 shrink-0 animate-slide-in-left">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
         <button
@@ -344,35 +446,34 @@ function Sidebar({
         </button>
       </div>
       <ScrollArea className="flex-1">
-        <div className="p-2 space-y-0.5">
-          {sessions.map((session) => {
-            const isSelected = selectedSessionId === null
-              ? session.id === 'current' || sessions.indexOf(session) === 0
-              : session.id === selectedSessionId;
-            return (
-              <button
-                key={session.id}
-                type="button"
-                className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${
-                  isSelected ? 'bg-accent' : ''
-                }`}
-                onClick={() => onSelectSession(session.id === 'current' ? null : session.id)}
-              >
-                <div className="flex items-center gap-1.5">
-                  {session.isActive && session.status === 'running' ? (
-                    <StatusDot status="running" />
-                  ) : (
-                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${session.isActive ? 'bg-muted-foreground' : 'bg-muted-foreground/40'}`} />
-                  )}
-                  <span className="truncate font-medium">{session.name}</span>
-                </div>
-                <div className="flex items-center gap-1.5 mt-0.5 ml-3.5">
-                  {session.phase && <PhaseBadge phase={session.phase} small />}
-                  <span className="text-muted-foreground">iter {session.iterations}</span>
-                </div>
-              </button>
-            );
-          })}
+        <div className="p-2">
+          {/* Active sessions group */}
+          {activeSessions.length > 0 && (
+            <div className="mb-2">
+              <div className="px-1 pb-1">
+                <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Active</span>
+              </div>
+              <div className="space-y-0.5">
+                {activeSessions.map(renderSessionCard)}
+              </div>
+            </div>
+          )}
+
+          {/* Recent sessions group */}
+          {recentSessions.length > 0 && (
+            <div>
+              <div className="px-1 pb-1">
+                <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Recent</span>
+              </div>
+              <div className="space-y-0.5">
+                {recentSessions.map(renderSessionCard)}
+              </div>
+            </div>
+          )}
+
+          {sessions.length === 0 && (
+            <p className="text-xs text-muted-foreground p-2">No sessions found.</p>
+          )}
         </div>
       </ScrollArea>
     </div>
@@ -421,7 +522,6 @@ function Header({
   return (
     <header className="border-b border-border px-4 py-2.5 shrink-0">
       <div className="flex items-center gap-4">
-        {/* Session name */}
         <button
           type="button"
           className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors"
@@ -431,7 +531,6 @@ function Header({
           <span className="text-sm font-semibold truncate max-w-[200px]">{sessionName}</span>
         </button>
 
-        {/* Iteration */}
         <HoverCard>
           <HoverCardTrigger asChild>
             <span className="text-xs text-muted-foreground cursor-help whitespace-nowrap">
@@ -448,33 +547,27 @@ function Header({
           </HoverCardContent>
         </HoverCard>
 
-        {/* Progress bar */}
         <div className="flex items-center gap-2 min-w-0 flex-1 max-w-xs">
           <Progress value={progressPercent} className="flex-1 h-1.5" indicatorClassName={phaseBarColor} />
           <span className="text-[10px] text-muted-foreground whitespace-nowrap">{progressPercent}%</span>
         </div>
 
-        {/* Phase badge */}
         <PhaseBadge phase={currentPhase} />
 
-        {/* Provider */}
         {providerName && (
           <span className="text-xs text-muted-foreground whitespace-nowrap">
             {modelName ? `${providerName}/${modelName}` : providerName}
           </span>
         )}
 
-        {/* Status */}
         <span className={`text-xs whitespace-nowrap font-medium ${statusColors[currentState] ?? 'text-muted-foreground'}`}>
           {currentState}
         </span>
 
         <div className="flex-1" />
 
-        {/* Connection */}
         <ConnectionIndicator status={connectionStatus} />
 
-        {/* Ctrl+K hint */}
         <button
           type="button"
           className="text-muted-foreground hover:text-foreground transition-colors"
@@ -483,7 +576,6 @@ function Header({
           <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] font-mono">Ctrl+K</kbd>
         </button>
 
-        {/* Updated at */}
         <span className="text-[10px] text-muted-foreground whitespace-nowrap">
           {loading ? 'Loading...' : updatedAt ? formatTime(updatedAt) : ''}
           {loadError && !loading ? ' \u2022 err' : ''}
@@ -506,10 +598,8 @@ function DocsPanel({ docs }: { docs: Record<string, string> }) {
   };
 
   const availableDocs = docOrder.filter((name) => docs[name] !== undefined);
-  // Also include any docs not in the standard order
   const extraDocs = Object.keys(docs).filter((name) => !docOrder.includes(name));
   const allDocs = [...availableDocs, ...extraDocs];
-
   const defaultTab = allDocs.includes('TODO.md') ? 'TODO.md' : allDocs[0] ?? '';
 
   if (allDocs.length === 0) {
@@ -570,7 +660,7 @@ function ActivityPanel({ log, artifacts }: { log: string; artifacts: ArtifactMan
     return log.split('\n').map(parseLogLine).filter((e): e is LogEntry => e !== null);
   }, [log]);
 
-  // Group by date
+  // Group by date, newest first
   const grouped = useMemo(() => {
     const groups: Array<{ dateKey: string; entries: LogEntry[] }> = [];
     let current: { dateKey: string; entries: LogEntry[] } | null = null;
@@ -581,6 +671,11 @@ function ActivityPanel({ log, artifacts }: { log: string; artifacts: ArtifactMan
       }
       current.entries.push(entry);
     }
+    // Reverse groups: newest day first. Entries within each group: newest first.
+    for (const group of groups) {
+      group.entries.reverse();
+    }
+    groups.reverse();
     return groups;
   }, [entries]);
 
@@ -588,6 +683,15 @@ function ActivityPanel({ log, artifacts }: { log: string; artifacts: ArtifactMan
     () => artifacts.map(parseManifest).filter((m): m is ManifestPayload => m !== null),
     [artifacts],
   );
+
+  // Build a map of iteration → artifacts for inline display
+  const iterationArtifacts = useMemo(() => {
+    const map = new Map<number, ManifestPayload>();
+    for (const m of manifests) {
+      map.set(m.iteration, m);
+    }
+    return map;
+  }, [manifests]);
 
   // Auto-scroll on new entries
   useEffect(() => {
@@ -613,13 +717,13 @@ function ActivityPanel({ log, artifacts }: { log: string; artifacts: ArtifactMan
         {!autoScroll && (
           <button
             type="button"
-            className="text-[10px] text-blue-400 hover:text-blue-300"
+            className="text-[10px] text-blue-500 dark:text-blue-400 hover:opacity-80"
             onClick={() => {
               setAutoScroll(true);
               endRef.current?.scrollIntoView({ behavior: 'smooth' });
             }}
           >
-            Scroll to bottom
+            Scroll to latest
           </button>
         )}
       </div>
@@ -630,24 +734,17 @@ function ActivityPanel({ log, artifacts }: { log: string; artifacts: ArtifactMan
               <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm pb-1 mb-1">
                 <span className="text-[10px] text-muted-foreground font-medium">{group.dateKey}</span>
               </div>
-              <div className="space-y-0.5">
+              <div className="space-y-0">
                 {group.entries.map((entry, i) => (
-                  <LogEntryRow key={`${group.dateKey}-${i}`} entry={entry} />
+                  <LogEntryRow
+                    key={`${group.dateKey}-${i}`}
+                    entry={entry}
+                    artifacts={entry.iteration !== null ? iterationArtifacts.get(entry.iteration) ?? null : null}
+                  />
                 ))}
               </div>
             </div>
           ))}
-
-          {/* Inline artifacts */}
-          {manifests.length > 0 && (
-            <div className="space-y-3 pt-2 border-t border-border">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Proof Artifacts</span>
-              {manifests.map((manifest) => (
-                <ArtifactSection key={manifest.iteration} manifest={manifest} allManifests={manifests} />
-              ))}
-            </div>
-          )}
-
           <div ref={endRef} />
         </div>
       </ScrollArea>
@@ -655,80 +752,167 @@ function ActivityPanel({ log, artifacts }: { log: string; artifacts: ArtifactMan
   );
 }
 
-function LogEntryRow({ entry }: { entry: LogEntry }) {
+function LogEntryRow({ entry, artifacts }: { entry: LogEntry; artifacts: ManifestPayload | null }) {
+  const [expanded, setExpanded] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const phaseDot = entry.phase ? phaseDotColors[entry.phase.toLowerCase()] ?? 'bg-muted-foreground' : '';
+  const hasExpandable = entry.filesChanged.length > 0 || (artifacts && artifacts.artifacts.length > 0) || entry.rawObj;
+  const isIteration = entry.event.includes('iteration_complete') || entry.event.includes('iteration_error');
+
+  // Result indicator
+  let resultIcon = '';
+  if (entry.isSuccess) resultIcon = '\u2713';
+  else if (entry.isError) resultIcon = '\u2717';
 
   return (
-    <div className="flex items-start gap-2 py-0.5 text-[11px] font-mono leading-relaxed hover:bg-accent/30 rounded px-1 transition-colors group">
-      {/* Timestamp */}
-      <span className="text-muted-foreground/60 whitespace-nowrap shrink-0 w-16">
-        {entry.timestamp ? formatTime(entry.timestamp) : ''}
-      </span>
-
-      {/* Phase dot */}
-      <span className="mt-1.5 shrink-0">
-        {phaseDot ? <span className={`inline-block h-1.5 w-1.5 rounded-full ${phaseDot}`} /> : <span className="inline-block h-1.5 w-1.5" />}
-      </span>
-
-      {/* Event type */}
-      {entry.event && entry.event !== entry.message && (
-        <span className="text-muted-foreground shrink-0 whitespace-nowrap">{entry.event}</span>
-      )}
-
-      {/* Message */}
-      <span className="text-foreground/80 min-w-0 break-words flex-1">{entry.message}</span>
-
-      {/* Provider */}
-      {entry.provider && (
-        <span className="text-muted-foreground/50 shrink-0 hidden group-hover:inline">{entry.provider}</span>
-      )}
-
-      {/* Duration */}
-      {entry.duration && (
-        <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap">{entry.duration}</span>
-      )}
-    </div>
-  );
-}
-
-// ── Artifact Components ──
-
-function ArtifactSection({ manifest, allManifests }: { manifest: ManifestPayload; allManifests: ManifestPayload[] }) {
-  return (
-    <div className="space-y-2 animate-fade-in">
-      <div className="flex items-center gap-2 text-xs">
-        <PhaseBadge phase={manifest.phase} small />
-        <span className="font-medium">Iteration {manifest.iteration}</span>
-        <span className="text-muted-foreground">
-          {manifest.artifacts.length} artifact{manifest.artifacts.length !== 1 ? 's' : ''}
+    <>
+      <div
+        className={`flex items-start gap-2 py-0.5 text-[11px] font-mono leading-relaxed rounded px-1 transition-colors group ${
+          hasExpandable ? 'cursor-pointer hover:bg-accent/30' : 'hover:bg-accent/20'
+        } ${expanded ? 'bg-accent/20' : ''}`}
+        onClick={() => hasExpandable && setExpanded(!expanded)}
+      >
+        {/* Timestamp */}
+        <span className="text-muted-foreground/60 whitespace-nowrap shrink-0 w-12">
+          {entry.timestamp ? formatTimeShort(entry.timestamp) : ''}
         </span>
-      </div>
-      {manifest.summary && <p className="text-[11px] text-muted-foreground italic">{manifest.summary}</p>}
-      <div className="space-y-2">
-        {manifest.artifacts.map((artifact) =>
-          isImageArtifact(artifact) ? (
-            <ImageArtifactCard
-              key={`${manifest.iteration}-${artifact.path}`}
-              artifact={artifact}
-              iteration={manifest.iteration}
-              allManifests={allManifests}
-            />
-          ) : (
-            <CodeArtifactCard
-              key={`${manifest.iteration}-${artifact.path}`}
-              artifact={artifact}
-              iteration={manifest.iteration}
-            />
-          ),
+
+        {/* Phase dot */}
+        <span className="mt-1.5 shrink-0">
+          {phaseDot ? <span className={`inline-block h-1.5 w-1.5 rounded-full ${phaseDot}`} /> : <span className="inline-block h-1.5 w-1.5" />}
+        </span>
+
+        {/* Phase label */}
+        {entry.phase && (
+          <span className="text-muted-foreground shrink-0 w-10">{entry.phase}</span>
+        )}
+
+        {/* Provider·model */}
+        {entry.provider && (
+          <span className="text-muted-foreground/70 shrink-0 whitespace-nowrap max-w-[120px] truncate">
+            {entry.model ? `${entry.provider}\u00b7${entry.model}` : entry.provider}
+          </span>
+        )}
+
+        {/* Result indicator */}
+        {resultIcon && (
+          <span className={`shrink-0 font-bold ${entry.isSuccess ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+            {resultIcon}
+          </span>
+        )}
+
+        {/* Result detail (commit hash or error) */}
+        {entry.resultDetail && (
+          <span className={`shrink-0 whitespace-nowrap ${entry.commitHash ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-muted-foreground/70'}`}>
+            {entry.resultDetail}
+          </span>
+        )}
+
+        {/* Message (only for non-iteration events or if no result detail) */}
+        {!isIteration && !entry.resultDetail && entry.message && entry.message !== entry.event && (
+          <span className="text-foreground/80 min-w-0 break-words flex-1 truncate">{entry.message}</span>
+        )}
+
+        {/* Spacer */}
+        <span className="flex-1" />
+
+        {/* Duration */}
+        {entry.duration && (
+          <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap">{entry.duration}</span>
+        )}
+
+        {/* Expand indicator */}
+        {hasExpandable && (
+          <span className="text-muted-foreground/40 shrink-0 text-[10px]">
+            {expanded ? '\u25BC' : '\u25B6'}
+          </span>
         )}
       </div>
-    </div>
-  );
-}
 
-function DiffBadge({ percentage }: { percentage: number }) {
-  const color = percentage < 5 ? 'bg-green-500/20 text-green-400' : percentage < 20 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400';
-  return <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${color}`}>diff: {percentage.toFixed(1)}%</span>;
+      {/* Expanded details */}
+      {expanded && (
+        <div className="ml-16 mr-2 mb-2 animate-fade-in">
+          {/* File changes */}
+          {entry.filesChanged.length > 0 && (
+            <div className="border-l-2 border-border pl-2 py-1 space-y-0.5">
+              {entry.filesChanged.map((f, i) => (
+                <div key={i} className="flex items-center gap-2 text-[10px] font-mono">
+                  <span className={`shrink-0 w-3 text-center font-bold ${
+                    f.type === 'A' ? 'text-green-500' : f.type === 'D' ? 'text-red-500' : f.type === 'R' ? 'text-blue-500' : 'text-yellow-500'
+                  }`}>{f.type}</span>
+                  <span className="text-foreground/80 truncate flex-1">{f.path}</span>
+                  {(f.additions > 0 || f.deletions > 0) && (
+                    <span className="text-muted-foreground/60 shrink-0">
+                      {f.additions > 0 && <span className="text-green-500">+{f.additions}</span>}
+                      {f.additions > 0 && f.deletions > 0 && ' '}
+                      {f.deletions > 0 && <span className="text-red-500">-{f.deletions}</span>}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Artifacts inline */}
+          {artifacts && artifacts.artifacts.length > 0 && (
+            <div className="border-l-2 border-amber-500/30 pl-2 py-1 space-y-1 mt-1">
+              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                {artifacts.artifacts.length} artifact{artifacts.artifacts.length !== 1 ? 's' : ''}
+              </span>
+              {artifacts.summary && (
+                <p className="text-[10px] text-muted-foreground italic">{artifacts.summary}</p>
+              )}
+              <div className="space-y-1">
+                {artifacts.artifacts.map((artifact) => (
+                  <div key={artifact.path} className="flex items-center gap-2 text-[10px]">
+                    <span className="shrink-0">{isImageArtifact(artifact) ? '\uD83D\uDCF7' : '\uD83D\uDCC4'}</span>
+                    {isImageArtifact(artifact) ? (
+                      <button
+                        type="button"
+                        className="text-blue-600 dark:text-blue-400 hover:underline truncate"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLightboxSrc(artifactUrl(artifacts.iteration, artifact.path));
+                        }}
+                      >
+                        {artifact.path}
+                      </button>
+                    ) : (
+                      <span className="text-foreground/80 truncate">{artifact.path}</span>
+                    )}
+                    <span className="text-muted-foreground/60 truncate">{artifact.description}</span>
+                    {artifact.metadata?.diff_percentage !== undefined && (
+                      <span className={`shrink-0 text-[9px] px-1 rounded ${
+                        artifact.metadata.diff_percentage < 5 ? 'bg-green-500/20 text-green-500' :
+                        artifact.metadata.diff_percentage < 20 ? 'bg-yellow-500/20 text-yellow-500' :
+                        'bg-red-500/20 text-red-500'
+                      }`}>
+                        diff: {artifact.metadata.diff_percentage.toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Raw JSON (for debugging/detail) */}
+          {!entry.filesChanged.length && !artifacts && entry.rawObj && (
+            <div className="border-l-2 border-border pl-2 py-1">
+              <pre className="text-[10px] text-muted-foreground/70 font-mono whitespace-pre-wrap max-h-24 overflow-auto">
+                {JSON.stringify(entry.rawObj, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Image lightbox */}
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} alt="Artifact" onClose={() => setLightboxSrc(null)} />
+      )}
+    </>
+  );
 }
 
 function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
@@ -744,198 +928,6 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
         &times;
       </button>
       <img src={src} alt={alt} className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
-    </div>
-  );
-}
-
-function ComparisonSlider({ baselineSrc, currentSrc, label }: { baselineSrc: string; currentSrc: string; label: string }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [sliderPos, setSliderPos] = useState(50);
-  const dragging = useRef(false);
-
-  const handleMove = useCallback((clientX: number) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
-    setSliderPos((x / rect.width) * 100);
-  }, []);
-
-  useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => { if (dragging.current) handleMove(e.clientX); };
-    const onMouseUp = () => { dragging.current = false; };
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [handleMove]);
-
-  return (
-    <div className="space-y-1">
-      <p className="text-[10px] text-muted-foreground">{label}</p>
-      <div ref={containerRef} className="relative h-48 w-full cursor-col-resize overflow-hidden rounded-md border select-none">
-        <img src={currentSrc} alt="Current" className="absolute inset-0 h-full w-full object-contain" />
-        <div className="absolute inset-0 overflow-hidden" style={{ width: `${sliderPos}%` }}>
-          <img src={baselineSrc} alt="Baseline" className="h-full w-full object-contain" style={{ minWidth: containerRef.current?.offsetWidth ?? '100%' }} />
-        </div>
-        <div
-          className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg"
-          style={{ left: `${sliderPos}%` }}
-          onMouseDown={() => { dragging.current = true; }}
-        >
-          <div className="absolute -left-3 top-1/2 -translate-y-1/2 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-black shadow">
-            &#x2194;
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ImageArtifactCard({
-  artifact,
-  iteration,
-  allManifests,
-}: {
-  artifact: ArtifactEntry;
-  iteration: number;
-  allManifests: ManifestPayload[];
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [compareMode, setCompareMode] = useState<'side-by-side' | 'slider'>('side-by-side');
-  const [compareIteration, setCompareIteration] = useState<number | null>(null);
-
-  const currentUrl = artifactUrl(iteration, artifact.path);
-  const hasBaseline = !!artifact.metadata?.baseline;
-
-  const previousIterations = useMemo(() => {
-    return allManifests
-      .filter((m) => m.iteration < iteration && m.artifacts.some((a) => a.path === artifact.path))
-      .map((m) => m.iteration)
-      .sort((a, b) => b - a);
-  }, [allManifests, iteration, artifact.path]);
-
-  const baselineUrl = compareIteration !== null
-    ? artifactUrl(compareIteration, artifact.path)
-    : hasBaseline
-      ? artifactUrl(iteration, artifact.metadata!.baseline!)
-      : null;
-
-  const showComparison = baselineUrl !== null;
-
-  return (
-    <>
-      <div className="rounded-md border bg-muted/20 p-2 space-y-2">
-        <div className="flex items-center gap-2 text-[11px]">
-          <span className="font-medium truncate">{artifact.path}</span>
-          {artifact.metadata?.diff_percentage !== undefined && <DiffBadge percentage={artifact.metadata.diff_percentage} />}
-          <span className="text-muted-foreground truncate">{artifact.description}</span>
-        </div>
-        <button type="button" className="block" onClick={() => setExpanded(true)}>
-          <img
-            src={currentUrl}
-            alt={artifact.description || artifact.path}
-            className="max-h-32 max-w-full rounded border object-contain hover:opacity-80 transition-opacity cursor-zoom-in"
-            loading="lazy"
-          />
-        </button>
-
-        {(hasBaseline || previousIterations.length > 0) && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                className={`rounded px-2 py-0.5 text-[10px] ${compareMode === 'side-by-side' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'}`}
-                onClick={() => setCompareMode('side-by-side')}
-              >
-                Side by Side
-              </button>
-              <button
-                type="button"
-                className={`rounded px-2 py-0.5 text-[10px] ${compareMode === 'slider' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'}`}
-                onClick={() => setCompareMode('slider')}
-              >
-                Slider
-              </button>
-              {previousIterations.length > 0 && (
-                <select
-                  className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground border"
-                  value={compareIteration ?? ''}
-                  onChange={(e) => setCompareIteration(e.target.value ? Number(e.target.value) : null)}
-                >
-                  <option value="">{hasBaseline ? 'Baseline' : 'Select...'}</option>
-                  {previousIterations.map((iter) => (
-                    <option key={iter} value={iter}>iter {iter}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-            {showComparison && compareMode === 'side-by-side' && (
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <p className="text-[10px] text-muted-foreground">{compareIteration !== null ? `Iter ${compareIteration}` : 'Baseline'}</p>
-                  <img src={baselineUrl} alt="Baseline" className="max-h-32 w-full rounded border object-contain" loading="lazy" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] text-muted-foreground">Current (iter {iteration})</p>
-                  <img src={currentUrl} alt="Current" className="max-h-32 w-full rounded border object-contain" loading="lazy" />
-                </div>
-              </div>
-            )}
-            {showComparison && compareMode === 'slider' && (
-              <ComparisonSlider
-                baselineSrc={baselineUrl}
-                currentSrc={currentUrl}
-                label={`${compareIteration !== null ? `Iter ${compareIteration}` : 'Baseline'} vs Current (iter ${iteration})`}
-              />
-            )}
-          </div>
-        )}
-      </div>
-      {expanded && <ImageLightbox src={currentUrl} alt={artifact.description || artifact.path} onClose={() => setExpanded(false)} />}
-    </>
-  );
-}
-
-function CodeArtifactCard({ artifact, iteration }: { artifact: ArtifactEntry; iteration: number }) {
-  const [content, setContent] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-
-  const loadContent = useCallback(async () => {
-    if (content !== null) {
-      setExpanded(!expanded);
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await fetch(artifactUrl(iteration, artifact.path));
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      setContent(await response.text());
-      setExpanded(true);
-    } catch {
-      setContent('Failed to load artifact content.');
-      setExpanded(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [content, expanded, iteration, artifact.path]);
-
-  return (
-    <div className="rounded-md border bg-muted/20 p-2 space-y-2">
-      <div className="flex items-center gap-2 text-[11px]">
-        <button type="button" className="font-medium truncate hover:underline cursor-pointer" onClick={() => void loadContent()}>
-          {artifact.path}
-        </button>
-        <span className="text-muted-foreground truncate">{artifact.description}</span>
-        {loading && <span className="text-muted-foreground animate-pulse">loading...</span>}
-      </div>
-      {expanded && content !== null && (
-        <ScrollArea className="max-h-40">
-          <pre className="rounded bg-muted p-2 text-[11px] font-mono whitespace-pre-wrap pr-3">{content}</pre>
-        </ScrollArea>
-      )}
     </div>
   );
 }
@@ -958,40 +950,56 @@ function Footer({
   stopSubmitting: boolean;
 }) {
   return (
-    <footer className="border-t border-border px-4 py-2 shrink-0">
-      <div className="flex items-center gap-3">
-        <div className="flex-1 flex gap-2">
-          <Textarea
-            className="min-h-[32px] h-8 resize-none text-xs flex-1"
-            placeholder="Steer: enter guidance for the next iteration..."
-            value={steerInstruction}
-            onChange={(e) => setSteerInstruction(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                onSteer();
-              }
-            }}
-          />
-          <Button
-            size="sm"
-            className="h-8"
-            disabled={steerSubmitting || steerInstruction.trim().length === 0}
-            onClick={onSteer}
-          >
-            {steerSubmitting ? '...' : 'Send'}
-          </Button>
+    <TooltipProvider>
+      <footer className="border-t border-border px-4 py-2 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 flex gap-2">
+            <Textarea
+              className="min-h-[32px] h-8 resize-none text-xs flex-1"
+              placeholder="Steer: enter guidance for the next iteration..."
+              value={steerInstruction}
+              onChange={(e) => setSteerInstruction(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  onSteer();
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              className="h-8"
+              disabled={steerSubmitting || steerInstruction.trim().length === 0}
+              onClick={onSteer}
+            >
+              {steerSubmitting ? '...' : 'Send'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="destructive" size="sm" className="h-8" disabled={stopSubmitting} onClick={() => onStop(false)}>
+                  {stopSubmitting ? '...' : 'Stop'}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Gracefully stop after current iteration (SIGTERM)</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 text-destructive hover:text-destructive" disabled={stopSubmitting} onClick={() => onStop(true)}>
+                  Force
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Kill immediately without cleanup (SIGKILL)</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="destructive" size="sm" className="h-8" disabled={stopSubmitting} onClick={() => onStop(false)}>
-            {stopSubmitting ? '...' : 'Stop'}
-          </Button>
-          <Button variant="outline" size="sm" className="h-8" disabled={stopSubmitting} onClick={() => onStop(true)}>
-            Force
-          </Button>
-        </div>
-      </div>
-    </footer>
+      </footer>
+    </TooltipProvider>
   );
 }
 
@@ -1021,10 +1029,10 @@ function CommandPalette({
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup heading="Actions">
               <CommandItem onSelect={() => { onClose(); onStop(false); }}>
-                Stop session
+                Stop session (graceful)
               </CommandItem>
               <CommandItem onSelect={() => { onClose(); onStop(true); }}>
-                Force stop session
+                Force stop session (SIGKILL)
               </CommandItem>
             </CommandGroup>
             <CommandGroup heading="Sessions">
@@ -1136,7 +1144,7 @@ export function App() {
           setState(payload);
           setLoadError(null);
           setConnectionStatus('connected');
-          reconnectDelay = 1000; // reset backoff on success
+          reconnectDelay = 1000;
         } catch (error) {
           setLoadError((error as Error).message);
         }
@@ -1160,7 +1168,7 @@ export function App() {
           reconnectTimer = setTimeout(() => {
             connectSSE();
           }, reconnectDelay);
-          reconnectDelay = Math.min(reconnectDelay * 2, 30000); // exponential backoff, max 30s
+          reconnectDelay = Math.min(reconnectDelay * 2, 30000);
         }
       };
     }
@@ -1280,9 +1288,7 @@ export function App() {
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
-      {/* Grid layout: sidebar + main */}
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
         <Sidebar
           sessions={sessions}
           selectedSessionId={selectedSessionId}
@@ -1291,9 +1297,7 @@ export function App() {
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
 
-        {/* Main content area */}
         <div className="flex flex-col flex-1 min-w-0">
-          {/* Header */}
           <Header
             sessionName={sessionName}
             isRunning={isRunning}
@@ -1313,32 +1317,28 @@ export function App() {
             onOpenSwitcher={() => setSidebarCollapsed(false)}
           />
 
-          {/* Content: docs + activity side by side */}
           <main className="flex-1 min-h-0 p-3">
             <div className="grid grid-cols-2 gap-3 h-full" style={{ gridTemplateColumns: '1fr 1fr' }}>
-              {/* Docs Panel */}
-              <Card className="flex flex-col min-h-0 overflow-hidden">
+              <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden">
                 <CardHeader className="py-2 px-3 shrink-0">
                   <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Documents</CardTitle>
                 </CardHeader>
-                <CardContent className="flex-1 min-h-0 px-3 pb-2">
+                <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
                   <DocsPanel docs={state?.docs ?? {}} />
                 </CardContent>
               </Card>
 
-              {/* Activity Panel */}
-              <Card className="flex flex-col min-h-0 overflow-hidden">
+              <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden">
                 <CardHeader className="py-2 px-3 shrink-0">
                   <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Activity</CardTitle>
                 </CardHeader>
-                <CardContent className="flex-1 min-h-0 px-3 pb-2">
+                <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
                   <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} />
                 </CardContent>
               </Card>
             </div>
           </main>
 
-          {/* Footer */}
           <Footer
             steerInstruction={steerInstruction}
             setSteerInstruction={setSteerInstruction}
@@ -1350,7 +1350,6 @@ export function App() {
         </div>
       </div>
 
-      {/* Command palette */}
       <CommandPalette
         open={commandOpen}
         onClose={() => setCommandOpen(false)}
@@ -1359,7 +1358,6 @@ export function App() {
         onStop={(force) => void handleStop(force)}
       />
 
-      {/* Toast notifications */}
       <Toaster />
     </div>
   );
