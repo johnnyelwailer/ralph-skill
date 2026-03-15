@@ -1281,3 +1281,35 @@ test('watch-triggered publish failures are guarded and do not crash the server',
     await fixture.handle.close();
   }
 });
+
+test('GET and POST /api/plan reads and mutates loop-plan.json', async () => {
+  const fixture = await createServerFixture();
+  try {
+    const planPath = path.join(fixture.sessionDir, 'loop-plan.json');
+    const initialPlan = { cycle: ['a.md'], cyclePosition: 0, iteration: 1, version: 1 };
+    await writeFile(planPath, JSON.stringify(initialPlan), 'utf8');
+
+    // Test GET
+    const getResponse = await fetch(`${fixture.handle.url}/api/plan`);
+    assert.equal(getResponse.status, 200);
+    const plan = (await getResponse.json()) as any;
+    assert.deepEqual(plan, initialPlan);
+
+    // Test POST
+    const postResponse = await fetch(`${fixture.handle.url}/api/plan`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ cyclePosition: 2, iteration: 3 }),
+    });
+    assert.equal(postResponse.status, 200);
+    const mutatedPlan = (await postResponse.json()) as any;
+    assert.equal(mutatedPlan.cyclePosition, 2);
+    assert.equal(mutatedPlan.iteration, 3);
+    assert.equal(mutatedPlan.version, 2);
+
+    const savedPlan = JSON.parse(await readFile(planPath, 'utf8'));
+    assert.equal(savedPlan.cyclePosition, 2);
+  } finally {
+    await fixture.handle.close();
+  }
+});

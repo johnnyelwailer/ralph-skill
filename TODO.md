@@ -19,7 +19,7 @@
 **Runtime (aloop CLI, TS/Bun):**
 - [x] [runtime][high] Implement loop-plan.json compiler — compile cycle prompt filenames from session config, generate prompt files with frontmatter during session setup. (priority: high)
 - [x] [runtime][high] Implement request processing — watch `requests/*.json`, validate against contract, execute side effects, delete requests, queue follow-up prompts into `queue/`. Handle all 11 request types. (priority: high)
-- [ ] [runtime][high] Add runtime plan mutation — rewrite `loop-plan.json` on permanent changes, write queue entries for one-shot overrides. (priority: high)
+- [x] [runtime][high] Add runtime plan mutation — rewrite `loop-plan.json` on permanent changes, write queue entries for one-shot overrides. (priority: high)
 
 **Orchestrator (loop.sh instance with orchestrator prompts):**
 - [ ] [orchestrator][high] Implement orchestrator as a `loop.sh` instance — single `PROMPT_orch_scan.md` cycle (heartbeat), primarily queue-driven/reactive. (priority: high)

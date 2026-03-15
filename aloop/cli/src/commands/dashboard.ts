@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { processAgentRequests } from '../lib/requests.js';
+import { readLoopPlan, mutateLoopPlan, writeQueueOverride } from '../lib/plan.js';
 
 interface DashboardOptions {
   port: string;
@@ -732,11 +733,65 @@ export async function startDashboardServer(
           commit,
         );
 
+        // For backward compatibility and so the steer agent can read it
         await fs.writeFile(steeringPath, steeringDoc, 'utf8');
+
+        // Task: write queue entries for one-shot overrides (steering)
+        // We load the PROMPT_steer.md template so the agent knows HOW to steer.
+        const steerTemplatePath = path.join(sessionDir, 'prompts', 'PROMPT_steer.md');
+        let steerPromptContent = steeringDoc;
+        if (await fileExists(steerTemplatePath)) {
+          steerPromptContent = await fs.readFile(steerTemplatePath, 'utf8');
+        }
+
+        const queuePath = await writeQueueOverride(sessionDir, 'steering', steerPromptContent, {
+          agent: 'steer',
+          type: 'steering_override',
+        });
+
         writeJson(response, 201, {
           queued: true,
-          path: steeringPath,
+          path: queuePath,
+          steeringPath,
         });
+        return;
+      }
+
+      if (requestUrl.pathname === '/api/plan') {
+        if (request.method === 'GET') {
+          const plan = await readLoopPlan(sessionDir);
+          if (!plan) {
+            writeJson(response, 404, { error: 'loop-plan.json not found.' });
+            return;
+          }
+          writeJson(response, 200, plan);
+          return;
+        }
+
+        if (request.method === 'POST') {
+          let parsedBody: unknown;
+          try {
+            parsedBody = await readJsonBody(request);
+          } catch (error) {
+            writeJson(response, 400, { error: `Invalid request body: ${(error as Error).message}` });
+            return;
+          }
+
+          if (!isRecord(parsedBody)) {
+            writeJson(response, 400, { error: 'Request body must be a JSON object.' });
+            return;
+          }
+
+          try {
+            const plan = await mutateLoopPlan(sessionDir, parsedBody);
+            writeJson(response, 200, plan);
+          } catch (error) {
+            writeJson(response, 500, { error: `Failed to mutate loop plan: ${(error as Error).message}` });
+          }
+          return;
+        }
+
+        writeJson(response, 405, { error: 'Method not allowed. Use GET or POST /api/plan.' });
         return;
       }
 

@@ -977,7 +977,7 @@ function LogPanel({ log, artifacts }: { log: string; artifacts: ArtifactManifest
       <ScrollArea className="flex-1 min-h-0">
         <pre
           ref={logRef}
-          className="rounded-md bg-muted p-2 text-xs"
+          className="rounded-md bg-muted p-2 text-xs whitespace-pre-wrap break-all"
         >
           {log || 'No log entries available.'}
         </pre>

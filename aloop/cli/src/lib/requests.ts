@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { writeQueueOverride } from './plan.js';
 
 export type RequestType =
   | 'create_issues'
@@ -381,7 +382,6 @@ async function handleDispatchChild(request: DispatchChildRequest, fileName: stri
 
 async function handleSteerChild(request: SteerChildRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
   // Find child session for issue_number in active sessions
-  const homeDir = path.dirname(options.aloopDir);
   const activePath = path.join(options.aloopDir, 'active.json');
   if (!existsSync(activePath)) throw new Error('No active sessions found');
   
@@ -390,7 +390,7 @@ async function handleSteerChild(request: SteerChildRequest, fileName: string, op
   let childSessionId: string | null = null;
   for (const [id, _session] of Object.entries(active as any)) {
     // Check meta.json in each session to find the issue_number
-    const sessionMetaPath = path.join(homeDir, 'sessions', id, 'meta.json');
+    const sessionMetaPath = path.join(options.aloopDir, 'sessions', id, 'meta.json');
     if (existsSync(sessionMetaPath)) {
       const meta = JSON.parse(await fs.readFile(sessionMetaPath, 'utf8'));
       if (meta.issue_number === request.payload.issue_number || meta.gh_issue_number === request.payload.issue_number) {
@@ -419,12 +419,14 @@ async function handleSteerChild(request: SteerChildRequest, fileName: string, op
 
   if (!childSessionId) throw new Error(`Could not find child session for issue #${request.payload.issue_number}`);
 
-  const childQueueDir = path.join(homeDir, 'sessions', childSessionId, 'queue');
-  await fs.mkdir(childQueueDir, { recursive: true });
-  
+  const childSessionDir = path.join(options.aloopDir, 'sessions', childSessionId);
   const steerContent = await fs.readFile(path.join(options.workdir, request.payload.prompt_file), 'utf8');
-  const steerFileName = `steer-${new Date().getTime()}.md`;
-  await fs.writeFile(path.join(childQueueDir, steerFileName), steerContent);
+  
+  await writeQueueOverride(childSessionDir, 'steer', steerContent, {
+    agent: 'steer',
+    type: 'remote_steering_override',
+    request_id: request.id
+  });
 
   await writeSuccessToQueue(request, { status: 'steered', session_id: childSessionId }, options);
 }

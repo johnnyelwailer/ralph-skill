@@ -142,3 +142,39 @@ test('processAgentRequests - spec_backfill', async () => {
     await env.cleanup();
   }
 });
+
+test('processAgentRequests - steer_child', async () => {
+  const env = await setupTestEnv();
+  try {
+    const childSessionId = 'child-session';
+    const childDir = path.join(env.aloopDir, 'sessions', childSessionId);
+    await fs.mkdir(childDir, { recursive: true });
+    
+    // Create meta.json in child session
+    await fs.writeFile(path.join(childDir, 'meta.json'), JSON.stringify({ issue_number: 101 }));
+    
+    // Add to active.json
+    const activePath = path.join(env.aloopDir, 'active.json');
+    await fs.writeFile(activePath, JSON.stringify({ [childSessionId]: { session_id: childSessionId } }));
+    
+    await fs.writeFile(path.join(env.workdir, 'prompt.md'), 'Steer me');
+    const req = {
+      id: 'req-5',
+      type: 'steer_child',
+      payload: { issue_number: 101, prompt_file: 'prompt.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-5.json'), JSON.stringify(req));
+    
+    await processAgentRequests({ ...env, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+    
+    const childQueueDir = path.join(childDir, 'queue');
+    const queueFiles = await fs.readdir(childQueueDir);
+    assert.strictEqual(queueFiles.length, 1);
+    
+    const content = await fs.readFile(path.join(childQueueDir, queueFiles[0]), 'utf8');
+    assert.ok(content.includes('agent: steer'));
+    assert.ok(content.includes('Steer me'));
+  } finally {
+    await env.cleanup();
+  }
+});

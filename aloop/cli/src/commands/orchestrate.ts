@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
 import type { OutputMode } from './status.js';
+import { writeQueueOverride } from '../lib/plan.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -617,8 +618,24 @@ async function injectSteeringToChildLoop(
   deps: TriageDeps,
 ): Promise<void> {
   if (!deps.writeFile || !deps.aloopRoot || !issue.child_session) return;
-  const steeringPath = path.join(deps.aloopRoot, 'sessions', issue.child_session, 'worktree', 'STEERING.md');
-  await deps.writeFile(steeringPath, formatSteeringContent(comments, issue), 'utf8');
+  const childSessionDir = path.join(deps.aloopRoot, 'sessions', issue.child_session);
+  const steeringDoc = formatSteeringContent(comments, issue);
+  
+  // For backward compatibility and visibility in child worktree
+  const steeringPath = path.join(childSessionDir, 'worktree', 'STEERING.md');
+  await deps.writeFile(steeringPath, steeringDoc, 'utf8');
+
+  // Task: write queue entries for one-shot overrides (steering)
+  const steerTemplatePath = path.join(childSessionDir, 'prompts', 'PROMPT_steer.md');
+  let steerPromptContent = steeringDoc;
+  if (existsSync(steerTemplatePath)) {
+    steerPromptContent = await readFile(steerTemplatePath, 'utf8');
+  }
+
+  await writeQueueOverride(childSessionDir, 'triage-steering', steerPromptContent, {
+    agent: 'steer',
+    type: 'triage_steering_override',
+  });
 }
 
 export async function applyTriageResultsToIssue(
