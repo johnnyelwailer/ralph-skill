@@ -1,5 +1,32 @@
 # Review Log
 
+## Review — 2026-03-15 — commit 1cff643..5d03e8e
+
+**Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/lib/specBackfill.ts`, `aloop/cli/src/lib/requests.ts`, `aloop/cli/dashboard/src/App.tsx`, `aloop/bin/loop.sh`, `.aloop/pipeline.yml`, `SPEC.md`, `VERSIONS.md`, `aloop/templates/PROMPT_qa.md`, `aloop/templates/PROMPT_review.md`
+
+- Gate 4: **Dead import** — `App.tsx:7` imports `X` from `lucide-react` but it is never used anywhere in the file.
+- Gate 4: **Queue file leak** — `processQueuedPrompts` (`orchestrate.ts:3936-3939`) overwrites consumed queue files with empty string instead of deleting them. Since the file still exists and ends with `.md`, `readdir` re-lists it on the next scan pass, creating an infinite re-processing loop.
+- Gate 4: **Committed test artifact** — `aloop/cli/dashboard/test-results/qa-layout-dashboard-layout-verification/error-context.md` is a 60KB Playwright error dump committed to the repo. Should be gitignored.
+- Gate 9: **README.md stale gate count** — README says "8 gates" in 3 places (lines 73, 184, and the quality gates table) but Gate 9 (Documentation Freshness) was added. Table is missing the 9th entry.
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: GitHub Project status sync implemented via `syncIssueProjectStatus()` using GraphQL to resolve project item IDs and `gh project item-edit` for status changes. Called at dispatch (In progress), merge (Done), and conflict failure (Blocked).
+- Gate 4 ✅: Queue prompt processor implemented — `processQueuedPrompts()` reads queue/*.md, writes pending request JSON, and optionally spawns a one-shot child loop. Integrated into `runOrchestratorScanPass`.
+- Gate 4 ✅: `spec_backfill` consolidated into shared `lib/specBackfill.ts` with provenance trailers. Both `requests.ts` and `orchestrate.ts` use the shared module.
+- Gate 8 ✅: `git` added to VERSIONS.md Runtime table.
+
+**Positive observations:**
+- Gate 1: `loop.sh` cycle position fix (commit `5d03e8e`) correctly removes the hardcoded `plan|build|proof|review` phase filter, allowing custom agent types (like `qa`) to advance cycle position. This aligns with the configurable pipeline spec.
+- Gate 1: Pipeline YAML and SPEC both correctly declare the 9-step cycle: plan → build × 5 → proof → qa → review.
+- Gate 2: `processQueuedPrompts` test suite (6 tests) covers empty queue, readdir path, fallback path, non-md filtering, multi-file ordering, and read-error handling — all with concrete value assertions.
+- Gate 2: `specBackfill.test.ts` (4 tests) asserts exact file content, provenance trailer presence, and error-path return values.
+- Gate 3: `orchestrate.ts` branch coverage 82.85% (target ≥80%). `specBackfill.ts` at 100%.
+- Gate 5: 8/8 CLI tests, 276/276 orchestrate tests, 4/4 specBackfill tests, 79/79 dashboard unit tests pass. Type-check clean. Build succeeds (435KB dashboard, 423KB server).
+- Gate 8: VERSIONS.md up to date with all dependencies.
+
+---
+
 ## Review — 2026-03-15 — commit 62e4cfb..b16a179
 
 **Verdict: FAIL** (5 findings → written to TODO.md as [review] tasks)

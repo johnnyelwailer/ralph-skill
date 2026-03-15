@@ -5,6 +5,12 @@
 Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboard UX/test polish, (4) P2 enhancements.
 
 ### In Progress
+- [ ] [review] Gate 4: Dead import — `App.tsx:7` imports `X` from `lucide-react` but it is never used in JSX. Remove the unused import. (priority: high)
+- [ ] [review] Gate 4: Queue file leak — `processQueuedPrompts` (`orchestrate.ts:3936-3939`) writes empty string to consumed queue files instead of deleting them. On the next scan pass, `readdir` re-lists the empty `.md` file, it gets "re-processed" infinitely. Add `unlink` to `ScanLoopDeps` and delete consumed files, or filter out empty files before processing. (priority: high)
+- [ ] [review] Gate 4: Committed test artifact — `aloop/cli/dashboard/test-results/qa-layout-dashboard-layout-verification/error-context.md` (60KB) is a Playwright error dump committed to the repo. Remove it and add `test-results/` to `.gitignore`. (priority: high)
+- [ ] [review] Gate 9: README.md still says "8 gates" (lines 73, 184) and the quality gates table only lists 8 entries. Gate 9 (Documentation Freshness) was added in `fd14392` but README was not updated. Update all references to "9 gates" and add Gate 9 to the table. (priority: high)
+
+#### Resolved from prior review
 - [x] [review] Gate 1: Spec Compliance — GitHub Project status interaction is missing. Implement `gh project item-edit` calls for issue progression. (priority: high)
 - [x] [review] Gate 4: Dead Logic — `runSpecChangeReplan` queues prompts in `queue/` but nothing in the CLI processes them. Implement a prompt processor or trigger the agent. (priority: high)
 - [x] [review] Gate 4: Copy-paste Duplication — Consolidate `spec_backfill` logic between `requests.ts` and `orchestrate.ts`, ensuring provenance trailers are always included. (priority: high)
