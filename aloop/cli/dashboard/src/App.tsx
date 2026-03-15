@@ -271,18 +271,37 @@ function PhaseBadge({ phase, small }: { phase: string; small?: boolean }) {
   return <span className={`inline-block rounded border font-medium ${colors} ${size}`}>{phase}</span>;
 }
 
+const STATUS_DOT_CONFIG: Record<string, { color: string; label: string }> = {
+  running: { color: 'bg-green-500', label: 'Running' },
+  stopped: { color: 'bg-muted-foreground/50', label: 'Stopped' },
+  exited: { color: 'bg-muted-foreground/50', label: 'Exited' },
+  unhealthy: { color: 'bg-red-500', label: 'Unhealthy' },
+  error: { color: 'bg-red-500', label: 'Error' },
+  stuck: { color: 'bg-orange-500', label: 'Stuck' },
+  unknown: { color: 'bg-muted-foreground/30', label: 'Unknown' },
+};
+
 function StatusDot({ status, className = '', stuckCount = 0 }: { status: string; className?: string; stuckCount?: number }) {
   const isStuck = stuckCount > 0;
-  if (status === 'running' && !isStuck) {
-    return (
-      <span className={`relative flex h-2.5 w-2.5 shrink-0 ${className}`}>
-        <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-green-400" />
-        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
-      </span>
-    );
-  }
-  const color = isStuck ? 'bg-red-500' : status === 'stopped' || status === 'exited' ? 'bg-muted-foreground/50' : status === 'unhealthy' ? 'bg-red-500' : 'bg-orange-400';
-  return <span className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${color} ${className}`} />;
+  const effectiveStatus = isStuck ? 'stuck' : status;
+  const config = STATUS_DOT_CONFIG[effectiveStatus] ?? STATUS_DOT_CONFIG.unknown;
+  const label = isStuck ? `Stuck (${stuckCount} consecutive failures)` : config.label;
+
+  const dot = effectiveStatus === 'running' ? (
+    <span className={`relative flex h-2.5 w-2.5 shrink-0 ${className}`}>
+      <span className={`absolute inline-flex h-full w-full animate-pulse-dot rounded-full ${config.color}/70`} />
+      <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${config.color}`} />
+    </span>
+  ) : (
+    <span className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${config.color} ${className}`} />
+  );
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild><span className="inline-flex">{dot}</span></TooltipTrigger>
+      <TooltipContent><p>{label}</p></TooltipContent>
+    </Tooltip>
+  );
 }
 
 type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
