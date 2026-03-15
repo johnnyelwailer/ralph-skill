@@ -60,6 +60,7 @@ import {
   applySpecBackfill,
   queueSpecConsistencyCheck,
   runSpecChangeReplan,
+  processQueuedPrompts,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -4713,6 +4714,101 @@ describe('queueSpecConsistencyCheck', () => {
     assert.ok(content.includes('orch_spec_consistency'));
     assert.ok(content.includes('SPEC.md'));
     assert.ok(content.includes('Consistency Agent'));
+  });
+});
+
+describe('processQueuedPrompts', () => {
+  it('returns zero when queue dir does not exist', async () => {
+    const deps = createMockScanDeps();
+    const result = await processQueuedPrompts('/session', '/project', '/home/.aloop', 1, deps);
+    assert.equal(result.processed, 0);
+    assert.deepEqual(result.files, []);
+  });
+
+  it('processes the oldest .md file from queue directory using readdir', async () => {
+    const deps = createMockScanDeps();
+    deps.files['/session/queue'] = ''; // directory marker
+    deps.files['/session/queue/replan-spec-change.md'] = '# Replan prompt content';
+    deps.readdir = async () => ['replan-spec-change.md'];
+
+    const result = await processQueuedPrompts('/session', '/project', '/home/.aloop', 3, deps);
+
+    assert.equal(result.processed, 1);
+    assert.deepEqual(result.files, ['replan-spec-change.md']);
+    // Should create a pending request file
+    const requestContent = deps.files['/session/requests/replan-spec-change-pending.json'];
+    assert.ok(requestContent);
+    const request = JSON.parse(requestContent);
+    assert.equal(request.type, 'queued_prompt');
+    assert.equal(request.source_file, 'replan-spec-change.md');
+    assert.equal(request.iteration, 3);
+    assert.ok(request.prompt_content.includes('Replan prompt content'));
+    // Queue file should be emptied (consumed)
+    assert.equal(deps.files['/session/queue/replan-spec-change.md'], '');
+    // Should log the processing
+    assert.ok(deps.logEntries.some((e) => e.event === 'queue_prompt_processed'));
+  });
+
+  it('processes only one file per pass when multiple are queued', async () => {
+    const deps = createMockScanDeps();
+    deps.files['/session/queue'] = ''; // directory marker
+    deps.files['/session/queue/a-first.md'] = '# First';
+    deps.files['/session/queue/b-second.md'] = '# Second';
+    deps.readdir = async () => ['b-second.md', 'a-first.md'];
+
+    const result = await processQueuedPrompts('/session', '/project', '/home/.aloop', 1, deps);
+
+    assert.equal(result.processed, 1);
+    assert.deepEqual(result.files, ['a-first.md']); // Sorted, oldest first
+  });
+
+  it('falls back to known filenames when readdir is not available', async () => {
+    const deps = createMockScanDeps();
+    deps.files['/session/queue'] = ''; // directory marker
+    deps.files['/session/queue/gap-analysis-product.md'] = '# Gap analysis';
+
+    const result = await processQueuedPrompts('/session', '/project', '/home/.aloop', 1, deps);
+
+    assert.equal(result.processed, 1);
+    assert.deepEqual(result.files, ['gap-analysis-product.md']);
+  });
+
+  it('skips non-.md files', async () => {
+    const deps = createMockScanDeps();
+    deps.files['/session/queue'] = ''; // directory marker
+    deps.files['/session/queue/notes.txt'] = 'not a prompt';
+    deps.readdir = async () => ['notes.txt'];
+
+    const result = await processQueuedPrompts('/session', '/project', '/home/.aloop', 1, deps);
+
+    assert.equal(result.processed, 0);
+  });
+
+  it('logs error when queue file read fails', async () => {
+    const files: Record<string, string> = {
+      '/session/queue': '',
+      '/session/queue/broken.md': 'exists',
+    };
+    const logEntries: Record<string, unknown>[] = [];
+    const deps: ScanLoopDeps & { logEntries: Record<string, unknown>[]; files: Record<string, string> } = {
+      existsSync: (p: string) => p in files,
+      readFile: async (p: string) => {
+        if (p.includes('queue/') && p.endsWith('.md')) throw new Error('read failed');
+        if (p in files) return files[p];
+        throw new Error(`File not found: ${p}`);
+      },
+      writeFile: async (p: string, data: string) => { files[p] = data; },
+      now: () => new Date('2026-03-15T12:00:00Z'),
+      appendLog: (_dir: string, entry: Record<string, unknown>) => { logEntries.push(entry); },
+      readdir: async () => ['broken.md'],
+      logEntries,
+      files,
+    };
+
+    const result = await processQueuedPrompts('/session', '/project', '/home/.aloop', 1, deps);
+
+    assert.equal(result.processed, 0);
+    assert.ok(logEntries.some((e) => e.event === 'queue_prompt_error'));
   });
 });
 

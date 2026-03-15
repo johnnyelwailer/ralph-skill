@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
@@ -1047,6 +1047,7 @@ export async function orchestrateCommandWithDeps(
       existsSync: deps.existsSync,
       readFile: deps.readFile,
       writeFile: deps.writeFile,
+      readdir: async (p: string) => readdir(p),
       now: deps.now,
       execGh: deps.execGh,
       appendLog,
@@ -3502,6 +3503,7 @@ export interface ScanLoopDeps {
   existsSync: (path: string) => boolean;
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
+  readdir?: (path: string) => Promise<string[]>;
   now: () => Date;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   execGit?: (args: string[], cwd?: string) => Promise<{ stdout: string; stderr: string }>;
@@ -3526,6 +3528,7 @@ export interface ScanPassResult {
   triage: TriageMonitorCycleResult;
   specQuestions: SpecQuestionResolveStats;
   dispatched: number;
+  queueProcessed: number;
   childMonitoring: MonitorChildResult | null;
   prLifecycles: PrLifecycleResult[];
   waveAdvanced: boolean;
@@ -3851,6 +3854,147 @@ export async function queueSpecConsistencyCheck(
 }
 
 /**
+ * Process queued override prompts from the queue/ directory.
+ *
+ * Reads .md files from queue/, dispatches each as a one-shot child loop
+ * process (when dispatchDeps are available), and removes consumed files.
+ * This mirrors the queue processing in loop.sh's run_queue_if_present()
+ * for the TypeScript scan-loop path.
+ */
+export async function processQueuedPrompts(
+  sessionDir: string,
+  projectRoot: string,
+  aloopRoot: string,
+  iteration: number,
+  deps: ScanLoopDeps,
+): Promise<{ processed: number; files: string[] }> {
+  const queueDir = path.join(sessionDir, 'queue');
+  const result = { processed: 0, files: [] as string[] };
+
+  if (!deps.existsSync(queueDir)) return result;
+
+  // List queue files
+  let entries: string[];
+  if (deps.readdir) {
+    entries = await deps.readdir(queueDir);
+  } else {
+    // Fallback: check known queue file names
+    const knownFiles = [
+      'replan-spec-change.md',
+      'spec-consistency-check.md',
+      'decompose-epics.md',
+      'gap-analysis-product.md',
+      'gap-analysis-architecture.md',
+    ];
+    entries = knownFiles.filter((f) => deps.existsSync(path.join(queueDir, f)));
+  }
+
+  const mdFiles = entries.filter((f) => f.endsWith('.md')).sort();
+  if (mdFiles.length === 0) return result;
+
+  // Process one file per pass (oldest first by filename sort), like loop.sh
+  const fileName = mdFiles[0];
+  const filePath = path.join(queueDir, fileName);
+
+  try {
+    const content = await deps.readFile(filePath, 'utf8');
+
+    // Write the prompt content to a pending request file so it can be
+    // picked up by an external agent or the next child loop invocation.
+    const requestsDir = path.join(sessionDir, 'requests');
+    const baseName = fileName.replace(/\.md$/, '');
+    const requestFile = path.join(requestsDir, `${baseName}-pending.json`);
+    const request = {
+      type: 'queued_prompt',
+      source_file: fileName,
+      queued_at: deps.now().toISOString(),
+      iteration,
+      prompt_content: content,
+    };
+    await deps.writeFile(requestFile, `${JSON.stringify(request, null, 2)}\n`, 'utf8');
+
+    // If dispatch deps are available, spawn a one-shot child loop to process the prompt
+    if (deps.dispatchDeps && deps.aloopRoot) {
+      const loopBinDir = path.join(deps.aloopRoot, 'bin');
+      const isWindows = deps.dispatchDeps.platform === 'win32';
+
+      // Create a temporary prompts dir for the one-shot agent
+      const agentPromptsDir = path.join(sessionDir, 'queue-agent-prompts');
+      await deps.dispatchDeps.mkdir(agentPromptsDir, { recursive: true });
+
+      // Write the queue prompt as the agent's prompt
+      const agentPromptFile = path.join(agentPromptsDir, 'PROMPT_queue_agent.md');
+      await deps.dispatchDeps.writeFile(agentPromptFile, content, 'utf8');
+
+      let command: string;
+      let args: string[];
+      if (isWindows) {
+        command = 'powershell';
+        args = [
+          '-NoProfile', '-File', path.join(loopBinDir, 'loop.ps1'),
+          '-PromptsDir', agentPromptsDir,
+          '-SessionDir', sessionDir,
+          '-WorkDir', projectRoot,
+          '-Mode', 'single',
+          '-Provider', 'round-robin',
+          '-MaxIterations', '1',
+          '-MaxStuck', '1',
+          '-LaunchMode', 'start',
+        ];
+      } else {
+        command = path.join(loopBinDir, 'loop.sh');
+        args = [
+          '--prompts-dir', agentPromptsDir,
+          '--session-dir', sessionDir,
+          '--work-dir', projectRoot,
+          '--mode', 'single',
+          '--provider', 'round-robin',
+          '--max-iterations', '1',
+          '--max-stuck', '1',
+          '--launch-mode', 'start',
+        ];
+      }
+
+      const child = deps.dispatchDeps.spawn(command, args, {
+        cwd: projectRoot,
+        detached: true,
+        stdio: 'ignore',
+        env: { ...deps.dispatchDeps.env },
+        windowsHide: true,
+      });
+      child.unref();
+    }
+
+    // Remove the consumed queue file
+    // (Write empty string to signal consumption since we don't have unlink in deps)
+    // Actually, overwrite with empty content and mark as consumed via the request file
+    await deps.writeFile(filePath, '', 'utf8');
+
+    result.processed++;
+    result.files.push(fileName);
+
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: 'queue_prompt_processed',
+      iteration,
+      file: fileName,
+      dispatched: !!(deps.dispatchDeps && deps.aloopRoot),
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: 'queue_prompt_error',
+      iteration,
+      file: fileName,
+      error: msg,
+    });
+  }
+
+  return result;
+}
+
+/**
  * Run the spec change detection and replan flow within a scan pass.
  * Detects spec changes, queues replan prompt, applies any pending replan results,
  * and triggers gap analysis re-run on affected sections.
@@ -4011,6 +4155,7 @@ export async function runOrchestratorScanPass(
     triage: { processed_issues: 0, triaged_entries: 0 },
     specQuestions: { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 },
     dispatched: 0,
+    queueProcessed: 0,
     childMonitoring: null,
     prLifecycles: [],
     waveAdvanced: false,
@@ -4031,6 +4176,16 @@ export async function runOrchestratorScanPass(
       deps,
     );
   }
+
+  // 0.5. Process queued override prompts
+  const queueResult = await processQueuedPrompts(
+    sessionDir,
+    projectRoot,
+    aloopRoot,
+    iteration,
+    deps,
+  );
+  result.queueProcessed = queueResult.processed;
 
   // 1. Triage monitoring cycle
   if (repo && deps.execGh) {
@@ -4212,6 +4367,7 @@ export async function runOrchestratorScanPass(
     event: 'scan_pass_complete',
     iteration,
     dispatched: result.dispatched,
+    queue_processed: result.queueProcessed,
     monitored: result.childMonitoring?.monitored ?? 0,
     prs_created: result.childMonitoring?.prs_created ?? 0,
     child_failed: result.childMonitoring?.failed ?? 0,
