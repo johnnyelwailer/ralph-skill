@@ -257,6 +257,180 @@ function parseBudget(value: string | undefined): number | null {
   return parsed;
 }
 
+interface ProjectStatusSyncDeps {
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  appendLog?: (sessionDir: string, entry: Record<string, unknown>) => void;
+  now?: () => Date;
+  sessionDir?: string;
+}
+
+interface ProjectStatusContext {
+  itemId: string;
+  projectId: string;
+  statusFieldId: string;
+  statusOptions: Map<string, string>;
+}
+
+const projectStatusContextCache = new Map<string, ProjectStatusContext | null>();
+const PROJECT_STATUS_FIELD_NAME = 'Status';
+
+function parseRepoSlug(repo: string): { owner: string; name: string } | null {
+  const [owner, name, ...rest] = repo.split('/');
+  if (!owner || !name || rest.length > 0) return null;
+  return { owner, name };
+}
+
+async function resolveIssueProjectStatusContext(
+  repo: string,
+  issueNumber: number,
+  deps: ProjectStatusSyncDeps,
+): Promise<ProjectStatusContext | null> {
+  const cacheKey = `${repo}#${issueNumber}`;
+  if (projectStatusContextCache.has(cacheKey)) {
+    return projectStatusContextCache.get(cacheKey) ?? null;
+  }
+
+  const slug = parseRepoSlug(repo);
+  if (!slug) {
+    projectStatusContextCache.set(cacheKey, null);
+    return null;
+  }
+
+  const query = 'query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){projectItems(first:20){nodes{id project{id} fieldValues(first:50){nodes{... on ProjectV2ItemFieldSingleSelectValue{field{... on ProjectV2SingleSelectField{id name options{id name}}}}}}}}}}}';
+  const response = await deps.execGh([
+    'api',
+    'graphql',
+    '-f',
+    `query=${query}`,
+    '-F',
+    `owner=${slug.owner}`,
+    '-F',
+    `repo=${slug.name}`,
+    '-F',
+    `number=${issueNumber}`,
+  ]);
+  const parsed = JSON.parse(response.stdout) as {
+    data?: {
+      repository?: {
+        issue?: {
+          projectItems?: {
+            nodes?: Array<{
+              id?: string;
+              project?: { id?: string };
+              fieldValues?: {
+                nodes?: Array<{
+                  field?: {
+                    id?: string;
+                    name?: string;
+                    options?: Array<{ id?: string; name?: string }>;
+                  };
+                }>;
+              };
+            }>;
+          };
+        };
+      };
+    };
+  };
+  const nodes = parsed.data?.repository?.issue?.projectItems?.nodes;
+  if (!Array.isArray(nodes)) {
+    projectStatusContextCache.set(cacheKey, null);
+    return null;
+  }
+
+  for (const node of nodes) {
+    const itemId = typeof node.id === 'string' ? node.id : '';
+    const projectId = typeof node.project?.id === 'string' ? node.project.id : '';
+    if (!itemId || !projectId) continue;
+    const fieldNodes = node.fieldValues?.nodes;
+    if (!Array.isArray(fieldNodes)) continue;
+    for (const fieldNode of fieldNodes) {
+      const field = fieldNode.field;
+      if (!field || field.name !== PROJECT_STATUS_FIELD_NAME) continue;
+      const fieldId = typeof field.id === 'string' ? field.id : '';
+      if (!fieldId || !Array.isArray(field.options) || field.options.length === 0) continue;
+      const statusOptions = new Map<string, string>();
+      for (const option of field.options) {
+        if (typeof option.name === 'string' && typeof option.id === 'string') {
+          statusOptions.set(option.name.toLowerCase(), option.id);
+        }
+      }
+      const context: ProjectStatusContext = {
+        itemId,
+        projectId,
+        statusFieldId: fieldId,
+        statusOptions,
+      };
+      projectStatusContextCache.set(cacheKey, context);
+      return context;
+    }
+  }
+
+  projectStatusContextCache.set(cacheKey, null);
+  return null;
+}
+
+async function syncIssueProjectStatus(
+  issueNumber: number,
+  repo: string,
+  targetStatus: OrchestratorIssueStatus,
+  deps: ProjectStatusSyncDeps,
+): Promise<boolean> {
+  try {
+    const context = await resolveIssueProjectStatusContext(repo, issueNumber, deps);
+    if (!context) {
+      deps.appendLog?.(deps.sessionDir ?? '', {
+        timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
+        event: 'project_status_sync_skipped',
+        issue_number: issueNumber,
+        target_status: targetStatus,
+        reason: 'status_field_not_found',
+      });
+      return false;
+    }
+    const optionId = context.statusOptions.get(targetStatus.toLowerCase());
+    if (!optionId) {
+      deps.appendLog?.(deps.sessionDir ?? '', {
+        timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
+        event: 'project_status_sync_skipped',
+        issue_number: issueNumber,
+        target_status: targetStatus,
+        reason: 'status_option_not_found',
+      });
+      return false;
+    }
+
+    await deps.execGh([
+      'project',
+      'item-edit',
+      '--id',
+      context.itemId,
+      '--project-id',
+      context.projectId,
+      '--field-id',
+      context.statusFieldId,
+      '--single-select-option-id',
+      optionId,
+    ]);
+    deps.appendLog?.(deps.sessionDir ?? '', {
+      timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
+      event: 'project_status_synced',
+      issue_number: issueNumber,
+      target_status: targetStatus,
+    });
+    return true;
+  } catch (error: unknown) {
+    deps.appendLog?.(deps.sessionDir ?? '', {
+      timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
+      event: 'project_status_sync_failed',
+      issue_number: issueNumber,
+      target_status: targetStatus,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
 export function assertAutonomyLevel(value: string | undefined): AutonomyLevel {
   const normalized = value?.trim().toLowerCase();
   if (!normalized || normalized === 'balanced') return 'balanced';
@@ -834,8 +1008,11 @@ export async function orchestrateCommandWithDeps(
       const estimateResults = JSON.parse(responseContent) as EstimateResult[];
       await applyEstimateResults(state, estimateResults, {
         execGhIssueCreate: deps.execGhIssueCreate,
+        execGh: deps.execGh,
+        now: deps.now,
         repo: filterRepo ?? undefined,
         sessionId,
+        sessionDir,
       });
     } catch {
       // Malformed response — skip; scan agent will retry
@@ -1660,8 +1837,12 @@ export async function applyEstimateResults(
   results: EstimateResult[],
   deps?: {
     execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
+    execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+    appendLog?: (sessionDir: string, entry: Record<string, unknown>) => void;
+    now?: () => Date;
     repo?: string;
     sessionId?: string;
+    sessionDir?: string;
   },
 ): Promise<ApplyEstimateResultsOutcome> {
   const outcome: ApplyEstimateResultsOutcome = { updated: [], blocked: [] };
@@ -1678,6 +1859,14 @@ export async function applyEstimateResults(
       issue.dor_validated = true;
       if (issue.status === 'Needs refinement') {
         issue.status = 'Ready';
+      }
+      if (deps?.execGh && deps.repo) {
+        await syncIssueProjectStatus(result.issue_number, deps.repo, 'Ready', {
+          execGh: deps.execGh,
+          appendLog: deps.appendLog,
+          now: deps.now,
+          sessionDir: deps.sessionDir,
+        });
       }
       outcome.updated.push(result.issue_number);
     } else {
@@ -2623,7 +2812,16 @@ export async function processPrLifecycle(
       // Max rebase attempts reached — flag for human
       await flagForHuman(issue, repo, `Merge conflicts persist after 2 rebase attempts on PR #${prNumber}`, deps);
       // Update issue state to failed
-      if (stateIssue) stateIssue.state = 'failed';
+      if (stateIssue) {
+        stateIssue.state = 'failed';
+        stateIssue.status = 'Blocked';
+      }
+      await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
+        execGh: deps.execGh,
+        appendLog: deps.appendLog,
+        now: deps.now,
+        sessionDir,
+      });
       state.updated_at = deps.now().toISOString();
       await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
@@ -2713,7 +2911,16 @@ export async function processPrLifecycle(
   if (mergeResult.merged) {
     // Update issue state to merged
     const stateIssue = state.issues.find((i) => i.number === issue.number);
-    if (stateIssue) stateIssue.state = 'merged';
+    if (stateIssue) {
+      stateIssue.state = 'merged';
+      stateIssue.status = 'Done';
+    }
+    await syncIssueProjectStatus(issue.number, repo, 'Done', {
+      execGh: deps.execGh,
+      appendLog: deps.appendLog,
+      now: deps.now,
+      sessionDir,
+    });
     state.updated_at = deps.now().toISOString();
     await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
@@ -3207,6 +3414,12 @@ export async function monitorChildSessions(
           stateIssue.state = 'pr_open';
           stateIssue.pr_number = prResult.pr_number;
           stateIssue.status = 'In review';
+          await syncIssueProjectStatus(issue.number, repo, 'In review', {
+            execGh: deps.execGh,
+            appendLog: deps.appendLog,
+            now: deps.now,
+            sessionDir,
+          });
         }
         result.prs_created++;
         entry.action = 'pr_created';
@@ -3241,6 +3454,12 @@ export async function monitorChildSessions(
       if (stateIssue) {
         stateIssue.state = 'failed';
         stateIssue.status = 'Blocked';
+        await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
+          execGh: deps.execGh,
+          appendLog: deps.appendLog,
+          now: deps.now,
+          sessionDir,
+        });
       }
       result.failed++;
       entry.action = 'failed';
@@ -3852,6 +4071,15 @@ export async function runOrchestratorScanPass(
         if (stateIssue) {
           stateIssue.state = 'in_progress';
           stateIssue.child_session = launchResult.session_id;
+          stateIssue.status = 'In progress';
+          if (repo && deps.execGh) {
+            await syncIssueProjectStatus(issue.number, repo, 'In progress', {
+              execGh: deps.execGh,
+              appendLog: deps.appendLog,
+              now: deps.now,
+              sessionDir,
+            });
+          }
         }
         result.dispatched++;
 

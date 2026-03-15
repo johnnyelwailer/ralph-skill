@@ -2637,6 +2637,7 @@ describe('processPrLifecycle', () => {
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'merged');
     assert.equal(state.issues[0].state, 'merged');
+    assert.equal(state.issues[0].status, 'Done');
     assert.ok(deps.logs.some((l) => l.event === 'pr_merged'));
   });
 
@@ -4114,6 +4115,7 @@ function createMockMonitorDeps(overrides: {
   ghResponses?: Record<string, string>;
 } = {}) {
   const logEntries: Array<Record<string, unknown>> = [];
+  const ghCalls: string[][] = [];
   const files = overrides.files ?? {};
   const ghResponses = overrides.ghResponses ?? {};
 
@@ -4125,6 +4127,7 @@ function createMockMonitorDeps(overrides: {
     },
     writeFile: async () => {},
     execGh: async (args: string[]) => {
+      ghCalls.push(args);
       const key = args.join(' ');
       for (const [pattern, response] of Object.entries(ghResponses)) {
         if (key.includes(pattern)) return { stdout: response, stderr: '' };
@@ -4138,7 +4141,7 @@ function createMockMonitorDeps(overrides: {
     aloopRoot: '/home/.aloop',
   };
 
-  return { deps, logEntries, files };
+  return { deps, logEntries, files, ghCalls };
 }
 
 describe('monitorChildSessions', () => {
@@ -4169,11 +4172,41 @@ describe('monitorChildSessions', () => {
       }),
     };
 
-    const { deps, logEntries } = createMockMonitorDeps({
+    const { deps, logEntries, ghCalls } = createMockMonitorDeps({
       files,
       ghResponses: {
         'branches/agent/trunk': 'agent/trunk',
         'pr create': 'https://github.com/owner/repo/pull/42',
+        'api graphql': JSON.stringify({
+          data: {
+            repository: {
+              issue: {
+                projectItems: {
+                  nodes: [
+                    {
+                      id: 'ITEM_1',
+                      project: { id: 'PVT_project_1' },
+                      fieldValues: {
+                        nodes: [
+                          {
+                            field: {
+                              id: 'PVTSSF_status_1',
+                              name: 'Status',
+                              options: [
+                                { id: 'OPT_in_review', name: 'In review' },
+                              ],
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+        'project item-edit': '',
       },
     });
 
@@ -4190,6 +4223,10 @@ describe('monitorChildSessions', () => {
 
     // Log should contain child_pr_created
     assert.ok(logEntries.some((e) => e.event === 'child_pr_created'));
+    assert.ok(
+      ghCalls.some((call) => call[0] === 'project' && call[1] === 'item-edit'),
+      'expected project status sync call',
+    );
   });
 
   it('marks stopped child as failed', async () => {

@@ -5,16 +5,13 @@
 Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboard UX/test polish, (4) P2 enhancements.
 
 ### In Progress
-- [ ] [review] Gate 6: Proof missing for Spec Change Replan. Provide a CLI recording or log showing detection and replan triggering. (priority: high)
+- [x] [review] Gate 1: Spec Compliance — GitHub Project status interaction is missing. Implement `gh project item-edit` calls for issue progression. (priority: high)
 - [ ] [review] Gate 4: Dead Logic — `runSpecChangeReplan` queues prompts in `queue/` but nothing in the CLI processes them. Implement a prompt processor or trigger the agent. (priority: high)
-- [ ] [review] Gate 1: Spec Compliance — GitHub Project status interaction is missing. Implement `gh project item-edit` calls for issue progression. (priority: high)
 - [ ] [review] Gate 4: Copy-paste Duplication — Consolidate `spec_backfill` logic between `requests.ts` and `orchestrate.ts`, ensuring provenance trailers are always included. (priority: high)
+- [ ] [review] Gate 6: Proof missing for Spec Change Replan. Provide a CLI recording or log showing detection and replan triggering. (priority: high)
 - [ ] [review] Gate 8: VERSIONS.md Drift — Add `git` to the Runtime section of `VERSIONS.md`. (priority: high)
-- [x] [orchestrator/P1] Autonomy levels (cautious/balanced/autonomous) — wire setup/config to resolver behavior, risk classification, autonomous decision logging, and user override.
 
 ### Up Next — P0/P1 (Blocking Core)
-- [x] [orchestrator/P0] [research] GitHub-native state model feasibility — finalized: use Project status + issue state for progression; keep only minimal labels (`aloop`, `aloop/spec-question`, `aloop/blocked-on-human`, `aloop/auto-resolved`, `aloop/wave-*`).
-- [x] [orchestrator/P1] Replan on spec change — add spec diff watcher (`SPEC.md` + `specs/*.md`), trigger replan agent, apply spec backfill flow, and add loop-prevention provenance.
 - [ ] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating consistently and add same-error persistence checks before re-iteration caps.
 - [ ] [setup/P1] Data privacy setup question — ask internal/private vs public/open-source and apply provider/model/ZDR constraints from answer.
 
@@ -38,6 +35,9 @@ Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboa
 - [~] [orchestrator/P0] Label-driven state machine — superseded by GitHub-native status/project-state progression with minimal-label fallback.
 
 ### Completed
+- [x] [orchestrator/P1] Autonomy levels (cautious/balanced/autonomous) — wire setup/config to resolver behavior, risk classification, autonomous decision logging, and user override.
+- [x] [orchestrator/P0] [research] GitHub-native state model feasibility — finalized: use Project status + issue state for progression; keep only minimal labels (`aloop`, `aloop/spec-question`, `aloop/blocked-on-human`, `aloop/auto-resolved`, `aloop/wave-*`).
+- [x] [orchestrator/P1] Replan on spec change — add spec diff watcher (`SPEC.md` + `specs/*.md`), trigger replan agent, apply spec backfill flow, and add loop-prevention provenance.
 - [x] [review] Gate 4: `dashboard.ts:568` — `sendToDefaultSessionClients` dead code removed.
 - [x] [review] Gate 4: `dashboard.ts:582-615` — duplicate `publishState` branch logic consolidated.
 - [x] [review] Gate 8: added missing `@radix-ui/react-dropdown-menu@^2.1.16` entry to `VERSIONS.md`.
