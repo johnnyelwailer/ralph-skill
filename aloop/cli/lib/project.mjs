@@ -320,6 +320,16 @@ function toYamlQuoted(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
+const AUTONOMY_LEVELS = new Set(['cautious', 'balanced', 'autonomous']);
+
+function normalizeAutonomyLevel(value) {
+  if (typeof value !== 'string') {
+    return 'balanced';
+  }
+  const normalized = value.trim().toLowerCase();
+  return AUTONOMY_LEVELS.has(normalized) ? normalized : 'balanced';
+}
+
 function resolveProviderHints(provider) {
   if (provider === 'claude') return '- Claude hint: Use parallel subagents when large searches are needed; summarize before coding.';
   if (provider === 'codex') return '- Codex hint: Prefer stdin prompt mode and keep outputs concise and action-focused.';
@@ -342,6 +352,7 @@ function resolveProviderHints(provider) {
  * @param {string[]} [options.validationCommands]
  * @param {string[]} [options.safetyRules]
  * @param {string} [options.mode]
+ * @param {'cautious'|'balanced'|'autonomous'} [options.autonomyLevel]
  * @param {string} [options.templatesDir]
  */
 export async function scaffoldWorkspace(options = {}) {
@@ -362,6 +373,7 @@ export async function scaffoldWorkspace(options = {}) {
     safetyRules.length > 0 ? safetyRules : ['Never delete the project directory or run destructive commands', 'Never push to remote without explicit user approval'];
   const language = options.language ?? discovery.context.detected_language;
   const mode = options.mode ?? 'plan-build-review';
+  const autonomyLevel = normalizeAutonomyLevel(options.autonomyLevel);
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
   const promptsDir = path.join(discovery.setup.project_dir, 'prompts');
 
@@ -379,6 +391,7 @@ export async function scaffoldWorkspace(options = {}) {
     `language: ${toYamlQuoted(language)}`,
     `provider: ${toYamlQuoted(provider)}`,
     `mode: ${toYamlQuoted(mode)}`,
+    `autonomy_level: ${toYamlQuoted(autonomyLevel)}`,
     'spec_files:',
     ...resolvedSpecFiles.map((value) => `  - ${toYamlQuoted(value)}`),
     'reference_files:',

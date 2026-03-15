@@ -48,6 +48,7 @@ test('scaffoldWorkspace writes config and prompt files with substitutions', asyn
   const config = await readFile(result.config_path, 'utf8');
   const planPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_plan.md'), 'utf8');
   assert.match(config, /provider: 'copilot'/);
+  assert.match(config, /autonomy_level: 'balanced'/);
   assert.match(config, /- 'SPEC.md'/);
   assert.match(config, /reference_files:/);
   assert.match(config, /- 'RESEARCH.md'/);
@@ -164,6 +165,30 @@ test('scaffoldWorkspace respects explicit enabledProviders and roundRobinOrder',
   const config = await readFile(result.config_path, 'utf8');
   assert.match(config, /- 'claude'\r?\n  - 'gemini'/);
   assert.match(config, /round_robin_order:\r?\n  - 'gemini'\r?\n  - 'claude'/);
+});
+
+test('scaffoldWorkspace writes explicit autonomy level', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaf-autonomy-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    autonomyLevel: 'autonomous',
+    specFiles: ['none'],
+  });
+
+  const config = await readFile(result.config_path, 'utf8');
+  assert.match(config, /autonomy_level: 'autonomous'/);
 });
 
 test('discoverWorkspace builds language-specific validation presets for non-node projects', async () => {

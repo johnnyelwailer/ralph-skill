@@ -29,6 +29,10 @@ import {
   shouldPauseForHumanFeedback,
   getUnprocessedTriageComments,
   applyTriageResultsToIssue,
+  classifySpecQuestionRisk,
+  resolveSpecQuestionAction,
+  resolveSpecQuestionIssues,
+  resolveOrchestratorAutonomyLevel,
   isWaveComplete,
   advanceWave,
   parseChildSessionCost,
@@ -3437,6 +3441,130 @@ describe('orchestrateCommandWithDeps gap analysis integration', () => {
     assert.ok(promptPaths.some((p) => p.includes('PROMPT_orch_sub_decompose.md')));
     assert.ok(promptPaths.some((p) => p.includes('PROMPT_orch_product_analyst.md')));
     assert.ok(promptPaths.some((p) => p.includes('PROMPT_orch_arch_analyst.md')));
+  });
+});
+
+describe('autonomy level resolution', () => {
+  it('uses explicit autonomy option when provided', async () => {
+    const level = await resolveOrchestratorAutonomyLevel(
+      { autonomyLevel: 'autonomous', projectRoot: '/project' },
+      '/home/test',
+      {
+        existsSync: () => false,
+        readFile: async () => '',
+      },
+    );
+    assert.equal(level, 'autonomous');
+  });
+
+  it('reads autonomy level from project config when option missing', async () => {
+    const level = await resolveOrchestratorAutonomyLevel(
+      { projectRoot: '/project' },
+      '/home/test',
+      {
+        existsSync: () => true,
+        readFile: async () => "autonomy_level: 'cautious'\n",
+      },
+    );
+    assert.equal(level, 'cautious');
+  });
+
+  it('falls back to balanced for invalid config autonomy', async () => {
+    const level = await resolveOrchestratorAutonomyLevel(
+      { projectRoot: '/project' },
+      '/home/test',
+      {
+        existsSync: () => true,
+        readFile: async () => "autonomy_level: 'invalid'\n",
+      },
+    );
+    assert.equal(level, 'balanced');
+  });
+});
+
+describe('spec-question resolver autonomy behavior', () => {
+  it('maps risk tiers to autonomy action matrix', () => {
+    assert.equal(resolveSpecQuestionAction('cautious', 'low'), 'wait_for_user');
+    assert.equal(resolveSpecQuestionAction('balanced', 'low'), 'auto_resolve');
+    assert.equal(resolveSpecQuestionAction('balanced', 'medium'), 'wait_for_user');
+    assert.equal(resolveSpecQuestionAction('autonomous', 'high'), 'auto_resolve');
+  });
+
+  it('classifies risk from issue content', () => {
+    assert.equal(
+      classifySpecQuestionRisk({ title: 'Decide API contract field names', body: '' }),
+      'medium',
+    );
+    assert.equal(
+      classifySpecQuestionRisk({ title: 'Security model for data retention', body: '' }),
+      'high',
+    );
+    assert.equal(
+      classifySpecQuestionRisk({ title: 'Rename button text', body: '' }),
+      'low',
+    );
+  });
+
+  it('auto-resolves low-risk questions in balanced mode', async () => {
+    const ghCalls: string[][] = [];
+    const stats = await resolveSpecQuestionIssues(
+      { autonomy_level: 'balanced' } as OrchestratorState,
+      'owner/repo',
+      '/session',
+      {
+        execGh: async (args: string[]) => {
+          ghCalls.push(args);
+          if (args[0] === 'issue' && args[1] === 'list') {
+            return {
+              stdout: JSON.stringify([
+                { number: 12, title: 'Naming convention for status enum', body: 'Minor naming only', labels: [{ name: 'aloop/spec-question' }] },
+              ]),
+              stderr: '',
+            };
+          }
+          return { stdout: '', stderr: '' };
+        },
+        appendLog: () => undefined,
+        now: () => new Date('2026-03-15T12:00:00.000Z'),
+      },
+    );
+    assert.equal(stats.processed, 1);
+    assert.equal(stats.autoResolved, 1);
+    assert.ok(ghCalls.some((call) => call[0] === 'issue' && call[1] === 'close' && call[2] === '12'));
+  });
+
+  it('treats reopened auto-resolved issue as user override and blocks', async () => {
+    const ghCalls: string[][] = [];
+    const stats = await resolveSpecQuestionIssues(
+      { autonomy_level: 'autonomous' } as OrchestratorState,
+      'owner/repo',
+      '/session',
+      {
+        execGh: async (args: string[]) => {
+          ghCalls.push(args);
+          if (args[0] === 'issue' && args[1] === 'list') {
+            return {
+              stdout: JSON.stringify([
+                {
+                  number: 99,
+                  title: 'Reopened question',
+                  body: 'User reopened this issue',
+                  labels: [{ name: 'aloop/spec-question' }, { name: 'aloop/auto-resolved' }],
+                },
+              ]),
+              stderr: '',
+            };
+          }
+          return { stdout: '', stderr: '' };
+        },
+        appendLog: () => undefined,
+        now: () => new Date('2026-03-15T12:00:00.000Z'),
+      },
+    );
+    assert.equal(stats.userOverrides, 1);
+    assert.ok(
+      ghCalls.some((call) => call[0] === 'issue' && call[1] === 'edit' && call.includes('aloop/blocked-on-human')),
+    );
   });
 });
 

@@ -42,6 +42,7 @@ program
   .option('--home-dir <path>', 'Home directory override')
   .option('--spec <path>', 'Specification file to use')
   .option('--providers <providers>', 'Comma-separated list of providers to enable')
+  .option('--autonomy-level <level>', 'Autonomy level: cautious, balanced, or autonomous')
   .option('--non-interactive', 'Skip interactive prompts and use defaults')
   .action(setupCommand);
 
@@ -52,6 +53,7 @@ program
   .option('--language <language>', 'Language override')
   .option('--provider <provider>', 'Provider override')
   .option('--enabled-providers <providers...>', 'Enabled providers list or csv values')
+  .option('--autonomy-level <level>', 'Autonomy level: cautious, balanced, or autonomous')
   .option('--round-robin-order <providers...>', 'Round-robin provider order list or csv values')
   .option('--spec-files <files...>', 'Spec file list or csv values')
   .option('--reference-files <files...>', 'Reference file list or csv values')
@@ -143,6 +145,7 @@ program
   .option('--issues <numbers>', 'Comma-separated issue numbers to process')
   .option('--label <label>', 'GitHub label to filter issues')
   .option('--repo <owner/repo>', 'GitHub repository')
+  .option('--autonomy-level <level>', 'Autonomy level: cautious, balanced, or autonomous')
   .option('--plan <file>', 'Decomposition plan JSON file with issues and dependencies')
   .option('--plan-only', 'Create issues without launching loops')
   .option('--budget <usd>', 'Session budget cap in USD (pauses dispatch at 80%)')

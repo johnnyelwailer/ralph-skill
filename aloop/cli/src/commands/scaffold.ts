@@ -7,6 +7,7 @@ interface ScaffoldCommandOptions {
   language?: string;
   provider?: string;
   mode?: string;
+  autonomyLevel?: string;
   templatesDir?: string;
   enabledProviders?: string[];
   roundRobinOrder?: string[];
@@ -22,6 +23,7 @@ export async function scaffoldCommand(options: ScaffoldCommandOptions = {}) {
     homeDir: options.homeDir,
     language: options.language,
     provider: options.provider,
+    autonomyLevel: options.autonomyLevel as 'cautious' | 'balanced' | 'autonomous' | undefined,
     enabledProviders: options.enabledProviders,
     roundRobinOrder: options.roundRobinOrder,
     specFiles: options.specFiles,

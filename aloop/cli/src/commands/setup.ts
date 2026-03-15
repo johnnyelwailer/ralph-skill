@@ -7,9 +7,21 @@ export interface SetupCommandOptions {
   nonInteractive?: boolean;
   spec?: string;
   providers?: string;
+  autonomyLevel?: string;
 }
 
 export type PromptFunction = (question: string, defaultValue: string) => Promise<string>;
+
+type AutonomyLevel = 'cautious' | 'balanced' | 'autonomous';
+
+function parseAutonomyLevel(value: string | undefined): AutonomyLevel | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'cautious' || normalized === 'balanced' || normalized === 'autonomous') {
+    return normalized;
+  }
+  throw new Error(`Invalid autonomy level: ${value} (must be cautious, balanced, or autonomous)`);
+}
 
 async function defaultPromptUser(rl: readline.Interface, question: string, defaultValue: string): Promise<string> {
   return new Promise((resolve) => {
@@ -39,6 +51,7 @@ export async function setupCommandWithDeps(
       homeDir: options.homeDir,
       specFiles: options.spec ? [options.spec] : undefined,
       enabledProviders: options.providers ? options.providers.split(',').map(p => p.trim()) : undefined,
+      autonomyLevel: parseAutonomyLevel(options.autonomyLevel),
     });
     console.log(`Setup complete. Config written to: ${result.config_path}`);
     return;
@@ -62,6 +75,11 @@ export async function setupCommandWithDeps(
   const defaultMode = 'plan-build-review';
   const mode = await deps.prompt('Mode', defaultMode);
 
+  const defaultAutonomyLevel = options.autonomyLevel ?? 'balanced';
+  const autonomyLevel = parseAutonomyLevel(
+    await deps.prompt('Autonomy Level (cautious|balanced|autonomous)', defaultAutonomyLevel),
+  ) ?? 'balanced';
+
   const defaultValidation = discovery.context.validation_presets.full.join(', ') || 'npm test';
   const validationCommandsRaw = await deps.prompt('Validation Commands (comma-separated)', defaultValidation);
   const validationCommands = validationCommandsRaw.split(',').map((s) => s.trim()).filter(Boolean);
@@ -76,6 +94,7 @@ export async function setupCommandWithDeps(
   console.log(`- Language: ${language}`);
   console.log(`- Primary Provider: ${provider}`);
   console.log(`- Mode: ${mode}`);
+  console.log(`- Autonomy Level: ${autonomyLevel}`);
   console.log(`- Validation Commands: ${validationCommands.join(', ')}`);
   console.log(`- Safety Rules: ${safetyRules.join(', ')}`);
   console.log('');
@@ -88,6 +107,7 @@ export async function setupCommandWithDeps(
     language,
     provider,
     mode,
+    autonomyLevel,
     validationCommands,
     safetyRules,
   });

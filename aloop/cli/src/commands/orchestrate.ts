@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
+import { getProjectHash, resolveProjectRoot } from './project.js';
 import type { OutputMode } from './status.js';
 import { writeQueueOverride } from '../lib/plan.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
@@ -13,6 +14,7 @@ export interface OrchestrateCommandOptions {
   issues?: string;
   label?: string;
   repo?: string;
+  autonomyLevel?: string;
   plan?: string;
   planOnly?: boolean;
   homeDir?: string;
@@ -37,6 +39,9 @@ export interface DecompositionPlan {
 }
 
 export type OrchestratorIssueState = 'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed';
+export type AutonomyLevel = 'cautious' | 'balanced' | 'autonomous';
+export type SpecQuestionRisk = 'low' | 'medium' | 'high';
+export type SpecQuestionResolutionAction = 'wait_for_user' | 'auto_resolve';
 export type OrchestratorIssueStatus =
   | 'Needs analysis'
   | 'Needs decomposition'
@@ -69,6 +74,7 @@ export interface OrchestratorIssue {
 
 export interface OrchestratorState {
   spec_file: string;
+  autonomy_level?: AutonomyLevel;
   trunk_branch: string;
   concurrency_cap: number;
   current_wave: number;
@@ -210,6 +216,49 @@ function parseBudget(value: string | undefined): number | null {
     throw new Error(`Invalid budget value: ${value} (must be a positive number in USD)`);
   }
   return parsed;
+}
+
+export function assertAutonomyLevel(value: string | undefined): AutonomyLevel {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === 'balanced') return 'balanced';
+  if (normalized === 'cautious' || normalized === 'autonomous') return normalized;
+  throw new Error(`Invalid autonomy level: ${value} (must be cautious, balanced, or autonomous)`);
+}
+
+function parseConfigScalar(content: string, key: string): string | null {
+  const matcher = new RegExp(`^\\s*${key}:\\s*(.+?)\\s*$`, 'm');
+  const match = content.match(matcher);
+  if (!match) return null;
+  const raw = match[1]!.split(/\s+#/, 1)[0]!.trim();
+  if (raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2) {
+    return raw.slice(1, -1).replace(/''/g, "'");
+  }
+  if (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) {
+    return raw.slice(1, -1).replace(/\\"/g, '"');
+  }
+  return raw;
+}
+
+export async function resolveOrchestratorAutonomyLevel(
+  options: OrchestrateCommandOptions,
+  homeDir: string,
+  deps: Pick<OrchestrateDeps, 'existsSync' | 'readFile'>,
+): Promise<AutonomyLevel> {
+  if (options.autonomyLevel) {
+    return assertAutonomyLevel(options.autonomyLevel);
+  }
+  const projectRoot = resolveProjectRoot(options.projectRoot);
+  const projectHash = getProjectHash(projectRoot);
+  const configPath = path.join(homeDir, '.aloop', 'projects', projectHash, 'config.yml');
+  if (!deps.existsSync(configPath)) {
+    return 'balanced';
+  }
+  try {
+    const configContent = await deps.readFile(configPath, 'utf8');
+    return assertAutonomyLevel(parseConfigScalar(configContent, 'autonomy_level') ?? undefined);
+  } catch {
+    return 'balanced';
+  }
 }
 
 export function validateDependencyGraph(issues: DecompositionPlanIssue[]): void {
@@ -528,6 +577,7 @@ export async function orchestrateCommandWithDeps(
   const filterRepo = options.repo ?? null;
   const planOnly = options.planOnly ?? false;
   const budgetCap = parseBudget(options.budget);
+  const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
 
   const now = deps.now();
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}${String(now.getUTCSeconds()).padStart(2, '0')}`;
@@ -587,6 +637,7 @@ export async function orchestrateCommandWithDeps(
 
   let state: OrchestratorState = {
     spec_file: specFile,
+    autonomy_level: autonomyLevel,
     trunk_branch: trunkBranch,
     concurrency_cap: concurrencyCap,
     current_wave: 0,
@@ -829,6 +880,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   console.log(`  State file:   ${result.state_file}`);
   console.log(`  Spec:         ${result.state.spec_file}`);
   console.log(`  Trunk:        ${result.state.trunk_branch}`);
+  console.log(`  Autonomy:     ${result.state.autonomy_level ?? 'balanced'}`);
   console.log(`  Concurrency:  ${result.state.concurrency_cap}`);
   console.log(`  Plan only:    ${result.state.plan_only}`);
 
@@ -1284,6 +1336,187 @@ export async function runTriageMonitorCycle(
 
   state.updated_at = deps.now().toISOString();
   return { processed_issues: state.issues.length, triaged_entries: triagedEntries };
+}
+
+interface GithubIssueLabel {
+  name?: string;
+}
+
+interface SpecQuestionIssueSummary {
+  number: number;
+  title: string;
+  body: string;
+  labels: GithubIssueLabel[];
+}
+
+function parseSpecQuestionIssueList(stdout: string): SpecQuestionIssueSummary[] {
+  const trimmed = stdout.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((issue): issue is Record<string, unknown> => Boolean(issue) && typeof issue === 'object')
+      .map((issue) => ({
+        number: parsePositiveInteger(issue.number) ?? 0,
+        title: typeof issue.title === 'string' ? issue.title : '',
+        body: typeof issue.body === 'string' ? issue.body : '',
+        labels: Array.isArray(issue.labels) ? issue.labels as GithubIssueLabel[] : [],
+      }))
+      .filter((issue) => issue.number > 0);
+  } catch {
+    return [];
+  }
+}
+
+function extractLabelNames(labels: GithubIssueLabel[]): Set<string> {
+  const names = new Set<string>();
+  for (const label of labels) {
+    if (typeof label?.name === 'string' && label.name.length > 0) {
+      names.add(label.name.toLowerCase());
+    }
+  }
+  return names;
+}
+
+export function classifySpecQuestionRisk(issue: Pick<SpecQuestionIssueSummary, 'title' | 'body'>): SpecQuestionRisk {
+  const haystack = `${issue.title}\n${issue.body}`.toLowerCase();
+  if (/(security|privacy|billing|payment|architecture|breaking change|data retention|compliance)/.test(haystack)) {
+    return 'high';
+  }
+  if (/(api|contract|schema|data model|auth flow|error handling|migration|backward compatibility)/.test(haystack)) {
+    return 'medium';
+  }
+  return 'low';
+}
+
+export function resolveSpecQuestionAction(
+  autonomy: AutonomyLevel,
+  risk: SpecQuestionRisk,
+): SpecQuestionResolutionAction {
+  if (autonomy === 'autonomous') return 'auto_resolve';
+  if (autonomy === 'balanced') return risk === 'low' ? 'auto_resolve' : 'wait_for_user';
+  return 'wait_for_user';
+}
+
+export function formatResolverDecisionComment(
+  autonomy: AutonomyLevel,
+  risk: SpecQuestionRisk,
+): string {
+  return `## Resolver Decision (auto-resolved — ${autonomy} mode)
+
+**Risk**: ${risk}
+**Decision**: Proceed with the most conservative implementation choice consistent with current SPEC.
+
+**Rationale**: The issue was classified as ${risk}-risk under ${autonomy} autonomy, which allows autonomous resolution for this risk tier.
+
+**Spec backfill**: Decision captured for follow-up spec backfill by orchestrator consistency flow.
+
+---
+*This comment was generated by aloop resolver agent.*`;
+}
+
+interface SpecQuestionResolveStats {
+  processed: number;
+  waiting: number;
+  autoResolved: number;
+  userOverrides: number;
+}
+
+export async function resolveSpecQuestionIssues(
+  state: OrchestratorState,
+  repo: string,
+  sessionDir: string,
+  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog' | 'now'>,
+): Promise<SpecQuestionResolveStats> {
+  if (!deps.execGh) {
+    return { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
+  }
+  const result: SpecQuestionResolveStats = { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
+  const response = await deps.execGh([
+    'issue',
+    'list',
+    '--repo',
+    repo,
+    '--label',
+    'aloop/spec-question',
+    '--state',
+    'open',
+    '--json',
+    'number,title,body,labels',
+  ]);
+  const issues = parseSpecQuestionIssueList(response.stdout);
+  for (const issue of issues) {
+    result.processed += 1;
+    const labelNames = extractLabelNames(issue.labels);
+    const issueNumber = String(issue.number);
+    const risk = classifySpecQuestionRisk(issue);
+    const action = resolveSpecQuestionAction(state.autonomy_level ?? 'balanced', risk);
+    const reopenedByUser = labelNames.has('aloop/auto-resolved');
+    if (reopenedByUser) {
+      if (!labelNames.has('aloop/blocked-on-human')) {
+        await deps.execGh([
+          'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+        ]);
+      }
+      result.userOverrides += 1;
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'spec_question_user_override',
+        issue_number: issue.number,
+        autonomy_level: state.autonomy_level ?? 'balanced',
+      });
+      continue;
+    }
+
+    if (action === 'wait_for_user') {
+      if (!labelNames.has('aloop/blocked-on-human')) {
+        await deps.execGh([
+          'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+        ]);
+      }
+      result.waiting += 1;
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'spec_question_waiting',
+        issue_number: issue.number,
+        risk,
+        autonomy_level: state.autonomy_level ?? 'balanced',
+      });
+      continue;
+    }
+
+    await deps.execGh([
+      'issue',
+      'comment',
+      issueNumber,
+      '--repo',
+      repo,
+      '--body',
+      formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
+    ]);
+    await deps.execGh([
+      'issue',
+      'edit',
+      issueNumber,
+      '--repo',
+      repo,
+      '--add-label',
+      'aloop/auto-resolved',
+      '--remove-label',
+      'aloop/blocked-on-human',
+    ]);
+    await deps.execGh(['issue', 'close', issueNumber, '--repo', repo]);
+    result.autoResolved += 1;
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: 'spec_question_auto_resolved',
+      issue_number: issue.number,
+      risk,
+      autonomy_level: state.autonomy_level ?? 'balanced',
+    });
+  }
+  return result;
 }
 
 // --- Definition of Ready (DoR) gate ---
@@ -3008,6 +3241,7 @@ export interface ScanLoopDeps {
 export interface ScanPassResult {
   iteration: number;
   triage: TriageMonitorCycleResult;
+  specQuestions: SpecQuestionResolveStats;
   dispatched: number;
   childMonitoring: MonitorChildResult | null;
   prLifecycles: PrLifecycleResult[];
@@ -3044,6 +3278,7 @@ export async function runOrchestratorScanPass(
   const result: ScanPassResult = {
     iteration,
     triage: { processed_issues: 0, triaged_entries: 0 },
+    specQuestions: { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 },
     dispatched: 0,
     childMonitoring: null,
     prLifecycles: [],
@@ -3061,6 +3296,12 @@ export async function runOrchestratorScanPass(
       repo,
       { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile },
       aloopRoot,
+    );
+    result.specQuestions = await resolveSpecQuestionIssues(
+      state,
+      repo,
+      sessionDir,
+      { execGh: deps.execGh, appendLog: deps.appendLog, now: deps.now },
     );
   }
 
@@ -3223,6 +3464,10 @@ export async function runOrchestratorScanPass(
     child_failed: result.childMonitoring?.failed ?? 0,
     pr_lifecycles: result.prLifecycles.length,
     triage_entries: result.triage.triaged_entries,
+    spec_questions_processed: result.specQuestions.processed,
+    spec_questions_waiting: result.specQuestions.waiting,
+    spec_questions_auto_resolved: result.specQuestions.autoResolved,
+    spec_questions_user_overrides: result.specQuestions.userOverrides,
     all_done: result.allDone,
   });
 

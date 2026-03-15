@@ -21,6 +21,7 @@ export interface DiscoverOptions extends BaseOptions {}
 export interface ScaffoldOptions extends BaseOptions {
   language?: string;
   provider?: string;
+  autonomyLevel?: 'cautious' | 'balanced' | 'autonomous';
   enabledProviders?: string[];
   roundRobinOrder?: string[];
   specFiles?: string[];

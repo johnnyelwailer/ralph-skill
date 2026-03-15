@@ -48,7 +48,8 @@ test('setupCommandWithDeps - non-interactive mode', async () => {
     homeDir: '/my/home',
     nonInteractive: true,
     spec: 'MY_SPEC.md',
-    providers: 'gemini,codex'
+    providers: 'gemini,codex',
+    autonomyLevel: 'autonomous',
   }, deps);
 
   assert.equal(discoverCalled, true);
@@ -57,6 +58,7 @@ test('setupCommandWithDeps - non-interactive mode', async () => {
   assert.equal(scaffoldCalledOpts.homeDir, '/my/home');
   assert.deepEqual(scaffoldCalledOpts.specFiles, ['MY_SPEC.md']);
   assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['gemini', 'codex']);
+  assert.equal(scaffoldCalledOpts.autonomyLevel, 'autonomous');
   assert.equal(promptCalled, false, 'Prompt should not be called in non-interactive mode');
 });
 
@@ -96,6 +98,7 @@ test('setupCommandWithDeps - interactive mode', async () => {
     if (question.includes('Language')) return 'python';
     if (question.includes('Primary Provider')) return 'gemini';
     if (question.includes('Mode')) return 'custom-mode';
+    if (question.includes('Autonomy Level')) return 'autonomous';
     if (question.includes('Validation')) return 'pytest, ruff check .';
     if (question.includes('Safety')) return 'No rm -rf, No dropping tables';
     return defaultValue;
@@ -110,13 +113,14 @@ test('setupCommandWithDeps - interactive mode', async () => {
   await setupCommandWithDeps({}, deps);
 
   assert.equal(discoverCalled, true);
-  assert.equal(promptCallCount, 7, 'Should ask 7 questions');
+  assert.equal(promptCallCount, 8, 'Should ask 8 questions');
   assert.ok(scaffoldCalledOpts);
   assert.deepEqual(scaffoldCalledOpts.specFiles, ['CUSTOM_SPEC.md']);
   assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['gemini']);
   assert.equal(scaffoldCalledOpts.language, 'python');
   assert.equal(scaffoldCalledOpts.provider, 'gemini');
   assert.equal(scaffoldCalledOpts.mode, 'custom-mode');
+  assert.equal(scaffoldCalledOpts.autonomyLevel, 'autonomous');
   assert.deepEqual(scaffoldCalledOpts.validationCommands, ['pytest', 'ruff check .']);
   assert.deepEqual(scaffoldCalledOpts.safetyRules, ['No rm -rf', 'No dropping tables']);
 });
@@ -163,6 +167,7 @@ test('setupCommandWithDeps - interactive mode uses defaults', async () => {
   assert.equal(scaffoldCalledOpts.language, 'rust');
   assert.equal(scaffoldCalledOpts.provider, 'codex');
   assert.equal(scaffoldCalledOpts.mode, 'plan-build-review');
+  assert.equal(scaffoldCalledOpts.autonomyLevel, 'balanced');
   assert.deepEqual(scaffoldCalledOpts.validationCommands, ['cargo test']);
   assert.deepEqual(scaffoldCalledOpts.safetyRules, ['Never delete the project directory or run destructive commands', 'Never push to remote without explicit user approval']);
 });
@@ -257,6 +262,7 @@ test('setupCommandWithDeps - interactive prompt parsing trims and filters comma 
       return defaultValue;
     }
     if (question.includes('Mode')) return 'plan-build-review';
+    if (question.includes('Autonomy Level')) return 'cautious';
     if (question.includes('Validation')) return ' npm test , , npm run typecheck ,, ';
     if (question.includes('Safety')) return ' Rule 1 , , Rule 2 ,, ';
     return defaultValue;
@@ -267,6 +273,7 @@ test('setupCommandWithDeps - interactive prompt parsing trims and filters comma 
   assert.equal(providerPromptDefault, 'codex');
   assert.ok(scaffoldCalledOpts);
   assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['codex', 'gemini']);
+  assert.equal(scaffoldCalledOpts.autonomyLevel, 'cautious');
   assert.deepEqual(scaffoldCalledOpts.validationCommands, ['npm test', 'npm run typecheck']);
   assert.deepEqual(scaffoldCalledOpts.safetyRules, ['Rule 1', 'Rule 2']);
 });
