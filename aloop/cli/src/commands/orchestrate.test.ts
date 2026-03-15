@@ -12,6 +12,8 @@ import {
   getDispatchableIssues,
   countActiveChildren,
   availableSlots,
+  hasFileOwnershipConflict,
+  filterByFileOwnership,
   launchChildLoop,
   dispatchChildLoops,
   checkPrGates,
@@ -1661,6 +1663,75 @@ describe('getDispatchableIssues', () => {
   });
 });
 
+describe('hasFileOwnershipConflict', () => {
+  it('returns false when candidate has no file hints', () => {
+    const candidate = makeIssue({ number: 1 });
+    const active = [makeIssue({ number: 2, state: 'in_progress', file_hints: ['src/a.ts'] })];
+    assert.equal(hasFileOwnershipConflict(candidate, active), false);
+  });
+
+  it('returns false when no active issues have file hints', () => {
+    const candidate = makeIssue({ number: 1, file_hints: ['src/a.ts'] });
+    const active = [makeIssue({ number: 2, state: 'in_progress' })];
+    assert.equal(hasFileOwnershipConflict(candidate, active), false);
+  });
+
+  it('returns true when file hints overlap', () => {
+    const candidate = makeIssue({ number: 1, file_hints: ['src/a.ts', 'src/b.ts'] });
+    const active = [makeIssue({ number: 2, state: 'in_progress', file_hints: ['src/b.ts', 'src/c.ts'] })];
+    assert.equal(hasFileOwnershipConflict(candidate, active), true);
+  });
+
+  it('returns false when file hints do not overlap', () => {
+    const candidate = makeIssue({ number: 1, file_hints: ['src/a.ts'] });
+    const active = [makeIssue({ number: 2, state: 'in_progress', file_hints: ['src/b.ts'] })];
+    assert.equal(hasFileOwnershipConflict(candidate, active), false);
+  });
+});
+
+describe('filterByFileOwnership', () => {
+  it('excludes issues with overlapping file hints against in_progress issues', () => {
+    const state = makeState({
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'in_progress', file_hints: ['src/a.ts'] }),
+        makeIssue({ number: 2, wave: 1, state: 'pending', file_hints: ['src/a.ts'] }),
+        makeIssue({ number: 3, wave: 1, state: 'pending', file_hints: ['src/b.ts'] }),
+      ],
+    });
+    const candidates = [state.issues[1], state.issues[2]];
+    const result = filterByFileOwnership(candidates, state);
+    assert.deepStrictEqual(result.map((i) => i.number), [3]);
+  });
+
+  it('excludes issues with overlapping file hints against earlier batch selections', () => {
+    const state = makeState({
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'pending', file_hints: ['src/shared.ts'] }),
+        makeIssue({ number: 2, wave: 1, state: 'pending', file_hints: ['src/shared.ts'] }),
+        makeIssue({ number: 3, wave: 1, state: 'pending', file_hints: ['src/other.ts'] }),
+      ],
+    });
+    const candidates = state.issues;
+    const result = filterByFileOwnership(candidates, state);
+    // Issue 1 selected first, issue 2 conflicts with it, issue 3 is fine
+    assert.deepStrictEqual(result.map((i) => i.number), [1, 3]);
+  });
+
+  it('passes all candidates through when no file hints exist', () => {
+    const state = makeState({
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'pending' }),
+        makeIssue({ number: 2, wave: 1, state: 'pending' }),
+      ],
+    });
+    const result = filterByFileOwnership(state.issues, state);
+    assert.equal(result.length, 2);
+  });
+});
+
 describe('validateDoR', () => {
   it('passes when acceptance criteria, approach, and content are present', () => {
     const issue = makeIssue({
@@ -2111,6 +2182,35 @@ describe('launchChildLoop', () => {
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
     assert.ok(deps._spawnCalls.some((c) => c.command.endsWith('loop.sh')));
   });
+
+  it('seeds SPEC.md from issue body in worktree', async () => {
+    const issueWithBody = makeIssue({ number: 42, title: 'Add feature X', body: '## Requirements\n\n- Support login\n- Handle errors' });
+    const deps = createMockDispatchDeps();
+    await launchChildLoop(issueWithBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
+    assert.ok(specFile, 'SPEC.md should be written to child worktree');
+    assert.ok(deps._writtenFiles[specFile].includes('Issue #42'));
+    assert.ok(deps._writtenFiles[specFile].includes('Support login'));
+  });
+
+  it('does not seed SPEC.md when issue has no body', async () => {
+    const issueNoBody = makeIssue({ number: 42, title: 'Add feature X', body: undefined });
+    const deps = createMockDispatchDeps();
+    await launchChildLoop(issueNoBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
+    assert.equal(specFile, undefined, 'SPEC.md should not be written when issue body is empty');
+  });
+
+  it('compiles loop-plan.json for child session', async () => {
+    const deps = createMockDispatchDeps();
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const planFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('loop-plan.json'));
+    assert.ok(planFile, 'loop-plan.json should be written for child session');
+    const plan = JSON.parse(deps._writtenFiles[planFile]);
+    assert.ok(Array.isArray(plan.cycle), 'loop-plan.json should have a cycle array');
+    assert.equal(plan.cyclePosition, 0);
+    assert.equal(plan.iteration, 1);
+  });
 });
 
 describe('dispatchChildLoops', () => {
@@ -2208,6 +2308,41 @@ describe('dispatchChildLoops', () => {
     assert.equal(result.launched[0].branch, 'aloop/issue-10');
     assert.equal(result.launched[1].branch, 'aloop/issue-20');
     assert.notEqual(result.launched[0].session_id, result.launched[1].session_id);
+  });
+
+  it('skips issues with file ownership conflicts against in-progress issues', async () => {
+    const issues = [
+      makeIssue({ number: 1, wave: 1, state: 'in_progress', file_hints: ['src/shared.ts'] }),
+      makeIssue({ number: 2, wave: 1, state: 'pending', file_hints: ['src/shared.ts'] }),
+      makeIssue({ number: 3, wave: 1, state: 'pending', file_hints: ['src/other.ts'] }),
+    ];
+    const state = stateWithIssues(issues);
+    const deps = createMockDispatchDeps({
+      readFile: async () => JSON.stringify(state),
+    });
+
+    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
+    assert.equal(result.launched.length, 1);
+    assert.equal(result.launched[0].issue_number, 3);
+    assert.ok(result.skipped.includes(2));
+  });
+
+  it('skips issues with file ownership conflicts within same dispatch batch', async () => {
+    const issues = [
+      makeIssue({ number: 1, wave: 1, state: 'pending', file_hints: ['src/shared.ts'] }),
+      makeIssue({ number: 2, wave: 1, state: 'pending', file_hints: ['src/shared.ts'] }),
+      makeIssue({ number: 3, wave: 1, state: 'pending', file_hints: ['src/other.ts'] }),
+    ];
+    const state = stateWithIssues(issues);
+    const deps = createMockDispatchDeps({
+      readFile: async () => JSON.stringify(state),
+    });
+
+    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
+    assert.equal(result.launched.length, 2);
+    assert.equal(result.launched[0].issue_number, 1);
+    assert.equal(result.launched[1].issue_number, 3);
+    assert.ok(result.skipped.includes(2));
   });
 });
 

@@ -8765,6 +8765,7 @@ async function applyDecompositionPlan(plan, state, sessionDir, repo, deps) {
       number: ghNumber,
       title: planIssue.title,
       body: planIssue.body,
+      file_hints: planIssue.file_hints ?? [],
       wave,
       state: "pending",
       status: "Needs refinement",
@@ -8787,6 +8788,8 @@ async function applyDecompositionPlan(plan, state, sessionDir, repo, deps) {
 }
 var ORCH_SCAN_PROMPT_FILENAME = "PROMPT_orch_scan.md";
 var ORCH_ESTIMATE_PROMPT_FILENAME = "PROMPT_orch_estimate.md";
+var ORCH_DECOMPOSE_PROMPT_FILENAME = "PROMPT_orch_decompose.md";
+var ORCH_SUB_DECOMPOSE_PROMPT_FILENAME = "PROMPT_orch_sub_decompose.md";
 var ORCH_PRODUCT_ANALYST_PROMPT_FILENAME = "PROMPT_orch_product_analyst.md";
 var ORCH_ARCH_ANALYST_PROMPT_FILENAME = "PROMPT_orch_arch_analyst.md";
 var ORCH_ESTIMATE_PROMPT_FALLBACK = `# Orchestrator Estimation Agent
@@ -8866,6 +8869,20 @@ Find architecture and technical gaps before decomposition or dispatch.
 - Write only concrete runtime requests to \`requests/*.json\`.
 - Do not emit broad or speculative redesign work.
 `;
+var ORCH_DECOMPOSE_FALLBACK = `# Orchestrator Decompose (Epic Creation)
+
+You are Aloop, the epic decomposition agent.
+
+Convert the spec into top-level vertical slices (epics) with acceptance criteria and dependency hints.
+Write concrete \`requests/*.json\` files for issue creation, and prefer coherent end-to-end slices.
+`;
+var ORCH_SUB_DECOMPOSE_FALLBACK = `# Orchestrator Sub-Issue Decompose
+
+You are Aloop, the sub-issue decomposition agent.
+
+Break one refined epic into scoped work units suitable for child loops.
+Each sub-issue must be independently actionable with clear file ownership hints.
+`;
 function buildOrchestratorScanPrompt() {
   return `---
 agent: orch_scan
@@ -8928,6 +8945,12 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const archAnalystTemplatePath = path11.join(templateRoot, "aloop", "templates", ORCH_ARCH_ANALYST_PROMPT_FILENAME);
   const archAnalystPrompt = deps.existsSync(archAnalystTemplatePath) ? await deps.readFile(archAnalystTemplatePath, "utf8") : ORCH_ARCH_ANALYST_FALLBACK;
   await deps.writeFile(path11.join(promptsDir, ORCH_ARCH_ANALYST_PROMPT_FILENAME), archAnalystPrompt, "utf8");
+  const decomposeTemplatePath = path11.join(templateRoot, "aloop", "templates", ORCH_DECOMPOSE_PROMPT_FILENAME);
+  const decomposePrompt = deps.existsSync(decomposeTemplatePath) ? await deps.readFile(decomposeTemplatePath, "utf8") : ORCH_DECOMPOSE_FALLBACK;
+  await deps.writeFile(path11.join(promptsDir, ORCH_DECOMPOSE_PROMPT_FILENAME), decomposePrompt, "utf8");
+  const subDecomposeTemplatePath = path11.join(templateRoot, "aloop", "templates", ORCH_SUB_DECOMPOSE_PROMPT_FILENAME);
+  const subDecomposePrompt = deps.existsSync(subDecomposeTemplatePath) ? await deps.readFile(subDecomposeTemplatePath, "utf8") : ORCH_SUB_DECOMPOSE_FALLBACK;
+  await deps.writeFile(path11.join(promptsDir, ORCH_SUB_DECOMPOSE_PROMPT_FILENAME), subDecomposePrompt, "utf8");
   let state = {
     spec_file: specFile,
     trunk_branch: trunkBranch,
@@ -8959,6 +8982,42 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
       throw new Error('Plan file must contain a non-empty "issues" array');
     }
     state = await applyDecompositionPlan(plan, state, sessionDir, filterRepo, deps);
+  }
+  const epicDecompositionResultsFile = path11.join(requestsDir, "epic-decomposition-results.json");
+  if (deps.existsSync(epicDecompositionResultsFile)) {
+    const epicResultsContent = await deps.readFile(epicDecompositionResultsFile, "utf8");
+    try {
+      const epicPlan = JSON.parse(epicResultsContent);
+      if (Array.isArray(epicPlan.issues) && epicPlan.issues.length > 0) {
+        state = await applyDecompositionPlan(epicPlan, state, sessionDir, filterRepo, deps);
+      }
+    } catch {
+    }
+  }
+  if (!options.plan && state.issues.length === 0) {
+    await createEpicDecompositionRequest(specFile, requestsDir, { writeFile: deps.writeFile, now: deps.now });
+    const specPath = path11.resolve(specFile);
+    const specContent = deps.existsSync(specPath) ? await deps.readFile(specPath, "utf8") : "";
+    await queueEpicDecomposition(specFile, specContent, queueDir, decomposePrompt, { writeFile: deps.writeFile });
+  }
+  const subDecompositionResultsFile = path11.join(requestsDir, "sub-decomposition-results.json");
+  if (deps.existsSync(subDecompositionResultsFile)) {
+    const subResultsContent = await deps.readFile(subDecompositionResultsFile, "utf8");
+    try {
+      const subResults = JSON.parse(subResultsContent);
+      applySubDecompositionResults(state, subResults, deps.now());
+    } catch {
+    }
+  }
+  const decompositionTargets = state.issues.filter((issue) => issue.status === "Needs decomposition");
+  if (decompositionTargets.length > 0) {
+    await createSubDecompositionRequests(state.issues, requestsDir, { writeFile: deps.writeFile, now: deps.now });
+    await queueSubDecompositionForIssues(
+      state.issues,
+      queueDir,
+      subDecomposePrompt,
+      { writeFile: deps.writeFile }
+    );
   }
   const gapAnalysisTargets = state.issues.filter((issue) => issue.status === "Needs analysis");
   if (gapAnalysisTargets.length > 0) {
@@ -9016,6 +9075,55 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const stateFile = path11.join(sessionDir, "orchestrator.json");
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
 `, "utf8");
+  let scanLoopResult;
+  if (options.runScanLoop && !planOnly && state.issues.length > 0) {
+    const intervalMs = parseInterval(options.interval);
+    const maxIter = parseMaxIterations(options.maxIterations);
+    const logFile = path11.join(sessionDir, "log.jsonl");
+    const appendLog2 = async (_dir, entry) => {
+      let existing = "";
+      try {
+        if (deps.existsSync(logFile)) {
+          existing = await deps.readFile(logFile, "utf8");
+        }
+      } catch {
+      }
+      await deps.writeFile(logFile, `${existing}${JSON.stringify(entry)}
+`, "utf8");
+    };
+    const scanDeps = {
+      existsSync: deps.existsSync,
+      readFile: deps.readFile,
+      writeFile: deps.writeFile,
+      now: deps.now,
+      execGh: deps.execGh,
+      appendLog: appendLog2,
+      prLifecycleDeps: deps.execGh ? {
+        execGh: deps.execGh,
+        readFile: deps.readFile,
+        writeFile: deps.writeFile,
+        now: deps.now,
+        appendLog: (dir, entry) => {
+          appendLog2(dir, entry);
+        }
+      } : void 0,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    };
+    const promptsSourceDir = promptsDir;
+    scanLoopResult = await runOrchestratorScanLoop(
+      stateFile,
+      sessionDir,
+      templateRoot,
+      path11.basename(sessionDir),
+      promptsSourceDir,
+      aloopRoot,
+      filterRepo,
+      intervalMs,
+      maxIter,
+      scanDeps
+    );
+    state = scanLoopResult.finalState;
+  }
   return {
     session_dir: sessionDir,
     prompts_dir: promptsDir,
@@ -9023,7 +9131,8 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     requests_dir: requestsDir,
     loop_plan_file: loopPlanFile,
     state_file: stateFile,
-    state
+    state,
+    scan_loop: scanLoopResult
   };
 }
 async function orchestrateCommand(options = {}, deps) {
@@ -9139,6 +9248,9 @@ function classifyTriageComment(comment) {
 }
 function runTriageClassificationLoop(comments) {
   return comments.map((comment) => classifyTriageComment(comment));
+}
+function shouldPauseForHumanFeedback(issue) {
+  return issue.blocked_on_human === true;
 }
 function getUnprocessedTriageComments(issue, comments) {
   const processed = new Set(issue.processed_comment_ids ?? []);
@@ -9434,6 +9546,27 @@ async function runTriageMonitorCycle(state, sessionId, repo, deps, aloopRoot) {
   state.updated_at = deps.now().toISOString();
   return { processed_issues: state.issues.length, triaged_entries: triagedEntries };
 }
+var SPEC_QUESTION_BLOCKER = /aloop\/spec-question/i;
+function validateDoR(issue) {
+  const gaps = [];
+  const body = `${issue.title}
+${issue.body ?? ""}`;
+  const hasAcceptanceCriteria = /acceptance\s*criteria/i.test(body) || /\[ \]/.test(body) || /accepts?/i.test(body);
+  if (!hasAcceptanceCriteria) {
+    gaps.push("Missing acceptance criteria");
+  }
+  if (SPEC_QUESTION_BLOCKER.test(body)) {
+    gaps.push("Has unresolved spec-question blocker reference");
+  }
+  const hasPlannerApproach = /approach/i.test(body) || /implementation/i.test(body) || body.trim().length > 200;
+  if (!hasPlannerApproach) {
+    gaps.push("Missing planner approach or implementation notes");
+  }
+  if (issue.dor_validated !== true) {
+    gaps.push("Estimation/DoR validation not completed");
+  }
+  return { passed: gaps.length === 0, gaps };
+}
 async function applyEstimateResults(state, results, deps) {
   const outcome = { updated: [], blocked: [] };
   const issueByNumber = /* @__PURE__ */ new Map();
@@ -9602,6 +9735,928 @@ ${issue.body ?? "(no body)"}
   await deps.writeFile(path11.join(queueDir, "gap-analysis-architecture.md"), archContent, "utf8");
   return targets.length;
 }
+async function createEpicDecompositionRequest(specFile, requestsDir, deps) {
+  const request = {
+    type: "epic_decomposition",
+    prompt_template: ORCH_DECOMPOSE_PROMPT_FILENAME,
+    generated_at: deps.now().toISOString(),
+    spec_file: specFile
+  };
+  await deps.writeFile(
+    path11.join(requestsDir, "epic-decomposition.json"),
+    `${JSON.stringify(request, null, 2)}
+`,
+    "utf8"
+  );
+}
+async function queueEpicDecomposition(specFile, specContent, queueDir, decomposePrompt, deps) {
+  const content = [
+    "---",
+    JSON.stringify(
+      { agent: "orch_decompose", reasoning: "xhigh", type: "epic_decomposition" },
+      null,
+      2
+    ),
+    "---",
+    "",
+    decomposePrompt,
+    "",
+    `## Spec File`,
+    "",
+    specFile,
+    "",
+    "## Spec",
+    "",
+    specContent,
+    "",
+    'Write decomposition output to `requests/epic-decomposition-results.json` as a `{"issues":[...]}` plan object.'
+  ].join("\n");
+  await deps.writeFile(path11.join(queueDir, "decompose-epics.md"), content, "utf8");
+}
+async function createSubDecompositionRequests(issues, requestsDir, deps) {
+  const targets = issues.filter((issue) => issue.status === "Needs decomposition").map((issue) => ({
+    issue_number: issue.number,
+    title: issue.title,
+    body: issue.body ?? "",
+    depends_on: issue.depends_on,
+    wave: issue.wave,
+    file_hints: issue.file_hints ?? []
+  }));
+  if (targets.length === 0)
+    return 0;
+  const request = {
+    type: "sub_issue_decomposition",
+    prompt_template: ORCH_SUB_DECOMPOSE_PROMPT_FILENAME,
+    generated_at: deps.now().toISOString(),
+    targets
+  };
+  await deps.writeFile(
+    path11.join(requestsDir, "sub-issue-decomposition.json"),
+    `${JSON.stringify(request, null, 2)}
+`,
+    "utf8"
+  );
+  return targets.length;
+}
+async function queueSubDecompositionForIssues(issues, queueDir, subDecomposePrompt, deps) {
+  const targets = issues.filter((issue) => issue.status === "Needs decomposition");
+  if (targets.length === 0)
+    return 0;
+  for (const issue of targets) {
+    const content = [
+      "---",
+      JSON.stringify(
+        { agent: "orch_sub_decompose", reasoning: "xhigh", type: "sub_issue_decomposition", issue_number: issue.number },
+        null,
+        2
+      ),
+      "---",
+      "",
+      subDecomposePrompt,
+      "",
+      `## Epic Issue #${issue.number}: ${issue.title}`,
+      "",
+      issue.body ?? "(no body)",
+      "",
+      `## Wave`,
+      "",
+      String(issue.wave),
+      "",
+      `## Dependency Issue Numbers`,
+      "",
+      issue.depends_on.length > 0 ? issue.depends_on.join(", ") : "(none)",
+      "",
+      "Write decomposition output to `requests/sub-decomposition-results.json` as an array of parent issue updates."
+    ].join("\n");
+    await deps.writeFile(path11.join(queueDir, `sub-decompose-issue-${issue.number}.md`), content, "utf8");
+  }
+  return targets.length;
+}
+function applySubDecompositionResults(state, results, now) {
+  if (!Array.isArray(results) || results.length === 0)
+    return state;
+  const byParent = /* @__PURE__ */ new Map();
+  for (const result of results) {
+    byParent.set(result.parent_issue_number, result);
+  }
+  let touched = false;
+  for (const issue of state.issues) {
+    const result = byParent.get(issue.number);
+    if (!result)
+      continue;
+    issue.status = result.status ?? "Needs refinement";
+    issue.dor_validated = false;
+    if (result.refined_body)
+      issue.body = result.refined_body;
+    if (result.file_hints)
+      issue.file_hints = [...result.file_hints];
+    touched = true;
+  }
+  if (touched) {
+    state.updated_at = now.toISOString();
+  }
+  return state;
+}
+function getDispatchableIssues(state) {
+  if (state.current_wave === 0 || state.issues.length === 0) {
+    return [];
+  }
+  const issueByNumber = /* @__PURE__ */ new Map();
+  for (const issue of state.issues) {
+    issueByNumber.set(issue.number, issue);
+  }
+  return state.issues.filter((issue) => {
+    if (issue.wave !== state.current_wave)
+      return false;
+    if (issue.status && issue.status !== "Ready")
+      return false;
+    if (issue.state !== "pending")
+      return false;
+    if (shouldPauseForHumanFeedback(issue))
+      return false;
+    if (!validateDoR(issue).passed)
+      return false;
+    for (const depNumber of issue.depends_on) {
+      const dep = issueByNumber.get(depNumber);
+      if (!dep || dep.state !== "merged")
+        return false;
+    }
+    return true;
+  });
+}
+function countActiveChildren(state) {
+  return state.issues.filter((i) => i.state === "in_progress").length;
+}
+function availableSlots(state) {
+  return Math.max(0, state.concurrency_cap - countActiveChildren(state));
+}
+function hasFileOwnershipConflict(issue, activeIssues) {
+  const candidateHints = issue.file_hints;
+  if (!candidateHints || candidateHints.length === 0)
+    return false;
+  for (const active of activeIssues) {
+    const activeHints = active.file_hints;
+    if (!activeHints || activeHints.length === 0)
+      continue;
+    for (const hint of candidateHints) {
+      if (activeHints.includes(hint))
+        return true;
+    }
+  }
+  return false;
+}
+function filterByFileOwnership(candidates, state) {
+  const activeIssues = state.issues.filter((i) => i.state === "in_progress");
+  const selected = [];
+  for (const candidate of candidates) {
+    if (!hasFileOwnershipConflict(candidate, [...activeIssues, ...selected])) {
+      selected.push(candidate);
+    }
+  }
+  return selected;
+}
+function formatChildSessionId(projectName, issueNumber, now) {
+  const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(now.getUTCDate()).padStart(2, "0")}-${String(now.getUTCHours()).padStart(2, "0")}${String(now.getUTCMinutes()).padStart(2, "0")}${String(now.getUTCSeconds()).padStart(2, "0")}`;
+  const sanitized = projectName.replace(/[^a-zA-Z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+  return `${sanitized}-issue-${issueNumber}-${timestamp}`;
+}
+async function launchChildLoop(issue, orchestratorSessionDir, projectRoot, projectName, promptsSourceDir, aloopRoot, deps) {
+  const now = deps.now();
+  const sessionId = formatChildSessionId(projectName, issue.number, now);
+  const sessionsRoot = path11.join(aloopRoot, "sessions");
+  const sessionDir = path11.join(sessionsRoot, sessionId);
+  const branchName = `aloop/issue-${issue.number}`;
+  const worktreePath = path11.join(sessionDir, "worktree");
+  const promptsDir = path11.join(sessionDir, "prompts");
+  await deps.mkdir(sessionDir, { recursive: true });
+  await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
+  const worktreeResult = deps.spawnSync("git", ["-C", projectRoot, "worktree", "add", worktreePath, "-b", branchName], { encoding: "utf8" });
+  if (worktreeResult.status !== 0) {
+    throw new Error(`Failed to create worktree for issue #${issue.number}: ${worktreeResult.stderr || worktreeResult.stdout}`);
+  }
+  const todoContent = `# Issue #${issue.number}: ${issue.title}
+
+## Tasks
+
+- [ ] Implement as described in the issue
+`;
+  await deps.writeFile(path11.join(worktreePath, "TODO.md"), todoContent, "utf8");
+  const configJson = {
+    repo: null,
+    // Will be set by orchestrator if repo is known
+    assignedIssueNumber: issue.number,
+    childCreatedPrNumbers: [],
+    role: "child-loop",
+    orchestrator_session: path11.basename(orchestratorSessionDir)
+  };
+  await deps.writeFile(path11.join(sessionDir, "config.json"), `${JSON.stringify(configJson, null, 2)}
+`, "utf8");
+  const startedAt = now.toISOString();
+  const meta = {
+    session_id: sessionId,
+    project_name: projectName,
+    project_root: projectRoot,
+    provider: "round-robin",
+    mode: "plan-build-review",
+    launch_mode: "start",
+    worktree: true,
+    worktree_path: worktreePath,
+    work_dir: worktreePath,
+    branch: branchName,
+    prompts_dir: promptsDir,
+    session_dir: sessionDir,
+    issue_number: issue.number,
+    orchestrator_session: path11.basename(orchestratorSessionDir),
+    created_at: startedAt
+  };
+  await deps.writeFile(path11.join(sessionDir, "meta.json"), `${JSON.stringify(meta, null, 2)}
+`, "utf8");
+  await deps.writeFile(
+    path11.join(sessionDir, "status.json"),
+    `${JSON.stringify({ state: "starting", mode: "plan-build-review", provider: "round-robin", iteration: 0, updated_at: startedAt }, null, 2)}
+`,
+    "utf8"
+  );
+  if (issue.body) {
+    await deps.writeFile(path11.join(worktreePath, "SPEC.md"), `# Sub-Spec: Issue #${issue.number} \u2014 ${issue.title}
+
+${issue.body}
+`, "utf8");
+  }
+  await compileLoopPlan(
+    {
+      mode: "plan-build-review",
+      provider: "round-robin",
+      promptsDir,
+      sessionDir,
+      enabledProviders: ["claude", "codex", "gemini", "copilot", "opencode"],
+      roundRobinOrder: ["claude", "codex", "gemini", "copilot", "opencode"],
+      models: {},
+      projectRoot: worktreePath
+    },
+    {
+      readFile: deps.readFile,
+      writeFile: deps.writeFile,
+      existsSync: deps.existsSync
+    }
+  );
+  const loopBinDir = path11.join(aloopRoot, "bin");
+  let command;
+  let args;
+  if (deps.platform === "win32") {
+    const loopScript = path11.join(loopBinDir, "loop.ps1");
+    command = "powershell";
+    args = [
+      "-NoProfile",
+      "-File",
+      loopScript,
+      "-PromptsDir",
+      promptsDir,
+      "-SessionDir",
+      sessionDir,
+      "-WorkDir",
+      worktreePath,
+      "-Mode",
+      "plan-build-review",
+      "-Provider",
+      "round-robin",
+      "-MaxIterations",
+      "20",
+      "-MaxStuck",
+      "3",
+      "-LaunchMode",
+      "start"
+    ];
+  } else {
+    const loopScript = path11.join(loopBinDir, "loop.sh");
+    command = loopScript;
+    args = [
+      "--prompts-dir",
+      promptsDir,
+      "--session-dir",
+      sessionDir,
+      "--work-dir",
+      worktreePath,
+      "--mode",
+      "plan-build-review",
+      "--provider",
+      "round-robin",
+      "--max-iterations",
+      "20",
+      "--max-stuck",
+      "3",
+      "--launch-mode",
+      "start"
+    ];
+  }
+  const child = deps.spawn(command, args, {
+    cwd: worktreePath,
+    detached: true,
+    stdio: "ignore",
+    env: { ...deps.env },
+    windowsHide: true
+  });
+  child.unref();
+  const pid = child.pid;
+  if (!pid) {
+    throw new Error(`Failed to launch loop process for issue #${issue.number}`);
+  }
+  meta.pid = pid;
+  meta.started_at = startedAt;
+  await deps.writeFile(path11.join(sessionDir, "meta.json"), `${JSON.stringify(meta, null, 2)}
+`, "utf8");
+  const activePath = path11.join(aloopRoot, "active.json");
+  let active = {};
+  try {
+    if (deps.existsSync(activePath)) {
+      active = JSON.parse(await deps.readFile(activePath, "utf8"));
+    }
+  } catch {
+    active = {};
+  }
+  active[sessionId] = {
+    session_id: sessionId,
+    session_dir: sessionDir,
+    project_name: projectName,
+    project_root: projectRoot,
+    pid,
+    work_dir: worktreePath,
+    started_at: startedAt,
+    provider: "round-robin",
+    mode: "plan-build-review"
+  };
+  await deps.writeFile(activePath, `${JSON.stringify(active, null, 2)}
+`, "utf8");
+  return {
+    issue_number: issue.number,
+    session_id: sessionId,
+    session_dir: sessionDir,
+    branch: branchName,
+    worktree_path: worktreePath,
+    pid
+  };
+}
+async function checkPrGates(prNumber, repo, deps) {
+  const gates = [];
+  let mergeable = false;
+  try {
+    const viewResult = await deps.execGh([
+      "pr",
+      "view",
+      String(prNumber),
+      "--repo",
+      repo,
+      "--json",
+      "mergeable,mergeStateStatus"
+    ]);
+    const prData = JSON.parse(viewResult.stdout);
+    mergeable = prData.mergeable === "MERGEABLE";
+    const mergeState = prData.mergeStateStatus ?? "UNKNOWN";
+    gates.push({
+      gate: "merge_conflicts",
+      status: mergeable ? "pass" : "fail",
+      detail: mergeable ? "No merge conflicts" : `Merge state: ${mergeState}`
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    gates.push({ gate: "merge_conflicts", status: "fail", detail: `Failed to check mergeability: ${msg}` });
+  }
+  try {
+    const checksResult = await deps.execGh([
+      "pr",
+      "checks",
+      String(prNumber),
+      "--repo",
+      repo,
+      "--json",
+      "name,state,conclusion"
+    ]);
+    const checks = JSON.parse(checksResult.stdout);
+    const allCompleted = checks.every((c) => c.state === "COMPLETED" || c.state === "completed");
+    const allPassed2 = checks.every(
+      (c) => (c.state === "COMPLETED" || c.state === "completed") && (c.conclusion === "SUCCESS" || c.conclusion === "success" || c.conclusion === "NEUTRAL" || c.conclusion === "neutral" || c.conclusion === "SKIPPED" || c.conclusion === "skipped")
+    );
+    const failedChecks = checks.filter(
+      (c) => c.conclusion === "FAILURE" || c.conclusion === "failure" || c.conclusion === "CANCELLED" || c.conclusion === "cancelled" || c.conclusion === "TIMED_OUT" || c.conclusion === "timed_out"
+    );
+    if (!allCompleted) {
+      gates.push({ gate: "ci_checks", status: "pending", detail: "Some CI checks still running" });
+    } else if (allPassed2) {
+      gates.push({ gate: "ci_checks", status: "pass", detail: `All ${checks.length} checks passed` });
+    } else {
+      const failNames = failedChecks.map((c) => c.name).join(", ");
+      gates.push({ gate: "ci_checks", status: "fail", detail: `Failed checks: ${failNames}` });
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    gates.push({ gate: "ci_checks", status: "pass", detail: `No CI checks found or error: ${msg}` });
+  }
+  const allPassed = gates.every((g) => g.status === "pass");
+  return { pr_number: prNumber, all_passed: allPassed, mergeable, gates };
+}
+async function reviewPrDiff(prNumber, repo, deps) {
+  let diff;
+  try {
+    const diffResult = await deps.execGh(["pr", "diff", String(prNumber), "--repo", repo]);
+    diff = diffResult.stdout;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      pr_number: prNumber,
+      verdict: "flag-for-human",
+      summary: `Failed to fetch PR diff: ${msg}`
+    };
+  }
+  if (deps.invokeAgentReview) {
+    return deps.invokeAgentReview(prNumber, repo, diff);
+  }
+  return {
+    pr_number: prNumber,
+    verdict: "approve",
+    summary: "Auto-approved (no agent reviewer configured)"
+  };
+}
+async function mergePr(prNumber, repo, deps) {
+  try {
+    await deps.execGh([
+      "pr",
+      "merge",
+      String(prNumber),
+      "--repo",
+      repo,
+      "--squash",
+      "--delete-branch"
+    ]);
+    return { pr_number: prNumber, merged: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { pr_number: prNumber, merged: false, error: msg };
+  }
+}
+async function requestRebase(issue, repo, trunkBranch, rebaseAttempt, deps) {
+  const body = `Merge conflict with \`${trunkBranch}\` \u2014 rebase needed (attempt ${rebaseAttempt}/2).\\n\\nPlease rebase your branch against \`${trunkBranch}\` and push.`;
+  await deps.execGh([
+    "issue",
+    "comment",
+    String(issue.number),
+    "--repo",
+    repo,
+    "--body",
+    body
+  ]);
+}
+async function flagForHuman(issue, repo, reason, deps) {
+  const body = `Flagged for human resolution: ${reason}`;
+  try {
+    await deps.execGh([
+      "issue",
+      "comment",
+      String(issue.number),
+      "--repo",
+      repo,
+      "--body",
+      body
+    ]);
+    await deps.execGh([
+      "issue",
+      "edit",
+      String(issue.number),
+      "--repo",
+      repo,
+      "--add-label",
+      "aloop/blocked-on-human"
+    ]);
+  } catch {
+  }
+}
+async function processPrLifecycle(issue, state, stateFile, sessionDir, repo, deps) {
+  if (!issue.pr_number) {
+    return { pr_number: 0, action: "gates_failed", detail: "No PR number on issue" };
+  }
+  const prNumber = issue.pr_number;
+  const gatesResult = await checkPrGates(prNumber, repo, deps);
+  deps.appendLog(sessionDir, {
+    timestamp: deps.now().toISOString(),
+    event: "pr_gates_checked",
+    pr_number: prNumber,
+    issue_number: issue.number,
+    all_passed: gatesResult.all_passed,
+    gates: gatesResult.gates
+  });
+  if (gatesResult.gates.some((g) => g.status === "pending")) {
+    return { pr_number: prNumber, action: "gates_pending", detail: "CI checks still running", gates: gatesResult };
+  }
+  if (!gatesResult.mergeable) {
+    const stateIssue = state.issues.find((i) => i.number === issue.number);
+    const rebaseAttempts = stateIssue?.rebase_attempts ?? 0;
+    if (rebaseAttempts >= 2) {
+      await flagForHuman(issue, repo, `Merge conflicts persist after 2 rebase attempts on PR #${prNumber}`, deps);
+      if (stateIssue)
+        stateIssue.state = "failed";
+      state.updated_at = deps.now().toISOString();
+      await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
+`, "utf8");
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: "pr_flagged_for_human",
+        pr_number: prNumber,
+        issue_number: issue.number,
+        reason: "max_rebase_attempts",
+        attempts: rebaseAttempts
+      });
+      return { pr_number: prNumber, action: "flagged_for_human", detail: `Conflicts persist after 2 rebase attempts`, gates: gatesResult };
+    }
+    const attempt = rebaseAttempts + 1;
+    await requestRebase(issue, repo, state.trunk_branch, attempt, deps);
+    if (stateIssue)
+      stateIssue.rebase_attempts = attempt;
+    state.updated_at = deps.now().toISOString();
+    await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
+`, "utf8");
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: "pr_rebase_requested",
+      pr_number: prNumber,
+      issue_number: issue.number,
+      attempt
+    });
+    return { pr_number: prNumber, action: "rebase_requested", detail: `Rebase requested (attempt ${attempt}/2)`, gates: gatesResult };
+  }
+  if (!gatesResult.all_passed) {
+    const failedGates = gatesResult.gates.filter((g) => g.status === "fail");
+    const failDetail = failedGates.map((g) => `${g.gate}: ${g.detail}`).join("; ");
+    try {
+      await deps.execGh([
+        "issue",
+        "comment",
+        String(issue.number),
+        "--repo",
+        repo,
+        "--body",
+        `PR #${prNumber} failed gates: ${failDetail}. Please address and update the PR.`
+      ]);
+    } catch {
+    }
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: "pr_gates_failed",
+      pr_number: prNumber,
+      issue_number: issue.number,
+      failed_gates: failedGates
+    });
+    return { pr_number: prNumber, action: "gates_failed", detail: failDetail, gates: gatesResult };
+  }
+  const reviewResult = await reviewPrDiff(prNumber, repo, deps);
+  deps.appendLog(sessionDir, {
+    timestamp: deps.now().toISOString(),
+    event: "pr_agent_review",
+    pr_number: prNumber,
+    issue_number: issue.number,
+    verdict: reviewResult.verdict,
+    summary: reviewResult.summary
+  });
+  if (reviewResult.verdict === "request-changes") {
+    try {
+      await deps.execGh([
+        "issue",
+        "comment",
+        String(issue.number),
+        "--repo",
+        repo,
+        "--body",
+        `Agent review of PR #${prNumber} requested changes:\\n\\n${reviewResult.summary}`
+      ]);
+    } catch {
+    }
+    return { pr_number: prNumber, action: "rejected", detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
+  }
+  if (reviewResult.verdict === "flag-for-human") {
+    await flagForHuman(issue, repo, `Agent review flagged PR #${prNumber} for human: ${reviewResult.summary}`, deps);
+    return { pr_number: prNumber, action: "flagged_for_human", detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
+  }
+  const mergeResult = await mergePr(prNumber, repo, deps);
+  if (mergeResult.merged) {
+    const stateIssue = state.issues.find((i) => i.number === issue.number);
+    if (stateIssue)
+      stateIssue.state = "merged";
+    state.updated_at = deps.now().toISOString();
+    await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
+`, "utf8");
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: "pr_merged",
+      pr_number: prNumber,
+      issue_number: issue.number,
+      merge_method: "squash"
+    });
+    try {
+      await deps.execGh(["issue", "close", String(issue.number), "--repo", repo]);
+    } catch {
+    }
+    return { pr_number: prNumber, action: "merged", detail: "Squash-merged successfully", gates: gatesResult, review: reviewResult };
+  }
+  deps.appendLog(sessionDir, {
+    timestamp: deps.now().toISOString(),
+    event: "pr_merge_failed",
+    pr_number: prNumber,
+    issue_number: issue.number,
+    error: mergeResult.error
+  });
+  return { pr_number: prNumber, action: "gates_failed", detail: `Merge failed: ${mergeResult.error}`, gates: gatesResult, review: reviewResult };
+}
+function isWaveComplete(state, wave) {
+  const waveIssues = state.issues.filter((i) => i.wave === wave);
+  return waveIssues.length > 0 && waveIssues.every((i) => i.state === "merged" || i.state === "failed");
+}
+function advanceWave(state) {
+  if (state.current_wave === 0)
+    return false;
+  if (!isWaveComplete(state, state.current_wave))
+    return false;
+  if (!state.completed_waves.includes(state.current_wave)) {
+    state.completed_waves.push(state.current_wave);
+  }
+  const maxWave = Math.max(0, ...state.issues.map((i) => i.wave));
+  if (state.current_wave < maxWave) {
+    state.current_wave++;
+    return true;
+  }
+  return false;
+}
+var DEFAULT_COST_PER_ITERATION_USD = 0.5;
+async function parseChildSessionCost(sessionDir, sessionId, issueNumber, deps) {
+  const logFile = path11.join(sessionDir, "log.jsonl");
+  const providers = {};
+  let iterations = 0;
+  if (deps.existsSync(logFile)) {
+    try {
+      const content = await deps.readFile(logFile, "utf8");
+      const lines = content.split("\n").filter((l) => l.trim().length > 0);
+      for (const line of lines) {
+        try {
+          const entry = JSON.parse(line);
+          if (entry.event === "iteration_complete") {
+            iterations++;
+            const provider = entry.provider ?? "unknown";
+            providers[provider] = (providers[provider] ?? 0) + 1;
+          }
+        } catch {
+        }
+      }
+    } catch {
+    }
+  }
+  return {
+    session_id: sessionId,
+    issue_number: issueNumber,
+    iterations,
+    providers,
+    estimated_cost_usd: iterations * DEFAULT_COST_PER_ITERATION_USD
+  };
+}
+async function aggregateChildCosts(state, aloopRoot, deps) {
+  const children = [];
+  for (const issue of state.issues) {
+    if (issue.child_session) {
+      const childDir = path11.join(aloopRoot, "sessions", issue.child_session);
+      const cost = await parseChildSessionCost(childDir, issue.child_session, issue.number, deps);
+      children.push(cost);
+    }
+  }
+  const totalCost = children.reduce((sum, c) => sum + c.estimated_cost_usd, 0);
+  const budgetCap = state.budget_cap;
+  return {
+    budget_cap: budgetCap,
+    total_estimated_cost_usd: totalCost,
+    children,
+    budget_exceeded: budgetCap !== null && totalCost >= budgetCap,
+    budget_approaching: budgetCap !== null && totalCost >= budgetCap * 0.8 && totalCost < budgetCap
+  };
+}
+function shouldPauseForBudget(budget) {
+  return budget.budget_exceeded || budget.budget_approaching;
+}
+async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, projectName, promptsSourceDir, aloopRoot, repo, iteration, deps) {
+  const stateContent = await deps.readFile(stateFile, "utf8");
+  const state = JSON.parse(stateContent);
+  const result = {
+    iteration,
+    triage: { processed_issues: 0, triaged_entries: 0 },
+    dispatched: 0,
+    prLifecycles: [],
+    waveAdvanced: false,
+    budgetExceeded: false,
+    allDone: false,
+    shouldStop: false
+  };
+  if (repo && deps.execGh) {
+    result.triage = await runTriageMonitorCycle(
+      state,
+      path11.basename(sessionDir),
+      repo,
+      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile },
+      aloopRoot
+    );
+  }
+  if (deps.dispatchDeps && !state.plan_only) {
+    const dispatchable = getDispatchableIssues(state);
+    const eligible = filterByFileOwnership(dispatchable, state);
+    const slots = availableSlots(state);
+    const toDispatch = eligible.slice(0, slots);
+    for (const issue of toDispatch) {
+      try {
+        const launchResult = await launchChildLoop(
+          issue,
+          sessionDir,
+          projectRoot,
+          projectName,
+          promptsSourceDir,
+          aloopRoot,
+          deps.dispatchDeps
+        );
+        const stateIssue = state.issues.find((i) => i.number === issue.number);
+        if (stateIssue) {
+          stateIssue.state = "in_progress";
+          stateIssue.child_session = launchResult.session_id;
+        }
+        result.dispatched++;
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "scan_child_dispatched",
+          iteration,
+          issue_number: issue.number,
+          session_id: launchResult.session_id
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "scan_dispatch_error",
+          iteration,
+          issue_number: issue.number,
+          error: msg
+        });
+      }
+    }
+  }
+  if (repo && deps.prLifecycleDeps) {
+    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === "pr_open");
+    for (const issue of prIssues) {
+      try {
+        const lifecycleResult = await processPrLifecycle(
+          issue,
+          state,
+          stateFile,
+          sessionDir,
+          repo,
+          deps.prLifecycleDeps
+        );
+        result.prLifecycles.push(lifecycleResult);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "scan_pr_lifecycle_error",
+          iteration,
+          issue_number: issue.number,
+          pr_number: issue.pr_number,
+          error: msg
+        });
+      }
+    }
+  }
+  const waveAdvanced = advanceWave(state);
+  result.waveAdvanced = waveAdvanced;
+  if (waveAdvanced) {
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: "scan_wave_advanced",
+      iteration,
+      new_wave: state.current_wave,
+      completed_waves: state.completed_waves
+    });
+  }
+  if (state.budget_cap !== null) {
+    try {
+      const budget = await aggregateChildCosts(state, aloopRoot, {
+        readFile: deps.readFile,
+        existsSync: deps.existsSync
+      });
+      if (shouldPauseForBudget(budget)) {
+        result.budgetExceeded = true;
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "scan_budget_exceeded",
+          iteration,
+          total_cost: budget.total_estimated_cost_usd,
+          budget_cap: budget.budget_cap
+        });
+      }
+    } catch {
+    }
+  }
+  const allMerged = state.issues.length > 0 && state.issues.every((i) => i.state === "merged" || i.state === "failed");
+  result.allDone = allMerged;
+  if (deps.signalStop?.()) {
+    result.shouldStop = true;
+  }
+  state.updated_at = deps.now().toISOString();
+  await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
+`, "utf8");
+  deps.appendLog(sessionDir, {
+    timestamp: deps.now().toISOString(),
+    event: "scan_pass_complete",
+    iteration,
+    dispatched: result.dispatched,
+    pr_lifecycles: result.prLifecycles.length,
+    triage_entries: result.triage.triaged_entries,
+    all_done: result.allDone
+  });
+  return result;
+}
+async function runOrchestratorScanLoop(stateFile, sessionDir, projectRoot, projectName, promptsSourceDir, aloopRoot, repo, intervalMs, maxIterations, deps) {
+  const stateContent = await deps.readFile(stateFile, "utf8");
+  const initialState = JSON.parse(stateContent);
+  if (initialState.plan_only) {
+    return {
+      iterations: 0,
+      finalState: initialState,
+      reason: "plan_only"
+    };
+  }
+  for (let iter = 1; iter <= maxIterations; iter++) {
+    const passResult = await runOrchestratorScanPass(
+      stateFile,
+      sessionDir,
+      projectRoot,
+      projectName,
+      promptsSourceDir,
+      aloopRoot,
+      repo,
+      iter,
+      deps
+    );
+    if (passResult.allDone) {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: "scan_loop_complete",
+        reason: "all_done",
+        iterations: iter
+      });
+      const finalContent2 = await deps.readFile(stateFile, "utf8");
+      return { iterations: iter, finalState: JSON.parse(finalContent2), reason: "all_done" };
+    }
+    if (passResult.budgetExceeded) {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: "scan_loop_complete",
+        reason: "budget_exceeded",
+        iterations: iter
+      });
+      const finalContent2 = await deps.readFile(stateFile, "utf8");
+      return { iterations: iter, finalState: JSON.parse(finalContent2), reason: "budget_exceeded" };
+    }
+    if (passResult.shouldStop) {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: "scan_loop_complete",
+        reason: "stopped",
+        iterations: iter
+      });
+      const finalContent2 = await deps.readFile(stateFile, "utf8");
+      return { iterations: iter, finalState: JSON.parse(finalContent2), reason: "stopped" };
+    }
+    if (iter < maxIterations && deps.sleep) {
+      await deps.sleep(intervalMs);
+    }
+  }
+  deps.appendLog(sessionDir, {
+    timestamp: deps.now().toISOString(),
+    event: "scan_loop_complete",
+    reason: "max_iterations",
+    iterations: maxIterations
+  });
+  const finalContent = await deps.readFile(stateFile, "utf8");
+  return { iterations: maxIterations, finalState: JSON.parse(finalContent), reason: "max_iterations" };
+}
+function parseInterval(value) {
+  if (!value)
+    return 3e4;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1e3) {
+    throw new Error(`Invalid interval value: ${value} (must be >= 1000ms)`);
+  }
+  return parsed;
+}
+function parseMaxIterations(value) {
+  if (!value)
+    return 100;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error(`Invalid max-iterations value: ${value} (must be a positive integer)`);
+  }
+  return parsed;
+}
 
 // src/index.ts
 var program2 = new Command();
@@ -9618,7 +10673,7 @@ program2.command("stop <session-id>").description("Stop a session by session-id"
 program2.command("update").description("Refresh ~/.aloop runtime assets from the current repo checkout").option("--repo-root <path>", "Path to aloop source repository root").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(updateCommand);
 program2.command("devcontainer").description("Generate or augment .devcontainer/devcontainer.json for isolated agent execution").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(devcontainerCommand);
 program2.command("devcontainer-verify").description("Verify devcontainer builds, starts, and passes all checks").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(verifyDevcontainerCommand);
-program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <path>", "Specification file to decompose", "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(orchestrateCommand);
+program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <path>", "Specification file to decompose", "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--interval <ms>", "Scan loop interval in milliseconds (default: 30000)").option("--max-iterations <n>", "Max scan loop iterations (default: 100)").option("--run-scan-loop", "Run the orchestrator scan loop after initialization").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(orchestrateCommand);
 program2.addCommand(ghCommand);
 program2.command("debug-env", { hidden: true }).description("Print current environment variables (for testing)").action(() => {
   console.log(JSON.stringify(process.env));

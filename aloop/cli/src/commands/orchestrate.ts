@@ -4,6 +4,7 @@ import path from 'node:path';
 import { resolveHomeDir } from './session.js';
 import type { OutputMode } from './status.js';
 import { writeQueueOverride } from '../lib/plan.js';
+import { compileLoopPlan } from './compile-loop-plan.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -1794,6 +1795,47 @@ export function availableSlots(state: OrchestratorState): number {
   return Math.max(0, state.concurrency_cap - countActiveChildren(state));
 }
 
+/**
+ * Checks whether an issue's file ownership hints overlap with any files
+ * owned by currently in-progress issues or already-selected issues.
+ * Returns true if there is a conflict that should block parallel dispatch.
+ */
+export function hasFileOwnershipConflict(
+  issue: OrchestratorIssue,
+  activeIssues: OrchestratorIssue[],
+): boolean {
+  const candidateHints = issue.file_hints;
+  if (!candidateHints || candidateHints.length === 0) return false;
+
+  for (const active of activeIssues) {
+    const activeHints = active.file_hints;
+    if (!activeHints || activeHints.length === 0) continue;
+    for (const hint of candidateHints) {
+      if (activeHints.includes(hint)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Filters dispatchable issues to exclude those with file ownership conflicts
+ * against in-progress issues and previously selected issues in this batch.
+ */
+export function filterByFileOwnership(
+  candidates: OrchestratorIssue[],
+  state: OrchestratorState,
+): OrchestratorIssue[] {
+  const activeIssues = state.issues.filter((i) => i.state === 'in_progress');
+  const selected: OrchestratorIssue[] = [];
+
+  for (const candidate of candidates) {
+    if (!hasFileOwnershipConflict(candidate, [...activeIssues, ...selected])) {
+      selected.push(candidate);
+    }
+  }
+  return selected;
+}
+
 function formatChildSessionId(projectName: string, issueNumber: number, now: Date): string {
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}${String(now.getUTCSeconds()).padStart(2, '0')}`;
   const sanitized = projectName.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
@@ -1873,6 +1915,30 @@ export async function launchChildLoop(
     path.join(sessionDir, 'status.json'),
     `${JSON.stringify({ state: 'starting', mode: 'plan-build-review', provider: 'round-robin', iteration: 0, updated_at: startedAt }, null, 2)}\n`,
     'utf8',
+  );
+
+  // Seed sub-spec (SPEC.md) from issue body into child worktree
+  if (issue.body) {
+    await deps.writeFile(path.join(worktreePath, 'SPEC.md'), `# Sub-Spec: Issue #${issue.number} — ${issue.title}\n\n${issue.body}\n`, 'utf8');
+  }
+
+  // Compile child's loop-plan.json with implementation cycle
+  await compileLoopPlan(
+    {
+      mode: 'plan-build-review',
+      provider: 'round-robin',
+      promptsDir: promptsDir,
+      sessionDir: sessionDir,
+      enabledProviders: ['claude', 'codex', 'gemini', 'copilot', 'opencode'],
+      roundRobinOrder: ['claude', 'codex', 'gemini', 'copilot', 'opencode'],
+      models: {},
+      projectRoot: worktreePath,
+    },
+    {
+      readFile: deps.readFile,
+      writeFile: deps.writeFile,
+      existsSync: deps.existsSync,
+    },
   );
 
   // Launch loop process
@@ -1978,9 +2044,10 @@ export async function dispatchChildLoops(
   let state: OrchestratorState = JSON.parse(stateContent);
 
   const dispatchable = getDispatchableIssues(state);
+  const eligible = filterByFileOwnership(dispatchable, state);
   const slots = availableSlots(state);
-  const toDispatch = dispatchable.slice(0, slots);
-  const skipped = dispatchable.slice(slots).map((i) => i.number);
+  const toDispatch = eligible.slice(0, slots);
+  const skipped = dispatchable.filter((i) => !toDispatch.includes(i)).map((i) => i.number);
 
   const launched: ChildLaunchResult[] = [];
 
@@ -2706,8 +2773,9 @@ export async function runOrchestratorScanPass(
   // 2. Dispatch child loops for ready issues
   if (deps.dispatchDeps && !state.plan_only) {
     const dispatchable = getDispatchableIssues(state);
+    const eligible = filterByFileOwnership(dispatchable, state);
     const slots = availableSlots(state);
-    const toDispatch = dispatchable.slice(0, slots);
+    const toDispatch = eligible.slice(0, slots);
 
     for (const issue of toDispatch) {
       try {
