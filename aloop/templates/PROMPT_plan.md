@@ -50,6 +50,7 @@ Study specifications and existing code, then generate or update a prioritized im
    - **Reordering is expected.** Move completed tasks to the Completed section. Reprioritize tasks based on the spec's stated priorities — if the spec says dashboard tests are low priority, move `[review]` tasks about dashboard tests to Deferred even if the reviewer marked them high. The spec is the authority on priority, not the reviewer.
    - Steering tasks represent explicit user direction — preserve their intent but you may reorder them relative to other tasks based on spec priorities.
    - Priority order: (1) `[review]` fix tasks that block spec-priority work, (2) tasks marked `(priority: critical)` or `CRITICAL`, (3) spec-priority features by dependency order, (4) `[review]` fix tasks for low-priority areas (move to Deferred)
+   - **No backwards compatibility or fallback tasks unless the primary path is already merged upstream.** If a spec mentions a fallback/legacy/compatibility mode, do NOT create a task for it unless the feature it's backwards-compatible with already exists on the upstream branch (e.g. `main` or `develop`). Code on the current working branch can still be changed freely — backwards compat is only needed for things already shipped. Focus on building the correct primary implementation first.
 
 4. **Exit**
    - Do NOT implement anything
