@@ -657,7 +657,7 @@ function Header({
           <HoverCardTrigger asChild>
             <span className="text-xs text-muted-foreground cursor-help whitespace-nowrap flex items-center gap-1">
               <Activity className="h-3 w-3" />
-              iter {currentIteration}{maxIterations ? `/${maxIterations}` : '/\u221E'}{tasksTotal > 0 ? ` \u00B7 ${tasksTotal} tasks` : ''}
+              iter {currentIteration}{maxIterations ? `/${maxIterations}` : '/\u221E'}{tasksTotal > 0 ? ` \u00B7 ${tasksTotal} todos` : ''}
             </span>
           </HoverCardTrigger>
           <HoverCardContent className="w-56 text-xs">
@@ -665,7 +665,7 @@ function Header({
               <p><span className="text-muted-foreground">Phase:</span> {currentPhase || 'none'}</p>
               <p><span className="text-muted-foreground">Status:</span> {currentState}</p>
               <p><span className="text-muted-foreground">Provider:</span> {providerName || 'none'}</p>
-              <p><span className="text-muted-foreground">Tasks:</span> {tasksCompleted}/{tasksTotal} ({progressPercent}%)</p>
+              <p><span className="text-muted-foreground">TODOs:</span> {tasksCompleted}/{tasksTotal} ({progressPercent}%)</p>
               <p><span className="text-muted-foreground">Stuck:</span> <span className={stuckCount > 0 ? 'text-red-500 font-medium' : ''}>{stuckCount}</span></p>
               {startedAt && <p><span className="text-muted-foreground">Elapsed:</span> <ElapsedTimer since={startedAt} /></p>}
               {avgDuration && <p><span className="text-muted-foreground">Avg iter:</span> {avgDuration}</p>}
