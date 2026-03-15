@@ -526,8 +526,7 @@ register_iteration_success() {
     PHASE_RETRY_FAILURE_REASONS=()
 
     if { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; } \
-        && [ "$was_forced" != true ] \
-        && { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "proof" ] || [ "$iteration_mode" = "review" ]; }; then
+        && [ "$was_forced" != true ]; then
         advance_cycle_position
     fi
 }
