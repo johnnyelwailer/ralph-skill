@@ -1,5 +1,28 @@
 # Review Log
 
+## Review — 2026-03-15 — commit 62e4cfb..b16a179
+
+**Verdict: FAIL** (5 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/gh.ts`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/src/lib/requests.ts`, `VERSIONS.md`, `TODO.md`
+
+- Gate 6: **Proof missing** — Spec Change Replan feature lacks verifiable proof (CLI recordings/logs). Stale test-output JSONs from Mar 14 were present but are invalid filler artifacts.
+- Gate 4: **Dead Logic** — `runSpecChangeReplan` queues prompts in `queue/` but nothing in the CLI processes them.
+- Gate 1: **Spec Compliance** — GitHub Project status interaction is missing. While tracking labels were minimized, the orchestrator does not yet call GitHub Project status APIs for progression.
+- Gate 4: **Copy-paste Duplication** — `spec_backfill` is implemented independently in `requests.ts` and `orchestrate.ts`. The `requests.ts` version lacks mandatory provenance trailers.
+- Gate 8: **VERSIONS.md Drift** — `git` is a required runtime dependency but is missing from `VERSIONS.md`.
+
+**Resolved from prior reviews:**
+- Gate 4 ✅: `sendToDefaultSessionClients` dead code removed.
+- Gate 4 ✅: `publishState` duplication consolidated.
+- Gate 8 ✅: `@radix-ui/react-dropdown-menu@^2.1.16` added to `VERSIONS.md`.
+
+**Positive observations:**
+- Gate 2: `orchestrate.test.ts` (548 lines of new tests) is exceptionally thorough, mocking git/GH behaviors and asserting exact state transitions and artifact writes.
+- Gate 3: Branch coverage remains high: `orchestrate.ts` at **85.91%** (target >=80%) and `requests.ts` at **84.78%** (target >=80%). `project.ts` is at **100%**.
+- Gate 5: Integration sanity is high — 619/619 tests pass, type-check and build succeed.
+
+---
+
 ## Review — 2026-03-15 — commit 98ce146..6ee6653
 
 **Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
@@ -19,6 +42,23 @@
 **Positive observations:**
 - Gate 5: Integration sanity is high — 494/494 tests pass, including all new coverage-driven unit tests.
 - Gate 7: Layout verification for dashboard (header/main vertical stack) successfully proven via artifact.
+
+---
+
+## Review — 2026-03-15 — commit 785fd82..62e4cfb
+
+**Verdict: PASS** (all 8 gates pass, 1 observation)
+**Scope:** `aloop/cli/src/commands/dashboard.ts`, `VERSIONS.md`, `TODO.md`
+
+**Resolved from prior reviews:**
+- Gate 4 ✅: `sendToDefaultSessionClients` dead code removed from `dashboard.ts`.
+- Gate 4 ✅: `publishState` duplication consolidated — removed identical `isGlobal`/`else` branches, single code path now handles all clients with per-session context payload caching. Also removed unused `normalizedGlobalFiles` set and `globalChangeDetected` flag. `schedulePublish` simplified to take no arguments.
+- Gate 8 ✅: `@radix-ui/react-dropdown-menu@2.x` added to `VERSIONS.md` Dashboard production dependencies table (matches `^2.1.16` in package.json).
+
+**Positive observations:**
+- Gate 4: The `isGlobal` and `else` branches were verbatim identical — proper copy-paste duplication removal, not just cosmetic. Clean consolidation.
+- Gate 5: 8/8 CLI tests, 79/79 dashboard unit tests, 226/226 orchestrator tests pass. Type-check clean. Build succeeds.
+- Gate 6: Proof manifest correctly skipped all 3 tasks — all internal refactoring/docs with no externally observable changes. No filler artifacts generated.
 
 ---
 
