@@ -3025,12 +3025,135 @@ You are Aloop, an autonomous build agent...
 ```
 
 Frontmatter fields:
-- `agent` — agent type identifier (plan, build, review, proof, steer, debug, guard)
+- `agent` — agent type identifier (plan, build, review, proof, qa, steer, debug, guard, or any custom name)
 - `provider` — which CLI to invoke (claude, opencode, codex, gemini, copilot)
 - `model` — model ID, provider-specific (e.g., `claude-opus-4-6`, `openrouter/openai/gpt-5.1`, `codex-mini-latest`)
 - `reasoning` — reasoning effort level (low, medium, high, xhigh)
+- `color` — terminal color for this phase (magenta, yellow, cyan, blue, green, red, white). Default: white
+- `lifecycle` — agent lifecycle hooks (see Agent Lifecycle Hooks below)
 
 All fields are optional — defaults apply if omitted (`provider: claude`, `model: claude-opus-4-6`, `agent: build`, `reasoning: medium`).
+
+### Agent Lifecycle Hooks (decoupling the loop from agent knowledge)
+
+**Problem:** The loop engine currently hardcodes phase-specific behavior — build gets task completion checks, proof gets artifact directory creation, review gets verdict requirements, steer gets STEERING.md archiving. This means every new agent type requires modifying loop.sh/loop.ps1, and the loop "knows" about specific agents it should be agnostic to.
+
+**Principle:** The loop engine MUST be a generic agent runner. It should have ZERO knowledge of what `plan`, `build`, `proof`, `qa`, `review`, or `steer` do. All phase-specific behavior is declared by the agent via frontmatter hooks.
+
+**Lifecycle hooks** are optional frontmatter fields that let agents declare pre-conditions, post-actions, and special behaviors without the loop needing to know about them:
+
+```yaml
+---
+agent: review
+provider: claude
+reasoning: high
+color: cyan
+lifecycle:
+  # Pre-iteration hooks
+  prerequisite: has_builds_since_plan  # skip this agent if condition not met, fall back to...
+  prerequisiteFallback: build          # ...this agent instead
+
+  # Post-iteration hooks (on success)
+  onSuccess:
+    - inject_file: proof-manifest.json  # NOT a hook the loop understands — this is resolved by the runtime
+    - check_verdict: review-verdict.json  # runtime checks for this file and acts on PASS/FAIL
+    - advance_cycle: true               # default true; set false to repeat this agent
+
+  # Post-iteration hooks (on failure)
+  onFailure: retry                      # retry | goto <agent> | escalate | skip
+
+  # Task tracking
+  tracksProgress: false                 # if true, loop checks TODO.md for task completion (triggers forced review when all done)
+
+  # Artifact management
+  artifactDir: true                     # if true, loop creates <session>/artifacts/iter-<N>/ before running
+
+  # File management
+  archiveAfter:                         # files to archive after this agent runs
+    - source: STEERING.md
+      target: STEERING_LOG.md
+      action: append-and-delete
+
+  # Verdict / exit control
+  verdict:
+    file: review-verdict.json           # agent writes this file; runtime reads it
+    exitOn: PASS                        # loop can exit cleanly when verdict is PASS
+
+  # Force next phase
+  forceNext: plan                       # after this agent, force a specific phase next
+---
+```
+
+**Hook types and their contracts:**
+
+| Hook | Type | Description | Currently hardcoded in |
+|------|------|-------------|----------------------|
+| `prerequisite` | string | Condition that must be true before running this agent. Known conditions: `has_builds_since_plan`, `has_unchecked_tasks`, `always` | `check_phase_prerequisite()` for build/review |
+| `prerequisiteFallback` | string | Agent to run instead if prerequisite fails | hardcoded plan/build fallbacks |
+| `tracksProgress` | bool | Agent checks TODO.md for task completion; when all done, triggers proof→review | build-specific completion check |
+| `artifactDir` | bool | Create `artifacts/iter-<N>/` before running and substitute `{{SESSION_DIR}}`, `{{ITERATION}}` | proof-specific artifact setup |
+| `verdict` | object | Agent produces a verdict file; runtime uses it for exit decisions | review-specific verdict check |
+| `archiveAfter` | list | Files to archive (append+delete) after agent completes | steer-specific STEERING.md cleanup |
+| `forceNext` | string | Force a specific agent type as the next iteration | steer→plan forcing |
+| `color` | string | Terminal color for iteration output | hardcoded per-phase case statement |
+| `onSuccess.advance_cycle` | bool | Whether to advance cyclePosition (default: true) | implicit in cycle advance logic |
+
+**Migration path from hardcoded to declarative:**
+
+The current hardcoded behaviors map to frontmatter declarations:
+
+```yaml
+# build agent lifecycle (currently hardcoded in loop.sh)
+lifecycle:
+  prerequisite: has_unchecked_tasks
+  prerequisiteFallback: plan
+  tracksProgress: true
+  color: yellow
+
+# proof agent lifecycle
+lifecycle:
+  artifactDir: true
+  color: bright-cyan
+
+# review agent lifecycle
+lifecycle:
+  prerequisite: has_builds_since_plan
+  prerequisiteFallback: build
+  verdict:
+    file: review-verdict.json
+    exitOn: PASS
+  color: cyan
+
+# steer agent lifecycle
+lifecycle:
+  archiveAfter:
+    - source: STEERING.md
+      target: STEERING_LOG.md
+      action: append-and-delete
+  forceNext: plan
+  color: blue
+
+# qa agent lifecycle (no special behavior needed)
+lifecycle:
+  color: orange
+
+# plan agent lifecycle (no special behavior needed)
+lifecycle:
+  color: magenta
+```
+
+**Implementation priority:** This is a refactor of loop.sh/loop.ps1 that should happen AFTER the current feature work stabilizes. The immediate benefit is that adding new agents (like `qa`) no longer requires touching loop scripts — they just need a prompt file with appropriate lifecycle frontmatter.
+
+**The loop engine's only responsibilities after this refactor:**
+1. Read `loop-plan.json` for cycle order
+2. Check queue for overrides
+3. Parse frontmatter from the prompt file (including lifecycle hooks)
+4. Execute pre-hooks (prerequisite checks, artifact dir creation)
+5. Invoke the provider with the prompt
+6. Execute post-hooks (archive files, check verdict, advance cycle)
+7. Persist state to `loop-plan.json` and `status.json`
+
+No `case "$iter_mode" in plan|build|proof|review)` anywhere. The loop is agent-agnostic.
 
 **How the loop script uses it:**
 
@@ -3077,7 +3200,7 @@ else
 fi
 ```
 
-The frontmatter parser is the same 6 lines of sed whether the file comes from the cycle or the queue. No jq needed for agent config — only for reading `cyclePosition` from the plan.
+The frontmatter parser extracts agent config from any prompt file, whether from the cycle or the queue. Lifecycle hooks in the frontmatter are also parsed and drive pre/post-iteration behavior — the loop engine itself has no knowledge of what any specific agent does (see Agent Lifecycle Hooks above).
 
 **Override queue (`$SESSION_DIR/queue/`):**
 
