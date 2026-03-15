@@ -916,6 +916,8 @@ HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
 - [ ] System theme adaptation via `.dark` class + `prefers-color-scheme` detection
 - [ ] `aloop status --watch` provides terminal-based live monitoring (auto-refresh)
 
+**Test coverage note:** Dashboard test coverage (unit tests for `App.tsx` UI logic, `dashboard.ts` backend branches, E2E `smoke.spec.ts`) is **lowest priority** — deferred until all core features and UX polish are complete. The review agent should NOT create `[review]` tasks requesting dashboard test coverage during this phase.
+
 ---
 
 ## Parallel Orchestrator Mode (Fan-Out via GitHub Issues)

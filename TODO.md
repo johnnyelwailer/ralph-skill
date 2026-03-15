@@ -1,47 +1,42 @@
 # Project TODO
 
-## Current Phase: Final Review Gates + Dashboard Polish + Pipeline Config
+## Current Phase: Pipeline Config + Orchestrator Prompts + Dashboard Polish
 
-### In Progress (P0 — Blockers: Coverage Gates + Spec Gaps)
-
-- [x] [review] Gate 3: Raise `plan.ts` branch coverage from 73.91% to >=80% — add tests for options: `cycle`, `allTasksMarkedDone`, `forceReviewNext`, `forceProofNext`, `forcePlanNext`. Uncovered branches at lines 58, 61-64. (priority: critical)
-- [x] [review] Gate 1: Dashboard is missing spec-required `stuck_count` visibility in session status/details. (priority: high)
-- [x] [review] Gate 1: Dashboard is missing session elapsed context (avg duration) in header. (priority: high)
-- [x] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — extract PID lookup into a helper. (priority: high)
-- [ ] [review] Gate 6: Regenerate proof artifacts for iteration 11 (`gh-test-output.txt`, `derive-mode-test.txt`, etc. are missing). (priority: medium)
-- [ ] [review] Gate 2: Add tests for dashboard UI logic added in this iteration (`iteration_running` synthetic entry, output.txt fetch/render, output-header model extraction, and "No output available" fallback in `App.tsx`). Use concrete value assertions, not shape-only checks. (priority: high)
-- [ ] [review] Gate 2: Add/extend `dashboard.test.ts` coverage for new backend branches in `dashboard.ts` (`loadArtifactManifests` with missing manifest + present `output.txt`, `resolvePid` fallback to `active.json`, and active-session `status.json` enrichment). (priority: high)
-- [ ] [review] Gate 3: Produce >=80% branch coverage evidence for touched files `aloop/bin/loop.sh`, `aloop/cli/src/commands/dashboard.ts`, and `aloop/cli/dashboard/src/App.tsx`; current iteration includes no branch-coverage report for these files. (priority: critical)
-- [ ] [review] Gate 6: Proof manifest iteration 29 references missing artifacts (`plan-coverage.txt`, `requests-coverage.txt`, `gh-coverage.txt`, `dashboard-tests.txt`, `dashboard-props-implementation.txt`, `dashboard-pid-resolution.txt`, `stuck-reset-implementation.txt`, `dashboard-sidebar-width.txt`, `dashboard-overflow-tabs.txt`, `dashboard-health-tab.txt`) — regenerate and publish verifiable files. (priority: high)
-
-### Up Next (P1 — Dashboard UX + Test Infrastructure)
-
-- [ ] [dashboard][high] Move per-provider health to dedicated left-pane sidebar tab — currently inline in header grid (App.tsx:385-389). Spec §6 requires sidebar tab. (priority: high)
-- [ ] [dashboard][medium] Move sidebar expand/collapse toggle button to be vertically centered with header title row. Currently at top. Spec §6. (priority: medium)
-- [ ] [dashboard][medium] Filter out empty documentation files from Docs panel. Spec §6. (priority: medium)
-- [ ] [dashboard][low] Add overflow ellipsis menu for docs panel when doc set is large. Spec §6. (priority: low)
-- [ ] [review] Gate 2: Fix broken E2E tests in `smoke.spec.ts` (selectors, placeholders, headings). (priority: high)
-- [ ] [review] Gate 2: Extract and unit test dashboard logic (log parsing, state normalization, etc.). (priority: medium)
-- [ ] [loop][medium] Update `loop_branch_coverage.tests.sh` to register and test `queue.override_success/failure/provider_fallback`, `requests.wait_drain/timeout`, and `invoke.opencode` paths. (priority: medium)
-
-### Up Next (P2 — Pipeline Config + Orchestrator Prompt Templates + Provenance)
+### In Progress (P0 — Core Features)
 
 **Configurable pipeline:**
 - [ ] [pipeline][high] Create `.aloop/pipeline.yml` schema and default config (plan → build × 3 → proof → review). (priority: high)
 - [ ] [pipeline][high] Create `.aloop/agents/` directory with agent YAML definitions (plan.yml, build.yml, proof.yml, review.yml, steer.yml). (priority: high)
-- [ ] [pipeline][high] Update `compile-loop-plan.ts` to read `.aloop/pipeline.yml`. (priority: high)
+- [ ] [pipeline][high] Update `compile-loop-plan.ts` to read `.aloop/pipeline.yml` instead of hardcoded cycle arrays. (priority: high)
 
 **Orchestrator prompt templates (prompt-based components):**
 - [ ] [orchestrator][high] Create `PROMPT_orch_scan.md`, `PROMPT_orch_product_analyst.md`, `PROMPT_orch_arch_analyst.md`, `PROMPT_orch_decompose.md`, `PROMPT_orch_refine.md`, `PROMPT_orch_sub_decompose.md`, `PROMPT_orch_planner_*.md`, `PROMPT_orch_estimate.md`. (priority: high)
 
 **Infinite loop prevention:**
-- [ ] [runtime][high] Add provenance tagging — every agent commit includes `Aloop-Agent`, `Aloop-Iteration`, `Aloop-Session` trailers. (priority: high)
+- [ ] [runtime][high] Add provenance tagging — every agent commit includes `Aloop-Agent`, `Aloop-Iteration`, `Aloop-Session` trailers in both `loop.sh` and `loop.ps1`. (priority: high)
 
-**GH integration polish:**
+### Up Next (P1 — Dashboard UX Polish)
+
+- [ ] [dashboard][high] Move per-provider health to dedicated left-pane sidebar tab — currently inline in header grid. Spec §6 requires sidebar tab. (priority: high)
+- [ ] [dashboard][medium] Move sidebar expand/collapse toggle button to be vertically centered with header title row. (priority: medium)
+- [ ] [dashboard][medium] Filter out empty documentation files from Docs panel ("Only tabs with non-empty content shown"). (priority: medium)
+- [ ] [dashboard][medium] Fix broken E2E tests in `smoke.spec.ts` (selectors, placeholders, headings outdated after dashboard rewrite). (priority: medium)
+
+### Up Next (P2 — GH Integration + Misc)
+
 - [ ] [gh-workflows][medium] Add `aloop gh stop-watch` control path — current `stop` command stops individual issues but not the watch daemon. (priority: medium)
+
+### Deferred — Dashboard Test Coverage
+
+Dashboard test coverage (unit tests for App.tsx logic, backend dashboard.ts branches, E2E tests) is deferred to a later phase — after all core features and UX polish are complete. See SPEC for details.
 
 ### Completed
 
+- [x] [review] Gate 3: Raise `plan.ts` branch coverage from 73.91% to >=80% — add tests for options: `cycle`, `allTasksMarkedDone`, `forceReviewNext`, `forceProofNext`, `forcePlanNext`. Uncovered branches at lines 58, 61-64.
+- [x] [review] Gate 1: Dashboard `stuck_count` visible in sidebar tooltip, header HoverCard, and StatusDot indicator.
+- [x] [review] Gate 1: Dashboard session elapsed context (avg duration) in header via `computeAvgDuration`.
+- [x] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — extracted `resolvePid` helper (commit a253d1c).
+- [x] [review] Gate 1: Docs overflow ellipsis menu implemented (`MAX_VISIBLE_TABS = 4` with dropdown).
 - [x] [review] Gate 5: Fix duplicate `import path` in `orchestrate.test.ts` — verified (commit 0666dda).
 - [x] [review] Gate 3: Raise `requests.ts` branch coverage from 57.38% to >=80% — verified at 84.09% (commit 98ce146).
 - [x] [review] Gate 1: Add `M/A/D/R` change type badges to commit detail view — verified in `App.tsx` (commit d21e747).

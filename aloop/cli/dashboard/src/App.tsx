@@ -839,7 +839,7 @@ function ActivityPanel({ log, artifacts, currentIteration, currentPhase, current
     const syntheticEntry: LogEntry = {
       timestamp: ts, phase: currentPhase, event: 'iteration_running', provider: currentProvider, model: '',
       duration: '', message: 'Running...', raw: '', rawObj: null, iteration: currentIteration,
-      dateKey: formatDateKey(now), isSuccess: false, isError: false, commitHash: '', resultDetail: '',
+      dateKey: formatDateKey(ts), isSuccess: false, isError: false, commitHash: '', resultDetail: '',
       filesChanged: [], isSignificant: true,
     };
     return [...deduped, syntheticEntry];
