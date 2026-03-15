@@ -877,7 +877,7 @@ function ActivityPanel({ log, artifacts, currentIteration, currentPhase, current
         <span className="text-[10px] text-muted-foreground">{deduped.length} events</span>
       </div>
       <ScrollArea className="flex-1 min-h-0" ref={containerRef}>
-        <div className="pr-3">
+        <div className="pr-4">
           <div ref={topRef} />
           {grouped.map((group) => (
             <div key={group.dateKey} className="mb-2">
@@ -939,7 +939,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
   return (
     <>
       <div
-        className={`flex items-center gap-1.5 py-1 px-1.5 text-[11px] font-mono rounded transition-colors ${
+        className={`flex items-center gap-1.5 py-1 px-1.5 text-[11px] font-mono rounded transition-colors min-w-0 ${
           hasExpandable ? 'cursor-pointer hover:bg-accent/30' : 'hover:bg-accent/20'
         } ${expanded ? 'bg-accent/20' : ''}`}
         onClick={() => hasExpandable && setExpanded(!expanded)}
@@ -962,7 +962,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
 
         {/* Provider·model */}
         {entry.provider && (
-          <span className="text-muted-foreground/70 shrink-0 max-w-[140px] truncate">
+          <span className="text-muted-foreground/70 max-w-[140px] truncate">
             {(() => {
               const model = entry.model && entry.model !== 'opencode-default'
                 ? entry.model
@@ -988,14 +988,22 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
 
         {/* Result detail */}
         {entry.resultDetail && (
-          <span className={`shrink-0 whitespace-nowrap ${entry.commitHash ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-muted-foreground/70'}`}>
+          <span className={`min-w-0 truncate ${entry.commitHash ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-muted-foreground/70'}`}>
             {entry.resultDetail}
           </span>
         )}
 
-        {/* Message for non-iteration events */}
-        {!entry.resultDetail && entry.message && entry.message !== entry.event && (
+        {/* Message for non-iteration events (skip for running entry — timer is enough) */}
+        {!isRunningEntry && !entry.resultDetail && entry.message && entry.message !== entry.event && (
           <span className="text-foreground/70 min-w-0 truncate flex-1">{entry.message}</span>
+        )}
+
+        {/* Elapsed timer for running entry — placed inline right after provider */}
+        {isRunningEntry && (
+          <span className="text-green-600 dark:text-green-400 shrink-0 whitespace-nowrap flex items-center gap-0.5 font-medium">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <ElapsedTimer since={entry.timestamp} />
+          </span>
         )}
 
         <span className="flex-1" />
@@ -1004,12 +1012,6 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
         {entry.duration && (
           <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap flex items-center gap-0.5">
             <Timer className="h-3 w-3" />{entry.duration}
-          </span>
-        )}
-        {isRunningEntry && (
-          <span className="text-green-600 dark:text-green-400 shrink-0 whitespace-nowrap flex items-center gap-0.5 font-medium">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <ElapsedTimer since={entry.timestamp} />
           </span>
         )}
 
