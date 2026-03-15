@@ -34,8 +34,10 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
    - **Integration**: Does it work with other features? Does it break anything?
    - Log EVERY command with exact stdout/stderr/exit code
 
-4. **File Bugs**
-   For each issue found, add a `[qa]` task to TODO.md:
+4. **File Bugs (no duplicates!)**
+   Before filing, **read ALL existing `[qa]` tasks in TODO.md**. If the same bug is already filed (even from a prior iteration), do NOT file it again — instead, add a brief re-test note to the existing entry (e.g., "still failing at iter N").
+
+   Only file NEW bugs for issues not already tracked:
    ```
    - [ ] [qa/P1] <Bug title>: <What you did> → <What happened> → <What spec says should happen>. Tested at iter N. (priority: high)
    ```
