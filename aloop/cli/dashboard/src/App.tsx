@@ -519,17 +519,18 @@ function Sidebar({
       <TooltipTrigger asChild>
         <button
           type="button"
-          className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
+          className={`w-full overflow-hidden rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
           onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
         >
-          <div className="flex items-center gap-1.5 min-w-0">
+          <div className="flex items-center gap-1.5 overflow-hidden">
             <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} stuckCount={s.stuckCount} />
-            <span className="truncate font-medium flex-1 min-w-0">{s.name}</span>
+            <span className="truncate font-medium flex-1">{s.name}</span>
             <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
           </div>
-          <div className="flex items-center gap-1.5 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 min-w-0">
-            {s.branch && <><GitBranch className="h-2.5 w-2.5 shrink-0" /><span className="truncate min-w-0">{s.branch}</span></>}
-            {s.branch && s.phase && <span className="shrink-0">·</span>}
+          <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
+            {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
+            {s.branch && <span className="truncate">{s.branch}</span>}
+            {s.phase && <span className="shrink-0">·</span>}
             {s.phase && <PhaseBadge phase={s.phase} small />}
             <span className="shrink-0">#{s.iterations}</span>
           </div>
