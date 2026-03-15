@@ -4,6 +4,11 @@
 
 ### In Progress (P0 — Loop & Orchestrator)
 
+- [ ] [review] Gate 6: Missing proof artifacts — proof agent must generate and save `compile-loop-plan-tests.txt`, `yaml-parser-tests.txt`, `orchestrator-prompts-listing.txt`, and `pipeline-config-validation.txt` to the workspace (priority: high)
+- [ ] [review] Gate 3: `yaml.ts` branch coverage is 73.33% (<90% threshold) — add tests for inline comments, `null` scalars, and nested property resolution (priority: high)
+- [ ] [review] Gate 3: `compile-loop-plan.ts` branch coverage is 78.66% (<80% threshold) — add tests for pipeline.yml parse failure and round-robin with empty providers (priority: medium)
+- [ ] [review] Gate 8: `VERSIONS.md` is missing — create authoritative version table for the project (priority: medium)
+
 **Configurable pipeline:**
 - [x] [pipeline][high] Create `.aloop/pipeline.yml` schema and default config (plan → build × 3 → proof → review). (priority: high)
 - [x] [pipeline][high] Create `.aloop/agents/` directory with agent YAML definitions (plan.yml, build.yml, proof.yml, review.yml, steer.yml). (priority: high)

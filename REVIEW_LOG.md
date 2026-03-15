@@ -1,5 +1,23 @@
 # Review Log
 
+## Review — 2026-03-15 — commit 98ce146..28811ec
+
+**Verdict: FAIL** (5 findings → written to TODO.md as [review] tasks)
+**Scope:** `.aloop/pipeline.yml`, `.aloop/agents/*.yml`, `aloop/cli/src/commands/compile-loop-plan.ts`, `aloop/cli/src/lib/yaml.ts`, `aloop/templates/PROMPT_orch_*.md`
+
+- Gate 6: **Missing Proof Artifacts** — All 4 artifacts listed in the proof manifest iteration 36 (`compile-loop-plan-tests.txt`, `yaml-parser-tests.txt`, `orchestrator-prompts-listing.txt`, and `pipeline-config-validation.txt`) are missing from the workspace. Claimed evidence is not verifiable.
+- Gate 3: `yaml.ts` branch coverage is **73.33%** (FAIL, new module threshold is >=90%). Uncovered branches: `stripInlineComment` (lines 17-20), `null` scalar parsing (line 36), and nested top-level object property logic (line 94).
+- Gate 3: `compile-loop-plan.ts` branch coverage is **78.66%** (FAIL, touched module threshold is >=80%). Uncovered branches: `buildCycleFromPipeline` catch block (lines 125-127) and `buildRoundRobinCycle` ternary fallback (lines 169-170).
+- Gate 2: `yaml.test.ts` lacks depth — misses tests for `null` scalar, inline comments, and multi-level nested property resolution.
+- Gate 8: **VERSIONS.md missing** — Authoritative version table is missing from the workspace, making version compliance verification impossible.
+
+**Positive observations:**
+- Gate 1: Configurable pipeline successfully implemented — `compile-loop-plan.ts` correctly reads and applies `.aloop/pipeline.yml` and `.aloop/agents/*.yml` to generate `loop-plan.json`.
+- Gate 5: Validation is green — `tsc --noEmit`, `npm test`, and `npm run build` all pass in `aloop/cli`.
+- Gate 4: Modern orchestrator prompt templates (11 files) have been added with the expected `M/A/D/R` and vertical-slice terminology.
+
+---
+
 ## Review — 2026-03-15 10:15 — commit 0ad23eb..8a5baa1
 
 **Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
