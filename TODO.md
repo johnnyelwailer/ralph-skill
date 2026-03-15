@@ -12,6 +12,14 @@ Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboa
 - [x] [fix] `orchestrateCommand` dependency injection — correctly handle Commander `Command` object vs `OrchestrateDeps`.
 - [x] [review] Gate 8: VERSIONS.md Drift — Add `git` to the Runtime section of `VERSIONS.md`. (priority: high)
 
+### QA Bugs (iter 50)
+- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` initializes session and exits 0 instead of failing. Tested at iter 50. (priority: high)
+- [ ] [qa/P2] `aloop setup --non-interactive --spec NONEXISTENT.md` accepts nonexistent file without validation. Tested at iter 50. (priority: medium)
+- [ ] [qa/P2] `aloop setup --non-interactive --providers fakeprovider` accepts invalid provider name without validation. Tested at iter 50. (priority: medium)
+- [ ] [qa/P2] `aloop devcontainer` crashes with `TypeError: deps.discover is not a function`. Tested at iter 50. (priority: medium)
+- [ ] [qa/P2] CLI error handling leaks stack traces for user errors — `aloop setup --autonomy-level invalid` and `aloop start` (no config) leak raw Node.js stack traces. Tested at iter 50. (priority: medium)
+- [ ] [qa/P1] `aloop steer` CLI command still missing — README and spec claim live steering command exists, but CLI returns `unknown command 'steer'`. Tested at iter 50. (priority: high)
+
 ### QA Bugs (iter 46)
 - [ ] [qa/P1] `aloop orchestrate --spec` doesn't check for file existence — it initializes a session with an empty spec if the provided file is missing, leading to failed decomposition later. Should exit with clear error. Tested at iter 46. (priority: high)
 - [ ] [qa/P2] CLI error handling leaks stack traces for user errors — `aloop orchestrate --autonomy-level foo`, `aloop gh watch` (when failing to invoke gh), and `aloop start` (when no config found) all throw raw Node.js stack traces instead of clean user-friendly errors. Tested at iter 46. (priority: medium)

@@ -761,3 +761,92 @@ Exit code: 0
 ```
 
 PASS: All paths work correctly — text/json output, with/without sessions.
+
+## QA Session — 2026-03-15 (iteration 49)
+
+### Test Environment
+- Temp dir: /tmp/aloop-qa-test
+- Binary: node aloop/cli/dist/index.js
+- Commit: bdf3d32
+
+### Results
+- PASS: aloop discover (detected git + spec + readme)
+- PASS: aloop orchestrate --plan-only (happy path)
+- PASS: aloop status (showed running sessions)
+- PASS: aloop active (text and json output)
+- FAIL: aloop setup --non-interactive (no validation on --spec or --providers, stack trace on --autonomy-level)
+- FAIL: aloop orchestrate --spec NONEXISTENT.md (exits 0 instead of error)
+- FAIL: aloop start (leaks stack trace when no config found)
+- FAIL: aloop devcontainer (crashes with TypeError: deps.discover is not a function)
+- FAIL: aloop steer CLI (still missing)
+
+### Bugs Filed
+- [qa/P1] aloop orchestrate --spec NONEXISTENT.md initializes session and exits 0
+- [qa/P2] aloop setup --non-interactive --spec NONEXISTENT.md accepts nonexistent file
+- [qa/P2] aloop setup --non-interactive --providers fakeprovider accepts invalid provider
+- [qa/P2] aloop devcontainer crashes with TypeError: deps.discover is not a function
+- [qa/P2] CLI error handling leaks stack traces for user errors (aloop setup --autonomy-level, aloop start)
+
+### Command Transcript
+
+#### aloop setup --non-interactive --providers fakeprovider
+```
+$ node aloop/cli/dist/index.js setup --non-interactive --providers fakeprovider
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.aloop/projects/ba437e9a/config.yml
+$ cat /home/pj/.aloop/projects/ba437e9a/config.yml | grep fakeprovider
+  - 'fakeprovider'
+```
+**Bug**: Accepted invalid provider.
+
+#### aloop orchestrate --spec NONEXISTENT.md --plan-only
+```
+$ node aloop/cli/dist/index.js orchestrate --spec NONEXISTENT.md --plan-only
+Orchestrator session initialized.
+...
+  Spec:         NONEXISTENT.md
+  Plan only:    true
+$ echo $?
+0
+```
+**Bug**: Should check for spec existence and fail.
+
+#### aloop devcontainer
+```
+$ node aloop/cli/dist/index.js devcontainer
+TypeError: deps.discover is not a function
+    at devcontainerCommandWithDeps (...)
+```
+**Bug**: TypeError crash.
+
+#### aloop start (No config)
+```
+$ node aloop/cli/dist/index.js start
+Error: No Aloop configuration found for this project. Run `aloop setup` first.
+    at startCommandWithDeps (...)
+```
+**Bug**: Leaks stack trace.
+
+## QA Session — 2026-03-15 (iteration 50)
+
+### Test Environment
+- Temp dir: qa-test (with git init and SPEC.md)
+- Home dir: qa-home (populated via aloop update)
+- Features tested: aloop steer, aloop devcontainer, aloop setup, aloop orchestrate, aloop discover, aloop status, aloop update, aloop active
+
+### Results
+- PASS: aloop discover, aloop status, aloop update, aloop active
+- FAIL: aloop steer (missing command)
+- FAIL: aloop devcontainer (runtime crash)
+- FAIL: aloop setup --spec (missing validation)
+- FAIL: aloop setup --providers (missing validation)
+- FAIL: aloop setup --autonomy-level (stack trace leak)
+- FAIL: aloop orchestrate --spec (missing validation)
+
+### Bugs Verified
+- [qa/P1] aloop steer command missing
+- [qa/P1] aloop orchestrate --spec NONEXISTENT.md exits 0
+- [qa/P2] aloop devcontainer crashes with TypeError: deps.discover is not a function
+- [qa/P2] aloop setup --spec NONEXISTENT.md accepts missing file
+- [qa/P2] aloop setup --providers fakeprovider accepts invalid provider
+- [qa/P2] aloop setup --autonomy-level invalid leaks stack trace
