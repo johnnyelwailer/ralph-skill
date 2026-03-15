@@ -834,8 +834,9 @@ function ActivityPanel({ log, artifacts, currentIteration, currentPhase, current
     // Check if the current iteration already has a complete/error entry
     const hasResult = deduped.some((e) => e.iteration === currentIteration && (e.isSuccess || e.isError));
     if (hasResult) return deduped;
-    // Add a synthetic running entry — use real iteration start time if available
-    const ts = iterationStartedAt || new Date().toISOString();
+    // Add a synthetic running entry — use real iteration start time, fall back to last log entry time
+    const lastEntryTime = deduped.length > 0 ? deduped[deduped.length - 1].timestamp : '';
+    const ts = iterationStartedAt || lastEntryTime || new Date().toISOString();
     const syntheticEntry: LogEntry = {
       timestamp: ts, phase: currentPhase, event: 'iteration_running', provider: currentProvider, model: '',
       duration: '', message: 'Running...', raw: '', rawObj: null, iteration: currentIteration,

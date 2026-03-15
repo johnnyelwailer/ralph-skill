@@ -916,7 +916,7 @@ HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
 - [ ] System theme adaptation via `.dark` class + `prefers-color-scheme` detection
 - [ ] `aloop status --watch` provides terminal-based live monitoring (auto-refresh)
 
-**Priority note:** The loop engine and orchestrator are the highest priority. Dashboard work (UX polish, test coverage) comes **after** loop and orchestrator core features are complete. The review agent should NOT create `[review]` tasks requesting dashboard test coverage or dashboard UX work while loop/orchestrator tasks remain open.
+**Priority note:** The loop engine and orchestrator are the highest priority. Dashboard work (UX polish, test coverage) comes **after** loop and orchestrator core features are complete.
 
 ---
 
