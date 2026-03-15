@@ -13,7 +13,16 @@ Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboa
 - [x] [review] Gate 8: VERSIONS.md Drift — Add `git` to the Runtime section of `VERSIONS.md`. (priority: high)
 
 ### QA Bugs (iter 46)
+- [ ] [qa/P1] `aloop orchestrate --spec` doesn't check for file existence — it initializes a session with an empty spec if the provided file is missing, leading to failed decomposition later. Should exit with clear error. Tested at iter 46. (priority: high)
 - [ ] [qa/P2] CLI error handling leaks stack traces for user errors — `aloop orchestrate --autonomy-level foo`, `aloop gh watch` (when failing to invoke gh), and `aloop start` (when no config found) all throw raw Node.js stack traces instead of clean user-friendly errors. Tested at iter 46. (priority: medium)
+- [ ] [qa/P2] Dashboard layout panel detection failure — Playwright test found 0 panels even though stop button was visible. Indicates possible selector drift or layout bug. Tested at iter 46. (priority: medium)
+
+### QA Bugs (iter 47)
+- [ ] [qa/P1] [P0 severity] Dashboard desktop layout mismatches spec wireframe — at 1920x1080 the page renders `stop` + steer input but expected persistent `SESSIONS` / `DOCUMENTS` / `ACTIVITY` shell is not visible (`aside: 0`, no expected panel labels in body text). Layout mismatch at required breakpoint is a release blocker. Tested at iter 47. (priority: high)
+- [ ] [qa/P1] Dashboard docs tabs still empty — `/api/state` reports `workdir=/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli` and returns zero-length `TODO.md`, `SPEC.md`, `RESEARCH.md`, `REVIEW_LOG.md`, `STEERING.md`, violating dashboard document viewer expectations. Tested at iter 47. (priority: high)
+- [ ] [qa/P1] `aloop steer` CLI command still missing — README and spec claim live steering command exists, but CLI returns `unknown command 'steer'`. Tested at iter 47. (priority: high)
+- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md --plan-only` still exits 0 and initializes a session instead of failing fast for missing spec file. Tested at iter 47. (priority: high)
+- [ ] [qa/P1] Provider health backoff still violates spec — `codex` remains `cooldown` with `consecutive_failures=1` and `cooldown_until=2026-03-17T00:00:00Z` (~30h), but spec requires no cooldown for first failure and max 60m cap. Tested at iter 47. (priority: high)
 
 ### QA Bugs (iter 26)
 - [ ] [qa/P1] Dashboard docs tabs empty — API `/api/state` returns 0-char content for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md because `workdir` points to `aloop/cli/` subdirectory instead of worktree root. Spec says dashboard shows "Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md". Tested at iter 26. (priority: high)

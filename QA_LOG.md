@@ -372,3 +372,239 @@ Error: No Aloop configuration found for this project. Run `aloop setup` first.
 Exit code: 1
 ```
 FAIL: Leaks a raw stack trace instead of a clean error.
+
+---
+
+## QA Session — 2026-03-15 (iteration 46)
+
+### Test Environment
+- Temp dir: /tmp/aloop-qa-test-20260315
+- Features tested: 8
+- Binary: node aloop/cli/dist/index.js
+- Commit: 1b998e4
+
+### Results
+- PASS: aloop orchestrate --autonomy-level (Happy Path)
+- PASS: aloop gh status
+- PASS: aloop status --watch
+- PASS: aloop update
+- PASS: aloop stop (basic checks)
+- FAIL: aloop orchestrate --autonomy-level (Invalid Input leaks stack trace)
+- FAIL: aloop steer (Command missing)
+- FAIL: aloop start (Leaks stack trace when no config found)
+- FAIL: aloop orchestrate --spec (Doesn't check file existence)
+- FAIL: Dashboard layout (Panel detection failed in Playwright)
+- FAIL: Provider health backoff (Still broken: 1 failure = 30h cooldown)
+
+### Bugs Filed
+- [qa/P1] `aloop orchestrate --spec` doesn't check for file existence
+- [qa/P2] Dashboard layout panel detection failure
+- [qa/P2] CLI error handling leaks stack traces for user errors (re-confirmed)
+- [qa/P1] `aloop steer` command missing (re-confirmed)
+- [qa/P1] Provider health backoff violates spec (re-confirmed via `aloop status --watch`)
+
+### Command Transcript
+
+#### aloop orchestrate --autonomy-level (Invalid Input)
+```
+$ node aloop/cli/dist/index.js orchestrate --spec SPEC.md --autonomy-level foo --plan-only
+file:///home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js:460
+  throw new Error(`Invalid autonomy level: ${value} (must be cautious, balanced, or autonomous)`);
+        ^
+Error: Invalid autonomy level: foo (must be cautious, balanced, or autonomous)
+    at assertAutonomyLevel (file:///home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js:460:9)
+```
+
+#### aloop steer
+```
+$ node aloop/cli/dist/index.js steer
+error: unknown command 'steer'
+```
+
+#### aloop start (No config)
+```
+$ node aloop/cli/dist/index.js start
+Error: No Aloop configuration found for this project. Run `aloop setup` first.
+    at startCommandWithDeps (file:///home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js:6025:11)
+    at async _Command.startCommand (file:///home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js:6406:18)
+```
+
+#### aloop orchestrate --spec (Nonexistent)
+```
+$ node aloop/cli/dist/index.js orchestrate --spec NONEXISTENT.md --plan-only
+Orchestrator session initialized.
+...
+  Spec:         NONEXISTENT.md
+Exit code: 0
+```
+**Bug**: Should check for spec file existence and exit with error.
+
+#### Playwright Dashboard Test
+```
+$ cd aloop/cli/dashboard && npx playwright test e2e/qa-layout.spec.ts
+Layout panels found: 0
+Generic panels found: 0
+Activity rows: 0
+Steer input visible: false
+Stop button visible: true
+Error: expect(received).toBeGreaterThan(expected)
+Expected: > 0
+Received:   0
+```
+
+#### aloop status --watch (Provider Health)
+```
+Provider Health:
+  claude     healthy      (last success: 29m ago)
+  codex      cooldown     (1 failure, resumes in 1781m)
+```
+**Bug**: codex shows 30h cooldown after 1 failure.
+
+---
+
+## QA Session — 2026-03-15 (iteration 47)
+
+### Test Environment
+- Temp dir: `/tmp/aloop-qa-20260315-192325`
+- Temp dir cleaned: yes (artifacts copied to session-state files)
+- Session dir: `/home/pj/.aloop/sessions/ralph-skill-20260314-173930`
+- Dashboard: `http://localhost:4040` (from `meta.json`)
+- Commit: `1b998e4`
+- Features tested: 5
+
+### Results
+- PASS: `aloop discover --output json` (fresh temp git repo), `aloop orchestrate --spec SPEC.md --plan-only --output json`, `aloop --help`
+- FAIL: dashboard desktop layout verification (spec wireframe mismatch at 1920x1080), dashboard docs tabs (empty content), `aloop steer` command missing, `aloop orchestrate --spec NONEXISTENT.md --plan-only` exits 0, provider health backoff spec mismatch
+
+### Bugs Filed
+- [qa/P1] [P0 severity] Dashboard desktop layout mismatch at required breakpoint
+- [qa/P1] Dashboard docs tabs still empty (`/api/state` workdir points to `.../worktree/aloop/cli`)
+- [qa/P1] `aloop steer` command still missing
+- [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` still does not validate file existence
+- [qa/P1] Provider health backoff still violates first-failure/no-cooldown + 60m hard cap
+
+### Layout Verification (mandatory)
+- Screenshot captured: `/home/pj/.copilot/session-state/5d8f4244-333d-4aba-86fe-381e40a29c8f/files/qa-iter47/dashboard-desktop-1920x1080.png`
+- Desktop breakpoint tested at 1920x1080
+- Observed:
+  - `aside: 0`, `main: 1`, `section: 1`, panel-like classes: 2
+  - `stopButtons: 1`, `steerInputs: 1`
+  - Expected persistent text markers not visible in body (`SESSIONS`, `DOCUMENTS`, `ACTIVITY` all false)
+- Verdict: **FAIL** (layout mismatch at required breakpoint)
+
+### Command Transcript
+
+#### Setup + feature execution bundle
+```bash
+$ git init -q && git config user.email qa@example.com && git config user.name 'QA Bot' && printf '# QA Project\n' > README.md && printf '# SPEC\n\nSimple spec for QA temp project.\n' > SPEC.md && git add . && git commit -qm 'init test project'
+[cwd] /tmp/aloop-qa-20260315-192325/project
+[exit] 0
+[stdout]
+[stderr]
+
+$ node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js --help
+[cwd] /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree
+[exit] 0
+[stdout]
+Usage: aloop [options] [command]
+...
+Commands:
+  resolve
+  discover
+  setup
+  scaffold
+  start
+  dashboard
+  status
+  active
+  stop
+  update
+  devcontainer
+  devcontainer-verify
+  orchestrate
+  gh
+[stderr]
+
+$ node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js discover --output json
+[cwd] /tmp/aloop-qa-20260315-192325/project
+[exit] 0
+[stdout]
+{
+  "project": { "is_git_repo": true, "git_branch": "master" },
+  "context": { "spec_candidates": ["SPEC.md", "README.md"] },
+  "providers": { "installed": ["claude", "codex", "gemini", "copilot"] }
+}
+[stderr]
+
+$ node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js orchestrate --spec SPEC.md --plan-only --output json
+[cwd] /tmp/aloop-qa-20260315-192325/project
+[exit] 0
+[stdout]
+{
+  "session_dir": "/home/pj/.aloop/sessions/orchestrator-20260315-182327",
+  "state": { "spec_file": "SPEC.md", "plan_only": true, "autonomy_level": "balanced" }
+}
+[stderr]
+
+$ node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js orchestrate --spec NONEXISTENT.md --plan-only
+[cwd] /tmp/aloop-qa-20260315-192325/project
+[exit] 0
+[stdout]
+Orchestrator session initialized.
+...
+  Spec:         NONEXISTENT.md
+  Plan only:    true
+[stderr]
+
+$ node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js steer 'QA instruction from session test'
+[cwd] /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree
+[exit] 1
+[stdout]
+[stderr]
+error: unknown command 'steer'
+
+$ node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js status
+[cwd] /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree
+[exit] 0
+[stdout]
+Provider Health:
+  claude     healthy
+  codex      cooldown     (1 failure, resumes in 1777m)
+  copilot    healthy
+  gemini     healthy
+  opencode   healthy
+[stderr]
+```
+
+#### Dashboard layout + state checks
+```bash
+$ cd /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dashboard && node (playwright script)
+[exit] 0
+[stdout]
+{
+  "columns": { "aside": 0, "main": 1, "section": 1, "panelClass": 2, "columnClass": 0 },
+  "hasSessions": false,
+  "hasDocuments": false,
+  "hasActivity": false,
+  "stopButtons": 1,
+  "steerInputs": 1
+}
+[stderr]
+
+$ curl -s http://localhost:4040/api/state
+[exit] 0
+[stdout]
+{"workdir":"/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli", ...}
+[stderr]
+
+$ cat ~/.aloop/health/codex.json
+[exit] 0
+[stdout]
+{"status":"cooldown","last_success":"2026-03-13T12:39:26Z","last_failure":"2026-03-13T12:54:46Z","failure_reason":"rate_limit","consecutive_failures":1,"cooldown_until":"2026-03-17T00:00:00Z"}
+[stderr]
+```
+
+### Artifacts
+- Full raw transcript: `/home/pj/.copilot/session-state/5d8f4244-333d-4aba-86fe-381e40a29c8f/files/qa-iter47/command-transcript.txt`
+- Dashboard screenshot: `/home/pj/.copilot/session-state/5d8f4244-333d-4aba-86fe-381e40a29c8f/files/qa-iter47/dashboard-desktop-1920x1080.png`
+- API response snapshot: `/home/pj/.copilot/session-state/5d8f4244-333d-4aba-86fe-381e40a29c8f/files/qa-iter47/api-state.json`
