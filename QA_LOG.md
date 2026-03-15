@@ -850,3 +850,295 @@ Error: No Aloop configuration found for this project. Run `aloop setup` first.
 - [qa/P2] aloop setup --spec NONEXISTENT.md accepts missing file
 - [qa/P2] aloop setup --providers fakeprovider accepts invalid provider
 - [qa/P2] aloop setup --autonomy-level invalid leaks stack trace
+
+## QA Session — 2026-03-15 (iteration 51)
+
+### Test Environment
+- Temp dir: `/tmp/qa-iter51-1773600761`
+- Dashboard URL: `http://localhost:4040` (from `meta.json`)
+- Screenshot evidence: `/home/pj/.copilot/session-state/7147ca78-c213-460e-ad4c-71808c98d4e7/files/qa-iter51/dashboard-1920x1080.png`
+- Layout metrics: `/home/pj/.copilot/session-state/7147ca78-c213-460e-ad4c-71808c98d4e7/files/qa-iter51/layout-check.json`
+- Commit: `44dcff9`
+- Features tested: 5 primary targets (+ supporting checks)
+
+### Results
+- PASS: `aloop status --watch` live refresh behavior
+- PASS: `aloop gh status` table rendering
+- FAIL: dashboard desktop layout verification @ 1920x1080
+- FAIL: dashboard docs data population (`/api/state` docs are all empty)
+- FAIL: `aloop steer` command availability
+- FAIL: `aloop gh watch` error handling (raw stack trace)
+- FAIL: `aloop orchestrate --spec NONEXISTENT.md --plan-only` validation
+- FAIL: `aloop setup --non-interactive` in fresh HOME (missing template crash)
+
+### Bugs Filed
+- [qa/P1] [P0 severity] Dashboard layout mismatch at desktop breakpoint
+- [qa/P1] Dashboard docs content empty due incorrect `workdir`
+- [qa/P1] `aloop gh watch` crashes with raw stack trace on `gh` failure
+- [qa/P1] `aloop orchestrate --spec NONEXISTENT.md --plan-only` exits 0 and initializes session
+- [qa/P1] `aloop steer` command still missing
+- [qa/P1] `aloop setup --non-interactive` crashes on fresh HOME with missing templates
+
+### Command Transcript
+```text
+QA temp dir: /tmp/qa-iter51-1773600761
+\n$ node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js --version
+1.0.0
+[exit_code] 0
+\n$ curl -sS http://localhost:4040 | head -n 30
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script type="module">import { injectIntoGlobalHook } from "/@react-refresh";
+injectIntoGlobalHook(window);
+window.$RefreshReg$ = () => {};
+window.$RefreshSig$ = () => (type) => type;</script>
+
+  <script type="module" src="/@vite/client"></script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aloop Dashboard</title>
+  <script>
+    // Detect system theme before first paint to avoid flash
+    (function() {
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+      function apply(e) {
+        document.documentElement.classList.toggle('dark', e.matches);
+      }
+      apply(mq);
+      mq.addEventListener('change', apply);
+    })();
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
+[exit_code] 0
+\n$ cd '/tmp/qa-iter51-1773600761/project' && git init && git config user.email qa@example.com && git config user.name 'QA Bot' && printf '# QA Test Repo\n\n' > README.md && printf '# Spec\n\nTest spec.\n' > SPEC.md && git add . && git commit -m 'init qa repo'
+Initialized empty Git repository in /tmp/qa-iter51-1773600761/project/.git/
+[master (root-commit) 1228268] init qa repo
+ 2 files changed, 5 insertions(+)
+ create mode 100644 README.md
+ create mode 100644 SPEC.md
+[stderr]
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint:
+hint: 	git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint: 	git branch -m <name>
+hint:
+hint: Disable this message with "git config set advice.defaultBranchName false"
+[exit_code] 0
+\n$ cd '/tmp/qa-iter51-1773600761' && npm init -y >/dev/null
+[exit_code] 0
+\n$ cd '/tmp/qa-iter51-1773600761' && npm install playwright >/dev/null
+[exit_code] 0
+\n$ cd '/tmp/qa-iter51-1773600761' && npx playwright install chromium
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+[exit_code] 0
+\n$ cd '/tmp/qa-iter51-1773600761' && node layout-check.mjs '/home/pj/.copilot/session-state/7147ca78-c213-460e-ad4c-71808c98d4e7/files/qa-iter51/dashboard-1920x1080.png' '/home/pj/.copilot/session-state/7147ca78-c213-460e-ad4c-71808c98d4e7/files/qa-iter51/layout-check.json'
+[stderr]
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.goto: Timeout 30000ms exceeded.
+Call log:
+[2m  - navigating to "http://localhost:4040/", waiting until "networkidle"[22m
+
+    at /tmp/qa-iter51-1773600761/layout-check.mjs:8:12 {
+  name: 'TimeoutError'
+}
+
+Node.js v22.22.1
+[exit_code] 1
+\n$ curl -sS http://localhost:4040/api/state | head -c 1200
+{"sessionDir":"/home/pj/.aloop/sessions/ralph-skill-20260314-173930","workdir":"/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli","runtimeDir":"/home/pj/.aloop","updatedAt":"2026-03-15T18:53:13.862Z","status":{"iteration":35,"phase":"qa","provider":"copilot","stuck_count":0,"state":"running","updated_at":"2026-03-15T18:50:41Z","iteration_started_at":"2026-03-15T18:50:41Z"},"log":"{\"timestamp\":\"2026-03-14T17:39:31Z\",\"run_id\":\"8be01579-e6a2-4d0e-9526-d1df83ac618a\",\"event\":\"session_start\",\"mode\":\"plan-build-review\",\"provider\":\"round-robin\",\"work_dir\":\"/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree\",\"launch_mode\":\"resume\",\"runtime_commit\":\"cf5557f\",\"runtime_installed_at\":\"2026-03-14T10:34:27Z\",\"devcontainer\":\"false\"}\n{\"timestamp\":\"2026-03-14T17:40:35Z\",\"run_id\":\"98d648e3-0a84-481d-8741-49f31d21a0fe\",\"event\":\"session_start\",\"mode\":\"plan-build-review\",\"provider\":\"round-robin\",\"work_dir\":\"/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree\",\"launch_mode\":\"resume\",\"runtime_commit\":\"cf5557f\",\"runtime_installed_at\":\"2026-03-14T10:34:27Z\",\"devcontainer\":\"false\"}\n{\[stderr]
+curl: (23) Failure writing output to destination, passed 16384 returned 182
+[exit_code] 0
+\n$ python - <<'PY'
+import json,urllib.request
+u='http://localhost:4040/api/state'
+raw=urllib.request.urlopen(u,timeout=10).read().decode('utf-8')
+data=json.loads(raw)
+docs=data.get('docs',{}) if isinstance(data,dict) else {}
+print('docs_keys=',sorted(docs.keys()))
+for k in ['TODO.md','SPEC.md','RESEARCH.md','REVIEW_LOG.md','STEERING.md']:
+    v=docs.get(k)
+    print(k,'len',0 if v is None else len(v))
+print('workdir=',data.get('session',{}).get('meta',{}).get('workdir') or data.get('session',{}).get('meta',{}).get('work_dir'))
+PY
+[stderr]
+bash: line 1: python: command not found
+[exit_code] 127
+\n$ node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js steer --help
+Usage: aloop [options] [command]
+
+Aloop CLI for dashboard and project orchestration
+
+Options:
+  -V, --version                  output the version number
+  -h, --help                     display help for command
+
+Commands:
+  resolve [options]              Resolve project workspace and configuration
+  discover [options]             Discover workspace specs, files, and
+                                 validation commands
+  setup [options]                Interactive setup and scaffold for aloop
+                                 project
+  scaffold [options]             Scaffold project workdir and prompts
+  start [options] [session-id]   Start an aloop session for the current project
+  dashboard [options]            Launch real-time progress dashboard
+  status [options]               Show all active sessions and provider health
+  active [options]               List active sessions
+  stop [options] <session-id>    Stop a session by session-id
+  update [options]               Refresh ~/.aloop runtime assets from the
+                                 current repo checkout
+  devcontainer [options]         Generate or augment
+                                 .devcontainer/devcontainer.json for isolated
+                                 agent execution
+  devcontainer-verify [options]  Verify devcontainer builds, starts, and passes
+                                 all checks
+  orchestrate [options]          Decompose spec into issues, dispatch child
+                                 loops, and merge PRs
+  gh                             Policy-enforced GitHub operations
+  help [command]                 display help for command
+[exit_code] 0
+\n$ node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js gh watch --max-concurrent 1
+[stderr]
+node:internal/errors:983
+  const err = new Error(message);
+              ^
+
+Error: Command failed: gh issue list --state open --json number,title,url --limit 100 --label aloop
+gh: blocked by aloop PATH hardening
+
+    at genericNodeError (node:internal/errors:983:15)
+    at wrappedFn (node:internal/errors:537:14)
+    at ChildProcess.exithandler (node:child_process:417:12)
+    at ChildProcess.emit (node:events:519:28)
+    at maybeClose (node:internal/child_process:1101:16)
+    at Socket.<anonymous> (node:internal/child_process:456:11)
+    at Socket.emit (node:events:519:28)
+    at Pipe.<anonymous> (node:net:346:12) {
+  code: 127,
+  killed: false,
+  signal: null,
+  cmd: 'gh issue list --state open --json number,title,url --limit 100 --label aloop',
+  stdout: '',
+  stderr: 'gh: blocked by aloop PATH hardening\n'
+}
+
+Node.js v22.22.1
+[exit_code] 1
+\n$ node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js gh status
+Issue  Branch                PR    Status      Iteration  Feedback
+#7     agent/issue-7-improve-docs #99   completed   —         —
+#42    agent/issue-42-fix-auth-flow —     running     —         —
+[exit_code] 0
+\n$ cd '/tmp/qa-iter51-1773600761/project' && HOME='/tmp/qa-iter51-1773600761/home' node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js setup --non-interactive --spec SPEC.md --providers claude
+Running setup in non-interactive mode...
+[stderr]
+file:///home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js:3388
+      throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
+            ^
+
+Error: Template not found: /tmp/qa-iter51-1773600761/home/.aloop/templates/PROMPT_plan.md
+    at Object.scaffoldWorkspace [as scaffold] (file:///home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js:3388:13)
+    at async setupCommandWithDeps (file:///home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js:8030:21)
+    at async _Command.setupCommand (file:///home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js:8102:5)
+
+Node.js v22.22.1
+[exit_code] 1
+\n$ cd '/tmp/qa-iter51-1773600761/project' && HOME='/tmp/qa-iter51-1773600761/home' node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js orchestrate --spec NONEXISTENT.md --plan-only
+Orchestrator session initialized.
+
+  Session dir:  /tmp/qa-iter51-1773600761/home/.aloop/sessions/orchestrator-20260315-185317
+  Prompts dir:  /tmp/qa-iter51-1773600761/home/.aloop/sessions/orchestrator-20260315-185317/prompts
+  Queue dir:    /tmp/qa-iter51-1773600761/home/.aloop/sessions/orchestrator-20260315-185317/queue
+  Requests dir: /tmp/qa-iter51-1773600761/home/.aloop/sessions/orchestrator-20260315-185317/requests
+  Loop plan:    /tmp/qa-iter51-1773600761/home/.aloop/sessions/orchestrator-20260315-185317/loop-plan.json
+  State file:   /tmp/qa-iter51-1773600761/home/.aloop/sessions/orchestrator-20260315-185317/orchestrator.json
+  Spec:         NONEXISTENT.md
+  Trunk:        agent/trunk
+  Autonomy:     balanced
+  Concurrency:  3
+  Plan only:    true
+[exit_code] 0
+\n$ timeout 8s node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js status --watch
+[2J[Haloop status  (refreshing every 2s — 7:53:17 PM)
+
+Active Sessions:
+  ralph-skill-20260314-173930  pid=1682112  running  iter 35, qa  (25h ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree
+
+Provider Health:
+  claude     healthy      (last success: 20m ago)
+  codex      cooldown     (1 failure, resumes in 1747m)
+  copilot    healthy      (last success: 26m ago)
+  gemini     healthy      (last success: 2m ago)
+  opencode   healthy      (last success: 16m ago)
+[2J[Haloop status  (refreshing every 2s — 7:53:19 PM)
+
+Active Sessions:
+  ralph-skill-20260314-173930  pid=1682112  running  iter 35, qa  (25h ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree
+
+Provider Health:
+  claude     healthy      (last success: 20m ago)
+  codex      cooldown     (1 failure, resumes in 1747m)
+  copilot    healthy      (last success: 26m ago)
+  gemini     healthy      (last success: 2m ago)
+  opencode   healthy      (last success: 16m ago)
+[2J[Haloop status  (refreshing every 2s — 7:53:21 PM)
+
+Active Sessions:
+  ralph-skill-20260314-173930  pid=1682112  running  iter 35, qa  (25h ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree
+
+Provider Health:
+  claude     healthy      (last success: 20m ago)
+  codex      cooldown     (1 failure, resumes in 1747m)
+  copilot    healthy      (last success: 26m ago)
+  gemini     healthy      (last success: 2m ago)
+  opencode   healthy      (last success: 16m ago)
+[2J[Haloop status  (refreshing every 2s — 7:53:23 PM)
+
+Active Sessions:
+  ralph-skill-20260314-173930  pid=1682112  running  iter 35, qa  (25h ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree
+
+Provider Health:
+  claude     healthy      (last success: 20m ago)
+  codex      cooldown     (1 failure, resumes in 1747m)
+  copilot    healthy      (last success: 26m ago)
+  gemini     healthy      (last success: 2m ago)
+  opencode   healthy      (last success: 16m ago)
+[exit_code] 124
+\n$ cd '/tmp/qa-iter51-1773600761' && npx playwright screenshot --browser chromium --viewport-size=1920,1080 http://localhost:4040 '/home/pj/.copilot/session-state/7147ca78-c213-460e-ad4c-71808c98d4e7/files/qa-iter51/dashboard-1920x1080.png'
+Navigating to http://localhost:4040
+Capturing screenshot into /home/pj/.copilot/session-state/7147ca78-c213-460e-ad4c-71808c98d4e7/files/qa-iter51/dashboard-1920x1080.png
+[exit_code] 0
+\n$ cd '/tmp/qa-iter51-1773600761' && node layout-check2.mjs '/home/pj/.copilot/session-state/7147ca78-c213-460e-ad4c-71808c98d4e7/files/qa-iter51/dashboard-1920x1080.png' '/home/pj/.copilot/session-state/7147ca78-c213-460e-ad4c-71808c98d4e7/files/qa-iter51/layout-check.json'
+{"asideVisible":false,"visiblePanels":6,"hasSessions":true,"hasDocs":false,"hasActivity":true,"bodyPreview":"\n  Sessions[data-radix-scroll-area-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-scroll-area-viewport]::-webkit-scrollbar{display:none}ralph-skill1ralph-skill-20260314-1739301d ago·qait"}
+[exit_code] 0
+\n$ node -e "fetch('http://localhost:4040/api/state').then(r=>r.json()).then(d=>{const docs=d.docs||{}; const keys=Object.keys(docs); console.log('docs_keys',keys.join(',')); ['TODO.md','SPEC.md','RESEARCH.md','REVIEW_LOG.md','STEERING.md'].forEach(k=>console.log(k,'len',docs[k]?docs[k].length:0)); console.log('workdir',d.workdir||'');}).catch(e=>{console.error(e); process.exit(1);});"
+docs_keys TODO.md,SPEC.md,RESEARCH.md,REVIEW_LOG.md,STEERING.md
+TODO.md len 0
+SPEC.md len 0
+RESEARCH.md len 0
+REVIEW_LOG.md len 0
+STEERING.md len 0
+workdir /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli
+[exit_code] 0
+```

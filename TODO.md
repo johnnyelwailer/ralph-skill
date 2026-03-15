@@ -20,6 +20,14 @@ Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboa
 - [ ] [qa/P2] CLI error handling leaks stack traces for user errors — `aloop setup --autonomy-level invalid` and `aloop start` (no config) leak raw Node.js stack traces. Tested at iter 50. (priority: medium)
 - [ ] [qa/P1] `aloop steer` CLI command still missing — README and spec claim live steering command exists, but CLI returns `unknown command 'steer'`. Tested at iter 50. (priority: high)
 
+### QA Bugs (iter 51)
+- [ ] [qa/P1] [P0 severity] Dashboard desktop layout still mismatches wireframe: `npx playwright screenshot --browser chromium --viewport-size=1920,1080 http://localhost:4040 ...` + Playwright DOM check showed `asideVisible=false` and no Documents panel content at required desktop breakpoint. Spec requires persistent sidebar + docs + activity shell at 1920×1080. Tested at iter 51. (priority: high)
+- [ ] [qa/P1] Dashboard docs data still empty: `GET /api/state` reports `workdir=/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli` and returns zero-length `TODO.md`, `SPEC.md`, `RESEARCH.md`, `REVIEW_LOG.md`, `STEERING.md`, violating document viewer expectations. Tested at iter 51. (priority: high)
+- [ ] [qa/P1] `aloop gh watch --max-concurrent 1` crashes with raw Node stack trace when `gh` invocation fails (`gh: blocked by aloop PATH hardening`) instead of a clean user-facing error. Tested at iter 51. (priority: high)
+- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md --plan-only` still initializes a session and exits 0 rather than failing fast on missing spec path. Tested at iter 51. (priority: high)
+- [ ] [qa/P1] `aloop steer` CLI command is still missing from command registry (`aloop steer --help` falls back to top-level help with no `steer` subcommand). Tested at iter 51. (priority: high)
+- [ ] [qa/P1] `aloop setup --non-interactive` fails for a fresh `HOME` with missing runtime templates and raw stack trace (`Template not found: ~/.aloop/templates/PROMPT_plan.md`) instead of guided setup/runtime bootstrap behavior. Tested at iter 51. (priority: high)
+
 ### QA Bugs (iter 46)
 - [ ] [qa/P1] `aloop orchestrate --spec` doesn't check for file existence — it initializes a session with an empty spec if the provided file is missing, leading to failed decomposition later. Should exit with clear error. Tested at iter 46. (priority: high)
 - [ ] [qa/P2] CLI error handling leaks stack traces for user errors — `aloop orchestrate --autonomy-level foo`, `aloop gh watch` (when failing to invoke gh), and `aloop start` (when no config found) all throw raw Node.js stack traces instead of clean user-friendly errors. Tested at iter 46. (priority: medium)
