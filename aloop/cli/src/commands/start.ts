@@ -6,6 +6,7 @@ import path from 'node:path';
 import { discoverWorkspace, type DiscoveryResult } from './project.js';
 import { resolveHomeDir } from './session.js';
 import type { OutputMode } from './status.js';
+import { compileLoopPlan } from './compile-loop-plan.js';
 
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot';
 type LoopProvider = ProviderName | 'round-robin';
@@ -742,6 +743,21 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
       }
     }
   }
+
+  // Compile loop-plan.json and add frontmatter to prompt files
+  await compileLoopPlan({
+    mode: resolvedMode,
+    provider: selectedProvider,
+    promptsDir,
+    sessionDir,
+    enabledProviders,
+    roundRobinOrder,
+    models: mergedModels,
+  }, {
+    readFile: (p, enc) => deps.readFile(p, enc),
+    writeFile: (p, data, enc) => deps.writeFile(p, data, enc),
+    existsSync: deps.existsSync,
+  });
 
   const modelProviders = collectModelProviders(enabledProviders, selectedProvider);
   const roundRobinCsv = roundRobinOrder.join(',');
