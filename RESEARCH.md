@@ -168,7 +168,7 @@
   - Source: `aloop/cli/dashboard/src/App.tsx:207,359,381-384,399-402,572-586` (T2), steering intent in `TODO.md` current phase (T3)
 - Runtime exit-state gap remains in shell loop implementation: `status.json` writes `completed`, `interrupted`, and `limit_reached` states; no `stopped`/`exited` state currently emitted, and stuck counter reset is tied to skip path rather than successful iteration completion.
   - Source: `aloop/bin/loop.sh:418-422,1145,1471,1534,1666` (T2), `SPEC.md` exit-state/stuck reset requirements (T3)
-- `aloop status` remains flat session/health output and does not yet render orchestrator tree (orchestrator -> child sessions -> issue/PR mapping).
+- `aloop status` remains flat session/health output and does not yet render orchestrator tree (orchestrator -> child sessions -> issue/PR tree data).
   - Source: `aloop/cli/src/commands/status.ts:44-70` (T2), `SPEC.md` orchestrator/status visibility expectations (T3)
 - Existing TODO coverage command text is likely stale for current TS test harness: running `node --experimental-test-coverage --test src/commands/gh.test.ts` in `aloop/cli` fails with `ERR_MODULE_NOT_FOUND` for `src/commands/gh.js` (tests import transpiled `.js` paths via `tsx` workflow).
   - Source: command run `cd aloop/cli && node --experimental-test-coverage --test src/commands/gh.test.ts` (T2)
@@ -479,3 +479,52 @@
   - Source: `TODO.md` (T3)
 - Missing proof artifacts for iteration 11: `gh-test-output.txt`, `derive-mode-test.txt`, `cycle-resolution-test.txt`, `frontmatter-parse-test.txt`, `cycle-integration-test.txt`, `aloop-mention-grep.txt`.
   - Source: `ls` (T2 — confirmed missing)
+
+## 2026-03-15 11:15 — Gap analysis: Dashboard UX, coverage gates, and pipeline infrastructure [T2+T3]
+
+- `orchestrate.test.ts` has a duplicate `import path from 'node:path'` at line 3 and line 2408, causing a TS2300 compiler error.
+  - Source: `aloop/cli/src/commands/orchestrate.test.ts:3,2408` (T2 — direct inspection)
+- Dashboard header lacks session timing aggregates: no elapsed duration since `session_start`, total iteration count, or average iteration duration.
+  - Source: `aloop/cli/dashboard/src/App.tsx:550-600` (T2 — direct inspection), `SPEC.md §6` (T3)
+- Dashboard sidebar toggle is at the top of the sidebar, not vertically centered with the header title row as required.
+  - Source: `aloop/cli/dashboard/src/App.tsx:350-450` (T2 — direct inspection), `SPEC.md §6` (T3)
+- Provider health remains inline in the header grid; not yet moved to the required dedicated left-pane sidebar tab.
+  - Source: `aloop/cli/dashboard/src/App.tsx:385-389` (T2 — direct inspection), `SPEC.md §6` (T3)
+- Documentation tabs in the dashboard do not have an overflow ellipsis menu for large sets of documents.
+  - Source: `aloop/cli/dashboard/src/App.tsx:568-600` (T2 — direct inspection), `SPEC.md §6` (T3)
+- `stuck_count` is missing from the dashboard status/details view.
+  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — direct inspection), `TODO.md` (T3)
+- `plan.ts` branch coverage is at 40%. Uncovered branches at lines 14, 19-21, 47-49, 51.
+  - Source: `npx tsx --test --experimental-test-coverage src/lib/plan.test.ts` (T2)
+- `requests.ts` branch coverage is at 57.38%. Uncovered branches include error paths for steer, backfill, dispatch, and stop.
+  - Source: `npx tsx --test --experimental-test-coverage src/lib/requests.test.ts` (T2)
+- `.aloop/pipeline.yml` and `.aloop/agents/` directory are missing from the project root.
+  - Source: `ls` (T2 — direct inspection), `SPEC.md §Configurable Agent Pipeline` (T3)
+- Iteration 11 proof artifacts are missing from the workspace.
+  - Source: `ls` (T2 — direct inspection)
+
+## 2026-03-15 12:45 — Gap analysis: plan.ts coverage, dashboard UX, and code duplication [T2+T3]
+
+- `plan.ts` branch coverage remains at 73.91% (goal: >=80%). Uncovered branches at lines 58, 61-64 (`cycle`, `iteration`, `allTasksMarkedDone`, `forceReviewNext`, `forceProofNext`).
+  - Source: `npx tsx --test --experimental-test-coverage src/lib/plan.test.ts` (T2)
+- Dashboard header is missing `stuck_count` and session timing aggregates (elapsed since start, total iterations, avg duration).
+  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — direct inspection)
+- `stuck_count` is not extracted from session status in `App.tsx` and not passed to `Header` or displayed in status/details.
+  - Source: `aloop/cli/dashboard/src/App.tsx` (T2 — direct inspection)
+- Copy-paste duplication confirmed in `aloop/cli/src/commands/dashboard.ts:247-264` for PID lookup from `meta.json` and `active.json`.
+  - Source: `aloop/cli/src/commands/dashboard.ts:247-264` (T2 — direct inspection)
+- `UpdateIssueRequest.payload.title` bug is confirmed fixed in code, and duplicate import in `orchestrate.test.ts` is also fixed.
+  - Source: `aloop/cli/src/lib/requests.ts` and `aloop/cli/src/commands/orchestrate.test.ts` (T2 — direct inspection)
+- `loop.sh` correctly resets `STUCK_COUNT` to 0 on successful iteration.
+  - Source: `aloop/bin/loop.sh:1893` (T2 — direct inspection)
+- Dashboard docs panel does not filter out empty documentation files, only checks for existence. Spec requires "Only tabs with non-empty content shown".
+  - Source: `aloop/cli/dashboard/src/App.tsx:595` (T2 — direct inspection)
+- Provider health tab exists in `DocsPanel`, but `TODO.md` and steering require moving it to a dedicated sidebar tab.
+  - Source: `aloop/cli/dashboard/src/App.tsx:605-607` (T2), `TODO.md` (T3)
+
+## 2026-03-15 13:00 — [review] Gate 4 completion: extract PID lookup helper [T2]
+
+- PID lookup duplication in `dashboard.ts:247-264` has been extracted into a `resolvePid` helper function.
+- `loadStateForContext` now calls `resolvePid` to handle multi-source PID resolution (context -> meta.json -> active.json) with liveness checking.
+- Verified with `npx tsx --test src/commands/dashboard.test.ts` (38/38 pass) and `npm run type-check`.
+  - Source: `aloop/cli/src/commands/dashboard.ts:230-254` (T2 — direct inspection)
