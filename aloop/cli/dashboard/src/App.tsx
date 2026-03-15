@@ -532,7 +532,7 @@ function Sidebar({
             {s.branch && <span className="truncate">{s.branch}</span>}
             {s.phase && <span className="shrink-0">·</span>}
             {s.phase && <PhaseBadge phase={s.phase} small />}
-            <span className="shrink-0">#{s.iterations}</span>
+            {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
           </div>
         </button>
       </TooltipTrigger>
