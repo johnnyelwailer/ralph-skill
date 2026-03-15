@@ -18,14 +18,17 @@
 - [x] [review] Gate 5: Fix TypeScript error in requests.ts:307 — `request.payload.title` accessed but `UpdateIssueRequest.payload` has no `title` field. Either add `title?: string` to the interface or remove the dead code branch. (priority: high)
 - [x] [review] Gate 5: Fix 6 dashboard test failures — `processGhConventionRequests` was refactored to delegate to `processAgentRequests` (writes to `queue/` instead of `responses/`), but dashboard tests at dashboard.test.ts:16-21 still check for `.aloop/responses/` files. Update tests for new response path or update test expectations. (priority: high)
 - [x] [review] Gate 3: Raise `requests.ts` branch coverage from 52.5% to >=80% — add tests for `handleUpdateIssue`, `handleDispatchChild`, `handleStopChild`, `handleQueryIssues`, `handleCreatePr`, `handleMergePr` and error paths in `handleCreateIssues`, `handleCloseIssue`, `handlePostComment`, `handleSpecBackfill`. (priority: high)
-- [ ] [review] Gate 3: Raise `plan.ts` branch coverage from 40% to >=80% — add tests for error paths: `readLoopPlan` returning null on missing file, `mutateLoopPlan` throwing on missing plan, `writeQueueOverride` edge cases (no frontmatter, empty content). (priority: high)
-- [x] [review] Gate 2: Add test coverage for missing request types in requests.test.ts — currently only tests create_issues, close_issue, post_comment, spec_backfill, steer_child. Missing: update_issue, create_pr, merge_pr, dispatch_child, stop_child, query_issues. (priority: medium)
+- [ ] [review] Gate 3: Raise `plan.ts` branch coverage from 35.71% to >=80% — add tests for error paths: `readLoopPlan` returning null on missing file, `mutateLoopPlan` throwing on missing plan, `writeQueueOverride` edge cases (no frontmatter, empty content). (priority: high)
+- [x] [review] Gate 2: Add test coverage for missing request types in requests.test.ts — currently only tests create_issues, close_issue, post_comment, spec_backfill, steer_child. Missing: update_issue, create_pr, merge_pr, dispatch_child, stop_child, query_issues. (priority: medium) [reviewed: Gate 2 pass — all 11 types covered]
 - [ ] [review] Gate 1: Add `stuck_count` visibility to Dashboard status/details (priority: medium)
 - [ ] [review] Gate 1: Add "overflow extra docs into an end-of-row menu" for DocsPanel (priority: low)
-- [ ] [review] Gate 1: Add `M/A/D/R` change type badges to Commit detail view (priority: low)
+- [x] [review] Gate 1: Add `M/A/D/R` change type badges to Commit detail view (priority: low) [reviewed: Gate 1 pass — App.tsx:840-842 renders M/A/D/R with color coding]
 - [ ] [review] Gate 2: Fix broken E2E tests in `smoke.spec.ts` (selectors, placeholders, headings) (priority: high)
 - [ ] [review] Gate 2: Extract and unit test dashboard logic (log parsing, state normalization, etc.) (priority: medium)
 - [ ] [review] Gate 4: Refactor `requests.ts` to use `ghCommandRunner` in ALL handlers (inconsistent `spawnSync` usage) (priority: low)
+- [ ] [review] Gate 5: Fix duplicate `import path` in `orchestrate.test.ts` — line 3 and line 2408 both import `path from 'node:path'`, causing `tsc --noEmit` TS2300 error. Remove the duplicate at line 2408. (priority: high)
+- [ ] [review] Gate 3: Raise `requests.ts` branch coverage from 55.93% to >=80% — uncovered branches at lines 220-229, 266, 385-386, 413-427, 453-454, 505-506. Add tests for `handleSteerChild` child session lookup failure, `handleSpecBackfill` missing section/file error paths, and `handleDispatchChild`/`handleStopChild` spawn failure paths. (priority: high)
+- [ ] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — the active.json PID lookup block (lines 248-255) is identical to lines 257-264. Extract into a helper or combine the `if`/`else if` branches. (priority: medium)
 
 ### Up Next (P1 — Orchestrator + Runtime + GH Integration)
 

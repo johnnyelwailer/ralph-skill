@@ -1,5 +1,39 @@
 # Review Log
 
+## Review — 2026-03-15 10:15 — commit 0ad23eb..8a5baa1
+
+**Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/bin/loop.tests.ps1`, `aloop/cli/src/lib/requests.ts`, `aloop/cli/src/lib/requests.test.ts`, `aloop/cli/src/commands/dashboard.ts`, `aloop/cli/src/commands/dashboard.test.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/dashboard/src/App.tsx`
+
+- Gate 5: `tsc --noEmit` fails with TS2300 — duplicate `import path from 'node:path'` at `orchestrate.test.ts:3` and `orchestrate.test.ts:2408`. Build is red.
+- Gate 3: `requests.ts` branch coverage is 55.93% (<80% threshold) — up from 52.5% but still far below gate. Uncovered branches at lines 220-229, 266, 385-386, 413-427, 453-454, 505-506.
+- Gate 3: `plan.ts` branch coverage is 35.71% (<80% threshold) — down from 40% in prior review. No new tests added this iteration.
+- Gate 4: Copy-paste duplication in `dashboard.ts:247-264` — the active.json PID fallback block is duplicated verbatim in the `if` and `else if` branches of PID resolution.
+
+**Resolved from prior review (2026-03-15 — 1117ee1..2aedc45):**
+- Gate 5 ✅: `requests.ts:307` `request.payload.title` TS error — removed dead code branch (commit 889ede1).
+- Gate 5 ✅: 6 dashboard test failures from `responses/` → `queue/` path mismatch — all tests updated (commit 97061ef).
+- Gate 5 ✅: 3 `orchestrate.test.ts` EACCES failures from hardcoded `/home/user` — tests now use `os.tmpdir()` (commit 97061ef).
+- Gate 2 ✅: Missing 6/11 request type tests — all 11 types now covered in `requests.test.ts` (commit 5541ccf).
+- Gate 1 ✅: `M/A/D/R` change type badges — now rendered in `App.tsx:840-842` with color coding.
+- Loop ✅: Exit state parity (`exited`/`stopped`) — fixed in both `loop.sh` and `loop.ps1` (commit 118de1d), with Pester source-map tests.
+- Loop ✅: `STUCK_COUNT` reset on success — fixed in both scripts (commit 118de1d).
+
+**Positive observations:**
+- Gate 2: New `requests.test.ts` tests cover all 11 request types with concrete assertions (exact args, exact payload fields). Error path tests (`create_issues failure`, `invalid JSON`, `handler failure`) verify correct archival to `failed/` and queue error content.
+- Gate 6: All 9 proof artifacts from iteration 15 exist and are consistent. Requests (15/15 pass), resume (19/19 pass), dashboard (38/38 pass), loop branch coverage (31/31 = 100%).
+- Gate 1: Dashboard PID resolution now falls back through meta.json → active.json with liveness correction — addresses stale PID issue from prior sessions.
+- Gate 1: Dashboard sidebar grouping (active vs recent sessions) and system theme support (dark mode classes) are well-implemented.
+- Gate 4: `requests.ts` handlers now accept injectable `spawnSync` via options, improving testability for `handleUpdateIssue`, `handleDispatchChild`, `handleStopChild`, `handleQueryIssues`, `handleSpecBackfill`.
+
+**Still open from prior reviews (not addressed this iteration):**
+- Gate 1: `stuck_count` not visible in Dashboard status/details HoverCard.
+- Gate 1: Docs overflow ellipsis menu not implemented (uses `flex-wrap` instead).
+- Gate 2: `smoke.spec.ts` E2E tests still broken.
+- Gate 2: Dashboard logic (log parsing, state normalization) has no unit tests.
+
+---
+
 ## Review — 2026-03-15 — commit 1117ee1..2aedc45
 
 **Verdict: FAIL** (10 findings → written to TODO.md as [review] tasks)
