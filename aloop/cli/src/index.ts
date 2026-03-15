@@ -13,6 +13,7 @@ import { setupCommand } from './commands/setup.js';
 import { updateCommand } from './commands/update.js';
 import { devcontainerCommand, verifyDevcontainerCommand } from './commands/devcontainer.js';
 import { orchestrateCommand } from './commands/orchestrate.js';
+import { steerCommand } from './commands/steer.js';
 
 const program = new Command();
 
@@ -156,6 +157,16 @@ program
   .option('--project-root <path>', 'Project root override')
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(orchestrateCommand);
+
+program
+  .command('steer <instruction>')
+  .description('Send a steering instruction to an active session')
+  .option('--session <id>', 'Target session ID (auto-detected if only one active)')
+  .option('--affects-completed-work <value>', 'Whether instruction affects completed work: yes, no, or unknown', 'unknown')
+  .option('--overwrite', 'Overwrite an existing queued steering instruction')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(steerCommand);
 
 program.addCommand(ghCommand);
 

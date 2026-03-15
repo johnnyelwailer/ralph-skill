@@ -27,7 +27,7 @@ Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle 
 Each bug listed once with iteration history for context.
 
 #### P1 — CLI Missing Features
-- [ ] [qa/P1] `aloop steer` CLI command missing — README and spec claim it exists, CLI returns `unknown command 'steer'`. (iters 26-52, 7 consecutive fails) (priority: high)
+- [x] [qa/P1] `aloop steer` CLI command missing — README and spec claim it exists, CLI returns `unknown command 'steer'`. (iters 26-52, 7 consecutive fails) (priority: high)
 - [ ] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — spec requires 9-step pipeline but scaffold only generates 5 prompts (no qa). (iter 52) (priority: high)
 
 #### P1 — Input Validation
