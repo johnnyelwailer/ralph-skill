@@ -5,7 +5,7 @@
 Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboard UX/test polish, (4) P2 enhancements.
 
 ### In Progress
-- [ ] [review] Gate 4: Dead import — `App.tsx:7` imports `X` from `lucide-react` but it is never used in JSX. Remove the unused import. (priority: high)
+- [x] [review] Gate 4: Dead import — `App.tsx:7` imports `X` from `lucide-react` but it is never used in JSX. Remove the unused import. (priority: high)
 - [ ] [review] Gate 4: Queue file leak — `processQueuedPrompts` (`orchestrate.ts:3936-3939`) writes empty string to consumed queue files instead of deleting them. On the next scan pass, `readdir` re-lists the empty `.md` file, it gets "re-processed" infinitely. Add `unlink` to `ScanLoopDeps` and delete consumed files, or filter out empty files before processing. (priority: high)
 - [ ] [review] Gate 4: Committed test artifact — `aloop/cli/dashboard/test-results/qa-layout-dashboard-layout-verification/error-context.md` (60KB) is a Playwright error dump committed to the repo. Remove it and add `test-results/` to `.gitignore`. (priority: high)
 - [ ] [review] Gate 9: README.md still says "8 gates" (lines 73, 184) and the quality gates table only lists 8 entries. Gate 9 (Documentation Freshness) was added in `fd14392` but README was not updated. Update all references to "9 gates" and add Gate 9 to the table. (priority: high)
@@ -65,6 +65,20 @@ Priority: (1) loop/orchestrator core parity, (2) setup+GH hardening, (3) dashboa
 - [ ] [qa/P1] Provider health backoff violates spec — codex has `consecutive_failures: 1` but `cooldown_until: 2026-03-17T00:00:00Z` (~30h from now). Spec says 1 failure = "none (could be flaky)", cooldown only triggers at 2+ failures, and hard cap is 60 min. Tested at iter 26. (priority: high)
 - [ ] [qa/P1] Dashboard health tab missing codex — Health tab shows only 4 providers (claude, copilot, gemini, opencode). Codex in cooldown state is omitted. Spec says all 5 providers should be displayed with their current status. Tested at iter 26. (priority: high)
 - [ ] [qa/P2] `aloop orchestrate --spec /nonexistent` leaks stack trace — missing spec file throws raw Error with full stack trace instead of user-friendly error message. Tested at iter 26. (priority: medium)
+
+### Loop Decoupling — Event-Driven Queue Dispatch
+Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle + queue. The runtime handles all intelligence (event detection → catalog scan → queue injection).
+
+- [ ] [loop/P1] Remove `FORCE_PLAN_NEXT`, `FORCE_PROOF_NEXT`, `FORCE_REVIEW_NEXT` flags — replace with direct queue writes. When a condition triggers (e.g., all tasks done), write the appropriate prompt file to `$SESSION_DIR/queue/` instead of setting a boolean. (~lines 378-389, 1324-1327) (priority: high)
+- [ ] [loop/P1] Remove hardcoded build-completion detection from loop — `register_iteration_success()` checks `iter_mode == "build"` and forces proof+review. Move this to the runtime monitor: detect `all_tasks_done` event → queue proof prompt. (~lines 1977-1984, 512-522) (priority: high)
+- [ ] [loop/P1] Remove hardcoded steering detection from loop — loop checks for `STEERING.md` and overrides mode to `steer`, forces plan next. Move to runtime: detect file → queue steer prompt → queue plan prompt. (~lines 1913-1925) (priority: high)
+- [ ] [loop/P1] Remove `check_phase_prerequisite()` — hardcodes "can't review without builds" and "can't build without tasks" logic for specific agent names. Prerequisites should be the runtime's responsibility before queueing. (~lines 334-372) (priority: high)
+- [ ] [loop/P2] Make proof artifact dir creation generic — `if iter_mode == "proof"` creates `artifacts/iter-N/`. Replace with frontmatter field (e.g., `artifacts: true`) that any agent can use. (~lines 2013-2019) (priority: medium)
+- [ ] [loop/P2] Make review verdict injection generic — `if iter_mode == "review"` injects proof manifest and verdict template. Replace with frontmatter field (e.g., `verdict_required: true`). (~lines 2022-2033) (priority: medium)
+- [ ] [loop/P2] Make post-iteration hooks generic — steer archiving, build summary, review baseline update are all hardcoded by agent name. Move cleanup responsibility to agent prompts themselves or drive via frontmatter. (~lines 2046-2095) (priority: medium)
+- [ ] [loop/P2] Make color output data-driven — replace hardcoded `case "$iter_mode" in plan|build|proof|review|steer` with frontmatter `color` field, defaulting to white. (~lines 1966-1973) (priority: low)
+- [ ] [loop/P2] Add `trigger` frontmatter field to agent prompt templates — agents declare which events they respond to (e.g., `trigger: all_tasks_done`). Runtime scans catalog for matching triggers when events fire. (priority: medium)
+- [ ] [runtime/P2] Implement event→catalog→queue dispatch in runtime monitor — when runtime detects a condition, emit an event key, scan `aloop/templates/` for prompts with matching `trigger` frontmatter, copy to `$SESSION_DIR/queue/`. (priority: medium)
 
 ### Up Next — P0/P1 (Blocking Core)
 - [ ] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating consistently and add same-error persistence checks before re-iteration caps.
