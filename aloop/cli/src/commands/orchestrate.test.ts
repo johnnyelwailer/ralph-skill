@@ -2405,8 +2405,6 @@ describe('advanceWave', () => {
 
 // --- Budget & final report tests ---
 
-import path from 'node:path';
-
 function createMockBudgetDeps(files: Record<string, string> = {}): BudgetDeps {
   // Normalize all keys to OS path format for cross-platform compatibility
   const normalized: Record<string, string> = {};
