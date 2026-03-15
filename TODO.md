@@ -2,22 +2,20 @@
 
 ## Current Phase: Final Review Gates + Dashboard Polish + Pipeline Config
 
-### In Progress (P0 — Blockers: TS Error + Coverage Gates)
+### In Progress (P0 — Blockers: Coverage Gates + Spec Gaps)
 
-- [x] [review] Gate 5: Fix duplicate `import path` in `orchestrate.test.ts` — line 3 and line 2408 both import `path from 'node:path'`, causing `tsc --noEmit` TS2300 error. Remove the duplicate at line 2408. (priority: critical)
-- [x] [review] Gate 3: Raise `plan.ts` branch coverage from 40% to >=80% — add tests for error paths: `readLoopPlan` returning null on missing file, `mutateLoopPlan` throwing on missing plan, `writeQueueOverride` edge cases (no frontmatter, empty content). Uncovered branches at lines 14, 19-21, 47-49, 51. (priority: high)
-- [x] [review] Gate 3: Raise `requests.ts` branch coverage from 57.38% to >=80% — add tests for `handleSteerChild` child session lookup failure, `handleSpecBackfill` missing section/file error paths, and `handleDispatchChild`/`handleStopChild` spawn failure paths. (priority: high)
+- [ ] [review] Gate 3: Raise `plan.ts` branch coverage from 73.91% to >=80% — add tests for options: `cycle`, `allTasksMarkedDone`, `forceReviewNext`, `forceProofNext`, `forcePlanNext`. Uncovered branches at lines 58, 61-64. (priority: critical)
+- [ ] [review] Gate 1: Dashboard is missing spec-required `stuck_count` visibility in session status/details. (priority: high)
+- [ ] [review] Gate 1: Dashboard is missing session elapsed context (avg duration) in header. (priority: high)
+- [ ] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — extract PID lookup into a helper. (priority: high)
 
 ### Up Next (P1 — Dashboard UX + Test Infrastructure)
 
 - [ ] [dashboard][high] Move per-provider health to dedicated left-pane sidebar tab — currently inline in header grid (App.tsx:385-389). Spec §6 requires sidebar tab. (priority: high)
-- [ ] [dashboard][medium] Add session elapsed context (total iterations, avg duration) in header. Spec §6. (priority: medium)
 - [ ] [dashboard][medium] Move sidebar expand/collapse toggle button to be vertically centered with header title row. Currently at top. Spec §6. (priority: medium)
 - [ ] [dashboard][low] Add overflow ellipsis menu for docs panel when doc set is large. Spec §6. (priority: low)
-- [ ] [dashboard][medium] Add `stuck_count` visibility to dashboard status/details. (priority: medium)
 - [ ] [review] Gate 2: Fix broken E2E tests in `smoke.spec.ts` (selectors, placeholders, headings). (priority: high)
 - [ ] [review] Gate 2: Extract and unit test dashboard logic (log parsing, state normalization, etc.). (priority: medium)
-- [ ] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — extract PID lookup into a helper. (priority: medium)
 - [ ] [loop][medium] Update `loop_branch_coverage.tests.sh` to register and test `queue.override_success/failure/provider_fallback`, `requests.wait_drain/timeout`, and `invoke.opencode` paths. (priority: medium)
 
 ### Up Next (P2 — Pipeline Config + Orchestrator Prompt Templates + Provenance)
@@ -38,6 +36,9 @@
 
 ### Completed
 
+- [x] [review] Gate 5: Fix duplicate `import path` in `orchestrate.test.ts` — verified (commit 0666dda).
+- [x] [review] Gate 3: Raise `requests.ts` branch coverage from 57.38% to >=80% — verified at 84.09% (commit 98ce146).
+- [x] [review] Gate 1: Add `M/A/D/R` change type badges to commit detail view — verified in `App.tsx` (commit d21e747).
 - [x] [review] Gate 3: Verify `gh.ts` branch coverage is >=80% — verified at 81.59%.
 - [x] [loop][critical] Add `queue/` folder check before cycle in both `loop.sh` and `loop.ps1`.
 - [x] [loop][critical] Add requests/ wait loop in both `loop.sh` and `loop.ps1`.

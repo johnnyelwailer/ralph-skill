@@ -155,3 +155,25 @@ Positive observations:
 - Gate 3 observation: Coverage evidence from `c8` shows touched production files above threshold (`lib/session.mjs` branches 93.33%, `src/commands/orchestrate.ts` branches 88.66%).
 - Gate 5 observation: `cd aloop/cli && npm test && npm run type-check && npm run build` all pass.
 - Gate 6 observation: previously missing proof artifacts now exist (`proof-run.log`, `monitor-cycle-proof.json`, `triage-action-policy-proof.json`) and are internally consistent with the triage/session work claimed in this range.
+
+---
+
+## Review — 2026-03-15 11:30 — commit 9935be6..98ce146
+
+**Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/lib/plan.ts`, `aloop/cli/src/lib/requests.ts`, `aloop/cli/dashboard/src/App.tsx`, `aloop/cli/src/commands/dashboard.ts`, `aloop/cli/src/commands/orchestrate.test.ts`
+
+- Gate 3: `plan.ts` branch coverage is 73.91% (<80% threshold) — Uncovered branches for mutateLoopPlan options (cycle, allTasksMarkedDone, forceReviewNext, forceProofNext, forcePlanNext) at lines 58, 61-64.
+- Gate 1: Dashboard is missing spec-required `stuck_count` visibility and average duration context.
+- Gate 4: `dashboard.ts` copy-paste duplication (lines 247-266) remains unresolved.
+- Gate 6: No new proof artifacts provided for the latest dashboard and request coverage changes.
+
+**Resolved from prior review (2026-03-15 10:15 — 0ad23eb..8a5baa1):**
+- Gate 5 ✅: Duplicate `import path` in `orchestrate.test.ts` removed (commit 0666dda). Build is green.
+- Gate 3 ✅: `requests.ts` branch coverage is now 84.09% (>=80% threshold) — thorough error-path coverage added in commit 98ce146.
+- Gate 1 ✅: `M/A/D/R` change type badges implemented in Dashboard commit detail view (commit d21e747).
+- Gate 1 ✅: Dashboard docs overflow ellipsis menu implemented (commit d21e747).
+
+**Positive observations:**
+- Gate 2: `requests.test.ts` has excellent depth, covering all 11 request types and numerous failure/edge cases (archive collisions, spawn failures, history lookup fallbacks).
+- Gate 4: Dashboard UI rewrite is highly polished with tree sidebar, Lucide icons, and a rich activity log.
