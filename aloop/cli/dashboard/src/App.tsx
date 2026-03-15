@@ -719,7 +719,7 @@ function Header({
 
 // ── Docs Panel ──
 
-function DocsPanel({ docs, providerHealth }: { docs: Record<string, string>; providerHealth: ProviderHealth[] }) {
+function DocsPanel({ docs, providerHealth, activityCollapsed }: { docs: Record<string, string>; providerHealth: ProviderHealth[]; activityCollapsed?: boolean }) {
   const docOrder = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
   const tabLabels: Record<string, string> = { 'TODO.md': 'TODO', 'SPEC.md': 'SPEC', 'RESEARCH.md': 'RESEARCH', 'REVIEW_LOG.md': 'REVIEW LOG', 'STEERING.md': 'STEERING' };
 
@@ -764,7 +764,7 @@ function DocsPanel({ docs, providerHealth }: { docs: Record<string, string>; pro
       </div>
       {allDocs.map((n) => (
         <TabsContent key={n} value={n} className="flex-1 min-h-0 mt-0">
-          <DocContent content={docs[n] ?? ''} name={n} />
+          <DocContent content={docs[n] ?? ''} name={n} wide={activityCollapsed} />
         </TabsContent>
       ))}
       <TabsContent value="_health" className="flex-1 min-h-0 mt-0">
@@ -778,7 +778,7 @@ function slugify(text: string): string {
   return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim();
 }
 
-function DocContent({ content, name }: { content: string; name: string }) {
+function DocContent({ content, name, wide }: { content: string; name: string; wide?: boolean }) {
   const isSpec = /spec/i.test(name);
   const { rendered, toc } = useMemo(() => {
     if (!content) return { rendered: '', toc: [] as Array<{ level: number; text: string; id: string }> };
@@ -795,22 +795,45 @@ function DocContent({ content, name }: { content: string; name: string }) {
   }, [content]);
   if (!content) return <p className="text-xs text-muted-foreground p-3">No content for {name}.</p>;
   const minLevel = toc.length > 0 ? Math.min(...toc.map((h) => h.level)) : 1;
+  const hasToc = isSpec && toc.length > 0;
+  const tocNav = hasToc ? (
+    <nav className="space-y-0.5 text-[11px]">
+      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1 block">Table of Contents</span>
+      {toc.map((h) => (
+        <a key={h.id} href={`#${h.id}`} className="block text-muted-foreground hover:text-foreground transition-colors truncate" style={{ paddingLeft: `${(h.level - minLevel) * 12}px` }}>
+          {h.text}
+        </a>
+      ))}
+    </nav>
+  ) : null;
+
+  // Wide mode: TOC as sticky sidebar, doc as main content
+  if (wide && hasToc) {
+    return (
+      <div className="grid h-full" style={{ gridTemplateColumns: 'minmax(160px, 220px) 1fr' }}>
+        <div className="border-r border-border overflow-y-auto p-3 pr-2">
+          {tocNav}
+        </div>
+        <ScrollArea className="h-full">
+          <div className="prose-dashboard p-3 pr-4" dangerouslySetInnerHTML={{ __html: rendered }} />
+        </ScrollArea>
+      </div>
+    );
+  }
+
+  // Normal mode: collapsible TOC above doc
   return (
     <ScrollArea className="h-full">
-      {isSpec && toc.length > 0 && (
+      {hasToc && (
         <div className="p-3 pb-0">
           <Collapsible defaultOpen={false}>
             <CollapsibleTrigger className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors font-medium uppercase tracking-wider">
               <ChevronRight className="h-3 w-3 collapsible-chevron" /> Table of Contents
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <nav className="mt-1 mb-2 border-l-2 border-border pl-2 space-y-0.5 text-[11px]">
-                {toc.map((h) => (
-                  <a key={h.id} href={`#${h.id}`} className="block text-muted-foreground hover:text-foreground transition-colors truncate" style={{ paddingLeft: `${(h.level - minLevel) * 12}px` }}>
-                    {h.text}
-                  </a>
-                ))}
-              </nav>
+              <div className="mt-1 mb-2 border-l-2 border-border pl-2">
+                {tocNav}
+              </div>
             </CollapsibleContent>
           </Collapsible>
         </div>
@@ -1318,6 +1341,7 @@ export function App() {
   const [stopSubmitting, setStopSubmitting] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('session'));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const prevPhaseRef = useRef<string>('');
@@ -1453,23 +1477,45 @@ export function App() {
           <div className="flex flex-col flex-1 min-w-0">
             <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} />
             <main className="flex-1 min-h-0 p-3">
-              <div className="grid grid-cols-2 gap-3 h-full" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden">
+              <div className="flex gap-3 h-full">
+                <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden flex-1">
                   <CardHeader className="py-2 px-3 shrink-0">
                     <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> Documents</CardTitle>
                   </CardHeader>
                   <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-                    <DocsPanel docs={state?.docs ?? {}} providerHealth={providerHealth} />
+                    <DocsPanel docs={state?.docs ?? {}} providerHealth={providerHealth} activityCollapsed={activityCollapsed} />
                   </CardContent>
                 </Card>
-                <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden">
-                  <CardHeader className="py-2 px-3 shrink-0">
-                    <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-                    <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} currentIteration={isRunning ? currentIterationNum : null} currentPhase={currentPhase} currentProvider={providerName} isRunning={isRunning} iterationStartedAt={iterationStartedAt} />
-                  </CardContent>
-                </Card>
+                {activityCollapsed ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" className="shrink-0 flex flex-col items-center gap-1 px-1 py-2 text-muted-foreground hover:text-foreground transition-colors" onClick={() => setActivityCollapsed(false)}>
+                        <PanelLeftOpen className="h-4 w-4" />
+                        <span className="text-[9px] uppercase tracking-wider font-medium [writing-mode:vertical-lr]">Activity</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left"><p>Show activity panel</p></TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden flex-1">
+                    <CardHeader className="py-2 px-3 shrink-0">
+                      <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                        <span className="flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground/50 hover:text-foreground transition-colors" onClick={() => setActivityCollapsed(true)}>
+                              <PanelLeftClose className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent><p>Collapse activity panel</p></TooltipContent>
+                        </Tooltip>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
+                      <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} currentIteration={isRunning ? currentIterationNum : null} currentPhase={currentPhase} currentProvider={providerName} isRunning={isRunning} iterationStartedAt={iterationStartedAt} />
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             </main>
             <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} />
