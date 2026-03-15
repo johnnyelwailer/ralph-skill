@@ -317,6 +317,10 @@ function Persist-LoopPlanState {
     param([int]$Iteration = 0)
     $loopPlanFile = Join-Path $SessionDir "loop-plan.json"
     if (-not (Test-Path $loopPlanFile)) { return }
+    
+    # Update script:allTasksMarkedDone before persisting
+    $script:allTasksMarkedDone = Check-AllTasksComplete
+
     try {
         $plan = Get-Content -Path $loopPlanFile -Raw | ConvertFrom-Json
         $plan.cyclePosition = [int]$script:cyclePosition
@@ -805,11 +809,6 @@ function Register-IterationSuccess {
         $script:hasBuildsSinceLastPlan = $false
     } elseif ($IterationMode -eq 'build') {
         $script:hasBuildsSinceLastPlan = $true
-    } elseif ($IterationMode -eq 'proof' -and $script:allTasksMarkedDone) {
-        $timestamp = (Get-Date -UFormat %s) -replace '\..*'
-        $queuePath = Join-Path $SessionDir "queue/$($timestamp)-PROMPT_review.md"
-        if (-not (Test-Path (Join-Path $SessionDir "queue"))) { New-Item -ItemType Directory -Path (Join-Path $SessionDir "queue") -Force | Out-Null }
-        Copy-Item (Join-Path $PromptsDir "PROMPT_review.md") $queuePath -Force
     }
 
     $script:phaseRetryState.phase = ''
@@ -2001,26 +2000,10 @@ try {
         }
         Write-Host "`n--- Iteration $iteration / $MaxIterations [$timestamp] [$iterationProvider] [$iterationMode] ---" -ForegroundColor $modeColor
 
-        # Build mode: check completion and stuck detection
+        # Build mode: stuck detection and task display
         if ($iterationMode -eq 'build') {
             if (Check-AllTasksComplete) {
-                if ($Mode -eq 'plan-build-review') {
-                    Write-Host "`nALL TASKS MARKED DONE - forcing final proof + review" -ForegroundColor Cyan
-                    $script:allTasksMarkedDone = $true
-                    $timestamp = (Get-Date -UFormat %s) -replace '\..*'
-                    $queuePath = Join-Path $SessionDir "queue/$($timestamp)-PROMPT_proof.md"
-                    if (-not (Test-Path (Join-Path $SessionDir "queue"))) { New-Item -ItemType Directory -Path (Join-Path $SessionDir "queue") -Force | Out-Null }
-                    Copy-Item (Join-Path $PromptsDir "PROMPT_proof.md") $queuePath -Force
-                    Write-LogEntry -Event "tasks_marked_complete" -Data @{ iteration = $iteration }
-                    continue
-                } else {
-                    Write-Host "`nALL TASKS COMPLETE" -ForegroundColor Green
-                    Stop-DashboardProcess
-                    Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'exited'
-                    Write-LogEntry -Event "all_tasks_complete" -Data @{ iteration = $iteration }
-                    Generate-Report -ExitReason "All tasks completed successfully." -Iteration $iteration
-                    exit 0
-                }
+                Write-LogEntry -Event "tasks_marked_complete" -Data @{ iteration = $iteration }
             }
 
             $currentTask = Get-CurrentTask
@@ -2115,29 +2098,7 @@ try {
                     Update-ProofBaselines -ProofIteration $script:lastProofIteration
                 }
 
-                if ($script:allTasksMarkedDone) {
-                    # Final review gate: review was forced by allTasksMarkedDone
-                    if (Check-AllTasksComplete) {
-                        Write-Host "`nFINAL REVIEW APPROVED" -ForegroundColor Green
-                        Stop-DashboardProcess
-                        Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'exited'
-                        Write-LogEntry -Event "final_review_approved" -Data @{ iteration = $iteration }
-                        Generate-Report -ExitReason "All tasks completed and approved by final review." -Iteration $iteration
-                        exit 0
-                    } else {
-                        Write-Host "`nFINAL REVIEW REJECTED - reopened tasks, continuing loop" -ForegroundColor Yellow
-                        $script:allTasksMarkedDone = $false
-                        $timestamp = (Get-Date -UFormat %s) -replace '\..*'
-                        $queuePath = Join-Path $SessionDir "queue/$($timestamp)-PROMPT_plan.md"
-                        if (-not (Test-Path (Join-Path $SessionDir "queue"))) { New-Item -ItemType Directory -Path (Join-Path $SessionDir "queue") -Force | Out-Null }
-                        Copy-Item (Join-Path $PromptsDir "PROMPT_plan.md") $queuePath -Force
-                        $script:cyclePosition = 0
-                        Write-LogEntry -Event "final_review_rejected" -Data @{ iteration = $iteration }
-                        Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
-                    }
-                } else {
-                    Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
-                }
+                Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
             } else {
                 Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
             }

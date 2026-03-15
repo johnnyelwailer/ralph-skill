@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { processAgentRequests } from '../lib/requests.js';
 import { readLoopPlan, mutateLoopPlan, writeQueueOverride } from '../lib/plan.js';
+import { monitorSessionState } from '../lib/monitor.js';
 
 interface DashboardOptions {
   port: string;
@@ -612,9 +613,18 @@ export async function startDashboardServer(
       return;
     }
     requestProcessingActive = true;
-    void processGhConventionRequests(workdir, sessionId, logPath, ghCommandRunner)
+    
+    // Derived promptsDir from sessionDir for monitorSessionState
+    const promptsDir = path.join(sessionDir, 'prompts');
+
+    Promise.all([
+      processGhConventionRequests(workdir, sessionId, logPath, ghCommandRunner),
+      monitorSessionState({ sessionDir, workdir, promptsDir }).catch(error => {
+        console.warn(`dashboard: session monitor failed: ${(error as Error).message}`);
+      })
+    ])
       .catch((error) => {
-        console.warn(`dashboard: failed to process GH convention requests: ${(error as Error).message}`);
+        console.warn(`dashboard: failed to process GH convention requests or monitor state: ${(error as Error).message}`);
       })
       .finally(() => {
         requestProcessingActive = false;

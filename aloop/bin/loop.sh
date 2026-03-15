@@ -451,6 +451,11 @@ persist_loop_plan_state() {
     if [ ! -f "$LOOP_PLAN_FILE" ]; then
         return
     fi
+    if check_all_tasks_complete; then
+        ALL_TASKS_MARKED_DONE=true
+    else
+        ALL_TASKS_MARKED_DONE=false
+    fi
     python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" "$ITERATION" "$ALL_TASKS_MARKED_DONE" <<'PY'
 import json, os, sys, tempfile
 path, cycle_pos, iteration, all_done = sys.argv[1:]
@@ -499,9 +504,6 @@ register_iteration_success() {
         HAS_BUILDS_SINCE_LAST_PLAN=false
     elif [ "$iteration_mode" = "build" ]; then
         HAS_BUILDS_SINCE_LAST_PLAN=true
-    elif [ "$iteration_mode" = "proof" ] && [ "$ALL_TASKS_MARKED_DONE" = true ]; then
-        mkdir -p "$SESSION_DIR/queue"
-        cp "$PROMPTS_DIR/PROMPT_review.md" "$SESSION_DIR/queue/$(date +%s)-PROMPT_review.md"
     fi
 
     PHASE_RETRY_PHASE=""
@@ -1965,26 +1967,10 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     esac
     echo -e "${color}--- Iteration $ITERATION / $MAX_ITERATIONS [$(date '+%Y-%m-%d %H:%M:%S')] [$iter_provider] [$iter_mode] ---\033[0m"
 
-    # Build mode: check completion and stuck detection
+    # Build mode: stuck detection and task display
     if [ "$iter_mode" = "build" ]; then
         if check_all_tasks_complete; then
-            if [ "$MODE" = "plan-build-review" ]; then
-                echo ""
-                echo "ALL TASKS MARKED DONE - forcing final proof + review"
-                ALL_TASKS_MARKED_DONE=true
-                mkdir -p "$SESSION_DIR/queue"
-                cp "$PROMPTS_DIR/PROMPT_proof.md" "$SESSION_DIR/queue/$(date +%s)-PROMPT_proof.md"
-                write_log_entry "tasks_marked_complete" "iteration" "$ITERATION"
-                continue
-            else
-                echo ""
-                echo "ALL TASKS COMPLETE"
-                stop_dashboard
-                write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "exited"
-                write_log_entry "all_tasks_complete" "iteration" "$ITERATION"
-                generate_report "All tasks completed successfully."
-                exit 0
-            fi
+            write_log_entry "tasks_marked_complete" "iteration" "$ITERATION"
         fi
 
         current_task=$(get_current_task)
@@ -2065,31 +2051,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 update_proof_baselines "$LAST_PROOF_ITERATION"
             fi
 
-            if [ "$ALL_TASKS_MARKED_DONE" = true ]; then
-                # Final review gate: review was forced by all completed tasks in build.
-                if check_all_tasks_complete; then
-                    echo ""
-                    echo "FINAL REVIEW APPROVED"
-                    stop_dashboard
-                    write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "exited"
-                    write_log_entry "final_review_approved" "iteration" "$ITERATION"
-                    generate_report "All tasks completed and approved by final review."
-                    exit 0
-                else
-                    echo ""
-                    echo "FINAL REVIEW REJECTED - reopened tasks, continuing loop"
-                    ALL_TASKS_MARKED_DONE=false
-                    mkdir -p "$SESSION_DIR/queue"
-                    cp "$PROMPTS_DIR/PROMPT_plan.md" "$SESSION_DIR/queue/$(date +%s)-PROMPT_plan.md"
-                    CYCLE_POSITION=0
-                    write_log_entry "final_review_rejected" "iteration" "$ITERATION"
-                    echo ""
-                    echo "[Iteration $ITERATION complete - $iter_mode]"
-                fi
-            else
-                echo ""
-                echo "[Iteration $ITERATION complete - $iter_mode]"
-            fi
+            echo ""
+            echo "[Iteration $ITERATION complete - $iter_mode]"
         else
             echo ""
             echo "[Iteration $ITERATION complete - $iter_mode]"

@@ -2,6 +2,12 @@
 
 | Feature | Last Tested | Commit | Result | Notes |
 |---------|-------------|--------|--------|-------|
+| `aloop scaffold` (happy path) | 2026-03-15 | 1b998e4 | PASS | Includes `PROMPT_qa.md` now. |
+| `aloop steer` CLI | 2026-03-15 | 1b998e4 | PASS | Correctly queues steering instruction with template prepended. |
+| `aloop status` | 2026-03-15 | 1b998e4 | PASS | Shows active sessions, text and JSON outputs work correctly. |
+| Provider health backoff | 2026-03-15 | 1b998e4 | PASS | Correctly transitions to cooldown after 2 failures. Previous FAIL likely false positive. |
+| `aloop orchestrate --spec` (nonexistent) | 2026-03-15 | 1b998e4 | FAIL | Still initializes session and exits 0 instead of failing with clean error. |
+| `aloop setup --non-interactive` (fresh HOME) | 2026-03-15 | 1b998e4 | FAIL | Still throws `Template not found` with raw stack trace when templates missing. |
 | `aloop steer` CLI | 2026-03-15 | 85719f5 | PASS | Subcommand now exists in CLI registry and `--help` displays correctly. |
 | `aloop orchestrate --spec` (nonexistent) | 2026-03-15 | 85719f5 | FAIL | Still initializes session and exits 0 instead of failing with clean error. |
 | `aloop scaffold` (missing PROMPT_qa.md) | 2026-03-15 | 85719f5 | FAIL | Still generates only 5 prompts, missing PROMPT_qa.md. |

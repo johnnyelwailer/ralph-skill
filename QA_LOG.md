@@ -954,7 +954,7 @@ node:internal/modules/run_main:123
 
 page.goto: Timeout 30000ms exceeded.
 Call log:
-[2m  - navigating to "http://localhost:4040/", waiting until "networkidle"[22m
+  - navigating to "http://localhost:4040/", waiting until "networkidle"
 
     at /tmp/qa-iter51-1773600761/layout-check.mjs:8:12 {
   name: 'TimeoutError'
@@ -1076,7 +1076,7 @@ Orchestrator session initialized.
   Plan only:    true
 [exit_code] 0
 \n$ timeout 8s node /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/dist/index.js status --watch
-[2J[Haloop status  (refreshing every 2s — 7:53:17 PM)
+aloop status  (refreshing every 2s — 7:53:17 PM)
 
 Active Sessions:
   ralph-skill-20260314-173930  pid=1682112  running  iter 35, qa  (25h ago)
@@ -1088,7 +1088,7 @@ Provider Health:
   copilot    healthy      (last success: 26m ago)
   gemini     healthy      (last success: 2m ago)
   opencode   healthy      (last success: 16m ago)
-[2J[Haloop status  (refreshing every 2s — 7:53:19 PM)
+aloop status  (refreshing every 2s — 7:53:19 PM)
 
 Active Sessions:
   ralph-skill-20260314-173930  pid=1682112  running  iter 35, qa  (25h ago)
@@ -1100,7 +1100,7 @@ Provider Health:
   copilot    healthy      (last success: 26m ago)
   gemini     healthy      (last success: 2m ago)
   opencode   healthy      (last success: 16m ago)
-[2J[Haloop status  (refreshing every 2s — 7:53:21 PM)
+aloop status  (refreshing every 2s — 7:53:21 PM)
 
 Active Sessions:
   ralph-skill-20260314-173930  pid=1682112  running  iter 35, qa  (25h ago)
@@ -1112,7 +1112,7 @@ Provider Health:
   copilot    healthy      (last success: 26m ago)
   gemini     healthy      (last success: 2m ago)
   opencode   healthy      (last success: 16m ago)
-[2J[Haloop status  (refreshing every 2s — 7:53:23 PM)
+aloop status  (refreshing every 2s — 7:53:23 PM)
 
 Active Sessions:
   ralph-skill-20260314-173930  pid=1682112  running  iter 35, qa  (25h ago)
@@ -1354,4 +1354,58 @@ Error: Invalid autonomy level: foo (must be cautious, balanced, or autonomous)
     at assertAutonomyLevel (...)
 [exit_code] 1
 FAIL: Leaks raw stack trace.
+```
+
+---
+
+## QA Session — 2026-03-15 (iteration 54)
+
+### Test Environment
+- Temp dir: /tmp/aloop-qa
+- Home dir: /tmp/aloop-home
+- Features tested: 6
+- Provider: Dummy mock (exit 0/1)
+
+### Results
+- PASS: aloop scaffold (PROMPT_qa.md present)
+- PASS: aloop steer (template prepended)
+- PASS: aloop status (text/JSON)
+- PASS: Provider health backoff (cooldown on 2 fails)
+- FAIL: aloop orchestrate --spec NONEXISTENT.md (exits 0)
+- FAIL: aloop setup --non-interactive (fresh HOME stack trace)
+
+### Bugs Re-verified
+- [qa/P1] aloop orchestrate --spec NONEXISTENT.md exits 0
+- [qa/P1] aloop setup --non-interactive leaks stack trace
+
+### Command Transcript
+```bash
+# Feature 1: scaffold
+ls /tmp/aloop-home/.aloop/projects/ba201c54/prompts/
+# Output: PROMPT_build.md PROMPT_proof.md PROMPT_review.md PROMPT_plan.md PROMPT_qa.md PROMPT_steer.md
+
+# Feature 2: steer
+aloop steer "Add a goodbye function" --session aloop-qa-20260315-215416
+# Output: Steering instruction queued for session aloop-qa-20260315-215416.
+cat /tmp/aloop-home/.aloop/sessions/aloop-qa-20260315-215416/queue/*-steering.md
+# Output: (Shows PROMPT_steer.md content followed by instruction)
+
+# Feature 3: status
+aloop status
+# Output: (Lists 3 active sessions)
+aloop status --output json
+# Output: (JSON with 3 sessions and health info)
+
+# Feature 4: orchestrate failure path
+aloop orchestrate --spec /tmp/NONEXISTENT.md
+# Output: Orchestrator session initialized. (Exit Code: 0) -> FAIL
+
+# Feature 5: setup fresh HOME
+aloop setup --home-dir /tmp/aloop-fresh-home --non-interactive
+# Output: Error: Template not found: /tmp/aloop-fresh-home/.aloop/templates/PROMPT_plan.md (with stack trace) -> FAIL
+
+# Feature 6: health backoff
+# Mocked 2 failures
+cat ~/.aloop/health/claude.json
+# Output: {"status":"cooldown","consecutive_failures":2,"cooldown_until":"2026-03-15T21:58:27Z"} -> PASS
 ```
