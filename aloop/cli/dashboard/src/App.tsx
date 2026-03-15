@@ -5,7 +5,7 @@ import {
   Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock,
   GitBranch, GitCommit, Image, FileText, MoreHorizontal, PanelLeftClose,
   PanelLeftOpen, Play, Search, Send, Square, Terminal, Timer, XCircle, Zap, Loader2,
-  Heart, AlertTriangle, Pause,
+  Heart, AlertTriangle, Pause, ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -720,7 +720,7 @@ function Header({
 
 // ── Docs Panel ──
 
-function DocsPanel({ docs, providerHealth, activityCollapsed }: { docs: Record<string, string>; providerHealth: ProviderHealth[]; activityCollapsed?: boolean }) {
+function DocsPanel({ docs, providerHealth, activityCollapsed, workdir }: { docs: Record<string, string>; providerHealth: ProviderHealth[]; activityCollapsed?: boolean; workdir?: string }) {
   const docOrder = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
   const tabLabels: Record<string, string> = { 'TODO.md': 'TODO', 'SPEC.md': 'SPEC', 'RESEARCH.md': 'RESEARCH', 'REVIEW_LOG.md': 'REVIEW LOG', 'STEERING.md': 'STEERING' };
 
@@ -762,6 +762,16 @@ function DocsPanel({ docs, providerHealth, activityCollapsed }: { docs: Record<s
             </div>
           )}
         </TabsList>
+        {workdir && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 ml-1" onClick={() => { window.open(`vscode://file${workdir}`, '_blank'); }}>
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent><p>Open in VS Code</p></TooltipContent>
+          </Tooltip>
+        )}
       </div>
       {allDocs.map((n) => (
         <TabsContent key={n} value={n} className="flex-1 min-h-0 mt-0">
@@ -1520,7 +1530,7 @@ export function App() {
                     <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> Documents</CardTitle>
                   </CardHeader>
                   <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-                    <DocsPanel docs={state?.docs ?? {}} providerHealth={providerHealth} activityCollapsed={activityCollapsed} />
+                    <DocsPanel docs={state?.docs ?? {}} providerHealth={providerHealth} activityCollapsed={activityCollapsed} workdir={state?.workdir} />
                   </CardContent>
                 </Card>
                 {activityCollapsed ? (
