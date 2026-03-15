@@ -2,6 +2,12 @@
 
 | Feature | Last Tested | Commit | Result | Notes |
 |---------|-------------|--------|--------|-------|
+| `aloop steer` CLI | 2026-03-15 | 85719f5 | PASS | Subcommand now exists in CLI registry and `--help` displays correctly. |
+| `aloop orchestrate --spec` (nonexistent) | 2026-03-15 | 85719f5 | FAIL | Still initializes session and exits 0 instead of failing with clean error. |
+| `aloop scaffold` (missing PROMPT_qa.md) | 2026-03-15 | 85719f5 | FAIL | Still generates only 5 prompts, missing PROMPT_qa.md. |
+| `aloop setup --non-interactive` (fresh HOME) | 2026-03-15 | 85719f5 | FAIL | Still throws `Template not found: .../PROMPT_plan.md` with raw stack trace. |
+| Dashboard layout @1920x1080 | 2026-03-15 | 85719f5 | FAIL | Playwright check: `asideVisible=false`, sidebar missing at desktop breakpoint. |
+| `aloop orchestrate --autonomy-level foo` | 2026-03-15 | 85719f5 | FAIL | Leaks raw stack trace `Error: Invalid autonomy level`. |
 | `aloop status` (text) | 2026-03-15 | 5d1a64c | PASS | Shows sessions + provider health correctly |
 | `aloop status --output json` | 2026-03-15 | 5d1a64c | PASS | Structured JSON with sessions, health |
 | `aloop status --watch` | 2026-03-15 | 5d1a64c | PASS | Auto-refreshes correctly |

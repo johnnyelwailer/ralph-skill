@@ -1301,3 +1301,57 @@ Error: No Aloop configuration found for this project. Run `aloop setup` first.
 [exit_code] 1
 ```
 FAIL: Leaks raw stack trace for nonexistent project root instead of clean user-facing error.
+
+## QA Session — 2026-03-15 (iteration 52)
+
+### Test Environment
+- Temp dir: /tmp/qa-test-env
+- Features tested: 6
+
+### Results
+- PASS: `aloop steer` CLI command
+- FAIL: `aloop orchestrate --spec NONEXISTENT.md` exits 0
+- FAIL: `aloop scaffold` missing `PROMPT_qa.md`
+- FAIL: `aloop setup --non-interactive` fails for fresh HOME
+- FAIL: Dashboard layout @1920x1080 (asideVisible=false)
+- FAIL: `aloop orchestrate --autonomy-level foo` leaks stack trace
+
+### Command Transcript
+```bash
+$ mkdir -p /tmp/qa-test-env && cd /tmp/qa-test-env && node $ALOOP_BIN steer --help
+Usage: aloop steer [options] <instruction>
+...
+[exit_code] 0
+PASS: Subcommand exists.
+
+$ node $ALOOP_BIN orchestrate --spec NONEXISTENT.md
+Orchestrator session initialized.
+...
+Spec:         NONEXISTENT.md
+[exit_code] 0
+FAIL: Still accepts nonexistent spec file and exits 0 instead of failing.
+
+$ node $ALOOP_BIN scaffold
+{ ... "prompts_dir": ".../prompts" }
+$ ls -la .../prompts
+PROMPT_build.md  PROMPT_plan.md  PROMPT_proof.md  PROMPT_review.md  PROMPT_steer.md
+[exit_code] 0
+FAIL: missing PROMPT_qa.md.
+
+$ export HOME=/tmp/qa-fresh-home && node $ALOOP_BIN setup --non-interactive
+Error: Template not found: /tmp/qa-fresh-home/.aloop/templates/PROMPT_plan.md
+[exit_code] 1
+FAIL: Still throws raw stack trace.
+
+$ npx playwright test (Dashboard layout)
+asideVisible=false
+hasDocsPanel=true
+[exit_code] 0
+FAIL: asideVisible is false at 1920x1080 instead of true. Sidebar missing.
+
+$ node $ALOOP_BIN orchestrate --spec SPEC.md --autonomy-level foo
+Error: Invalid autonomy level: foo (must be cautious, balanced, or autonomous)
+    at assertAutonomyLevel (...)
+[exit_code] 1
+FAIL: Leaks raw stack trace.
+```

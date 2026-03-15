@@ -28,23 +28,23 @@ Each bug listed once with iteration history for context.
 
 #### P1 — CLI Missing Features
 - [x] [qa/P1] `aloop steer` CLI command missing — README and spec claim it exists, CLI returns `unknown command 'steer'`. (iters 26-52, 7 consecutive fails) (priority: high)
-- [ ] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — spec requires 9-step pipeline but scaffold only generates 5 prompts (no qa). (iter 52) (priority: high)
+- [ ] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — spec requires 9-step pipeline but scaffold only generates 5 prompts (no qa). (iters 52-53, still failing) (priority: high)
 
 #### P1 — Input Validation
-- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` exits 0 instead of failing — initializes session with empty spec. (iters 26-52, 7 consecutive fails) (priority: high)
+- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` exits 0 instead of failing — initializes session with empty spec. (iters 26-53, 8 consecutive fails) (priority: high)
 - [ ] [qa/P1] Provider health backoff violates spec — 1 failure triggers ~29h cooldown. Spec says 1 failure = no cooldown, hard cap 60 min. (iters 26-52, 3 reports) (priority: high)
 
 #### P1 — Dashboard
 - [ ] [qa/P1] Dashboard docs tabs empty — `/api/state` `workdir` points to `aloop/cli/` subdirectory instead of worktree root, so all docs return zero-length content. (iters 26-51, 4 reports) (priority: high)
-- [ ] [qa/P1] Dashboard desktop layout mismatches spec wireframe — at 1920x1080, sidebar and docs panel not visible. Spec requires persistent sidebar + docs + activity. (iters 47, 51) (priority: high)
+- [ ] [qa/P1] Dashboard desktop layout mismatches spec wireframe — at 1920x1080, sidebar and docs panel not visible. Spec requires persistent sidebar + docs + activity. (iters 47, 51-53, still failing) (priority: high)
 - [ ] [qa/P1] Dashboard health tab missing codex — shows 4 providers, codex in cooldown state omitted. (iter 26) (priority: high)
 
 #### P1 — Runtime
-- [ ] [qa/P1] `aloop setup --non-interactive` fails for fresh HOME — missing runtime templates, raw stack trace instead of guided bootstrap. (iter 51) (priority: high)
+- [ ] [qa/P1] `aloop setup --non-interactive` fails for fresh HOME — missing runtime templates, raw stack trace instead of guided bootstrap. (iters 51-53, still failing) (priority: high)
 - [ ] [qa/P1] `aloop gh watch` crashes with raw stack trace when `gh` invocation fails. (iter 51) (priority: high)
 
 #### P2 — Error Handling / Validation
-- [ ] [qa/P2] CLI error handling leaks stack traces — `aloop setup --autonomy-level invalid`, `aloop start` (no config), `aloop orchestrate --autonomy-level foo`, `aloop resolve --project-root /nonexistent`. Should show clean user-facing errors. (iters 46-52, multiple reports) (priority: medium)
+- [ ] [qa/P2] CLI error handling leaks stack traces — `aloop setup --autonomy-level invalid`, `aloop start` (no config), `aloop orchestrate --autonomy-level foo`, `aloop resolve --project-root /nonexistent`. Should show clean user-facing errors. (iters 46-53, multiple reports) (priority: medium)
 - [ ] [qa/P2] `aloop setup` accepts invalid inputs without validation — nonexistent spec files and unknown provider names written to config silently. (iters 48-50) (priority: medium)
 - [ ] [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` writes nonexistent path to config without warning. (iter 52) (priority: medium)
 - [ ] [qa/P2] `aloop devcontainer` crashes with `TypeError: deps.discover is not a function`. (iter 50) (priority: medium)
