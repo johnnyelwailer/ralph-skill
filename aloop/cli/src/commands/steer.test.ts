@@ -244,3 +244,41 @@ test('steer with affects-completed-work flag', async () => {
   const content = await readFile(path.join(workdir, 'STEERING.md'), 'utf8');
   assert.match(content, /\*\*Affects completed work:\*\* yes/);
 });
+
+test('steer uses fallback paths when session_dir and work_dir are omitted from active.json', async () => {
+  const { homeDir, sessionDir, workdir, sessionId } = await setupHome('steer-fallback-paths-');
+
+  // Overwrite active.json to omit session_dir and work_dir
+  await writeFile(
+    path.join(homeDir, '.aloop', 'active.json'),
+    JSON.stringify({
+      [sessionId]: {
+        pid: 12345,
+        started_at: new Date().toISOString(),
+      },
+    }),
+    'utf8',
+  );
+
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (msg: string) => logs.push(msg);
+
+  try {
+    await steerCommand('fallback instruction', { homeDir, output: 'json' });
+  } finally {
+    console.log = origLog;
+  }
+
+  // Check STEERING.md was written to the default fallback path
+  const steeringPath = path.join(workdir, 'STEERING.md');
+  assert.ok(existsSync(steeringPath), 'STEERING.md should exist at fallback path');
+  const steeringContent = await readFile(steeringPath, 'utf8');
+  assert.match(steeringContent, /fallback instruction/);
+
+  // Check queue file was written to the default fallback path
+  const queueDir = path.join(sessionDir, 'queue');
+  assert.ok(existsSync(queueDir), 'queue dir should exist');
+  const queueFiles = await readdir(queueDir);
+  assert.equal(queueFiles.length, 1, 'should have one queue file');
+});

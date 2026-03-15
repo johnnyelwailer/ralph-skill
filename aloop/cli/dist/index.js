@@ -972,7 +972,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path13 = __require("node:path");
+    var path14 = __require("node:path");
     var fs6 = __require("node:fs");
     var process2 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -1915,10 +1915,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path13.resolve(baseDir, baseName);
+          const localBin = path14.resolve(baseDir, baseName);
           if (fs6.existsSync(localBin))
             return localBin;
-          if (sourceExt.includes(path13.extname(baseName)))
+          if (sourceExt.includes(path14.extname(baseName)))
             return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs6.existsSync(`${localBin}${ext}`)
@@ -1938,17 +1938,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch (err) {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path13.resolve(
-            path13.dirname(resolvedScriptPath),
+          executableDir = path14.resolve(
+            path14.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path13.basename(
+            const legacyName = path14.basename(
               this._scriptPath,
-              path13.extname(this._scriptPath)
+              path14.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -1959,7 +1959,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path13.extname(executableFile));
+        launchWithNode = sourceExt.includes(path14.extname(executableFile));
         let proc;
         if (process2.platform !== "win32") {
           if (launchWithNode) {
@@ -2816,7 +2816,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path13.basename(filename, path13.extname(filename));
+        this._name = path14.basename(filename, path14.extname(filename));
         return this;
       }
       /**
@@ -2830,10 +2830,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path14) {
-        if (path14 === void 0)
+      executableDir(path15) {
+        if (path15 === void 0)
           return this._executableDir;
-        this._executableDir = path14;
+        this._executableDir = path15;
         return this;
       }
       /**
@@ -4625,7 +4625,8 @@ async function startDashboardServer(options, runtimeOptions = {}) {
         const steerTemplatePath = path5.join(sessionDir, "prompts", "PROMPT_steer.md");
         let steerPromptContent = steeringDoc;
         if (await fileExists2(steerTemplatePath)) {
-          steerPromptContent = await fs3.readFile(steerTemplatePath, "utf8");
+          const templateContent = await fs3.readFile(steerTemplatePath, "utf8");
+          steerPromptContent = templateContent + "\n\n" + steeringDoc;
         }
         const queuePath = await writeQueueOverride(sessionDir, "steering", steerPromptContent, {
           agent: "steer",
@@ -5068,6 +5069,7 @@ async function stopSession(homeDir, sessionId) {
 
 // src/commands/session.ts
 var resolveHomeDir2 = resolveHomeDir;
+var readActiveSessions2 = readActiveSessions;
 var readProviderHealth2 = readProviderHealth;
 var listActiveSessions2 = listActiveSessions;
 var stopSession2 = stopSession;
@@ -9601,7 +9603,8 @@ async function injectSteeringToChildLoop(issue, comments, deps) {
   const steerTemplatePath = path12.join(childSessionDir, "prompts", "PROMPT_steer.md");
   let steerPromptContent = steeringDoc;
   if (existsSync9(steerTemplatePath)) {
-    steerPromptContent = await readFile8(steerTemplatePath, "utf8");
+    const templateContent = await readFile8(steerTemplatePath, "utf8");
+    steerPromptContent = templateContent + "\n\n" + steeringDoc;
   }
   await writeQueueOverride(childSessionDir, "triage-steering", steerPromptContent, {
     agent: "steer",
@@ -11860,6 +11863,78 @@ function parseMaxIterations(value) {
   return parsed;
 }
 
+// src/commands/steer.ts
+import { readFile as readFile9, writeFile as writeFile9 } from "node:fs/promises";
+import { existsSync as existsSync10 } from "node:fs";
+import path13 from "node:path";
+function buildSteeringDocument2(instruction, affectsCompletedWork, commit) {
+  const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+  return [
+    "# Steering Instruction",
+    "",
+    `**Commit:** ${commit}`,
+    `**Timestamp:** ${timestamp}`,
+    `**Affects completed work:** ${affectsCompletedWork}`,
+    "",
+    "## Instruction",
+    "",
+    instruction,
+    ""
+  ].join("\n");
+}
+function fail(outputMode, msg) {
+  if (outputMode === "json") {
+    console.log(JSON.stringify({ success: false, error: msg }));
+  } else {
+    console.error(msg);
+  }
+  return process.exit(1);
+}
+async function steerCommand(instruction, options = {}) {
+  const outputMode = options.output || "text";
+  const homeDir = resolveHomeDir2(options.homeDir);
+  const active = await readActiveSessions2(homeDir);
+  const sessionIds = Object.keys(active);
+  let sessionId;
+  if (options.session) {
+    if (!active[options.session]) {
+      return fail(outputMode, `Session not found: ${options.session}`);
+    }
+    sessionId = options.session;
+  } else if (sessionIds.length === 1) {
+    sessionId = sessionIds[0];
+  } else if (sessionIds.length === 0) {
+    return fail(outputMode, "No active sessions. Start a session first with `aloop start`.");
+  } else {
+    return fail(outputMode, `Multiple active sessions. Specify one with --session: ${sessionIds.join(", ")}`);
+  }
+  const entry = active[sessionId];
+  const sessionDir = entry.session_dir ?? path13.join(homeDir, ".aloop", "sessions", sessionId);
+  const workdir = entry.work_dir ?? path13.join(sessionDir, "worktree");
+  const steeringPath = path13.join(workdir, "STEERING.md");
+  if (existsSync10(steeringPath) && !options.overwrite) {
+    return fail(outputMode, "A steering instruction is already queued. Use --overwrite to replace it.");
+  }
+  const affectsCompletedWork = options.affectsCompletedWork ?? "unknown";
+  const steeringDoc = buildSteeringDocument2(instruction.trim(), affectsCompletedWork, "cli");
+  await writeFile9(steeringPath, steeringDoc, "utf8");
+  const steerTemplatePath = path13.join(sessionDir, "prompts", "PROMPT_steer.md");
+  let steerPromptContent = steeringDoc;
+  if (existsSync10(steerTemplatePath)) {
+    const templateContent = await readFile9(steerTemplatePath, "utf8");
+    steerPromptContent = templateContent + "\n\n" + steeringDoc;
+  }
+  const queuePath = await writeQueueOverride(sessionDir, "steering", steerPromptContent, {
+    agent: "steer",
+    type: "steering_override"
+  });
+  if (outputMode === "json") {
+    console.log(JSON.stringify({ success: true, session: sessionId, queued: true, path: queuePath, steeringPath }));
+  } else {
+    console.log(`Steering instruction queued for session ${sessionId}.`);
+  }
+}
+
 // src/index.ts
 var program2 = new Command();
 program2.name("aloop").description("Aloop CLI for dashboard and project orchestration").version("1.0.0");
@@ -11876,6 +11951,7 @@ program2.command("update").description("Refresh ~/.aloop runtime assets from the
 program2.command("devcontainer").description("Generate or augment .devcontainer/devcontainer.json for isolated agent execution").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(devcontainerCommand);
 program2.command("devcontainer-verify").description("Verify devcontainer builds, starts, and passes all checks").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(verifyDevcontainerCommand);
 program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <path>", "Specification file to decompose", "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--interval <ms>", "Scan loop interval in milliseconds (default: 30000)").option("--max-iterations <n>", "Max scan loop iterations (default: 100)").option("--run-scan-loop", "Run the orchestrator scan loop after initialization").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(orchestrateCommand);
+program2.command("steer <instruction>").description("Send a steering instruction to an active session").option("--session <id>", "Target session ID (auto-detected if only one active)").option("--affects-completed-work <value>", "Whether instruction affects completed work: yes, no, or unknown", "unknown").option("--overwrite", "Overwrite an existing queued steering instruction").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(steerCommand);
 program2.addCommand(ghCommand);
 program2.command("debug-env", { hidden: true }).description("Print current environment variables (for testing)").action(() => {
   console.log(JSON.stringify(process.env));

@@ -1,3 +1,2 @@
-# Fixture TODO Heading
-
-- [ ] Example task
+# TODO
+- [ ] task

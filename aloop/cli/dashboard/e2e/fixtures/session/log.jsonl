@@ -1,1 +1,2 @@
-{"level":"info","message":"fixture log line"}
+{"timestamp":"2026-03-15T20:21:45.115Z","event":"session_start","iteration":1,"mode":"build","provider":"copilot","model":"gpt-5.3-codex"}
+{"timestamp":"2026-03-15T20:21:45.115Z","event":"iteration_complete","iteration":1,"phase":"build","provider":"copilot","model":"gpt-5.3-codex","duration":"12.5s","result":"success"}

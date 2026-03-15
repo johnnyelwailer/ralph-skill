@@ -6,7 +6,7 @@ Priority: (1) review gate fixes that block iteration, (2) QA P1 bugs, (3) loop d
 
 ### In Progress — Review Fixes
 - [x] [review] Gate 1: `aloop steer` spec deviation — when `PROMPT_steer.md` exists, queue file contains only template text and omits the user’s steering instruction Fixed: template content now prepended to user instruction in queue file (steer.ts, dashboard.ts, orchestrate.ts). (priority: high)
-- [ ] [review] Gate 3: `steer.ts` branch coverage — tests exist for most paths but missing coverage for `active.json` omitting `session_dir`/`work_dir` fields (fallback resolution). Add test and verify >=90% branch coverage. (priority: high)
+- [x] [review] Gate 3: `steer.ts` branch coverage — tests exist for most paths but missing coverage for `active.json` omitting `session_dir`/`work_dir` fields (fallback resolution). Add test and verify >=90% branch coverage. (priority: high)
 - [ ] [review] Gate 6: proof manifest contains test-output filler (`queue-unlink-verification.txt`, `ansi-strip-verification.txt` with test metadata). Replace with human-verifiable artifacts (real CLI capture for steer flow, visual/log before-after evidence for ANSI rendering), and skip proof for purely internal changes instead of attaching test output. (priority: high)
 - [ ] [review] Gate 9: README drift remains in Key Features — line ~213 still says “8 review gates”. Update to 9 gates and keep docs consistent across all sections. (priority: high)
 
