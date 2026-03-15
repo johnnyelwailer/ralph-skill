@@ -272,35 +272,6 @@ async function defaultGhCommandRunner(operation: string, sessionId: string, requ
   }
 }
 
-function getGhArchivePath(processedDir: string, fileName: string, existingFiles: Set<string>): string {
-  const destination = path.join(processedDir, fileName);
-  if (!existingFiles.has(destination.toLowerCase())) {
-    existingFiles.add(destination.toLowerCase());
-    return destination;
-  }
-
-  const ext = path.extname(fileName);
-  const base = path.basename(fileName, ext);
-  let suffix = 1;
-  while (true) {
-    const candidate = path.join(processedDir, `${base}.dup${suffix}${ext}`);
-    if (!existingFiles.has(candidate.toLowerCase())) {
-      existingFiles.add(candidate.toLowerCase());
-      return candidate;
-    }
-    suffix += 1;
-  }
-}
-
-async function writeSessionLogEntry(logPath: string, event: string, data: Record<string, unknown>): Promise<void> {
-  const payload = {
-    timestamp: new Date().toISOString(),
-    event,
-    ...data,
-  };
-  await fs.appendFile(logPath, `${JSON.stringify(payload)}\n`, 'utf8');
-}
-
 async function processGhConventionRequests(
   workdir: string,
   sessionId: string,

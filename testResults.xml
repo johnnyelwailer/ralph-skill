@@ -1,31 +1,8 @@
 ﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
-<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="2" errors="0" failures="2" not-run="11" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2026-03-04" time="09:16:34">
-  <environment os-version="10.0.26200" cwd="C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree" nunit-version="2.5.8.0" machine-name="NX-GM17GBWE" clr-version="9.0.10" user="pj" user-domain="NEXPLORE" platform="Microsoft Windows 11 Enterprise|C:\Windows|\Device\Harddisk0\Partition3" />
-  <culture-info current-culture="de-CH" current-uiculture="en-US" />
-  <test-suite type="TestFixture" name="Pester" executed="True" result="Failure" success="False" time="5.5549" asserts="0" description="Pester">
-    <results>
-      <test-suite type="TestFixture" name="C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1" executed="True" result="Failure" success="False" time="5.5549" asserts="0" description="C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1">
-        <results>
-          <test-suite type="TestFixture" name="loop.ps1 — retry-same-phase behavioral" executed="True" result="Failure" success="False" time="2.3377" asserts="0" description="loop.ps1 — retry-same-phase behavioral">
-            <results>
-              <test-case description="failed plan retries same phase and only advances after plan success" name="loop.ps1 — retry-same-phase behavioral.failed plan retries same phase and only advances after plan success" time="1.1831" asserts="0" success="False" result="Failure" executed="True">
-                <failure>
-                  <message>Expected 'plan', but got $null.</message>
-                  <stack-trace>at $errors[0].mode | Should -Be 'plan', C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1:455
-at &lt;ScriptBlock&gt;, C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1:455</stack-trace>
-                </failure>
-              </test-case>
-              <test-case description="phase_retry_exhausted advances to next phase after max retries" name="loop.ps1 — retry-same-phase behavioral.phase_retry_exhausted advances to next phase after max retries" time="0.9863" asserts="0" success="False" result="Failure" executed="True">
-                <failure>
-                  <message>Expected the actual value to be greater than 0, but got 0.</message>
-                  <stack-trace>at ($entries | Where-Object { $_.event -eq 'phase_retry_exhausted' }).Count | Should -BeGreaterThan 0, C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1:470
-at &lt;ScriptBlock&gt;, C:\Users\pj\.ralph\sessions\ralph-skill-20260225-111231\worktree\aloop\bin\loop.tests.ps1:470</stack-trace>
-                </failure>
-              </test-case>
-            </results>
-          </test-suite>
-        </results>
-      </test-suite>
-    </results>
+<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="0" errors="0" failures="0" not-run="81" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2026-03-14" time="21:28:51">
+  <environment platform="Linux" nunit-version="2.5.8.0" cwd="/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree" clr-version="9.0.13" user-domain="" os-version="6.17.8-orbstack-00308-g8f9c941121b1" machine-name="sandbox" user="pj" />
+  <culture-info current-culture="" current-uiculture="" />
+  <test-suite type="TestFixture" name="Pester" executed="True" result="Success" success="True" time="0.12" asserts="0" description="Pester">
+    <results />
   </test-suite>
 </test-results>

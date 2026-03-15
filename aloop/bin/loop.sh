@@ -12,7 +12,9 @@
 # Providers:
 #   claude, codex, gemini, copilot, round-robin
 
-set -e
+# NOTE: Do NOT use "set -e" — the main loop must survive provider failures,
+# transient errors in helper functions, and unexpected exit codes.  Every
+# critical path uses explicit "if / ||" guards instead.
 
 # Defense in depth: clear CLAUDECODE from the process environment at script entry.
 unset CLAUDECODE
@@ -1724,7 +1726,8 @@ cleanup() {
 }
 
 trap 'cleanup "interrupted"; exit 130' INT
-trap 'cleanup "error"; exit $?' ERR
+# NOTE: No ERR trap — the main loop must survive transient errors.
+# Provider failures and helper errors are handled via explicit if/|| guards.
 trap 'kill_active_provider; remove_session_lock' EXIT
 
 ITERATION=0

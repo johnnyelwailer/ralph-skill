@@ -972,7 +972,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path9 = __require("node:path");
+    var path10 = __require("node:path");
     var fs4 = __require("node:fs");
     var process2 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -1915,10 +1915,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path9.resolve(baseDir, baseName);
+          const localBin = path10.resolve(baseDir, baseName);
           if (fs4.existsSync(localBin))
             return localBin;
-          if (sourceExt.includes(path9.extname(baseName)))
+          if (sourceExt.includes(path10.extname(baseName)))
             return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs4.existsSync(`${localBin}${ext}`)
@@ -1938,17 +1938,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch (err) {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path9.resolve(
-            path9.dirname(resolvedScriptPath),
+          executableDir = path10.resolve(
+            path10.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path9.basename(
+            const legacyName = path10.basename(
               this._scriptPath,
-              path9.extname(this._scriptPath)
+              path10.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -1959,7 +1959,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path9.extname(executableFile));
+        launchWithNode = sourceExt.includes(path10.extname(executableFile));
         let proc;
         if (process2.platform !== "win32") {
           if (launchWithNode) {
@@ -2816,7 +2816,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path9.basename(filename, path9.extname(filename));
+        this._name = path10.basename(filename, path10.extname(filename));
         return this;
       }
       /**
@@ -2830,10 +2830,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path10) {
-        if (path10 === void 0)
+      executableDir(path11) {
+        if (path11 === void 0)
           return this._executableDir;
-        this._executableDir = path10;
+        this._executableDir = path11;
         return this;
       }
       /**
@@ -3987,8 +3987,22 @@ async function startDashboardServer(options, runtimeOptions = {}) {
           }
         }
       } else {
-        const statePayload = toStateEventPayload(await loadState());
-        sendToDefaultSessionClients("state", statePayload);
+        const contextPayloads = /* @__PURE__ */ new Map();
+        for (const [client, ctx] of clients) {
+          const key = ctx.sessionDir;
+          let payload = contextPayloads.get(key);
+          if (payload === void 0) {
+            const state = ctx === defaultContext ? await loadState() : await loadStateForContext(ctx, runtimeDir);
+            payload = toStateEventPayload(state);
+            contextPayloads.set(key, payload);
+          }
+          try {
+            sendSseEvent(client, "state", payload);
+          } catch {
+            clients.delete(client);
+            client.destroy();
+          }
+        }
       }
     } catch (error) {
       console.warn(`dashboard: failed to publish state: ${error.message}`);
@@ -4649,15 +4663,160 @@ async function stopCommand(sessionId, options = {}) {
 import { execFile } from "child_process";
 import { promisify } from "util";
 import * as fs2 from "fs";
-import * as path5 from "path";
+import * as path6 from "path";
 import * as os4 from "os";
 
 // src/commands/start.ts
 import { spawn, spawnSync as spawnSync4 } from "node:child_process";
-import { cp, mkdir as mkdir2, readFile as readFile3, writeFile as writeFile3 } from "node:fs/promises";
-import { existsSync as existsSync3 } from "node:fs";
+import { cp, mkdir as mkdir2, readFile as readFile4, writeFile as writeFile4 } from "node:fs/promises";
+import { existsSync as existsSync4 } from "node:fs";
 import { createServer as createServer2 } from "node:net";
+import path5 from "node:path";
+
+// src/commands/compile-loop-plan.ts
+import { readFile as readFile3, writeFile as writeFile3 } from "node:fs/promises";
+import { existsSync as existsSync3 } from "node:fs";
 import path4 from "node:path";
+var defaultCompileDeps = {
+  readFile: readFile3,
+  writeFile: writeFile3,
+  existsSync: existsSync3
+};
+var DEFAULT_REASONING = {
+  plan: "high",
+  build: "medium",
+  proof: "medium",
+  review: "high",
+  steer: "medium"
+};
+function buildCycleForMode(mode) {
+  switch (mode) {
+    case "plan":
+      return ["PROMPT_plan.md"];
+    case "build":
+      return ["PROMPT_build.md"];
+    case "review":
+      return ["PROMPT_review.md"];
+    case "plan-build":
+      return ["PROMPT_plan.md", "PROMPT_build.md"];
+    case "plan-build-review":
+      return [
+        "PROMPT_plan.md",
+        "PROMPT_build.md",
+        "PROMPT_build.md",
+        "PROMPT_build.md",
+        "PROMPT_proof.md",
+        "PROMPT_review.md"
+      ];
+  }
+}
+function buildRoundRobinCycle(mode, roundRobinOrder, promptsDir, deps) {
+  if (mode !== "plan-build-review" && mode !== "plan-build") {
+    return buildCycleForMode(mode);
+  }
+  const providers = roundRobinOrder.length > 0 ? roundRobinOrder : ["claude"];
+  if (mode === "plan-build") {
+    const cycle2 = ["PROMPT_plan.md"];
+    for (const provider of providers) {
+      const filename = `PROMPT_build_${provider}.md`;
+      cycle2.push(filename);
+    }
+    return cycle2;
+  }
+  const cycle = ["PROMPT_plan.md"];
+  for (const provider of providers) {
+    const filename = `PROMPT_build_${provider}.md`;
+    cycle.push(filename);
+  }
+  cycle.push("PROMPT_proof.md", "PROMPT_review.md");
+  return cycle;
+}
+function extractAgentFromFilename(filename) {
+  const match = filename.match(/^PROMPT_([a-z]+)(?:_[a-z]+)?\.md$/);
+  return match ? match[1] : "build";
+}
+function extractProviderSuffixFromFilename(filename) {
+  const match = filename.match(/^PROMPT_[a-z]+_([a-z]+)\.md$/);
+  return match ? match[1] : null;
+}
+function buildFrontmatter(agent, provider, model, reasoning) {
+  const lines = ["---"];
+  lines.push(`agent: ${agent}`);
+  lines.push(`provider: ${provider}`);
+  if (model) {
+    lines.push(`model: ${model}`);
+  }
+  lines.push(`reasoning: ${reasoning}`);
+  lines.push("---");
+  return lines.join("\n");
+}
+function prependFrontmatter(content, frontmatter) {
+  if (content.startsWith("---\n") || content.startsWith("---\r\n")) {
+    const endIndex = content.indexOf("\n---", 3);
+    if (endIndex !== -1) {
+      const afterFrontmatter = content.slice(endIndex + 4).replace(/^\r?\n/, "");
+      return `${frontmatter}
+
+${afterFrontmatter}`;
+    }
+  }
+  return `${frontmatter}
+
+${content}`;
+}
+async function compileLoopPlan(options, deps = defaultCompileDeps) {
+  const { mode, provider, promptsDir, sessionDir, enabledProviders, roundRobinOrder, models } = options;
+  const isRoundRobin = provider === "round-robin";
+  let cycle;
+  if (isRoundRobin) {
+    cycle = buildRoundRobinCycle(mode, roundRobinOrder, promptsDir, deps);
+  } else {
+    cycle = buildCycleForMode(mode);
+  }
+  const processed = /* @__PURE__ */ new Set();
+  for (const filename of cycle) {
+    if (processed.has(filename))
+      continue;
+    processed.add(filename);
+    const agent = extractAgentFromFilename(filename);
+    const providerSuffix = extractProviderSuffixFromFilename(filename);
+    let promptProvider;
+    let promptModel;
+    if (providerSuffix) {
+      promptProvider = providerSuffix;
+      promptModel = models[providerSuffix] ?? "";
+    } else {
+      promptProvider = isRoundRobin ? roundRobinOrder[0] ?? "claude" : provider;
+      promptModel = models[promptProvider] ?? "";
+    }
+    const reasoning = DEFAULT_REASONING[agent] ?? "medium";
+    const frontmatter = buildFrontmatter(agent, promptProvider, promptModel, reasoning);
+    const filePath = path4.join(promptsDir, filename);
+    if (providerSuffix) {
+      const baseFilename = `PROMPT_${agent}.md`;
+      const basePath = path4.join(promptsDir, baseFilename);
+      if (deps.existsSync(basePath)) {
+        const baseContent = await deps.readFile(basePath, "utf8");
+        await deps.writeFile(filePath, prependFrontmatter(baseContent, frontmatter), "utf8");
+      }
+    } else if (deps.existsSync(filePath)) {
+      const content = await deps.readFile(filePath, "utf8");
+      await deps.writeFile(filePath, prependFrontmatter(content, frontmatter), "utf8");
+    }
+  }
+  const plan = {
+    cycle,
+    cyclePosition: 0,
+    iteration: 1,
+    version: 1
+  };
+  const planPath = path4.join(sessionDir, "loop-plan.json");
+  await deps.writeFile(planPath, `${JSON.stringify(plan, null, 2)}
+`, "utf8");
+  return plan;
+}
+
+// src/commands/start.ts
 var LAUNCH_MODE_SET = /* @__PURE__ */ new Set(["start", "restart", "resume"]);
 var PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot", "round-robin"]);
 var MODEL_PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot"]);
@@ -4670,11 +4829,11 @@ var DEFAULT_MODELS = {
 };
 var defaultDeps = {
   discoverWorkspace: discoverWorkspace2,
-  readFile: readFile3,
-  writeFile: writeFile3,
+  readFile: readFile4,
+  writeFile: writeFile4,
   mkdir: mkdir2,
   cp,
-  existsSync: existsSync3,
+  existsSync: existsSync4,
   spawn,
   spawnSync: spawnSync4,
   platform: process.platform,
@@ -4938,7 +5097,7 @@ function normalizeGitBashPathForWindows(value) {
   return tail.length > 0 ? `${drive}:\\${tail}` : `${drive}:\\`;
 }
 async function readSessionMeta(sessionDir, deps) {
-  const metaPath = path4.join(sessionDir, "meta.json");
+  const metaPath = path5.join(sessionDir, "meta.json");
   if (!deps.existsSync(metaPath))
     return null;
   try {
@@ -4971,7 +5130,7 @@ function resolveSessionId(baseName, sessionsRoot, deps) {
   const baseSessionId = `${sanitizeSessionToken(baseName)}-${formatSessionTimestamp(now)}`;
   let sessionId = baseSessionId;
   let suffix = 1;
-  while (deps.existsSync(path4.join(sessionsRoot, sessionId))) {
+  while (deps.existsSync(path5.join(sessionsRoot, sessionId))) {
     sessionId = `${baseSessionId}-${suffix}`;
     suffix += 1;
   }
@@ -5101,11 +5260,11 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
   if (!discovery.setup.config_exists || !deps.existsSync(discovery.setup.config_path)) {
     throw new Error("No Aloop configuration found for this project. Run `aloop setup` first.");
   }
-  const aloopRoot = path4.join(homeDir, ".aloop");
-  const sessionsRoot = path4.join(aloopRoot, "sessions");
+  const aloopRoot = path5.join(homeDir, ".aloop");
+  const sessionsRoot = path5.join(aloopRoot, "sessions");
   const warnings = [];
   await deps.mkdir(sessionsRoot, { recursive: true });
-  const versionJsonPath = path4.join(aloopRoot, "version.json");
+  const versionJsonPath = path5.join(aloopRoot, "version.json");
   try {
     const versionRaw = await deps.readFile(versionJsonPath, "utf8");
     const versionData = JSON.parse(versionRaw);
@@ -5123,7 +5282,7 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
   } catch {
   }
   const projectConfig = await readOptionalConfig(discovery.setup.config_path, deps) ?? emptyParsedConfig();
-  const globalConfig = await readOptionalConfig(path4.join(aloopRoot, "config.yml"), deps) ?? emptyParsedConfig();
+  const globalConfig = await readOptionalConfig(path5.join(aloopRoot, "config.yml"), deps) ?? emptyParsedConfig();
   const enabledProviders = normalizeProviderList(
     projectConfig.enabled_providers.length > 0 ? projectConfig.enabled_providers : globalConfig.enabled_providers.length > 0 ? globalConfig.enabled_providers : discovery.providers.installed
   );
@@ -5171,7 +5330,7 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
   let useWorktree = !options.inPlace && worktreeDefault;
   if (launchMode === "resume" && options.sessionId) {
     sessionId = options.sessionId;
-    sessionDir = path4.join(sessionsRoot, sessionId);
+    sessionDir = path5.join(sessionsRoot, sessionId);
     if (!deps.existsSync(sessionDir)) {
       throw new Error(`Session not found: ${sessionId}. Cannot resume a non-existent session.`);
     }
@@ -5179,7 +5338,7 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     if (!existingMeta) {
       throw new Error(`Session meta.json not found or invalid for session: ${sessionId}.`);
     }
-    promptsDir = existingMeta.prompts_dir ?? path4.join(sessionDir, "prompts");
+    promptsDir = existingMeta.prompts_dir ?? path5.join(sessionDir, "prompts");
     branchName = existingMeta.branch ?? null;
     if (existingMeta.worktree && existingMeta.worktree_path) {
       if (deps.existsSync(existingMeta.worktree_path)) {
@@ -5207,9 +5366,9 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     }
   } else {
     sessionId = resolveSessionId(discovery.project.name, sessionsRoot, deps);
-    sessionDir = path4.join(sessionsRoot, sessionId);
-    const promptsSourceDir = path4.join(discovery.setup.project_dir, "prompts");
-    promptsDir = path4.join(sessionDir, "prompts");
+    sessionDir = path5.join(sessionsRoot, sessionId);
+    const promptsSourceDir = path5.join(discovery.setup.project_dir, "prompts");
+    promptsDir = path5.join(sessionDir, "prompts");
     await deps.mkdir(sessionDir, { recursive: true });
     if (!deps.existsSync(promptsSourceDir)) {
       throw new Error(`Project prompts not found: ${promptsSourceDir}. Run \`aloop setup\` first.`);
@@ -5220,7 +5379,7 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
         warnings.push("Worktree requested but project is not a git repository; using in-place execution.");
         useWorktree = false;
       } else {
-        const candidatePath = path4.join(sessionDir, "worktree");
+        const candidatePath = path5.join(sessionDir, "worktree");
         const candidateBranch = `aloop/${sessionId}`;
         const worktreeResult = deps.spawnSync("git", ["-C", discovery.project.root, "worktree", "add", candidatePath, "-b", candidateBranch], { encoding: "utf8" });
         if (worktreeResult.status !== 0) {
@@ -5234,14 +5393,27 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
       }
     }
   }
+  await compileLoopPlan({
+    mode: resolvedMode,
+    provider: selectedProvider,
+    promptsDir,
+    sessionDir,
+    enabledProviders,
+    roundRobinOrder,
+    models: mergedModels
+  }, {
+    readFile: (p, enc) => deps.readFile(p, enc),
+    writeFile: (p, data, enc) => deps.writeFile(p, data, enc),
+    existsSync: deps.existsSync
+  });
   const modelProviders = collectModelProviders(enabledProviders, selectedProvider);
   const roundRobinCsv = roundRobinOrder.join(",");
-  const loopBinDir = path4.join(aloopRoot, "bin");
+  const loopBinDir = path5.join(aloopRoot, "bin");
   const launchWorkDir = deps.platform === "win32" ? normalizeGitBashPathForWindows(workDir) : workDir;
   let command;
   let args;
   if (deps.platform === "win32") {
-    const loopScript = normalizeGitBashPathForWindows(path4.join(loopBinDir, "loop.ps1"));
+    const loopScript = normalizeGitBashPathForWindows(path5.join(loopBinDir, "loop.ps1"));
     if (!deps.existsSync(loopScript)) {
       throw new Error(`Loop script not found: ${loopScript}`);
     }
@@ -5293,7 +5465,7 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
       args.push("-CopilotRetryModel", copilotRetryModel);
     }
   } else {
-    const loopScript = path4.join(loopBinDir, "loop.sh");
+    const loopScript = path5.join(loopBinDir, "loop.sh");
     if (!deps.existsSync(loopScript)) {
       throw new Error(`Loop script not found: ${loopScript}`);
     }
@@ -5335,8 +5507,8 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
         args.push("--copilot-model", model);
     }
   }
-  const metaPath = path4.join(sessionDir, "meta.json");
-  const statusPath = path4.join(sessionDir, "status.json");
+  const metaPath = path5.join(sessionDir, "meta.json");
+  const statusPath = path5.join(sessionDir, "status.json");
   const meta = {
     session_id: sessionId,
     project_name: discovery.project.name,
@@ -5382,7 +5554,7 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
   meta.started_at = startedAt;
   await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}
 `, "utf8");
-  const activePath = path4.join(aloopRoot, "active.json");
+  const activePath = path5.join(aloopRoot, "active.json");
   const active = await readActiveMap(activePath, deps);
   active[sessionId] = {
     session_id: sessionId,
@@ -5529,10 +5701,10 @@ function createEmptyWatchState() {
   };
 }
 function resolveAloopRoot(homeDir) {
-  return path5.join(resolveHomeDir2(homeDir), ".aloop");
+  return path6.join(resolveHomeDir2(homeDir), ".aloop");
 }
 function getWatchStatePath(homeDir) {
-  return path5.join(resolveAloopRoot(homeDir), "watch.json");
+  return path6.join(resolveAloopRoot(homeDir), "watch.json");
 }
 function normalizeWatchIssueEntry(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -5608,7 +5780,7 @@ function loadWatchState(homeDir) {
 }
 function saveWatchState(homeDir, state) {
   const watchPath = getWatchStatePath(homeDir);
-  fs2.mkdirSync(path5.dirname(watchPath), { recursive: true });
+  fs2.mkdirSync(path6.dirname(watchPath), { recursive: true });
   fs2.writeFileSync(watchPath, `${JSON.stringify(state, null, 2)}
 `, "utf8");
 }
@@ -5684,7 +5856,7 @@ function removeTrackedIssue(state, issueNumber) {
 }
 function readSessionState(homeDir, sessionId) {
   const sessionDir = getSessionDir(homeDir, sessionId);
-  const statusFile = path5.join(sessionDir, "status.json");
+  const statusFile = path6.join(sessionDir, "status.json");
   if (!fs2.existsSync(statusFile)) {
     return null;
   }
@@ -6037,10 +6209,10 @@ async function checkAndApplyPrFeedback(entry, options) {
     return false;
   }
   const sessionDir = getSessionDir(options.homeDir, entry.session_id);
-  const worktreePath = path5.join(sessionDir, "worktree");
-  const steeringPath = path5.join(worktreePath, "STEERING.md");
+  const worktreePath = path6.join(sessionDir, "worktree");
+  const steeringPath = path6.join(worktreePath, "STEERING.md");
   const steeringContent = buildFeedbackSteering(feedback, entry.pr_number);
-  fs2.mkdirSync(path5.dirname(steeringPath), { recursive: true });
+  fs2.mkdirSync(path6.dirname(steeringPath), { recursive: true });
   fs2.writeFileSync(steeringPath, steeringContent, "utf8");
   try {
     await ghLoopRuntime.startIssue({
@@ -6064,7 +6236,7 @@ async function finalizeWatchEntry(entry, options) {
     return false;
   }
   const sessionDir = getSessionDir(options.homeDir, entry.session_id);
-  const metaPath = path5.join(sessionDir, "meta.json");
+  const metaPath = path6.join(sessionDir, "meta.json");
   let projectRoot = options.projectRoot ?? process.cwd();
   if (fs2.existsSync(metaPath)) {
     try {
@@ -6119,7 +6291,7 @@ Closes #${entry.issue_number}`;
     if (pr.number !== null) {
       entry.pr_number = pr.number;
       entry.pr_url = pr.url;
-      const configPath = path5.join(sessionDir, "config.json");
+      const configPath = path6.join(sessionDir, "config.json");
       if (fs2.existsSync(configPath)) {
         try {
           const config = JSON.parse(fs2.readFileSync(configPath, "utf8"));
@@ -6390,7 +6562,7 @@ addGhSinceSubcommand("issue-comments", "List issue comments since a timestamp (o
 addGhSinceSubcommand("pr-comments", "List pull request review comments since a timestamp (orchestrator only)");
 function getSessionDir(homeDir, sessionId) {
   const baseHome = homeDir || os4.homedir();
-  return path5.join(baseHome, ".aloop", "sessions", sessionId);
+  return path6.join(baseHome, ".aloop", "sessions", sessionId);
 }
 function parsePositiveInteger(value) {
   if (typeof value === "number" && Number.isInteger(value) && value > 0) {
@@ -6535,7 +6707,7 @@ async function ghStartCommandWithDeps(options, deps = defaultGhStartDeps) {
   }
   let specContent = null;
   if (typeof options.spec === "string" && options.spec.trim()) {
-    const specPath = path5.isAbsolute(options.spec) ? options.spec : path5.join(deps.cwd(), options.spec);
+    const specPath = path6.isAbsolute(options.spec) ? options.spec : path6.join(deps.cwd(), options.spec);
     if (!deps.existsSync(specPath)) {
       throw new Error(`--spec file not found: ${specPath}`);
     }
@@ -6554,16 +6726,16 @@ async function ghStartCommandWithDeps(options, deps = defaultGhStartDeps) {
   if (started.branch !== desiredBranch) {
     await deps.execGit(["-C", started.worktree_path, "branch", "-m", desiredBranch]);
   }
-  const planPromptPath = path5.join(started.prompts_dir, "PROMPT_plan.md");
+  const planPromptPath = path6.join(started.prompts_dir, "PROMPT_plan.md");
   if (!deps.existsSync(planPromptPath)) {
     throw new Error(`Missing planner prompt: ${planPromptPath}`);
   }
   const currentPlanPrompt = deps.readFile(planPromptPath, "utf8");
   const issueContext = buildIssueContextBlock(issue, specContent);
   deps.writeFile(planPromptPath, upsertIssueContextPrompt(currentPlanPrompt, issueContext));
-  const metaPath = path5.join(started.session_dir, "meta.json");
-  const statusPath = path5.join(started.session_dir, "status.json");
-  const configPath = path5.join(started.session_dir, "config.json");
+  const metaPath = path6.join(started.session_dir, "meta.json");
+  const statusPath = path6.join(started.session_dir, "status.json");
+  const configPath = path6.join(started.session_dir, "config.json");
   const meta = loadJsonObject(metaPath, deps);
   meta.branch = desiredBranch;
   meta.gh_issue_number = issue.number;
@@ -6698,7 +6870,7 @@ function includesAloopAutoLabel(targetLabels) {
   return targetLabels.some((label) => label === "aloop/auto");
 }
 function appendLog(sessionDir, entry) {
-  const logFile = path5.join(sessionDir, "log.jsonl");
+  const logFile = path6.join(sessionDir, "log.jsonl");
   const logData = JSON.stringify(entry) + String.fromCharCode(10);
   if (fs2.existsSync(sessionDir)) {
     fs2.appendFileSync(logFile, logData);
@@ -6816,7 +6988,7 @@ async function executeGhOperation(operation, options) {
   const needsRequestFile = requiresRequestFile(operation);
   const role = options.role;
   let sessionPolicy;
-  const configFile = path5.join(sessionDir, "config.json");
+  const configFile = path6.join(sessionDir, "config.json");
   try {
     if (!fs2.existsSync(configFile)) {
       throw new Error(`Session config not found: ${configFile}`);
@@ -6871,7 +7043,7 @@ async function executeGhOperation(operation, options) {
   }
   const { allowed, reason, enforced } = evaluatePolicy(operation, role, requestPayload, sessionPolicy);
   const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-  const requestFileName = typeof requestFile === "string" ? path5.basename(requestFile) : void 0;
+  const requestFileName = typeof requestFile === "string" ? path6.basename(requestFile) : void 0;
   if (!allowed) {
     const logEntry = {
       timestamp,
@@ -7154,7 +7326,7 @@ async function setupCommand(options = {}) {
 // src/commands/update.ts
 import fs3 from "node:fs";
 import fsp from "node:fs/promises";
-import path6 from "node:path";
+import path7 from "node:path";
 import os5 from "node:os";
 import { spawnSync as spawnSync5 } from "node:child_process";
 var defaultDeps2 = {
@@ -7172,20 +7344,20 @@ async function copyTree(src, dest, deps) {
     return written;
   const stat2 = fs3.statSync(src);
   if (!stat2.isDirectory()) {
-    await deps.mkdir(path6.dirname(dest), { recursive: true });
+    await deps.mkdir(path7.dirname(dest), { recursive: true });
     await deps.copyFile(src, dest);
     written.push(dest);
     return written;
   }
   const entries = await deps.readdir(src, { withFileTypes: true });
   for (const entry of entries) {
-    const srcPath = path6.join(src, entry.name);
-    const destPath = path6.join(dest, entry.name);
+    const srcPath = path7.join(src, entry.name);
+    const destPath = path7.join(dest, entry.name);
     if (entry.isDirectory()) {
       const sub = await copyTree(srcPath, destPath, deps);
       written.push(...sub);
     } else {
-      await deps.mkdir(path6.dirname(destPath), { recursive: true });
+      await deps.mkdir(path7.dirname(destPath), { recursive: true });
       await deps.copyFile(srcPath, destPath);
       written.push(destPath);
     }
@@ -7193,13 +7365,13 @@ async function copyTree(src, dest, deps) {
   return written;
 }
 function findRepoRoot(startDir, deps) {
-  let dir = path6.resolve(startDir);
-  const root = path6.parse(dir).root;
+  let dir = path7.resolve(startDir);
+  const root = path7.parse(dir).root;
   while (dir !== root) {
-    if (deps.existsSync(path6.join(dir, "install.ps1")) && deps.existsSync(path6.join(dir, "aloop", "bin"))) {
+    if (deps.existsSync(path7.join(dir, "install.ps1")) && deps.existsSync(path7.join(dir, "aloop", "bin"))) {
       return dir;
     }
-    const parent = path6.dirname(dir);
+    const parent = path7.dirname(dir);
     if (parent === dir)
       break;
     dir = parent;
@@ -7208,8 +7380,8 @@ function findRepoRoot(startDir, deps) {
 }
 async function executeUpdate(options = {}, deps = defaultDeps2) {
   const homeDir = options.homeDir || deps.homeDir();
-  const aloopDir = path6.join(homeDir, ".aloop");
-  const repoRoot = options.repoRoot ? path6.resolve(options.repoRoot) : findRepoRoot(process.cwd(), deps);
+  const aloopDir = path7.join(homeDir, ".aloop");
+  const repoRoot = options.repoRoot ? path7.resolve(options.repoRoot) : findRepoRoot(process.cwd(), deps);
   if (!repoRoot) {
     return {
       success: false,
@@ -7222,7 +7394,7 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
     };
   }
   const requiredPaths = ["aloop/bin", "aloop/cli", "aloop/templates"];
-  const missing = requiredPaths.filter((p) => !deps.existsSync(path6.join(repoRoot, p)));
+  const missing = requiredPaths.filter((p) => !deps.existsSync(path7.join(repoRoot, p)));
   if (missing.length > 0) {
     return {
       success: false,
@@ -7238,8 +7410,8 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
   const errors = [];
   try {
     const binFiles = await copyTree(
-      path6.join(repoRoot, "aloop", "bin"),
-      path6.join(aloopDir, "bin"),
+      path7.join(repoRoot, "aloop", "bin"),
+      path7.join(aloopDir, "bin"),
       deps
     );
     updated.push(...binFiles);
@@ -7247,10 +7419,10 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
     errors.push(`bin: ${e.message}`);
   }
   try {
-    const configSrc = path6.join(repoRoot, "aloop", "config.yml");
-    const configDest = path6.join(aloopDir, "config.yml");
+    const configSrc = path7.join(repoRoot, "aloop", "config.yml");
+    const configDest = path7.join(aloopDir, "config.yml");
     if (deps.existsSync(configSrc)) {
-      await deps.mkdir(path6.dirname(configDest), { recursive: true });
+      await deps.mkdir(path7.dirname(configDest), { recursive: true });
       await deps.copyFile(configSrc, configDest);
       updated.push(configDest);
     }
@@ -7259,8 +7431,8 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
   }
   try {
     const tmplFiles = await copyTree(
-      path6.join(repoRoot, "aloop", "templates"),
-      path6.join(aloopDir, "templates"),
+      path7.join(repoRoot, "aloop", "templates"),
+      path7.join(aloopDir, "templates"),
       deps
     );
     updated.push(...tmplFiles);
@@ -7269,8 +7441,8 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
   }
   try {
     const distFiles = await copyTree(
-      path6.join(repoRoot, "aloop", "cli", "dist"),
-      path6.join(aloopDir, "cli", "dist"),
+      path7.join(repoRoot, "aloop", "cli", "dist"),
+      path7.join(aloopDir, "cli", "dist"),
       deps
     );
     updated.push(...distFiles);
@@ -7279,8 +7451,8 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
   }
   try {
     const libFiles = await copyTree(
-      path6.join(repoRoot, "aloop", "cli", "lib"),
-      path6.join(aloopDir, "cli", "lib"),
+      path7.join(repoRoot, "aloop", "cli", "lib"),
+      path7.join(aloopDir, "cli", "lib"),
       deps
     );
     updated.push(...libFiles);
@@ -7288,10 +7460,10 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
     errors.push(`cli/lib: ${e.message}`);
   }
   try {
-    const entrySrc = path6.join(repoRoot, "aloop", "cli", "aloop.mjs");
-    const entryDest = path6.join(aloopDir, "cli", "aloop.mjs");
+    const entrySrc = path7.join(repoRoot, "aloop", "cli", "aloop.mjs");
+    const entryDest = path7.join(aloopDir, "cli", "aloop.mjs");
     if (deps.existsSync(entrySrc)) {
-      await deps.mkdir(path6.dirname(entryDest), { recursive: true });
+      await deps.mkdir(path7.dirname(entryDest), { recursive: true });
       await deps.copyFile(entrySrc, entryDest);
       updated.push(entryDest);
     }
@@ -7299,13 +7471,13 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
     errors.push(`cli/aloop.mjs: ${e.message}`);
   }
   try {
-    const binDir = path6.join(aloopDir, "bin");
+    const binDir = path7.join(aloopDir, "bin");
     await deps.mkdir(binDir, { recursive: true });
-    const cmdShimPath = path6.join(binDir, "aloop.cmd");
+    const cmdShimPath = path7.join(binDir, "aloop.cmd");
     const cmdShimContent = '@echo off\nnode "%~dp0..\\cli\\aloop.mjs" %*\n';
     await deps.writeFile(cmdShimPath, cmdShimContent, "utf8");
     updated.push(cmdShimPath);
-    const shShimPath = path6.join(binDir, "aloop");
+    const shShimPath = path7.join(binDir, "aloop");
     const shShimContent = '#!/bin/sh\nexec node "$(dirname "$0")/../cli/aloop.mjs" "$@"\n';
     await deps.writeFile(shShimPath, shShimContent, "utf8");
     updated.push(shShimPath);
@@ -7313,7 +7485,7 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
     errors.push(`shims: ${e.message}`);
   }
   for (const sub of ["projects", "sessions"]) {
-    const dir = path6.join(aloopDir, sub);
+    const dir = path7.join(aloopDir, sub);
     try {
       await deps.mkdir(dir, { recursive: true });
     } catch {
@@ -7332,7 +7504,7 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
   }
   const versionJson = JSON.stringify({ commit, installed_at: installedAt });
   try {
-    await deps.writeFile(path6.join(aloopDir, "version.json"), versionJson, "utf8");
+    await deps.writeFile(path7.join(aloopDir, "version.json"), versionJson, "utf8");
   } catch (e) {
     errors.push(`version.json: ${e.message}`);
   }
@@ -7368,18 +7540,18 @@ async function updateCommand(options = {}) {
 }
 
 // src/commands/devcontainer.ts
-import { readFile as readFile4, writeFile as writeFile4, mkdir as mkdir3 } from "node:fs/promises";
-import { existsSync as existsSync5 } from "node:fs";
+import { readFile as readFile5, writeFile as writeFile5, mkdir as mkdir3 } from "node:fs/promises";
+import { existsSync as existsSync6 } from "node:fs";
 import { execFile as execFileCb } from "node:child_process";
-import path7 from "node:path";
+import path8 from "node:path";
 var defaultDeps3 = {
   discover: discoverWorkspace2,
-  readFile: readFile4,
-  writeFile: writeFile4,
+  readFile: readFile5,
+  writeFile: writeFile5,
   mkdir: mkdir3,
-  existsSync: existsSync5
+  existsSync: existsSync6
 };
-function getLanguageMapping(language, projectRoot, existsFn = existsSync5) {
+function getLanguageMapping(language, projectRoot, existsFn = existsSync6) {
   switch (language) {
     case "node-typescript":
       return {
@@ -7432,19 +7604,19 @@ function getLanguageMapping(language, projectRoot, existsFn = existsSync5) {
       };
   }
 }
-function detectNodeInstallCommand(projectRoot, existsFn = existsSync5) {
-  if (existsFn(path7.join(projectRoot, "pnpm-lock.yaml")))
+function detectNodeInstallCommand(projectRoot, existsFn = existsSync6) {
+  if (existsFn(path8.join(projectRoot, "pnpm-lock.yaml")))
     return "pnpm install";
-  if (existsFn(path7.join(projectRoot, "yarn.lock")))
+  if (existsFn(path8.join(projectRoot, "yarn.lock")))
     return "yarn install";
-  if (existsFn(path7.join(projectRoot, "bun.lockb")) || existsFn(path7.join(projectRoot, "bun.lock")))
+  if (existsFn(path8.join(projectRoot, "bun.lockb")) || existsFn(path8.join(projectRoot, "bun.lock")))
     return "bun install";
   return "npm install";
 }
-function detectPythonInstallCommand(projectRoot, existsFn = existsSync5) {
-  if (existsFn(path7.join(projectRoot, "pyproject.toml")))
+function detectPythonInstallCommand(projectRoot, existsFn = existsSync6) {
+  if (existsFn(path8.join(projectRoot, "pyproject.toml")))
     return "pip install -e .";
-  if (existsFn(path7.join(projectRoot, "requirements.txt")))
+  if (existsFn(path8.join(projectRoot, "requirements.txt")))
     return "pip install -r requirements.txt";
   return "pip install -e .";
 }
@@ -7493,7 +7665,7 @@ function buildAloopContainerEnv() {
     ALOOP_CONTAINER: "1"
   };
 }
-function generateDevcontainerConfig(discovery, existsFn = existsSync5) {
+function generateDevcontainerConfig(discovery, existsFn = existsSync6) {
   const projectRoot = discovery.project.root;
   const projectName = discovery.project.name;
   const language = discovery.context.detected_language;
@@ -7588,8 +7760,8 @@ async function devcontainerCommandWithDeps(options = {}, deps = defaultDeps3) {
     homeDir: options.homeDir
   });
   const projectRoot = discovery.project.root;
-  const devcontainerDir = path7.join(projectRoot, ".devcontainer");
-  const configPath = path7.join(devcontainerDir, "devcontainer.json");
+  const devcontainerDir = path8.join(projectRoot, ".devcontainer");
+  const configPath = path8.join(devcontainerDir, "devcontainer.json");
   const hadExisting = deps.existsSync(configPath);
   const generated = generateDevcontainerConfig(discovery, deps.existsSync);
   let finalConfig;
@@ -7628,8 +7800,8 @@ function execFilePromise(command, args, options) {
 }
 var defaultVerifyDeps = {
   exec: execFilePromise,
-  existsSync: existsSync5,
-  readFile: readFile4
+  existsSync: existsSync6,
+  readFile: readFile5
 };
 var PROVIDER_CLI_BINARIES = {
   claude: "claude",
@@ -7651,7 +7823,7 @@ async function execCheck(deps, projectRoot, name, containerArgs) {
   };
 }
 async function verifyDevcontainer(projectRoot, providers, deps = defaultVerifyDeps, maxIterations = 1) {
-  const configPath = path7.join(projectRoot, ".devcontainer", "devcontainer.json");
+  const configPath = path8.join(projectRoot, ".devcontainer", "devcontainer.json");
   if (!deps.existsSync(configPath)) {
     return {
       passed: false,
@@ -7770,13 +7942,13 @@ async function devcontainerCommand(options = {}, deps = defaultDeps3) {
 }
 
 // src/commands/orchestrate.ts
-import { mkdir as mkdir4, readFile as readFile5, writeFile as writeFile5 } from "node:fs/promises";
-import { existsSync as existsSync6 } from "node:fs";
-import path8 from "node:path";
+import { mkdir as mkdir4, readFile as readFile6, writeFile as writeFile6 } from "node:fs/promises";
+import { existsSync as existsSync7 } from "node:fs";
+import path9 from "node:path";
 var defaultDeps4 = {
-  existsSync: existsSync6,
-  readFile: readFile5,
-  writeFile: writeFile5,
+  existsSync: existsSync7,
+  readFile: readFile6,
+  writeFile: writeFile6,
   mkdir: mkdir4,
   now: () => /* @__PURE__ */ new Date()
 };
@@ -7906,7 +8078,7 @@ async function applyDecompositionPlan(plan, state, sessionDir, repo, deps) {
     const labels = ["aloop/auto", `aloop/wave-${wave}`];
     let ghNumber;
     if (deps.execGhIssueCreate && repo) {
-      ghNumber = await deps.execGhIssueCreate(repo, path8.basename(sessionDir), planIssue.title, planIssue.body, labels);
+      ghNumber = await deps.execGhIssueCreate(repo, path9.basename(sessionDir), planIssue.title, planIssue.body, labels);
     } else {
       ghNumber = planIssue.id;
     }
@@ -7934,8 +8106,8 @@ async function applyDecompositionPlan(plan, state, sessionDir, repo, deps) {
 }
 async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const homeDir = resolveHomeDir2(options.homeDir);
-  const aloopRoot = path8.join(homeDir, ".aloop");
-  const sessionsRoot = path8.join(aloopRoot, "sessions");
+  const aloopRoot = path9.join(homeDir, ".aloop");
+  const sessionsRoot = path9.join(aloopRoot, "sessions");
   const specFile = options.spec ?? "SPEC.md";
   const trunkBranch = options.trunk ?? "agent/trunk";
   const concurrencyCap = parseConcurrency(options.concurrency);
@@ -7947,7 +8119,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const now = deps.now();
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(now.getUTCDate()).padStart(2, "0")}-${String(now.getUTCHours()).padStart(2, "0")}${String(now.getUTCMinutes()).padStart(2, "0")}${String(now.getUTCSeconds()).padStart(2, "0")}`;
   const sessionId = `orchestrator-${timestamp}`;
-  const sessionDir = path8.join(sessionsRoot, sessionId);
+  const sessionDir = path9.join(sessionsRoot, sessionId);
   await deps.mkdir(sessionDir, { recursive: true });
   let state = {
     spec_file: specFile,
@@ -7965,7 +8137,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     updated_at: now.toISOString()
   };
   if (options.plan) {
-    const planPath = path8.resolve(options.plan);
+    const planPath = path9.resolve(options.plan);
     if (!deps.existsSync(planPath)) {
       throw new Error(`Plan file not found: ${planPath}`);
     }
@@ -7982,9 +8154,9 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     state = await applyDecompositionPlan(plan, state, sessionDir, filterRepo, deps);
   }
   if (filterRepo && state.issues.length > 0 && deps.execGh) {
-    await runTriageMonitorCycle(state, path8.basename(sessionDir), filterRepo, deps, aloopRoot);
+    await runTriageMonitorCycle(state, path9.basename(sessionDir), filterRepo, deps, aloopRoot);
   }
-  const stateFile = path8.join(sessionDir, "orchestrator.json");
+  const stateFile = path9.join(sessionDir, "orchestrator.json");
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
 `, "utf8");
   return { session_dir: sessionDir, state_file: stateFile, state };
@@ -8146,7 +8318,7 @@ ${sections.join("\n\n---\n\n")}
 async function injectSteeringToChildLoop(issue, comments, deps) {
   if (!deps.writeFile || !deps.aloopRoot || !issue.child_session)
     return;
-  const steeringPath = path8.join(deps.aloopRoot, "sessions", issue.child_session, "worktree", "STEERING.md");
+  const steeringPath = path9.join(deps.aloopRoot, "sessions", issue.child_session, "worktree", "STEERING.md");
   await deps.writeFile(steeringPath, formatSteeringContent(comments, issue), "utf8");
 }
 async function applyTriageResultsToIssue(issue, comments, repo, deps) {
