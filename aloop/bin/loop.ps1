@@ -1942,7 +1942,7 @@ try {
                 } else {
                     Write-Host "`nALL TASKS COMPLETE" -ForegroundColor Green
                     Stop-DashboardProcess
-                    Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
+                    Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'exited'
                     Write-LogEntry -Event "all_tasks_complete" -Data @{ iteration = $iteration }
                     Generate-Report -ExitReason "All tasks completed successfully." -Iteration $iteration
                     exit 0
@@ -2015,6 +2015,8 @@ try {
             Update-ProviderHealthOnSuccess -ProviderName $iterationProvider
             Register-IterationSuccess -IterationMode $iterationMode -WasForced $script:lastModeWasForced
             Persist-LoopPlanState -Iteration $iteration
+            $stuckState.StuckCount = 0
+            $stuckState.LastTask = ""
 
             # Steer mode: remove any leftover steering file if the agent did not delete it
             if ($iterationMode -eq 'steer') {
@@ -2044,7 +2046,7 @@ try {
                     if (Check-AllTasksComplete) {
                         Write-Host "`nFINAL REVIEW APPROVED" -ForegroundColor Green
                         Stop-DashboardProcess
-                        Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
+                        Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount 0 -State 'exited'
                         Write-LogEntry -Event "final_review_approved" -Data @{ iteration = $iteration }
                         Generate-Report -ExitReason "All tasks completed and approved by final review." -Iteration $iteration
                         exit 0
@@ -2087,7 +2089,7 @@ try {
     Stop-DashboardProcess
     if ($cancelled) {
         Write-Host "`nInterrupted" -ForegroundColor Yellow
-        Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'interrupted'
+        Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
         Write-LogEntry -Event "interrupted" -Data @{ iteration = $iteration }
         Generate-Report -ExitReason "Manually interrupted (Ctrl+C)." -Iteration $iteration
         exit 130
@@ -2096,7 +2098,7 @@ try {
 
 if ($iteration -ge $MaxIterations) {
     Write-Host "`nReached iteration limit ($MaxIterations)" -ForegroundColor Yellow
-    Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'limit_reached'
+    Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
     Write-LogEntry -Event "limit_reached" -Data @{ iteration = $iteration; limit = $MaxIterations }
     Generate-Report -ExitReason "Reached iteration limit ($MaxIterations)." -Iteration $iteration
 }

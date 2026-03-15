@@ -1715,17 +1715,18 @@ run_queue_if_present() {
 # Cleanup on exit
 cleanup() {
     local reason="${1:-interrupted}"
+    local state="${2:-$reason}"
     kill_active_provider
     remove_session_lock
     stop_dashboard
     cleanup_gh_block
     echo ""
-    write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "$reason"
+    write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "$state"
     write_log_entry "$reason" "iteration" "$ITERATION"
     generate_report "$reason"
 }
 
-trap 'cleanup "interrupted"; exit 130' INT
+trap 'cleanup "interrupted" "stopped"; exit 130' INT
 # NOTE: No ERR trap — the main loop must survive transient errors.
 # Provider failures and helper errors are handled via explicit if/|| guards.
 trap 'kill_active_provider; remove_session_lock' EXIT
@@ -1826,7 +1827,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 echo ""
                 echo "ALL TASKS COMPLETE"
                 stop_dashboard
-                write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
+                write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "exited"
                 write_log_entry "all_tasks_complete" "iteration" "$ITERATION"
                 generate_report "All tasks completed successfully."
                 exit 0
@@ -1889,6 +1890,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         update_provider_health_on_success "$iter_provider"
         register_iteration_success "$iter_mode" "$LAST_MODE_WAS_FORCED"
         persist_loop_plan_state
+        STUCK_COUNT=0
+        LAST_TASK=""
 
         # Steer mode: archive leftover steering file if the agent did not delete it
         if [ "$iter_mode" = "steer" ]; then
@@ -1925,7 +1928,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                     echo ""
                     echo "FINAL REVIEW APPROVED"
                     stop_dashboard
-                    write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "completed"
+                    write_status "$ITERATION" "$iter_mode" "$iter_provider" 0 "exited"
                     write_log_entry "final_review_approved" "iteration" "$ITERATION"
                     generate_report "All tasks completed and approved by final review."
                     exit 0
@@ -1961,7 +1964,7 @@ done
 
 echo ""
 echo "Reached iteration limit ($MAX_ITERATIONS)"
-write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "limit_reached"
+write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "stopped"
 write_log_entry "limit_reached" "iteration" "$ITERATION" "limit" "$MAX_ITERATIONS"
 generate_report "Reached iteration limit ($MAX_ITERATIONS)."
 stop_dashboard
