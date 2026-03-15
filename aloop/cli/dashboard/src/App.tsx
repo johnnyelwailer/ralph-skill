@@ -3,8 +3,8 @@ import { marked } from 'marked';
 import { toast } from 'sonner';
 import {
   Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock,
-  GitBranch, GitCommit, Image, FileText, MoreHorizontal, PanelLeftClose,
-  PanelLeftOpen, Play, Search, Send, Square, Terminal, Timer, XCircle, Zap, Loader2,
+  GitBranch, GitCommit, Image, FileText, Menu, MoreHorizontal, PanelLeftClose,
+  PanelLeftOpen, Play, Search, Send, Square, Terminal, Timer, X, XCircle, Zap, Loader2,
   Heart, AlertTriangle, Pause, ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -632,7 +632,7 @@ function Header({
   sessionName, isRunning, currentState, currentPhase, currentIteration,
   providerName, modelName, tasksCompleted, tasksTotal, progressPercent,
   updatedAt, loading, loadError, connectionStatus, onOpenCommand, onOpenSwitcher,
-  stuckCount, startedAt, avgDuration, maxIterations,
+  stuckCount, startedAt, avgDuration, maxIterations, onToggleMobileMenu,
 }: {
   sessionName: string; isRunning: boolean; currentState: string; currentPhase: string;
   currentIteration: string; providerName: string; modelName: string;
@@ -640,24 +640,29 @@ function Header({
   updatedAt: string; loading: boolean; loadError: string | null;
   connectionStatus: ConnectionStatus; onOpenCommand: () => void; onOpenSwitcher: () => void;
   stuckCount: number; startedAt: string; avgDuration: string; maxIterations: number | null;
+  onToggleMobileMenu: () => void;
 }) {
   const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
   return (
-    <header className="border-b border-border px-4 py-2.5 shrink-0">
-      <div className="flex items-center gap-4">
+    <header className="border-b border-border px-3 py-2 md:px-4 md:py-2.5 shrink-0">
+      <div className="flex items-center gap-2 sm:gap-4">
+        <button type="button" className="md:hidden p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
+          <Menu className="h-5 w-5" />
+        </button>
         <Tooltip>
           <TooltipTrigger asChild>
             <button type="button" className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors" onClick={onOpenSwitcher}>
               <StatusDot status={isRunning ? 'running' : currentState} />
-              <span className="text-sm font-semibold truncate max-w-[200px]">{sessionName}</span>
+              <span className="text-sm font-semibold truncate max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">{sessionName}</span>
             </button>
           </TooltipTrigger>
           <TooltipContent><p>{sessionName}</p></TooltipContent>
         </Tooltip>
 
+        {/* Iteration info — hidden on mobile, tap session name for details */}
         <HoverCard>
           <HoverCardTrigger asChild>
-            <span className="text-xs text-muted-foreground cursor-help whitespace-nowrap flex items-center gap-1">
+            <span className="text-xs text-muted-foreground cursor-help whitespace-nowrap hidden sm:flex items-center gap-1">
               <Activity className="h-3 w-3" />
               iter {currentIteration}{maxIterations ? `/${maxIterations}` : '/\u221E'}{tasksTotal > 0 ? ` \u00B7 ${tasksTotal} todos` : ''}
             </span>
@@ -676,16 +681,17 @@ function Header({
         </HoverCard>
 
         {startedAt && (
-          <span className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1">
+          <span className="text-xs text-muted-foreground whitespace-nowrap hidden md:flex items-center gap-1">
             <Clock className="h-3 w-3" />
             <ElapsedTimer since={startedAt} />
           </span>
         )}
         {avgDuration && (
-          <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap">~{avgDuration}/iter</span>
+          <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap hidden lg:inline">~{avgDuration}/iter</span>
         )}
 
-        <div className="flex items-center gap-2 min-w-0 flex-1 max-w-xs">
+        {/* Progress bar — hidden on mobile */}
+        <div className="hidden sm:flex items-center gap-2 min-w-0 flex-1 max-w-xs">
           <Progress value={progressPercent} className="flex-1 h-1.5" indicatorClassName={phaseBarColor} />
           <span className="text-[10px] text-muted-foreground whitespace-nowrap">{progressPercent}%</span>
         </div>
@@ -694,24 +700,25 @@ function Header({
         {providerName && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-xs text-muted-foreground whitespace-nowrap truncate max-w-[160px]">{modelName ? `${providerName}/${modelName}` : providerName}</span>
+              <span className="text-xs text-muted-foreground whitespace-nowrap truncate max-w-[160px] hidden lg:inline">{modelName ? `${providerName}/${modelName}` : providerName}</span>
             </TooltipTrigger>
             <TooltipContent><p>{modelName ? `${providerName}/${modelName}` : providerName}</p></TooltipContent>
           </Tooltip>
         )}
-        <span className={`text-xs whitespace-nowrap font-medium ${statusColors[currentState] ?? 'text-muted-foreground'}`}>{currentState}</span>
+        {/* Status label — hidden on mobile (StatusDot already shows it) */}
+        <span className={`text-xs whitespace-nowrap font-medium hidden sm:inline ${statusColors[currentState] ?? 'text-muted-foreground'}`}>{currentState}</span>
 
         <div className="flex-1" />
         <ConnectionIndicator status={connectionStatus} />
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="text-muted-foreground hover:text-foreground transition-colors" onClick={onOpenCommand}>
-              <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] font-mono flex items-center gap-1"><Search className="h-3 w-3" /> K</kbd>
+            <button type="button" className="text-muted-foreground hover:text-foreground transition-colors hidden sm:block" onClick={onOpenCommand}>
+              <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] font-mono flex items-center gap-1"><Search className="h-3 w-3" /> <span className="hidden lg:inline">K</span></kbd>
             </button>
           </TooltipTrigger>
           <TooltipContent><p>Command palette (Ctrl+K)</p></TooltipContent>
         </Tooltip>
-        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+        <span className="text-[10px] text-muted-foreground whitespace-nowrap hidden md:inline">
           {loading ? 'Loading...' : updatedAt ? formatTime(updatedAt) : ''}{loadError && !loading ? ' \u2022 err' : ''}
         </span>
       </div>
@@ -739,13 +746,13 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
   return (
     <Tabs defaultValue={defaultTab} className="flex flex-col h-full">
       <div className="flex items-center shrink-0">
-        <TabsList className="h-8 bg-muted/50 flex-wrap justify-start flex-1">
+        <TabsList className="h-8 bg-muted/50 flex-nowrap sm:flex-wrap justify-start flex-1 overflow-x-auto whitespace-nowrap">
           {visibleTabs.map((n) => (
-            <TabsTrigger key={n} value={n} className="text-[11px] px-2 py-1 h-6 data-[state=active]:bg-background">
+            <TabsTrigger key={n} value={n} className="text-[10px] sm:text-[11px] px-2 py-1 h-6 data-[state=active]:bg-background">
               {tabLabels[n] ?? n.replace(/\.md$/i, '')}
             </TabsTrigger>
           ))}
-          <TabsTrigger value="_health" className="text-[11px] px-2 py-1 h-6 data-[state=active]:bg-background">
+          <TabsTrigger value="_health" className="text-[10px] sm:text-[11px] px-2 py-1 h-6 data-[state=active]:bg-background">
             <Heart className="h-3 w-3 mr-1" /> Health
           </TabsTrigger>
           {overflowTabs.length > 0 && (
@@ -1210,7 +1217,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
             outputLoading ? (
               <div className="ml-2 text-muted-foreground/50 py-1 flex items-center gap-1 text-[11px]"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
             ) : outputText ? (
-              <div className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1 overflow-auto max-h-[300px] bg-accent/30 rounded-md p-2">
+              <div className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1 overflow-auto max-h-48 sm:max-h-64 lg:max-h-[300px] bg-accent/30 rounded-md p-2">
                 <div className="prose-dashboard text-[10px] font-mono" dangerouslySetInnerHTML={{ __html: marked.parse(outputText, { gfm: true, breaks: true }) as string }} />
               </div>
             ) : outputText === '' ? (
@@ -1270,34 +1277,31 @@ function Footer({
   isRunning: boolean;
 }) {
   return (
-    <footer className="border-t border-border px-4 py-2 shrink-0">
-      <div className="flex items-center gap-3">
-        <div className="flex-1 flex gap-2">
-          <Textarea
-            className="min-h-[32px] h-8 resize-none text-xs flex-1"
-            placeholder="Steer: enter guidance for the next iteration..."
-            value={steerInstruction}
-            onChange={(e) => setSteerInstruction(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSteer(); } }}
-          />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button size="sm" className="h-8" disabled={steerSubmitting || !steerInstruction.trim()} onClick={onSteer}>
-                <Send className="h-3.5 w-3.5 mr-1" />{steerSubmitting ? '...' : 'Send'}
+    <footer className="border-t border-border px-3 py-2 md:px-4 shrink-0">
+      <div className="flex items-center gap-1.5 sm:gap-3">
+        <Textarea
+          className="min-h-[32px] h-8 resize-none text-xs flex-1 min-w-0"
+          placeholder="Steer..."
+          value={steerInstruction}
+          onChange={(e) => setSteerInstruction(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSteer(); } }}
+        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={steerSubmitting || !steerInstruction.trim()} onClick={onSteer}>
+              <Send className="h-3.5 w-3.5" /><span className="hidden sm:inline ml-1">{steerSubmitting ? '...' : 'Send'}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent><p>Send steering instruction (Enter)</p></TooltipContent>
+        </Tooltip>
+        {isRunning ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="destructive" size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={stopSubmitting}>
+                <Square className="h-3 w-3" /><span className="hidden sm:inline ml-1">{stopSubmitting ? '...' : 'Stop'}</span>
+                <ChevronDown className="h-3 w-3 ml-0.5" />
               </Button>
-            </TooltipTrigger>
-            <TooltipContent><p>Send steering instruction (Enter)</p></TooltipContent>
-          </Tooltip>
-        </div>
-        <div className="flex items-center gap-2">
-          {isRunning ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="destructive" size="sm" className="h-8" disabled={stopSubmitting}>
-                  <Square className="h-3 w-3 mr-1" />{stopSubmitting ? '...' : 'Stop'}
-                  <ChevronDown className="h-3 w-3 ml-1" />
-                </Button>
-              </DropdownMenuTrigger>
+            </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => onStop(false)}>
                   <Square className="h-3.5 w-3.5 mr-2" /> Stop after iteration
@@ -1309,17 +1313,16 @@ function Footer({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="default" size="sm" className="h-8" disabled={resumeSubmitting} onClick={onResume}>
-                  <Play className="h-3 w-3 mr-1" />{resumeSubmitting ? '...' : 'Resume'}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent><p>Resume loop from where it left off</p></TooltipContent>
-            </Tooltip>
-          )}
-        </div>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="default" size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={resumeSubmitting} onClick={onResume}>
+                <Play className="h-3 w-3" /><span className="hidden sm:inline ml-1">{resumeSubmitting ? '...' : 'Resume'}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent><p>Resume loop from where it left off</p></TooltipContent>
+          </Tooltip>
+        )}
       </div>
     </footer>
   );
@@ -1378,6 +1381,8 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activePanel, setActivePanel] = useState<'docs' | 'activity'>('docs');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const prevPhaseRef = useRef<string>('');
 
@@ -1517,53 +1522,88 @@ export function App() {
     finally { setResumeSubmitting(false); }
   }, [resumeSubmitting]);
 
+  const docsPanel = (
+    <Card className={`flex flex-col min-h-0 min-w-0 overflow-hidden flex-1 ${activePanel !== 'docs' ? 'hidden lg:flex' : ''}`}>
+      <CardHeader className="py-2 px-3 shrink-0">
+        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> Documents</CardTitle>
+      </CardHeader>
+      <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
+        <DocsPanel docs={state?.docs ?? {}} providerHealth={providerHealth} activityCollapsed={activityCollapsed} repoUrl={state?.repoUrl} />
+      </CardContent>
+    </Card>
+  );
+
+  const activityPanel = activityCollapsed ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" className={`shrink-0 flex-col items-center gap-1 px-1 py-2 text-muted-foreground hover:text-foreground transition-colors hidden lg:flex ${activePanel !== 'activity' ? 'hidden lg:flex' : 'flex'}`} onClick={() => setActivityCollapsed(false)}>
+          <PanelLeftOpen className="h-4 w-4" />
+          <span className="text-[9px] uppercase tracking-wider font-medium [writing-mode:vertical-lr]">Activity</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="left"><p>Show activity panel</p></TooltipContent>
+    </Tooltip>
+  ) : (
+    <Card className={`flex flex-col min-h-0 min-w-0 overflow-hidden flex-1 ${activePanel !== 'activity' ? 'hidden lg:flex' : ''}`}>
+      <CardHeader className="py-2 px-3 shrink-0">
+        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+          <span className="flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="text-muted-foreground/50 hover:text-foreground transition-colors hidden lg:block" onClick={() => setActivityCollapsed(true)}>
+                <PanelLeftClose className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent><p>Collapse activity panel</p></TooltipContent>
+          </Tooltip>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
+        <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} currentIteration={isRunning ? currentIterationNum : null} currentPhase={currentPhase} currentProvider={providerName} isRunning={isRunning} iterationStartedAt={iterationStartedAt} />
+      </CardContent>
+    </Card>
+  );
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
         <div className="flex flex-1 min-h-0">
-          <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
+          {/* Desktop sidebar */}
+          <div className="hidden md:flex">
+            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
+          </div>
+          {/* Mobile sidebar drawer */}
+          {mobileMenuOpen && (
+            <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
+              <div className="absolute inset-0 bg-black/50" />
+              <div className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
+                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} />
+              </div>
+            </div>
+          )}
           <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} />
-            <main className="flex-1 min-h-0 p-3">
+            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} />
+            {/* Mobile panel toggle */}
+            <div className="lg:hidden flex border-b border-border shrink-0">
+              <button
+                type="button"
+                className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setActivePanel('docs')}
+              >
+                <FileText className="h-3.5 w-3.5 inline mr-1" />Documents
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setActivePanel('activity')}
+              >
+                <Activity className="h-3.5 w-3.5 inline mr-1" />Activity
+              </button>
+            </div>
+            <main className="flex-1 min-h-0 p-2 md:p-3">
               <div className="flex gap-3 h-full">
-                <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden flex-1">
-                  <CardHeader className="py-2 px-3 shrink-0">
-                    <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> Documents</CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-                    <DocsPanel docs={state?.docs ?? {}} providerHealth={providerHealth} activityCollapsed={activityCollapsed} repoUrl={state?.repoUrl} />
-                  </CardContent>
-                </Card>
-                {activityCollapsed ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button type="button" className="shrink-0 flex flex-col items-center gap-1 px-1 py-2 text-muted-foreground hover:text-foreground transition-colors" onClick={() => setActivityCollapsed(false)}>
-                        <PanelLeftOpen className="h-4 w-4" />
-                        <span className="text-[9px] uppercase tracking-wider font-medium [writing-mode:vertical-lr]">Activity</span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="left"><p>Show activity panel</p></TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <Card className="flex flex-col min-h-0 min-w-0 overflow-hidden flex-1">
-                    <CardHeader className="py-2 px-3 shrink-0">
-                      <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-                        <span className="flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</span>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="text-muted-foreground/50 hover:text-foreground transition-colors" onClick={() => setActivityCollapsed(true)}>
-                              <PanelLeftClose className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent><p>Collapse activity panel</p></TooltipContent>
-                        </Tooltip>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-                      <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} currentIteration={isRunning ? currentIterationNum : null} currentPhase={currentPhase} currentProvider={providerName} isRunning={isRunning} iterationStartedAt={iterationStartedAt} />
-                    </CardContent>
-                  </Card>
-                )}
+                {docsPanel}
+                {activityPanel}
               </div>
             </main>
             <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} onResume={() => void handleResume()} resumeSubmitting={resumeSubmitting} isRunning={isRunning} />
