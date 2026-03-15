@@ -11,6 +11,7 @@ Major version mismatches are a gate failure; minor/patch differences are accepta
 | Node.js   | 22.x    |
 | Bash      | 5.x     |
 | TypeScript| 5.x     |
+| Git       | 2.x     |
 
 ## CLI (`aloop/cli`)
 
