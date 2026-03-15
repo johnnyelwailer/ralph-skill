@@ -38,6 +38,7 @@ interface DashboardState {
   activeSessions: unknown[];
   recentSessions: unknown[];
   artifacts: ArtifactManifest[];
+  repoUrl: string | null;
 }
 
 interface SessionSummary {
@@ -720,7 +721,7 @@ function Header({
 
 // ── Docs Panel ──
 
-function DocsPanel({ docs, providerHealth, activityCollapsed, workdir }: { docs: Record<string, string>; providerHealth: ProviderHealth[]; activityCollapsed?: boolean; workdir?: string }) {
+function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs: Record<string, string>; providerHealth: ProviderHealth[]; activityCollapsed?: boolean; repoUrl?: string | null }) {
   const docOrder = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
   const tabLabels: Record<string, string> = { 'TODO.md': 'TODO', 'SPEC.md': 'SPEC', 'RESEARCH.md': 'RESEARCH', 'REVIEW_LOG.md': 'REVIEW LOG', 'STEERING.md': 'STEERING' };
 
@@ -761,23 +762,17 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, workdir }: { docs:
               </div>
             </div>
           )}
+          {repoUrl && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a href={repoUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center h-6 w-6 rounded-sm text-muted-foreground hover:text-foreground hover:bg-background transition-colors ml-auto">
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </TooltipTrigger>
+              <TooltipContent><p>Open repo on GitHub</p></TooltipContent>
+            </Tooltip>
+          )}
         </TabsList>
-        {workdir && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 ml-1" onClick={async () => {
-                try {
-                  const r = await fetch('/api/open-ide', { method: 'POST' });
-                  if (!r.ok) { const p = await r.json() as { error?: string }; throw new Error(p.error ?? `HTTP ${r.status}`); }
-                  toast.success('Opened in VS Code');
-                } catch (e) { toast.error((e as Error).message); }
-              }}>
-                <ExternalLink className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent><p>Open in VS Code</p></TooltipContent>
-          </Tooltip>
-        )}
       </div>
       {allDocs.map((n) => (
         <TabsContent key={n} value={n} className="flex-1 min-h-0 mt-0">
@@ -1536,7 +1531,7 @@ export function App() {
                     <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> Documents</CardTitle>
                   </CardHeader>
                   <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-                    <DocsPanel docs={state?.docs ?? {}} providerHealth={providerHealth} activityCollapsed={activityCollapsed} workdir={state?.workdir} />
+                    <DocsPanel docs={state?.docs ?? {}} providerHealth={providerHealth} activityCollapsed={activityCollapsed} repoUrl={state?.repoUrl} />
                   </CardContent>
                 </Card>
                 {activityCollapsed ? (

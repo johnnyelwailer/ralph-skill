@@ -33,6 +33,7 @@ interface DashboardState {
   recentSessions: unknown[];
   artifacts: ArtifactManifest[];
   meta: unknown | null;
+  repoUrl: string | null;
 }
 
 interface SessionContext {
@@ -249,6 +250,21 @@ async function resolvePid(
   return pid;
 }
 
+function getRepoUrl(workdir: string): string | null {
+  try {
+    const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: workdir, timeout: 3000, encoding: 'utf-8' });
+    const url = (remote.stdout ?? '').trim();
+    if (!url) return null;
+    // git@host:owner/repo.git → https://host/owner/repo
+    const sshMatch = url.match(/^git@([^:]+):(.+?)(?:\.git)?$/);
+    if (sshMatch) return `https://${sshMatch[1]}/${sshMatch[2]}`;
+    // https://host/owner/repo.git → https://host/owner/repo
+    const httpsMatch = url.match(/^https?:\/\/(.+?)(?:\.git)?$/);
+    if (httpsMatch) return `https://${httpsMatch[1]}`;
+    return url;
+  } catch { return null; }
+}
+
 async function loadStateForContext(
   ctx: SessionContext,
   runtimeDir: string,
@@ -321,6 +337,7 @@ async function loadStateForContext(
     recentSessions: enrichedRecent,
     artifacts,
     meta,
+    repoUrl: getRepoUrl(ctx.workdir),
   };
 }
 
@@ -984,18 +1001,6 @@ export async function startDashboardServer(
         child.unref();
 
         writeJson(response, 202, { resumed: true, pid: child.pid });
-        return;
-      }
-
-      // ── Open in IDE endpoint ──
-      if (requestUrl.pathname === '/api/open-ide') {
-        if (request.method !== 'POST') { writeJson(response, 405, { error: 'Method not allowed.' }); return; }
-        try {
-          spawnSync('code', [workdir], { stdio: 'ignore', timeout: 5000 });
-          writeJson(response, 200, { opened: true, path: workdir });
-        } catch {
-          writeJson(response, 500, { error: 'Failed to launch VS Code.' });
-        }
         return;
       }
 
