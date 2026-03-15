@@ -774,14 +774,47 @@ function DocsPanel({ docs, providerHealth }: { docs: Record<string, string>; pro
   );
 }
 
+function slugify(text: string): string {
+  return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim();
+}
+
 function DocContent({ content, name }: { content: string; name: string }) {
-  const rendered = useMemo(() => {
-    if (!content) return '';
-    return marked.parse(content, { gfm: true, breaks: true }) as string;
+  const isSpec = /spec/i.test(name);
+  const { rendered, toc } = useMemo(() => {
+    if (!content) return { rendered: '', toc: [] as Array<{ level: number; text: string; id: string }> };
+    const headings: Array<{ level: number; text: string; id: string }> = [];
+    const renderer = new marked.Renderer();
+    renderer.heading = ({ tokens, depth }: { tokens: { raw: string }[]; depth: number }) => {
+      const text = tokens.map((t) => t.raw).join('');
+      const id = slugify(text);
+      headings.push({ level: depth, text, id });
+      return `<h${depth} id="${id}">${text}</h${depth}>`;
+    };
+    const html = marked.parse(content, { gfm: true, breaks: true, renderer }) as string;
+    return { rendered: html, toc: headings };
   }, [content]);
   if (!content) return <p className="text-xs text-muted-foreground p-3">No content for {name}.</p>;
+  const minLevel = toc.length > 0 ? Math.min(...toc.map((h) => h.level)) : 1;
   return (
     <ScrollArea className="h-full">
+      {isSpec && toc.length > 0 && (
+        <div className="p-3 pb-0">
+          <Collapsible defaultOpen={false}>
+            <CollapsibleTrigger className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors font-medium uppercase tracking-wider">
+              <ChevronRight className="h-3 w-3 collapsible-chevron" /> Table of Contents
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <nav className="mt-1 mb-2 border-l-2 border-border pl-2 space-y-0.5 text-[11px] max-h-[300px] overflow-y-auto">
+                {toc.map((h) => (
+                  <a key={h.id} href={`#${h.id}`} className="block text-muted-foreground hover:text-foreground transition-colors truncate" style={{ paddingLeft: `${(h.level - minLevel) * 12}px` }}>
+                    {h.text}
+                  </a>
+                ))}
+              </nav>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
       <div className="prose-dashboard p-3 pr-4" dangerouslySetInnerHTML={{ __html: rendered }} />
     </ScrollArea>
   );

@@ -121,3 +121,10 @@
 .animate-slide-in-left {
   animation: slide-in-left 0.15s ease-out;
 }
+[data-state="open"] > .collapsible-chevron {
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+[data-state="closed"] > .collapsible-chevron {
+  transition: transform 0.15s ease;
+}
