@@ -2035,9 +2035,7 @@ This is the same [Request/Response Protocol](#requestresponse-protocol) describe
 
 ### Architecture: Keep loop scripts lean — GH/steering/requests are host-side plugins
 
-**Critical design rule:** `loop.ps1` and `loop.sh` must NOT contain convention-file processing, GH logic, or any host-only operations directly. The loop scripts run inside containers and must stay minimal: iterate phases, invoke providers, write status/logs. That's it.
-
-> **Note:** `loop.sh` currently contains `setup_remote_backup()` which uses `gh` to create a backup repo. This should be moved to `aloop start` (low priority).
+**Critical design rule:** `loop.ps1` and `loop.sh` must NOT contain convention-file processing, GH logic, or any host-only operations directly. The loop scripts run inside containers and must stay minimal: iterate phases, invoke providers, write status/logs. That's it. Remote backup setup (repo creation via `gh`) belongs in `aloop start`, not in the loop scripts.
 
 All host-side operations (GH requests, steering injection, dashboard, request processing) are handled by the **aloop host monitor** — a separate process that runs alongside the loop on the host:
 
