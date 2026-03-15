@@ -353,8 +353,39 @@ export async function applyDecompositionPlan(
 
 export interface OrchestrateCommandResult {
   session_dir: string;
+  prompts_dir: string;
+  queue_dir: string;
+  requests_dir: string;
+  loop_plan_file: string;
   state_file: string;
   state: OrchestratorState;
+}
+
+interface LoopPlan {
+  cycle: string[];
+  cyclePosition: number;
+  iteration: number;
+  version: number;
+}
+
+const ORCH_SCAN_PROMPT_FILENAME = 'PROMPT_orch_scan.md';
+
+function buildOrchestratorScanPrompt(): string {
+  return `---
+agent: orch_scan
+reasoning: medium
+---
+
+# Orchestrator Scan (Heartbeat)
+
+You are the orchestrator scan agent.
+
+Run one lightweight monitoring pass:
+- Read current orchestrator state and identify items ready for progress.
+- Prioritize queued override prompts from \`queue/\` when present.
+- Write any required side effects into \`requests/*.json\`.
+- Keep this step reactive and minimal; avoid large speculative planning.
+`;
 }
 
 export async function orchestrateCommandWithDeps(
@@ -378,8 +409,25 @@ export async function orchestrateCommandWithDeps(
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}${String(now.getUTCSeconds()).padStart(2, '0')}`;
   const sessionId = `orchestrator-${timestamp}`;
   const sessionDir = path.join(sessionsRoot, sessionId);
+  const promptsDir = path.join(sessionDir, 'prompts');
+  const queueDir = path.join(sessionDir, 'queue');
+  const requestsDir = path.join(sessionDir, 'requests');
+  const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
+  const orchScanPromptFile = path.join(promptsDir, ORCH_SCAN_PROMPT_FILENAME);
 
   await deps.mkdir(sessionDir, { recursive: true });
+  await deps.mkdir(promptsDir, { recursive: true });
+  await deps.mkdir(queueDir, { recursive: true });
+  await deps.mkdir(requestsDir, { recursive: true });
+
+  const loopPlan: LoopPlan = {
+    cycle: [ORCH_SCAN_PROMPT_FILENAME],
+    cyclePosition: 0,
+    iteration: 1,
+    version: 1,
+  };
+  await deps.writeFile(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}\n`, 'utf8');
+  await deps.writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(), 'utf8');
 
   let state: OrchestratorState = {
     spec_file: specFile,
@@ -423,7 +471,15 @@ export async function orchestrateCommandWithDeps(
   const stateFile = path.join(sessionDir, 'orchestrator.json');
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
-  return { session_dir: sessionDir, state_file: stateFile, state };
+  return {
+    session_dir: sessionDir,
+    prompts_dir: promptsDir,
+    queue_dir: queueDir,
+    requests_dir: requestsDir,
+    loop_plan_file: loopPlanFile,
+    state_file: stateFile,
+    state,
+  };
 }
 
 export async function orchestrateCommand(options: OrchestrateCommandOptions = {}, deps?: OrchestrateDeps) {
@@ -438,6 +494,10 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   console.log('Orchestrator session initialized.');
   console.log('');
   console.log(`  Session dir:  ${result.session_dir}`);
+  console.log(`  Prompts dir:  ${result.prompts_dir}`);
+  console.log(`  Queue dir:    ${result.queue_dir}`);
+  console.log(`  Requests dir: ${result.requests_dir}`);
+  console.log(`  Loop plan:    ${result.loop_plan_file}`);
   console.log(`  State file:   ${result.state_file}`);
   console.log(`  Spec:         ${result.state.spec_file}`);
   console.log(`  Trunk:        ${result.state.trunk_branch}`);

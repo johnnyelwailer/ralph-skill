@@ -22,7 +22,7 @@
 - [x] [runtime][high] Add runtime plan mutation — rewrite `loop-plan.json` on permanent changes, write queue entries for one-shot overrides. (priority: high)
 
 **Orchestrator (loop.sh instance with orchestrator prompts):**
-- [ ] [orchestrator][high] Implement orchestrator as a `loop.sh` instance — single `PROMPT_orch_scan.md` cycle (heartbeat), primarily queue-driven/reactive. (priority: high)
+- [x] [orchestrator][high] Implement orchestrator as a `loop.sh` instance — single `PROMPT_orch_scan.md` cycle (heartbeat), primarily queue-driven/reactive. (priority: high)
 - [ ] [orchestrator][high] Implement label-driven state machine — issues progress: `needs-analysis` → `needs-decompose` → `needs-refine` → `ready` → `in-progress` → `in-review` → `done`. (priority: high)
 - [ ] [orchestrator][high] Implement global spec gap analysis — product analyst + architecture analyst agents run before decomposition. (priority: high)
 - [ ] [orchestrator][high] Implement epic decomposition — spec → vertical slice parent issues with sub-issue hierarchy. (priority: high)
@@ -43,5 +43,4 @@
 - [ ] [dashboard][medium] Add per-iteration timing/duration in log rows and session elapsed context in header.
 - [ ] [dashboard][medium] Add sidebar expand/collapse toggle button.
 - [ ] [status][medium] Extend `aloop status` for orchestrator→child session→issue/PR tree output.
-
 

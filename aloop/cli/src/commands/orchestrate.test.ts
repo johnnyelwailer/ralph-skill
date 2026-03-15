@@ -86,7 +86,31 @@ describe('orchestrateCommandWithDeps', () => {
     assert.equal(result.state.created_at, '2026-03-09T10:30:00.000Z');
     assert.equal(result.state.updated_at, '2026-03-09T10:30:00.000Z');
     assert.ok(result.state_file.includes('orchestrator.json'));
+    assert.ok(result.prompts_dir.includes('/prompts'));
+    assert.ok(result.queue_dir.includes('/queue'));
+    assert.ok(result.requests_dir.includes('/requests'));
+    assert.ok(result.loop_plan_file.includes('loop-plan.json'));
     assert.ok(result.session_dir.includes('orchestrator-20260309-103000'));
+  });
+
+  it('writes orchestrator loop heartbeat artifacts', async () => {
+    const deps = createMockDeps();
+    const mockDeps = deps as OrchestrateDeps & { _writtenFiles: Record<string, string> };
+
+    await orchestrateCommandWithDeps({}, deps);
+
+    const loopPlanPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/loop-plan.json'));
+    assert.ok(loopPlanPath, 'loop-plan.json should be written');
+    const loopPlan = JSON.parse(mockDeps._writtenFiles[loopPlanPath!]);
+    assert.deepStrictEqual(loopPlan.cycle, ['PROMPT_orch_scan.md']);
+    assert.equal(loopPlan.cyclePosition, 0);
+    assert.equal(loopPlan.iteration, 1);
+    assert.equal(loopPlan.version, 1);
+
+    const orchPromptPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/prompts/PROMPT_orch_scan.md'));
+    assert.ok(orchPromptPath, 'PROMPT_orch_scan.md should be written');
+    assert.match(mockDeps._writtenFiles[orchPromptPath!], /agent:\s+orch_scan/);
+    assert.match(mockDeps._writtenFiles[orchPromptPath!], /Orchestrator Scan \(Heartbeat\)/);
   });
 
   it('respects --spec, --trunk, --concurrency options', async () => {
@@ -163,14 +187,16 @@ describe('orchestrateCommandWithDeps', () => {
     assert.equal(persisted.concurrency_cap, 3);
   });
 
-  it('creates session directory', async () => {
+  it('creates session directories for orchestrator loop runtime', async () => {
     const deps = createMockDeps();
     const mockDeps = deps as OrchestrateDeps & { _createdDirs: string[] };
 
     await orchestrateCommandWithDeps({}, deps);
 
-    assert.ok(mockDeps._createdDirs.length > 0);
-    assert.ok(mockDeps._createdDirs.some((d) => d.includes('orchestrator-')));
+    assert.ok(mockDeps._createdDirs.some((d) => d.includes('orchestrator-')), 'session dir should be created');
+    assert.ok(mockDeps._createdDirs.some((d) => d.endsWith('/prompts')), 'prompts dir should be created');
+    assert.ok(mockDeps._createdDirs.some((d) => d.endsWith('/queue')), 'queue dir should be created');
+    assert.ok(mockDeps._createdDirs.some((d) => d.endsWith('/requests')), 'requests dir should be created');
   });
 
   it('runs triage monitor cycle when repo and gh executor are available', async () => {
@@ -256,7 +282,7 @@ describe('orchestrateCommand', () => {
     assert.ok(allOutput.includes('false'));
   });
 
-  it('json output emits valid JSON with session_dir, state_file, state keys', async () => {
+  it('json output emits valid JSON with orchestrator loop artifacts', async () => {
     const logs: string[] = [];
     const origLog = console.log;
     console.log = (...args: unknown[]) => logs.push(args.join(' '));
@@ -269,6 +295,10 @@ describe('orchestrateCommand', () => {
     assert.equal(logs.length, 1);
     const parsed = JSON.parse(logs[0]);
     assert.ok('session_dir' in parsed);
+    assert.ok('prompts_dir' in parsed);
+    assert.ok('queue_dir' in parsed);
+    assert.ok('requests_dir' in parsed);
+    assert.ok('loop_plan_file' in parsed);
     assert.ok('state_file' in parsed);
     assert.ok('state' in parsed);
     assert.equal(parsed.state.spec_file, 'SPEC.md');
