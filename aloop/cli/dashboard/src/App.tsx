@@ -1089,8 +1089,8 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
             outputLoading ? (
               <div className="ml-2 text-muted-foreground/50 py-1 flex items-center gap-1 text-[11px]"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
             ) : outputText ? (
-              <div className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1">
-                <pre className="bg-muted rounded-md p-2 overflow-auto max-h-[300px] text-[10px] font-mono text-foreground/80 whitespace-pre-wrap break-words">{outputText}</pre>
+              <div className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1 overflow-auto max-h-[300px]">
+                <div className="prose-dashboard text-[10px]" dangerouslySetInnerHTML={{ __html: marked.parse(outputText, { gfm: true, breaks: true }) as string }} />
               </div>
             ) : outputText === '' ? (
               <div className="text-muted-foreground/50 py-1 italic text-[11px] ml-2">No output available</div>
