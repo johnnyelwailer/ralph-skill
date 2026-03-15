@@ -74,6 +74,8 @@ export interface OrchestratorIssue {
 
 export interface OrchestratorState {
   spec_file: string;
+  spec_glob?: string;
+  spec_last_commit?: string;
   autonomy_level?: AutonomyLevel;
   trunk_branch: string;
   concurrency_cap: number;
@@ -88,6 +90,43 @@ export interface OrchestratorState {
   created_at: string;
   updated_at: string;
 }
+
+// --- Replan types ---
+
+export type ReplanTrigger = 'spec_change' | 'wave_complete' | 'external_issue' | 'persistent_failure';
+
+export type ReplanActionType = 'create_issue' | 'update_issue' | 'close_issue' | 'steer_child' | 'reprioritize';
+
+export interface ReplanAction {
+  action: ReplanActionType;
+  number?: number;
+  parent?: number;
+  title?: string;
+  body?: string;
+  new_body?: string;
+  deps?: number[];
+  instruction?: string;
+  new_wave?: number;
+  reason?: string;
+}
+
+export interface ReplanResult {
+  type: 'orchestrator_replan';
+  trigger: ReplanTrigger;
+  timestamp: string;
+  actions: ReplanAction[];
+  gap_analysis_needed: boolean;
+  affected_sections: string[];
+}
+
+export interface SpecChangeDetection {
+  changed: boolean;
+  diff: string;
+  new_commit: string;
+  changed_files: string[];
+}
+
+const HOUSEKEEPING_AGENTS = new Set(['spec-consistency', 'spec-backfill', 'guard', 'loop-health-supervisor']);
 
 export type TriageClassification = 'actionable' | 'needs_clarification' | 'question' | 'out_of_scope';
 export type TriageActionTaken =
@@ -447,6 +486,9 @@ const ORCH_DECOMPOSE_PROMPT_FILENAME = 'PROMPT_orch_decompose.md';
 const ORCH_SUB_DECOMPOSE_PROMPT_FILENAME = 'PROMPT_orch_sub_decompose.md';
 const ORCH_PRODUCT_ANALYST_PROMPT_FILENAME = 'PROMPT_orch_product_analyst.md';
 const ORCH_ARCH_ANALYST_PROMPT_FILENAME = 'PROMPT_orch_arch_analyst.md';
+const ORCH_REPLAN_PROMPT_FILENAME = 'PROMPT_orch_replan.md';
+const ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME = 'PROMPT_orch_spec_consistency.md';
+const DEFAULT_SPEC_GLOB = 'SPEC.md specs/*.md';
 const ORCH_ESTIMATE_PROMPT_FALLBACK = `# Orchestrator Estimation Agent
 
 You are Aloop, the estimation agent for orchestrator readiness checks.
@@ -635,8 +677,21 @@ export async function orchestrateCommandWithDeps(
     : ORCH_SUB_DECOMPOSE_FALLBACK;
   await deps.writeFile(path.join(promptsDir, ORCH_SUB_DECOMPOSE_PROMPT_FILENAME), subDecomposePrompt, 'utf8');
 
+  // Load replan and spec consistency templates
+  const replanTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_REPLAN_PROMPT_FILENAME);
+  if (deps.existsSync(replanTemplatePath)) {
+    const replanPrompt = await deps.readFile(replanTemplatePath, 'utf8');
+    await deps.writeFile(path.join(promptsDir, ORCH_REPLAN_PROMPT_FILENAME), replanPrompt, 'utf8');
+  }
+  const consistencyTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME);
+  if (deps.existsSync(consistencyTemplatePath)) {
+    const consistencyPrompt = await deps.readFile(consistencyTemplatePath, 'utf8');
+    await deps.writeFile(path.join(promptsDir, ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME), consistencyPrompt, 'utf8');
+  }
+
   let state: OrchestratorState = {
     spec_file: specFile,
+    spec_glob: DEFAULT_SPEC_GLOB,
     autonomy_level: autonomyLevel,
     trunk_branch: trunkBranch,
     concurrency_cap: concurrencyCap,
@@ -3230,12 +3285,21 @@ export interface ScanLoopDeps {
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   now: () => Date;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  execGit?: (args: string[], cwd?: string) => Promise<{ stdout: string; stderr: string }>;
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   dispatchDeps?: DispatchDeps;
   prLifecycleDeps?: PrLifecycleDeps;
   aloopRoot?: string;
   sleep?: (ms: number) => Promise<void>;
   signalStop?: () => boolean;
+}
+
+export interface SpecChangeReplanResult {
+  spec_changed: boolean;
+  diff_queued: boolean;
+  actions_applied: number;
+  gap_analysis_triggered: boolean;
+  backfill_applied: boolean;
 }
 
 export interface ScanPassResult {
@@ -3249,12 +3313,460 @@ export interface ScanPassResult {
   budgetExceeded: boolean;
   allDone: boolean;
   shouldStop: boolean;
+  replan: SpecChangeReplanResult | null;
 }
 
 export interface ScanLoopResult {
   iterations: number;
   finalState: OrchestratorState;
   reason: 'all_done' | 'budget_exceeded' | 'max_iterations' | 'stopped' | 'plan_only';
+}
+
+// --- Spec change detection and replan ---
+
+/**
+ * Check whether the most recent commit touching spec files was authored by a
+ * housekeeping agent (spec-consistency, spec-backfill, guard, loop-health-supervisor).
+ * Returns true if the commit should be ignored (loop prevention).
+ */
+export function isHousekeepingCommit(commitMessage: string): boolean {
+  const trailerMatch = commitMessage.match(/Aloop-Agent:\s*(\S+)/);
+  if (!trailerMatch) return false;
+  return HOUSEKEEPING_AGENTS.has(trailerMatch[1]);
+}
+
+/**
+ * Detect spec file changes since the last known commit using git diff.
+ * Returns the diff text, new HEAD commit, and list of changed files.
+ */
+export async function detectSpecChanges(
+  state: OrchestratorState,
+  projectRoot: string,
+  execGit: (args: string[], cwd?: string) => Promise<{ stdout: string; stderr: string }>,
+): Promise<SpecChangeDetection> {
+  const specGlob = state.spec_glob ?? DEFAULT_SPEC_GLOB;
+  const specPaths = specGlob.split(/\s+/);
+
+  // Get current HEAD
+  const headResult = await execGit(['rev-parse', 'HEAD'], projectRoot);
+  const newCommit = headResult.stdout.trim();
+
+  // If no previous commit recorded, initialize without diff
+  if (!state.spec_last_commit) {
+    return { changed: false, diff: '', new_commit: newCommit, changed_files: [] };
+  }
+
+  // If HEAD hasn't moved, no changes
+  if (state.spec_last_commit === newCommit) {
+    return { changed: false, diff: '', new_commit: newCommit, changed_files: [] };
+  }
+
+  // Check provenance: if the latest commit is from a housekeeping agent, skip
+  const logResult = await execGit(
+    ['log', '-1', '--format=%B', state.spec_last_commit + '..' + newCommit, '--', ...specPaths],
+    projectRoot,
+  );
+  if (logResult.stdout.trim() && isHousekeepingCommit(logResult.stdout)) {
+    return { changed: false, diff: '', new_commit: newCommit, changed_files: [] };
+  }
+
+  // Get diff of spec files between old and new commits
+  const diffResult = await execGit(
+    ['diff', state.spec_last_commit + '..' + newCommit, '--', ...specPaths],
+    projectRoot,
+  );
+  const diff = diffResult.stdout.trim();
+
+  if (!diff) {
+    return { changed: false, diff: '', new_commit: newCommit, changed_files: [] };
+  }
+
+  // Get list of changed files
+  const nameResult = await execGit(
+    ['diff', '--name-only', state.spec_last_commit + '..' + newCommit, '--', ...specPaths],
+    projectRoot,
+  );
+  const changed_files = nameResult.stdout
+    .trim()
+    .split('\n')
+    .filter((f) => f.length > 0);
+
+  return { changed: true, diff, new_commit: newCommit, changed_files };
+}
+
+/**
+ * Queue a replan prompt for the scan agent to process, with spec diff context.
+ */
+export async function queueReplanForSpecChange(
+  diff: string,
+  changedFiles: string[],
+  state: OrchestratorState,
+  queueDir: string,
+  replanPromptContent: string,
+  deps: { writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void> },
+): Promise<void> {
+  const issueContext = state.issues
+    .map(
+      (issue) =>
+        `- #${issue.number} [${issue.state}${issue.status ? ` / ${issue.status}` : ''}] ${issue.title} (wave ${issue.wave})`,
+    )
+    .join('\n');
+
+  const content = [
+    '---',
+    JSON.stringify(
+      { agent: 'orch_replan', reasoning: 'xhigh', type: 'replan', trigger: 'spec_change' },
+      null,
+      2,
+    ),
+    '---',
+    '',
+    replanPromptContent,
+    '',
+    '## Trigger Context',
+    '',
+    `**Trigger**: spec_change`,
+    `**Changed files**: ${changedFiles.join(', ')}`,
+    '',
+    '### Spec Diff',
+    '',
+    '```diff',
+    diff,
+    '```',
+    '',
+    '## Current Orchestrator State',
+    '',
+    `**Autonomy level**: ${state.autonomy_level ?? 'balanced'}`,
+    `**Current wave**: ${state.current_wave}`,
+    `**Total issues**: ${state.issues.length}`,
+    '',
+    issueContext,
+    '',
+    'Write replan actions to `requests/replan-spec-change-results.json`.',
+  ].join('\n');
+
+  await deps.writeFile(path.join(queueDir, 'replan-spec-change.md'), content, 'utf8');
+}
+
+/**
+ * Apply replan actions from a replan result to the orchestrator state.
+ * Supports: create_issue, update_issue, close_issue, steer_child, reprioritize.
+ */
+export function applyReplanActions(
+  state: OrchestratorState,
+  actions: ReplanAction[],
+): number {
+  let applied = 0;
+
+  for (const action of actions) {
+    switch (action.action) {
+      case 'create_issue': {
+        if (!action.title) continue;
+        const maxNumber = state.issues.reduce((max, i) => Math.max(max, i.number), 0);
+        const newIssue: OrchestratorIssue = {
+          number: maxNumber + 1,
+          title: action.title,
+          body: action.body,
+          wave: action.new_wave ?? state.current_wave,
+          state: 'pending',
+          status: 'Needs analysis',
+          child_session: null,
+          pr_number: null,
+          depends_on: action.deps ?? [],
+        };
+        state.issues.push(newIssue);
+        applied++;
+        break;
+      }
+      case 'update_issue': {
+        if (action.number == null) continue;
+        const issue = state.issues.find((i) => i.number === action.number);
+        if (!issue) continue;
+        if (action.new_body) issue.body = action.new_body;
+        if (action.title) issue.title = action.title;
+        applied++;
+        break;
+      }
+      case 'close_issue': {
+        if (action.number == null) continue;
+        const issue = state.issues.find((i) => i.number === action.number);
+        if (!issue) continue;
+        if (issue.state === 'pending') {
+          issue.state = 'failed';
+          issue.status = 'Done';
+          applied++;
+        }
+        break;
+      }
+      case 'steer_child': {
+        if (action.number == null || !action.instruction) continue;
+        const issue = state.issues.find((i) => i.number === action.number);
+        if (!issue || !issue.child_session) continue;
+        // Steering is queued via pending_steering_comments for the child session
+        if (!issue.pending_steering_comments) issue.pending_steering_comments = [];
+        issue.pending_steering_comments.push({
+          id: Date.now(),
+          author: 'replan-agent',
+          body: action.instruction,
+        });
+        applied++;
+        break;
+      }
+      case 'reprioritize': {
+        if (action.number == null || action.new_wave == null) continue;
+        const issue = state.issues.find((i) => i.number === action.number);
+        if (!issue) continue;
+        issue.wave = action.new_wave;
+        applied++;
+        break;
+      }
+    }
+  }
+
+  return applied;
+}
+
+/**
+ * Write a spec backfill entry: append resolved question content to the spec file.
+ * Commits with provenance trailers to avoid re-triggering.
+ */
+export async function applySpecBackfill(
+  specFile: string,
+  section: string,
+  content: string,
+  sessionId: string,
+  iteration: number,
+  projectRoot: string,
+  deps: {
+    readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
+    writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
+    execGit?: (args: string[], cwd?: string) => Promise<{ stdout: string; stderr: string }>;
+  },
+): Promise<boolean> {
+  const specPath = path.resolve(projectRoot, specFile);
+  try {
+    const existingContent = await deps.readFile(specPath, 'utf8');
+
+    // Find the section header and append content after it
+    const sectionPattern = new RegExp(`(^#{1,6}\\s+${section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*$)`, 'm');
+    const match = existingContent.match(sectionPattern);
+
+    let updatedContent: string;
+    if (match && match.index !== undefined) {
+      const insertPos = match.index + match[0].length;
+      updatedContent =
+        existingContent.slice(0, insertPos) +
+        '\n\n' +
+        content +
+        existingContent.slice(insertPos);
+    } else {
+      // Section not found — append at end
+      updatedContent = existingContent + '\n\n## ' + section + '\n\n' + content + '\n';
+    }
+
+    await deps.writeFile(specPath, updatedContent, 'utf8');
+
+    // Commit with provenance trailers if git is available
+    if (deps.execGit) {
+      await deps.execGit(['add', specFile], projectRoot);
+      const commitMsg = [
+        `docs: backfill spec section "${section}"`,
+        '',
+        `Aloop-Agent: spec-backfill`,
+        `Aloop-Iteration: ${iteration}`,
+        `Aloop-Session: ${sessionId}`,
+      ].join('\n');
+      await deps.execGit(['commit', '-m', commitMsg, '--allow-empty'], projectRoot);
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Queue spec consistency check after a spec change.
+ */
+export async function queueSpecConsistencyCheck(
+  changedFiles: string[],
+  diff: string,
+  state: OrchestratorState,
+  queueDir: string,
+  consistencyPromptContent: string,
+  deps: { writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void> },
+): Promise<void> {
+  const issueContext = state.issues
+    .map((issue) => `- #${issue.number} [${issue.state}] ${issue.title}`)
+    .join('\n');
+
+  const content = [
+    '---',
+    JSON.stringify(
+      { agent: 'orch_spec_consistency', reasoning: 'xhigh', type: 'spec_consistency' },
+      null,
+      2,
+    ),
+    '---',
+    '',
+    consistencyPromptContent,
+    '',
+    '## Changed Files',
+    '',
+    changedFiles.map((f) => `- ${f}`).join('\n'),
+    '',
+    '## Diff Context',
+    '',
+    '```diff',
+    diff,
+    '```',
+    '',
+    '## Related Issues',
+    '',
+    issueContext,
+    '',
+    'Write consistency report to `requests/spec-consistency-results.json`.',
+  ].join('\n');
+
+  await deps.writeFile(path.join(queueDir, 'spec-consistency-check.md'), content, 'utf8');
+}
+
+/**
+ * Run the spec change detection and replan flow within a scan pass.
+ * Detects spec changes, queues replan prompt, applies any pending replan results,
+ * and triggers gap analysis re-run on affected sections.
+ */
+export async function runSpecChangeReplan(
+  state: OrchestratorState,
+  stateFile: string,
+  sessionDir: string,
+  projectRoot: string,
+  iteration: number,
+  deps: ScanLoopDeps,
+): Promise<SpecChangeReplanResult> {
+  const result: SpecChangeReplanResult = {
+    spec_changed: false,
+    diff_queued: false,
+    actions_applied: 0,
+    gap_analysis_triggered: false,
+    backfill_applied: false,
+  };
+
+  if (!deps.execGit) return result;
+
+  // 1. Detect spec changes
+  const detection = await detectSpecChanges(state, projectRoot, deps.execGit);
+
+  // Always update the last commit pointer
+  state.spec_last_commit = detection.new_commit;
+
+  if (!detection.changed) return result;
+  result.spec_changed = true;
+
+  deps.appendLog(sessionDir, {
+    timestamp: deps.now().toISOString(),
+    event: 'spec_change_detected',
+    iteration,
+    changed_files: detection.changed_files,
+    diff_length: detection.diff.length,
+  });
+
+  // 2. Queue replan prompt
+  const queueDir = path.join(sessionDir, 'queue');
+  const promptsDir = path.join(sessionDir, 'prompts');
+  const replanPromptPath = path.join(promptsDir, ORCH_REPLAN_PROMPT_FILENAME);
+  let replanPromptContent = `# Orchestrator Replan Agent\n\nReact to spec changes and produce plan adjustments.\n`;
+  if (deps.existsSync(replanPromptPath)) {
+    replanPromptContent = await deps.readFile(replanPromptPath, 'utf8');
+  }
+  await queueReplanForSpecChange(
+    detection.diff,
+    detection.changed_files,
+    state,
+    queueDir,
+    replanPromptContent,
+    { writeFile: deps.writeFile },
+  );
+  result.diff_queued = true;
+
+  // 3. Queue spec consistency check
+  const consistencyPromptPath = path.join(promptsDir, ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME);
+  let consistencyPromptContent = `# Spec Consistency Agent\n\nVerify spec consistency after changes.\n`;
+  if (deps.existsSync(consistencyPromptPath)) {
+    consistencyPromptContent = await deps.readFile(consistencyPromptPath, 'utf8');
+  }
+  await queueSpecConsistencyCheck(
+    detection.changed_files,
+    detection.diff,
+    state,
+    queueDir,
+    consistencyPromptContent,
+    { writeFile: deps.writeFile },
+  );
+
+  // 4. Check for pending replan results (from a previous scan pass's queued prompt)
+  const replanResultPath = path.join(sessionDir, 'requests', 'replan-spec-change-results.json');
+  if (deps.existsSync(replanResultPath)) {
+    try {
+      const replanContent = await deps.readFile(replanResultPath, 'utf8');
+      const replanResult: ReplanResult = JSON.parse(replanContent);
+      if (replanResult.actions && Array.isArray(replanResult.actions)) {
+        result.actions_applied = applyReplanActions(state, replanResult.actions);
+      }
+      if (replanResult.gap_analysis_needed) {
+        result.gap_analysis_triggered = true;
+      }
+
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'replan_actions_applied',
+        iteration,
+        trigger: replanResult.trigger,
+        actions_applied: result.actions_applied,
+        gap_analysis_needed: replanResult.gap_analysis_needed,
+        affected_sections: replanResult.affected_sections,
+      });
+    } catch {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'replan_results_parse_error',
+        iteration,
+      });
+    }
+  }
+
+  // 5. Check for pending spec backfill results
+  const backfillResultPath = path.join(sessionDir, 'requests', 'spec-backfill-results.json');
+  if (deps.existsSync(backfillResultPath)) {
+    try {
+      const backfillContent = await deps.readFile(backfillResultPath, 'utf8');
+      const backfillData = JSON.parse(backfillContent) as {
+        entries?: Array<{ file: string; section: string; content: string }>;
+      };
+      if (backfillData.entries && Array.isArray(backfillData.entries)) {
+        for (const entry of backfillData.entries) {
+          await applySpecBackfill(
+            entry.file || state.spec_file,
+            entry.section,
+            entry.content,
+            path.basename(sessionDir),
+            iteration,
+            projectRoot,
+            { readFile: deps.readFile, writeFile: deps.writeFile, execGit: deps.execGit },
+          );
+        }
+        result.backfill_applied = true;
+      }
+    } catch {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'spec_backfill_parse_error',
+        iteration,
+      });
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -3286,7 +3798,20 @@ export async function runOrchestratorScanPass(
     budgetExceeded: false,
     allDone: false,
     shouldStop: false,
+    replan: null,
   };
+
+  // 0. Spec change detection and replan
+  if (deps.execGit) {
+    result.replan = await runSpecChangeReplan(
+      state,
+      stateFile,
+      sessionDir,
+      projectRoot,
+      iteration,
+      deps,
+    );
+  }
 
   // 1. Triage monitoring cycle
   if (repo && deps.execGh) {
@@ -3469,6 +3994,8 @@ export async function runOrchestratorScanPass(
     spec_questions_auto_resolved: result.specQuestions.autoResolved,
     spec_questions_user_overrides: result.specQuestions.userOverrides,
     all_done: result.allDone,
+    replan_spec_changed: result.replan?.spec_changed ?? false,
+    replan_actions_applied: result.replan?.actions_applied ?? 0,
   });
 
   return result;

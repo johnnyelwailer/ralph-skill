@@ -53,6 +53,13 @@ import {
   runOrchestratorScanPass,
   runOrchestratorScanLoop,
   monitorChildSessions,
+  isHousekeepingCommit,
+  detectSpecChanges,
+  queueReplanForSpecChange,
+  applyReplanActions,
+  applySpecBackfill,
+  queueSpecConsistencyCheck,
+  runSpecChangeReplan,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -71,6 +78,9 @@ import {
   type ScanPassResult,
   type ScanLoopResult,
   type SubDecompositionResult,
+  type ReplanAction,
+  type ReplanResult,
+  type SpecChangeDetection,
 } from './orchestrate.js';
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
@@ -4351,5 +4361,543 @@ describe('monitorChildSessions', () => {
     const result = await monitorChildSessions(state, '/session', 'owner/repo', deps);
 
     assert.equal(result.monitored, 0);
+  });
+});
+
+// --- Spec change detection and replan tests ---
+
+describe('isHousekeepingCommit', () => {
+  it('returns true for spec-consistency agent commits', () => {
+    assert.equal(isHousekeepingCommit('docs: fix cross-ref\n\nAloop-Agent: spec-consistency\nAloop-Iteration: 5'), true);
+  });
+
+  it('returns true for spec-backfill agent commits', () => {
+    assert.equal(isHousekeepingCommit('docs: backfill\n\nAloop-Agent: spec-backfill'), true);
+  });
+
+  it('returns true for guard agent commits', () => {
+    assert.equal(isHousekeepingCommit('Aloop-Agent: guard'), true);
+  });
+
+  it('returns true for loop-health-supervisor agent commits', () => {
+    assert.equal(isHousekeepingCommit('Aloop-Agent: loop-health-supervisor'), true);
+  });
+
+  it('returns false for build agent commits', () => {
+    assert.equal(isHousekeepingCommit('feat: add feature\n\nAloop-Agent: build\nAloop-Iteration: 3'), false);
+  });
+
+  it('returns false for commits without provenance trailers', () => {
+    assert.equal(isHousekeepingCommit('feat: human edit'), false);
+  });
+
+  it('returns false for empty commit messages', () => {
+    assert.equal(isHousekeepingCommit(''), false);
+  });
+});
+
+describe('detectSpecChanges', () => {
+  function makeExecGit(responses: Record<string, { stdout: string; stderr: string }>) {
+    return async (args: string[]) => {
+      const key = args.join(' ');
+      for (const [pattern, response] of Object.entries(responses)) {
+        if (key.includes(pattern)) return response;
+      }
+      return { stdout: '', stderr: '' };
+    };
+  }
+
+  it('returns unchanged when no previous commit is recorded', async () => {
+    const state = makeScanState({ spec_last_commit: undefined });
+    const execGit = makeExecGit({
+      'rev-parse HEAD': { stdout: 'abc123\n', stderr: '' },
+    });
+
+    const result = await detectSpecChanges(state, '/project', execGit);
+
+    assert.equal(result.changed, false);
+    assert.equal(result.new_commit, 'abc123');
+  });
+
+  it('returns unchanged when HEAD has not moved', async () => {
+    const state = makeScanState({ spec_last_commit: 'abc123' });
+    const execGit = makeExecGit({
+      'rev-parse HEAD': { stdout: 'abc123\n', stderr: '' },
+    });
+
+    const result = await detectSpecChanges(state, '/project', execGit);
+
+    assert.equal(result.changed, false);
+  });
+
+  it('returns unchanged when diff is empty', async () => {
+    const state = makeScanState({ spec_last_commit: 'old123' });
+    const execGit = makeExecGit({
+      'rev-parse HEAD': { stdout: 'new456\n', stderr: '' },
+      'log -1': { stdout: 'feat: unrelated change', stderr: '' },
+      'diff old123..new456': { stdout: '', stderr: '' },
+    });
+
+    const result = await detectSpecChanges(state, '/project', execGit);
+
+    assert.equal(result.changed, false);
+  });
+
+  it('detects spec changes and returns diff', async () => {
+    const state = makeScanState({ spec_last_commit: 'old123' });
+    const execGit = makeExecGit({
+      'rev-parse HEAD': { stdout: 'new456\n', stderr: '' },
+      'log -1': { stdout: 'docs: update requirements', stderr: '' },
+      'diff old123..new456 --': { stdout: '--- a/SPEC.md\n+++ b/SPEC.md\n@@ -1 +1 @@\n-old\n+new', stderr: '' },
+      '--name-only': { stdout: 'SPEC.md\n', stderr: '' },
+    });
+
+    const result = await detectSpecChanges(state, '/project', execGit);
+
+    assert.equal(result.changed, true);
+    assert.ok(result.diff.includes('+new'));
+    assert.deepEqual(result.changed_files, ['SPEC.md']);
+    assert.equal(result.new_commit, 'new456');
+  });
+
+  it('skips housekeeping commits (loop prevention)', async () => {
+    const state = makeScanState({ spec_last_commit: 'old123' });
+    const execGit = makeExecGit({
+      'rev-parse HEAD': { stdout: 'new456\n', stderr: '' },
+      'log -1': { stdout: 'docs: fix cross-ref\n\nAloop-Agent: spec-consistency', stderr: '' },
+    });
+
+    const result = await detectSpecChanges(state, '/project', execGit);
+
+    assert.equal(result.changed, false);
+    assert.equal(result.new_commit, 'new456');
+  });
+});
+
+describe('applyReplanActions', () => {
+  it('creates a new issue from create_issue action', () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 5, wave: 1 })],
+    });
+
+    const actions: ReplanAction[] = [
+      { action: 'create_issue', title: 'New task', body: 'New body', deps: [5] },
+    ];
+
+    const applied = applyReplanActions(state, actions);
+
+    assert.equal(applied, 1);
+    assert.equal(state.issues.length, 2);
+    assert.equal(state.issues[1].number, 6);
+    assert.equal(state.issues[1].title, 'New task');
+    assert.equal(state.issues[1].state, 'pending');
+    assert.deepEqual(state.issues[1].depends_on, [5]);
+  });
+
+  it('updates an existing issue body and title', () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 10, title: 'Old title', body: 'Old body' })],
+    });
+
+    const actions: ReplanAction[] = [
+      { action: 'update_issue', number: 10, title: 'New title', new_body: 'New body' },
+    ];
+
+    const applied = applyReplanActions(state, actions);
+
+    assert.equal(applied, 1);
+    assert.equal(state.issues[0].title, 'New title');
+    assert.equal(state.issues[0].body, 'New body');
+  });
+
+  it('closes a pending issue by marking it as failed', () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 3, state: 'pending' })],
+    });
+
+    const actions: ReplanAction[] = [
+      { action: 'close_issue', number: 3, reason: 'No longer needed' },
+    ];
+
+    const applied = applyReplanActions(state, actions);
+
+    assert.equal(applied, 1);
+    assert.equal(state.issues[0].state, 'failed');
+    assert.equal(state.issues[0].status, 'Done');
+  });
+
+  it('does not close an in_progress issue', () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 3, state: 'in_progress' })],
+    });
+
+    const actions: ReplanAction[] = [
+      { action: 'close_issue', number: 3 },
+    ];
+
+    const applied = applyReplanActions(state, actions);
+
+    assert.equal(applied, 0);
+    assert.equal(state.issues[0].state, 'in_progress');
+  });
+
+  it('reprioritizes an issue to a new wave', () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 7, wave: 2 })],
+    });
+
+    const actions: ReplanAction[] = [
+      { action: 'reprioritize', number: 7, new_wave: 1 },
+    ];
+
+    const applied = applyReplanActions(state, actions);
+
+    assert.equal(applied, 1);
+    assert.equal(state.issues[0].wave, 1);
+  });
+
+  it('steers a child session via pending_steering_comments', () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 5, state: 'in_progress', child_session: 'child-1' })],
+    });
+
+    const actions: ReplanAction[] = [
+      { action: 'steer_child', number: 5, instruction: 'Change approach to use REST API' },
+    ];
+
+    const applied = applyReplanActions(state, actions);
+
+    assert.equal(applied, 1);
+    assert.equal(state.issues[0].pending_steering_comments?.length, 1);
+    assert.equal(state.issues[0].pending_steering_comments?.[0].body, 'Change approach to use REST API');
+  });
+
+  it('skips steer_child when issue has no child_session', () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 5, state: 'pending', child_session: null })],
+    });
+
+    const actions: ReplanAction[] = [
+      { action: 'steer_child', number: 5, instruction: 'Do something' },
+    ];
+
+    const applied = applyReplanActions(state, actions);
+
+    assert.equal(applied, 0);
+  });
+
+  it('skips actions with missing required fields', () => {
+    const state = makeScanState({ issues: [makeIssue({ number: 1 })] });
+
+    const actions: ReplanAction[] = [
+      { action: 'create_issue' }, // missing title
+      { action: 'update_issue' }, // missing number
+      { action: 'close_issue' }, // missing number
+      { action: 'reprioritize', number: 1 }, // missing new_wave
+      { action: 'steer_child' }, // missing number
+    ];
+
+    const applied = applyReplanActions(state, actions);
+
+    assert.equal(applied, 0);
+  });
+
+  it('applies multiple actions in sequence', () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'pending' }),
+        makeIssue({ number: 2, wave: 2, state: 'pending' }),
+      ],
+    });
+
+    const actions: ReplanAction[] = [
+      { action: 'create_issue', title: 'New task', body: 'Body' },
+      { action: 'update_issue', number: 1, new_body: 'Updated body' },
+      { action: 'reprioritize', number: 2, new_wave: 1 },
+    ];
+
+    const applied = applyReplanActions(state, actions);
+
+    assert.equal(applied, 3);
+    assert.equal(state.issues.length, 3);
+    assert.equal(state.issues[0].body, 'Updated body');
+    assert.equal(state.issues[1].wave, 1);
+  });
+});
+
+describe('queueReplanForSpecChange', () => {
+  it('writes replan queue file with diff context', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({ number: 1, title: 'Task A', state: 'in_progress', status: 'In progress' }),
+        makeIssue({ number: 2, title: 'Task B', state: 'pending', status: 'Ready' }),
+      ],
+    });
+
+    const files: Record<string, string> = {};
+    await queueReplanForSpecChange(
+      '--- a/SPEC.md\n+++ b/SPEC.md\n@@ -1 +1 @@\n-old\n+new',
+      ['SPEC.md'],
+      state,
+      '/queue',
+      '# Replan Prompt\n\nReplan instructions here.',
+      { writeFile: async (p, d) => { files[p] = d; } },
+    );
+
+    const content = files['/queue/replan-spec-change.md'];
+    assert.ok(content);
+    assert.ok(content.includes('orch_replan'));
+    assert.ok(content.includes('spec_change'));
+    assert.ok(content.includes('+new'));
+    assert.ok(content.includes('#1'));
+    assert.ok(content.includes('#2'));
+    assert.ok(content.includes('Replan Prompt'));
+  });
+});
+
+describe('queueSpecConsistencyCheck', () => {
+  it('writes consistency check queue file', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, title: 'Task A', state: 'pending' })],
+    });
+
+    const files: Record<string, string> = {};
+    await queueSpecConsistencyCheck(
+      ['SPEC.md'],
+      '--- a/SPEC.md\n+++ b/SPEC.md',
+      state,
+      '/queue',
+      '# Consistency Agent\n\nCheck spec.',
+      { writeFile: async (p, d) => { files[p] = d; } },
+    );
+
+    const content = files['/queue/spec-consistency-check.md'];
+    assert.ok(content);
+    assert.ok(content.includes('orch_spec_consistency'));
+    assert.ok(content.includes('SPEC.md'));
+    assert.ok(content.includes('Consistency Agent'));
+  });
+});
+
+describe('applySpecBackfill', () => {
+  it('inserts content after matching section header', async () => {
+    const files: Record<string, string> = {
+      '/project/SPEC.md': '# Spec\n\n## Requirements\n\nExisting content.\n\n## Design\n\nDesign stuff.',
+    };
+    const gitCalls: string[][] = [];
+
+    const result = await applySpecBackfill(
+      'SPEC.md', 'Requirements', 'New resolved content.',
+      'orch-session-1', 5, '/project',
+      {
+        readFile: async (p) => files[p] ?? '',
+        writeFile: async (p, d) => { files[p] = d; },
+        execGit: async (args) => { gitCalls.push(args); return { stdout: '', stderr: '' }; },
+      },
+    );
+
+    assert.equal(result, true);
+    assert.ok(files['/project/SPEC.md'].includes('New resolved content.'));
+    assert.ok(files['/project/SPEC.md'].includes('## Requirements'));
+    // Verify provenance in commit
+    assert.ok(gitCalls.some((args) => args.includes('commit')));
+    const commitArgs = gitCalls.find((args) => args.includes('commit'));
+    assert.ok(commitArgs);
+    const commitMsg = commitArgs![commitArgs!.indexOf('-m') + 1];
+    assert.ok(commitMsg.includes('Aloop-Agent: spec-backfill'));
+  });
+
+  it('appends new section when section header not found', async () => {
+    const files: Record<string, string> = {
+      '/project/SPEC.md': '# Spec\n\nSome content.',
+    };
+
+    const result = await applySpecBackfill(
+      'SPEC.md', 'New Section', 'Backfilled content.',
+      'orch-session-1', 3, '/project',
+      {
+        readFile: async (p) => files[p] ?? '',
+        writeFile: async (p, d) => { files[p] = d; },
+      },
+    );
+
+    assert.equal(result, true);
+    assert.ok(files['/project/SPEC.md'].includes('## New Section'));
+    assert.ok(files['/project/SPEC.md'].includes('Backfilled content.'));
+  });
+
+  it('returns false on read error', async () => {
+    const result = await applySpecBackfill(
+      'SPEC.md', 'Section', 'Content.',
+      'orch-session-1', 1, '/project',
+      {
+        readFile: async () => { throw new Error('not found'); },
+        writeFile: async () => {},
+      },
+    );
+
+    assert.equal(result, false);
+  });
+});
+
+describe('runSpecChangeReplan', () => {
+  it('returns no-op result when execGit is not provided', async () => {
+    const state = makeScanState();
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runSpecChangeReplan(state, '/state.json', '/session', '/project', 1, deps);
+
+    assert.equal(result.spec_changed, false);
+    assert.equal(result.diff_queued, false);
+  });
+
+  it('detects spec changes and queues replan + consistency prompts', async () => {
+    const state = makeScanState({ spec_last_commit: 'old123' });
+    const deps = createMockScanDeps({
+      execGit: async (args: string[]) => {
+        const key = args.join(' ');
+        if (key.includes('rev-parse')) return { stdout: 'new456\n', stderr: '' };
+        if (key.includes('log -1')) return { stdout: 'docs: user edit', stderr: '' };
+        if (key.includes('--name-only')) return { stdout: 'SPEC.md\n', stderr: '' };
+        if (key.includes('diff')) return { stdout: '-old\n+new', stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runSpecChangeReplan(state, '/state.json', '/session', '/project', 1, deps);
+
+    assert.equal(result.spec_changed, true);
+    assert.equal(result.diff_queued, true);
+    assert.equal(state.spec_last_commit, 'new456');
+    // Check queue files were written
+    assert.ok(deps.files['/session/queue/replan-spec-change.md']);
+    assert.ok(deps.files['/session/queue/spec-consistency-check.md']);
+  });
+
+  it('applies pending replan results from requests/', async () => {
+    const replanResult: ReplanResult = {
+      type: 'orchestrator_replan',
+      trigger: 'spec_change',
+      timestamp: '2026-03-15T12:00:00Z',
+      actions: [
+        { action: 'create_issue', title: 'New from replan', body: 'Body' },
+        { action: 'reprioritize', number: 1, new_wave: 2 },
+      ],
+      gap_analysis_needed: true,
+      affected_sections: ['Section 3'],
+    };
+
+    const state = makeScanState({
+      spec_last_commit: 'old123',
+      issues: [makeIssue({ number: 1, wave: 1 })],
+    });
+    const deps = createMockScanDeps({
+      execGit: async (args: string[]) => {
+        const key = args.join(' ');
+        if (key.includes('rev-parse')) return { stdout: 'new456\n', stderr: '' };
+        if (key.includes('log -1')) return { stdout: 'docs: user edit', stderr: '' };
+        if (key.includes('--name-only')) return { stdout: 'SPEC.md\n', stderr: '' };
+        if (key.includes('diff')) return { stdout: '-old\n+new', stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/session/requests/replan-spec-change-results.json'] = JSON.stringify(replanResult);
+
+    const result = await runSpecChangeReplan(state, '/state.json', '/session', '/project', 1, deps);
+
+    assert.equal(result.actions_applied, 2);
+    assert.equal(result.gap_analysis_triggered, true);
+    assert.equal(state.issues.length, 2);
+    assert.equal(state.issues[0].wave, 2);
+    assert.equal(state.issues[1].title, 'New from replan');
+  });
+
+  it('applies spec backfill entries from requests/', async () => {
+    const backfillData = {
+      entries: [
+        { file: 'SPEC.md', section: 'Requirements', content: 'Resolved: use REST API.' },
+      ],
+    };
+
+    const state = makeScanState({ spec_last_commit: 'old123' });
+    const deps = createMockScanDeps({
+      execGit: async (args: string[]) => {
+        const key = args.join(' ');
+        if (key.includes('rev-parse')) return { stdout: 'new456\n', stderr: '' };
+        if (key.includes('log -1')) return { stdout: 'docs: user edit', stderr: '' };
+        if (key.includes('--name-only')) return { stdout: 'SPEC.md\n', stderr: '' };
+        if (key.includes('diff')) return { stdout: '-old\n+new', stderr: '' };
+        if (key.includes('add') || key.includes('commit')) return { stdout: '', stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/session/requests/spec-backfill-results.json'] = JSON.stringify(backfillData);
+    deps.files['/project/SPEC.md'] = '# Spec\n\n## Requirements\n\nExisting.\n';
+
+    const result = await runSpecChangeReplan(state, '/state.json', '/session', '/project', 1, deps);
+
+    assert.equal(result.backfill_applied, true);
+    assert.ok(deps.files['/project/SPEC.md'].includes('Resolved: use REST API.'));
+  });
+
+  it('updates spec_last_commit even when no changes detected', async () => {
+    const state = makeScanState({ spec_last_commit: 'old123' });
+    const deps = createMockScanDeps({
+      execGit: async (args: string[]) => {
+        const key = args.join(' ');
+        if (key.includes('rev-parse')) return { stdout: 'new456\n', stderr: '' };
+        if (key.includes('log -1')) return { stdout: 'feat: unrelated', stderr: '' };
+        if (key.includes('diff')) return { stdout: '', stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await runSpecChangeReplan(state, '/state.json', '/session', '/project', 1, deps);
+
+    assert.equal(result.spec_changed, false);
+    assert.equal(state.spec_last_commit, 'new456');
+  });
+});
+
+describe('runOrchestratorScanPass with replan', () => {
+  it('includes replan result in scan pass when execGit is provided', async () => {
+    const state = makeScanState({
+      spec_last_commit: 'old123',
+      issues: [makeIssue({ number: 1, wave: 1, state: 'merged' })],
+    });
+    const deps = createMockScanDeps({
+      execGit: async (args: string[]) => {
+        const key = args.join(' ');
+        if (key.includes('rev-parse')) return { stdout: 'same123\n', stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    // Since HEAD didn't move relative to last commit, no spec change
+    assert.ok(result.replan !== null);
+    assert.equal(result.replan!.spec_changed, false);
+  });
+
+  it('replan is null when execGit is not provided', async () => {
+    const state = makeScanState({ issues: [] });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.replan, null);
   });
 });
