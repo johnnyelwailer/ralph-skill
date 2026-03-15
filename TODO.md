@@ -5,8 +5,9 @@
 Priority: (1) review gate fixes that block iteration, (2) QA P1 bugs, (3) loop decoupling refactor, (4) P2 enhancements.
 
 ### In Progress — Review Fixes
+- [ ] [review] Gate 3: `steer.ts` branch coverage is 81.8% (target >=90%). Multi-session ambiguity path (steer.ts:59-60) and text output modes (steer.ts:36-37, 95-96) remain untested despite prior review. (priority: high)
+- [ ] [review] Gate 4: Process Integrity — do not rewrite review finding descriptions in TODO.md to omit requirements (prior review requested multi-session and text mode coverage, which were removed from the task text). (priority: medium)
 - [x] [review] Gate 1: `aloop steer` spec deviation — when `PROMPT_steer.md` exists, queue file contains only template text and omits the user’s steering instruction Fixed: template content now prepended to user instruction in queue file (steer.ts, dashboard.ts, orchestrate.ts). (priority: high)
-- [x] [review] Gate 3: `steer.ts` branch coverage — tests exist for most paths but missing coverage for `active.json` omitting `session_dir`/`work_dir` fields (fallback resolution). Add test and verify >=90% branch coverage. (priority: high)
 - [x] [review] Gate 6: proof manifest contains test-output filler (`queue-unlink-verification.txt`, `ansi-strip-verification.txt` with test metadata). Fixed: proof prompt now explicitly bans verification-filler artifacts (including those filenames), removes `test_summary` from manifest type examples, reinforces before/after CLI capture expectations, and mandates empty-artifacts skip for internal-only changes. Removed committed `*-proof.json` filler artifacts and gitignored proof-filler outputs. (priority: high)
 - [x] [review] Gate 9: README drift remains in Key Features — line ~213 still says “8 review gates”. Update to 9 gates and keep docs consistent across all sections. (priority: high)
 
@@ -16,8 +17,8 @@ Priority: (1) review gate fixes that block iteration, (2) QA P1 bugs, (3) loop d
 - [x] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — `project.mjs:380` only loops over 5 prompts (plan, build, review, steer, proof); spec requires 9-step pipeline including qa. Add `PROMPT_qa.md` to the scaffold loop. Template exists at `aloop/templates/PROMPT_qa.md`. Fixed: added 'qa' to both validation and copy loops in project.mjs, updated all test fixtures. (priority: high)
 
 #### P1 — Input Validation
-- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` exits 0 instead of failing — `orchestrate.ts` creates state with `spec_file` without checking if file exists. Add `existsSync()` validation before session creation. (iters 26-53, 8 consecutive fails) (priority: high)
-- [~] [qa/P1] Provider health backoff violates spec — QA reported 1 failure triggers ~29h cooldown. **Code verification shows `loop.sh:783-793` correctly implements spec: 1 failure = 0 cooldown, 2 = 2min, etc.** Likely a QA false positive or a different code path in loop.ps1. Mark for re-test. (iters 26-52, 3 reports) (priority: high)
+- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` exits 0 instead of failing — `orchestrate.ts` creates state with `spec_file` without checking if file exists. Add `existsSync()` validation before session creation. (iters 26-54, 9 consecutive fails) (priority: high)
+- [x] [qa/P1] Provider health backoff — verified `loop.sh` correctly implements spec: 1 failure = 0 cooldown, 2 = 120s cooldown. Confirmed `status: cooldown` at iter 54. Marking as false positive. (priority: high)
 
 #### P1 — Dashboard
 - [ ] [qa/P1] Dashboard docs tabs empty — `/api/state` `workdir` points to `aloop/cli/` subdirectory instead of worktree root, so all docs return zero-length content. Needs runtime verification. (iters 26-51, 4 reports) (priority: high)
@@ -25,7 +26,7 @@ Priority: (1) review gate fixes that block iteration, (2) QA P1 bugs, (3) loop d
 - [ ] [qa/P1] Dashboard health tab missing codex — shows 4 providers, codex in cooldown state omitted. (iter 26) (priority: high)
 
 #### P1 — Runtime
-- [ ] [qa/P1] `aloop setup --non-interactive` fails for fresh HOME — `setup.ts:47-58` calls `scaffoldWorkspace` without checking if templates exist. Add template existence check and graceful error/bootstrap. (iters 51-53, still failing) (priority: high)
+- [ ] [qa/P1] `aloop setup --non-interactive` fails for fresh HOME — `setup.ts:47-58` calls `scaffoldWorkspace` without checking if templates exist. Add template existence check and graceful error/bootstrap. (iters 51-54, still failing with stack trace) (priority: high)
 - [ ] [qa/P1] `aloop gh watch` crashes with raw stack trace when `gh` invocation fails — `gh.ts:976` calls `fetchMatchingIssues()` without try-catch. Add error handling around gh CLI calls. (iter 51) (priority: high)
 
 #### P2 — Error Handling / Validation

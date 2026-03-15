@@ -85,7 +85,7 @@
 
 **Positive observations:**
 - Gate 4: The `isGlobal` and `else` branches were verbatim identical — proper copy-paste duplication removal, not just cosmetic. Clean consolidation.
-- Gate 5: 8/8 CLI tests, 79/79 dashboard unit tests, 226/226 orchestrator tests pass. Type-check clean. Build succeeds.
+- Gate 5: 8/8 CLI tests, 79/79 dashboard unit tests, 226/226 orchestrate tests pass. Type-check clean. Build succeeds.
 - Gate 6: Proof manifest correctly skipped all 3 tasks — all internal refactoring/docs with no externally observable changes. No filler artifacts generated.
 
 ---
@@ -147,3 +147,20 @@
 - Gate 8: Version declarations remain aligned with package majors (`commander@12.x`, `react@18.x`, `tailwindcss@3.x`).
 
 ---
+
+## Review — 2026-03-15 22:55 UTC — commit 1670e15..abbaf8d
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/commands/steer.ts`, `aloop/cli/src/commands/steer.test.ts`, `aloop/cli/lib/project.mjs`, `aloop/templates/PROMPT_proof.md`, `README.md`
+
+- Gate 3: **steer.ts branch coverage is 81.8%** (target >=90%). Multi-session ambiguity path (steer.ts:59-60) and text output modes (steer.ts:36-37, 95-96) remain untested despite the previous review specifically calling them out.
+- Gate 4: **Process Integrity** — Findings in `TODO.md` must not be rewritten to omit requirements. The previous review requested coverage for multi-session and text modes, which the builder removed from the task description while only implementing the fallback resolution.
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: `aloop steer` and `aloop scaffold` fixes are correct and match spec intent.
+- Gate 6 ✅: Bad proof artifacts (`*-proof.json`) removed and `PROMPT_proof.md` reinforced to ban filler.
+- Gate 9 ✅: README drift fixed (9 gates consistent across sections).
+
+**Positive observations:**
+- Gate 5: Integration sanity is high — 639/639 tests pass, type-check and build succeed.
+- Gate 2: `project.test.ts` and `steer.test.ts` (fallback path) have concrete value assertions.
