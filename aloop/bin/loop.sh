@@ -499,12 +499,39 @@ register_iteration_success() {
 
     PHASE_RETRY_PHASE=""
     PHASE_RETRY_CONSECUTIVE=0
+    PHASE_RETRY_FAILURE_REASONS=()
 
     if { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; } \
         && [ "$was_forced" != true ] \
         && { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "proof" ] || [ "$iteration_mode" = "review" ]; }; then
         advance_cycle_position
     fi
+}
+
+write_phase_retry_exhausted_entry() {
+    local phase="$1"
+    local consecutive_failures="$2"
+    local max_phase_retries="$3"
+    shift 3
+    python3 - "$LOG_FILE" "$RUN_ID" "$phase" "$consecutive_failures" "$max_phase_retries" "$@" <<'PY'
+import datetime
+import json
+import sys
+
+log_path, run_id, phase, consecutive, max_retries, *reasons = sys.argv[1:]
+entry = {
+    "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "run_id": run_id,
+    "event": "phase_retry_exhausted",
+    "phase": phase,
+    "consecutive_failures": int(consecutive),
+    "max_phase_retries": int(max_retries),
+    "failure_reasons": reasons,
+}
+with open(log_path, "a", encoding="utf-8") as fh:
+    json.dump(entry, fh, ensure_ascii=False)
+    fh.write("\n")
+PY
 }
 
 register_iteration_failure() {
@@ -523,18 +550,25 @@ register_iteration_failure() {
     else
         PHASE_RETRY_PHASE="$iteration_mode"
         PHASE_RETRY_CONSECUTIVE=1
+        PHASE_RETRY_FAILURE_REASONS=()
     fi
+
+    PHASE_RETRY_FAILURE_REASONS+=("$error_text")
+    while [ "${#PHASE_RETRY_FAILURE_REASONS[@]}" -gt "$MAX_PHASE_RETRIES" ]; do
+        PHASE_RETRY_FAILURE_REASONS=("${PHASE_RETRY_FAILURE_REASONS[@]:1}")
+    done
 
     if [ "$PHASE_RETRY_CONSECUTIVE" -ge "$MAX_PHASE_RETRIES" ]; then
         echo "Warning: Phase '$iteration_mode' failed $PHASE_RETRY_CONSECUTIVE times; advancing cycle position."
-        write_log_entry "phase_retry_exhausted" \
-            "phase" "$iteration_mode" \
-            "consecutive_failures" "$PHASE_RETRY_CONSECUTIVE" \
-            "max_phase_retries" "$MAX_PHASE_RETRIES" \
-            "reason" "$error_text"
+        write_phase_retry_exhausted_entry \
+            "$iteration_mode" \
+            "$PHASE_RETRY_CONSECUTIVE" \
+            "$MAX_PHASE_RETRIES" \
+            "${PHASE_RETRY_FAILURE_REASONS[@]}"
         advance_cycle_position
         PHASE_RETRY_PHASE=""
         PHASE_RETRY_CONSECUTIVE=0
+        PHASE_RETRY_FAILURE_REASONS=()
     fi
 }
 
@@ -1276,6 +1310,7 @@ CYCLE_LENGTH=0
 HAS_BUILDS_SINCE_LAST_PLAN=false
 PHASE_RETRY_PHASE=""
 PHASE_RETRY_CONSECUTIVE=0
+PHASE_RETRY_FAILURE_REASONS=()
 MAX_PHASE_RETRIES=2
 LAST_PROVIDER_ERROR=""
 LAST_PROVIDER_MODEL=""

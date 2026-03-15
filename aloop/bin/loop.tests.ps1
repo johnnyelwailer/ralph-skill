@@ -517,7 +517,10 @@ exit 0
         $result = Invoke-ShRetryLoop -LoopEnv $e -Provider 'claude' -MaxIter 3
         $result.ExitCode | Should -Be 0
         $entries = Get-ShRetryLogEntries -LogFile $e.LogFile
-        ($entries | Where-Object { $_.event -eq 'phase_retry_exhausted' }).Count | Should -BeGreaterThan 0
+        $exhausted = @($entries | Where-Object { $_.event -eq 'phase_retry_exhausted' })
+        $exhausted.Count | Should -BeGreaterThan 0
+        @($exhausted[0].failure_reasons).Count | Should -BeGreaterThan 0
+        @($exhausted[0].failure_reasons)[0] | Should -BeLike '*forced plan failure*'
         ($entries | Where-Object { $_.event -eq 'iteration_complete' -and $_.mode -eq 'build' }).Count | Should -BeGreaterThan 0
     }
 }
@@ -1063,7 +1066,10 @@ exit 0
                 ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
                 Where-Object { $_ }
         )
-        ($entries | Where-Object { $_.event -eq 'phase_retry_exhausted' }).Count | Should -BeGreaterThan 0
+        $exhausted = @($entries | Where-Object { $_.event -eq 'phase_retry_exhausted' })
+        $exhausted.Count | Should -BeGreaterThan 0
+        @($exhausted[0].failure_reasons).Count | Should -BeGreaterThan 0
+        @($exhausted[0].failure_reasons)[0] | Should -BeLike '*forced plan failure*'
         ($entries | Where-Object { $_.event -eq 'iteration_complete' -and $_.mode -eq 'build' }).Count | Should -BeGreaterThan 0
     }
 }

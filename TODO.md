@@ -5,7 +5,7 @@
 Priority: Loop engine correctness → Orchestrator core → GitHub integration → Dashboard polish → Test coverage
 
 ### In Progress
-- [ ] [loop/P0] Retry same phase on failure — phase cycle should only advance on success, not error. Failed iterations retry same phase with next round-robin provider. Add `MAX_PHASE_RETRIES` safety valve.
+- [x] [loop/P0] Retry same phase on failure — phase cycle should only advance on success, not error. Failed iterations retry same phase with next round-robin provider. Add `MAX_PHASE_RETRIES` safety valve.
 - [ ] [loop/P0] Queue file deletion — queue files must be deleted after agent completes, otherwise steering breaks on next iteration.
 
 ### Up Next — P0 (Blocking)
