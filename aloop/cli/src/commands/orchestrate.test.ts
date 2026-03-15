@@ -35,6 +35,9 @@ import {
   generateFinalReport,
   formatFinalReportText,
   validateDoR,
+  applyEstimateResults,
+  queueEstimateForIssues,
+  type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
   type DispatchDeps,
@@ -701,6 +704,43 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     assert.equal(request.type, 'definition_of_ready_estimate');
     assert.equal(request.prompt_template, 'PROMPT_orch_estimate.md');
     assert.equal(request.targets.length, 2);
+
+    // Verify estimate queue prompts are also written
+    const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/estimate-issue-'));
+    assert.equal(queueFiles.length, 2, 'Should write queue override for each unvalidated issue');
+    const queueContent = mockDeps._writtenFiles[queueFiles[0]];
+    assert.match(queueContent, /orch_estimate/, 'Queue override should reference orch_estimate agent');
+  });
+
+  it('applies estimate-results.json when present', async () => {
+    const estimateResults: EstimateResult[] = [
+      { issue_number: 1, dor_passed: true, complexity_tier: 'S', iteration_estimate: 3, confidence: 'high' },
+      { issue_number: 2, dor_passed: false, gaps: ['Missing tests'] },
+    ];
+    const deps = createMockDeps({
+      existsSync: (p: string) => {
+        if (typeof p === 'string' && p.endsWith('estimate-results.json')) return true;
+        return true;
+      },
+      readFile: async (p: string) => {
+        if (typeof p === 'string' && p.endsWith('estimate-results.json')) return JSON.stringify(estimateResults);
+        return samplePlan;
+      },
+    });
+    const mockDeps = deps as OrchestrateDeps & { _writtenFiles: Record<string, string> };
+
+    const result = await orchestrateCommandWithDeps({ plan: 'plan.json' }, deps);
+
+    const issue1 = result.state.issues.find((i) => i.number === 1);
+    const issue2 = result.state.issues.find((i) => i.number === 2);
+    // Issue 1 already had number 1 in state from applyDecompositionPlan — check by wave/order
+    // The first issue from samplePlan will get number 1
+    assert.ok(issue1, 'Issue 1 should exist');
+    assert.ok(issue2, 'Issue 2 should exist');
+    assert.equal(issue1!.dor_validated, true);
+    assert.equal(issue1!.status, 'Ready');
+    assert.equal(issue2!.dor_validated, false);
+    assert.equal(issue2!.status, 'Needs refinement');
   });
 
   it('throws when plan file does not exist', async () => {
@@ -1666,6 +1706,187 @@ describe('validateDoR', () => {
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
     assert.ok(result.gaps.length >= 2);
+  });
+});
+
+describe('applyEstimateResults', () => {
+  it('sets dor_validated and transitions status to Ready when DoR passes', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false }),
+        makeIssue({ number: 2, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: true, complexity_tier: 'M', iteration_estimate: 5, confidence: 'high' },
+      { issue_number: 2, dor_passed: true, complexity_tier: 'S', iteration_estimate: 2, confidence: 'high' },
+    ];
+    const outcome = await applyEstimateResults(state, results);
+    assert.deepStrictEqual(outcome.updated, [1, 2]);
+    assert.deepStrictEqual(outcome.blocked, []);
+    assert.equal(state.issues[0].dor_validated, true);
+    assert.equal(state.issues[0].status, 'Ready');
+    assert.equal(state.issues[1].dor_validated, true);
+    assert.equal(state.issues[1].status, 'Ready');
+  });
+
+  it('keeps status at Needs refinement when DoR fails', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: false, gaps: ['Missing acceptance criteria', 'No approach defined'] },
+    ];
+    const outcome = await applyEstimateResults(state, results);
+    assert.deepStrictEqual(outcome.updated, []);
+    assert.deepStrictEqual(outcome.blocked, [1]);
+    assert.equal(state.issues[0].dor_validated, false);
+    assert.equal(state.issues[0].status, 'Needs refinement');
+  });
+
+  it('skips results for unknown issue numbers', async () => {
+    const state = makeState({
+      issues: [makeIssue({ number: 1, wave: 1 })],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 999, dor_passed: true },
+    ];
+    const outcome = await applyEstimateResults(state, results);
+    assert.deepStrictEqual(outcome.updated, []);
+    assert.deepStrictEqual(outcome.blocked, []);
+  });
+
+  it('creates spec-question issues for DoR gaps when execGhIssueCreate is provided', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 5, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const createdIssues: Array<{ title: string; body: string; labels: string[] }> = [];
+    const mockExecGhIssueCreate = async (_repo: string, _sid: string, title: string, body: string, labels: string[]) => {
+      createdIssues.push({ title, body, labels });
+      return 100 + createdIssues.length;
+    };
+    const results: EstimateResult[] = [
+      { issue_number: 5, dor_passed: false, gaps: ['Missing acceptance criteria'] },
+    ];
+    await applyEstimateResults(state, results, {
+      execGhIssueCreate: mockExecGhIssueCreate,
+      repo: 'owner/repo',
+      sessionId: 'orch-1',
+    });
+    assert.equal(createdIssues.length, 1);
+    assert.match(createdIssues[0].title, /spec-question.*#5.*Missing acceptance criteria/);
+    assert.deepStrictEqual(createdIssues[0].labels, ['aloop/spec-question']);
+  });
+
+  it('handles mixed pass/fail results', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false }),
+        makeIssue({ number: 2, wave: 1, status: 'Needs refinement', dor_validated: false }),
+        makeIssue({ number: 3, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: true },
+      { issue_number: 2, dor_passed: false, gaps: ['No approach'] },
+      { issue_number: 3, dor_passed: true },
+    ];
+    const outcome = await applyEstimateResults(state, results);
+    assert.deepStrictEqual(outcome.updated, [1, 3]);
+    assert.deepStrictEqual(outcome.blocked, [2]);
+    assert.equal(state.issues[0].status, 'Ready');
+    assert.equal(state.issues[1].status, 'Needs refinement');
+    assert.equal(state.issues[2].status, 'Ready');
+  });
+
+  it('does not transition status when issue is not in Needs refinement', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'In progress', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: true },
+    ];
+    await applyEstimateResults(state, results);
+    assert.equal(state.issues[0].dor_validated, true);
+    assert.equal(state.issues[0].status, 'In progress');
+  });
+});
+
+describe('queueEstimateForIssues', () => {
+  it('writes queue override files for unvalidated refinement issues', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const mockDeps = {
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+    };
+    const issues = [
+      makeIssue({ number: 1, status: 'Needs refinement', dor_validated: false }),
+      makeIssue({ number: 2, status: 'Ready', dor_validated: true }),
+      makeIssue({ number: 3, status: 'Needs refinement', dor_validated: false }),
+    ];
+    const count = await queueEstimateForIssues(issues, '/queue', '# Estimate prompt', mockDeps);
+    assert.equal(count, 2);
+    assert.ok(writtenFiles['/queue/estimate-issue-1.md']);
+    assert.ok(writtenFiles['/queue/estimate-issue-3.md']);
+    assert.ok(!writtenFiles['/queue/estimate-issue-2.md']);
+  });
+
+  it('returns 0 when no issues need estimation', async () => {
+    const mockDeps = {
+      writeFile: async () => {},
+    };
+    const issues = [
+      makeIssue({ number: 1, status: 'Ready', dor_validated: true }),
+    ];
+    const count = await queueEstimateForIssues(issues, '/queue', '# Estimate prompt', mockDeps);
+    assert.equal(count, 0);
+  });
+
+  it('includes issue context in the queue override content', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const mockDeps = {
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+    };
+    const issues = [
+      makeIssue({
+        number: 42,
+        title: 'Add auth flow',
+        body: '## Approach\nUse OAuth2.\n## Acceptance Criteria\n- [ ] Login works',
+        status: 'Needs refinement',
+        dor_validated: false,
+        wave: 2,
+        depends_on: [10, 11],
+      }),
+    ];
+    const count = await queueEstimateForIssues(issues, '/queue', '# Estimation Agent', mockDeps);
+    assert.equal(count, 1);
+    const content = writtenFiles['/queue/estimate-issue-42.md'];
+    assert.match(content, /Issue #42: Add auth flow/);
+    assert.match(content, /OAuth2/);
+    assert.match(content, /Wave.*2/);
+    assert.match(content, /#10.*#11/);
+    assert.match(content, /orch_estimate/);
+    assert.match(content, /# Estimation Agent/);
+  });
+
+  it('includes frontmatter with agent and issue_number', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const mockDeps = {
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+    };
+    const issues = [
+      makeIssue({ number: 7, status: 'Needs refinement', dor_validated: false }),
+    ];
+    await queueEstimateForIssues(issues, '/queue', '# Prompt', mockDeps);
+    const content = writtenFiles['/queue/estimate-issue-7.md'];
+    assert.match(content, /^---/);
+    assert.match(content, /"agent": "orch_estimate"/);
+    assert.match(content, /"issue_number": 7/);
   });
 });
 
