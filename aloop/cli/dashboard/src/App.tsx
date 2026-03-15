@@ -1160,20 +1160,9 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
   // Scroll output to bottom when it loads (summary is usually at the end)
   useEffect(() => {
     if (outputText && outputRef.current) {
-      // Use MutationObserver to detect when the DOM content is actually
-      // rendered, then scroll. This is more reliable than timing-based
-      // approaches (rAF, setTimeout) because it fires when the content
-      // is actually in the DOM.
-      const el = outputRef.current;
-      const scrollToBottom = () => { el.scrollTop = el.scrollHeight; };
-      // Try immediately in case content is already rendered
-      scrollToBottom();
-      // Also observe for mutations in case rendering is async
-      const obs = new MutationObserver(() => { scrollToBottom(); });
-      obs.observe(el, { childList: true, subtree: true });
-      // Clean up after a short delay (content should be stable by then)
-      const timer = setTimeout(() => obs.disconnect(), 500);
-      return () => { obs.disconnect(); clearTimeout(timer); };
+      requestAnimationFrame(() => {
+        if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
+      });
     }
   }, [outputText]);
 
