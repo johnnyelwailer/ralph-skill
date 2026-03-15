@@ -75,11 +75,12 @@ export async function steerCommand(instruction: string, options: SteerCommandOpt
   // Write STEERING.md to workdir
   await writeFile(steeringPath, steeringDoc, 'utf8');
 
-  // Load steer prompt template if available
+  // Load steer prompt template if available, and append user instruction
   const steerTemplatePath = path.join(sessionDir, 'prompts', 'PROMPT_steer.md');
   let steerPromptContent = steeringDoc;
   if (existsSync(steerTemplatePath)) {
-    steerPromptContent = await readFile(steerTemplatePath, 'utf8');
+    const templateContent = await readFile(steerTemplatePath, 'utf8');
+    steerPromptContent = templateContent + '\n\n' + steeringDoc;
   }
 
   // Write queue override

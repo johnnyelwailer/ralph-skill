@@ -780,11 +780,13 @@ export async function startDashboardServer(
         await fs.writeFile(steeringPath, steeringDoc, 'utf8');
 
         // Task: write queue entries for one-shot overrides (steering)
-        // We load the PROMPT_steer.md template so the agent knows HOW to steer.
+        // We load the PROMPT_steer.md template so the agent knows HOW to steer,
+        // then append the user's actual steering instruction.
         const steerTemplatePath = path.join(sessionDir, 'prompts', 'PROMPT_steer.md');
         let steerPromptContent = steeringDoc;
         if (await fileExists(steerTemplatePath)) {
-          steerPromptContent = await fs.readFile(steerTemplatePath, 'utf8');
+          const templateContent = await fs.readFile(steerTemplatePath, 'utf8');
+          steerPromptContent = templateContent + '\n\n' + steeringDoc;
         }
 
         const queuePath = await writeQueueOverride(sessionDir, 'steering', steerPromptContent, {

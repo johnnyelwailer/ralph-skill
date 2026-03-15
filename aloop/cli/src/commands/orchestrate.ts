@@ -1308,10 +1308,12 @@ async function injectSteeringToChildLoop(
   await deps.writeFile(steeringPath, steeringDoc, 'utf8');
 
   // Task: write queue entries for one-shot overrides (steering)
+  // Load the template so the agent knows HOW to steer, then append user instruction.
   const steerTemplatePath = path.join(childSessionDir, 'prompts', 'PROMPT_steer.md');
   let steerPromptContent = steeringDoc;
   if (existsSync(steerTemplatePath)) {
-    steerPromptContent = await readFile(steerTemplatePath, 'utf8');
+    const templateContent = await readFile(steerTemplatePath, 'utf8');
+    steerPromptContent = templateContent + '\n\n' + steeringDoc;
   }
 
   await writeQueueOverride(childSessionDir, 'triage-steering', steerPromptContent, {

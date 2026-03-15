@@ -94,11 +94,12 @@ test('steer uses PROMPT_steer.md template when available', async () => {
     console.log = origLog;
   }
 
-  // Queue file should contain template content, not steering doc
+  // Queue file should contain both template content AND the user's steering instruction
   const queueDir = path.join(sessionDir, 'queue');
   const queueFiles = await readdir(queueDir);
   const queueContent = await readFile(path.join(queueDir, queueFiles[0]), 'utf8');
   assert.match(queueContent, /You are the steering agent/);
+  assert.match(queueContent, /change direction/);
 
   // STEERING.md should still have the instruction
   const steeringContent = await readFile(path.join(workdir, 'STEERING.md'), 'utf8');

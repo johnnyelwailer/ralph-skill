@@ -1,57 +1,51 @@
 # Project TODO
 
-## Current Phase: Loop Decoupling + Bug Fixes
+## Current Phase: Review Fixes + QA Bug Fixes
 
-Priority: (1) loop decoupling refactor, (2) review fixes, (3) deduplicated QA bugs, (4) P2 enhancements.
-
-### In Progress — Loop Decoupling (Event-Driven Queue Dispatch)
-Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle + queue. The runtime handles all intelligence (event detection → catalog scan → queue injection).
-
-- [ ] [loop/P1] Remove `FORCE_PLAN_NEXT`, `FORCE_PROOF_NEXT`, `FORCE_REVIEW_NEXT` flags — replace with direct queue writes. When a condition triggers (e.g., all tasks done), write the appropriate prompt file to `$SESSION_DIR/queue/` instead of setting a boolean. (~lines 378-389, 1324-1327) (priority: high)
-- [ ] [loop/P1] Remove hardcoded build-completion detection from loop — `register_iteration_success()` checks `iter_mode == "build"` and forces proof+review. Move this to the runtime monitor: detect `all_tasks_done` event → queue proof prompt. (~lines 1977-1984, 512-522) (priority: high)
-- [ ] [loop/P1] Remove hardcoded steering detection from loop — loop checks for `STEERING.md` and overrides mode to `steer`, forces plan next. Move to runtime: detect file → queue steer prompt → queue plan prompt. (~lines 1913-1925) (priority: high)
-- [ ] [loop/P1] Remove `check_phase_prerequisite()` — hardcodes "can't review without builds" and "can't build without tasks" logic for specific agent names. Prerequisites should be the runtime's responsibility before queueing. (~lines 334-372) (priority: high)
-- [ ] [loop/P2] Remove proof/review-specific setup from loop — delete the `if iter_mode == "proof"` artifact-dir block (~lines 2013-2019) and the `if iter_mode == "review"` verdict-injection block (~lines 2022-2033). Instead, substitute `{{SESSION_DIR}}`, `{{ITERATION}}`, and `{{ARTIFACTS_DIR}}` in ALL prompts generically so agents can find/create their own paths. Agents handle their own mkdir and file reads. (priority: medium)
-- [ ] [loop/P2] Remove post-iteration hooks — steer archiving, build summary, review baseline update are all hardcoded by agent name (~lines 2046-2095). Move cleanup responsibility to agent prompts themselves — they already know what they need to clean up. (priority: medium)
-- [ ] [loop/P2] Make color output data-driven — replace hardcoded `case "$iter_mode" in plan|build|proof|review|steer` with frontmatter `color` field, defaulting to white. (~lines 1966-1973) (priority: low)
-- [ ] [loop/P2] Add `trigger` frontmatter field to agent prompt templates — agents declare which events they respond to (e.g., `trigger: all_tasks_done`). Runtime scans catalog for matching triggers when events fire. (priority: medium)
-- [ ] [runtime/P2] Implement event→catalog→queue dispatch in runtime monitor — when runtime detects a condition, emit an event key, scan `aloop/templates/` for prompts with matching `trigger` frontmatter, copy to `$SESSION_DIR/queue/`. (priority: medium)
+Priority: (1) review gate fixes that block iteration, (2) QA P1 bugs, (3) loop decoupling refactor, (4) P2 enhancements.
 
 ### In Progress — Review Fixes
-- [x] [review] Gate 4: Dead import — `App.tsx:7` imports `X` from `lucide-react` but it is never used in JSX. Remove the unused import. (priority: high)
-- [x] [review] Gate 4: Queue file leak — `processQueuedPrompts` (`orchestrate.ts:3936-3939`) writes empty string to consumed queue files instead of deleting them. Infinite re-processing. Add `unlink` or filter empty files. (priority: high)
-- [x] [review] Gate 4: Committed test artifact — `aloop/cli/dashboard/test-results/` (60KB Playwright dump) committed to repo. Remove and add to `.gitignore`. (priority: high)
-- [x] [review] Gate 9: README.md still says "8 gates" — update to "9 gates" and add Gate 9 (Documentation Freshness) to the table. (priority: high)
-- [ ] [review] Gate 1: `aloop steer` spec deviation — when `PROMPT_steer.md` exists, queue file contains only template text and omits the user’s steering instruction. Spec requires `aloop steer` to write the user instruction into queue payload/frontmatter path; align implementation so queued prompt includes the actual instruction while preserving template behavior. (priority: high)
-- [ ] [review] Gate 3: new module `aloop/cli/src/commands/steer.ts` lacks demonstrated >=90% branch coverage. Add tests for uncovered branches: multiple active sessions (`--session` required path), text output mode success/error paths, and session/workdir fallback resolution when `active.json` omits `session_dir`/`work_dir`; verify branch coverage report shows >=90%. (priority: high)
+- [x] [review] Gate 1: `aloop steer` spec deviation — when `PROMPT_steer.md` exists, queue file contains only template text and omits the user’s steering instruction Fixed: template content now prepended to user instruction in queue file (steer.ts, dashboard.ts, orchestrate.ts). (priority: high)
+- [ ] [review] Gate 3: `steer.ts` branch coverage — tests exist for most paths but missing coverage for `active.json` omitting `session_dir`/`work_dir` fields (fallback resolution). Add test and verify >=90% branch coverage. (priority: high)
 - [ ] [review] Gate 6: proof manifest contains test-output filler (`queue-unlink-verification.txt`, `ansi-strip-verification.txt` with test metadata). Replace with human-verifiable artifacts (real CLI capture for steer flow, visual/log before-after evidence for ANSI rendering), and skip proof for purely internal changes instead of attaching test output. (priority: high)
-- [ ] [review] Gate 9: README drift remains in Key Features — bullet still says “8 review gates” (`README.md`, Key Features section). Update to 9 gates and keep docs consistent across all sections. (priority: high)
+- [ ] [review] Gate 9: README drift remains in Key Features — line ~213 still says “8 review gates”. Update to 9 gates and keep docs consistent across all sections. (priority: high)
 
-### QA Bugs (deduplicated — latest iteration referenced)
-Each bug listed once with iteration history for context.
+### In Progress — QA Bug Fixes
 
 #### P1 — CLI Missing Features
-- [x] [qa/P1] `aloop steer` CLI command missing — README and spec claim it exists, CLI returns `unknown command 'steer'`. (iters 26-52, 7 consecutive fails) (priority: high)
-- [ ] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — spec requires 9-step pipeline but scaffold only generates 5 prompts (no qa). (iters 52-53, still failing) (priority: high)
+- [ ] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — `project.mjs:380` only loops over 5 prompts (plan, build, review, steer, proof); spec requires 9-step pipeline including qa. Add `PROMPT_qa.md` to the scaffold loop. Template exists at `aloop/templates/PROMPT_qa.md`. (iters 52-53, still failing) (priority: high)
 
 #### P1 — Input Validation
-- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` exits 0 instead of failing — initializes session with empty spec. (iters 26-53, 8 consecutive fails) (priority: high)
-- [ ] [qa/P1] Provider health backoff violates spec — 1 failure triggers ~29h cooldown. Spec says 1 failure = no cooldown, hard cap 60 min. (iters 26-52, 3 reports) (priority: high)
+- [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` exits 0 instead of failing — `orchestrate.ts` creates state with `spec_file` without checking if file exists. Add `existsSync()` validation before session creation. (iters 26-53, 8 consecutive fails) (priority: high)
+- [~] [qa/P1] Provider health backoff violates spec — QA reported 1 failure triggers ~29h cooldown. **Code verification shows `loop.sh:783-793` correctly implements spec: 1 failure = 0 cooldown, 2 = 2min, etc.** Likely a QA false positive or a different code path in loop.ps1. Mark for re-test. (iters 26-52, 3 reports) (priority: high)
 
 #### P1 — Dashboard
-- [ ] [qa/P1] Dashboard docs tabs empty — `/api/state` `workdir` points to `aloop/cli/` subdirectory instead of worktree root, so all docs return zero-length content. (iters 26-51, 4 reports) (priority: high)
-- [ ] [qa/P1] Dashboard desktop layout mismatches spec wireframe — at 1920x1080, sidebar and docs panel not visible. Spec requires persistent sidebar + docs + activity. (iters 47, 51-53, still failing) (priority: high)
+- [ ] [qa/P1] Dashboard docs tabs empty — `/api/state` `workdir` points to `aloop/cli/` subdirectory instead of worktree root, so all docs return zero-length content. Needs runtime verification. (iters 26-51, 4 reports) (priority: high)
+- [ ] [qa/P1] Dashboard desktop layout mismatches spec wireframe — at 1920x1080, sidebar and docs panel not visible. Spec requires persistent sidebar + docs + activity. Needs runtime Playwright verification. (iters 47, 51-53, still failing) (priority: high)
 - [ ] [qa/P1] Dashboard health tab missing codex — shows 4 providers, codex in cooldown state omitted. (iter 26) (priority: high)
 
 #### P1 — Runtime
-- [ ] [qa/P1] `aloop setup --non-interactive` fails for fresh HOME — missing runtime templates, raw stack trace instead of guided bootstrap. (iters 51-53, still failing) (priority: high)
-- [ ] [qa/P1] `aloop gh watch` crashes with raw stack trace when `gh` invocation fails. (iter 51) (priority: high)
+- [ ] [qa/P1] `aloop setup --non-interactive` fails for fresh HOME — `setup.ts:47-58` calls `scaffoldWorkspace` without checking if templates exist. Add template existence check and graceful error/bootstrap. (iters 51-53, still failing) (priority: high)
+- [ ] [qa/P1] `aloop gh watch` crashes with raw stack trace when `gh` invocation fails — `gh.ts:976` calls `fetchMatchingIssues()` without try-catch. Add error handling around gh CLI calls. (iter 51) (priority: high)
 
 #### P2 — Error Handling / Validation
 - [ ] [qa/P2] CLI error handling leaks stack traces — `aloop setup --autonomy-level invalid`, `aloop start` (no config), `aloop orchestrate --autonomy-level foo`, `aloop resolve --project-root /nonexistent`. Should show clean user-facing errors. (iters 46-53, multiple reports) (priority: medium)
 - [ ] [qa/P2] `aloop setup` accepts invalid inputs without validation — nonexistent spec files and unknown provider names written to config silently. (iters 48-50) (priority: medium)
 - [ ] [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` writes nonexistent path to config without warning. (iter 52) (priority: medium)
 - [ ] [qa/P2] `aloop devcontainer` crashes with `TypeError: deps.discover is not a function`. (iter 50) (priority: medium)
+
+### In Progress — Loop Decoupling (Event-Driven Queue Dispatch)
+Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle + queue. The runtime handles all intelligence (event detection → catalog scan → queue injection).
+
+- [ ] [loop/P1] Remove `FORCE_PLAN_NEXT`, `FORCE_PROOF_NEXT`, `FORCE_REVIEW_NEXT` flags — replace with direct queue writes. When a condition triggers (e.g., all tasks done), write the appropriate prompt file to `$SESSION_DIR/queue/` instead of setting a boolean. (~lines 378-389, 1324-1327) (priority: high)
+- [ ] [loop/P1] Remove hardcoded build-completion detection from loop — `register_iteration_success()` checks `iter_mode == “build”` and forces proof+review. Move this to the runtime monitor: detect `all_tasks_done` event → queue proof prompt. (~lines 1977-1984, 512-522) (priority: high)
+- [ ] [loop/P1] Remove hardcoded steering detection from loop — loop checks for `STEERING.md` and overrides mode to `steer`, forces plan next. Move to runtime: detect file → queue steer prompt → queue plan prompt. (~lines 1913-1925) (priority: high)
+- [ ] [loop/P1] Remove `check_phase_prerequisite()` — hardcodes “can’t review without builds” and “can’t build without tasks” logic for specific agent names. Prerequisites should be the runtime’s responsibility before queueing. (~lines 334-372) (priority: high)
+- [ ] [loop/P2] Remove proof/review-specific setup from loop — delete the `if iter_mode == “proof”` artifact-dir block (~lines 2013-2019) and the `if iter_mode == “review”` verdict-injection block (~lines 2022-2033). Instead, substitute `{{SESSION_DIR}}`, `{{ITERATION}}`, and `{{ARTIFACTS_DIR}}` in ALL prompts generically so agents can find/create their own paths. Agents handle their own mkdir and file reads. (priority: medium)
+- [ ] [loop/P2] Remove post-iteration hooks — steer archiving, build summary, review baseline update are all hardcoded by agent name (~lines 2046-2095). Move cleanup responsibility to agent prompts themselves — they already know what they need to clean up. (priority: medium)
+- [ ] [loop/P2] Make color output data-driven — replace hardcoded `case “$iter_mode” in plan|build|proof|review|steer` with frontmatter `color` field, defaulting to white. (~lines 1966-1973) (priority: low)
+- [ ] [loop/P2] Add `trigger` frontmatter field to agent prompt templates — agents declare which events they respond to (e.g., `trigger: all_tasks_done`). Runtime scans catalog for matching triggers when events fire. (priority: medium)
+- [ ] [runtime/P2] Implement event→catalog→queue dispatch in runtime monitor — when runtime detects a condition, emit an event key, scan `aloop/templates/` for prompts with matching `trigger` frontmatter, copy to `$SESSION_DIR/queue/`. (priority: medium)
 
 ### Up Next — P0/P1 (After Refactor)
 - [ ] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating consistently and add same-error persistence checks before re-iteration caps.
@@ -75,11 +69,16 @@ Each bug listed once with iteration history for context.
 ### Cancelled / Superseded
 - [~] [orchestrator/P0] Label-driven state machine — superseded by GitHub-native status/project-state progression with minimal-label fallback.
 - [~] [dashboard/low] Docs-tab trigger filtering — already implemented (`App.tsx` filters non-empty docs).
+- [~] [qa/P1] Provider health backoff — loop.sh implementation verified correct (1 failure = 0 cooldown). QA report likely false positive or loop.ps1-specific. Re-test needed.
 
 ### Completed
 - [x] [orchestrator/P1] Autonomy levels (cautious/balanced/autonomous) — wire setup/config to resolver behavior, risk classification, autonomous decision logging, and user override.
 - [x] [orchestrator/P0] [research] GitHub-native state model feasibility — finalized: use Project status + issue state for progression; keep only minimal labels.
 - [x] [orchestrator/P1] Replan on spec change — spec diff watcher, replan agent trigger, spec backfill flow, loop-prevention provenance.
+- [x] [review] Gate 4: Dead import — `App.tsx:7` unused `X` import removed.
+- [x] [review] Gate 4: Queue file leak — `processQueuedPrompts` now unlinks consumed queue files.
+- [x] [review] Gate 4: Committed test artifact — `aloop/cli/dashboard/test-results/` removed and `.gitignore`d.
+- [x] [review] Gate 9: README gate table updated from “8 gates” to “9 gates” with Gate 9 row.
 - [x] [review] Gate 4: `dashboard.ts:568` — `sendToDefaultSessionClients` dead code removed.
 - [x] [review] Gate 4: `dashboard.ts:582-615` — duplicate `publishState` branch logic consolidated.
 - [x] [review] Gate 8: added missing `@radix-ui/react-dropdown-menu@^2.1.16` entry to `VERSIONS.md`.
@@ -118,3 +117,4 @@ Each bug listed once with iteration history for context.
 - [x] [review] Gate 6: Proof for Spec Change Replan verified.
 - [x] [fix] `orchestrateCommand` dependency injection fixed.
 - [x] [review] Gate 8: VERSIONS.md — added `git` to Runtime section.
+- [x] [qa/P1] `aloop steer` CLI command — implemented in `steer.ts`.
