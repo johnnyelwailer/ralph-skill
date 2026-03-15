@@ -13,7 +13,7 @@ Priority: (1) review gate fixes that block iteration, (2) QA P1 bugs, (3) loop d
 ### In Progress — QA Bug Fixes
 
 #### P1 — CLI Missing Features
-- [ ] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — `project.mjs:380` only loops over 5 prompts (plan, build, review, steer, proof); spec requires 9-step pipeline including qa. Add `PROMPT_qa.md` to the scaffold loop. Template exists at `aloop/templates/PROMPT_qa.md`. (iters 52-53, still failing) (priority: high)
+- [x] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — `project.mjs:380` only loops over 5 prompts (plan, build, review, steer, proof); spec requires 9-step pipeline including qa. Add `PROMPT_qa.md` to the scaffold loop. Template exists at `aloop/templates/PROMPT_qa.md`. Fixed: added 'qa' to both validation and copy loops in project.mjs, updated all test fixtures. (priority: high)
 
 #### P1 — Input Validation
 - [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` exits 0 instead of failing — `orchestrate.ts` creates state with `spec_file` without checking if file exists. Add `existsSync()` validation before session creation. (iters 26-53, 8 consecutive fails) (priority: high)

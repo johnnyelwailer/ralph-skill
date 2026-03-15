@@ -34,6 +34,7 @@ test('scaffoldWorkspace writes config and prompt files with substitutions', asyn
   await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review {{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer {{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof {{SPEC_FILES}}', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA {{SPEC_FILES}}', 'utf8');
 
   const result = await scaffoldWorkspace({
     projectRoot: tempRoot,
@@ -71,6 +72,7 @@ test('scaffoldWorkspace allows explicit reference file overrides', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
 
   const result = await scaffoldWorkspace({
     projectRoot: tempRoot,
@@ -152,6 +154,7 @@ test('scaffoldWorkspace respects explicit enabledProviders and roundRobinOrder',
   await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
 
   const result = await scaffoldWorkspace({
     projectRoot: tempRoot,
@@ -178,6 +181,7 @@ test('scaffoldWorkspace writes explicit autonomy level', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
 
   const result = await scaffoldWorkspace({
     projectRoot: tempRoot,
@@ -232,6 +236,7 @@ test('scaffoldWorkspace errors when a required template is missing', async () =>
   await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
 
   await assert.rejects(
     () =>
@@ -256,6 +261,7 @@ test('scaffoldWorkspace leaves provider hints empty for unknown providers', asyn
   await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review{{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer{{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
 
   const result = await scaffoldWorkspace({
     projectRoot: tempRoot,
@@ -315,6 +321,7 @@ test('resolveProviderHints covers all branches', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_review.md'), '{{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), '{{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), '{{PROVIDER_HINTS}}', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), '{{PROVIDER_HINTS}}', 'utf8');
 
   const providers = ['claude', 'codex', 'gemini', 'copilot', 'round-robin'];
   for (const p of providers) {
@@ -349,6 +356,7 @@ test('workspace functions handle default parameters', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
 
   // Test discoverWorkspace with no options (uses process.cwd() and os.homedir())
   const result1 = await discoverWorkspace();
@@ -377,6 +385,7 @@ test('command wrappers support json and text output', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
 
   const logs: string[] = [];
   const originalLog = console.log;

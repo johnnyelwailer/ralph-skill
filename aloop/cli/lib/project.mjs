@@ -377,7 +377,7 @@ export async function scaffoldWorkspace(options = {}) {
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
   const promptsDir = path.join(discovery.setup.project_dir, 'prompts');
 
-  for (const file of ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md']) {
+  for (const file of ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md']) {
     if (!existsSync(path.join(templatesDir, file))) {
       throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
     }
@@ -426,7 +426,7 @@ export async function scaffoldWorkspace(options = {}) {
     '{{PROVIDER_HINTS}}': resolveProviderHints(provider),
   };
 
-  for (const suffix of ['plan', 'build', 'review', 'steer', 'proof']) {
+  for (const suffix of ['plan', 'build', 'review', 'steer', 'proof', 'qa']) {
     const fileName = `PROMPT_${suffix}.md`;
     const templatePath = path.join(templatesDir, fileName);
     const destinationPath = path.join(promptsDir, fileName);
