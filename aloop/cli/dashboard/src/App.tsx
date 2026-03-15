@@ -1089,7 +1089,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
             outputLoading ? (
               <div className="ml-2 text-muted-foreground/50 py-1 flex items-center gap-1 text-[11px]"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
             ) : outputText ? (
-              <div className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1 overflow-auto max-h-[300px] bg-muted rounded-md p-2">
+              <div className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1 overflow-auto max-h-[300px] bg-accent/30 rounded-md p-2">
                 <div className="prose-dashboard text-[10px] font-mono" dangerouslySetInnerHTML={{ __html: marked.parse(outputText, { gfm: true, breaks: true }) as string }} />
               </div>
             ) : outputText === '' ? (
