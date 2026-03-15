@@ -20,7 +20,7 @@ Priority: Loop engine correctness -> Orchestrator core -> GitHub integration -> 
 - [x] [orchestrator/P1] Monitor/gate/merge cycle — child status monitoring (read `status.json`), stuck-child steering, PR creation on completion, gate enforcement (CI, coverage, merge conflicts, spec regression), squash merge to `agent/trunk`, downstream unblocking.
 - [ ] [orchestrator/P1] Autonomy levels (cautious/balanced/autonomous) — config in setup, resolver agent, risk classification, autonomous decision logging, user override.
 - [ ] [orchestrator/P1] Replan on spec change — git diff watcher on spec glob, replan agent, spec backfill mechanism, spec consistency agent, provenance-based infinite loop prevention.
-- [ ] [gh/P1] GitHub Enterprise support — remove remaining hardcoded `github.com` URL generation in loop runtime output paths (`loop.sh`/`loop.ps1` remote backup links), and ensure host-agnostic URL construction everywhere.
+- [x] [gh/P1] GitHub Enterprise support — removed remaining hardcoded `github.com` URL generation in loop runtime output paths (`loop.sh`/`loop.ps1` remote backup links) by normalizing git remotes/created repo URLs to host-agnostic web links.
 - [ ] [gh/P1] CI/GitHub Actions integration hardening — align orchestrator merge/gating flow to consistently prefer CI outcomes and enforce same-error persistence checks before re-iteration caps.
 - [ ] [dashboard/P1] Proof artifact comparison modes — expandable lightbox, before/after comparison (side-by-side, slider, diff overlay), history scrubbing dropdown, diff percentage badge.
 - [ ] [setup/P1] Data privacy setup question — ask internal vs public, affect model choice and ZDR flags, may exclude providers.
@@ -66,7 +66,3 @@ Priority: Loop engine correctness -> Orchestrator core -> GitHub integration -> 
 - [x] [orchestrator] Orchestrator prompt templates (14 files).
 - [x] [orchestrator/P0] Definition of Ready (DoR) gate — `validateDoR()` enforces DoR criteria before dispatch in `getDispatchableIssues()`.
 - [x] [orchestrator/P1] Missing orchestrator prompts — added `PROMPT_orch_resolver.md`, `PROMPT_orch_replan.md`, `PROMPT_orch_spec_consistency.md`.
-
-## Blocked
-- [orchestrator/P0] [research] GitHub-native state model feasibility — verify whether issue state + Project status can replace `aloop/*` progression labels; target single tracking label `aloop` unless native states cannot represent required transitions. Current orchestrate.ts uses label-based state (`pending`/`in_progress`/`pr_open`/`merged`/`failed`); spec requires Project status field (`Needs analysis`/`Needs decomposition`/`Ready`/`In progress`/`Done`) with label fallback. (stuck after 3 attempts)
-- [orchestrator/P0] [research] GitHub-native state model feasibility — verify whether issue state + Project status can replace `aloop/*` progression labels; target single tracking label `aloop` unless native states cannot represent required transitions. Current orchestrate.ts uses label-based state (`pending`/`in_progress`/`pr_open`/`merged`/`failed`); spec requires Project status field (`Needs analysis`/`Needs decomposition`/`Ready`/`In progress`/`Done`) with label fallback. (stuck after 3 attempts)

@@ -1419,7 +1419,8 @@ function Setup-RemoteBackup {
 
         try {
             git remote get-url origin | Out-Null
-            Write-Host ("Remote backup: " + (git remote get-url origin))
+            $existingRemoteUrl = (git remote get-url origin | Out-String).Trim()
+            Write-Host ("Remote backup: " + (Convert-RemoteToWebUrl -RemoteUrl $existingRemoteUrl))
             return $true
         } catch { }
 
@@ -1439,8 +1440,23 @@ function Setup-RemoteBackup {
 
         try {
             gh repo create $repoName --private --source=. --push | Out-Null
-            $login = gh api user -q .login
-            Write-Host "Remote backup: https://github.com/$login/$repoName"
+            $createdRemoteUrl = $null
+            try {
+                $createdRemoteUrl = (git remote get-url origin | Out-String).Trim()
+            } catch { }
+            if (-not [string]::IsNullOrWhiteSpace($createdRemoteUrl)) {
+                Write-Host ("Remote backup: " + (Convert-RemoteToWebUrl -RemoteUrl $createdRemoteUrl))
+            } else {
+                $createdRepoWebUrl = $null
+                try {
+                    $createdRepoWebUrl = (gh repo view $repoName --json url -q .url | Out-String).Trim()
+                } catch { }
+                if (-not [string]::IsNullOrWhiteSpace($createdRepoWebUrl)) {
+                    Write-Host "Remote backup: $createdRepoWebUrl"
+                } else {
+                    Write-Host "Remote backup: $repoName"
+                }
+            }
             return $true
         } catch {
             Write-Warning "Could not create backup repo. Remote backup disabled."
@@ -1450,6 +1466,27 @@ function Setup-RemoteBackup {
     finally {
         Pop-Location
     }
+}
+
+function Convert-RemoteToWebUrl {
+    param(
+        [string]$RemoteUrl
+    )
+    if ([string]::IsNullOrWhiteSpace($RemoteUrl)) { return $RemoteUrl }
+
+    $trimmed = $RemoteUrl.Trim()
+    if ($trimmed -match '^git@([^:]+):(.+)$') {
+        $path = ($Matches[2] -replace '\.git$', '')
+        return "https://$($Matches[1])/$path"
+    }
+    if ($trimmed -match '^ssh://git@([^/]+)/(.+)$') {
+        $path = ($Matches[2] -replace '\.git$', '')
+        return "https://$($Matches[1])/$path"
+    }
+    if ($trimmed -match '^https?://') {
+        return ($trimmed -replace '\.git$', '')
+    }
+    return $trimmed
 }
 
 function Push-ToBackup {

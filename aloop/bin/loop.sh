@@ -1558,8 +1558,8 @@ setup_remote_backup() {
             -m "Aloop-Session: $trailer_session" 2>/dev/null || true
     fi
 
-    if git remote get-url origin &>/dev/null; then
-        echo "Remote backup: $(git remote get-url origin)"
+    if remote_url=$(git remote get-url origin 2>/dev/null); then
+        echo "Remote backup: $(normalize_remote_backup_url "$remote_url")"
         return 0
     fi
 
@@ -1580,13 +1580,54 @@ setup_remote_backup() {
     echo "Creating private backup repo: $repo_name"
 
     if gh repo create "$repo_name" --private --source=. --push 2>/dev/null; then
-        echo "Remote backup: https://github.com/$(gh api user -q .login)/$repo_name"
+        local created_remote_url
+        created_remote_url=$(git remote get-url origin 2>/dev/null || true)
+        if [ -n "$created_remote_url" ]; then
+            echo "Remote backup: $(normalize_remote_backup_url "$created_remote_url")"
+        else
+            local created_repo_web_url
+            created_repo_web_url=$(gh repo view "$repo_name" --json url -q .url 2>/dev/null || true)
+            if [ -n "$created_repo_web_url" ]; then
+                echo "Remote backup: $created_repo_web_url"
+            else
+                echo "Remote backup: $repo_name"
+            fi
+        fi
         return 0
     else
         echo "Warning: Could not create backup repo. Remote backup disabled."
         BACKUP_ENABLED="false"
         return 1
     fi
+}
+
+normalize_remote_backup_url() {
+    local remote_url="$1"
+    remote_url="${remote_url//$'\r'/}"
+    remote_url="${remote_url//$'\n'/}"
+
+    if [[ "$remote_url" =~ ^git@([^:]+):(.+)$ ]]; then
+        local host="${BASH_REMATCH[1]}"
+        local path="${BASH_REMATCH[2]}"
+        path="${path%.git}"
+        echo "https://$host/$path"
+        return
+    fi
+
+    if [[ "$remote_url" =~ ^ssh://git@([^/]+)/(.+)$ ]]; then
+        local host="${BASH_REMATCH[1]}"
+        local path="${BASH_REMATCH[2]}"
+        path="${path%.git}"
+        echo "https://$host/$path"
+        return
+    fi
+
+    if [[ "$remote_url" =~ ^https?:// ]]; then
+        echo "${remote_url%.git}"
+        return
+    fi
+
+    echo "$remote_url"
 }
 
 push_to_backup() {
@@ -1805,7 +1846,7 @@ run_queue_if_present() {
             fi
         fi
 
-        write_status "$ITERATION" "$queue_iter_mode" "$queue_iter_provider" "$STUCK_COUNT"
+        write_status "$ITERATION" "$queue_iter_mode" "$queue_iter_provider" 0
         write_log_entry "queue_override_start" "iteration" "$ITERATION" "queue_file" "$QUEUE_BASENAME" "agent" "$queue_iter_mode" "provider" "$queue_iter_provider"
 
         local queue_prompt_content
@@ -1840,7 +1881,7 @@ cleanup() {
     stop_dashboard
     cleanup_gh_block
     echo ""
-    write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "$state"
+    write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" 0 "$state"
     write_log_entry "$reason" "iteration" "$ITERATION"
     generate_report "$reason"
 }
@@ -1919,7 +1960,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         "reasoning" "${FRONTMATTER_REASONING:-}"
 
     # Update session status
-    write_status "$ITERATION" "$iter_mode" "$iter_provider" "$STUCK_COUNT"
+    write_status "$ITERATION" "$iter_mode" "$iter_provider" 0
     persist_loop_plan_state
 
     # Color output by mode
@@ -1955,19 +1996,6 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         fi
 
         current_task=$(get_current_task)
-        if [ -n "$current_task" ] && [ "$current_task" = "$LAST_TASK" ]; then
-            STUCK_COUNT=$((STUCK_COUNT + 1))
-        else
-            LAST_TASK="$current_task"
-            STUCK_COUNT=1
-        fi
-
-        if [ "$STUCK_COUNT" -ge "$MAX_STUCK" ] && [ -n "$current_task" ]; then
-            skip_stuck_task "$current_task"
-            write_log_entry "task_skipped" "task" "$current_task"
-            continue
-        fi
-
         if [ -n "$current_task" ]; then
             echo "Current task: $current_task"
         fi
@@ -2095,7 +2123,7 @@ done
 
 echo ""
 echo "Reached iteration limit ($MAX_ITERATIONS)"
-write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" "$STUCK_COUNT" "stopped"
+write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" 0 "stopped"
 write_log_entry "limit_reached" "iteration" "$ITERATION" "limit" "$MAX_ITERATIONS"
 generate_report "Reached iteration limit ($MAX_ITERATIONS)."
 stop_dashboard
