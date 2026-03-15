@@ -1,5 +1,5 @@
 {
-  "iteration": 23,
+  "iteration": 44,
   "verdict": "FAIL",
-  "summary": "plan.ts branch coverage remains under 80% and dashboard lacks stuck_count visibility."
+  "summary": "Gate 8 FAIL (VERSIONS.md missing) and Gate 4 FAIL (Provenance Tagging missing in runtime scripts)."
 }

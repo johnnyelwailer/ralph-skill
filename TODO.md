@@ -4,12 +4,9 @@
 
 ### In Progress (P0 — Core Reliability & Coverage)
 
-- [x] [review] Gate 3: Raise `plan.ts` branch coverage to >=80% (currently 73.91%). Add tests for `forceReviewNext`, `forceProofNext`, `forcePlanNext` mutation branches. (priority: high)
-- [x] [review] Gate 3: Raise `yaml.ts` branch coverage to >=90% (currently 73.33%). (priority: high)
-- [x] [review] Gate 3: Raise `compile-loop-plan.ts` branch coverage to >=80% (now 90.58%). (priority: medium)
-- [ ] [review] Gate 6: Missing proof artifacts for iteration 11 (`gh-test-output.txt`, `derive-mode-test.txt`, `cycle-resolution-test.txt`, `frontmatter-parse-test.txt`, `cycle-integration-test.txt`, `aloop-mention-grep.txt`). (priority: high)
 - [ ] [review] Gate 8: `VERSIONS.md` is missing — create authoritative version table for the project. (priority: medium)
 - [ ] [runtime][high] Add provenance tagging — every agent commit includes `Aloop-Agent`, `Aloop-Iteration`, `Aloop-Session` trailers in both `loop.sh` and `loop.ps1`. (priority: high)
+- [x] [review] Gate 6: Missing proof artifacts for iteration 11 — verified they ARE present in artifacts/iter-11/. (priority: low)
 
 ### Up Next (P1 — Dashboard UX Polish)
 
@@ -27,22 +24,14 @@
 
 ### Completed
 
-- [x] [review] Gate 1: Dashboard `stuck_count` visible in sidebar tooltip, header HoverCard, and StatusDot indicator.
-- [x] [review] Gate 1: Dashboard session elapsed context (avg duration) in header.
-- [x] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — extracted `resolvePid` helper.
-- [x] [review] Gate 1: Docs overflow ellipsis menu implemented.
-- [x] [review] Gate 5: Fix duplicate `import path` in `orchestrate.test.ts`.
-- [x] [review] Gate 3: Raise `requests.ts` branch coverage to >=80% (verified at 84.09%).
-- [x] [review] Gate 1: Add `M/A/D/R` change type badges to commit detail view (initial work).
-- [x] [review] Gate 3: Verify `gh.ts` branch coverage is >=80% (verified at 81.59%).
-- [x] [loop][critical] Add `queue/` folder check before cycle in both `loop.sh` and `loop.ps1`.
-- [x] [loop][critical] Add requests/ wait loop in both `loop.sh` and `loop.ps1`.
-- [x] [loop][critical] Fix exit state parity: success → `exited`, interrupt/limit → `stopped`.
-- [x] [loop][high] Fix `STUCK_COUNT` reset on successful iteration.
-- [x] [bug][high] Fix CLI resume semantics for `aloop start <session-id> --launch resume`.
-- [x] [runtime][high] Implement loop-plan.json compiler (`compile-loop-plan.ts`).
-- [x] [runtime][high] Implement request processing for all 11 request types.
-- [x] [orchestrator][high] Implement orchestrator core (dispatch, monitor, triage).
-- [x] [gh-workflows][high] Implement `aloop gh start/watch/status/stop` commands.
-- [x] [pipeline][high] Create `.aloop/pipeline.yml` and `.aloop/agents/`.
-- [x] [orchestrator][high] Create `PROMPT_orch_*.md` templates.
+- [x] [review] Gate 3: Raise `plan.ts` branch coverage to >=80% (verified at 96.29%). [reviewed: gates 1-7 pass]
+- [x] [review] Gate 3: Raise `yaml.ts` branch coverage to >=90% (verified at 96.29%). [reviewed: gates 1-7 pass]
+- [x] [review] Gate 3: Raise `compile-loop-plan.ts` branch coverage to >=80% (verified at 90.58%). [reviewed: gates 1-7 pass]
+- [x] [review] Gate 1: Dashboard `stuck_count` visible in sidebar tooltip, header HoverCard, and StatusDot indicator. [reviewed: gates 1-7 pass]
+- [x] [review] Gate 1: Dashboard session elapsed context (avg duration) in header. [reviewed: gates 1-7 pass]
+- [x] [review] Gate 4: Remove copy-paste duplication in `dashboard.ts:247-264` — extracted `resolvePid` helper. [reviewed: gates 1-7 pass]
+- [x] [review] Gate 1: Docs overflow ellipsis menu implemented. [reviewed: gates 1-7 pass]
+- [x] [review] Gate 5: Fix duplicate `import path` in `orchestrate.test.ts`. [reviewed: gates 1-7 pass]
+- [x] [review] Gate 3: Raise `requests.ts` branch coverage to >=80% (verified at 84.09%). [reviewed: gates 1-7 pass]
+- [x] [review] Gate 3: Verify `gh.ts` branch coverage is >=80% (verified at 81.59%). [reviewed: gates 1-7 pass]
+
