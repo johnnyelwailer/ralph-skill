@@ -1062,19 +1062,13 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
           )}
 
           {/* Provider output — rendered inline */}
-          {hasOutput && (
+          {hasOutput && outputText && (
             <div className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1">
-              <span className="text-muted-foreground font-medium flex items-center gap-1 text-[11px] mb-1">
-                <Terminal className="h-3 w-3" /> Output
-              </span>
-              {outputLoading ? (
-                <div className="text-muted-foreground/50 py-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
-              ) : outputText ? (
-                <pre className="bg-muted rounded-md p-2 overflow-auto max-h-[300px] text-[10px] font-mono text-foreground/80 whitespace-pre-wrap break-words">{outputText}</pre>
-              ) : outputText === '' ? (
-                <div className="text-muted-foreground/50 py-1 italic">No output available</div>
-              ) : null}
+              <pre className="bg-muted rounded-md p-2 overflow-auto max-h-[300px] text-[10px] font-mono text-foreground/80 whitespace-pre-wrap break-words">{outputText}</pre>
             </div>
+          )}
+          {hasOutput && outputLoading && (
+            <div className="ml-2 text-muted-foreground/50 py-1 flex items-center gap-1 text-[11px]"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
           )}
 
           {/* Event detail fallback — structured summary instead of raw JSON */}
