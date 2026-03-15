@@ -1,5 +1,28 @@
 # Review Log
 
+## Review — 2026-03-15 — commit 1117ee1..2aedc45
+
+**Verdict: FAIL** (10 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/lib/requests.ts`, `aloop/cli/src/lib/plan.ts`, `aloop/cli/dashboard/src/App.tsx`, `aloop/cli/dashboard/src/components/ui/*`, `aloop/cli/dashboard/e2e/smoke.spec.ts`
+
+- Gate 1: Dashboard UI is missing the spec-required `stuck_count` visibility in session status/details.
+- Gate 1: Dashboard UI misses the "overflow extra docs into an end-of-row menu" requirement (uses standard horizontal overflow instead).
+- Gate 1: Dashboard Commit detail view misses `M/A/D/R` change type badges (only shows `+`/`-` stats).
+- Gate 2: Dashboard E2E tests (`smoke.spec.ts`) are outdated and broken — they use selectors and placeholders that no longer exist in the rewritten UI (e.g., checking for 'Aloop Dashboard' heading, 'Views' tab, old steer placeholder).
+- Gate 2: Dashboard rewrite (2.4k lines) has zero unit tests for its complex logic (log parsing, health tooltips, state normalization).
+- Gate 2: `requests.test.ts` still missing coverage for 6/11 request types: `update_issue`, `create_pr`, `merge_pr`, `dispatch_child`, `stop_child`, `query_issues`.
+- Gate 3: Branch coverage for `requests.ts` (52.5%) and `plan.ts` (40%) remains far below the 80% threshold for new/touched modules.
+- Gate 5: `requests.ts:307` — TypeScript error: `request.payload.title` accessed but `UpdateIssueRequest.payload` interface does not define `title`.
+- Gate 5: 9 test failures persist: 6 in `dashboard.test.ts` due to path mismatch (`responses/` vs `queue/`), and 3 in `orchestrate.test.ts` due to `EACCES` on `mkdir /home/user`.
+- Gate 4: Inconsistent handler implementation in `requests.ts` — `handleUpdateIssue`, `handleQueryIssues`, `handleDispatchChild` use `spawnSync` directly instead of the injectable `ghCommandRunner` dependency.
+
+**Positive observations:**
+- Gate 4: Modernized Dashboard UI using Shadcn/UI and Tailwind is highly polished and aesthetically superior to the previous version.
+- Gate 4: `DOMPurify` correctly used for sanitizing markdown rendering in the dashboard.
+- Gate 1: New dashboard hierarchy (Repo -> Project -> Issue -> Session) correctly implements the complex session grouping requested in SPEC.md.
+
+---
+
 ## Review — 2026-03-14 19:45 — commit 53c8ad2..105706f
 
 **Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
@@ -98,5 +121,3 @@ Positive observations:
 - Gate 3 observation: Coverage evidence from `c8` shows touched production files above threshold (`lib/session.mjs` branches 93.33%, `src/commands/orchestrate.ts` branches 88.66%).
 - Gate 5 observation: `cd aloop/cli && npm test && npm run type-check && npm run build` all pass.
 - Gate 6 observation: previously missing proof artifacts now exist (`proof-run.log`, `monitor-cycle-proof.json`, `triage-action-policy-proof.json`) and are internally consistent with the triage/session work claimed in this range.
-
----
