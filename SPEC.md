@@ -2,7 +2,7 @@
 
 ## Desired Outcome
 
-Aloop is an autonomous coding agent orchestrator that runs configurable agent pipelines with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops). The default pipeline is `plan → build × 3 → proof → review`, but pipelines are fully configurable via agent YAML definitions (see Configurable Agent Pipeline).
+Aloop is an autonomous coding agent orchestrator that runs configurable agent pipelines with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops). The default pipeline is `plan → build × 3 → proof → qa → review`, but pipelines are fully configurable via agent YAML definitions (see Configurable Agent Pipeline).
 
 ## Constraints
 - **TypeScript / Bun** — CLI source is TypeScript, built with Bun into a bundled `dist/index.js`
@@ -373,10 +373,10 @@ A new loop phase (`proof`) where a dedicated agent autonomously decides what evi
 
 ```
 Previous default:  plan → build × 3 → review  (5-step)
-New default:       plan → build × 3 → proof → review  (6-step)
+Current default:   plan → build × 3 → proof → qa → review  (7-step)
 ```
 
-The proof agent is added to the default pipeline compiled into `loop-plan.json`. It runs exactly once per cycle, after builds and before review. It gets its own prompt template (`PROMPT_proof.md`) and its own entry in the pipeline config, just like any other agent.
+The proof and QA agents are added to the default pipeline compiled into `loop-plan.json`. They run once per cycle, after builds and before review. Each gets its own prompt template (`PROMPT_proof.md`, `PROMPT_qa.md`) and its own entry in the pipeline config, just like any other agent.
 
 ### Proof Agent Behavior
 
@@ -585,7 +585,7 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 ### Acceptance Criteria
 
 - [ ] Proof is a first-class phase in the loop cycle, with its own `PROMPT_proof.md` template
-- [ ] Default pipeline becomes: plan → build × 3 → proof → review (6-step)
+- [ ] Default pipeline becomes: plan → build × 3 → proof → qa → review (7-step)
 - [ ] Proof agent autonomously decides what to prove, how, and whether to skip
 - [ ] Artifacts are saved to `~/.aloop/sessions/<session-id>/artifacts/iter-<N>/`
 - [ ] `proof-manifest.json` is written with structured artifact metadata and skip reasons
@@ -596,6 +596,59 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 - [ ] Reviewer can reject if proof is missing for work that should have been proven
 - [ ] Proof skip is a valid outcome (empty artifacts, documented skip reasons)
 - [ ] Both `loop.ps1` and `loop.sh` support the proof phase in their cycle resolution
+
+---
+
+## QA Agent — Black-Box User Testing (Priority: P1)
+
+A dedicated QA agent that tests features as a real user would — running commands, clicking through the dashboard, testing error paths — without ever reading source code. It runs after proof and before review in the default pipeline.
+
+### QA Agent Behavior
+
+The QA agent is a **black-box tester**. It:
+- Reads the SPEC to understand expected behavior (source of truth)
+- Reads TODO.md for recently completed tasks (test candidates)
+- Reads QA_COVERAGE.md for features never tested or previously failed
+- Tests 3-5 features per iteration through their public interface
+- Files bugs as `[qa/P1]` tasks in TODO.md with reproduction steps
+- Maintains QA_COVERAGE.md (feature × result matrix) and QA_LOG.md (session transcript)
+- Commits its own artifacts (QA_COVERAGE.md, QA_LOG.md, TODO.md updates)
+
+**The QA agent NEVER reads source code.** It tests exclusively through CLI commands, HTTP endpoints, and browser interaction (via Playwright).
+
+### Test Scope Per Iteration
+
+- **3-5 features** per QA session — focused and thorough, not broad and shallow
+- **Happy path + error paths + edge cases** for each feature
+- **Layout verification** (mandatory for dashboard/UI changes) — screenshot at desktop viewport, verify panel count and element visibility match spec
+- **GitHub integration E2E** (when GH features are claimed complete) — creates throwaway test repo, runs lifecycle, cleans up. Must use `--max-iterations 3` or similar to keep test runs short. Must clean up even on failure.
+- **Re-test previously failed features** from QA_COVERAGE.md
+
+### QA Artifacts
+
+- `QA_COVERAGE.md` — feature coverage matrix: feature name, last tested date, commit, PASS/FAIL, notes
+- `QA_LOG.md` — append-only session log with full command transcripts, stdout/stderr, exit codes, screenshots
+- `[qa/P1]` tasks in TODO.md — bugs with format: `what you did → what happened → what spec says should happen`
+
+### Prompt Template
+
+`PROMPT_qa.md` instructs the agent:
+- Study the spec for expected behavior
+- Select test targets from recently completed tasks and coverage gaps
+- Set up realistic test environments (temp dirs, real git repos, real dependencies)
+- Test through public interfaces only (CLI, HTTP, browser)
+- Log every command with exact output
+- File bugs, update coverage, write session log, commit
+
+### Acceptance Criteria
+
+- [ ] QA is a first-class phase in the loop cycle, with its own `PROMPT_qa.md` template
+- [ ] Default pipeline includes QA: plan → build × 3 → proof → qa → review (7-step)
+- [ ] QA agent never reads source code — tests only through public interfaces
+- [ ] Bugs filed as `[qa/P1]` tasks with reproduction steps
+- [ ] QA_COVERAGE.md tracks per-feature test history
+- [ ] QA_LOG.md contains full command transcripts as evidence
+- [ ] Both `loop.ps1` and `loop.sh` support the qa phase in their cycle resolution
 
 ---
 
@@ -799,7 +852,7 @@ Collapsible sidebar (Ctrl+B) showing all sessions in a tree grouped by project.
 **Header bar:**
 - Session name (clickable → expands sidebar), running dot (pulsing if active)
 - Iteration counter with hover card showing phase, status, provider, task progress
-- Progress bar (color matches phase: plan=purple, build=yellow, proof=amber, review=cyan)
+- Progress bar (color matches phase: plan=purple, build=yellow, proof=amber, qa=orange, review=cyan)
 - Phase badge, provider/model, state text (colored)
 - Connection indicator (Live/Connecting/Disconnected)
 - Ctrl+K hint button → opens command palette
@@ -829,7 +882,7 @@ HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
 
 - **Timestamp**: HH:MM (locale-aware)
 - **Status dot**: centered vertically, colored by phase, subtle opacity pulse (`animate-pulse-dot`: opacity 1→0.5→1, 2s cycle) if currently active iteration
-- **Phase**: 5-char label (plan, build, proof, review)
+- **Phase**: label (plan, build, proof, qa, review)
 - **Provider·model**: e.g. `claude·sonnet-4.6`, truncated to max 140px. Model sourced from: (1) `LAST_PROVIDER_MODEL` in log entry, (2) parsed from per-iteration `output.txt` header (e.g. opencode `> build · openrouter/hunter-alpha`). For opencode, `LAST_PROVIDER_MODEL` is `opencode-default` since the actual model is resolved by opencode; dashboard extracts the real model from the output header
 - **Result icon**: CheckCircle (green) for success, XCircle (red) for error — with tooltip showing full detail
 - **Result detail**: 7-char commit hash (blue, monospace) or error reason
@@ -970,7 +1023,7 @@ The orchestrator and child implementation loops use the **same `loop.sh`/`loop.p
 - Manages the full refinement pipeline: spec gap analysis → epic decomposition → epic refinement → sub-issue decomposition → sub-issue refinement → dispatch
 
 **Child implementation loop** — a `loop.sh` instance with build prompts:
-- Cycle: fixed rotation (plan → build → build → proof → review)
+- Cycle: fixed rotation (plan → build → build → proof → qa → review)
 - Primarily **cycle-driven** — proactive, predictable. Queue used only for steering/overrides.
 - Reads its sub-spec from the issue body (seeded into its worktree), NOT the repo's SPEC.md
 - Knows nothing about GitHub, other children, orchestration, or the full spec
@@ -992,7 +1045,7 @@ Aloop Runtime (TS/Bun) ← host process, always running
   │     └── scans GitHub state, refines issues, decides dispatch
   │
   ├── Child loop.sh (issue #11)
-  │     ├── cycle: [plan, build, build, proof, review]
+  │     ├── cycle: [plan, build, build, proof, qa, review]
   │     ├── queue/: steering overrides only
   │     └── reads sub-issue body as its spec
   │
@@ -1505,7 +1558,7 @@ The orchestrator scan agent identifies `Ready` sub-issues (Project status) and w
    - Creates branch: `aloop/issue-<number>`
    - Creates worktree
    - Seeds child's working directory with sub-spec from issue body
-   - Compiles child's `loop-plan.json` with implementation cycle (plan-build-proof-review)
+   - Compiles child's `loop-plan.json` with implementation cycle (plan-build-proof-qa-review)
    - Launches child `loop.sh` instance
    - Sets Project status to `In progress`
 4. Remaining issues queue until a slot opens or dependencies merge
@@ -1692,7 +1745,7 @@ aloop orchestrate --spec SPEC.md --plan-only
 | Existing Component | Role in Orchestrator |
 |-------------------|---------------------|
 | `loop.ps1` / `loop.sh` | Runs BOTH orchestrator loop AND child loops — same script, different prompts |
-| `loop-plan.json` | Orchestrator: single scan prompt cycle. Children: plan-build-proof-review cycle |
+| `loop-plan.json` | Orchestrator: single scan prompt cycle. Children: plan-build-proof-qa-review cycle |
 | `queue/` folder | Orchestrator: primary work driver (reactive). Children: steering overrides only |
 | `requests/` folder | Orchestrator agents write side-effect requests → runtime processes |
 | Frontmatter prompts | Orchestrator has `PROMPT_orch_*.md`, children have `PROMPT_plan/build/review.md` |
@@ -2723,7 +2776,7 @@ The skill's devcontainer generator MUST:
 
 ## Configurable Agent Pipeline (Priority: P2)
 
-The default `plan → build × 3 → proof → review` cycle is a **configurable, runtime-mutable pipeline of agents**. This cycle is the default configuration, compiled into `loop-plan.json` at session start. Pipelines are fully customizable via agent YAML definitions.
+The default `plan → build × 3 → proof → qa → review` cycle is a **configurable, runtime-mutable pipeline of agents**. This cycle is the default configuration, compiled into `loop-plan.json` at session start. Pipelines are fully customizable via agent YAML definitions.
 
 ### Core Concept: Agents as the Unit
 
@@ -2733,7 +2786,7 @@ An **agent** is a named unit with:
 - **Reasoning effort** (optional) — controls reasoning depth for models that support it (see Reasoning Effort section below)
 - **Transition rules** — what happens on success, failure, and repeated failure
 
-Agents are NOT hardcoded. `plan`, `build`, `review`, `steer` are just the default agents that ship with aloop. Users and the setup agent can define custom agents (e.g., `verify`, `debugger`, `security-audit`, `docs-generator`, `guard`).
+Agents are NOT hardcoded. `plan`, `build`, `proof`, `qa`, `review`, `steer` are just the default agents that ship with aloop. Users and the setup agent can define custom agents (e.g., `verify`, `debugger`, `security-audit`, `docs-generator`, `guard`).
 
 ### Subagent Delegation (model-per-task)
 
@@ -3295,7 +3348,7 @@ For production visual review with data sensitivity requirements, use **Anthropic
 - Pipeline config lives in `.aloop/pipeline.yml` (or inline in `config.yml`) — this is the **source of truth**
 - `loop-plan.json` is a **compiled artifact** — never hand-edit it, always regenerate from config
 - The relationship is like TypeScript → JavaScript: you edit the source, the compiler produces the runtime artifact
-- Default pipeline (plan → build × 3 → proof → review) is generated if no config exists — backward compatible
+- Default pipeline (plan → build × 3 → proof → qa → review) is generated if no config exists — backward compatible
 - Agent definitions live in `.aloop/agents/` — each is a YAML file with prompt reference, provider preference, reasoning effort, and transition rules
 - The loop script becomes a generic agent runner: read `loop-plan.json`, resolve next agent, invoke, repeat
 - Runtime pipeline mutations are applied via the host-side monitor rewriting `loop-plan.json`
