@@ -156,7 +156,7 @@ function formatTime(ts: string): string {
 
 function formatTimeShort(ts: string): string {
   if (!ts) return '';
-  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); }
   catch { return ts; }
 }
 
@@ -182,7 +182,7 @@ function relativeTime(ts: string): string {
 
 const SIGNIFICANT_EVENTS = new Set([
   'iteration_complete', 'iteration_error', 'provider_cooldown', 'provider_recovered',
-  'review_verdict_read', 'session_start', 'session_end', 'session_restart',
+  'review_verdict_read', 'review_verdict_missing', 'session_start', 'session_end', 'session_restart',
   'queue_override_applied', 'queue_override_error',
 ]);
 
@@ -298,6 +298,25 @@ function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
       <TooltipContent><p>SSE connection: {label}</p></TooltipContent>
     </Tooltip>
   );
+}
+
+// ── Elapsed timer ──
+
+function ElapsedTimer({ since }: { since: string }) {
+  const [elapsed, setElapsed] = useState('');
+  useEffect(() => {
+    const start = new Date(since).getTime();
+    const tick = () => {
+      const diff = Math.max(0, Math.floor((Date.now() - start) / 1000));
+      const m = Math.floor(diff / 60);
+      const s = diff % 60;
+      setElapsed(m > 0 ? `${m}m ${s}s` : `${s}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [since]);
+  return <>{elapsed}</>;
 }
 
 // ── Artifact helpers ──
@@ -700,7 +719,7 @@ function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
 
 // ── Activity Panel ──
 
-function ActivityPanel({ log, artifacts, currentIteration }: { log: string; artifacts: ArtifactManifest[]; currentIteration: number | null }) {
+function ActivityPanel({ log, artifacts, currentIteration, currentPhase, currentProvider, isRunning }: { log: string; artifacts: ArtifactManifest[]; currentIteration: number | null; currentPhase: string; currentProvider: string; isRunning: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
 
@@ -723,11 +742,28 @@ function ActivityPanel({ log, artifacts, currentIteration }: { log: string; arti
     });
   }, [entries]);
 
+  // Add synthetic "in progress" entry for currently running iteration
+  const withCurrent = useMemo(() => {
+    if (!isRunning || currentIteration === null) return deduped;
+    // Check if the current iteration already has a complete/error entry
+    const hasResult = deduped.some((e) => e.iteration === currentIteration && (e.isSuccess || e.isError));
+    if (hasResult) return deduped;
+    // Add a synthetic running entry
+    const now = new Date().toISOString();
+    const syntheticEntry: LogEntry = {
+      timestamp: now, phase: currentPhase, event: 'iteration_running', provider: currentProvider, model: '',
+      duration: '', message: 'Running...', raw: '', rawObj: null, iteration: currentIteration,
+      dateKey: formatDateKey(now), isSuccess: false, isError: false, commitHash: '', resultDetail: '',
+      filesChanged: [], isSignificant: true,
+    };
+    return [...deduped, syntheticEntry];
+  }, [deduped, isRunning, currentIteration, currentPhase, currentProvider]);
+
   // Group by date, newest first
   const grouped = useMemo(() => {
     const groups: Array<{ dateKey: string; entries: LogEntry[] }> = [];
     let current: { dateKey: string; entries: LogEntry[] } | null = null;
-    for (const entry of deduped) {
+    for (const entry of withCurrent) {
       if (!current || current.dateKey !== entry.dateKey) {
         current = { dateKey: entry.dateKey, entries: [] };
         groups.push(current);
@@ -783,7 +819,8 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
   const [expanded, setExpanded] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const phaseColor = phaseDotColors[entry.phase?.toLowerCase()] ?? 'text-muted-foreground';
-  const hasExpandable = entry.filesChanged.length > 0 || (artifacts && artifacts.artifacts.length > 0) || entry.rawObj;
+  const isRunningEntry = entry.event === 'iteration_running';
+  const hasExpandable = !isRunningEntry && (entry.filesChanged.length > 0 || (artifacts && artifacts.artifacts.length > 0) || entry.rawObj);
 
   return (
     <>
@@ -797,7 +834,14 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
         <span className="text-muted-foreground/60 shrink-0 w-11 text-right">{entry.timestamp ? formatTimeShort(entry.timestamp) : ''}</span>
 
         {/* Phase dot — centered with items-center on parent */}
-        <Circle className={`h-2.5 w-2.5 shrink-0 fill-current ${phaseColor} ${isCurrentIteration ? 'animate-pulse' : ''}`} />
+        {isRunningEntry ? (
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${phaseColor === 'text-muted-foreground' ? 'bg-green-400' : ''}`} style={phaseColor !== 'text-muted-foreground' ? { backgroundColor: 'currentColor' } : undefined} />
+            <Circle className={`relative h-2.5 w-2.5 fill-current ${phaseColor}`} />
+          </span>
+        ) : (
+          <Circle className={`h-2.5 w-2.5 shrink-0 fill-current ${phaseColor}`} />
+        )}
 
         {/* Phase label */}
         {entry.phase && <span className="text-muted-foreground shrink-0 w-12 truncate">{entry.phase}</span>}
@@ -843,9 +887,10 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
             <Timer className="h-3 w-3" />{entry.duration}
           </span>
         )}
-        {isCurrentIteration && !entry.duration && (
-          <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap flex items-center gap-0.5 animate-pulse">
+        {isRunningEntry && (
+          <span className="text-green-600 dark:text-green-400 shrink-0 whitespace-nowrap flex items-center gap-0.5 font-medium">
             <Loader2 className="h-3 w-3 animate-spin" />
+            <ElapsedTimer since={entry.timestamp} />
           </span>
         )}
 
@@ -914,12 +959,17 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
             </div>
           )}
 
-          {/* Raw JSON fallback */}
+          {/* Event detail fallback — structured summary instead of raw JSON */}
           {!entry.filesChanged.length && !artifacts && entry.rawObj && (
-            <div className="border-l-2 border-border pl-2 py-1">
-              <pre className="text-[10px] text-muted-foreground/70 font-mono whitespace-pre-wrap max-h-24 overflow-auto">
-                {JSON.stringify(entry.rawObj, null, 2)}
-              </pre>
+            <div className="border-l-2 border-border pl-2 py-1 space-y-0.5">
+              {Object.entries(entry.rawObj)
+                .filter(([k]) => !['timestamp', 'ts', 'run_id', 'event', 'type'].includes(k))
+                .map(([k, v]) => (
+                  <div key={k} className="flex items-baseline gap-2 font-mono">
+                    <span className="text-muted-foreground/50 shrink-0">{k}:</span>
+                    <span className="text-foreground/70 truncate">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                  </div>
+                ))}
             </div>
           )}
         </div>
@@ -1190,7 +1240,7 @@ export function App() {
                     <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</CardTitle>
                   </CardHeader>
                   <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-                    <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} currentIteration={isRunning ? currentIterationNum : null} />
+                    <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} currentIteration={isRunning ? currentIterationNum : null} currentPhase={currentPhase} currentProvider={providerName} isRunning={isRunning} />
                   </CardContent>
                 </Card>
               </div>
