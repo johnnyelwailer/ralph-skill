@@ -104,6 +104,31 @@ test('mutateLoopPlan updates cycle and optional one-shot flags', async () => {
   await fs.rm(tmpDir, { recursive: true, force: true });
 });
 
+test('mutateLoopPlan leaves force flags unchanged when options omit them', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-plan-force-flags-'));
+  const initialPlan = {
+    cycle: ['plan.md', 'build.md', 'review.md'],
+    cyclePosition: 1,
+    iteration: 5,
+    version: 3,
+    forceReviewNext: true,
+    forceProofNext: false,
+    forcePlanNext: true
+  };
+  await writeLoopPlan(tmpDir, initialPlan);
+
+  const mutated = await mutateLoopPlan(tmpDir, { iteration: 6 });
+  assert.equal(mutated.iteration, 6);
+  assert.equal(mutated.version, 4);
+  assert.equal(mutated.forceReviewNext, true);
+  assert.equal(mutated.forceProofNext, false);
+  assert.equal(mutated.forcePlanNext, true);
+
+  const read = await readLoopPlan(tmpDir);
+  assert.deepEqual(read, mutated);
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
 test('writeQueueOverride writes raw content when no frontmatter provided', async () => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-queue-raw-'));
   const queuePath = await writeQueueOverride(tmpDir, 'plain', 'just content');
