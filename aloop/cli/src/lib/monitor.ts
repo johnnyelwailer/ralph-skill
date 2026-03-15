@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
-import { readLoopPlan, writeQueueOverride } from './plan.js';
+import { mutateLoopPlan, readLoopPlan, writeQueueOverride } from './plan.js';
 
 export interface MonitorOptions {
   sessionDir: string;
@@ -74,11 +74,56 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
   const plan = await readLoopPlan(options.sessionDir);
   if (!plan) return;
 
+  const queueDir = path.join(options.sessionDir, 'queue');
+
+  // Case 0: Runtime-driven steering detection.
+  // If a live steering doc appears, queue steer first, then plan.
+  const steeringPath = path.join(options.workdir, 'STEERING.md');
+  if (existsSync(steeringPath)) {
+    const queueEntries = await fs.readdir(queueDir).catch(() => []);
+    const steerAlreadyQueued = queueEntries.some(
+      e => e.includes('PROMPT_steer') || e.includes('-steering.')
+    );
+    const planAlreadyQueued = queueEntries.some(e => e.includes('PROMPT_plan'));
+
+    if (!steerAlreadyQueued) {
+      const steerTemplatePath = path.join(options.promptsDir, 'PROMPT_steer.md');
+      const planTemplatePath = path.join(options.promptsDir, 'PROMPT_plan.md');
+
+      if (existsSync(steerTemplatePath)) {
+        const steerContent = await fs.readFile(steerTemplatePath, 'utf8');
+        await writeQueueOverride(options.sessionDir, '001-PROMPT_steer', steerContent, {
+          agent: 'steer',
+          reason: 'steering_detected',
+          type: 'steering_override'
+        });
+        console.log('[monitor] STEERING.md detected; queued steer.');
+
+        if (!planAlreadyQueued && existsSync(planTemplatePath)) {
+          const planContent = await fs.readFile(planTemplatePath, 'utf8');
+          await writeQueueOverride(options.sessionDir, '002-PROMPT_plan', planContent, {
+            agent: 'plan',
+            reason: 'post_steer_replan'
+          });
+          console.log('[monitor] Steering follow-up queued plan.');
+        }
+
+        await mutateLoopPlan(options.sessionDir, {
+          cyclePosition: 0,
+          allTasksMarkedDone: false
+        });
+      } else {
+        console.warn(
+          `[monitor] STEERING.md found but PROMPT_steer.md is missing in ${options.promptsDir} — steering skipped.`
+        );
+      }
+    }
+  }
+
   const allTasksDone = await checkAllTasksComplete(options.workdir);
 
   // Case 1: All tasks done during/after build -> queue proof
   if (status.phase === 'build' && allTasksDone) {
-    const queueDir = path.join(options.sessionDir, 'queue');
     const queueEntries = await fs.readdir(queueDir).catch(() => []);
     const alreadyQueued = queueEntries.some(e => e.includes('PROMPT_proof') || e.includes('PROMPT_review'));
     
@@ -97,7 +142,6 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
 
   // Case 2: Proof successful + all tasks done -> queue review
   if (status.phase === 'proof' && allTasksDone) {
-    const queueDir = path.join(options.sessionDir, 'queue');
     const queueEntries = await fs.readdir(queueDir).catch(() => []);
     const alreadyQueued = queueEntries.some(e => e.includes('PROMPT_review'));
 
@@ -133,7 +177,6 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
       } catch { /* ignore */ }
     } else if (verdict === 'FAIL') {
       // Reject and queue plan
-      const queueDir = path.join(options.sessionDir, 'queue');
       const queueEntries = await fs.readdir(queueDir).catch(() => []);
       const alreadyQueued = queueEntries.some(e => e.includes('PROMPT_plan'));
 

@@ -4075,9 +4075,46 @@ async function monitorSessionState(options) {
   const plan = await readLoopPlan(options.sessionDir);
   if (!plan)
     return;
+  const queueDir = path5.join(options.sessionDir, "queue");
+  const steeringPath = path5.join(options.workdir, "STEERING.md");
+  if (existsSync4(steeringPath)) {
+    const queueEntries = await fs3.readdir(queueDir).catch(() => []);
+    const steerAlreadyQueued = queueEntries.some(
+      (e) => e.includes("PROMPT_steer") || e.includes("-steering.")
+    );
+    const planAlreadyQueued = queueEntries.some((e) => e.includes("PROMPT_plan"));
+    if (!steerAlreadyQueued) {
+      const steerTemplatePath = path5.join(options.promptsDir, "PROMPT_steer.md");
+      const planTemplatePath = path5.join(options.promptsDir, "PROMPT_plan.md");
+      if (existsSync4(steerTemplatePath)) {
+        const steerContent = await fs3.readFile(steerTemplatePath, "utf8");
+        await writeQueueOverride(options.sessionDir, "001-PROMPT_steer", steerContent, {
+          agent: "steer",
+          reason: "steering_detected",
+          type: "steering_override"
+        });
+        console.log("[monitor] STEERING.md detected; queued steer.");
+        if (!planAlreadyQueued && existsSync4(planTemplatePath)) {
+          const planContent = await fs3.readFile(planTemplatePath, "utf8");
+          await writeQueueOverride(options.sessionDir, "002-PROMPT_plan", planContent, {
+            agent: "plan",
+            reason: "post_steer_replan"
+          });
+          console.log("[monitor] Steering follow-up queued plan.");
+        }
+        await mutateLoopPlan(options.sessionDir, {
+          cyclePosition: 0,
+          allTasksMarkedDone: false
+        });
+      } else {
+        console.warn(
+          `[monitor] STEERING.md found but PROMPT_steer.md is missing in ${options.promptsDir} \u2014 steering skipped.`
+        );
+      }
+    }
+  }
   const allTasksDone = await checkAllTasksComplete(options.workdir);
   if (status.phase === "build" && allTasksDone) {
-    const queueDir = path5.join(options.sessionDir, "queue");
     const queueEntries = await fs3.readdir(queueDir).catch(() => []);
     const alreadyQueued = queueEntries.some((e) => e.includes("PROMPT_proof") || e.includes("PROMPT_review"));
     if (!alreadyQueued) {
@@ -4093,7 +4130,6 @@ async function monitorSessionState(options) {
     }
   }
   if (status.phase === "proof" && allTasksDone) {
-    const queueDir = path5.join(options.sessionDir, "queue");
     const queueEntries = await fs3.readdir(queueDir).catch(() => []);
     const alreadyQueued = queueEntries.some((e) => e.includes("PROMPT_review"));
     if (!alreadyQueued) {
@@ -4123,7 +4159,6 @@ async function monitorSessionState(options) {
       } catch {
       }
     } else if (verdict === "FAIL") {
-      const queueDir = path5.join(options.sessionDir, "queue");
       const queueEntries = await fs3.readdir(queueDir).catch(() => []);
       const alreadyQueued = queueEntries.some((e) => e.includes("PROMPT_plan"));
       if (!alreadyQueued) {

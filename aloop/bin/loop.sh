@@ -1888,6 +1888,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
     ITERATION_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    STEERING_FILE="$WORK_DIR/STEERING.md"
     # Hot-reload provider list from meta.json (supports runtime changes)
     if [ "$PROVIDER" = "round-robin" ]; then
         refresh_providers_from_meta
@@ -1902,21 +1903,6 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     resolve_iteration_mode "$ITERATION" > /dev/null
     iter_mode="$RESOLVED_MODE"
     LAST_ITER_MODE="$iter_mode"
-
-    # Check for live steering instruction (overrides normal mode)
-    STEERING_FILE="$WORK_DIR/STEERING.md"
-    STEER_PROMPT_FILE="$PROMPTS_DIR/PROMPT_steer.md"
-    if [ -f "$STEERING_FILE" ] && [ -f "$STEER_PROMPT_FILE" ]; then
-        iter_mode="steer"
-        mkdir -p "$SESSION_DIR/queue"
-        cp "$PROMPTS_DIR/PROMPT_plan.md" "$SESSION_DIR/queue/$(date +%s)-PROMPT_plan.md"
-        ALL_TASKS_MARKED_DONE=false
-        CYCLE_POSITION=0
-        LAST_ITER_MODE="$iter_mode"
-        write_log_entry "steering_detected" "iteration" "$ITERATION"
-    elif [ -f "$STEERING_FILE" ]; then
-        echo "Warning: STEERING.md found but PROMPT_steer.md is missing in $PROMPTS_DIR — steering skipped."
-    fi
 
     if [ -n "$RESOLVED_PROMPT_NAME" ]; then
         iter_prompt_file="$PROMPTS_DIR/$RESOLVED_PROMPT_NAME"

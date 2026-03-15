@@ -65,6 +65,40 @@ test('monitorSessionState transitions', async (t) => {
     await fs.rm(queueDir, { recursive: true, force: true });
   });
 
+  await t.test('queues steer then plan when STEERING.md is detected', async () => {
+    await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build', iteration: 3 }));
+    await fs.writeFile(todoPath, '# TODO\n- [x] task 1\n');
+    await fs.writeFile(path.join(workdir, 'STEERING.md'), '# Steering\n\nAdjust scope.', 'utf8');
+    await fs.writeFile(path.join(promptsDir, 'PROMPT_steer.md'), 'steer content');
+    await writeLoopPlan(sessionDir, {
+      cycle: ['PROMPT_plan.md', 'PROMPT_build.md'],
+      cyclePosition: 1,
+      iteration: 3,
+      version: 1,
+      allTasksMarkedDone: true
+    });
+
+    await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+    const queueDir = path.join(sessionDir, 'queue');
+    const files = (await fs.readdir(queueDir)).sort();
+    assert.ok(files.some(f => f.includes('PROMPT_steer')));
+    assert.ok(files.some(f => f.includes('PROMPT_plan')));
+    assert.ok(files.findIndex(f => f.includes('PROMPT_steer')) < files.findIndex(f => f.includes('PROMPT_plan')));
+
+    const steerFile = files.find(f => f.includes('PROMPT_steer'))!;
+    const steerContent = await fs.readFile(path.join(queueDir, steerFile), 'utf8');
+    assert.ok(steerContent.includes('steer content'));
+    assert.ok(steerContent.includes('reason: steering_detected'));
+
+    const loopPlan = JSON.parse(await fs.readFile(path.join(sessionDir, 'loop-plan.json'), 'utf8'));
+    assert.equal(loopPlan.cyclePosition, 0);
+    assert.equal(loopPlan.allTasksMarkedDone, false);
+
+    await fs.rm(queueDir, { recursive: true, force: true });
+    await fs.rm(path.join(workdir, 'STEERING.md'), { force: true });
+  });
+
   await t.test('stops session when review passes', async () => {
     await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 3 }));
     await fs.writeFile(todoPath, '# TODO\n- [x] task 1\n');

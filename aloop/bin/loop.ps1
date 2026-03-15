@@ -1919,6 +1919,7 @@ try {
         $iteration++
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $iterationStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
+        $steeringFile = Join-Path $WorkDir "STEERING.md"
         # Hot-reload provider list from meta.json (supports runtime changes)
         if ($Provider -eq 'round-robin') {
             Refresh-ProvidersFromMeta
@@ -1930,22 +1931,6 @@ try {
         }
 
         $iterationMode = Resolve-IterationMode -IterationNumber $iteration
-
-        # Check for live steering instruction (overrides normal mode)
-        $steeringFile = Join-Path $WorkDir "STEERING.md"
-        $steerPromptFile = Join-Path $PromptsDir "PROMPT_steer.md"
-        if ((Test-Path $steeringFile) -and (Test-Path $steerPromptFile)) {
-            $iterationMode = 'steer'
-            $timestamp = (Get-Date -UFormat %s) -replace '\..*'
-            $queuePath = Join-Path $SessionDir "queue/$($timestamp)-PROMPT_plan.md"
-            if (-not (Test-Path (Join-Path $SessionDir "queue"))) { New-Item -ItemType Directory -Path (Join-Path $SessionDir "queue") -Force | Out-Null }
-            Copy-Item (Join-Path $PromptsDir "PROMPT_plan.md") $queuePath -Force
-            $script:allTasksMarkedDone = $false
-            $script:cyclePosition = 0
-            Write-LogEntry -Event "steering_detected" -Data @{ iteration = $iteration }
-        } elseif (Test-Path $steeringFile) {
-            Write-Warning "STEERING.md found but PROMPT_steer.md is missing in $PromptsDir — steering skipped."
-        }
 
         if (-not [string]::IsNullOrWhiteSpace($script:resolvedPromptName)) {
             $iterationPromptFile = Join-Path $PromptsDir $script:resolvedPromptName
