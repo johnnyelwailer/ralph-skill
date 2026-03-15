@@ -1129,6 +1129,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [outputText, setOutputText] = useState<string | null>(null);
   const [outputLoading, setOutputLoading] = useState(false);
+  const outputRef = useRef<HTMLDivElement>(null);
   const phaseColor = phaseDotColors[entry.phase?.toLowerCase()] ?? 'text-muted-foreground';
   const isRunningEntry = entry.event === 'iteration_running';
   const hasOutput = entry.iteration !== null && (entry.event.includes('complete') || entry.event.includes('error'));
@@ -1155,6 +1156,13 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
   useEffect(() => {
     if (expanded && hasOutput) loadOutput();
   }, [expanded, hasOutput, loadOutput]);
+
+  // Scroll output to bottom when it loads (summary is usually at the end)
+  useEffect(() => {
+    if (outputText && outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [outputText]);
 
   return (
     <>
@@ -1337,7 +1345,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
             outputLoading ? (
               <div className="ml-2 text-muted-foreground/50 py-1 flex items-center gap-1 text-[11px]"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
             ) : outputText ? (
-              <div className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1 overflow-auto max-h-48 sm:max-h-64 lg:max-h-[300px] bg-accent/30 rounded-md p-2">
+              <div ref={outputRef} className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1 overflow-auto max-h-48 sm:max-h-64 lg:max-h-[300px] bg-accent/30 rounded-md p-2">
                 <div className="prose-dashboard text-[10px] font-mono" dangerouslySetInnerHTML={{ __html: renderAnsiToHtml(outputText) }} />
               </div>
             ) : outputText === '' ? (
