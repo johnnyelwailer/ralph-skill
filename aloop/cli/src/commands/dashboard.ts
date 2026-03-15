@@ -280,6 +280,20 @@ async function loadStateForContext(
   const pid = await resolvePid(ctx, meta, runtimeDir);
   const correctedStatus = withLivenessCorrectedState(status, pid);
 
+  // Enrich active sessions with their status.json (iteration, state, etc.)
+  const enrichedActive = await Promise.all(
+    activeSessions.map(async (entry) => {
+      if (!isRecord(entry)) return entry;
+      const dir = typeof entry.session_dir === 'string' ? entry.session_dir : null;
+      if (!dir) return entry;
+      const sStatus = await readJsonFile(path.join(dir, 'status.json'));
+      if (isRecord(sStatus)) {
+        return { ...entry, ...sStatus };
+      }
+      return entry;
+    }),
+  );
+
   return {
     sessionDir: ctx.sessionDir,
     workdir: ctx.workdir,
@@ -288,7 +302,7 @@ async function loadStateForContext(
     status: correctedStatus,
     log,
     docs: Object.fromEntries(docsEntries),
-    activeSessions,
+    activeSessions: enrichedActive,
     recentSessions,
     artifacts,
   };
