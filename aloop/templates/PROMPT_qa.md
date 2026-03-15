@@ -11,12 +11,12 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
 0a. **Study the specification**: {{SPEC_FILES}} — understand what the product is SUPPOSED to do. This is your source of truth for expected behavior.
 0b. **Study the plan**: Read @TODO.md to find recently completed `[x]` tasks — these are your test candidates.
 0c. **Check coverage gaps**: Read @QA_COVERAGE.md (create if missing) to find features marked "never" tested or previously "FAIL".
+0d. **Find the dashboard URL**: Read the session's `meta.json` (`$ALOOP_SESSION_DIR/meta.json` or `~/.aloop/sessions/*/meta.json`) for the `dashboard_url` field (typically `http://localhost:4040`).
 {{REFERENCE_FILES}}
 
 1. **Select Test Targets**
    - Pick 3-5 **recently completed** features to test this session
    - Prioritize: (1) features marked "never" in QA_COVERAGE.md, (2) recently completed tasks, (3) features that previously failed
-   - **Always include at least one end-to-end integration journey** if GH features are claimed complete (see GitHub Integration Testing below)
    - Read the SPEC to understand the expected behavior of each feature
 
 2. **Set Up Test Environment**
@@ -32,138 +32,6 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
    - **Edge cases**: Empty inputs, very long inputs, special characters, concurrent runs
    - **Integration**: Does it work with other features? Does it break anything?
    - Log EVERY command with exact stdout/stderr/exit code
-
-### Layout Verification (mandatory for dashboard/UI)
-
-Before testing any functionality, verify the page layout matches the spec's wireframe:
-
-1. Take a desktop screenshot (1920×1080) at page load
-2. Count visible columns/panels — does the number match the spec?
-3. Verify persistent elements are visible **without any interaction** — if the spec says "sidebar", it must be visible at page load, not hidden behind a toggle or dropdown
-4. A layout mismatch is a **P0 bug** regardless of whether features work correctly within the wrong container
-5. Only proceed to feature testing after layout verification passes
-
-### Browser Testing (Web UIs, Dashboards)
-
-When the product includes a web UI (dashboard, web app, etc.), you MUST test it visually — not just the API endpoints.
-
-**Setup:**
-```bash
-# Install Playwright CLI if not available
-npx playwright install chromium 2>/dev/null || npm install -g playwright && playwright install chromium
-```
-
-**How to test web UIs:**
-1. Start the web server/dashboard if not already running
-2. Use Playwright to navigate, screenshot, and inspect:
-   ```bash
-   # Take a screenshot
-   npx playwright screenshot --browser chromium http://localhost:<port> /tmp/qa-screenshot.png
-
-   # Or write a quick test script for interactive checks
-   cat > /tmp/qa-browser-test.mjs << 'SCRIPT'
-   import { chromium } from 'playwright';
-   const browser = await chromium.launch();
-   const page = await browser.newPage();
-   await page.goto('http://localhost:<port>');
-
-   // Check layout structure
-   const columns = await page.$$('.column, [class*="col"], [class*="panel"], [class*="resizable"]');
-   console.log(`Layout columns/panels found: ${columns.length}`);
-
-   // Check for specific UI elements the spec requires
-   const hasToolbar = await page.$('[class*="toolbar"], [class*="sticky"], footer') !== null;
-   console.log(`Sticky toolbar present: ${hasToolbar}`);
-
-   // Check visible text content
-   const bodyText = await page.textContent('body');
-   console.log(`Page has content: ${bodyText.length > 100}`);
-
-   // Screenshot for evidence
-   await page.screenshot({ path: '/tmp/qa-dashboard-full.png', fullPage: true });
-
-   await browser.close();
-   SCRIPT
-   node /tmp/qa-browser-test.mjs
-   ```
-3. Compare what you see against the spec's acceptance criteria:
-   - Does the layout match? (e.g., "3-column responsive layout" → verify 3 panels exist)
-   - Are required UI elements present? (e.g., "sticky toolbar" → verify it's visible without scrolling)
-   - Does the content render correctly? (e.g., "structured log entries" → verify logs aren't raw JSON in a `<pre>` tag)
-   - Are interactive features working? (e.g., "collapsible panels" → click and verify state change)
-4. **Always include screenshots as evidence** in QA_LOG.md (reference the file path)
-
-**If Playwright is not available or fails to install**, fall back to `curl`-based structural checks:
-```bash
-# Fetch the page and check for expected DOM structure
-curl -s http://localhost:<port> | grep -c 'class.*panel\|class.*column\|class.*toolbar'
-# Fetch JS bundle and check for expected component names
-curl -s http://localhost:<port>/assets/*.js | grep -co 'StructuredLog\|LogEntry\|StickyToolbar'
-```
-
-Even curl-based checks catch the worst failures: if the spec says "structured log display" but the JS bundle contains no structured log component, that's a bug.
-
-### GitHub Integration Testing (End-to-End Journeys)
-
-When the product has GitHub integration features (`aloop gh start`, `aloop gh watch`, PR lifecycle), you MUST test them with **real GitHub resources** — not just CLI flag parsing.
-
-**How to test GH integration:**
-1. **Create a throwaway test repo:**
-   ```bash
-   TESTREPO="aloop-qa-test-$(date +%s)"
-   gh repo create "$TESTREPO" --private --add-readme
-   # Clone it so aloop has a working directory
-   gh repo clone "$TESTREPO" /tmp/$TESTREPO
-   cd /tmp/$TESTREPO
-   ```
-
-2. **Create a test issue:**
-   ```bash
-   gh issue create --title "QA test task: add hello.txt" --body "Create a file hello.txt with 'Hello World'"
-   # Note the issue number from output
-   ```
-
-3. **Run the full lifecycle:**
-   ```bash
-   # Start aloop against the issue
-   aloop gh start --issue 1
-   # Verify: loop starts, branch created, work begins
-   # Wait for PR creation (check with gh pr list)
-   gh pr list --repo "$TESTREPO"
-   ```
-
-4. **Test watch mode reactions:**
-   ```bash
-   # Start watch mode
-   aloop gh watch &
-   WATCH_PID=$!
-   # Post a review comment on the PR
-   gh pr review 1 --comment --body "Please also add a goodbye.txt file"
-   # Wait and verify watch mode picks up the comment and reacts
-   # Check logs/output for steering event
-   kill $WATCH_PID 2>/dev/null
-   ```
-
-5. **Verify PR quality:**
-   - Does the PR reference the issue? (`Closes #1` or similar)
-   - Does the PR have a meaningful title and description?
-   - Were commits made on a feature branch (not main)?
-
-6. **Clean up:**
-   ```bash
-   gh repo delete "$TESTREPO" --yes
-   rm -rf /tmp/$TESTREPO
-   ```
-
-**What to check:**
-- `aloop gh start --issue <N>` creates a session linked to the issue
-- A PR gets created automatically when work completes
-- `aloop gh watch` detects new review comments and CI failures
-- Watch mode uses backoff (not hammering the API)
-- Errors are handled gracefully (missing repo, bad permissions, network issues)
-- `aloop gh stop` cleanly terminates watch and linked sessions
-
-**If `gh` CLI is not authenticated or unavailable**, skip GH integration tests and note it in QA_LOG.md. Do not attempt to test GH features without real GitHub access.
 
 4. **File Bugs**
    For each issue found, add a `[qa]` task to TODO.md:
@@ -205,6 +73,126 @@ When the product has GitHub integration features (`aloop gh start`, `aloop gh wa
 
 8. **Exit**
 
+---
+
+## Layout Verification (mandatory for dashboard/UI)
+
+Before testing dashboard functionality, verify the page layout matches the spec's wireframe:
+
+1. Take a desktop screenshot (1920×1080) at page load
+2. Count visible columns/panels — does the number match the spec?
+3. Verify persistent elements are visible at the expected breakpoint — e.g., sidebar visible on desktop, hamburger menu on mobile
+4. A layout mismatch at the breakpoint described in the spec is a **P0 bug**
+5. Only proceed to feature testing after layout verification passes
+
+## Browser Testing (Web UIs, Dashboards)
+
+When the product includes a web UI (dashboard, web app, etc.), you MUST test it visually — not just the API endpoints.
+
+**Setup:**
+```bash
+# Install Playwright CLI if not available
+npx playwright install chromium 2>/dev/null || npm install -g playwright && playwright install chromium
+```
+
+**How to test web UIs:**
+1. The dashboard is typically running on the URL from `meta.json` (e.g., `http://localhost:4040`)
+2. Use Playwright to navigate, screenshot, and inspect:
+   ```bash
+   # Take a screenshot
+   npx playwright screenshot --browser chromium http://localhost:4040 /tmp/qa-screenshot.png
+
+   # Or write a quick test script for interactive checks
+   cat > /tmp/qa-browser-test.mjs << 'SCRIPT'
+   import { chromium } from 'playwright';
+   const browser = await chromium.launch();
+   const page = await browser.newPage();
+   await page.goto('http://localhost:4040');
+
+   // Check layout structure
+   const panels = await page.$$('[class*="panel"], [class*="Card"]');
+   console.log(`Layout panels found: ${panels.length}`);
+
+   // Check visible text content
+   const bodyText = await page.textContent('body');
+   console.log(`Page has content: ${bodyText.length > 100}`);
+
+   // Screenshot for evidence
+   await page.screenshot({ path: '/tmp/qa-dashboard-full.png', fullPage: true });
+
+   await browser.close();
+   SCRIPT
+   node /tmp/qa-browser-test.mjs
+   ```
+3. Compare what you see against the spec's acceptance criteria:
+   - Does the layout match? (e.g., "3-column responsive layout" → verify 3 panels exist at desktop width)
+   - Are required UI elements present? (e.g., "sticky footer" → verify it's visible without scrolling)
+   - Does the content render correctly? (e.g., "structured log entries" → verify logs aren't raw JSON)
+   - Are interactive features working? (e.g., "collapsible panels" → click and verify state change)
+4. **Always include screenshots as evidence** in QA_LOG.md (reference the file path)
+
+**If Playwright is not available or fails to install**, fall back to `curl`-based structural checks:
+```bash
+# Fetch the page and check for expected DOM structure
+curl -s http://localhost:4040 | grep -c 'class.*panel\|class.*column\|class.*toolbar'
+```
+
+## GitHub Integration Testing (End-to-End Journeys)
+
+When the product has GitHub integration features (`aloop gh start`, `aloop gh watch`, PR lifecycle), test them with **real GitHub resources** — not just CLI flag parsing.
+
+**Be aware:**
+- You ARE consuming real GitHub API quota — keep tests focused, don't spam requests
+- **Always clean up** throwaway repos and test issues when done, even if tests fail
+- Use small, cheap test scenarios (tiny repos, trivial tasks, few iterations)
+- If running `aloop start` against a test repo, use `--max-iterations 3` or similar to keep it short
+
+**How to test GH integration:**
+1. **Create a throwaway test repo:**
+   ```bash
+   TESTREPO="aloop-qa-test-$(date +%s)"
+   gh repo create "$TESTREPO" --private --add-readme
+   gh repo clone "$TESTREPO" /tmp/$TESTREPO
+   cd /tmp/$TESTREPO
+   ```
+
+2. **Create a test issue:**
+   ```bash
+   gh issue create --title "QA test task: add hello.txt" --body "Create a file hello.txt with 'Hello World'"
+   ```
+
+3. **Run the full lifecycle:**
+   ```bash
+   aloop gh start --issue 1 --max-iterations 3
+   # Verify: loop starts, branch created, work begins
+   gh pr list --repo "$TESTREPO"
+   ```
+
+4. **Test watch mode reactions (if implemented):**
+   ```bash
+   aloop gh watch &
+   WATCH_PID=$!
+   gh pr review 1 --comment --body "Please also add a goodbye.txt file"
+   # Wait and verify watch mode picks up the comment
+   sleep 30
+   kill $WATCH_PID 2>/dev/null
+   ```
+
+5. **Verify PR quality:**
+   - Does the PR reference the issue? (`Closes #1` or similar)
+   - Does the PR have a meaningful title and description?
+   - Were commits made on a feature branch (not main)?
+
+6. **Clean up (MANDATORY — do this even if tests fail):**
+   ```bash
+   gh repo delete "$TESTREPO" --yes
+   rm -rf /tmp/$TESTREPO
+   ```
+
+**If `gh` CLI is not authenticated or unavailable**, skip GH integration tests and note it in QA_LOG.md. Do not attempt to test GH features without real GitHub access.
+
+**If a GH feature is not yet implemented** (command returns "unknown command" or similar), that's a valid QA finding — file it as a bug noting the spec claims it exists but it doesn't.
+
 {{PROVIDER_HINTS}}
 
 ## Rules
@@ -216,6 +204,7 @@ When the product has GitHub integration features (`aloop gh start`, `aloop gh wa
 - **Log everything.** Every command, every output, every exit code. This is the evidence.
 - **Re-test after fixes.** Features that previously failed (FAIL in QA_COVERAGE.md) should be re-tested to verify the fix.
 - **QA bugs are high priority.** Tag them `[qa/P1]` so the build agent picks them up before new features.
+- **Clean up after yourself.** Delete temp dirs, throwaway repos, and test artifacts when done.
 
 {{SAFETY_RULES}}
 
@@ -226,3 +215,4 @@ When the product has GitHub integration features (`aloop gh start`, `aloop gh wa
 - QA_COVERAGE.md updated with results
 - QA_LOG.md session appended with full transcript
 - No source code was read
+- All test resources cleaned up
