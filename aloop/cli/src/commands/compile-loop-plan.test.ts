@@ -400,6 +400,214 @@ pipeline:
   ]);
 });
 
+test('compileLoopPlan — plan-build-review without pipeline.yml falls back to hardcoded', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-no-pipeline-');
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  assert.deepStrictEqual(plan.cycle, [
+    'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_proof.md',
+    'PROMPT_review.md',
+  ]);
+});
+
+test('compileLoopPlan — pipeline.yml with invalid content falls back to hardcoded', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-invalid-pipeline-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+not_pipeline: true
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  assert.deepStrictEqual(plan.cycle, [
+    'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_proof.md',
+    'PROMPT_review.md',
+  ]);
+});
+
+test('compileLoopPlan — pipeline.yml with empty pipeline array falls back to hardcoded', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-empty-pipeline-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline: []
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  assert.deepStrictEqual(plan.cycle, [
+    'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_proof.md',
+    'PROMPT_review.md',
+  ]);
+});
+
+test('compileLoopPlan — pipeline.yml with non-plan entries only falls back to hardcoded', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-no-agent-pipeline-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline:
+  - repeat: 2
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  assert.deepStrictEqual(plan.cycle, [
+    'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_proof.md',
+    'PROMPT_review.md',
+  ]);
+});
+
+test('compileLoopPlan — round-robin plan-build with empty roundRobinOrder uses default', async () => {
+  const { promptsDir, sessionDir } = await setupDirs('clp-rr-empty-');
+  const plan = await compileLoopPlan({
+    mode: 'plan-build',
+    provider: 'round-robin',
+    promptsDir,
+    sessionDir,
+    enabledProviders: [],
+    roundRobinOrder: [],
+    models: {},
+  });
+
+  assert.equal(plan.cycle.length, 2);
+  assert.equal(plan.cycle[0], 'PROMPT_plan.md');
+  assert.equal(plan.cycle[1], 'PROMPT_build_claude.md');
+});
+
+test('compileLoopPlan — round-robin plan mode uses early return', async () => {
+  const { promptsDir, sessionDir } = await setupDirs('clp-rr-plan-');
+  const plan = await compileLoopPlan({
+    mode: 'plan',
+    provider: 'round-robin',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+  });
+
+  assert.deepStrictEqual(plan.cycle, ['PROMPT_plan.md']);
+});
+
+test('compileLoopPlan — round-robin build mode uses early return', async () => {
+  const { promptsDir, sessionDir } = await setupDirs('clp-rr-build-');
+  const plan = await compileLoopPlan({
+    mode: 'build',
+    provider: 'round-robin',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+  });
+
+  assert.deepStrictEqual(plan.cycle, ['PROMPT_build.md']);
+});
+
+test('compileLoopPlan — round-robin plan-build-review with no pipeline falls back to hardcoded', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-rr-no-pipeline-');
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'round-robin',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude', 'codex'],
+    roundRobinOrder: ['claude', 'codex'],
+    models: { claude: 'opus', codex: 'gpt-5' },
+    projectRoot: root,
+  });
+
+  assert.equal(plan.cycle.length, 5);
+  assert.equal(plan.cycle[0], 'PROMPT_plan.md');
+  assert.equal(plan.cycle[1], 'PROMPT_build_claude.md');
+  assert.equal(plan.cycle[2], 'PROMPT_build_codex.md');
+  assert.equal(plan.cycle[3], 'PROMPT_proof.md');
+  assert.equal(plan.cycle[4], 'PROMPT_review.md');
+});
+
+test('compileLoopPlan — pipeline.yml with non-array pipeline falls back to hardcoded', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-nonarray-pipeline-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline: "not an array"
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  assert.deepStrictEqual(plan.cycle, [
+    'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_proof.md',
+    'PROMPT_review.md',
+  ]);
+});
+
 test('compileLoopPlan — uses deps for file I/O', async () => {
   const files: Record<string, string> = {
     '/prompts/PROMPT_build.md': '# Build\n',
