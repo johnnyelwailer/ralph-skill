@@ -546,13 +546,8 @@ export async function startDashboardServer(
     return loadStateForContext(defaultContext, runtimeDir);
   };
 
-  const normalizedGlobalFiles = new Set(
-    [activeSessionsPath, recentSessionsPath].map((value) => path.normalize(value).toLowerCase()),
-  );
-
   let publishPending = false;
   let publishTimer: NodeJS.Timeout | null = null;
-  let globalChangeDetected = false;
 
   const sendToClients = (event: string, payload: string) => {
     for (const [client] of clients) {
@@ -568,48 +563,24 @@ export async function startDashboardServer(
   const publishState = async () => {
     publishPending = false;
     publishTimer = null;
-    const isGlobal = globalChangeDetected;
-    globalChangeDetected = false;
     try {
-      if (isGlobal) {
-        // Global file changed (active.json/history.json) — notify all clients with their session state
-        const contextPayloads = new Map<string, string>();
-        for (const [client, ctx] of clients) {
-          const key = ctx.sessionDir;
-          let payload = contextPayloads.get(key);
-          if (payload === undefined) {
-            const state = ctx === defaultContext
-              ? await loadState()
-              : await loadStateForContext(ctx, runtimeDir);
-            payload = toStateEventPayload(state);
-            contextPayloads.set(key, payload);
-          }
-          try {
-            sendSseEvent(client, 'state', payload);
-          } catch {
-            clients.delete(client);
-            client.destroy();
-          }
+      // Notify all connected clients — each gets state for their own session context.
+      const contextPayloads = new Map<string, string>();
+      for (const [client, ctx] of clients) {
+        const key = ctx.sessionDir;
+        let payload = contextPayloads.get(key);
+        if (payload === undefined) {
+          const state = ctx === defaultContext
+            ? await loadState()
+            : await loadStateForContext(ctx, runtimeDir);
+          payload = toStateEventPayload(state);
+          contextPayloads.set(key, payload);
         }
-      } else {
-        // Notify all connected clients — each gets state for their own session context
-        const contextPayloads = new Map<string, string>();
-        for (const [client, ctx] of clients) {
-          const key = ctx.sessionDir;
-          let payload = contextPayloads.get(key);
-          if (payload === undefined) {
-            const state = ctx === defaultContext
-              ? await loadState()
-              : await loadStateForContext(ctx, runtimeDir);
-            payload = toStateEventPayload(state);
-            contextPayloads.set(key, payload);
-          }
-          try {
-            sendSseEvent(client, 'state', payload);
-          } catch {
-            clients.delete(client);
-            client.destroy();
-          }
+        try {
+          sendSseEvent(client, 'state', payload);
+        } catch {
+          clients.delete(client);
+          client.destroy();
         }
       }
     } catch (error) {
@@ -617,10 +588,7 @@ export async function startDashboardServer(
     }
   };
 
-  const schedulePublish = (changedPath?: string) => {
-    if (changedPath && normalizedGlobalFiles.has(changedPath)) {
-      globalChangeDetected = true;
-    }
+  const schedulePublish = () => {
     if (publishPending) {
       return;
     }
@@ -674,7 +642,7 @@ export async function startDashboardServer(
           runRequestProcessing();
         }
         if (watchedFiles.has(changed) || changed.endsWith('.md')) {
-          schedulePublish(changed);
+          schedulePublish();
         }
       });
       watchers.set(target, watcher);
