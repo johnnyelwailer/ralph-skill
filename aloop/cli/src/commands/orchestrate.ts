@@ -1095,8 +1095,13 @@ export async function orchestrateCommandWithDeps(
   };
 }
 
-export async function orchestrateCommand(options: OrchestrateCommandOptions = {}, deps?: OrchestrateDeps) {
+export async function orchestrateCommand(options: OrchestrateCommandOptions = {}, depsOrCommand?: any) {
   const outputMode = options.output ?? 'text';
+  // Commander passes the Command object as the second argument if not explicitly provided.
+  // We check if the provided argument looks like our OrchestrateDeps.
+  const deps = (depsOrCommand && typeof depsOrCommand === 'object' && 'existsSync' in depsOrCommand)
+    ? (depsOrCommand as OrchestrateDeps)
+    : undefined;
   const result = await orchestrateCommandWithDeps(options, deps);
 
   if (outputMode === 'json') {
