@@ -2376,3 +2376,244 @@ qa_tmp_removed
 [exit 0]
 
 ```
+
+## QA Session — 2026-03-16 (iteration 97)
+
+### Test Environment
+- Temp dir: `/tmp/qa-test-8mqVeD`
+- Binary under test: `/tmp/aloop-test-install-RlWnzF/bin/aloop`
+- Binary version: `1.0.0`
+- Dashboard URL: `http://localhost:4040`
+- Features tested: 5
+
+### Results
+- PASS: `aloop gh watch --repo owner/repo` PATH-hardening regression check, Dashboard layout @1920x1080
+- FAIL: `aloop setup --non-interactive` (fresh HOME, packaged install), `aloop scaffold` (fresh HOME, packaged install), `aloop setup --non-interactive --mode loop`
+- PARTIAL: `aloop orchestrate --spec NONEXISTENT.md --plan-only` (exit code correct, stack trace still leaked)
+
+### Bugs Filed
+- Added one new bug in `TODO.md`: `[qa/P1] aloop setup` missing SPEC-required `--mode loop|orchestrate` support in non-interactive flow.
+- Added re-test notes (no duplicate bugs) for existing setup/scaffold template bootstrap and orchestrate stack-trace issues.
+
+### Layout Verification
+- Screenshot (desktop 1920x1080): `/home/pj/.copilot/session-state/5b45498e-de54-4451-b16d-7d8df021d665/files/qa-20260316-150207/dashboard-1920x1080.png`
+- Browser metrics at load: `{"sidebarVisible":true,"docsVisible":true,"activityVisible":true,"panelGuess":6,"title":"Aloop Dashboard"}`
+
+### Command Transcript
+```text
+QA_ROOT=/tmp/qa-test-8mqVeD
+EVID_DIR=/home/pj/.copilot/session-state/5b45498e-de54-4451-b16d-7d8df021d665/files/qa-20260316-150207
+TRANSCRIPT=/tmp/qa-test-8mqVeD/command-transcript.log
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+/tmp/aloop-test-install-RlWnzF/bin/aloop
+[exit 0]
+$ aloop --version
+1.0.0
+[exit 0]
+$ binary path check
+packaged path OK
+[exit 0]
+$ HOME=$HOME1 aloop setup --non-interactive --spec SPEC.md --providers copilot --mode loop
+error: unknown option '--mode'
+[exit 1]
+$ test setup template bootstrap
+template bootstrap missing
+[exit 0]
+$ test setup config generated
+config missing
+[exit 0]
+$ HOME=$HOME2 aloop scaffold --spec-files SPEC.md --providers copilot
+error: unknown option '--providers'
+(Did you mean --provider?)
+[exit 1]
+$ test scaffold template bootstrap
+scaffold template bootstrap missing
+[exit 0]
+$ test scaffold qa prompt present
+qa prompt missing
+[exit 0]
+$ test scaffold config generated
+scaffold config missing
+[exit 0]
+$ aloop setup --help
+Usage: aloop setup [options]
+
+Interactive setup and scaffold for aloop project
+
+Options:
+  --project-root <path>     Project root override
+  --home-dir <path>         Home directory override
+  --spec <path>             Specification file to use
+  --providers <providers>   Comma-separated list of providers to enable
+  --autonomy-level <level>  Autonomy level: cautious, balanced, or autonomous
+  --non-interactive         Skip interactive prompts and use defaults
+  -h, --help                display help for command
+[exit 0]
+$ aloop scaffold --help
+Usage: aloop scaffold [options]
+
+Scaffold project workdir and prompts
+
+Options:
+  --project-root <path>                Project root override
+  --language <language>                Language override
+  --provider <provider>                Provider override
+  --enabled-providers <providers...>   Enabled providers list or csv values
+  --autonomy-level <level>             Autonomy level: cautious, balanced, or
+                                       autonomous
+  --round-robin-order <providers...>   Round-robin provider order list or csv
+                                       values
+  --spec-files <files...>              Spec file list or csv values
+  --reference-files <files...>         Reference file list or csv values
+  --validation-commands <commands...>  Validation command list or csv values
+  --safety-rules <rules...>            Safety rule list or csv values
+  --mode <mode>                        Loop mode (default: "plan-build-review")
+  --templates-dir <path>               Template directory override
+  --output <mode>                      Output format: json or text (default:
+                                       "json")
+  -h, --help                           display help for command
+[exit 0]
+$ HOME=$HOME1 aloop setup --non-interactive --spec SPEC.md --provider copilot
+error: unknown option '--provider'
+(Did you mean --providers?)
+[exit 1]
+$ verify setup outputs after retry
+template bootstrap missing
+config missing
+[exit 0]
+$ HOME=$HOME2 aloop scaffold --spec-files SPEC.md --provider copilot
+file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:3475
+      throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
+            ^
+
+Error: Template not found: /tmp/qa-test-8mqVeD/home-scaffold/.aloop/templates/PROMPT_plan.md
+    at scaffoldWorkspace (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:3475:13)
+    at async _Command.scaffoldCommand (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:3584:18)
+
+Node.js v22.22.1
+[exit 1]
+$ verify scaffold outputs after retry
+scaffold template bootstrap missing
+qa prompt missing
+scaffold config missing
+[exit 0]
+$ HOME=$HOME1 aloop setup --non-interactive --spec SPEC.md --providers copilot
+Running setup in non-interactive mode...
+file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:3475
+      throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
+            ^
+
+Error: Template not found: /tmp/qa-test-8mqVeD/home-setup/.aloop/templates/PROMPT_plan.md
+    at Object.scaffoldWorkspace [as scaffold] (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:3475:13)
+    at async setupCommandWithDeps (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:8528:21)
+    at async _Command.setupCommand (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:8607:5)
+
+Node.js v22.22.1
+[exit 1]
+$ verify setup outputs documented run
+template bootstrap missing
+config missing
+[exit 0]
+$ aloop gh watch --repo owner/repo
+gh watch failed: gh issue list failed: GraphQL: Could not resolve to a Repository with the name 'owner/repo'. (repository)
+[exit 1]
+$ aloop orchestrate --spec NONEXISTENT.md --plan-only
+file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:9713
+    throw new Error(`Spec file not found: ${specPath}`);
+          ^
+
+Error: Spec file not found: /tmp/qa-test-8mqVeD/proj-scaffold/NONEXISTENT.md
+    at orchestrateCommandWithDeps (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:9713:11)
+    at _Command.orchestrateCommand (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:9966:24)
+    at _Command.listener [as _actionHandler] (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:1442:21)
+    at file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:2236:24
+    at _Command._chainOrCall (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:2144:16)
+    at _Command._parseCommand (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:2234:31)
+    at file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:2045:31
+    at _Command._chainOrCall (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:2144:16)
+    at _Command._dispatchSubcommand (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:2041:29)
+    at _Command._parseCommand (file:///tmp/aloop-test-install-RlWnzF/lib/node_modules/aloop-cli/dist/index.js:2204:23)
+
+Node.js v22.22.1
+[exit 1]
+$ npx --yes playwright install chromium
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║ WARNING: It looks like you are running 'npx playwright install' without first ║
+║ installing your project's dependencies.                                       ║
+║                                                                               ║
+║ To avoid unexpected behavior, please install your dependencies first, and     ║
+║ then run Playwright's install command:                                        ║
+║                                                                               ║
+║     npm install                                                               ║
+║     npx playwright install                                                    ║
+║                                                                               ║
+║ If your project does not yet depend on Playwright, first install the          ║
+║ applicable npm package (most commonly @playwright/test), and                  ║
+║ then run Playwright's install command to download the browsers:               ║
+║                                                                               ║
+║     npm install @playwright/test                                              ║
+║     npx playwright install                                                    ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+[exit 0]
+$ npx --yes playwright screenshot --browser chromium --viewport-size=1920,1080 http://localhost:4040 $EVID_DIR/dashboard-1920x1080.png
+Navigating to http://localhost:4040
+Capturing screenshot into /home/pj/.copilot/session-state/5b45498e-de54-4451-b16d-7d8df021d665/files/qa-20260316-150207/dashboard-1920x1080.png
+[exit 0]
+$ node dashboard-check.mjs
+node:internal/modules/package_json_reader:314
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'playwright' imported from /tmp/qa-test-8mqVeD/dashboard-check.mjs
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:314:9)
+    at packageResolve (node:internal/modules/esm/resolve:768:81)
+    at moduleResolve (node:internal/modules/esm/resolve:855:18)
+    at defaultResolve (node:internal/modules/esm/resolve:985:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:731:20)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:708:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:310:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v22.22.1
+[exit 1]
+$ git rev-parse --short HEAD
+5d985d8
+[exit 0]
+$ npx -y -p playwright node -e <layout-check>
+Error: Cannot find module 'playwright'
+Require stack:
+- /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/[eval]
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+    at Function._load (node:internal/modules/cjs/loader:1192:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Module.require (node:internal/modules/cjs/loader:1463:12)
+    at require (node:internal/modules/helpers:147:16)
+    at [eval]:1:29
+    at [eval]:1:977 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/[eval]'
+  ]
+}
+[exit 1]
+$ curl -s http://localhost:4040 | grep -E -c "panel|column|sidebar|activity|docs|toolbar"
+0
+[exit 0]
+$ curl -s http://localhost:4040 | grep -E -c "TODO|SPEC|RESEARCH|REVIEW_LOG|Health|Activity"
+0
+[exit 0]
+$ cd $QA_ROOT && npm init -y && npm install playwright --silent
+[exit 0]
+$ node $QA_ROOT/dashboard-check.mjs
+{"sidebarVisible":true,"docsVisible":true,"activityVisible":true,"panelGuess":6,"title":"Aloop Dashboard"}
+[exit 0]
+```
