@@ -30,7 +30,8 @@ function extractGhCliError(error: unknown): string {
 function isPathHardeningBlockedError(error: unknown): boolean {
   const message = extractErrorMessage(error).toLowerCase();
   const stderr = extractGhCliError(error).toLowerCase();
-  return message.includes(GH_PATH_HARDENING_BLOCK_MESSAGE) || stderr.includes(GH_PATH_HARDENING_BLOCK_MESSAGE);
+  const needle = GH_PATH_HARDENING_BLOCK_MESSAGE.toLowerCase();
+  return message.includes(needle) || stderr.includes(needle);
 }
 
 function getGhBinaryCandidateNames(platform: NodeJS.Platform): string[] {
@@ -86,7 +87,11 @@ export const ghExecutor = {
       if (!isPathHardeningBlockedError(error)) {
         throw error;
       }
-      const fallbackBinary = selectUsableGhBinary(process.env.PATH ?? '');
+      // Try current PATH first (skipping shims), then ALOOP_ORIGINAL_PATH
+      // which holds the pre-hardening PATH exported by loop.sh/loop.ps1.
+      const fallbackBinary =
+        selectUsableGhBinary(process.env.PATH ?? '') ??
+        selectUsableGhBinary(process.env.ALOOP_ORIGINAL_PATH ?? '');
       if (!fallbackBinary) {
         throw error;
       }

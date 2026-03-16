@@ -1024,6 +1024,7 @@ invoke_provider() {
     local gh_block_dir
     gh_block_dir="$(setup_gh_block)"
     local saved_path="$PATH"
+    export ALOOP_ORIGINAL_PATH="$PATH"
     PATH="$gh_block_dir:$PATH"
     export PATH
     local invoke_rc=0
@@ -1208,6 +1209,7 @@ invoke_provider() {
 
     PATH="$saved_path"
     export PATH
+    unset ALOOP_ORIGINAL_PATH
     if [ -n "$copilot_output_file" ]; then
         rm -f "$copilot_output_file"
     fi

@@ -2936,6 +2936,66 @@ test('ghExecutor.exec rethrows when PATH hardening blocks gh and no fallback bin
   }
 });
 
+test('ghExecutor.exec falls back to real gh binary when PATH-hardening shim shadows it', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-exec-fallback-'));
+  const blockedDir = path.join(root, 'blocked');
+  const realDir = path.join(root, 'real');
+  fs.mkdirSync(blockedDir, { recursive: true });
+  fs.mkdirSync(realDir, { recursive: true });
+
+  const blockedGhPath = path.join(blockedDir, 'gh');
+  fs.writeFileSync(blockedGhPath, '#!/bin/sh\necho "gh: blocked by aloop PATH hardening" >&2\nexit 127\n', 'utf8');
+  fs.chmodSync(blockedGhPath, 0o755);
+
+  const realGhPath = path.join(realDir, 'gh');
+  fs.writeFileSync(realGhPath, '#!/bin/sh\necho "gh version 2.0.0"\n', 'utf8');
+  fs.chmodSync(realGhPath, 0o755);
+
+  const origPath = process.env.PATH;
+  try {
+    // Simulate hardened PATH: shim first, real gh second
+    process.env.PATH = `${blockedDir}${path.delimiter}${realDir}`;
+    const result = await ghExecutor.exec(['version']);
+    assert.match(result.stdout, /gh version 2\.0\.0/);
+  } finally {
+    if (origPath !== undefined) process.env.PATH = origPath;
+    else delete process.env.PATH;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ghExecutor.exec uses ALOOP_ORIGINAL_PATH as fallback when PATH has only shim', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-exec-origpath-'));
+  const blockedDir = path.join(root, 'blocked');
+  const realDir = path.join(root, 'real');
+  fs.mkdirSync(blockedDir, { recursive: true });
+  fs.mkdirSync(realDir, { recursive: true });
+
+  const blockedGhPath = path.join(blockedDir, 'gh');
+  fs.writeFileSync(blockedGhPath, '#!/bin/sh\necho "gh: blocked by aloop PATH hardening" >&2\nexit 127\n', 'utf8');
+  fs.chmodSync(blockedGhPath, 0o755);
+
+  const realGhPath = path.join(realDir, 'gh');
+  fs.writeFileSync(realGhPath, '#!/bin/sh\necho "gh version 2.0.0"\n', 'utf8');
+  fs.chmodSync(realGhPath, 0o755);
+
+  const origPath = process.env.PATH;
+  const origAloopPath = process.env.ALOOP_ORIGINAL_PATH;
+  try {
+    // PATH only has shim; real gh is in ALOOP_ORIGINAL_PATH
+    process.env.PATH = blockedDir;
+    process.env.ALOOP_ORIGINAL_PATH = realDir;
+    const result = await ghExecutor.exec(['version']);
+    assert.match(result.stdout, /gh version 2\.0\.0/);
+  } finally {
+    if (origPath !== undefined) process.env.PATH = origPath;
+    else delete process.env.PATH;
+    if (origAloopPath !== undefined) process.env.ALOOP_ORIGINAL_PATH = origAloopPath;
+    else delete process.env.ALOOP_ORIGINAL_PATH;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('failGhWatch emits JSON error when outputMode is json', async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-watch-json-fail-'));
   const logs: string[] = [];

@@ -492,6 +492,7 @@ function Invoke-Provider {
     # remain reachable.
     $ghBlockDir = Setup-GhBlock
     $savedPath = $env:PATH
+    $env:ALOOP_ORIGINAL_PATH = $env:PATH
     $env:PATH = "$ghBlockDir$([System.IO.Path]::PathSeparator)$env:PATH"
 
     # Sanitize CLAUDECODE env before spawning child process (inherits env)
@@ -595,6 +596,7 @@ function Invoke-Provider {
     } finally {
         # Restore original PATH after provider execution
         $env:PATH = $savedPath
+        Remove-Item Env:ALOOP_ORIGINAL_PATH -ErrorAction SilentlyContinue
         # Restore CLAUDECODE env
         if ($hadClaudeCode) {
             $env:CLAUDECODE = $claudeCodeValue
