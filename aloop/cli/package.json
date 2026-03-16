@@ -11,10 +11,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "npm run clean && npm run build:dashboard && npm run build:server && npm run build:shebang",
+    "build": "npm run clean && npm run build:dashboard && npm run build:server && npm run build:shebang && npm run build:templates",
     "build:dashboard": "npm --prefix dashboard run build -- --outDir ../dist/dashboard --emptyOutDir",
     "build:server": "esbuild src/index.ts --bundle --platform=node --format=esm \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=dist/index.js",
     "build:shebang": "node -e \"const f='dist/index.js',c=require('node:fs').readFileSync(f,'utf8');if(!c.startsWith('#!'))require('node:fs').writeFileSync(f,'#!/usr/bin/env node\\n'+c)\"",
+    "build:templates": "node -e \"const fs=require('node:fs');const path=require('node:path');fs.cpSync(path.resolve('..','templates'),path.resolve('dist','templates'),{recursive:true,force:true});\"",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "tsx src/index.ts",
     "test": "tsx --test src/**/*.test.ts && node --test aloop.test.mjs",

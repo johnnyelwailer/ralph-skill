@@ -379,6 +379,26 @@ test('resolveBundledTemplatesDir resolves templates from parent levels in packag
   assert.equal(resolved, templatesDir);
 });
 
+test('resolveBundledTemplatesDir resolves templates bundled under dist/templates', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-templates-dist-'));
+  const fakeDistDir = path.join(tempRoot, 'lib', 'node_modules', 'aloop-cli', 'dist');
+  const distTemplatesDir = path.join(fakeDistDir, 'templates');
+  await mkdir(distTemplatesDir, { recursive: true });
+
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  for (const tmpl of requiredTemplates) {
+    await writeFile(path.join(distTemplatesDir, tmpl), `Bundled ${tmpl}`, 'utf8');
+  }
+
+  const resolved = resolveBundledTemplatesDir(requiredTemplates, {
+    moduleDir: fakeDistDir,
+    argv1: path.join(tempRoot, 'bin', 'aloop'),
+    cwd: tempRoot,
+  });
+
+  assert.equal(resolved, distTemplatesDir);
+});
+
 test('scaffoldWorkspace skips bootstrap when explicit templatesDir is provided', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-no-bootstrap-'));
   const homeRoot = path.join(tempRoot, 'home');
