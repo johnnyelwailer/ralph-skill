@@ -795,25 +795,6 @@ $script:phaseRetryState = @{
 }
 $script:maxPhaseRetries = if ($Provider -eq 'round-robin') { [Math]::Max(2, $RoundRobinProviders.Count * 2) } else { 2 }
 
-function Update-ProofBaselines {
-    param([int]$ProofIteration)
-    if ($ProofIteration -le 0) { return }
-
-    $iterDir = Join-Path $SessionDir "artifacts\iter-$ProofIteration"
-    $manifestPath = Join-Path $iterDir "proof-manifest.json"
-    if (-not (Test-Path $manifestPath)) { return }
-
-    $baselineDir = Join-Path $SessionDir "artifacts\baselines"
-    if (-not (Test-Path $baselineDir)) {
-        New-Item -ItemType Directory -Path $baselineDir -Force | Out-Null
-    }
-
-    # Copy all artifacts (except manifest) to baselines directory
-    Copy-Item -Path "$iterDir\*" -Destination $baselineDir -Force -Exclude "proof-manifest.json"
-    Write-Host "Updated proof baselines from iteration $ProofIteration" -ForegroundColor Cyan
-    Write-LogEntry -Event "baselines_updated" -Data @{ iteration = $ProofIteration }
-}
-
 function Advance-CyclePosition {
     if ($script:cycleLength -gt 0) {
         $script:cyclePosition = ($script:cyclePosition + 1) % $script:cycleLength

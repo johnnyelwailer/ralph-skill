@@ -5,29 +5,28 @@
 Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) P1 hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
-- [x] [loop/P1] **CRITICAL:** `loop.ps1` still uses legacy `plan-build-review` behavior in multiple paths (`Resolve-IterationMode`, cycle advance modulo, required prompt set, resume phase mapping, startup mode-cycle text), effectively modeling `plan -> build x3 -> proof -> review` instead of `plan -> build x5 -> qa -> review`. Bring full parity with `loop.sh` and validate via `loop.tests.ps1` coverage for normal run + resume scenarios. (priority: critical)
-- [ ] [review] Gate 3: touched runtime files `aloop/bin/loop.ps1` and `aloop/bin/loop.sh` changed cycle/resume branches (`Resolve-IterationMode`, cycle modulo advance, resume phase mapping), but no branch-coverage report demonstrates >=80% for these touched files. Add executable branch-coverage evidence for both runtimes (or equivalent existing coverage tooling output), and extend tests for uncovered branch paths until gate threshold is met. (priority: high)
-- [ ] [review] Gate 4: dead code remains in touched loop runtimes — `Update-ProofBaselines` (`aloop/bin/loop.ps1:798`) and `update_proof_baselines` (`aloop/bin/loop.sh:1321`) are defined but have no call sites. Remove unused functions or wire them into an active flow with tests proving invocation. (priority: medium)
+- [x] [review] Gate 4: dead code remains in touched loop runtimes — `Update-ProofBaselines` (`aloop/bin/loop.ps1:798`) and `update_proof_baselines` (`aloop/bin/loop.sh:1321`) are defined but have no call sites. Remove unused functions or wire them into an active flow with tests proving invocation. (priority: medium)
+  - Note: removing this dead code also resolves the remaining Gate 3 proof-branch coverage gaps (`proof.force_on_all_tasks_done`, `review.inject_proof_manifest`, `review.update_baselines_on_approval`) since those branches exist only in the dead functions. Cycle/resume branch coverage is already 100% per `coverage/shell-branch-coverage.json` (31/31) and `coverage/ps1-cycle-frontmatter-branch-coverage.json` (7/7).
 
-### Up Next — Review Fixes (Blocking)
-- [x] [review] Gate 2: `aloop/cli/src/commands/project.test.ts:302-305` still verifies bootstrap by `existsSync(...)` presence checks only. Strengthen to assert copied template content matches bundled `aloop/templates/` sources, and add explicit negative-path assertion that bootstrap is skipped when `templatesDir` is provided. (priority: high)
-- [x] [review] Gate 3: branch coverage proof for touched files is still incomplete/non-compliant for this iteration (`aloop/cli/src/commands/gh.ts`, `aloop/cli/src/commands/devcontainer.ts`, `aloop/cli/lib/project.mjs`). Add executable coverage evidence and targeted tests for fallback/error branches (`selectUsableGhBinary` null/no-fallback + `failGhWatch` JSON path, deps-normalization fallback paths, bootstrap guard branches), meeting >=80% per touched file (>=90% for any new module). (priority: high)
+### Up Next — Rattail Chain (Dependency Order)
+The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> final-qa -> proof -> completed`) requires these tasks in order:
 
-### Up Next — Core Loop/Runtime Gaps (Spec-Priority)
-- [x] [loop/P1] `loop.sh` still has stale `plan-build-review` resume mapping (`proof`/`review` indices for old 6-step cycle) that conflicts with current 8-step `qa` cycle and can mis-resume phase position. Align resume mapping and related mode metadata output with the compiled cycle semantics. (priority: high)
-- [ ] [runtime/P1] Implement completion rattail chain from SPEC Proof-of-Work section (`all_tasks_done -> spec-review -> final-review -> final-qa -> proof -> completed`) and remove hardcoded monitor shortcuts that directly queue only `proof`/`review`. (priority: high)
-- [ ] [runtime/P1] Add missing rattail prompt templates and wiring (`PROMPT_spec-review.md`, `PROMPT_final-review.md`, `PROMPT_final-qa.md`) so runtime event chaining has concrete catalog entries. (priority: high)
-- [ ] [loop/P2] Add `trigger` frontmatter support to agent prompt templates so agents declare event bindings (example: `trigger: all_tasks_done`). (priority: medium)
-- [ ] [runtime/P2] Implement generic event -> catalog scan -> queue dispatch in runtime monitor (`aloop/templates/` + trigger matching), instead of phase-name-specific branching. (priority: medium)
+1. - [ ] [runtime/P1] Add missing rattail prompt templates (`PROMPT_spec-review.md`, `PROMPT_final-review.md`, `PROMPT_final-qa.md`) with `trigger` frontmatter declaring event bindings. (priority: high)
+2. - [ ] [loop/P1] Add `trigger` frontmatter field to the loop script frontmatter parser (`parse_frontmatter` in loop.sh, `Parse-PromptFrontmatter` in loop.ps1) so the runtime can read trigger declarations from prompt files. (priority: high)
+3. - [ ] [runtime/P1] Implement generic event -> catalog scan -> queue dispatch in runtime monitor — scan `aloop/templates/` for prompts whose `trigger` field matches the current event, queue them, instead of hardcoded phase-name branching in `monitor.ts:182-270`. (priority: high)
+4. - [ ] [runtime/P1] Replace hardcoded monitor shortcuts (build→proof, proof→review) with rattail-driven dispatch and ensure monitor exit semantics use `completed` state only after full chain completes. Add tests for rattail success path and "new TODO reopens build" re-entry. (priority: high)
 
 ### Up Next — P1 Hardening (After Core)
 - [ ] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating in orchestrator/gh loops and add same-error persistence detection before auto re-iteration (stop retrying unchanged CI failures; surface actionable summary). (priority: high)
+- [ ] [qa/P1] Packaged-install template bootstrap remains broken in fresh HOME (`aloop setup --non-interactive` / `aloop scaffold` fail with `Template not found .../.aloop/templates/PROMPT_plan.md`). Fix template resolution/bootstrap so packaged CLI works without pre-existing `~/.aloop/templates`. (priority: high)
+- [ ] [qa/P1] `aloop gh watch` user flow still fails under PATH hardening (`gh: blocked by aloop PATH hardening`). Keep security boundary while allowing host-side `gh` execution paths required by `aloop gh watch`. (priority: high)
 - [ ] [setup/P1] Data privacy setup flow — ask internal/private vs public/open-source during setup and apply provider/model policy constraints (including ZDR-safe defaults) to generated config. (priority: high)
 - [ ] [devcontainer/P1] Devcontainer spec-conformance pass — verify `devcontainer`/`devcontainer-verify` behavior against SPEC Devcontainer acceptance criteria (lifecycle hooks, mounts, provider auth forwarding, verification loop) and close concrete gaps. (priority: high)
 - [ ] [qa/P1] `aloop start` auto-monitoring parity — verify dashboard/terminal auto-open and fallback behavior across OS paths; ensure failures degrade with clear manual commands. (priority: medium)
 
 ### Up Next — P2
 - [ ] [qa/P2] CLI error handling leaks stack traces — `aloop setup --autonomy-level invalid`, `aloop start` (no config), `aloop orchestrate --autonomy-level foo`, `aloop resolve --project-root /nonexistent` should return clean user-facing errors. (priority: medium)
+- [ ] [qa/P2] `aloop orchestrate --spec NONEXISTENT.md` still emits raw stack frames in packaged CLI path; return a clean user-facing validation error only. (priority: medium)
 - [ ] [qa/P2] `aloop setup` accepts invalid inputs without validation — nonexistent spec files and unknown provider names are written silently. (priority: medium)
 - [ ] [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` writes nonexistent path to config without warning. (priority: medium)
 - [ ] [orchestrator/P2] Multi-file spec support — `specs/*.md` globbing, merge logic, master-spec + vertical-slice-group pattern. (priority: medium)
@@ -53,6 +52,10 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 - [~] [qa/P1] `aloop steer` CLI command missing from `aloop.mjs` help and core list — superseded by broader `aloop.mjs --help` interception fix.
 
 ### Completed
+- [x] [loop/P1] **CRITICAL:** `loop.ps1` parity with `loop.sh` restored for `plan -> build x5 -> qa -> review` cycle semantics (mode resolution, cycle advance, required prompts, resume mapping, startup mode text).
+- [x] [loop/P1] `loop.sh` resume mapping aligned with 8-step `qa` cycle semantics (removed stale proof-era mapping).
+- [x] [review] Gate 2: `project.test.ts` bootstrap assertions strengthened to validate copied template content and `templatesDir` skip path.
+- [x] [review] Gate 3: branch-coverage follow-up completed for touched files in `gh.ts`, `devcontainer.ts`, and `lib/project.mjs`.
 - [x] [orchestrator/P1] Autonomy levels (cautious/balanced/autonomous) — wire setup/config to resolver behavior, risk classification, autonomous decision logging, and user override.
 - [x] [orchestrator/P0] [research] GitHub-native state model feasibility — finalized: use Project status + issue state for progression; keep only minimal labels.
 - [x] [orchestrator/P1] Replan on spec change — spec diff watcher, replan agent trigger, spec backfill flow, loop-prevention provenance.
@@ -117,13 +120,10 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 - [x] [qa/P1] `aloop update` executable permissions fixed for Unix scripts/shims.
 - [x] [qa/P1] `aloop start` dashboard spawn now uses absolute binary paths.
 - [x] [qa/P1] `aloop start` active-session cleanup on spawn failure implemented.
-- [x] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` now fails fast with spec-path validation.
-  - Re-test 2026-03-16 (iter 83): still leaks raw stack trace on missing spec (`Error: Spec file not found ...` with stack frames).
-- [x] [qa/P1] `aloop setup --non-interactive` fresh-HOME bootstrap fixed.
-  - Re-test 2026-03-16 (iter 83): still fails in packaged install with `Template not found: .../.aloop/templates/PROMPT_plan.md` and stack trace.
-- [x] [qa/P1] `aloop gh watch` raw stack-trace crash path hardened with clean user-facing failure handling + gh binary fallback selection.
-  - Re-test 2026-03-16 (iter 83): no raw stack trace now, but user-invoked `aloop gh watch` still fails with `gh: blocked by aloop PATH hardening`.
+- [~] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` now fails fast with spec-path validation — superseded/reopened after re-test still showed stack-trace leak; tracked in active P2 error-handling tasks.
+- [~] [qa/P1] `aloop setup --non-interactive` fresh-HOME bootstrap fixed — superseded/reopened after packaged-install template bootstrap failure; tracked in active P1 bootstrap task.
+- [~] [qa/P1] `aloop gh watch` raw stack-trace crash path hardened with clean user-facing failure handling + gh binary fallback selection — superseded/reopened after PATH-hardening block remained; tracked in active P1 gh-watch task.
 - [x] [qa/P1] `aloop devcontainer` commander action-arg mismatch fixed via deps normalization guard.
-- [x] [qa/P1] `aloop scaffold` now includes `PROMPT_qa.md` in validation/copy loops.
-  - Re-test 2026-03-16 (iter 83): `aloop scaffold` in fresh HOME still fails at template bootstrap (`PROMPT_plan.md` missing), so `PROMPT_qa.md` copy path remains unverified in packaged install.
+- [~] [qa/P1] `aloop scaffold` now includes `PROMPT_qa.md` in validation/copy loops — validation remains blocked by packaged-install template bootstrap failure; tracked in active P1 bootstrap task.
 - [x] [qa/P1] Provider health backoff report closed as false positive after verification.
+- [x] [review] Gate 3: loop runtime cycle/resume branch coverage verified — `shell-branch-coverage.json` (31/31, 100%) and `ps1-cycle-frontmatter-branch-coverage.json` (7/7, 100%) cover all cycle modulo, resume mapping, and frontmatter branches. Remaining uncovered proof-related branches belong to dead code tracked in Gate 4.

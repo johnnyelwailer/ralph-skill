@@ -1318,28 +1318,6 @@ color_name_to_ansi() {
     esac
 }
 
-update_proof_baselines() {
-    local proof_iteration="$1"
-    if [ "$proof_iteration" -le 0 ]; then return; fi
-
-    local iter_dir="$SESSION_DIR/artifacts/iter-$proof_iteration"
-    local manifest_path="$iter_dir/proof-manifest.json"
-    if [ ! -f "$manifest_path" ]; then return; fi
-
-    local baseline_dir="$SESSION_DIR/artifacts/baselines"
-    mkdir -p "$baseline_dir"
-
-    # Copy all artifacts (except manifest) to baselines directory
-    for file in "$iter_dir"/*; do
-        if [ "$(basename "$file")" != "proof-manifest.json" ]; then
-            cp -R "$file" "$baseline_dir/"
-        fi
-    done
-    
-    echo "Updated proof baselines from iteration $proof_iteration"
-    write_log_entry "baselines_updated" "iteration" "$proof_iteration"
-}
-
 skip_stuck_task() {
     local task="$1"
     echo ""
