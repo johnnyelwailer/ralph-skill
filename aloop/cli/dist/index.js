@@ -4024,10 +4024,10 @@ async function writeFailureToQueue(request, error, options, sourceFileName) {
 import * as fs3 from "node:fs/promises";
 import { existsSync as existsSync4 } from "node:fs";
 import * as path5 from "node:path";
-async function checkAllTasksComplete(workdir) {
+async function getTodoTaskCounts(workdir) {
   const planPath = path5.join(workdir, "TODO.md");
   if (!existsSync4(planPath))
-    return false;
+    return null;
   try {
     const content = await fs3.readFile(planPath, "utf8");
     const lines = content.split("\n");
@@ -4040,9 +4040,9 @@ async function checkAllTasksComplete(workdir) {
         completed++;
       }
     }
-    return incomplete === 0 && completed > 0;
+    return { incomplete, completed };
   } catch {
-    return false;
+    return null;
   }
 }
 async function getReviewVerdict(sessionDir, iteration) {
@@ -4058,6 +4058,37 @@ async function getReviewVerdict(sessionDir, iteration) {
   } catch {
   }
   return null;
+}
+async function hasBuildSinceLastPlan(sessionDir) {
+  const logPath = path5.join(sessionDir, "log.jsonl");
+  if (!existsSync4(logPath))
+    return true;
+  try {
+    const content = await fs3.readFile(logPath, "utf8");
+    let sawPlan = false;
+    let buildSeenSincePlan = true;
+    for (const line of content.split("\n")) {
+      if (!line.trim())
+        continue;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (entry?.event !== "iteration_complete" || typeof entry.mode !== "string")
+        continue;
+      if (entry.mode === "plan") {
+        sawPlan = true;
+        buildSeenSincePlan = false;
+      } else if (entry.mode === "build") {
+        buildSeenSincePlan = true;
+      }
+    }
+    return sawPlan ? buildSeenSincePlan : true;
+  } catch {
+    return true;
+  }
 }
 async function monitorSessionState(options) {
   const statusPath = path5.join(options.sessionDir, "status.json");
@@ -4115,7 +4146,23 @@ async function monitorSessionState(options) {
       }
     }
   }
-  const allTasksDone = await checkAllTasksComplete(options.workdir);
+  const taskCounts = await getTodoTaskCounts(options.workdir);
+  const allTasksDone = taskCounts !== null && taskCounts.incomplete === 0 && taskCounts.completed > 0;
+  if (status.phase === "build" && taskCounts !== null && taskCounts.incomplete === 0 && taskCounts.completed === 0) {
+    const queueEntries = await fs3.readdir(queueDir).catch(() => []);
+    const alreadyQueued = queueEntries.some((e) => e.includes("PROMPT_plan"));
+    if (!alreadyQueued) {
+      const planTemplatePath = path5.join(options.promptsDir, "PROMPT_plan.md");
+      if (existsSync4(planTemplatePath)) {
+        const content = await fs3.readFile(planTemplatePath, "utf8");
+        await writeQueueOverride(options.sessionDir, "PROMPT_plan", content, {
+          agent: "plan",
+          reason: "build_prerequisite_no_tasks"
+        });
+        console.log(`[monitor] Build phase reached with no TODO tasks; queued plan.`);
+      }
+    }
+  }
   if (status.phase === "build" && allTasksDone) {
     const queueEntries = await fs3.readdir(queueDir).catch(() => []);
     const alreadyQueued = queueEntries.some((e) => e.includes("PROMPT_proof") || e.includes("PROMPT_review"));
@@ -4147,6 +4194,23 @@ async function monitorSessionState(options) {
     }
   }
   if (status.phase === "review") {
+    const buildReadyForReview = await hasBuildSinceLastPlan(options.sessionDir);
+    if (!buildReadyForReview) {
+      const queueEntries = await fs3.readdir(queueDir).catch(() => []);
+      const alreadyQueued = queueEntries.some((e) => e.includes("PROMPT_build"));
+      if (!alreadyQueued) {
+        const buildTemplatePath = path5.join(options.promptsDir, "PROMPT_build.md");
+        if (existsSync4(buildTemplatePath)) {
+          const content = await fs3.readFile(buildTemplatePath, "utf8");
+          await writeQueueOverride(options.sessionDir, "PROMPT_build", content, {
+            agent: "build",
+            reason: "review_prerequisite_no_builds"
+          });
+          console.log(`[monitor] Review phase reached without build since plan; queued build.`);
+        }
+      }
+      return;
+    }
     const verdict = await getReviewVerdict(options.sessionDir, status.iteration);
     if (verdict === "PASS" && allTasksDone) {
       console.log(`[monitor] Review PASS and all tasks done. Stopping session.`);

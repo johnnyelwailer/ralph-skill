@@ -229,7 +229,6 @@ function Resolve-IterationProvider {
 
 function Resolve-IterationMode {
     param([int]$IterationNumber)
-    $script:lastModeWasForced = $false
     $script:resolvedPromptName = $null
     if (Resolve-CyclePromptFromPlan) {
         return (Get-ModeFromPromptName -PromptName $script:resolvedPromptName)
@@ -250,14 +249,6 @@ function Resolve-IterationMode {
             4 { $requestedMode = 'proof' }
             5 { $requestedMode = 'review' }
         }
-    }
-
-    if ($Mode -in @('plan-build', 'plan-build-review')) {
-        $actualMode = Check-PhasePrerequisite -RequestedPhase $requestedMode
-        if ($actualMode -ne $requestedMode) {
-            $script:lastModeWasForced = $true
-        }
-        return $actualMode
     }
 
     return $requestedMode
@@ -761,8 +752,6 @@ $script:lastProviderOutputText = $null
 $script:cyclePosition = 0
 $script:cycleLength = 0
 $script:resolvedPromptName = $null
-$script:lastModeWasForced = $false
-$script:hasBuildsSinceLastPlan = $false
 $script:frontmatter = @{ provider = ''; model = ''; agent = ''; reasoning = '' }
 $script:phaseRetryState = @{
     phase = ''
@@ -805,12 +794,6 @@ function Register-IterationSuccess {
         [string]$IterationMode,
         [bool]$WasForced
     )
-    if ($IterationMode -eq 'plan') {
-        $script:hasBuildsSinceLastPlan = $false
-    } elseif ($IterationMode -eq 'build') {
-        $script:hasBuildsSinceLastPlan = $true
-    }
-
     $script:phaseRetryState.phase = ''
     $script:phaseRetryState.consecutive = 0
     $script:phaseRetryState.failureReasons = @()
@@ -854,42 +837,6 @@ function Register-IterationFailure {
         $script:phaseRetryState.consecutive = 0
         $script:phaseRetryState.failureReasons = @()
     }
-}
-
-function Check-PhasePrerequisite {
-    param([string]$RequestedPhase)
-
-    if ($RequestedPhase -eq 'build') {
-        $lines = Get-PlanLines
-        $unchecked = ($lines | Where-Object { $_ -match '^\s*-\s+\[ \]' }).Count
-        $completed = ($lines | Where-Object { $_ -match '^\s*-\s+\[x\]' }).Count
-        if ($unchecked -eq 0) {
-            if ($Mode -eq 'plan-build-review' -and $completed -gt 0) {
-                return 'build'
-            }
-            Write-Warning "No unchecked tasks in TODO.md; forcing plan phase."
-            Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
-                requested = 'build'
-                actual = 'plan'
-                reason = 'no_tasks'
-            }
-            return 'plan'
-        }
-    }
-
-    if ($RequestedPhase -eq 'review') {
-        if (-not $script:hasBuildsSinceLastPlan) {
-            Write-Warning "No successful builds since last plan; forcing build phase."
-            Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
-                requested = 'review'
-                actual = 'build'
-                reason = 'no_builds'
-            }
-            return 'build'
-        }
-    }
-
-    return $RequestedPhase
 }
 
 function Skip-StuckTask {
@@ -2055,7 +2002,7 @@ try {
             Show-AgentSummary -ProviderName $iterationProvider -ProviderOutput $providerOutput
 
             Update-ProviderHealthOnSuccess -ProviderName $iterationProvider
-            Register-IterationSuccess -IterationMode $iterationMode -WasForced $script:lastModeWasForced
+            Register-IterationSuccess -IterationMode $iterationMode -WasForced $false
             Persist-LoopPlanState -Iteration $iteration
             $stuckState.StuckCount = 0
             $stuckState.LastTask = ""

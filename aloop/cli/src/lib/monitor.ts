@@ -10,19 +10,18 @@ export interface MonitorOptions {
 }
 
 /**
- * Checks if all tasks in TODO.md are complete.
- * Matches logic in loop.sh check_all_tasks_complete.
+ * Reads TODO.md task counts.
  */
-async function checkAllTasksComplete(workdir: string): Promise<boolean> {
+async function getTodoTaskCounts(workdir: string): Promise<{ incomplete: number; completed: number } | null> {
   const planPath = path.join(workdir, 'TODO.md');
-  if (!existsSync(planPath)) return false;
+  if (!existsSync(planPath)) return null;
   try {
     const content = await fs.readFile(planPath, 'utf8');
     const lines = content.split('\n');
-    
+
     let incomplete = 0;
     let completed = 0;
-    
+
     for (const line of lines) {
       if (/^\s*- \[ \]/.test(line)) {
         incomplete++;
@@ -30,10 +29,10 @@ async function checkAllTasksComplete(workdir: string): Promise<boolean> {
         completed++;
       }
     }
-    
-    return incomplete === 0 && completed > 0;
+
+    return { incomplete, completed };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -51,6 +50,39 @@ async function getReviewVerdict(sessionDir: string, iteration: number): Promise<
     }
   } catch { /* ignore */ }
   return null;
+}
+
+/**
+ * Best-effort detection of whether a build succeeded after the last plan in log.jsonl.
+ * Returns true when no reliable evidence is available.
+ */
+async function hasBuildSinceLastPlan(sessionDir: string): Promise<boolean> {
+  const logPath = path.join(sessionDir, 'log.jsonl');
+  if (!existsSync(logPath)) return true;
+  try {
+    const content = await fs.readFile(logPath, 'utf8');
+    let sawPlan = false;
+    let buildSeenSincePlan = true;
+    for (const line of content.split('\n')) {
+      if (!line.trim()) continue;
+      let entry: any;
+      try {
+        entry = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (entry?.event !== 'iteration_complete' || typeof entry.mode !== 'string') continue;
+      if (entry.mode === 'plan') {
+        sawPlan = true;
+        buildSeenSincePlan = false;
+      } else if (entry.mode === 'build') {
+        buildSeenSincePlan = true;
+      }
+    }
+    return sawPlan ? buildSeenSincePlan : true;
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -122,7 +154,25 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
     }
   }
 
-  const allTasksDone = await checkAllTasksComplete(options.workdir);
+  const taskCounts = await getTodoTaskCounts(options.workdir);
+  const allTasksDone = taskCounts !== null && taskCounts.incomplete === 0 && taskCounts.completed > 0;
+
+  // Runtime-owned prerequisite: if build is reached with no tasks at all, queue plan.
+  if (status.phase === 'build' && taskCounts !== null && taskCounts.incomplete === 0 && taskCounts.completed === 0) {
+    const queueEntries = await fs.readdir(queueDir).catch(() => []);
+    const alreadyQueued = queueEntries.some(e => e.includes('PROMPT_plan'));
+    if (!alreadyQueued) {
+      const planTemplatePath = path.join(options.promptsDir, 'PROMPT_plan.md');
+      if (existsSync(planTemplatePath)) {
+        const content = await fs.readFile(planTemplatePath, 'utf8');
+        await writeQueueOverride(options.sessionDir, 'PROMPT_plan', content, {
+          agent: 'plan',
+          reason: 'build_prerequisite_no_tasks'
+        });
+        console.log(`[monitor] Build phase reached with no TODO tasks; queued plan.`);
+      }
+    }
+  }
 
   // Case 1: All tasks done during/after build -> queue proof
   if (status.phase === 'build' && allTasksDone) {
@@ -162,6 +212,24 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
 
   // Case 3: Review complete -> handle PASS/FAIL
   if (status.phase === 'review') {
+    const buildReadyForReview = await hasBuildSinceLastPlan(options.sessionDir);
+    if (!buildReadyForReview) {
+      const queueEntries = await fs.readdir(queueDir).catch(() => []);
+      const alreadyQueued = queueEntries.some(e => e.includes('PROMPT_build'));
+      if (!alreadyQueued) {
+        const buildTemplatePath = path.join(options.promptsDir, 'PROMPT_build.md');
+        if (existsSync(buildTemplatePath)) {
+          const content = await fs.readFile(buildTemplatePath, 'utf8');
+          await writeQueueOverride(options.sessionDir, 'PROMPT_build', content, {
+            agent: 'build',
+            reason: 'review_prerequisite_no_builds'
+          });
+          console.log(`[monitor] Review phase reached without build since plan; queued build.`);
+        }
+      }
+      return;
+    }
+
     const verdict = await getReviewVerdict(options.sessionDir, status.iteration);
     if (verdict === 'PASS' && allTasksDone) {
       // Approve and stop session

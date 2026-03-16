@@ -330,49 +330,8 @@ resolve_iteration_provider() {
     fi
 }
 
-check_phase_prerequisite() {
-    local requested_phase="$1"
-
-    if [ "$requested_phase" = "build" ]; then
-        local unchecked=0
-        local completed=0
-        if [ -f "$PLAN_FILE" ]; then
-            unchecked=$(grep -c '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null) || unchecked=0
-            completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null) || completed=0
-        fi
-        if [ "$unchecked" -eq 0 ]; then
-            if [ "$MODE" = "plan-build-review" ] && [ "$completed" -gt 0 ]; then
-                echo "build"
-                return
-            fi
-            echo "Warning: No unchecked tasks in TODO.md; forcing plan phase." >&2
-            write_log_entry "phase_prerequisite_miss" \
-                "requested" "build" \
-                "actual" "plan" \
-                "reason" "no_tasks"
-            echo "plan"
-            return
-        fi
-    fi
-
-    if [ "$requested_phase" = "review" ]; then
-        if [ "$HAS_BUILDS_SINCE_LAST_PLAN" != true ]; then
-            echo "Warning: No successful builds since last plan; forcing build phase." >&2
-            write_log_entry "phase_prerequisite_miss" \
-                "requested" "review" \
-                "actual" "build" \
-                "reason" "no_builds"
-            echo "build"
-            return
-        fi
-    fi
-
-    echo "$requested_phase"
-}
-
 resolve_iteration_mode() {
     local iteration=$1
-    LAST_MODE_WAS_FORCED=false
     RESOLVED_PROMPT_NAME=""
     if resolve_cycle_prompt_from_plan; then
             RESOLVED_MODE=$(derive_mode_from_prompt_name "$RESOLVED_PROMPT_NAME")
@@ -396,8 +355,6 @@ resolve_iteration_mode() {
                     ;;
             esac
         fi
-    RESOLVED_MODE=$(check_phase_prerequisite "$RESOLVED_MODE")
-    echo "$RESOLVED_MODE"
 }
 
 derive_mode_from_prompt_name() {
@@ -499,12 +456,6 @@ advance_cycle_position() {
 register_iteration_success() {
     local iteration_mode="$1"
     local was_forced="$2"
-
-    if [ "$iteration_mode" = "plan" ]; then
-        HAS_BUILDS_SINCE_LAST_PLAN=false
-    elif [ "$iteration_mode" = "build" ]; then
-        HAS_BUILDS_SINCE_LAST_PLAN=true
-    fi
 
     PHASE_RETRY_PHASE=""
     PHASE_RETRY_CONSECUTIVE=0
@@ -1320,10 +1271,8 @@ RR_NEXT_INDEX=0
 ALL_TASKS_MARKED_DONE=false
 RESOLVED_MODE=""
 CYCLE_POSITION=0
-LAST_MODE_WAS_FORCED=false
 RESOLVED_PROMPT_NAME=""
 CYCLE_LENGTH=0
-HAS_BUILDS_SINCE_LAST_PLAN=false
 PHASE_RETRY_PHASE=""
 PHASE_RETRY_CONSECUTIVE=0
 PHASE_RETRY_FAILURE_REASONS=()
@@ -2003,7 +1952,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     if invoke_provider "$iter_provider" "$prompt_content" "$FRONTMATTER_MODEL"; then
         _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
         update_provider_health_on_success "$iter_provider"
-        register_iteration_success "$iter_mode" "$LAST_MODE_WAS_FORCED"
+        register_iteration_success "$iter_mode" false
         persist_loop_plan_state
         STUCK_COUNT=0
         LAST_TASK=""

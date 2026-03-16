@@ -22,10 +22,12 @@ test('monitorSessionState transitions', async (t) => {
   const proofTemplatePath = path.join(promptsDir, 'PROMPT_proof.md');
   const reviewTemplatePath = path.join(promptsDir, 'PROMPT_review.md');
   const planTemplatePath = path.join(promptsDir, 'PROMPT_plan.md');
+  const buildTemplatePath = path.join(promptsDir, 'PROMPT_build.md');
 
   await fs.writeFile(proofTemplatePath, 'proof content');
   await fs.writeFile(reviewTemplatePath, 'review content');
   await fs.writeFile(planTemplatePath, 'plan content');
+  await fs.writeFile(buildTemplatePath, 'build content');
 
   await t.test('queues proof when build finished and all tasks done', async () => {
     await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build', iteration: 1 }));
@@ -105,6 +107,10 @@ test('monitorSessionState transitions', async (t) => {
     await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 3 }));
     await fs.writeFile(todoPath, '# TODO\n- [x] task 1\n');
     await fs.writeFile(path.join(sessionDir, 'review-verdict.json'), JSON.stringify({ iteration: 3, verdict: 'PASS' }));
+    await fs.writeFile(
+      path.join(sessionDir, 'log.jsonl'),
+      '{"event":"iteration_complete","mode":"plan"}\n{"event":"iteration_complete","mode":"build"}\n'
+    );
     await writeLoopPlan(sessionDir, { cycle: [], cyclePosition: 0, iteration: 3, version: 1 });
 
     await monitorSessionState({ sessionDir, workdir, promptsDir });
@@ -118,6 +124,10 @@ test('monitorSessionState transitions', async (t) => {
     await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 4 }));
     await fs.writeFile(todoPath, '# TODO\n- [x] task 1\n');
     await fs.writeFile(path.join(sessionDir, 'review-verdict.json'), JSON.stringify({ iteration: 4, verdict: 'FAIL' }));
+    await fs.writeFile(
+      path.join(sessionDir, 'log.jsonl'),
+      '{"event":"iteration_complete","mode":"plan"}\n{"event":"iteration_complete","mode":"build"}\n'
+    );
     await writeLoopPlan(sessionDir, { cycle: [], cyclePosition: 0, iteration: 4, version: 1 });
 
     await monitorSessionState({ sessionDir, workdir, promptsDir });
@@ -173,14 +183,34 @@ test('monitorSessionState transitions', async (t) => {
       }
     });
 
-    await t.test('checkAllTasksComplete handles empty TODO.md', async () => {
+    await t.test('queues plan when build phase has no TODO tasks', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build', iteration: 1 }));
       await fs.writeFile(todoPath, '');
       await monitorSessionState({ sessionDir, workdir, promptsDir });
       const queueDir = path.join(sessionDir, 'queue');
       if (existsSync(queueDir)) {
         const files = await fs.readdir(queueDir).catch(() => []);
-        assert.ok(!files.some(f => f.includes('PROMPT_proof')));
+        assert.ok(files.some(f => f.includes('PROMPT_plan')));
+        await fs.rm(queueDir, { recursive: true, force: true });
       }
+    });
+
+    await t.test('queues build when review phase has no build since plan', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 7 }));
+      await fs.writeFile(todoPath, '- [x] task 1');
+      await fs.writeFile(path.join(sessionDir, 'review-verdict.json'), JSON.stringify({ iteration: 7, verdict: 'PASS' }));
+      await fs.writeFile(path.join(sessionDir, 'log.jsonl'), '{"event":"iteration_complete","mode":"plan"}\n');
+      const queueDir = path.join(sessionDir, 'queue');
+      await fs.rm(queueDir, { recursive: true, force: true });
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      const files = await fs.readdir(queueDir);
+      assert.ok(files.some(f => f.includes('PROMPT_build')));
+      const buildFile = files.find(f => f.includes('PROMPT_build'))!;
+      const content = await fs.readFile(path.join(queueDir, buildFile), 'utf8');
+      assert.ok(content.includes('reason: review_prerequisite_no_builds'));
+      await fs.rm(queueDir, { recursive: true, force: true });
     });
 
     await t.test('warns when STEERING.md exists but PROMPT_steer.md is missing', async () => {
@@ -222,6 +252,10 @@ test('monitorSessionState transitions', async (t) => {
     await t.test('getReviewVerdict handles missing/invalid verdict file', async () => {
       await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 1 }));
       const verdictPath = path.join(sessionDir, 'review-verdict.json');
+      await fs.writeFile(
+        path.join(sessionDir, 'log.jsonl'),
+        '{"event":"iteration_complete","mode":"plan"}\n{"event":"iteration_complete","mode":"build"}\n'
+      );
       
       // Missing
       if (existsSync(verdictPath)) await fs.rm(verdictPath);
@@ -244,6 +278,10 @@ test('monitorSessionState transitions', async (t) => {
       const verdictPath = path.join(sessionDir, 'review-verdict.json');
       await fs.writeFile(verdictPath, JSON.stringify({ iteration: 1, verdict: 'PASS' }));
       await fs.writeFile(todoPath, '- [x] task 1');
+      await fs.writeFile(
+        path.join(sessionDir, 'log.jsonl'),
+        '{"event":"iteration_complete","mode":"plan"}\n{"event":"iteration_complete","mode":"build"}\n'
+      );
       
       const metaPath = path.join(sessionDir, 'meta.json');
       await fs.writeFile(metaPath, 'invalid json');
