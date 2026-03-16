@@ -31,6 +31,12 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
      alias aloop="node $ALOOP_BIN"
      ```
      Verify: `aloop --version` or `aloop --help` should reflect the latest build.
+   - **Log the binary under test**: At the start of every QA session, record which binary you're using and its resolved path:
+     ```bash
+     echo "Binary under test: $(readlink -f $ALOOP_BIN)"
+     aloop --version
+     ```
+     Include this in the QA_LOG.md session header. If you ever see stack traces or paths referencing `~/.aloop/cli/` instead of the worktree build, STOP — you're testing the wrong binary.
    - Create a realistic test project in a temp directory
    - Set up real files, real git repo, real dependencies as needed
    - The test environment should mirror what a real user would have
