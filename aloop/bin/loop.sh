@@ -449,11 +449,13 @@ parse_frontmatter() {
     FRONTMATTER_AGENT=$(sed -n '/^---$/,/^---$/{ /^agent:/s/agent: *//p }' "$file" | head -n1)
     FRONTMATTER_REASONING=$(sed -n '/^---$/,/^---$/{ /^reasoning:/s/reasoning: *//p }' "$file" | head -n1)
     FRONTMATTER_COLOR=$(sed -n '/^---$/,/^---$/{ /^color:/s/color: *//p }' "$file" | head -n1)
+    FRONTMATTER_TRIGGER=$(sed -n '/^---$/,/^---$/{ /^trigger:/s/trigger: *//p }' "$file" | head -n1)
     FRONTMATTER_PROVIDER="${FRONTMATTER_PROVIDER:-}"
     FRONTMATTER_MODEL="${FRONTMATTER_MODEL:-}"
     FRONTMATTER_AGENT="${FRONTMATTER_AGENT:-}"
     FRONTMATTER_REASONING="${FRONTMATTER_REASONING:-}"
     FRONTMATTER_COLOR="${FRONTMATTER_COLOR:-}"
+    FRONTMATTER_TRIGGER="${FRONTMATTER_TRIGGER:-}"
 }
 
 advance_cycle_position() {
@@ -1302,6 +1304,7 @@ FRONTMATTER_MODEL=""
 FRONTMATTER_AGENT=""
 FRONTMATTER_REASONING=""
 FRONTMATTER_COLOR=""
+FRONTMATTER_TRIGGER=""
 
 color_name_to_ansi() {
     local name="${1:-}"
@@ -1894,7 +1897,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         "provider" "${FRONTMATTER_PROVIDER:-}" \
         "model" "${FRONTMATTER_MODEL:-}" \
         "reasoning" "${FRONTMATTER_REASONING:-}" \
-        "color" "${FRONTMATTER_COLOR:-}"
+        "color" "${FRONTMATTER_COLOR:-}" \
+        "trigger" "${FRONTMATTER_TRIGGER:-}"
 
     # Update session status
     write_status "$ITERATION" "$iter_mode" "$iter_provider" 0

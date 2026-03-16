@@ -293,6 +293,7 @@ function Parse-Frontmatter {
         agent = ''
         reasoning = ''
         color = ''
+        trigger = ''
     }
     if (-not (Test-Path $PromptFile)) { return }
     $content = Get-Content -Path $PromptFile -Raw
@@ -301,7 +302,7 @@ function Parse-Frontmatter {
     if ($parts.Count -lt 3) { return }
     $header = $parts[1] -split "`r?`n"
     foreach ($line in $header) {
-        if ($line -match '^\s*(provider|model|agent|reasoning|color)\s*:\s*(.+?)\s*$') {
+        if ($line -match '^\s*(provider|model|agent|reasoning|color|trigger)\s*:\s*(.+?)\s*$') {
             $script:frontmatter[$Matches[1].ToLowerInvariant()] = $Matches[2].Trim()
         }
     }
@@ -787,7 +788,7 @@ $script:lastProviderOutputText = $null
 $script:cyclePosition = 0
 $script:cycleLength = 0
 $script:resolvedPromptName = $null
-$script:frontmatter = @{ provider = ''; model = ''; agent = ''; reasoning = ''; color = '' }
+$script:frontmatter = @{ provider = ''; model = ''; agent = ''; reasoning = ''; color = ''; trigger = '' }
 $script:phaseRetryState = @{
     phase = ''
     consecutive = 0
@@ -1918,6 +1919,7 @@ try {
             model = [string]$script:frontmatter.model
             reasoning = [string]$script:frontmatter.reasoning
             color = [string]$script:frontmatter.color
+            trigger = [string]$script:frontmatter.trigger
         }
 
         # Update session status

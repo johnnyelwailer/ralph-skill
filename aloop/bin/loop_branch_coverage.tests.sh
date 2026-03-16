@@ -106,7 +106,7 @@ register_branch "cycle.resolve.success" "resolve_cycle_prompt_from_plan resolves
 register_branch "cycle.resolve.missing_file" "resolve_cycle_prompt_from_plan returns 1 when file is missing"
 register_branch "cycle.resolve.invalid_cycle" "resolve_cycle_prompt_from_plan returns 1 when cycle array is empty"
 register_branch "cycle.resolve.modulo_wrap" "resolve_cycle_prompt_from_plan wraps cyclePosition via modulo"
-register_branch "frontmatter.all_fields" "parse_frontmatter extracts all four fields from valid frontmatter"
+register_branch "frontmatter.all_fields" "parse_frontmatter extracts trigger-capable fields from valid frontmatter"
 register_branch "frontmatter.empty" "parse_frontmatter yields empty strings when no frontmatter block present"
 register_branch "frontmatter.partial" "parse_frontmatter handles partial frontmatter with missing fields"
 register_branch "advance.with_cycle_length" "advance_cycle_position uses CYCLE_LENGTH for modulo when set"
@@ -532,7 +532,7 @@ rm -rf "$CYCLE_TMPDIR"
 
 FM_TMPDIR="$(mktemp -d)"
 
-# frontmatter.all_fields — file with all four fields
+# frontmatter.all_fields — file with trigger field
 FM_ALL="$FM_TMPDIR/all.md"
 cat > "$FM_ALL" << 'EOF'
 ---
@@ -540,16 +540,17 @@ provider: claude
 model: opus
 agent: coder
 reasoning: xhigh
+trigger: all_tasks_done
 ---
 Build the thing.
 EOF
-FRONTMATTER_PROVIDER="" FRONTMATTER_MODEL="" FRONTMATTER_AGENT="" FRONTMATTER_REASONING=""
+FRONTMATTER_PROVIDER="" FRONTMATTER_MODEL="" FRONTMATTER_AGENT="" FRONTMATTER_REASONING="" FRONTMATTER_TRIGGER=""
 parse_frontmatter "$FM_ALL"
-if [ "$FRONTMATTER_PROVIDER" = "claude" ] && [ "$FRONTMATTER_MODEL" = "opus" ] && [ "$FRONTMATTER_AGENT" = "coder" ] && [ "$FRONTMATTER_REASONING" = "xhigh" ]; then
+if [ "$FRONTMATTER_PROVIDER" = "claude" ] && [ "$FRONTMATTER_MODEL" = "opus" ] && [ "$FRONTMATTER_AGENT" = "coder" ] && [ "$FRONTMATTER_REASONING" = "xhigh" ] && [ "$FRONTMATTER_TRIGGER" = "all_tasks_done" ]; then
     cover_branch "frontmatter.all_fields"
-    pass_case "parse_frontmatter extracts all four fields"
+    pass_case "parse_frontmatter extracts trigger-capable fields"
 else
-    fail_case "parse_frontmatter all_fields failed (provider=$FRONTMATTER_PROVIDER model=$FRONTMATTER_MODEL agent=$FRONTMATTER_AGENT reasoning=$FRONTMATTER_REASONING)"
+    fail_case "parse_frontmatter all_fields failed (provider=$FRONTMATTER_PROVIDER model=$FRONTMATTER_MODEL agent=$FRONTMATTER_AGENT reasoning=$FRONTMATTER_REASONING trigger=$FRONTMATTER_TRIGGER)"
 fi
 
 # frontmatter.empty — file with no frontmatter block
@@ -559,7 +560,7 @@ Just a plain prompt file with no frontmatter.
 EOF
 FRONTMATTER_PROVIDER="leftover" FRONTMATTER_MODEL="leftover"
 parse_frontmatter "$FM_EMPTY"
-if [ -z "$FRONTMATTER_PROVIDER" ] && [ -z "$FRONTMATTER_MODEL" ] && [ -z "$FRONTMATTER_AGENT" ] && [ -z "$FRONTMATTER_REASONING" ]; then
+if [ -z "$FRONTMATTER_PROVIDER" ] && [ -z "$FRONTMATTER_MODEL" ] && [ -z "$FRONTMATTER_AGENT" ] && [ -z "$FRONTMATTER_REASONING" ] && [ -z "$FRONTMATTER_TRIGGER" ]; then
     cover_branch "frontmatter.empty"
     pass_case "parse_frontmatter yields empty strings for no-frontmatter file"
 else
@@ -575,13 +576,13 @@ reasoning: medium
 ---
 Do the partial thing.
 EOF
-FRONTMATTER_PROVIDER="" FRONTMATTER_MODEL="" FRONTMATTER_AGENT="" FRONTMATTER_REASONING=""
+FRONTMATTER_PROVIDER="" FRONTMATTER_MODEL="" FRONTMATTER_AGENT="" FRONTMATTER_REASONING="" FRONTMATTER_TRIGGER=""
 parse_frontmatter "$FM_PARTIAL"
-if [ "$FRONTMATTER_PROVIDER" = "opencode" ] && [ -z "$FRONTMATTER_MODEL" ] && [ -z "$FRONTMATTER_AGENT" ] && [ "$FRONTMATTER_REASONING" = "medium" ]; then
+if [ "$FRONTMATTER_PROVIDER" = "opencode" ] && [ -z "$FRONTMATTER_MODEL" ] && [ -z "$FRONTMATTER_AGENT" ] && [ "$FRONTMATTER_REASONING" = "medium" ] && [ -z "$FRONTMATTER_TRIGGER" ]; then
     cover_branch "frontmatter.partial"
     pass_case "parse_frontmatter handles partial frontmatter correctly"
 else
-    fail_case "parse_frontmatter partial failed (provider=$FRONTMATTER_PROVIDER model=$FRONTMATTER_MODEL reasoning=$FRONTMATTER_REASONING)"
+    fail_case "parse_frontmatter partial failed (provider=$FRONTMATTER_PROVIDER model=$FRONTMATTER_MODEL reasoning=$FRONTMATTER_REASONING trigger=$FRONTMATTER_TRIGGER)"
 fi
 
 rm -rf "$FM_TMPDIR"

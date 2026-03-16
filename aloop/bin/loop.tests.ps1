@@ -2494,7 +2494,7 @@ Describe 'loop.ps1 — cycle resolution + frontmatter branch evidence' {
         $actualModes | Should -Be @('plan', 'build', 'build', 'build', 'build', 'build', 'qa', 'review')
     }
 
-    It 'Parse-Frontmatter extracts all four fields' {
+    It 'Parse-Frontmatter extracts trigger-capable fields' {
         $promptFile = Join-Path $script:cfTempRoot 'all-fields.md'
         @"
 ---
@@ -2502,6 +2502,7 @@ provider: claude
 model: opus
 agent: coder
 reasoning: xhigh
+trigger: all_tasks_done
 ---
 Build the thing.
 "@ | Set-Content $promptFile
@@ -2513,6 +2514,7 @@ Build the thing.
         $script:frontmatter['model'] | Should -Be 'opus'
         $script:frontmatter['agent'] | Should -Be 'coder'
         $script:frontmatter['reasoning'] | Should -Be 'xhigh'
+        $script:frontmatter['trigger'] | Should -Be 'all_tasks_done'
     }
 
     It 'Parse-Frontmatter yields empty strings when no frontmatter block' {
@@ -2524,6 +2526,7 @@ Build the thing.
         Parse-Frontmatter -PromptFile $promptFile
         $script:frontmatter['provider'] | Should -Be ''
         $script:frontmatter['model'] | Should -Be ''
+        $script:frontmatter['trigger'] | Should -Be ''
     }
 
     It 'Parse-Frontmatter handles partial frontmatter with missing fields' {
@@ -2543,6 +2546,7 @@ Do partial thing.
         $script:frontmatter['model'] | Should -Be ''
         $script:frontmatter['agent'] | Should -Be ''
         $script:frontmatter['reasoning'] | Should -Be 'medium'
+        $script:frontmatter['trigger'] | Should -Be ''
     }
 
     It 'records cycle+frontmatter branch coverage evidence at >=80%' {
@@ -2581,11 +2585,11 @@ Do partial thing.
 
         # frontmatter.all_fields
         $fmAll = Join-Path $script:cfTempRoot 'ev-fm-all.md'
-        "---`nprovider: claude`nmodel: opus`nagent: coder`nreasoning: xhigh`n---`nBody." | Set-Content $fmAll
+        "---`nprovider: claude`nmodel: opus`nagent: coder`nreasoning: xhigh`ntrigger: all_tasks_done`n---`nBody." | Set-Content $fmAll
         $script:frontmatter = @{}
         . ([scriptblock]::Create($script:frontmatterFuncSource))
         Parse-Frontmatter -PromptFile $fmAll
-        $branches['frontmatter.all_fields'] = ($script:frontmatter['provider'] -eq 'claude') -and ($script:frontmatter['model'] -eq 'opus') -and ($script:frontmatter['agent'] -eq 'coder') -and ($script:frontmatter['reasoning'] -eq 'xhigh')
+        $branches['frontmatter.all_fields'] = ($script:frontmatter['provider'] -eq 'claude') -and ($script:frontmatter['model'] -eq 'opus') -and ($script:frontmatter['agent'] -eq 'coder') -and ($script:frontmatter['reasoning'] -eq 'xhigh') -and ($script:frontmatter['trigger'] -eq 'all_tasks_done')
 
         # frontmatter.empty
         $fmEmpty = Join-Path $script:cfTempRoot 'ev-fm-empty.md'
@@ -2593,7 +2597,7 @@ Do partial thing.
         $script:frontmatter = @{}
         . ([scriptblock]::Create($script:frontmatterFuncSource))
         Parse-Frontmatter -PromptFile $fmEmpty
-        $branches['frontmatter.empty'] = ($script:frontmatter['provider'] -eq '') -and ($script:frontmatter['model'] -eq '')
+        $branches['frontmatter.empty'] = ($script:frontmatter['provider'] -eq '') -and ($script:frontmatter['model'] -eq '') -and ($script:frontmatter['trigger'] -eq '')
 
         # frontmatter.partial
         $fmPartial = Join-Path $script:cfTempRoot 'ev-fm-partial.md'
@@ -2601,7 +2605,7 @@ Do partial thing.
         $script:frontmatter = @{}
         . ([scriptblock]::Create($script:frontmatterFuncSource))
         Parse-Frontmatter -PromptFile $fmPartial
-        $branches['frontmatter.partial'] = ($script:frontmatter['provider'] -eq 'opencode') -and ($script:frontmatter['model'] -eq '') -and ($script:frontmatter['reasoning'] -eq 'medium')
+        $branches['frontmatter.partial'] = ($script:frontmatter['provider'] -eq 'opencode') -and ($script:frontmatter['model'] -eq '') -and ($script:frontmatter['reasoning'] -eq 'medium') -and ($script:frontmatter['trigger'] -eq '')
 
         # Write coverage report
         $covered = @($branches.Values | Where-Object { $_ }).Count
