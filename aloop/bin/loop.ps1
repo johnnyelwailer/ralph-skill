@@ -1883,7 +1883,6 @@ try {
         $iteration++
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $iterationStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
-        $steeringFile = Join-Path $WorkDir "STEERING.md"
         # Hot-reload provider list from meta.json (supports runtime changes)
         if ($Provider -eq 'round-robin') {
             Refresh-ProvidersFromMeta
@@ -2003,37 +2002,13 @@ try {
             Persist-LoopPlanState -Iteration $iteration
             $stuckState.StuckCount = 0
             $stuckState.LastTask = ""
-            if ($iterationMode -eq 'proof') {
-                $script:lastProofIteration = $iteration
-            }
-
-            # Steer mode: remove any leftover steering file if the agent did not delete it
-            if ($iterationMode -eq 'steer') {
-                if (Test-Path $steeringFile) { Remove-Item $steeringFile -Force }
-                Write-Host "[Steering processed — re-plan queued for next iteration]" -ForegroundColor Blue
-                Write-LogEntry -Event "steering_processed" -Data @{ iteration = $iteration }
-            }
-
             Write-LogEntry -Event "iteration_complete" -Data @{
                 iteration = $iteration
                 mode = $iterationMode
                 provider = $iterationProvider
             }
 
-            if ($iterationMode -eq 'build') {
-                Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
-                Push-ToBackup
-            } elseif ($iterationMode -eq 'review') {
-                # Deterministic baseline update based on review-verdict.json
-                $reviewVerdict = Get-ReviewVerdict -ExpectedIteration $iteration
-                if ($reviewVerdict -eq 'PASS') {
-                    Update-ProofBaselines -ProofIteration $script:lastProofIteration
-                }
-
-                Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
-            } else {
-                Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
-            }
+            Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
         }
         catch {
             $errorContext = "$_ $script:lastProviderOutputText"

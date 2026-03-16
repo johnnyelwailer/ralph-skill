@@ -258,18 +258,17 @@ exit 0
         $rejIdx | Should -BeLessThan $appIdx
     }
 
-    It 'approved review updates proof baselines' {
+    It 'approved review does not auto-update proof baselines' {
         if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
         $e      = New-ShLoopEnv -Scenario 'approve'
         $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 8
         $events = Get-ShLogEvents -LogFile $e.LogFile
         $result.ExitCode | Should -Be 0
-        $events | Should -Contain 'baselines_updated'
-        Test-Path "$($e.SessionDir)/artifacts/baselines/dummy.txt" | Should -Be $true
-        Test-Path "$($e.SessionDir)/artifacts/baselines/proof-manifest.json" | Should -Be $false
+        $events | Should -Not -Contain 'baselines_updated'
+        Test-Path "$($e.SessionDir)/artifacts/baselines/dummy.txt" | Should -Be $false
     }
 
-    It 'rejected review preserves existing baselines and updates them only on final approval' {
+    It 'rejected review preserves existing baselines without auto-update' {
         if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
         $e      = New-ShLoopEnv -Scenario 'reject-once'
         
@@ -280,15 +279,10 @@ exit 0
         $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 14
         $events = Get-ShLogEvents -LogFile $e.LogFile
         $result.ExitCode | Should -Be 0
-        
-        $updIdx = [array]::IndexOf([string[]]$events, 'baselines_updated')
-        $rejIdx = [array]::IndexOf([string[]]$events, 'final_review_rejected')
-        
-        $updIdx | Should -BeGreaterThan -1
-        $rejIdx | Should -BeLessThan $updIdx
-        
+
+        $events | Should -Not -Contain 'baselines_updated'
         Test-Path (Join-Path $baselineDir 'preserved.txt') | Should -Be $true
-        Test-Path (Join-Path $baselineDir 'dummy.txt') | Should -Be $true
+        Test-Path (Join-Path $baselineDir 'dummy.txt') | Should -Be $false
     }
 
     It 'records proof-path branch coverage evidence at >=80%' {
@@ -305,12 +299,12 @@ exit 0
         $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
         $forceProofCovered = ($events -contains 'tasks_marked_complete') -and ($proofIdx -ge 0) -and ($appIdx -gt $proofIdx)
         $manifestInjectionCovered = -not ($result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.')
-        $baselineUpdateCovered = $events -contains 'baselines_updated'
+        $noBaselineUpdateCovered = -not ($events -contains 'baselines_updated')
 
         $branches = [ordered]@{
             'proof.force_on_all_tasks_done' = $forceProofCovered
             'review.avoids_manifest_injection' = $manifestInjectionCovered
-            'review.update_baselines_on_approval' = $baselineUpdateCovered
+            'review.no_baseline_autoupdate' = $noBaselineUpdateCovered
         }
         $covered = @($branches.Values | Where-Object { $_ }).Count
         $total = $branches.Count
@@ -834,17 +828,16 @@ exit 0
         $rejIdx | Should -BeLessThan $appIdx
     }
 
-    It 'approved review updates proof baselines' {
+    It 'approved review does not auto-update proof baselines' {
         $e      = New-LoopEnv -Scenario 'approve'
         $result = Invoke-LoopScript -LoopEnv $e -MaxIter 5
         $events = Get-LogEvents -LogFile $e.LogFile
         $result.ExitCode | Should -Be 0
-        $events | Should -Contain 'baselines_updated'
-        Test-Path "$($e.SessionDir)/artifacts/baselines/dummy.txt" | Should -Be $true
-        Test-Path "$($e.SessionDir)/artifacts/baselines/proof-manifest.json" | Should -Be $false
+        $events | Should -Not -Contain 'baselines_updated'
+        Test-Path "$($e.SessionDir)/artifacts/baselines/dummy.txt" | Should -Be $false
     }
 
-    It 'rejected review preserves existing baselines and updates them only on final approval' {
+    It 'rejected review preserves existing baselines without auto-update' {
         $e      = New-LoopEnv -Scenario 'reject-once'
         
         $baselineDir = Join-Path $e.SessionDir 'artifacts/baselines'
@@ -854,15 +847,10 @@ exit 0
         $result = Invoke-LoopScript -LoopEnv $e -MaxIter 12
         $events = Get-LogEvents -LogFile $e.LogFile
         $result.ExitCode | Should -Be 0
-        
-        $updIdx = [array]::IndexOf([string[]]$events, 'baselines_updated')
-        $rejIdx = [array]::IndexOf([string[]]$events, 'final_review_rejected')
-        
-        $updIdx | Should -BeGreaterThan -1
-        $rejIdx | Should -BeLessThan $updIdx
-        
+
+        $events | Should -Not -Contain 'baselines_updated'
         Test-Path (Join-Path $baselineDir 'preserved.txt') | Should -Be $true
-        Test-Path (Join-Path $baselineDir 'dummy.txt') | Should -Be $true
+        Test-Path (Join-Path $baselineDir 'dummy.txt') | Should -Be $false
     }
 
     It 'records proof-path branch coverage evidence at >=80%' {
@@ -878,12 +866,12 @@ exit 0
         $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
         $forceProofCovered = ($events -contains 'tasks_marked_complete') -and ($proofIdx -ge 0) -and ($appIdx -gt $proofIdx)
         $manifestInjectionCovered = -not ($result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.')
-        $baselineUpdateCovered = $events -contains 'baselines_updated'
+        $noBaselineUpdateCovered = -not ($events -contains 'baselines_updated')
 
         $branches = [ordered]@{
             'proof.force_on_all_tasks_done' = $forceProofCovered
             'review.avoids_manifest_injection' = $manifestInjectionCovered
-            'review.update_baselines_on_approval' = $baselineUpdateCovered
+            'review.no_baseline_autoupdate' = $noBaselineUpdateCovered
         }
         $covered = @($branches.Values | Where-Object { $_ }).Count
         $total = $branches.Count

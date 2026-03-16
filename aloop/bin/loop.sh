@@ -1860,7 +1860,6 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
     ITERATION_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    STEERING_FILE="$WORK_DIR/STEERING.md"
     # Hot-reload provider list from meta.json (supports runtime changes)
     if [ "$PROVIDER" = "round-robin" ]; then
         refresh_providers_from_meta
@@ -1961,27 +1960,6 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         persist_loop_plan_state
         STUCK_COUNT=0
         LAST_TASK=""
-        if [ "$iter_mode" = "proof" ]; then
-            LAST_PROOF_ITERATION="$ITERATION"
-        fi
-
-        # Steer mode: archive leftover steering file if the agent did not delete it
-        if [ "$iter_mode" = "steer" ]; then
-            if [ -f "$STEERING_FILE" ]; then
-                # Archive to STEERING_LOG.md before removing
-                {
-                    echo ""
-                    echo "## Steering — iteration $ITERATION ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
-                    echo ""
-                    cat "$STEERING_FILE"
-                    echo ""
-                } >> "$WORK_DIR/STEERING_LOG.md"
-                rm -f "$STEERING_FILE"
-            fi
-            echo "[Steering processed — re-plan queued for next iteration]"
-            write_log_entry "steering_processed" "iteration" "$ITERATION"
-        fi
-
         # Capture all commits made during this iteration (any agent may commit)
         ITERATION_COMMITS=""
         ITERATION_COMMIT_COUNT="0"
@@ -1989,21 +1967,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
 
         write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "duration" "$_iter_duration" "commits" "$ITERATION_COMMIT_COUNT" "commit_log" "$ITERATION_COMMITS"
 
-        if [ "$iter_mode" = "build" ]; then
-            push_to_backup
-        elif [ "$iter_mode" = "review" ]; then
-            # Deterministic baseline update based on review-verdict.json
-            review_verdict=$(get_review_verdict "$ITERATION")
-            if [ "$review_verdict" = "PASS" ]; then
-                update_proof_baselines "$LAST_PROOF_ITERATION"
-            fi
-
-            echo ""
-            echo "[Iteration $ITERATION complete - $iter_mode]"
-        else
-            echo ""
-            echo "[Iteration $ITERATION complete - $iter_mode]"
-        fi
+        echo ""
+        echo "[Iteration $ITERATION complete - $iter_mode]"
     else
         _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
         update_provider_health_on_failure "$iter_provider" "${LAST_PROVIDER_ERROR:-provider_failed}"
