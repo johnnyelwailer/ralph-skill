@@ -283,3 +283,23 @@
 - Gate 2: Newly added tests are mostly concrete and branch-targeted (e.g., `gh.test.ts` adds explicit no-candidate/null-path and JSON error-path assertions; `project.test.ts` now compares bootstrapped template file content against bundled template sources).
 - Gate 5: Required validation command succeeded on current HEAD: `cd aloop/cli && npm test && npm run type-check && npm run build` (tests pass, type-check clean, build succeeds).
 - Gate 8: Version spot-check remains compliant with `VERSIONS.md` (`node v22.22.1`, `commander@12.1.0`, `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`).
+
+---
+
+## Review — 2026-03-16 — commit 6f1f0df..39f41a1
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/cli/src/lib/monitor.ts`, `aloop/cli/src/lib/monitor.test.ts`, `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/bin/loop.tests.ps1`, `aloop/bin/loop_branch_coverage.tests.sh`, `aloop/templates/PROMPT_spec-review.md`, `aloop/templates/PROMPT_final-review.md`, `aloop/templates/PROMPT_final-qa.md`, `aloop/templates/PROMPT_proof.md`
+
+- Gate 2: **No-op assertion** — `monitor.test.ts:280` asserts `!files.some(f => f.includes('PROMPT_plan') && f.includes('rattail'))` but queue filenames never contain `rattail`. The assertion passes regardless of whether PROMPT_plan was incorrectly queued. Should use `!files.some(f => f.includes('PROMPT_plan'))`.
+
+**Resolved from prior reviews:**
+- Gate 4 ✅: Dead code `Update-ProofBaselines` (loop.ps1) and `update_proof_baselines` (loop.sh) removed. No remaining dead code in changed files.
+- Gate 3 ✅: Loop runtime branch coverage tests updated to include `trigger` field in all three frontmatter test branches (all_fields, empty, partial). `monitor.ts` branch coverage at 92.59% (target >=90%).
+
+**Positive observations:**
+- Gate 1: Event-driven dispatch correctly replaces hardcoded phase-name branching. `findTriggeredTemplates` scans the prompt catalog at runtime, matching the spec's "scan the agent catalog for prompts whose trigger matches the event key" pattern. Rattail chain (`all_tasks_done → spec-review → final-review → final-qa → proof → completed`) emerges from trigger frontmatter rather than hardcoded conditionals.
+- Gate 1: Re-entry logic (monitor.ts:246-266) correctly resets `cyclePosition` and `allTasksMarkedDone` when a rattail agent creates new TODO items, matching spec requirement: "If ANY rattail agent creates new TODO items, the loop goes back to building."
+- Gate 2: Rattail chain tests are thorough — `monitor.test.ts` covers the full chain (all_tasks_done → spec-review:36-59, spec-review → final-review:61-79, final-review → final-qa:155-180, final-qa → proof:182-206), chain completion (120-135), re-entry with cycle reset (208-238), deduplication (240-263, 400-412), and negative paths (chain not firing when allTasksMarkedDone is false:284-300, no allTasksMarkedDone when no templates match:302-322). Content assertions verify template content and trigger metadata in queued files.
+- Gate 5: All tests pass (28/28 monitor, 8/8 CLI), type-check clean, build succeeds (441.9KB).
+- Gate 6: Work is purely internal (runtime logic, template files, frontmatter parsing). No externally observable output — proof correctly not required.

@@ -5,6 +5,8 @@
 Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) P1 hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
+- [ ] [review] Gate 2: `monitor.test.ts:280` — assertion `!files.some(f => f.includes('PROMPT_plan') && f.includes('rattail'))` is a no-op because queue filenames never contain 'rattail'; would pass even if PROMPT_plan was incorrectly queued. Replace with `!files.some(f => f.includes('PROMPT_plan'))` to verify no plan is queued during normal build cycle. (priority: high)
+
 - [x] [review] Gate 4: dead code remains in touched loop runtimes — `Update-ProofBaselines` (`aloop/bin/loop.ps1:798`) and `update_proof_baselines` (`aloop/bin/loop.sh:1321`) are defined but have no call sites. Remove unused functions or wire them into an active flow with tests proving invocation. (priority: medium)
   - Note: removing this dead code also resolves the remaining Gate 3 proof-branch coverage gaps (`proof.force_on_all_tasks_done`, `review.inject_proof_manifest`, `review.update_baselines_on_approval`) since those branches exist only in the dead functions. Cycle/resume branch coverage is already 100% per `coverage/shell-branch-coverage.json` (31/31) and `coverage/ps1-cycle-frontmatter-branch-coverage.json` (7/7).
 
