@@ -58,7 +58,7 @@ interface DashboardRuntimeOptions {
 }
 
 const DOC_FILES = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
-const MAX_LOG_BYTES = 128 * 1024;
+const MAX_LOG_BYTES = 1024 * 1024;
 const MAX_BODY_BYTES = 64 * 1024;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const DEFAULT_REQUEST_POLL_INTERVAL_MS = 1_000;
@@ -132,7 +132,13 @@ async function readLogTail(filePath: string): Promise<string> {
   try {
     const buffer = await fs.readFile(filePath);
     const start = Math.max(0, buffer.length - MAX_LOG_BYTES);
-    return buffer.subarray(start).toString('utf8');
+    const raw = buffer.subarray(start).toString('utf8');
+    // If we sliced mid-file, skip the first (likely truncated) line
+    if (start > 0) {
+      const nl = raw.indexOf('\n');
+      return nl >= 0 ? raw.slice(nl + 1) : raw;
+    }
+    return raw;
   } catch {
     return '';
   }
@@ -581,7 +587,7 @@ export async function startDashboardServer(
       // Notify all connected clients — each gets state for their own session context.
       const contextPayloads = new Map<string, string>();
       for (const [client, ctx] of clients) {
-        const key = ctx.sessionDir;
+        const key = `${ctx.sessionDir}\0${ctx.workdir}`;
         let payload = contextPayloads.get(key);
         if (payload === undefined) {
           const state = ctx === defaultContext

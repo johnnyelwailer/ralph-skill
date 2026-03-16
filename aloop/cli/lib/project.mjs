@@ -373,6 +373,35 @@ export function resolveBundledTemplatesDir(requiredTemplates, options = {}) {
   return null;
 }
 
+const OPENCODE_AGENT_FILES = ['vision-reviewer.md', 'error-analyst.md', 'code-critic.md'];
+
+export function resolveBundledAgentsDir(options = {}) {
+  const moduleDir = path.resolve(options.moduleDir ?? path.dirname(fileURLToPath(import.meta.url)));
+  const argv1 = options.argv1 ?? process.argv[1];
+  const argvDir = typeof argv1 === 'string' && argv1.length > 0 ? path.dirname(path.resolve(argv1)) : null;
+  const cwdDir = path.resolve(options.cwd ?? process.cwd());
+  const baseDirs = [moduleDir, argvDir, cwdDir].filter(Boolean);
+  const seen = new Set();
+
+  for (const baseDir of baseDirs) {
+    for (let depth = 0; depth <= 6; depth++) {
+      const up = depth === 0 ? [] : new Array(depth).fill('..');
+      const candidate = path.resolve(baseDir, ...up, 'agents', 'opencode');
+      if (seen.has(candidate)) continue;
+      seen.add(candidate);
+      if (agentsExist(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+function agentsExist(dir) {
+  return OPENCODE_AGENT_FILES.every((f) => existsSync(path.join(dir, f)));
+}
+
 function resolveProviderHints(provider) {
   if (provider === 'claude') return '- Claude hint: Use parallel subagents when large searches are needed; summarize before coding.';
   if (provider === 'codex') return '- Codex hint: Prefer stdin prompt mode and keep outputs concise and action-focused.';
@@ -567,6 +596,23 @@ export async function scaffoldWorkspace(options = {}) {
       content = content.replaceAll(key, value);
     }
     await writeFile(destinationPath, content, 'utf8');
+  }
+
+  // Copy opencode agent files when opencode is configured
+  if (enabled.includes('opencode')) {
+    const projectRoot = discovery.project.root;
+    const opencodeAgentsDir = path.join(projectRoot, '.opencode', 'agents');
+    const bundledAgentsDir = resolveBundledAgentsDir();
+    if (bundledAgentsDir) {
+      await mkdir(opencodeAgentsDir, { recursive: true });
+      for (const agentFile of OPENCODE_AGENT_FILES) {
+        const src = path.join(bundledAgentsDir, agentFile);
+        const dest = path.join(opencodeAgentsDir, agentFile);
+        if (existsSync(src)) {
+          await copyFile(src, dest);
+        }
+      }
+    }
   }
 
   return {

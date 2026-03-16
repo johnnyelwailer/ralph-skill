@@ -79,6 +79,11 @@ export interface ScaffoldResult {
 
 export const discoverWorkspace = projectCore.discoverWorkspace as (options?: DiscoverOptions) => Promise<DiscoveryResult>;
 export const scaffoldWorkspace = projectCore.scaffoldWorkspace as (options?: ScaffoldOptions) => Promise<ScaffoldResult>;
+export const resolveBundledAgentsDir = projectCore.resolveBundledAgentsDir as (options?: {
+  moduleDir?: string;
+  argv1?: string;
+  cwd?: string;
+}) => string | null;
 export const resolveBundledTemplatesDir = projectCore.resolveBundledTemplatesDir as (
   requiredTemplates: string[],
   options?: { moduleDir?: string; argv1?: string; cwd?: string }

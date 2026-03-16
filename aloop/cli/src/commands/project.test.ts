@@ -5,7 +5,7 @@ import os from 'node:os';
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { discoverWorkspace, resolveBundledTemplatesDir, scaffoldWorkspace } from './project.js';
+import { discoverWorkspace, resolveBundledTemplatesDir, resolveBundledAgentsDir, scaffoldWorkspace } from './project.js';
 
 test('discoverWorkspace resolves project details and language signals', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-discover-'));
@@ -103,8 +103,25 @@ test('scaffoldWorkspace in orchestrate mode writes orchestrator prompts and conf
 
   const config = await readFile(result.config_path, 'utf8');
   assert.match(config, /mode: 'orchestrate'/);
-  assert.ok(existsSync(path.join(result.prompts_dir, 'PROMPT_orch_scan.md')));
-  assert.ok(!existsSync(path.join(result.prompts_dir, 'PROMPT_plan.md')));
+
+  // Verify ALL 14 orchestrator prompt files were generated with correct content
+  for (const tmpl of orchestratorTemplates) {
+    const dest = path.join(result.prompts_dir, tmpl);
+    assert.ok(existsSync(dest), `orchestrator prompt ${tmpl} should exist`);
+    const content = await readFile(dest, 'utf8');
+    assert.equal(content, `Template ${tmpl}`, `${tmpl} content should match source template`);
+  }
+
+  // Verify NO loop prompt files leaked into orchestrate output
+  const loopPrompts = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  for (const tmpl of loopPrompts) {
+    assert.ok(!existsSync(path.join(result.prompts_dir, tmpl)), `loop prompt ${tmpl} should NOT exist in orchestrate mode`);
+  }
+
+  // Verify exact prompt file count in output directory
+  const { readdir } = await import('node:fs/promises');
+  const generatedFiles = (await readdir(result.prompts_dir)).filter(f => f.endsWith('.md'));
+  assert.equal(generatedFiles.length, orchestratorTemplates.length, `should generate exactly ${orchestratorTemplates.length} prompt files, got ${generatedFiles.length}`);
 });
 
 test('scaffoldWorkspace expands nested template includes before variable substitution', async () => {
@@ -687,4 +704,105 @@ test('resolveCommand fails clearly for unconfigured projects', async () => {
     () => resolveCommand({ projectRoot: tempRoot, homeDir: homeRoot }),
     /No Aloop configuration found for this project\. Run `aloop setup` first\./,
   );
+});
+
+test('resolveBundledAgentsDir resolves agents from parent levels in packaged dist layouts', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-agents-resolve-'));
+  const fakeModuleDir = path.join(tempRoot, 'lib', 'node_modules', 'aloop-cli', 'dist');
+  const agentsDir = path.join(tempRoot, 'agents', 'opencode');
+  await mkdir(fakeModuleDir, { recursive: true });
+  await mkdir(agentsDir, { recursive: true });
+
+  const agentFiles = ['vision-reviewer.md', 'error-analyst.md', 'code-critic.md'];
+  for (const f of agentFiles) {
+    await writeFile(path.join(agentsDir, f), `Agent ${f}`, 'utf8');
+  }
+
+  const resolved = resolveBundledAgentsDir({
+    moduleDir: fakeModuleDir,
+    argv1: path.join(fakeModuleDir, 'index.js'),
+    cwd: tempRoot,
+  });
+
+  assert.equal(resolved, agentsDir);
+});
+
+test('resolveBundledAgentsDir returns null when agent files are missing', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-agents-missing-'));
+  const fakeModuleDir = path.join(tempRoot, 'lib', 'node_modules', 'aloop-cli', 'dist');
+  // Create an agents dir with only SOME files (not all required)
+  const partialAgentsDir = path.join(tempRoot, 'agents', 'opencode');
+  await mkdir(fakeModuleDir, { recursive: true });
+  await mkdir(partialAgentsDir, { recursive: true });
+  // Write only 1 of 3 required files - this should NOT satisfy the check
+  await writeFile(path.join(partialAgentsDir, 'vision-reviewer.md'), 'partial', 'utf8');
+
+  const resolved = resolveBundledAgentsDir({
+    moduleDir: fakeModuleDir,
+    argv1: path.join(fakeModuleDir, 'index.js'),
+    cwd: tempRoot,
+  });
+
+  // Should return null because not all 3 agent files are present
+  assert.equal(resolved, null);
+});
+
+test('scaffoldWorkspace copies opencode agent files when opencode is enabled', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-agents-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(homeRoot, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  // Create bundled templates dir
+  const bundledTemplatesDir = path.join(tempRoot, 'templates');
+  await mkdir(bundledTemplatesDir, { recursive: true });
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  for (const tmpl of requiredTemplates) {
+    await writeFile(path.join(bundledTemplatesDir, tmpl), `Template ${tmpl}`, 'utf8');
+  }
+
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    enabledProviders: ['opencode'],
+    templatesDir: bundledTemplatesDir,
+  });
+
+  // Verify opencode agents were copied from the bundled agents dir
+  const opencodeAgentsDir = path.join(tempRoot, '.opencode', 'agents');
+  const agentFiles = ['vision-reviewer.md', 'error-analyst.md', 'code-critic.md'];
+  for (const f of agentFiles) {
+    const dest = path.join(opencodeAgentsDir, f);
+    assert.ok(existsSync(dest), `${f} should be copied to .opencode/agents/`);
+    const content = await readFile(dest, 'utf8');
+    assert.ok(content.length > 0, `${f} should have content`);
+  }
+
+  assert.ok(result.config_path);
+});
+
+test('scaffoldWorkspace does not copy opencode agent files when opencode is not enabled', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-no-agents-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(homeRoot, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  // Create bundled templates dir
+  const bundledTemplatesDir = path.join(tempRoot, 'templates');
+  await mkdir(bundledTemplatesDir, { recursive: true });
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  for (const tmpl of requiredTemplates) {
+    await writeFile(path.join(bundledTemplatesDir, tmpl), `Template ${tmpl}`, 'utf8');
+  }
+
+  await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    enabledProviders: ['claude'],
+    templatesDir: bundledTemplatesDir,
+  });
+
+  // Verify .opencode/agents/ was NOT created
+  const opencodeAgentsDir = path.join(tempRoot, '.opencode', 'agents');
+  assert.ok(!existsSync(opencodeAgentsDir), '.opencode/agents/ should not exist when opencode is not enabled');
 });

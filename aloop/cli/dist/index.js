@@ -3352,6 +3352,63 @@ function normalizeAutonomyLevel(value) {
   const normalized = value.trim().toLowerCase();
   return AUTONOMY_LEVELS.has(normalized) ? normalized : "balanced";
 }
+var DATA_PRIVACY_LEVELS = /* @__PURE__ */ new Set(["private", "public"]);
+function normalizeDataPrivacy(value) {
+  if (typeof value !== "string") {
+    return "private";
+  }
+  const normalized = value.trim().toLowerCase();
+  return DATA_PRIVACY_LEVELS.has(normalized) ? normalized : "private";
+}
+function templatesExist(directory, requiredTemplates) {
+  return existsSync(directory) && requiredTemplates.every((file) => existsSync(path.join(directory, file)));
+}
+function resolveBundledTemplatesDir(requiredTemplates, options = {}) {
+  const moduleDir = path.resolve(options.moduleDir ?? path.dirname(fileURLToPath(import.meta.url)));
+  const argv1 = options.argv1 ?? process.argv[1];
+  const argvDir = typeof argv1 === "string" && argv1.length > 0 ? path.dirname(path.resolve(argv1)) : null;
+  const cwdDir = path.resolve(options.cwd ?? process.cwd());
+  const baseDirs = [moduleDir, argvDir, cwdDir].filter(Boolean);
+  const seen = /* @__PURE__ */ new Set();
+  for (const baseDir of baseDirs) {
+    for (let depth = 0; depth <= 6; depth++) {
+      const up = depth === 0 ? [] : new Array(depth).fill("..");
+      const candidate = path.resolve(baseDir, ...up, "templates");
+      if (seen.has(candidate))
+        continue;
+      seen.add(candidate);
+      if (templatesExist(candidate, requiredTemplates)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+var OPENCODE_AGENT_FILES = ["vision-reviewer.md", "error-analyst.md", "code-critic.md"];
+function resolveBundledAgentsDir(options = {}) {
+  const moduleDir = path.resolve(options.moduleDir ?? path.dirname(fileURLToPath(import.meta.url)));
+  const argv1 = options.argv1 ?? process.argv[1];
+  const argvDir = typeof argv1 === "string" && argv1.length > 0 ? path.dirname(path.resolve(argv1)) : null;
+  const cwdDir = path.resolve(options.cwd ?? process.cwd());
+  const baseDirs = [moduleDir, argvDir, cwdDir].filter(Boolean);
+  const seen = /* @__PURE__ */ new Set();
+  for (const baseDir of baseDirs) {
+    for (let depth = 0; depth <= 6; depth++) {
+      const up = depth === 0 ? [] : new Array(depth).fill("..");
+      const candidate = path.resolve(baseDir, ...up, "agents", "opencode");
+      if (seen.has(candidate))
+        continue;
+      seen.add(candidate);
+      if (agentsExist(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+function agentsExist(dir) {
+  return OPENCODE_AGENT_FILES.every((f) => existsSync(path.join(dir, f)));
+}
 function resolveProviderHints(provider) {
   if (provider === "claude")
     return "- Claude hint: Use parallel subagents when large searches are needed; summarize before coding.";
@@ -3364,6 +3421,26 @@ function resolveProviderHints(provider) {
   if (provider === "round-robin")
     return "- Round-robin hint: Keep context handoff explicit in TODO.md and REVIEW_LOG.md between providers.";
   return "";
+}
+var LOOP_PROMPT_TEMPLATES = ["PROMPT_plan.md", "PROMPT_build.md", "PROMPT_review.md", "PROMPT_steer.md", "PROMPT_proof.md", "PROMPT_qa.md"];
+var ORCHESTRATOR_PROMPT_TEMPLATES = [
+  "PROMPT_orch_scan.md",
+  "PROMPT_orch_product_analyst.md",
+  "PROMPT_orch_arch_analyst.md",
+  "PROMPT_orch_decompose.md",
+  "PROMPT_orch_refine.md",
+  "PROMPT_orch_sub_decompose.md",
+  "PROMPT_orch_planner_frontend.md",
+  "PROMPT_orch_planner_backend.md",
+  "PROMPT_orch_planner_infra.md",
+  "PROMPT_orch_planner_fullstack.md",
+  "PROMPT_orch_estimate.md",
+  "PROMPT_orch_resolver.md",
+  "PROMPT_orch_replan.md",
+  "PROMPT_orch_spec_consistency.md"
+];
+function resolvePromptTemplates(mode) {
+  return mode === "orchestrate" ? ORCHESTRATOR_PROMPT_TEMPLATES : LOOP_PROMPT_TEMPLATES;
 }
 var INCLUDE_DIRECTIVE_PATTERN = /\{\{include:([^}]+)\}\}/g;
 async function expandTemplateIncludes(content, templatesDir, seenIncludes = []) {
@@ -3410,14 +3487,14 @@ async function scaffoldWorkspace(options = {}) {
   const language = options.language ?? discovery.context.detected_language;
   const mode = options.mode ?? "plan-build-review";
   const autonomyLevel = normalizeAutonomyLevel(options.autonomyLevel);
+  const dataPrivacy = normalizeDataPrivacy(options.dataPrivacy);
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
   const promptsDir = path.join(discovery.setup.project_dir, "prompts");
-  const requiredTemplates = ["PROMPT_plan.md", "PROMPT_build.md", "PROMPT_review.md", "PROMPT_steer.md", "PROMPT_proof.md", "PROMPT_qa.md"];
+  const requiredTemplates = resolvePromptTemplates(mode);
   const templatesMissing = requiredTemplates.some((f) => !existsSync(path.join(templatesDir, f)));
   if (templatesMissing && !options.templatesDir) {
-    const thisDir = path.dirname(fileURLToPath(import.meta.url));
-    const bundledTemplatesDir = path.resolve(thisDir, "..", "..", "templates");
-    if (existsSync(bundledTemplatesDir) && requiredTemplates.every((f) => existsSync(path.join(bundledTemplatesDir, f)))) {
+    const bundledTemplatesDir = resolveBundledTemplatesDir(requiredTemplates);
+    if (bundledTemplatesDir) {
       await mkdir(templatesDir, { recursive: true });
       const entries = await readdir(bundledTemplatesDir, { withFileTypes: true });
       for (const entry of entries) {
@@ -3451,6 +3528,7 @@ async function scaffoldWorkspace(options = {}) {
     `provider: ${toYamlQuoted(provider)}`,
     `mode: ${toYamlQuoted(mode)}`,
     `autonomy_level: ${toYamlQuoted(autonomyLevel)}`,
+    `data_privacy: ${toYamlQuoted(dataPrivacy)}`,
     "spec_files:",
     ...resolvedSpecFiles.map((value) => `  - ${toYamlQuoted(value)}`),
     "reference_files:",
@@ -3472,6 +3550,11 @@ async function scaffoldWorkspace(options = {}) {
     "round_robin_order:",
     ...roundRobin.map((value) => `  - ${toYamlQuoted(value)}`),
     "",
+    "privacy_policy:",
+    `  data_classification: ${toYamlQuoted(dataPrivacy)}`,
+    `  zdr_enabled: ${dataPrivacy === "private" ? "true" : "false"}`,
+    `  require_data_retention_safe: ${dataPrivacy === "private" ? "true" : "false"}`,
+    "",
     `created_at: ${toYamlQuoted((/* @__PURE__ */ new Date()).toISOString())}`
   ];
   await writeFile(discovery.setup.config_path, `${configLines.join("\n")}
@@ -3483,8 +3566,7 @@ async function scaffoldWorkspace(options = {}) {
     "{{SAFETY_RULES}}": resolvedSafetyRules.map((value) => `- ${value}`).join("\n"),
     "{{PROVIDER_HINTS}}": resolveProviderHints(provider)
   };
-  for (const suffix of ["plan", "build", "review", "steer", "proof", "qa"]) {
-    const fileName = `PROMPT_${suffix}.md`;
+  for (const fileName of requiredTemplates) {
     const templatePath = path.join(templatesDir, fileName);
     const destinationPath = path.join(promptsDir, fileName);
     let content = await readFile(templatePath, "utf8");
@@ -3493,6 +3575,21 @@ async function scaffoldWorkspace(options = {}) {
       content = content.replaceAll(key, value);
     }
     await writeFile(destinationPath, content, "utf8");
+  }
+  if (enabled.includes("opencode")) {
+    const projectRoot = discovery.project.root;
+    const opencodeAgentsDir = path.join(projectRoot, ".opencode", "agents");
+    const bundledAgentsDir = resolveBundledAgentsDir();
+    if (bundledAgentsDir) {
+      await mkdir(opencodeAgentsDir, { recursive: true });
+      for (const agentFile of OPENCODE_AGENT_FILES) {
+        const src = path.join(bundledAgentsDir, agentFile);
+        const dest = path.join(opencodeAgentsDir, agentFile);
+        if (existsSync(src)) {
+          await copyFile(src, dest);
+        }
+      }
+    }
   }
   return {
     config_path: discovery.setup.config_path,
@@ -3573,6 +3670,7 @@ import { promises as fs4 } from "node:fs";
 import { spawn, spawnSync as spawnSync3 } from "node:child_process";
 import os2 from "node:os";
 import path6 from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/lib/requests.ts
 import * as fs2 from "node:fs/promises";
@@ -4410,7 +4508,7 @@ async function monitorSessionState(options) {
 
 // src/commands/dashboard.ts
 var DOC_FILES = ["TODO.md", "SPEC.md", "RESEARCH.md", "REVIEW_LOG.md", "STEERING.md"];
-var MAX_LOG_BYTES = 128 * 1024;
+var MAX_LOG_BYTES = 1024 * 1024;
 var MAX_BODY_BYTES = 64 * 1024;
 var DEFAULT_HEARTBEAT_INTERVAL_MS = 15e3;
 var DEFAULT_REQUEST_POLL_INTERVAL_MS = 1e3;
@@ -4451,7 +4549,12 @@ async function readLogTail(filePath) {
   try {
     const buffer = await fs4.readFile(filePath);
     const start = Math.max(0, buffer.length - MAX_LOG_BYTES);
-    return buffer.subarray(start).toString("utf8");
+    const raw = buffer.subarray(start).toString("utf8");
+    if (start > 0) {
+      const nl = raw.indexOf("\n");
+      return nl >= 0 ? raw.slice(nl + 1) : raw;
+    }
+    return raw;
   } catch {
     return "";
   }
@@ -4659,12 +4762,22 @@ async function processGhConventionRequests(workdir, sessionId, logPath, ghComman
   });
 }
 async function resolveDefaultAssetsDir() {
-  const runtimeScriptPath = process.argv[1] ? path6.resolve(process.argv[1]) : path6.join(process.cwd(), "dist", "index.js");
-  const runtimeDistDir = path6.dirname(runtimeScriptPath);
-  const installAssetsDir = path6.join(runtimeDistDir, "dashboard");
   const devAssetsDir = path6.join(process.cwd(), "dashboard", "dist");
-  if (await fileExists2(path6.join(installAssetsDir, "index.html"))) {
-    return installAssetsDir;
+  const moduleFilePath = fileURLToPath2(import.meta.url);
+  const moduleDir = path6.dirname(moduleFilePath);
+  const runtimeScriptPath = process.argv[1] ? path6.resolve(process.argv[1]) : null;
+  const candidates = /* @__PURE__ */ new Set();
+  if (runtimeScriptPath) {
+    candidates.add(path6.join(path6.dirname(runtimeScriptPath), "dashboard"));
+  }
+  candidates.add(path6.join(moduleDir, "dashboard"));
+  candidates.add(path6.resolve(moduleDir, "..", "dashboard"));
+  candidates.add(path6.resolve(moduleDir, "..", "..", "dashboard", "dist"));
+  candidates.add(devAssetsDir);
+  for (const candidateDir of candidates) {
+    if (await fileExists2(path6.join(candidateDir, "index.html"))) {
+      return candidateDir;
+    }
   }
   return devAssetsDir;
 }
@@ -4823,7 +4936,7 @@ async function startDashboardServer(options, runtimeOptions = {}) {
     try {
       const contextPayloads = /* @__PURE__ */ new Map();
       for (const [client, ctx] of clients) {
-        const key = ctx.sessionDir;
+        const key = `${ctx.sessionDir}\0${ctx.workdir}`;
         let payload = contextPayloads.get(key);
         if (payload === void 0) {
           const state = ctx === defaultContext ? await loadState() : await loadStateForContext(ctx, runtimeDir);
@@ -4848,7 +4961,7 @@ async function startDashboardServer(options, runtimeOptions = {}) {
     publishPending = true;
     publishTimer = setTimeout(() => {
       void publishState();
-    }, 300);
+    }, 75);
   };
   const heartbeatTimer = setInterval(() => {
     const heartbeatPayload = JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString() });
@@ -6642,7 +6755,7 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
             warnings.push(`Failed to auto-open dashboard URL (${opened.message ?? "unknown error"}); trying terminal monitor.`);
             const terminalLaunch = openStatusTerminal(deps, homeDir, launchWorkDir);
             if (!terminalLaunch.ok) {
-              warnings.push(`Failed to open terminal monitor fallback (${terminalLaunch.message ?? "unknown error"}).`);
+              warnings.push(`Failed to open terminal monitor fallback (${terminalLaunch.message ?? "unknown error"}). Run \`aloop dashboard\` or \`aloop status --watch\` manually.`);
             }
           }
         }
@@ -6650,7 +6763,7 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     } else if (onStartBehavior.mode === "terminal" && onStartBehavior.autoOpen) {
       const terminalLaunch = openStatusTerminal(deps, homeDir, launchWorkDir);
       if (!terminalLaunch.ok) {
-        warnings.push(`Failed to launch terminal monitor (${terminalLaunch.message ?? "unknown error"}).`);
+        warnings.push(`Failed to launch terminal monitor (${terminalLaunch.message ?? "unknown error"}). Run \`aloop status --watch\` manually.`);
       }
     }
     meta.monitor_mode = onStartBehavior.mode;
@@ -6725,6 +6838,11 @@ async function startCommand(sessionIdArg, options = {}) {
   }
 }
 
+// src/lib/ci-utils.ts
+function normalizeCiDetailForSignature(detail) {
+  return detail.toLowerCase().replace(/[0-9a-f]{7,40}/g, "<sha>").replace(/\d+/g, "<n>").replace(/\s+/g, " ").trim();
+}
+
 // src/commands/gh.ts
 var execFileAsync = promisify(execFile);
 var GH_PATH_HARDENING_BLOCK_MESSAGE = "blocked by aloop PATH hardening";
@@ -6746,7 +6864,8 @@ function extractGhCliError(error) {
 function isPathHardeningBlockedError(error) {
   const message = extractErrorMessage(error).toLowerCase();
   const stderr = extractGhCliError(error).toLowerCase();
-  return message.includes(GH_PATH_HARDENING_BLOCK_MESSAGE) || stderr.includes(GH_PATH_HARDENING_BLOCK_MESSAGE);
+  const needle = GH_PATH_HARDENING_BLOCK_MESSAGE.toLowerCase();
+  return message.includes(needle) || stderr.includes(needle);
 }
 function getGhBinaryCandidateNames(platform) {
   if (platform === "win32") {
@@ -6792,7 +6911,7 @@ var ghExecutor = {
       if (!isPathHardeningBlockedError(error)) {
         throw error;
       }
-      const fallbackBinary = selectUsableGhBinary(process.env.PATH ?? "");
+      const fallbackBinary = selectUsableGhBinary(process.env.PATH ?? "") ?? selectUsableGhBinary(process.env.ALOOP_ORIGINAL_PATH ?? "");
       if (!fallbackBinary) {
         throw error;
       }
@@ -6815,6 +6934,7 @@ var GH_WATCH_DEFAULT_LABEL = "aloop";
 var GH_WATCH_DEFAULT_INTERVAL_SECONDS = 60;
 var GH_WATCH_DEFAULT_MAX_CONCURRENT = 3;
 var GH_FEEDBACK_DEFAULT_MAX_ITERATIONS = 5;
+var GH_SAME_CI_FAILURE_LIMIT = 3;
 var ghLoopRuntime = {
   listActiveSessions: async (homeDir) => listActiveSessions2(homeDir),
   stopSession: async (homeDir, sessionId) => stopSession2(homeDir, sessionId),
@@ -6861,7 +6981,10 @@ function normalizeWatchIssueEntry(value) {
     max_feedback_iterations: parsePositiveInteger(candidate.max_feedback_iterations) ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
     processed_comment_ids: extractPositiveIntegers(candidate.processed_comment_ids),
     processed_issue_comment_ids: extractPositiveIntegers(candidate.processed_issue_comment_ids),
-    processed_run_ids: extractPositiveIntegers(candidate.processed_run_ids)
+    processed_run_ids: extractPositiveIntegers(candidate.processed_run_ids),
+    last_ci_failure_signature: typeof candidate.last_ci_failure_signature === "string" && candidate.last_ci_failure_signature.trim() ? candidate.last_ci_failure_signature : null,
+    last_ci_failure_summary: typeof candidate.last_ci_failure_summary === "string" && candidate.last_ci_failure_summary.trim() ? candidate.last_ci_failure_summary : null,
+    same_ci_failure_count: typeof candidate.same_ci_failure_count === "number" && Number.isInteger(candidate.same_ci_failure_count) && candidate.same_ci_failure_count >= 0 ? candidate.same_ci_failure_count : 0
   };
 }
 function normalizeWatchState(value) {
@@ -6940,7 +7063,10 @@ function watchEntryFromStartResult(result) {
     max_feedback_iterations: GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
     processed_comment_ids: [],
     processed_issue_comment_ids: [],
-    processed_run_ids: []
+    processed_run_ids: [],
+    last_ci_failure_signature: null,
+    last_ci_failure_summary: null,
+    same_ci_failure_count: 0
   };
 }
 function getRunningTrackedCount(state) {
@@ -6972,7 +7098,10 @@ function enqueueIssue(state, issue) {
     max_feedback_iterations: existing?.max_feedback_iterations ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
     processed_comment_ids: existing?.processed_comment_ids ?? [],
     processed_issue_comment_ids: existing?.processed_issue_comment_ids ?? [],
-    processed_run_ids: existing?.processed_run_ids ?? []
+    processed_run_ids: existing?.processed_run_ids ?? [],
+    last_ci_failure_signature: existing?.last_ci_failure_signature ?? null,
+    last_ci_failure_summary: existing?.last_ci_failure_summary ?? null,
+    same_ci_failure_count: existing?.same_ci_failure_count ?? 0
   };
   if (!state.queue.includes(issue.number)) {
     state.queue.push(issue.number);
@@ -7085,6 +7214,26 @@ async function launchTrackedIssue(issueNumber, options, state) {
   const entry = watchEntryFromStartResult(result);
   setWatchEntry(state, entry);
   return entry;
+}
+function buildCiFailureSignature(failedChecks) {
+  if (failedChecks.length === 0) {
+    return null;
+  }
+  const parts = failedChecks.map((check) => {
+    const tail = (check.log ?? "").split("\n").slice(-20).join("\n");
+    return `${check.name}|${normalizeCiDetailForSignature(tail)}`;
+  }).sort();
+  return parts.join("||");
+}
+function buildCiFailureSummary(failedChecks) {
+  if (failedChecks.length === 0) {
+    return "No CI failures detected.";
+  }
+  const lines = failedChecks.map((check) => {
+    const tail = (check.log ?? "").split("\n").slice(-8).map((line) => line.trim()).filter(Boolean).join(" | ");
+    return `- ${check.name}${tail ? `: ${tail}` : ""}`;
+  });
+  return ["CI failures:", ...lines].join("\n");
 }
 async function fetchPrReviewComments(repo, prNumber) {
   const commentsResponse = await ghExecutor.exec([
@@ -7321,6 +7470,42 @@ async function checkAndApplyPrFeedback(entry, options) {
     return false;
   }
   const feedback = collectNewFeedback(entry, reviewComments, issueComments, checkRuns);
+  const ciSignature = buildCiFailureSignature(feedback.failed_checks);
+  if (ciSignature) {
+    const nextSameFailureCount = entry.last_ci_failure_signature === ciSignature ? (entry.same_ci_failure_count ?? 0) + 1 : 1;
+    entry.last_ci_failure_signature = ciSignature;
+    entry.last_ci_failure_summary = buildCiFailureSummary(feedback.failed_checks);
+    entry.same_ci_failure_count = nextSameFailureCount;
+    if (nextSameFailureCount >= GH_SAME_CI_FAILURE_LIMIT) {
+      markFeedbackProcessed(entry, feedback);
+      entry.status = "stopped";
+      entry.completion_state = "persistent_ci_failure";
+      entry.updated_at = ghLoopRuntime.now();
+      const summary = [
+        `Auto re-iteration halted for #${entry.issue_number}.`,
+        `Same CI failure persisted for ${nextSameFailureCount} consecutive attempts.`,
+        entry.last_ci_failure_summary,
+        "Please investigate manually and update the branch before resuming."
+      ].join("\n\n");
+      try {
+        await ghExecutor.exec([
+          "issue",
+          "comment",
+          String(entry.issue_number),
+          "--repo",
+          entry.repo,
+          "--body",
+          summary
+        ]);
+      } catch {
+      }
+      return false;
+    }
+  } else {
+    entry.last_ci_failure_signature = null;
+    entry.last_ci_failure_summary = null;
+    entry.same_ci_failure_count = 0;
+  }
   if (!hasFeedback(feedback)) {
     let updated = false;
     for (const c of reviewComments) {
@@ -8385,6 +8570,15 @@ function evaluatePolicy(operation, role, payload, sessionPolicy) {
 
 // src/commands/setup.ts
 import * as readline from "node:readline";
+function parseDataPrivacy(value) {
+  if (!value)
+    return void 0;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "private" || normalized === "public") {
+    return normalized;
+  }
+  throw new Error(`Invalid data privacy: ${value} (must be private or public)`);
+}
 function parseAutonomyLevel(value) {
   if (!value)
     return void 0;
@@ -8393,6 +8587,23 @@ function parseAutonomyLevel(value) {
     return normalized;
   }
   throw new Error(`Invalid autonomy level: ${value} (must be cautious, balanced, or autonomous)`);
+}
+function parseSetupMode(value) {
+  if (!value)
+    return void 0;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "loop" || normalized === "orchestrate") {
+    return normalized;
+  }
+  throw new Error(`Invalid setup mode: ${value} (must be loop or orchestrate)`);
+}
+function mapSetupModeToLoopMode(value) {
+  if (!value)
+    return void 0;
+  if (value === "orchestrate") {
+    return "orchestrate";
+  }
+  return "plan-build-review";
 }
 async function defaultPromptUser(rl, question, defaultValue) {
   return new Promise((resolve2) => {
@@ -8408,12 +8619,15 @@ async function setupCommandWithDeps(options, deps) {
   });
   if (options.nonInteractive) {
     console.log("Running setup in non-interactive mode...");
+    const setupMode = parseSetupMode(options.mode);
     const result2 = await deps.scaffold({
       projectRoot: options.projectRoot,
       homeDir: options.homeDir,
       specFiles: options.spec ? [options.spec] : void 0,
       enabledProviders: options.providers ? options.providers.split(",").map((p) => p.trim()) : void 0,
-      autonomyLevel: parseAutonomyLevel(options.autonomyLevel)
+      mode: mapSetupModeToLoopMode(setupMode),
+      autonomyLevel: parseAutonomyLevel(options.autonomyLevel),
+      dataPrivacy: parseDataPrivacy(options.dataPrivacy)
     });
     console.log(`Setup complete. Config written to: ${result2.config_path}`);
     return;
@@ -8434,6 +8648,10 @@ async function setupCommandWithDeps(options, deps) {
   const autonomyLevel = parseAutonomyLevel(
     await deps.prompt("Autonomy Level (cautious|balanced|autonomous)", defaultAutonomyLevel)
   ) ?? "balanced";
+  const defaultDataPrivacy = "private";
+  const dataPrivacy = parseDataPrivacy(
+    await deps.prompt("Data Privacy (private|public)", options.dataPrivacy ?? defaultDataPrivacy)
+  ) ?? "private";
   const defaultValidation = discovery.context.validation_presets.full.join(", ") || "npm test";
   const validationCommandsRaw = await deps.prompt("Validation Commands (comma-separated)", defaultValidation);
   const validationCommands = validationCommandsRaw.split(",").map((s) => s.trim()).filter(Boolean);
@@ -8447,6 +8665,7 @@ async function setupCommandWithDeps(options, deps) {
   console.log(`- Primary Provider: ${provider}`);
   console.log(`- Mode: ${mode}`);
   console.log(`- Autonomy Level: ${autonomyLevel}`);
+  console.log(`- Data Privacy: ${dataPrivacy}`);
   console.log(`- Validation Commands: ${validationCommands.join(", ")}`);
   console.log(`- Safety Rules: ${safetyRules.join(", ")}`);
   console.log("");
@@ -8459,6 +8678,7 @@ async function setupCommandWithDeps(options, deps) {
     provider,
     mode,
     autonomyLevel,
+    dataPrivacy,
     validationCommands,
     safetyRules
   });
@@ -8809,12 +9029,14 @@ function detectPythonInstallCommand(projectRoot, existsFn = existsSync9) {
 var PROVIDER_INSTALL_COMMANDS = {
   claude: "npm install -g @anthropic-ai/claude-code",
   codex: "npm install -g @openai/codex",
-  gemini: "npm install -g @google/gemini-cli"
+  gemini: "npm install -g @google/gemini-cli",
+  opencode: "npm install -g opencode"
 };
 var PROVIDER_AUTH_ENV_VARS = {
   claude: ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
   codex: ["OPENAI_API_KEY"],
   gemini: ["GEMINI_API_KEY"],
+  opencode: ["OPENCODE_API_KEY"],
   copilot: ["GH_TOKEN"]
 };
 function buildProviderInstallCommands(installedProviders) {
@@ -8838,6 +9060,20 @@ function buildProviderRemoteEnv(installedProviders) {
     }
   }
   return env;
+}
+var PROVIDER_VSCODE_EXTENSIONS = {
+  claude: "anthropic.claude-code",
+  copilot: "GitHub.copilot"
+};
+function buildVSCodeExtensions(installedProviders) {
+  const extensions = [];
+  for (const provider of installedProviders) {
+    const ext = PROVIDER_VSCODE_EXTENSIONS[provider];
+    if (ext) {
+      extensions.push(ext);
+    }
+  }
+  return extensions;
 }
 function buildAloopMounts() {
   return [
@@ -8870,6 +9106,14 @@ function generateDevcontainerConfig(discovery, existsFn = existsSync9) {
     containerEnv: buildAloopContainerEnv(),
     remoteEnv: buildProviderRemoteEnv(installedProviders)
   };
+  const vscodeExtensions = buildVSCodeExtensions(installedProviders);
+  if (vscodeExtensions.length > 0) {
+    config.customizations = {
+      vscode: {
+        extensions: vscodeExtensions
+      }
+    };
+  }
   if (allCommands.length > 0) {
     config.postCreateCommand = allCommands.join(" && ");
   }
@@ -8892,6 +9136,23 @@ function augmentExistingConfig(existing, generated) {
   result.containerEnv = { ...existingContainerEnv, ...generated.containerEnv };
   const existingRemoteEnv = result.remoteEnv ?? {};
   result.remoteEnv = { ...generated.remoteEnv, ...existingRemoteEnv };
+  if (generated.customizations) {
+    const existingCustomizations = result.customizations ?? {};
+    const merged = { ...existingCustomizations };
+    for (const [key, value] of Object.entries(generated.customizations)) {
+      if (key === "vscode" && typeof value === "object" && value !== null) {
+        const vscodeVal = value;
+        const existingVscode = merged.vscode ?? {};
+        if (vscodeVal.extensions && Array.isArray(vscodeVal.extensions)) {
+          const existingExts = Array.isArray(existingVscode.extensions) ? existingVscode.extensions : [];
+          merged.vscode = { ...existingVscode, extensions: mergeArrayUnique(existingExts, vscodeVal.extensions) };
+        }
+      } else if (!(key in merged)) {
+        merged[key] = value;
+      }
+    }
+    result.customizations = merged;
+  }
   return result;
 }
 function stripJsoncComments(raw) {
@@ -8973,7 +9234,8 @@ async function devcontainerCommandWithDeps(options = {}, deps = defaultDeps3) {
     features: Object.keys(generated.features),
     post_create_command: generated.postCreateCommand ?? null,
     mounts: generated.mounts,
-    had_existing: hadExisting
+    had_existing: hadExisting,
+    vscode_extensions: buildVSCodeExtensions(discovery.providers.installed)
   };
 }
 function execFilePromise(command, args, options) {
@@ -8992,7 +9254,8 @@ var defaultVerifyDeps = {
 var PROVIDER_CLI_BINARIES = {
   claude: "claude",
   codex: "codex",
-  gemini: "gemini"
+  gemini: "gemini",
+  opencode: "opencode"
 };
 async function execCheck(deps, projectRoot, name, containerArgs) {
   const result = await deps.exec("devcontainer", [
@@ -9052,6 +9315,20 @@ async function verifyDevcontainer(projectRoot, providers, deps = defaultVerifyDe
       const binary = PROVIDER_CLI_BINARIES[provider];
       if (binary) {
         checks.push(await execCheck(deps, projectRoot, `provider-${provider}`, ["which", binary]));
+      }
+    }
+    for (const provider of providers) {
+      const authVars = PROVIDER_AUTH_ENV_VARS[provider];
+      if (authVars && authVars.length > 0) {
+        const varChecks = await Promise.all(
+          authVars.map((v) => execCheck(deps, projectRoot, `auth-${provider}-${v}`, ["sh", "-c", `test -n "$${v}"`]))
+        );
+        const anyAuthSet = varChecks.some((c) => c.passed);
+        checks.push({
+          name: `auth-${provider}`,
+          passed: anyAuthSet,
+          message: anyAuthSet ? `auth-${provider}: OK (${authVars.find((_, i) => varChecks[i].passed)} is set)` : `auth-${provider}: FAILED \u2014 none of [${authVars.join(", ")}] are set inside container`
+        });
       }
     }
     const raw = await deps.readFile(configPath, "utf8");
@@ -10966,8 +11243,26 @@ ${issue.body}
     pid
   };
 }
+var ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
+async function hasGithubActionsWorkflows(repo, deps) {
+  try {
+    const response = await deps.execGh([
+      "api",
+      `repos/${repo}/actions/workflows`,
+      "--method",
+      "GET",
+      "--jq",
+      ".total_count"
+    ]);
+    const total = Number(response.stdout.trim());
+    return Number.isFinite(total) && total > 0;
+  } catch {
+    return false;
+  }
+}
 async function checkPrGates(prNumber, repo, deps) {
   const gates = [];
+  const ciWorkflowsConfigured = await hasGithubActionsWorkflows(repo, deps);
   let mergeable = false;
   try {
     const viewResult = await deps.execGh([
@@ -11009,7 +11304,13 @@ async function checkPrGates(prNumber, repo, deps) {
     const failedChecks = checks.filter(
       (c) => c.conclusion === "FAILURE" || c.conclusion === "failure" || c.conclusion === "CANCELLED" || c.conclusion === "cancelled" || c.conclusion === "TIMED_OUT" || c.conclusion === "timed_out"
     );
-    if (!allCompleted) {
+    if (checks.length === 0) {
+      if (ciWorkflowsConfigured) {
+        gates.push({ gate: "ci_checks", status: "pending", detail: "CI workflows detected but no check runs reported yet" });
+      } else {
+        gates.push({ gate: "ci_checks", status: "pass", detail: "No GitHub Actions workflows detected; local fallback validation required" });
+      }
+    } else if (!allCompleted) {
       gates.push({ gate: "ci_checks", status: "pending", detail: "Some CI checks still running" });
     } else if (allPassed2) {
       gates.push({ gate: "ci_checks", status: "pass", detail: `All ${checks.length} checks passed` });
@@ -11019,7 +11320,11 @@ async function checkPrGates(prNumber, repo, deps) {
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    gates.push({ gate: "ci_checks", status: "pass", detail: `No CI checks found or error: ${msg}` });
+    if (ciWorkflowsConfigured) {
+      gates.push({ gate: "ci_checks", status: "fail", detail: `Failed to query CI checks: ${msg}` });
+    } else {
+      gates.push({ gate: "ci_checks", status: "pass", detail: `No GitHub Actions workflows detected; CI check query skipped (${msg})` });
+    }
   }
   const allPassed = gates.every((g) => g.status === "pass");
   return { pr_number: prNumber, all_passed: allPassed, mergeable, gates };
@@ -11163,7 +11468,53 @@ async function processPrLifecycle(issue, state, stateFile, sessionDir, repo, dep
   if (!gatesResult.all_passed) {
     const failedGates = gatesResult.gates.filter((g) => g.status === "fail");
     const failDetail = failedGates.map((g) => `${g.gate}: ${g.detail}`).join("; ");
+    const ciFailure = failedGates.find((g) => g.gate === "ci_checks");
+    const stateIssue = state.issues.find((i) => i.number === issue.number);
+    if (ciFailure && stateIssue) {
+      const signature = normalizeCiDetailForSignature(ciFailure.detail);
+      const retries = stateIssue.ci_failure_signature === signature ? (stateIssue.ci_failure_retries ?? 0) + 1 : 1;
+      stateIssue.ci_failure_signature = signature;
+      stateIssue.ci_failure_retries = retries;
+      stateIssue.ci_failure_summary = ciFailure.detail;
+      if (retries >= ORCHESTRATOR_CI_PERSISTENCE_LIMIT) {
+        await flagForHuman(
+          issue,
+          repo,
+          `Persistent CI failure unchanged after ${retries} attempts: ${ciFailure.detail}`,
+          deps
+        );
+        stateIssue.state = "failed";
+        stateIssue.status = "Blocked";
+        await syncIssueProjectStatus(issue.number, repo, "Blocked", {
+          execGh: deps.execGh,
+          appendLog: deps.appendLog,
+          now: deps.now,
+          sessionDir
+        });
+        state.updated_at = deps.now().toISOString();
+        await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
+`, "utf8");
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "pr_ci_failure_persistent",
+          pr_number: prNumber,
+          issue_number: issue.number,
+          ci_failure_retries: retries,
+          ci_failure_summary: ciFailure.detail
+        });
+        return {
+          pr_number: prNumber,
+          action: "flagged_for_human",
+          detail: `Persistent CI failure after ${retries} attempts`,
+          gates: gatesResult
+        };
+      }
+      state.updated_at = deps.now().toISOString();
+      await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
+`, "utf8");
+    }
     try {
+      const ciRetryNote = ciFailure && stateIssue ? ` CI retry ${stateIssue.ci_failure_retries ?? 1}/${ORCHESTRATOR_CI_PERSISTENCE_LIMIT} before human escalation.` : "";
       await deps.execGh([
         "issue",
         "comment",
@@ -11171,7 +11522,7 @@ async function processPrLifecycle(issue, state, stateFile, sessionDir, repo, dep
         "--repo",
         repo,
         "--body",
-        `PR #${prNumber} failed gates: ${failDetail}. Please address and update the PR.`
+        `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`
       ]);
     } catch {
     }
@@ -12342,7 +12693,7 @@ var program2 = new Command();
 program2.name("aloop").description("Aloop CLI for dashboard and project orchestration").version("1.0.0");
 program2.command("resolve").description("Resolve project workspace and configuration").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(resolveCommand);
 program2.command("discover").description("Discover workspace specs, files, and validation commands").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(discoverCommand);
-program2.command("setup").description("Interactive setup and scaffold for aloop project").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--spec <path>", "Specification file to use").option("--providers <providers>", "Comma-separated list of providers to enable").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--non-interactive", "Skip interactive prompts and use defaults").action(setupCommand);
+program2.command("setup").description("Interactive setup and scaffold for aloop project").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--spec <path>", "Specification file to use").option("--providers <providers>", "Comma-separated list of providers to enable").option("--mode <mode>", "Setup mode: loop or orchestrate").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--non-interactive", "Skip interactive prompts and use defaults").action(setupCommand);
 program2.command("scaffold").description("Scaffold project workdir and prompts").option("--project-root <path>", "Project root override").option("--language <language>", "Language override").option("--provider <provider>", "Provider override").option("--enabled-providers <providers...>", "Enabled providers list or csv values").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--round-robin-order <providers...>", "Round-robin provider order list or csv values").option("--spec-files <files...>", "Spec file list or csv values").option("--reference-files <files...>", "Reference file list or csv values").option("--validation-commands <commands...>", "Validation command list or csv values").option("--safety-rules <rules...>", "Safety rule list or csv values").option("--mode <mode>", "Loop mode", "plan-build-review").option("--templates-dir <path>", "Template directory override").option("--output <mode>", "Output format: json or text", "json").action(scaffoldCommand);
 program2.command("start").description("Start an aloop session for the current project").argument("[session-id]", "Session ID to resume (used with --launch resume)").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--provider <provider>", "Provider override").option("--mode <mode>", "Loop mode override").option("--launch <mode>", "Session launch mode: start, restart, or resume").option("--plan", "Shortcut for --mode plan").option("--build", "Shortcut for --mode build").option("--review", "Shortcut for --mode review").option("--in-place", "Run in project root instead of creating a git worktree").option("--max-iterations <number>", "Max iteration override").option("--output <mode>", "Output format: json or text", "text").action(startCommand);
 program2.command("dashboard").description("Launch real-time progress dashboard").option("-p, --port <number>", "Port to run the dashboard on", "3000").option("--session-dir <path>", "Session directory containing status.json and log.jsonl").option("--workdir <path>", "Project work directory containing TODO.md and related docs").option("--assets-dir <path>", "Directory containing bundled dashboard frontend assets").action(dashboardCommand);
