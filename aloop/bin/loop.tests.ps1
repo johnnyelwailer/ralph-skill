@@ -105,6 +105,7 @@ exit 0
             [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_qa.md'),     "# QA Mode`nRun QA checks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof iter-<N>.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
             $stateFile = Join-Path $testDir 'claude-state.txt'
@@ -412,6 +413,7 @@ exit 0
             [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_qa.md'),     "# QA Mode`nRun QA checks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof iter-<N>.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
             $stateFile = Join-Path $testDir 'retry-state.txt'
@@ -654,6 +656,7 @@ exit 0
             Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_qa.md')     "# QA Mode`nRun QA checks."
             Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof iter-<N>."
             Set-Content (Join-Path $promptDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
             $stateFile = Join-Path $testDir 'claude-state.json'
@@ -672,7 +675,12 @@ exit 0
 
         # ── Helper: run loop.ps1 with the fake provider injected into PATH ──
         function script:Invoke-LoopScript {
-            param($LoopEnv, [int]$MaxIter = 6, [string]$Mode = 'plan-build-review')
+            param(
+                $LoopEnv,
+                [int]$MaxIter = 6,
+                [string]$Mode = 'plan-build-review',
+                [string]$LaunchMode = 'start'
+            )
             $prevPath  = $env:PATH
             $prevState = $env:FAKE_CLAUDE_STATE
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
@@ -690,6 +698,7 @@ exit 0
                     -WorkDir       $LoopEnv.WorkDir    `
                     -Mode          $Mode                `
                     -Provider      'claude'             `
+                    -LaunchMode    $LaunchMode          `
                     -MaxIterations $MaxIter             `
                     2>&1
                 return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
@@ -804,6 +813,25 @@ exit 0
         $status = Get-Content (Join-Path $e.SessionDir 'status.json') -Raw | ConvertFrom-Json
         $result.ExitCode | Should -Be 0
         $status.state | Should -Be 'stopped'
+    }
+
+    It 'resume from qa phase restores qa cycle position and executes qa first' {
+        $e = New-LoopEnv -Scenario 'approve'
+        [pscustomobject]@{
+            iteration = 7
+            phase = 'qa'
+            provider = 'claude'
+            stuck_count = 0
+            state = 'running'
+        } | ConvertTo-Json | Set-Content (Join-Path $e.SessionDir 'status.json')
+
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 1 -LaunchMode 'resume'
+        $entries = Get-LogEntries -LogFile $e.LogFile
+        $firstIterationComplete = $entries | Where-Object { $_.event -eq 'iteration_complete' } | Select-Object -First 1
+
+        $result.ExitCode | Should -Be 0
+        $result.Output | Should -Match 'Resuming from iteration 7 \(phase: qa\)'
+        $firstIterationComplete.mode | Should -Be 'qa'
     }
 
     It 'loop.ps1 source maps success and stop states to exited/stopped' {
@@ -956,6 +984,7 @@ exit 0
             Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_qa.md')     "# QA Mode`nRun QA checks."
             Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof iter-<N>."
             Set-Content (Join-Path $promptDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
             $stateFile = Join-Path $testDir 'retry-state.json'
@@ -1745,6 +1774,7 @@ exit 0
             Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_qa.md')     "# QA Mode`nRun QA checks."
             Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof iter-<N>."
             Set-Content (Join-Path $promptDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
             return [pscustomobject]@{
@@ -1911,6 +1941,7 @@ exit 0
             [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_qa.md'),     "# QA Mode`nRun QA checks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof iter-<N>.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
 
@@ -2064,6 +2095,7 @@ exit 0
             Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
+            Set-Content (Join-Path $promptDir 'PROMPT_qa.md')     "# QA Mode`nRun QA checks."
             Set-Content (Join-Path $promptDir 'PROMPT_proof.md')  "# Proof Mode`nCollect proof iter-<N>."
             Set-Content (Join-Path $promptDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
             return [pscustomobject]@{
@@ -2251,6 +2283,7 @@ exit 0
             [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_qa.md'),     "# QA Mode`nRun QA checks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_proof.md'),  "# Proof Mode`nCollect proof iter-<N>.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_review.md'), "# Review Mode`nReview tasks.`n", $utf8NoBom)
 
@@ -2362,6 +2395,13 @@ Describe 'loop.ps1 — cycle resolution + frontmatter branch evidence' {
             throw "Could not extract Resolve-CyclePromptFromPlan from loop.ps1"
         }
 
+        # Extract Resolve-IterationMode function
+        if ($scriptContent -match '(?ms)(^function Resolve-IterationMode\s*\{.*?^})') {
+            $script:resolveIterationModeFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Resolve-IterationMode from loop.ps1"
+        }
+
         # Extract Parse-Frontmatter function
         if ($scriptContent -match '(?ms)(^function Parse-Frontmatter\s*\{.*?^})') {
             $script:frontmatterFuncSource = $Matches[1]
@@ -2436,6 +2476,22 @@ Describe 'loop.ps1 — cycle resolution + frontmatter branch evidence' {
         $result | Should -BeTrue
         $script:resolvedPromptName | Should -Be 'PROMPT_build.md'
         $script:cyclePosition | Should -Be 5
+    }
+
+    It 'Resolve-IterationMode maps plan-build-review to plan -> build x5 -> qa -> review' {
+        function Resolve-CyclePromptFromPlan { return $false }
+        function Get-ModeFromPromptName { param([string]$PromptName) return 'plan' }
+        . ([scriptblock]::Create($script:resolveIterationModeFuncSource))
+
+        $Mode = 'plan-build-review'
+        $actualModes = @()
+        foreach ($pos in 0..7) {
+            $script:cyclePosition = $pos
+            $script:resolvedPromptName = $null
+            $actualModes += (Resolve-IterationMode -IterationNumber 1)
+        }
+
+        $actualModes | Should -Be @('plan', 'build', 'build', 'build', 'build', 'build', 'qa', 'review')
     }
 
     It 'Parse-Frontmatter extracts all four fields' {

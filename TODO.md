@@ -5,7 +5,7 @@
 Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) P1 hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
-- [ ] [loop/P1] **CRITICAL:** `loop.ps1` still uses legacy `plan-build-review` behavior in multiple paths (`Resolve-IterationMode`, cycle advance modulo, required prompt set, resume phase mapping, startup mode-cycle text), effectively modeling `plan -> build x3 -> proof -> review` instead of `plan -> build x5 -> qa -> review`. Bring full parity with `loop.sh` and validate via `loop.tests.ps1` coverage for normal run + resume scenarios. (priority: critical)
+- [x] [loop/P1] **CRITICAL:** `loop.ps1` still uses legacy `plan-build-review` behavior in multiple paths (`Resolve-IterationMode`, cycle advance modulo, required prompt set, resume phase mapping, startup mode-cycle text), effectively modeling `plan -> build x3 -> proof -> review` instead of `plan -> build x5 -> qa -> review`. Bring full parity with `loop.sh` and validate via `loop.tests.ps1` coverage for normal run + resume scenarios. (priority: critical)
 
 ### Up Next — Review Fixes (Blocking)
 - [x] [review] Gate 2: `aloop/cli/src/commands/project.test.ts:302-305` still verifies bootstrap by `existsSync(...)` presence checks only. Strengthen to assert copied template content matches bundled `aloop/templates/` sources, and add explicit negative-path assertion that bootstrap is skipped when `templatesDir` is provided. (priority: high)

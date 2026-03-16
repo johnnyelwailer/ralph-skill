@@ -7,7 +7,7 @@
 #   build              - building only (implement tasks from TODO)
 #   review             - review only (audit last build against quality gates)
 #   plan-build         - alternating: plan -> build -> plan -> build -> ...
-#   plan-build-review  - full cycle: plan -> build x3 -> proof -> review -> ... (DEFAULT)
+#   plan-build-review  - full cycle: plan -> build x5 -> qa -> review -> ... (DEFAULT)
 #
 # Providers:
 #   claude, codex, gemini, copilot, round-robin
@@ -239,15 +239,17 @@ function Resolve-IterationMode {
         if ($phase -eq 0) { $requestedMode = 'plan' } else { $requestedMode = 'build' }
     }
     if ($Mode -eq 'plan-build-review') {
-        # 6-step cycle: plan -> build -> build -> build -> proof -> review
-        $phase = $script:cyclePosition % 6
+        # 8-step cycle: plan -> build x5 -> qa -> review
+        $phase = $script:cyclePosition % 8
         switch ($phase) {
             0 { $requestedMode = 'plan' }
             1 { $requestedMode = 'build' }
             2 { $requestedMode = 'build' }
             3 { $requestedMode = 'build' }
-            4 { $requestedMode = 'proof' }
-            5 { $requestedMode = 'review' }
+            4 { $requestedMode = 'build' }
+            5 { $requestedMode = 'build' }
+            6 { $requestedMode = 'qa' }
+            7 { $requestedMode = 'review' }
         }
     }
 
@@ -818,7 +820,7 @@ function Advance-CyclePosition {
     } elseif ($Mode -eq 'plan-build') {
         $script:cyclePosition = ($script:cyclePosition + 1) % 2
     } elseif ($Mode -eq 'plan-build-review') {
-        $script:cyclePosition = ($script:cyclePosition + 1) % 6
+        $script:cyclePosition = ($script:cyclePosition + 1) % 8
     }
 }
 
@@ -831,7 +833,7 @@ function Register-IterationSuccess {
     $script:phaseRetryState.consecutive = 0
     $script:phaseRetryState.failureReasons = @()
 
-    if (($Mode -in @('plan-build', 'plan-build-review')) -and -not $WasForced -and ($IterationMode -in @('plan', 'build', 'proof', 'review'))) {
+    if (($Mode -in @('plan-build', 'plan-build-review')) -and -not $WasForced -and ($IterationMode -in @('plan', 'build', 'qa', 'review'))) {
         Advance-CyclePosition
     }
 }
@@ -842,7 +844,7 @@ function Register-IterationFailure {
         [string]$ErrorText
     )
     if (-not ($Mode -in @('plan-build', 'plan-build-review'))) { return }
-    if (-not ($IterationMode -in @('plan', 'build', 'proof', 'review'))) { return }
+    if (-not ($IterationMode -in @('plan', 'build', 'qa', 'review'))) { return }
 
     if ($script:phaseRetryState.phase -eq $IterationMode) {
         $script:phaseRetryState.consecutive++
@@ -1623,7 +1625,7 @@ if ($Mode -eq 'plan-build') {
     Write-Host "Mode cycle: plan -> build -> plan -> build -> ..."
 }
 if ($Mode -eq 'plan-build-review') {
-    Write-Host "Mode cycle: plan -> build -> build -> build -> proof -> review -> ..."
+    Write-Host "Mode cycle: plan -> build -> build -> build -> build -> build -> qa -> review -> ..."
 }
 Write-Host "Max iterations: $MaxIterations"
 Write-Host "Stuck threshold: $MaxStuck"
@@ -1632,7 +1634,7 @@ Write-Host ""
 # Validate prompt files exist
 $requiredPrompts = switch ($Mode) {
     'plan-build'        { @('plan', 'build') }
-    'plan-build-review' { @('plan', 'build', 'proof', 'review') }
+    'plan-build-review' { @('plan', 'build', 'qa', 'review') }
     default             { @($Mode) }
 }
 foreach ($p in $requiredPrompts) {
@@ -1736,8 +1738,8 @@ if ($LaunchMode -eq 'resume') {
                     switch ($resumePhase) {
                         'plan'   { $script:cyclePosition = 0 }
                         'build'  { $script:cyclePosition = 1 }
-                        'proof'  { $script:cyclePosition = 4 }
-                        'review' { $script:cyclePosition = 5 }
+                        'qa'     { $script:cyclePosition = 6 }
+                        'review' { $script:cyclePosition = 7 }
                         default  { $script:cyclePosition = 0 }
                     }
                 } elseif ($Mode -eq 'plan-build') {
