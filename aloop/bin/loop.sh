@@ -7,7 +7,7 @@
 #   build              - building only (implement tasks from TODO)
 #   review             - review only (audit last build against quality gates)
 #   plan-build         - alternating: plan -> build -> plan -> build -> ...
-#   plan-build-review  - full cycle: plan -> build x3 -> proof -> review -> ... (DEFAULT)
+#   plan-build-review  - full cycle: plan -> build x5 -> qa -> review -> ... (DEFAULT)
 #
 # Providers:
 #   claude, codex, gemini, copilot, round-robin
@@ -54,7 +54,7 @@ usage() {
     echo "Usage: $0 --prompts-dir <path> --session-dir <path> --work-dir <path> [options]"
     echo ""
     echo "Required:"
-    echo "  --prompts-dir <path>    Directory containing PROMPT_{plan,build,proof,review}.md"
+    echo "  --prompts-dir <path>    Directory containing PROMPT_{plan,build,qa,review}.md"
     echo "  --session-dir <path>    Directory for session state (status.json, log.jsonl)"
     echo "  --work-dir <path>       Project working directory"
     echo ""
@@ -1731,8 +1731,8 @@ if [ "$LAUNCH_MODE" = "resume" ]; then
                 case "$resume_phase" in
                     plan)   CYCLE_POSITION=0 ;;
                     build)  CYCLE_POSITION=1 ;;
-                    proof)  CYCLE_POSITION=4 ;;
-                    review) CYCLE_POSITION=5 ;;
+                    qa)     CYCLE_POSITION=6 ;;
+                    review) CYCLE_POSITION=7 ;;
                     *)      CYCLE_POSITION=0 ;;
                 esac
             elif [ "$MODE" = "plan-build" ]; then
