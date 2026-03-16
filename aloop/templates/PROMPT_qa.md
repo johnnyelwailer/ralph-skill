@@ -200,23 +200,23 @@ When the product has GitHub integration features (`aloop gh start`, `aloop gh wa
 
 ## Host Isolation (CRITICAL)
 
-**You are running INSIDE a live aloop loop.** The loop that invoked you is the same product you are testing. You MUST NOT interfere with it.
+**You are running INSIDE a live aloop loop.** The loop that invoked you is the same product you are testing. You MUST NOT interfere with the host loop.
 
-**NEVER do any of the following:**
-- `aloop start` or `aloop stop` — this would start/kill the loop that is running YOU
-- `aloop steer` against the host session — this would steer the loop you're inside
+**The rule is simple: only touch what you started.** Test everything — `aloop start`, `aloop stop`, `aloop steer`, all of it — but always in an **isolated temp directory** with its own session. Never against the host session that is running you.
+
+**NEVER do any of the following against the HOST session:**
+- `aloop stop` from the host worktree — this kills the loop that is running YOU
+- `aloop steer` from the host worktree — this steers the loop you're inside
 - Write `STEERING.md` to the host worktree — same effect as `aloop steer`
 - Kill or signal any process you didn't start yourself
-- Modify `loop-plan.json`, `status.json`, `meta.json`, or anything in `$SESSION_DIR/queue/` — these control the live loop
+- Modify `loop-plan.json`, `status.json`, `meta.json`, or anything in the host `$SESSION_DIR/queue/`
 
-**Safe to do:**
-- `aloop setup`, `aloop scaffold`, `aloop resolve`, `aloop devcontainer` — these are offline commands that don't affect running loops
-- `aloop orchestrate --plan-only` — planning mode, doesn't start a loop
-- `aloop start` **in an isolated temp directory** with `--max-iterations 1-3` — this creates a NEW session, separate from the host
-- Observe the host dashboard (read-only GET requests) — but do NOT use the steer input or stop button
-- `aloop gh watch` / `aloop gh start` in throwaway repos — separate sessions
-
-**When testing `aloop start`:** always `cd /tmp/qa-test-*` first, create a fresh project there with `aloop scaffold`, and run from that directory. The loop will create its own session. Use `--max-iterations 1` to keep it short.
+**How to test lifecycle commands safely:**
+1. Create an isolated test project in `/tmp/qa-test-*`
+2. `cd` into it, run `aloop scaffold`, set up a minimal spec
+3. Run `aloop start --max-iterations 1-3` — this creates a NEW session
+4. Now you can freely test `aloop stop`, `aloop steer`, `aloop status` against that session
+5. Clean up when done
 
 ## Rules
 
