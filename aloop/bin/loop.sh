@@ -1282,6 +1282,8 @@ STUCK_COUNT=0
 RR_NEXT_INDEX=0
 ALL_TASKS_MARKED_DONE=false
 RESOLVED_MODE=""
+ITERATION_COMMITS=""
+ITERATION_COMMIT_COUNT="0"
 CYCLE_POSITION=0
 RESOLVED_PROMPT_NAME=""
 CYCLE_LENGTH=0
@@ -1354,12 +1356,12 @@ print_iteration_summary() {
 
     cd "$WORK_DIR"
 
-    local last_commit=$(git log -1 --format="%h %s" 2>/dev/null || echo "")
-    local last_commit_time=$(git log -1 --format="%ct" 2>/dev/null || echo "0")
-
-    local commit_msg=""
-    if [ "$last_commit_time" -ge "$iteration_start" ]; then
-        commit_msg="$last_commit"
+    # Collect ALL commits made during this iteration (agent may commit multiple times)
+    local commits=""
+    local commit_count=0
+    commits=$(git log --after="$((iteration_start - 1))" --format="%h %s" 2>/dev/null || echo "")
+    if [ -n "$commits" ]; then
+        commit_count=$(echo "$commits" | wc -l | tr -d ' ')
     fi
 
     local completed
@@ -1373,13 +1375,22 @@ print_iteration_summary() {
 
     echo ""
     echo "=== Iteration $ITERATION Complete (${mins}m ${secs}s) ==="
-    if [ -n "$commit_msg" ]; then
-        echo "Commit: $commit_msg"
+    if [ -n "$commits" ]; then
+        if [ "$commit_count" -eq 1 ]; then
+            echo "Commit: $commits"
+        else
+            echo "Commits ($commit_count):"
+            echo "$commits" | while IFS= read -r c; do echo "  $c"; done
+        fi
     else
-        echo "Warning: No commit this iteration"
+        echo "Warning: No commits this iteration"
     fi
     echo "Progress: $completed/$total_tasks tasks ($pct%)"
     echo "============================================"
+
+    # Export for log entry (pipe-separated for structured logging)
+    ITERATION_COMMITS=$(echo "$commits" | head -10 | tr '\n' '|' | sed 's/|$//')
+    ITERATION_COMMIT_COUNT="$commit_count"
 }
 
 # ============================================================================
@@ -1971,10 +1982,14 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
             write_log_entry "steering_processed" "iteration" "$ITERATION"
         fi
 
-        write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "duration" "$_iter_duration"
+        # Capture all commits made during this iteration (any agent may commit)
+        ITERATION_COMMITS=""
+        ITERATION_COMMIT_COUNT="0"
+        print_iteration_summary "$ITERATION_START"
+
+        write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "duration" "$_iter_duration" "commits" "$ITERATION_COMMIT_COUNT" "commit_log" "$ITERATION_COMMITS"
 
         if [ "$iter_mode" = "build" ]; then
-            print_iteration_summary "$ITERATION_START"
             push_to_backup
         elif [ "$iter_mode" = "review" ]; then
             # Deterministic baseline update based on review-verdict.json
