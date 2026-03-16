@@ -210,3 +210,17 @@
 **Positive observations:**
 - Gate 5: Integration sanity is high — all 654 CLI tests pass. Type-check and build succeed.
 - Gate 1: `PROMPT_qa.md` correctly added to `scaffold` loops in `project.mjs`.
+
+---
+
+## Review — 2026-03-16 07:09 UTC — commit 4837972..aa76c93
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `.aloop/pipeline.yml`, `SPEC.md`, `aloop/cli/src/commands/start.ts`, `aloop/cli/src/commands/start.test.ts`, `aloop/cli/src/lib/monitor.ts`, `aloop/cli/src/lib/monitor.test.ts`, `aloop/cli/src/lib/plan.ts`, `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/cli/src/commands/update.test.ts`, `aloop/templates/PROMPT_review.md`, `aloop/templates/PROMPT_proof.md`
+
+- Gate 1: `SPEC.md` now declares support for `{{include:path}}` prompt inlining during template expansion, but implementation does not exist in scaffold/template expansion code (`aloop/cli/lib/project.mjs` only replaces fixed placeholders and never resolves include directives). This is a spec-compliance gap.
+- Gate 1: Spec/pipeline now define continuous `plan -> build -> qa -> review`, but `compile-loop-plan.ts` hardcoded fallback for `plan-build-review` still emits `proof` and omits `qa` (`buildCycleForMode`), and tests still codify the 6-entry proof cycle.
+
+**Positive observations:**
+- Gate 5: Required validation passes on current HEAD: `cd aloop/cli && npm test && npm run type-check && npm run build` (674 CLI tests pass, type-check clean, dashboard/server build succeeds).
+- Gate 8: Version compliance spot-check passed (`node v22.22.1`, `commander@12.1.0`, `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`) and matches `VERSIONS.md` major ranges.
