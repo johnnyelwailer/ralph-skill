@@ -71,6 +71,9 @@ export interface OrchestratorIssue {
   triage_log?: TriageLogEntry[];
   pending_steering_comments?: TriageComment[];
   dor_validated?: boolean;
+  ci_failure_signature?: string;
+  ci_failure_retries?: number;
+  ci_failure_summary?: string;
 }
 
 export interface OrchestratorState {
@@ -2612,6 +2615,29 @@ export interface PrLifecycleDeps {
   invokeAgentReview?: (prNumber: number, repo: string, diff: string) => Promise<AgentReviewResult>;
 }
 
+const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
+
+function normalizeCiGateDetail(detail: string): string {
+  return detail
+    .toLowerCase()
+    .replace(/[0-9a-f]{7,40}/g, '<sha>')
+    .replace(/\d+/g, '<n>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
+  try {
+    const response = await deps.execGh([
+      'api', `repos/${repo}/actions/workflows`, '--method', 'GET', '--jq', '.total_count',
+    ]);
+    const total = Number(response.stdout.trim());
+    return Number.isFinite(total) && total > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Check PR gates: CI checks, mergeability (conflicts), and lint/type status.
  * Coverage and spec regression are checked via CI — we inspect the overall checks result.
@@ -2622,6 +2648,7 @@ export async function checkPrGates(
   deps: PrLifecycleDeps,
 ): Promise<PrGatesResult> {
   const gates: PrGateResult[] = [];
+  const ciWorkflowsConfigured = await hasGithubActionsWorkflows(repo, deps);
 
   // Gate 1: Mergeability (conflict check)
   let mergeable = false;
@@ -2661,7 +2688,13 @@ export async function checkPrGates(
         c.conclusion === 'TIMED_OUT' || c.conclusion === 'timed_out',
     );
 
-    if (!allCompleted) {
+    if (checks.length === 0) {
+      if (ciWorkflowsConfigured) {
+        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'CI workflows detected but no check runs reported yet' });
+      } else {
+        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
+      }
+    } else if (!allCompleted) {
       gates.push({ gate: 'ci_checks', status: 'pending', detail: 'Some CI checks still running' });
     } else if (allPassed) {
       gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${checks.length} checks passed` });
@@ -2670,9 +2703,12 @@ export async function checkPrGates(
       gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed checks: ${failNames}` });
     }
   } catch (e: unknown) {
-    // No checks configured or gh error — treat as pass (not all repos have CI)
     const msg = e instanceof Error ? e.message : String(e);
-    gates.push({ gate: 'ci_checks', status: 'pass', detail: `No CI checks found or error: ${msg}` });
+    if (ciWorkflowsConfigured) {
+      gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed to query CI checks: ${msg}` });
+    } else {
+      gates.push({ gate: 'ci_checks', status: 'pass', detail: `No GitHub Actions workflows detected; CI check query skipped (${msg})` });
+    }
   }
 
   const allPassed = gates.every((g) => g.status === 'pass');
@@ -2874,10 +2910,61 @@ export async function processPrLifecycle(
     // Reopen issue with gate failure details
     const failedGates = gatesResult.gates.filter((g) => g.status === 'fail');
     const failDetail = failedGates.map((g) => `${g.gate}: ${g.detail}`).join('; ');
+    const ciFailure = failedGates.find((g) => g.gate === 'ci_checks');
+    const stateIssue = state.issues.find((i) => i.number === issue.number);
+    if (ciFailure && stateIssue) {
+      const signature = normalizeCiGateDetail(ciFailure.detail);
+      const retries = stateIssue.ci_failure_signature === signature
+        ? (stateIssue.ci_failure_retries ?? 0) + 1
+        : 1;
+      stateIssue.ci_failure_signature = signature;
+      stateIssue.ci_failure_retries = retries;
+      stateIssue.ci_failure_summary = ciFailure.detail;
+
+      if (retries >= ORCHESTRATOR_CI_PERSISTENCE_LIMIT) {
+        await flagForHuman(
+          issue,
+          repo,
+          `Persistent CI failure unchanged after ${retries} attempts: ${ciFailure.detail}`,
+          deps,
+        );
+        stateIssue.state = 'failed';
+        stateIssue.status = 'Blocked';
+        await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
+          execGh: deps.execGh,
+          appendLog: deps.appendLog,
+          now: deps.now,
+          sessionDir,
+        });
+        state.updated_at = deps.now().toISOString();
+        await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'pr_ci_failure_persistent',
+          pr_number: prNumber,
+          issue_number: issue.number,
+          ci_failure_retries: retries,
+          ci_failure_summary: ciFailure.detail,
+        });
+        return {
+          pr_number: prNumber,
+          action: 'flagged_for_human',
+          detail: `Persistent CI failure after ${retries} attempts`,
+          gates: gatesResult,
+        };
+      }
+
+      state.updated_at = deps.now().toISOString();
+      await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    }
+
     try {
+      const ciRetryNote = ciFailure && stateIssue
+        ? ` CI retry ${stateIssue.ci_failure_retries ?? 1}/${ORCHESTRATOR_CI_PERSISTENCE_LIMIT} before human escalation.`
+        : '';
       await deps.execGh([
         'issue', 'comment', String(issue.number), '--repo', repo,
-        '--body', `PR #${prNumber} failed gates: ${failDetail}. Please address and update the PR.`,
+        '--body', `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`,
       ]);
     } catch {
       // Best-effort comment

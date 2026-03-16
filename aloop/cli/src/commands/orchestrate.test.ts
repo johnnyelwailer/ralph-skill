@@ -2506,6 +2506,48 @@ describe('checkPrGates', () => {
     assert.ok(result.gates[1].detail.includes('lint'));
   });
 
+  it('returns pending when workflows exist but checks are not yet reported', async () => {
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '2', stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.all_passed, false);
+    assert.equal(result.gates[1].status, 'pending');
+    assert.match(result.gates[1].detail, /no check runs/i);
+  });
+
+  it('fails CI gate when workflows exist and check query errors', async () => {
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          throw new Error('checks api unavailable');
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.all_passed, false);
+    assert.equal(result.gates[1].status, 'fail');
+    assert.match(result.gates[1].detail, /failed to query ci checks/i);
+  });
+
   it('handles gh errors gracefully for mergeability', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
@@ -2798,6 +2840,38 @@ describe('processPrLifecycle', () => {
     const commentCall = ghCalls.find((c) => c.includes('comment') && c.includes('42'));
     assert.ok(commentCall);
     assert.ok(deps.logs.some((l) => l.event === 'pr_gates_failed'));
+  });
+
+  it('flags for human when same CI failure persists across attempts', async () => {
+    const state = makeOrchestratorState([
+      {
+        number: 42,
+        pr_number: 100,
+        state: 'pr_open',
+        ci_failure_signature: 'failed checks: build',
+        ci_failure_retries: 2,
+      },
+    ]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' }]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'flagged_for_human');
+    assert.equal(state.issues[0].state, 'failed');
+    assert.equal(state.issues[0].status, 'Blocked');
+    assert.equal(state.issues[0].ci_failure_retries, 3);
+    assert.ok(deps.logs.some((l) => l.event === 'pr_ci_failure_persistent'));
   });
 
   it('handles merge failure after approval', async () => {

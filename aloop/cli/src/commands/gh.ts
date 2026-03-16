@@ -164,6 +164,9 @@ export interface GhWatchIssueEntry {
   processed_comment_ids: number[];
   processed_issue_comment_ids: number[];
   processed_run_ids: number[];
+  last_ci_failure_signature?: string | null;
+  last_ci_failure_summary?: string | null;
+  same_ci_failure_count?: number;
 }
 
 interface GhWatchState {
@@ -243,6 +246,7 @@ const GH_WATCH_DEFAULT_LABEL = 'aloop';
 const GH_WATCH_DEFAULT_INTERVAL_SECONDS = 60;
 const GH_WATCH_DEFAULT_MAX_CONCURRENT = 3;
 const GH_FEEDBACK_DEFAULT_MAX_ITERATIONS = 5;
+const GH_SAME_CI_FAILURE_LIMIT = 3;
 
 export const ghLoopRuntime = {
   listActiveSessions: async (homeDir: string): Promise<SessionInfo[]> => listActiveSessions(homeDir),
@@ -300,6 +304,15 @@ function normalizeWatchIssueEntry(value: unknown): GhWatchIssueEntry | null {
     processed_comment_ids: extractPositiveIntegers(candidate.processed_comment_ids),
     processed_issue_comment_ids: extractPositiveIntegers(candidate.processed_issue_comment_ids),
     processed_run_ids: extractPositiveIntegers(candidate.processed_run_ids),
+    last_ci_failure_signature: typeof candidate.last_ci_failure_signature === 'string' && candidate.last_ci_failure_signature.trim()
+      ? candidate.last_ci_failure_signature
+      : null,
+    last_ci_failure_summary: typeof candidate.last_ci_failure_summary === 'string' && candidate.last_ci_failure_summary.trim()
+      ? candidate.last_ci_failure_summary
+      : null,
+    same_ci_failure_count: typeof candidate.same_ci_failure_count === 'number' && Number.isInteger(candidate.same_ci_failure_count) && candidate.same_ci_failure_count >= 0
+      ? candidate.same_ci_failure_count
+      : 0,
   };
 }
 
@@ -394,6 +407,9 @@ function watchEntryFromStartResult(result: GhStartResult): GhWatchIssueEntry {
     processed_comment_ids: [],
     processed_issue_comment_ids: [],
     processed_run_ids: [],
+    last_ci_failure_signature: null,
+    last_ci_failure_summary: null,
+    same_ci_failure_count: 0,
   };
 }
 
@@ -429,6 +445,9 @@ function enqueueIssue(state: GhWatchState, issue: GhWatchIssue): void {
     processed_comment_ids: existing?.processed_comment_ids ?? [],
     processed_issue_comment_ids: existing?.processed_issue_comment_ids ?? [],
     processed_run_ids: existing?.processed_run_ids ?? [],
+    last_ci_failure_signature: existing?.last_ci_failure_signature ?? null,
+    last_ci_failure_summary: existing?.last_ci_failure_summary ?? null,
+    same_ci_failure_count: existing?.same_ci_failure_count ?? 0,
   };
   if (!state.queue.includes(issue.number)) {
     state.queue.push(issue.number);
@@ -584,6 +603,47 @@ interface PrFeedback {
   new_comments: PrReviewComment[];
   new_issue_comments: PrIssueComment[];
   failed_checks: PrCheckRun[];
+}
+
+function normalizeCiTextForSignature(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[0-9a-f]{7,40}/g, '<sha>')
+    .replace(/\d+/g, '<n>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildCiFailureSignature(failedChecks: PrCheckRun[]): string | null {
+  if (failedChecks.length === 0) {
+    return null;
+  }
+  const parts = failedChecks
+    .map((check) => {
+      const tail = (check.log ?? '')
+        .split('\n')
+        .slice(-20)
+        .join('\n');
+      return `${check.name}|${normalizeCiTextForSignature(tail)}`;
+    })
+    .sort();
+  return parts.join('||');
+}
+
+function buildCiFailureSummary(failedChecks: PrCheckRun[]): string {
+  if (failedChecks.length === 0) {
+    return 'No CI failures detected.';
+  }
+  const lines = failedChecks.map((check) => {
+    const tail = (check.log ?? '')
+      .split('\n')
+      .slice(-8)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(' | ');
+    return `- ${check.name}${tail ? `: ${tail}` : ''}`;
+  });
+  return ['CI failures:', ...lines].join('\n');
 }
 
 async function fetchPrReviewComments(repo: string, prNumber: number): Promise<PrReviewComment[]> {
@@ -847,6 +907,42 @@ async function checkAndApplyPrFeedback(
   }
 
   const feedback = collectNewFeedback(entry, reviewComments, issueComments, checkRuns);
+  const ciSignature = buildCiFailureSignature(feedback.failed_checks);
+  if (ciSignature) {
+    const nextSameFailureCount = entry.last_ci_failure_signature === ciSignature
+      ? (entry.same_ci_failure_count ?? 0) + 1
+      : 1;
+    entry.last_ci_failure_signature = ciSignature;
+    entry.last_ci_failure_summary = buildCiFailureSummary(feedback.failed_checks);
+    entry.same_ci_failure_count = nextSameFailureCount;
+    if (nextSameFailureCount >= GH_SAME_CI_FAILURE_LIMIT) {
+      markFeedbackProcessed(entry, feedback);
+      entry.status = 'stopped';
+      entry.completion_state = 'persistent_ci_failure';
+      entry.updated_at = ghLoopRuntime.now();
+      const summary = [
+        `Auto re-iteration halted for #${entry.issue_number}.`,
+        `Same CI failure persisted for ${nextSameFailureCount} consecutive attempts.`,
+        entry.last_ci_failure_summary,
+        'Please investigate manually and update the branch before resuming.',
+      ].join('\n\n');
+      try {
+        await ghExecutor.exec([
+          'issue', 'comment', String(entry.issue_number),
+          '--repo', entry.repo,
+          '--body', summary,
+        ]);
+      } catch {
+        // Best-effort issue comment.
+      }
+      return false;
+    }
+  } else {
+    entry.last_ci_failure_signature = null;
+    entry.last_ci_failure_summary = null;
+    entry.same_ci_failure_count = 0;
+  }
+
   if (!hasFeedback(feedback)) {
     // Even if no feedback matches our triggers, we should mark all seen comments as processed
     // to avoid re-scanning them every cycle.
@@ -931,6 +1027,8 @@ export {
   evaluatePolicy,
   formatGhStatusRows,
   ghStopCommand,
+  buildCiFailureSignature,
+  buildCiFailureSummary,
 };
 
 export type { PrReviewComment, PrCheckRun, PrFeedback };

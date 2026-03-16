@@ -19,7 +19,7 @@ The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> 
 4. - [x] [runtime/P1] Replace hardcoded monitor shortcuts (build→proof, proof→review) with rattail-driven dispatch and ensure monitor exit semantics use `completed` state only after full chain completes. Add tests for rattail success path and "new TODO reopens build" re-entry. (priority: high)
 
 ### Up Next — P1 Hardening (After Core)
-- [ ] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating in orchestrator/gh loops and add same-error persistence detection before auto re-iteration (stop retrying unchanged CI failures; surface actionable summary). (priority: high)
+- [x] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating in orchestrator/gh loops and add same-error persistence detection before auto re-iteration (stop retrying unchanged CI failures; surface actionable summary). (priority: high)
 - [ ] [qa/P1] Packaged-install template bootstrap remains broken in fresh HOME (`aloop setup --non-interactive` / `aloop scaffold` fail with `Template not found .../.aloop/templates/PROMPT_plan.md`). Fix template resolution/bootstrap so packaged CLI works without pre-existing `~/.aloop/templates`. (priority: high)
   - Re-test 2026-03-16 (iter 95): still failing in packaged install (`/tmp/aloop-test-install-KIcuUW/bin/aloop`) with raw stack trace and `Template not found: .../.aloop/templates/PROMPT_plan.md` on `aloop setup --non-interactive --spec SPEC.md --providers copilot` (exit 1).
 - [ ] [qa/P1] `aloop gh watch` user flow still fails under PATH hardening (`gh: blocked by aloop PATH hardening`). Keep security boundary while allowing host-side `gh` execution paths required by `aloop gh watch`. (priority: high)

@@ -12,6 +12,7 @@ import {
   hasFeedback,
   buildFeedbackSteering,
   markFeedbackProcessed,
+  buildCiFailureSignature,
   fetchPrCheckRuns,
   GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
   normalizeWatchIssueEntry,
@@ -1959,6 +1960,9 @@ function buildWatchEntry(overrides: Partial<{
   processed_comment_ids: number[];
   processed_issue_comment_ids: number[];
   processed_run_ids: number[];
+  last_ci_failure_signature: string | null;
+  last_ci_failure_summary: string | null;
+  same_ci_failure_count: number;
 }> = {}): GhWatchIssueEntry {
   return {
     issue_number: overrides.issue_number ?? 42,
@@ -1977,6 +1981,9 @@ function buildWatchEntry(overrides: Partial<{
     processed_comment_ids: overrides.processed_comment_ids ?? [],
     processed_issue_comment_ids: overrides.processed_issue_comment_ids ?? [],
     processed_run_ids: overrides.processed_run_ids ?? [],
+    last_ci_failure_signature: overrides.last_ci_failure_signature ?? null,
+    last_ci_failure_summary: overrides.last_ci_failure_summary ?? null,
+    same_ci_failure_count: overrides.same_ci_failure_count ?? 0,
   };
 }
 
@@ -2347,6 +2354,86 @@ test('gh watch --once skips feedback when max_feedback_iterations reached', asyn
       '--home-dir', tmpHome,
       '--output', 'json',
     ], { from: 'user' });
+
+    const summary = JSON.parse(output[0]) as { feedback_resumed: number[] };
+    assert.deepStrictEqual(summary.feedback_resumed, []);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('gh watch --once halts auto re-iteration on persistent identical CI failures', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-feedback-persist-ci-'));
+
+  const failingCheck: PrCheckRun = {
+    id: 900,
+    name: 'build',
+    status: 'completed',
+    conclusion: 'failure',
+    log: 'TypeError: expected value\nat src/main.ts:42',
+  };
+  const signature = buildCiFailureSignature([failingCheck]);
+  assert.ok(signature);
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': buildWatchEntry({
+        pr_number: 51,
+        last_ci_failure_signature: signature,
+        same_ci_failure_count: 2,
+      }),
+    },
+    queue: [],
+  });
+
+  const sessionDir = path.join(tmpHome, '.aloop', 'sessions', 'sess-42');
+  fs.mkdirSync(path.join(sessionDir, 'worktree'), { recursive: true });
+
+  const issueComments: string[] = [];
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    if (args[0] === 'issue' && args[1] === 'list') return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/pulls/51/comments')) return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/issues/51/comments')) return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/pulls/51') && args.includes('.head.sha')) return { stdout: 'abcdef1', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/check-runs')) {
+      return { stdout: JSON.stringify({ check_runs: [{ id: 901, name: 'build', status: 'completed', conclusion: 'failure' }] }), stderr: '' };
+    }
+    if (args[0] === 'run' && args[1] === 'list') return { stdout: JSON.stringify([{ databaseId: 77 }]), stderr: '' };
+    if (args[0] === 'run' && args[1] === 'view') return { stdout: 'TypeError: expected value\nat src/main.ts:42', stderr: '' };
+    if (args[0] === 'issue' && args[1] === 'comment') {
+      const bodyIndex = args.indexOf('--body');
+      issueComments.push(bodyIndex >= 0 ? args[bodyIndex + 1] : '');
+      return { stdout: '', stderr: '' };
+    }
+    return { stdout: '{}', stderr: '' };
+  });
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+  const startCalls: unknown[] = [];
+  t.mock.method(ghLoopRuntime, 'startIssue', async (...args: unknown[]) => {
+    startCalls.push(args);
+    return buildStartResult(42, 'sess-42-rerun', 'running');
+  });
+
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => output.push(String(line ?? '')));
+
+  try {
+    await ghCommand.parseAsync([
+      'watch', '--once',
+      '--home-dir', tmpHome,
+      '--output', 'json',
+    ], { from: 'user' });
+
+    assert.equal(startCalls.length, 0, 'should not spawn another loop when CI error is unchanged');
+    const state = readWatchState(tmpHome) as {
+      issues: Record<string, { status: string; completion_state: string; same_ci_failure_count: number }>;
+    };
+    assert.equal(state.issues['42'].status, 'stopped');
+    assert.equal(state.issues['42'].completion_state, 'persistent_ci_failure');
+    assert.equal(state.issues['42'].same_ci_failure_count, 3);
+    assert.equal(issueComments.length, 1);
+    assert.match(issueComments[0], /Auto re-iteration halted/);
 
     const summary = JSON.parse(output[0]) as { feedback_resumed: number[] };
     assert.deepStrictEqual(summary.feedback_resumed, []);
