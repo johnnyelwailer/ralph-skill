@@ -86,6 +86,8 @@ interface StartDeps {
   platform: NodeJS.Platform;
   env: NodeJS.ProcessEnv;
   now: () => Date;
+  nodePath: string;
+  aloopPath: string;
 }
 
 const defaultDeps: StartDeps = {
@@ -100,6 +102,8 @@ const defaultDeps: StartDeps = {
   platform: process.platform,
   env: process.env,
   now: () => new Date(),
+  nodePath: process.execPath,
+  aloopPath: path.resolve(process.argv[1]),
 };
 
 function stripInlineComment(raw: string): string {
@@ -523,7 +527,7 @@ function openInBrowser(deps: StartDeps, url: string, cwd: string): { ok: boolean
 }
 
 function openStatusTerminal(deps: StartDeps, homeDir: string, cwd: string): { ok: boolean; message: string | null } {
-  const statusCommand = `aloop status --watch --home-dir "${homeDir.replace(/"/g, '\\"')}"`;
+  const statusCommand = `"${deps.nodePath}" "${deps.aloopPath}" status --watch --home-dir "${homeDir.replace(/"/g, '\\"')}"`;
   if (deps.platform === 'win32') {
     const powerShell = resolvePowerShellBinary(deps);
     const terminalShell = trySpawnSync(deps, 'pwsh', ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.Major']) === 0 ? 'pwsh' : 'powershell';
@@ -904,85 +908,100 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
 
   const activePath = path.join(aloopRoot, 'active.json');
-  const active = await readActiveMap(activePath, deps);
-  active[sessionId] = {
-    session_id: sessionId,
-    session_dir: sessionDir,
-    project_name: discovery.project.name,
-    project_root: discovery.project.root,
-    pid,
-    work_dir: workDir,
-    started_at: startedAt,
-    provider: selectedProvider,
-    mode: resolvedMode,
-  };
-  await deps.writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+  let registered = false;
+  try {
+    const active = await readActiveMap(activePath, deps);
+    active[sessionId] = {
+      session_id: sessionId,
+      session_dir: sessionDir,
+      project_name: discovery.project.name,
+      project_root: discovery.project.root,
+      pid,
+      work_dir: workDir,
+      started_at: startedAt,
+      provider: selectedProvider,
+      mode: resolvedMode,
+    };
+    await deps.writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+    registered = true;
 
-  let monitorPid: number | null = null;
-  let dashboardUrl: string | null = null;
-  if (onStartBehavior.mode === 'dashboard') {
-    let dashboardPort: number | null = null;
-    try {
-      dashboardPort = await reserveLocalPort();
-    } catch (error) {
-      warnings.push(`Failed to reserve a local dashboard port: ${(error as Error).message}`);
-    }
+    let monitorPid: number | null = null;
+    let dashboardUrl: string | null = null;
+    if (onStartBehavior.mode === 'dashboard') {
+      let dashboardPort: number | null = null;
+      try {
+        dashboardPort = await reserveLocalPort();
+      } catch (error) {
+        warnings.push(`Failed to reserve a local dashboard port: ${(error as Error).message}`);
+      }
 
-    if (dashboardPort !== null) {
-      dashboardUrl = `http://localhost:${dashboardPort}`;
-      monitorPid = spawnDetached(
-        deps,
-        'aloop',
-        ['dashboard', '--port', String(dashboardPort), '--session-dir', sessionDir, '--workdir', launchWorkDir],
-        launchWorkDir,
-      );
-      if (!monitorPid) {
-        warnings.push('Failed to launch dashboard monitor automatically. You can run `aloop dashboard` manually.');
-      } else if (onStartBehavior.autoOpen) {
-        const opened = openInBrowser(deps, dashboardUrl, launchWorkDir);
-        if (!opened.ok) {
-          warnings.push(`Failed to auto-open dashboard URL (${opened.message ?? 'unknown error'}); trying terminal monitor.`);
-          const terminalLaunch = openStatusTerminal(deps, homeDir, launchWorkDir);
-          if (!terminalLaunch.ok) {
-            warnings.push(`Failed to open terminal monitor fallback (${terminalLaunch.message ?? 'unknown error'}).`);
+      if (dashboardPort !== null) {
+        dashboardUrl = `http://localhost:${dashboardPort}`;
+        monitorPid = spawnDetached(
+          deps,
+          deps.nodePath,
+          [deps.aloopPath, 'dashboard', '--port', String(dashboardPort), '--session-dir', sessionDir, '--workdir', launchWorkDir],
+          launchWorkDir,
+        );
+        if (!monitorPid) {
+          warnings.push('Failed to launch dashboard monitor automatically. You can run `aloop dashboard` manually.');
+        } else if (onStartBehavior.autoOpen) {
+          const opened = openInBrowser(deps, dashboardUrl, launchWorkDir);
+          if (!opened.ok) {
+            warnings.push(`Failed to auto-open dashboard URL (${opened.message ?? 'unknown error'}); trying terminal monitor.`);
+            const terminalLaunch = openStatusTerminal(deps, homeDir, launchWorkDir);
+            if (!terminalLaunch.ok) {
+              warnings.push(`Failed to open terminal monitor fallback (${terminalLaunch.message ?? 'unknown error'}).`);
+            }
           }
         }
       }
+    } else if (onStartBehavior.mode === 'terminal' && onStartBehavior.autoOpen) {
+      const terminalLaunch = openStatusTerminal(deps, homeDir, launchWorkDir);
+      if (!terminalLaunch.ok) {
+        warnings.push(`Failed to launch terminal monitor (${terminalLaunch.message ?? 'unknown error'}).`);
+      }
     }
-  } else if (onStartBehavior.mode === 'terminal' && onStartBehavior.autoOpen) {
-    const terminalLaunch = openStatusTerminal(deps, homeDir, launchWorkDir);
-    if (!terminalLaunch.ok) {
-      warnings.push(`Failed to launch terminal monitor (${terminalLaunch.message ?? 'unknown error'}).`);
+
+    meta.monitor_mode = onStartBehavior.mode;
+    meta.monitor_auto_open = onStartBehavior.autoOpen;
+    meta.monitor_pid = monitorPid;
+    meta.dashboard_url = dashboardUrl;
+    await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
+    return {
+      session_id: sessionId,
+      session_dir: sessionDir,
+      prompts_dir: promptsDir,
+      work_dir: workDir,
+      worktree: useWorktree,
+      worktree_path: worktreePath,
+      branch: branchName,
+      provider: selectedProvider,
+      mode: resolvedMode,
+      launch_mode: launchMode,
+      max_iterations: maxIterations,
+      max_stuck: maxStuck,
+      pid,
+      started_at: startedAt,
+      monitor_mode: onStartBehavior.mode,
+      monitor_auto_open: onStartBehavior.autoOpen,
+      monitor_pid: monitorPid,
+      dashboard_url: dashboardUrl,
+      warnings,
+    };
+  } catch (error) {
+    if (registered) {
+      try {
+        const active = await readActiveMap(activePath, deps);
+        delete active[sessionId];
+        await deps.writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+      } catch {
+        // ignore cleanup failure
+      }
     }
+    throw error;
   }
-
-  meta.monitor_mode = onStartBehavior.mode;
-  meta.monitor_auto_open = onStartBehavior.autoOpen;
-  meta.monitor_pid = monitorPid;
-  meta.dashboard_url = dashboardUrl;
-  await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
-
-  return {
-    session_id: sessionId,
-    session_dir: sessionDir,
-    prompts_dir: promptsDir,
-    work_dir: workDir,
-    worktree: useWorktree,
-    worktree_path: worktreePath,
-    branch: branchName,
-    provider: selectedProvider,
-    mode: resolvedMode,
-    launch_mode: launchMode,
-    max_iterations: maxIterations,
-    max_stuck: maxStuck,
-    pid,
-    started_at: startedAt,
-    monitor_mode: onStartBehavior.mode,
-    monitor_auto_open: onStartBehavior.autoOpen,
-    monitor_pid: monitorPid,
-    dashboard_url: dashboardUrl,
-    warnings,
-  };
 }
 
 export async function startCommand(sessionIdArg: string | undefined, options: StartCommandOptions = {}) {

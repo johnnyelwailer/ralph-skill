@@ -97,6 +97,8 @@ test('startCommandWithDeps errors when project config is missing', async () => {
         spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
         spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
         platform: 'linux',
+        nodePath: '/usr/bin/node',
+        aloopPath: '/usr/local/bin/aloop',
         env: process.env,
         now: () => new Date('2026-03-01T12:34:56.000Z'),
       }),
@@ -150,10 +152,12 @@ test('startCommandWithDeps bootstraps in-place session and registers active map'
       }) as any,
       spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
       platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
-    },
-  );
+      },
+    );
 
   assert.equal(result.session_id, 'demo-project-20260301-123456');
   assert.equal(result.worktree, false);
@@ -229,10 +233,12 @@ test('startCommandWithDeps falls back to in-place when git worktree add fails', 
         return { status: 0, stdout: '', stderr: '' } as any;
       }) as any,
       platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
-    },
-  );
+      },
+    );
 
   assert.equal(gitCalls.length, 1);
   assert.equal(result.worktree, false);
@@ -283,6 +289,8 @@ test('startCommandWithDeps normalizes Git Bash work paths before launching loop.
       }) as any,
       spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
       platform: 'win32',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
     },
@@ -338,10 +346,12 @@ test('startCommandWithDeps launches dashboard monitor and opens browser when on_
         return { status: 0, stdout: '', stderr: '' } as any;
       }) as any,
       platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
-    },
-  );
+      },
+    );
 
   assert.equal(result.monitor_mode, 'dashboard');
   assert.equal(result.monitor_auto_open, true);
@@ -349,8 +359,9 @@ test('startCommandWithDeps launches dashboard monitor and opens browser when on_
   assert.match(result.dashboard_url ?? '', /^http:\/\/localhost:\d+$/);
   assert.equal(result.warnings.length, 0);
   assert.equal(spawnCalls.length, 2);
-  assert.equal(spawnCalls[1].command, 'aloop');
-  assert.equal(spawnCalls[1].args[0], 'dashboard');
+  assert.equal(spawnCalls[1].command, '/usr/bin/node');
+  assert.equal(spawnCalls[1].args[0], '/usr/local/bin/aloop');
+  assert.equal(spawnCalls[1].args[1], 'dashboard');
   const portIndex = spawnCalls[1].args.indexOf('--port');
   assert.equal(portIndex > -1, true);
   assert.equal(result.dashboard_url, `http://localhost:${spawnCalls[1].args[portIndex + 1]}`);
@@ -392,10 +403,12 @@ test('startCommandWithDeps launches terminal monitor when on_start.terminal is e
         return { status: 0, stdout: '', stderr: '' } as any;
       }) as any,
       platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
-    },
-  );
+      },
+    );
 
   assert.equal(result.monitor_mode, 'terminal');
   assert.equal(result.monitor_auto_open, true);
@@ -439,10 +452,11 @@ test('startCommandWithDeps rejects conflicting mode flags', async () => {
           spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
           spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
           platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
           env: process.env,
           now: () => new Date('2026-03-01T12:34:56.000Z'),
-        },
-      ),
+          },      ),
     /at most one of --plan, --build, or --review/i,
   );
 });
@@ -482,10 +496,12 @@ test('startCommandWithDeps warns when installed runtime commit differs from repo
         return { status: 0, stdout: '', stderr: '' };
       }) as any,
       platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
-    },
-  );
+      },
+    );
 
   assert.ok(result.warnings.some((w: string) => w.includes('stale') && w.includes('old1234')),
     `Expected a staleness warning mentioning 'old1234', got: ${result.warnings.join('; ')}`);
@@ -523,10 +539,12 @@ test('startCommandWithDeps does not warn when installed commit matches repo HEAD
         return { status: 0, stdout: '', stderr: '' };
       }) as any,
       platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
-    },
-  );
+      },
+    );
 
   assert.ok(!result.warnings.some((w: string) => w.includes('stale')),
     `Expected no staleness warning, got: ${result.warnings.join('; ')}`);
@@ -560,10 +578,12 @@ test('startCommandWithDeps defaults launch_mode to start and passes --launch-mod
       }) as any,
       spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
       platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
-    },
-  );
+      },
+    );
 
   assert.equal(result.launch_mode, 'start');
   assert.equal(launchCalls.length, 1);
@@ -603,10 +623,12 @@ test('startCommandWithDeps passes resume launch mode to loop script', async () =
       }) as any,
       spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
       platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
-    },
-  );
+      },
+    );
 
   assert.equal(result.launch_mode, 'resume');
   assert.equal(launchCalls.length, 1);
@@ -646,6 +668,8 @@ test('startCommandWithDeps passes -LaunchMode to loop.ps1 on Windows', async () 
       }) as any,
       spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
       platform: 'win32',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
     },
@@ -675,10 +699,11 @@ test('startCommandWithDeps rejects invalid launch mode', async () => {
           spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
           spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
           platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
           env: process.env,
           now: () => new Date('2026-03-01T12:34:56.000Z'),
-        },
-      ),
+          },      ),
     /Invalid launch mode/i,
   );
 });
@@ -740,10 +765,12 @@ test('startCommandWithDeps resume reuses existing session worktree and branch', 
       }) as any,
       spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
       platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
-    },
-  );
+      },
+    );
 
   assert.equal(result.session_id, existingSessionId);
   assert.equal(result.work_dir, existingWorktreePath);
@@ -819,10 +846,12 @@ test('startCommandWithDeps resume recreates worktree on same branch when worktre
         return { status: 0, stdout: '', stderr: '' } as any;
       }) as any,
       platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
-    },
-  );
+      },
+    );
 
   assert.equal(result.session_id, existingSessionId);
   assert.equal(result.branch, existingBranch);
@@ -857,10 +886,11 @@ test('startCommandWithDeps resume errors when session does not exist', async () 
           spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
           spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
           platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
           env: process.env,
           now: () => new Date('2026-03-01T12:34:56.000Z'),
-        },
-      ),
+          },      ),
     /Session not found.*nonexistent-session/i,
   );
 });
@@ -914,10 +944,12 @@ test('startCommandWithDeps resume reuses in-place session without worktree', asy
       spawn: (() => ({ pid: 9999, unref() {} }) as any) as any,
       spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
       platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
       env: process.env,
       now: () => new Date('2026-03-01T12:34:56.000Z'),
-    },
-  );
+      },
+    );
 
   assert.equal(result.session_id, existingSessionId);
   assert.equal(result.worktree, false);
@@ -925,4 +957,50 @@ test('startCommandWithDeps resume reuses in-place session without worktree', asy
   assert.equal(result.work_dir, fixture.projectRoot);
   assert.equal(result.branch, null);
   assert.equal(result.launch_mode, 'resume');
+});
+
+test('startCommandWithDeps removes session from active.json if subsequent step fails', async () => {
+  const fixture = await setupWorkspace('aloop-start-cleanup-failure-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\nmode: 'plan'\non_start:\n  monitor: 'dashboard'\n",
+    'utf8',
+  );
+
+  const activePath = path.join(fixture.homeDir, '.aloop', 'active.json');
+
+  let metaWriteCount = 0;
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile: (async (p: string, data: string, enc: BufferEncoding) => {
+            if (p.endsWith('meta.json')) {
+              metaWriteCount++;
+              if (metaWriteCount === 3) { // Third meta.json write is at the end
+                throw new Error('Injected failure at end of startCommandWithDeps');
+              }
+            }
+            return writeFile(p, data, enc);
+          }) as any,
+          mkdir,
+          cp: (async () => undefined) as any,
+          existsSync,
+          spawn: (() => ({ pid: 5555, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date('2026-03-01T12:34:56.000Z'),
+        },
+      ),
+    /Injected failure/i,
+  );
+
+  const active = JSON.parse(await readFile(activePath, 'utf8'));
+  assert.deepEqual(active, {}, 'Session should have been removed from active.json on failure');
 });
