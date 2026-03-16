@@ -233,19 +233,8 @@ function Resolve-IterationMode {
         [bool]$ConsumeForcedFlags = $true
     )
     $script:resolvedPromptName = $null
-    if ($ConsumeForcedFlags -and ($Mode -eq 'plan-build-review' -or $Mode -eq 'review')) {
-        $loopPlanFile = Join-Path $SessionDir "loop-plan.json"
-        if (Test-Path $loopPlanFile) {
-            try {
-                $plan = Get-Content -Path $loopPlanFile -Raw | ConvertFrom-Json
-                if ($null -ne $plan -and $plan.PSObject.Properties.Name -contains 'forceReviewNext' -and [bool]$plan.forceReviewNext) {
-                    $plan.forceReviewNext = $false
-                    $plan | ConvertTo-Json -Depth 12 | Set-Content -Encoding utf8 $loopPlanFile
-                    return 'review'
-                }
-            } catch { }
-        }
-    }
+    # Queue overrides replace legacy forceReviewNext/forcePlanNext flags.
+    # Queue consumption happens in Run-QueueIfPresent before mode resolution.
     if (Resolve-CyclePromptFromPlan) {
         return (Get-ModeFromPromptName -PromptName $script:resolvedPromptName)
     }
@@ -2007,6 +1996,22 @@ try {
             Persist-LoopPlanState -Iteration $iteration
             $stuckState.StuckCount = 0
             $stuckState.LastTask = ""
+
+            if ($iterationMode -eq 'build' -and $script:allTasksMarkedDone) {
+                $queueDir = Join-Path $SessionDir 'queue'
+                $reviewPrompt = Join-Path $PromptsDir 'PROMPT_review.md'
+                if (Test-Path $reviewPrompt) {
+                    New-Item -ItemType Directory -Path $queueDir -Force | Out-Null
+                    Copy-Item -Path $reviewPrompt -Destination (Join-Path $queueDir '001-force-review.md') -Force
+                    Write-LogEntry -Event "queue_inject" -Data @{
+                        iteration = $iteration
+                        reason = 'all_tasks_done'
+                        prompt = 'PROMPT_review.md'
+                    }
+                    Write-Host "[All tasks marked done — review queued for next iteration]" -ForegroundColor Yellow
+                }
+            }
+
             Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
             Write-LogEntry -Event "iteration_complete" -Data @{
                 iteration = $iteration

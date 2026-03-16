@@ -2494,42 +2494,22 @@ Describe 'loop.ps1 — cycle resolution + frontmatter branch evidence' {
         $actualModes | Should -Be @('plan', 'build', 'build', 'build', 'build', 'build', 'qa', 'review')
     }
 
-    It 'Resolve-IterationMode consumes forceReviewNext and returns review' {
-        $SessionDir = Join-Path $script:cfTempRoot 'force-review-next'
+    It 'Resolve-IterationMode ignores legacy forceReviewNext flag and follows cycle resolution' {
+        $SessionDir = Join-Path $script:cfTempRoot 'force-review-legacy-ignored'
         New-Item -ItemType Directory -Force $SessionDir | Out-Null
         $planFile = Join-Path $SessionDir 'loop-plan.json'
         '{"cycle":["PROMPT_plan.md","PROMPT_build.md","PROMPT_review.md"],"cyclePosition":1,"forceReviewNext":true}' | Set-Content $planFile
-
-        function Resolve-CyclePromptFromPlan { throw 'forced review should short-circuit before cycle resolution' }
-        function Get-ModeFromPromptName { param([string]$PromptName) return 'plan' }
-        . ([scriptblock]::Create($script:resolveIterationModeFuncSource))
-
-        $Mode = 'plan-build-review'
-        $script:cyclePosition = 0
-        $script:resolvedPromptName = 'PROMPT_build.md'
-        $resolved = Resolve-IterationMode -IterationNumber 1
-
-        $resolved | Should -Be 'review'
-        $script:resolvedPromptName | Should -Be $null
-        $updated = Get-Content -Path $planFile -Raw | ConvertFrom-Json
-        $updated.forceReviewNext | Should -BeFalse
-    }
-
-    It 'Resolve-IterationMode does not consume forceReviewNext when ConsumeForcedFlags is false' {
-        $SessionDir = Join-Path $script:cfTempRoot 'force-review-no-consume'
-        New-Item -ItemType Directory -Force $SessionDir | Out-Null
-        $planFile = Join-Path $SessionDir 'loop-plan.json'
-        '{"cycle":["PROMPT_plan.md","PROMPT_build.md","PROMPT_review.md"],"cyclePosition":0,"forceReviewNext":true}' | Set-Content $planFile
 
         function Resolve-CyclePromptFromPlan { return $false }
         function Get-ModeFromPromptName { param([string]$PromptName) return 'plan' }
         . ([scriptblock]::Create($script:resolveIterationModeFuncSource))
 
         $Mode = 'plan-build-review'
-        $script:cyclePosition = 0
-        $resolved = Resolve-IterationMode -IterationNumber 1 -ConsumeForcedFlags $false
+        $script:cyclePosition = 1
+        $script:resolvedPromptName = $null
+        $resolved = Resolve-IterationMode -IterationNumber 1
 
-        $resolved | Should -Be 'plan'
+        $resolved | Should -Be 'build'
         $updated = Get-Content -Path $planFile -Raw | ConvertFrom-Json
         $updated.forceReviewNext | Should -BeTrue
     }
@@ -2784,6 +2764,22 @@ exit 0
         $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
         $start = $log | Where-Object { $_.event -eq 'queue_override_start' } | Select-Object -First 1
         $start.provider | Should -Be 'opencode'
+    }
+
+    It 'injects review prompt into queue when build detects all tasks done' {
+        $e = New-QueueEnv
+        Set-Content (Join-Path $e.WorkDir 'TODO.md') "- [x] Task A"
+        Set-Content (Join-Path $e.PromptsDir 'PROMPT_review.md') "# Review Mode`nReview tasks."
+
+        $result = Invoke-QueueLoop -Env $e -MaxIter 1
+        $result.ExitCode | Should -Be 0
+
+        Test-Path (Join-Path $e.QueueDir '001-force-review.md') | Should -Be $true
+        $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $events = $log | ForEach-Object { $_.event }
+        $events | Should -Contain 'tasks_marked_complete'
+        $events | Should -Contain 'queue_inject'
+        $events | Should -Contain 'iteration_complete'
     }
 
     It 'Wait-ForRequests polls until requests directory is empty' {
