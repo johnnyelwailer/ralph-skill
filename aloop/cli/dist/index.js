@@ -8743,6 +8743,16 @@ var defaultDeps3 = {
   mkdir: mkdir5,
   existsSync: existsSync9
 };
+function isDevcontainerDeps(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value;
+  return typeof candidate.discover === "function" && typeof candidate.readFile === "function" && typeof candidate.writeFile === "function" && typeof candidate.mkdir === "function" && typeof candidate.existsSync === "function";
+}
+function resolveDevcontainerDeps(depsOrCommand, fallback = defaultDeps3) {
+  return isDevcontainerDeps(depsOrCommand) ? depsOrCommand : fallback;
+}
 function getLanguageMapping(language, projectRoot, existsFn = existsSync9) {
   switch (language) {
     case "node-typescript":
@@ -9082,7 +9092,8 @@ async function verifyDevcontainer(projectRoot, providers, deps = defaultVerifyDe
   }
   return { passed: false, checks: [], iteration: maxIterations };
 }
-async function verifyDevcontainerCommand(options = {}, deps = defaultDeps3, verifyDepsOverride) {
+async function verifyDevcontainerCommand(options = {}, depsOrCommand, verifyDepsOverride) {
+  const deps = resolveDevcontainerDeps(depsOrCommand, defaultDeps3);
   const discovery = await deps.discover({
     projectRoot: options.projectRoot,
     homeDir: options.homeDir
@@ -9108,7 +9119,8 @@ async function verifyDevcontainerCommand(options = {}, deps = defaultDeps3, veri
     console.log("Some checks failed. Review the output above and fix .devcontainer/devcontainer.json.");
   }
 }
-async function devcontainerCommand(options = {}, deps = defaultDeps3) {
+async function devcontainerCommand(options = {}, depsOrCommand) {
+  const deps = resolveDevcontainerDeps(depsOrCommand, defaultDeps3);
   const result = await devcontainerCommandWithDeps(options, deps);
   const outputMode = options.output || "text";
   if (outputMode === "json") {

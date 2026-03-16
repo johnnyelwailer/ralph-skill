@@ -10,6 +10,7 @@ import {
   detectPythonInstallCommand,
   buildProviderInstallCommands,
   buildProviderRemoteEnv,
+  resolveDevcontainerDeps,
   verifyDevcontainer,
   verifyDevcontainerCommand,
   type DevcontainerDeps,
@@ -464,6 +465,23 @@ function makeDeps(existingConfig?: string): DevcontainerDeps {
     existsSync: existingConfig ? (p) => p.includes('devcontainer.json') : () => false,
   };
 }
+
+test('resolveDevcontainerDeps - uses injected deps when valid', () => {
+  const deps = makeDeps();
+  const resolved = resolveDevcontainerDeps(deps, makeDeps('{"name":"fallback"}'));
+  assert.equal(resolved, deps);
+});
+
+test('resolveDevcontainerDeps - ignores commander action arg shape', () => {
+  const fallback = makeDeps();
+  const commanderActionArg = {
+    opts: () => ({}),
+    parent: {},
+    name: () => 'devcontainer',
+  };
+  const resolved = resolveDevcontainerDeps(commanderActionArg, fallback);
+  assert.equal(resolved, fallback);
+});
 
 test('devcontainerCommand - json output for created action', async () => {
   const logs: string[] = [];

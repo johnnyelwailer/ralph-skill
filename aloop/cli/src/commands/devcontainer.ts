@@ -55,6 +55,24 @@ const defaultDeps: DevcontainerDeps = {
   existsSync,
 };
 
+function isDevcontainerDeps(value: unknown): value is DevcontainerDeps {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Partial<DevcontainerDeps>;
+  return typeof candidate.discover === 'function'
+    && typeof candidate.readFile === 'function'
+    && typeof candidate.writeFile === 'function'
+    && typeof candidate.mkdir === 'function'
+    && typeof candidate.existsSync === 'function';
+}
+
+export function resolveDevcontainerDeps(depsOrCommand: unknown, fallback: DevcontainerDeps = defaultDeps): DevcontainerDeps {
+  // Commander passes the Command object as the second argument to .action(...).
+  // Treat non-DevcontainerDeps values as framework arguments, not injected deps.
+  return isDevcontainerDeps(depsOrCommand) ? depsOrCommand : fallback;
+}
+
 function getLanguageMapping(language: string, projectRoot: string, existsFn: (p: string) => boolean = existsSync): LanguageMapping {
   switch (language) {
     case 'node-typescript':
@@ -527,9 +545,10 @@ export async function verifyDevcontainer(
  */
 export async function verifyDevcontainerCommand(
   options: DevcontainerCommandOptions = {},
-  deps: DevcontainerDeps = defaultDeps,
+  depsOrCommand?: DevcontainerDeps | unknown,
   verifyDepsOverride?: VerifyDeps,
 ): Promise<void> {
+  const deps = resolveDevcontainerDeps(depsOrCommand, defaultDeps);
   const discovery = await deps.discover({
     projectRoot: options.projectRoot,
     homeDir: options.homeDir,
@@ -559,7 +578,8 @@ export async function verifyDevcontainerCommand(
   }
 }
 
-export async function devcontainerCommand(options: DevcontainerCommandOptions = {}, deps: DevcontainerDeps = defaultDeps) {
+export async function devcontainerCommand(options: DevcontainerCommandOptions = {}, depsOrCommand?: DevcontainerDeps | unknown) {
+  const deps = resolveDevcontainerDeps(depsOrCommand, defaultDeps);
   const result = await devcontainerCommandWithDeps(options, deps);
   const outputMode = options.output || 'text';
 
