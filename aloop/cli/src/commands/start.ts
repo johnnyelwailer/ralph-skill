@@ -951,7 +951,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
             warnings.push(`Failed to auto-open dashboard URL (${opened.message ?? 'unknown error'}); trying terminal monitor.`);
             const terminalLaunch = openStatusTerminal(deps, homeDir, launchWorkDir);
             if (!terminalLaunch.ok) {
-              warnings.push(`Failed to open terminal monitor fallback (${terminalLaunch.message ?? 'unknown error'}).`);
+              warnings.push(`Failed to open terminal monitor fallback (${terminalLaunch.message ?? 'unknown error'}). Run \`aloop dashboard\` or \`aloop status --watch\` manually.`);
             }
           }
         }
@@ -959,7 +959,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     } else if (onStartBehavior.mode === 'terminal' && onStartBehavior.autoOpen) {
       const terminalLaunch = openStatusTerminal(deps, homeDir, launchWorkDir);
       if (!terminalLaunch.ok) {
-        warnings.push(`Failed to launch terminal monitor (${terminalLaunch.message ?? 'unknown error'}).`);
+        warnings.push(`Failed to launch terminal monitor (${terminalLaunch.message ?? 'unknown error'}). Run \`aloop status --watch\` manually.`);
       }
     }
 

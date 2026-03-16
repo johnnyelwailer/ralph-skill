@@ -1004,3 +1004,301 @@ test('startCommandWithDeps removes session from active.json if subsequent step f
   const active = JSON.parse(await readFile(activePath, 'utf8'));
   assert.deepEqual(active, {}, 'Session should have been removed from active.json on failure');
 });
+
+// --- Auto-monitoring failure/fallback tests ---
+
+test('startCommandWithDeps warns with manual command when dashboard spawn fails', async () => {
+  const fixture = await setupWorkspace('aloop-start-dashboard-spawn-fail-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'dashboard'\n  auto_open: true\n",
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        const argsList = [...(args ?? [])];
+        // Dashboard spawn throws; loop spawn succeeds
+        if (argsList.includes('dashboard')) {
+          throw new Error('spawn ENOENT');
+        }
+        return { pid: 2121, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.monitor_mode, 'dashboard');
+  assert.equal(result.monitor_pid, null);
+  assert.ok(
+    result.warnings.some((w: string) => w.includes('aloop dashboard')),
+    `Expected warning with manual command, got: ${result.warnings.join('; ')}`,
+  );
+});
+
+test('startCommandWithDeps falls back to terminal when browser open fails', async () => {
+  const fixture = await setupWorkspace('aloop-start-browser-fallback-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'dashboard'\n  auto_open: true\n",
+    'utf8',
+  );
+
+  const syncCalls: SpawnRecord[] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 3131, unref() {} }) as any) as any,
+      spawnSync: ((command: string, args: readonly string[]) => {
+        syncCalls.push({ command, args: [...args] });
+        // xdg-open (browser) fails; x-terminal-emulator (fallback) succeeds
+        if (command === 'xdg-open') {
+          return { status: 1, stdout: '', stderr: '' } as any;
+        }
+        return { status: 0, stdout: '', stderr: '' } as any;
+      }) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.monitor_mode, 'dashboard');
+  assert.equal(result.monitor_pid, 3131);
+  assert.ok(
+    result.warnings.some((w: string) => w.includes('trying terminal monitor')),
+    `Expected browser-fallback warning, got: ${result.warnings.join('; ')}`,
+  );
+  assert.ok(
+    syncCalls.some((call) => call.command === 'x-terminal-emulator'),
+    'Expected terminal fallback to have been attempted',
+  );
+});
+
+test('startCommandWithDeps warns with manual command when both browser and terminal fail', async () => {
+  const fixture = await setupWorkspace('aloop-start-both-fail-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'dashboard'\n  auto_open: true\n",
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 3131, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 1, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.ok(
+    result.warnings.some((w: string) => w.includes('aloop dashboard') || w.includes('aloop status --watch')),
+    `Expected warning with manual fallback command, got: ${result.warnings.join('; ')}`,
+  );
+});
+
+test('startCommandWithDeps warns with manual command when terminal monitor fails', async () => {
+  const fixture = await setupWorkspace('aloop-start-terminal-fail-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'terminal'\n  auto_open: true\n",
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 5151, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 1, stdout: '', stderr: 'not found' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.monitor_mode, 'terminal');
+  assert.ok(
+    result.warnings.some((w: string) => w.includes('aloop status --watch')),
+    `Expected warning with manual status command, got: ${result.warnings.join('; ')}`,
+  );
+});
+
+test('startCommandWithDeps uses open command on macOS for dashboard auto-open', async () => {
+  const fixture = await setupWorkspace('aloop-start-macos-browser-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'dashboard'\n  auto_open: true\n",
+    'utf8',
+  );
+
+  const syncCalls: SpawnRecord[] = [];
+  await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 3131, unref() {} }) as any) as any,
+      spawnSync: ((command: string, args: readonly string[]) => {
+        syncCalls.push({ command, args: [...args] });
+        return { status: 0, stdout: '', stderr: '' } as any;
+      }) as any,
+      platform: 'darwin',
+      nodePath: '/usr/local/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.ok(
+    syncCalls.some((call) => call.command === 'open' && call.args[0]?.startsWith('http://localhost:')),
+    `Expected macOS 'open' command, got: ${syncCalls.map((c) => c.command).join(', ')}`,
+  );
+});
+
+test('startCommandWithDeps uses osascript for terminal monitor on macOS', async () => {
+  const fixture = await setupWorkspace('aloop-start-macos-terminal-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'terminal'\n  auto_open: true\n",
+    'utf8',
+  );
+
+  const syncCalls: SpawnRecord[] = [];
+  await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 5151, unref() {} }) as any) as any,
+      spawnSync: ((command: string, args: readonly string[]) => {
+        syncCalls.push({ command, args: [...args] });
+        return { status: 0, stdout: '', stderr: '' } as any;
+      }) as any,
+      platform: 'darwin',
+      nodePath: '/usr/local/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.ok(
+    syncCalls.some((call) => call.command === 'osascript'),
+    `Expected macOS 'osascript' command, got: ${syncCalls.map((c) => c.command).join(', ')}`,
+  );
+});
+
+test('startCommandWithDeps uses Start-Process for browser on Windows', async () => {
+  const fixture = await setupWorkspace('aloop-start-win-browser-');
+  await writeFile(path.join(fixture.homeDir, '.aloop', 'bin', 'loop.ps1'), '# noop\n', 'utf8');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'dashboard'\n  auto_open: true\n",
+    'utf8',
+  );
+
+  const syncCalls: SpawnRecord[] = [];
+  await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 3131, unref() {} }) as any) as any,
+      spawnSync: ((command: string, args: readonly string[]) => {
+        syncCalls.push({ command, args: [...args] });
+        return { status: 0, stdout: '', stderr: '' } as any;
+      }) as any,
+      platform: 'win32',
+      nodePath: 'C:\\Program Files\\node\\node.exe',
+      aloopPath: 'C:\\Program Files\\aloop\\aloop.cmd',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.ok(
+    syncCalls.some((call) => call.args.some((a: string) => a.includes('Start-Process'))),
+    `Expected Windows Start-Process for browser, got: ${JSON.stringify(syncCalls)}`,
+  );
+});
