@@ -59,6 +59,41 @@ test('scaffoldWorkspace writes config and prompt files with substitutions', asyn
   assert.match(planPrompt, /- Do not delete files/);
 });
 
+test('scaffoldWorkspace expands nested template includes before variable substitution', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-includes-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  const instructionsDir = path.join(templatesDir, 'instructions');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(instructionsDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(tempRoot, 'RESEARCH.md'), '# research', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), '{{include:instructions/review.md}}', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(instructionsDir, 'review.md'), 'Specs: {{SPEC_FILES}}\n{{include:instructions/common.md}}', 'utf8');
+  await writeFile(path.join(instructionsDir, 'common.md'), 'Refs: {{REFERENCE_FILES}}\n{{VALIDATION_COMMANDS}}\n{{SAFETY_RULES}}', 'utf8');
+
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    specFiles: ['SPEC.md', 'docs/SPEC-2.md'],
+    referenceFiles: ['RESEARCH.md', 'README.md'],
+    validationCommands: ['npm test'],
+    safetyRules: ['No force push'],
+  });
+
+  const reviewPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_review.md'), 'utf8');
+  assert.match(reviewPrompt, /Specs: SPEC\.md, docs\/SPEC-2\.md/);
+  assert.match(reviewPrompt, /Refs: RESEARCH\.md, README\.md/);
+  assert.match(reviewPrompt, /- npm test/);
+  assert.match(reviewPrompt, /- No force push/);
+});
+
 test('scaffoldWorkspace allows explicit reference file overrides', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-'));
   const homeRoot = path.join(tempRoot, 'home');

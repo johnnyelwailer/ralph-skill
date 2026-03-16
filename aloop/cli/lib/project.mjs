@@ -339,6 +339,36 @@ function resolveProviderHints(provider) {
   return '';
 }
 
+const INCLUDE_DIRECTIVE_PATTERN = /\{\{include:([^}]+)\}\}/g;
+
+async function expandTemplateIncludes(content, templatesDir, seenIncludes = []) {
+  const directives = [...content.matchAll(INCLUDE_DIRECTIVE_PATTERN)];
+  if (directives.length === 0) {
+    return content;
+  }
+
+  let expanded = content;
+  for (const directive of directives) {
+    const rawPath = directive[1].trim();
+    const includePath = path.resolve(templatesDir, rawPath);
+    const relativePath = path.relative(templatesDir, includePath);
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      throw new Error(`Include path escapes templates directory: ${rawPath}`);
+    }
+    if (seenIncludes.includes(includePath)) {
+      const cycle = [...seenIncludes, includePath].map((entry) => path.relative(templatesDir, entry)).join(' -> ');
+      throw new Error(`Circular include detected: ${cycle}`);
+    }
+    if (!existsSync(includePath)) {
+      throw new Error(`Included template not found: ${includePath}`);
+    }
+    const includeContent = await readFile(includePath, 'utf8');
+    const nested = await expandTemplateIncludes(includeContent, templatesDir, [...seenIncludes, includePath]);
+    expanded = expanded.replace(directive[0], nested);
+  }
+  return expanded;
+}
+
 /**
  * @param {Object} options
  * @param {string} [options.projectRoot]
@@ -431,6 +461,7 @@ export async function scaffoldWorkspace(options = {}) {
     const templatePath = path.join(templatesDir, fileName);
     const destinationPath = path.join(promptsDir, fileName);
     let content = await readFile(templatePath, 'utf8');
+    content = await expandTemplateIncludes(content, templatesDir);
     for (const [key, value] of Object.entries(replacements)) {
       content = content.replaceAll(key, value);
     }
