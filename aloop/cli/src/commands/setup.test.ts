@@ -49,6 +49,7 @@ test('setupCommandWithDeps - non-interactive mode', async () => {
     nonInteractive: true,
     spec: 'MY_SPEC.md',
     providers: 'gemini,codex',
+    mode: 'loop',
     autonomyLevel: 'autonomous',
     dataPrivacy: 'private',
   }, deps);
@@ -59,6 +60,7 @@ test('setupCommandWithDeps - non-interactive mode', async () => {
   assert.equal(scaffoldCalledOpts.homeDir, '/my/home');
   assert.deepEqual(scaffoldCalledOpts.specFiles, ['MY_SPEC.md']);
   assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['gemini', 'codex']);
+  assert.equal(scaffoldCalledOpts.mode, 'plan-build-review');
   assert.equal(scaffoldCalledOpts.autonomyLevel, 'autonomous');
   assert.equal(scaffoldCalledOpts.dataPrivacy, 'private');
   assert.equal(promptCalled, false, 'Prompt should not be called in non-interactive mode');
@@ -385,4 +387,39 @@ test('setupCommandWithDeps - dataPrivacy defaults to private in non-interactive 
   assert.ok(scaffoldCalledOpts);
   // dataPrivacy is undefined when not specified; scaffoldWorkspace applies default 'private'
   assert.equal(scaffoldCalledOpts.dataPrivacy, undefined);
+});
+
+test('setupCommandWithDeps - rejects invalid setup mode in non-interactive mode', async () => {
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: [] },
+        spec_candidates: [],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+    } as unknown as DiscoveryResult;
+  };
+
+  await assert.rejects(
+    setupCommandWithDeps({
+      nonInteractive: true,
+      mode: 'invalid-mode',
+    }, {
+      discover: mockDiscover,
+      scaffold: async (): Promise<ScaffoldResult> => ({ config_path: '', prompts_dir: '', project_dir: '', project_hash: '' }),
+      prompt: async () => '',
+    }),
+    (error) => {
+      assert.match((error as Error).message, /Invalid setup mode/);
+      return true;
+    },
+  );
 });

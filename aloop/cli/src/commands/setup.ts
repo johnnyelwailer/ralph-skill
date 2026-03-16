@@ -9,6 +9,7 @@ export interface SetupCommandOptions {
   nonInteractive?: boolean;
   spec?: string;
   providers?: string;
+  mode?: string;
   autonomyLevel?: string;
   dataPrivacy?: string;
 }
@@ -35,6 +36,24 @@ function parseAutonomyLevel(value: string | undefined): AutonomyLevel | undefine
   throw new Error(`Invalid autonomy level: ${value} (must be cautious, balanced, or autonomous)`);
 }
 
+type SetupMode = 'loop' | 'orchestrate';
+
+function parseSetupMode(value: string | undefined): SetupMode | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'loop' || normalized === 'orchestrate') {
+    return normalized;
+  }
+  throw new Error(`Invalid setup mode: ${value} (must be loop or orchestrate)`);
+}
+
+function mapSetupModeToLoopMode(value: SetupMode | undefined): string | undefined {
+  if (!value) return undefined;
+  // Current scaffold/runtime config persists loop cycle mode; both setup modes
+  // currently bootstrap the same default cycle while keeping setup UX explicit.
+  return 'plan-build-review';
+}
+
 async function defaultPromptUser(rl: readline.Interface, question: string, defaultValue: string): Promise<string> {
   return new Promise((resolve) => {
     rl.question(`${question} [${defaultValue}]: `, (answer) => {
@@ -58,11 +77,13 @@ export async function setupCommandWithDeps(
 
   if (options.nonInteractive) {
     console.log('Running setup in non-interactive mode...');
+    const setupMode = parseSetupMode(options.mode);
     const result = await deps.scaffold({
       projectRoot: options.projectRoot,
       homeDir: options.homeDir,
       specFiles: options.spec ? [options.spec] : undefined,
       enabledProviders: options.providers ? options.providers.split(',').map(p => p.trim()) : undefined,
+      mode: mapSetupModeToLoopMode(setupMode),
       autonomyLevel: parseAutonomyLevel(options.autonomyLevel),
       dataPrivacy: parseDataPrivacy(options.dataPrivacy),
     });

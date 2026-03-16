@@ -7,37 +7,15 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 ### In Progress
 - [x] [review] Gate 4: **Copy-paste duplication** — `normalizeCiTextForSignature` (`gh.ts:613-620`) and `normalizeCiGateDetail` (`orchestrate.ts:2620-2627`) are identical functions (`.toLowerCase()`, SHA regex, digit regex, whitespace collapse, `.trim()`). Extracted to shared `lib/ci-utils.ts` and wired both consumers. (priority: high)
 
-- [x] [review] Gate 2: `monitor.test.ts:280` — assertion `!files.some(f => f.includes('PROMPT_plan') && f.includes('rattail'))` is a no-op because queue filenames never contain 'rattail'; would pass even if PROMPT_plan was incorrectly queued. Replace with `!files.some(f => f.includes('PROMPT_plan'))` to verify no plan is queued during normal build cycle. (priority: high)
-
-- [x] [review] Gate 4: dead code remains in touched loop runtimes — `Update-ProofBaselines` (`aloop/bin/loop.ps1:798`) and `update_proof_baselines` (`aloop/bin/loop.sh:1321`) are defined but have no call sites. Remove unused functions or wire them into an active flow with tests proving invocation. (priority: medium)
-  - Note: removing this dead code also resolves the remaining Gate 3 proof-branch coverage gaps (`proof.force_on_all_tasks_done`, `review.inject_proof_manifest`, `review.update_baselines_on_approval`) since those branches exist only in the dead functions. Cycle/resume branch coverage is already 100% per `coverage/shell-branch-coverage.json` (31/31) and `coverage/ps1-cycle-frontmatter-branch-coverage.json` (7/7).
-
-### Up Next — Rattail Chain (Dependency Order)
-The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> final-qa -> proof -> completed`) requires these tasks in order:
-
-1. - [x] [runtime/P1] Add missing rattail prompt templates (`PROMPT_spec-review.md`, `PROMPT_final-review.md`, `PROMPT_final-qa.md`) with `trigger` frontmatter declaring event bindings. (priority: high)
-2. - [x] [loop/P1] Add `trigger` frontmatter field to the loop script frontmatter parser (`parse_frontmatter` in loop.sh, `Parse-PromptFrontmatter` in loop.ps1) so the runtime can read trigger declarations from prompt files. (priority: high)
-3. - [x] [runtime/P1] Implement generic event -> catalog scan -> queue dispatch in runtime monitor — scan `aloop/templates/` for prompts whose `trigger` field matches the current event, queue them, instead of hardcoded phase-name branching in `monitor.ts:182-270`. (priority: high)
-4. - [x] [runtime/P1] Replace hardcoded monitor shortcuts (build→proof, proof→review) with rattail-driven dispatch and ensure monitor exit semantics use `completed` state only after full chain completes. Add tests for rattail success path and "new TODO reopens build" re-entry. (priority: high)
-
-### Up Next — P1 Hardening (After Core)
-- [x] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating in orchestrator/gh loops and add same-error persistence detection before auto re-iteration (stop retrying unchanged CI failures; surface actionable summary). (priority: high)
-- [x] [qa/P1] Packaged-install template bootstrap remains broken in fresh HOME (`aloop setup --non-interactive` / `aloop scaffold` fail with `Template not found .../.aloop/templates/PROMPT_plan.md`). Fixed template bootstrap resolution to search bundled templates across source/dist/packaged layouts so setup/scaffold can seed `~/.aloop/templates` in fresh HOME. (priority: high)
-  - Re-test 2026-03-16 (iter 95): still failing in packaged install (`/tmp/aloop-test-install-KIcuUW/bin/aloop`) with raw stack trace and `Template not found: .../.aloop/templates/PROMPT_plan.md` on `aloop setup --non-interactive --spec SPEC.md --providers copilot` (exit 1).
-  - Fix 2026-03-16 (iter 96): added multi-layout bundled-template resolver + regression test for npm packaged `dist` directory depth (`lib/node_modules/aloop-cli/dist` -> `<prefix>/templates`).
-  - Re-test 2026-03-16 (iter 97): still failing in packaged install (`/tmp/aloop-test-install-RlWnzF/bin/aloop`) for both `aloop setup --non-interactive --spec SPEC.md --providers copilot` and `aloop scaffold --spec-files SPEC.md --provider copilot` with `Template not found: .../.aloop/templates/PROMPT_plan.md` + raw stack trace (exit 1).
-- [x] [qa/P1] `aloop gh watch` user flow still fails under PATH hardening (`gh: blocked by aloop PATH hardening`). Keep security boundary while allowing host-side `gh` execution paths required by `aloop gh watch`. (priority: high)
-  - Re-test 2026-03-16 (iter 95): still failing (`aloop gh watch --repo owner/repo` => `gh watch failed: gh issue list failed: gh: blocked by aloop PATH hardening`, exit 1).
-  - Fix 2026-03-16 (iter 96): root cause was case-sensitivity bug in `isPathHardeningBlockedError` — lowercased error strings compared against mixed-case constant, so fallback was never triggered. Fixed comparison + added `ALOOP_ORIGINAL_PATH` env export from loop.sh/loop.ps1 as belt-and-suspenders fallback for `ghExecutor`.
-  - Re-test 2026-03-16 (iter 97): PASS for PATH-hardening regression. `aloop gh watch --repo owner/repo` no longer reports `gh: blocked by aloop PATH hardening`; now fails with expected upstream GH error for nonexistent repo (`GraphQL: Could not resolve to a Repository with the name 'owner/repo'.`).
-- [x] [setup/P1] Data privacy setup flow — ask internal/private vs public/open-source during setup and apply provider/model policy constraints (including ZDR-safe defaults) to generated config. (priority: high)
-- [ ] [qa/P1] `aloop setup` non-interactive mode flag missing from SPEC contract — SPEC requires `--mode loop|orchestrate` support, but packaged CLI rejects `aloop setup --non-interactive --mode loop` with `error: unknown option '--mode'`. Tested at iter 97. (priority: high)
+### Up Next — P1 Hardening
+- [x] [qa/P1] `aloop setup` non-interactive mode flag missing from SPEC contract — added `--mode` option registration on `setup` CLI, wired non-interactive parsing/validation for `loop|orchestrate` in `setup.ts`, and covered behavior with setup command tests. (priority: high)
+- [ ] [security/P1] **CLAUDECODE sanitization gap** — `loop.sh` (line 20) and `loop.ps1` (line 56) unset CLAUDECODE at script top and before each provider call, but `aloop/cli/src/index.ts` does NOT `delete process.env.CLAUDECODE` at CLI entry. SPEC §CLAUDECODE requires sanitization at all three entry points. (priority: high)
 - [ ] [devcontainer/P1] Devcontainer spec-conformance pass — verify `devcontainer`/`devcontainer-verify` behavior against SPEC Devcontainer acceptance criteria (lifecycle hooks, mounts, provider auth forwarding, verification loop) and close concrete gaps. (priority: high)
 - [ ] [qa/P1] `aloop start` auto-monitoring parity — verify dashboard/terminal auto-open and fallback behavior across OS paths; ensure failures degrade with clear manual commands. (priority: medium)
 
 ### Up Next — P2
-- [ ] [qa/P2] CLI error handling leaks stack traces — `aloop setup --autonomy-level invalid`, `aloop start` (no config), `aloop orchestrate --autonomy-level foo`, `aloop resolve --project-root /nonexistent` should return clean user-facing errors. (priority: medium)
 - [x] [review/P2] `forceReviewNext` implemented in loop scripts — added `forceReviewNext` consume-and-clear handling in `loop.sh`/`loop.ps1` iteration-mode resolution so forced review overrides cycle position for the next iteration without advancing cycle state. Added regression coverage in `loop.tests.ps1` and `loop_branch_coverage.tests.sh`. (priority: medium)
+- [ ] [qa/P2] CLI error handling leaks stack traces — `aloop setup --autonomy-level invalid`, `aloop start` (no config), `aloop orchestrate --autonomy-level foo`, `aloop resolve --project-root /nonexistent` should return clean user-facing errors. (priority: medium)
 - [ ] [qa/P2] `aloop orchestrate --spec NONEXISTENT.md` still emits raw stack frames in packaged CLI path; return a clean user-facing validation error only. (priority: medium)
   - Re-test 2026-03-16 (iter 95): behavior still PARTIAL — exits 1, but prints raw stack frames from `dist/index.js` instead of a clean validation message.
   - Re-test 2026-03-16 (iter 97): still PARTIAL in packaged install (`/tmp/aloop-test-install-RlWnzF/bin/aloop`) — exits 1 with correct message context, but still leaks raw JS stack frames from `dist/index.js`.
@@ -67,6 +45,13 @@ The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> 
 - [~] [qa/P1] `aloop steer` CLI command missing from `aloop.mjs` help and core list — superseded by broader `aloop.mjs --help` interception fix.
 
 ### Completed
+- [x] [review] Gate 2: `monitor.test.ts:280` — assertion `!files.some(f => f.includes('PROMPT_plan') && f.includes('rattail'))` is a no-op because queue filenames never contain 'rattail'; would pass even if PROMPT_plan was incorrectly queued. Replaced with `!files.some(f => f.includes('PROMPT_plan'))` to verify no plan is queued during normal build cycle.
+- [x] [review] Gate 4: dead code removed from loop runtimes — `Update-ProofBaselines` (`aloop/bin/loop.ps1:798`) and `update_proof_baselines` (`aloop/bin/loop.sh:1321`) removed. Resolves Gate 3 proof-branch coverage gaps since those branches existed only in dead functions.
+- [x] [runtime/P1] Rattail chain complete — prompt templates (`PROMPT_spec-review.md`, `PROMPT_final-review.md`, `PROMPT_final-qa.md`), trigger frontmatter parsing, generic event dispatch in monitor.ts, rattail-driven dispatch replacing hardcoded shortcuts.
+- [x] [gh/P1] CI/GitHub Actions integration hardening — CI-first gating, same-error persistence detection.
+- [x] [qa/P1] Packaged-install template bootstrap fixed — multi-layout bundled-template resolver with regression test.
+- [x] [qa/P1] `aloop gh watch` PATH hardening fix — case-sensitivity bug in `isPathHardeningBlockedError` + `ALOOP_ORIGINAL_PATH` fallback.
+- [x] [setup/P1] Data privacy setup flow — internal/private vs public/open-source with provider/model policy constraints.
 - [x] [loop/P1] **CRITICAL:** `loop.ps1` parity with `loop.sh` restored for `plan -> build x5 -> qa -> review` cycle semantics (mode resolution, cycle advance, required prompts, resume mapping, startup mode text).
 - [x] [loop/P1] `loop.sh` resume mapping aligned with 8-step `qa` cycle semantics (removed stale proof-era mapping).
 - [x] [review] Gate 2: `project.test.ts` bootstrap assertions strengthened to validate copied template content and `templatesDir` skip path.

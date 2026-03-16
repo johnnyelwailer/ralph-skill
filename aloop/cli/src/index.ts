@@ -43,6 +43,7 @@ program
   .option('--home-dir <path>', 'Home directory override')
   .option('--spec <path>', 'Specification file to use')
   .option('--providers <providers>', 'Comma-separated list of providers to enable')
+  .option('--mode <mode>', 'Setup mode: loop or orchestrate')
   .option('--autonomy-level <level>', 'Autonomy level: cautious, balanced, or autonomous')
   .option('--non-interactive', 'Skip interactive prompts and use defaults')
   .action(setupCommand);
