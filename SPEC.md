@@ -405,35 +405,39 @@ Each agent's `trigger` field is the name of the agent (or event) that must compl
 
 **Only when proof completes with no new TODOs** does the runtime set `status.json` state=completed (or enter watch mode if orchestrated).
 
-**Agent catalog entries** (frontmatter examples):
+**Agent catalog entries** (frontmatter + shared instructions):
 ```yaml
-# aloop/templates/PROMPT_spec-review.md
+# aloop/templates/PROMPT_spec-review.md — own instructions, first rattail link
 ---
 agent: spec-review
 trigger: all_tasks_done
 provider: claude
 reasoning: high
 ---
+# (own spec-review instructions here — not shared with any cycle agent)
 
-# aloop/templates/PROMPT_final-review.md (reuses review prompt body)
+# aloop/templates/PROMPT_final-review.md — shares instructions with cycle review
 ---
 agent: final-review
 trigger: spec-review
 provider: claude
 reasoning: high
 ---
+{{include:instructions/review.md}}
 
-# aloop/templates/PROMPT_final-qa.md (reuses qa prompt body)
+# aloop/templates/PROMPT_final-qa.md — shares instructions with cycle qa
 ---
 agent: final-qa
 trigger: final-review
 ---
+{{include:instructions/qa.md}}
 
-# aloop/templates/PROMPT_proof.md
+# aloop/templates/PROMPT_proof.md — own instructions, last rattail link
 ---
 agent: proof
 trigger: final-qa
 ---
+# (own proof instructions here — not shared with any cycle agent)
 ```
 
 ### Orchestrator Review Layer
@@ -3101,6 +3105,54 @@ Frontmatter fields:
 - `trigger` — event key(s) that cause the runtime to inject this agent via the queue (see Event-Driven Agent Dispatch below)
 
 All fields are optional — defaults apply if omitted (`provider: claude`, `model: claude-opus-4-6`, `agent: build`, `reasoning: medium`).
+
+### Shared Instructions via `{{include:path}}`
+
+Prompt templates support `{{include:path}}` to inline shared instruction files. This avoids duplicating instructions between cycle agents and their rattail counterparts (e.g., `review` and `final-review` share the same 9-gate instructions).
+
+**How it works:** During template expansion (at session start or queue injection), `{{include:path}}` is replaced with the contents of the referenced file. Paths are relative to `aloop/templates/`.
+
+**Directory structure:**
+```
+aloop/templates/
+  instructions/              # shared instruction blocks
+    review.md                # 9 gates, rejection/approval flow, rules
+    qa.md                    # test process, isolation rules, cleanup
+  PROMPT_plan.md             # cycle agent
+  PROMPT_build.md            # cycle agent
+  PROMPT_review.md           # cycle agent: frontmatter + {{include:instructions/review.md}}
+  PROMPT_qa.md               # cycle agent: frontmatter + {{include:instructions/qa.md}}
+  PROMPT_spec-review.md      # rattail agent: own instructions (trigger: all_tasks_done)
+  PROMPT_final-review.md     # rattail agent: frontmatter + {{include:instructions/review.md}}
+  PROMPT_final-qa.md         # rattail agent: frontmatter + {{include:instructions/qa.md}}
+  PROMPT_proof.md            # rattail agent: own instructions (trigger: final-qa)
+  PROMPT_steer.md            # triggered agent
+```
+
+**Example — `PROMPT_final-review.md`:**
+```yaml
+---
+agent: final-review
+trigger: spec-review
+provider: claude
+reasoning: high
+---
+
+{{include:instructions/review.md}}
+```
+
+**Example — `PROMPT_review.md` (cycle version, same instructions, no trigger):**
+```yaml
+---
+agent: review
+provider: claude
+reasoning: high
+---
+
+{{include:instructions/review.md}}
+```
+
+The `{{include:path}}` directive is expanded alongside other template variables (`{{SPEC_FILES}}`, `{{REFERENCE_FILES}}`, etc.) during the same expansion pass. Includes can themselves contain template variables — they are expanded after inlining.
 
 ### Event-Driven Agent Dispatch (decoupling the loop from agent knowledge)
 
