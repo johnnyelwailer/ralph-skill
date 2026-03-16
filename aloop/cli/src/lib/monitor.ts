@@ -91,7 +91,9 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
       const planTemplatePath = path.join(options.promptsDir, 'PROMPT_plan.md');
 
       if (existsSync(steerTemplatePath)) {
-        const steerContent = await fs.readFile(steerTemplatePath, 'utf8');
+        const templateContent = await fs.readFile(steerTemplatePath, 'utf8');
+        const steeringInstruction = await fs.readFile(steeringPath, 'utf8');
+        const steerContent = templateContent + '\n\n' + steeringInstruction;
         await writeQueueOverride(options.sessionDir, '001-PROMPT_steer', steerContent, {
           agent: 'steer',
           reason: 'steering_detected',

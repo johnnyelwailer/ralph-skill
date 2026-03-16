@@ -88,7 +88,8 @@ test('monitorSessionState transitions', async (t) => {
 
     const steerFile = files.find(f => f.includes('PROMPT_steer'))!;
     const steerContent = await fs.readFile(path.join(queueDir, steerFile), 'utf8');
-    assert.ok(steerContent.includes('steer content'));
+    assert.ok(steerContent.includes('steer content'), 'should include template content');
+    assert.ok(steerContent.includes('Adjust scope.'), 'should include user steering instruction from STEERING.md');
     assert.ok(steerContent.includes('reason: steering_detected'));
 
     const loopPlan = JSON.parse(await fs.readFile(path.join(sessionDir, 'loop-plan.json'), 'utf8'));
