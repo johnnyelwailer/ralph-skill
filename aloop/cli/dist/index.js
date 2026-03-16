@@ -3581,6 +3581,15 @@ ${content}`;
   await fs.writeFile(queuePath, finalContent, "utf8");
   return queuePath;
 }
+async function queueSteeringPrompt(sessionDir, promptsDir, steeringInstruction, name = "steering", frontmatter = { agent: "steer", type: "steering_override" }) {
+  const steerTemplatePath = path2.join(promptsDir, "PROMPT_steer.md");
+  let steerPromptContent = steeringInstruction;
+  if (existsSync2(steerTemplatePath)) {
+    const templateContent = await fs.readFile(steerTemplatePath, "utf8");
+    steerPromptContent = templateContent + "\n\n" + steeringInstruction;
+  }
+  return await writeQueueOverride(sessionDir, name, steerPromptContent, frontmatter);
+}
 
 // src/lib/specBackfill.ts
 import * as path3 from "node:path";
@@ -4118,20 +4127,25 @@ async function monitorSessionState(options) {
       const steerTemplatePath = path5.join(options.promptsDir, "PROMPT_steer.md");
       const planTemplatePath = path5.join(options.promptsDir, "PROMPT_plan.md");
       if (existsSync4(steerTemplatePath)) {
-        const templateContent = await fs3.readFile(steerTemplatePath, "utf8");
         const steeringInstruction = await fs3.readFile(steeringPath, "utf8");
-        const steerContent = templateContent + "\n\n" + steeringInstruction;
-        await writeQueueOverride(options.sessionDir, "001-PROMPT_steer", steerContent, {
-          agent: "steer",
-          reason: "steering_detected",
-          type: "steering_override"
-        });
+        await queueSteeringPrompt(
+          options.sessionDir,
+          options.promptsDir,
+          steeringInstruction,
+          "001-PROMPT_steer",
+          {
+            agent: "steer",
+            reason: "steering_detected",
+            type: "steering_override"
+          }
+        );
         console.log("[monitor] STEERING.md detected; queued steer.");
         if (!planAlreadyQueued && existsSync4(planTemplatePath)) {
           const planContent = await fs3.readFile(planTemplatePath, "utf8");
           await writeQueueOverride(options.sessionDir, "002-PROMPT_plan", planContent, {
             agent: "plan",
-            reason: "post_steer_replan"
+            reason: "post_steer_replan",
+            type: "steering_override"
           });
           console.log("[monitor] Steering follow-up queued plan.");
         }
@@ -4844,16 +4858,12 @@ async function startDashboardServer(options, runtimeOptions = {}) {
           commit
         );
         await fs4.writeFile(steeringPath, steeringDoc, "utf8");
-        const steerTemplatePath = path6.join(sessionDir, "prompts", "PROMPT_steer.md");
-        let steerPromptContent = steeringDoc;
-        if (await fileExists2(steerTemplatePath)) {
-          const templateContent = await fs4.readFile(steerTemplatePath, "utf8");
-          steerPromptContent = templateContent + "\n\n" + steeringDoc;
-        }
-        const queuePath = await writeQueueOverride(sessionDir, "steering", steerPromptContent, {
-          agent: "steer",
-          type: "steering_override"
-        });
+        const promptsDir = path6.join(sessionDir, "prompts");
+        const queuePath = await queueSteeringPrompt(
+          sessionDir,
+          promptsDir,
+          steeringDoc
+        );
         writeJson(response, 201, {
           queued: true,
           path: queuePath,
@@ -12097,7 +12107,7 @@ function parseMaxIterations(value) {
 }
 
 // src/commands/steer.ts
-import { readFile as readFile10, writeFile as writeFile10 } from "node:fs/promises";
+import { writeFile as writeFile10 } from "node:fs/promises";
 import { existsSync as existsSync11 } from "node:fs";
 import path14 from "node:path";
 function buildSteeringDocument2(instruction, affectsCompletedWork, commit) {
@@ -12151,16 +12161,12 @@ async function steerCommand(instruction, options = {}) {
   const affectsCompletedWork = options.affectsCompletedWork ?? "unknown";
   const steeringDoc = buildSteeringDocument2(instruction.trim(), affectsCompletedWork, "cli");
   await writeFile10(steeringPath, steeringDoc, "utf8");
-  const steerTemplatePath = path14.join(sessionDir, "prompts", "PROMPT_steer.md");
-  let steerPromptContent = steeringDoc;
-  if (existsSync11(steerTemplatePath)) {
-    const templateContent = await readFile10(steerTemplatePath, "utf8");
-    steerPromptContent = templateContent + "\n\n" + steeringDoc;
-  }
-  const queuePath = await writeQueueOverride(sessionDir, "steering", steerPromptContent, {
-    agent: "steer",
-    type: "steering_override"
-  });
+  const promptsDir = path14.join(sessionDir, "prompts");
+  const queuePath = await queueSteeringPrompt(
+    sessionDir,
+    promptsDir,
+    steeringDoc
+  );
   if (outputMode === "json") {
     console.log(JSON.stringify({ success: true, session: sessionId, queued: true, path: queuePath, steeringPath }));
   } else {

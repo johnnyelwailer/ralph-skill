@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
-import { mutateLoopPlan, readLoopPlan, writeQueueOverride } from './plan.js';
+import { mutateLoopPlan, queueSteeringPrompt, readLoopPlan, writeQueueOverride } from './plan.js';
 
 export interface MonitorOptions {
   sessionDir: string;
@@ -123,21 +123,26 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
       const planTemplatePath = path.join(options.promptsDir, 'PROMPT_plan.md');
 
       if (existsSync(steerTemplatePath)) {
-        const templateContent = await fs.readFile(steerTemplatePath, 'utf8');
         const steeringInstruction = await fs.readFile(steeringPath, 'utf8');
-        const steerContent = templateContent + '\n\n' + steeringInstruction;
-        await writeQueueOverride(options.sessionDir, '001-PROMPT_steer', steerContent, {
-          agent: 'steer',
-          reason: 'steering_detected',
-          type: 'steering_override'
-        });
+        await queueSteeringPrompt(
+          options.sessionDir,
+          options.promptsDir,
+          steeringInstruction,
+          '001-PROMPT_steer',
+          {
+            agent: 'steer',
+            reason: 'steering_detected',
+            type: 'steering_override'
+          }
+        );
         console.log('[monitor] STEERING.md detected; queued steer.');
 
         if (!planAlreadyQueued && existsSync(planTemplatePath)) {
           const planContent = await fs.readFile(planTemplatePath, 'utf8');
           await writeQueueOverride(options.sessionDir, '002-PROMPT_plan', planContent, {
             agent: 'plan',
-            reason: 'post_steer_replan'
+            reason: 'post_steer_replan',
+            type: 'steering_override'
           });
           console.log('[monitor] Steering follow-up queued plan.');
         }

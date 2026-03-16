@@ -5,7 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { processAgentRequests } from '../lib/requests.js';
-import { readLoopPlan, mutateLoopPlan, writeQueueOverride } from '../lib/plan.js';
+import { readLoopPlan, mutateLoopPlan, writeQueueOverride, queueSteeringPrompt } from '../lib/plan.js';
 import { monitorSessionState } from '../lib/monitor.js';
 
 interface DashboardOptions {
@@ -789,20 +789,12 @@ export async function startDashboardServer(
         // For backward compatibility and so the steer agent can read it
         await fs.writeFile(steeringPath, steeringDoc, 'utf8');
 
-        // Task: write queue entries for one-shot overrides (steering)
-        // We load the PROMPT_steer.md template so the agent knows HOW to steer,
-        // then append the user's actual steering instruction.
-        const steerTemplatePath = path.join(sessionDir, 'prompts', 'PROMPT_steer.md');
-        let steerPromptContent = steeringDoc;
-        if (await fileExists(steerTemplatePath)) {
-          const templateContent = await fs.readFile(steerTemplatePath, 'utf8');
-          steerPromptContent = templateContent + '\n\n' + steeringDoc;
-        }
-
-        const queuePath = await writeQueueOverride(sessionDir, 'steering', steerPromptContent, {
-          agent: 'steer',
-          type: 'steering_override',
-        });
+        const promptsDir = path.join(sessionDir, 'prompts');
+        const queuePath = await queueSteeringPrompt(
+          sessionDir,
+          promptsDir,
+          steeringDoc
+        );
 
         writeJson(response, 201, {
           queued: true,

@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { resolveHomeDir, readActiveSessions } from './session.js';
-import { writeQueueOverride } from '../lib/plan.js';
+import { writeQueueOverride, queueSteeringPrompt } from '../lib/plan.js';
 import type { OutputMode } from './status.js';
 
 export interface SteerCommandOptions {
@@ -75,19 +75,13 @@ export async function steerCommand(instruction: string, options: SteerCommandOpt
   // Write STEERING.md to workdir
   await writeFile(steeringPath, steeringDoc, 'utf8');
 
-  // Load steer prompt template if available, and append user instruction
-  const steerTemplatePath = path.join(sessionDir, 'prompts', 'PROMPT_steer.md');
-  let steerPromptContent = steeringDoc;
-  if (existsSync(steerTemplatePath)) {
-    const templateContent = await readFile(steerTemplatePath, 'utf8');
-    steerPromptContent = templateContent + '\n\n' + steeringDoc;
-  }
-
   // Write queue override
-  const queuePath = await writeQueueOverride(sessionDir, 'steering', steerPromptContent, {
-    agent: 'steer',
-    type: 'steering_override',
-  });
+  const promptsDir = path.join(sessionDir, 'prompts');
+  const queuePath = await queueSteeringPrompt(
+    sessionDir,
+    promptsDir,
+    steeringDoc
+  );
 
   if (outputMode === 'json') {
     console.log(JSON.stringify({ success: true, session: sessionId, queued: true, path: queuePath, steeringPath }));

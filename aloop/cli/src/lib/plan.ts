@@ -89,3 +89,24 @@ export async function writeQueueOverride(
   await fs.writeFile(queuePath, finalContent, 'utf8');
   return queuePath;
 }
+
+/**
+ * Queues a steering prompt by combining a template (if available) with the user instruction.
+ */
+export async function queueSteeringPrompt(
+  sessionDir: string,
+  promptsDir: string,
+  steeringInstruction: string,
+  name: string = 'steering',
+  frontmatter: Record<string, string> = { agent: 'steer', type: 'steering_override' }
+): Promise<string> {
+  const steerTemplatePath = path.join(promptsDir, 'PROMPT_steer.md');
+  let steerPromptContent = steeringInstruction;
+
+  if (existsSync(steerTemplatePath)) {
+    const templateContent = await fs.readFile(steerTemplatePath, 'utf8');
+    steerPromptContent = templateContent + '\n\n' + steeringInstruction;
+  }
+
+  return await writeQueueOverride(sessionDir, name, steerPromptContent, frontmatter);
+}
