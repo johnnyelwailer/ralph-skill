@@ -1,5 +1,29 @@
 # Review Log
 
+## Review — 2026-03-16 16:00 UTC — commit aa4f74b..0032a70
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/cli/src/lib/ci-utils.ts`, `aloop/cli/src/commands/gh.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/src/commands/setup.test.ts`, `aloop/cli/src/commands/devcontainer.ts`, `aloop/cli/src/commands/devcontainer.test.ts`, `aloop/cli/src/index.ts`, `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/bin/loop.tests.ps1`, `aloop/bin/loop_branch_coverage.tests.sh`, `SPEC.md`
+
+- Gate 1: **`loop.ps1` queue injection parity** — SPEC (updated in this iteration) now mandates queue injection (`$SESSION_DIR/queue/001-force-review.md`) replacing old `forceReviewNext` flag. `loop.sh` correctly implements queue injection (line 1957-1965: copies `PROMPT_review.md` to `queue/001-force-review.md` when `ALL_TASKS_MARKED_DONE=true`). `loop.ps1` still implements old flag-based `forceReviewNext` consumption in `Resolve-IterationMode` (lines 237-247) and lacks the all-tasks-done queue injection block entirely.
+
+**Resolved from prior reviews:**
+- Gate 4 ✅: Copy-paste duplication of CI normalization functions resolved — extracted `normalizeCiDetailForSignature` to shared `lib/ci-utils.ts`, both `gh.ts` and `orchestrate.ts` now import from shared module.
+
+**Positive observations:**
+- Gate 1: `aloop setup --mode` option correctly registered in CLI with validation for `loop|orchestrate` values. `mapSetupModeToLoopMode` maps both modes to `plan-build-review` cycle, consistent with current scaffold behavior.
+- Gate 1: Devcontainer spec-conformance pass is thorough — adds `opencode` provider support (install command, `OPENCODE_API_KEY` auth var, CLI binary verification), VS Code extensions (`anthropic.claude-code` for claude, `GitHub.copilot` for copilot), and provider auth verification checks inside container. `augmentExistingConfig` merges extensions without duplicates.
+- Gate 2: `devcontainer.test.ts` adds 19 concrete-assertion tests covering opencode install/env, VS Code extension generation for claude/copilot/codex/empty, extension merge deduplication, auth pass/fail/fallback paths, and result vscode_extensions field. All assert exact values.
+- Gate 2: `setup.test.ts` adds `rejects invalid setup mode` test with exact error message matching — thorough error-path coverage.
+- Gate 2: `loop.tests.ps1` adds 2 tests for `Resolve-IterationMode` forceReviewNext consume/no-consume with concrete JSON field assertions.
+- Gate 4: Unused `callCount` variable in `devcontainer.test.ts:1144` — declared but never referenced (minor, test-only dead code).
+- Gate 5: All 8 CLI tests pass, type-check clean, build succeeds.
+- Gate 6: Proof manifest correctly skips all tasks — internal loop runtime refactor and SPEC text alignment with no externally observable deliverable. No filler artifacts.
+- Gate 8: No dependency changes; version compliance unchanged.
+- Gate 9: README accurately describes loop phases and review gates — no drift from changes in this iteration.
+
+---
+
 ## Review — 2026-03-16 14:00 UTC — commit c7f0250..bfd5424
 
 **Verdict: FAIL** (1 finding → written to TODO.md as [review] task)

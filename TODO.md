@@ -5,6 +5,7 @@
 Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) P1 hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
+- [ ] [review] Gate 1: **`loop.ps1` queue injection parity** — SPEC now mandates queue injection for forced review (`$SESSION_DIR/queue/001-force-review.md`) but `loop.ps1` still implements old `forceReviewNext` flag consumption in `Resolve-IterationMode` (lines 237-247). Additionally, `loop.ps1` is missing the all-tasks-done queue injection block that `loop.sh` has (lines 1957-1965). Replace `forceReviewNext` flag reading with queue injection parity matching `loop.sh`. (priority: high)
 - [x] [review] Gate 4: **Copy-paste duplication** — `normalizeCiTextForSignature` (`gh.ts:613-620`) and `normalizeCiGateDetail` (`orchestrate.ts:2620-2627`) are identical functions (`.toLowerCase()`, SHA regex, digit regex, whitespace collapse, `.trim()`). Extracted to shared `lib/ci-utils.ts` and wired both consumers. (priority: high)
 
 ### Up Next — P1 Hardening
