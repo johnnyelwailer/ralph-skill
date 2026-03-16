@@ -5,7 +5,7 @@
 Priority: (1) review gate fixes that block spec-priority work, (2) critical P1 runtime failures, (3) loop/orchestrator core decoupling, (4) remaining P1 UX defects, (5) P2 enhancements. Dashboard polish/tests remain deferred until loop/orchestrator core is stable.
 
 ### In Progress — Review Fixes (Blocking)
-- [ ] [review] Gate 3: `monitor.ts` branch coverage is 88.75% (target >=90%). Coverage report indicates lines 53-54, 83, 128-133, and 152-153 are uncovered. (priority: high)
+- [x] [review] Gate 3: `monitor.ts` branch coverage is 88.75% (target >=90%). Coverage report indicates lines 53-54, 83, 128-133, and 152-153 are uncovered. Fixed: added 10 new tests covering hasBuildSinceLastPlan edge cases (missing log, read failure, malformed JSON, no-plan log), steering already-queued paths, starting state, unknown verdict values, and partial-task scenarios. Branch coverage now 95.56%. (priority: high)
 - [ ] [review] Gate 3: `update.ts` branch coverage is 63.04% (target >=80%). Coverage report indicates lines 29-30, 37-38, 90, 103, and 110-111 are uncovered. (priority: high)
 - [ ] [review] Gate 4: Copy-paste Duplication — steering instruction prepending logic is duplicated in `monitor.ts:125-133`, `dashboard.ts:795-800`, and `steer.ts:79-84`. Extract to shared helper in `lib/plan.ts` or `lib/project.ts`. (priority: medium)
 - [x] [review] Gate 1: `monitor.ts` steering detection (live `STEERING.md` detection) does not prepend user instruction to queue prompt. Regression of prior "Fixed: template content now prepended to user instruction" requirement. Fixed: monitor.ts now reads STEERING.md content and combines it with the template (`templateContent + '\n\n' + steeringInstruction`), matching the pattern in steer.ts. Test updated to verify user instruction inclusion. (priority: high)
@@ -47,8 +47,10 @@ Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle 
 - [x] [qa/P1] Provider health backoff — verified `loop.sh` correctly implements spec: 1 failure = 0 cooldown, 2 = 120s cooldown. Confirmed `status: cooldown` at iter 54. Marking as false positive. (priority: high)
 
 ### Up Next — P0/P1 (After Refactor + Stability)
-- [ ] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating consistently and add same-error persistence checks before re-iteration caps.
-- [ ] [setup/P1] Data privacy setup question — ask internal/private vs public/open-source and apply provider/model/ZDR constraints from answer.
+- [ ] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating in orchestrator/gh loops and add same-error persistence detection before auto re-iteration (stop retrying unchanged CI failures; surface actionable summary). (priority: high)
+- [ ] [setup/P1] Data privacy setup flow — ask internal/private vs public/open-source during setup and apply provider/model policy constraints (including ZDR-safe defaults) to generated config. (priority: high)
+- [ ] [devcontainer/P1] Devcontainer spec-conformance pass — verify `devcontainer`/`devcontainer-verify` behavior against SPEC §Devcontainer Support acceptance criteria (lifecycle hooks, mounts, provider auth forwarding, verification loop) and file/fix concrete gaps. (priority: high)
+- [ ] [qa/P1] `aloop start` auto-monitoring parity — verify dashboard/terminal auto-open and fallback behavior match spec on all OS code paths; ensure failures degrade gracefully with clear manual commands. (priority: medium)
 
 ### Up Next — P1 (After Core)
 - [ ] [dashboard/P1] Proof artifact comparison modes — add before/after comparison UX (side-by-side, slider, diff overlay) and history scrubbing.

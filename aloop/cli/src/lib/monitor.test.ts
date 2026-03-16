@@ -299,6 +299,178 @@ test('monitorSessionState transitions', async (t) => {
       // Should not crash
     });
 
+    await t.test('hasBuildSinceLastPlan returns true when log.jsonl is missing', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 20 }));
+      await fs.writeFile(todoPath, '- [x] task 1');
+      await fs.writeFile(path.join(sessionDir, 'review-verdict.json'), JSON.stringify({ iteration: 20, verdict: 'FAIL' }));
+      const logPath = path.join(sessionDir, 'log.jsonl');
+      if (existsSync(logPath)) await fs.rm(logPath);
+      const queueDir = path.join(sessionDir, 'queue');
+      await fs.rm(queueDir, { recursive: true, force: true });
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      // No build prerequisite block: verdict FAIL should queue plan directly
+      const files = await fs.readdir(queueDir);
+      assert.ok(files.some(f => f.includes('PROMPT_plan')));
+      await fs.rm(queueDir, { recursive: true, force: true });
+    });
+
+    await t.test('hasBuildSinceLastPlan handles log.jsonl read failure', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 21 }));
+      await fs.writeFile(todoPath, '- [x] task 1');
+      await fs.writeFile(path.join(sessionDir, 'review-verdict.json'), JSON.stringify({ iteration: 21, verdict: 'FAIL' }));
+      // Create log.jsonl as a directory so readFile fails
+      const logPath = path.join(sessionDir, 'log.jsonl');
+      if (existsSync(logPath)) await fs.rm(logPath, { recursive: true, force: true });
+      await fs.mkdir(logPath, { recursive: true });
+      const queueDir = path.join(sessionDir, 'queue');
+      await fs.rm(queueDir, { recursive: true, force: true });
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      const files = await fs.readdir(queueDir);
+      assert.ok(files.some(f => f.includes('PROMPT_plan')));
+      await fs.rm(queueDir, { recursive: true, force: true });
+      await fs.rm(logPath, { recursive: true, force: true });
+    });
+
+    await t.test('hasBuildSinceLastPlan handles malformed JSON lines and non-iteration events', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 22 }));
+      await fs.writeFile(todoPath, '- [x] task 1');
+      await fs.writeFile(path.join(sessionDir, 'review-verdict.json'), JSON.stringify({ iteration: 22, verdict: 'FAIL' }));
+      // Log with: empty lines, malformed JSON, non-iteration event, entry without mode, then plan+build
+      await fs.writeFile(path.join(sessionDir, 'log.jsonl'),
+        '\n' +
+        'not json\n' +
+        '{"event":"other_event","mode":"build"}\n' +
+        '{"event":"iteration_complete"}\n' +
+        '{"event":"iteration_complete","mode":"plan"}\n' +
+        '{"event":"iteration_complete","mode":"build"}\n'
+      );
+      const queueDir = path.join(sessionDir, 'queue');
+      await fs.rm(queueDir, { recursive: true, force: true });
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      // Build seen after plan, so no prerequisite block; FAIL should queue plan
+      const files = await fs.readdir(queueDir);
+      assert.ok(files.some(f => f.includes('PROMPT_plan')));
+      await fs.rm(queueDir, { recursive: true, force: true });
+    });
+
+    await t.test('hasBuildSinceLastPlan returns true when no plan entries exist', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 23 }));
+      await fs.writeFile(todoPath, '- [x] task 1');
+      await fs.writeFile(path.join(sessionDir, 'review-verdict.json'), JSON.stringify({ iteration: 23, verdict: 'FAIL' }));
+      // Only build entries, no plan
+      await fs.writeFile(path.join(sessionDir, 'log.jsonl'),
+        '{"event":"iteration_complete","mode":"build"}\n'
+      );
+      const queueDir = path.join(sessionDir, 'queue');
+      await fs.rm(queueDir, { recursive: true, force: true });
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      const files = await fs.readdir(queueDir);
+      assert.ok(files.some(f => f.includes('PROMPT_plan')));
+      await fs.rm(queueDir, { recursive: true, force: true });
+    });
+
+    await t.test('skips steer queue when steer already queued', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build', iteration: 30 }));
+      await fs.writeFile(todoPath, '- [ ] task 1');
+      await fs.writeFile(path.join(workdir, 'STEERING.md'), 'steer me');
+      const queueDir = path.join(sessionDir, 'queue');
+      await fs.mkdir(queueDir, { recursive: true });
+      await fs.writeFile(path.join(queueDir, 'existing-PROMPT_steer.md'), 'already queued');
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      const content = await fs.readFile(path.join(queueDir, 'existing-PROMPT_steer.md'), 'utf8');
+      assert.strictEqual(content, 'already queued');
+      await fs.rm(queueDir, { recursive: true, force: true });
+      await fs.rm(path.join(workdir, 'STEERING.md'), { force: true });
+    });
+
+    await t.test('steering skips plan queue when plan already queued', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build', iteration: 31 }));
+      await fs.writeFile(todoPath, '- [ ] task 1');
+      await fs.writeFile(path.join(workdir, 'STEERING.md'), 'steer me');
+      await fs.writeFile(path.join(promptsDir, 'PROMPT_steer.md'), 'steer template');
+      const queueDir = path.join(sessionDir, 'queue');
+      await fs.mkdir(queueDir, { recursive: true });
+      // Plan already queued but steer is not
+      await fs.writeFile(path.join(queueDir, 'existing-PROMPT_plan.md'), 'plan already queued');
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      // Steer should be queued, but plan should NOT be duplicated
+      const files = await fs.readdir(queueDir);
+      const planFiles = files.filter(f => f.includes('PROMPT_plan'));
+      assert.strictEqual(planFiles.length, 1, 'Should not duplicate plan queue entry');
+      assert.ok(files.some(f => f.includes('PROMPT_steer')));
+      await fs.rm(queueDir, { recursive: true, force: true });
+      await fs.rm(path.join(workdir, 'STEERING.md'), { force: true });
+    });
+
+    await t.test('monitors in starting state', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'starting', phase: 'build', iteration: 1 }));
+      await fs.writeFile(todoPath, '- [x] task 1');
+      await writeLoopPlan(sessionDir, { cycle: [], cyclePosition: 0, iteration: 1, version: 1 });
+      const queueDir = path.join(sessionDir, 'queue');
+      await fs.rm(queueDir, { recursive: true, force: true });
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      const files = await fs.readdir(queueDir);
+      assert.ok(files.some(f => f.includes('PROMPT_proof')));
+      await fs.rm(queueDir, { recursive: true, force: true });
+    });
+
+    await t.test('getReviewVerdict ignores unknown verdict values', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 40 }));
+      await fs.writeFile(todoPath, '- [x] task 1');
+      await fs.writeFile(path.join(sessionDir, 'review-verdict.json'), JSON.stringify({ iteration: 40, verdict: 'UNKNOWN' }));
+      await fs.writeFile(path.join(sessionDir, 'log.jsonl'),
+        '{"event":"iteration_complete","mode":"plan"}\n{"event":"iteration_complete","mode":"build"}\n'
+      );
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      // State should remain running since verdict is not PASS or FAIL
+      assert.equal(JSON.parse(await fs.readFile(statusPath, 'utf8')).state, 'running');
+    });
+
+    await t.test('review PASS with incomplete tasks does not stop session', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 41 }));
+      await fs.writeFile(todoPath, '- [ ] incomplete task\n- [x] done task');
+      await fs.writeFile(path.join(sessionDir, 'review-verdict.json'), JSON.stringify({ iteration: 41, verdict: 'PASS' }));
+      await fs.writeFile(path.join(sessionDir, 'log.jsonl'),
+        '{"event":"iteration_complete","mode":"plan"}\n{"event":"iteration_complete","mode":"build"}\n'
+      );
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      // State should remain running since not all tasks done
+      assert.equal(JSON.parse(await fs.readFile(statusPath, 'utf8')).state, 'running');
+    });
+
+    await t.test('build phase with incomplete tasks does not queue proof', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build', iteration: 42 }));
+      await fs.writeFile(todoPath, '- [ ] task 1\n- [x] task 2');
+      await writeLoopPlan(sessionDir, { cycle: [], cyclePosition: 0, iteration: 42, version: 1 });
+      const queueDir = path.join(sessionDir, 'queue');
+      await fs.rm(queueDir, { recursive: true, force: true });
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      if (existsSync(queueDir)) {
+        const files = await fs.readdir(queueDir);
+        assert.ok(!files.some(f => f.includes('PROMPT_proof')));
+      }
+    });
+
     await t.test('handles readdir failure for queue directory', async () => {
       await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build' }));
       await fs.writeFile(todoPath, '- [ ] task 1');
