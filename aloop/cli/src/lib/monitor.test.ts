@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import os from 'node:os';
 import { monitorSessionState } from './monitor.js';
@@ -129,6 +130,157 @@ test('monitorSessionState transitions', async (t) => {
     const content = await fs.readFile(path.join(queueDir, planFile), 'utf8');
     assert.ok(content.includes('plan content'));
     assert.ok(content.includes('reason: review_failed'));
+  });
+
+  await t.test('coverage gaps', async (t) => {
+    await t.test('returns early if status.json is missing', async () => {
+      const sPath = path.join(sessionDir, 'status-missing.json');
+      await monitorSessionState({ sessionDir, workdir, promptsDir: promptsDir });
+      // Should not crash
+    });
+
+    await t.test('returns early if status.json is invalid JSON', async () => {
+      const sPath = path.join(sessionDir, 'status.json');
+      await fs.writeFile(sPath, 'invalid json');
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+      // Should not crash
+    });
+
+    await t.test('returns early if status.state is not running/starting', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'exited' }));
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+      // No-op expected
+    });
+
+    await t.test('returns early if loop-plan.json is missing', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running' }));
+      const pPath = path.join(sessionDir, 'loop-plan.json');
+      if (existsSync(pPath)) await fs.rm(pPath);
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+      // No-op expected
+    });
+
+    await t.test('checkAllTasksComplete handles missing TODO.md', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build' }));
+      await writeLoopPlan(sessionDir, { cycle: [], cyclePosition: 0, iteration: 1, version: 1 });
+      if (existsSync(todoPath)) await fs.rm(todoPath);
+      
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+      const queueDir = path.join(sessionDir, 'queue');
+      if (existsSync(queueDir)) {
+        const files = await fs.readdir(queueDir).catch(() => []);
+        assert.ok(!files.some(f => f.includes('PROMPT_proof')));
+      }
+    });
+
+    await t.test('checkAllTasksComplete handles empty TODO.md', async () => {
+      await fs.writeFile(todoPath, '');
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+      const queueDir = path.join(sessionDir, 'queue');
+      if (existsSync(queueDir)) {
+        const files = await fs.readdir(queueDir).catch(() => []);
+        assert.ok(!files.some(f => f.includes('PROMPT_proof')));
+      }
+    });
+
+    await t.test('warns when STEERING.md exists but PROMPT_steer.md is missing', async () => {
+      const steeringPath = path.join(workdir, 'STEERING.md');
+      await fs.writeFile(steeringPath, 'steering content');
+      const steerTemplatePath = path.join(promptsDir, 'PROMPT_steer.md');
+      const backupPath = steerTemplatePath + '.bak';
+      if (existsSync(steerTemplatePath)) await fs.rename(steerTemplatePath, backupPath);
+
+      // Mock console.warn
+      const originalWarn = console.warn;
+      let warned = false;
+      console.warn = (msg) => {
+        if (typeof msg === 'string' && msg.includes('PROMPT_steer.md is missing')) warned = true;
+      };
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+      
+      console.warn = originalWarn;
+      if (existsSync(backupPath)) await fs.rename(backupPath, steerTemplatePath);
+      assert.ok(warned, 'Should have warned about missing steering template');
+      await fs.rm(steeringPath, { force: true });
+    });
+
+    await t.test('skips queueing if already queued (build -> proof)', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build' }));
+      await fs.writeFile(todoPath, '- [x] task 1');
+      const queueDir = path.join(sessionDir, 'queue');
+      await fs.mkdir(queueDir, { recursive: true });
+      await fs.writeFile(path.join(queueDir, 'PROMPT_proof.md'), 'existing proof');
+      
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+      const content = await fs.readFile(path.join(queueDir, 'PROMPT_proof.md'), 'utf8');
+      assert.strictEqual(content, 'existing proof');
+      await fs.rm(queueDir, { recursive: true, force: true });
+    });
+
+    await t.test('getReviewVerdict handles missing/invalid verdict file', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 1 }));
+      const verdictPath = path.join(sessionDir, 'review-verdict.json');
+      
+      // Missing
+      if (existsSync(verdictPath)) await fs.rm(verdictPath);
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+      assert.equal(JSON.parse(await fs.readFile(statusPath, 'utf8')).state, 'running');
+
+      // Invalid JSON
+      await fs.writeFile(verdictPath, 'invalid json');
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+      assert.equal(JSON.parse(await fs.readFile(statusPath, 'utf8')).state, 'running');
+
+      // Wrong iteration
+      await fs.writeFile(verdictPath, JSON.stringify({ iteration: 99, verdict: 'PASS' }));
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+      assert.equal(JSON.parse(await fs.readFile(statusPath, 'utf8')).state, 'running');
+    });
+
+    await t.test('stops session with review PASS but meta.pid missing or invalid', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'review', iteration: 1 }));
+      const verdictPath = path.join(sessionDir, 'review-verdict.json');
+      await fs.writeFile(verdictPath, JSON.stringify({ iteration: 1, verdict: 'PASS' }));
+      await fs.writeFile(todoPath, '- [x] task 1');
+      
+      const metaPath = path.join(sessionDir, 'meta.json');
+      await fs.writeFile(metaPath, 'invalid json');
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir });
+      assert.equal(JSON.parse(await fs.readFile(statusPath, 'utf8')).state, 'exited');
+    });
+
+    await t.test('checkAllTasksComplete handles readFile error', async () => {
+      const mockWorkDir = path.join(tmpDir, 'mockWorkdir-readfail');
+      await fs.mkdir(mockWorkDir, { recursive: true });
+      await fs.mkdir(path.join(mockWorkDir, 'TODO.md'), { recursive: true });
+      
+      await monitorSessionState({ sessionDir, workdir: mockWorkDir, promptsDir });
+      // Should not crash
+    });
+
+    await t.test('handles readdir failure for queue directory', async () => {
+      await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build' }));
+      await fs.writeFile(todoPath, '- [ ] task 1');
+      
+      const steeringPath = path.join(workdir, 'STEERING.md');
+      await fs.writeFile(steeringPath, 'steering content');
+
+      // Make prompts directory empty for this test to avoid queueing anything
+      const emptyPromptsDir = path.join(tmpDir, 'emptyPrompts');
+      await fs.mkdir(emptyPromptsDir, { recursive: true });
+
+      const qDir = path.join(sessionDir, 'queue');
+      if (existsSync(qDir)) await fs.rm(qDir, { recursive: true, force: true });
+      await fs.writeFile(qDir, 'not a directory');
+
+      await monitorSessionState({ sessionDir, workdir, promptsDir: emptyPromptsDir });
+      // Should not crash, case 0 calls readdir and catches failure
+      
+      await fs.rm(steeringPath, { force: true });
+    });
   });
 
   // Cleanup
