@@ -483,6 +483,16 @@ test('resolveDevcontainerDeps - ignores commander action arg shape', () => {
   assert.equal(resolved, fallback);
 });
 
+test('resolveDevcontainerDeps - falls back for undefined/null/partial dependency objects', () => {
+  const fallback = makeDeps();
+  assert.equal(resolveDevcontainerDeps(undefined, fallback), fallback);
+  assert.equal(resolveDevcontainerDeps(null, fallback), fallback);
+  assert.equal(
+    resolveDevcontainerDeps({ discover: async () => mockDiscovery() }, fallback),
+    fallback,
+  );
+});
+
 test('devcontainerCommand - json output for created action', async () => {
   const logs: string[] = [];
   const origLog = console.log;

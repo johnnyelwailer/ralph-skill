@@ -30,3 +30,4 @@
 | `aloop gh watch` (error handling) | 2026-03-16 | 3fdc5e9 | FAIL | Crashes with raw stack trace. Also: `gh` blocked by PATH hardening even for user-invoked `aloop gh` commands. |
 | `aloop devcontainer` | 2026-03-16 | 3fdc5e9 | FAIL | Crashes: `TypeError: deps.discover is not a function`. `--help` works. |
 | `aloop orchestrate --plan-only` (happy path) | 2026-03-16 | 3fdc5e9 | PASS | Session initialized, state file created, directories set up, plan-only respected. |
+| Gate 3 touched-file branch coverage (`gh.ts`, `devcontainer.ts`, `project.mjs`) | 2026-03-16 | current | PASS | `npx --yes tsx --test --experimental-test-coverage src/commands/gh.test.ts src/commands/devcontainer.test.ts src/commands/project.test.ts` => `gh.ts` 82.03%, `devcontainer.ts` 91.20%, `project.mjs` 89.26%; added targeted tests for `failGhWatch` JSON error path, `resolveDevcontainerDeps` fallback paths, and default-template bootstrap guard behavior. |

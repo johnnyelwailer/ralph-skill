@@ -338,6 +338,29 @@ test('scaffoldWorkspace skips bootstrap when explicit templatesDir is provided',
   assert.ok(result.prompts_dir);
 });
 
+test('scaffoldWorkspace does not bootstrap bundled templates when default HOME templates are already complete', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-existing-home-templates-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const homeTemplatesDir = path.join(homeRoot, '.aloop', 'templates');
+  await mkdir(homeTemplatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  for (const tmpl of requiredTemplates) {
+    await writeFile(path.join(homeTemplatesDir, tmpl), `Existing ${tmpl}`, 'utf8');
+  }
+
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+  });
+
+  const existingPlanTemplate = await readFile(path.join(homeTemplatesDir, 'PROMPT_plan.md'), 'utf8');
+  assert.equal(existingPlanTemplate, 'Existing PROMPT_plan.md');
+  const generatedPlanPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_plan.md'), 'utf8');
+  assert.equal(generatedPlanPrompt, 'Existing PROMPT_plan.md');
+});
+
 test('scaffoldWorkspace leaves provider hints empty for unknown providers', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-'));
   const homeRoot = path.join(tempRoot, 'home');

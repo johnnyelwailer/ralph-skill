@@ -2736,6 +2736,146 @@ test('selectUsableGhBinary skips PATH-hardening shim and picks next gh candidate
   }
 });
 
+test('selectUsableGhBinary returns null for empty pathValue', () => {
+  assert.equal(selectUsableGhBinary('', 'linux'), null);
+  assert.equal(selectUsableGhBinary('   ', 'linux'), null);
+});
+
+test('selectUsableGhBinary returns null when no candidates found on PATH', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-empty-'));
+  const emptyDir = path.join(root, 'empty');
+  fs.mkdirSync(emptyDir, { recursive: true });
+
+  try {
+    const selected = selectUsableGhBinary(emptyDir, 'linux');
+    assert.equal(selected, null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('selectUsableGhBinary returns null when only blocked shims exist', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-blocked-'));
+  const blockedDir = path.join(root, 'blocked');
+  fs.mkdirSync(blockedDir, { recursive: true });
+
+  const blockedPath = path.join(blockedDir, 'gh');
+  fs.writeFileSync(blockedPath, '#!/bin/sh\necho "gh: blocked by aloop PATH hardening" >&2\nexit 127\n', 'utf8');
+
+  try {
+    const selected = selectUsableGhBinary(blockedDir, 'linux');
+    assert.equal(selected, null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('selectUsableGhBinary skips directories (not files)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-dir-'));
+  const dirPath = path.join(root, 'gh');
+  fs.mkdirSync(dirPath, { recursive: true });
+
+  try {
+    const selected = selectUsableGhBinary(root, 'linux');
+    assert.equal(selected, null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('selectUsableGhBinary skips nonexistent paths', () => {
+  const selected = selectUsableGhBinary('/nonexistent/path/dir1', 'linux');
+  assert.equal(selected, null);
+});
+
+test('selectUsableGhBinary handles unreadable files gracefully', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-unreadable-'));
+  const dir = path.join(root, 'bin');
+  fs.mkdirSync(dir, { recursive: true });
+
+  const unreadablePath = path.join(dir, 'gh');
+  fs.writeFileSync(unreadablePath, 'small content', 'utf8');
+  fs.chmodSync(unreadablePath, 0o000);
+
+  try {
+    // Even though file is unreadable, it's still a file > 1024 bytes won't trigger read,
+    // but for small files the read may fail with EACCES — should be caught and file returned
+    const selected = selectUsableGhBinary(dir, 'linux');
+    // File exists and is a file, but small file read fails — the catch swallows the error
+    // and the file is still returned (line 73: return fullPath is reached)
+    assert.equal(selected, unreadablePath);
+  } finally {
+    fs.chmodSync(unreadablePath, 0o644);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('selectUsableGhBinary checks Windows candidates on win32 platform', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-win-'));
+  const dir = path.join(root, 'bin');
+  fs.mkdirSync(dir, { recursive: true });
+
+  const ghCmdPath = path.join(dir, 'gh.cmd');
+  fs.writeFileSync(ghCmdPath, '@echo gh version', 'utf8');
+
+  try {
+    const selected = selectUsableGhBinary(dir, 'win32');
+    assert.equal(selected, ghCmdPath);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ghExecutor.exec rethrows when PATH hardening blocks gh and no fallback binary exists', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-exec-no-fallback-'));
+  const blockedDir = path.join(root, 'blocked');
+  fs.mkdirSync(blockedDir, { recursive: true });
+
+  const blockedGhPath = path.join(blockedDir, 'gh');
+  fs.writeFileSync(blockedGhPath, '#!/bin/sh\necho "gh: blocked by aloop PATH hardening" >&2\nexit 127\n', 'utf8');
+  fs.chmodSync(blockedGhPath, 0o755);
+
+  const origPath = process.env.PATH;
+  try {
+    process.env.PATH = blockedDir;
+    await assert.rejects(
+      () => ghExecutor.exec(['version']),
+      /blocked by aloop PATH hardening/i,
+    );
+  } finally {
+    if (origPath !== undefined) process.env.PATH = origPath;
+    else delete process.env.PATH;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('failGhWatch emits JSON error when outputMode is json', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-watch-json-fail-'));
+  const logs: string[] = [];
+  t.mock.method(console, 'log', (...args: unknown[]) => logs.push(args.join(' ')));
+  t.mock.method(process, 'exit', ((code?: string | number | null | undefined) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+  t.mock.method(ghExecutor, 'exec', async () => {
+    throw Object.assign(new Error('Command failed: gh issue list --state open'), {
+      stderr: 'gh: blocked by aloop PATH hardening\n',
+    });
+  });
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync(['watch', '--once', '--home-dir', tmpHome, '--output', 'json'], { from: 'user' }),
+      /process\.exit:1/,
+    );
+    assert.equal(logs.length > 0, true);
+    const payload = JSON.parse(logs[0]) as { success: boolean; error: string };
+    assert.equal(payload.success, false);
+    assert.match(payload.error, /gh watch failed: gh issue list failed: gh: blocked by aloop PATH hardening/i);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test('fetchPrReviewComments and fetchPrIssueComments normalize malformed API results', async (t) => {
   t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
     if (args.join(' ').includes('/pulls/1/comments')) {
