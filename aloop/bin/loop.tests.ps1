@@ -57,6 +57,13 @@ if echo "$PROMPT_TEXT" | grep -q "Building Mode" && grep -q -- '- \[ \]' "$TODO_
 elif echo "$PROMPT_TEXT" | grep -q "Review Mode"; then
     VERDICT_FILE=$(echo "$PROMPT_TEXT" | grep -A 1 "write a JSON verdict file at:" | tail -n 1 | tr -d '\r')
     ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE '"iteration": [0-9]+' | grep -oE '[0-9]+' | head -n 1)
+    if [ -z "$VERDICT_FILE" ]; then
+        VERDICT_FILE="../session/review-verdict.json"
+    fi
+    if [ -z "$ITER_NUM" ] && [ -f "../session/status.json" ]; then
+        ITER_NUM=$(python3 -c "import json; print(json.load(open('../session/status.json')).get('iteration',''))" 2>/dev/null)
+    fi
+    ITER_NUM="${ITER_NUM:-0}"
     if [ "$SCENARIO" = "reject-once" ] && [ "$REJECTED" != "true" ]; then
         REJECTED="true"
         sed -i 's/- \[x\]/- [ ]/g' "$TODO_FILE"
@@ -297,12 +304,12 @@ exit 0
         $proofIdx = [array]::IndexOf([string[]]$milestones, 'iteration_complete:proof')
         $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
         $forceProofCovered = ($events -contains 'tasks_marked_complete') -and ($proofIdx -ge 0) -and ($appIdx -gt $proofIdx)
-        $manifestInjectionCovered = $result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.'
+        $manifestInjectionCovered = -not ($result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.')
         $baselineUpdateCovered = $events -contains 'baselines_updated'
 
         $branches = [ordered]@{
             'proof.force_on_all_tasks_done' = $forceProofCovered
-            'review.inject_proof_manifest' = $manifestInjectionCovered
+            'review.avoids_manifest_injection' = $manifestInjectionCovered
             'review.update_baselines_on_approval' = $baselineUpdateCovered
         }
         $covered = @($branches.Values | Where-Object { $_ }).Count
@@ -561,6 +568,14 @@ if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
 } elseif ($promptText -match 'Review Mode') {
     $iterNum = if ($promptText -match '"iteration":\s*(\d+)') { $matches[1] } else { 0 }
     $verdictFile = if ($promptText -match 'write a JSON verdict file at:(?:\r?\n)(.*?)(?:\r?\n)Schema:') { $matches[1].Trim() } else { '' }
+    if (-not $verdictFile) { $verdictFile = Join-Path $PWD "..\session\review-verdict.json" }
+    if (-not $iterNum) {
+        $statusFile = Join-Path $PWD "..\session\status.json"
+        if (Test-Path $statusFile) {
+            try { $iterNum = [int](Get-Content $statusFile -Raw | ConvertFrom-Json).iteration } catch {}
+        }
+    }
+    if (-not $iterNum) { $iterNum = 0 }
 
     if (($state.scenario -eq 'reject-once') -and -not $state.rejected) {
         # All done and first rejection — simulate review that reopens tasks
@@ -862,12 +877,12 @@ exit 0
         $proofIdx = [array]::IndexOf([string[]]$milestones, 'iteration_complete:proof')
         $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
         $forceProofCovered = ($events -contains 'tasks_marked_complete') -and ($proofIdx -ge 0) -and ($appIdx -gt $proofIdx)
-        $manifestInjectionCovered = $result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.'
+        $manifestInjectionCovered = -not ($result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.')
         $baselineUpdateCovered = $events -contains 'baselines_updated'
 
         $branches = [ordered]@{
             'proof.force_on_all_tasks_done' = $forceProofCovered
-            'review.inject_proof_manifest' = $manifestInjectionCovered
+            'review.avoids_manifest_injection' = $manifestInjectionCovered
             'review.update_baselines_on_approval' = $baselineUpdateCovered
         }
         $covered = @($branches.Values | Where-Object { $_ }).Count
@@ -1701,6 +1716,14 @@ if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
 } elseif ($promptText -match 'Review Mode') {
     $verdictFile = if ($promptText -match 'write a JSON verdict file at:(?:\r?\n)(.*?)(?:\r?\n)Schema:') { $matches[1].Trim() } else { '' }
     $iterNum = if ($promptText -match '"iteration":\s*(\d+)') { $matches[1] } else { 0 }
+    if (-not $verdictFile) { $verdictFile = Join-Path $PWD "..\session\review-verdict.json" }
+    if (-not $iterNum) {
+        $statusFile = Join-Path $PWD "..\session\status.json"
+        if (Test-Path $statusFile) {
+            try { $iterNum = [int](Get-Content $statusFile -Raw | ConvertFrom-Json).iteration } catch {}
+        }
+    }
+    if (-not $iterNum) { $iterNum = 0 }
     if ($verdictFile) {
         "{`n  `"iteration`": $iterNum,`n  `"verdict`": `"PASS`",`n  `"summary`": `"approved`"`n}" | Set-Content $verdictFile
     }
@@ -1866,6 +1889,13 @@ if echo "$PROMPT_TEXT" | grep -q "Building Mode" && grep -q -- '- \[ \]' "$TODO_
 elif echo "$PROMPT_TEXT" | grep -q "Review Mode"; then
     VERDICT_FILE=$(echo "$PROMPT_TEXT" | grep -A 1 "write a JSON verdict file at:" | tail -n 1 | tr -d '\r')
     ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE '"iteration": [0-9]+' | grep -oE '[0-9]+' | head -n 1)
+    if [ -z "$VERDICT_FILE" ]; then
+        VERDICT_FILE="../session/review-verdict.json"
+    fi
+    if [ -z "$ITER_NUM" ] && [ -f "../session/status.json" ]; then
+        ITER_NUM=$(python3 -c "import json; print(json.load(open('../session/status.json')).get('iteration',''))" 2>/dev/null)
+    fi
+    ITER_NUM="${ITER_NUM:-0}"
     if [ -n "$VERDICT_FILE" ]; then
         printf '{\n  "iteration": %s,\n  "verdict": "PASS",\n  "summary": "approved"\n}\n' "$ITER_NUM" > "$VERDICT_FILE"
     fi
@@ -2007,6 +2037,14 @@ if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
 } elseif ($promptText -match 'Review Mode') {
     $verdictFile = if ($promptText -match 'write a JSON verdict file at:(?:\r?\n)(.*?)(?:\r?\n)Schema:') { $matches[1].Trim() } else { '' }
     $iterNum = if ($promptText -match '"iteration":\s*(\d+)') { $matches[1] } else { 0 }
+    if (-not $verdictFile) { $verdictFile = Join-Path $PWD "..\session\review-verdict.json" }
+    if (-not $iterNum) {
+        $statusFile = Join-Path $PWD "..\session\status.json"
+        if (Test-Path $statusFile) {
+            try { $iterNum = [int](Get-Content $statusFile -Raw | ConvertFrom-Json).iteration } catch {}
+        }
+    }
+    if (-not $iterNum) { $iterNum = 0 }
     if ($verdictFile) {
         "{`n  `"iteration`": $iterNum,`n  `"verdict`": `"PASS`",`n  `"summary`": `"approved`"`n}" | Set-Content $verdictFile
     }
@@ -2191,6 +2229,13 @@ if echo "$PROMPT_TEXT" | grep -q "Building Mode" && grep -q -- '- \[ \]' "$TODO_
 elif echo "$PROMPT_TEXT" | grep -q "Review Mode"; then
     VERDICT_FILE=$(echo "$PROMPT_TEXT" | grep -A 1 "write a JSON verdict file at:" | tail -n 1 | tr -d '\r')
     ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE '"iteration": [0-9]+' | grep -oE '[0-9]+' | head -n 1)
+    if [ -z "$VERDICT_FILE" ]; then
+        VERDICT_FILE="../session/review-verdict.json"
+    fi
+    if [ -z "$ITER_NUM" ] && [ -f "../session/status.json" ]; then
+        ITER_NUM=$(python3 -c "import json; print(json.load(open('../session/status.json')).get('iteration',''))" 2>/dev/null)
+    fi
+    ITER_NUM="${ITER_NUM:-0}"
     if [ -n "$VERDICT_FILE" ]; then
         printf '{\n  "iteration": %s,\n  "verdict": "PASS",\n  "summary": "approved"\n}\n' "$ITER_NUM" > "$VERDICT_FILE"
     fi

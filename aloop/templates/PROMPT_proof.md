@@ -50,9 +50,9 @@ Examine recent build output (TODO.md, commits, changed files, specs), decide wha
 
 3. **Generate Artifacts**
    - Run the actual commands: launch servers, capture screenshots, test endpoints, run CLI tools
-   - Save all artifacts to `<session-dir>/artifacts/iter-<N>/`
+   - Save all artifacts to `{{ARTIFACTS_DIR}}/iter-{{ITERATION}}/`
    - Use whatever tools and approaches make sense for the work at hand
-   - If previous baselines exist in `<session-dir>/artifacts/baselines/`, diff against them
+   - If previous baselines exist in `{{ARTIFACTS_DIR}}/baselines/`, diff against them
 
 4. **Layout Verification (when UI/CSS was changed)**
    If the build touched CSS, layout, or visual components, you MUST verify actual rendered layout — not just that CSS classes exist in source. Static code inspection cannot catch layout bugs (e.g., wrapper divs breaking CSS Grid parent-child relationships).
@@ -66,7 +66,7 @@ Examine recent build output (TODO.md, commits, changed files, specs), decide wha
    - **Common trap:** a React context provider or wrapper component inserts a `<div>` between a CSS Grid container and its items, silently breaking all `grid-area` assignments. Always verify the rendered DOM tree, not just the JSX.
 
 5. **Write the Manifest**
-   - Write `proof-manifest.json` to `<session-dir>/artifacts/iter-<N>/`
+   - Write `proof-manifest.json` to `{{ARTIFACTS_DIR}}/iter-{{ITERATION}}/`
    - Include structured metadata for each artifact
    - Document what was skipped and why
 

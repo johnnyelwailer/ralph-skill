@@ -653,6 +653,7 @@ function Show-AgentSummary {
 
 $planFile = Join-Path $WorkDir "TODO.md"
 $reviewVerdictFile = Join-Path $SessionDir "review-verdict.json"
+$artifactsDir = Join-Path $SessionDir "artifacts"
 
 function Get-PlanLines {
     if (-not (Test-Path $planFile)) { return @() }
@@ -675,6 +676,22 @@ function Get-CurrentTask {
     $line = $lines | Where-Object { $_ -match '^\s*-\s+\[ \]' } | Select-Object -First 1
     if (-not $line) { return "" }
     return ($line -replace '^\s*-\s+\[ \]\s*', '')
+}
+
+function Resolve-PromptPlaceholders {
+    param(
+        [string]$PromptContent,
+        [int]$IterationNumber
+    )
+
+    $resolved = $PromptContent
+    $resolved = $resolved.Replace('{{SESSION_DIR}}', $SessionDir)
+    $resolved = $resolved.Replace('{{ITERATION}}', [string]$IterationNumber)
+    $resolved = $resolved.Replace('{{ARTIFACTS_DIR}}', $artifactsDir)
+    # Backward compatibility for existing custom prompts.
+    $resolved = $resolved.Replace('<session-dir>', $SessionDir)
+    $resolved = $resolved.Replace('iter-<N>', "iter-$IterationNumber")
+    return $resolved
 }
 
 function Reset-ReviewVerdict {
@@ -1966,30 +1983,10 @@ try {
         try {
             $promptContent = Get-Content -Path $iterationPromptFile -Raw
 
-            # Proof phase: prepare artifact directory and replace placeholders
-            if ($iterationMode -eq 'proof') {
-                $artifactDir = Join-Path $SessionDir "artifacts\iter-$iteration"
-                if (-not (Test-Path $artifactDir)) {
-                    New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
-                }
-                $script:lastProofIteration = $iteration
-                $promptContent = $promptContent -replace '<session-dir>', $SessionDir
-                $promptContent = $promptContent -replace 'iter-<N>', "iter-$iteration"
-            }
-
-            # Review phase: inject latest proof manifest if available
             if ($iterationMode -eq 'review') {
                 Reset-ReviewVerdict
-                if ($script:lastProofIteration -gt 0) {
-                    $lastManifest = Join-Path $SessionDir "artifacts\iter-$($script:lastProofIteration)\proof-manifest.json"
-                    if (Test-Path $lastManifest) {
-                        $manifestContent = Get-Content -Path $lastManifest -Raw
-                        $promptContent += "`n`n## Proof Manifest (from iteration $($script:lastProofIteration))`n`n$manifestContent"
-                        Write-Host "Injected proof manifest from iteration $($script:lastProofIteration) into review prompt." -ForegroundColor Gray
-                    }
-                }
-                $promptContent += "`n`n## Mandatory Machine-Readable Verdict`nBefore exiting this review iteration, write a JSON verdict file at:`n$reviewVerdictFile`nSchema:`n{`n  `"iteration`": $iteration,`n  `"verdict`": `"PASS`" | `"FAIL`",`n  `"summary`": `"<one-sentence reason>`"`n}`nDo not skip writing this file."
             }
+            $promptContent = Resolve-PromptPlaceholders -PromptContent $promptContent -IterationNumber $iteration
 
             Push-Location $WorkDir
             try {
@@ -2006,6 +2003,9 @@ try {
             Persist-LoopPlanState -Iteration $iteration
             $stuckState.StuckCount = 0
             $stuckState.LastTask = ""
+            if ($iterationMode -eq 'proof') {
+                $script:lastProofIteration = $iteration
+            }
 
             # Steer mode: remove any leftover steering file if the agent did not delete it
             if ($iterationMode -eq 'steer') {

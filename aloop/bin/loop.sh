@@ -256,6 +256,7 @@ STATUS_FILE="$SESSION_DIR/status.json"
 LOG_FILE="$SESSION_DIR/log.jsonl"
 REPORT_FILE="$SESSION_DIR/report.md"
 REVIEW_VERDICT_FILE="$SESSION_DIR/review-verdict.json"
+ARTIFACTS_DIR="$SESSION_DIR/artifacts"
 START_TIME=$(date +%s)
 RUN_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || date +%s%N)
 
@@ -277,6 +278,17 @@ DASHBOARD_URL=""
 
 # Parse round-robin providers into array
 IFS=',' read -ra RR_PROVIDERS <<< "$ROUND_ROBIN_PROVIDERS"
+
+substitute_prompt_placeholders() {
+    local prompt_text="$1"
+    prompt_text="${prompt_text//\{\{SESSION_DIR\}\}/$SESSION_DIR}"
+    prompt_text="${prompt_text//\{\{ITERATION\}\}/$ITERATION}"
+    prompt_text="${prompt_text//\{\{ARTIFACTS_DIR\}\}/$ARTIFACTS_DIR}"
+    # Backward compatibility for existing custom prompts.
+    prompt_text="${prompt_text//<session-dir>/$SESSION_DIR}"
+    prompt_text="${prompt_text//iter-<N>/iter-$ITERATION}"
+    printf '%s' "$prompt_text"
+}
 
 # Re-read provider list from meta.json each iteration (supports hot-reload)
 refresh_providers_from_meta() {
@@ -1923,28 +1935,10 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     # Invoke provider
     prompt_content=$(cat "$iter_prompt_file")
 
-    # Proof phase: prepare artifact directory and replace placeholders
-    if [ "$iter_mode" = "proof" ]; then
-        artifact_dir="$SESSION_DIR/artifacts/iter-$ITERATION"
-        mkdir -p "$artifact_dir"
-        LAST_PROOF_ITERATION="$ITERATION"
-        prompt_content="${prompt_content//<session-dir>/$SESSION_DIR}"
-        prompt_content="${prompt_content//iter-<N>/iter-$ITERATION}"
-    fi
-
-    # Review phase: inject latest proof manifest if available
     if [ "$iter_mode" = "review" ]; then
         reset_review_verdict
-        if [ "$LAST_PROOF_ITERATION" -gt 0 ]; then
-            last_manifest="$SESSION_DIR/artifacts/iter-$LAST_PROOF_ITERATION/proof-manifest.json"
-            if [ -f "$last_manifest" ]; then
-                manifest_content=$(cat "$last_manifest")
-                prompt_content="${prompt_content}"$'\n\n'"## Proof Manifest (from iteration $LAST_PROOF_ITERATION)"$'\n\n'"${manifest_content}"
-                echo "Injected proof manifest from iteration $LAST_PROOF_ITERATION into review prompt."
-            fi
-        fi
-        prompt_content="${prompt_content}"$'\n\n'"## Mandatory Machine-Readable Verdict"$'\n'"Before exiting this review iteration, write a JSON verdict file at:"$'\n'"$REVIEW_VERDICT_FILE"$'\n'"Schema:"$'\n'"{"$'\n'"  \"iteration\": $ITERATION,"$'\n'"  \"verdict\": \"PASS\" | \"FAIL\","$'\n'"  \"summary\": \"<one-sentence reason>\""$'\n'"}"$'\n'"Do not skip writing this file."
     fi
+    prompt_content="$(substitute_prompt_placeholders "$prompt_content")"
 
     cd "$WORK_DIR"
     # Record LOG_FILE.raw offset so we can extract per-iteration output after
@@ -1956,6 +1950,9 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         persist_loop_plan_state
         STUCK_COUNT=0
         LAST_TASK=""
+        if [ "$iter_mode" = "proof" ]; then
+            LAST_PROOF_ITERATION="$ITERATION"
+        fi
 
         # Steer mode: archive leftover steering file if the agent did not delete it
         if [ "$iter_mode" = "steer" ]; then
