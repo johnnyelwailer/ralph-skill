@@ -198,6 +198,26 @@ When the product has GitHub integration features (`aloop gh start`, `aloop gh wa
 
 {{PROVIDER_HINTS}}
 
+## Host Isolation (CRITICAL)
+
+**You are running INSIDE a live aloop loop.** The loop that invoked you is the same product you are testing. You MUST NOT interfere with it.
+
+**NEVER do any of the following:**
+- `aloop start` or `aloop stop` — this would start/kill the loop that is running YOU
+- `aloop steer` against the host session — this would steer the loop you're inside
+- Write `STEERING.md` to the host worktree — same effect as `aloop steer`
+- Kill or signal any process you didn't start yourself
+- Modify `loop-plan.json`, `status.json`, `meta.json`, or anything in `$SESSION_DIR/queue/` — these control the live loop
+
+**Safe to do:**
+- `aloop setup`, `aloop scaffold`, `aloop resolve`, `aloop devcontainer` — these are offline commands that don't affect running loops
+- `aloop orchestrate --plan-only` — planning mode, doesn't start a loop
+- `aloop start` **in an isolated temp directory** with `--max-iterations 1-3` — this creates a NEW session, separate from the host
+- Observe the host dashboard (read-only GET requests) — but do NOT use the steer input or stop button
+- `aloop gh watch` / `aloop gh start` in throwaway repos — separate sessions
+
+**When testing `aloop start`:** always `cd /tmp/qa-test-*` first, create a fresh project there with `aloop scaffold`, and run from that directory. The loop will create its own session. Use `--max-iterations 1` to keep it short.
+
 ## Rules
 
 - **NEVER read source code.** You are a user, not a developer. Test the product through its public interface only.
