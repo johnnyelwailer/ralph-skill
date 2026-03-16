@@ -2822,3 +2822,102 @@ Transfer-Encoding: chunked
 
 
 ```
+
+---
+
+## QA Session — 2026-03-16 (iteration 125+)
+
+### Test Environment
+- Temp dir: `/tmp/qa-test-1773682326`
+- Session dir: `/home/pj/.aloop/sessions/ralph-skill-20260314-173930`
+- Dashboard URL from meta.json: `http://localhost:4040`
+- Binary under test: `/tmp/aloop-test-install-lJMcPc/bin/aloop`
+- Binary version: `1.0.0`
+- Commit: `761de21`
+- Features tested: 5
+
+### Results
+- PASS: `aloop devcontainer`, `aloop dashboard` (packaged-install assets), `aloop status --watch`, `aloop gh watch` (invalid-repo error path), `aloop start` auto-monitoring (after setup)
+- FAIL (re-tests of existing bugs): `aloop setup --mode orchestrate` ignored, `aloop start` missing-config error still leaks stack trace
+
+### Bugs Filed
+- No new bugs filed (duplicates avoided).
+- Added re-test notes to existing TODO items:
+  - `[qa/P1] aloop setup --mode orchestrate ignored in packaged install`
+  - `[qa/P2] CLI error handling leaks stack traces`
+
+### Layout Verification (mandatory)
+- Desktop screenshots captured:
+  - `/home/pj/.copilot/session-state/80b6c637-84fc-4a12-a4ad-39fda6648355/files/qa-20260316-183206/dashboard-meta-1920x1080.png`
+  - `/home/pj/.copilot/session-state/80b6c637-84fc-4a12-a4ad-39fda6648355/files/qa-20260316-183206/dashboard-isolated-4242-1920x1080.png`
+- Structural fallback check used where needed (`curl | grep -Eic 'panel|column|sidebar|activity|docs'`).
+
+### Command Transcript
+
+```bash
+$ npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1
+/tmp/aloop-test-install-lJMcPc/bin/aloop
+[exit:0]
+
+$ /tmp/aloop-test-install-lJMcPc/bin/aloop --version
+1.0.0
+[exit:0]
+
+$ node -e '...read meta.json dashboard_url...'
+http://localhost:4040
+[exit:0]
+
+$ npx playwright install chromium
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+[exit:0]
+
+$ npx playwright screenshot --browser chromium --viewport-size=1920,1080 http://localhost:4040 /home/pj/.copilot/session-state/80b6c637-84fc-4a12-a4ad-39fda6648355/files/qa-20260316-183206/dashboard-meta-1920x1080.png
+Navigating to http://localhost:4040
+Capturing screenshot into .../dashboard-meta-1920x1080.png
+[exit:0]
+
+$ cd /tmp/qa-test-1773682326/project && /tmp/aloop-test-install-lJMcPc/bin/aloop devcontainer
+Created devcontainer config at /tmp/qa-test-1773682326/project/.devcontainer/devcontainer.json
+[exit:0]
+
+$ timeout 12 /tmp/aloop-test-install-lJMcPc/bin/aloop status --watch
+aloop status  (refreshing every 2s ...)
+Active Sessions: ...
+Provider Health: ...
+[exit:124]
+
+$ cd /tmp/qa-test-1773682326/project && /tmp/aloop-test-install-lJMcPc/bin/aloop gh watch --repo definitely-not-a-real-owner/definitely-not-a-real-repo
+gh watch failed: gh issue list failed: GraphQL: Could not resolve to a Repository with the name 'definitely-not-a-real-owner/definitely-not-a-real-repo'. (repository)
+[exit:1]
+
+$ cd /tmp/qa-test-1773682326/project && /tmp/aloop-test-install-lJMcPc/bin/aloop start --max-iterations 1
+Error: No Aloop configuration found for this project. Run `aloop setup` first.
+    at startCommandWithDeps (.../dist/index.js:6359:11)
+[exit:1]
+
+$ cd /tmp/qa-test-1773682326/project && /tmp/aloop-test-install-lJMcPc/bin/aloop setup --non-interactive --spec SPEC.md --providers codex --mode orchestrate
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.aloop/projects/415a22c4/config.yml
+[exit:0]
+
+$ grep '^mode:' /home/pj/.aloop/projects/415a22c4/config.yml
+mode: 'plan-build-review'
+[exit:0]
+
+$ cd /tmp/qa-test-1773682326/project && /tmp/aloop-test-install-lJMcPc/bin/aloop start --max-iterations 1
+Aloop loop started!
+  Session:  project-20260316-173830
+  Monitor:  dashboard (auto_open=true)
+  Dashboard: http://localhost:37705
+[exit:0]
+
+$ curl -sS http://localhost:37705 | head -n 10
+<!DOCTYPE html>
+<html lang="en">
+...
+[exit:0]
+
+$ /tmp/aloop-test-install-lJMcPc/bin/aloop stop project-20260316-173830
+Session project-20260316-173830 stopped.
+[exit:0]
+```
