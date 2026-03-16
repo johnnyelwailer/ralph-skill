@@ -5,6 +5,7 @@
 Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) P1 hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
+- [ ] [review] Gate 4: **Dead parameter `ConsumeForcedFlags` in `Resolve-IterationMode`** — `loop.ps1:233` declares `[bool]$ConsumeForcedFlags` parameter and it is still passed at call sites (lines 2048, 2057), but the only logic that consumed it (the `forceReviewNext` block) was removed in commit 079f191. Remove the parameter declaration and update call sites. (priority: high)
 - [x] [review] Gate 1: **`loop.ps1` queue injection parity** — replaced legacy `forceReviewNext` consumption in `Resolve-IterationMode` with queue-override parity comments/flow, added build all-tasks-done queue injection to `001-force-review.md` with `queue_inject` logging, and added regression coverage in `loop.tests.ps1` for both legacy-flag ignore behavior and review queue injection. (priority: high)
 
 ### Up Next — P1 Hardening

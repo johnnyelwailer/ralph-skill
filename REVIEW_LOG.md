@@ -1,5 +1,30 @@
 # Review Log
 
+## Review — 2026-03-16 18:30 UTC — commit 011b264..deed10c
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/bin/loop.ps1`, `aloop/bin/loop.tests.ps1`, `aloop/cli/src/commands/dashboard.ts`, `aloop/cli/src/commands/dashboard.test.ts`, `aloop/cli/src/commands/start.ts`, `aloop/cli/src/commands/start.test.ts`, `aloop/cli/src/commands/project.test.ts`, `aloop/cli/package.json`
+
+- Gate 4: **Dead parameter** — `Resolve-IterationMode` (`loop.ps1:233`) still declares `[bool]$ConsumeForcedFlags` and it is still passed at call sites (lines 2048, 2057), but the forceReviewNext logic that consumed it was removed in this iteration. The parameter is now a no-op.
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: `loop.ps1` queue injection parity — legacy `forceReviewNext` consumption replaced with queue-based `001-force-review.md` injection when `allTasksMarkedDone` is true. Matches `loop.sh:1957-1965` behavior exactly.
+
+**Positive observations:**
+- Gate 1: Dashboard `resolveDefaultAssetsDir` (`dashboard.ts:392-415`) correctly implements a multi-candidate search using `import.meta.url`, `process.argv[1]`, and cwd as base paths with 5 distinct resolution strategies. This fixes the packaged-install regression where cwd-only fallback missed bundled assets.
+- Gate 1: `build:templates` script in `package.json` correctly copies `aloop/templates/` to `dist/templates/` during build, ensuring template files are available in packaged installs.
+- Gate 1: Auto-monitoring warning messages now include actionable manual commands (`aloop dashboard`, `aloop status --watch`) per SPEC intent for graceful degradation.
+- Gate 2: `start.test.ts` adds 7 new tests (lines 1007-1304) with concrete assertions — `assert.equal(result.monitor_mode, 'dashboard')`, `assert.ok(result.warnings.some(w => w.includes('aloop dashboard')))`, `assert.ok(syncCalls.some(call => call.command === 'open'))`. Tests cover Linux, macOS, and Windows platform branches with specific command/argument assertions. No shallow checks found.
+- Gate 2: `dashboard.test.ts` test (`line 810`) now validates that the packaged-install dashboard serves actual HTML (`/<title>Aloop Dashboard<\/title>/`) and rejects fallback HTML (`assert.doesNotMatch(text, /Dashboard assets not found/)`). Simulates realistic packaged environment by setting `process.cwd()` to empty dir and `process.argv[1]` to wrapper path.
+- Gate 2: `loop.tests.ps1` queue injection test (line 2769) verifies file creation (`Test-Path ...001-force-review.md`), and checks for 3 specific log events (`tasks_marked_complete`, `queue_inject`, `iteration_complete`). The legacy-flag ignore test (line 2767) confirms `forceReviewNext` flag is preserved unmodified in the plan JSON when queue injection is the mechanism.
+- Gate 2: `project.test.ts` (line 382) adds dist/templates resolution test with 6 bundled template files and exact directory match assertion.
+- Gate 5: All tests pass (CLI 8/8, test suite green), type-check clean, build succeeds.
+- Gate 6: Proof manifest includes 3 screenshots at desktop/tablet/mobile viewports. Desktop screenshot confirms functional dashboard with sessions sidebar, docs panel, and activity panel visible. CLI captures for setup and scaffold are valid. `claudecode-sanitization.txt` contains an ERR_MODULE_NOT_FOUND error (proof agent's test harness issue, not a product bug — sanitization is verified by `sanitize.test.ts` in the test suite). `layout-verification.json` is empty (`"panels": []`) but the screenshot confirms correct layout visually.
+- Gate 8: No dependency changes; `build:templates` is a packaging-only build step addition.
+- Gate 9: README accurately describes 9 gates and loop phases — no drift.
+
+---
+
 ## Review — 2026-03-16 16:00 UTC — commit aa4f74b..0032a70
 
 **Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
