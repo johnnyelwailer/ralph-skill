@@ -10,6 +10,7 @@ import {
   detectPythonInstallCommand,
   buildProviderInstallCommands,
   buildProviderRemoteEnv,
+  buildVSCodeExtensions,
   resolveDevcontainerDeps,
   verifyDevcontainer,
   verifyDevcontainerCommand,
@@ -758,8 +759,8 @@ test('verifyDevcontainer - all checks pass for node-typescript project', async (
 
   assert.equal(result.passed, true);
   assert.equal(result.iteration, 1);
-  // build, up, git, aloop-mount, sessions-mount, provider-claude, deps-installed
-  assert.equal(result.checks.length, 7);
+  // build, up, git, aloop-mount, sessions-mount, provider-claude, auth-claude, deps-installed
+  assert.equal(result.checks.length, 8);
   assert.ok(result.checks.every((c) => c.passed));
 
   const names = result.checks.map((c) => c.name);
@@ -769,6 +770,7 @@ test('verifyDevcontainer - all checks pass for node-typescript project', async (
   assert.ok(names.includes('aloop-mount'));
   assert.ok(names.includes('sessions-mount'));
   assert.ok(names.includes('provider-claude'));
+  assert.ok(names.includes('auth-claude'));
   assert.ok(names.includes('deps-installed'));
 });
 
@@ -977,4 +979,215 @@ test('verifyDevcontainerCommand - text output shows pass/fail', async () => {
   } finally {
     console.log = origLog;
   }
+});
+
+// --- opencode provider support ---
+
+test('buildProviderInstallCommands - includes opencode install', () => {
+  const cmds = buildProviderInstallCommands(['opencode']);
+  assert.deepEqual(cmds, ['npm install -g opencode']);
+});
+
+test('buildProviderInstallCommands - opencode with other providers', () => {
+  const cmds = buildProviderInstallCommands(['claude', 'opencode', 'codex']);
+  assert.deepEqual(cmds, [
+    'npm install -g @anthropic-ai/claude-code',
+    'npm install -g opencode',
+    'npm install -g @openai/codex',
+  ]);
+});
+
+test('buildProviderRemoteEnv - forwards opencode auth var', () => {
+  const env = buildProviderRemoteEnv(['opencode']);
+  assert.equal(env.OPENCODE_API_KEY, '${localEnv:OPENCODE_API_KEY}');
+  assert.equal(Object.keys(env).length, 1);
+});
+
+test('generateDevcontainerConfig - opencode provider chains install and remoteEnv', () => {
+  const discovery = mockDiscovery({
+    providers: { installed: ['opencode'], missing: [], default_provider: 'opencode', default_models: {}, round_robin_default: ['opencode'] },
+  });
+  const config = generateDevcontainerConfig(discovery);
+
+  assert.ok(config.postCreateCommand?.includes('npm install -g opencode'));
+  assert.equal(config.remoteEnv.OPENCODE_API_KEY, '${localEnv:OPENCODE_API_KEY}');
+});
+
+test('verifyDevcontainer - opencode provider binary check', async () => {
+  const deps = mockVerifyDeps();
+  const result = await verifyDevcontainer('/mock/project', ['opencode'], deps);
+
+  const providerCheck = result.checks.find((c) => c.name === 'provider-opencode');
+  assert.ok(providerCheck);
+  assert.equal(providerCheck.passed, true);
+});
+
+// --- VS Code extensions customizations ---
+
+test('buildVSCodeExtensions - returns claude extension for claude provider', () => {
+  const exts = buildVSCodeExtensions(['claude']);
+  assert.deepEqual(exts, ['anthropic.claude-code']);
+});
+
+test('buildVSCodeExtensions - returns copilot extension for copilot provider', () => {
+  const exts = buildVSCodeExtensions(['copilot']);
+  assert.deepEqual(exts, ['GitHub.copilot']);
+});
+
+test('buildVSCodeExtensions - returns both claude and copilot extensions', () => {
+  const exts = buildVSCodeExtensions(['claude', 'copilot']);
+  assert.deepEqual(exts, ['anthropic.claude-code', 'GitHub.copilot']);
+});
+
+test('buildVSCodeExtensions - returns empty for providers without VS Code extensions', () => {
+  const exts = buildVSCodeExtensions(['codex', 'gemini', 'opencode']);
+  assert.deepEqual(exts, []);
+});
+
+test('buildVSCodeExtensions - empty list returns empty', () => {
+  const exts = buildVSCodeExtensions([]);
+  assert.deepEqual(exts, []);
+});
+
+test('generateDevcontainerConfig - includes vscode customizations for claude provider', () => {
+  const discovery = mockDiscovery(); // installed: ['claude']
+  const config = generateDevcontainerConfig(discovery);
+
+  assert.ok(config.customizations);
+  const vscode = config.customizations?.vscode as Record<string, unknown>;
+  assert.ok(vscode);
+  assert.deepEqual(vscode.extensions, ['anthropic.claude-code']);
+});
+
+test('generateDevcontainerConfig - includes vscode customizations for copilot provider', () => {
+  const discovery = mockDiscovery({
+    providers: { installed: ['copilot'], missing: [], default_provider: 'copilot', default_models: {}, round_robin_default: ['copilot'] },
+  });
+  const config = generateDevcontainerConfig(discovery);
+
+  assert.ok(config.customizations);
+  const vscode = config.customizations?.vscode as Record<string, unknown>;
+  assert.ok(vscode);
+  assert.deepEqual(vscode.extensions, ['GitHub.copilot']);
+});
+
+test('generateDevcontainerConfig - no customizations when no provider extensions', () => {
+  const discovery = mockDiscovery({
+    providers: { installed: ['codex'], missing: [], default_provider: 'codex', default_models: {}, round_robin_default: ['codex'] },
+  });
+  const config = generateDevcontainerConfig(discovery);
+
+  assert.equal(config.customizations, undefined);
+});
+
+test('augmentExistingConfig - merges vscode extensions without duplicates', () => {
+  const existing = {
+    customizations: {
+      vscode: {
+        extensions: ['ms-python.python', 'anthropic.claude-code'],
+      },
+    },
+  };
+  const generated: DevcontainerConfig = {
+    name: 'proj-aloop',
+    features: {},
+    mounts: [],
+    containerEnv: {},
+    remoteEnv: {},
+    customizations: {
+      vscode: {
+        extensions: ['anthropic.claude-code', 'GitHub.copilot'],
+      },
+    },
+  };
+
+  const result = augmentExistingConfig(existing, generated);
+  const vscode = result.customizations as Record<string, unknown>;
+  const extensions = (vscode.vscode as Record<string, unknown>).extensions as string[];
+
+  assert.ok(extensions.includes('ms-python.python')); // existing preserved
+  assert.ok(extensions.includes('anthropic.claude-code')); // not duplicated
+  assert.ok(extensions.includes('GitHub.copilot')); // new added
+  assert.equal(extensions.filter(e => e === 'anthropic.claude-code').length, 1);
+});
+
+// --- auth verification checks ---
+
+test('verifyDevcontainer - auth check passes when env var is set', async () => {
+  const deps = mockVerifyDeps();
+  const result = await verifyDevcontainer('/mock/project', ['claude'], deps);
+
+  const authCheck = result.checks.find((c) => c.name === 'auth-claude');
+  assert.ok(authCheck);
+  assert.equal(authCheck.passed, true);
+  assert.ok(authCheck.message.includes('OK'));
+});
+
+test('verifyDevcontainer - auth check fails when no auth vars set', async () => {
+  // Mock exec to fail for all sh -c test -n checks (auth vars not set)
+  const deps = mockVerifyDeps({
+    execResults: {
+      'CLAUDE_CODE_OAUTH_TOKEN': { stdout: '', stderr: '', exitCode: 1 },
+      'ANTHROPIC_API_KEY': { stdout: '', stderr: '', exitCode: 1 },
+    },
+  });
+  const result = await verifyDevcontainer('/mock/project', ['claude'], deps);
+
+  const authCheck = result.checks.find((c) => c.name === 'auth-claude');
+  assert.ok(authCheck);
+  assert.equal(authCheck.passed, false);
+  assert.ok(authCheck.message.includes('FAILED'));
+});
+
+test('verifyDevcontainer - auth check passes when fallback var is set', async () => {
+  // First var fails, second succeeds
+  let callCount = 0;
+  const deps: VerifyDeps = {
+    exec: async (_command: string, args: string[]) => {
+      const key = args.join(' ');
+      if (key.includes('CLAUDE_CODE_OAUTH_TOKEN')) {
+        return { stdout: '', stderr: '', exitCode: 1 };
+      }
+      if (key.includes('ANTHROPIC_API_KEY')) {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    },
+    existsSync: (filePath: string) => filePath.includes('devcontainer.json'),
+    readFile: async () => JSON.stringify({ image: 'mcr.microsoft.com/devcontainers/typescript-node:22' }),
+  };
+  const result = await verifyDevcontainer('/mock/project', ['claude'], deps);
+
+  const authCheck = result.checks.find((c) => c.name === 'auth-claude');
+  assert.ok(authCheck);
+  assert.equal(authCheck.passed, true);
+  assert.ok(authCheck.message.includes('ANTHROPIC_API_KEY'));
+});
+
+test('verifyDevcontainer - copilot skipped for auth check (no auth vars needed for VS Code extension)', async () => {
+  const deps = mockVerifyDeps();
+  const result = await verifyDevcontainer('/mock/project', ['copilot'], deps);
+
+  // Copilot has GH_TOKEN in auth vars, so it should have an auth check
+  const authCheck = result.checks.find((c) => c.name === 'auth-copilot');
+  assert.ok(authCheck);
+});
+
+// --- devcontainerCommand result includes vscode_extensions ---
+
+test('devcontainerCommand - result includes vscode_extensions for claude', async () => {
+  let writtenContent = '';
+  const deps: DevcontainerDeps = {
+    discover: async () => mockDiscovery(),
+    readFile: async () => '',
+    writeFile: async (_p, data) => { writtenContent = data; },
+    mkdir: async () => undefined,
+    existsSync: () => false,
+  };
+
+  const result = await devcontainerCommandWithDeps({}, deps);
+  assert.deepEqual(result.vscode_extensions, ['anthropic.claude-code']);
+
+  const parsed = JSON.parse(writtenContent);
+  assert.deepEqual(parsed.customizations.vscode.extensions, ['anthropic.claude-code']);
 });

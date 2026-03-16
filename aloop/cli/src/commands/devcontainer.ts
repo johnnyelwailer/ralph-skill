@@ -31,6 +31,7 @@ export interface DevcontainerResult {
   post_create_command: string | null;
   mounts: string[];
   had_existing: boolean;
+  vscode_extensions: string[];
 }
 
 interface LanguageMapping {
@@ -148,6 +149,7 @@ const PROVIDER_INSTALL_COMMANDS: Record<string, string> = {
   claude: 'npm install -g @anthropic-ai/claude-code',
   codex: 'npm install -g @openai/codex',
   gemini: 'npm install -g @google/gemini-cli',
+  opencode: 'npm install -g opencode',
 };
 
 /**
@@ -158,6 +160,7 @@ const PROVIDER_AUTH_ENV_VARS: Record<string, string[]> = {
   claude: ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'],
   codex: ['OPENAI_API_KEY'],
   gemini: ['GEMINI_API_KEY'],
+  opencode: ['OPENCODE_API_KEY'],
   copilot: ['GH_TOKEN'],
 };
 
@@ -191,6 +194,30 @@ export function buildProviderRemoteEnv(installedProviders: string[]): Record<str
     }
   }
   return env;
+}
+
+/**
+ * Map of provider names to their VS Code extension IDs for container customizations.
+ * Copilot is a VS Code extension (no CLI), so it's included here.
+ */
+const PROVIDER_VSCODE_EXTENSIONS: Record<string, string> = {
+  claude: 'anthropic.claude-code',
+  copilot: 'GitHub.copilot',
+};
+
+/**
+ * Build VS Code customizations for provider extensions.
+ * Only includes extensions for activated providers that have a known VS Code extension.
+ */
+export function buildVSCodeExtensions(installedProviders: string[]): string[] {
+  const extensions: string[] = [];
+  for (const provider of installedProviders) {
+    const ext = PROVIDER_VSCODE_EXTENSIONS[provider];
+    if (ext) {
+      extensions.push(ext);
+    }
+  }
+  return extensions;
 }
 
 function buildAloopMounts(): string[] {
@@ -233,6 +260,15 @@ export function generateDevcontainerConfig(
     remoteEnv: buildProviderRemoteEnv(installedProviders),
   };
 
+  const vscodeExtensions = buildVSCodeExtensions(installedProviders);
+  if (vscodeExtensions.length > 0) {
+    config.customizations = {
+      vscode: {
+        extensions: vscodeExtensions,
+      },
+    };
+  }
+
   if (allCommands.length > 0) {
     config.postCreateCommand = allCommands.join(' && ');
   }
@@ -267,6 +303,25 @@ export function augmentExistingConfig(
   // Merge remoteEnv (don't overwrite existing values)
   const existingRemoteEnv = (result.remoteEnv ?? {}) as Record<string, string>;
   result.remoteEnv = { ...generated.remoteEnv, ...existingRemoteEnv };
+
+  // Merge customizations (VS Code extensions, etc.)
+  if (generated.customizations) {
+    const existingCustomizations = (result.customizations ?? {}) as Record<string, unknown>;
+    const merged = { ...existingCustomizations };
+    for (const [key, value] of Object.entries(generated.customizations)) {
+      if (key === 'vscode' && typeof value === 'object' && value !== null) {
+        const vscodeVal = value as Record<string, unknown>;
+        const existingVscode = (merged.vscode ?? {}) as Record<string, unknown>;
+        if (vscodeVal.extensions && Array.isArray(vscodeVal.extensions)) {
+          const existingExts = Array.isArray(existingVscode.extensions) ? existingVscode.extensions as string[] : [];
+          merged.vscode = { ...existingVscode, extensions: mergeArrayUnique(existingExts, vscodeVal.extensions as string[]) };
+        }
+      } else if (!(key in merged)) {
+        merged[key] = value;
+      }
+    }
+    result.customizations = merged;
+  }
 
   return result;
 }
@@ -364,6 +419,7 @@ export async function devcontainerCommandWithDeps(
     post_create_command: generated.postCreateCommand ?? null,
     mounts: generated.mounts,
     had_existing: hadExisting,
+    vscode_extensions: buildVSCodeExtensions(discovery.providers.installed),
   };
 }
 
@@ -409,6 +465,7 @@ const PROVIDER_CLI_BINARIES: Record<string, string> = {
   claude: 'claude',
   codex: 'codex',
   gemini: 'gemini',
+  opencode: 'opencode',
 };
 
 /**
@@ -506,6 +563,25 @@ export async function verifyDevcontainer(
       const binary = PROVIDER_CLI_BINARIES[provider];
       if (binary) {
         checks.push(await execCheck(deps, projectRoot, `provider-${provider}`, ['which', binary]));
+      }
+    }
+
+    // 3c2. Provider auth env vars forwarded (verify remoteEnv values are set inside container)
+    for (const provider of providers) {
+      const authVars = PROVIDER_AUTH_ENV_VARS[provider];
+      if (authVars && authVars.length > 0) {
+        // Check at least one auth var is set — provider may have multiple fallbacks (e.g. claude)
+        const varChecks = await Promise.all(
+          authVars.map((v) => execCheck(deps, projectRoot, `auth-${provider}-${v}`, ['sh', '-c', `test -n "$${v}"`])),
+        );
+        const anyAuthSet = varChecks.some((c) => c.passed);
+        checks.push({
+          name: `auth-${provider}`,
+          passed: anyAuthSet,
+          message: anyAuthSet
+            ? `auth-${provider}: OK (${authVars.find((_, i) => varChecks[i].passed)} is set)`
+            : `auth-${provider}: FAILED — none of [${authVars.join(', ')}] are set inside container`,
+        });
       }
     }
 
