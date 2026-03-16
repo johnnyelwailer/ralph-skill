@@ -16,6 +16,7 @@ async function setupDirs(prefix: string) {
   await writeFile(path.join(promptsDir, 'PROMPT_plan.md'), '# Planning Mode\n\nPlan content here.\n', 'utf8');
   await writeFile(path.join(promptsDir, 'PROMPT_build.md'), '# Building Mode\n\nBuild content here.\n', 'utf8');
   await writeFile(path.join(promptsDir, 'PROMPT_proof.md'), '# Proof Mode\n\nProof content here.\n', 'utf8');
+  await writeFile(path.join(promptsDir, 'PROMPT_qa.md'), '# QA Mode\n\nQA content here.\n', 'utf8');
   await writeFile(path.join(promptsDir, 'PROMPT_review.md'), '# Review Mode\n\nReview content here.\n', 'utf8');
   return { root, promptsDir, sessionDir };
 }
@@ -72,7 +73,7 @@ test('compileLoopPlan — plan-build mode produces 2-entry cycle', async () => {
   assert.deepStrictEqual(plan.cycle, ['PROMPT_plan.md', 'PROMPT_build.md']);
 });
 
-test('compileLoopPlan — plan-build-review produces 6-entry cycle', async () => {
+test('compileLoopPlan — plan-build-review produces 4-entry cycle', async () => {
   const { promptsDir, sessionDir } = await setupDirs('clp-pbr-');
   const plan = await compileLoopPlan({
     mode: 'plan-build-review',
@@ -87,9 +88,7 @@ test('compileLoopPlan — plan-build-review produces 6-entry cycle', async () =>
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
     'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_proof.md',
+    'PROMPT_qa.md',
     'PROMPT_review.md',
   ]);
 });
@@ -159,13 +158,13 @@ test('compileLoopPlan — round-robin creates provider-specific build prompts', 
     models: { claude: 'opus', codex: 'gpt-5.3-codex', gemini: 'gemini-3.1-pro-preview' },
   });
 
-  // Cycle should have plan + 3 provider builds + proof + review
+  // Cycle should have plan + 3 provider builds + qa + review
   assert.equal(plan.cycle.length, 6);
   assert.equal(plan.cycle[0], 'PROMPT_plan.md');
   assert.equal(plan.cycle[1], 'PROMPT_build_claude.md');
   assert.equal(plan.cycle[2], 'PROMPT_build_codex.md');
   assert.equal(plan.cycle[3], 'PROMPT_build_gemini.md');
-  assert.equal(plan.cycle[4], 'PROMPT_proof.md');
+  assert.equal(plan.cycle[4], 'PROMPT_qa.md');
   assert.equal(plan.cycle[5], 'PROMPT_review.md');
 
   // Verify provider-specific prompt files were created
@@ -400,7 +399,7 @@ pipeline:
   ]);
 });
 
-test('compileLoopPlan — plan-build-review without pipeline.yml falls back to hardcoded', async () => {
+test('compileLoopPlan — plan-build-review without pipeline.yml falls back to plan-build-qa-review', async () => {
   const { root, promptsDir, sessionDir } = await setupDirs('clp-no-pipeline-');
   const plan = await compileLoopPlan({
     mode: 'plan-build-review',
@@ -416,9 +415,7 @@ test('compileLoopPlan — plan-build-review without pipeline.yml falls back to h
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
     'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_proof.md',
+    'PROMPT_qa.md',
     'PROMPT_review.md',
   ]);
 });
@@ -445,9 +442,7 @@ not_pipeline: true
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
     'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_proof.md',
+    'PROMPT_qa.md',
     'PROMPT_review.md',
   ]);
 });
@@ -474,9 +469,7 @@ pipeline: []
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
     'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_proof.md',
+    'PROMPT_qa.md',
     'PROMPT_review.md',
   ]);
 });
@@ -504,9 +497,7 @@ pipeline:
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
     'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_proof.md',
+    'PROMPT_qa.md',
     'PROMPT_review.md',
   ]);
 });
@@ -558,7 +549,7 @@ test('compileLoopPlan — round-robin build mode uses early return', async () =>
   assert.deepStrictEqual(plan.cycle, ['PROMPT_build.md']);
 });
 
-test('compileLoopPlan — round-robin plan-build-review with no pipeline falls back to hardcoded', async () => {
+test('compileLoopPlan — round-robin plan-build-review with no pipeline falls back to plan-build-qa-review', async () => {
   const { root, promptsDir, sessionDir } = await setupDirs('clp-rr-no-pipeline-');
   const plan = await compileLoopPlan({
     mode: 'plan-build-review',
@@ -575,7 +566,7 @@ test('compileLoopPlan — round-robin plan-build-review with no pipeline falls b
   assert.equal(plan.cycle[0], 'PROMPT_plan.md');
   assert.equal(plan.cycle[1], 'PROMPT_build_claude.md');
   assert.equal(plan.cycle[2], 'PROMPT_build_codex.md');
-  assert.equal(plan.cycle[3], 'PROMPT_proof.md');
+  assert.equal(plan.cycle[3], 'PROMPT_qa.md');
   assert.equal(plan.cycle[4], 'PROMPT_review.md');
 });
 
@@ -601,9 +592,7 @@ pipeline: "not an array"
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
     'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_build.md',
-    'PROMPT_proof.md',
+    'PROMPT_qa.md',
     'PROMPT_review.md',
   ]);
 });

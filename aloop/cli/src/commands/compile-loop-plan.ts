@@ -45,6 +45,7 @@ const DEFAULT_AGENT_PROMPT: Record<string, string> = {
   plan: 'PROMPT_plan.md',
   build: 'PROMPT_build.md',
   proof: 'PROMPT_proof.md',
+  qa: 'PROMPT_qa.md',
   review: 'PROMPT_review.md',
   steer: 'PROMPT_steer.md',
 };
@@ -53,6 +54,7 @@ const DEFAULT_REASONING: Record<string, string> = {
   plan: 'high',
   build: 'medium',
   proof: 'medium',
+  qa: 'medium',
   review: 'high',
   steer: 'medium',
 };
@@ -150,9 +152,7 @@ async function buildCycleForMode(
       return [
         await getEntry('plan'),
         await getEntry('build'),
-        await getEntry('build'),
-        await getEntry('build'),
-        await getEntry('proof'),
+        await getEntry('qa'),
         await getEntry('review'),
       ];
   }
@@ -224,7 +224,7 @@ async function buildRoundRobinCycle(
     cycle.push({ filename, agent: 'build' });
   }
   cycle.push(
-    { filename: 'PROMPT_proof.md', agent: 'proof' },
+    { filename: 'PROMPT_qa.md', agent: 'qa' },
     { filename: 'PROMPT_review.md', agent: 'review' }
   );
   return cycle;
