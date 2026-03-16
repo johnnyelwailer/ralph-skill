@@ -2,11 +2,17 @@ import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { mutateLoopPlan, queueSteeringPrompt, readLoopPlan, writeQueueOverride } from './plan.js';
+import { parseYaml } from './yaml.js';
 
 export interface MonitorOptions {
   sessionDir: string;
   workdir: string;
   promptsDir: string;
+}
+
+interface TriggeredPromptTemplate {
+  fileName: string;
+  agent: string;
 }
 
 /**
@@ -82,6 +88,81 @@ async function hasBuildSinceLastPlan(sessionDir: string): Promise<boolean> {
     return sawPlan ? buildSeenSincePlan : true;
   } catch {
     return true;
+  }
+}
+
+function extractFrontmatter(content: string): string | null {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  return match ? match[1] : null;
+}
+
+function normalizeTriggerValues(trigger: unknown): string[] {
+  if (typeof trigger === 'string') {
+    return trigger
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean);
+  }
+  if (Array.isArray(trigger)) {
+    return trigger
+      .filter(value => typeof value === 'string')
+      .map(value => value.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+async function findTriggeredTemplates(promptsDir: string, event: string): Promise<TriggeredPromptTemplate[]> {
+  const entries = await fs.readdir(promptsDir).catch(() => []);
+  const promptFiles = entries.filter(name => /^PROMPT_.*\.md$/i.test(name)).sort();
+  const matches: TriggeredPromptTemplate[] = [];
+
+  for (const fileName of promptFiles) {
+    const templatePath = path.join(promptsDir, fileName);
+    const templateContent = await fs.readFile(templatePath, 'utf8').catch(() => null);
+    if (!templateContent) continue;
+
+    const frontmatter = extractFrontmatter(templateContent);
+    if (!frontmatter) continue;
+
+    const parsed = parseYaml(frontmatter) as Record<string, unknown>;
+    const triggers = normalizeTriggerValues(parsed.trigger);
+    if (!triggers.includes(event)) continue;
+
+    const stem = fileName.replace(/\.md$/i, '');
+    const fallbackAgent = stem.replace(/^PROMPT_/i, '');
+    const agent = typeof parsed.agent === 'string' && parsed.agent.trim().length > 0
+      ? parsed.agent.trim()
+      : fallbackAgent;
+
+    matches.push({ fileName, agent });
+  }
+
+  return matches;
+}
+
+async function queueTemplatesForEvent(options: MonitorOptions, event: string): Promise<void> {
+  const templates = await findTriggeredTemplates(options.promptsDir, event);
+  if (templates.length === 0) return;
+
+  const queueDir = path.join(options.sessionDir, 'queue');
+  const queueEntries = await fs.readdir(queueDir).catch(() => []);
+
+  for (const template of templates) {
+    const stem = template.fileName.replace(/\.md$/i, '');
+    const alreadyQueued = queueEntries.some(entry => entry.includes(stem));
+    if (alreadyQueued) continue;
+
+    const templatePath = path.join(options.promptsDir, template.fileName);
+    if (!existsSync(templatePath)) continue;
+    const content = await fs.readFile(templatePath, 'utf8');
+    await writeQueueOverride(options.sessionDir, stem, content, {
+      agent: template.agent,
+      reason: `triggered_by_${event}`,
+      trigger: event,
+      type: 'event_dispatch'
+    });
+    console.log(`[monitor] Event '${event}' queued ${template.fileName}.`);
   }
 }
 
@@ -179,39 +260,12 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
     }
   }
 
-  // Case 1: All tasks done during/after build -> queue proof
-  if (status.phase === 'build' && allTasksDone) {
-    const queueEntries = await fs.readdir(queueDir).catch(() => []);
-    const alreadyQueued = queueEntries.some(e => e.includes('PROMPT_proof') || e.includes('PROMPT_review'));
-    
-    if (!alreadyQueued) {
-      const proofTemplatePath = path.join(options.promptsDir, 'PROMPT_proof.md');
-      if (existsSync(proofTemplatePath)) {
-        const content = await fs.readFile(proofTemplatePath, 'utf8');
-        await writeQueueOverride(options.sessionDir, 'PROMPT_proof', content, {
-          agent: 'proof',
-          reason: 'all_tasks_done'
-        });
-        console.log(`[monitor] All tasks done in build phase; queued proof.`);
-      }
-    }
-  }
-
-  // Case 2: Proof successful + all tasks done -> queue review
-  if (status.phase === 'proof' && allTasksDone) {
-    const queueEntries = await fs.readdir(queueDir).catch(() => []);
-    const alreadyQueued = queueEntries.some(e => e.includes('PROMPT_review'));
-
-    if (!alreadyQueued) {
-      const reviewTemplatePath = path.join(options.promptsDir, 'PROMPT_review.md');
-      if (existsSync(reviewTemplatePath)) {
-        const content = await fs.readFile(reviewTemplatePath, 'utf8');
-        await writeQueueOverride(options.sessionDir, 'PROMPT_review', content, {
-          agent: 'review',
-          reason: 'proof_complete'
-        });
-        console.log(`[monitor] All tasks done in proof phase; queued review.`);
-      }
+  // Event-driven dispatch from prompt catalog trigger frontmatter.
+  if (allTasksDone && typeof status.phase === 'string') {
+    if (status.phase === 'build') {
+      await queueTemplatesForEvent(options, 'all_tasks_done');
+    } else {
+      await queueTemplatesForEvent(options, status.phase);
     }
   }
 

@@ -19,17 +19,17 @@ test('monitorSessionState transitions', async (t) => {
 
   const statusPath = path.join(sessionDir, 'status.json');
   const todoPath = path.join(workdir, 'TODO.md');
-  const proofTemplatePath = path.join(promptsDir, 'PROMPT_proof.md');
-  const reviewTemplatePath = path.join(promptsDir, 'PROMPT_review.md');
+  const specReviewTemplatePath = path.join(promptsDir, 'PROMPT_spec-review.md');
+  const finalReviewTemplatePath = path.join(promptsDir, 'PROMPT_final-review.md');
   const planTemplatePath = path.join(promptsDir, 'PROMPT_plan.md');
   const buildTemplatePath = path.join(promptsDir, 'PROMPT_build.md');
 
-  await fs.writeFile(proofTemplatePath, 'proof content');
-  await fs.writeFile(reviewTemplatePath, 'review content');
+  await fs.writeFile(specReviewTemplatePath, '---\nagent: spec-review\ntrigger: all_tasks_done\n---\nspec review content');
+  await fs.writeFile(finalReviewTemplatePath, '---\nagent: final-review\ntrigger: spec-review\n---\nfinal review content');
   await fs.writeFile(planTemplatePath, 'plan content');
   await fs.writeFile(buildTemplatePath, 'build content');
 
-  await t.test('queues proof when build finished and all tasks done', async () => {
+  await t.test('queues trigger-matched prompt when all tasks are done in build', async () => {
     await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build', iteration: 1 }));
     await fs.writeFile(todoPath, '# TODO\n- [x] task 1\n');
     await writeLoopPlan(sessionDir, { cycle: [], cyclePosition: 0, iteration: 1, version: 1 });
@@ -38,19 +38,20 @@ test('monitorSessionState transitions', async (t) => {
 
     const queueDir = path.join(sessionDir, 'queue');
     const files = await fs.readdir(queueDir);
-    assert.ok(files.some(f => f.includes('PROMPT_proof')));
+    assert.ok(files.some(f => f.includes('PROMPT_spec-review')));
     
-    const proofFile = files.find(f => f.includes('PROMPT_proof'))!;
-    const content = await fs.readFile(path.join(queueDir, proofFile), 'utf8');
-    assert.ok(content.includes('proof content'));
-    assert.ok(content.includes('reason: all_tasks_done'));
+    const specReviewFile = files.find(f => f.includes('PROMPT_spec-review'))!;
+    const content = await fs.readFile(path.join(queueDir, specReviewFile), 'utf8');
+    assert.ok(content.includes('spec review content'));
+    assert.ok(content.includes('reason: triggered_by_all_tasks_done'));
+    assert.ok(content.includes('trigger: all_tasks_done'));
 
     // Cleanup queue for next subtest
     await fs.rm(queueDir, { recursive: true, force: true });
   });
 
-  await t.test('queues review when proof finished and all tasks done', async () => {
-    await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'proof', iteration: 2 }));
+  await t.test('queues trigger-matched prompt when current phase event matches trigger', async () => {
+    await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'spec-review', iteration: 2 }));
     await fs.writeFile(todoPath, '# TODO\n- [x] task 1\n');
     await writeLoopPlan(sessionDir, { cycle: [], cyclePosition: 0, iteration: 2, version: 1 });
 
@@ -58,12 +59,13 @@ test('monitorSessionState transitions', async (t) => {
 
     const queueDir = path.join(sessionDir, 'queue');
     const files = await fs.readdir(queueDir);
-    assert.ok(files.some(f => f.includes('PROMPT_review')));
+    assert.ok(files.some(f => f.includes('PROMPT_final-review')));
     
-    const reviewFile = files.find(f => f.includes('PROMPT_review'))!;
-    const content = await fs.readFile(path.join(queueDir, reviewFile), 'utf8');
-    assert.ok(content.includes('review content'));
-    assert.ok(content.includes('reason: proof_complete'));
+    const finalReviewFile = files.find(f => f.includes('PROMPT_final-review'))!;
+    const content = await fs.readFile(path.join(queueDir, finalReviewFile), 'utf8');
+    assert.ok(content.includes('final review content'));
+    assert.ok(content.includes('reason: triggered_by_spec-review'));
+    assert.ok(content.includes('trigger: spec-review'));
 
     await fs.rm(queueDir, { recursive: true, force: true });
   });
@@ -179,7 +181,7 @@ test('monitorSessionState transitions', async (t) => {
       const queueDir = path.join(sessionDir, 'queue');
       if (existsSync(queueDir)) {
         const files = await fs.readdir(queueDir).catch(() => []);
-        assert.ok(!files.some(f => f.includes('PROMPT_proof')));
+        assert.ok(!files.some(f => f.includes('PROMPT_spec-review')));
       }
     });
 
@@ -235,17 +237,17 @@ test('monitorSessionState transitions', async (t) => {
       await fs.rm(steeringPath, { force: true });
     });
 
-    await t.test('skips queueing if already queued (build -> proof)', async () => {
+    await t.test('skips queueing if already queued (build -> trigger target)', async () => {
       await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build' }));
       await fs.writeFile(todoPath, '- [x] task 1');
       const queueDir = path.join(sessionDir, 'queue');
       await fs.mkdir(queueDir, { recursive: true });
-      await fs.writeFile(path.join(queueDir, 'PROMPT_proof.md'), 'existing proof');
+      await fs.writeFile(path.join(queueDir, 'PROMPT_spec-review.md'), 'existing spec review');
       
       await monitorSessionState({ sessionDir, workdir, promptsDir });
 
-      const content = await fs.readFile(path.join(queueDir, 'PROMPT_proof.md'), 'utf8');
-      assert.strictEqual(content, 'existing proof');
+      const content = await fs.readFile(path.join(queueDir, 'PROMPT_spec-review.md'), 'utf8');
+      assert.strictEqual(content, 'existing spec review');
       await fs.rm(queueDir, { recursive: true, force: true });
     });
 
@@ -424,7 +426,7 @@ test('monitorSessionState transitions', async (t) => {
       await monitorSessionState({ sessionDir, workdir, promptsDir });
 
       const files = await fs.readdir(queueDir);
-      assert.ok(files.some(f => f.includes('PROMPT_proof')));
+      assert.ok(files.some(f => f.includes('PROMPT_spec-review')));
       await fs.rm(queueDir, { recursive: true, force: true });
     });
 
@@ -456,7 +458,7 @@ test('monitorSessionState transitions', async (t) => {
       assert.equal(JSON.parse(await fs.readFile(statusPath, 'utf8')).state, 'running');
     });
 
-    await t.test('build phase with incomplete tasks does not queue proof', async () => {
+    await t.test('build phase with incomplete tasks does not queue trigger-dispatched prompt', async () => {
       await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build', iteration: 42 }));
       await fs.writeFile(todoPath, '- [ ] task 1\n- [x] task 2');
       await writeLoopPlan(sessionDir, { cycle: [], cyclePosition: 0, iteration: 42, version: 1 });
@@ -467,7 +469,7 @@ test('monitorSessionState transitions', async (t) => {
 
       if (existsSync(queueDir)) {
         const files = await fs.readdir(queueDir);
-        assert.ok(!files.some(f => f.includes('PROMPT_proof')));
+        assert.ok(!files.some(f => f.includes('PROMPT_spec-review')));
       }
     });
 

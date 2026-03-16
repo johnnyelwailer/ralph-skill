@@ -13,7 +13,7 @@ The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> 
 
 1. - [x] [runtime/P1] Add missing rattail prompt templates (`PROMPT_spec-review.md`, `PROMPT_final-review.md`, `PROMPT_final-qa.md`) with `trigger` frontmatter declaring event bindings. (priority: high)
 2. - [x] [loop/P1] Add `trigger` frontmatter field to the loop script frontmatter parser (`parse_frontmatter` in loop.sh, `Parse-PromptFrontmatter` in loop.ps1) so the runtime can read trigger declarations from prompt files. (priority: high)
-3. - [ ] [runtime/P1] Implement generic event -> catalog scan -> queue dispatch in runtime monitor — scan `aloop/templates/` for prompts whose `trigger` field matches the current event, queue them, instead of hardcoded phase-name branching in `monitor.ts:182-270`. (priority: high)
+3. - [x] [runtime/P1] Implement generic event -> catalog scan -> queue dispatch in runtime monitor — scan `aloop/templates/` for prompts whose `trigger` field matches the current event, queue them, instead of hardcoded phase-name branching in `monitor.ts:182-270`. (priority: high)
 4. - [ ] [runtime/P1] Replace hardcoded monitor shortcuts (build→proof, proof→review) with rattail-driven dispatch and ensure monitor exit semantics use `completed` state only after full chain completes. Add tests for rattail success path and "new TODO reopens build" re-entry. (priority: high)
 
 ### Up Next — P1 Hardening (After Core)
