@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, chmod } from 'node:fs/promises';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, type PathLike } from 'node:fs';
 import { executeUpdate } from './update.js';
+
+const realCopyFile = (await import('node:fs/promises')).copyFile;
+const realWriteFile = (await import('node:fs/promises')).writeFile;
 
 async function setupFakeRepo(prefix: string) {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), prefix));
@@ -196,4 +199,220 @@ test('executeUpdate json output includes all fields', async () => {
   assert.equal(typeof result.installedAt, 'string');
   assert.ok(Array.isArray(result.updated));
   assert.ok(Array.isArray(result.errors));
+});
+
+test('executeUpdate uses homeDir from deps when options.homeDir not provided', async () => {
+  const { repoRoot, homeDir } = await setupFakeRepo('aloop-update-homedir-');
+
+  const result = await executeUpdate(
+    { repoRoot },
+    {
+      homeDir: () => homeDir,
+      existsSync,
+      readdir,
+      mkdir,
+      copyFile: (await import('node:fs/promises')).copyFile,
+      writeFile,
+      chmod,
+      spawnSync: () => ({ status: 0, stdout: 'abc1234\n', stderr: '', pid: 0, output: [], signal: null }),
+    },
+  );
+
+  assert.equal(result.success, true);
+  assert.ok(existsSync(path.join(homeDir, '.aloop', 'version.json')));
+});
+
+test('executeUpdate reports config copy failure', async () => {
+  const { repoRoot, homeDir } = await setupFakeRepo('aloop-update-configfail-');
+
+  const result = await executeUpdate(
+    { repoRoot, homeDir },
+    {
+      homeDir: () => homeDir,
+      existsSync,
+      readdir,
+      mkdir,
+      copyFile: async (src: PathLike, _dest: PathLike) => {
+        if (String(src).includes('config.yml')) throw new Error('disk full');
+        return realCopyFile(src, _dest);
+      },
+      writeFile,
+      chmod,
+      spawnSync: () => ({ status: 0, stdout: 'abc1234\n', stderr: '', pid: 0, output: [], signal: null }),
+    },
+  );
+
+  assert.equal(result.success, false);
+  assert.ok(result.errors.some((e) => e.includes('config') && e.includes('disk full')));
+});
+
+test('executeUpdate reports templates copy failure', async () => {
+  const { repoRoot, homeDir } = await setupFakeRepo('aloop-update-tmplfail-');
+
+  const result = await executeUpdate(
+    { repoRoot, homeDir },
+    {
+      homeDir: () => homeDir,
+      existsSync,
+      readdir,
+      mkdir,
+      copyFile: async (src: PathLike, _dest: PathLike) => {
+        if (String(src).includes('templates')) throw new Error('permission denied');
+        return realCopyFile(src, _dest);
+      },
+      writeFile,
+      chmod,
+      spawnSync: () => ({ status: 0, stdout: 'abc1234\n', stderr: '', pid: 0, output: [], signal: null }),
+    },
+  );
+
+  assert.equal(result.success, false);
+  assert.ok(result.errors.some((e) => e.includes('templates') && e.includes('permission denied')));
+});
+
+test('executeUpdate reports cli/dist copy failure', async () => {
+  const { repoRoot, homeDir } = await setupFakeRepo('aloop-update-distfail-');
+
+  const result = await executeUpdate(
+    { repoRoot, homeDir },
+    {
+      homeDir: () => homeDir,
+      existsSync,
+      readdir,
+      mkdir,
+      copyFile: async (src: PathLike, _dest: PathLike) => {
+        if (String(src).includes('cli' + path.sep + 'dist')) throw new Error('ENOENT');
+        return realCopyFile(src, _dest);
+      },
+      writeFile,
+      chmod,
+      spawnSync: () => ({ status: 0, stdout: 'abc1234\n', stderr: '', pid: 0, output: [], signal: null }),
+    },
+  );
+
+  assert.equal(result.success, false);
+  assert.ok(result.errors.some((e) => e.includes('cli/dist') && e.includes('ENOENT')));
+});
+
+test('executeUpdate reports cli/lib copy failure', async () => {
+  const { repoRoot, homeDir } = await setupFakeRepo('aloop-update-libfail-');
+
+  const result = await executeUpdate(
+    { repoRoot, homeDir },
+    {
+      homeDir: () => homeDir,
+      existsSync,
+      readdir,
+      mkdir,
+      copyFile: async (src: PathLike, _dest: PathLike) => {
+        if (String(src).includes('cli' + path.sep + 'lib')) throw new Error('lib error');
+        return realCopyFile(src, _dest);
+      },
+      writeFile,
+      chmod,
+      spawnSync: () => ({ status: 0, stdout: 'abc1234\n', stderr: '', pid: 0, output: [], signal: null }),
+    },
+  );
+
+  assert.equal(result.success, false);
+  assert.ok(result.errors.some((e) => e.includes('cli/lib') && e.includes('lib error')));
+});
+
+test('executeUpdate reports aloop.mjs copy failure', async () => {
+  const { repoRoot, homeDir } = await setupFakeRepo('aloop-update-mjsfail-');
+
+  const result = await executeUpdate(
+    { repoRoot, homeDir },
+    {
+      homeDir: () => homeDir,
+      existsSync,
+      readdir,
+      mkdir,
+      copyFile: async (src: PathLike, _dest: PathLike) => {
+        if (String(src).endsWith('aloop.mjs')) throw new Error('mjs error');
+        return realCopyFile(src, _dest);
+      },
+      writeFile,
+      chmod,
+      spawnSync: () => ({ status: 0, stdout: 'abc1234\n', stderr: '', pid: 0, output: [], signal: null }),
+    },
+  );
+
+  assert.equal(result.success, false);
+  assert.ok(result.errors.some((e) => e.includes('cli/aloop.mjs') && e.includes('mjs error')));
+});
+
+test('executeUpdate reports shims write failure', async () => {
+  const { repoRoot, homeDir } = await setupFakeRepo('aloop-update-shimfail-');
+
+  const mockWriteFile: typeof writeFile = async (p, _content, _enc) => {
+    if (String(p).includes('aloop.cmd') || String(p).endsWith(path.sep + 'aloop')) throw new Error('shim write failed');
+    return realWriteFile(p, _content as string, _enc as BufferEncoding);
+  };
+
+  const result = await executeUpdate(
+    { repoRoot, homeDir },
+    {
+      homeDir: () => homeDir,
+      existsSync,
+      readdir,
+      mkdir,
+      copyFile: realCopyFile,
+      writeFile: mockWriteFile,
+      chmod,
+      spawnSync: () => ({ status: 0, stdout: 'abc1234\n', stderr: '', pid: 0, output: [], signal: null }),
+    },
+  );
+
+  assert.equal(result.success, false);
+  assert.ok(result.errors.some((e) => e.includes('shims') && e.includes('shim write failed')));
+});
+
+test('executeUpdate reports version.json write failure', async () => {
+  const { repoRoot, homeDir } = await setupFakeRepo('aloop-update-verfail-');
+
+  const mockWriteFile: typeof writeFile = async (p, _content, _enc) => {
+    if (String(p).includes('version.json')) throw new Error('version write failed');
+    return realWriteFile(p, _content as string, _enc as BufferEncoding);
+  };
+
+  const result = await executeUpdate(
+    { repoRoot, homeDir },
+    {
+      homeDir: () => homeDir,
+      existsSync,
+      readdir,
+      mkdir,
+      copyFile: realCopyFile,
+      writeFile: mockWriteFile,
+      chmod,
+      spawnSync: () => ({ status: 0, stdout: 'abc1234\n', stderr: '', pid: 0, output: [], signal: null }),
+    },
+  );
+
+  assert.equal(result.success, false);
+  assert.ok(result.errors.some((e) => e.includes('version.json') && e.includes('version write failed')));
+});
+
+test('executeUpdate handles chmod failure gracefully', async () => {
+  const { repoRoot, homeDir } = await setupFakeRepo('aloop-update-chmodfail-');
+
+  const mockChmod: typeof chmod = async (_p, _mode) => { throw new Error('chmod denied'); };
+
+  const result = await executeUpdate(
+    { repoRoot, homeDir },
+    {
+      homeDir: () => homeDir,
+      existsSync,
+      readdir,
+      mkdir,
+      copyFile: realCopyFile,
+      writeFile: realWriteFile,
+      chmod: mockChmod,
+      spawnSync: () => ({ status: 0, stdout: 'abc1234\n', stderr: '', pid: 0, output: [], signal: null }),
+    },
+  );
+
+  assert.equal(result.success, false);
+  assert.ok(result.errors.some((e) => e.includes('bin:') && e.includes('chmod denied')));
 });
