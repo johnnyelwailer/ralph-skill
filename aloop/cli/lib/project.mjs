@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile, copyFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * @typedef {Object} DiscoveryResult
@@ -407,7 +408,38 @@ export async function scaffoldWorkspace(options = {}) {
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
   const promptsDir = path.join(discovery.setup.project_dir, 'prompts');
 
-  for (const file of ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md']) {
+  // Bootstrap templates from bundled source if the HOME templates directory doesn't exist yet
+  // Only auto-bootstrap when using the default templates path (not an explicit templatesDir option)
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  const templatesMissing = requiredTemplates.some(f => !existsSync(path.join(templatesDir, f)));
+  if (templatesMissing && !options.templatesDir) {
+    // Resolve bundled templates: project.mjs is at aloop/cli/lib/, templates at aloop/templates/
+    const thisDir = path.dirname(fileURLToPath(import.meta.url));
+    const bundledTemplatesDir = path.resolve(thisDir, '..', '..', 'templates');
+    if (existsSync(bundledTemplatesDir) && requiredTemplates.every(f => existsSync(path.join(bundledTemplatesDir, f)))) {
+      await mkdir(templatesDir, { recursive: true });
+      const entries = await readdir(bundledTemplatesDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile()) {
+          await copyFile(path.join(bundledTemplatesDir, entry.name), path.join(templatesDir, entry.name));
+        } else if (entry.isDirectory()) {
+          // Copy subdirectories (e.g. conventions/)
+          const subSrc = path.join(bundledTemplatesDir, entry.name);
+          const subDest = path.join(templatesDir, entry.name);
+          await mkdir(subDest, { recursive: true });
+          const subEntries = await readdir(subSrc);
+          for (const subFile of subEntries) {
+            const subStat = await stat(path.join(subSrc, subFile));
+            if (subStat.isFile()) {
+              await copyFile(path.join(subSrc, subFile), path.join(subDest, subFile));
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (const file of requiredTemplates) {
     if (!existsSync(path.join(templatesDir, file))) {
       throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
     }

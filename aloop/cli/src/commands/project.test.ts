@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { discoverWorkspace, scaffoldWorkspace } from './project.js';
 
 test('discoverWorkspace resolves project details and language signals', async () => {
@@ -282,6 +283,29 @@ test('scaffoldWorkspace errors when a required template is missing', async () =>
       }),
     /Template not found: .*PROMPT_review\.md/,
   );
+});
+
+test('scaffoldWorkspace bootstraps templates from bundled source for fresh HOME', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-bootstrap-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(homeRoot, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  // Do NOT create templates dir or any templates — simulates fresh HOME
+  // The scaffoldWorkspace should bootstrap templates from bundled aloop/templates/
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    // No explicit templatesDir — triggers bootstrap from bundled source
+  });
+  // Verify templates were bootstrapped to HOME
+  const homeTemplatesDir = path.join(homeRoot, '.aloop', 'templates');
+  assert.ok(existsSync(path.join(homeTemplatesDir, 'PROMPT_plan.md')), 'PROMPT_plan.md should be bootstrapped');
+  assert.ok(existsSync(path.join(homeTemplatesDir, 'PROMPT_build.md')), 'PROMPT_build.md should be bootstrapped');
+  assert.ok(existsSync(path.join(homeTemplatesDir, 'PROMPT_review.md')), 'PROMPT_review.md should be bootstrapped');
+  assert.ok(existsSync(path.join(homeTemplatesDir, 'PROMPT_qa.md')), 'PROMPT_qa.md should be bootstrapped');
+  // Verify scaffold completed successfully
+  assert.ok(result.config_path);
+  assert.ok(result.prompts_dir);
 });
 
 test('scaffoldWorkspace leaves provider hints empty for unknown providers', async () => {
