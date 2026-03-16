@@ -21,22 +21,19 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
    - Read the SPEC to understand the expected behavior of each feature
 
 2. **Set Up Test Environment**
-   - **Build from source first**: You MUST test the current worktree code, NOT the globally installed CLI. Before testing, build the CLI from the worktree:
+   - **Install from source like a real user**: You MUST test the packaged CLI, not `node dist/index.js` directly. This validates the full install path (package.json `files`, `bin` field, shebang, dependencies). Run:
      ```bash
-     npm --prefix aloop/cli run build
+     ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+     alias aloop="$ALOOP_BIN"
      ```
-     Then use the worktree binary for all tests:
+     This builds, packs (`npm pack`), and installs to an isolated temp prefix — exactly like `npm install -g aloop-cli`. The binary path is printed to stdout.
+   - **Log the binary under test**: At the start of every QA session, record the installed binary path and version:
      ```bash
-     ALOOP_BIN="$(pwd)/aloop/cli/dist/index.js"
-     alias aloop="node $ALOOP_BIN"
-     ```
-     Verify: `aloop --version` or `aloop --help` should reflect the latest build.
-   - **Log the binary under test**: At the start of every QA session, record which binary you're using and its resolved path:
-     ```bash
-     echo "Binary under test: $(readlink -f $ALOOP_BIN)"
+     echo "Binary under test: $ALOOP_BIN"
      aloop --version
      ```
-     Include this in the QA_LOG.md session header. If you ever see stack traces or paths referencing `~/.aloop/cli/` instead of the worktree build, STOP — you're testing the wrong binary.
+     Include this in the QA_LOG.md session header. If you ever see paths referencing `~/.aloop/cli/` instead of `/tmp/aloop-test-install-*/`, STOP — you're testing the wrong binary.
+   - **Clean up the install prefix when done**: `rm -rf "$(dirname "$(dirname "$ALOOP_BIN")")"`
    - Create a realistic test project in a temp directory
    - Set up real files, real git repo, real dependencies as needed
    - The test environment should mirror what a real user would have
