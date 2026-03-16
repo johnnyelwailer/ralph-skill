@@ -187,3 +187,26 @@
 **Positive observations:**
 - Gate 1: The core decoupling refactor is clean. `loop.sh` and `loop.ps1` are now "dumb" executors, and the runtime monitor correctly handles "intelligent" state transitions (build -> proof -> review -> pass/fail).
 - Gate 5: 640/640 tests pass. Type-check and build succeed.
+
+---
+
+## Review — 2026-03-16 09:15 — commit bf68a48..4837972
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/lib/monitor.ts`, `aloop/cli/src/commands/update.ts`, `aloop/cli/aloop.mjs`, `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/templates/PROMPT_qa.md`
+
+- Gate 3: **monitor.ts branch coverage is 88.75%** (target >=90%). Coverage report (tsx v4.21.0) indicates lines 53-54, 83, 128-133, and 152-153 are uncovered. Regression/insufficient coverage for the new module requirement.
+- Gate 3: **update.ts branch coverage is 63.04%** (target >=80%). Touched file lacks sufficient coverage; missing catch blocks and edge paths in `findRepoRoot`.
+- Gate 4: **Copy-paste Duplication** — `monitor.ts:125-133` duplicates steering instruction prepending logic already present in `dashboard.ts:795-800` and `steer.ts:79-84`. Extract to shared helper.
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: `monitor.ts` steering detection correctly prepends template content to user instruction. Verified in test.
+- Gate 1 ✅: `aloop steer` command is now visible in `aloop.mjs` help text.
+- Gate 1 ✅: Core loop decoupling (removing `FORCE_*_NEXT` and `check_phase_prerequisite`) verified in `loop.sh` and `loop.ps1`. Logic correctly migrated to `monitor.ts`.
+- Gate 4 ✅: Process integrity documented — review task descriptions in `TODO.md` now preserved verbatim.
+- Gate 6 ✅: Proof correctly skipped for internal/help/refactoring changes.
+- Gate 9 ✅: README gate count (9) is consistent across sections.
+
+**Positive observations:**
+- Gate 5: Integration sanity is high — all 654 CLI tests pass. Type-check and build succeed.
+- Gate 1: `PROMPT_qa.md` correctly added to `scaffold` loops in `project.mjs`.
