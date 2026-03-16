@@ -229,8 +229,7 @@ function Resolve-IterationProvider {
 
 function Resolve-IterationMode {
     param(
-        [int]$IterationNumber,
-        [bool]$ConsumeForcedFlags = $true
+        [int]$IterationNumber
     )
     $script:resolvedPromptName = $null
     # Queue overrides replace legacy forceReviewNext/forcePlanNext flags.
@@ -2045,7 +2044,7 @@ try {
     Stop-DashboardProcess
     if ($cancelled) {
         Write-Host "`nInterrupted" -ForegroundColor Yellow
-        Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration -ConsumeForcedFlags $false) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
+        Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
         Write-LogEntry -Event "interrupted" -Data @{ iteration = $iteration }
         Generate-Report -ExitReason "Manually interrupted (Ctrl+C)." -Iteration $iteration
         exit 130
@@ -2054,7 +2053,7 @@ try {
 
 if ($iteration -ge $MaxIterations) {
     Write-Host "`nReached iteration limit ($MaxIterations)" -ForegroundColor Yellow
-    Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration -ConsumeForcedFlags $false) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
+    Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
     Write-LogEntry -Event "limit_reached" -Data @{ iteration = $iteration; limit = $MaxIterations }
     Generate-Report -ExitReason "Reached iteration limit ($MaxIterations)." -Iteration $iteration
 }
