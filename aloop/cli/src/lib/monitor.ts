@@ -42,54 +42,6 @@ async function getTodoTaskCounts(workdir: string): Promise<{ incomplete: number;
   }
 }
 
-/**
- * Reads the review verdict for the given iteration.
- */
-async function getReviewVerdict(sessionDir: string, iteration: number): Promise<string | null> {
-  const verdictPath = path.join(sessionDir, 'review-verdict.json');
-  if (!existsSync(verdictPath)) return null;
-  try {
-    const content = await fs.readFile(verdictPath, 'utf8');
-    const data = JSON.parse(content);
-    if (data.iteration === iteration && (data.verdict === 'PASS' || data.verdict === 'FAIL')) {
-      return data.verdict;
-    }
-  } catch { /* ignore */ }
-  return null;
-}
-
-/**
- * Best-effort detection of whether a build succeeded after the last plan in log.jsonl.
- * Returns true when no reliable evidence is available.
- */
-async function hasBuildSinceLastPlan(sessionDir: string): Promise<boolean> {
-  const logPath = path.join(sessionDir, 'log.jsonl');
-  if (!existsSync(logPath)) return true;
-  try {
-    const content = await fs.readFile(logPath, 'utf8');
-    let sawPlan = false;
-    let buildSeenSincePlan = true;
-    for (const line of content.split('\n')) {
-      if (!line.trim()) continue;
-      let entry: any;
-      try {
-        entry = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      if (entry?.event !== 'iteration_complete' || typeof entry.mode !== 'string') continue;
-      if (entry.mode === 'plan') {
-        sawPlan = true;
-        buildSeenSincePlan = false;
-      } else if (entry.mode === 'build') {
-        buildSeenSincePlan = true;
-      }
-    }
-    return sawPlan ? buildSeenSincePlan : true;
-  } catch {
-    return true;
-  }
-}
 
 function extractFrontmatter(content: string): string | null {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
@@ -141,12 +93,13 @@ async function findTriggeredTemplates(promptsDir: string, event: string): Promis
   return matches;
 }
 
-async function queueTemplatesForEvent(options: MonitorOptions, event: string): Promise<void> {
+async function queueTemplatesForEvent(options: MonitorOptions, event: string): Promise<number> {
   const templates = await findTriggeredTemplates(options.promptsDir, event);
-  if (templates.length === 0) return;
+  if (templates.length === 0) return 0;
 
   const queueDir = path.join(options.sessionDir, 'queue');
   const queueEntries = await fs.readdir(queueDir).catch(() => []);
+  let queued = 0;
 
   for (const template of templates) {
     const stem = template.fileName.replace(/\.md$/i, '');
@@ -163,7 +116,10 @@ async function queueTemplatesForEvent(options: MonitorOptions, event: string): P
       type: 'event_dispatch'
     });
     console.log(`[monitor] Event '${event}' queued ${template.fileName}.`);
+    queued++;
   }
+
+  return queued;
 }
 
 /**
@@ -263,62 +219,48 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
   // Event-driven dispatch from prompt catalog trigger frontmatter.
   if (allTasksDone && typeof status.phase === 'string') {
     if (status.phase === 'build') {
-      await queueTemplatesForEvent(options, 'all_tasks_done');
+      const queued = await queueTemplatesForEvent(options, 'all_tasks_done');
+      if (queued > 0) {
+        await mutateLoopPlan(options.sessionDir, { allTasksMarkedDone: true });
+      }
     } else {
-      await queueTemplatesForEvent(options, status.phase);
+      const queued = await queueTemplatesForEvent(options, status.phase);
+      // Chain completion: no next phase queued while in rattail → session completed.
+      if (queued === 0 && plan.allTasksMarkedDone) {
+        console.log(`[monitor] Rattail chain complete (phase: ${status.phase}). Session completed.`);
+        const nextStatus = { ...status, state: 'completed', updated_at: new Date().toISOString() };
+        await fs.writeFile(statusPath, JSON.stringify(nextStatus, null, 2));
+
+        const metaPath = path.join(options.sessionDir, 'meta.json');
+        try {
+          const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+          if (meta.pid) {
+            process.kill(meta.pid, 'SIGTERM');
+          }
+        } catch { /* ignore */ }
+      }
     }
   }
 
-  // Case 3: Review complete -> handle PASS/FAIL
-  if (status.phase === 'review') {
-    const buildReadyForReview = await hasBuildSinceLastPlan(options.sessionDir);
-    if (!buildReadyForReview) {
-      const queueEntries = await fs.readdir(queueDir).catch(() => []);
-      const alreadyQueued = queueEntries.some(e => e.includes('PROMPT_build'));
-      if (!alreadyQueued) {
-        const buildTemplatePath = path.join(options.promptsDir, 'PROMPT_build.md');
-        if (existsSync(buildTemplatePath)) {
-          const content = await fs.readFile(buildTemplatePath, 'utf8');
-          await writeQueueOverride(options.sessionDir, 'PROMPT_build', content, {
-            agent: 'build',
-            reason: 'review_prerequisite_no_builds'
-          });
-          console.log(`[monitor] Review phase reached without build since plan; queued build.`);
-        }
-      }
-      return;
-    }
+  // Re-entry: rattail agent created new TODO items → back to build cycle.
+  if (plan.allTasksMarkedDone && !allTasksDone && taskCounts !== null && taskCounts.incomplete > 0) {
+    console.log(`[monitor] New incomplete tasks during rattail; re-entering build cycle.`);
+    await mutateLoopPlan(options.sessionDir, {
+      cyclePosition: 0,
+      allTasksMarkedDone: false
+    });
 
-    const verdict = await getReviewVerdict(options.sessionDir, status.iteration);
-    if (verdict === 'PASS' && allTasksDone) {
-      // Approve and stop session
-      console.log(`[monitor] Review PASS and all tasks done. Stopping session.`);
-      const nextStatus = { ...status, state: 'exited', updated_at: new Date().toISOString() };
-      await fs.writeFile(statusPath, JSON.stringify(nextStatus, null, 2));
-      
-      // Also stop the loop process if we can find the PID
-      const metaPath = path.join(options.sessionDir, 'meta.json');
-      try {
-        const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
-        if (meta.pid) {
-          process.kill(meta.pid, 'SIGTERM');
-        }
-      } catch { /* ignore */ }
-    } else if (verdict === 'FAIL') {
-      // Reject and queue plan
-      const queueEntries = await fs.readdir(queueDir).catch(() => []);
-      const alreadyQueued = queueEntries.some(e => e.includes('PROMPT_plan'));
-
-      if (!alreadyQueued) {
-        const planTemplatePath = path.join(options.promptsDir, 'PROMPT_plan.md');
-        if (existsSync(planTemplatePath)) {
-          const content = await fs.readFile(planTemplatePath, 'utf8');
-          await writeQueueOverride(options.sessionDir, 'PROMPT_plan', content, {
-            agent: 'plan',
-            reason: 'review_failed'
-          });
-          console.log(`[monitor] Review FAILED; queued plan.`);
-        }
+    const queueEntries = await fs.readdir(queueDir).catch(() => []);
+    if (!queueEntries.some(e => e.includes('PROMPT_plan'))) {
+      const planTemplatePath = path.join(options.promptsDir, 'PROMPT_plan.md');
+      if (existsSync(planTemplatePath)) {
+        const content = await fs.readFile(planTemplatePath, 'utf8');
+        await writeQueueOverride(options.sessionDir, 'PROMPT_plan', content, {
+          agent: 'plan',
+          reason: 'rattail_reentry_new_tasks',
+          type: 'event_dispatch'
+        });
+        console.log('[monitor] Queued plan for rattail re-entry.');
       }
     }
   }

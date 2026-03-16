@@ -4089,6 +4089,118 @@ async function writeFailureToQueue(request, error, options, sourceFileName) {
 import * as fs3 from "node:fs/promises";
 import { existsSync as existsSync4 } from "node:fs";
 import * as path5 from "node:path";
+
+// src/lib/yaml.ts
+function stripInlineComment(raw) {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i];
+    if (char === "'" && !inDouble) {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (char === '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (char === "#" && !inSingle && !inDouble) {
+      const prev = i > 0 ? raw[i - 1] : " ";
+      if (prev === " " || prev === "	") {
+        return raw.slice(0, i).trimEnd();
+      }
+    }
+  }
+  return raw.trimEnd();
+}
+function parseYamlScalar(raw) {
+  const cleaned = stripInlineComment(raw).trim();
+  if (cleaned === "")
+    return "";
+  if (/^null$/i.test(cleaned))
+    return null;
+  if (/^true$/i.test(cleaned))
+    return true;
+  if (/^false$/i.test(cleaned))
+    return false;
+  if (/^-?\d+$/.test(cleaned))
+    return Number.parseInt(cleaned, 10);
+  if (cleaned.startsWith("'") && cleaned.endsWith("'") && cleaned.length >= 2) {
+    return cleaned.slice(1, -1).replace(/''/g, "'");
+  }
+  if (cleaned.startsWith('"') && cleaned.endsWith('"') && cleaned.length >= 2) {
+    return cleaned.slice(1, -1).replace(/\\"/g, '"');
+  }
+  return cleaned;
+}
+function parseYaml(content) {
+  const lines = content.split(/\r?\n/);
+  const result = {};
+  let currentKey = null;
+  let currentList = null;
+  let currentObject = null;
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (trimmed === "" || trimmed.startsWith("#"))
+      continue;
+    const indent = rawLine.length - rawLine.trimStart().length;
+    if (indent === 0) {
+      const match = trimmed.match(/^([A-Za-z0-9_]+):(?:\s*(.*))?$/);
+      if (match) {
+        currentKey = match[1];
+        const rawValue = (match[2] ?? "").trim();
+        if (rawValue === "") {
+          result[currentKey] = null;
+        } else {
+          result[currentKey] = parseYamlScalar(rawValue);
+          currentKey = null;
+        }
+        currentList = null;
+        currentObject = null;
+        continue;
+      }
+    }
+    if (indent >= 2 && currentKey) {
+      const listMatch = trimmed.match(/^-\s+(.+)$/);
+      if (listMatch) {
+        if (!Array.isArray(result[currentKey])) {
+          result[currentKey] = [];
+        }
+        currentList = result[currentKey];
+        const scalarValue = parseYamlScalar(listMatch[1]);
+        if (currentList) {
+          const objectMatch = listMatch[1].match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+          if (objectMatch) {
+            currentObject = {};
+            currentObject[objectMatch[1]] = parseYamlScalar(objectMatch[2]);
+            currentList.push(currentObject);
+          } else {
+            currentList.push(scalarValue);
+            currentObject = null;
+          }
+        }
+        continue;
+      }
+      const propMatch = trimmed.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+      if (propMatch) {
+        const propKey = propMatch[1];
+        const propValue = parseYamlScalar(propMatch[2]);
+        if (currentObject && indent >= 4) {
+          currentObject[propKey] = propValue;
+        } else {
+          if (result[currentKey] === null || typeof result[currentKey] !== "object") {
+            result[currentKey] = {};
+          }
+          result[currentKey][propKey] = propValue;
+        }
+        continue;
+      }
+    }
+  }
+  return result;
+}
+
+// src/lib/monitor.ts
 async function getTodoTaskCounts(workdir) {
   const planPath = path5.join(workdir, "TODO.md");
   if (!existsSync4(planPath))
@@ -4110,50 +4222,68 @@ async function getTodoTaskCounts(workdir) {
     return null;
   }
 }
-async function getReviewVerdict(sessionDir, iteration) {
-  const verdictPath = path5.join(sessionDir, "review-verdict.json");
-  if (!existsSync4(verdictPath))
-    return null;
-  try {
-    const content = await fs3.readFile(verdictPath, "utf8");
-    const data = JSON.parse(content);
-    if (data.iteration === iteration && (data.verdict === "PASS" || data.verdict === "FAIL")) {
-      return data.verdict;
-    }
-  } catch {
-  }
-  return null;
+function extractFrontmatter(content) {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  return match ? match[1] : null;
 }
-async function hasBuildSinceLastPlan(sessionDir) {
-  const logPath = path5.join(sessionDir, "log.jsonl");
-  if (!existsSync4(logPath))
-    return true;
-  try {
-    const content = await fs3.readFile(logPath, "utf8");
-    let sawPlan = false;
-    let buildSeenSincePlan = true;
-    for (const line of content.split("\n")) {
-      if (!line.trim())
-        continue;
-      let entry;
-      try {
-        entry = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      if (entry?.event !== "iteration_complete" || typeof entry.mode !== "string")
-        continue;
-      if (entry.mode === "plan") {
-        sawPlan = true;
-        buildSeenSincePlan = false;
-      } else if (entry.mode === "build") {
-        buildSeenSincePlan = true;
-      }
-    }
-    return sawPlan ? buildSeenSincePlan : true;
-  } catch {
-    return true;
+function normalizeTriggerValues(trigger) {
+  if (typeof trigger === "string") {
+    return trigger.split(",").map((value) => value.trim()).filter(Boolean);
   }
+  if (Array.isArray(trigger)) {
+    return trigger.filter((value) => typeof value === "string").map((value) => value.trim()).filter(Boolean);
+  }
+  return [];
+}
+async function findTriggeredTemplates(promptsDir, event) {
+  const entries = await fs3.readdir(promptsDir).catch(() => []);
+  const promptFiles = entries.filter((name) => /^PROMPT_.*\.md$/i.test(name)).sort();
+  const matches = [];
+  for (const fileName of promptFiles) {
+    const templatePath = path5.join(promptsDir, fileName);
+    const templateContent = await fs3.readFile(templatePath, "utf8").catch(() => null);
+    if (!templateContent)
+      continue;
+    const frontmatter = extractFrontmatter(templateContent);
+    if (!frontmatter)
+      continue;
+    const parsed = parseYaml(frontmatter);
+    const triggers = normalizeTriggerValues(parsed.trigger);
+    if (!triggers.includes(event))
+      continue;
+    const stem = fileName.replace(/\.md$/i, "");
+    const fallbackAgent = stem.replace(/^PROMPT_/i, "");
+    const agent = typeof parsed.agent === "string" && parsed.agent.trim().length > 0 ? parsed.agent.trim() : fallbackAgent;
+    matches.push({ fileName, agent });
+  }
+  return matches;
+}
+async function queueTemplatesForEvent(options, event) {
+  const templates = await findTriggeredTemplates(options.promptsDir, event);
+  if (templates.length === 0)
+    return 0;
+  const queueDir = path5.join(options.sessionDir, "queue");
+  const queueEntries = await fs3.readdir(queueDir).catch(() => []);
+  let queued = 0;
+  for (const template of templates) {
+    const stem = template.fileName.replace(/\.md$/i, "");
+    const alreadyQueued = queueEntries.some((entry) => entry.includes(stem));
+    if (alreadyQueued)
+      continue;
+    const templatePath = path5.join(options.promptsDir, template.fileName);
+    if (!existsSync4(templatePath))
+      continue;
+    const content = await fs3.readFile(templatePath, "utf8");
+    await writeQueueOverride(options.sessionDir, stem, content, {
+      agent: template.agent,
+      reason: `triggered_by_${event}`,
+      trigger: event,
+      type: "event_dispatch"
+    });
+    console.log(`[monitor] Event '${event}' queued ${template.fileName}.`);
+    queued++;
+  }
+  return queued;
 }
 async function monitorSessionState(options) {
   const statusPath = path5.join(options.sessionDir, "status.json");
@@ -4233,80 +4363,46 @@ async function monitorSessionState(options) {
       }
     }
   }
-  if (status.phase === "build" && allTasksDone) {
-    const queueEntries = await fs3.readdir(queueDir).catch(() => []);
-    const alreadyQueued = queueEntries.some((e) => e.includes("PROMPT_proof") || e.includes("PROMPT_review"));
-    if (!alreadyQueued) {
-      const proofTemplatePath = path5.join(options.promptsDir, "PROMPT_proof.md");
-      if (existsSync4(proofTemplatePath)) {
-        const content = await fs3.readFile(proofTemplatePath, "utf8");
-        await writeQueueOverride(options.sessionDir, "PROMPT_proof", content, {
-          agent: "proof",
-          reason: "all_tasks_done"
-        });
-        console.log(`[monitor] All tasks done in build phase; queued proof.`);
+  if (allTasksDone && typeof status.phase === "string") {
+    if (status.phase === "build") {
+      const queued = await queueTemplatesForEvent(options, "all_tasks_done");
+      if (queued > 0) {
+        await mutateLoopPlan(options.sessionDir, { allTasksMarkedDone: true });
+      }
+    } else {
+      const queued = await queueTemplatesForEvent(options, status.phase);
+      if (queued === 0 && plan.allTasksMarkedDone) {
+        console.log(`[monitor] Rattail chain complete (phase: ${status.phase}). Session completed.`);
+        const nextStatus = { ...status, state: "completed", updated_at: (/* @__PURE__ */ new Date()).toISOString() };
+        await fs3.writeFile(statusPath, JSON.stringify(nextStatus, null, 2));
+        const metaPath = path5.join(options.sessionDir, "meta.json");
+        try {
+          const meta = JSON.parse(await fs3.readFile(metaPath, "utf8"));
+          if (meta.pid) {
+            process.kill(meta.pid, "SIGTERM");
+          }
+        } catch {
+        }
       }
     }
   }
-  if (status.phase === "proof" && allTasksDone) {
+  if (plan.allTasksMarkedDone && !allTasksDone && taskCounts !== null && taskCounts.incomplete > 0) {
+    console.log(`[monitor] New incomplete tasks during rattail; re-entering build cycle.`);
+    await mutateLoopPlan(options.sessionDir, {
+      cyclePosition: 0,
+      allTasksMarkedDone: false
+    });
     const queueEntries = await fs3.readdir(queueDir).catch(() => []);
-    const alreadyQueued = queueEntries.some((e) => e.includes("PROMPT_review"));
-    if (!alreadyQueued) {
-      const reviewTemplatePath = path5.join(options.promptsDir, "PROMPT_review.md");
-      if (existsSync4(reviewTemplatePath)) {
-        const content = await fs3.readFile(reviewTemplatePath, "utf8");
-        await writeQueueOverride(options.sessionDir, "PROMPT_review", content, {
-          agent: "review",
-          reason: "proof_complete"
+    if (!queueEntries.some((e) => e.includes("PROMPT_plan"))) {
+      const planTemplatePath = path5.join(options.promptsDir, "PROMPT_plan.md");
+      if (existsSync4(planTemplatePath)) {
+        const content = await fs3.readFile(planTemplatePath, "utf8");
+        await writeQueueOverride(options.sessionDir, "PROMPT_plan", content, {
+          agent: "plan",
+          reason: "rattail_reentry_new_tasks",
+          type: "event_dispatch"
         });
-        console.log(`[monitor] All tasks done in proof phase; queued review.`);
-      }
-    }
-  }
-  if (status.phase === "review") {
-    const buildReadyForReview = await hasBuildSinceLastPlan(options.sessionDir);
-    if (!buildReadyForReview) {
-      const queueEntries = await fs3.readdir(queueDir).catch(() => []);
-      const alreadyQueued = queueEntries.some((e) => e.includes("PROMPT_build"));
-      if (!alreadyQueued) {
-        const buildTemplatePath = path5.join(options.promptsDir, "PROMPT_build.md");
-        if (existsSync4(buildTemplatePath)) {
-          const content = await fs3.readFile(buildTemplatePath, "utf8");
-          await writeQueueOverride(options.sessionDir, "PROMPT_build", content, {
-            agent: "build",
-            reason: "review_prerequisite_no_builds"
-          });
-          console.log(`[monitor] Review phase reached without build since plan; queued build.`);
-        }
-      }
-      return;
-    }
-    const verdict = await getReviewVerdict(options.sessionDir, status.iteration);
-    if (verdict === "PASS" && allTasksDone) {
-      console.log(`[monitor] Review PASS and all tasks done. Stopping session.`);
-      const nextStatus = { ...status, state: "exited", updated_at: (/* @__PURE__ */ new Date()).toISOString() };
-      await fs3.writeFile(statusPath, JSON.stringify(nextStatus, null, 2));
-      const metaPath = path5.join(options.sessionDir, "meta.json");
-      try {
-        const meta = JSON.parse(await fs3.readFile(metaPath, "utf8"));
-        if (meta.pid) {
-          process.kill(meta.pid, "SIGTERM");
-        }
-      } catch {
-      }
-    } else if (verdict === "FAIL") {
-      const queueEntries = await fs3.readdir(queueDir).catch(() => []);
-      const alreadyQueued = queueEntries.some((e) => e.includes("PROMPT_plan"));
-      if (!alreadyQueued) {
-        const planTemplatePath = path5.join(options.promptsDir, "PROMPT_plan.md");
-        if (existsSync4(planTemplatePath)) {
-          const content = await fs3.readFile(planTemplatePath, "utf8");
-          await writeQueueOverride(options.sessionDir, "PROMPT_plan", content, {
-            agent: "plan",
-            reason: "review_failed"
-          });
-          console.log(`[monitor] Review FAILED; queued plan.`);
-        }
+        console.log("[monitor] Queued plan for rattail re-entry.");
       }
     }
   }
@@ -4752,7 +4848,7 @@ async function startDashboardServer(options, runtimeOptions = {}) {
     publishPending = true;
     publishTimer = setTimeout(() => {
       void publishState();
-    }, 75);
+    }, 300);
   };
   const heartbeatTimer = setInterval(() => {
     const heartbeatPayload = JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString() });
@@ -5512,118 +5608,6 @@ import path9 from "node:path";
 import { readFile as readFile6, writeFile as writeFile6 } from "node:fs/promises";
 import { existsSync as existsSync6 } from "node:fs";
 import path8 from "node:path";
-
-// src/lib/yaml.ts
-function stripInlineComment(raw) {
-  let inSingle = false;
-  let inDouble = false;
-  for (let i = 0; i < raw.length; i += 1) {
-    const char = raw[i];
-    if (char === "'" && !inDouble) {
-      inSingle = !inSingle;
-      continue;
-    }
-    if (char === '"' && !inSingle) {
-      inDouble = !inDouble;
-      continue;
-    }
-    if (char === "#" && !inSingle && !inDouble) {
-      const prev = i > 0 ? raw[i - 1] : " ";
-      if (prev === " " || prev === "	") {
-        return raw.slice(0, i).trimEnd();
-      }
-    }
-  }
-  return raw.trimEnd();
-}
-function parseYamlScalar(raw) {
-  const cleaned = stripInlineComment(raw).trim();
-  if (cleaned === "")
-    return "";
-  if (/^null$/i.test(cleaned))
-    return null;
-  if (/^true$/i.test(cleaned))
-    return true;
-  if (/^false$/i.test(cleaned))
-    return false;
-  if (/^-?\d+$/.test(cleaned))
-    return Number.parseInt(cleaned, 10);
-  if (cleaned.startsWith("'") && cleaned.endsWith("'") && cleaned.length >= 2) {
-    return cleaned.slice(1, -1).replace(/''/g, "'");
-  }
-  if (cleaned.startsWith('"') && cleaned.endsWith('"') && cleaned.length >= 2) {
-    return cleaned.slice(1, -1).replace(/\\"/g, '"');
-  }
-  return cleaned;
-}
-function parseYaml(content) {
-  const lines = content.split(/\r?\n/);
-  const result = {};
-  let currentKey = null;
-  let currentList = null;
-  let currentObject = null;
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (trimmed === "" || trimmed.startsWith("#"))
-      continue;
-    const indent = rawLine.length - rawLine.trimStart().length;
-    if (indent === 0) {
-      const match = trimmed.match(/^([A-Za-z0-9_]+):(?:\s*(.*))?$/);
-      if (match) {
-        currentKey = match[1];
-        const rawValue = (match[2] ?? "").trim();
-        if (rawValue === "") {
-          result[currentKey] = null;
-        } else {
-          result[currentKey] = parseYamlScalar(rawValue);
-          currentKey = null;
-        }
-        currentList = null;
-        currentObject = null;
-        continue;
-      }
-    }
-    if (indent >= 2 && currentKey) {
-      const listMatch = trimmed.match(/^-\s+(.+)$/);
-      if (listMatch) {
-        if (!Array.isArray(result[currentKey])) {
-          result[currentKey] = [];
-        }
-        currentList = result[currentKey];
-        const scalarValue = parseYamlScalar(listMatch[1]);
-        if (currentList) {
-          const objectMatch = listMatch[1].match(/^([A-Za-z0-9_]+):\s*(.*)$/);
-          if (objectMatch) {
-            currentObject = {};
-            currentObject[objectMatch[1]] = parseYamlScalar(objectMatch[2]);
-            currentList.push(currentObject);
-          } else {
-            currentList.push(scalarValue);
-            currentObject = null;
-          }
-        }
-        continue;
-      }
-      const propMatch = trimmed.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
-      if (propMatch) {
-        const propKey = propMatch[1];
-        const propValue = parseYamlScalar(propMatch[2]);
-        if (currentObject && indent >= 4) {
-          currentObject[propKey] = propValue;
-        } else {
-          if (result[currentKey] === null || typeof result[currentKey] !== "object") {
-            result[currentKey] = {};
-          }
-          result[currentKey][propKey] = propValue;
-        }
-        continue;
-      }
-    }
-  }
-  return result;
-}
-
-// src/commands/compile-loop-plan.ts
 var defaultCompileDeps = {
   readFile: readFile6,
   writeFile: writeFile6,
