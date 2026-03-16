@@ -7,6 +7,7 @@ import type { OutputMode } from './status.js';
 import { writeQueueOverride } from '../lib/plan.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
 import { writeSpecBackfill } from '../lib/specBackfill.js';
+import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -2617,15 +2618,6 @@ export interface PrLifecycleDeps {
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 
-function normalizeCiGateDetail(detail: string): string {
-  return detail
-    .toLowerCase()
-    .replace(/[0-9a-f]{7,40}/g, '<sha>')
-    .replace(/\d+/g, '<n>')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
     const response = await deps.execGh([
@@ -2913,7 +2905,7 @@ export async function processPrLifecycle(
     const ciFailure = failedGates.find((g) => g.gate === 'ci_checks');
     const stateIssue = state.issues.find((i) => i.number === issue.number);
     if (ciFailure && stateIssue) {
-      const signature = normalizeCiGateDetail(ciFailure.detail);
+      const signature = normalizeCiDetailForSignature(ciFailure.detail);
       const retries = stateIssue.ci_failure_signature === signature
         ? (stateIssue.ci_failure_retries ?? 0) + 1
         : 1;

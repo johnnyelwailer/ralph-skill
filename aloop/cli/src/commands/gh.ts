@@ -6,6 +6,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { startCommandWithDeps, type StartCommandOptions, type StartCommandResult } from './start.js';
 import { listActiveSessions, resolveHomeDir, stopSession, type SessionInfo } from './session.js';
+import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
 
 const execFileAsync = promisify(execFile);
 const GH_PATH_HARDENING_BLOCK_MESSAGE = 'blocked by aloop PATH hardening';
@@ -610,15 +611,6 @@ interface PrFeedback {
   failed_checks: PrCheckRun[];
 }
 
-function normalizeCiTextForSignature(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[0-9a-f]{7,40}/g, '<sha>')
-    .replace(/\d+/g, '<n>')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function buildCiFailureSignature(failedChecks: PrCheckRun[]): string | null {
   if (failedChecks.length === 0) {
     return null;
@@ -629,7 +621,7 @@ function buildCiFailureSignature(failedChecks: PrCheckRun[]): string | null {
         .split('\n')
         .slice(-20)
         .join('\n');
-      return `${check.name}|${normalizeCiTextForSignature(tail)}`;
+      return `${check.name}|${normalizeCiDetailForSignature(tail)}`;
     })
     .sort();
   return parts.join('||');
