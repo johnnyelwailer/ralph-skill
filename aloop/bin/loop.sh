@@ -448,10 +448,12 @@ parse_frontmatter() {
     FRONTMATTER_MODEL=$(sed -n '/^---$/,/^---$/{ /^model:/s/model: *//p }' "$file" | head -n1)
     FRONTMATTER_AGENT=$(sed -n '/^---$/,/^---$/{ /^agent:/s/agent: *//p }' "$file" | head -n1)
     FRONTMATTER_REASONING=$(sed -n '/^---$/,/^---$/{ /^reasoning:/s/reasoning: *//p }' "$file" | head -n1)
+    FRONTMATTER_COLOR=$(sed -n '/^---$/,/^---$/{ /^color:/s/color: *//p }' "$file" | head -n1)
     FRONTMATTER_PROVIDER="${FRONTMATTER_PROVIDER:-}"
     FRONTMATTER_MODEL="${FRONTMATTER_MODEL:-}"
     FRONTMATTER_AGENT="${FRONTMATTER_AGENT:-}"
     FRONTMATTER_REASONING="${FRONTMATTER_REASONING:-}"
+    FRONTMATTER_COLOR="${FRONTMATTER_COLOR:-}"
 }
 
 advance_cycle_position() {
@@ -1299,6 +1301,22 @@ FRONTMATTER_PROVIDER=""
 FRONTMATTER_MODEL=""
 FRONTMATTER_AGENT=""
 FRONTMATTER_REASONING=""
+FRONTMATTER_COLOR=""
+
+color_name_to_ansi() {
+    local name="${1:-}"
+    case "$(echo "$name" | tr '[:upper:]' '[:lower:]')" in
+        red)          echo "\033[31m" ;;
+        green)        echo "\033[32m" ;;
+        yellow)       echo "\033[33m" ;;
+        blue)         echo "\033[34m" ;;
+        magenta)      echo "\033[35m" ;;
+        cyan)         echo "\033[36m" ;;
+        brightcyan)   echo "\033[96m" ;;
+        white)        echo "\033[37m" ;;
+        *)            echo "\033[37m" ;;  # default white
+    esac
+}
 
 update_proof_baselines() {
     local proof_iteration="$1"
@@ -1897,21 +1915,19 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         "agent" "${FRONTMATTER_AGENT:-}" \
         "provider" "${FRONTMATTER_PROVIDER:-}" \
         "model" "${FRONTMATTER_MODEL:-}" \
-        "reasoning" "${FRONTMATTER_REASONING:-}"
+        "reasoning" "${FRONTMATTER_REASONING:-}" \
+        "color" "${FRONTMATTER_COLOR:-}"
 
     # Update session status
     write_status "$ITERATION" "$iter_mode" "$iter_provider" 0
     persist_loop_plan_state
 
-    # Color output by mode
-    case "$iter_mode" in
-        plan)   color="\033[35m" ;;  # magenta
-        build)  color="\033[33m" ;;  # yellow
-        proof)  color="\033[96m" ;;  # bright cyan
-        review) color="\033[36m" ;;  # cyan
-        steer)  color="\033[34m" ;;  # blue
-        *)      color="\033[0m" ;;
-    esac
+    # Color output from frontmatter (data-driven), defaulting to white
+    if [ -n "$FRONTMATTER_COLOR" ]; then
+        color=$(color_name_to_ansi "$FRONTMATTER_COLOR")
+    else
+        color="\033[37m"  # default white
+    fi
     echo -e "${color}--- Iteration $ITERATION / $MAX_ITERATIONS [$(date '+%Y-%m-%d %H:%M:%S')] [$iter_provider] [$iter_mode] ---\033[0m"
 
     # Build mode: stuck detection and task display

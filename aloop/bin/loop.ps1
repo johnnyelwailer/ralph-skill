@@ -290,6 +290,7 @@ function Parse-Frontmatter {
         model = ''
         agent = ''
         reasoning = ''
+        color = ''
     }
     if (-not (Test-Path $PromptFile)) { return }
     $content = Get-Content -Path $PromptFile -Raw
@@ -298,9 +299,24 @@ function Parse-Frontmatter {
     if ($parts.Count -lt 3) { return }
     $header = $parts[1] -split "`r?`n"
     foreach ($line in $header) {
-        if ($line -match '^\s*(provider|model|agent|reasoning)\s*:\s*(.+?)\s*$') {
+        if ($line -match '^\s*(provider|model|agent|reasoning|color)\s*:\s*(.+?)\s*$') {
             $script:frontmatter[$Matches[1].ToLowerInvariant()] = $Matches[2].Trim()
         }
+    }
+}
+
+function Get-ModeColor {
+    param([string]$ColorName)
+    switch ($ColorName.ToLowerInvariant()) {
+        'red'        { 'Red' }
+        'green'      { 'Green' }
+        'yellow'     { 'Yellow' }
+        'blue'       { 'Blue' }
+        'magenta'    { 'Magenta' }
+        'cyan'       { 'Cyan' }
+        'brightcyan' { 'Cyan' }
+        'white'      { 'White' }
+        default      { 'White' }
     }
 }
 
@@ -769,7 +785,7 @@ $script:lastProviderOutputText = $null
 $script:cyclePosition = 0
 $script:cycleLength = 0
 $script:resolvedPromptName = $null
-$script:frontmatter = @{ provider = ''; model = ''; agent = ''; reasoning = '' }
+$script:frontmatter = @{ provider = ''; model = ''; agent = ''; reasoning = ''; color = '' }
 $script:phaseRetryState = @{
     phase = ''
     consecutive = 0
@@ -1918,19 +1934,19 @@ try {
             provider = [string]$script:frontmatter.provider
             model = [string]$script:frontmatter.model
             reasoning = [string]$script:frontmatter.reasoning
+            color = [string]$script:frontmatter.color
         }
 
         # Update session status
         Write-Status -Iteration $iteration -Phase $iterationMode -CurrentProvider $iterationProvider -StuckCount $stuckState.StuckCount
         Persist-LoopPlanState -Iteration $iteration
 
-        $modeColor = switch ($iterationMode) {
-            'plan'   { 'Magenta' }
-            'build'  { 'Yellow' }
-            'proof'  { 'DarkCyan' }
-            'review' { 'Cyan' }
-            'steer'  { 'Blue' }
-            default  { 'White' }
+        # Color output from frontmatter (data-driven), defaulting to White
+        $frontmatterColor = [string]$script:frontmatter.color
+        if (-not [string]::IsNullOrWhiteSpace($frontmatterColor)) {
+            $modeColor = Get-ModeColor -ColorName $frontmatterColor
+        } else {
+            $modeColor = 'White'
         }
         Write-Host "`n--- Iteration $iteration / $MaxIterations [$timestamp] [$iterationProvider] [$iterationMode] ---" -ForegroundColor $modeColor
 
