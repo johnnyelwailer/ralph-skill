@@ -1,5 +1,30 @@
 # Review Log
 
+## Review — 2026-03-16 14:00 UTC — commit c7f0250..bfd5424
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/cli/src/commands/gh.ts`, `aloop/cli/src/commands/gh.test.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/src/commands/setup.test.ts`, `aloop/cli/src/commands/project.ts`, `aloop/cli/src/commands/project.test.ts`, `aloop/cli/lib/project.mjs`, `aloop/cli/src/lib/monitor.test.ts`, `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`
+
+- Gate 4: **Copy-paste duplication** — `normalizeCiTextForSignature` (`gh.ts:613-620`) and `normalizeCiGateDetail` (`orchestrate.ts:2620-2627`) are identical functions with the same 4-step text normalization pipeline (lowercase → SHA regex → digit regex → whitespace collapse → trim). Extract to shared module.
+
+**Resolved from prior reviews:**
+- Gate 2 ✅: `monitor.test.ts:280` no-op assertion fixed — now uses `!files.some(f => f.includes('PROMPT_plan'))` without the `rattail` qualifier that made it a tautology.
+
+**Positive observations:**
+- Gate 1: Data privacy setup flow correctly implements SPEC step 7 — asks internal/private vs public/open-source, writes `privacy_policy` config block with `data_classification`, `zdr_enabled`, and `require_data_retention_safe` fields. Default is 'private' with ZDR enabled, matching spec's conservative default intent.
+- Gate 1: CI failure persistence detection matches SPEC requirement ("Same error persisting after N attempts → flag for human", default 3) in both `gh.ts` (gh watch path) and `orchestrate.ts` (orchestrator path). Both use signature-based comparison with SHA/number normalization.
+- Gate 1: PATH hardening fallback via `ALOOP_ORIGINAL_PATH` is correctly exported before PATH mutation and cleaned up after provider execution in both `loop.sh:1027/1212` and `loop.ps1:495/599`. `ghExecutor.exec` correctly tries current PATH first, then `ALOOP_ORIGINAL_PATH`.
+- Gate 1: `resolveBundledTemplatesDir` searches up to 6 parent levels from 3 base dirs (module, argv, cwd) with deduplication — handles npm packaged layouts (`lib/node_modules/aloop-cli/dist` → parent `templates`).
+- Gate 2: CI persistence test (`gh.test.ts:2365-2443`) is thorough — sets up state with `same_ci_failure_count: 2`, provides identical failing check, verifies status='stopped', completion_state='persistent_ci_failure', same_ci_failure_count=3, comment posted with `/Auto re-iteration halted/`, and no new loop spawned.
+- Gate 2: `setup.test.ts` covers non-interactive, interactive (9 prompts), defaults, error propagation, invalid data privacy rejection, explicit public mode, and default private mode — all with concrete value assertions.
+- Gate 2: `project.test.ts:137-175` tests both private and public privacy configs with exact content matching for `zdr_enabled`, `require_data_retention_safe` values.
+- Gate 5: All tests pass, type-check clean, build succeeds (450.3KB).
+- Gate 6: Proof manifest correctly skipped all 3 tasks as internal scaffolding/config work — no filler artifacts.
+- Gate 8: No dependency changes; version compliance unchanged.
+- Gate 9: README describes `aloop setup` as "Interactive project configuration" — still accurate with new privacy prompt. No detailed flag docs existed before, so no drift.
+
+---
+
 ## Review — 2026-03-15 — commit 1cff643..5d03e8e
 
 **Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
