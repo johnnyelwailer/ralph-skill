@@ -268,3 +268,18 @@
 - Gate 1: `gh watch` now wraps issue-list failures with clean user-facing errors instead of raw stack traces.
 - Gate 5: Validation command suite passed on this review run: `cd aloop/cli && npm test && npm run type-check && npm run build`.
 - Gate 8: Version compliance spot-check passed (`node v22.22.1`, `commander@12.1.0`, `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`) against `VERSIONS.md`.
+
+---
+
+## Review — 2026-03-16 11:12 UTC — commit f9af5f0..de4d12c
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.ps1`, `aloop/bin/loop.sh`, `aloop/bin/loop.tests.ps1`, `aloop/cli/src/commands/gh.test.ts`, `aloop/cli/src/commands/devcontainer.test.ts`, `aloop/cli/src/commands/project.test.ts`, `QA_LOG.md`, `QA_COVERAGE.md`, `TODO.md`
+
+- Gate 3: **Branch coverage evidence missing for touched loop runtimes** — this iteration changed cycle/resume logic in `aloop/bin/loop.ps1` and `aloop/bin/loop.sh` (including `Resolve-IterationMode`, cycle modulo advancement, and resume phase mapping), but no per-file branch coverage report demonstrates >=80% for those touched files.
+- Gate 4: **Dead code in touched files** — `Update-ProofBaselines` in `aloop/bin/loop.ps1` (line ~798) and `update_proof_baselines` in `aloop/bin/loop.sh` (line ~1321) are defined without call sites.
+
+**Positive observations:**
+- Gate 2: Newly added tests are mostly concrete and branch-targeted (e.g., `gh.test.ts` adds explicit no-candidate/null-path and JSON error-path assertions; `project.test.ts` now compares bootstrapped template file content against bundled template sources).
+- Gate 5: Required validation command succeeded on current HEAD: `cd aloop/cli && npm test && npm run type-check && npm run build` (tests pass, type-check clean, build succeeds).
+- Gate 8: Version spot-check remains compliant with `VERSIONS.md` (`node v22.22.1`, `commander@12.1.0`, `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`).

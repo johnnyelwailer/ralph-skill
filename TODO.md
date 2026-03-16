@@ -6,6 +6,8 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 
 ### In Progress
 - [x] [loop/P1] **CRITICAL:** `loop.ps1` still uses legacy `plan-build-review` behavior in multiple paths (`Resolve-IterationMode`, cycle advance modulo, required prompt set, resume phase mapping, startup mode-cycle text), effectively modeling `plan -> build x3 -> proof -> review` instead of `plan -> build x5 -> qa -> review`. Bring full parity with `loop.sh` and validate via `loop.tests.ps1` coverage for normal run + resume scenarios. (priority: critical)
+- [ ] [review] Gate 3: touched runtime files `aloop/bin/loop.ps1` and `aloop/bin/loop.sh` changed cycle/resume branches (`Resolve-IterationMode`, cycle modulo advance, resume phase mapping), but no branch-coverage report demonstrates >=80% for these touched files. Add executable branch-coverage evidence for both runtimes (or equivalent existing coverage tooling output), and extend tests for uncovered branch paths until gate threshold is met. (priority: high)
+- [ ] [review] Gate 4: dead code remains in touched loop runtimes — `Update-ProofBaselines` (`aloop/bin/loop.ps1:798`) and `update_proof_baselines` (`aloop/bin/loop.sh:1321`) are defined but have no call sites. Remove unused functions or wire them into an active flow with tests proving invocation. (priority: medium)
 
 ### Up Next — Review Fixes (Blocking)
 - [x] [review] Gate 2: `aloop/cli/src/commands/project.test.ts:302-305` still verifies bootstrap by `existsSync(...)` presence checks only. Strengthen to assert copied template content matches bundled `aloop/templates/` sources, and add explicit negative-path assertion that bootstrap is skipped when `templatesDir` is provided. (priority: high)
