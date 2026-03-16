@@ -51,42 +51,62 @@ Default to **patch** when possible.
 
 ### Step 4: Capture requirements verbatim into PRD
 
-**Do NOT structure, rewrite, or interpret.** Your job here is stenography — capture exactly what the user says they want, in their words.
+You are conducting a requirements interview. Ask targeted questions, probe vague answers, and dig into specifics — but **record the user's answers verbatim** into the PRD. Your questions guide the conversation; their answers ARE the document.
 
-Ask the user to describe what they want built. Use open-ended prompts:
-- "What are you trying to build? Describe it however feels natural."
-- "Anything else? Constraints, must-haves, things to avoid?"
+**Interview flow:**
 
-Keep prompting until the user says they're done. After each response, confirm: "Got it. Anything else to add, or is that everything?"
+1. Start broad: "What are you trying to build?"
+2. After the initial description, ask follow-up questions to fill gaps. Use your judgment — good interview questions include:
+   - "Who uses this? What's their workflow?"
+   - "You mentioned X — how should that work exactly?"
+   - "What happens when Y fails / is missing / is invalid?"
+   - "Are there existing systems this needs to integrate with?"
+   - "What's the MVP vs nice-to-have?"
+   - "Any hard constraints — tech stack, timeline, compatibility?"
+   - "What's explicitly out of scope?"
+3. When an answer is vague, push back: "Can you be more specific about...?" or "What does 'fast' / 'simple' / 'good' mean concretely here?"
+4. After each major topic, briefly confirm your understanding before moving on
+5. When you've covered the core areas and follow-ups are yielding diminishing returns, wrap up: "I think I have a solid picture. Anything I didn't ask about that matters?"
 
-Write everything to `PRD.md` in the project root:
+**Recording rules:**
+
+- After each user response, append it to `PRD.md` immediately (don't wait until the end)
+- Record the user's words verbatim — do not paraphrase, summarize, or restructure
+- You may add your question as a heading/label so the PRD reads as a structured interview transcript
+- Format:
 
 ```markdown
 # Product Requirements Document
 
-_Captured verbatim from user input during setup._
+_Captured from requirements interview during setup._
 
-## Requirements
+### What are you building?
 
-<user's words, verbatim, preserving their structure/formatting>
+<user's answer, verbatim>
 
-## Constraints
+### Who uses this and what's their workflow?
 
-<any constraints mentioned, verbatim>
+<user's answer, verbatim>
 
-## Out of Scope
+### How should X work exactly?
 
-<anything explicitly excluded, verbatim>
+<user's answer, verbatim>
+
+### Constraints
+
+<user's answer, verbatim>
+
+### Out of scope
+
+<user's answer, verbatim>
 ```
-
-Only use sections the user actually addressed. Do not add empty sections or placeholder text. Do not add your own interpretation, summary, or rewording.
 
 If discovery found existing spec candidates, ask: "I found these existing docs: <list>. Should I include their content in the PRD as reference, or are you starting fresh?"
 
 ### Step 5: PRD confirmation gate
 
-Show the user the PRD you wrote. Ask:
-- "Does this capture everything? Edit anything, or good to plan?"
+Show the user the completed PRD. Ask:
+- "Does this capture everything? Want to change or add anything, or good to plan?"
 
 Do not proceed until the user confirms. If they add or change things, update `PRD.md` and re-confirm.
 
