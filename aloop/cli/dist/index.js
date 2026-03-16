@@ -4087,7 +4087,9 @@ async function monitorSessionState(options) {
       const steerTemplatePath = path5.join(options.promptsDir, "PROMPT_steer.md");
       const planTemplatePath = path5.join(options.promptsDir, "PROMPT_plan.md");
       if (existsSync4(steerTemplatePath)) {
-        const steerContent = await fs3.readFile(steerTemplatePath, "utf8");
+        const templateContent = await fs3.readFile(steerTemplatePath, "utf8");
+        const steeringInstruction = await fs3.readFile(steeringPath, "utf8");
+        const steerContent = templateContent + "\n\n" + steeringInstruction;
         await writeQueueOverride(options.sessionDir, "001-PROMPT_steer", steerContent, {
           agent: "steer",
           reason: "steering_detected",
@@ -8278,6 +8280,7 @@ var defaultDeps2 = {
   mkdir: fsp.mkdir,
   copyFile: fsp.copyFile,
   writeFile: fsp.writeFile,
+  chmod: fsp.chmod,
   spawnSync: spawnSync6
 };
 async function copyTree(src, dest, deps) {
@@ -8357,6 +8360,13 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
       deps
     );
     updated.push(...binFiles);
+    if (os5.platform() !== "win32") {
+      for (const f of binFiles) {
+        if (f.endsWith(".sh") || !path11.basename(f).includes(".")) {
+          await deps.chmod(f, 493);
+        }
+      }
+    }
   } catch (e) {
     errors.push(`bin: ${e.message}`);
   }
@@ -8423,6 +8433,9 @@ async function executeUpdate(options = {}, deps = defaultDeps2) {
     const shShimContent = '#!/bin/sh\nexec node "$(dirname "$0")/../cli/aloop.mjs" "$@"\n';
     await deps.writeFile(shShimPath, shShimContent, "utf8");
     updated.push(shShimPath);
+    if (os5.platform() !== "win32") {
+      await deps.chmod(shShimPath, 493);
+    }
   } catch (e) {
     errors.push(`shims: ${e.message}`);
   }

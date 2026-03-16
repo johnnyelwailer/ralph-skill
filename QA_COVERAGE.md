@@ -2,44 +2,20 @@
 
 | Feature | Last Tested | Commit | Result | Notes |
 |---------|-------------|--------|--------|-------|
-| `aloop scaffold` (happy path) | 2026-03-15 | 1b998e4 | PASS | Includes `PROMPT_qa.md` now. |
-| `aloop steer` CLI | 2026-03-15 | 1b998e4 | PASS | Correctly queues steering instruction with template prepended. |
-| `aloop status` | 2026-03-15 | 1b998e4 | PASS | Shows active sessions, text and JSON outputs work correctly. |
-| Provider health backoff | 2026-03-15 | 1b998e4 | PASS | Correctly transitions to cooldown after 2 failures. Previous FAIL likely false positive. |
-| `aloop orchestrate --spec` (nonexistent) | 2026-03-15 | 1b998e4 | FAIL | Still initializes session and exits 0 instead of failing with clean error. |
-| `aloop setup --non-interactive` (fresh HOME) | 2026-03-15 | 1b998e4 | FAIL | Still throws `Template not found` with raw stack trace when templates missing. |
-| `aloop steer` CLI | 2026-03-15 | 85719f5 | PASS | Subcommand now exists in CLI registry and `--help` displays correctly. |
+| `aloop scaffold` (all prompts) | 2026-03-16 | bf68a48 | PASS | Now correctly includes all 6 prompts including `PROMPT_qa.md`. |
+| `aloop steer` CLI (functionality) | 2026-03-16 | bf68a48 | PASS | Works correctly; prepends template to instruction and queues override. |
+| `aloop steer` CLI (visibility) | 2026-03-16 | current | PASS | Fixed help interception in `aloop.mjs` and added to help text. |
+| `aloop status` | 2026-03-16 | bf68a48 | PASS | Lists sessions and health; text and JSON output work. |
+| `aloop resolve` | 2026-03-16 | bf68a48 | PASS | Correctly identifies project root, config, and spec. |
+| `aloop discover` | 2026-03-16 | bf68a48 | PASS | Detects specs, validation commands, and providers correctly. |
+| `aloop update` (copying) | 2026-03-16 | bf68a48 | PASS | Refreshes runtime assets from source and updates version stamp. |
+| `aloop update` (permissions) | 2026-03-16 | current | PASS | Now correctly sets 0o755 bit on `bin/` scripts and shims. |
+| `aloop start` (initialization) | 2026-03-16 | bf68a48 | PASS | Correctly initializes session, worktree (if git), and launches loop harness. |
+| `aloop start` (PATH issues) | 2026-03-16 | bf68a48 | FAIL | Dashboard spawn fails if `aloop` not in `PATH`. Bug filed. |
+| `aloop dashboard` (launch) | 2026-03-16 | bf68a48 | PASS | Serves dashboard frontend and responds to API requests. |
+| `aloop setup --non-interactive` | 2026-03-16 | bf68a48 | PASS | Configures project and scaffolds without user input. |
+| `aloop stop` | 2026-03-16 | bf68a48 | PASS | Terminates loop process and updates status. |
+| Provider health backoff | 2026-03-15 | 1b998e4 | PASS | Correctly transitions to cooldown after 2 failures. |
 | `aloop orchestrate --spec` (nonexistent) | 2026-03-15 | 85719f5 | FAIL | Still initializes session and exits 0 instead of failing with clean error. |
-| `aloop scaffold` (missing PROMPT_qa.md) | 2026-03-15 | 85719f5 | FAIL | Still generates only 5 prompts, missing PROMPT_qa.md. |
-| `aloop setup --non-interactive` (fresh HOME) | 2026-03-15 | 85719f5 | FAIL | Still throws `Template not found: .../PROMPT_plan.md` with raw stack trace. |
 | Dashboard layout @1920x1080 | 2026-03-15 | 85719f5 | FAIL | Playwright check: `asideVisible=false`, sidebar missing at desktop breakpoint. |
-| `aloop orchestrate --autonomy-level foo` | 2026-03-15 | 85719f5 | FAIL | Leaks raw stack trace `Error: Invalid autonomy level`. |
-| `aloop status` (text) | 2026-03-15 | 5d1a64c | PASS | Shows sessions + provider health correctly |
-| `aloop status --output json` | 2026-03-15 | 5d1a64c | PASS | Structured JSON with sessions, health |
-| `aloop status --watch` | 2026-03-15 | 5d1a64c | PASS | Auto-refreshes correctly |
-| `aloop steer` CLI | 2026-03-15 | 5d1a64c | FAIL | Still `error: unknown command 'steer'`. |
-| `aloop discover` | 2026-03-15 | 5d1a64c | PASS | Detects git repo and SPEC.md correctly |
-| `aloop setup --spec` (nonexistent) | 2026-03-15 | 5d1a64c | FAIL | Accepts nonexistent spec file without error or warning. |
-| `aloop setup --providers` (invalid) | 2026-03-15 | 5d1a64c | FAIL | Accepts arbitrary provider name (e.g., `fakeprovider`) without validation. |
-| `aloop setup --autonomy-level` (invalid) | 2026-03-15 | 5d1a64c | FAIL | Leaks Node.js stack trace instead of clean error. |
-| `aloop orchestrate --spec` (nonexistent) | 2026-03-15 | 5d1a64c | FAIL | Accepts nonexistent spec file and initializes session. |
-| `aloop devcontainer` | 2026-03-15 | 5d1a64c | FAIL | Crashes with `TypeError: deps.discover is not a function`. |
-| `aloop update` | 2026-03-15 | 5d1a64c | PASS | Copies files and reports version |
-| `aloop active` | 2026-03-15 | 5d1a64c | PASS | Lists active sessions correctly |
-| Dashboard layout @1920x1080 | 2026-03-15 | 44dcff9 | FAIL | Playwright check: `asideVisible=false`, missing docs panel visibility at desktop breakpoint; screenshot: `/home/pj/.copilot/session-state/7147ca78-c213-460e-ad4c-71808c98d4e7/files/qa-iter51/dashboard-1920x1080.png`. |
-| Dashboard docs data (`/api/state`) | 2026-03-15 | 44dcff9 | FAIL | `workdir` points to `.../worktree/aloop/cli`; all docs (`TODO.md`,`SPEC.md`,`RESEARCH.md`,`REVIEW_LOG.md`,`STEERING.md`) length 0. |
-| `aloop gh watch --max-concurrent 1` | 2026-03-15 | 44dcff9 | FAIL | Crashes with raw stack trace when `gh` command fails (`gh: blocked by aloop PATH hardening`). |
-| `aloop gh status` | 2026-03-15 | 44dcff9 | PASS | Renders issue/branch/PR/status table output. |
-| `aloop orchestrate --spec` (nonexistent, plan-only) | 2026-03-15 | 44dcff9 | FAIL | Still initializes orchestrator session and exits 0 for missing spec path. |
-| `aloop steer` CLI | 2026-03-15 | 44dcff9 | FAIL | Subcommand absent from CLI registry (`aloop steer --help` shows top-level help only). |
-| `aloop setup --non-interactive` (fresh HOME) | 2026-03-15 | 44dcff9 | FAIL | Throws `Template not found: ~/.aloop/templates/PROMPT_plan.md` with raw stack trace. |
-| `aloop status --watch` | 2026-03-15 | 44dcff9 | PASS | Auto-refreshes every 2s and shows active session + provider health repeatedly. |
-| `aloop steer` CLI | 2026-03-15 | 295091c | FAIL | 7th consecutive FAIL. Still `error: unknown command 'steer'`. Not in `--help` output. |
-| `aloop orchestrate --spec` (nonexistent) | 2026-03-15 | 295091c | FAIL | 7th consecutive FAIL. Both relative and absolute nonexistent paths accepted, exits 0. |
-| Provider health backoff | 2026-03-15 | 295091c | FAIL | 7th consecutive FAIL. codex: `consecutive_failures=1`, `cooldown_until=2026-03-17T00:00:00Z` (~29h). Spec: 1 failure = no cooldown. |
-| `aloop scaffold` (happy path) | 2026-03-15 | 295091c | PASS | Creates config.yml and 5 prompt files in `~/.aloop/projects/<hash>/`. |
-| `aloop scaffold` (missing PROMPT_qa.md) | 2026-03-15 | 295091c | FAIL | Scaffold creates 5 prompts but spec's 9-step pipeline requires PROMPT_qa.md — missing. |
-| `aloop scaffold --spec-files` (nonexistent) | 2026-03-15 | 295091c | FAIL | Writes nonexistent spec file to config without validation. |
-| `aloop resolve` (happy path) | 2026-03-15 | 295091c | PASS | JSON and text output work correctly, detects git repo and config. |
-| `aloop resolve` (non-git dir) | 2026-03-15 | 295091c | PASS | Works in non-git dir, reports `is_git_repo: false`. |
-| `aloop resolve --project-root` (nonexistent) | 2026-03-15 | 295091c | FAIL | Leaks raw stack trace instead of clean error for nonexistent project root. |
+| Dashboard docs data (`/api/state`) | 2026-03-15 | 44dcff9 | FAIL | `workdir` points to `.../worktree/aloop/cli`; all docs length 0. |

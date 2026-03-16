@@ -35,8 +35,11 @@ Core Commands (no-dependency):
 Extended Commands (requires build):
   start       Start an aloop session
   setup       Interactive setup and scaffold
+  update      Refresh ~/.aloop runtime assets from current repo
   dashboard   Launch real-time progress dashboard
   steer <msg> Send a steering instruction to an active session
+  orchestrate Decompose spec into issues and dispatch loops
+  devcontainer Generate/verify devcontainer for isolated execution
   gh          GitHub operations proxy
 
 Options:
@@ -46,7 +49,7 @@ Options:
   --help                 Show this help
 `;
 
-if (!command || args.includes('--help') || args.includes('-h')) {
+if (!command || command === 'help' || ((args.includes('--help') || args.includes('-h')) && args.length === 1)) {
   console.log(help);
   process.exit(0);
 }

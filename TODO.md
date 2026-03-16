@@ -29,8 +29,8 @@ Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle 
 - [ ] [runtime/P2] Implement event→catalog→queue dispatch in runtime monitor — when runtime detects a condition, emit an event key, scan `aloop/templates/` for prompts with matching `trigger` frontmatter, copy to `$SESSION_DIR/queue/`. (priority: medium)
 
 ### Up Next — P1 Stability Blockers (Critical QA)
-- [ ] [qa/P1] `aloop.mjs` intercepts `--help` incorrectly — hardcoded help excludes `steer` and other extended commands, and prevents delegation to bundled CLI for help. (iter 55) (priority: high)
-- [ ] [qa/P1] `aloop update` fails to set executable permissions on `bin/` scripts on Unix — results in `EACCES` when running `loop.sh` or `aloop` shim. (iter 55) (priority: high)
+- [x] [qa/P1] `aloop.mjs` intercepts `--help` incorrectly — hardcoded help excludes `steer` and other extended commands, and prevents delegation to bundled CLI for help. Fixed: limited help interception to no-args/explicit-help cases and added missing extended commands (update, orchestrate, devcontainer) to help text. (iter 55) (priority: high)
+- [x] [qa/P1] `aloop update` fails to set executable permissions on `bin/` scripts on Unix — results in `EACCES` when running `loop.sh` or `aloop` shim. Fixed: added chmod 755 for bin/*.sh and aloop shim in executeUpdate, with unit test verification. (iter 55) (priority: high)
 - [ ] [qa/P1] `aloop start` dashboard spawn fails if `aloop` not in `PATH` — `start.ts:511` calls `spawnDetached` with 'aloop' command; should use absolute path to current binary. (iter 55) (priority: high)
 - [ ] [qa/P1] `aloop start` leaves failed sessions in `active.json` — if `spawn` fails (e.g. EACCES), session is already registered but never removed. (iter 55) (priority: high)
 - [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` exits 0 instead of failing — `orchestrate.ts` creates state with `spec_file` without checking if file exists. Add `existsSync()` validation before session creation. (iters 26-54, 9 consecutive fails) (priority: high)

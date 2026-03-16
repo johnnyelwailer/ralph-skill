@@ -27,6 +27,7 @@ interface UpdateDeps {
   mkdir: typeof fsp.mkdir;
   copyFile: typeof fsp.copyFile;
   writeFile: typeof fsp.writeFile;
+  chmod: typeof fsp.chmod;
   spawnSync: (cmd: string, args: string[], opts: { encoding: string }) => { status: number | null; stdout: string; stderr: string };
 }
 
@@ -37,6 +38,7 @@ const defaultDeps: UpdateDeps = {
   mkdir: fsp.mkdir,
   copyFile: fsp.copyFile,
   writeFile: fsp.writeFile,
+  chmod: fsp.chmod,
   spawnSync: spawnSync as unknown as UpdateDeps['spawnSync'],
 };
 
@@ -142,6 +144,15 @@ export async function executeUpdate(
       deps,
     );
     updated.push(...binFiles);
+
+    // Set executable bit for .sh files or files without extension in bin/
+    if (os.platform() !== 'win32') {
+      for (const f of binFiles) {
+        if (f.endsWith('.sh') || !path.basename(f).includes('.')) {
+          await deps.chmod(f, 0o755);
+        }
+      }
+    }
   } catch (e: any) {
     errors.push(`bin: ${e.message}`);
   }
@@ -222,6 +233,10 @@ export async function executeUpdate(
     const shShimContent = '#!/bin/sh\nexec node "$(dirname "$0")/../cli/aloop.mjs" "$@"\n';
     await deps.writeFile(shShimPath, shShimContent, 'utf8');
     updated.push(shShimPath);
+
+    if (os.platform() !== 'win32') {
+      await deps.chmod(shShimPath, 0o755);
+    }
   } catch (e: any) {
     errors.push(`shims: ${e.message}`);
   }

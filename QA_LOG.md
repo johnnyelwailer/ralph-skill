@@ -1409,3 +1409,54 @@ aloop setup --home-dir /tmp/aloop-fresh-home --non-interactive
 cat ~/.aloop/health/claude.json
 # Output: {"status":"cooldown","consecutive_failures":2,"cooldown_until":"2026-03-15T21:58:27Z"} -> PASS
 ```
+
+## QA Session — 2026-03-16 (iteration 55)
+
+### Test Environment
+- Temp project dirs: /tmp/aloop-qa-test, /tmp/aloop-qa-test-setup
+- Environment: linux
+- Version: bf68a48
+
+### Results
+- PASS: aloop scaffold (includes PROMPT_qa.md)
+- PASS: aloop steer (functionality verified)
+- FAIL: aloop steer (visibility in help)
+- PASS: aloop status, aloop resolve, aloop discover, aloop update (copying)
+- FAIL: aloop update (permissions bit missing on Unix)
+- PASS: aloop start (initialization)
+- FAIL: aloop start (dashboard spawn PATH dependency)
+- PASS: aloop stop, aloop setup --non-interactive, aloop dashboard
+
+### Bugs Filed
+- [qa/P1] aloop.mjs intercepts --help incorrectly
+- [qa/P1] aloop update fails to set executable permissions
+- [qa/P1] aloop start dashboard spawn fails if aloop not in PATH
+- [qa/P1] aloop start leaves failed sessions in active.json
+- [qa/P1] aloop steer CLI command missing from aloop.mjs help
+
+### Command Transcript
+(Truncated log of key commands)
+~/.aloop/bin/aloop scaffold
+~/.aloop/bin/aloop steer "test instruction"
+~/.aloop/bin/aloop status --output json
+~/.aloop/bin/aloop update --repo-root .
+~/.aloop/bin/aloop start --in-place --max-iterations 1
+
+
+## QA Session — 2026-03-16 (iteration 56)
+
+### Test Environment
+- Features tested: aloop help interception, aloop update permissions
+- Environment: linux
+- Commit: current (local changes)
+
+### Results
+- PASS: aloop start --help (correctly delegated to bundle)
+- PASS: aloop resolve --help (handled by aloop.mjs correctly)
+- PASS: aloop update (executable bit 755 set on loop.sh and aloop shim)
+- PASS: unit tests for update command permissions
+
+### Command Transcript
+node aloop/cli/aloop.mjs start --help
+node aloop/cli/aloop.mjs resolve --help
+cd aloop/cli && npm test

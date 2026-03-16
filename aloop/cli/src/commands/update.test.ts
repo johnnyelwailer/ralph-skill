@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, chmod } from 'node:fs/promises';
+import { existsSync, statSync } from 'node:fs';
 import { executeUpdate } from './update.js';
 
 async function setupFakeRepo(prefix: string) {
@@ -44,6 +44,7 @@ test('executeUpdate copies runtime assets to ~/.aloop', async () => {
       mkdir,
       copyFile: (await import('node:fs/promises')).copyFile,
       writeFile,
+      chmod,
       spawnSync: () => ({ status: 0, stdout: 'abc1234\n', stderr: '', pid: 0, output: [], signal: null }),
     },
   );
@@ -67,6 +68,15 @@ test('executeUpdate copies runtime assets to ~/.aloop', async () => {
   // Verify shims
   assert.ok(existsSync(path.join(aloopDir, 'bin', 'aloop.cmd')));
   assert.ok(existsSync(path.join(aloopDir, 'bin', 'aloop')));
+
+  // Verify permissions on Unix-like systems
+  if (os.platform() !== 'win32') {
+    const loopShStat = statSync(path.join(aloopDir, 'bin', 'loop.sh'));
+    assert.equal(loopShStat.mode & 0o777, 0o755, 'loop.sh should be 755');
+    
+    const shimStat = statSync(path.join(aloopDir, 'bin', 'aloop'));
+    assert.equal(shimStat.mode & 0o777, 0o755, 'aloop shim should be 755');
+  }
 
   // Verify version.json
   const versionRaw = await readFile(path.join(aloopDir, 'version.json'), 'utf8');
@@ -97,6 +107,7 @@ test('executeUpdate fails when repo root not found', async () => {
         mkdir,
         copyFile: (await import('node:fs/promises')).copyFile,
         writeFile,
+        chmod,
         spawnSync: () => ({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null }),
       },
     );
@@ -127,6 +138,7 @@ test('executeUpdate fails when repo structure is incomplete', async () => {
       mkdir,
       copyFile: (await import('node:fs/promises')).copyFile,
       writeFile,
+      chmod,
       spawnSync: () => ({ status: 0, stdout: 'abc1234\n', stderr: '', pid: 0, output: [], signal: null }),
     },
   );
@@ -147,6 +159,7 @@ test('executeUpdate works with empty git commit (no git)', async () => {
       mkdir,
       copyFile: (await import('node:fs/promises')).copyFile,
       writeFile,
+      chmod,
       spawnSync: () => ({ status: 1, stdout: '', stderr: 'not a git repo', pid: 0, output: [], signal: null }),
     },
   );
@@ -171,6 +184,7 @@ test('executeUpdate json output includes all fields', async () => {
       mkdir,
       copyFile: (await import('node:fs/promises')).copyFile,
       writeFile,
+      chmod,
       spawnSync: () => ({ status: 0, stdout: 'def5678\n', stderr: '', pid: 0, output: [], signal: null }),
     },
   );
