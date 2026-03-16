@@ -26,7 +26,7 @@ The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> 
 - [x] [qa/P1] `aloop gh watch` user flow still fails under PATH hardening (`gh: blocked by aloop PATH hardening`). Keep security boundary while allowing host-side `gh` execution paths required by `aloop gh watch`. (priority: high)
   - Re-test 2026-03-16 (iter 95): still failing (`aloop gh watch --repo owner/repo` => `gh watch failed: gh issue list failed: gh: blocked by aloop PATH hardening`, exit 1).
   - Fix 2026-03-16 (iter 96): root cause was case-sensitivity bug in `isPathHardeningBlockedError` — lowercased error strings compared against mixed-case constant, so fallback was never triggered. Fixed comparison + added `ALOOP_ORIGINAL_PATH` env export from loop.sh/loop.ps1 as belt-and-suspenders fallback for `ghExecutor`.
-- [ ] [setup/P1] Data privacy setup flow — ask internal/private vs public/open-source during setup and apply provider/model policy constraints (including ZDR-safe defaults) to generated config. (priority: high)
+- [x] [setup/P1] Data privacy setup flow — ask internal/private vs public/open-source during setup and apply provider/model policy constraints (including ZDR-safe defaults) to generated config. (priority: high)
 - [ ] [devcontainer/P1] Devcontainer spec-conformance pass — verify `devcontainer`/`devcontainer-verify` behavior against SPEC Devcontainer acceptance criteria (lifecycle hooks, mounts, provider auth forwarding, verification loop) and close concrete gaps. (priority: high)
 - [ ] [qa/P1] `aloop start` auto-monitoring parity — verify dashboard/terminal auto-open and fallback behavior across OS paths; ensure failures degrade with clear manual commands. (priority: medium)
 

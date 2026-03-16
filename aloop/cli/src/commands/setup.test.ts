@@ -50,6 +50,7 @@ test('setupCommandWithDeps - non-interactive mode', async () => {
     spec: 'MY_SPEC.md',
     providers: 'gemini,codex',
     autonomyLevel: 'autonomous',
+    dataPrivacy: 'private',
   }, deps);
 
   assert.equal(discoverCalled, true);
@@ -59,6 +60,7 @@ test('setupCommandWithDeps - non-interactive mode', async () => {
   assert.deepEqual(scaffoldCalledOpts.specFiles, ['MY_SPEC.md']);
   assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['gemini', 'codex']);
   assert.equal(scaffoldCalledOpts.autonomyLevel, 'autonomous');
+  assert.equal(scaffoldCalledOpts.dataPrivacy, 'private');
   assert.equal(promptCalled, false, 'Prompt should not be called in non-interactive mode');
 });
 
@@ -99,6 +101,7 @@ test('setupCommandWithDeps - interactive mode', async () => {
     if (question.includes('Primary Provider')) return 'gemini';
     if (question.includes('Mode')) return 'custom-mode';
     if (question.includes('Autonomy Level')) return 'autonomous';
+    if (question.includes('Data Privacy')) return 'public';
     if (question.includes('Validation')) return 'pytest, ruff check .';
     if (question.includes('Safety')) return 'No rm -rf, No dropping tables';
     return defaultValue;
@@ -113,7 +116,7 @@ test('setupCommandWithDeps - interactive mode', async () => {
   await setupCommandWithDeps({}, deps);
 
   assert.equal(discoverCalled, true);
-  assert.equal(promptCallCount, 8, 'Should ask 8 questions');
+  assert.equal(promptCallCount, 9, 'Should ask 9 questions');
   assert.ok(scaffoldCalledOpts);
   assert.deepEqual(scaffoldCalledOpts.specFiles, ['CUSTOM_SPEC.md']);
   assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['gemini']);
@@ -121,6 +124,7 @@ test('setupCommandWithDeps - interactive mode', async () => {
   assert.equal(scaffoldCalledOpts.provider, 'gemini');
   assert.equal(scaffoldCalledOpts.mode, 'custom-mode');
   assert.equal(scaffoldCalledOpts.autonomyLevel, 'autonomous');
+  assert.equal(scaffoldCalledOpts.dataPrivacy, 'public');
   assert.deepEqual(scaffoldCalledOpts.validationCommands, ['pytest', 'ruff check .']);
   assert.deepEqual(scaffoldCalledOpts.safetyRules, ['No rm -rf', 'No dropping tables']);
 });
@@ -168,6 +172,7 @@ test('setupCommandWithDeps - interactive mode uses defaults', async () => {
   assert.equal(scaffoldCalledOpts.provider, 'codex');
   assert.equal(scaffoldCalledOpts.mode, 'plan-build-review');
   assert.equal(scaffoldCalledOpts.autonomyLevel, 'balanced');
+  assert.equal(scaffoldCalledOpts.dataPrivacy, 'private');
   assert.deepEqual(scaffoldCalledOpts.validationCommands, ['cargo test']);
   assert.deepEqual(scaffoldCalledOpts.safetyRules, ['Never delete the project directory or run destructive commands', 'Never push to remote without explicit user approval']);
 });
@@ -276,4 +281,108 @@ test('setupCommandWithDeps - interactive prompt parsing trims and filters comma 
   assert.equal(scaffoldCalledOpts.autonomyLevel, 'cautious');
   assert.deepEqual(scaffoldCalledOpts.validationCommands, ['npm test', 'npm run typecheck']);
   assert.deepEqual(scaffoldCalledOpts.safetyRules, ['Rule 1', 'Rule 2']);
+});
+
+test('setupCommandWithDeps - rejects invalid data privacy value', async () => {
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: [] },
+        spec_candidates: [],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+    } as unknown as DiscoveryResult;
+  };
+
+  const deps = {
+    discover: mockDiscover,
+    scaffold: async (): Promise<ScaffoldResult> => ({ config_path: '', prompts_dir: '', project_dir: '', project_hash: '' }),
+    prompt: async (_q: string, d: string) => d,
+  };
+
+  await assert.rejects(
+    setupCommandWithDeps({ nonInteractive: true, dataPrivacy: 'invalid' }, deps),
+    (error) => {
+      assert.match((error as Error).message, /Invalid data privacy/);
+      return true;
+    },
+  );
+});
+
+test('setupCommandWithDeps - non-interactive mode with dataPrivacy=public', async () => {
+  let scaffoldCalledOpts = null as unknown as ScaffoldOptions;
+
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: [] },
+        spec_candidates: [],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+    } as unknown as DiscoveryResult;
+  };
+
+  const mockScaffold = async (opts: ScaffoldOptions): Promise<ScaffoldResult> => {
+    scaffoldCalledOpts = opts;
+    return { config_path: '/mock/config', prompts_dir: '/mock/prompts', project_dir: '/mock/dir', project_hash: '123' };
+  };
+
+  await setupCommandWithDeps({
+    nonInteractive: true,
+    dataPrivacy: 'public',
+  }, { discover: mockDiscover, scaffold: mockScaffold, prompt: async () => '' });
+
+  assert.ok(scaffoldCalledOpts);
+  assert.equal(scaffoldCalledOpts.dataPrivacy, 'public');
+});
+
+test('setupCommandWithDeps - dataPrivacy defaults to private in non-interactive mode', async () => {
+  let scaffoldCalledOpts = null as unknown as ScaffoldOptions;
+
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: [] },
+        spec_candidates: [],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+    } as unknown as DiscoveryResult;
+  };
+
+  const mockScaffold = async (opts: ScaffoldOptions): Promise<ScaffoldResult> => {
+    scaffoldCalledOpts = opts;
+    return { config_path: '/mock/config', prompts_dir: '/mock/prompts', project_dir: '/mock/dir', project_hash: '123' };
+  };
+
+  await setupCommandWithDeps({
+    nonInteractive: true,
+  }, { discover: mockDiscover, scaffold: mockScaffold, prompt: async () => '' });
+
+  assert.ok(scaffoldCalledOpts);
+  // dataPrivacy is undefined when not specified; scaffoldWorkspace applies default 'private'
+  assert.equal(scaffoldCalledOpts.dataPrivacy, undefined);
 });

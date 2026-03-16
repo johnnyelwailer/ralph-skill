@@ -52,6 +52,11 @@ test('scaffoldWorkspace writes config and prompt files with substitutions', asyn
   const planPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_plan.md'), 'utf8');
   assert.match(config, /provider: 'copilot'/);
   assert.match(config, /autonomy_level: 'balanced'/);
+  assert.match(config, /data_privacy: 'private'/);
+  assert.match(config, /privacy_policy:/);
+  assert.match(config, /data_classification: 'private'/);
+  assert.match(config, /zdr_enabled: true/);
+  assert.match(config, /require_data_retention_safe: true/);
   assert.match(config, /- 'SPEC.md'/);
   assert.match(config, /reference_files:/);
   assert.match(config, /- 'RESEARCH.md'/);
@@ -127,6 +132,46 @@ test('scaffoldWorkspace allows explicit reference file overrides', async () => {
   assert.match(config, /- 'docs\/guide.md'/);
   assert.match(config, /- 'notes.md'/);
   assert.match(planPrompt, /Refs: docs\/guide.md, notes.md/);
+});
+
+test('scaffoldWorkspace writes data_privacy and privacy_policy to config', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-privacy-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+
+  // Test private (default)
+  const privateResult = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    specFiles: ['SPEC.md'],
+  });
+  const privateConfig = await readFile(privateResult.config_path, 'utf8');
+  assert.match(privateConfig, /data_privacy: 'private'/);
+  assert.match(privateConfig, /zdr_enabled: true/);
+  assert.match(privateConfig, /require_data_retention_safe: true/);
+
+  // Test public
+  const publicResult = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: path.join(tempRoot, 'home2'),
+    templatesDir,
+    specFiles: ['SPEC.md'],
+    dataPrivacy: 'public',
+  });
+  const publicConfig = await readFile(publicResult.config_path, 'utf8');
+  assert.match(publicConfig, /data_privacy: 'public'/);
+  assert.match(publicConfig, /zdr_enabled: false/);
+  assert.match(publicConfig, /require_data_retention_safe: false/);
 });
 
 test('discoverWorkspace reports non-git workspaces', async () => {

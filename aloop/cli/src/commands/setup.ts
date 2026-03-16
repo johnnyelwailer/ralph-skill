@@ -1,6 +1,8 @@
 import * as readline from 'node:readline';
 import { discoverWorkspace, scaffoldWorkspace, type DiscoveryResult, type ScaffoldResult, type ScaffoldOptions } from './project.js';
 
+export type DataPrivacy = 'private' | 'public';
+
 export interface SetupCommandOptions {
   projectRoot?: string;
   homeDir?: string;
@@ -8,6 +10,16 @@ export interface SetupCommandOptions {
   spec?: string;
   providers?: string;
   autonomyLevel?: string;
+  dataPrivacy?: string;
+}
+
+function parseDataPrivacy(value: string | undefined): DataPrivacy | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'private' || normalized === 'public') {
+    return normalized;
+  }
+  throw new Error(`Invalid data privacy: ${value} (must be private or public)`);
 }
 
 export type PromptFunction = (question: string, defaultValue: string) => Promise<string>;
@@ -52,6 +64,7 @@ export async function setupCommandWithDeps(
       specFiles: options.spec ? [options.spec] : undefined,
       enabledProviders: options.providers ? options.providers.split(',').map(p => p.trim()) : undefined,
       autonomyLevel: parseAutonomyLevel(options.autonomyLevel),
+      dataPrivacy: parseDataPrivacy(options.dataPrivacy),
     });
     console.log(`Setup complete. Config written to: ${result.config_path}`);
     return;
@@ -80,6 +93,11 @@ export async function setupCommandWithDeps(
     await deps.prompt('Autonomy Level (cautious|balanced|autonomous)', defaultAutonomyLevel),
   ) ?? 'balanced';
 
+  const defaultDataPrivacy: DataPrivacy = 'private';
+  const dataPrivacy = parseDataPrivacy(
+    await deps.prompt('Data Privacy (private|public)', options.dataPrivacy ?? defaultDataPrivacy),
+  ) ?? 'private';
+
   const defaultValidation = discovery.context.validation_presets.full.join(', ') || 'npm test';
   const validationCommandsRaw = await deps.prompt('Validation Commands (comma-separated)', defaultValidation);
   const validationCommands = validationCommandsRaw.split(',').map((s) => s.trim()).filter(Boolean);
@@ -95,6 +113,7 @@ export async function setupCommandWithDeps(
   console.log(`- Primary Provider: ${provider}`);
   console.log(`- Mode: ${mode}`);
   console.log(`- Autonomy Level: ${autonomyLevel}`);
+  console.log(`- Data Privacy: ${dataPrivacy}`);
   console.log(`- Validation Commands: ${validationCommands.join(', ')}`);
   console.log(`- Safety Rules: ${safetyRules.join(', ')}`);
   console.log('');
@@ -108,6 +127,7 @@ export async function setupCommandWithDeps(
     provider,
     mode,
     autonomyLevel,
+    dataPrivacy,
     validationCommands,
     safetyRules,
   });

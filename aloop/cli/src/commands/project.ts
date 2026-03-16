@@ -22,6 +22,7 @@ export interface ScaffoldOptions extends BaseOptions {
   language?: string;
   provider?: string;
   autonomyLevel?: 'cautious' | 'balanced' | 'autonomous';
+  dataPrivacy?: 'private' | 'public';
   enabledProviders?: string[];
   roundRobinOrder?: string[];
   specFiles?: string[];

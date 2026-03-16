@@ -331,6 +331,16 @@ function normalizeAutonomyLevel(value) {
   return AUTONOMY_LEVELS.has(normalized) ? normalized : 'balanced';
 }
 
+const DATA_PRIVACY_LEVELS = new Set(['private', 'public']);
+
+function normalizeDataPrivacy(value) {
+  if (typeof value !== 'string') {
+    return 'private';
+  }
+  const normalized = value.trim().toLowerCase();
+  return DATA_PRIVACY_LEVELS.has(normalized) ? normalized : 'private';
+}
+
 function templatesExist(directory, requiredTemplates) {
   return existsSync(directory) && requiredTemplates.every((file) => existsSync(path.join(directory, file)));
 }
@@ -416,6 +426,7 @@ async function expandTemplateIncludes(content, templatesDir, seenIncludes = []) 
  * @param {string[]} [options.safetyRules]
  * @param {string} [options.mode]
  * @param {'cautious'|'balanced'|'autonomous'} [options.autonomyLevel]
+ * @param {'private'|'public'} [options.dataPrivacy]
  * @param {string} [options.templatesDir]
  */
 export async function scaffoldWorkspace(options = {}) {
@@ -437,6 +448,7 @@ export async function scaffoldWorkspace(options = {}) {
   const language = options.language ?? discovery.context.detected_language;
   const mode = options.mode ?? 'plan-build-review';
   const autonomyLevel = normalizeAutonomyLevel(options.autonomyLevel);
+  const dataPrivacy = normalizeDataPrivacy(options.dataPrivacy);
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
   const promptsDir = path.join(discovery.setup.project_dir, 'prompts');
 
@@ -484,6 +496,7 @@ export async function scaffoldWorkspace(options = {}) {
     `provider: ${toYamlQuoted(provider)}`,
     `mode: ${toYamlQuoted(mode)}`,
     `autonomy_level: ${toYamlQuoted(autonomyLevel)}`,
+    `data_privacy: ${toYamlQuoted(dataPrivacy)}`,
     'spec_files:',
     ...resolvedSpecFiles.map((value) => `  - ${toYamlQuoted(value)}`),
     'reference_files:',
@@ -504,6 +517,11 @@ export async function scaffoldWorkspace(options = {}) {
     '',
     'round_robin_order:',
     ...roundRobin.map((value) => `  - ${toYamlQuoted(value)}`),
+    '',
+    'privacy_policy:',
+    `  data_classification: ${toYamlQuoted(dataPrivacy)}`,
+    `  zdr_enabled: ${dataPrivacy === 'private' ? 'true' : 'false'}`,
+    `  require_data_retention_safe: ${dataPrivacy === 'private' ? 'true' : 'false'}`,
     '',
     `created_at: ${toYamlQuoted(new Date().toISOString())}`,
   ];
