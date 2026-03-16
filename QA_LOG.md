@@ -2921,3 +2921,62 @@ $ /tmp/aloop-test-install-lJMcPc/bin/aloop stop project-20260316-173830
 Session project-20260316-173830 stopped.
 [exit:0]
 ```
+
+## QA Session — 2026-03-16 (iter 103)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-YmyzSI/bin/aloop`
+- Temp dirs: `/tmp/qa-test-start`, `/tmp/qa-test-orch`, `/tmp/qa-test-setup`, `/tmp/qa-test-fresh-home`, `/tmp/qa-test-gh-watch`
+- Features tested: 5
+
+### Results
+- PASS: `aloop setup --non-interactive` (fresh HOME, packaged install)
+- PASS: `aloop setup --non-interactive --mode orchestrate` (packaged install)
+- PASS: `aloop gh watch` (error handling)
+- FAIL: `aloop start` (no config error UX)
+- FAIL: `aloop orchestrate --spec NONEXISTENT.md` (error handling UX)
+
+### Bugs Filed
+No new bugs filed. Re-tested existing P2 error UX issues and updated `TODO.md` notes.
+
+### Command Transcript
+```bash
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# Binary under test: /tmp/aloop-test-install-YmyzSI/bin/aloop
+$ALOOP_BIN --version
+# 1.0.0
+
+=== Test 1: aloop start with no config ===
+mkdir -p /tmp/qa-test-start && cd /tmp/qa-test-start
+$ALOOP_BIN start --max-iterations 1
+# Exit code: 1
+# Error: No Aloop configuration found for this project. Run `aloop setup` first.
+# (Prints raw JS stack trace)
+
+=== Test 2: aloop orchestrate --spec NONEXISTENT.md ===
+mkdir -p /tmp/qa-test-orch && cd /tmp/qa-test-orch
+$ALOOP_BIN orchestrate --spec NONEXISTENT.md
+# Exit code: 1
+# Error: Spec file not found: /tmp/qa-test-orch/NONEXISTENT.md
+# (Prints raw JS stack trace)
+
+=== Test 3: aloop setup --non-interactive --mode orchestrate ===
+mkdir -p /tmp/qa-test-setup && cd /tmp/qa-test-setup
+git init -q
+$ALOOP_BIN setup --non-interactive --mode orchestrate
+# Exit code: 0
+# Setup complete. Config written to: /home/pj/.aloop/projects/2d8a2c67/config.yml
+# mode: 'orchestrate'
+
+=== Test 4: aloop setup --non-interactive (fresh HOME) ===
+mkdir -p /tmp/qa-test-fresh-home && cd /tmp/qa-test-fresh-home
+HOME=/tmp/qa-test-fresh-home $ALOOP_BIN setup --non-interactive
+# Exit code: 0
+# Setup complete. Config written to: /tmp/qa-test-fresh-home/.aloop/projects/ff09916a/config.yml
+
+=== Test 5: aloop gh watch path hardening block ===
+mkdir -p /tmp/qa-test-gh-watch && cd /tmp/qa-test-gh-watch
+$ALOOP_BIN gh watch
+# Exit code: 1
+# gh watch failed: gh issue list failed: failed to run git: fatal: not a git repository
+```

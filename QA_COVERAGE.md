@@ -53,3 +53,8 @@
 | `aloop devcontainer` (config generation) | 2026-03-16 | 761de21 | PASS | Correctly generates `.devcontainer/devcontainer.json` in fresh packaged-install test project. |
 | `aloop setup --non-interactive --mode orchestrate` (packaged install) | 2026-03-16 | 761de21 | FAIL | Still writes `mode: 'plan-build-review'` in generated config; `--mode orchestrate` ignored. Retested. |
 | `aloop start` (no config error UX, packaged install) | 2026-03-16 | 761de21 | FAIL | Fresh-project `aloop start --max-iterations 1` still leaks raw stack trace for missing config. Retested. |
+| `aloop setup --non-interactive` (fresh `HOME`, packaged install) | 2026-03-16 | 835c6fa | PASS | Template bootstrap fixed, configs correctly written. |
+| `aloop setup --non-interactive --mode orchestrate` (packaged install) | 2026-03-16 | 835c6fa | PASS | Correctly writes `mode: 'orchestrate'` in generated config. |
+| `aloop gh watch` (error handling) | 2026-03-16 | 835c6fa | PASS | Clean error `gh watch failed: ...` returned instead of path block. |
+| `aloop start` (no config error UX, packaged install) | 2026-03-16 | 835c6fa | FAIL | Still prints raw JS stack trace instead of clean error. Retested 835c6fa. |
+| `aloop orchestrate --spec NONEXISTENT.md` (packaged install) | 2026-03-16 | 835c6fa | FAIL | Still leaks raw JS stack frames instead of clean error. Retested 835c6fa. |
