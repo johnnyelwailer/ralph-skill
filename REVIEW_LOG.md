@@ -224,3 +224,47 @@
 **Positive observations:**
 - Gate 5: Required validation passes on current HEAD: `cd aloop/cli && npm test && npm run type-check && npm run build` (674 CLI tests pass, type-check clean, dashboard/server build succeeds).
 - Gate 8: Version compliance spot-check passed (`node v22.22.1`, `commander@12.1.0`, `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`) and matches `VERSIONS.md` major ranges.
+
+---
+
+## Review — 2026-03-16 09:30 UTC — commit aa76c93..c332472
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/bin/loop.tests.ps1`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/src/commands/compile-loop-plan.ts`, `aloop/cli/src/commands/compile-loop-plan.test.ts`, `aloop/cli/lib/project.mjs`, `aloop/cli/src/commands/project.test.ts`, `aloop/cli/scripts/test-install.mjs`, `aloop/cli/package.json`, `aloop/templates/PROMPT_qa.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+- Gate 4: **Dead code** — `Print-IterationSummary` (loop.ps1:1455-1507), `Push-ToBackup` (loop.ps1:1437), and `push_to_backup` (loop.sh:1597) are defined but never called after the post-iteration hook removal replaced per-mode conditional calls with a single universal path. In loop.sh, `print_iteration_summary` is now called universally, but `push_to_backup` is orphaned. In loop.ps1, both `Print-IterationSummary` and `Push-ToBackup` are orphaned — and iteration summary output was lost entirely for all modes (loop.ps1 now only prints a one-line completion message with no commit/progress details).
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: `{{include:path}}` template expansion implemented — `expandTemplateIncludes` in `project.mjs` with nested include support, cycle detection, path-escape safety, and tests.
+- Gate 1 ✅: Fallback cycle in `compile-loop-plan.ts` now emits `plan → build × 5 → qa → review` (8-entry) instead of the old `plan → build × 3 → proof → review` (6-entry). Round-robin cycle also updated. All tests updated.
+- Gate 3 ✅: `monitor.ts` branch coverage raised to 95.56% (from 88.75%).
+- Gate 3 ✅: `update.ts` branch coverage raised to 86.21% (from 63.04%).
+- Gate 4 ✅: Steering instruction duplication consolidated to shared `queueSteeringPrompt` helper.
+- Gate 1 ✅: `aloop steer` added to `aloop.mjs` help text.
+- Gate 1 ✅: `monitor.ts` steering detection now prepends template content to user instruction.
+- Gate 1 ✅: Core loop decoupling complete — `FORCE_*_NEXT` flags, hardcoded phase prerequisites, and post-iteration hooks all removed from both loop runtimes.
+
+**Positive observations:**
+- Gate 1: Fallback cycle change correctly removes `proof` from the loop cycle per spec (proof runs only at end via rattail chain), replacing with `qa`.
+- Gate 1: Orchestrate now validates spec file existence for both explicit `--spec` and default `SPEC.md` paths with clean error message.
+- Gate 1: Scaffold template includes work correctly — nested `{{include:instructions/review.md}}` resolves through two levels, with variable substitution applied after expansion.
+- Gate 2: New tests are thorough — `project.test.ts` verifies nested include expansion with concrete output matching; `orchestrate.test.ts` adds explicit and default spec-not-found paths; `compile-loop-plan.test.ts` updated all 10+ cycle assertions from 6-entry to 8-entry format.
+- Gate 5: 677/677 CLI tests pass (676 pass + 1 intentional skip), type-check clean, build succeeds.
+- Gate 6: Proof manifest correctly captures CLI evidence for new spec validation, skips 4 internal-only tasks with valid reasoning, no filler artifacts.
+- Gate 8: No dependency version changes; `package.json` additions (`bin`, `files`, `build:shebang`, `test-install` script) are packaging-only.
+
+---
+
+## Review — 2026-03-16 10:09 UTC — commit c332472..bd0b465
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/cli/lib/project.mjs`, `aloop/cli/src/commands/project.test.ts`, `aloop/cli/src/commands/gh.ts`, `aloop/cli/src/commands/gh.test.ts`, `aloop/cli/src/commands/devcontainer.ts`, `aloop/cli/src/commands/devcontainer.test.ts`, `aloop/cli/dist/index.js`, `TODO.md`
+
+- Gate 2: **Shallow test assertion in new bootstrap coverage** — `project.test.ts:302-305` only checks template file existence (`existsSync`) after bootstrap. This can pass with empty/corrupt content and does not prove the bundled template payload is copied correctly. Add concrete content assertions (source vs copied template text) plus explicit non-bootstrap path assertions.
+- Gate 3: **Branch coverage gate not satisfied with evidence for touched files** — this iteration touched `gh.ts`, `devcontainer.ts`, and `project.mjs`, but no current per-file branch coverage report demonstrates >=80% for those files (and no new-module >=90% proof where applicable). New branches introduced in `gh.ts` (`selectUsableGhBinary` fallback/null paths, `failGhWatch` JSON error output), `devcontainer.ts` deps-normalization fallback behavior, and `project.mjs` bootstrap guard paths need explicit branch-oriented tests + report output.
+
+**Positive observations:**
+- Gate 1: Frontmatter `color` support is now wired in both loop runtimes and defaults to white when absent, aligning with SPEC frontmatter color intent.
+- Gate 1: `gh watch` now wraps issue-list failures with clean user-facing errors instead of raw stack traces.
+- Gate 5: Validation command suite passed on this review run: `cd aloop/cli && npm test && npm run type-check && npm run build`.
+- Gate 8: Version compliance spot-check passed (`node v22.22.1`, `commander@12.1.0`, `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`) against `VERSIONS.md`.
