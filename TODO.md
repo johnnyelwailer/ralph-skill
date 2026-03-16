@@ -9,7 +9,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 
 ### Up Next — P1 Hardening
 - [x] [qa/P1] `aloop setup` non-interactive mode flag missing from SPEC contract — added `--mode` option registration on `setup` CLI, wired non-interactive parsing/validation for `loop|orchestrate` in `setup.ts`, and covered behavior with setup command tests. (priority: high)
-- [ ] [security/P1] **CLAUDECODE sanitization gap** — `loop.sh` (line 20) and `loop.ps1` (line 56) unset CLAUDECODE at script top and before each provider call, but `aloop/cli/src/index.ts` does NOT `delete process.env.CLAUDECODE` at CLI entry. SPEC §CLAUDECODE requires sanitization at all three entry points. (priority: high)
+- [x] [security/P1] **CLAUDECODE sanitization gap** — already implemented: `index.ts` imports `sanitize.ts` at entry which does `delete process.env.CLAUDECODE`; `loop.sh` and `loop.ps1` unset at script top and before each provider call. All three SPEC entry points covered. Test in `sanitize.test.ts` confirms. (priority: high)
 - [ ] [devcontainer/P1] Devcontainer spec-conformance pass — verify `devcontainer`/`devcontainer-verify` behavior against SPEC Devcontainer acceptance criteria (lifecycle hooks, mounts, provider auth forwarding, verification loop) and close concrete gaps. (priority: high)
 - [ ] [qa/P1] `aloop start` auto-monitoring parity — verify dashboard/terminal auto-open and fallback behavior across OS paths; ensure failures degrade with clear manual commands. (priority: medium)
 
