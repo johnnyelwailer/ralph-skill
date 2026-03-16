@@ -37,6 +37,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 ### Deferred (Low Priority / After Core)
 - [ ] [qa/P1] Dashboard docs tabs empty in some sessions (`/api/state` docs payload unresolved/empty due context/workdir mismatch reports) — keep deferred until current loop/runtime parity blockers are closed. (priority: low)
 - [ ] [qa/P1] Dashboard desktop layout mismatch at 1920x1080 (sidebar/docs/activity visibility) — defer until loop/orchestrator core priorities are complete. (priority: low)
+  - Re-test 2026-03-16 (iter 83): screenshot + browser text check at `http://localhost:4040` still show only sessions panel as visibly active (`panel_guess=1`; docs/activity not visible).
 - [ ] [qa/P1] Dashboard health tab missing `codex` when no recent codex event exists — likely requires configured-provider-based health baseline, not log-only derivation. (priority: low)
 - [ ] [dashboard/P1] Proof artifact comparison modes — side-by-side/slider/diff overlay + history scrubbing. (priority: low)
 - [ ] [dashboard/low] Broader unit coverage expansion for `App.tsx` interaction paths.
@@ -115,8 +116,12 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 - [x] [qa/P1] `aloop start` dashboard spawn now uses absolute binary paths.
 - [x] [qa/P1] `aloop start` active-session cleanup on spawn failure implemented.
 - [x] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` now fails fast with spec-path validation.
+  - Re-test 2026-03-16 (iter 83): still leaks raw stack trace on missing spec (`Error: Spec file not found ...` with stack frames).
 - [x] [qa/P1] `aloop setup --non-interactive` fresh-HOME bootstrap fixed.
+  - Re-test 2026-03-16 (iter 83): still fails in packaged install with `Template not found: .../.aloop/templates/PROMPT_plan.md` and stack trace.
 - [x] [qa/P1] `aloop gh watch` raw stack-trace crash path hardened with clean user-facing failure handling + gh binary fallback selection.
+  - Re-test 2026-03-16 (iter 83): no raw stack trace now, but user-invoked `aloop gh watch` still fails with `gh: blocked by aloop PATH hardening`.
 - [x] [qa/P1] `aloop devcontainer` commander action-arg mismatch fixed via deps normalization guard.
 - [x] [qa/P1] `aloop scaffold` now includes `PROMPT_qa.md` in validation/copy loops.
+  - Re-test 2026-03-16 (iter 83): `aloop scaffold` in fresh HOME still fails at template bootstrap (`PROMPT_plan.md` missing), so `PROMPT_qa.md` copy path remains unverified in packaged install.
 - [x] [qa/P1] Provider health backoff report closed as false positive after verification.

@@ -1888,3 +1888,214 @@ Error: Invalid autonomy level: bogus (must be cautious, balanced, or autonomous)
 Exit code: 1
 ```
 Correct validation, but stack trace leaks (same P2 pattern).
+
+## QA Session — 2026-03-16 (iteration 83)
+
+### Test Environment
+- Temp dir: `/tmp/qa-test-mxGXU7`
+- Binary under test: `/tmp/aloop-test-install-UdYS1m/bin/aloop`
+- Binary version: `1.0.0`
+- Dashboard URL: `http://localhost:4040`
+- Commit: `3eaba84`
+- Features tested: 5 (+ mandatory dashboard layout verification)
+
+### Results
+- PASS: `aloop devcontainer` (no TypeError; config generated)
+- PARTIAL: `aloop gh watch` (clean error message now, but still blocked by PATH hardening)
+- PARTIAL: `aloop orchestrate --spec NONEXISTENT.md` (exit code fixed to 1, but still stack trace)
+- FAIL: `aloop setup --non-interactive` fresh `HOME` (template bootstrap still broken)
+- FAIL: `aloop scaffold` fresh `HOME` (same bootstrap failure; prompt-set verification blocked)
+- FAIL: Dashboard layout @1920x1080 (sessions visible; docs/activity not visibly active)
+
+### Bugs Filed
+- No new `[qa]` bug entries added (duplicates avoided per policy).
+- Added re-test notes to existing TODO.md QA items for setup/orchestrate/gh-watch/scaffold/dashboard layout.
+
+### Screenshot Evidence
+- `/home/pj/.copilot/session-state/57ce3bec-26c8-4a6c-89a4-dde71f3bfc87/files/qa-iter83/dashboard-1920x1080.png`
+
+### Command Transcript
+```text
+\n$ bash -lc echo Binary under test: /tmp/aloop-test-install-UdYS1m/bin/aloop
+Binary under test: /tmp/aloop-test-install-UdYS1m/bin/aloop
+[exit=0]
+\n$ /tmp/aloop-test-install-UdYS1m/bin/aloop --version
+1.0.0
+[exit=0]
+
+$ npx playwright install chromium
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║ WARNING: It looks like you are running 'npx playwright install' without first ║
+║ installing your project's dependencies.                                       ║
+║                                                                               ║
+║ To avoid unexpected behavior, please install your dependencies first, and     ║
+║ then run Playwright's install command:                                        ║
+║                                                                               ║
+║     npm install                                                               ║
+║     npx playwright install                                                    ║
+║                                                                               ║
+║ If your project does not yet depend on Playwright, first install the          ║
+║ applicable npm package (most commonly @playwright/test), and                  ║
+║ then run Playwright's install command to download the browsers:               ║
+║                                                                               ║
+║     npm install @playwright/test                                              ║
+║     npx playwright install                                                    ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+[exit=0]
+
+$ npx playwright screenshot --browser chromium http://localhost:4040 /tmp/qa-test-mxGXU7/dashboard-1920x1080.png
+Navigating to http://localhost:4040
+Capturing screenshot into /tmp/qa-test-mxGXU7/dashboard-1920x1080.png
+[exit=0]
+
+$ node /tmp/qa-test-mxGXU7/layout-check.mjs
+node:internal/modules/package_json_reader:314
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'playwright' imported from /tmp/qa-test-mxGXU7/layout-check.mjs
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:314:9)
+    at packageResolve (node:internal/modules/esm/resolve:768:81)
+    at moduleResolve (node:internal/modules/esm/resolve:855:18)
+    at defaultResolve (node:internal/modules/esm/resolve:985:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:731:20)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:708:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:310:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v22.22.1
+[exit=1]
+
+$ mkdir -p /tmp/qa-test-mxGXU7/project && cd /tmp/qa-test-mxGXU7/project && git init && git config user.email qa@example.com && git config user.name 'QA Bot' && printf '# QA Project\n' > README.md && git add README.md && git commit -m 'init'
+Initialized empty Git repository in /tmp/qa-test-mxGXU7/project/.git/
+[master (root-commit) 810b948] init
+ 1 file changed, 1 insertion(+)
+ create mode 100644 README.md
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint:
+hint: 	git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint: 	git branch -m <name>
+hint:
+hint: Disable this message with "git config set advice.defaultBranchName false"
+[exit=0]
+
+$ cd /tmp/qa-test-mxGXU7/project && /tmp/aloop-test-install-UdYS1m/bin/aloop setup --non-interactive
+Running setup in non-interactive mode...
+file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:3443
+      throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
+            ^
+
+Error: Template not found: /tmp/qa-test-mxGXU7/home-setup/.aloop/templates/PROMPT_plan.md
+    at Object.scaffoldWorkspace [as scaffold] (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:3443:13)
+    at async setupCommandWithDeps (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:8427:21)
+    at async _Command.setupCommand (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:8499:5)
+
+Node.js v22.22.1
+[exit=1]
+
+$ cd /tmp/qa-test-mxGXU7/project && /tmp/aloop-test-install-UdYS1m/bin/aloop orchestrate --spec NONEXISTENT.md --plan-only
+file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:9605
+    throw new Error(`Spec file not found: ${specPath}`);
+          ^
+
+Error: Spec file not found: /tmp/qa-test-mxGXU7/project/NONEXISTENT.md
+    at orchestrateCommandWithDeps (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:9605:11)
+    at _Command.orchestrateCommand (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:9858:24)
+    at _Command.listener [as _actionHandler] (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:1442:21)
+    at file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:2236:24
+    at _Command._chainOrCall (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:2144:16)
+    at _Command._parseCommand (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:2234:31)
+    at file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:2045:31
+    at _Command._chainOrCall (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:2144:16)
+    at _Command._dispatchSubcommand (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:2041:29)
+    at _Command._parseCommand (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:2204:23)
+
+Node.js v22.22.1
+[exit=1]
+
+$ cd /tmp/qa-test-mxGXU7/project && /tmp/aloop-test-install-UdYS1m/bin/aloop gh watch --repo fake/fake --max-concurrent 1
+gh watch failed: gh issue list failed: gh: blocked by aloop PATH hardening
+[exit=1]
+
+$ cd /tmp/qa-test-mxGXU7/project && /tmp/aloop-test-install-UdYS1m/bin/aloop devcontainer
+Created devcontainer config at /tmp/qa-test-mxGXU7/project/.devcontainer/devcontainer.json
+  Language: other
+  Image: mcr.microsoft.com/devcontainers/base:ubuntu
+  Post-create: npm install -g @anthropic-ai/claude-code && npm install -g @openai/codex && npm install -g @google/gemini-cli
+
+Next steps:
+  1. Review .devcontainer/devcontainer.json
+  2. Run `devcontainer build --workspace-folder .` to verify
+  3. Start a loop with `aloop start` — container will be used automatically
+[exit=0]
+
+$ cd /tmp/qa-test-mxGXU7/project && /tmp/aloop-test-install-UdYS1m/bin/aloop scaffold && ls -1 .aloop/templates
+file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:3443
+      throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
+            ^
+
+Error: Template not found: /tmp/qa-test-mxGXU7/home-scaffold/.aloop/templates/PROMPT_plan.md
+    at scaffoldWorkspace (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:3443:13)
+    at async _Command.scaffoldCommand (file:///tmp/aloop-test-install-UdYS1m/lib/node_modules/aloop-cli/dist/index.js:3546:18)
+
+Node.js v22.22.1
+[exit=1]
+
+$ curl -s 'http://localhost:4040' | grep -Ec 'class=.*(panel|column|sidebar|toolbar|docs|activity)'
+0
+[exit=0]
+
+$ npm init -y
+Wrote to /tmp/qa-test-mxGXU7/package.json:
+
+{
+  "name": "qa-test-mxgxu7",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+
+
+
+[exit=0]
+
+$ npm install playwright
+
+added 2 packages, and audited 3 packages in 893ms
+
+found 0 vulnerabilities
+[exit=0]
+
+$ node /tmp/qa-test-mxGXU7/layout-check.mjs
+[exit=0]
+```
+
+### Layout Verification Metrics
+```text
+$ cat /home/pj/.copilot/session-state/57ce3bec-26c8-4a6c-89a4-dde71f3bfc87/files/qa-iter83/dashboard-structure.txt
+url=http://localhost:4040
+panel_guess=1
+sessions_visible=true
+documents_visible=false
+activity_visible=false
+text_len=1881
+[exit=0]
+```
