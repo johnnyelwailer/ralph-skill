@@ -164,3 +164,26 @@
 **Positive observations:**
 - Gate 5: Integration sanity is high — 639/639 tests pass, type-check and build succeed.
 - Gate 2: `project.test.ts` and `steer.test.ts` (fallback path) have concrete value assertions.
+
+---
+
+## Review — 2026-03-16 08:30 — commit bf68a48..bf68a48
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/lib/monitor.ts`, `aloop/cli/src/commands/steer.ts`, `aloop/cli/src/commands/dashboard.ts`, `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`
+
+- Gate 1: **Spec Compliance (Steer Prompt Prepend)** — `monitor.ts` steering detection correctly detects `STEERING.md` but fails to prepend its content to the queue prompt. This is a regression of the "Fixed: template content now prepended to user instruction" requirement from the prior review.
+- Gate 1: **Spec Compliance (Steer CLI Visibility)** — `aloop steer` command works but is hidden from the `aloop --help` output and the core command list in `aloop.mjs`.
+- Gate 3: **Coverage (monitor.ts < 90%)** — `monitor.ts` is a new module with branch coverage below the 90% threshold. Tests in `monitor.test.ts` cover happy-path state transitions but miss error paths (`readFile`, `readdir`, `getReviewVerdict` failures) and empty-state handling for `TODO.md`.
+
+**Resolved from prior reviews:**
+- Gate 3 ✅: `steer.ts` branch coverage now exceeds 90% (target 81.8%). Added tests for multi-session ambiguity, text-mode output, and fallback path.
+- Gate 4 ✅: Process integrity documented — review task descriptions now preserved verbatim in `TODO.md`.
+- Gate 1 ✅: `aloop steer` CLI correctly prepends `PROMPT_steer.md` to steering instruction.
+- Gate 6 ✅: Proof filler removed and `PROMPT_proof.md` reinforced.
+- Gate 9 ✅: README drift fixed (9 gates consistent).
+- Gate 1 ✅: Core loop decoupling successful — `loop.sh`/`loop.ps1` no longer contain hardcoded `FORCE_*_NEXT` flags or steering detection logic. State transitions correctly move to `monitor.ts`.
+
+**Positive observations:**
+- Gate 1: The core decoupling refactor is clean. `loop.sh` and `loop.ps1` are now "dumb" executors, and the runtime monitor correctly handles "intelligent" state transitions (build -> proof -> review -> pass/fail).
+- Gate 5: 640/640 tests pass. Type-check and build succeed.

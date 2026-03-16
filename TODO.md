@@ -5,6 +5,9 @@
 Priority: (1) review gate fixes that block spec-priority work, (2) critical P1 runtime failures, (3) loop/orchestrator core decoupling, (4) remaining P1 UX defects, (5) P2 enhancements. Dashboard polish/tests remain deferred until loop/orchestrator core is stable.
 
 ### In Progress — Review Fixes (Blocking)
+- [ ] [review] Gate 1: `monitor.ts` steering detection (live `STEERING.md` detection) does not prepend user instruction to queue prompt. Regression of prior "Fixed: template content now prepended to user instruction" requirement. (priority: high)
+- [ ] [review] Gate 1: `aloop steer` command is hidden from `aloop --help` and the core command list in `aloop.mjs`. Must be added to `aloop.mjs` help and core commands list. (priority: high)
+- [ ] [review] Gate 3: `monitor.ts` (new module) branch coverage is below 90%. Add tests for `readFile`/`readdir`/`getReviewVerdict` failures and empty/null `TODO.md` cases. (priority: medium)
 - [x] [review] Gate 3: `steer.ts` branch coverage is 81.8% (target >=90%). Multi-session ambiguity path (steer.ts:59-60) and text output modes (steer.ts:36-37, 95-96) remain untested despite prior review. Fixed: added 3 tests — multi-session ambiguity, text-mode failure output, text-mode success output. All branches now covered. (priority: high)
 - [x] [review] Gate 4: Process Integrity — do not rewrite review finding descriptions in TODO.md to omit requirements (prior review requested multi-session and text mode coverage, which were removed from the task text). Fixed: Gate 3 task description verified to include full requirements (multi-session ambiguity path, text output modes). Process principle documented: review finding task descriptions must preserve the original requirements verbatim — do not summarize, truncate, or strip specific path references or coverage targets when updating TODO.md. (priority: medium)
 - [x] [review] Gate 1: `aloop steer` spec deviation — when `PROMPT_steer.md` exists, queue file contains only template text and omits the user’s steering instruction Fixed: template content now prepended to user instruction in queue file (steer.ts, dashboard.ts, orchestrate.ts). (priority: high)
@@ -26,6 +29,11 @@ Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle 
 - [ ] [runtime/P2] Implement event→catalog→queue dispatch in runtime monitor — when runtime detects a condition, emit an event key, scan `aloop/templates/` for prompts with matching `trigger` frontmatter, copy to `$SESSION_DIR/queue/`. (priority: medium)
 
 ### Up Next — P1 Stability Blockers (Critical QA)
+- [ ] [qa/P1] `aloop.mjs` intercepts `--help` incorrectly — hardcoded help excludes `steer` and other extended commands, and prevents delegation to bundled CLI for help. (iter 55) (priority: high)
+- [ ] [qa/P1] `aloop update` fails to set executable permissions on `bin/` scripts on Unix — results in `EACCES` when running `loop.sh` or `aloop` shim. (iter 55) (priority: high)
+- [ ] [qa/P1] `aloop start` dashboard spawn fails if `aloop` not in `PATH` — `start.ts:511` calls `spawnDetached` with 'aloop' command; should use absolute path to current binary. (iter 55) (priority: high)
+- [ ] [qa/P1] `aloop start` leaves failed sessions in `active.json` — if `spawn` fails (e.g. EACCES), session is already registered but never removed. (iter 55) (priority: high)
+- [ ] [qa/P1] `aloop steer` CLI command missing from `aloop.mjs` help and core list — subcommand exists in `dist/index.js` and works, but is hidden from users in `--help` output. (iter 55) (priority: high)
 - [ ] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` exits 0 instead of failing — `orchestrate.ts` creates state with `spec_file` without checking if file exists. Add `existsSync()` validation before session creation. (iters 26-54, 9 consecutive fails) (priority: high)
 - [ ] [qa/P1] `aloop setup --non-interactive` fails for fresh HOME — `setup.ts:47-58` calls `scaffoldWorkspace` without checking if templates exist. Add template existence check and graceful error/bootstrap. (iters 51-54, still failing with stack trace) (priority: high)
 - [ ] [qa/P1] `aloop gh watch` crashes with raw stack trace when `gh` invocation fails — `gh.ts:976` calls `fetchMatchingIssues()` without try-catch. Add error handling around gh CLI calls. (iter 51) (priority: high)

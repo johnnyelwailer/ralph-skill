@@ -1,5 +1,5 @@
 {
-  "iteration": 19,
+  "iteration": 29,
   "verdict": "FAIL",
-  "summary": "Gate 3 branch coverage for steer.ts (81.8%) is below 90% target, and Gate 4 process failure (finding rewriting in TODO.md)."
+  "summary": "Gate 1 (Spec Compliance): monitor.ts missing steering instruction prepending; aloop steer hidden from CLI help."
 }
