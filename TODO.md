@@ -11,7 +11,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 ### Up Next — Rattail Chain (Dependency Order)
 The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> final-qa -> proof -> completed`) requires these tasks in order:
 
-1. - [ ] [runtime/P1] Add missing rattail prompt templates (`PROMPT_spec-review.md`, `PROMPT_final-review.md`, `PROMPT_final-qa.md`) with `trigger` frontmatter declaring event bindings. (priority: high)
+1. - [x] [runtime/P1] Add missing rattail prompt templates (`PROMPT_spec-review.md`, `PROMPT_final-review.md`, `PROMPT_final-qa.md`) with `trigger` frontmatter declaring event bindings. (priority: high)
 2. - [ ] [loop/P1] Add `trigger` frontmatter field to the loop script frontmatter parser (`parse_frontmatter` in loop.sh, `Parse-PromptFrontmatter` in loop.ps1) so the runtime can read trigger declarations from prompt files. (priority: high)
 3. - [ ] [runtime/P1] Implement generic event -> catalog scan -> queue dispatch in runtime monitor — scan `aloop/templates/` for prompts whose `trigger` field matches the current event, queue them, instead of hardcoded phase-name branching in `monitor.ts:182-270`. (priority: high)
 4. - [ ] [runtime/P1] Replace hardcoded monitor shortcuts (build→proof, proof→review) with rattail-driven dispatch and ensure monitor exit semantics use `completed` state only after full chain completes. Add tests for rattail success path and "new TODO reopens build" re-entry. (priority: high)
