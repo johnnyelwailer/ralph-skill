@@ -277,7 +277,7 @@ test('monitorSessionState transitions', async (t) => {
     // No plan should be queued for re-entry (this is normal build, not rattail)
     if (existsSync(queueDir)) {
       const files = await fs.readdir(queueDir);
-      assert.ok(!files.some(f => f.includes('PROMPT_plan') && f.includes('rattail')));
+      assert.ok(!files.some(f => f.includes('PROMPT_plan')));
     }
   });
 
