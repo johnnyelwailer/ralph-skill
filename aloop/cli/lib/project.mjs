@@ -382,6 +382,28 @@ function resolveProviderHints(provider) {
   return '';
 }
 
+const LOOP_PROMPT_TEMPLATES = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+const ORCHESTRATOR_PROMPT_TEMPLATES = [
+  'PROMPT_orch_scan.md',
+  'PROMPT_orch_product_analyst.md',
+  'PROMPT_orch_arch_analyst.md',
+  'PROMPT_orch_decompose.md',
+  'PROMPT_orch_refine.md',
+  'PROMPT_orch_sub_decompose.md',
+  'PROMPT_orch_planner_frontend.md',
+  'PROMPT_orch_planner_backend.md',
+  'PROMPT_orch_planner_infra.md',
+  'PROMPT_orch_planner_fullstack.md',
+  'PROMPT_orch_estimate.md',
+  'PROMPT_orch_resolver.md',
+  'PROMPT_orch_replan.md',
+  'PROMPT_orch_spec_consistency.md',
+];
+
+function resolvePromptTemplates(mode) {
+  return mode === 'orchestrate' ? ORCHESTRATOR_PROMPT_TEMPLATES : LOOP_PROMPT_TEMPLATES;
+}
+
 const INCLUDE_DIRECTIVE_PATTERN = /\{\{include:([^}]+)\}\}/g;
 
 async function expandTemplateIncludes(content, templatesDir, seenIncludes = []) {
@@ -454,7 +476,7 @@ export async function scaffoldWorkspace(options = {}) {
 
   // Bootstrap templates from bundled source if the HOME templates directory doesn't exist yet
   // Only auto-bootstrap when using the default templates path (not an explicit templatesDir option)
-  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  const requiredTemplates = resolvePromptTemplates(mode);
   const templatesMissing = requiredTemplates.some(f => !existsSync(path.join(templatesDir, f)));
   if (templatesMissing && !options.templatesDir) {
     const bundledTemplatesDir = resolveBundledTemplatesDir(requiredTemplates);
@@ -536,8 +558,7 @@ export async function scaffoldWorkspace(options = {}) {
     '{{PROVIDER_HINTS}}': resolveProviderHints(provider),
   };
 
-  for (const suffix of ['plan', 'build', 'review', 'steer', 'proof', 'qa']) {
-    const fileName = `PROMPT_${suffix}.md`;
+  for (const fileName of requiredTemplates) {
     const templatePath = path.join(templatesDir, fileName);
     const destinationPath = path.join(promptsDir, fileName);
     let content = await readFile(templatePath, 'utf8');

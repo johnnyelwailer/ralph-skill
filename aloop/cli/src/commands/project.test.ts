@@ -66,6 +66,47 @@ test('scaffoldWorkspace writes config and prompt files with substitutions', asyn
   assert.match(planPrompt, /- Do not delete files/);
 });
 
+test('scaffoldWorkspace in orchestrate mode writes orchestrator prompts and config mode', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-orchestrate-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  const orchestratorTemplates = [
+    'PROMPT_orch_scan.md',
+    'PROMPT_orch_product_analyst.md',
+    'PROMPT_orch_arch_analyst.md',
+    'PROMPT_orch_decompose.md',
+    'PROMPT_orch_refine.md',
+    'PROMPT_orch_sub_decompose.md',
+    'PROMPT_orch_planner_frontend.md',
+    'PROMPT_orch_planner_backend.md',
+    'PROMPT_orch_planner_infra.md',
+    'PROMPT_orch_planner_fullstack.md',
+    'PROMPT_orch_estimate.md',
+    'PROMPT_orch_resolver.md',
+    'PROMPT_orch_replan.md',
+    'PROMPT_orch_spec_consistency.md',
+  ];
+  for (const tmpl of orchestratorTemplates) {
+    await writeFile(path.join(templatesDir, tmpl), `Template ${tmpl}`, 'utf8');
+  }
+
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    mode: 'orchestrate',
+  });
+
+  const config = await readFile(result.config_path, 'utf8');
+  assert.match(config, /mode: 'orchestrate'/);
+  assert.ok(existsSync(path.join(result.prompts_dir, 'PROMPT_orch_scan.md')));
+  assert.ok(!existsSync(path.join(result.prompts_dir, 'PROMPT_plan.md')));
+});
+
 test('scaffoldWorkspace expands nested template includes before variable substitution', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-includes-'));
   const homeRoot = path.join(tempRoot, 'home');

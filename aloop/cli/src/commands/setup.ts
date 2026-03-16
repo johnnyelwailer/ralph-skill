@@ -49,8 +49,9 @@ function parseSetupMode(value: string | undefined): SetupMode | undefined {
 
 function mapSetupModeToLoopMode(value: SetupMode | undefined): string | undefined {
   if (!value) return undefined;
-  // Current scaffold/runtime config persists loop cycle mode; both setup modes
-  // currently bootstrap the same default cycle while keeping setup UX explicit.
+  if (value === 'orchestrate') {
+    return 'orchestrate';
+  }
   return 'plan-build-review';
 }
 
