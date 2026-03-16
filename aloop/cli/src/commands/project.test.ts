@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { discoverWorkspace, scaffoldWorkspace } from './project.js';
 
 test('discoverWorkspace resolves project details and language signals', async () => {
@@ -297,13 +298,42 @@ test('scaffoldWorkspace bootstraps templates from bundled source for fresh HOME'
     homeDir: homeRoot,
     // No explicit templatesDir — triggers bootstrap from bundled source
   });
-  // Verify templates were bootstrapped to HOME
+  // Verify templates were bootstrapped to HOME with content matching bundled sources
   const homeTemplatesDir = path.join(homeRoot, '.aloop', 'templates');
-  assert.ok(existsSync(path.join(homeTemplatesDir, 'PROMPT_plan.md')), 'PROMPT_plan.md should be bootstrapped');
-  assert.ok(existsSync(path.join(homeTemplatesDir, 'PROMPT_build.md')), 'PROMPT_build.md should be bootstrapped');
-  assert.ok(existsSync(path.join(homeTemplatesDir, 'PROMPT_review.md')), 'PROMPT_review.md should be bootstrapped');
-  assert.ok(existsSync(path.join(homeTemplatesDir, 'PROMPT_qa.md')), 'PROMPT_qa.md should be bootstrapped');
+  const bundledTemplatesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'templates');
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  for (const tmpl of requiredTemplates) {
+    assert.ok(existsSync(path.join(homeTemplatesDir, tmpl)), `${tmpl} should be bootstrapped`);
+    const bootstrapped = await readFile(path.join(homeTemplatesDir, tmpl), 'utf8');
+    const bundled = await readFile(path.join(bundledTemplatesDir, tmpl), 'utf8');
+    assert.equal(bootstrapped, bundled, `${tmpl} content should match bundled source`);
+  }
   // Verify scaffold completed successfully
+  assert.ok(result.config_path);
+  assert.ok(result.prompts_dir);
+});
+
+test('scaffoldWorkspace skips bootstrap when explicit templatesDir is provided', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-no-bootstrap-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'custom-templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  // Provide all required templates in explicit templatesDir
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  for (const tmpl of requiredTemplates) {
+    await writeFile(path.join(templatesDir, tmpl), `Custom ${tmpl}`, 'utf8');
+  }
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+  });
+  // HOME templates dir should NOT have been created — bootstrap was skipped
+  const homeTemplatesDir = path.join(homeRoot, '.aloop', 'templates');
+  assert.ok(!existsSync(homeTemplatesDir), 'HOME templates dir should not exist when explicit templatesDir is provided');
+  // Scaffold should still succeed using the explicit templates
   assert.ok(result.config_path);
   assert.ok(result.prompts_dir);
 });

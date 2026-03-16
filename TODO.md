@@ -1,85 +1,53 @@
 # Project TODO
 
-## Current Phase: Review Gate Closure + P1 Runtime Hardening + Remaining Loop P2 Decoupling
+## Current Phase: Core Loop Parity + Runtime Event Dispatch + P1 Hardening
 
-Priority: (1) review gate fixes that block spec-priority work, (2) critical P1 runtime failures, (3) loop/orchestrator core decoupling, (4) remaining P1 UX defects, (5) P2 enhancements. Dashboard polish/tests remain deferred until loop/orchestrator core is stable.
+Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) P1 hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
-### In Progress — Review Fixes (Blocking)
-- [ ] [review] Gate 2: `aloop/cli/src/commands/project.test.ts:302-305` verifies bootstrap via `existsSync(...)` presence checks only. Strengthen to assert concrete template content copied from bundled `aloop/templates/` (not just file existence), and add a negative-path assertion proving bootstrap is skipped when `templatesDir` is explicitly provided. (priority: high)
-- [ ] [review] Gate 3: Branch coverage evidence for touched files is missing/non-compliant in this iteration (`aloop/cli/src/commands/gh.ts`, `aloop/cli/src/commands/devcontainer.ts`, `aloop/cli/lib/project.mjs`). Add executable branch coverage reporting and tests that hit new branches: `gh.ts` fallback/error branches (`selectUsableGhBinary` null/no-fallback + `failGhWatch` JSON path), `devcontainer.ts` deps-normalization fallback paths, and `project.mjs` bootstrap guard branches. Require >=80% branch coverage per touched file (>=90% for any new module). (priority: high)
-- [x] [review] Gate 4: Dead code in loop scripts — `Print-IterationSummary` (loop.ps1:1455-1507), `Push-ToBackup` (loop.ps1:1437), and `push_to_backup` (loop.sh:1597) are defined but never called after the post-iteration hook removal replaced per-mode calls with a universal code path. Fixed: restored universal iteration summary logging in `loop.ps1` by calling `Print-IterationSummary` after successful iterations, and removed orphaned backup push helpers (`Push-ToBackup` / `push_to_backup`) from both runtimes. (priority: medium)
-- [x] [review] Gate 1: `{{include:path}}` is documented in `SPEC.md` as supported during template expansion, but the scaffold/template expansion implementation (`aloop/cli/lib/project.mjs:421-437`) does not resolve include directives at all. Fixed: implemented include expansion relative to `aloop/templates/` in scaffold template processing with nested include support, path-escape/cycle safety checks, and tests proving nested include + variable substitution behavior (`src/commands/project.test.ts`). (priority: high)
-- [x] [review] Gate 1: Spec redesign switched the default cycle to continuous `plan -> build -> qa -> review` (`.aloop/pipeline.yml`), but `compile-loop-plan.ts` hardcoded fallback for `plan-build-review` still emits `proof` and omits `qa` (`buildCycleForMode`, lines ~150-157). Fixed: updated fallback cycles (standard + round-robin) to use `plan -> build -> qa -> review`, added explicit `qa` agent defaults, and updated affected compileLoopPlan tests. (priority: high)
-- [x] [review] Gate 3: `monitor.ts` branch coverage is 88.75% (target >=90%). Coverage report indicates lines 53-54, 83, 128-133, and 152-153 are uncovered. Fixed: added 10 new tests covering hasBuildSinceLastPlan edge cases (missing log, read failure, malformed JSON, no-plan log), steering already-queued paths, starting state, unknown verdict values, and partial-task scenarios. Branch coverage now 95.56%. (priority: high)
-- [x] [review] Gate 3: `update.ts` branch coverage is 63.04% (target >=80%). Fixed: added 9 new tests covering error paths for config copy, templates copy, cli/dist copy, cli/lib copy, aloop.mjs copy, shims write, version.json write, chmod failure, and homeDir fallback. Branch coverage now 86.21%. (priority: high)
-- [x] [review] Gate 4: Copy-paste Duplication — steering instruction prepending logic is duplicated in `monitor.ts:125-133`, `dashboard.ts:795-800`, and `steer.ts:79-84`. Extracted to shared `queueSteeringPrompt` helper in `lib/plan.ts`. (priority: medium)
+### In Progress
+- [ ] [loop/P1] **CRITICAL:** `loop.ps1` still uses legacy `plan-build-review` behavior in multiple paths (`Resolve-IterationMode`, cycle advance modulo, required prompt set, resume phase mapping, startup mode-cycle text), effectively modeling `plan -> build x3 -> proof -> review` instead of `plan -> build x5 -> qa -> review`. Bring full parity with `loop.sh` and validate via `loop.tests.ps1` coverage for normal run + resume scenarios. (priority: critical)
 
-- [x] [review] Gate 1: `monitor.ts` steering detection (live `STEERING.md` detection) does not prepend user instruction to queue prompt. Regression of prior "Fixed: template content now prepended to user instruction" requirement. Fixed: monitor.ts now reads STEERING.md content and combines it with the template (`templateContent + '\n\n' + steeringInstruction`), matching the pattern in steer.ts. Test updated to verify user instruction inclusion. (priority: high)
-- [x] [review] Gate 1: `aloop steer` command is hidden from `aloop --help` and the core command list in `aloop.mjs`. Must be added to `aloop.mjs` help and core commands list. Fixed: added `steer <msg>` to the Extended Commands section in `aloop.mjs` help text. (priority: high)
-- [x] [review] Gate 3: `monitor.ts` (new module) branch coverage is below 90%. Add tests for `readFile`/`readdir`/`getReviewVerdict` failures and empty/null `TODO.md` cases. (priority: medium) Fixed: added 12+ new tests to `monitor.test.ts` covering missing/invalid status.json, meta.json, TODO.md, review-verdict.json, and readdir/readFile failures. Branch coverage now 94.6%. (priority: medium)
-- [x] [review] Gate 3: `steer.ts` branch coverage is 81.8% (target >=90%). Multi-session ambiguity path (steer.ts:59-60) and text output modes (steer.ts:36-37, 95-96) remain untested despite prior review. Fixed: added 3 tests — multi-session ambiguity, text-mode failure output, text-mode success output. All branches now covered. (priority: high)
-- [x] [review] Gate 4: Process Integrity — do not rewrite review finding descriptions in TODO.md to omit requirements (prior review requested multi-session and text mode coverage, which were removed from the task text). Fixed: Gate 3 task description verified to include full requirements (multi-session ambiguity path, text output modes). Process principle documented: review finding task descriptions must preserve the original requirements verbatim — do not summarize, truncate, or strip specific path references or coverage targets when updating TODO.md. (priority: medium)
-- [x] [review] Gate 1: `aloop steer` spec deviation — when `PROMPT_steer.md` exists, queue file contains only template text and omits the user’s steering instruction Fixed: template content now prepended to user instruction in queue file (steer.ts, dashboard.ts, orchestrate.ts). (priority: high)
-- [x] [review] Gate 6: proof manifest contains test-output filler (`queue-unlink-verification.txt`, `ansi-strip-verification.txt` with test metadata). Fixed: proof prompt now explicitly bans verification-filler artifacts (including those filenames), removes `test_summary` from manifest type examples, reinforces before/after CLI capture expectations, and mandates empty-artifacts skip for internal-only changes. Removed committed `*-proof.json` filler artifacts and gitignored proof-filler outputs. (priority: high)
-- [x] [review] Gate 9: README drift remains in Key Features — line ~213 still says “8 review gates”. Update to 9 gates and keep docs consistent across all sections. (priority: high)
+### Up Next — Review Fixes (Blocking)
+- [x] [review] Gate 2: `aloop/cli/src/commands/project.test.ts:302-305` still verifies bootstrap by `existsSync(...)` presence checks only. Strengthen to assert copied template content matches bundled `aloop/templates/` sources, and add explicit negative-path assertion that bootstrap is skipped when `templatesDir` is provided. (priority: high)
+- [ ] [review] Gate 3: branch coverage proof for touched files is still incomplete/non-compliant for this iteration (`aloop/cli/src/commands/gh.ts`, `aloop/cli/src/commands/devcontainer.ts`, `aloop/cli/lib/project.mjs`). Add executable coverage evidence and targeted tests for fallback/error branches (`selectUsableGhBinary` null/no-fallback + `failGhWatch` JSON path, deps-normalization fallback paths, bootstrap guard branches), meeting >=80% per touched file (>=90% for any new module). (priority: high)
 
-### Up Next — P1 Stability Blockers (Critical QA)
-- [x] [qa/P1] `aloop.mjs` intercepts `--help` incorrectly — hardcoded help excludes `steer` and other extended commands, and prevents delegation to bundled CLI for help. Fixed: limited help interception to no-args/explicit-help cases and added missing extended commands (update, orchestrate, devcontainer) to help text. (iter 55) (priority: high)
-- [x] [qa/P1] `aloop update` fails to set executable permissions on `bin/` scripts on Unix — results in `EACCES` when running `loop.sh` or `aloop` shim. Fixed: added chmod 755 for bin/*.sh and aloop shim in executeUpdate, with unit test verification. (iter 55) (priority: high)
-- [x] [qa/P1] `aloop start` dashboard spawn fails if `aloop` not in `PATH` — `start.ts:511` calls `spawnDetached` with 'aloop' command; should use absolute path to current binary. Fixed: added `nodePath`/`aloopPath` to `StartDeps`, dashboard spawn now uses `deps.nodePath` + `deps.aloopPath` instead of bare `'aloop'` command, `openStatusTerminal` also updated to use absolute paths. (iter 55) (priority: high)
-- [x] [qa/P1] `aloop start` leaves failed sessions in `active.json` — if `spawn` fails (e.g. EACCES), session is already registered but never removed. Fixed: wrapped post-registration logic in try/catch with `registered` flag; on failure, session entry is removed from `active.json`. Test added to verify cleanup on injected failure. (iter 55) (priority: high)
-- [x] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` exits 0 instead of failing — `orchestrate.ts` creates state with `spec_file` without checking if file exists. Add `existsSync()` validation before session creation. (iters 26-54, 9 consecutive fails) (priority: high) Fixed: spec file validation now runs for both explicit `--spec` and default `SPEC.md` paths; test added for default-spec-not-found case.
-- [x] [qa/P1] `aloop setup --non-interactive` fails for fresh HOME — `setup.ts:47-58` calls `scaffoldWorkspace` without checking if templates exist. Fixed: `scaffoldWorkspace` now auto-bootstraps templates from the bundled `aloop/templates/` source when the HOME templates directory doesn't exist (fresh install). Only triggers for default templates path, not explicit `templatesDir` option. Test added verifying fresh-HOME bootstrap. (priority: high)
-- [x] [qa/P1] `aloop gh watch` crashes with raw stack trace when `gh` invocation fails — `gh.ts:976` calls `fetchMatchingIssues()` without try-catch. Add error handling around gh CLI calls. (iters 51, 58; retested 2026-03-16: still failing). Fixed: wrapped `gh watch` action in failure handling that prints a clean user-facing error and exits without stack trace; added gh CLI fallback path resolution that skips aloop PATH-hardening shims and runs the next real `gh` binary when available; added tests for both clean watch failure output and shim-skipping binary selection. (priority: high)
-- [x] [qa/P1] `aloop devcontainer` crashes with `TypeError: deps.discover is not a function` due to commander `.action(devcontainerCommand)` argument shape mismatch; normalize command invocation/deps detection. (iters 50, 58; retested 2026-03-16: still failing). `--help` works fine. Fixed: added strict `DevcontainerDeps` type-guard normalization (`resolveDevcontainerDeps`) so commander action args are ignored for both `devcontainer` and `devcontainer-verify`, with regression tests for valid injected deps and commander-shaped action args. (priority: high)
-- [ ] [qa/P1] Dashboard docs tabs empty — `/api/state` `workdir` points to `aloop/cli/` subdirectory instead of worktree root, so all docs return zero-length content. Needs runtime verification. (iters 26-51, 4 reports) (priority: high)
-- [ ] [qa/P1] Dashboard desktop layout mismatches spec wireframe — at 1920x1080, sidebar and docs panel not visible. Spec requires persistent sidebar + docs + activity. Needs runtime Playwright verification. (iters 47, 51-53, still failing) (priority: high)
-- [ ] [qa/P1] Dashboard health tab missing codex — shows 4 providers, codex in cooldown state omitted. (iter 26) (priority: high)
-- [x] [qa/P1] `aloop scaffold` missing `PROMPT_qa.md` — `project.mjs:380` only loops over 5 prompts (plan, build, review, steer, proof); spec requires 9-step pipeline including qa. Add `PROMPT_qa.md` to the scaffold loop. Template exists at `aloop/templates/PROMPT_qa.md`. Fixed: added 'qa' to both validation and copy loops in project.mjs, updated all test fixtures. (priority: high)
-- [x] [qa/P1] Provider health backoff — verified `loop.sh` correctly implements spec: 1 failure = 0 cooldown, 2 = 120s cooldown. Confirmed `status: cooldown` at iter 54. Marking as false positive. (priority: high)
+### Up Next — Core Loop/Runtime Gaps (Spec-Priority)
+- [ ] [loop/P1] `loop.sh` still has stale `plan-build-review` resume mapping (`proof`/`review` indices for old 6-step cycle) that conflicts with current 8-step `qa` cycle and can mis-resume phase position. Align resume mapping and related mode metadata output with the compiled cycle semantics. (priority: high)
+- [ ] [runtime/P1] Implement completion rattail chain from SPEC Proof-of-Work section (`all_tasks_done -> spec-review -> final-review -> final-qa -> proof -> completed`) and remove hardcoded monitor shortcuts that directly queue only `proof`/`review`. (priority: high)
+- [ ] [runtime/P1] Add missing rattail prompt templates and wiring (`PROMPT_spec-review.md`, `PROMPT_final-review.md`, `PROMPT_final-qa.md`) so runtime event chaining has concrete catalog entries. (priority: high)
+- [ ] [loop/P2] Add `trigger` frontmatter support to agent prompt templates so agents declare event bindings (example: `trigger: all_tasks_done`). (priority: medium)
+- [ ] [runtime/P2] Implement generic event -> catalog scan -> queue dispatch in runtime monitor (`aloop/templates/` + trigger matching), instead of phase-name-specific branching. (priority: medium)
 
-### Up Next — Core Loop Decoupling (Spec-Priority)
-Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle + queue. The runtime handles all intelligence (event detection → catalog scan → queue injection).
-
-- [x] [loop/P1] Remove `FORCE_PLAN_NEXT`, `FORCE_PROOF_NEXT`, `FORCE_REVIEW_NEXT` flags — replace with direct queue writes. When a condition triggers (e.g., all tasks done), write the appropriate prompt file to `$SESSION_DIR/queue/` instead of setting a boolean. (~lines 378-389, 1324-1327) (priority: high)
-- [x] [loop/P1] Remove hardcoded build-completion detection from loop — register_iteration_success() checks iter_mode == “build” and forces proof+review. Move this to the runtime monitor: detect all_tasks_done event → queue proof prompt. (~lines 1977-1984, 512-522) (priority: high)
-- [x] [loop/P1] Remove hardcoded steering detection from loop — loop checks for `STEERING.md` and overrides mode to `steer`, forces plan next. Move to runtime: detect file → queue steer prompt → queue plan prompt. Fixed: removed `STEERING.md` hardcoded mode override from `loop.sh` and `loop.ps1`; added runtime monitor detection that queues `PROMPT_steer` then `PROMPT_plan` and resets loop plan state (`cyclePosition=0`, `allTasksMarkedDone=false`), with unit tests in `monitor.test.ts`. (~lines 1913-1925) (priority: high)
-- [x] [loop/P1] Remove `check_phase_prerequisite()` from both `loop.sh` and `loop.ps1` — it hardcodes “can’t review without builds” and “can’t build without tasks” logic for specific agent names. Prerequisites should be runtime-owned before queueing, with cross-platform parity. Fixed: removed phase prerequisite forcing from both loop runtimes; moved prerequisite handling to `monitor.ts` (queue `PROMPT_plan` when build has zero tasks, queue `PROMPT_build` when review has no build-since-plan evidence), and added/updated monitor tests for runtime-owned gating behavior. (priority: high)
-- [x] [loop/P2] Remove proof/review-specific setup from loop — delete the `if iter_mode == “proof”` artifact-dir block (~lines 2013-2019) and the `if iter_mode == “review”` verdict-injection block (~lines 2022-2033). Instead, substitute `{{SESSION_DIR}}`, `{{ITERATION}}`, and `{{ARTIFACTS_DIR}}` in ALL prompts generically so agents can find/create their own paths. Agents handle their own mkdir and file reads. Fixed: removed proof/review prompt mutation blocks from both loop runtimes, added generic placeholder substitution for `{{SESSION_DIR}}`/`{{ITERATION}}`/`{{ARTIFACTS_DIR}}` (with legacy token compatibility), and updated proof/review templates + loop regression tests accordingly. (priority: medium)
-- [x] [loop/P2] Remove post-iteration hooks — steer archiving, build summary, review baseline update are all hardcoded by agent name (~lines 2046-2095). Move cleanup responsibility to agent prompts themselves — they already know what they need to clean up. Fixed: removed steer/build/review post-iteration special-case hooks from both `loop.sh` and `loop.ps1`; runtime now emits generic iteration completion only, with tests updated to assert no automatic baseline updates. (priority: medium)
-- [x] [loop/P2] Make color output data-driven — replace hardcoded `case “$iter_mode” in plan|build|proof|review|steer` with frontmatter `color` field, defaulting to white. (~lines 1966-1973) Fixed: added `color` frontmatter field parsing to both `loop.sh` (`FRONTMATTER_COLOR` + `color_name_to_ansi()` helper) and `loop.ps1` (`color` in hashtable + `Get-ModeColor()` helper). Hardcoded mode-to-color case/switch replaced with frontmatter-driven lookup defaulting to white. Color included in `frontmatter_applied` log entry. (priority: low)
-- [ ] [loop/P2] Add `trigger` frontmatter field to agent prompt templates — agents declare which events they respond to (e.g., `trigger: all_tasks_done`). Runtime scans catalog for matching triggers when events fire. (priority: medium)
-- [ ] [runtime/P2] Implement event→catalog→queue dispatch in runtime monitor — when runtime detects a condition, emit an event key, scan `aloop/templates/` for prompts with matching `trigger` frontmatter, copy to `$SESSION_DIR/queue/`. (priority: medium)
-
-### Up Next — P0/P1 (After Refactor + Stability)
+### Up Next — P1 Hardening (After Core)
 - [ ] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating in orchestrator/gh loops and add same-error persistence detection before auto re-iteration (stop retrying unchanged CI failures; surface actionable summary). (priority: high)
 - [ ] [setup/P1] Data privacy setup flow — ask internal/private vs public/open-source during setup and apply provider/model policy constraints (including ZDR-safe defaults) to generated config. (priority: high)
-- [ ] [devcontainer/P1] Devcontainer spec-conformance pass — verify `devcontainer`/`devcontainer-verify` behavior against SPEC §Devcontainer Support acceptance criteria (lifecycle hooks, mounts, provider auth forwarding, verification loop) and file/fix concrete gaps. (priority: high)
-- [ ] [qa/P1] `aloop start` auto-monitoring parity — verify dashboard/terminal auto-open and fallback behavior match spec on all OS code paths; ensure failures degrade gracefully with clear manual commands. (priority: medium)
-
-### Up Next — P1 (After Core)
-- [ ] [dashboard/P1] Proof artifact comparison modes — add before/after comparison UX (side-by-side, slider, diff overlay) and history scrubbing.
+- [ ] [devcontainer/P1] Devcontainer spec-conformance pass — verify `devcontainer`/`devcontainer-verify` behavior against SPEC Devcontainer acceptance criteria (lifecycle hooks, mounts, provider auth forwarding, verification loop) and close concrete gaps. (priority: high)
+- [ ] [qa/P1] `aloop start` auto-monitoring parity — verify dashboard/terminal auto-open and fallback behavior across OS paths; ensure failures degrade with clear manual commands. (priority: medium)
 
 ### Up Next — P2
-- [ ] [qa/P2] CLI error handling leaks stack traces — `aloop setup --autonomy-level invalid`, `aloop start` (no config), `aloop orchestrate --autonomy-level foo`, `aloop resolve --project-root /nonexistent`. Should show clean user-facing errors. (iters 46-53, multiple reports) (priority: medium)
-- [ ] [qa/P2] `aloop setup` accepts invalid inputs without validation — nonexistent spec files and unknown provider names written to config silently. (iters 48-50) (priority: medium)
-- [ ] [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` writes nonexistent path to config without warning. (iter 52) (priority: medium)
-- [ ] [orchestrator/P2] Multi-file spec support — `specs/*.md` globbing, merge logic, master-spec + vertical-slice-group pattern.
-- [ ] [orchestrator/P2] Efficient GitHub monitoring — ETag-guarded REST change detection, targeted GraphQL full-state fetch, `since` filtering, optional webhook push.
-- [ ] [orchestrator/P2] Devcontainer routing — per-task `sandbox: container|none`, `requires: [windows, macos, gpu]`, dispatcher host-capability checks.
-- [ ] [gh/P2] Agent trunk auto-merge — auto-merge policy in config, human-only approval for `agent/trunk` -> `main`, default `agent/main` creation.
-- [ ] [setup/P2] Dual-mode setup recommendation — analyze scope and recommend loop vs orchestrator mode, including CI workflow support checks.
+- [ ] [qa/P2] CLI error handling leaks stack traces — `aloop setup --autonomy-level invalid`, `aloop start` (no config), `aloop orchestrate --autonomy-level foo`, `aloop resolve --project-root /nonexistent` should return clean user-facing errors. (priority: medium)
+- [ ] [qa/P2] `aloop setup` accepts invalid inputs without validation — nonexistent spec files and unknown provider names are written silently. (priority: medium)
+- [ ] [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` writes nonexistent path to config without warning. (priority: medium)
+- [ ] [orchestrator/P2] Multi-file spec support — `specs/*.md` globbing, merge logic, master-spec + vertical-slice-group pattern. (priority: medium)
+- [ ] [orchestrator/P2] Efficient GitHub monitoring — ETag-guarded REST change detection, targeted GraphQL full-state fetch, `since` filtering, optional webhook push. (priority: medium)
+- [ ] [orchestrator/P2] Devcontainer routing — per-task `sandbox: container|none`, `requires: [windows, macos, gpu]`, dispatcher host-capability checks. (priority: medium)
+- [ ] [gh/P2] Agent trunk auto-merge — auto-merge policy in config, human-only approval for `agent/trunk -> main`, default `agent/main` creation. (priority: medium)
+- [ ] [setup/P2] Dual-mode setup recommendation — analyze scope and recommend loop vs orchestrator mode, including CI workflow support checks. (priority: medium)
 
-### Deferred (Low Priority)
+### Deferred (Low Priority / After Core)
+- [ ] [qa/P1] Dashboard docs tabs empty in some sessions (`/api/state` docs payload unresolved/empty due context/workdir mismatch reports) — keep deferred until current loop/runtime parity blockers are closed. (priority: low)
+- [ ] [qa/P1] Dashboard desktop layout mismatch at 1920x1080 (sidebar/docs/activity visibility) — defer until loop/orchestrator core priorities are complete. (priority: low)
+- [ ] [qa/P1] Dashboard health tab missing `codex` when no recent codex event exists — likely requires configured-provider-based health baseline, not log-only derivation. (priority: low)
+- [ ] [dashboard/P1] Proof artifact comparison modes — side-by-side/slider/diff overlay + history scrubbing. (priority: low)
 - [ ] [dashboard/low] Broader unit coverage expansion for `App.tsx` interaction paths.
 - [ ] [dashboard/low] Raise/verify branch coverage in `aloop/cli/src/commands/dashboard.ts` beyond current gate minimums.
-- [ ] [dashboard/low] Extend E2E `smoke.spec.ts` coverage for explicit 1920x1080 sidebar/docs/activity visibility checks once core P0/P1 gates are green.
+- [ ] [dashboard/low] Extend E2E `smoke.spec.ts` coverage for explicit 1920x1080 sidebar/docs/activity visibility checks once core gates are green.
 
 ### Cancelled / Superseded
 - [~] [orchestrator/P0] Label-driven state machine — superseded by GitHub-native status/project-state progression with minimal-label fallback.
 - [~] [dashboard/low] Docs-tab trigger filtering — already implemented (`App.tsx` filters non-empty docs).
-- [~] [qa/P1] Provider health backoff — loop.sh implementation verified correct (1 failure = 0 cooldown). QA report likely false positive or loop.ps1-specific. Re-test needed.
-- [~] [qa/P1] `aloop steer` CLI command missing from `aloop.mjs` help and core list — superseded by the broader `aloop.mjs --help` interception task (same root cause and fix surface). (iter 55)
+- [~] [qa/P1] Provider health backoff — superseded: cooldown behavior in `loop.sh` is correct; remaining cross-platform defect is tracked separately as loop parity tasks.
+- [~] [qa/P1] `aloop steer` CLI command missing from `aloop.mjs` help and core list — superseded by broader `aloop.mjs --help` interception fix.
 
 ### Completed
 - [x] [orchestrator/P1] Autonomy levels (cautious/balanced/autonomous) — wire setup/config to resolver behavior, risk classification, autonomous decision logging, and user override.
@@ -128,3 +96,27 @@ Goal: the loop engine has ZERO knowledge of specific agents. It just runs cycle 
 - [x] [fix] `orchestrateCommand` dependency injection fixed.
 - [x] [review] Gate 8: VERSIONS.md — added `git` to Runtime section.
 - [x] [qa/P1] `aloop steer` CLI command — implemented in `steer.ts`.
+- [x] [review] Gate 4: Dead code in loop scripts — restored universal iteration summary logging and removed orphaned backup push helpers.
+- [x] [review] Gate 1: `{{include:path}}` support implemented in scaffold template expansion with nested include + safety checks.
+- [x] [review] Gate 1: Fallback cycle updated to include `qa` for `plan-build-review` in compile-loop-plan.
+- [x] [review] Gate 3: `monitor.ts` branch coverage raised above gate target.
+- [x] [review] Gate 3: `update.ts` branch coverage raised above gate target.
+- [x] [review] Gate 4: Steering prompt prepend logic deduplicated into shared helper.
+- [x] [review] Gate 1: monitor steering queue now prepends user steering instruction to template content.
+- [x] [review] Gate 1: `aloop steer` command surfaced in `aloop.mjs` help.
+- [x] [review] Gate 3: `monitor.ts` failure-path test coverage expanded.
+- [x] [review] Gate 3: `steer.ts` branch coverage gaps (ambiguity/text-mode paths) closed.
+- [x] [review] Gate 4: Process integrity task-text preservation documented and restored.
+- [x] [review] Gate 1: steering template + instruction merge fixed across steer/dashboard/orchestrate.
+- [x] [review] Gate 6: proof-manifest filler artifact policy tightened and filler outputs removed.
+- [x] [review] Gate 9: README drift fixed ("9 gates").
+- [x] [qa/P1] `aloop.mjs` help interception fixed and extended command help parity restored.
+- [x] [qa/P1] `aloop update` executable permissions fixed for Unix scripts/shims.
+- [x] [qa/P1] `aloop start` dashboard spawn now uses absolute binary paths.
+- [x] [qa/P1] `aloop start` active-session cleanup on spawn failure implemented.
+- [x] [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` now fails fast with spec-path validation.
+- [x] [qa/P1] `aloop setup --non-interactive` fresh-HOME bootstrap fixed.
+- [x] [qa/P1] `aloop gh watch` raw stack-trace crash path hardened with clean user-facing failure handling + gh binary fallback selection.
+- [x] [qa/P1] `aloop devcontainer` commander action-arg mismatch fixed via deps normalization guard.
+- [x] [qa/P1] `aloop scaffold` now includes `PROMPT_qa.md` in validation/copy loops.
+- [x] [qa/P1] Provider health backoff report closed as false positive after verification.
