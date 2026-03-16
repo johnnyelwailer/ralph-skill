@@ -152,6 +152,10 @@ async function buildCycleForMode(
       return [
         await getEntry('plan'),
         await getEntry('build'),
+        await getEntry('build'),
+        await getEntry('build'),
+        await getEntry('build'),
+        await getEntry('build'),
         await getEntry('qa'),
         await getEntry('review'),
       ];

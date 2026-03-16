@@ -353,13 +353,13 @@ resolve_iteration_mode() {
                     if (( CYCLE_POSITION % 2 == 0 )); then RESOLVED_MODE="plan"; else RESOLVED_MODE="build"; fi
                     ;;
                 plan-build-review)
-                    # 6-step cycle: plan -> build -> build -> build -> proof -> review
-                    local phase=$(( CYCLE_POSITION % 6 ))
+                    # 8-step cycle: plan -> build x5 -> qa -> review
+                    local phase=$(( CYCLE_POSITION % 8 ))
                     case $phase in
                         0) RESOLVED_MODE="plan" ;;
-                        1|2|3) RESOLVED_MODE="build" ;;
-                        4) RESOLVED_MODE="proof" ;;
-                        5) RESOLVED_MODE="review" ;;
+                        1|2|3|4|5) RESOLVED_MODE="build" ;;
+                        6) RESOLVED_MODE="qa" ;;
+                        7) RESOLVED_MODE="review" ;;
                     esac
                     ;;
                 *)
@@ -461,7 +461,7 @@ advance_cycle_position() {
     fi
     case "$MODE" in
         plan-build) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 2 )) ;;
-        plan-build-review) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 6 )) ;;
+        plan-build-review) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 8 )) ;;
     esac
 }
 
@@ -512,7 +512,7 @@ register_iteration_failure() {
     if ! { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; }; then
         return
     fi
-    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "proof" ] || [ "$iteration_mode" = "review" ]; }; then
+    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "qa" ] || [ "$iteration_mode" = "review" ]; }; then
         return
     fi
 
@@ -1643,7 +1643,7 @@ echo ""
 # Validate prompt files exist
 case "$MODE" in
     plan-build)        required_prompts="plan build" ;;
-    plan-build-review) required_prompts="plan build proof review" ;;
+    plan-build-review) required_prompts="plan build qa review" ;;
     *)                 required_prompts="$MODE" ;;
 esac
 

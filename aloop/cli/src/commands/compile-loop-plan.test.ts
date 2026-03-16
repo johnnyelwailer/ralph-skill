@@ -73,7 +73,7 @@ test('compileLoopPlan — plan-build mode produces 2-entry cycle', async () => {
   assert.deepStrictEqual(plan.cycle, ['PROMPT_plan.md', 'PROMPT_build.md']);
 });
 
-test('compileLoopPlan — plan-build-review produces 4-entry cycle', async () => {
+test('compileLoopPlan — plan-build-review produces 8-entry cycle with 5 builds', async () => {
   const { promptsDir, sessionDir } = await setupDirs('clp-pbr-');
   const plan = await compileLoopPlan({
     mode: 'plan-build-review',
@@ -87,6 +87,10 @@ test('compileLoopPlan — plan-build-review produces 4-entry cycle', async () =>
 
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
     'PROMPT_build.md',
     'PROMPT_qa.md',
     'PROMPT_review.md',
@@ -415,6 +419,10 @@ test('compileLoopPlan — plan-build-review without pipeline.yml falls back to p
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
     'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
     'PROMPT_qa.md',
     'PROMPT_review.md',
   ]);
@@ -441,6 +449,10 @@ not_pipeline: true
 
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
     'PROMPT_build.md',
     'PROMPT_qa.md',
     'PROMPT_review.md',
@@ -469,6 +481,10 @@ pipeline: []
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
     'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
     'PROMPT_qa.md',
     'PROMPT_review.md',
   ]);
@@ -496,6 +512,10 @@ pipeline:
 
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
     'PROMPT_build.md',
     'PROMPT_qa.md',
     'PROMPT_review.md',
@@ -591,6 +611,10 @@ pipeline: "not an array"
 
   assert.deepStrictEqual(plan.cycle, [
     'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
     'PROMPT_build.md',
     'PROMPT_qa.md',
     'PROMPT_review.md',
