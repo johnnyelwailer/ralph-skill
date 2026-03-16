@@ -21,6 +21,16 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
    - Read the SPEC to understand the expected behavior of each feature
 
 2. **Set Up Test Environment**
+   - **Build from source first**: You MUST test the current worktree code, NOT the globally installed CLI. Before testing, build the CLI from the worktree:
+     ```bash
+     npm --prefix aloop/cli run build
+     ```
+     Then use the worktree binary for all tests:
+     ```bash
+     ALOOP_BIN="$(pwd)/aloop/cli/dist/index.js"
+     alias aloop="node $ALOOP_BIN"
+     ```
+     Verify: `aloop --version` or `aloop --help` should reflect the latest build.
    - Create a realistic test project in a temp directory
    - Set up real files, real git repo, real dependencies as needed
    - The test environment should mirror what a real user would have
