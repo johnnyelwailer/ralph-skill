@@ -377,3 +377,20 @@
 - Gate 2: Rattail chain tests are thorough — `monitor.test.ts` covers the full chain (all_tasks_done → spec-review:36-59, spec-review → final-review:61-79, final-review → final-qa:155-180, final-qa → proof:182-206), chain completion (120-135), re-entry with cycle reset (208-238), deduplication (240-263, 400-412), and negative paths (chain not firing when allTasksMarkedDone is false:284-300, no allTasksMarkedDone when no templates match:302-322). Content assertions verify template content and trigger metadata in queued files.
 - Gate 5: All tests pass (28/28 monitor, 8/8 CLI), type-check clean, build succeeds (441.9KB).
 - Gate 6: Work is purely internal (runtime logic, template files, frontmatter parsing). No externally observable output — proof correctly not required.
+
+---
+
+## Review — 2026-03-16 21:12 UTC — commit 72b2d65..835c6fa
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.ps1`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/src/commands/setup.test.ts`, `aloop/cli/lib/project.mjs`, `aloop/cli/src/commands/project.test.ts`, `aloop/templates/PROMPT_plan.md`, `aloop/templates/PROMPT_build.md`, `aloop/templates/PROMPT_review.md`, `aloop/templates/PROMPT_qa.md`, `aloop/templates/PROMPT_final-review.md`, `aloop/templates/PROMPT_final-qa.md`, `aloop/templates/instructions/review.md`, `aloop/templates/instructions/qa.md`
+
+- Gate 2: **Shallow assertion in new orchestrate scaffold test** — `project.test.ts:106-107` checks only `existsSync`/non-existence. This can still pass with wrong prompt contents or partial copies. The test should assert concrete generated content (or exact prompt-set equality) for orchestrate output.
+- Gate 3: **Branch coverage evidence missing for touched branches** — this range adds new decision branches in `setup.ts` (`mapSetupModeToLoopMode` orchestrate path) and `project.mjs` (`resolvePromptTemplates` loop vs orchestrate path), but no per-file branch coverage report was provided to prove threshold compliance.
+- Gate 6: **Proof skipped despite observable behavior change** — proof manifest for iter 133 has empty artifacts, but `aloop setup --non-interactive --mode orchestrate` is user-observable behavior and should be proven with human-verifiable CLI evidence or before/after config artifact capture.
+
+**Positive observations:**
+- Gate 1: Shared instruction include implementation aligns with spec (`{{include:instructions/review.md}}` and `{{include:instructions/qa.md}}` in both cycle and rattail templates, and include expansion in `project.mjs` with traversal/cycle guards).
+- Gate 1: Non-interactive setup mode mapping now preserves orchestrate mode (`setup.ts` + `setup.test.ts:427-460`), matching spec intent for explicit `--mode loop|orchestrate`.
+- Gate 5: Required validation command passed on this review run: `cd aloop/cli && npm test && npm run type-check && npm run build` (736/736 passing CLI tests, type-check clean, build successful).
+- Gate 8: Version compliance spot-check passed (`node v22.22.1`, `commander@12.1.0`, dashboard `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`) and matches `VERSIONS.md` major versions.
