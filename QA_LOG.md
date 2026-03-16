@@ -2099,3 +2099,280 @@ activity_visible=false
 text_len=1881
 [exit=0]
 ```
+
+## QA Session — 2026-03-16 (iteration 95)
+
+### Test Environment
+- Temp dir: `/tmp/qa-test-iter84-1773663237`
+- Binary under test: `/tmp/aloop-test-install-KIcuUW/bin/aloop`
+- Binary version: `1.0.0`
+- Dashboard URL: `http://localhost:4040`
+- Features tested: 5
+
+### Results
+- PASS: `aloop devcontainer` (packaged install), Dashboard layout @1920x1080
+- FAIL: `aloop setup --non-interactive` (fresh HOME, packaged install), `aloop gh watch --repo owner/repo`
+- PARTIAL: `aloop orchestrate --spec NONEXISTENT.md` (exit code fixed, error output still stack-trace shaped)
+
+### Bugs Filed
+- No new `[qa]` bugs filed (all failures already tracked in `TODO.md`); added re-test notes to existing tasks.
+
+### Layout Verification
+- Screenshot (desktop 1920x1080): `/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/dashboard-1920x1080-valid.png`
+- Browser metrics at load: `{"panelGuess":6,"sessions":true,"docs":true,"activity":true,"textLen":2343}`
+- Full-page screenshot: `/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/dashboard-fullpage-valid.png`
+
+### Command Transcript
+```text
+$ git --no-pager rev-parse --short HEAD
+3fff8a8
+[exit 0]
+
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1); echo "Binary under test: $ALOOP_BIN"; "$ALOOP_BIN" --version
+Binary under test: /tmp/aloop-test-install-KIcuUW/bin/aloop
+1.0.0
+[exit 0]
+
+$ echo "Binary resolved check: /tmp/aloop-test-install-KIcuUW/bin/aloop"
+Binary resolved check: /tmp/aloop-test-install-KIcuUW/bin/aloop
+[exit 0]
+
+$ if echo "/tmp/aloop-test-install-KIcuUW/bin/aloop" | grep -q '/tmp/aloop-test-install-'; then echo OK; else echo WRONG_BINARY_PATH; fi
+OK
+[exit 0]
+
+$ mkdir -p '/tmp/qa-test-iter84-1773663237'
+[exit 0]
+
+$ mkdir -p '/tmp/qa-test-iter84-1773663237/proj' '/tmp/qa-test-iter84-1773663237/proj-dev' '/tmp/qa-test-iter84-1773663237/proj-orch' '/tmp/qa-test-iter84-1773663237/proj-gh'
+[exit 0]
+
+$ printf '# Test Spec\n\nBuild a tiny demo.\n' > '/tmp/qa-test-iter84-1773663237/proj/SPEC.md'
+[exit 0]
+
+$ printf '# Devcontainer Spec\n\nNeed a devcontainer.\n' > '/tmp/qa-test-iter84-1773663237/proj-dev/SPEC.md'
+[exit 0]
+
+$ cd '/tmp/qa-test-iter84-1773663237/proj' && git init -q && git config user.email qa@example.com && git config user.name qa
+[exit 0]
+
+$ cd '/tmp/qa-test-iter84-1773663237/proj-dev' && git init -q && git config user.email qa@example.com && git config user.name qa
+[exit 0]
+
+$ cd '/tmp/qa-test-iter84-1773663237/proj-orch' && git init -q && git config user.email qa@example.com && git config user.name qa
+[exit 0]
+
+$ cd '/tmp/qa-test-iter84-1773663237/proj-gh' && git init -q && git config user.email qa@example.com && git config user.name qa
+[exit 0]
+
+$ cd '/tmp/qa-test-iter84-1773663237/proj' && env HOME='/tmp/qa-test-iter84-1773663237/home-fresh' '/tmp/aloop-test-install-KIcuUW/bin/aloop' setup --non-interactive --spec SPEC.md --providers copilot
+Running setup in non-interactive mode...
+file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:3443
+      throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
+            ^
+
+Error: Template not found: /tmp/qa-test-iter84-1773663237/home-fresh/.aloop/templates/PROMPT_plan.md
+    at Object.scaffoldWorkspace [as scaffold] (file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:3443:13)
+    at async setupCommandWithDeps (file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:8411:21)
+    at async _Command.setupCommand (file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:8483:5)
+
+Node.js v22.22.1
+[exit 1]
+
+$ cd '/tmp/qa-test-iter84-1773663237/proj-orch' && '/tmp/aloop-test-install-KIcuUW/bin/aloop' orchestrate --spec NONEXISTENT.md --plan-only
+file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:9589
+    throw new Error(`Spec file not found: ${specPath}`);
+          ^
+
+Error: Spec file not found: /tmp/qa-test-iter84-1773663237/proj-orch/NONEXISTENT.md
+    at orchestrateCommandWithDeps (file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:9589:11)
+    at _Command.orchestrateCommand (file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:9842:24)
+    at _Command.listener [as _actionHandler] (file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:1442:21)
+    at file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:2236:24
+    at _Command._chainOrCall (file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:2144:16)
+    at _Command._parseCommand (file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:2234:31)
+    at file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:2045:31
+    at _Command._chainOrCall (file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:2144:16)
+    at _Command._dispatchSubcommand (file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:2041:29)
+    at _Command._parseCommand (file:///tmp/aloop-test-install-KIcuUW/lib/node_modules/aloop-cli/dist/index.js:2204:23)
+
+Node.js v22.22.1
+[exit 1]
+
+$ cd '/tmp/qa-test-iter84-1773663237/proj-gh' && timeout 20 '/tmp/aloop-test-install-KIcuUW/bin/aloop' gh watch --repo owner/repo
+gh watch failed: gh issue list failed: gh: blocked by aloop PATH hardening
+[exit 1]
+
+$ cd '/tmp/qa-test-iter84-1773663237/proj-dev' && '/tmp/aloop-test-install-KIcuUW/bin/aloop' devcontainer
+Created devcontainer config at /tmp/qa-test-iter84-1773663237/proj-dev/.devcontainer/devcontainer.json
+  Language: other
+  Image: mcr.microsoft.com/devcontainers/base:ubuntu
+  Post-create: npm install -g @anthropic-ai/claude-code && npm install -g @openai/codex && npm install -g @google/gemini-cli
+
+Next steps:
+  1. Review .devcontainer/devcontainer.json
+  2. Run `devcontainer build --workspace-folder .` to verify
+  3. Start a loop with `aloop start` — container will be used automatically
+[exit 0]
+
+$ cd '/tmp/qa-test-iter84-1773663237/proj-dev' && ls -la .devcontainer && sed -n '1,40p' .devcontainer/devcontainer.json
+total 4
+drwxr-xr-x 2 pj pj  60 Mar 16 13:14 .
+drwxr-xr-x 4 pj pj 100 Mar 16 13:14 ..
+-rw-r--r-- 1 pj pj 913 Mar 16 13:14 devcontainer.json
+{
+  "name": "proj-dev-aloop",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/node:1": {}
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder}/.aloop,target=${containerWorkspaceFolder}/.aloop,type=bind",
+    "source=${localEnv:HOME}/.aloop/sessions,target=/aloop-sessions,type=bind"
+  ],
+  "containerEnv": {
+    "ALOOP_NO_DASHBOARD": "1",
+    "ALOOP_CONTAINER": "1"
+  },
+  "remoteEnv": {
+    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
+    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
+    "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+    "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}",
+    "GH_TOKEN": "${localEnv:GH_TOKEN}"
+  },
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && npm install -g @openai/codex && npm install -g @google/gemini-cli"
+}
+[exit 0]
+
+$ echo Dashboard URL: 
+Dashboard URL:
+[exit 0]
+
+$ npx --yes playwright --version
+Version 1.58.2
+[exit 0]
+
+$ npx --yes playwright screenshot --browser chromium --viewport-size=1920,1080 '' '/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/dashboard-1920x1080.png'
+Navigating to 
+Capturing screenshot into /home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/dashboard-1920x1080.png
+[exit 0]
+
+$ node '/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/layout-check.mjs' '' '/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/dashboard-fullpage.png'
+node:internal/modules/package_json_reader:314
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'playwright' imported from /home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/layout-check.mjs
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:314:9)
+    at packageResolve (node:internal/modules/esm/resolve:768:81)
+    at moduleResolve (node:internal/modules/esm/resolve:855:18)
+    at defaultResolve (node:internal/modules/esm/resolve:985:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:731:20)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:708:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:310:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v22.22.1
+[exit 1]
+
+$ echo Dashboard URL: http://localhost:4040
+Dashboard URL: http://localhost:4040
+[exit 0]
+
+$ npx --yes playwright screenshot --browser chromium --viewport-size=1920,1080 'http://localhost:4040' '/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/dashboard-1920x1080-valid.png'
+Navigating to http://localhost:4040
+Capturing screenshot into /home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/dashboard-1920x1080-valid.png
+[exit 0]
+
+$ npx --yes -p playwright node -e "const { chromium } = require('playwright'); (async()=>{ const browser=await chromium.launch({headless:true}); const page=await browser.newPage({viewport:{width:1920,height:1080}}); await page.goto('http://localhost:4040',{waitUntil:'domcontentloaded',timeout:20000}); await page.waitForTimeout(1500); const m=await page.evaluate(()=>{ const text=document.body?.innerText||''; const docsVisible=Array.from(document.querySelectorAll('*')).some(el=>/(TODO\.md|SPEC\.md|RESEARCH\.md|REVIEW_LOG\.md|Health)/.test((el.textContent||''))); const activityVisible=/(Activity Log|build|review|plan|qa)/i.test(text); const sidebarVisible=            {                 echo ___BEGIN___COMMAND_OUTPUT_MARKER___;                 PS1=;PS2=;unset HISTFILE;                 EC=0;                 echo ___BEGIN___COMMAND_DONE_MARKER___0;             }Array.from(document.querySelectorAll('aside,nav,[class*=sidebar], [aria-label*=session i]')).find(el=>el.offsetWidth>20&&el.offsetHeight>20); const panelGuess=document.querySelectorAll('aside,main section,[class*=panel],[class*=card],[role=tabpanel]').length; return {sidebarVisible,docsVisible,activityVisible,panelGuess,textLen:text.length};}); console.log(JSON.stringify(m)); await page.screenshot({path:'/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/dashboard-fullpage-valid.png',fullPage:true}); await browser.close(); })().catch(e=>{ console.error(e.stack||e); process.exit(1);});"
+$ npx --yes -p playwright node '/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/layout-check.cjs' 'http://localhost:4040' '/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/dashboard-fullpage-valid.png'
+node:internal/modules/cjs/loader:1386
+  throw err;
+  ^
+
+Error: Cannot find module 'playwright'
+Require stack:
+- /home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/layout-check.cjs
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+    at Function._load (node:internal/modules/cjs/loader:1192:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Module.require (node:internal/modules/cjs/loader:1463:12)
+    at require (node:internal/modules/helpers:147:16)
+    at Object.<anonymous> (/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/layout-check.cjs:1:22)
+    at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/layout-check.cjs'
+  ]
+}
+
+Node.js v22.22.1
+[exit 1]
+
+$ curl -s 'http://localhost:4040' | grep -Eo 'class="[^"]*(sidebar|panel|column|card|tabs?)' | wc -l
+0
+[exit 0]
+
+$ mkdir -p '/tmp/qa-test-iter84-1773663237/pw'
+[exit 0]
+
+$ cd '/tmp/qa-test-iter84-1773663237/pw' && npm init -y
+Wrote to /tmp/qa-test-iter84-1773663237/pw/package.json:
+
+{
+  "name": "pw",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+[exit 0]
+
+$ cd '/tmp/qa-test-iter84-1773663237/pw' && npm install playwright
+
+added 2 packages, and audited 3 packages in 726ms
+
+found 0 vulnerabilities
+[exit 0]
+
+$ cd '/tmp/qa-test-iter84-1773663237/pw' && node layout-check.mjs 'http://localhost:4040' '/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/dashboard-fullpage-valid.png'
+{"panelGuess":6,"sessions":true,"docs":true,"activity":true,"textLen":2343}
+[exit 0]
+
+```
+
+### Cleanup Transcript Addendum
+```text
+[exit 0]
+
+$ cd '/tmp/qa-test-iter84-1773663237/pw' && node layout-check.mjs 'http://localhost:4040' '/home/pj/.copilot/session-state/9598c68a-3e15-4e46-9fa2-96ed3a396c0d/files/qa-iter84/dashboard-fullpage-valid.png'
+{"panelGuess":6,"sessions":true,"docs":true,"activity":true,"textLen":2343}
+[exit 0]
+
+$ rm -rf '/tmp/aloop-test-install-KIcuUW'
+[exit 0]
+
+$ rm -rf '/tmp/qa-test-iter84-1773663237'
+[exit 0]
+
+$ test ! -e '/tmp/aloop-test-install-KIcuUW' && echo install_prefix_removed
+install_prefix_removed
+[exit 0]
+
+$ test ! -e '/tmp/qa-test-iter84-1773663237' && echo qa_tmp_removed
+qa_tmp_removed
+[exit 0]
+
+```

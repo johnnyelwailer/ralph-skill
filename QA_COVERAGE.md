@@ -37,3 +37,8 @@
 | `aloop gh watch` (error handling) | 2026-03-16 | 3eaba84 | PARTIAL | Raw stack trace no longer reproduced, but command still fails due `gh: blocked by aloop PATH hardening` for user-invoked GH command. |
 | `aloop devcontainer` | 2026-03-16 | 3eaba84 | PASS | No `deps.discover` crash; command generated `.devcontainer/devcontainer.json` successfully. |
 | `aloop scaffold` (packaged install, fresh `HOME`) | 2026-03-16 | 3eaba84 | FAIL | Fails on template bootstrap (`PROMPT_plan.md` missing), preventing verification of prompt set contents including `PROMPT_qa.md`. |
+| `aloop setup --non-interactive` (fresh `HOME`, packaged install) | 2026-03-16 | 3fff8a8 | FAIL | Still crashes with `Template not found: .../.aloop/templates/PROMPT_plan.md` and raw stack trace (exit 1). Retested iter 95. |
+| `aloop orchestrate --spec NONEXISTENT.md` (packaged install) | 2026-03-16 | 3fff8a8 | PARTIAL | Exits 1 as expected, but still leaks raw stack frames instead of clean validation output. Retested iter 95. |
+| `aloop gh watch --repo owner/repo` (packaged install) | 2026-03-16 | 3fff8a8 | FAIL | Still fails with `gh: blocked by aloop PATH hardening` for user-invoked GH flow. Retested iter 95. |
+| `aloop devcontainer` (packaged install) | 2026-03-16 | 3fff8a8 | PASS | Successfully generated `.devcontainer/devcontainer.json` with expected mounts/env and postCreate command. |
+| Dashboard layout @1920x1080 | 2026-03-16 | 3fff8a8 | PASS | Playwright screenshot + metrics in browser (`panelGuess=6`, sessions/docs/activity all visible). Evidence: `.../session-state/9598c68a-.../files/qa-iter84/dashboard-1920x1080-valid.png`. |

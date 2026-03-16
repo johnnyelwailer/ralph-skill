@@ -19,7 +19,9 @@ The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> 
 ### Up Next — P1 Hardening (After Core)
 - [ ] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating in orchestrator/gh loops and add same-error persistence detection before auto re-iteration (stop retrying unchanged CI failures; surface actionable summary). (priority: high)
 - [ ] [qa/P1] Packaged-install template bootstrap remains broken in fresh HOME (`aloop setup --non-interactive` / `aloop scaffold` fail with `Template not found .../.aloop/templates/PROMPT_plan.md`). Fix template resolution/bootstrap so packaged CLI works without pre-existing `~/.aloop/templates`. (priority: high)
+  - Re-test 2026-03-16 (iter 95): still failing in packaged install (`/tmp/aloop-test-install-KIcuUW/bin/aloop`) with raw stack trace and `Template not found: .../.aloop/templates/PROMPT_plan.md` on `aloop setup --non-interactive --spec SPEC.md --providers copilot` (exit 1).
 - [ ] [qa/P1] `aloop gh watch` user flow still fails under PATH hardening (`gh: blocked by aloop PATH hardening`). Keep security boundary while allowing host-side `gh` execution paths required by `aloop gh watch`. (priority: high)
+  - Re-test 2026-03-16 (iter 95): still failing (`aloop gh watch --repo owner/repo` => `gh watch failed: gh issue list failed: gh: blocked by aloop PATH hardening`, exit 1).
 - [ ] [setup/P1] Data privacy setup flow — ask internal/private vs public/open-source during setup and apply provider/model policy constraints (including ZDR-safe defaults) to generated config. (priority: high)
 - [ ] [devcontainer/P1] Devcontainer spec-conformance pass — verify `devcontainer`/`devcontainer-verify` behavior against SPEC Devcontainer acceptance criteria (lifecycle hooks, mounts, provider auth forwarding, verification loop) and close concrete gaps. (priority: high)
 - [ ] [qa/P1] `aloop start` auto-monitoring parity — verify dashboard/terminal auto-open and fallback behavior across OS paths; ensure failures degrade with clear manual commands. (priority: medium)
@@ -27,6 +29,7 @@ The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> 
 ### Up Next — P2
 - [ ] [qa/P2] CLI error handling leaks stack traces — `aloop setup --autonomy-level invalid`, `aloop start` (no config), `aloop orchestrate --autonomy-level foo`, `aloop resolve --project-root /nonexistent` should return clean user-facing errors. (priority: medium)
 - [ ] [qa/P2] `aloop orchestrate --spec NONEXISTENT.md` still emits raw stack frames in packaged CLI path; return a clean user-facing validation error only. (priority: medium)
+  - Re-test 2026-03-16 (iter 95): behavior still PARTIAL — exits 1, but prints raw stack frames from `dist/index.js` instead of a clean validation message.
 - [ ] [qa/P2] `aloop setup` accepts invalid inputs without validation — nonexistent spec files and unknown provider names are written silently. (priority: medium)
 - [ ] [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` writes nonexistent path to config without warning. (priority: medium)
 - [ ] [orchestrator/P2] Multi-file spec support — `specs/*.md` globbing, merge logic, master-spec + vertical-slice-group pattern. (priority: medium)
@@ -39,6 +42,7 @@ The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> 
 - [ ] [qa/P1] Dashboard docs tabs empty in some sessions (`/api/state` docs payload unresolved/empty due context/workdir mismatch reports) — keep deferred until current loop/runtime parity blockers are closed. (priority: low)
 - [ ] [qa/P1] Dashboard desktop layout mismatch at 1920x1080 (sidebar/docs/activity visibility) — defer until loop/orchestrator core priorities are complete. (priority: low)
   - Re-test 2026-03-16 (iter 83): screenshot + browser text check at `http://localhost:4040` still show only sessions panel as visibly active (`panel_guess=1`; docs/activity not visible).
+  - Re-test 2026-03-16 (iter 95): PASS in current runtime. Playwright check at `http://localhost:4040` returned `panelGuess=6`, `sessions=true`, `docs=true`, `activity=true`; screenshot evidence in session artifacts (`qa-iter84/dashboard-1920x1080-valid.png`).
 - [ ] [qa/P1] Dashboard health tab missing `codex` when no recent codex event exists — likely requires configured-provider-based health baseline, not log-only derivation. (priority: low)
 - [ ] [dashboard/P1] Proof artifact comparison modes — side-by-side/slider/diff overlay + history scrubbing. (priority: low)
 - [ ] [dashboard/low] Broader unit coverage expansion for `App.tsx` interaction paths.
