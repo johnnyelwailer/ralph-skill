@@ -1792,3 +1792,99 @@ SCRIPT
 [exit=0]
 ```
 
+
+## QA Session — 2026-03-16 (iteration 58)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-Xxz1Zz/bin/aloop (version 1.0.0)
+- Commit: 3fdc5e9
+- Features tested: 5
+- Install method: `npm pack` + isolated temp prefix
+
+### Results
+- PASS: `aloop orchestrate --plan-only` (happy path)
+- PARTIAL: `aloop orchestrate --spec NONEXISTENT.md` (exit code fixed, stack trace still leaks)
+- FAIL: `aloop setup --non-interactive` (fresh HOME), `aloop gh watch`, `aloop devcontainer`
+
+### Bugs Filed
+- No new bugs filed — all failures match existing tracked bugs in TODO.md
+
+### Re-test Notes (Existing Bugs)
+- [qa/P1] `aloop setup --non-interactive` fresh HOME (TODO line 43): still failing at iter 58. Same stack trace: `Template not found: .../.aloop/templates/PROMPT_plan.md`.
+- [qa/P1] `aloop gh watch` (TODO line 44): still failing at iter 58. Stack trace from `fetchMatchingIssues()`. Additional finding: `gh` is blocked by PATH hardening even for user-invoked `aloop gh` subcommands — may need PATH exception for `aloop gh *`.
+- [qa/P1] `aloop devcontainer` (TODO line 45): still failing at iter 58. `TypeError: deps.discover is not a function`. Commander argument shape mismatch confirmed.
+- [qa/P1] `aloop orchestrate --spec NONEXISTENT.md` (TODO line 42): exit code now correctly 1 (was 0). Bug partially fixed. But error still shows raw stack trace — covered by existing P2 stack trace bug (TODO line 62).
+
+### Command Transcript
+
+#### Feature 1: aloop setup --non-interactive (fresh HOME)
+```
+$ HOME=/tmp/qa-fresh-home-lg1yX9 /tmp/aloop-test-install-Xxz1Zz/bin/aloop setup --non-interactive
+Running setup in non-interactive mode...
+Error: Template not found: /tmp/qa-fresh-home-lg1yX9/.aloop/templates/PROMPT_plan.md
+    at Object.scaffoldWorkspace [as scaffold] (dist/index.js:3416:13)
+    ...
+Exit code: 1
+```
+Happy path (templates pre-installed): PASS — config written, exit 0.
+
+#### Feature 2: aloop orchestrate --spec NONEXISTENT.md
+```
+$ /tmp/aloop-test-install-Xxz1Zz/bin/aloop orchestrate --spec NONEXISTENT.md
+Error: Spec file not found: /tmp/qa-orch-b8X5jF/NONEXISTENT.md
+    at orchestrateCommandWithDeps (dist/index.js:9480:11)
+    ...
+Exit code: 1
+```
+Exit code correctly 1 (previously was 0). Stack trace still leaks.
+
+Default SPEC.md path also validated:
+```
+$ /tmp/aloop-test-install-Xxz1Zz/bin/aloop orchestrate
+Error: Spec file not found: /tmp/qa-orch-b8X5jF/SPEC.md
+Exit code: 1
+```
+
+#### Feature 3: aloop gh watch
+```
+$ /tmp/aloop-test-install-Xxz1Zz/bin/aloop gh watch
+Error: Command failed: gh issue list --state open --json number,title,url --limit 100 --label aloop
+gh: blocked by aloop PATH hardening
+    at genericNodeError (node:internal/errors:983:15)
+    ...
+Exit code: 1
+```
+Same result in both no-repo and no-remote contexts. PATH hardening blocks `gh` even for user-invoked CLI commands.
+
+#### Feature 4: aloop devcontainer
+```
+$ /tmp/aloop-test-install-Xxz1Zz/bin/aloop devcontainer --help
+Usage: aloop devcontainer [options] ...
+Exit code: 0
+```
+```
+$ /tmp/aloop-test-install-Xxz1Zz/bin/aloop devcontainer
+TypeError: deps.discover is not a function
+    at devcontainerCommandWithDeps (dist/index.js:8837:32)
+    ...
+Exit code: 1
+```
+
+#### Feature 5: aloop orchestrate --plan-only (happy path)
+```
+$ /tmp/aloop-test-install-Xxz1Zz/bin/aloop orchestrate --spec SPEC.md --plan-only
+Orchestrator session initialized.
+  Session dir:  /home/pj/.aloop/sessions/orchestrator-20260316-084237
+  Spec:         SPEC.md
+  Plan only:    true
+Exit code: 0
+```
+State file written with correct fields. Session directories created (prompts, queue, requests).
+
+Edge case — invalid autonomy level:
+```
+$ /tmp/aloop-test-install-Xxz1Zz/bin/aloop orchestrate --spec SPEC.md --plan-only --autonomy-level bogus
+Error: Invalid autonomy level: bogus (must be cautious, balanced, or autonomous)
+Exit code: 1
+```
+Correct validation, but stack trace leaks (same P2 pattern).

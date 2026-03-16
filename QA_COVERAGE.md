@@ -25,3 +25,8 @@
 | `aloop start` with `aloop` absent from `PATH` | 2026-03-16 | ecb1279 | PASS | `PATH=/usr/bin:/bin` still starts session and prints dashboard URL. |
 | Dashboard layout @1920x1080 | 2026-03-16 | ecb1279 | PASS | Playwright metrics: sidebar/docs/activity visible; screenshot captured. |
 | Dashboard docs data (`/api/state`) | 2026-03-16 | ecb1279 | PASS | `workdir` points to worktree root; docs fields non-empty (except empty STEERING.md). |
+| `aloop setup --non-interactive` (fresh `HOME`) | 2026-03-16 | 3fdc5e9 | FAIL | Still crashes: `Template not found: .../.aloop/templates/PROMPT_plan.md` (exit 1). Retested iter 58. |
+| `aloop orchestrate --spec` (nonexistent) | 2026-03-16 | 3fdc5e9 | PARTIAL | Now exits 1 (was 0). But leaks raw stack trace instead of clean error message. |
+| `aloop gh watch` (error handling) | 2026-03-16 | 3fdc5e9 | FAIL | Crashes with raw stack trace. Also: `gh` blocked by PATH hardening even for user-invoked `aloop gh` commands. |
+| `aloop devcontainer` | 2026-03-16 | 3fdc5e9 | FAIL | Crashes: `TypeError: deps.discover is not a function`. `--help` works. |
+| `aloop orchestrate --plan-only` (happy path) | 2026-03-16 | 3fdc5e9 | PASS | Session initialized, state file created, directories set up, plan-only respected. |
