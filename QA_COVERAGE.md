@@ -19,3 +19,9 @@
 | `aloop orchestrate --spec` (nonexistent) | 2026-03-15 | 85719f5 | FAIL | Still initializes session and exits 0 instead of failing with clean error. |
 | Dashboard layout @1920x1080 | 2026-03-15 | 85719f5 | FAIL | Playwright check: `asideVisible=false`, sidebar missing at desktop breakpoint. |
 | Dashboard docs data (`/api/state`) | 2026-03-15 | 44dcff9 | FAIL | `workdir` points to `.../worktree/aloop/cli`; all docs length 0. |
+| `aloop --help` extended commands (`steer`, `orchestrate`, `devcontainer`) | 2026-03-16 | ecb1279 | PASS | Commands visible in help output. |
+| `aloop update` (permissions) | 2026-03-16 | ecb1279 | PASS | `loop.sh` and `aloop` are executable after update (`-rwxr-xr-x`). |
+| `aloop setup --non-interactive` (fresh `HOME`) | 2026-03-16 | ecb1279 | FAIL | Crashes: `Template not found: .../.aloop/templates/PROMPT_plan.md` (exit 1). |
+| `aloop start` with `aloop` absent from `PATH` | 2026-03-16 | ecb1279 | PASS | `PATH=/usr/bin:/bin` still starts session and prints dashboard URL. |
+| Dashboard layout @1920x1080 | 2026-03-16 | ecb1279 | PASS | Playwright metrics: sidebar/docs/activity visible; screenshot captured. |
+| Dashboard docs data (`/api/state`) | 2026-03-16 | ecb1279 | PASS | `workdir` points to worktree root; docs fields non-empty (except empty STEERING.md). |

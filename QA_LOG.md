@@ -1460,3 +1460,335 @@ cat ~/.aloop/health/claude.json
 node aloop/cli/aloop.mjs start --help
 node aloop/cli/aloop.mjs resolve --help
 cd aloop/cli && npm test
+
+## QA Session — 2026-03-16 (iteration 57)
+
+### Test Environment
+- Temp dir: `/tmp/qa-test-clean-20260316-080552`
+- Features tested: 5
+- Commit: `ecb1279`
+
+### Results
+- PASS: `aloop --help` extended commands visibility (`steer`, `orchestrate`, `devcontainer`)
+- PASS: `aloop update` executable permission behavior
+- PASS: `aloop start` with `aloop` absent from `PATH`
+- PASS: Dashboard layout verification at desktop breakpoint (1920×1080)
+- PASS: Dashboard `/api/state` docs/workdir data integrity
+- FAIL: `aloop setup --non-interactive` with fresh `HOME`
+
+### Bugs Filed
+- Existing bug re-tested (still failing): `[qa/P1] aloop setup --non-interactive fails for fresh HOME`
+- No duplicate bug filed.
+
+### Screenshot Evidence
+- `/tmp/qa-test-clean-20260316-080552/dashboard-1920x1080.png`
+- `/tmp/qa-test-clean-20260316-080552/dashboard-1920x1080-verified.png`
+
+### Command Transcript
+```text
+\n$ echo QA_DIR=/tmp/qa-test-clean-20260316-080552
+QA_DIR=/tmp/qa-test-clean-20260316-080552
+[exit=0]
+\n$ git -C /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree rev-parse --short HEAD
+ecb1279
+[exit=0]
+\n$ /home/pj/.aloop/bin/aloop --help | sed -n '1,40p'
+
+Aloop CLI - Agentic Loop Orchestrator
+
+Usage:
+  aloop <command> [options]
+
+Core Commands (no-dependency):
+  resolve     Resolve project workspace and configuration
+  discover    Discover workspace specs, files, and validation commands
+  scaffold    Scaffold project workdir and prompts
+  status      Show all active sessions and provider health
+  active      List active sessions
+  stop <id>   Stop a session by session-id
+
+Extended Commands (requires build):
+  start       Start an aloop session
+  setup       Interactive setup and scaffold
+  update      Refresh ~/.aloop runtime assets from current repo
+  dashboard   Launch real-time progress dashboard
+  steer <msg> Send a steering instruction to an active session
+  orchestrate Decompose spec into issues and dispatch loops
+  devcontainer Generate/verify devcontainer for isolated execution
+  gh          GitHub operations proxy
+
+Options:
+  --project-root <path>  Override project root
+  --home-dir <path>      Override home directory
+  --output <json|text>   Output format (default: text for status/active/stop, json for others)
+  --help                 Show this help
+
+[exit=0]
+\n$ /home/pj/.aloop/bin/aloop --help | grep -E 'steer|orchestrate|devcontainer'
+  steer <msg> Send a steering instruction to an active session
+  orchestrate Decompose spec into issues and dispatch loops
+  devcontainer Generate/verify devcontainer for isolated execution
+[exit=0]
+\n$ ls -l /home/pj/.aloop/bin/aloop /home/pj/.aloop/bin/loop.sh
+-rwxr-xr-x 1 pj pj    60 Mar 16 08:04 /home/pj/.aloop/bin/aloop
+-rw-r--r-- 1 pj pj 73787 Mar 16 08:04 /home/pj/.aloop/bin/loop.sh
+[exit=0]
+\n$ /home/pj/.aloop/bin/aloop update
+Updated ~/.aloop from /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree
+Version: ecb1279 (2026-03-16T07:05:52Z)
+Files updated: 45
+[exit=0]
+\n$ ls -l /home/pj/.aloop/bin/aloop /home/pj/.aloop/bin/loop.sh
+-rwxr-xr-x 1 pj pj    60 Mar 16 08:05 /home/pj/.aloop/bin/aloop
+-rwxr-xr-x 1 pj pj 73787 Mar 16 08:05 /home/pj/.aloop/bin/loop.sh
+[exit=0]
+\n$ mkdir -p '/tmp/qa-test-clean-20260316-080552/proj-setup' '/tmp/qa-test-clean-20260316-080552/fresh-home'
+[exit=0]
+\n$ cd '/tmp/qa-test-clean-20260316-080552/proj-setup' && git init && printf '# Spec\n\nQA setup test.' > SPEC.md && HOME='/tmp/qa-test-clean-20260316-080552/fresh-home' /home/pj/.aloop/bin/aloop setup --non-interactive --spec SPEC.md --providers copilot
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint:
+hint: 	git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint: 	git branch -m <name>
+hint:
+hint: Disable this message with "git config set advice.defaultBranchName false"
+Initialized empty Git repository in /tmp/qa-test-clean-20260316-080552/proj-setup/.git/
+Running setup in non-interactive mode...
+file:///home/pj/.aloop/cli/dist/index.js:3388
+      throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
+            ^
+
+Error: Template not found: /tmp/qa-test-clean-20260316-080552/fresh-home/.aloop/templates/PROMPT_plan.md
+    at Object.scaffoldWorkspace [as scaffold] (file:///home/pj/.aloop/cli/dist/index.js:3388:13)
+    at async setupCommandWithDeps (file:///home/pj/.aloop/cli/dist/index.js:8281:21)
+    at async _Command.setupCommand (file:///home/pj/.aloop/cli/dist/index.js:8353:5)
+
+Node.js v22.22.1
+[exit=1]
+\n$ chmod +x /home/pj/.aloop/bin/loop.sh && ls -l /home/pj/.aloop/bin/loop.sh
+-rwxr-xr-x 1 pj pj 73787 Mar 16 08:05 /home/pj/.aloop/bin/loop.sh
+[exit=0]
+\n$ mkdir -p '/tmp/qa-test-clean-20260316-080552/proj-start' && cd '/tmp/qa-test-clean-20260316-080552/proj-start' && git init && printf '# Spec\n\nQA start test.' > SPEC.md && /home/pj/.aloop/bin/aloop setup --non-interactive --spec SPEC.md --providers copilot
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint:
+hint: 	git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint: 	git branch -m <name>
+hint:
+hint: Disable this message with "git config set advice.defaultBranchName false"
+Initialized empty Git repository in /tmp/qa-test-clean-20260316-080552/proj-start/.git/
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.aloop/projects/6e613a87/config.yml
+[exit=0]
+\n$ cd '/tmp/qa-test-clean-20260316-080552/proj-start' && PATH='/usr/bin:/bin' /home/pj/.aloop/bin/aloop start --provider copilot --max-iterations 1 --in-place
+Aloop loop started!
+
+  Session:  proj-start-20260316-070600
+  Mode:     plan-build-review
+  Launch:   start
+  Provider: copilot
+  Work dir: /tmp/qa-test-clean-20260316-080552/proj-start
+  PID:      2218098
+  Prompts:  /home/pj/.aloop/sessions/proj-start-20260316-070600/prompts
+  Monitor:  dashboard (auto_open=true)
+  Dashboard: http://localhost:40951
+[exit=0]
+\n$ python3 - <<'PY'
+import json,os
+p=os.path.expanduser('~/.aloop/active.json')
+active=json.load(open(p)) if os.path.exists(p) else {}
+print('active_sessions', list(active.keys()))
+print('isolated', [sid for sid,meta in active.items() if '/proj-start' in str(meta.get('work_dir',''))])
+PY
+active_sessions ['ralph-skill-20260314-173930', 'proj-start-20260316-070600']
+isolated ['proj-start-20260316-070600']
+[exit=0]
+\n$ python3 - <<'PY'
+import json,subprocess,os
+p=os.path.expanduser('~/.aloop/active.json')
+active=json.load(open(p)) if os.path.exists(p) else {}
+ids=[sid for sid,meta in active.items() if '/proj-start' in str(meta.get('work_dir',''))]
+for sid in ids:
+  cp=subprocess.run(['/home/pj/.aloop/bin/aloop','stop',sid],capture_output=True,text=True)
+  print('stop',sid,'exit',cp.returncode)
+  print(cp.stdout.strip())
+PY
+stop proj-start-20260316-070600 exit 0
+Stopped session: proj-start-20260316-070600
+[exit=0]
+\n$ npx playwright screenshot --browser chromium http://localhost:4040 '/tmp/qa-test-clean-20260316-080552/dashboard-1920x1080.png'
+Navigating to http://localhost:4040
+Capturing screenshot into /tmp/qa-test-clean-20260316-080552/dashboard-1920x1080.png
+[exit=0]
+\n$ ls -l '/tmp/qa-test-clean-20260316-080552/dashboard-1920x1080.png'
+-rw-r--r-- 1 pj pj 69314 Mar 16 08:06 /tmp/qa-test-clean-20260316-080552/dashboard-1920x1080.png
+[exit=0]
+\n$ curl -sS 'http://localhost:4040' | grep -Eo 'class="[^"]*(sidebar|panel|column|toolbar|docs|activity)[^"]*"' | head -n 20
+[exit=0]
+\n$ curl -sS 'http://localhost:4040/api/state?session=ralph-skill-20260314-173930' > '/tmp/qa-test-clean-20260316-080552/state.json' && python3 - <<'PY'
+import json
+j=json.load(open('/tmp/qa-test-clean-20260316-080552/state.json'))
+print('workdir', j.get('workdir'))
+d=j.get('docs') or {}
+print('doc_keys', sorted(d.keys()))
+for k,v in d.items():
+  print(k, 'len', len(v or ''))
+PY
+workdir /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree
+doc_keys ['RESEARCH.md', 'REVIEW_LOG.md', 'SPEC.md', 'STEERING.md', 'TODO.md']
+TODO.md len 18992
+SPEC.md len 184009
+RESEARCH.md len 13077
+REVIEW_LOG.md len 18960
+STEERING.md len 0
+[exit=0]
+\n$ echo LOG_PATH=/tmp/qa-test-clean-20260316-080552/commands.log
+LOG_PATH=/tmp/qa-test-clean-20260316-080552/commands.log
+[exit=0]
+\n$ echo SCREENSHOT_PATH=/tmp/qa-test-clean-20260316-080552/dashboard-1920x1080.png
+SCREENSHOT_PATH=/tmp/qa-test-clean-20260316-080552/dashboard-1920x1080.png
+[exit=0]
+\n$ cd '/tmp/qa-test-clean-20260316-080552' && npm init -y --silent
+Wrote to /tmp/qa-test-clean-20260316-080552/package.json:
+
+{
+  "name": "qa-test-clean-20260316-080552",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+
+
+
+[exit=0]
+\n$ cd '/tmp/qa-test-clean-20260316-080552' && npm install playwright --silent
+[exit=0]
+\n$ cd '/tmp/qa-test-clean-20260316-080552' && cat > layout-check.mjs <<'SCRIPT'
+import { chromium } from 'playwright';
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+await page.goto('http://localhost:4040', { waitUntil: 'networkidle' });
+await page.screenshot({ path: 'dashboard-1920x1080-verified.png' });
+const metrics = await page.evaluate(() => {
+  const vis = (el) =>             {                 echo ___BEGIN___COMMAND_OUTPUT_MARKER___;                 PS1=;PS2=;unset HISTFILE;                 EC=0;                 echo ___BEGIN___COMMAND_DONE_MARKER___0;             }el &&             {                 echo ___BEGIN___COMMAND_OUTPUT_MARKER___;                 PS1=;PS2=;unset HISTFILE;                 EC=0;                 echo ___BEGIN___COMMAND_DONE_MARKER___0;             }(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  const sidebar = document.querySelector('aside, [data-testid=sidebar], [class*=sidebar]');
+  const docs = document.querySelector('[role=tablist], [class*=docs]');
+  const activity = Array.from(document.querySelectorAll('*')).find(el => /activity/i.test(el.textContent || '') && (el.className || '').toString().toLowerCase().includes('card'));
+  const mainChildren = document.querySelectorAll('main > *, [class*=grid], [class*=layout]');
+  return {
+    title: document.title,
+    sidebarVisible: vis(sidebar),
+    docsVisible: vis(docs),
+    activityLikelyVisible:             {                 echo ___BEGIN___COMMAND_OUTPUT_MARKER___;                 PS1=;PS2=;unset HISTFILE;                 EC=0;                 echo ___BEGIN___COMMAND_DONE_MARKER___0;             }activity,
+    mainChildCount: mainChildren.length,
+    bodyTextChars: (document.body?.innerText || '').length
+  };
+});
+console.log(JSON.stringify(metrics));
+await browser.close();
+SCRIPT
+[exit=0]
+\n$ cd '/tmp/qa-test-clean-20260316-080552' && node layout-check.mjs
+file:///tmp/qa-test-clean-20260316-080552/layout-check.mjs:7
+  const vis = (el) =>             {                 echo ___BEGIN___COMMAND_OUTPUT_MARKER___;                 PS1=;PS2=;unset HISTFILE;                 EC=0;                 echo ___BEGIN___COMMAND_DONE_MARKER___0;             }el &&             {                 echo ___BEGIN___COMMAND_OUTPUT_MARKER___;                 PS1=;PS2=;unset HISTFILE;                 EC=0;                 echo ___BEGIN___COMMAND_DONE_MARKER___0;             }(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+SyntaxError: Unexpected identifier '___BEGIN___COMMAND_OUTPUT_MARKER___'
+    at compileSourceTextModule (node:internal/modules/esm/utils:346:16)
+    at ModuleLoader.moduleStrategy (node:internal/modules/esm/translators:107:18)
+    at #translate (node:internal/modules/esm/loader:546:20)
+    at afterLoad (node:internal/modules/esm/loader:596:29)
+    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:601:12)
+    at #createModuleJob (node:internal/modules/esm/loader:624:36)
+    at #getJobFromResolveResult (node:internal/modules/esm/loader:343:34)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:311:41)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:664:25)
+
+Node.js v22.22.1
+[exit=1]
+\n$ ls -l '/tmp/qa-test-clean-20260316-080552/dashboard-1920x1080-verified.png'
+ls: cannot access '/tmp/qa-test-clean-20260316-080552/dashboard-1920x1080-verified.png': No such file or directory
+[exit=2]
+\n$ cd '/tmp/qa-test-clean-20260316-080552' && cat > layout-check-fixed.mjs <<'SCRIPT'
+import { chromium } from 'playwright';
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+await page.goto('http://localhost:4040', { waitUntil: 'networkidle' });
+await page.screenshot({ path: 'dashboard-1920x1080-verified.png' });
+const metrics = await page.evaluate(() => {
+  const vis = (el) => Boolean(el) && Boolean(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  const sidebar = document.querySelector('aside, [data-testid=sidebar], [class*=sidebar]');
+  const docs = document.querySelector('[role=tablist], [class*=docs]');
+  const text = (document.body?.innerText || '').toLowerCase();
+  const hasActivityWord = text.includes('activity');
+  const hasDocsWord = text.includes('todo.md') || text.includes('spec.md');
+  const topGroups = document.querySelectorAll('main > *').length;
+  return { title: document.title, sidebarVisible: vis(sidebar), docsVisible: vis(docs), hasActivityWord, hasDocsWord, topGroups, bodyTextChars: text.length };
+});
+console.log(JSON.stringify(metrics));
+await browser.close();
+SCRIPT
+[exit=0]
+\n$ cd '/tmp/qa-test-clean-20260316-080552' && node layout-check-fixed.mjs
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.goto: Timeout 30000ms exceeded.
+Call log:
+[2m  - navigating to "http://localhost:4040/", waiting until "networkidle"[22m
+
+    at /tmp/qa-test-clean-20260316-080552/layout-check-fixed.mjs:4:12 {
+  name: 'TimeoutError'
+}
+
+Node.js v22.22.1
+[exit=1]
+\n$ ls -l '/tmp/qa-test-clean-20260316-080552/dashboard-1920x1080-verified.png'
+ls: cannot access '/tmp/qa-test-clean-20260316-080552/dashboard-1920x1080-verified.png': No such file or directory
+[exit=2]
+\n$ cd '/tmp/qa-test-clean-20260316-080552' && cat > layout-check-fixed.mjs <<'SCRIPT'
+import { chromium } from 'playwright';
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+await page.goto('http://localhost:4040', { waitUntil: 'domcontentloaded' });
+await page.waitForTimeout(2000);
+await page.screenshot({ path: 'dashboard-1920x1080-verified.png' });
+const metrics = await page.evaluate(() => {
+  const vis = (el) => Boolean(el) && Boolean(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  const sidebar = document.querySelector('aside, [data-testid=sidebar], [class*=sidebar]');
+  const docs = document.querySelector('[role=tablist], [class*=docs]');
+  const text = (document.body?.innerText || '').toLowerCase();
+  const hasActivityWord = text.includes('activity');
+  const hasDocsWord = text.includes('todo.md') || text.includes('spec.md');
+  const topGroups = document.querySelectorAll('main > *').length;
+  return { title: document.title, sidebarVisible: vis(sidebar), docsVisible: vis(docs), hasActivityWord, hasDocsWord, topGroups, bodyTextChars: text.length };
+});
+console.log(JSON.stringify(metrics));
+await browser.close();
+SCRIPT
+[exit=0]
+\n$ cd '/tmp/qa-test-clean-20260316-080552' && node layout-check-fixed.mjs
+{"title":"Aloop Dashboard","sidebarVisible":true,"docsVisible":true,"hasActivityWord":true,"hasDocsWord":false,"topGroups":1,"bodyTextChars":624}
+[exit=0]
+\n$ ls -l '/tmp/qa-test-clean-20260316-080552/dashboard-1920x1080-verified.png'
+-rw-r--r-- 1 pj pj 76824 Mar 16 08:07 /tmp/qa-test-clean-20260316-080552/dashboard-1920x1080-verified.png
+[exit=0]
+```
+
