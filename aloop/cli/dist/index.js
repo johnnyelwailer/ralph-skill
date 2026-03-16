@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { createRequire } from 'module'; const require = createRequire(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -3088,10 +3089,11 @@ var {
 // lib/project.mjs
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile, copyFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 function getHomeDir(explicit) {
   return path.resolve(explicit ?? os.homedir()).replace(/[\\\/]+$/, "");
 }
@@ -3363,6 +3365,33 @@ function resolveProviderHints(provider) {
     return "- Round-robin hint: Keep context handoff explicit in TODO.md and REVIEW_LOG.md between providers.";
   return "";
 }
+var INCLUDE_DIRECTIVE_PATTERN = /\{\{include:([^}]+)\}\}/g;
+async function expandTemplateIncludes(content, templatesDir, seenIncludes = []) {
+  const directives = [...content.matchAll(INCLUDE_DIRECTIVE_PATTERN)];
+  if (directives.length === 0) {
+    return content;
+  }
+  let expanded = content;
+  for (const directive of directives) {
+    const rawPath = directive[1].trim();
+    const includePath = path.resolve(templatesDir, rawPath);
+    const relativePath = path.relative(templatesDir, includePath);
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+      throw new Error(`Include path escapes templates directory: ${rawPath}`);
+    }
+    if (seenIncludes.includes(includePath)) {
+      const cycle = [...seenIncludes, includePath].map((entry) => path.relative(templatesDir, entry)).join(" -> ");
+      throw new Error(`Circular include detected: ${cycle}`);
+    }
+    if (!existsSync(includePath)) {
+      throw new Error(`Included template not found: ${includePath}`);
+    }
+    const includeContent = await readFile(includePath, "utf8");
+    const nested = await expandTemplateIncludes(includeContent, templatesDir, [...seenIncludes, includePath]);
+    expanded = expanded.replace(directive[0], nested);
+  }
+  return expanded;
+}
 async function scaffoldWorkspace(options = {}) {
   const discovery = await discoverWorkspace(options);
   const provider = options.provider ?? discovery.providers.default_provider;
@@ -3383,7 +3412,33 @@ async function scaffoldWorkspace(options = {}) {
   const autonomyLevel = normalizeAutonomyLevel(options.autonomyLevel);
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
   const promptsDir = path.join(discovery.setup.project_dir, "prompts");
-  for (const file of ["PROMPT_plan.md", "PROMPT_build.md", "PROMPT_review.md", "PROMPT_steer.md", "PROMPT_proof.md", "PROMPT_qa.md"]) {
+  const requiredTemplates = ["PROMPT_plan.md", "PROMPT_build.md", "PROMPT_review.md", "PROMPT_steer.md", "PROMPT_proof.md", "PROMPT_qa.md"];
+  const templatesMissing = requiredTemplates.some((f) => !existsSync(path.join(templatesDir, f)));
+  if (templatesMissing && !options.templatesDir) {
+    const thisDir = path.dirname(fileURLToPath(import.meta.url));
+    const bundledTemplatesDir = path.resolve(thisDir, "..", "..", "templates");
+    if (existsSync(bundledTemplatesDir) && requiredTemplates.every((f) => existsSync(path.join(bundledTemplatesDir, f)))) {
+      await mkdir(templatesDir, { recursive: true });
+      const entries = await readdir(bundledTemplatesDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile()) {
+          await copyFile(path.join(bundledTemplatesDir, entry.name), path.join(templatesDir, entry.name));
+        } else if (entry.isDirectory()) {
+          const subSrc = path.join(bundledTemplatesDir, entry.name);
+          const subDest = path.join(templatesDir, entry.name);
+          await mkdir(subDest, { recursive: true });
+          const subEntries = await readdir(subSrc);
+          for (const subFile of subEntries) {
+            const subStat = await stat(path.join(subSrc, subFile));
+            if (subStat.isFile()) {
+              await copyFile(path.join(subSrc, subFile), path.join(subDest, subFile));
+            }
+          }
+        }
+      }
+    }
+  }
+  for (const file of requiredTemplates) {
     if (!existsSync(path.join(templatesDir, file))) {
       throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
     }
@@ -3433,6 +3488,7 @@ async function scaffoldWorkspace(options = {}) {
     const templatePath = path.join(templatesDir, fileName);
     const destinationPath = path.join(promptsDir, fileName);
     let content = await readFile(templatePath, "utf8");
+    content = await expandTemplateIncludes(content, templatesDir);
     for (const [key, value] of Object.entries(replacements)) {
       content = content.replaceAll(key, value);
     }
@@ -5577,6 +5633,7 @@ var DEFAULT_AGENT_PROMPT = {
   plan: "PROMPT_plan.md",
   build: "PROMPT_build.md",
   proof: "PROMPT_proof.md",
+  qa: "PROMPT_qa.md",
   review: "PROMPT_review.md",
   steer: "PROMPT_steer.md"
 };
@@ -5584,6 +5641,7 @@ var DEFAULT_REASONING = {
   plan: "high",
   build: "medium",
   proof: "medium",
+  qa: "medium",
   review: "high",
   steer: "medium"
 };
@@ -5663,7 +5721,9 @@ async function buildCycleForMode(mode, projectRoot, deps) {
         await getEntry("build"),
         await getEntry("build"),
         await getEntry("build"),
-        await getEntry("proof"),
+        await getEntry("build"),
+        await getEntry("build"),
+        await getEntry("qa"),
         await getEntry("review")
       ];
   }
@@ -5719,7 +5779,7 @@ async function buildRoundRobinCycle(mode, roundRobinOrder, promptsDir, projectRo
     cycle.push({ filename, agent: "build" });
   }
   cycle.push(
-    { filename: "PROMPT_proof.md", agent: "proof" },
+    { filename: "PROMPT_qa.md", agent: "qa" },
     { filename: "PROMPT_review.md", agent: "review" }
   );
   return cycle;
@@ -6683,9 +6743,77 @@ async function startCommand(sessionIdArg, options = {}) {
 
 // src/commands/gh.ts
 var execFileAsync = promisify(execFile);
+var GH_PATH_HARDENING_BLOCK_MESSAGE = "blocked by aloop PATH hardening";
+function extractErrorMessage(error) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return String(error);
+}
+function extractGhCliError(error) {
+  if (error && typeof error === "object") {
+    const maybeStderr = error.stderr;
+    if (typeof maybeStderr === "string" && maybeStderr.trim()) {
+      return maybeStderr.trim();
+    }
+  }
+  return extractErrorMessage(error);
+}
+function isPathHardeningBlockedError(error) {
+  const message = extractErrorMessage(error).toLowerCase();
+  const stderr = extractGhCliError(error).toLowerCase();
+  return message.includes(GH_PATH_HARDENING_BLOCK_MESSAGE) || stderr.includes(GH_PATH_HARDENING_BLOCK_MESSAGE);
+}
+function getGhBinaryCandidateNames(platform) {
+  if (platform === "win32") {
+    return ["gh.exe", "gh.cmd", "gh.bat", "gh"];
+  }
+  return ["gh"];
+}
+function selectUsableGhBinary(pathValue, platform = process.platform) {
+  if (!pathValue.trim()) {
+    return null;
+  }
+  const candidates = getGhBinaryCandidateNames(platform);
+  const pathEntries = pathValue.split(path10.delimiter).map((entry) => entry.trim()).filter(Boolean);
+  for (const entry of pathEntries) {
+    for (const candidateName of candidates) {
+      const fullPath = path10.join(entry, candidateName);
+      if (!fs5.existsSync(fullPath)) {
+        continue;
+      }
+      const stats = fs5.statSync(fullPath);
+      if (!stats.isFile()) {
+        continue;
+      }
+      if (stats.size <= 1024) {
+        try {
+          const contents = fs5.readFileSync(fullPath, "utf8");
+          if (contents.includes(GH_PATH_HARDENING_BLOCK_MESSAGE)) {
+            continue;
+          }
+        } catch {
+        }
+      }
+      return fullPath;
+    }
+  }
+  return null;
+}
 var ghExecutor = {
   async exec(args) {
-    return execFileAsync("gh", args);
+    try {
+      return await execFileAsync("gh", args);
+    } catch (error) {
+      if (!isPathHardeningBlockedError(error)) {
+        throw error;
+      }
+      const fallbackBinary = selectUsableGhBinary(process.env.PATH ?? "");
+      if (!fallbackBinary) {
+        throw error;
+      }
+      return execFileAsync(fallbackBinary, args);
+    }
   }
 };
 var ghCommand = new Command("gh").description("Policy-enforced GitHub operations");
@@ -6953,8 +7081,12 @@ async function fetchMatchingIssues(options) {
   if (typeof options.repo === "string" && options.repo.trim()) {
     args.push("--repo", options.repo.trim());
   }
-  const response = await ghExecutor.exec(args);
-  return parseGhIssueList(response.stdout);
+  try {
+    const response = await ghExecutor.exec(args);
+    return parseGhIssueList(response.stdout);
+  } catch (error) {
+    throw new Error(`gh issue list failed: ${extractGhCliError(error)}`);
+  }
 }
 async function launchTrackedIssue(issueNumber, options, state) {
   const result = await ghLoopRuntime.startIssue({
@@ -7448,6 +7580,15 @@ async function ghWatchCommand(options) {
     process.off("SIGTERM", markStopping);
   }
 }
+function failGhWatch(outputMode, error) {
+  const message = `gh watch failed: ${extractGhCliError(error)}`;
+  if (outputMode === "json") {
+    console.log(JSON.stringify({ success: false, error: message }));
+  } else {
+    console.error(message);
+  }
+  return process.exit(1);
+}
 function formatGhStatusRows(state, sessionsById) {
   const entries = Object.values(state.issues).sort((a, b) => a.issue_number - b.issue_number);
   if (entries.length === 0) {
@@ -7558,7 +7699,12 @@ ghCommand.command("start").description("Start a GitHub-linked aloop session for 
   }
 });
 ghCommand.command("watch").description("Monitor matching issues and start GH-linked loops with queueing").option("--label <label...>", "Issue labels to match (default: aloop)").option("--assignee <assignee>", "Only include issues assigned to this user").option("--milestone <milestone>", "Only include issues in this milestone").option("--max-concurrent <number>", "Max running GH-linked loops", String(GH_WATCH_DEFAULT_MAX_CONCURRENT)).option("--interval <seconds>", "Polling interval in seconds", String(GH_WATCH_DEFAULT_INTERVAL_SECONDS)).option("--repo <owner/repo>", "Explicit GitHub repository (default: current)").option("--provider <provider>", "Provider override for spawned loops").option("--max <number>", "Max iteration override for spawned loops").option("--project-root <path>", "Project root override for spawned loops").option("--home-dir <path>", "Home directory override").option("--once", "Run a single poll cycle and exit").option("--output <mode>", "Output format: json or text", "text").action(async (options) => {
-  await ghWatchCommand(options);
+  const outputMode = options.output ?? "text";
+  try {
+    await ghWatchCommand(options);
+  } catch (error) {
+    failGhWatch(outputMode, error);
+  }
 });
 ghCommand.command("status").description("Show GH-linked issue/session/PR state from watch tracking").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(async (options) => {
   await ghStatusCommand(options);
@@ -9442,6 +9588,10 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const aloopRoot = path13.join(homeDir, ".aloop");
   const sessionsRoot = path13.join(aloopRoot, "sessions");
   const specFile = options.spec ?? "SPEC.md";
+  const specPath = path13.resolve(specFile);
+  if (!deps.existsSync(specPath)) {
+    throw new Error(`Spec file not found: ${specPath}`);
+  }
   const trunkBranch = options.trunk ?? "agent/trunk";
   const concurrencyCap = parseConcurrency(options.concurrency);
   const filterIssues = parseIssueNumbers(options.issues);
@@ -9546,8 +9696,8 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   }
   if (!options.plan && state.issues.length === 0) {
     await createEpicDecompositionRequest(specFile, requestsDir, { writeFile: deps.writeFile, now: deps.now });
-    const specPath = path13.resolve(specFile);
-    const specContent = deps.existsSync(specPath) ? await deps.readFile(specPath, "utf8") : "";
+    const specPath2 = path13.resolve(specFile);
+    const specContent = deps.existsSync(specPath2) ? await deps.readFile(specPath2, "utf8") : "";
     await queueEpicDecomposition(specFile, specContent, queueDir, decomposePrompt, { writeFile: deps.writeFile });
   }
   const subDecompositionResultsFile = path13.join(requestsDir, "sub-decomposition-results.json");
@@ -9572,8 +9722,8 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const gapAnalysisTargets = state.issues.filter((issue) => issue.status === "Needs analysis");
   if (gapAnalysisTargets.length > 0) {
     await createGapAnalysisRequests(state.issues, requestsDir, deps);
-    const specPath = path13.resolve(specFile);
-    const specContent = deps.existsSync(specPath) ? await deps.readFile(specPath, "utf8") : "";
+    const specPath2 = path13.resolve(specFile);
+    const specContent = deps.existsSync(specPath2) ? await deps.readFile(specPath2, "utf8") : "";
     await queueGapAnalysisForIssues(
       state.issues,
       queueDir,

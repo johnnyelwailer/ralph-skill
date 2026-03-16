@@ -8,11 +8,90 @@ import { startCommandWithDeps, type StartCommandOptions, type StartCommandResult
 import { listActiveSessions, resolveHomeDir, stopSession, type SessionInfo } from './session.js';
 
 const execFileAsync = promisify(execFile);
+const GH_PATH_HARDENING_BLOCK_MESSAGE = 'blocked by aloop PATH hardening';
+
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return String(error);
+}
+
+function extractGhCliError(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const maybeStderr = (error as { stderr?: unknown }).stderr;
+    if (typeof maybeStderr === 'string' && maybeStderr.trim()) {
+      return maybeStderr.trim();
+    }
+  }
+  return extractErrorMessage(error);
+}
+
+function isPathHardeningBlockedError(error: unknown): boolean {
+  const message = extractErrorMessage(error).toLowerCase();
+  const stderr = extractGhCliError(error).toLowerCase();
+  return message.includes(GH_PATH_HARDENING_BLOCK_MESSAGE) || stderr.includes(GH_PATH_HARDENING_BLOCK_MESSAGE);
+}
+
+function getGhBinaryCandidateNames(platform: NodeJS.Platform): string[] {
+  if (platform === 'win32') {
+    return ['gh.exe', 'gh.cmd', 'gh.bat', 'gh'];
+  }
+  return ['gh'];
+}
+
+export function selectUsableGhBinary(pathValue: string, platform: NodeJS.Platform = process.platform): string | null {
+  if (!pathValue.trim()) {
+    return null;
+  }
+  const candidates = getGhBinaryCandidateNames(platform);
+  const pathEntries = pathValue
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  for (const entry of pathEntries) {
+    for (const candidateName of candidates) {
+      const fullPath = path.join(entry, candidateName);
+      if (!fs.existsSync(fullPath)) {
+        continue;
+      }
+      const stats = fs.statSync(fullPath);
+      if (!stats.isFile()) {
+        continue;
+      }
+      if (stats.size <= 1024) {
+        try {
+          const contents = fs.readFileSync(fullPath, 'utf8');
+          if (contents.includes(GH_PATH_HARDENING_BLOCK_MESSAGE)) {
+            continue;
+          }
+        } catch {
+          // Ignore unreadable candidate and continue scanning for a real gh binary.
+        }
+      }
+      return fullPath;
+    }
+  }
+
+  return null;
+}
 
 // Exported for test mocking — all gh CLI execution goes through this object
 export const ghExecutor = {
   async exec(args: string[]): Promise<{ stdout: string; stderr: string }> {
-    return execFileAsync('gh', args);
+    try {
+      return await execFileAsync('gh', args);
+    } catch (error) {
+      if (!isPathHardeningBlockedError(error)) {
+        throw error;
+      }
+      const fallbackBinary = selectUsableGhBinary(process.env.PATH ?? '');
+      if (!fallbackBinary) {
+        throw error;
+      }
+      return execFileAsync(fallbackBinary, args);
+    }
   }
 };
 
@@ -452,8 +531,12 @@ async function fetchMatchingIssues(options: GhWatchCommandOptions): Promise<GhWa
     args.push('--repo', options.repo.trim());
   }
 
-  const response = await ghExecutor.exec(args);
-  return parseGhIssueList(response.stdout);
+  try {
+    const response = await ghExecutor.exec(args);
+    return parseGhIssueList(response.stdout);
+  } catch (error) {
+    throw new Error(`gh issue list failed: ${extractGhCliError(error)}`);
+  }
 }
 
 async function launchTrackedIssue(issueNumber: number, options: GhWatchCommandOptions, state: GhWatchState): Promise<GhWatchIssueEntry> {
@@ -1072,6 +1155,16 @@ async function ghWatchCommand(options: GhWatchCommandOptions): Promise<void> {
   }
 }
 
+function failGhWatch(outputMode: GhOutputMode, error: unknown): never {
+  const message = `gh watch failed: ${extractGhCliError(error)}`;
+  if (outputMode === 'json') {
+    console.log(JSON.stringify({ success: false, error: message }));
+  } else {
+    console.error(message);
+  }
+  return process.exit(1) as never;
+}
+
 function formatGhStatusRows(state: GhWatchState, sessionsById: Map<string, SessionInfo>): string {
   const entries = Object.values(state.issues).sort((a, b) => a.issue_number - b.issue_number);
   if (entries.length === 0) {
@@ -1244,7 +1337,12 @@ ghCommand
   .option('--once', 'Run a single poll cycle and exit')
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(async (options: GhWatchCommandOptions) => {
-    await ghWatchCommand(options);
+    const outputMode = options.output ?? 'text';
+    try {
+      await ghWatchCommand(options);
+    } catch (error) {
+      failGhWatch(outputMode, error);
+    }
   });
 
 ghCommand

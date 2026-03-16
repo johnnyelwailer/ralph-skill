@@ -30,6 +30,7 @@ import {
   runGhWatchCycle,
   ghWatchCommand,
   ghStatusCommand,
+  selectUsableGhBinary,
   includesAloopTrackingLabel,
   buildGhArgs,
   parseGhOutput,
@@ -1910,6 +1911,37 @@ test('gh watch --once starts up to max-concurrent and queues remaining issues', 
   }
 });
 
+test('gh watch --once reports a clean error and exits when gh issue listing fails', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-watch-fail-'));
+  const output: string[] = [];
+  const errors: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => {
+    output.push(String(line ?? ''));
+  });
+  t.mock.method(console, 'error', (line?: unknown) => {
+    errors.push(String(line ?? ''));
+  });
+  t.mock.method(process, 'exit', ((code?: number) => {
+    throw new Error(`process.exit:${String(code ?? '')}`);
+  }) as typeof process.exit);
+  t.mock.method(ghExecutor, 'exec', async () => {
+    throw Object.assign(new Error('Command failed: gh issue list --state open'), {
+      stderr: 'gh: blocked by aloop PATH hardening\n',
+    });
+  });
+
+  try {
+    await assert.rejects(
+      () => ghCommand.parseAsync(['watch', '--once', '--home-dir', tmpHome], { from: 'user' }),
+      /process\.exit:1/,
+    );
+    const combined = [...output, ...errors].join('\n');
+    assert.match(combined, /gh watch failed: gh issue list failed: gh: blocked by aloop PATH hardening/i);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 // --- PR Feedback Loop Tests ---
 
 function buildWatchEntry(overrides: Partial<{
@@ -2679,6 +2711,29 @@ test('fetchMatchingIssues applies filters and keeps valid issues only', async (t
   assert.ok(seenArgs.includes('--assignee'));
   assert.ok(seenArgs.includes('--milestone'));
   assert.ok(seenArgs.includes('--repo'));
+});
+
+test('selectUsableGhBinary skips PATH-hardening shim and picks next gh candidate', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-bin-'));
+  const blockedDir = path.join(root, 'blocked');
+  const realDir = path.join(root, 'real');
+  fs.mkdirSync(blockedDir, { recursive: true });
+  fs.mkdirSync(realDir, { recursive: true });
+
+  const blockedPath = path.join(blockedDir, 'gh');
+  fs.writeFileSync(blockedPath, '#!/bin/sh\necho "gh: blocked by aloop PATH hardening" >&2\nexit 127\n', 'utf8');
+  fs.chmodSync(blockedPath, 0o755);
+
+  const realPath = path.join(realDir, 'gh');
+  fs.writeFileSync(realPath, '#!/bin/sh\necho "gh version test"\n', 'utf8');
+  fs.chmodSync(realPath, 0o755);
+
+  try {
+    const selected = selectUsableGhBinary(`${blockedDir}${path.delimiter}${realDir}`, 'linux');
+    assert.equal(selected, realPath);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('fetchPrReviewComments and fetchPrIssueComments normalize malformed API results', async (t) => {
