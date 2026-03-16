@@ -36,6 +36,7 @@ Extended Commands (requires build):
   start       Start an aloop session
   setup       Interactive setup and scaffold
   dashboard   Launch real-time progress dashboard
+  steer <msg> Send a steering instruction to an active session
   gh          GitHub operations proxy
 
 Options:
