@@ -2617,3 +2617,208 @@ $ node $QA_ROOT/dashboard-check.mjs
 {"sidebarVisible":true,"docsVisible":true,"activityVisible":true,"panelGuess":6,"title":"Aloop Dashboard"}
 [exit 0]
 ```
+
+## QA Session — 2026-03-16 (iteration current)
+
+### Test Environment
+- Temp dir: /tmp/qa-test-tHy3HC
+- Binary under test: /tmp/aloop-test-install-fpgcDU/bin/aloop
+- Binary version: 1.0.0
+- Fresh HOME: /tmp/qa-home-WUFOfr
+- Commit: ee79af0
+- Features tested: 5
+
+### Results
+- PASS: `aloop devcontainer`, `aloop gh watch --repo octo-org/does-not-exist` (clean unauthenticated error path, no PATH-hardening block)
+- FAIL: `aloop scaffold` (fresh HOME), `aloop setup --non-interactive --mode loop` (fresh HOME), `aloop dashboard --port 4141` layout/asset resolution
+
+### Bugs Filed
+- [qa/P1] Packaged install template bootstrap still broken (scaffold/setup missing PROMPT_plan.md)
+- [qa/P1] `aloop dashboard` packaged-install asset resolution broken in fresh project
+
+### Screenshots
+- `/home/pj/.copilot/session-state/1ec638f6-276a-40c8-8066-dad24123da7e/files/qa-20260316-154235/dashboard-1920x1080.png`
+
+### Command Transcript
+```
+$ git --no-pager rev-parse --short HEAD
+ee79af0
+[exit:0]
+
+$ echo Binary under test: /tmp/aloop-test-install-fpgcDU/bin/aloop
+Binary under test: /tmp/aloop-test-install-fpgcDU/bin/aloop
+[exit:0]
+
+$ /tmp/aloop-test-install-fpgcDU/bin/aloop --version
+1.0.0
+[exit:0]
+
+$ mkdir -p /tmp/qa-test-tHy3HC/project && cd /tmp/qa-test-tHy3HC/project && git init -q && git config user.email qa@example.com && git config user.name qa && pwd
+/tmp/qa-test-tHy3HC/project
+[exit:0]
+
+$ cd /tmp/qa-test-tHy3HC/project && cat > SPEC.md <<'EOF'\n# Test Spec\n\n## Goals\n- Validate aloop CLI QA behaviors\nEOF
+bash: warning: here-document at line 1 delimited by end-of-file (wanted `EOFn#')
+cat: Test: No such file or directory (os error 2)
+cat: Specnn##: No such file or directory (os error 2)
+cat: Goalsn-: No such file or directory (os error 2)
+cat: Validate: No such file or directory (os error 2)
+cat: aloop: No such file or directory (os error 2)
+cat: CLI: No such file or directory (os error 2)
+cat: QA: No such file or directory (os error 2)
+cat: behaviorsnEOF: No such file or directory (os error 2)
+[exit:8]
+
+$ cd /tmp/qa-test-tHy3HC/project && HOME=/tmp/qa-home-WUFOfr /tmp/aloop-test-install-fpgcDU/bin/aloop scaffold
+file:///tmp/aloop-test-install-fpgcDU/lib/node_modules/aloop-cli/dist/index.js:3475
+      throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
+            ^
+
+Error: Template not found: /tmp/qa-home-WUFOfr/.aloop/templates/PROMPT_plan.md
+    at scaffoldWorkspace (file:///tmp/aloop-test-install-fpgcDU/lib/node_modules/aloop-cli/dist/index.js:3475:13)
+    at async _Command.scaffoldCommand (file:///tmp/aloop-test-install-fpgcDU/lib/node_modules/aloop-cli/dist/index.js:3584:18)
+
+Node.js v22.22.1
+[exit:1]
+
+$ cd /tmp/qa-test-tHy3HC/project && HOME=/tmp/qa-home-WUFOfr /tmp/aloop-test-install-fpgcDU/bin/aloop setup --non-interactive --mode loop
+Running setup in non-interactive mode...
+file:///tmp/aloop-test-install-fpgcDU/lib/node_modules/aloop-cli/dist/index.js:3475
+      throw new Error(`Template not found: ${path.join(templatesDir, file)}`);
+            ^
+
+Error: Template not found: /tmp/qa-home-WUFOfr/.aloop/templates/PROMPT_plan.md
+    at Object.scaffoldWorkspace [as scaffold] (file:///tmp/aloop-test-install-fpgcDU/lib/node_modules/aloop-cli/dist/index.js:3475:13)
+    at async setupCommandWithDeps (file:///tmp/aloop-test-install-fpgcDU/lib/node_modules/aloop-cli/dist/index.js:8545:21)
+    at async _Command.setupCommand (file:///tmp/aloop-test-install-fpgcDU/lib/node_modules/aloop-cli/dist/index.js:8625:5)
+
+Node.js v22.22.1
+[exit:1]
+
+$ cd /tmp/qa-test-tHy3HC/project && HOME=/tmp/qa-home-WUFOfr /tmp/aloop-test-install-fpgcDU/bin/aloop devcontainer
+Created devcontainer config at /tmp/qa-test-tHy3HC/project/.devcontainer/devcontainer.json
+  Language: other
+  Image: mcr.microsoft.com/devcontainers/base:ubuntu
+  Post-create: npm install -g @anthropic-ai/claude-code && npm install -g @openai/codex && npm install -g @google/gemini-cli
+
+Next steps:
+  1. Review .devcontainer/devcontainer.json
+  2. Run `devcontainer build --workspace-folder .` to verify
+  3. Start a loop with `aloop start` — container will be used automatically
+[exit:0]
+
+$ cd /tmp/qa-test-tHy3HC/project && HOME=/tmp/qa-home-WUFOfr /tmp/aloop-test-install-fpgcDU/bin/aloop gh watch --repo octo-org/does-not-exist
+gh watch failed: gh issue list failed: To get started with GitHub CLI, please run:  gh auth login
+Alternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.
+[exit:1]
+
+$ cd /tmp/qa-test-tHy3HC/project && HOME=/tmp/qa-home-WUFOfr /tmp/aloop-test-install-fpgcDU/bin/aloop start --provider claude --max-iterations 1
+file:///tmp/aloop-test-install-fpgcDU/lib/node_modules/aloop-cli/dist/index.js:6343
+    throw new Error("No Aloop configuration found for this project. Run `aloop setup` first.");
+          ^
+
+Error: No Aloop configuration found for this project. Run `aloop setup` first.
+    at startCommandWithDeps (file:///tmp/aloop-test-install-fpgcDU/lib/node_modules/aloop-cli/dist/index.js:6343:11)
+    at async _Command.startCommand (file:///tmp/aloop-test-install-fpgcDU/lib/node_modules/aloop-cli/dist/index.js:6739:18)
+
+Node.js v22.22.1
+[exit:1]
+
+$ npx --yes playwright install chromium
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║ WARNING: It looks like you are running 'npx playwright install' without first ║
+║ installing your project's dependencies.                                       ║
+║                                                                               ║
+║ To avoid unexpected behavior, please install your dependencies first, and     ║
+║ then run Playwright's install command:                                        ║
+║                                                                               ║
+║     npm install                                                               ║
+║     npx playwright install                                                    ║
+║                                                                               ║
+║ If your project does not yet depend on Playwright, first install the          ║
+║ applicable npm package (most commonly @playwright/test), and                  ║
+║ then run Playwright's install command to download the browsers:               ║
+║                                                                               ║
+║     npm install @playwright/test                                              ║
+║     npx playwright install                                                    ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+[exit:0]
+
+$ npx --yes playwright screenshot --browser chromium --viewport-size=1920,1080 http://localhost:4141 /tmp/qa-test-tHy3HC/dashboard-1920x1080.png
+Navigating to http://localhost:4141
+Capturing screenshot into /tmp/qa-test-tHy3HC/dashboard-1920x1080.png
+[exit:0]
+
+$ node /tmp/qa-test-tHy3HC/layout-check.mjs
+node:internal/modules/package_json_reader:314
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'playwright' imported from /tmp/qa-test-tHy3HC/layout-check.mjs
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:314:9)
+    at packageResolve (node:internal/modules/esm/resolve:768:81)
+    at moduleResolve (node:internal/modules/esm/resolve:855:18)
+    at defaultResolve (node:internal/modules/esm/resolve:985:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:731:20)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:708:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:310:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v22.22.1
+[exit:1]
+
+$ npx --yes -p playwright node /tmp/qa-test-tHy3HC/layout-check-inline.mjs
+node:internal/modules/package_json_reader:314
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'playwright' imported from /tmp/qa-test-tHy3HC/layout-check-inline.mjs
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:314:9)
+    at packageResolve (node:internal/modules/esm/resolve:768:81)
+    at moduleResolve (node:internal/modules/esm/resolve:855:18)
+    at defaultResolve (node:internal/modules/esm/resolve:985:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:731:20)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:708:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:310:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v22.22.1
+[exit:1]
+
+$ curl -s http://localhost:4141 | grep -Eio 'panel|sidebar|activity|docs' | wc -l
+0
+[exit:0]
+
+$ cd /tmp/qa-test-tHy3HC && npm init -y >/dev/null 2>&1 && echo npm-init-done
+npm-init-done
+[exit:0]
+
+$ cd /tmp/qa-test-tHy3HC && npm install playwright >/dev/null 2>&1 && echo playwright-install-done
+playwright-install-done
+[exit:0]
+
+$ cd /tmp/qa-test-tHy3HC && node layout-check-inline.mjs
+{"visiblePanels":0,"sessionsVisible":false,"docsVisible":false,"activityVisible":false,"textLen":90}
+[exit:0]
+
+$ curl -si http://localhost:4141 | sed -n '1,20p'
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Date: Mon, 16 Mar 2026 15:46:13 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+<!doctype html><html><body><h1>Aloop Dashboard</h1><p>Dashboard assets not found at <code>/tmp/qa-test-tHy3HC/project/dashboard/dist</code>.</p></body></html>
+[exit:0]
+
+
+```
