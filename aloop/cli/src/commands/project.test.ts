@@ -5,7 +5,7 @@ import os from 'node:os';
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { discoverWorkspace, scaffoldWorkspace } from './project.js';
+import { discoverWorkspace, resolveBundledTemplatesDir, scaffoldWorkspace } from './project.js';
 
 test('discoverWorkspace resolves project details and language signals', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-discover-'));
@@ -311,6 +311,27 @@ test('scaffoldWorkspace bootstraps templates from bundled source for fresh HOME'
   // Verify scaffold completed successfully
   assert.ok(result.config_path);
   assert.ok(result.prompts_dir);
+});
+
+test('resolveBundledTemplatesDir resolves templates from parent levels in packaged dist layouts', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-templates-resolve-'));
+  const fakeModuleDir = path.join(tempRoot, 'lib', 'node_modules', 'aloop-cli', 'dist');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(fakeModuleDir, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  for (const tmpl of requiredTemplates) {
+    await writeFile(path.join(templatesDir, tmpl), `Template ${tmpl}`, 'utf8');
+  }
+
+  const resolved = resolveBundledTemplatesDir(requiredTemplates, {
+    moduleDir: fakeModuleDir,
+    argv1: path.join(fakeModuleDir, 'index.js'),
+    cwd: tempRoot,
+  });
+
+  assert.equal(resolved, templatesDir);
 });
 
 test('scaffoldWorkspace skips bootstrap when explicit templatesDir is provided', async () => {

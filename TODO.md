@@ -20,8 +20,9 @@ The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> 
 
 ### Up Next — P1 Hardening (After Core)
 - [x] [gh/P1] CI/GitHub Actions integration hardening — enforce CI-first gating in orchestrator/gh loops and add same-error persistence detection before auto re-iteration (stop retrying unchanged CI failures; surface actionable summary). (priority: high)
-- [ ] [qa/P1] Packaged-install template bootstrap remains broken in fresh HOME (`aloop setup --non-interactive` / `aloop scaffold` fail with `Template not found .../.aloop/templates/PROMPT_plan.md`). Fix template resolution/bootstrap so packaged CLI works without pre-existing `~/.aloop/templates`. (priority: high)
+- [x] [qa/P1] Packaged-install template bootstrap remains broken in fresh HOME (`aloop setup --non-interactive` / `aloop scaffold` fail with `Template not found .../.aloop/templates/PROMPT_plan.md`). Fixed template bootstrap resolution to search bundled templates across source/dist/packaged layouts so setup/scaffold can seed `~/.aloop/templates` in fresh HOME. (priority: high)
   - Re-test 2026-03-16 (iter 95): still failing in packaged install (`/tmp/aloop-test-install-KIcuUW/bin/aloop`) with raw stack trace and `Template not found: .../.aloop/templates/PROMPT_plan.md` on `aloop setup --non-interactive --spec SPEC.md --providers copilot` (exit 1).
+  - Fix 2026-03-16 (iter 96): added multi-layout bundled-template resolver + regression test for npm packaged `dist` directory depth (`lib/node_modules/aloop-cli/dist` -> `<prefix>/templates`).
 - [ ] [qa/P1] `aloop gh watch` user flow still fails under PATH hardening (`gh: blocked by aloop PATH hardening`). Keep security boundary while allowing host-side `gh` execution paths required by `aloop gh watch`. (priority: high)
   - Re-test 2026-03-16 (iter 95): still failing (`aloop gh watch --repo owner/repo` => `gh watch failed: gh issue list failed: gh: blocked by aloop PATH hardening`, exit 1).
 - [ ] [setup/P1] Data privacy setup flow — ask internal/private vs public/open-source during setup and apply provider/model policy constraints (including ZDR-safe defaults) to generated config. (priority: high)

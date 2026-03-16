@@ -331,6 +331,38 @@ function normalizeAutonomyLevel(value) {
   return AUTONOMY_LEVELS.has(normalized) ? normalized : 'balanced';
 }
 
+function templatesExist(directory, requiredTemplates) {
+  return existsSync(directory) && requiredTemplates.every((file) => existsSync(path.join(directory, file)));
+}
+
+/**
+ * @param {string[]} requiredTemplates
+ * @param {{moduleDir?: string, argv1?: string, cwd?: string}} [options]
+ * @returns {string | null}
+ */
+export function resolveBundledTemplatesDir(requiredTemplates, options = {}) {
+  const moduleDir = path.resolve(options.moduleDir ?? path.dirname(fileURLToPath(import.meta.url)));
+  const argv1 = options.argv1 ?? process.argv[1];
+  const argvDir = typeof argv1 === 'string' && argv1.length > 0 ? path.dirname(path.resolve(argv1)) : null;
+  const cwdDir = path.resolve(options.cwd ?? process.cwd());
+  const baseDirs = [moduleDir, argvDir, cwdDir].filter(Boolean);
+  const seen = new Set();
+
+  for (const baseDir of baseDirs) {
+    for (let depth = 0; depth <= 6; depth++) {
+      const up = depth === 0 ? [] : new Array(depth).fill('..');
+      const candidate = path.resolve(baseDir, ...up, 'templates');
+      if (seen.has(candidate)) continue;
+      seen.add(candidate);
+      if (templatesExist(candidate, requiredTemplates)) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
 function resolveProviderHints(provider) {
   if (provider === 'claude') return '- Claude hint: Use parallel subagents when large searches are needed; summarize before coding.';
   if (provider === 'codex') return '- Codex hint: Prefer stdin prompt mode and keep outputs concise and action-focused.';
@@ -413,10 +445,8 @@ export async function scaffoldWorkspace(options = {}) {
   const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
   const templatesMissing = requiredTemplates.some(f => !existsSync(path.join(templatesDir, f)));
   if (templatesMissing && !options.templatesDir) {
-    // Resolve bundled templates: project.mjs is at aloop/cli/lib/, templates at aloop/templates/
-    const thisDir = path.dirname(fileURLToPath(import.meta.url));
-    const bundledTemplatesDir = path.resolve(thisDir, '..', '..', 'templates');
-    if (existsSync(bundledTemplatesDir) && requiredTemplates.every(f => existsSync(path.join(bundledTemplatesDir, f)))) {
+    const bundledTemplatesDir = resolveBundledTemplatesDir(requiredTemplates);
+    if (bundledTemplatesDir) {
       await mkdir(templatesDir, { recursive: true });
       const entries = await readdir(bundledTemplatesDir, { withFileTypes: true });
       for (const entry of entries) {

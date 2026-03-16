@@ -78,6 +78,10 @@ export interface ScaffoldResult {
 
 export const discoverWorkspace = projectCore.discoverWorkspace as (options?: DiscoverOptions) => Promise<DiscoveryResult>;
 export const scaffoldWorkspace = projectCore.scaffoldWorkspace as (options?: ScaffoldOptions) => Promise<ScaffoldResult>;
+export const resolveBundledTemplatesDir = projectCore.resolveBundledTemplatesDir as (
+  requiredTemplates: string[],
+  options?: { moduleDir?: string; argv1?: string; cwd?: string }
+) => string | null;
 export const assertProjectConfigured = projectCore.assertProjectConfigured as (discovery: DiscoveryResult) => void;
 export const resolveProjectRoot = projectCore.resolveProjectRoot as (projectRoot?: string) => string;
 export const getProjectHash = projectCore.getProjectHash as (projectPath: string) => string;
