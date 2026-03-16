@@ -6,16 +6,19 @@ allowed-tools:
   - Edit
   - Glob
   - Grep
+  - Agent
   - AskUserQuestion
 ---
 
 <objective>
-Configure Aloop for the current project. Detect the project, gather configuration from the user, and create project-specific config and prompts in `~/.aloop/projects/<hash>/`.
+Configure Aloop for the current project. Capture requirements as-is into a PRD, build a multi-perspective plan, verify completeness, then scaffold the loop config.
 </objective>
 
 <process>
 
-## Step 1: Run project-scope discovery first (required)
+## Phase 1: Discovery
+
+### Step 1: Run project-scope discovery (required)
 
 Do NOT perform ad-hoc shell probing. Do NOT compose custom bash discovery pipelines.
 Before explicit user go-ahead, do not read files outside the current project root.
@@ -34,7 +37,7 @@ Treat the JSON output as source of truth for:
 
 Show: "Setting up Aloop for: <project-name> (<project-root>)"
 
-## Step 2: Use current conversation context
+### Step 2: Use current conversation context
 
 Assume setup is often run inside an ongoing discussion.
 
@@ -45,7 +48,7 @@ Before asking questions:
 
 Do NOT repeat questions answered by discovery or earlier messages in the same conversation.
 
-## Step 3: Existing config behavior
+### Step 3: Existing config behavior
 
 In interview phase, treat external config checks as deferred.
 Do not inspect `~/.aloop/projects/*` yet.
@@ -55,46 +58,120 @@ After go-ahead and full-scope discovery, if `config_exists=true`, ask:
 
 Default to patching unless user explicitly requests full reset.
 
-## Step 4: Interview phase (requirements/spec only)
+## Phase 2: PRD Capture
 
-This phase is interview-only. Do NOT prepare loop runtime yet.
+### Step 4: Capture requirements verbatim into PRD
 
-Ask only spec/context questions needed to align on work:
-- Desired outcome
-- Scope / non-goals
-- Constraints
-- Acceptance criteria
-- Risks
+**Do NOT structure, rewrite, or interpret.** Your job here is stenography — capture exactly what the user says they want, in their words.
 
-Ask about language only when detection confidence is low.
+Ask the user to describe what they want built. Use open-ended prompts:
+- "What are you trying to build? Describe it however feels natural."
+- "Anything else? Constraints, must-haves, things to avoid?"
 
-## Step 5: Spec-first interview (default)
+Keep prompting until the user says they're done. After each response, confirm: "Got it. Anything else to add, or is that everything?"
 
-Do not force a "where is your spec file" question as the primary path.
+Write everything to `PRD.md` in the project root:
 
-If no clear spec exists, or user wants to define requirements now, interview and create/update `SPEC.md` directly in the repo using concise prompts:
-- Desired outcome
-- Scope and non-goals
-- Constraints
-- Acceptance criteria
-- Risks
+```markdown
+# Product Requirements Document
 
-If discovery found spec candidates, ask whether to include each candidate in `spec_files`.
+_Captured verbatim from user input during setup._
 
-## Step 6: Explicit go-ahead gate (required)
+## Requirements
 
-After interview/spec alignment, ask:
-- "Proceed to prepare Aloop loop config now? (yes/no)"
+<user's words, verbatim, preserving their structure/formatting>
+
+## Constraints
+
+<any constraints mentioned, verbatim>
+
+## Out of Scope
+
+<anything explicitly excluded, verbatim>
+```
+
+Only use sections the user actually addressed. Do not add empty sections or placeholder text. Do not add your own interpretation, summary, or rewording.
+
+If discovery found existing spec candidates, ask: "I found these existing docs: <list>. Should I include their content in the PRD as reference, or are you starting fresh?"
+
+### Step 5: PRD confirmation gate
+
+Show the user the PRD you wrote. Ask:
+- "Does this capture everything? Edit anything, or good to plan?"
+
+Do not proceed until the user confirms. If they add or change things, update `PRD.md` and re-confirm.
+
+## Phase 3: Multi-Perspective Planning
+
+### Step 6: Parallel planning subagents
+
+Launch 3-5 subagents in parallel using the Agent tool. Each reads `PRD.md` and produces planning notes from a specific perspective. The agent output is returned to you — do NOT ask agents to write files directly.
+
+Required perspectives (launch all in parallel):
+1. **Architecture** — "Read PRD.md. Propose a technical architecture: components, data flow, key abstractions, technology choices. Flag any requirements that are ambiguous or contradictory from an architecture standpoint."
+2. **Implementation** — "Read PRD.md. Break the requirements into an ordered list of implementation tasks. Identify dependencies between tasks. Flag requirements that are too vague to implement as-is."
+3. **Testing & QA** — "Read PRD.md. For each requirement, describe how you would verify it works. Identify requirements that lack clear acceptance criteria. Propose a testing strategy."
+
+Optional perspectives (add when relevant based on the PRD):
+4. **Security & Privacy** — only if the PRD mentions auth, user data, APIs, or external services
+5. **UX / Developer Experience** — only if the PRD describes a UI, CLI, or developer-facing API
+6. **Operations / Deployment** — only if the PRD mentions deployment, infrastructure, or scaling
+
+Each subagent prompt must start with: "You are a planning advisor reviewing a PRD. Read PRD.md in the current directory, then provide your analysis from the following perspective:"
+
+### Step 7: Synthesize plan into SPEC.md
+
+Collect all subagent outputs. Synthesize into a single `SPEC.md`:
+
+1. **Merge, don't append** — the spec should read as one coherent document, not 3-5 separate sections pasted together
+2. **Preserve all concerns** — every flag, gap, or ambiguity raised by any subagent must appear in the spec (either resolved by another perspective's input, or called out as an open question)
+3. **Structure the spec** with these sections:
+   - Overview (from PRD, lightly edited for clarity)
+   - Architecture (from architecture agent, refined)
+   - Implementation Plan (ordered tasks with dependencies)
+   - Acceptance Criteria (from testing agent, mapped to requirements)
+   - Open Questions (unresolved ambiguities from any perspective)
+   - Non-Goals (from PRD constraints)
+4. **Cross-reference the PRD** — every requirement in PRD.md must map to at least one task in the implementation plan and one acceptance criterion
+
+If an existing `SPEC.md` exists, ask: "Merge into existing spec or replace?"
+
+### Step 8: Verification pass — PRD coverage check
+
+After writing SPEC.md, run a verification subagent:
+
+Launch one Agent: "Read both PRD.md and SPEC.md. For each requirement in the PRD, check whether SPEC.md contains: (1) a corresponding implementation task, and (2) a way to verify it. Output a coverage table:
+
+```
+| PRD Requirement | Spec Task | Acceptance Criterion | Status |
+|-----------------|-----------|---------------------|--------|
+| <requirement>   | <task or MISSING> | <criterion or MISSING> | ✓ / GAP |
+```
+
+List any GAPs at the end."
+
+If gaps are found:
+1. Show the coverage table to the user
+2. Ask: "These requirements don't have full coverage in the plan. Should I add tasks for them, or are they intentionally deferred?"
+3. Update SPEC.md accordingly
+4. Re-run verification until clean (max 2 rounds, then show remaining gaps and move on)
+
+## Phase 4: Loop Configuration
+
+### Step 9: Explicit go-ahead gate (required)
+
+After plan verification passes, ask:
+- "Plan is complete and verified. Proceed to configure the Aloop loop? (yes/no)"
 
 If no:
-- stop after summarizing the agreed interview/spec output
+- stop after summarizing PRD + SPEC output
 - do not ask provider/run details
 - do not scaffold config/prompts
 
 If yes:
-- continue to Step 7
+- continue to Step 10
 
-## Step 7: Collect run details (only after go-ahead)
+### Step 10: Collect run details (only after go-ahead)
 
 Ask only now:
 1. Validation level (tests only / tests+types / full / custom)
@@ -108,7 +185,7 @@ Now it is allowed to read outside project root for runtime preparation. Re-run d
 
 `pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command discover -Scope full -Output json`
 
-## Step 8: Use scaffold script to write config and prompts (required)
+### Step 11: Use scaffold script to write config and prompts (required)
 
 After decisions are finalized, run:
 
@@ -120,25 +197,27 @@ This script writes:
 
 If `RuntimeScope=project-local`, scaffold writes config/prompts under `<project-root>/.aloop/`, hydrates loop assets there once, and ensures `<project-root>/.gitignore` contains `.aloop/`.
 
-## Step 9: Confirm setup
+### Step 12: Confirm setup
 
 Display to user:
 
 ```
 Aloop configured for <project-name>!
 
-  Config: ~/.aloop/projects/<hash>/config.yml
-  Prompts: ~/.aloop/projects/<hash>/prompts/
+  PRD:      PRD.md (captured verbatim)
+  Spec:     SPEC.md (multi-perspective plan, verified)
+  Config:   ~/.aloop/projects/<hash>/config.yml
+  Prompts:  ~/.aloop/projects/<hash>/prompts/
 
-  Provider: <selected>
-  Enabled:  <provider+model list>
-  Mode:     plan-build-review (plan -> build x3 -> review)
+  Provider:   <selected>
+  Enabled:    <provider+model list>
+  Mode:       plan-build-review (plan -> build x5 -> qa -> review)
   Validation: <commands summary>
   Spec files: <selected spec files>
-  Runtime:  <global|project-local> (<resolved runtime root>)
+  Runtime:    <global|project-local> (<resolved runtime root>)
 
 Next steps:
-  /aloop:start          Launch a Aloop loop
+  /aloop:start          Launch an Aloop loop
   /aloop:start --plan   Run planning mode only
 ```
 
@@ -149,4 +228,6 @@ Next steps:
 - On Windows, use `$HOME/.aloop/` (PowerShell resolves `~` correctly)
 - If `~/.aloop/templates/` doesn't exist, stop and ask the user to run the install script
 - Keep setup script-driven for consistency across machines and harnesses.
+- PRD.md is a living document — the loop's plan agent can reference it as the source of truth for "what was asked"
+- SPEC.md is the plan agent's starting point — it should not need to re-derive architecture or task ordering from scratch
 </notes>
