@@ -37,6 +37,7 @@ The completion rattail chain (`all_tasks_done -> spec-review -> final-review -> 
 
 ### Up Next — P2
 - [ ] [qa/P2] CLI error handling leaks stack traces — `aloop setup --autonomy-level invalid`, `aloop start` (no config), `aloop orchestrate --autonomy-level foo`, `aloop resolve --project-root /nonexistent` should return clean user-facing errors. (priority: medium)
+- [x] [review/P2] `forceReviewNext` implemented in loop scripts — added `forceReviewNext` consume-and-clear handling in `loop.sh`/`loop.ps1` iteration-mode resolution so forced review overrides cycle position for the next iteration without advancing cycle state. Added regression coverage in `loop.tests.ps1` and `loop_branch_coverage.tests.sh`. (priority: medium)
 - [ ] [qa/P2] `aloop orchestrate --spec NONEXISTENT.md` still emits raw stack frames in packaged CLI path; return a clean user-facing validation error only. (priority: medium)
   - Re-test 2026-03-16 (iter 95): behavior still PARTIAL — exits 1, but prints raw stack frames from `dist/index.js` instead of a clean validation message.
   - Re-test 2026-03-16 (iter 97): still PARTIAL in packaged install (`/tmp/aloop-test-install-RlWnzF/bin/aloop`) — exits 1 with correct message context, but still leaks raw JS stack frames from `dist/index.js`.

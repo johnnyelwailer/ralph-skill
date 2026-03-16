@@ -106,6 +106,7 @@ register_branch "cycle.resolve.success" "resolve_cycle_prompt_from_plan resolves
 register_branch "cycle.resolve.missing_file" "resolve_cycle_prompt_from_plan returns 1 when file is missing"
 register_branch "cycle.resolve.invalid_cycle" "resolve_cycle_prompt_from_plan returns 1 when cycle array is empty"
 register_branch "cycle.resolve.modulo_wrap" "resolve_cycle_prompt_from_plan wraps cyclePosition via modulo"
+register_branch "cycle.resolve.force_review_next" "resolve_iteration_mode consumes forceReviewNext and forces review"
 register_branch "frontmatter.all_fields" "parse_frontmatter extracts trigger-capable fields from valid frontmatter"
 register_branch "frontmatter.empty" "parse_frontmatter yields empty strings when no frontmatter block present"
 register_branch "frontmatter.partial" "parse_frontmatter handles partial frontmatter with missing fields"
@@ -130,13 +131,14 @@ FRONTMATTER_FUNC="$(extract_function parse_frontmatter)"
 ADVANCE_FUNC="$(extract_function advance_cycle_position)"
 WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
 RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
+RESOLVE_MODE_FUNC="$(extract_function resolve_iteration_mode)"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
     exit 1
 fi
 
-if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ]; then
+if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ]; then
     echo "FAIL: could not extract cycle/frontmatter/advance/requests/queue functions from $LOOP_SH"
     exit 1
 fi
@@ -152,6 +154,7 @@ eval "$FRONTMATTER_FUNC"
 eval "$ADVANCE_FUNC"
 eval "$WAIT_FOR_REQUESTS_FUNC"
 eval "$RUN_QUEUE_FUNC"
+eval "$RESOLVE_MODE_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
@@ -522,6 +525,29 @@ if resolve_cycle_prompt_from_plan && [ "$RESOLVED_PROMPT_NAME" = "PROMPT_build.m
     pass_case "resolve_cycle_prompt_from_plan wraps position 5 modulo 2 to index 1"
 else
     fail_case "resolve_cycle_prompt_from_plan modulo wrap failed (got: $RESOLVED_PROMPT_NAME, pos=$CYCLE_POSITION)"
+fi
+
+# cycle.resolve.force_review_next — forced review consumes and clears loop-plan flag
+LOOP_PLAN_FILE="$CYCLE_TMPDIR/force-review.json"
+MODE="plan-build-review"
+CYCLE_POSITION=4
+RESOLVED_PROMPT_NAME=""
+cat > "$LOOP_PLAN_FILE" << 'JSON'
+{"cycle":["PROMPT_plan.md","PROMPT_build.md","PROMPT_review.md"],"cyclePosition":1,"forceReviewNext":true}
+JSON
+resolve_iteration_mode 1 >/dev/null
+consumed_force_review="$(python3 - "$LOOP_PLAN_FILE" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    payload = json.load(f)
+print("1" if payload.get("forceReviewNext") is False else "0")
+PY
+)"
+if [ "${RESOLVED_MODE:-}" = "review" ] && [ "$consumed_force_review" = "1" ]; then
+    cover_branch "cycle.resolve.force_review_next"
+    pass_case "resolve_iteration_mode consumes forceReviewNext and forces review"
+else
+    fail_case "resolve_iteration_mode forceReviewNext branch failed (mode=${RESOLVED_MODE:-}, cleared=$consumed_force_review)"
 fi
 
 rm -rf "$CYCLE_TMPDIR"

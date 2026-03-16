@@ -345,6 +345,41 @@ resolve_iteration_provider() {
 resolve_iteration_mode() {
     local iteration=$1
     RESOLVED_PROMPT_NAME=""
+    if { [ "$MODE" = "plan-build-review" ] || [ "$MODE" = "review" ]; } \
+        && [ -f "$LOOP_PLAN_FILE" ]; then
+        local consumed_force_review
+        consumed_force_review=$(python3 - "$LOOP_PLAN_FILE" <<'PY'
+import json, os, sys, tempfile
+path = sys.argv[1]
+if not os.path.exists(path):
+    print("0")
+    raise SystemExit(0)
+try:
+    with open(path, encoding="utf-8") as f:
+        payload = json.load(f)
+except Exception:
+    print("0")
+    raise SystemExit(0)
+raw = payload.get("forceReviewNext", False)
+is_forced = raw is True or (isinstance(raw, str) and raw.strip().lower() == "true")
+if not is_forced:
+    print("0")
+    raise SystemExit(0)
+payload["forceReviewNext"] = False
+fd, tmp = tempfile.mkstemp(prefix=".loop-plan.", suffix=".json", dir=os.path.dirname(path))
+os.close(fd)
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(payload, f, indent=2)
+    f.write("\n")
+os.replace(tmp, path)
+print("1")
+PY
+)
+        if [ "$consumed_force_review" = "1" ]; then
+            RESOLVED_MODE="review"
+            return
+        fi
+    fi
     if resolve_cycle_prompt_from_plan; then
             RESOLVED_MODE=$(derive_mode_from_prompt_name "$RESOLVED_PROMPT_NAME")
         else

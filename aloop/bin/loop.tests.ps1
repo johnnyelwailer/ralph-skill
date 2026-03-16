@@ -2494,6 +2494,46 @@ Describe 'loop.ps1 — cycle resolution + frontmatter branch evidence' {
         $actualModes | Should -Be @('plan', 'build', 'build', 'build', 'build', 'build', 'qa', 'review')
     }
 
+    It 'Resolve-IterationMode consumes forceReviewNext and returns review' {
+        $SessionDir = Join-Path $script:cfTempRoot 'force-review-next'
+        New-Item -ItemType Directory -Force $SessionDir | Out-Null
+        $planFile = Join-Path $SessionDir 'loop-plan.json'
+        '{"cycle":["PROMPT_plan.md","PROMPT_build.md","PROMPT_review.md"],"cyclePosition":1,"forceReviewNext":true}' | Set-Content $planFile
+
+        function Resolve-CyclePromptFromPlan { throw 'forced review should short-circuit before cycle resolution' }
+        function Get-ModeFromPromptName { param([string]$PromptName) return 'plan' }
+        . ([scriptblock]::Create($script:resolveIterationModeFuncSource))
+
+        $Mode = 'plan-build-review'
+        $script:cyclePosition = 0
+        $script:resolvedPromptName = 'PROMPT_build.md'
+        $resolved = Resolve-IterationMode -IterationNumber 1
+
+        $resolved | Should -Be 'review'
+        $script:resolvedPromptName | Should -Be $null
+        $updated = Get-Content -Path $planFile -Raw | ConvertFrom-Json
+        $updated.forceReviewNext | Should -BeFalse
+    }
+
+    It 'Resolve-IterationMode does not consume forceReviewNext when ConsumeForcedFlags is false' {
+        $SessionDir = Join-Path $script:cfTempRoot 'force-review-no-consume'
+        New-Item -ItemType Directory -Force $SessionDir | Out-Null
+        $planFile = Join-Path $SessionDir 'loop-plan.json'
+        '{"cycle":["PROMPT_plan.md","PROMPT_build.md","PROMPT_review.md"],"cyclePosition":0,"forceReviewNext":true}' | Set-Content $planFile
+
+        function Resolve-CyclePromptFromPlan { return $false }
+        function Get-ModeFromPromptName { param([string]$PromptName) return 'plan' }
+        . ([scriptblock]::Create($script:resolveIterationModeFuncSource))
+
+        $Mode = 'plan-build-review'
+        $script:cyclePosition = 0
+        $resolved = Resolve-IterationMode -IterationNumber 1 -ConsumeForcedFlags $false
+
+        $resolved | Should -Be 'plan'
+        $updated = Get-Content -Path $planFile -Raw | ConvertFrom-Json
+        $updated.forceReviewNext | Should -BeTrue
+    }
+
     It 'Parse-Frontmatter extracts trigger-capable fields' {
         $promptFile = Join-Path $script:cfTempRoot 'all-fields.md'
         @"
