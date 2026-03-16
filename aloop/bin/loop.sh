@@ -1594,16 +1594,6 @@ normalize_remote_backup_url() {
     echo "$remote_url"
 }
 
-push_to_backup() {
-    if [ "$BACKUP_ENABLED" != "true" ]; then return 0; fi
-    cd "$WORK_DIR"
-    if git push origin HEAD 2>/dev/null; then
-        echo "Pushed to remote backup"
-    else
-        echo "Warning: Push to remote failed (continuing anyway)"
-    fi
-}
-
 # ============================================================================
 # MAIN LOOP
 # ============================================================================

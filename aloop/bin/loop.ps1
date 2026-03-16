@@ -1434,20 +1434,6 @@ function Convert-RemoteToWebUrl {
     return $trimmed
 }
 
-function Push-ToBackup {
-    if (-not $BackupEnabled) { return }
-    Push-Location $WorkDir
-    try {
-        git push origin HEAD 2>&1 | Out-Null
-        Write-Host "Pushed to remote backup"
-    } catch {
-        Write-Warning "Push to remote failed (continuing anyway)"
-    }
-    finally {
-        Pop-Location
-    }
-}
-
 # ============================================================================
 # ITERATION SUMMARY
 # ============================================================================
@@ -2002,6 +1988,7 @@ try {
             Persist-LoopPlanState -Iteration $iteration
             $stuckState.StuckCount = 0
             $stuckState.LastTask = ""
+            Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
             Write-LogEntry -Event "iteration_complete" -Data @{
                 iteration = $iteration
                 mode = $iterationMode
