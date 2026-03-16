@@ -373,10 +373,78 @@ A new loop phase (`proof`) where a dedicated agent autonomously decides what evi
 
 ```
 Previous default:  plan → build × 5 → review  (5-step)
-Current default:   plan → build × 5 → proof → qa → review  (9-step)
+Current default:   plan → build × 5 → qa → review  (8-step continuous cycle)
 ```
 
-The proof and QA agents are added to the default pipeline compiled into `loop-plan.json`. They run once per cycle, after builds and before review. Each gets its own prompt template (`PROMPT_proof.md`, `PROMPT_qa.md`) and its own entry in the pipeline config, just like any other agent.
+**The continuous cycle** repeats until all tasks are done: `plan → build × 5 → qa → review`. QA and review run every cycle to catch bugs and code quality issues early. Proof does NOT run in the cycle — it's expensive and only meaningful as final evidence.
+
+**Proof runs only at the end** — triggered when `all_tasks_done` fires (see Completion Rattail below).
+
+### Completion Rattail (event-chained agents)
+
+When all TODO.md tasks are marked done, a chain of final validation agents fires — each triggering the next. Triggers can be event keys OR agent names (an agent completing is itself an event). There is no special "rattail" construct — it's just agents chained via triggers.
+
+**Important:** The rattail agents are **separate catalog entries** from the cycle agents, even when they reuse the same prompt template. This avoids the cycle's `qa` or `review` accidentally triggering the rattail chain. Agent name = event name, so distinct names = distinct triggers.
+
+```
+Continuous cycle:  plan → build × 5 → qa → review  (no triggers, just cycle order)
+
+Rattail chain:     all_tasks_done → spec-review → final-review → final-qa → proof → completed
+```
+
+Each agent's `trigger` field is the name of the agent (or event) that must complete before it runs. The runtime emits the completing agent's name as an event, scans the catalog for agents triggered by that name, and queues them. Cycle agents (`qa`, `review`) don't trigger anything because no catalog entry has `trigger: qa` or `trigger: review`.
+
+**The rattail agents:**
+
+1. **spec-review** (`trigger: all_tasks_done`) — new agent, own prompt. Focuses solely on: "do the changes satisfy the requirements from the spec?" Reads the spec sections relevant to the completed work and verifies every acceptance criterion is met. Does NOT look at code quality — only requirement coverage.
+2. **final-review** (`trigger: spec-review`) — reuses `PROMPT_review.md`. Same 9 gates as the cycle's review, but triggered by spec-review completion rather than cycle position.
+3. **final-qa** (`trigger: final-review`) — reuses `PROMPT_qa.md`. Final round of user-perspective testing. Same behavior as cycle QA but triggered, not cycled.
+4. **proof** (`trigger: final-qa`) — own prompt. Generates human-verifiable evidence: screenshots, API captures, CLI recordings, before/after comparisons. Only runs here, never in the continuous cycle.
+
+**If ANY rattail agent creates new TODO items**, the loop goes back to building. The chain fires again naturally when tasks are done again. This is self-healing — no special retry logic needed.
+
+**Only when proof completes with no new TODOs** does the runtime set `status.json` state=completed (or enter watch mode if orchestrated).
+
+**Agent catalog entries** (frontmatter examples):
+```yaml
+# aloop/templates/PROMPT_spec-review.md
+---
+agent: spec-review
+trigger: all_tasks_done
+provider: claude
+reasoning: high
+---
+
+# aloop/templates/PROMPT_final-review.md (reuses review prompt body)
+---
+agent: final-review
+trigger: spec-review
+provider: claude
+reasoning: high
+---
+
+# aloop/templates/PROMPT_final-qa.md (reuses qa prompt body)
+---
+agent: final-qa
+trigger: final-review
+---
+
+# aloop/templates/PROMPT_proof.md
+---
+agent: proof
+trigger: final-qa
+---
+```
+
+### Orchestrator Review Layer
+
+After a child loop signals completion, the orchestrator performs its own review before creating/merging a PR:
+
+1. **Spec compliance review** — does the child's work match the original issue/sub-spec? The orchestrator has the global picture and checks for scope drift, missing requirements, and cross-issue consistency.
+2. **Proof validation** — are the proof artifacts meaningful? Do they actually demonstrate the feature works? Test output and file listings are NOT proof. The orchestrator rejects empty or filler proof.
+3. **Integration check** — will this PR conflict with other child loops' work? Does it break the overall architecture?
+
+Only after the orchestrator is satisfied does it create the PR and run automated gates (CI, coverage, merge conflicts).
 
 ### Proof Agent Behavior
 
@@ -3059,10 +3127,29 @@ All fields are optional — defaults apply if omitted (`provider: claude`, `mode
 3. **When an event fires**, the runtime scans the agent catalog for prompts whose `trigger` matches the event key. It copies the matching prompt file into `$SESSION_DIR/queue/` with appropriate priority numbering.
 4. **The loop picks it up** on the next iteration — it just sees a queue file, runs it, deletes it. The loop doesn't know or care why the file appeared.
 
+**Event/Trigger Table:**
+
+Triggers can be event keys (runtime-emitted conditions) or agent names (agent completion is itself an event).
+
+| Event / Trigger | Emitted By | Agent(s) Triggered | Notes |
+|----------------|-----------|-------------------|-------|
+| `all_tasks_done` | runtime (polls TODO.md) | spec-review | First link in completion chain |
+| `spec-review` | runtime (agent completed) | final-review | Chained — fires after spec-review passes |
+| `final-review` | runtime (agent completed) | final-qa | Chained — fires after final-review passes |
+| `final-qa` | runtime (agent completed) | proof | Chained — fires after final-qa passes |
+| `proof` + no new TODOs | runtime (agent completed) | — | Set `status.json` state=completed |
+| any rattail agent + new TODOs | runtime (detects new unchecked tasks) | — | Back to cycle (build mode) |
+| `steering_created` | runtime (detects STEERING.md) | steer | Steer agent queued; steer's own prompt chains plan after |
+| `stuck_detected` | runtime (stuck_count >= N) | debug | Debug agent queued |
+| `pr_feedback` | orchestrator (polls GH comments) | steer | Steer prompt injected into child's queue |
+| `child_completed` | orchestrator (polls child status.json) | — | Orchestrator runs its own spec + proof review |
+| `wave_complete` | orchestrator (all wave N PRs merged) | — | Dispatch wave N+1 issues |
+
 **Examples:**
-- Runtime detects all TODO.md tasks are done → emits `all_tasks_done` → finds `PROMPT_proof.md` has `trigger: all_tasks_done` → copies it to queue → loop runs proof next
+- Runtime detects all TODO.md tasks are done → emits `all_tasks_done` → finds `PROMPT_spec-review.md` has `trigger: all_tasks_done` → queues it → spec-review runs → on completion, runtime emits `spec-review` → finds `PROMPT_final-review.md` has `trigger: spec-review` → queues it → and so on through the chain
 - User runs `aloop steer "focus on tests"` → CLI writes a steer prompt directly to queue (no event needed — direct queue injection)
 - Runtime detects 3 consecutive failures → emits `stuck_detected` → finds `PROMPT_debug.md` has `trigger: stuck_detected` → copies it to queue
+- Code-review creates 2 new TODO items → runtime detects unchecked tasks → cycle resumes with builds → rattail chain restarts when tasks are done again
 
 **This is the entire mechanism.** No lifecycle hooks YAML schema, no pre/post hooks, no prerequisite chains. The loop stays simple. The runtime handles intelligence. Agents handle their own cleanup within their prompts.
 
