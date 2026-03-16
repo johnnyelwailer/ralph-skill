@@ -789,6 +789,10 @@ export async function orchestrateCommandWithDeps(
   const sessionsRoot = path.join(aloopRoot, 'sessions');
 
   const specFile = options.spec ?? 'SPEC.md';
+  const specPath = path.resolve(specFile);
+  if (!deps.existsSync(specPath)) {
+    throw new Error(`Spec file not found: ${specPath}`);
+  }
   const trunkBranch = options.trunk ?? 'agent/trunk';
   const concurrencyCap = parseConcurrency(options.concurrency);
   const filterIssues = parseIssueNumbers(options.issues);

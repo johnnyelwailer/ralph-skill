@@ -89,7 +89,7 @@ function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDe
   const createdDirs: string[] = [];
 
   return {
-    existsSync: () => false,
+    existsSync: (p: string) => p.includes('SPEC.md'),
     readFile: async (path: string) => writtenFiles[path] ?? '',
     writeFile: async (path: string, data: string) => {
       writtenFiles[path] = data;
@@ -163,7 +163,7 @@ describe('orchestrateCommandWithDeps', () => {
   });
 
   it('respects --spec, --trunk, --concurrency options', async () => {
-    const deps = createMockDeps();
+    const deps = createMockDeps({ existsSync: () => true });
     const options: OrchestrateCommandOptions = {
       spec: 'DESIGN.md',
       trunk: 'main',
@@ -774,8 +774,24 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     assert.equal(issue2!.status, 'Needs refinement');
   });
 
-  it('throws when plan file does not exist', async () => {
+  it('throws when spec file does not exist', async () => {
     const deps = createMockDeps({ existsSync: () => false });
+    await assert.rejects(
+      () => orchestrateCommandWithDeps({ spec: 'NONEXISTENT.md' }, deps),
+      /Spec file not found/,
+    );
+  });
+
+  it('throws when default SPEC.md does not exist', async () => {
+    const deps = createMockDeps({ existsSync: () => false });
+    await assert.rejects(
+      () => orchestrateCommandWithDeps({}, deps),
+      /Spec file not found/,
+    );
+  });
+
+  it('throws when plan file does not exist', async () => {
+    const deps = createMockDeps({ existsSync: (p: string) => p.includes('SPEC.md') });
     await assert.rejects(
       () => orchestrateCommandWithDeps({ plan: 'missing.json' }, deps),
       /Plan file not found/,
@@ -807,7 +823,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
   it('calls execGhIssueCreate when repo is provided', async () => {
     const calls: string[] = [];
     const deps = createMockDeps({
-      existsSync: (p: string) => p.endsWith('plan.json'),
+      existsSync: (p: string) => p.includes('SPEC.md') || p.endsWith('plan.json'),
       readFile: async () => samplePlan,
       execGhIssueCreate: async (_repo, _sid, title) => {
         calls.push(title);
@@ -3417,7 +3433,7 @@ describe('orchestrateCommandWithDeps gap analysis integration', () => {
   it('creates gap analysis requests when issues have Needs analysis status', async () => {
     const writtenFiles: Record<string, string> = {};
     const deps = createMockDeps({
-      existsSync: (p: string) => p.endsWith('plan.json'),
+      existsSync: (p: string) => p.includes('SPEC.md') || p.endsWith('plan.json'),
       readFile: async (p: string) => {
         if (p.endsWith('plan.json')) {
           return JSON.stringify({
@@ -4067,7 +4083,7 @@ describe('orchestrateCommandWithDeps with --run-scan-loop', () => {
     });
     const writtenFiles: Record<string, string> = {};
     const deps = createMockDeps({
-      existsSync: (p: string) => p in writtenFiles || p.endsWith('plan.json') || p.endsWith('estimate-results.json'),
+      existsSync: (p: string) => p.includes('SPEC.md') || p in writtenFiles || p.endsWith('plan.json') || p.endsWith('estimate-results.json'),
       readFile: async (p: string) => {
         if (p in writtenFiles) return writtenFiles[p];
         if (p.endsWith('plan.json')) return samplePlan;
