@@ -807,26 +807,38 @@ test('POST /api/stop handles ESRCH and EPERM errors', async (t) => {
   }
 });
 
-test('resolveDefaultAssetsDir fallback logic', async () => {
+test('dashboard resolves packaged assets when cwd has no dashboard/dist', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-assets-fallback-'));
+  const emptyProjectDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-dashboard-cwd-'));
   const sessionDir = path.join(root, 'session');
   const workdir = path.join(root, 'workdir');
   await mkdir(sessionDir, { recursive: true });
   await mkdir(workdir, { recursive: true });
 
-  const port = await reservePort();
-  const handle = await startDashboardServer(
-    { port: String(port), sessionDir, workdir },
-    { registerSignalHandlers: false },
-  );
-
+  const originalCwd = process.cwd();
+  const originalArgv1 = process.argv[1];
+  let handle: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
   try {
+    process.chdir(emptyProjectDir);
+    process.argv[1] = path.join(emptyProjectDir, 'aloop.mjs');
+
+    const port = await reservePort();
+    handle = await startDashboardServer(
+      { port: String(port), sessionDir, workdir },
+      { registerSignalHandlers: false },
+    );
+
     const response = await fetch(`${handle.url}/`);
     assert.equal(response.status, 200);
     const text = await response.text();
-    assert.match(text, /(Dashboard assets not found|<title>Aloop Dashboard<\/title>)/);
+    assert.match(text, /<title>Aloop Dashboard<\/title>/);
+    assert.doesNotMatch(text, /Dashboard assets not found/);
   } finally {
-    await handle.close();
+    process.chdir(originalCwd);
+    process.argv[1] = originalArgv1;
+    if (handle) {
+      await handle.close();
+    }
   }
 });
 

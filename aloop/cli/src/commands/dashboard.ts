@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { processAgentRequests } from '../lib/requests.js';
 import { readLoopPlan, mutateLoopPlan, writeQueueOverride, queueSteeringPrompt } from '../lib/plan.js';
 import { monitorSessionState } from '../lib/monitor.js';
@@ -383,13 +384,25 @@ async function processGhConventionRequests(
 }
 
 async function resolveDefaultAssetsDir(): Promise<string> {
-  const runtimeScriptPath = process.argv[1] ? path.resolve(process.argv[1]) : path.join(process.cwd(), 'dist', 'index.js');
-  const runtimeDistDir = path.dirname(runtimeScriptPath);
-  const installAssetsDir = path.join(runtimeDistDir, 'dashboard');
   const devAssetsDir = path.join(process.cwd(), 'dashboard', 'dist');
+  const moduleFilePath = fileURLToPath(import.meta.url);
+  const moduleDir = path.dirname(moduleFilePath);
+  const runtimeScriptPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
+  const candidates = new Set<string>();
 
-  if (await fileExists(path.join(installAssetsDir, 'index.html'))) {
-    return installAssetsDir;
+  if (runtimeScriptPath) {
+    candidates.add(path.join(path.dirname(runtimeScriptPath), 'dashboard'));
+  }
+
+  candidates.add(path.join(moduleDir, 'dashboard'));
+  candidates.add(path.resolve(moduleDir, '..', 'dashboard'));
+  candidates.add(path.resolve(moduleDir, '..', '..', 'dashboard', 'dist'));
+  candidates.add(devAssetsDir);
+
+  for (const candidateDir of candidates) {
+    if (await fileExists(path.join(candidateDir, 'index.html'))) {
+      return candidateDir;
+    }
   }
 
   return devAssetsDir;
