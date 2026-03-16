@@ -182,7 +182,7 @@ If ALL providers are in cooldown/degraded: sleep until the earliest cooldown exp
 In any pipeline that includes a `review` agent, the loop MUST NOT exit on task completion during a build phase. The build agent can mark all tasks done, but only the review agent can approve a clean exit. Instead:
 
 1. **Build detects all tasks complete** → set `allTasksMarkedDone` flag in `loop-plan.json`, log `tasks_marked_complete`, but **do not exit**
-2. **Next iteration becomes a forced review** → override the normal cycle to schedule a review phase (similar to how `forcePlanNext` works for steering)
+2. **Next iteration becomes a forced review** → inject the review prompt into the queue (`$SESSION_DIR/queue/001-force-review.md`), which the loop picks up before the normal cycle
 3. **Review decides**:
    - If review approves → loop exits with `state: "completed"`
    - If review finds issues → review reopens tasks (marks them `[ ]` again or adds new ones), resets `allTasksMarkedDone` in `loop-plan.json`, and the loop continues with a forced re-plan
@@ -212,20 +212,19 @@ review approves?
 ### Implementation notes
 
 - New `loop-plan.json` field: `"allTasksMarkedDone": false`
-- New `loop-plan.json` field: `"forceReviewNext": false`
-- In iteration mode resolution: if `forceReviewNext` is set in `loop-plan.json`, return `'review'` and clear the flag
-- In the build completion check: instead of `exit 0`, set both flags in `loop-plan.json` and `continue`
+- When build marks all tasks done: set `allTasksMarkedDone`, inject review prompt into queue (`$SESSION_DIR/queue/001-force-review.md`), and `continue`
+- Queue injection replaces the old `forceReviewNext` flag — the queue system already handles priority ordering and one-shot consumption
 - The review prompt (`PROMPT_review.md`) must already instruct the reviewer to reopen tasks or add new ones if quality gates fail — verify this is the case
 - Log events: `tasks_marked_complete` (build), `final_review_approved` (review exits), `final_review_rejected` (review reopens tasks)
 
 ### Acceptance Criteria
 
 - [ ] In any pipeline with a `review` agent, loop NEVER exits during a build phase due to all tasks being marked complete
-- [ ] When all tasks are marked done in build, the next iteration is a forced review
+- [ ] When all tasks are marked done in build, review prompt is injected into the queue
 - [ ] Review approval is the only path to `state: "completed"` exit in pipelines with a `review` agent
 - [ ] Review can reopen/add tasks, causing the loop to continue with a forced re-plan
 - [ ] In `build`-only pipelines, current early-exit behavior is preserved (no review exists)
-- [ ] Steering takes priority over the `forceReviewNext` flag
+- [ ] Steering takes priority over queued review (steering always drains first)
 - [ ] `tasks_marked_complete`, `final_review_approved`, and `final_review_rejected` events are logged
 
 ---
@@ -329,8 +328,8 @@ This feeds into the provider health failure classification system, which can dis
 
 | Feature | Interaction |
 |---------|-------------|
-| **Forced flags** (`forcePlanNext`, `forceReviewNext`) | Take priority over cycle position. When a forced flag fires, the phase overrides regardless of cycle position. Cycle position is NOT advanced. |
-| **Steering** | Sets `forcePlanNext` after steer phase. Cycle position resets to 0 (plan) so the new plan reflects the steering. |
+| **Queue overrides** | Queue entries take priority over cycle position. When a queued prompt is consumed, cycle position is NOT advanced. Replaces the old `forcePlanNext`/`forceReviewNext` flags. |
+| **Steering** | Injects steer prompt into queue. After steer phase, cycle position resets to 0 (plan) so the new plan reflects the steering. |
 | **Phase retry** | A phase repeatedly failing with different providers is handled by `MAX_PHASE_RETRIES` — after all providers fail the same phase, log `phase_all_providers_failed` and advance anyway (avoid infinite retry). |
 | **Provider health** | Failed iterations feed into provider health. If claude fails plan, its health degrades. Next retry tries codex (healthy). Provider health + retry-same-phase work together naturally. |
 | **Round-robin** | Round-robin still rotates on every iteration. So retry-same-phase with round-robin = same phase, different provider. This is the desired behavior. |
@@ -356,7 +355,7 @@ If the same phase fails `MAX_PHASE_RETRIES` times consecutively:
 - [ ] Review phase requires commits since last plan; missing → forces build
 - [ ] Phase prerequisite overrides are logged as `phase_prerequisite_miss`
 - [ ] Provider stderr is captured and included in failure log entries
-- [ ] Forced flags (`forcePlanNext`, `forceReviewNext`, steering) override cycle position
+- [ ] Queue overrides take priority over cycle position (replaces old forced flags)
 - [ ] Steering resets cycle position to 0 (plan)
 - [ ] After `MAX_PHASE_RETRIES` consecutive failures on same phase, advance anyway with `phase_retry_exhausted` log
 - [ ] Both `loop.ps1` and `loop.sh` implement the same retry-same-phase semantics
