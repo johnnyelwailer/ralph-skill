@@ -3574,3 +3574,197 @@ $ node qa-browser-test.mjs
 {"visibleAside":false,"panelGuess":2,"hasSessions":true,"hasDocs":true,"hasActivity":true}
 [exit 0]
 ```
+## QA Session — 2026-03-17 (iteration 176)
+
+### Test Environment
+- Binary under test: `/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop`
+- Version under test: `1.0.0`
+- Install prefix: `/home/pj/.tmp/aloop-test-install-dN1hXP`
+- Temp dir: `/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7`
+- Isolated HOME: `/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home`
+- Dashboard URL from session `meta.json`: `http://localhost:4040` (not exercised in this session)
+- Features tested: 5
+
+### Results
+- PASS: `aloop setup --non-interactive --mode orchestrate` (and invalid mode validation), `aloop start` clean no-config UX, `aloop orchestrate --spec` multi-file glob + missing-spec error, `aloop devcontainer` generation
+- FAIL: `aloop start` from packaged install after successful setup still fails with `Loop script not found: <HOME>/.aloop/bin/loop.sh`
+- SKIP: `aloop gh watch` GH E2E lifecycle test (no reliable authenticated GH context for real-resource test repo workflow)
+
+### Bugs Filed
+- Re-opened existing `[qa/P1] aloop start ... Loop script not found` task in `TODO.md` with re-test evidence from iter 176 (no duplicate task created).
+
+### Command Transcript
+```text
+
+$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree' && TMPDIR='/home/pj/.tmp' npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1
+[stdout]
+/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop
+[stderr]
+[exit] 0
+
+$ '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' --version
+[stdout]
+1.0.0
+[stderr]
+[exit] 0
+
+$ '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' setup --help
+[stdout]
+Usage: aloop setup [options]
+
+Interactive setup and scaffold for aloop project
+
+Options:
+  --project-root <path>     Project root override
+  --home-dir <path>         Home directory override
+  --spec <path>             Specification file to use
+  --providers <providers>   Comma-separated list of providers to enable
+  --mode <mode>             Setup mode: loop or orchestrate
+  --autonomy-level <level>  Autonomy level: cautious, balanced, or autonomous
+  --non-interactive         Skip interactive prompts and use defaults
+  -h, --help                display help for command
+[stderr]
+[exit] 0
+
+$ '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' start --help
+[stdout]
+Usage: aloop start [options] [session-id]
+
+Start an aloop session for the current project
+
+Arguments:
+  session-id                 Session ID to resume (used with --launch resume)
+
+Options:
+  --project-root <path>      Project root override
+  --home-dir <path>          Home directory override
+  --provider <provider>      Provider override
+  --mode <mode>              Loop mode override
+  --launch <mode>            Session launch mode: start, restart, or resume
+  --plan                     Shortcut for --mode plan
+  --build                    Shortcut for --mode build
+  --review                   Shortcut for --mode review
+  --in-place                 Run in project root instead of creating a git
+                             worktree
+  --max-iterations <number>  Max iteration override
+  --output <mode>            Output format: json or text (default: "text")
+  -h, --help                 display help for command
+[stderr]
+[exit] 0
+
+$ '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' status --help
+[stdout]
+Usage: aloop status [options]
+
+Show all active sessions and provider health
+
+Options:
+  --home-dir <path>  Home directory override
+  --output <mode>    Output format: json or text (default: "text")
+  --watch            Auto-refresh status display
+  -h, --help         display help for command
+[stderr]
+[exit] 0
+
+$ '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' devcontainer --help
+[stdout]
+Usage: aloop devcontainer [options]
+
+Generate or augment .devcontainer/devcontainer.json for isolated agent
+execution
+
+Options:
+  --project-root <path>  Project root override
+  --home-dir <path>      Home directory override
+  --output <mode>        Output format: json or text (default: "text")
+  -h, --help             display help for command
+[stderr]
+[exit] 0
+
+$ cd '/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/proj-orch' && HOME='/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home' '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' setup --non-interactive --mode orchestrate --providers codex --spec SPEC.md
+[stdout]
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home/.aloop/projects/53b3c306/config.yml
+[stderr]
+[exit] 0
+
+$ cd '/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/proj-orch' && HOME='/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home' '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' setup --non-interactive --mode banana --providers codex --spec SPEC.md
+[stdout]
+Running setup in non-interactive mode...
+[stderr]
+Error: Invalid setup mode: banana (must be loop or orchestrate)
+[exit] 1
+
+$ cd '/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7' && mkdir no-config && cd no-config && HOME='/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home' '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' start --max-iterations 1
+[stdout]
+[stderr]
+Error: No Aloop configuration found for this project. Run `aloop setup` first.
+[exit] 1
+
+$ cd '/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/proj-loop' && HOME='/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home' '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' setup --non-interactive --providers codex --spec SPEC.md
+[stdout]
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home/.aloop/projects/cc0901fb/config.yml
+[stderr]
+[exit] 0
+
+$ cd '/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/proj-loop' && HOME='/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home' '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' start --max-iterations 1
+[stdout]
+[stderr]
+Error: Loop script not found: /home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home/.aloop/bin/loop.sh
+[exit] 1
+
+$ cd '/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/proj-loop' && HOME='/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home' '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' status
+[stdout]
+No active sessions.
+[stderr]
+[exit] 0
+
+$ cd '/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/proj-orch' && HOME='/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home' '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' orchestrate --spec 'SPEC.md specs/*.md' --plan-only
+[stdout]
+Orchestrator session initialized.
+
+  Session dir:  /home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home/.aloop/sessions/orchestrator-20260317-190114
+  Prompts dir:  /home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home/.aloop/sessions/orchestrator-20260317-190114/prompts
+  Queue dir:    /home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home/.aloop/sessions/orchestrator-20260317-190114/queue
+  Requests dir: /home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home/.aloop/sessions/orchestrator-20260317-190114/requests
+  Loop plan:    /home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home/.aloop/sessions/orchestrator-20260317-190114/loop-plan.json
+  State file:   /home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home/.aloop/sessions/orchestrator-20260317-190114/orchestrator.json
+  Spec:         SPEC.md, specs/api.md, specs/ui.md
+  Trunk:        agent/trunk
+  Autonomy:     balanced
+  Concurrency:  3
+  Plan only:    true
+[stderr]
+[exit] 0
+
+$ cd '/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/proj-orch' && HOME='/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home' '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' orchestrate --spec NONEXISTENT.md --plan-only
+[stdout]
+[stderr]
+Error: No spec files found matching: NONEXISTENT.md
+[exit] 1
+
+$ cd '/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/proj-orch' && HOME='/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home' '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' gh watch --repo owner/repo
+[stdout]
+[stderr]
+gh watch failed: gh issue list failed: Unexpected end of JSON input
+[exit] 1
+
+$ cd '/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/proj-orch' && HOME='/home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/home' '/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop' devcontainer
+[stdout]
+Created devcontainer config at /home/pj/.tmp/qa-aloop-iter176b-IvTAZ7/proj-orch/.devcontainer/devcontainer.json
+  Language: other
+  Image: mcr.microsoft.com/devcontainers/base:ubuntu
+  Post-create: npm install -g @openai/codex
+
+Auth warnings:
+  [WARN] codex: none of [OPENAI_API_KEY] are set on the host.
+         Set OPENAI_API_KEY from https://platform.openai.com/api-keys
+
+Next steps:
+  1. Review .devcontainer/devcontainer.json
+  2. Run `devcontainer build --workspace-folder .` to verify
+  3. Start a loop with `aloop start` — container will be used automatically
+[stderr]
+[exit] 0
+```

@@ -83,3 +83,9 @@
 | Dashboard Health tab provider visibility (host dashboard) | 2026-03-17 | 9ec9cb8 | PASS | Health tab found and includes `codex`, `claude`, `gemini`, `copilot`, `opencode` (`/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/dashboard-health-host.json`). |
 | Orchestrator trunk auto-merge (`--auto-merge`) | 2026-03-17 | current | PASS | Flag parsed correctly and written to `auto_merge_to_main` in state file. |
 | Dual-mode setup recommendation | 2026-03-17 | current | PASS | Setup interactive prompt recommends orchestrator mode for complex specs and defaults to it correctly. |
+| `aloop setup --non-interactive --mode orchestrate` (packaged install, isolated `HOME`) | 2026-03-17 | 87ef32d | PASS | `--mode orchestrate` succeeds and writes config; invalid mode (`banana`) returns clean validation error (`Invalid setup mode`, exit 1). |
+| `aloop start` (no-config error UX, packaged install) | 2026-03-17 | 87ef32d | PASS | Fresh project without setup returns clean error (`Run aloop setup first`), no stack trace. |
+| `aloop start` (packaged install, loop mode, isolated `HOME`) | 2026-03-17 | 87ef32d | FAIL | Regression persists: after successful setup, `aloop start --max-iterations 1` fails with `Loop script not found: <HOME>/.aloop/bin/loop.sh` (re-test iter 176). |
+| `aloop orchestrate --spec` multi-file glob (packaged install) | 2026-03-17 | 87ef32d | PASS | `--spec "SPEC.md specs/*.md" --plan-only` resolves all three files; nonexistent spec returns clean `No spec files found matching` error (exit 1). |
+| `aloop devcontainer` (packaged install) | 2026-03-17 | 87ef32d | PASS | Generates `.devcontainer/devcontainer.json` with expected summary and auth warnings; no crash. |
+| `aloop gh watch --repo` (packaged install) | 2026-03-17 | 87ef32d | SKIP | GH E2E not executed (no reliable authenticated GH context for real-resource testing in this QA run). |
