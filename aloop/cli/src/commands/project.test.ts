@@ -858,14 +858,37 @@ test('scaffoldWorkspace copies opencode agent files when opencode is enabled', a
     templatesDir: bundledTemplatesDir,
   });
 
-  // Verify opencode agents were copied from the bundled agents dir
+  // Verify opencode agents were copied from the bundled agents dir with exact content parity.
   const opencodeAgentsDir = path.join(tempRoot, '.opencode', 'agents');
+  const bundledAgentsDir = resolveBundledAgentsDir();
+  assert.ok(bundledAgentsDir, 'bundled opencode agents dir should resolve for test fixture');
   const agentFiles = ['vision-reviewer.md', 'error-analyst.md', 'code-critic.md'];
-  for (const f of agentFiles) {
-    const dest = path.join(opencodeAgentsDir, f);
-    assert.ok(existsSync(dest), `${f} should be copied to .opencode/agents/`);
-    const content = await readFile(dest, 'utf8');
-    assert.ok(content.length > 0, `${f} should have content`);
+  const sourceContents = new Map();
+  for (const fileName of agentFiles) {
+    sourceContents.set(fileName, await readFile(path.join(bundledAgentsDir, fileName), 'utf8'));
+  }
+  for (let index = 0; index < agentFiles.length; index++) {
+    const fileName = agentFiles[index];
+    const dest = path.join(opencodeAgentsDir, fileName);
+    assert.ok(existsSync(dest), `${fileName} should be copied to .opencode/agents/`);
+    const copiedContent = await readFile(dest, 'utf8');
+    assert.equal(
+      copiedContent,
+      sourceContents.get(fileName),
+      `${fileName} content should exactly match bundled source`,
+    );
+
+    const wrongFile = agentFiles[(index + 1) % agentFiles.length];
+    assert.notEqual(
+      copiedContent,
+      sourceContents.get(wrongFile),
+      `${fileName} should not match ${wrongFile} content`,
+    );
+    assert.notEqual(
+      copiedContent,
+      `CORRUPTED ${fileName}`,
+      `${fileName} should not match corrupted content`,
+    );
   }
 
   assert.ok(result.config_path);
