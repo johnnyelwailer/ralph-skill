@@ -10,12 +10,14 @@ import {
   detectPythonInstallCommand,
   buildProviderInstallCommands,
   buildProviderRemoteEnv,
+  buildProviderAuthFileMounts,
   buildVSCodeExtensions,
   resolveDevcontainerProviders,
   resolveDevcontainerDeps,
   verifyDevcontainer,
   verifyDevcontainerCommand,
   checkAuthPreflight,
+  resolveHomePath,
   type DevcontainerDeps,
   type DevcontainerConfig,
   type VerifyDeps,
@@ -53,7 +55,9 @@ function mockDiscovery(overrides: Partial<DiscoveryResult> = {}): DiscoveryResul
 
 test('generateDevcontainerConfig - node-typescript project', () => {
   const discovery = mockDiscovery();
-  const config = generateDevcontainerConfig(discovery);
+  // Use mock existsFn that returns false for auth files to keep mounts predictable
+  const existsFn = () => false;
+  const config = generateDevcontainerConfig(discovery, existsFn);
 
   assert.equal(config.name, 'mock-project-aloop');
   assert.equal(config.image, 'mcr.microsoft.com/devcontainers/typescript-node:22');
@@ -1357,4 +1361,257 @@ test('devcontainerCommandWithDeps - result includes auth_warnings', async () => 
   const result = await devcontainerCommandWithDeps({}, deps);
   // auth_warnings field should exist (may have warnings depending on host env)
   assert.ok(Array.isArray(result.auth_warnings));
+});
+
+// --- resolveHomePath ---
+
+test('resolveHomePath - expands tilde to home dir', () => {
+  assert.equal(resolveHomePath('~/.claude/.credentials.json', '/home/user'), '/home/user/.claude/.credentials.json');
+});
+
+test('resolveHomePath - handles bare tilde', () => {
+  assert.equal(resolveHomePath('~', '/home/user'), '/home/user');
+});
+
+test('resolveHomePath - joins relative path with home dir', () => {
+  assert.equal(resolveHomePath('.claude/.credentials.json', '/home/user'), '/home/user/.claude/.credentials.json');
+});
+
+test('resolveHomePath - leaves absolute paths unchanged', () => {
+  assert.equal(resolveHomePath('/etc/config.json', '/home/user'), '/etc/config.json');
+});
+
+// --- buildProviderAuthFileMounts ---
+
+test('buildProviderAuthFileMounts - mounts auth file when env var not set and file exists', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = (p: string) => p.includes('.claude/.credentials.json');
+  const mounts = buildProviderAuthFileMounts(['claude'], env, existsFn, '/home/user');
+
+  assert.equal(mounts.length, 1);
+  assert.ok(mounts[0].includes('source=/home/user/.claude/.credentials.json'));
+  assert.ok(mounts[0].includes('target=${containerEnv:HOME}/.claude/.credentials.json'));
+  assert.ok(mounts[0].includes('type=bind'));
+});
+
+test('buildProviderAuthFileMounts - skips when env var is already set', () => {
+  const env = { ANTHROPIC_API_KEY: 'sk-ant-abc' };
+  const existsFn = () => true;
+  const mounts = buildProviderAuthFileMounts(['claude'], env, existsFn, '/home/user');
+
+  assert.equal(mounts.length, 0);
+});
+
+test('buildProviderAuthFileMounts - skips when auth file does not exist', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = () => false;
+  const mounts = buildProviderAuthFileMounts(['claude'], env, existsFn, '/home/user');
+
+  assert.equal(mounts.length, 0);
+});
+
+test('buildProviderAuthFileMounts - mounts both gemini auth files when both exist', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = (p: string) => p.includes('.gemini/');
+  const mounts = buildProviderAuthFileMounts(['gemini'], env, existsFn, '/home/user');
+
+  assert.equal(mounts.length, 2);
+  assert.ok(mounts.some(m => m.includes('.gemini/oauth_creds.json')));
+  assert.ok(mounts.some(m => m.includes('.gemini/google_accounts.json')));
+});
+
+test('buildProviderAuthFileMounts - mounts gemini only existing file', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = (p: string) => p.includes('oauth_creds.json');
+  const mounts = buildProviderAuthFileMounts(['gemini'], env, existsFn, '/home/user');
+
+  assert.equal(mounts.length, 1);
+  assert.ok(mounts[0].includes('oauth_creds.json'));
+  assert.ok(!mounts.some(m => m.includes('google_accounts.json')));
+});
+
+test('buildProviderAuthFileMounts - codex auth file mount', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = (p: string) => p.includes('.codex/auth.json');
+  const mounts = buildProviderAuthFileMounts(['codex'], env, existsFn, '/home/user');
+
+  assert.equal(mounts.length, 1);
+  assert.ok(mounts[0].includes('source=/home/user/.codex/auth.json'));
+  assert.ok(mounts[0].includes('target=${containerEnv:HOME}/.codex/auth.json'));
+});
+
+test('buildProviderAuthFileMounts - copilot auth file mount', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = (p: string) => p.includes('.copilot/config.json');
+  const mounts = buildProviderAuthFileMounts(['copilot'], env, existsFn, '/home/user');
+
+  assert.equal(mounts.length, 1);
+  assert.ok(mounts[0].includes('source=/home/user/.copilot/config.json'));
+});
+
+test('buildProviderAuthFileMounts - opencode auth file mount uses XDG path', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = (p: string) => p.includes('.local/share/opencode/auth.json');
+  const mounts = buildProviderAuthFileMounts(['opencode'], env, existsFn, '/home/user');
+
+  assert.equal(mounts.length, 1);
+  assert.ok(mounts[0].includes('source=/home/user/.local/share/opencode/auth.json'));
+  assert.ok(mounts[0].includes('target=${containerEnv:HOME}/.local/share/opencode/auth.json'));
+});
+
+test('buildProviderAuthFileMounts - multiple providers each with their own file', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = (p: string) => p.includes('.claude/') || p.includes('.codex/');
+  const mounts = buildProviderAuthFileMounts(['claude', 'codex'], env, existsFn, '/home/user');
+
+  assert.equal(mounts.length, 2);
+  assert.ok(mounts.some(m => m.includes('.claude/.credentials.json')));
+  assert.ok(mounts.some(m => m.includes('.codex/auth.json')));
+});
+
+test('buildProviderAuthFileMounts - empty providers returns empty', () => {
+  const mounts = buildProviderAuthFileMounts([], {}, () => true, '/home/user');
+  assert.equal(mounts.length, 0);
+});
+
+test('buildProviderAuthFileMounts - unknown provider skipped', () => {
+  const mounts = buildProviderAuthFileMounts(['unknown'], {}, () => true, '/home/user');
+  assert.equal(mounts.length, 0);
+});
+
+test('buildProviderAuthFileMounts - default existsFn uses real filesystem', () => {
+  // Using default args: should not throw, may return empty if no auth files on host
+  const mounts = buildProviderAuthFileMounts(['claude'], {});
+  assert.ok(Array.isArray(mounts));
+});
+
+// --- checkAuthPreflight with auth file fallback ---
+
+test('checkAuthPreflight - no warning when auth file exists and env var not set', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = (p: string) => p.includes('.claude/.credentials.json');
+  const warnings = checkAuthPreflight(['claude'], env, existsFn, '/home/user');
+
+  assert.equal(warnings.length, 0);
+});
+
+test('checkAuthPreflight - warns when neither env var nor auth file exists', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = () => false;
+  const warnings = checkAuthPreflight(['claude'], env, existsFn, '/home/user');
+
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].provider, 'claude');
+});
+
+test('checkAuthPreflight - no warning when env var is set (auth file check skipped)', () => {
+  const env = { ANTHROPIC_API_KEY: 'sk-ant-abc' };
+  const existsFn = () => false; // auth file doesn't exist, but env var is set
+  const warnings = checkAuthPreflight(['claude'], env, existsFn, '/home/user');
+
+  assert.equal(warnings.length, 0);
+});
+
+test('checkAuthPreflight - gemini no warning when one auth file exists', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = (p: string) => p.includes('oauth_creds.json');
+  const warnings = checkAuthPreflight(['gemini'], env, existsFn, '/home/user');
+
+  assert.equal(warnings.length, 0);
+});
+
+test('checkAuthPreflight - gemini warns when no env var and no auth files', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = () => false;
+  const warnings = checkAuthPreflight(['gemini'], env, existsFn, '/home/user');
+
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].provider, 'gemini');
+});
+
+test('checkAuthPreflight - back compat: without existsFn, behaves as before', () => {
+  const env: Record<string, string | undefined> = {};
+  // No existsFn → no auth file check → warns as before
+  const warnings = checkAuthPreflight(['claude'], env);
+  assert.equal(warnings.length, 1);
+});
+
+// --- generateDevcontainerConfig with auth file mounts ---
+
+test('generateDevcontainerConfig - includes auth file mount when file exists', () => {
+  const discovery = mockDiscovery(); // claude provider
+  const existsFn = (p: string) => p.includes('.claude/.credentials.json');
+  const config = generateDevcontainerConfig(discovery, existsFn, undefined, {}, '/home/user');
+
+  // Should have 2 aloop mounts + 1 auth file mount
+  assert.equal(config.mounts.length, 3);
+  assert.ok(config.mounts.some(m => m.includes('.claude/.credentials.json')));
+  assert.ok(config.mounts.some(m => m.includes('.aloop,target=')));
+  assert.ok(config.mounts.some(m => m.includes('/aloop-sessions')));
+});
+
+test('generateDevcontainerConfig - no auth file mount when env var is set', () => {
+  const discovery = mockDiscovery(); // claude provider
+  const existsFn = (p: string) => p.includes('.claude/.credentials.json');
+  const env = { ANTHROPIC_API_KEY: 'sk-ant-abc' };
+  const config = generateDevcontainerConfig(discovery, existsFn, undefined, env, '/home/user');
+
+  // Should have only 2 aloop mounts (auth file mount skipped because env var is set)
+  assert.equal(config.mounts.length, 2);
+  assert.ok(!config.mounts.some(m => m.includes('.credentials.json')));
+});
+
+test('generateDevcontainerConfig - multiple providers with auth files', () => {
+  const discovery = mockDiscovery({
+    providers: {
+      installed: ['claude', 'codex'],
+      missing: [],
+      default_provider: 'claude',
+      default_models: {},
+      round_robin_default: ['claude', 'codex'],
+    },
+  });
+  const existsFn = (p: string) => p.includes('.claude/') || p.includes('.codex/');
+  const config = generateDevcontainerConfig(discovery, existsFn, undefined, {}, '/home/user');
+
+  // 2 aloop + 2 auth file mounts (claude + codex)
+  assert.equal(config.mounts.length, 4);
+  assert.ok(config.mounts.some(m => m.includes('.credentials.json')));
+  assert.ok(config.mounts.some(m => m.includes('.codex/auth.json')));
+});
+
+// --- devcontainerCommandWithDeps with auth file mounts ---
+
+test('devcontainerCommandWithDeps - includes auth file mounts in written config', async () => {
+  let writtenContent = '';
+  const deps: DevcontainerDeps = {
+    discover: async () => mockDiscovery(),
+    readFile: async () => '',
+    writeFile: async (_p, data) => { writtenContent = data; },
+    mkdir: async () => undefined,
+    existsSync: (p: string) => p.includes('.claude/.credentials.json'),
+  };
+
+  await devcontainerCommandWithDeps({}, deps);
+  const parsed = JSON.parse(writtenContent);
+
+  // Should include auth file mount
+  assert.ok(parsed.mounts.some((m: string) => m.includes('.claude/.credentials.json')));
+});
+
+test('devcontainerCommandWithDeps - no auth file mount when file does not exist', async () => {
+  let writtenContent = '';
+  const deps: DevcontainerDeps = {
+    discover: async () => mockDiscovery(),
+    readFile: async () => '',
+    writeFile: async (_p, data) => { writtenContent = data; },
+    mkdir: async () => undefined,
+    existsSync: () => false,
+  };
+
+  await devcontainerCommandWithDeps({}, deps);
+  const parsed = JSON.parse(writtenContent);
+
+  // Only aloop mounts, no auth file mounts
+  assert.ok(!parsed.mounts.some((m: string) => m.includes('.credentials.json')));
 });

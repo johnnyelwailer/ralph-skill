@@ -242,6 +242,24 @@ const PROVIDER_AUTH_GUIDANCE: Record<string, string> = {
   copilot: 'Set GH_TOKEN via `gh auth token` or from https://github.com/settings/tokens',
 };
 
+/**
+ * Per-provider auth credential file paths for bind-mount fallback.
+ * Each entry lists the host-side file path (relative to $HOME) that stores
+ * the provider's OAuth credentials. Some providers (gemini) have multiple files.
+ *
+ * Path rules:
+ * - Paths are relative to user home ($HOME) on the host
+ * - XDG paths are resolved at runtime
+ * - Mount target uses container user's $HOME (via ${containerEnv:HOME})
+ */
+const PROVIDER_AUTH_FILES: Record<string, string[]> = {
+  claude: ['.claude/.credentials.json'],
+  opencode: ['.local/share/opencode/auth.json'],
+  codex: ['.codex/auth.json'],
+  copilot: ['.copilot/config.json'],
+  gemini: ['.gemini/oauth_creds.json', '.gemini/google_accounts.json'],
+};
+
 export interface AuthPreflightWarning {
   provider: string;
   missingVars: string[];
@@ -250,25 +268,39 @@ export interface AuthPreflightWarning {
 
 /**
  * Check host environment for required auth env vars for each activated provider.
- * Returns warnings for providers where no auth var is set on the host.
+ * Returns warnings for providers where no auth var is set AND no auth file exists.
  * Claude checks CLAUDE_CODE_OAUTH_TOKEN first, then ANTHROPIC_API_KEY.
+ * If an auth file exists on the host, it will be bind-mounted as a fallback, so no warning is emitted.
  */
 export function checkAuthPreflight(
   providers: string[],
   env: Record<string, string | undefined> = process.env,
+  existsFn?: (p: string) => boolean,
+  homeDir?: string,
 ): AuthPreflightWarning[] {
+  const resolvedHome = homeDir ?? env.HOME ?? env.USERPROFILE ?? '/root';
   const warnings: AuthPreflightWarning[] = [];
   for (const provider of providers) {
     const authVars = PROVIDER_AUTH_ENV_VARS[provider];
     if (!authVars || authVars.length === 0) continue;
     const anySet = authVars.some((v) => env[v] && env[v]!.length > 0);
-    if (!anySet) {
-      warnings.push({
-        provider,
-        missingVars: authVars,
-        guidance: PROVIDER_AUTH_GUIDANCE[provider] || `Set one of: ${authVars.join(', ')}`,
+    if (anySet) continue;
+
+    // Check if any auth file exists on host (bind-mount fallback)
+    const authFiles = PROVIDER_AUTH_FILES[provider];
+    if (existsFn && authFiles && authFiles.length > 0) {
+      const anyFileExists = authFiles.some((relPath) => {
+        const hostPath = resolveHomePath(relPath, resolvedHome);
+        return existsFn(hostPath);
       });
+      if (anyFileExists) continue; // Auth file mount will handle it
     }
+
+    warnings.push({
+      provider,
+      missingVars: authVars,
+      guidance: PROVIDER_AUTH_GUIDANCE[provider] || `Set one of: ${authVars.join(', ')}`,
+    });
   }
   return warnings;
 }
@@ -303,6 +335,64 @@ export function buildProviderRemoteEnv(installedProviders: string[]): Record<str
     }
   }
   return env;
+}
+
+/**
+ * Resolve a host-side auth file path relative to the home directory.
+ * Paths in PROVIDER_AUTH_FILES are relative to $HOME (e.g. ".claude/.credentials.json").
+ */
+export function resolveHomePath(filePath: string, homeDir: string): string {
+  if (path.isAbsolute(filePath)) {
+    return filePath;
+  }
+  // Strip leading ~/ or ~ if present
+  const cleaned = filePath.startsWith('~/')
+    ? filePath.slice(2)
+    : filePath === '~'
+      ? ''
+      : filePath;
+  return path.join(homeDir, cleaned);
+}
+
+/**
+ * Build bind-mount entries for provider auth files as a fallback when env vars are not set.
+ *
+ * For each activated provider:
+ * 1. If env var is set → skip (remoteEnv handles it)
+ * 2. If auth file exists on host → mount the file read-write
+ * 3. If neither → skip (checkAuthPreflight will warn)
+ *
+ * Only individual auth files are mounted, never entire provider config directories.
+ */
+export function buildProviderAuthFileMounts(
+  providers: string[],
+  env: Record<string, string | undefined> = process.env,
+  existsFn: (p: string) => boolean = existsSync,
+  homeDir?: string,
+): string[] {
+  const resolvedHome = homeDir ?? env.HOME ?? env.USERPROFILE ?? '/root';
+  const mounts: string[] = [];
+
+  for (const provider of providers) {
+    const authVars = PROVIDER_AUTH_ENV_VARS[provider];
+    const authFiles = PROVIDER_AUTH_FILES[provider];
+    if (!authFiles || authFiles.length === 0) continue;
+
+    // Skip if any env var is already set (remoteEnv will handle it)
+    const anyEnvSet = authVars?.some((v) => env[v] && env[v]!.length > 0);
+    if (anyEnvSet) continue;
+
+    // Mount auth files that exist on host
+    for (const relPath of authFiles) {
+      const hostPath = resolveHomePath(relPath, resolvedHome);
+      if (existsFn(hostPath)) {
+        const containerPath = `\${containerEnv:HOME}/${relPath}`;
+        mounts.push(`source=${hostPath},target=${containerPath},type=bind`);
+      }
+    }
+  }
+
+  return mounts;
 }
 
 /**
@@ -347,6 +437,8 @@ export function generateDevcontainerConfig(
   discovery: DiscoveryResult,
   existsFn: (p: string) => boolean = existsSync,
   configuredProviders?: string[],
+  env: Record<string, string | undefined> = process.env,
+  homeDir?: string,
 ): DevcontainerConfig {
   const projectRoot = discovery.project.root;
   const projectName = discovery.project.name;
@@ -361,11 +453,14 @@ export function generateDevcontainerConfig(
     ...providerInstalls,
   ];
 
+  // Auth file bind-mounts as fallback for providers without env vars
+  const authFileMounts = buildProviderAuthFileMounts(installedProviders, env, existsFn, homeDir);
+
   const config: DevcontainerConfig = {
     name: `${projectName}-aloop`,
     image: mapping.image,
     features: { ...mapping.features },
-    mounts: buildAloopMounts(),
+    mounts: [...buildAloopMounts(), ...authFileMounts],
     containerEnv: buildAloopContainerEnv(),
     remoteEnv: buildProviderRemoteEnv(installedProviders),
   };
@@ -500,7 +595,8 @@ export async function devcontainerCommandWithDeps(
   const hadExisting = deps.existsSync(configPath);
 
   const resolvedProviders = await resolveConfiguredProviders(discovery, deps);
-  const generated = generateDevcontainerConfig(discovery, deps.existsSync, resolvedProviders);
+  const hostHome = options.homeDir ?? process.env.HOME ?? process.env.USERPROFILE;
+  const generated = generateDevcontainerConfig(discovery, deps.existsSync, resolvedProviders, process.env, hostHome);
 
   let finalConfig: Record<string, unknown>;
   let action: 'created' | 'augmented';
