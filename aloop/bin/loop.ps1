@@ -283,6 +283,13 @@ function Check-PhasePrerequisites {
                 }
                 Write-Warning "No unchecked tasks in TODO.md — forcing plan phase"
             }
+        } else {
+            # TODO.md missing or unreadable — treat as zero tasks, force plan
+            $actualPhase = 'plan'
+            Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
+                requested = "build"; actual = "plan"; reason = "no_tasks"
+            }
+            Write-Warning "TODO.md not found — forcing plan phase"
         }
     }
 

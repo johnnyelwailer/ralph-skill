@@ -391,8 +391,13 @@ check_phase_prerequisites() {
             if [ "$unchecked" -eq 0 ]; then
                 actual_phase="plan"
                 write_log_entry "phase_prerequisite_miss" "requested" "build" "actual" "plan" "reason" "no_tasks"
-                echo "Warning: No unchecked tasks in TODO.md — forcing plan phase"
+                echo "Warning: No unchecked tasks in TODO.md — forcing plan phase" >&2
             fi
+        else
+            # TODO.md missing or unreadable — treat as zero tasks, force plan
+            actual_phase="plan"
+            write_log_entry "phase_prerequisite_miss" "requested" "build" "actual" "plan" "reason" "no_tasks"
+            echo "Warning: TODO.md not found — forcing plan phase" >&2
         fi
     fi
 
@@ -401,7 +406,7 @@ check_phase_prerequisites() {
         if [ -d "${WORK_DIR:-}/.git" ] && ! check_has_builds_to_review; then
             actual_phase="build"
             write_log_entry "phase_prerequisite_miss" "requested" "review" "actual" "build" "reason" "no_builds"
-            echo "Warning: No builds since last plan — forcing build phase"
+            echo "Warning: No builds since last plan — forcing build phase" >&2
         fi
     fi
 

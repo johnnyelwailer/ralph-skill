@@ -119,6 +119,12 @@ register_branch "queue.empty" "run_queue_if_present returns 1 when queue is empt
 register_branch "queue.success" "run_queue_if_present runs item from queue and returns 0"
 register_branch "queue.frontmatter" "run_queue_if_present respects frontmatter provider in queue item"
 register_branch "queue.frontmatter_unavailable" "run_queue_if_present logs fallback when frontmatter provider is unavailable"
+register_branch "phase_prereq.build.todo_missing" "check_phase_prerequisites forces plan when TODO.md file is missing"
+register_branch "phase_prereq.build.todo_no_unchecked" "check_phase_prerequisites forces plan when TODO.md has zero unchecked tasks"
+register_branch "phase_prereq.build.todo_has_unchecked" "check_phase_prerequisites allows build when TODO.md has unchecked tasks"
+register_branch "phase_prereq.plan_passthrough" "check_phase_prerequisites passes through plan phase unchanged"
+register_branch "phase_prereq.review.no_builds" "check_phase_prerequisites forces build when no commits since last plan"
+register_branch "phase_prereq.review.has_builds" "check_phase_prerequisites allows review when commits exist"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -127,6 +133,8 @@ INVOKE_FUNC="$(extract_function invoke_provider)"
 WAIT_FUNC="$(extract_function _wait_for_provider)"
 KILL_PROVIDER_FUNC="$(extract_function kill_active_provider)"
 CYCLE_RESOLVE_FUNC="$(extract_function resolve_cycle_prompt_from_plan)"
+CHECK_PHASE_PREREQ_FUNC="$(extract_function check_phase_prerequisites)"
+CHECK_HAS_BUILDS_FUNC="$(extract_function check_has_builds_to_review)"
 FRONTMATTER_FUNC="$(extract_function parse_frontmatter)"
 ADVANCE_FUNC="$(extract_function advance_cycle_position)"
 WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
@@ -138,7 +146,7 @@ if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [
     exit 1
 fi
 
-if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ]; then
+if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ]; then
     echo "FAIL: could not extract cycle/frontmatter/advance/requests/queue functions from $LOOP_SH"
     exit 1
 fi
@@ -150,6 +158,8 @@ eval "$KILL_PROVIDER_FUNC"
 eval "$WAIT_FUNC"
 eval "$INVOKE_FUNC"
 eval "$CYCLE_RESOLVE_FUNC"
+eval "$CHECK_PHASE_PREREQ_FUNC"
+eval "$CHECK_HAS_BUILDS_FUNC"
 eval "$FRONTMATTER_FUNC"
 eval "$ADVANCE_FUNC"
 eval "$WAIT_FOR_REQUESTS_FUNC"
@@ -551,6 +561,86 @@ else
 fi
 
 rm -rf "$CYCLE_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# Phase prerequisite branches (check_phase_prerequisites)
+# ---------------------------------------------------------------------------
+
+PHASE_TMPDIR="$(mktemp -d)"
+
+# phase_prereq.build.todo_missing — file does not exist
+PLAN_FILE="$PHASE_TMPDIR/nonexistent-todo-missing.md"
+AFTER_PREREQ=$(check_phase_prerequisites "build")
+if [ "$AFTER_PREREQ" = "plan" ]; then
+    cover_branch "phase_prereq.build.todo_missing"
+    pass_case "check_phase_prerequisites forces plan when TODO.md is missing"
+else
+    fail_case "check_phase_prerequisites should force plan when TODO.md missing (got: $AFTER_PREREQ)"
+fi
+
+# phase_prereq.build.todo_no_unchecked — file exists but all tasks checked
+PLAN_FILE="$PHASE_TMPDIR/todo-all-checked.md"
+echo "- [x] Done task" > "$PLAN_FILE"
+AFTER_PREREQ=$(check_phase_prerequisites "build")
+if [ "$AFTER_PREREQ" = "plan" ]; then
+    cover_branch "phase_prereq.build.todo_no_unchecked"
+    pass_case "check_phase_prerequisites forces plan when TODO.md has zero unchecked tasks"
+else
+    fail_case "check_phase_prerequisites should force plan with zero unchecked (got: $AFTER_PREREQ)"
+fi
+
+# phase_prereq.build.todo_has_unchecked — file exists with unchecked tasks
+PLAN_FILE="$PHASE_TMPDIR/todo-with-tasks.md"
+printf "- [ ] Task 1\n- [x] Done task\n" > "$PLAN_FILE"
+AFTER_PREREQ=$(check_phase_prerequisites "build")
+if [ "$AFTER_PREREQ" = "build" ]; then
+    cover_branch "phase_prereq.build.todo_has_unchecked"
+    pass_case "check_phase_prerequisites allows build when TODO.md has unchecked tasks"
+else
+    fail_case "check_phase_prerequisites should allow build with unchecked tasks (got: $AFTER_PREREQ)"
+fi
+
+# phase_prereq.plan_passthrough — plan phase passes through regardless
+PLAN_FILE="$PHASE_TMPDIR/nonexistent-plan.md"
+AFTER_PREREQ=$(check_phase_prerequisites "plan")
+if [ "$AFTER_PREREQ" = "plan" ]; then
+    cover_branch "phase_prereq.plan_passthrough"
+    pass_case "check_phase_prerequisites passes through plan phase unchanged"
+else
+    fail_case "check_phase_prerequisites should pass through plan (got: $AFTER_PREREQ)"
+fi
+
+# phase_prereq.review.no_builds — review with no commits since last plan
+REVIEW_TMPDIR="$(mktemp -d)"
+WORK_DIR="$REVIEW_TMPDIR"
+git init -q "$REVIEW_TMPDIR"
+git -C "$REVIEW_TMPDIR" config user.name "Test"
+git -C "$REVIEW_TMPDIR" config user.email "test@example.com"
+echo "seed" > "$REVIEW_TMPDIR/seed.txt"
+git -C "$REVIEW_TMPDIR" add seed.txt
+git -C "$REVIEW_TMPDIR" commit -m "seed" -m "Aloop-Iteration: 0" -q
+LAST_PLAN_COMMIT=$(git -C "$REVIEW_TMPDIR" rev-parse HEAD)
+AFTER_PREREQ=$(check_phase_prerequisites "review")
+if [ "$AFTER_PREREQ" = "build" ]; then
+    cover_branch "phase_prereq.review.no_builds"
+    pass_case "check_phase_prerequisites forces build when no commits since last plan"
+else
+    fail_case "check_phase_prerequisites should force build with no new commits (got: $AFTER_PREREQ)"
+fi
+
+# phase_prereq.review.has_builds — review with new commits since last plan
+echo "new" > "$REVIEW_TMPDIR/new.txt"
+git -C "$REVIEW_TMPDIR" add new.txt
+git -C "$REVIEW_TMPDIR" commit -m "new build" -q
+AFTER_PREREQ=$(check_phase_prerequisites "review")
+if [ "$AFTER_PREREQ" = "review" ]; then
+    cover_branch "phase_prereq.review.has_builds"
+    pass_case "check_phase_prerequisites allows review when new commits exist"
+else
+    fail_case "check_phase_prerequisites should allow review with new commits (got: $AFTER_PREREQ)"
+fi
+
+rm -rf "$PHASE_TMPDIR" "$REVIEW_TMPDIR"
 
 # ---------------------------------------------------------------------------
 # Frontmatter parsing branches (parse_frontmatter)

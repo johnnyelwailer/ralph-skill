@@ -1018,12 +1018,12 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   }
 }
 
-export async function startCommand(sessionIdArg: string | undefined, options: StartCommandOptions = {}) {
+export async function startCommand(sessionIdArg: string | undefined, options: StartCommandOptions = {}, deps: StartDeps = defaultDeps) {
   if (sessionIdArg) {
     options.sessionId = sessionIdArg;
   }
   const outputMode = options.output ?? 'text';
-  const result = await startCommandWithDeps(options);
+  const result = await startCommandWithDeps(options, deps);
 
   if (outputMode === 'json') {
     console.log(JSON.stringify(result, null, 2));

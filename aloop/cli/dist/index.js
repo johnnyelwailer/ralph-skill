@@ -3265,6 +3265,22 @@ function readDefaultProvider(homeDir) {
     return "claude";
   }
 }
+var KNOWN_PROVIDERS = ["claude", "codex", "gemini", "copilot", "opencode"];
+function validateProviders(providerList) {
+  const unknown = providerList.filter((p) => !KNOWN_PROVIDERS.includes(p));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown provider(s): ${unknown.join(", ")} (valid: ${KNOWN_PROVIDERS.join(", ")})`
+    );
+  }
+}
+function validateSpecFiles(specFiles, projectRoot) {
+  for (const file of specFiles) {
+    if (!existsSync(path.resolve(projectRoot, file))) {
+      throw new Error(`Spec file not found: ${file}`);
+    }
+  }
+}
 function getInstalledProviders() {
   const providers = ["claude", "codex", "gemini", "copilot"];
   const installed = [];
@@ -3507,6 +3523,15 @@ async function scaffoldWorkspace(options = {}) {
   const dataPrivacy = normalizeDataPrivacy(options.dataPrivacy);
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
   const promptsDir = path.join(discovery.setup.project_dir, "prompts");
+  if (enabledProviders.length > 0) {
+    validateProviders(enabled);
+  }
+  if (options.provider) {
+    validateProviders([provider]);
+  }
+  if (specFiles.length > 0) {
+    validateSpecFiles(specFiles, discovery.project.root);
+  }
   const requiredTemplates = resolvePromptTemplates(mode);
   const templatesMissing = requiredTemplates.some((f) => !existsSync(path.join(templatesDir, f)));
   if (templatesMissing && !options.templatesDir) {
@@ -6441,10 +6466,13 @@ async function reserveLocalPort() {
 async function startCommandWithDeps(options = {}, deps = defaultDeps) {
   const homeDir = resolveHomeDir2(options.homeDir);
   const discovery = await deps.discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
-  if (!discovery.setup.config_exists || !deps.existsSync(discovery.setup.config_path)) {
+  const aloopRoot = path9.join(homeDir, ".aloop");
+  const globalConfigPath = path9.join(aloopRoot, "config.yml");
+  const hasProjectConfig = discovery.setup.config_exists && deps.existsSync(discovery.setup.config_path);
+  const hasGlobalConfig = deps.existsSync(globalConfigPath);
+  if (!hasProjectConfig && !hasGlobalConfig) {
     throw new Error("No Aloop configuration found for this project. Run `aloop setup` first.");
   }
-  const aloopRoot = path9.join(homeDir, ".aloop");
   const sessionsRoot = path9.join(aloopRoot, "sessions");
   const warnings = [];
   await deps.mkdir(sessionsRoot, { recursive: true });
@@ -6833,12 +6861,12 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     throw error;
   }
 }
-async function startCommand(sessionIdArg, options = {}) {
+async function startCommand(sessionIdArg, options = {}, deps = defaultDeps) {
   if (sessionIdArg) {
     options.sessionId = sessionIdArg;
   }
   const outputMode = options.output ?? "text";
-  const result = await startCommandWithDeps(options);
+  const result = await startCommandWithDeps(options, deps);
   if (outputMode === "json") {
     console.log(JSON.stringify(result, null, 2));
     return;

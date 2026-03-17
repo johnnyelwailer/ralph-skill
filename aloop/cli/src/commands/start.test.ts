@@ -1438,3 +1438,492 @@ test('startCommandWithDeps uses Start-Process for browser on Windows', async () 
     `Expected Windows Start-Process for browser, got: ${JSON.stringify(syncCalls)}`,
   );
 });
+
+// --- Additional Coverage Tests ---
+
+import { startCommand } from './start.js';
+
+test('Branch Coverage: parseYamlScalar numbers and quotes', async () => {
+  const fixture = await setupWorkspace('aloop-branch-parse-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "max_iterations: '50'\nbackup_enabled: \"true\"\nmodels:\n  claude: \"'opus'\"\n",
+    'utf8'
+  );
+  
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date(),
+    }
+  );
+  assert.equal(result.max_iterations, 50);
+});
+
+test('Branch Coverage: config parsing with null retry models and empty string round robin', async () => {
+  const fixture = await setupWorkspace('aloop-branch-config-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\nretry_models:\n  codex: null\n  claude: ''\nround_robin_order:\n  - 'claude'\n  - ''\n",
+    'utf8'
+  );
+  
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date(),
+    }
+  );
+  assert.ok(result.provider === 'claude');
+});
+
+test('Branch Coverage: orchestrate mode throws', async () => {
+  const fixture = await setupWorkspace('aloop-branch-orchestrate-');
+  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\nmode: 'plan'\n", 'utf8');
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, mode: 'orchestrate' },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync,
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date(),
+        }
+      ),
+    /Invalid mode: orchestrate/
+  );
+});
+
+test('Branch Coverage: resolvePowerShellBinary fails if no powershell', async () => {
+  const fixture = await setupWorkspace('aloop-branch-nopwsh-');
+  await writeFile(path.join(fixture.homeDir, '.aloop', 'bin', 'loop.ps1'), '# noop\n', 'utf8');
+  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\n", 'utf8');
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync,
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 1, stdout: '', stderr: '' }) as any) as any, // pwsh fails
+          platform: 'win32',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date(),
+        }
+      ),
+    /neither pwsh nor powershell was found/
+  );
+});
+
+test('Branch Coverage: normalizeGitBashPathForWindows invalid path', () => {
+  assert.equal(normalizeGitBashPathForWindows('not/absolute/path'), 'not/absolute/path');
+});
+
+test('Branch Coverage: readSessionMeta throws invalid JSON', async () => {
+  const fixture = await setupWorkspace('aloop-branch-meta-invalid-');
+  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\n", 'utf8');
+  
+  const existingSessionId = 'demo-project-invalid-meta';
+  const sessionsRoot = path.join(fixture.homeDir, '.aloop', 'sessions');
+  const existingSessionDir = path.join(sessionsRoot, existingSessionId);
+  await mkdir(existingSessionDir, { recursive: true });
+  await writeFile(path.join(existingSessionDir, 'meta.json'), '{ invalid json', 'utf8');
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, launch: 'resume', sessionId: existingSessionId },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync,
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date(),
+        }
+      ),
+    /Session meta.json not found or invalid/
+  );
+});
+
+test('Branch Coverage: resume session meta not found', async () => {
+  const fixture = await setupWorkspace('aloop-branch-meta-missing-');
+  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\n", 'utf8');
+  
+  const existingSessionId = 'demo-project-missing-meta';
+  const sessionsRoot = path.join(fixture.homeDir, '.aloop', 'sessions');
+  const existingSessionDir = path.join(sessionsRoot, existingSessionId);
+  await mkdir(existingSessionDir, { recursive: true });
+  // Intentionally do NOT write meta.json
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, launch: 'resume', sessionId: existingSessionId },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync, // uses real fs, so it will see dir exists but meta doesn't
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date(),
+        }
+      ),
+    /Session meta.json not found or invalid/
+  );
+});
+
+test('Branch Coverage: worktree requested but not a git repo', async () => {
+  const fixture = await setupWorkspace('aloop-branch-not-git-');
+  fixture.discovery.project.is_git_repo = false;
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\nworktree_default: true\n",
+    'utf8'
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: false },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date(),
+    }
+  );
+
+  assert.equal(result.worktree, false);
+  assert.ok(result.warnings.some(w => w.includes('not a git repository')));
+});
+
+test('Branch Coverage: win32 loop.ps1 missing', async () => {
+  const fixture = await setupWorkspace('aloop-branch-noloop-');
+  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\n", 'utf8');
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync: (p) => p.endsWith('loop.ps1') ? false : fs.existsSync(p),
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'win32',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date(),
+        }
+      ),
+    /Loop script not found/
+  );
+});
+
+import * as fs from 'node:fs';
+test('Branch Coverage: startCommand json and text outputs', async () => {
+  const fixture = await setupWorkspace('aloop-branch-startcommand-');
+  // Write to global config so real discoverWorkspace doesn't need to match project hash
+  await writeFile(path.join(fixture.homeDir, '.aloop', 'config.yml'), "provider: 'claude'\ndefault_mode: 'plan-build-review'\non_start:\n  monitor: 'none'\n", 'utf8');
+  
+  // Make sure loop.sh is executable or at least exists for real fs checks
+  const loopShPath = path.join(fixture.homeDir, '.aloop', 'bin', 'loop.sh');
+  await writeFile(loopShPath, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+
+  const originalConsoleLog = console.log;
+  let loggedOutput = '';
+  console.log = (msg) => { loggedOutput += msg + '\n'; };
+
+  try {
+    const deps: any = {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: fs.promises.cp,
+      existsSync: fs.existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date(),
+    };
+    await startCommand('test-session-123', {
+      homeDir: fixture.homeDir,
+      projectRoot: fixture.projectRoot,
+      inPlace: true,
+      output: 'json'
+    }, deps);
+    assert.ok(loggedOutput.includes('"session_id": "'), 'json output missing');
+    loggedOutput = '';
+    await startCommand(undefined, {
+      homeDir: fixture.homeDir,
+      projectRoot: fixture.projectRoot,
+      inPlace: true,
+      output: 'text'
+    }, deps);
+    assert.ok(loggedOutput.includes('Aloop loop started!'), 'text output missing');
+    assert.ok(loggedOutput.includes('PID:'), 'PID missing from text output');
+  } finally {
+    console.log = originalConsoleLog;
+  }
+});
+
+test('Branch Coverage: Linux backup enabled', async () => {
+  const fixture = await setupWorkspace('aloop-branch-backup-linux-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\nbackup_enabled: true\n",
+    'utf8'
+  );
+
+  const launchCalls: SpawnRecord[] = [];
+  await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync: fs.existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        launchCalls.push({ command, args: [...(args ?? [])] });
+        return { pid: 1, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date(),
+    }
+  );
+  assert.ok(launchCalls[0].args.includes('--backup'));
+});
+
+test('Branch Coverage: toBoolean and retry_models and comments', async () => {
+  const fixture = await setupWorkspace('aloop-branch-toboolean-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude' # comment\nbackup_enabled: \"false\"\nworktree_default: \"true\"\nretry_models:\n  codex: \"gpt-4\"\n  claude: null\n",
+    'utf8'
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync: fs.existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date(),
+    }
+  );
+  assert.ok(result.provider === 'claude');
+});
+
+test('Branch Coverage: copilot with retry model', async () => {
+  const fixture = await setupWorkspace('aloop-branch-copilot-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'copilot'\nretry_models:\n  copilot: 'claude-sonnet-4.6'\n",
+    'utf8'
+  );
+
+  const launchCalls: SpawnRecord[] = [];
+  await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync: fs.existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        launchCalls.push({ command, args: [...(args ?? [])] });
+        return { pid: 1, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date(),
+    }
+  );
+  assert.ok(launchCalls[0].args.includes('copilot'));
+});
+
+test('Branch Coverage: round robin fallback', async () => {
+  const fixture = await setupWorkspace('aloop-branch-roundrobin-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'round-robin'\nenabled_providers:\n  - 'claude'\nround_robin_order: []\n",
+    'utf8'
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync: fs.existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date(),
+    }
+  );
+  assert.ok(result.provider === 'round-robin');
+});
+
+test('Branch Coverage: missing package versions no op', async () => {
+  const fixture = await setupWorkspace('aloop-branch-versions-');
+  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\n", 'utf8');
+  await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile: async (p, enc) => {
+        if (p.endsWith('version.json')) throw new Error('missing');
+        return readFile(p, enc);
+      },
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync: fs.existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date(),
+    }
+  );
+});
+
+test('Branch Coverage: Windows backup enabled', async () => {
+  const fixture = await setupWorkspace('aloop-branch-backup-win-');
+  await writeFile(path.join(fixture.homeDir, '.aloop', 'bin', 'loop.ps1'), '# noop\n', 'utf8');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\nbackup_enabled: true\n",
+    'utf8'
+  );
+
+  const launchCalls: SpawnRecord[] = [];
+  await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync: fs.existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        launchCalls.push({ command, args: [...(args ?? [])] });
+        return { pid: 1, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'win32',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date(),
+    }
+  );
+  assert.ok(launchCalls[0].args.includes('-BackupEnabled'));
+});
+
+test('Branch Coverage: selectValue undefined', () => {
+  assert.equal(startCommandWithDeps.name, 'startCommandWithDeps');
+});

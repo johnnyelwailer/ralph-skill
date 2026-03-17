@@ -3158,6 +3158,24 @@ Describe 'loop.ps1 — phase prerequisite guards' {
     BeforeAll {
         $script:cfTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "aloop-guards-ps1-$PID"
         New-Item -ItemType Directory -Path $script:cfTempRoot -Force | Out-Null
+
+        # Extract functions needed for phase prerequisite tests
+        $scriptContent = Get-Content (Join-Path $PSScriptRoot 'loop.ps1') -Raw
+        if ($scriptContent -match '(?ms)(^function Check-PhasePrerequisites\s*\{.*?^})') {
+            $script:checkPhasePrerequisitesFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Check-PhasePrerequisites from loop.ps1"
+        }
+        if ($scriptContent -match '(?ms)(^function Check-HasBuildsToReview\s*\{.*?^})') {
+            $script:checkHasBuildsToReviewFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Check-HasBuildsToReview from loop.ps1"
+        }
+        if ($scriptContent -match '(?ms)(^function Resolve-IterationMode\s*\{.*?^})') {
+            $script:resolveIterationModeFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Resolve-IterationMode from loop.ps1"
+        }
     }
 
     AfterAll {
@@ -3262,5 +3280,43 @@ Describe 'loop.ps1 — phase prerequisite guards' {
 
         $resolved = Resolve-IterationMode -IterationNumber 1
         $resolved | Should -Be 'review'
+    }
+
+    It 'Check-PhasePrerequisites enforces build -> plan when TODO.md is missing' {
+        $PlanFile = Join-Path $script:cfTempRoot 'nonexistent-todo-missing.md'
+        # Do NOT create the file — simulate missing TODO.md
+
+        function Write-LogEntry { param($Event, $Data) }
+        . ([scriptblock]::Create($script:checkPhasePrerequisitesFuncSource))
+        $result = Check-PhasePrerequisites -Phase 'build'
+        $result | Should -Be 'plan'
+    }
+
+    It 'Check-PhasePrerequisites enforces build -> plan when PlanFile is empty string' {
+        $PlanFile = ''
+
+        function Write-LogEntry { param($Event, $Data) }
+        . ([scriptblock]::Create($script:checkPhasePrerequisitesFuncSource))
+        $result = Check-PhasePrerequisites -Phase 'build'
+        $result | Should -Be 'plan'
+    }
+
+    It 'Check-PhasePrerequisites allows build when TODO.md has unchecked tasks' {
+        $PlanFile = Join-Path $script:cfTempRoot 'todo-has-unchecked.md'
+        "- [ ] Task 1`n- [x] Task 2" | Set-Content $PlanFile
+
+        function Write-LogEntry { param($Event, $Data) }
+        . ([scriptblock]::Create($script:checkPhasePrerequisitesFuncSource))
+        $result = Check-PhasePrerequisites -Phase 'build'
+        $result | Should -Be 'build'
+    }
+
+    It 'Check-PhasePrerequisites allows plan phase regardless of TODO.md state' {
+        $PlanFile = Join-Path $script:cfTempRoot 'nonexistent-plan.md'
+
+        function Write-LogEntry { param($Event, $Data) }
+        . ([scriptblock]::Create($script:checkPhasePrerequisitesFuncSource))
+        $result = Check-PhasePrerequisites -Phase 'plan'
+        $result | Should -Be 'plan'
     }
 }
