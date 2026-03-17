@@ -159,6 +159,7 @@ exit 0
                 $output = & $script:bashExe -c "
                     export PATH='$binBash':`$PATH
                     export FAKE_CLAUDE_STATE='$(ConvertTo-BashPath $LoopEnv.StateFile)'
+                    export ALOOP_SKIP_PHASE_GUARDS=true
                     bash '$loopBash' \
                         --prompts-dir '$promptBash' \
                         --session-dir '$sessBash' \
@@ -490,6 +491,7 @@ exit 0
                     export PATH='$binBash':`$PATH
                     export FAKE_RETRY_STATE_SH='$stateBash'
                     export ALOOP_RUNTIME_DIR='$(ConvertTo-BashRetryPath (Join-Path $LoopEnv.SessionDir '_runtime_stub'))'
+                    export ALOOP_SKIP_PHASE_GUARDS=true
                     $loopCommand
                 " 2>&1
                 return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
@@ -1066,10 +1068,12 @@ exit 0
             $prevState = $env:FAKE_RETRY_STATE
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
             $prevNoDash  = $env:ALOOP_NO_DASHBOARD
+            $prevSkipGuards = $env:ALOOP_SKIP_PHASE_GUARDS
             $env:PATH = "$fakeBinDir;$prevPath"
             $env:FAKE_RETRY_STATE = $Env.StateFile
             $env:ALOOP_RUNTIME_DIR = Join-Path $Env.SessionDir '_runtime_stub'
             $env:ALOOP_NO_DASHBOARD = '1'
+            $env:ALOOP_SKIP_PHASE_GUARDS = 'true'
             try {
                 $args = @(
                     '-NoProfile', '-File', $loopScript,
@@ -1102,6 +1106,11 @@ exit 0
                     Remove-Item Env:ALOOP_NO_DASHBOARD -ErrorAction SilentlyContinue
                 } else {
                     $env:ALOOP_NO_DASHBOARD = $prevNoDash
+                }
+                if ($null -eq $prevSkipGuards) {
+                    Remove-Item Env:ALOOP_SKIP_PHASE_GUARDS -ErrorAction SilentlyContinue
+                } else {
+                    $env:ALOOP_SKIP_PHASE_GUARDS = $prevSkipGuards
                 }
             }
         }
@@ -1239,12 +1248,14 @@ switch ($scenario) {
             $prevNoDash  = $env:ALOOP_NO_DASHBOARD
             $prevClaudeS = $env:FAKE_CLAUDE_SCENARIO
             $prevCodexS  = $env:FAKE_CODEX_SCENARIO
+            $prevSkipGuards = $env:ALOOP_SKIP_PHASE_GUARDS
             $env:PATH                  = "$fakeBinDir;$prevPath"
             $env:ALOOP_HEALTH_DIR      = $Env.HealthDir
             $env:ALOOP_RUNTIME_DIR     = Join-Path $Env.SessionDir '_runtime_stub'
             $env:ALOOP_NO_DASHBOARD    = '1'
             $env:FAKE_CLAUDE_SCENARIO  = $ClaudeScenario
             $env:FAKE_CODEX_SCENARIO   = $CodexScenario
+            $env:ALOOP_SKIP_PHASE_GUARDS = 'true'
             try {
                 $callArgs = @(
                     '-NoProfile', '-File', $loopScript,
@@ -1268,6 +1279,7 @@ switch ($scenario) {
                 if ($null -eq $prevNoDash)  { Remove-Item Env:ALOOP_NO_DASHBOARD   -EA SilentlyContinue } else { $env:ALOOP_NO_DASHBOARD  = $prevNoDash }
                 if ($null -eq $prevClaudeS) { Remove-Item Env:FAKE_CLAUDE_SCENARIO -EA SilentlyContinue } else { $env:FAKE_CLAUDE_SCENARIO = $prevClaudeS }
                 if ($null -eq $prevCodexS)  { Remove-Item Env:FAKE_CODEX_SCENARIO  -EA SilentlyContinue } else { $env:FAKE_CODEX_SCENARIO  = $prevCodexS }
+                if ($null -eq $prevSkipGuards) { Remove-Item Env:ALOOP_SKIP_PHASE_GUARDS -EA SilentlyContinue } else { $env:ALOOP_SKIP_PHASE_GUARDS = $prevSkipGuards }
             }
         }
 
@@ -1861,9 +1873,11 @@ exit 0
             $prevPath    = $env:PATH
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
             $prevNoDash  = $env:ALOOP_NO_DASHBOARD
+            $prevSkipGuards = $env:ALOOP_SKIP_PHASE_GUARDS
             $env:PATH              = "$fakeBinDir;$prevPath"
             $env:ALOOP_RUNTIME_DIR = Join-Path $Env.SessionDir '_runtime_stub'
             $env:ALOOP_NO_DASHBOARD = '1'
+            $env:ALOOP_SKIP_PHASE_GUARDS = 'true'
             try {
                 $output = & $pwshPath -NoProfile -File $loopScript `
                     -PromptsDir    $Env.PromptsDir `
@@ -1885,6 +1899,11 @@ exit 0
                     Remove-Item Env:ALOOP_NO_DASHBOARD -ErrorAction SilentlyContinue
                 } else {
                     $env:ALOOP_NO_DASHBOARD = $prevNoDash
+                }
+                if ($null -eq $prevSkipGuards) {
+                    Remove-Item Env:ALOOP_SKIP_PHASE_GUARDS -ErrorAction SilentlyContinue
+                } else {
+                    $env:ALOOP_SKIP_PHASE_GUARDS = $prevSkipGuards
                 }
             }
         }
@@ -2050,7 +2069,7 @@ exit 0
                 $fakeBinBashPath = ($script:shLockFakeBinDir -replace '\\', '/') -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
             }
             $fakeBinBashPath = $fakeBinBashPath.Trim()
-            $output = & $script:bashExe -c "export PATH='$fakeBinBashPath':$([char]36)PATH; export ALOOP_NO_DASHBOARD=1; bash '$($script:loopShBash)' --prompts-dir '$($Env.PromptsBash)' --session-dir '$($Env.SessionBash)' --work-dir '$($Env.WorkBash)' --max-iterations $MaxIter 2>&1"
+            $output = & $script:bashExe -c "export PATH='$fakeBinBashPath':$([char]36)PATH; export ALOOP_NO_DASHBOARD=1; export ALOOP_SKIP_PHASE_GUARDS=true; bash '$($script:loopShBash)' --prompts-dir '$($Env.PromptsBash)' --session-dir '$($Env.SessionBash)' --work-dir '$($Env.WorkBash)' --max-iterations $MaxIter 2>&1"
             return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
         }
     }
@@ -2208,8 +2227,10 @@ exit 0
             param($Env, [int]$MaxIter = 6, [switch]$DangerouslySkipContainer)
             $prevPath    = $env:PATH
             $prevNoDash  = $env:ALOOP_NO_DASHBOARD
+            $prevSkipGuards = $env:ALOOP_SKIP_PHASE_GUARDS
             $env:PATH              = "$($script:dcFakeBinDir);$prevPath"
             $env:ALOOP_NO_DASHBOARD = '1'
+            $env:ALOOP_SKIP_PHASE_GUARDS = 'true'
             try {
                 $args = @(
                     '-NoProfile', '-File', $script:dcLoopScript,
@@ -2229,6 +2250,11 @@ exit 0
                     Remove-Item Env:ALOOP_NO_DASHBOARD -ErrorAction SilentlyContinue
                 } else {
                     $env:ALOOP_NO_DASHBOARD = $prevNoDash
+                }
+                if ($null -eq $prevSkipGuards) {
+                    Remove-Item Env:ALOOP_SKIP_PHASE_GUARDS -ErrorAction SilentlyContinue
+                } else {
+                    $env:ALOOP_SKIP_PHASE_GUARDS = $prevSkipGuards
                 }
             }
         }
@@ -2292,8 +2318,10 @@ exit 0
         # Use a PATH containing ONLY fakeBinDir (has claude.cmd/aloop.cmd but NOT devcontainer)
         $prevPath    = $env:PATH
         $prevNoDash  = $env:ALOOP_NO_DASHBOARD
+        $prevSkipGuards = $env:ALOOP_SKIP_PHASE_GUARDS
         $env:PATH               = $script:dcFakeBinDir
         $env:ALOOP_NO_DASHBOARD = '1'
+        $env:ALOOP_SKIP_PHASE_GUARDS = 'true'
         try {
             $output = & $script:dcPwsh -NoProfile -File $script:dcLoopScript `
                 -PromptsDir $e.PromptsDir -SessionDir $e.SessionDir -WorkDir $e.WorkDir `
@@ -2302,6 +2330,7 @@ exit 0
         } finally {
             $env:PATH = $prevPath
             if ($null -eq $prevNoDash) { Remove-Item Env:ALOOP_NO_DASHBOARD -ErrorAction SilentlyContinue } else { $env:ALOOP_NO_DASHBOARD = $prevNoDash }
+            if ($null -eq $prevSkipGuards) { Remove-Item Env:ALOOP_SKIP_PHASE_GUARDS -ErrorAction SilentlyContinue } else { $env:ALOOP_SKIP_PHASE_GUARDS = $prevSkipGuards }
         }
         $combined = $output -join "`n"
         $exitCode | Should -Be 0
@@ -2416,7 +2445,7 @@ exit 0
             param($Env, [int]$MaxIter = 6, [switch]$DangerouslySkipContainer)
             $extraArgs = ""
             if ($DangerouslySkipContainer) { $extraArgs = "--dangerously-skip-container" }
-            $output = & $script:bashExe -c "export PATH='$($script:dcShFakeBinBash)':$([char]36)PATH; export ALOOP_NO_DASHBOARD=1; bash '$($script:dcLoopShBash)' --prompts-dir '$($Env.PromptsBash)' --session-dir '$($Env.SessionBash)' --work-dir '$($Env.WorkBash)' --max-iterations $MaxIter $extraArgs 2>&1"
+            $output = & $script:bashExe -c "export PATH='$($script:dcShFakeBinBash)':$([char]36)PATH; export ALOOP_NO_DASHBOARD=1; export ALOOP_SKIP_PHASE_GUARDS=true; bash '$($script:dcLoopShBash)' --prompts-dir '$($Env.PromptsBash)' --session-dir '$($Env.SessionBash)' --work-dir '$($Env.WorkBash)' --max-iterations $MaxIter $extraArgs 2>&1"
             return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
         }
     }
@@ -2482,7 +2511,7 @@ exit 0
         [System.IO.File]::WriteAllText((Join-Path $dcDir 'devcontainer.json'), '{"name":"test"}', $utf8NoBom)
 
         # Use a PATH containing ONLY fakeBinBash + essential system dirs (no devcontainer binary)
-        $output = & $script:bashExe -c "export PATH='$($script:dcShFakeBinBash)':/usr/bin:/bin; export ALOOP_NO_DASHBOARD=1; bash '$($script:dcLoopShBash)' --prompts-dir '$($e.PromptsBash)' --session-dir '$($e.SessionBash)' --work-dir '$($e.WorkBash)' --max-iterations 6 2>&1"
+        $output = & $script:bashExe -c "export PATH='$($script:dcShFakeBinBash)':/usr/bin:/bin; export ALOOP_NO_DASHBOARD=1; export ALOOP_SKIP_PHASE_GUARDS=true; bash '$($script:dcLoopShBash)' --prompts-dir '$($e.PromptsBash)' --session-dir '$($e.SessionBash)' --work-dir '$($e.WorkBash)' --max-iterations 6 2>&1"
         $exitCode = $LASTEXITCODE
         $combined = $output -join "`n"
         $exitCode | Should -Be 0
@@ -2840,12 +2869,14 @@ exit 0
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
             $prevNoDash  = $env:ALOOP_NO_DASHBOARD
             $prevReqTimeout = $env:REQUEST_TIMEOUT
+            $prevSkipGuards = $env:ALOOP_SKIP_PHASE_GUARDS
             $pathSep     = [System.IO.Path]::PathSeparator
             $env:PATH              = "$fakeBinDir$pathSep$prevPath"
             $env:ALOOP_RUNTIME_DIR = Join-Path $Env.SessionDir '_runtime_stub'
             $env:ALOOP_NO_DASHBOARD = '1'
             # Set a short request timeout for tests unless already set
             if (-not $env:REQUEST_TIMEOUT) { $env:REQUEST_TIMEOUT = '15' }
+            $env:ALOOP_SKIP_PHASE_GUARDS = 'true'
             try {
                 $output = & $pwshPath -NoProfile -File $loopScript `
                     -PromptsDir    $Env.PromptsDir `
@@ -2861,6 +2892,7 @@ exit 0
                 if ($null -eq $prevRuntime)    { Remove-Item Env:ALOOP_RUNTIME_DIR -EA SilentlyContinue } else { $env:ALOOP_RUNTIME_DIR = $prevRuntime }
                 if ($null -eq $prevNoDash)     { Remove-Item Env:ALOOP_NO_DASHBOARD -EA SilentlyContinue } else { $env:ALOOP_NO_DASHBOARD = $prevNoDash }
                 if ($null -eq $prevReqTimeout) { Remove-Item Env:REQUEST_TIMEOUT -EA SilentlyContinue } else { $env:REQUEST_TIMEOUT = $prevReqTimeout }
+                if ($null -eq $prevSkipGuards) { Remove-Item Env:ALOOP_SKIP_PHASE_GUARDS -EA SilentlyContinue } else { $env:ALOOP_SKIP_PHASE_GUARDS = $prevSkipGuards }
             }
         }
     }
