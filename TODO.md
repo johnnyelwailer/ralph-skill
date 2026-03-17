@@ -11,8 +11,9 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 - [x] [review] Gate 2: add regression tests for recommendation correctness edge cases in `project.test.ts` — (a) overlapping workstream synonyms should count once (spec with both `Auth` and `Authentication` headers → `workstream_count` should not double-count), (b) workflow content containing `actions/checkout` without test jobs must not set `ci_support.workflow_types` to include `test`, (c) recommendation should stay `loop` for simple spec + non-test workflow. Use exact assertions on `workstream_count`, `workflow_types`, and `recommended_mode`. (priority: high) [reviewed: pass — iter 198]
 
 ### Up Next — P1 (blocks loop-mode usage)
-- [ ] [qa/P1] Re-validate packaged-install `aloop setup` + `aloop start` in isolated `HOME` after Gate 1 fix lands, and capture a regression proof that loop scripts are bootstrapped from the installed package (not repo-local fixtures). (priority: high)
+- [x] [qa/P1] Re-validate packaged-install `aloop setup` + `aloop start` in isolated `HOME` after Gate 1 fix lands, and capture a regression proof that loop scripts are bootstrapped from the installed package (not repo-local fixtures). (priority: high)
   - Last verification (2026-03-17, iter 176): FAIL on packaged install (`/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop`) with fresh isolated `HOME`; `aloop setup --non-interactive --providers codex --spec SPEC.md` succeeds, but `aloop start --max-iterations 1` exits 1 with `Loop script not found: <HOME>/.aloop/bin/loop.sh`.
+  - Re-validation (2026-03-17, iter 199): PASS via `aloop/cli/scripts/test-install.mjs` packaged tarball flow. The script now verifies `aloop setup` + `aloop start --max-iterations 1` in fresh isolated `HOME` and asserts `~/.aloop/bin/{loop.sh,loop.ps1}` byte-match the installed package copies under `dist/bin`.
 
 ### Up Next — P2 (after P1 bugs and review gates)
 *(No open P2 tasks — all completed or cancelled)*
