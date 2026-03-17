@@ -11,6 +11,7 @@ import {
   buildProviderInstallCommands,
   buildProviderRemoteEnv,
   buildVSCodeExtensions,
+  resolveDevcontainerProviders,
   resolveDevcontainerDeps,
   verifyDevcontainer,
   verifyDevcontainerCommand,
@@ -677,6 +678,35 @@ test('generateDevcontainerConfig - no providers means no provider install or rem
   assert.deepEqual(config.remoteEnv, {});
 });
 
+test('resolveDevcontainerProviders - uses enabled_providers over locally discovered binaries', () => {
+  const providers = resolveDevcontainerProviders(
+    {
+      enabled_providers: ['opencode', 'copilot'],
+      provider: 'claude',
+    },
+    ['claude'],
+  );
+
+  assert.deepEqual(providers, ['opencode', 'copilot']);
+});
+
+test('resolveDevcontainerProviders - resolves round-robin provider set from round_robin_order', () => {
+  const providers = resolveDevcontainerProviders(
+    {
+      provider: 'round-robin',
+      round_robin_order: ['opencode', 'codex'],
+    },
+    ['claude'],
+  );
+
+  assert.deepEqual(providers, ['opencode', 'codex']);
+});
+
+test('resolveDevcontainerProviders - falls back to empty when no config or installed providers', () => {
+  const providers = resolveDevcontainerProviders({}, []);
+  assert.deepEqual(providers, []);
+});
+
 test('generateDevcontainerConfig - multiple providers chains installs and merges remoteEnv', () => {
   const discovery = mockDiscovery({
     providers: { installed: ['claude', 'codex'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: ['claude', 'codex'] },
@@ -976,6 +1006,75 @@ test('verifyDevcontainerCommand - text output shows pass/fail', async () => {
     const allOutput = logs.join('\n');
     assert.ok(allOutput.includes('[FAIL]'));
     assert.ok(allOutput.includes('Some checks failed'));
+  } finally {
+    console.log = origLog;
+  }
+});
+
+test('devcontainerCommandWithDeps - uses configured enabled_providers when local provider CLIs are missing', async () => {
+  let writtenContent = '';
+  const deps: DevcontainerDeps = {
+    discover: async () => mockDiscovery({
+      setup: {
+        project_dir: '/mock/project/.aloop',
+        config_path: '/mock/project/.aloop/config.yml',
+        config_exists: true,
+        templates_dir: '/mock/templates',
+      },
+      providers: { installed: [], missing: ['opencode'], default_provider: 'claude', default_models: {}, round_robin_default: ['claude'] },
+    }),
+    readFile: async (filePath) => {
+      if (filePath.endsWith('config.yml')) {
+        return "provider: 'round-robin'\nenabled_providers:\n  - 'opencode'\n";
+      }
+      return '';
+    },
+    writeFile: async (_p, data) => { writtenContent = data; },
+    mkdir: async () => undefined,
+    existsSync: (filePath) => filePath.endsWith('config.yml'),
+  };
+
+  const result = await devcontainerCommandWithDeps({}, deps);
+  const parsed = JSON.parse(writtenContent);
+
+  assert.ok(String(parsed.postCreateCommand).includes('npm install -g opencode'));
+  assert.equal(parsed.remoteEnv.OPENCODE_API_KEY, '${localEnv:OPENCODE_API_KEY}');
+  assert.deepEqual(result.vscode_extensions, []);
+});
+
+test('verifyDevcontainerCommand - validates configured providers even when not locally installed', async () => {
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => logs.push(args.join(' '));
+  try {
+    const mockDevDeps: DevcontainerDeps = {
+      discover: async () => mockDiscovery({
+        setup: {
+          project_dir: '/mock/project/.aloop',
+          config_path: '/mock/project/.aloop/config.yml',
+          config_exists: true,
+          templates_dir: '/mock/templates',
+        },
+        providers: { installed: [], missing: ['opencode'], default_provider: 'claude', default_models: {}, round_robin_default: ['claude'] },
+      }),
+      readFile: async (filePath) => {
+        if (filePath.endsWith('config.yml')) {
+          return "enabled_providers:\n  - 'opencode'\n";
+        }
+        return '';
+      },
+      writeFile: async () => {},
+      mkdir: async () => undefined,
+      existsSync: () => true,
+    };
+    const vDeps = mockVerifyDeps({
+      execResults: {
+        'which opencode': { stdout: '', stderr: 'opencode: not found', exitCode: 1 },
+      },
+    });
+    await verifyDevcontainerCommand({ output: 'text' }, mockDevDeps, vDeps);
+    const allOutput = logs.join('\n');
+    assert.ok(allOutput.includes('provider-opencode'));
   } finally {
     console.log = origLog;
   }

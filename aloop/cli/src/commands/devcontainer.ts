@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
 import path from 'node:path';
 import { discoverWorkspace, type DiscoveryResult } from './project.js';
+import { parseYaml } from '../lib/yaml.js';
 
 export interface DevcontainerCommandOptions {
   projectRoot?: string;
@@ -55,6 +56,71 @@ const defaultDeps: DevcontainerDeps = {
   mkdir,
   existsSync,
 };
+
+const RUNTIME_PROVIDERS = new Set(['claude', 'codex', 'gemini', 'copilot', 'opencode']);
+
+function normalizeProviderList(values: string[]): string[] {
+  const normalized: string[] = [];
+  for (const value of values) {
+    const candidate = value.trim().toLowerCase();
+    if (!RUNTIME_PROVIDERS.has(candidate)) {
+      continue;
+    }
+    if (!normalized.includes(candidate)) {
+      normalized.push(candidate);
+    }
+  }
+  return normalized;
+}
+
+function extractProviderList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const raw = value.filter((entry): entry is string => typeof entry === 'string');
+  return normalizeProviderList(raw);
+}
+
+export function resolveDevcontainerProviders(
+  config: Record<string, unknown>,
+  discoveredInstalledProviders: string[],
+): string[] {
+  const fallbackProviders = normalizeProviderList(discoveredInstalledProviders);
+  const enabledProviders = extractProviderList(config.enabled_providers);
+  if (enabledProviders.length > 0) {
+    return enabledProviders;
+  }
+
+  const roundRobinOrder = extractProviderList(config.round_robin_order);
+  const configuredProvider = typeof config.provider === 'string' ? config.provider.trim().toLowerCase() : '';
+  if (configuredProvider === 'round-robin') {
+    if (roundRobinOrder.length > 0) {
+      return roundRobinOrder;
+    }
+    return fallbackProviders;
+  }
+
+  if (RUNTIME_PROVIDERS.has(configuredProvider)) {
+    return [configuredProvider];
+  }
+
+  if (fallbackProviders.length > 0) {
+    return fallbackProviders;
+  }
+  return [];
+}
+
+async function resolveConfiguredProviders(discovery: DiscoveryResult, deps: DevcontainerDeps): Promise<string[]> {
+  const fallbackProviders = normalizeProviderList(discovery.providers.installed);
+  const configPath = discovery.setup.config_path;
+  if (!deps.existsSync(configPath)) {
+    return fallbackProviders;
+  }
+
+  const configContent = await deps.readFile(configPath, 'utf8');
+  const parsedConfig = parseYaml(configContent) as Record<string, unknown>;
+  return resolveDevcontainerProviders(parsedConfig, discovery.providers.installed);
+}
 
 function isDevcontainerDeps(value: unknown): value is DevcontainerDeps {
   if (!value || typeof value !== 'object') {
@@ -237,12 +303,13 @@ function buildAloopContainerEnv(): Record<string, string> {
 export function generateDevcontainerConfig(
   discovery: DiscoveryResult,
   existsFn: (p: string) => boolean = existsSync,
+  configuredProviders?: string[],
 ): DevcontainerConfig {
   const projectRoot = discovery.project.root;
   const projectName = discovery.project.name;
   const language = discovery.context.detected_language;
   const mapping = getLanguageMapping(language, projectRoot, existsFn);
-  const installedProviders = discovery.providers.installed;
+  const installedProviders = configuredProviders ?? discovery.providers.installed;
 
   // Chain language deps install + provider CLI installs into postCreateCommand
   const providerInstalls = buildProviderInstallCommands(installedProviders);
@@ -389,7 +456,8 @@ export async function devcontainerCommandWithDeps(
   const configPath = path.join(devcontainerDir, 'devcontainer.json');
   const hadExisting = deps.existsSync(configPath);
 
-  const generated = generateDevcontainerConfig(discovery, deps.existsSync);
+  const resolvedProviders = await resolveConfiguredProviders(discovery, deps);
+  const generated = generateDevcontainerConfig(discovery, deps.existsSync, resolvedProviders);
 
   let finalConfig: Record<string, unknown>;
   let action: 'created' | 'augmented';
@@ -419,7 +487,7 @@ export async function devcontainerCommandWithDeps(
     post_create_command: generated.postCreateCommand ?? null,
     mounts: generated.mounts,
     had_existing: hadExisting,
-    vscode_extensions: buildVSCodeExtensions(discovery.providers.installed),
+    vscode_extensions: buildVSCodeExtensions(resolvedProviders),
   };
 }
 
@@ -631,7 +699,7 @@ export async function verifyDevcontainerCommand(
   });
 
   const projectRoot = discovery.project.root;
-  const providers = discovery.providers.installed;
+  const providers = await resolveConfiguredProviders(discovery, deps);
   const vDeps = verifyDepsOverride ?? defaultVerifyDeps;
   const result = await verifyDevcontainer(projectRoot, providers, vDeps);
   const outputMode = options.output || 'text';

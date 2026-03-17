@@ -9033,6 +9033,59 @@ var defaultDeps3 = {
   mkdir: mkdir5,
   existsSync: existsSync9
 };
+var RUNTIME_PROVIDERS = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot", "opencode"]);
+function normalizeProviderList2(values) {
+  const normalized = [];
+  for (const value of values) {
+    const candidate = value.trim().toLowerCase();
+    if (!RUNTIME_PROVIDERS.has(candidate)) {
+      continue;
+    }
+    if (!normalized.includes(candidate)) {
+      normalized.push(candidate);
+    }
+  }
+  return normalized;
+}
+function extractProviderList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const raw = value.filter((entry) => typeof entry === "string");
+  return normalizeProviderList2(raw);
+}
+function resolveDevcontainerProviders(config, discoveredInstalledProviders) {
+  const fallbackProviders = normalizeProviderList2(discoveredInstalledProviders);
+  const enabledProviders = extractProviderList(config.enabled_providers);
+  if (enabledProviders.length > 0) {
+    return enabledProviders;
+  }
+  const roundRobinOrder = extractProviderList(config.round_robin_order);
+  const configuredProvider = typeof config.provider === "string" ? config.provider.trim().toLowerCase() : "";
+  if (configuredProvider === "round-robin") {
+    if (roundRobinOrder.length > 0) {
+      return roundRobinOrder;
+    }
+    return fallbackProviders;
+  }
+  if (RUNTIME_PROVIDERS.has(configuredProvider)) {
+    return [configuredProvider];
+  }
+  if (fallbackProviders.length > 0) {
+    return fallbackProviders;
+  }
+  return [];
+}
+async function resolveConfiguredProviders(discovery, deps) {
+  const fallbackProviders = normalizeProviderList2(discovery.providers.installed);
+  const configPath = discovery.setup.config_path;
+  if (!deps.existsSync(configPath)) {
+    return fallbackProviders;
+  }
+  const configContent = await deps.readFile(configPath, "utf8");
+  const parsedConfig = parseYaml(configContent);
+  return resolveDevcontainerProviders(parsedConfig, discovery.providers.installed);
+}
 function isDevcontainerDeps(value) {
   if (!value || typeof value !== "object") {
     return false;
@@ -9173,12 +9226,12 @@ function buildAloopContainerEnv() {
     ALOOP_CONTAINER: "1"
   };
 }
-function generateDevcontainerConfig(discovery, existsFn = existsSync9) {
+function generateDevcontainerConfig(discovery, existsFn = existsSync9, configuredProviders) {
   const projectRoot = discovery.project.root;
   const projectName = discovery.project.name;
   const language = discovery.context.detected_language;
   const mapping = getLanguageMapping(language, projectRoot, existsFn);
-  const installedProviders = discovery.providers.installed;
+  const installedProviders = configuredProviders ?? discovery.providers.installed;
   const providerInstalls = buildProviderInstallCommands(installedProviders);
   const allCommands = [
     ...mapping.postCreateCommand ? [mapping.postCreateCommand] : [],
@@ -9296,7 +9349,8 @@ async function devcontainerCommandWithDeps(options = {}, deps = defaultDeps3) {
   const devcontainerDir = path12.join(projectRoot, ".devcontainer");
   const configPath = path12.join(devcontainerDir, "devcontainer.json");
   const hadExisting = deps.existsSync(configPath);
-  const generated = generateDevcontainerConfig(discovery, deps.existsSync);
+  const resolvedProviders = await resolveConfiguredProviders(discovery, deps);
+  const generated = generateDevcontainerConfig(discovery, deps.existsSync, resolvedProviders);
   let finalConfig;
   let action;
   if (hadExisting) {
@@ -9321,7 +9375,7 @@ async function devcontainerCommandWithDeps(options = {}, deps = defaultDeps3) {
     post_create_command: generated.postCreateCommand ?? null,
     mounts: generated.mounts,
     had_existing: hadExisting,
-    vscode_extensions: buildVSCodeExtensions(discovery.providers.installed)
+    vscode_extensions: buildVSCodeExtensions(resolvedProviders)
   };
 }
 function execFilePromise(command, args, options) {
@@ -9446,7 +9500,7 @@ async function verifyDevcontainerCommand(options = {}, depsOrCommand, verifyDeps
     homeDir: options.homeDir
   });
   const projectRoot = discovery.project.root;
-  const providers = discovery.providers.installed;
+  const providers = await resolveConfiguredProviders(discovery, deps);
   const vDeps = verifyDepsOverride ?? defaultVerifyDeps;
   const result = await verifyDevcontainer(projectRoot, providers, vDeps);
   const outputMode = options.output || "text";
