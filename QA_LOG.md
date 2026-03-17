@@ -3508,3 +3508,69 @@ $ grep -n 'dashboard_url' /home/pj/.aloop/sessions/ralph-skill-20260314-173930/m
 $ curl -s http://localhost:4040 | rg -n 'aside|Sessions|Activity|Docs|panel|sidebar'
 
 [exit 1]
+
+## QA Session — 2026-03-17
+
+### Test Environment
+- Temp dirs: `/tmp/qa-test-*`
+- Binary under test: `/tmp/aloop-test-install-3g35dL/bin/aloop` (1.0.0)
+- Features tested: 4
+
+### Results
+- PASS: Orchestrator trunk auto-merge (`--auto-merge`)
+- PASS: Dual-mode setup recommendation (interactive)
+- FAIL: `aloop start` packaged install loop script regression (still failing with `Loop script not found` after setup)
+- FAIL: Dashboard layout @1920x1080 host URL (Playwright check shows `visibleAside=false`, `panelGuess=2`)
+
+### Bugs Filed / Updated
+- `[qa/P1] aloop start fails after fresh packaged-install setup in isolated HOME`: Re-opened. Regression persists.
+- `[review] Gate 7`: Dashboard layout regression updated.
+
+### Command Transcript
+```bash
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+$ echo "$ALOOP_BIN"
+/tmp/aloop-test-install-3g35dL/bin/aloop
+$ $ALOOP_BIN --version
+1.0.0
+
+# 1. Test `aloop start` regression
+$ export HOME=/tmp/qa-home-1
+$ cd /tmp/qa-test-1
+$ $ALOOP_BIN setup --non-interactive
+Setup complete. Config written to: /tmp/qa-home-1/.aloop/projects/9abe1ba5/config.yml
+$ $ALOOP_BIN start --max-iterations 1
+Error: Loop script not found: /tmp/qa-home-1/.aloop/bin/loop.sh
+[exit 1]
+
+# 2. Test auto-merge feature
+$ export HOME=/tmp/qa-home-2
+$ cd /tmp/qa-test-2
+$ $ALOOP_BIN orchestrate --auto-merge --spec SPEC.md --plan-only
+$ cat /tmp/qa-home-2/.aloop/sessions/orchestrator-20260317-170917/orchestrator.json
+...
+  "auto_merge_to_main": true,
+...
+[exit 0]
+
+# 3. Test setup recommendation
+$ export HOME=/tmp/qa-home-3
+$ cd /tmp/qa-test-3-complex
+$ printf "# Complex Spec\n## frontend\n- [ ] Task 1\n- [ ] Task 2\n## backend\n- [ ] Task 1\n- [ ] Task 2\n## database\n- [ ] Task 1\n- [ ] Task 2\nWe need to work on these in parallel decoupled async workstreams.\n" > SPEC.md
+$ yes '' | $ALOOP_BIN setup > /tmp/setup-out.txt
+  Mode recommendation:
+    Recommendation: orchestrator mode (score: 5/7)
+    3 distinct workstreams detected — parallelism would help
+    Strong parallelism signals (4 mentions)
+    Medium scope (6 estimated issues)
+
+Mode [orchestrate]:
+...
+Mode: orchestrate
+[exit 0]
+
+# 4. Dashboard layout regression check
+$ node qa-browser-test.mjs
+{"visibleAside":false,"panelGuess":2,"hasSessions":true,"hasDocs":true,"hasActivity":true}
+[exit 0]
+```

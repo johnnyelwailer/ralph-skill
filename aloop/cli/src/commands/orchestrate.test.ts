@@ -64,6 +64,8 @@ import {
   queueSpecConsistencyCheck,
   runSpecChangeReplan,
   processQueuedPrompts,
+  createTrunkToMainPr,
+  resolveAutoMerge,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -4203,6 +4205,193 @@ describe('runOrchestratorScanLoop', () => {
     const completeEvent = deps.logEntries.find((e) => e.event === 'scan_loop_complete');
     assert.ok(completeEvent);
     assert.equal(completeEvent.reason, 'all_done');
+  });
+});
+
+describe('resolveAutoMerge', () => {
+  it('returns false by default', async () => {
+    const deps = { existsSync: () => false, readFile: async () => '' };
+    const result = await resolveAutoMerge({}, '/home', deps);
+    assert.equal(result, false);
+  });
+
+  it('returns true when CLI flag is set', async () => {
+    const deps = { existsSync: () => false, readFile: async () => '' };
+    const result = await resolveAutoMerge({ autoMerge: true }, '/home', deps);
+    assert.equal(result, true);
+  });
+
+  it('reads auto_merge_to_main from config.yml', async () => {
+    const deps = {
+      existsSync: () => true,
+      readFile: async () => 'auto_merge_to_main: true\nmode: orchestrator\n',
+    };
+    const result = await resolveAutoMerge({}, '/home', deps);
+    assert.equal(result, true);
+  });
+
+  it('returns false when config says false', async () => {
+    const deps = {
+      existsSync: () => true,
+      readFile: async () => 'auto_merge_to_main: false\n',
+    };
+    const result = await resolveAutoMerge({}, '/home', deps);
+    assert.equal(result, false);
+  });
+
+  it('CLI flag overrides config', async () => {
+    const deps = {
+      existsSync: () => true,
+      readFile: async () => 'auto_merge_to_main: true\n',
+    };
+    const result = await resolveAutoMerge({ autoMerge: false }, '/home', deps);
+    assert.equal(result, false);
+  });
+});
+
+describe('createTrunkToMainPr', () => {
+  it('creates a PR from trunk to main and returns PR number', async () => {
+    const logEntries: Record<string, unknown>[] = [];
+    const ghCalls: string[][] = [];
+    const state = makeScanState({
+      auto_merge_to_main: true,
+      issues: [
+        makeIssue({ number: 1, state: 'merged' }),
+        makeIssue({ number: 2, state: 'merged' }),
+      ],
+    });
+    const deps = {
+      execGh: async (args: string[]) => {
+        ghCalls.push(args);
+        return { stdout: 'https://github.com/owner/repo/pull/99\n', stderr: '' };
+      },
+      appendLog: (_dir: string, entry: Record<string, unknown>) => { logEntries.push(entry); },
+    };
+
+    const result = await createTrunkToMainPr(state, 'owner/repo', deps, '/session');
+    assert.equal(result, 99);
+    assert.ok(ghCalls[0].includes('--base'));
+    assert.ok(ghCalls[0].includes('main'));
+    assert.ok(ghCalls[0].includes('--head'));
+    assert.ok(ghCalls[0].includes('agent/trunk'));
+    const logEvent = logEntries.find((e) => e.event === 'trunk_to_main_pr_created');
+    assert.ok(logEvent);
+    assert.equal(logEvent.pr_number, 99);
+  });
+
+  it('returns existing PR number when creation fails but PR exists', async () => {
+    const logEntries: Record<string, unknown>[] = [];
+    let callCount = 0;
+    const state = makeScanState({
+      auto_merge_to_main: true,
+      issues: [makeIssue({ number: 1, state: 'merged' })],
+    });
+    const deps = {
+      execGh: async (args: string[]) => {
+        callCount++;
+        if (callCount === 1) throw new Error('PR already exists');
+        return { stdout: '55\n', stderr: '' };
+      },
+      appendLog: (_dir: string, entry: Record<string, unknown>) => { logEntries.push(entry); },
+    };
+
+    const result = await createTrunkToMainPr(state, 'owner/repo', deps, '/session');
+    assert.equal(result, 55);
+    const logEvent = logEntries.find((e) => e.event === 'trunk_to_main_pr_exists');
+    assert.ok(logEvent);
+  });
+
+  it('returns null when PR creation and listing both fail', async () => {
+    const logEntries: Record<string, unknown>[] = [];
+    const state = makeScanState({
+      auto_merge_to_main: true,
+      issues: [makeIssue({ number: 1, state: 'merged' })],
+    });
+    const deps = {
+      execGh: async () => { throw new Error('network error'); },
+      appendLog: (_dir: string, entry: Record<string, unknown>) => { logEntries.push(entry); },
+    };
+
+    const result = await createTrunkToMainPr(state, 'owner/repo', deps, '/session');
+    assert.equal(result, null);
+    const logEvent = logEntries.find((e) => e.event === 'trunk_to_main_pr_failed');
+    assert.ok(logEvent);
+  });
+
+  it('includes failed issue count in PR body', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeScanState({
+      issues: [
+        makeIssue({ number: 1, state: 'merged' }),
+        makeIssue({ number: 2, state: 'failed' }),
+      ],
+    });
+    const deps = {
+      execGh: async (args: string[]) => {
+        ghCalls.push(args);
+        return { stdout: 'https://github.com/owner/repo/pull/10\n', stderr: '' };
+      },
+      appendLog: () => {},
+    };
+
+    await createTrunkToMainPr(state, 'owner/repo', deps, '/session');
+    const bodyIdx = ghCalls[0].indexOf('--body') + 1;
+    const body = ghCalls[0][bodyIdx];
+    assert.ok(body.includes('Failed: 1'));
+    assert.ok(body.includes('Merged: 1'));
+  });
+});
+
+describe('runOrchestratorScanLoop auto-merge', () => {
+  it('creates trunk-to-main PR when all_done and auto_merge_to_main is set', async () => {
+    const state = makeScanState({
+      auto_merge_to_main: true,
+      issues: [makeIssue({ number: 1, wave: 1, state: 'merged' })],
+    });
+    const ghCalls: string[][] = [];
+    const deps = createMockScanDeps({
+      execGh: async (args: string[]) => {
+        ghCalls.push(args);
+        return { stdout: 'https://github.com/owner/repo/pull/77\n', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanLoop(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 100, 5, deps,
+    );
+
+    assert.equal(result.reason, 'all_done');
+    assert.equal(result.finalState.trunk_pr_number, 77);
+    // Verify gh pr create was called with --base main
+    const prCreateCall = ghCalls.find((c) => c.includes('pr') && c.includes('create'));
+    assert.ok(prCreateCall);
+    assert.ok(prCreateCall.includes('main'));
+  });
+
+  it('does not create trunk-to-main PR when auto_merge_to_main is not set', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'merged' })],
+    });
+    const ghCalls: string[][] = [];
+    const deps = createMockScanDeps({
+      execGh: async (args: string[]) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanLoop(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 100, 5, deps,
+    );
+
+    assert.equal(result.reason, 'all_done');
+    assert.equal(result.finalState.trunk_pr_number, undefined);
+    const prCreateCall = ghCalls.find((c) => c.includes('pr') && c.includes('create'));
+    assert.equal(prCreateCall, undefined);
   });
 });
 

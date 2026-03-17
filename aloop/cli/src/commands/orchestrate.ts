@@ -32,6 +32,7 @@ export interface OrchestrateCommandOptions {
   interval?: string;
   maxIterations?: string;
   runScanLoop?: boolean;
+  autoMerge?: boolean;
 }
 
 export interface DecompositionPlanIssue {
@@ -103,6 +104,8 @@ export interface OrchestratorState {
   filter_label: string | null;
   filter_repo: string | null;
   budget_cap: number | null;
+  auto_merge_to_main?: boolean;
+  trunk_pr_number?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -502,6 +505,29 @@ export async function resolveOrchestratorAutonomyLevel(
     return assertAutonomyLevel(parseConfigScalar(configContent, 'autonomy_level') ?? undefined);
   } catch {
     return 'balanced';
+  }
+}
+
+export async function resolveAutoMerge(
+  options: OrchestrateCommandOptions,
+  homeDir: string,
+  deps: Pick<OrchestrateDeps, 'existsSync' | 'readFile'>,
+): Promise<boolean> {
+  if (options.autoMerge !== undefined) {
+    return options.autoMerge;
+  }
+  const projectRoot = resolveProjectRoot(options.projectRoot);
+  const projectHash = getProjectHash(projectRoot);
+  const configPath = path.join(homeDir, '.aloop', 'projects', projectHash, 'config.yml');
+  if (!deps.existsSync(configPath)) {
+    return false;
+  }
+  try {
+    const configContent = await deps.readFile(configPath, 'utf8');
+    const value = parseConfigScalar(configContent, 'auto_merge_to_main');
+    return value === 'true';
+  } catch {
+    return false;
   }
 }
 
@@ -910,6 +936,7 @@ export async function orchestrateCommandWithDeps(
   const planOnly = options.planOnly ?? false;
   const budgetCap = parseBudget(options.budget);
   const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
+  const autoMergeToMain = await resolveAutoMerge(options, homeDir, deps);
 
   const now = deps.now();
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}${String(now.getUTCSeconds()).padStart(2, '0')}`;
@@ -995,6 +1022,7 @@ export async function orchestrateCommandWithDeps(
     filter_label: filterLabel,
     filter_repo: filterRepo,
     budget_cap: budgetCap,
+    auto_merge_to_main: autoMergeToMain || undefined,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
   };
@@ -2951,6 +2979,85 @@ export async function mergePr(
 }
 
 /**
+ * Create a PR from trunk branch to main when all sub-issues are complete
+ * and auto_merge_to_main is enabled. Returns the PR number or null on failure.
+ */
+export async function createTrunkToMainPr(
+  state: OrchestratorState,
+  repo: string,
+  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog'>,
+  sessionDir: string,
+): Promise<number | null> {
+  const trunkBranch = state.trunk_branch || 'agent/trunk';
+  const mergedCount = state.issues.filter((i) => i.state === 'merged').length;
+  const failedCount = state.issues.filter((i) => i.state === 'failed').length;
+
+  const title = `[aloop] Promote ${trunkBranch} to main`;
+  const body = [
+    '## Summary',
+    '',
+    `All ${state.issues.length} sub-issues have reached terminal state.`,
+    `- Merged: ${mergedCount}`,
+    failedCount > 0 ? `- Failed: ${failedCount}` : '',
+    '',
+    `This PR promotes \`${trunkBranch}\` into \`main\` for human review.`,
+    '',
+    '_Created automatically by the aloop orchestrator._',
+  ].filter(Boolean).join('\n');
+
+  try {
+    const result = await deps.execGh!([
+      'pr', 'create',
+      '--repo', repo,
+      '--base', 'main',
+      '--head', trunkBranch,
+      '--title', title,
+      '--body', body,
+    ]);
+    const parsed = parsePrCreateOutput(result.stdout);
+    deps.appendLog(sessionDir, {
+      timestamp: new Date().toISOString(),
+      event: 'trunk_to_main_pr_created',
+      pr_number: parsed.number,
+      trunk_branch: trunkBranch,
+    });
+    return parsed.number;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Check if PR already exists
+    try {
+      const listResult = await deps.execGh!([
+        'pr', 'list',
+        '--repo', repo,
+        '--head', trunkBranch,
+        '--base', 'main',
+        '--json', 'number',
+        '--jq', '.[0].number',
+      ]);
+      const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
+      if (Number.isFinite(existingNumber) && existingNumber > 0) {
+        deps.appendLog(sessionDir, {
+          timestamp: new Date().toISOString(),
+          event: 'trunk_to_main_pr_exists',
+          pr_number: existingNumber,
+          trunk_branch: trunkBranch,
+        });
+        return existingNumber;
+      }
+    } catch {
+      // Listing also failed
+    }
+    deps.appendLog(sessionDir, {
+      timestamp: new Date().toISOString(),
+      event: 'trunk_to_main_pr_failed',
+      error: msg,
+      trunk_branch: trunkBranch,
+    });
+    return null;
+  }
+}
+
+/**
  * Request a child loop to rebase its branch against agent/trunk.
  * Posts a comment on the issue instructing the child to rebase.
  */
@@ -4826,11 +4933,23 @@ export async function runOrchestratorScanLoop(
     );
 
     if (passResult.allDone) {
+      // Create trunk→main PR when auto-merge is configured
+      const currentState: OrchestratorState = JSON.parse(await deps.readFile(stateFile, 'utf8'));
+      if (currentState.auto_merge_to_main && repo && deps.execGh) {
+        const prNum = await createTrunkToMainPr(currentState, repo, deps, sessionDir);
+        if (prNum !== null) {
+          currentState.trunk_pr_number = prNum;
+          currentState.updated_at = deps.now().toISOString();
+          await deps.writeFile(stateFile, `${JSON.stringify(currentState, null, 2)}\n`, 'utf8');
+        }
+      }
+
       deps.appendLog(sessionDir, {
         timestamp: deps.now().toISOString(),
         event: 'scan_loop_complete',
         reason: 'all_done',
         iterations: iter,
+        trunk_pr_number: currentState.trunk_pr_number ?? null,
       });
       const finalContent = await deps.readFile(stateFile, 'utf8');
       return { iterations: iter, finalState: JSON.parse(finalContent), reason: 'all_done' };

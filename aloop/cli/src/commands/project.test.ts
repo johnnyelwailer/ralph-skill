@@ -1169,3 +1169,136 @@ Cloud deployment setup.
   assert.ok(result.ci_support.has_workflows, 'should detect CI workflows');
   assert.ok(result.mode_recommendation.reasoning.some(r => r.includes('CI')), 'reasoning should mention CI support');
 });
+
+// Gate 2 regression tests: recommendation correctness edge cases
+
+test('workstream synonyms count once — Auth and Authentication in same spec', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-synonym-dedup-'));
+  const spec = `# Project
+
+## Auth
+Login and registration flow.
+
+## Authentication
+OAuth2 and token refresh.
+`;
+  await writeFile(path.join(tempRoot, 'SPEC.md'), spec, 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+
+  // "auth" and "authentication" map to the same category — should count as 1 workstream, not 2
+  assert.equal(result.spec_complexity.workstream_count, 1,
+    `synonyms "Auth" and "Authentication" should deduplicate to 1 workstream, got ${result.spec_complexity.workstream_count}`);
+});
+
+test('workstream synonyms count once — Infrastructure and Infra in same spec', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-infra-dedup-'));
+  const spec = `# Project
+
+## Infrastructure
+Cloud deployment setup.
+
+## Infra
+Monitoring and alerting.
+`;
+  await writeFile(path.join(tempRoot, 'SPEC.md'), spec, 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+
+  // "infrastructure" and "infra" map to the same category — should count as 1 workstream
+  assert.equal(result.spec_complexity.workstream_count, 1,
+    `synonyms "Infrastructure" and "Infra" should deduplicate to 1 workstream, got ${result.spec_complexity.workstream_count}`);
+});
+
+test('workstream synonyms count once — Database and DB in same spec', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-db-dedup-'));
+  const spec = `# Project
+
+## Database
+Schema design and migrations.
+
+## DB
+Query optimization and indexing.
+`;
+  await writeFile(path.join(tempRoot, 'SPEC.md'), spec, 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+
+  assert.equal(result.spec_complexity.workstream_count, 1,
+    `synonyms "Database" and "DB" should deduplicate to 1 workstream, got ${result.spec_complexity.workstream_count}`);
+});
+
+test('CI workflow with actions/checkout only must not classify as test', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-checkout-false-'));
+  const workflowsDir = path.join(tempRoot, '.github', 'workflows');
+  await mkdir(workflowsDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  // Workflow with only checkout step — no actual test job
+  const checkoutOnly = `name: Build
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "building"
+`;
+  await writeFile(path.join(workflowsDir, 'build.yml'), checkoutOnly, 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+
+  assert.ok(!result.ci_support.workflow_types.includes('test'),
+    `actions/checkout alone should not classify workflow as test, got types: ${JSON.stringify(result.ci_support.workflow_types)}`);
+  assert.ok(result.ci_support.workflow_types.includes('build'),
+    'should still detect build type from echo "building"');
+});
+
+test('recommendation stays loop for simple spec with non-test workflow', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-simple-no-test-'));
+  const workflowsDir = path.join(tempRoot, '.github', 'workflows');
+  await mkdir(workflowsDir, { recursive: true });
+  // Simple spec with single workstream
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# Simple Feature\n\nAdd a button.\n\n- [ ] Add button\n', 'utf8');
+  // Workflow with only checkout + build, no test
+  const buildOnly = `name: Build
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm run build
+`;
+  await writeFile(path.join(workflowsDir, 'build.yml'), buildOnly, 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+
+  assert.equal(result.mode_recommendation.recommended_mode, 'loop',
+    `simple spec + non-test workflow should recommend loop, got ${result.mode_recommendation.recommended_mode}`);
+  // Also verify the CI test type is not falsely detected
+  assert.ok(!result.ci_support.workflow_types.includes('test'),
+    `build-only workflow should not include test type, got: ${JSON.stringify(result.ci_support.workflow_types)}`);
+});
+
+test('CI workflow with explicit check job name does classify as test', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-check-job-'));
+  const workflowsDir = path.join(tempRoot, '.github', 'workflows');
+  await mkdir(workflowsDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  // Workflow with an actual "check" job (not checkout)
+  const checkJob = `name: CI
+on: push
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+`;
+  await writeFile(path.join(workflowsDir, 'ci.yml'), checkJob, 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+
+  assert.ok(result.ci_support.workflow_types.includes('test'),
+    `workflow with "check:" job should classify as test, got types: ${JSON.stringify(result.ci_support.workflow_types)}`);
+});
