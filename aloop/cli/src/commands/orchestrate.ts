@@ -8,6 +8,12 @@ import { writeQueueOverride } from '../lib/plan.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
 import { writeSpecBackfill } from '../lib/specBackfill.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
+import {
+  EtagCache,
+  fetchBulkIssueState,
+  detectIssueChanges,
+  type BulkIssueState,
+} from '../lib/github-monitor.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -1134,6 +1140,11 @@ export async function orchestrateCommandWithDeps(
       await deps.writeFile(logFile, `${existing}${JSON.stringify(entry)}\n`, 'utf8');
     };
 
+    // Initialize ETag cache for efficient GitHub API monitoring
+    const aloopCacheDir = path.join(aloopRoot, '.cache');
+    const etagCache = new EtagCache(aloopCacheDir);
+    await etagCache.load();
+
     // Build scan loop deps from orchestrate deps
     const scanDeps: ScanLoopDeps = {
       existsSync: deps.existsSync,
@@ -1144,6 +1155,7 @@ export async function orchestrateCommandWithDeps(
       now: deps.now,
       execGh: deps.execGh,
       appendLog,
+      etagCache,
       prLifecycleDeps: deps.execGh ? {
         execGh: deps.execGh,
         readFile: deps.readFile,
@@ -3689,6 +3701,7 @@ export interface ScanLoopDeps {
   aloopRoot?: string;
   sleep?: (ms: number) => Promise<void>;
   signalStop?: () => boolean;
+  etagCache?: EtagCache;
 }
 
 export interface SpecChangeReplanResult {
@@ -3712,6 +3725,14 @@ export interface ScanPassResult {
   allDone: boolean;
   shouldStop: boolean;
   replan: SpecChangeReplanResult | null;
+  bulkFetch: BulkFetchResult | null;
+}
+
+export interface BulkFetchResult {
+  issuesFetched: number;
+  issuesChanged: number;
+  fromCache: boolean;
+  durationMs: number;
 }
 
 export interface ScanLoopResult {
@@ -4282,6 +4303,113 @@ export async function runSpecChangeReplan(
 }
 
 /**
+ * Fetch bulk issue state via GraphQL and apply changes to orchestrator state.
+ * Uses ETag caching to avoid redundant fetches when data hasn't changed.
+ * Returns statistics about the fetch operation.
+ */
+async function fetchAndApplyBulkIssueState(
+  state: OrchestratorState,
+  repo: string,
+  deps: Pick<ScanLoopDeps, 'execGh' | 'etagCache' | 'appendLog' | 'now'>,
+  sessionDir: string,
+  iteration: number,
+): Promise<BulkFetchResult> {
+  const startTime = Date.now();
+  const result: BulkFetchResult = {
+    issuesFetched: 0,
+    issuesChanged: 0,
+    fromCache: false,
+    durationMs: 0,
+  };
+
+  if (!deps.execGh) return result;
+
+  try {
+    const issueNumbers = state.issues.map((i) => i.number);
+    const since = state.issues.reduce((earliest, issue) => {
+      const check = issue.last_comment_check;
+      if (!check) return earliest;
+      return !earliest || check < earliest ? check : earliest;
+    }, undefined as string | undefined);
+
+    const bulkResult = await fetchBulkIssueState(repo, deps.execGh, {
+      states: ['OPEN'],
+      since,
+      issueNumbers,
+    });
+
+    result.issuesFetched = bulkResult.issues.length;
+    result.fromCache = bulkResult.fromCache;
+
+    // Build a map of fetched issues for quick lookup
+    const fetchedMap = new Map<number, BulkIssueState>();
+    for (const issue of bulkResult.issues) {
+      fetchedMap.set(issue.number, issue);
+    }
+
+    // Apply changes to orchestrator state
+    for (const issue of state.issues) {
+      const fetched = fetchedMap.get(issue.number);
+      if (!fetched) continue;
+
+      const changeResult = detectIssueChanges(fetched, {
+        updatedAt: issue.last_comment_check,
+        prNumber: issue.pr_number,
+        state: issue.state,
+      });
+
+      if (changeResult.changed) {
+        result.issuesChanged++;
+
+        // Update issue status from project status
+        if (fetched.projectStatus) {
+          const statusMap: Record<string, OrchestratorIssueStatus> = {
+            'todo': 'Ready',
+            'in progress': 'In progress',
+            'in review': 'In review',
+            'done': 'Done',
+            'blocked': 'Blocked',
+          };
+          const mapped = statusMap[fetched.projectStatus.toLowerCase()];
+          if (mapped) issue.status = mapped;
+        }
+
+        // Sync PR number from bulk fetch
+        if (fetched.pr && !issue.pr_number) {
+          issue.pr_number = fetched.pr.number;
+        }
+
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'bulk_fetch_issue_changed',
+          iteration,
+          issue_number: issue.number,
+          reason: changeResult.reason,
+          pr_number: fetched.pr?.number ?? null,
+          project_status: fetched.projectStatus,
+        });
+      }
+    }
+
+    // Save ETag cache after successful fetch
+    if (deps.etagCache) {
+      await deps.etagCache.save();
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: 'bulk_fetch_error',
+      iteration,
+      error: msg,
+    });
+  }
+
+  result.durationMs = Date.now() - startTime;
+  return result;
+}
+
+/**
  * Run a single scan pass: triage monitoring, dispatch, PR lifecycle, wave advancement.
  * Reads state from disk, performs all scan actions, writes state back.
  */
@@ -4312,6 +4440,7 @@ export async function runOrchestratorScanPass(
     allDone: false,
     shouldStop: false,
     replan: null,
+    bulkFetch: null,
   };
 
   // 0. Spec change detection and replan
@@ -4323,6 +4452,17 @@ export async function runOrchestratorScanPass(
       projectRoot,
       iteration,
       deps,
+    );
+  }
+
+  // 0.3. Bulk issue state fetch (ETag-guarded, replaces per-issue REST calls)
+  if (repo && deps.execGh && state.issues.length > 0) {
+    result.bulkFetch = await fetchAndApplyBulkIssueState(
+      state,
+      repo,
+      { execGh: deps.execGh, etagCache: deps.etagCache, appendLog: deps.appendLog, now: deps.now },
+      sessionDir,
+      iteration,
     );
   }
 
@@ -4529,6 +4669,10 @@ export async function runOrchestratorScanPass(
     all_done: result.allDone,
     replan_spec_changed: result.replan?.spec_changed ?? false,
     replan_actions_applied: result.replan?.actions_applied ?? 0,
+    bulk_fetch_issues: result.bulkFetch?.issuesFetched ?? 0,
+    bulk_fetch_changed: result.bulkFetch?.issuesChanged ?? 0,
+    bulk_fetch_cached: result.bulkFetch?.fromCache ?? false,
+    bulk_fetch_duration_ms: result.bulkFetch?.durationMs ?? 0,
   });
 
   return result;
@@ -4611,6 +4755,11 @@ export async function runOrchestratorScanLoop(
     if (iter < maxIterations && deps.sleep) {
       await deps.sleep(intervalMs);
     }
+  }
+
+  // Persist ETag cache before exiting
+  if (deps.etagCache) {
+    await deps.etagCache.save();
   }
 
   deps.appendLog(sessionDir, {
