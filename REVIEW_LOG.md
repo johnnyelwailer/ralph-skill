@@ -412,3 +412,23 @@
 - Gate 5: Required validation suite passes on HEAD — `cd aloop/cli && npm test && npm run type-check && npm run build` (742/742 + 8/8 tests passing, type-check clean, build succeeds).
 - Gate 6: Proof manifest for iteration 143 contains human-verifiable CLI artifacts (invalid provider, nonexistent spec file, start-without-config), with non-filler metadata and clear expected behavior.
 - Gate 8: Version compliance spot-check passed against `VERSIONS.md` (`node v22.22.1`, `commander@12.1.0`, `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`).
+
+---
+
+## Review — 2026-03-17 07:15 UTC — commit ea7ccb7..127c0b8
+
+**Verdict: FAIL** (5 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/commands/start.ts`, `aloop/cli/src/commands/start.test.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `README.md`, `QA_COVERAGE.md`
+
+- Gate 4: **Dependency Injection bug** — `aloop start` crashes in packaged install with `deps.discoverWorkspace is not a function`. This occurs because `commander` passes its `Command` object as the third argument to `startCommand`, which overwrites the `deps` parameter. `startCommand` lacks the defensive resolution logic (e.g., `resolveStartDeps`) used by other commands.
+- Gate 9: **README stale usage** — `README.md` was not updated to document the new multi-file spec and glob support for `aloop orchestrate --spec`.
+- Gate 3: **Loop Runtime Coverage failing** — The shell coverage harness (`loop_branch_coverage.tests.sh`) is failing with command-not-found (`derive_mode_from_prompt_name`) and syntax errors (`printf: - : invalid option`), preventing valid branch coverage evidence from being generated.
+- Gate 5: **Regression in existing tests** — Massive test failures in `loop.tests.ps1` and shell tests due to the new phase-prerequisite rule (missing TODO forces plan) breaking assumptions in legacy tests.
+- Gate 7: **Dashboard layout regression** — Dashboard desktop layout mismatch at 1920x1080 persists in the host dashboard (`visibleAside=false`).
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: Phase-prerequisite guards enforced in both loop runtimes.
+- Gate 2 ✅: Concrete assertions for opencode agent and orchestrator prompt copying in `project.test.ts`.
+- Gate 3 ✅: `start.ts` branch coverage raised to >=80%.
+- Gate 4 ✅: Dead repository artifacts (`check_argv.mjs`, `reproduce_setup_issue.sh`) removed.
+- Gate 6 ✅: Proof manifest for iteration 143 verified.
