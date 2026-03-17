@@ -258,3 +258,12 @@ Source: GitHub docs (T2)
 # Check if scope exists
 gh auth status 2>&1 | grep -q 'project' || gh auth refresh -s project
 ```
+
+## 2026-03-17 10:15 — Commander argument passing and dependency injection quirks [T2]
+
+- Commander `.action()` for a command with optional arguments like `start [session-id]` passes arguments in this order: `(arg1, arg2, ..., options, command)`.
+- If `[session-id]` is omitted, `arg1` is `undefined`, `options` is the 2nd arg, and the Commander `Command` object is the 3rd arg.
+- In `aloop start`, this means `depsOrCommand` (the 3rd parameter) is ALWAYS the Commander object when called by the CLI.
+- Current `isStartDeps` guard is strict and correctly identifies the Commander object as NOT being `StartDeps`, falling back to `defaultDeps`.
+- **Finding**: The crash `deps.discoverWorkspace is not a function` in packaged installs suggests that `discoverWorkspace` itself is `undefined` inside `defaultDeps`, likely due to an ESM/CJS bundling mismatch or `import * as` quirk with `.mjs` files in `esbuild`.
+- Tested: Named imports or explicit property access from the module object are generally more robust in bundled Node.js ESM environments.

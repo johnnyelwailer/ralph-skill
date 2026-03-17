@@ -3282,7 +3282,7 @@ function validateSpecFiles(specFiles, projectRoot) {
   }
 }
 function getInstalledProviders() {
-  const providers = ["claude", "codex", "gemini", "copilot"];
+  const providers = ["claude", "opencode", "codex", "gemini", "copilot"];
   const installed = [];
   const missing = [];
   for (const provider of providers) {
@@ -3346,11 +3346,12 @@ async function discoverWorkspace(options = {}) {
       default_provider: readDefaultProvider(homeDir),
       default_models: {
         claude: "opus",
+        opencode: "opencode-default",
         codex: "gpt-5.3-codex",
         gemini: "gemini-3.1-pro-preview",
         copilot: "gpt-5.3-codex"
       },
-      round_robin_default: ["claude", "codex", "gemini", "copilot"]
+      round_robin_default: ["claude", "opencode", "codex", "gemini", "copilot"]
     },
     discovered_at: (/* @__PURE__ */ new Date()).toISOString()
   };
@@ -3585,6 +3586,7 @@ async function scaffoldWorkspace(options = {}) {
     "",
     "models:",
     "  claude: 'opus'",
+    "  opencode: 'opencode-default'",
     "  codex: 'gpt-5.3-codex'",
     "  gemini: 'gemini-3.1-pro-preview'",
     "  copilot: 'gpt-5.3-codex'",
@@ -6909,6 +6911,24 @@ function normalizeCiDetailForSignature(detail) {
   return detail.toLowerCase().replace(/[0-9a-f]{7,40}/g, "<sha>").replace(/\d+/g, "<n>").replace(/\s+/g, " ").trim();
 }
 
+// src/lib/error-handling.ts
+function withErrorHandling(action) {
+  return async (...args) => {
+    try {
+      await action(...args);
+    } catch (error) {
+      if (error && typeof error === "object" && "stderr" in error && typeof error.stderr === "string" && error.stderr.trim()) {
+        console.error(`Error: ${error.stderr.trim()}`);
+      } else if (error instanceof Error) {
+        console.error(`Error: ${error.message}`);
+      } else {
+        console.error(`Error: ${String(error)}`);
+      }
+      process.exit(1);
+    }
+  };
+}
+
 // src/commands/gh.ts
 var execFileAsync = promisify(execFile);
 var GH_PATH_HARDENING_BLOCK_MESSAGE = "blocked by aloop PATH hardening";
@@ -7902,16 +7922,16 @@ async function ghStopCommand(options) {
   }
 }
 function addGhRequestSubcommand(name, description) {
-  return ghCommand.command(name).description(description).requiredOption("--session <id>", "Session ID").requiredOption("--request <file>", "Request JSON file path").option("--role <role>", "Role: child-loop or orchestrator", "child-loop").option("--home-dir <dir>", "Home directory override").action(async (options) => {
+  return ghCommand.command(name).description(description).requiredOption("--session <id>", "Session ID").requiredOption("--request <file>", "Request JSON file path").option("--role <role>", "Role: child-loop or orchestrator", "child-loop").option("--home-dir <dir>", "Home directory override").action(withErrorHandling(async (options) => {
     await executeGhOperation(name, options);
-  });
+  }));
 }
 function addGhSinceSubcommand(name, description) {
-  return ghCommand.command(name).description(description).requiredOption("--session <id>", "Session ID").requiredOption("--since <timestamp>", "Only return comments created at/after this timestamp (ISO-8601)").option("--role <role>", "Role: child-loop or orchestrator", "orchestrator").option("--home-dir <dir>", "Home directory override").action(async (options) => {
+  return ghCommand.command(name).description(description).requiredOption("--session <id>", "Session ID").requiredOption("--since <timestamp>", "Only return comments created at/after this timestamp (ISO-8601)").option("--role <role>", "Role: child-loop or orchestrator", "orchestrator").option("--home-dir <dir>", "Home directory override").action(withErrorHandling(async (options) => {
     await executeGhOperation(name, options);
-  });
+  }));
 }
-ghCommand.command("start").description("Start a GitHub-linked aloop session for an issue").requiredOption("--issue <number>", "GitHub issue number").option("--spec <path>", "Additional specification file to include in prompt context").option("--provider <provider>", "Provider override for the launched loop").option("--max <number>", "Max iteration override").option("--repo <owner/repo>", "Explicit GitHub repository (defaults to issue URL owner/repo)").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(async (options) => {
+ghCommand.command("start").description("Start a GitHub-linked aloop session for an issue").requiredOption("--issue <number>", "GitHub issue number").option("--spec <path>", "Additional specification file to include in prompt context").option("--provider <provider>", "Provider override for the launched loop").option("--max <number>", "Max iteration override").option("--repo <owner/repo>", "Explicit GitHub repository (defaults to issue URL owner/repo)").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(async (options) => {
   const result = await ghStartCommandWithDeps(options);
   if (options.output === "json") {
     console.log(JSON.stringify(result, null, 2));
@@ -7932,7 +7952,7 @@ ghCommand.command("start").description("Start a GitHub-linked aloop session for 
       console.log(`Warning: ${warning}`);
     }
   }
-});
+}));
 ghCommand.command("watch").description("Monitor matching issues and start GH-linked loops with queueing").option("--label <label...>", "Issue labels to match (default: aloop)").option("--assignee <assignee>", "Only include issues assigned to this user").option("--milestone <milestone>", "Only include issues in this milestone").option("--max-concurrent <number>", "Max running GH-linked loops", String(GH_WATCH_DEFAULT_MAX_CONCURRENT)).option("--interval <seconds>", "Polling interval in seconds", String(GH_WATCH_DEFAULT_INTERVAL_SECONDS)).option("--repo <owner/repo>", "Explicit GitHub repository (default: current)").option("--provider <provider>", "Provider override for spawned loops").option("--max <number>", "Max iteration override for spawned loops").option("--project-root <path>", "Project root override for spawned loops").option("--home-dir <path>", "Home directory override").option("--once", "Run a single poll cycle and exit").option("--output <mode>", "Output format: json or text", "text").action(async (options) => {
   const outputMode = options.output ?? "text";
   try {
@@ -7941,12 +7961,12 @@ ghCommand.command("watch").description("Monitor matching issues and start GH-lin
     failGhWatch(outputMode, error);
   }
 });
-ghCommand.command("status").description("Show GH-linked issue/session/PR state from watch tracking").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(async (options) => {
+ghCommand.command("status").description("Show GH-linked issue/session/PR state from watch tracking").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(async (options) => {
   await ghStatusCommand(options);
-});
-ghCommand.command("stop").description("Stop GH-linked loops for one issue or all tracked issues").option("--issue <number>", "GitHub issue number to stop").option("--all", "Stop all tracked GH-linked loops").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(async (options) => {
+}));
+ghCommand.command("stop").description("Stop GH-linked loops for one issue or all tracked issues").option("--issue <number>", "GitHub issue number to stop").option("--all", "Stop all tracked GH-linked loops").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(async (options) => {
   await ghStopCommand(options);
-});
+}));
 addGhRequestSubcommand("pr-create", "Create a pull request");
 addGhRequestSubcommand("pr-comment", "Comment on a pull request");
 addGhRequestSubcommand("issue-comment", "Comment on an issue");
@@ -12811,20 +12831,6 @@ async function steerCommand(instruction, options = {}) {
 
 // src/index.ts
 var program2 = new Command();
-function withErrorHandling(action) {
-  return async (...args) => {
-    try {
-      await action(...args);
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(`Error: ${error.message}`);
-      } else {
-        console.error(`Error: ${String(error)}`);
-      }
-      process.exit(1);
-    }
-  };
-}
 program2.name("aloop").description("Aloop CLI for dashboard and project orchestration").version("1.0.0");
 program2.command("resolve").description("Resolve project workspace and configuration").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(withErrorHandling(resolveCommand));
 program2.command("discover").description("Discover workspace specs, files, and validation commands").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(withErrorHandling(discoverCommand));
@@ -12841,7 +12847,15 @@ program2.command("devcontainer-verify").description("Verify devcontainer builds,
 program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <paths>", 'Spec file(s) or glob pattern (e.g. "SPEC.md specs/*.md")', "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--interval <ms>", "Scan loop interval in milliseconds (default: 30000)").option("--max-iterations <n>", "Max scan loop iterations (default: 100)").option("--run-scan-loop", "Run the orchestrator scan loop after initialization").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(orchestrateCommand));
 program2.command("steer <instruction>").description("Send a steering instruction to an active session").option("--session <id>", "Target session ID (auto-detected if only one active)").option("--affects-completed-work <value>", "Whether instruction affects completed work: yes, no, or unknown", "unknown").option("--overwrite", "Overwrite an existing queued steering instruction").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(steerCommand));
 program2.addCommand(ghCommand);
-program2.command("debug-env", { hidden: true }).description("Print current environment variables (for testing)").action(() => {
+program2.command("debug-env", { hidden: true }).description("Print current environment variables (for testing)").action(withErrorHandling(() => {
   console.log(JSON.stringify(process.env));
+}));
+process.on("unhandledRejection", (reason) => {
+  if (reason instanceof Error) {
+    console.error(`Error: ${reason.message}`);
+  } else {
+    console.error(`Error: ${String(reason)}`);
+  }
+  process.exit(1);
 });
-program2.parse();
+await program2.parseAsync();

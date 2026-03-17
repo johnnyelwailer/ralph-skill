@@ -445,3 +445,30 @@
 - Gate 5: Validation command passed on HEAD: `cd aloop/cli && npm test && npm run type-check && npm run build` (779/779 tests passing, type-check clean, build successful).
 - Gate 3: Branch coverage thresholds pass for touched runtime files: `start.ts` branch coverage is 80.58% (`tsx --experimental-test-coverage src/commands/start.test.ts`), and shell runtime branch harness reports 37/37 (100%) in `aloop/bin/loop_branch_coverage.tests.sh`.
 - Gate 8: Version compliance spot-check remains aligned with `VERSIONS.md` (`node v22.22.1`, `commander@12.1.0`, dashboard `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`).
+
+---
+
+## Review — 2026-03-17 17:45 UTC — commit 7ddcf0b..1260e17
+
+**Verdict: PASS** (all gates pass, 2 prior findings resolved)
+**Scope:** `aloop/bin/loop.ps1`, `aloop/cli/src/lib/error-handling.ts`, `aloop/cli/src/index.ts`, `aloop/cli/src/commands/gh.ts`, `aloop/cli/src/index.test.ts`, `aloop/cli/proof/start-crash-fix-proof.json`, `README.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: `loop.ps1` review-verdict removal completed — all 3 functions (`Reset-ReviewVerdict`, `Get-ReviewVerdict`, `$reviewVerdictFile` var), the `Reset-ReviewVerdict` call site, and all 22 review-verdict references eliminated. Cross-platform parity with `loop.sh` restored (0 verdict references in both files).
+- Gate 6 ✅: Standalone proof manifest added at `aloop/cli/proof/start-crash-fix-proof.json` with before/after CLI captures showing `deps.discoverWorkspace is not a function` crash → clean `Project prompts not found` error. Test evidence for 5 regression tests included. Human-verifiable and non-filler.
+
+**Gate-by-gate:**
+- Gate 1: All changes match spec intent. README updated to document multi-file spec glob support (`--spec "SPEC.md specs/*.md"`). QA confirms packaged install behaviors (start, setup validation, steer, orchestrate glob, devcontainer) work as specified.
+- Gate 2: `index.test.ts` adds concrete error-path test asserting exact `stderr` match (`/^Error: Invalid autonomy level: invalid/`), no stack-trace signatures (`!result.stderr.includes('at ')`, `!result.stderr.includes('node:internal')`), and non-zero exit. QA_LOG.md provides full command transcripts with exact outputs and exit codes.
+- Gate 3: No new modules added (error-handling.ts is a 16-line extraction). Touched files (`index.ts`, `gh.ts`) only gain `withErrorHandling` wrapper calls — no new branches. Existing coverage thresholds unaffected.
+- Gate 4: `withErrorHandling` extracted to shared `lib/error-handling.ts` — eliminates duplication between `index.ts` and `gh.ts` (now 7 gh subcommand action handlers use the shared import). New `unhandledRejection` handler is a safety net, not dead code. `debug-env` command wrapped with error handling. No leftover TODO/FIXME.
+- Gate 5: All 8/8 CLI tests pass, type-check clean, build succeeds.
+- Gate 6: Proof manifest for start crash fix is valid — before/after CLI captures are human-verifiable, test evidence lists exact test names and results.
+- Gate 7: Not applicable (no UI/CSS/layout changes).
+- Gate 8: No dependency changes; version compliance unchanged.
+- Gate 9: README correctly updated for orchestrate multi-file spec glob usage.
+
+**Positive observations:**
+- Gate 2: QA session (iter 171) is thorough — 5 features tested with full command transcripts, exact error messages, exit codes, and pass/partial verdicts. Devcontainer opencode gap correctly flagged as existing `[qa/P1]` task.
+- Gate 4: The `withErrorHandling` wrapper adds stderr extraction (`error.stderr.trim()`) for subprocess errors, improving user-facing error quality beyond the original `Error.message`-only approach.
+- Gate 5: Validation command suite passes end-to-end.

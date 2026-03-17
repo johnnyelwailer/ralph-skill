@@ -796,6 +796,77 @@ test('resolveCommand fails clearly for unconfigured projects', async () => {
   );
 });
 
+test('discoverWorkspace includes opencode in provider metadata', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-discover-opencode-'));
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+  
+  // Verify opencode is in the default models and round robin list
+  assert.equal(result.providers.default_models.opencode, 'opencode-default');
+  assert.ok(result.providers.round_robin_default.includes('opencode'));
+  
+  // Verify it's either in installed or missing (depending on the environment)
+  const allProviders = [...result.providers.installed, ...result.providers.missing];
+  assert.ok(allProviders.includes('opencode'), 'opencode should be tracked in either installed or missing');
+});
+
+test('scaffoldWorkspace includes opencode in generated config models', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-opencode-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    enabledProviders: ['opencode', 'claude'],
+    specFiles: ['SPEC.md'],
+  });
+
+  const config = await readFile(result.config_path, 'utf8');
+  assert.match(config, /opencode: 'opencode-default'/);
+  assert.match(config, /- 'opencode'/);
+});
+
+test('scaffoldWorkspace allows explicitly enabled providers even if missing locally', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-missing-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+
+  // Request a provider that is known but likely missing in the test environment (e.g., gemini or opencode if not in path)
+  // We don't need to mock spawnSync because scaffoldWorkspace only uses discovery results, 
+  // and we know discovery will put missing ones in 'missing'.
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    enabledProviders: ['opencode'],
+    specFiles: ['SPEC.md'],
+  });
+
+  const config = await readFile(result.config_path, 'utf8');
+  assert.match(config, /- 'opencode'/, 'opencode should be in enabled_providers even if missing locally');
+});
+
 test('resolveBundledAgentsDir resolves agents from parent levels in packaged dist layouts', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-agents-resolve-'));
   const fakeModuleDir = path.join(tempRoot, 'lib', 'node_modules', 'aloop-cli', 'dist');

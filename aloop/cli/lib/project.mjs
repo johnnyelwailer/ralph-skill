@@ -252,7 +252,7 @@ export function validateSpecFiles(specFiles, projectRoot) {
 }
 
 export function getInstalledProviders() {
-  const providers = ['claude', 'codex', 'gemini', 'copilot'];
+  const providers = ['claude', 'opencode', 'codex', 'gemini', 'copilot'];
   const installed = [];
   const missing = [];
   for (const provider of providers) {
@@ -266,6 +266,10 @@ export function getInstalledProviders() {
   return { installed, missing };
 }
 
+/**
+ * @param {Object} discovery
+ * @throws {Error}
+ */
 export function assertProjectConfigured(discovery) {
   if (!discovery?.setup?.config_exists) {
     throw new Error('No Aloop configuration found for this project. Run `aloop setup` first.');
@@ -325,11 +329,12 @@ export async function discoverWorkspace(options = {}) {
       default_provider: readDefaultProvider(homeDir),
       default_models: {
         claude: 'opus',
+        opencode: 'opencode-default',
         codex: 'gpt-5.3-codex',
         gemini: 'gemini-3.1-pro-preview',
         copilot: 'gpt-5.3-codex',
       },
-      round_robin_default: ['claude', 'codex', 'gemini', 'copilot'],
+      round_robin_default: ['claude', 'opencode', 'codex', 'gemini', 'copilot'],
     },
     discovered_at: new Date().toISOString(),
   };
@@ -610,6 +615,7 @@ export async function scaffoldWorkspace(options = {}) {
     '',
     'models:',
     "  claude: 'opus'",
+    "  opencode: 'opencode-default'",
     "  codex: 'gpt-5.3-codex'",
     "  gemini: 'gemini-3.1-pro-preview'",
     "  copilot: 'gpt-5.3-codex'",
