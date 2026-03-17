@@ -3768,3 +3768,220 @@ Next steps:
 [stderr]
 [exit] 0
 ```
+
+## QA Session — 2026-03-17 (iteration 200)
+
+### Test Environment
+- Temp dir: `/tmp/qa-aloop-proj-4yb6vim5` (cleaned)
+- Binary under test: `/tmp/aloop-test-install-04T6sG/bin/aloop` (`1.0.0`)
+- Commit: `89f4786`
+- Dashboard URL (from session meta): `http://localhost:4040`
+- Features tested: 5 (`setup`, `start`, `orchestrate`, `gh watch`, dashboard layout/docs verification)
+
+### Results
+- PASS: `aloop setup --non-interactive --providers codex --spec SPEC.md --mode loop`
+- PASS: `aloop start --max-iterations 1` after setup in isolated `HOME`
+- PASS: `aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only` + clean nonexistent-spec error
+- PASS: `aloop gh watch --repo invalid/invalid` clean unauthenticated GH error handling
+- FAIL: Host dashboard docs visibility at 1920x1080 (`hasDocs=false`) despite sidebar/activity visibility
+
+### Bugs Filed
+- No new `[qa/P1]` bug filed (existing open bug updated): dashboard docs tabs/data visibility still failing in some host sessions.
+
+### Screenshots / Evidence
+- `/home/pj/.copilot/session-state/9e271fa5-85cc-435e-b7ff-0cbf71862f3d/files/qa-20260317-220150/dashboard-layout-1920.png`
+- `/home/pj/.copilot/session-state/9e271fa5-85cc-435e-b7ff-0cbf71862f3d/files/qa-20260317-220150/dashboard-layout-1920.json`
+- Full transcript: `/home/pj/.copilot/session-state/9e271fa5-85cc-435e-b7ff-0cbf71862f3d/files/qa-20260317-220150/command-transcript.log`
+
+### Command Transcript
+```bash
+
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1); echo "$ALOOP_BIN"
+[stdout]
+/tmp/aloop-test-install-04T6sG/bin/aloop
+
+[stderr]
+
+[exit_code] 0
+
+$ /tmp/aloop-test-install-04T6sG/bin/aloop --version
+[stdout]
+1.0.0
+
+[stderr]
+
+[exit_code] 0
+
+$ npx playwright install chromium 2>/dev/null || (npm install -g playwright >/dev/null 2>&1 && playwright install chromium)
+[stdout]
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+
+[stderr]
+
+[exit_code] 0
+
+$ node /tmp/qa_layout_check.mjs 'http://localhost:4040' '/home/pj/.copilot/session-state/9e271fa5-85cc-435e-b7ff-0cbf71862f3d/files/qa-20260317-220150/dashboard-layout-1920.png' '/home/pj/.copilot/session-state/9e271fa5-85cc-435e-b7ff-0cbf71862f3d/files/qa-20260317-220150/dashboard-layout-1920.json'
+[stdout]
+
+[stderr]
+node:internal/modules/package_json_reader:314
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'playwright' imported from /tmp/qa_layout_check.mjs
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:314:9)
+    at packageResolve (node:internal/modules/esm/resolve:768:81)
+    at moduleResolve (node:internal/modules/esm/resolve:855:18)
+    at defaultResolve (node:internal/modules/esm/resolve:985:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:731:20)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:708:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:310:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v22.22.1
+
+[exit_code] 1
+
+$ mkdir -p specs && git init && git config user.email qa@example.com && git config user.name 'QA Bot' && printf '# Main Spec
+Simple scope
+' > SPEC.md && printf '# Extra One
+' > specs/a.md && printf '# Extra Two
+' > specs/b.md
+[stdout]
+Initialized empty Git repository in /tmp/qa-aloop-proj-4yb6vim5/.git/
+
+[stderr]
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint:
+hint: 	git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint: 	git branch -m <name>
+hint:
+hint: Disable this message with "git config set advice.defaultBranchName false"
+
+[exit_code] 0
+
+$ /tmp/aloop-test-install-04T6sG/bin/aloop setup --non-interactive --providers codex --spec SPEC.md --mode loop
+[stdout]
+Running setup in non-interactive mode...
+Setup complete. Config written to: /tmp/qa-aloop-home-1znvpc1_/.aloop/projects/d654e54e/config.yml
+
+[stderr]
+
+[exit_code] 0
+
+$ timeout 120 /tmp/aloop-test-install-04T6sG/bin/aloop start --max-iterations 1
+[stdout]
+Aloop loop started!
+
+  Session:  qa-aloop-proj-4yb6vim5-20260317-210204
+  Mode:     plan-build-review
+  Launch:   start
+  Provider: claude
+  Work dir: /tmp/qa-aloop-home-1znvpc1_/.aloop/sessions/qa-aloop-proj-4yb6vim5-20260317-210204/worktree
+  PID:      238539
+  Prompts:  /tmp/qa-aloop-home-1znvpc1_/.aloop/sessions/qa-aloop-proj-4yb6vim5-20260317-210204/prompts
+  Monitor:  dashboard (auto_open=true)
+  Dashboard: http://localhost:45767
+
+[stderr]
+
+[exit_code] 0
+
+$ /tmp/aloop-test-install-04T6sG/bin/aloop status
+[stdout]
+Active Sessions:
+  qa-aloop-proj-4yb6vim5-20260317-210204  pid=238539  running  iter 1, plan  (0s ago)
+    workdir: /tmp/qa-aloop-home-1znvpc1_/.aloop/sessions/qa-aloop-proj-4yb6vim5-20260317-210204/worktree
+
+[stderr]
+
+[exit_code] 0
+
+$ /tmp/aloop-test-install-04T6sG/bin/aloop orchestrate --spec 'SPEC.md specs/*.md' --plan-only
+[stdout]
+Orchestrator session initialized.
+
+  Session dir:  /tmp/qa-aloop-home-1znvpc1_/.aloop/sessions/orchestrator-20260317-210204
+  Prompts dir:  /tmp/qa-aloop-home-1znvpc1_/.aloop/sessions/orchestrator-20260317-210204/prompts
+  Queue dir:    /tmp/qa-aloop-home-1znvpc1_/.aloop/sessions/orchestrator-20260317-210204/queue
+  Requests dir: /tmp/qa-aloop-home-1znvpc1_/.aloop/sessions/orchestrator-20260317-210204/requests
+  Loop plan:    /tmp/qa-aloop-home-1znvpc1_/.aloop/sessions/orchestrator-20260317-210204/loop-plan.json
+  State file:   /tmp/qa-aloop-home-1znvpc1_/.aloop/sessions/orchestrator-20260317-210204/orchestrator.json
+  Spec:         SPEC.md, specs/a.md, specs/b.md
+  Trunk:        agent/trunk
+  Autonomy:     balanced
+  Concurrency:  3
+  Plan only:    true
+
+[stderr]
+
+[exit_code] 0
+
+$ /tmp/aloop-test-install-04T6sG/bin/aloop orchestrate --spec 'NOPE.md' --plan-only
+[stdout]
+
+[stderr]
+Error: No spec files found matching: NOPE.md
+
+[exit_code] 1
+
+$ timeout 30 /tmp/aloop-test-install-04T6sG/bin/aloop gh watch --repo invalid/invalid
+[stdout]
+
+[stderr]
+gh watch failed: gh issue list failed: To get started with GitHub CLI, please run:  gh auth login
+Alternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.
+
+[exit_code] 1
+
+$ /tmp/aloop-test-install-04T6sG/bin/aloop stop all
+[stdout]
+
+[stderr]
+Session not found: all
+
+[exit_code] 1
+
+$ rm -rf '/tmp/aloop-test-install-04T6sG'
+[stdout]
+
+[stderr]
+
+[exit_code] 0
+
+$ npx playwright screenshot --browser chromium http://localhost:4040 /home/pj/.copilot/session-state/9e271fa5-85cc-435e-b7ff-0cbf71862f3d/files/qa-20260317-220150/dashboard-layout-1920.png
+[stdout]
+Navigating to http://localhost:4040
+Capturing screenshot into /home/pj/.copilot/session-state/9e271fa5-85cc-435e-b7ff-0cbf71862f3d/files/qa-20260317-220150/dashboard-layout-1920.png
+[stderr]
+[exit_code] 0
+
+$ curl -s http://localhost:4040 > /tmp/qa_dash_page.html; grep -E -c 'class.*panel|class.*column|class.*toolbar' /tmp/qa_dash_page.html || true; grep -E -c '<aside' /tmp/qa_dash_page.html || true; grep -E -ic 'activity|session|docs' /tmp/qa_dash_page.html || true
+[stdout]
+0
+0
+0
+[stderr]
+[exit_code] 0
+
+$ ART_DIR=/home/pj/.copilot/session-state/9e271fa5-85cc-435e-b7ff-0cbf71862f3d/files/qa-20260317-220150 URL=http://localhost:4040 npx -y -p playwright node -e <layout-metrics-script>
+[stdout]
+{
+  "visibleAside": true,
+  "panelGuess": 6,
+  "hasSessions": true,
+  "hasDocs": false,
+  "hasActivity": true
+}[stderr]
+[exit_code] 0
+```

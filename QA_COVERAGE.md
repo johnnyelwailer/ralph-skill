@@ -89,3 +89,8 @@
 | `aloop orchestrate --spec` multi-file glob (packaged install) | 2026-03-17 | 87ef32d | PASS | `--spec "SPEC.md specs/*.md" --plan-only` resolves all three files; nonexistent spec returns clean `No spec files found matching` error (exit 1). |
 | `aloop devcontainer` (packaged install) | 2026-03-17 | 87ef32d | PASS | Generates `.devcontainer/devcontainer.json` with expected summary and auth warnings; no crash. |
 | `aloop gh watch --repo` (packaged install) | 2026-03-17 | 87ef32d | SKIP | GH E2E not executed (no reliable authenticated GH context for real-resource testing in this QA run). |
+| `aloop setup --non-interactive --mode loop` (packaged install, isolated `HOME`) | 2026-03-17 | 89f4786 | PASS | Completes successfully and writes config in fresh isolated home. |
+| `aloop start` (packaged install, loop mode, isolated `HOME`) | 2026-03-17 | 89f4786 | PASS | Regression not reproduced: setup + `start --max-iterations 1` starts session and prints dashboard URL. |
+| `aloop orchestrate --spec` multi-file glob (packaged install, isolated `HOME`) | 2026-03-17 | 89f4786 | PASS | `--spec "SPEC.md specs/*.md" --plan-only` resolves all 3 specs; nonexistent spec cleanly errors (exit 1). |
+| `aloop gh watch --repo` (packaged install, unauthenticated GH) | 2026-03-17 | 89f4786 | PASS | Clean user-facing auth guidance (`gh auth login` / `GH_TOKEN`), no stack trace. |
+| Dashboard layout/docs visibility @1920x1080 (host dashboard URL from `meta.json`) | 2026-03-17 | 89f4786 | FAIL | Layout structure visible (`visibleAside=true`, `panelGuess=6`) but docs visibility check still fails (`hasDocs=false`). Evidence: `.../qa-20260317-220150/dashboard-layout-1920.{png,json}`. |
