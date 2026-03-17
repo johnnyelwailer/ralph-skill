@@ -2846,10 +2846,44 @@ The skill's devcontainer generator MUST:
 - For Claude Code: check `CLAUDE_CODE_OAUTH_TOKEN` first, fall back to `ANTHROPIC_API_KEY`, then suggest `claude setup-token` if neither is set
 - Verification step MUST confirm each activated provider can authenticate inside the container
 
+#### Fallback: Auth File Bind-Mounts
+
+Env vars are the preferred auth mechanism, but most users authenticate providers via browser OAuth and never set env vars. For these users, the devcontainer skill MUST support bind-mounting individual auth credential files as a fallback. **Mount only the specific auth file, never the whole config directory** (provider config dirs contain SQLite DBs, lock files, and other state that conflicts with concurrent host access).
+
+| Provider | Auth File Path | XDG? | Token Refresh Writes? |
+|----------|---------------|------|----------------------|
+| Claude Code | `~/.claude/.credentials.json` | No | Rare (macOS prefers keychain) |
+| OpenCode | `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json` | Yes | No (API keys, not OAuth) |
+| Codex | `${CODEX_HOME:-~/.codex}/auth.json` | No | Yes (refresh token rotation) |
+| Copilot | `~/.copilot/config.json` | No | Yes (token refresh) |
+| Gemini | `~/.gemini/oauth_creds.json` + `~/.gemini/google_accounts.json` | No | Yes (access token expiry) |
+
+**Mount rules:**
+- Mount read-write (not read-only) — OAuth providers need to write back refreshed tokens
+- Only mount for activated providers whose auth files exist on host
+- Skip mount gracefully if auth file doesn't exist (user hasn't authenticated that provider)
+- Container user home must match mount target path — use `remoteUser` from devcontainer config to determine target
+- For Claude Code on macOS: the file may not exist if auth is keychain-only — fall back to `claude setup-token` guidance
+
+**Auth resolution order (per provider):**
+1. Env var set on host → `remoteEnv` forwarding (preferred)
+2. Auth file exists on host → bind-mount the file (fallback)
+3. Neither → warn user, suggest setup command (`claude setup-token`, API key from console, etc.)
+
+```jsonc
+{
+  "mounts": [
+    // Only for providers where auth file exists but no env var is set
+    "source=${localEnv:HOME}/.codex/auth.json,target=/home/dev/.codex/auth.json,type=bind",
+    "source=${localEnv:HOME}/.gemini/oauth_creds.json,target=/home/dev/.gemini/oauth_creds.json,type=bind",
+    "source=${localEnv:HOME}/.gemini/google_accounts.json,target=/home/dev/.gemini/google_accounts.json,type=bind"
+  ]
+}
+```
+
 #### What NOT to do
 
-- **Do NOT bind-mount `~/.claude/` from host** — use env vars or Docker volume persistence instead
-- **Do NOT copy credential files** between host and container — stale token risk, unnecessary duplication
+- **Do NOT bind-mount entire provider config directories** (e.g. `~/.codex/`, `~/.gemini/`) — they contain SQLite DBs, lock files, and caches that conflict with concurrent host access. Mount only the auth file.
 - **Do NOT extract OS keychain tokens** — brittle, platform-specific
 - **Do NOT store API keys or tokens in devcontainer.json** — use `${localEnv:...}` references, never plaintext
 
@@ -2865,9 +2899,11 @@ The skill's devcontainer generator MUST:
 - [ ] Verification iterates on failure — fixes config and re-verifies until green
 - [ ] Existing projects with `.devcontainer/` get augmented (aloop mounts/env added) rather than overwritten
 - [ ] Provider auth forwarded via `remoteEnv`/`localEnv` only for activated providers (no secrets in config files)
-- [ ] For Claude Code: prefers `CLAUDE_CODE_OAUTH_TOKEN` (via `claude setup-token`), falls back to `ANTHROPIC_API_KEY`, guides user if neither is set
+- [ ] For Claude Code: prefers `CLAUDE_CODE_OAUTH_TOKEN` (via `claude setup-token`), falls back to `ANTHROPIC_API_KEY`, then auth file mount, guides user if none available
+- [ ] Auth file bind-mount fallback: for providers authenticated via browser OAuth (no env var set), mount the individual auth credential file (not the whole config dir) read-write into the container
+- [ ] Auth file mounts are conditional — only added when the file exists on host and no env var is set
 - [ ] Verification confirms each activated provider can authenticate inside the container
-- [ ] Skill warns if required auth env var is not set on host
+- [ ] Skill warns if no auth method (env var or auth file) is available for an activated provider
 
 **Automatic integration:**
 - [ ] Harness auto-detects `.devcontainer/devcontainer.json` and routes provider invocations through `devcontainer exec` — no manual flag needed
