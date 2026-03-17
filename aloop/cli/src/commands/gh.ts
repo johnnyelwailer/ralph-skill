@@ -7,6 +7,7 @@ import * as os from 'os';
 import { startCommandWithDeps, type StartCommandOptions, type StartCommandResult } from './start.js';
 import { listActiveSessions, resolveHomeDir, stopSession, type SessionInfo } from './session.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
+import { withErrorHandling } from '../lib/error-handling.js';
 
 const execFileAsync = promisify(execFile);
 const GH_PATH_HARDENING_BLOCK_MESSAGE = 'blocked by aloop PATH hardening';
@@ -1362,9 +1363,9 @@ function addGhRequestSubcommand(name: string, description: string) {
     .requiredOption('--request <file>', 'Request JSON file path')
     .option('--role <role>', 'Role: child-loop or orchestrator', 'child-loop')
     .option('--home-dir <dir>', 'Home directory override')
-    .action(async (options) => {
+    .action(withErrorHandling(async (options) => {
       await executeGhOperation(name, options);
-    });
+    }));
 }
 
 function addGhSinceSubcommand(name: string, description: string) {
@@ -1375,9 +1376,9 @@ function addGhSinceSubcommand(name: string, description: string) {
     .requiredOption('--since <timestamp>', 'Only return comments created at/after this timestamp (ISO-8601)')
     .option('--role <role>', 'Role: child-loop or orchestrator', 'orchestrator')
     .option('--home-dir <dir>', 'Home directory override')
-    .action(async (options) => {
+    .action(withErrorHandling(async (options) => {
       await executeGhOperation(name, options);
-    });
+    }));
 }
 
 
@@ -1392,7 +1393,7 @@ ghCommand
   .option('--project-root <path>', 'Project root override')
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
-  .action(async (options: GhStartCommandOptions) => {
+  .action(withErrorHandling(async (options: GhStartCommandOptions) => {
     const result = await ghStartCommandWithDeps(options);
     if (options.output === 'json') {
       console.log(JSON.stringify(result, null, 2));
@@ -1414,7 +1415,7 @@ ghCommand
         console.log(`Warning: ${warning}`);
       }
     }
-  });
+  }));
 
 ghCommand
   .command('watch')
@@ -1445,9 +1446,9 @@ ghCommand
   .description('Show GH-linked issue/session/PR state from watch tracking')
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
-  .action(async (options: GhStatusCommandOptions) => {
+  .action(withErrorHandling(async (options: GhStatusCommandOptions) => {
     await ghStatusCommand(options);
-  });
+  }));
 
 ghCommand
   .command('stop')
@@ -1456,9 +1457,9 @@ ghCommand
   .option('--all', 'Stop all tracked GH-linked loops')
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
-  .action(async (options: GhStopCommandOptions) => {
+  .action(withErrorHandling(async (options: GhStopCommandOptions) => {
     await ghStopCommand(options);
-  });
+  }));
 
 // Register subcommands
 addGhRequestSubcommand('pr-create', 'Create a pull request');

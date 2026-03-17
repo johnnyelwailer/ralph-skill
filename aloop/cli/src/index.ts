@@ -15,22 +15,9 @@ import { devcontainerCommand, verifyDevcontainerCommand } from './commands/devco
 import { orchestrateCommand } from './commands/orchestrate.js';
 import { steerCommand } from './commands/steer.js';
 
-const program = new Command();
+import { withErrorHandling } from './lib/error-handling.js';
 
-function withErrorHandling(action: (...args: any[]) => Promise<void> | void) {
-  return async (...args: any[]) => {
-    try {
-      await action(...args);
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(`Error: ${error.message}`);
-      } else {
-        console.error(`Error: ${String(error)}`);
-      }
-      process.exit(1);
-    }
-  };
-}
+const program = new Command();
 
 program
   .name('aloop')
@@ -192,8 +179,17 @@ program.addCommand(ghCommand);
 program
   .command('debug-env', { hidden: true })
   .description('Print current environment variables (for testing)')
-  .action(() => {
+  .action(withErrorHandling(() => {
     console.log(JSON.stringify(process.env));
-  });
+  }));
 
-program.parse();
+process.on('unhandledRejection', (reason) => {
+  if (reason instanceof Error) {
+    console.error(`Error: ${reason.message}`);
+  } else {
+    console.error(`Error: ${String(reason)}`);
+  }
+  process.exit(1);
+});
+
+await program.parseAsync();

@@ -58,3 +58,11 @@ test('index CLI returns non-zero for unknown command', async () => {
   assert.notEqual(result.code, 0);
   assert.match(result.stderr, /unknown command/i);
 });
+
+test('index CLI catches errors and prints clean messages without stack traces', async () => {
+  const result = await runCli(['orchestrate', '--autonomy-level', 'invalid']);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /^Error: Invalid autonomy level: invalid/);
+  assert.ok(!result.stderr.includes('at '));
+  assert.ok(!result.stderr.includes('node:internal'));
+});
