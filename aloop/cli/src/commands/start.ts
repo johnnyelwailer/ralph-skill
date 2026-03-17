@@ -585,11 +585,14 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   const homeDir = resolveHomeDir(options.homeDir);
   const discovery = await deps.discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
 
-  if (!discovery.setup.config_exists || !deps.existsSync(discovery.setup.config_path)) {
+  const aloopRoot = path.join(homeDir, '.aloop');
+  const globalConfigPath = path.join(aloopRoot, 'config.yml');
+  const hasProjectConfig = discovery.setup.config_exists && deps.existsSync(discovery.setup.config_path);
+  const hasGlobalConfig = deps.existsSync(globalConfigPath);
+
+  if (!hasProjectConfig && !hasGlobalConfig) {
     throw new Error('No Aloop configuration found for this project. Run `aloop setup` first.');
   }
-
-  const aloopRoot = path.join(homeDir, '.aloop');
   const sessionsRoot = path.join(aloopRoot, 'sessions');
   const warnings: string[] = [];
 

@@ -106,6 +106,56 @@ test('startCommandWithDeps errors when project config is missing', async () => {
   );
 });
 
+test('startCommandWithDeps succeeds when only global config exists (no project config)', async () => {
+  const fixture = await setupWorkspace('aloop-start-global-config-');
+  fixture.discovery.setup.config_exists = false;
+
+  // Write global config instead of project config
+  const globalConfigPath = path.join(fixture.homeDir, '.aloop', 'config.yml');
+  await writeFile(
+    globalConfigPath,
+    [
+      "default_provider: 'claude'",
+      "default_mode: 'plan-build-review'",
+      'enabled_providers:',
+      "  - 'claude'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        return { pid: 4242, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.ok(result.session_id, 'should bootstrap session with global config only');
+  assert.strictEqual(result.provider, 'claude', 'should pick provider from global config');
+});
+
 test('startCommandWithDeps bootstraps in-place session and registers active map', async () => {
   const fixture = await setupWorkspace('aloop-start-in-place-');
   await writeFile(
