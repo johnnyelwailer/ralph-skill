@@ -63,3 +63,8 @@
 | `aloop dashboard` layout @1920x1080 (fresh project) | 2026-03-17 | current | PASS | Playwright test passed, UI elements found. No fallback HTML. |
 | `aloop setup --non-interactive` (fresh `HOME`, packaged install) | 2026-03-17 | current | PASS | Successfully completes without template error. |
 | `aloop scaffold` (fresh `HOME`, packaged install) | 2026-03-17 | current | PASS | Successfully returns JSON response without template error. |
+| `aloop setup --non-interactive` (fresh `HOME`, packaged install) | 2026-03-17 | 89a008b | PASS | Setup succeeds and writes project config under `~/.aloop/projects/<hash>/config.yml` (isolated HOME). Invalid provider path returns clean validation error (exit 1). |
+| `aloop setup --non-interactive --mode orchestrate` (packaged install) | 2026-03-17 | 89a008b | PASS | Generated config contains `mode: 'orchestrate'`; invalid mode (`banana`) returns clean validation error. |
+| `aloop start` (packaged install) | 2026-03-17 | 89a008b | FAIL | New regression: exits immediately with `Error: deps.discoverWorkspace is not a function` in both configured and fresh repos. |
+| `aloop status --watch` | 2026-03-17 | 89a008b | PASS | Live refresh loop prints status every 2s (`timeout 6` captured three refreshes). |
+| Dashboard layout @1920x1080 (host dashboard URL from meta.json) | 2026-03-17 | 89a008b | FAIL | Playwright metric check at `http://localhost:4040` shows `visibleAside=false`, no visible sessions/docs/activity tokens. Screenshot: `/tmp/qa-dashboard-host-1920x1080.png`. |

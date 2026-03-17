@@ -3038,3 +3038,257 @@ $ALOOP_BIN scaffold --spec-files NONEXISTENT.md
 # Exit code: 1
 ```
 
+
+## QA Session — 2026-03-17 (iteration 106)
+
+### Test Environment
+- Temp dir: /tmp/qa-run-20260317-060249
+- Isolated HOME: /tmp/qa-run-20260317-060249/home
+- Binary under test: /tmp/aloop-test-install-OQybYO/bin/aloop
+- Version: 1.0.0
+- Commit: 89a008b
+- Dashboard URL from session meta: http://localhost:4040
+- Screenshot evidence: /tmp/qa-dashboard-host-1920x1080.png
+- Features tested: 5
+
+### Results
+- PASS: `aloop setup --non-interactive` (happy + invalid provider error path), `aloop setup --non-interactive --mode orchestrate` (happy + invalid mode), `aloop status --watch`
+- FAIL: `aloop start` (runtime regression: `deps.discoverWorkspace is not a function`), dashboard layout verification at 1920x1080 (sidebar/docs/activity not visibly present)
+
+### Bugs Filed
+- [qa/P1] `aloop start` crashes in packaged install with `deps.discoverWorkspace is not a function` (added to TODO.md)
+- Existing bug re-tested: dashboard desktop layout mismatch at 1920x1080 (added re-test note, no duplicate bug filed)
+
+### Command Transcript
+## QA command transcript (20260317-060249)
+PWD: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree
+
+$ npm --prefix aloop/cli run --silent test-install -- --keep
+vite v5.4.21 building for production...
+transforming...
+✓ 1843 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/dashboard/index.html                   0.72 kB │ gzip:   0.45 kB
+../dist/dashboard/assets/index-BZPnxdWi.css   29.96 kB │ gzip:   6.40 kB
+../dist/dashboard/assets/index-BlRA87Q_.js   435.21 kB │ gzip: 133.16 kB
+✓ built in 1.17s
+
+  dist/index.js  460.2kb
+
+⚡ Done in 7ms
+Packing /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/aloop/cli/ ...
+aloop-cli-1.0.0.tgz
+Installing aloop-cli-1.0.0.tgz to /tmp/aloop-test-install-OQybYO ...
+Verifying /tmp/aloop-test-install-OQybYO/bin/aloop ...
+
+✓ test-install passed (prefix kept at /tmp/aloop-test-install-OQybYO)
+/tmp/aloop-test-install-OQybYO/bin/aloop
+[exit 0]
+
+$ echo "Binary under test: /tmp/aloop-test-install-OQybYO/bin/aloop"
+Binary under test: /tmp/aloop-test-install-OQybYO/bin/aloop
+[exit 0]
+
+$ /tmp/aloop-test-install-OQybYO/bin/aloop --version
+1.0.0
+[exit 0]
+
+$ git rev-parse --short HEAD
+89a008b
+[exit 0]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-loop' && git init -q && git config user.email qa@example.com && git config user.name qa && git add SPEC.md && git commit -q -m 'init'
+
+[exit 0]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-orch' && git init -q && git config user.email qa@example.com && git config user.name qa && git add SPEC.md && git commit -q -m 'init'
+
+[exit 0]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-noconfig' && git init -q && git config user.email qa@example.com && git config user.name qa && touch README.md && git add README.md && git commit -q -m 'init'
+
+[exit 0]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-loop' && HOME='/tmp/qa-run-20260317-060249/home' '/tmp/aloop-test-install-OQybYO/bin/aloop' setup --non-interactive --spec SPEC.md --providers codex
+Running setup in non-interactive mode...
+Setup complete. Config written to: /tmp/qa-run-20260317-060249/home/.aloop/projects/5c30a5cd/config.yml
+[exit 0]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-loop' && ls -la .aloop && sed -n '1,120p' .aloop/config.yml
+ls: cannot access '.aloop': No such file or directory
+[exit 2]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-loop' && HOME='/tmp/qa-run-20260317-060249/home' '/tmp/aloop-test-install-OQybYO/bin/aloop' setup --non-interactive --spec SPEC.md --providers invalidprov
+Running setup in non-interactive mode...
+Error: Unknown provider(s): invalidprov (valid: claude, codex, gemini, copilot, opencode)
+[exit 1]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-orch' && HOME='/tmp/qa-run-20260317-060249/home' '/tmp/aloop-test-install-OQybYO/bin/aloop' setup --non-interactive --spec SPEC.md --providers codex --mode orchestrate
+Running setup in non-interactive mode...
+Setup complete. Config written to: /tmp/qa-run-20260317-060249/home/.aloop/projects/3be1c264/config.yml
+[exit 0]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-orch' && sed -n '1,140p' .aloop/config.yml && ls -1 .aloop/prompts | sed -n '1,120p'
+sed: can't read .aloop/config.yml: No such file or directory
+[exit 2]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-orch' && HOME='/tmp/qa-run-20260317-060249/home' '/tmp/aloop-test-install-OQybYO/bin/aloop' setup --non-interactive --spec SPEC.md --providers codex --mode banana
+Running setup in non-interactive mode...
+Error: Invalid setup mode: banana (must be loop or orchestrate)
+[exit 1]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-noconfig' && HOME='/tmp/qa-run-20260317-060249/home' '/tmp/aloop-test-install-OQybYO/bin/aloop' start --max-iterations 1
+Error: deps.discoverWorkspace is not a function
+[exit 1]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-loop' && HOME='/tmp/qa-run-20260317-060249/home' '/tmp/aloop-test-install-OQybYO/bin/aloop' start --provider codex --max-iterations 1
+Error: deps.discoverWorkspace is not a function
+[exit 1]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-loop' && HOME='/tmp/qa-run-20260317-060249/home' '/tmp/aloop-test-install-OQybYO/bin/aloop' status
+No active sessions.
+[exit 0]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-loop' && HOME='/tmp/qa-run-20260317-060249/home' timeout 6 '/tmp/aloop-test-install-OQybYO/bin/aloop' status --watch
+[2J[Haloop status  (refreshing every 2s — 6:03:44 AM)
+
+No active sessions.
+[2J[Haloop status  (refreshing every 2s — 6:03:46 AM)
+
+No active sessions.
+[2J[Haloop status  (refreshing every 2s — 6:03:48 AM)
+
+No active sessions.
+[exit 124]
+
+$ npx playwright --version
+Version 1.58.2
+[exit 0]
+
+$ npx playwright install chromium 2>/dev/null || (npm install -g playwright && playwright install chromium)
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+[exit 0]
+
+$ cd '/tmp/qa-run-20260317-060249/proj-loop' && HOME='/tmp/qa-run-20260317-060249/home' '/tmp/aloop-test-install-OQybYO/bin/aloop' dashboard --port 4147 >/tmp/qa-dashboard-4147.log 2>&1 & echo $!
+
+$ cd '/tmp/qa-run-20260317-060249/proj-loop' && HOME='/tmp/qa-run-20260317-060249/home' '/tmp/aloop-test-install-OQybYO/bin/aloop' dashboard --port 4147 >/tmp/qa-dashboard-4147.log 2>&1 & echo $!
+3221571
+[exit 0]
+
+$ sed -n '1,120p' /tmp/qa-dashboard-4147.log
+Error: listen EADDRINUSE: address already in use :::4147
+[exit 0]
+
+$ node '/tmp/qa-run-20260317-060249/layout-check.mjs'
+{"aside":false,"docsToken":false,"activityToken":false,"panelGuess":5,"textLen":170,"title":"Aloop Dashboard"}
+[exit 0]
+
+$ ls -l /tmp/qa-dashboard-1920x1080.png
+-rw-r--r-- 1 pj pj 32735 Mar 17 06:04 /tmp/qa-dashboard-1920x1080.png
+[exit 0]
+
+$ jq -r '.dashboard_url' /home/pj/.aloop/sessions/ralph-skill-20260314-173930/meta.json
+bash: line 1: jq: command not found
+[exit 127]
+
+$ pkill -f 'aloop.*dashboard --port 4147' || true
+
+$ pkill -f 'aloop.*dashboard --port 4147' || true
+
+$ cd '/tmp/qa-run-20260317-060249/proj-loop' && HOME='/tmp/qa-run-20260317-060249/home' '/tmp/aloop-test-install-OQybYO/bin/aloop' dashboard --port 4188 >'/tmp/qa-dashboard-4188.log' 2>&1 & echo $!
+
+$ find '/tmp/qa-run-20260317-060249/home/.aloop/projects' -maxdepth 3 -type f -name config.yml -print
+/tmp/qa-run-20260317-060249/home/.aloop/projects/3be1c264/config.yml
+/tmp/qa-run-20260317-060249/home/.aloop/projects/5c30a5cd/config.yml
+[exit 0]
+
+$ sed -n '1,140p' /tmp/qa-run-20260317-060249/home/.aloop/projects/3be1c264/config.yml
+project_name: 'proj-orch'
+project_root: '/tmp/qa-run-20260317-060249/proj-orch'
+language: 'other'
+provider: 'claude'
+mode: 'orchestrate'
+autonomy_level: 'balanced'
+data_privacy: 'private'
+spec_files:
+  - 'SPEC.md'
+reference_files:
+validation_commands: |
+safety_rules: |
+  - Never delete the project directory or run destructive commands
+  - Never push to remote without explicit user approval
+
+enabled_providers:
+  - 'codex'
+
+models:
+  claude: 'opus'
+  codex: 'gpt-5.3-codex'
+  gemini: 'gemini-3.1-pro-preview'
+  copilot: 'gpt-5.3-codex'
+
+round_robin_order:
+  - 'codex'
+
+privacy_policy:
+  data_classification: 'private'
+  zdr_enabled: true
+  require_data_retention_safe: true
+
+created_at: '2026-03-17T05:03:43.441Z'
+[exit 0]
+
+$ sed -n '1,140p' /tmp/qa-run-20260317-060249/home/.aloop/projects/5c30a5cd/config.yml
+project_name: 'proj-loop'
+project_root: '/tmp/qa-run-20260317-060249/proj-loop'
+language: 'other'
+provider: 'claude'
+mode: 'plan-build-review'
+autonomy_level: 'balanced'
+data_privacy: 'private'
+spec_files:
+  - 'SPEC.md'
+reference_files:
+validation_commands: |
+safety_rules: |
+  - Never delete the project directory or run destructive commands
+  - Never push to remote without explicit user approval
+
+enabled_providers:
+  - 'codex'
+
+models:
+  claude: 'opus'
+  codex: 'gpt-5.3-codex'
+  gemini: 'gemini-3.1-pro-preview'
+  copilot: 'gpt-5.3-codex'
+
+round_robin_order:
+  - 'codex'
+
+privacy_policy:
+  data_classification: 'private'
+  zdr_enabled: true
+  require_data_retention_safe: true
+
+created_at: '2026-03-17T05:03:37.939Z'
+[exit 0]
+
+$ node '/tmp/qa-run-20260317-060249/layout-host-4040.mjs'
+{"panelGuess":5,"hasSessions":false,"hasDocs":false,"hasActivity":false,"visibleAside":false,"textLen":11671,"title":"Aloop Dashboard"}
+[exit 0]
+
+$ ls -l /tmp/qa-dashboard-host-1920x1080.png
+-rw-r--r-- 1 pj pj 208629 Mar 17 06:06 /tmp/qa-dashboard-host-1920x1080.png
+[exit 0]
+
+$ grep -n 'dashboard_url' /home/pj/.aloop/sessions/ralph-skill-20260314-173930/meta.json
+39:  "dashboard_url": "http://localhost:4040"
+[exit 0]
+
+$ curl -s http://localhost:4040 | rg -n 'aside|Sessions|Activity|Docs|panel|sidebar'
+
+[exit 1]
