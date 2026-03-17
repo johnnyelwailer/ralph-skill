@@ -55,6 +55,8 @@ import {
   monitorChildSessions,
   isHousekeepingCommit,
   detectSpecChanges,
+  resolveSpecFiles,
+  loadMergedSpecContent,
   queueReplanForSpecChange,
   applyReplanActions,
   applySpecBackfill,
@@ -778,7 +780,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const deps = createMockDeps({ existsSync: () => false });
     await assert.rejects(
       () => orchestrateCommandWithDeps({ spec: 'NONEXISTENT.md' }, deps),
-      /Spec file not found/,
+      /No spec files found matching/,
     );
   });
 
@@ -786,7 +788,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const deps = createMockDeps({ existsSync: () => false });
     await assert.rejects(
       () => orchestrateCommandWithDeps({}, deps),
-      /Spec file not found/,
+      /No spec files found matching/,
     );
   });
 
@@ -4521,6 +4523,212 @@ describe('isHousekeepingCommit', () => {
 
   it('returns false for empty commit messages', () => {
     assert.equal(isHousekeepingCommit(''), false);
+  });
+});
+
+describe('resolveSpecFiles', () => {
+  it('resolves a single literal file path', () => {
+    const result = resolveSpecFiles('SPEC.md', '/project', {
+      existsSync: () => true,
+    });
+    assert.deepStrictEqual(result, ['/project/SPEC.md']);
+  });
+
+  it('resolves space-separated literal paths', () => {
+    const result = resolveSpecFiles('SPEC.md docs/spec2.md', '/project', {
+      existsSync: () => true,
+    });
+    assert.deepStrictEqual(result, ['/project/SPEC.md', '/project/docs/spec2.md']);
+  });
+
+  it('resolves glob pattern specs/*.md', () => {
+    const result = resolveSpecFiles('SPEC.md specs/*.md', '/project', {
+      existsSync: (p: string) => true,
+      readdirSync: (dir: string) => {
+        if (dir === '/project/specs') return ['admin.md', 'auth.md', 'posts.md', 'README.txt'];
+        return [];
+      },
+    });
+    assert.deepStrictEqual(result, [
+      '/project/SPEC.md',
+      '/project/specs/admin.md',
+      '/project/specs/auth.md',
+      '/project/specs/posts.md',
+    ]);
+  });
+
+  it('deduplicates files appearing in both literal and glob', () => {
+    const result = resolveSpecFiles('specs/auth.md specs/*.md', '/project', {
+      existsSync: () => true,
+      readdirSync: () => ['auth.md', 'posts.md'],
+    });
+    assert.deepStrictEqual(result, [
+      '/project/specs/auth.md',
+      '/project/specs/posts.md',
+    ]);
+  });
+
+  it('skips glob when directory does not exist', () => {
+    const result = resolveSpecFiles('SPEC.md specs/*.md', '/project', {
+      existsSync: (p: string) => p === '/project/SPEC.md' || p.endsWith('SPEC.md'),
+      readdirSync: () => { throw new Error('ENOENT'); },
+    });
+    // specs/ doesn't exist, so only SPEC.md is returned
+    assert.deepStrictEqual(result, ['/project/SPEC.md']);
+  });
+
+  it('returns empty array when no patterns match', () => {
+    const result = resolveSpecFiles('nonexistent/*.md', '/project', {
+      existsSync: () => false,
+    });
+    assert.deepStrictEqual(result, []);
+  });
+
+  it('handles comma-separated input', () => {
+    const result = resolveSpecFiles('SPEC.md,docs/extra.md', '/project', {
+      existsSync: () => true,
+    });
+    assert.deepStrictEqual(result, ['/project/SPEC.md', '/project/docs/extra.md']);
+  });
+});
+
+describe('loadMergedSpecContent', () => {
+  it('returns empty string for no files', async () => {
+    const result = await loadMergedSpecContent([], {
+      existsSync: () => true,
+      readFile: async () => '',
+    });
+    assert.equal(result, '');
+  });
+
+  it('returns single file content directly without header', async () => {
+    const result = await loadMergedSpecContent(['/project/SPEC.md'], {
+      existsSync: () => true,
+      readFile: async () => '# My Spec\n\nContent here.',
+    });
+    assert.equal(result, '# My Spec\n\nContent here.');
+  });
+
+  it('merges multiple files with headers and separators', async () => {
+    const files: Record<string, string> = {
+      '/project/SPEC.md': '# Master Spec',
+      '/project/specs/auth.md': '# Auth Slice',
+      '/project/specs/posts.md': '# Posts Slice',
+    };
+    const result = await loadMergedSpecContent(Object.keys(files), {
+      existsSync: (p: string) => p in files,
+      readFile: async (p: string) => files[p],
+    });
+    assert.ok(result.includes('<!-- spec: SPEC.md -->'));
+    assert.ok(result.includes('# Master Spec'));
+    assert.ok(result.includes('<!-- spec: auth.md -->'));
+    assert.ok(result.includes('# Auth Slice'));
+    assert.ok(result.includes('<!-- spec: posts.md -->'));
+    assert.ok(result.includes('# Posts Slice'));
+    assert.ok(result.includes('---'));
+  });
+
+  it('skips nonexistent files in merge', async () => {
+    const result = await loadMergedSpecContent(
+      ['/project/SPEC.md', '/project/specs/missing.md'],
+      {
+        existsSync: (p: string) => p === '/project/SPEC.md',
+        readFile: async () => '# Spec',
+      },
+    );
+    // Only one existing file → no headers, direct content
+    assert.equal(result, '# Spec');
+  });
+});
+
+describe('orchestrateCommandWithDeps multi-file spec', () => {
+  it('resolves multiple spec files and stores them in state', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const deps = createMockDeps({
+      existsSync: (p: string) => {
+        // SPEC.md exists; specs/ directory exists with auth.md
+        if (p.endsWith('SPEC.md')) return true;
+        if (p.endsWith('/specs')) return true;
+        return false;
+      },
+      readdirSync: (dir: string) => {
+        if (dir.endsWith('/specs') || dir.endsWith(path.sep + 'specs')) return ['auth.md', 'posts.md'];
+        return [];
+      },
+      readFile: async (p: string) => {
+        if (writtenFiles[p]) return writtenFiles[p];
+        return '';
+      },
+      writeFile: async (p: string, data: string) => {
+        writtenFiles[p] = data;
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps(
+      { spec: 'SPEC.md specs/*.md' },
+      deps,
+    );
+
+    assert.equal(result.state.spec_file, 'SPEC.md');
+    assert.ok(result.state.spec_files);
+    assert.ok(result.state.spec_files.length >= 1);
+    assert.ok(result.state.spec_files.includes('SPEC.md'));
+  });
+
+  it('throws when no spec files match', async () => {
+    const deps = createMockDeps({
+      existsSync: () => false,
+      readdirSync: () => [],
+    });
+
+    await assert.rejects(
+      () => orchestrateCommandWithDeps({ spec: 'nonexistent.md' }, deps),
+      { message: /No spec files found matching/ },
+    );
+  });
+
+  it('includes merged spec content in decomposition queue', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const fileContents: Record<string, string> = {};
+
+    // Pre-populate spec content
+    const cwd = process.cwd();
+    const specPath = path.resolve(cwd, 'SPEC.md');
+    const authPath = path.resolve(cwd, 'specs', 'auth.md');
+    fileContents[specPath] = '# Master Spec\n\nArchitecture here.';
+    fileContents[authPath] = '# Auth Slice\n\nLogin and registration.';
+
+    const deps = createMockDeps({
+      existsSync: (p: string) => {
+        if (p === specPath || p === authPath) return true;
+        if (p.endsWith('/specs') || p.endsWith(path.sep + 'specs')) return true;
+        return false;
+      },
+      readdirSync: (dir: string) => {
+        const specsDir = path.resolve(cwd, 'specs');
+        if (dir === specsDir) return ['auth.md'];
+        return [];
+      },
+      readFile: async (p: string) => {
+        if (fileContents[p]) return fileContents[p];
+        if (writtenFiles[p]) return writtenFiles[p];
+        return '';
+      },
+      writeFile: async (p: string, data: string) => {
+        writtenFiles[p] = data;
+      },
+    });
+
+    await orchestrateCommandWithDeps({ spec: 'SPEC.md specs/*.md' }, deps);
+
+    // Find the decompose queue file
+    const decomposeFile = Object.keys(writtenFiles).find((k) => k.includes('decompose-epics.md'));
+    assert.ok(decomposeFile, 'decompose-epics.md should be queued');
+    const content = writtenFiles[decomposeFile];
+    assert.ok(content.includes('Master Spec'), 'should include master spec content');
+    assert.ok(content.includes('Auth Slice'), 'should include auth slice content');
+    assert.ok(content.includes('<!-- spec: SPEC.md -->'), 'should include spec file header for master');
+    assert.ok(content.includes('<!-- spec: auth.md -->'), 'should include spec file header for auth');
   });
 });
 

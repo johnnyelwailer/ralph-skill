@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
 import { getProjectHash, resolveProjectRoot } from './project.js';
@@ -79,6 +79,7 @@ export interface OrchestratorIssue {
 
 export interface OrchestratorState {
   spec_file: string;
+  spec_files?: string[];
   spec_glob?: string;
   spec_last_commit?: string;
   autonomy_level?: AutonomyLevel;
@@ -181,6 +182,7 @@ export interface OrchestrateDeps {
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   mkdir: (path: string, options?: { recursive?: boolean }) => Promise<string | undefined>;
   unlink?: (path: string) => Promise<void>;
+  readdirSync?: (path: string) => string[];
   now: () => Date;
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
@@ -231,6 +233,7 @@ const defaultDeps: OrchestrateDeps = {
   writeFile,
   mkdir,
   unlink,
+  readdirSync,
   now: () => new Date(),
 };
 
@@ -670,6 +673,81 @@ const ORCH_ARCH_ANALYST_PROMPT_FILENAME = 'PROMPT_orch_arch_analyst.md';
 const ORCH_REPLAN_PROMPT_FILENAME = 'PROMPT_orch_replan.md';
 const ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME = 'PROMPT_orch_spec_consistency.md';
 const DEFAULT_SPEC_GLOB = 'SPEC.md specs/*.md';
+
+/**
+ * Resolve spec file paths from a space/comma-separated glob-like input string.
+ * Supports literal paths and simple `dir/*.ext` patterns.
+ * Returns resolved absolute paths with master spec first, then vertical slices alphabetically.
+ */
+export function resolveSpecFiles(
+  specInput: string,
+  projectRoot: string,
+  deps: { existsSync: (path: string) => boolean; readdirSync?: (path: string) => string[] },
+): string[] {
+  const patterns = specInput.split(/[\s,]+/).filter((p) => p.length > 0);
+  const resolved: string[] = [];
+  const seen = new Set<string>();
+  const readdirFn = deps.readdirSync ?? readdirSync;
+
+  for (const pattern of patterns) {
+    if (pattern.includes('*')) {
+      // Simple glob: dir/*.ext
+      const dir = path.resolve(projectRoot, path.dirname(pattern));
+      const ext = path.extname(pattern.replace('*', 'x')); // extract extension from e.g. *.md
+      if (!deps.existsSync(dir)) continue;
+      let entries: string[];
+      try {
+        entries = readdirFn(dir);
+      } catch {
+        continue;
+      }
+      const matching = entries
+        .filter((e) => (ext ? e.endsWith(ext) : true))
+        .sort()
+        .map((e) => path.join(dir, e));
+      for (const p of matching) {
+        if (!seen.has(p)) {
+          seen.add(p);
+          resolved.push(p);
+        }
+      }
+    } else {
+      const p = path.resolve(projectRoot, pattern);
+      if (!seen.has(p)) {
+        seen.add(p);
+        resolved.push(p);
+      }
+    }
+  }
+
+  return resolved;
+}
+
+/**
+ * Load and merge content from multiple spec files.
+ * Single file returns its content directly. Multiple files are joined with
+ * file-name headers so the consuming agent sees clear boundaries.
+ */
+export async function loadMergedSpecContent(
+  specFiles: string[],
+  deps: { existsSync: (path: string) => boolean; readFile: (path: string, encoding: BufferEncoding) => Promise<string> },
+): Promise<string> {
+  const existing = specFiles.filter((f) => deps.existsSync(f));
+  if (existing.length === 0) return '';
+  if (existing.length === 1) {
+    return deps.readFile(existing[0], 'utf8');
+  }
+
+  const sections: string[] = [];
+  for (const file of existing) {
+    const content = await deps.readFile(file, 'utf8');
+    const basename = path.basename(file);
+    sections.push(`<!-- spec: ${basename} -->\n\n${content}`);
+  }
+
+  return sections.join('\n\n---\n\n');
+}
+
 const ORCH_ESTIMATE_PROMPT_FALLBACK = `# Orchestrator Estimation Agent
 
 You are Aloop, the estimation agent for orchestrator readiness checks.
@@ -792,11 +870,15 @@ export async function orchestrateCommandWithDeps(
   const aloopRoot = path.join(homeDir, '.aloop');
   const sessionsRoot = path.join(aloopRoot, 'sessions');
 
-  const specFile = options.spec ?? 'SPEC.md';
-  const specPath = path.resolve(specFile);
-  if (!deps.existsSync(specPath)) {
-    throw new Error(`Spec file not found: ${specPath}`);
+  const specInput = options.spec ?? 'SPEC.md';
+  const projectRoot = options.projectRoot ? path.resolve(options.projectRoot) : process.cwd();
+  const specFiles = resolveSpecFiles(specInput, projectRoot, deps);
+  const existingSpecFiles = specFiles.filter((f) => deps.existsSync(f));
+  if (existingSpecFiles.length === 0) {
+    throw new Error(`No spec files found matching: ${specInput}`);
   }
+  // Primary spec file for backward compatibility (first resolved file)
+  const specFile = path.relative(projectRoot, existingSpecFiles[0]) || existingSpecFiles[0];
   const trunkBranch = options.trunk ?? 'agent/trunk';
   const concurrencyCap = parseConcurrency(options.concurrency);
   const filterIssues = parseIssueNumbers(options.issues);
@@ -830,53 +912,55 @@ export async function orchestrateCommandWithDeps(
   };
   await deps.writeFile(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}\n`, 'utf8');
   await deps.writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(), 'utf8');
-  const templateRoot = options.projectRoot ? path.resolve(options.projectRoot) : process.cwd();
-  const estimateTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_ESTIMATE_PROMPT_FILENAME);
+  const estimateTemplatePath = path.join(projectRoot, 'aloop', 'templates', ORCH_ESTIMATE_PROMPT_FILENAME);
   const estimatePrompt = deps.existsSync(estimateTemplatePath)
     ? await deps.readFile(estimateTemplatePath, 'utf8')
     : ORCH_ESTIMATE_PROMPT_FALLBACK;
   await deps.writeFile(orchEstimatePromptFile, estimatePrompt, 'utf8');
 
   // Load product analyst and architecture analyst templates
-  const productAnalystTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_PRODUCT_ANALYST_PROMPT_FILENAME);
+  const productAnalystTemplatePath = path.join(projectRoot, 'aloop', 'templates', ORCH_PRODUCT_ANALYST_PROMPT_FILENAME);
   const productAnalystPrompt = deps.existsSync(productAnalystTemplatePath)
     ? await deps.readFile(productAnalystTemplatePath, 'utf8')
     : ORCH_PRODUCT_ANALYST_FALLBACK;
   await deps.writeFile(path.join(promptsDir, ORCH_PRODUCT_ANALYST_PROMPT_FILENAME), productAnalystPrompt, 'utf8');
 
-  const archAnalystTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_ARCH_ANALYST_PROMPT_FILENAME);
+  const archAnalystTemplatePath = path.join(projectRoot, 'aloop', 'templates', ORCH_ARCH_ANALYST_PROMPT_FILENAME);
   const archAnalystPrompt = deps.existsSync(archAnalystTemplatePath)
     ? await deps.readFile(archAnalystTemplatePath, 'utf8')
     : ORCH_ARCH_ANALYST_FALLBACK;
   await deps.writeFile(path.join(promptsDir, ORCH_ARCH_ANALYST_PROMPT_FILENAME), archAnalystPrompt, 'utf8');
 
-  const decomposeTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_DECOMPOSE_PROMPT_FILENAME);
+  const decomposeTemplatePath = path.join(projectRoot, 'aloop', 'templates', ORCH_DECOMPOSE_PROMPT_FILENAME);
   const decomposePrompt = deps.existsSync(decomposeTemplatePath)
     ? await deps.readFile(decomposeTemplatePath, 'utf8')
     : ORCH_DECOMPOSE_FALLBACK;
   await deps.writeFile(path.join(promptsDir, ORCH_DECOMPOSE_PROMPT_FILENAME), decomposePrompt, 'utf8');
 
-  const subDecomposeTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_SUB_DECOMPOSE_PROMPT_FILENAME);
+  const subDecomposeTemplatePath = path.join(projectRoot, 'aloop', 'templates', ORCH_SUB_DECOMPOSE_PROMPT_FILENAME);
   const subDecomposePrompt = deps.existsSync(subDecomposeTemplatePath)
     ? await deps.readFile(subDecomposeTemplatePath, 'utf8')
     : ORCH_SUB_DECOMPOSE_FALLBACK;
   await deps.writeFile(path.join(promptsDir, ORCH_SUB_DECOMPOSE_PROMPT_FILENAME), subDecomposePrompt, 'utf8');
 
   // Load replan and spec consistency templates
-  const replanTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_REPLAN_PROMPT_FILENAME);
+  const replanTemplatePath = path.join(projectRoot, 'aloop', 'templates', ORCH_REPLAN_PROMPT_FILENAME);
   if (deps.existsSync(replanTemplatePath)) {
     const replanPrompt = await deps.readFile(replanTemplatePath, 'utf8');
     await deps.writeFile(path.join(promptsDir, ORCH_REPLAN_PROMPT_FILENAME), replanPrompt, 'utf8');
   }
-  const consistencyTemplatePath = path.join(templateRoot, 'aloop', 'templates', ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME);
+  const consistencyTemplatePath = path.join(projectRoot, 'aloop', 'templates', ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME);
   if (deps.existsSync(consistencyTemplatePath)) {
     const consistencyPrompt = await deps.readFile(consistencyTemplatePath, 'utf8');
     await deps.writeFile(path.join(promptsDir, ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME), consistencyPrompt, 'utf8');
   }
 
+  // Build the spec glob from input — use explicit input if it contains a glob, otherwise default
+  const specGlob = specInput.includes('*') ? specInput : DEFAULT_SPEC_GLOB;
   let state: OrchestratorState = {
     spec_file: specFile,
-    spec_glob: DEFAULT_SPEC_GLOB,
+    spec_files: existingSpecFiles.map((f) => path.relative(projectRoot, f) || f),
+    spec_glob: specGlob,
     autonomy_level: autonomyLevel,
     trunk_branch: trunkBranch,
     concurrency_cap: concurrencyCap,
@@ -927,12 +1011,12 @@ export async function orchestrateCommandWithDeps(
 
   // If no decomposition has been applied yet, queue epic decomposition from spec.
   if (!options.plan && state.issues.length === 0) {
-    await createEpicDecompositionRequest(specFile, requestsDir, { writeFile: deps.writeFile, now: deps.now });
-    const specPath = path.resolve(specFile);
-    const specContent = deps.existsSync(specPath)
-      ? await deps.readFile(specPath, 'utf8')
-      : '';
-    await queueEpicDecomposition(specFile, specContent, queueDir, decomposePrompt, { writeFile: deps.writeFile });
+    const specLabel = existingSpecFiles.length > 1
+      ? existingSpecFiles.map((f) => path.relative(projectRoot, f) || f).join(', ')
+      : specFile;
+    await createEpicDecompositionRequest(specLabel, requestsDir, { writeFile: deps.writeFile, now: deps.now });
+    const specContent = await loadMergedSpecContent(existingSpecFiles, deps);
+    await queueEpicDecomposition(specLabel, specContent, queueDir, decomposePrompt, { writeFile: deps.writeFile });
   }
 
   // Apply sub-issue decomposition results before creating new decomposition requests.
@@ -964,11 +1048,8 @@ export async function orchestrateCommandWithDeps(
   if (gapAnalysisTargets.length > 0) {
     await createGapAnalysisRequests(state.issues, requestsDir, deps);
 
-    // Load spec content for analyst queue prompts
-    const specPath = path.resolve(specFile);
-    const specContent = deps.existsSync(specPath)
-      ? await deps.readFile(specPath, 'utf8')
-      : '';
+    // Load merged spec content for analyst queue prompts
+    const specContent = await loadMergedSpecContent(existingSpecFiles, deps);
 
     await queueGapAnalysisForIssues(
       state.issues,
@@ -1080,7 +1161,7 @@ export async function orchestrateCommandWithDeps(
     scanLoopResult = await runOrchestratorScanLoop(
       stateFile,
       sessionDir,
-      templateRoot,
+      projectRoot,
       path.basename(sessionDir),
       promptsSourceDir,
       aloopRoot,
@@ -1128,7 +1209,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   console.log(`  Requests dir: ${result.requests_dir}`);
   console.log(`  Loop plan:    ${result.loop_plan_file}`);
   console.log(`  State file:   ${result.state_file}`);
-  console.log(`  Spec:         ${result.state.spec_file}`);
+  console.log(`  Spec:         ${result.state.spec_files && result.state.spec_files.length > 1 ? result.state.spec_files.join(', ') : result.state.spec_file}`);
   console.log(`  Trunk:        ${result.state.trunk_branch}`);
   console.log(`  Autonomy:     ${result.state.autonomy_level ?? 'balanced'}`);
   console.log(`  Concurrency:  ${result.state.concurrency_cap}`);

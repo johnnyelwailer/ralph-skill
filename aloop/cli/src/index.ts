@@ -156,7 +156,7 @@ program
 program
   .command('orchestrate')
   .description('Decompose spec into issues, dispatch child loops, and merge PRs')
-  .option('--spec <path>', 'Specification file to decompose', 'SPEC.md')
+  .option('--spec <paths>', 'Spec file(s) or glob pattern (e.g. "SPEC.md specs/*.md")', 'SPEC.md')
   .option('--concurrency <number>', 'Max concurrent child loops', '3')
   .option('--trunk <branch>', 'Target branch for merged PRs', 'agent/trunk')
   .option('--issues <numbers>', 'Comma-separated issue numbers to process')
