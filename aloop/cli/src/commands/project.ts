@@ -84,6 +84,11 @@ export const resolveBundledAgentsDir = projectCore.resolveBundledAgentsDir as (o
   argv1?: string;
   cwd?: string;
 }) => string | null;
+export const resolveBundledBinDir = projectCore.resolveBundledBinDir as (options?: {
+  moduleDir?: string;
+  argv1?: string;
+  cwd?: string;
+}) => string | null;
 export const resolveBundledTemplatesDir = projectCore.resolveBundledTemplatesDir as (
   requiredTemplates: string[],
   options?: { moduleDir?: string; argv1?: string; cwd?: string }

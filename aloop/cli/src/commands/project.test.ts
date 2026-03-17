@@ -5,7 +5,7 @@ import os from 'node:os';
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { discoverWorkspace, resolveBundledTemplatesDir, resolveBundledAgentsDir, scaffoldWorkspace } from './project.js';
+import { discoverWorkspace, resolveBundledTemplatesDir, resolveBundledAgentsDir, resolveBundledBinDir, scaffoldWorkspace } from './project.js';
 
 test('discoverWorkspace resolves project details and language signals', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-discover-'));
@@ -906,6 +906,52 @@ test('resolveBundledAgentsDir returns null when agent files are missing', async 
 
   // Should return null because not all 3 agent files are present
   assert.equal(resolved, null);
+});
+
+test('resolveBundledBinDir resolves loop scripts from parent levels in packaged dist layouts', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-bin-resolve-'));
+  const fakeModuleDir = path.join(tempRoot, 'lib', 'node_modules', 'aloop-cli', 'dist');
+  const binDir = path.join(tempRoot, 'bin');
+  await mkdir(fakeModuleDir, { recursive: true });
+  await mkdir(binDir, { recursive: true });
+  await writeFile(path.join(binDir, 'loop.sh'), '#!/bin/sh\n', 'utf8');
+  await writeFile(path.join(binDir, 'loop.ps1'), 'Write-Host "loop"', 'utf8');
+
+  const resolved = resolveBundledBinDir({
+    moduleDir: fakeModuleDir,
+    argv1: path.join(fakeModuleDir, 'index.js'),
+    cwd: tempRoot,
+  });
+
+  assert.equal(resolved, binDir);
+});
+
+test('scaffoldWorkspace bootstraps loop scripts to home bin for fresh HOME', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-bootstrap-bin-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(homeRoot, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+  });
+
+  const homeBinDir = path.join(homeRoot, '.aloop', 'bin');
+  const bundledBinDir = resolveBundledBinDir();
+  assert.ok(bundledBinDir, 'bundled bin dir should resolve for test fixture');
+  if (!bundledBinDir) {
+    throw new Error('bundled bin dir should resolve for test fixture');
+  }
+
+  const requiredScripts = ['loop.sh', 'loop.ps1'];
+  for (const scriptName of requiredScripts) {
+    const copiedScriptPath = path.join(homeBinDir, scriptName);
+    assert.ok(existsSync(copiedScriptPath), `${scriptName} should be bootstrapped`);
+    const copiedContent = await readFile(copiedScriptPath, 'utf8');
+    const sourceContent: string = await readFile(path.join(bundledBinDir, scriptName), 'utf8');
+    assert.equal(copiedContent, sourceContent, `${scriptName} content should match bundled source`);
+  }
 });
 
 test('scaffoldWorkspace copies opencode agent files when opencode is enabled', async () => {

@@ -3089,7 +3089,7 @@ var {
 // lib/project.mjs
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdir, readFile, readdir, stat, writeFile, copyFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, stat, writeFile, copyFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -3402,6 +3402,7 @@ function resolveBundledTemplatesDir(requiredTemplates, options = {}) {
   return null;
 }
 var OPENCODE_AGENT_FILES = ["vision-reviewer.md", "error-analyst.md", "code-critic.md"];
+var LOOP_SCRIPT_FILES = ["loop.sh", "loop.ps1"];
 function resolveBundledAgentsDir(options = {}) {
   const moduleDir = path.resolve(options.moduleDir ?? path.dirname(fileURLToPath(import.meta.url)));
   const argv1 = options.argv1 ?? process.argv[1];
@@ -3425,6 +3426,30 @@ function resolveBundledAgentsDir(options = {}) {
 }
 function agentsExist(dir) {
   return OPENCODE_AGENT_FILES.every((f) => existsSync(path.join(dir, f)));
+}
+function loopScriptsExist(dir) {
+  return LOOP_SCRIPT_FILES.every((f) => existsSync(path.join(dir, f)));
+}
+function resolveBundledBinDir(options = {}) {
+  const moduleDir = path.resolve(options.moduleDir ?? path.dirname(fileURLToPath(import.meta.url)));
+  const argv1 = options.argv1 ?? process.argv[1];
+  const argvDir = typeof argv1 === "string" && argv1.length > 0 ? path.dirname(path.resolve(argv1)) : null;
+  const cwdDir = path.resolve(options.cwd ?? process.cwd());
+  const baseDirs = [moduleDir, argvDir, cwdDir].filter(Boolean);
+  const seen = /* @__PURE__ */ new Set();
+  for (const baseDir of baseDirs) {
+    for (let depth = 0; depth <= 6; depth++) {
+      const up = depth === 0 ? [] : new Array(depth).fill("..");
+      const candidate = path.resolve(baseDir, ...up, "bin");
+      if (seen.has(candidate))
+        continue;
+      seen.add(candidate);
+      if (loopScriptsExist(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
 }
 function resolveProviderHints(provider) {
   if (provider === "claude")
@@ -3555,6 +3580,27 @@ async function scaffoldWorkspace(options = {}) {
             }
           }
         }
+      }
+    }
+  }
+  const loopBinDir = path.join(discovery.setup.templates_dir, "..", "bin");
+  const loopScriptsMissing = LOOP_SCRIPT_FILES.some((file) => !existsSync(path.join(loopBinDir, file)));
+  if (loopScriptsMissing) {
+    const bundledBinDir = resolveBundledBinDir();
+    if (bundledBinDir) {
+      await mkdir(loopBinDir, { recursive: true });
+      for (const scriptName of LOOP_SCRIPT_FILES) {
+        const destination = path.join(loopBinDir, scriptName);
+        if (existsSync(destination))
+          continue;
+        const source = path.join(bundledBinDir, scriptName);
+        if (!existsSync(source))
+          continue;
+        await copyFile(source, destination);
+      }
+      const loopShellPath = path.join(loopBinDir, "loop.sh");
+      if (existsSync(loopShellPath)) {
+        await chmod(loopShellPath, 493);
       }
     }
   }

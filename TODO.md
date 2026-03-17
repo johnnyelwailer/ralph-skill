@@ -9,7 +9,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 
 ### Up Next — P1 (blocks loop-mode usage)
 - [x] [review] Gate 3: **github-monitor.ts branch coverage raised** — added tests for `save()` mkdir guard, `ghApiWithEtag` non-CRLF headers, 304 without cache, non-JSON body parsing, and `fetchBulkIssueState` missing number field validation; verified with 100% success on 33 unit tests. (priority: high) [reviewed: pass — iter 175]
-- [ ] [qa/P1] `aloop start` fails after fresh packaged-install setup in isolated `HOME`: `Error: Loop script not found: <HOME>/.aloop/bin/loop.sh`. Root cause: `scaffoldWorkspace` (project.mjs) does not copy loop scripts to `~/.aloop/bin/` during setup; `install.ps1` and `aloop update` are the only copy paths, neither runs during `aloop setup`. Fix: extend `scaffoldWorkspace` to bootstrap loop scripts from bundled sources (same pattern as template bootstrap), or add fallback in `start.ts` to resolve from repo source when `~/.aloop/bin/loop.sh` is missing. (priority: high)
+- [x] [qa/P1] `aloop start` fails after fresh packaged-install setup in isolated `HOME`: `Error: Loop script not found: <HOME>/.aloop/bin/loop.sh`. Fixed by extending `scaffoldWorkspace` to bootstrap bundled loop scripts (`loop.sh`, `loop.ps1`) into `~/.aloop/bin` when missing, preserving existing files; added resolver/bootstrap regression tests in `project.test.ts`. (priority: high)
 
 
 ### Up Next — P2 (after P1 bugs and review gates)
