@@ -499,3 +499,19 @@
 - Gate 2: QA session (iter 171) is thorough — 5 features tested with full command transcripts, exact error messages, exit codes, and pass/partial verdicts. Devcontainer opencode gap correctly flagged as existing `[qa/P1]` task.
 - Gate 4: The `withErrorHandling` wrapper adds stderr extraction (`error.stderr.trim()`) for subprocess errors, improving user-facing error quality beyond the original `Error.message`-only approach.
 - Gate 5: Validation command suite passes end-to-end.
+
+---
+
+## Review — 2026-03-17 17:16 UTC — commit 96a59bb..c6962c8
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/lib/project.mjs`, `aloop/cli/src/commands/project.ts`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/src/commands/project.test.ts`, `aloop/cli/src/commands/setup.test.ts`, `aloop/cli/src/commands/start.test.ts`, `aloop/cli/src/lib/github-monitor.test.ts`
+
+- Gate 1: `analyzeSpecComplexity` overcounts workstreams via overlapping substring keywords (`infra`/`infrastructure`, `auth`/`authentication`), which can inflate orchestrator scoring and misalign mode recommendation with spec intent.
+- Gate 1: `detectCIWorkflowSupport` treats any `check` substring as test evidence, so common `actions/checkout` content can incorrectly classify workflows as test-capable and bias recommendation toward orchestrator mode.
+- Gate 2: New tests validate happy paths but miss these recommendation edge cases (overlapping keyword dedupe + checkout false-positive path), so a broken scorer/classifier could still pass.
+
+**Positive observations:**
+- Gate 4: Dead `github-webhook` module and tests were fully removed, and no production references remain (`rg "github-webhook" aloop/cli/src` returned no matches).
+- Gate 5: Integration sanity passed on HEAD with full validation command: `cd aloop/cli && npm test && npm run type-check && npm run build` (tests green, type-check clean, build succeeds).
+- Gate 6: Iteration 188 proof manifest is evidence-based for observable behavior changes (CLI captures for discover recommendation and setup→start flow), and correctly skips internal-only deletion/coverage tasks.

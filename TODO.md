@@ -5,7 +5,8 @@
 Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) P1 hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
-*(All previously in-progress review gates have passed — see Completed section)*
+- [ ] [review] Gate 1: `project.mjs` setup-mode recommendation overcounts complexity due substring keyword collisions (`infra` + `infrastructure`, `auth` + `authentication`) and CI test detection treating generic `check` matches as test evidence (`checkout` false positive). Replace substring matching with normalized category-level matching and tighten CI classification to workflow/job semantics so recommendations reflect real complexity. (priority: high)
+- [ ] [review] Gate 2: add regression tests for recommendation correctness edge cases in `project.test.ts` — (a) overlapping workstream synonyms should count once, (b) workflow content containing `actions/checkout` without test jobs must not set `ci_support.workflow_types` to include `test`, (c) recommendation should stay `loop` for simple spec + non-test workflow. Use exact assertions on `workstream_count`, `workflow_types`, and `recommended_mode`. (priority: high)
 
 ### Up Next — P1 (blocks loop-mode usage)
 - [x] [review] Gate 3: **github-monitor.ts branch coverage raised** — added tests for `save()` mkdir guard, `ghApiWithEtag` non-CRLF headers, 304 without cache, non-JSON body parsing, and `fetchBulkIssueState` missing number field validation; verified with 100% success on 33 unit tests. (priority: high) [reviewed: pass — iter 175]
