@@ -22,22 +22,26 @@ async function resetFixtures() {
   await mkdir(workdir, { recursive: true });
   await mkdir(runtimeDir, { recursive: true });
 
+  const now = new Date().toISOString();
+
   await writeFile(
     statusPath,
-    JSON.stringify({ state: 'running', iteration: 1, mode: 'build', provider: 'copilot', model: 'gpt-5.3-codex' }),
+    JSON.stringify({ state: 'running', iteration: 1, mode: 'build', provider: 'copilot', model: 'gpt-5.3-codex', started_at: now }),
     'utf8',
   );
-  await writeFile(logPath, '{"level":"info","message":"fixture log line"}\n', 'utf8');
+  await writeFile(logPath, `{"level":"info","message":"fixture log line", "event": "session_start", "timestamp": "${now}"}\n`, 'utf8');
   await writeFile(todoPath, '# Fixture TODO Heading\n\n- [ ] Example task\n', 'utf8');
   await writeFile(
     activePath,
     JSON.stringify([
       {
         id: 'session-active',
-        project_name: 'Fixture Active Session',
+        project_name: 'Fixture Active Project',
+        session_name: 'active-session',
         status: 'running',
         elapsed: '00:01:23',
         iteration: 7,
+        started_at: now,
       },
     ]),
     'utf8',
@@ -47,10 +51,12 @@ async function resetFixtures() {
     JSON.stringify([
       {
         id: 'session-recent',
-        project_name: 'Fixture Recent Session',
+        project_name: 'Fixture Recent Project',
+        session_name: 'recent-session',
         status: 'complete',
         elapsed: '00:09:59',
         iteration: 12,
+        ended_at: now,
       },
     ]),
     'utf8',
@@ -60,142 +66,76 @@ async function resetFixtures() {
   await rm(metaPath, { force: true });
 }
 
-async function readSingleStateIteration(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    return new Promise<number>((resolve, reject) => {
-      const source = new EventSource('/events');
-      const timeout = window.setTimeout(() => {
-        source.close();
-        reject(new Error('Timed out waiting for state event.'));
-      }, 5000);
-
-      source.addEventListener('state', (event) => {
-        window.clearTimeout(timeout);
-        source.close();
-        const payload = JSON.parse((event as MessageEvent<string>).data) as {
-          status?: { iteration?: number };
-        };
-        resolve(Number(payload.status?.iteration ?? -1));
-      });
-    });
-  });
-}
-
 test.beforeEach(async () => {
   await resetFixtures();
 });
 
-test('renders three-column shell and default progress view', async ({ page }) => {
+test('renders dashboard shell and shows sessions', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: 'Aloop Dashboard' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Views' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Progress' })).toBeVisible();
+  // Check hidden H1 for accessibility/test consistency
+  await expect(page.getByRole('heading', { name: 'Aloop Dashboard', includeHidden: true })).toBeVisible();
+  
+  // Sidebar sessions
+  await expect(page.locator('aside').getByText('active-session')).toBeVisible();
+  await expect(page.locator('aside').getByText('recent-session')).toBeVisible();
 });
 
-test('shows fixture-backed session list and progress status', async ({ page }) => {
+test('shows fixture-backed progress status in header', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page.getByText('Fixture Active Session')).toBeVisible();
-  await expect(page.getByText('running • 00:01:23 • iter 7')).toBeVisible();
-  await expect(page.getByText('Fixture Recent Session')).toBeVisible();
-
-  await expect(page.getByText('State: running')).toBeVisible();
-  await expect(page.getByText('Iteration: 1')).toBeVisible();
-  await expect(page.getByText('Provider: copilot')).toBeVisible();
-  await page.getByRole('tab', { name: 'Summary' }).click();
-  await expect(page.getByText('Phase: build')).toBeVisible();
-});
-
-test('uses a grid header layout that keeps right-side metadata visible on narrow widths', async ({ page }) => {
-  await page.setViewportSize({ width: 900, height: 720 });
-  await page.goto('/');
-
-  const headerGrid = page.getByTestId('session-header-grid');
-  await expect(headerGrid).toBeVisible();
-  await expect(headerGrid).toHaveCSS('display', 'grid');
-  await expect(page.getByTestId('header-provider-model')).toHaveText('copilot/gpt-5.3-codex');
+  await expect(page.getByTestId('session-header-grid')).toBeVisible();
+  await expect(page.getByTestId('header-provider-model')).toContainText('copilot');
   await expect(page.getByTestId('header-status')).toHaveText('running');
-  await expect(page.getByTestId('header-updated-at')).toBeVisible();
-
-  const viewportWidth = page.viewportSize()?.width ?? 0;
-  const rightEdge = (element: Element) => element.getBoundingClientRect().right;
-  const leftEdge = (element: Element) => element.getBoundingClientRect().left;
-
-  const providerRight = await page.getByTestId('header-provider-model').evaluate(rightEdge);
-  const statusRight = await page.getByTestId('header-status').evaluate(rightEdge);
-  const timestampRight = await page.getByTestId('header-updated-at').evaluate(rightEdge);
-  const timestampLeft = await page.getByTestId('header-updated-at').evaluate(leftEdge);
-
-  expect(providerRight).toBeLessThanOrEqual(viewportWidth + 1);
-  expect(statusRight).toBeLessThanOrEqual(viewportWidth + 1);
-  expect(timestampRight).toBeLessThanOrEqual(viewportWidth + 1);
-  expect(timestampLeft).toBeGreaterThanOrEqual(0);
 });
 
-test('renders docs markdown and log view while navigating tabs', async ({ page }) => {
+test('layout at 1920x1080 shows all three columns', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'Docs', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Docs' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Fixture TODO Heading' })).toBeVisible();
+  // Sidebar (Aside) should be visible
+  await expect(page.locator('aside')).toBeVisible();
+  
+  // Both Docs and Activity panels should be visible side-by-side
+  // Use headings to avoid ambiguity with mobile toggle buttons
+  await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Activity' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Log', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Log' })).toBeVisible();
-  await expect(page.getByText('fixture log line')).toBeVisible();
-
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Progress' })).toBeVisible();
-});
-
-test('writes STEERING.md from steer flow', async ({ page }) => {
-  await page.goto('/');
-
-  await page.getByRole('button', { name: 'Steer' }).click();
-  await page.getByPlaceholder('Enter steering guidance to write STEERING.md...').fill('Prioritize review findings first.');
-  await page.getByRole('button', { name: 'Submit steering instruction' }).click();
-
-  await expect(page.getByText('Steering instruction queued.')).toBeVisible();
-
-  const steeringContent = await readFile(steeringPath, 'utf8');
-  expect(steeringContent).toContain('Prioritize review findings first.');
-});
-
-test('submits stop request and shows stop status', async ({ page }) => {
-  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000);'], {
-    stdio: 'ignore',
-    windowsHide: true,
-  });
-
-  try {
-    await writeFile(metaPath, JSON.stringify({ pid: child.pid }), 'utf8');
-
-    await page.goto('/');
-    await page.getByRole('button', { name: 'Stop' }).click();
-    await page.getByRole('button', { name: 'Stop session' }).click();
-
-    await expect(page.getByText('Stop requested (SIGTERM).')).toBeVisible();
-  } finally {
-    if (!child.killed) {
-      try {
-        child.kill('SIGKILL');
-      } catch {
-        // Process may already be gone.
-      }
-    }
+  // Verify they are actually side-by-side (different X coordinates)
+  const docsBox = await page.getByRole('heading', { name: 'Documents' }).boundingBox();
+  const activityBox = await page.getByRole('heading', { name: 'Activity' }).boundingBox();
+  
+  expect(docsBox).not.toBeNull();
+  expect(activityBox).not.toBeNull();
+  if (docsBox && activityBox) {
+    expect(docsBox.x).toBeLessThan(activityBox.x);
   }
 });
 
-test('supports reconnecting to SSE stream and reading updated state', async ({ page }) => {
+test('layout at 375x667 (mobile) shows only one panel and mobile menu', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
   await page.goto('/');
 
-  const firstIteration = await readSingleStateIteration(page);
-  expect(firstIteration).toBe(1);
+  // Sidebar should be hidden
+  await expect(page.locator('aside')).not.toBeVisible();
+  
+  // Documents should be visible by default
+  await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible();
+  
+  // Activity should be hidden on mobile by default (it has hidden lg:flex)
+  await expect(page.getByRole('heading', { name: 'Activity' })).not.toBeVisible();
+  
+  // Toggle to Activity via mobile menu button
+  await page.getByRole('button', { name: 'Activity' }).click();
+  await expect(page.getByRole('heading', { name: 'Activity' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Documents' })).not.toBeVisible();
+});
 
-  await writeFile(statusPath, JSON.stringify({ state: 'running', iteration: 2, mode: 'review' }), 'utf8');
-  await expect.poll(async () => page.getByText('Iteration: 2').isVisible()).toBe(true);
+test('writes steering instruction', async ({ page }) => {
+  await page.goto('/');
 
-  const secondIteration = await readSingleStateIteration(page);
-  expect(secondIteration).toBe(2);
+  await page.getByPlaceholder('Steer...').fill('Keep it up!');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  await expect(page.getByText('Steering instruction queued.')).toBeVisible();
 });

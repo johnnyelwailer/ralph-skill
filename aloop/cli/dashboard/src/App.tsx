@@ -638,7 +638,7 @@ function Sidebar({
 
   if (collapsed) {
     return (
-      <div className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
+      <aside className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
         <Tooltip>
           <TooltipTrigger asChild>
             <button type="button" className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggle}>
@@ -659,7 +659,7 @@ function Sidebar({
             </Tooltip>
           ))}
         </div>
-      </div>
+      </aside>
     );
   }
 
@@ -704,7 +704,7 @@ function Sidebar({
   );
 
   return (
-    <div className="flex flex-col border-r border-border bg-sidebar w-64 shrink-0 animate-slide-in-left">
+    <aside className="flex flex-col border-r border-border bg-sidebar w-64 shrink-0 animate-slide-in-left">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
         <Tooltip>
@@ -747,7 +747,7 @@ function Sidebar({
           {sessions.length === 0 && <p className="text-xs text-muted-foreground p-2">No sessions.</p>}
         </div>
       </ScrollArea>
-    </div>
+    </aside>
   );
 }
 
@@ -770,7 +770,8 @@ function Header({
   const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
   return (
     <header className="border-b border-border px-3 py-2 md:px-4 md:py-2.5 shrink-0">
-      <div className="flex items-center gap-2 sm:gap-4">
+      <h1 className="sr-only">Aloop Dashboard</h1>
+      <div className="flex items-center gap-2 sm:gap-4" data-testid="session-header-grid">
         <button type="button" className="md:hidden p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
           <Menu className="h-5 w-5" />
         </button>
@@ -816,7 +817,7 @@ function Header({
         )}
 
         {/* Progress bar — hidden on mobile */}
-        <div className="hidden sm:flex items-center gap-2 min-w-0 flex-1 max-w-xs">
+        <div className="hidden sm:flex items-center gap-2 min-w-0 flex-1 max-w-xs" data-testid="header-progress">
           <Progress value={progressPercent} className="flex-1 h-1.5" indicatorClassName={phaseBarColor} />
           <span className="text-[10px] text-muted-foreground whitespace-nowrap">{progressPercent}%</span>
         </div>
@@ -825,13 +826,13 @@ function Header({
         {providerName && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-xs text-muted-foreground whitespace-nowrap truncate max-w-[160px] hidden lg:inline">{modelName ? `${providerName}/${modelName}` : providerName}</span>
+              <span className="text-xs text-muted-foreground whitespace-nowrap truncate max-w-[160px] hidden lg:inline" data-testid="header-provider-model">{modelName ? `${providerName}/${modelName}` : providerName}</span>
             </TooltipTrigger>
             <TooltipContent><p>{modelName ? `${providerName}/${modelName}` : providerName}</p></TooltipContent>
           </Tooltip>
         )}
         {/* Status label — hidden on mobile (StatusDot already shows it) */}
-        <span className={`text-xs whitespace-nowrap font-medium hidden sm:inline ${statusColors[currentState] ?? 'text-muted-foreground'}`}>{currentState}</span>
+        <span className={`text-xs whitespace-nowrap font-medium hidden sm:inline ${statusColors[currentState] ?? 'text-muted-foreground'}`} data-testid="header-status">{currentState}</span>
 
         <div className="flex-1" />
         <ConnectionIndicator status={connectionStatus} />
@@ -843,7 +844,7 @@ function Header({
           </TooltipTrigger>
           <TooltipContent><p>Command palette (Ctrl+K)</p></TooltipContent>
         </Tooltip>
-        <span className="text-[10px] text-muted-foreground whitespace-nowrap hidden md:inline">
+        <span className="text-[10px] text-muted-foreground whitespace-nowrap hidden md:inline" data-testid="header-updated-at">
           {loading ? 'Loading...' : updatedAt ? formatTime(updatedAt) : ''}{loadError && !loading ? ' \u2022 err' : ''}
         </span>
       </div>

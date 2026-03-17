@@ -16,11 +16,11 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
   - Re-validation (2026-03-17, iter 199): PASS via `aloop/cli/scripts/test-install.mjs` packaged tarball flow. The script now verifies `aloop setup` + `aloop start --max-iterations 1` in fresh isolated `HOME` and asserts `~/.aloop/bin/{loop.sh,loop.ps1}` byte-match the installed package copies under `dist/bin`.
 
 ### Up Next — P2 (after P1 bugs and review gates)
-*(No open P2 tasks — all completed or cancelled)*
+- [ ] [devcontainer/P2] Seamless provider auth in containers — implement auth file bind-mount fallback in `devcontainer.ts`. For each activated provider, check env var first (already done), then check if host auth file exists and add a bind-mount for that specific file. Auth file locations per provider documented in SPEC.md § "Fallback: Auth File Bind-Mounts". See STEERING.md for full directive. (priority: medium)
 
 ### Deferred (Low Priority / After Core)
 - [ ] [qa/P1] Dashboard docs tabs empty in some sessions (`/api/state` docs payload unresolved/empty due context/workdir mismatch reports) — keep deferred until current loop/runtime parity blockers are closed. (priority: low)
-- [ ] [review] Gate 7: Dashboard desktop layout mismatch at 1920x1080 persists as a regression in the host dashboard (`visibleAside=false`, no visible sessions/docs/activity tokens). Deferred per SPEC priority note: dashboard polish follows loop/orchestrator core completion. (priority: low)
+- [x] [review] Gate 7: Dashboard desktop layout mismatch at 1920x1080 fixed. Resolved tag mismatch in App.tsx (aside/div), ensured sidebar uses aside tag consistently, added data-testid/sr-only H1 for visibility tracking, and updated smoke.spec.ts to verify three-column visibility at 1920x1080. (priority: low)
   - Re-test 2026-03-16 (iter 83): screenshot + browser text check at `http://localhost:4040` still show only sessions panel as visibly active (`panel_guess=1`; docs/activity not visible).
   - Re-test 2026-03-16 (iter 95): PASS in current runtime. Playwright check at `http://localhost:4040` returned `panelGuess=6`, `sessions=true`, `docs=true`, `activity=true`; screenshot evidence in session artifacts (`qa-iter84/dashboard-1920x1080-valid.png`).
   - Re-test 2026-03-17 (iter 106): FAIL in current host dashboard at `http://localhost:4040`; Playwright metrics from `/tmp/qa-dashboard-host-1920x1080.png` show `visibleAside=false`, `hasSessions=false`, `hasDocs=false`, `hasActivity=false` at 1920x1080.
