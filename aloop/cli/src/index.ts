@@ -17,6 +17,21 @@ import { steerCommand } from './commands/steer.js';
 
 const program = new Command();
 
+function withErrorHandling(action: (...args: any[]) => Promise<void> | void) {
+  return async (...args: any[]) => {
+    try {
+      await action(...args);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(`Error: ${error.message}`);
+      } else {
+        console.error(`Error: ${String(error)}`);
+      }
+      process.exit(1);
+    }
+  };
+}
+
 program
   .name('aloop')
   .description('Aloop CLI for dashboard and project orchestration')
@@ -27,14 +42,14 @@ program
   .description('Resolve project workspace and configuration')
   .option('--project-root <path>', 'Project root override')
   .option('--output <mode>', 'Output format: json or text', 'json')
-  .action(resolveCommand);
+  .action(withErrorHandling(resolveCommand));
 
 program
   .command('discover')
   .description('Discover workspace specs, files, and validation commands')
   .option('--project-root <path>', 'Project root override')
   .option('--output <mode>', 'Output format: json or text', 'json')
-  .action(discoverCommand);
+  .action(withErrorHandling(discoverCommand));
 
 program
   .command('setup')
@@ -46,7 +61,7 @@ program
   .option('--mode <mode>', 'Setup mode: loop or orchestrate')
   .option('--autonomy-level <level>', 'Autonomy level: cautious, balanced, or autonomous')
   .option('--non-interactive', 'Skip interactive prompts and use defaults')
-  .action(setupCommand);
+  .action(withErrorHandling(setupCommand));
 
 program
   .command('scaffold')
@@ -64,7 +79,7 @@ program
   .option('--mode <mode>', 'Loop mode', 'plan-build-review')
   .option('--templates-dir <path>', 'Template directory override')
   .option('--output <mode>', 'Output format: json or text', 'json')
-  .action(scaffoldCommand);
+  .action(withErrorHandling(scaffoldCommand));
 
 program
   .command('start')
@@ -81,7 +96,7 @@ program
   .option('--in-place', 'Run in project root instead of creating a git worktree')
   .option('--max-iterations <number>', 'Max iteration override')
   .option('--output <mode>', 'Output format: json or text', 'text')
-  .action(startCommand);
+  .action(withErrorHandling(startCommand));
 
 program
   .command('dashboard')
@@ -90,7 +105,7 @@ program
   .option('--session-dir <path>', 'Session directory containing status.json and log.jsonl')
   .option('--workdir <path>', 'Project work directory containing TODO.md and related docs')
   .option('--assets-dir <path>', 'Directory containing bundled dashboard frontend assets')
-  .action(dashboardCommand);
+  .action(withErrorHandling(dashboardCommand));
 
 program
   .command('status')
@@ -98,21 +113,21 @@ program
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
   .option('--watch', 'Auto-refresh status display')
-  .action(statusCommand);
+  .action(withErrorHandling(statusCommand));
 
 program
   .command('active')
   .description('List active sessions')
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
-  .action(activeCommand);
+  .action(withErrorHandling(activeCommand));
 
 program
   .command('stop <session-id>')
   .description('Stop a session by session-id')
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
-  .action(stopCommand);
+  .action(withErrorHandling(stopCommand));
 
 program
   .command('update')
@@ -120,7 +135,7 @@ program
   .option('--repo-root <path>', 'Path to aloop source repository root')
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
-  .action(updateCommand);
+  .action(withErrorHandling(updateCommand));
 
 program
   .command('devcontainer')
@@ -128,7 +143,7 @@ program
   .option('--project-root <path>', 'Project root override')
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
-  .action(devcontainerCommand);
+  .action(withErrorHandling(devcontainerCommand));
 
 program
   .command('devcontainer-verify')
@@ -136,7 +151,7 @@ program
   .option('--project-root <path>', 'Project root override')
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
-  .action(verifyDevcontainerCommand);
+  .action(withErrorHandling(verifyDevcontainerCommand));
 
 program
   .command('orchestrate')
@@ -157,7 +172,7 @@ program
   .option('--home-dir <path>', 'Home directory override')
   .option('--project-root <path>', 'Project root override')
   .option('--output <mode>', 'Output format: json or text', 'text')
-  .action(orchestrateCommand);
+  .action(withErrorHandling(orchestrateCommand));
 
 program
   .command('steer <instruction>')
@@ -167,8 +182,11 @@ program
   .option('--overwrite', 'Overwrite an existing queued steering instruction')
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
-  .action(steerCommand);
+  .action(withErrorHandling(steerCommand));
 
+// For subcommands like ghCommand that might have their own actions, we might need to be careful,
+// but since ghCommand is a Command object added via addCommand, we can't wrap it easily here.
+// However, the TODO specifically mentions "aloop setup --autonomy-level invalid, aloop start (no config), aloop orchestrate --autonomy-level foo, aloop resolve --project-root /nonexistent", which are all top level.
 program.addCommand(ghCommand);
 
 program

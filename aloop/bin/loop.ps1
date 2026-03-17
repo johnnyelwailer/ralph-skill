@@ -234,30 +234,103 @@ function Resolve-IterationMode {
     $script:resolvedPromptName = $null
     # Queue overrides replace legacy forceReviewNext/forcePlanNext flags.
     # Queue consumption happens in Run-QueueIfPresent before mode resolution.
+    $resolvedMode = $null
     if (Resolve-CyclePromptFromPlan) {
-        return (Get-ModeFromPromptName -PromptName $script:resolvedPromptName)
-    }
-    $requestedMode = $Mode
-    if ($Mode -eq 'plan-build') {
-        $phase = $script:cyclePosition % 2
-        if ($phase -eq 0) { $requestedMode = 'plan' } else { $requestedMode = 'build' }
-    }
-    if ($Mode -eq 'plan-build-review') {
-        # 8-step cycle: plan -> build x5 -> qa -> review
-        $phase = $script:cyclePosition % 8
-        switch ($phase) {
-            0 { $requestedMode = 'plan' }
-            1 { $requestedMode = 'build' }
-            2 { $requestedMode = 'build' }
-            3 { $requestedMode = 'build' }
-            4 { $requestedMode = 'build' }
-            5 { $requestedMode = 'build' }
-            6 { $requestedMode = 'qa' }
-            7 { $requestedMode = 'review' }
+        $resolvedMode = (Get-ModeFromPromptName -PromptName $script:resolvedPromptName)
+    } else {
+        $resolvedMode = $Mode
+        if ($Mode -eq 'plan-build') {
+            $phase = $script:cyclePosition % 2
+            if ($phase -eq 0) { $resolvedMode = 'plan' } else { $resolvedMode = 'build' }
+        }
+        if ($Mode -eq 'plan-build-review') {
+            # 8-step cycle: plan -> build x5 -> qa -> review
+            $phase = $script:cyclePosition % 8
+            switch ($phase) {
+                0 { $resolvedMode = 'plan' }
+                1 { $resolvedMode = 'build' }
+                2 { $resolvedMode = 'build' }
+                3 { $resolvedMode = 'build' }
+                4 { $resolvedMode = 'build' }
+                5 { $resolvedMode = 'build' }
+                6 { $resolvedMode = 'qa' }
+                7 { $resolvedMode = 'review' }
+            }
         }
     }
 
-    return $requestedMode
+    # Phase prerequisite guards (Rule 2)
+    return (Check-PhasePrerequisites -Phase $resolvedMode)
+}
+
+function Check-PhasePrerequisites {
+    param([string]$Phase)
+
+    if ($env:ALOOP_SKIP_PHASE_GUARDS -eq 'true') {
+        return $Phase
+    }
+
+    $actualPhase = $Phase
+
+    if ($Phase -eq 'build') {
+        # build phase requires TODO.md with at least one unchecked task
+        if (-not [string]::IsNullOrWhiteSpace($PlanFile) -and (Test-Path $PlanFile)) {
+            $uncheckedCount = @(Get-Content $PlanFile | Where-Object { $_ -match '^\s*-\s+\[ \]' }).Count
+            if ($null -ne $uncheckedCount -and $uncheckedCount -eq 0) {
+                $actualPhase = 'plan'
+                Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
+                    requested = "build"; actual = "plan"; reason = "no_tasks"
+                }
+                Write-Warning "No unchecked tasks in TODO.md — forcing plan phase"
+            }
+        }
+    }
+
+    if ($Phase -eq 'review') {
+        # review phase requires at least one commit since last plan iteration
+        if (-not [string]::IsNullOrWhiteSpace($WorkDir) -and (Test-Path (Join-Path $WorkDir ".git"))) {
+            if (-not (Check-HasBuildsToReview)) {
+                $actualPhase = 'build'
+                Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
+                    requested = "review"; actual = "build"; reason = "no_builds"
+                }
+                Write-Warning "No builds since last plan — forcing build phase"
+            }
+        }
+    }
+
+    return $actualPhase
+}
+
+function Check-HasBuildsToReview {
+    if ([string]::IsNullOrWhiteSpace($script:lastPlanCommit)) {
+        # Fallback: if no lastPlanCommit is recorded, check if there are any non-harness commits
+        # since iteration 0.
+        $sessionStartSha = ""
+        try {
+            $sessionStartSha = (git -C "$WorkDir" log --grep="Aloop-Iteration: 0" --format="%h" -n 1 | Out-String).Trim()
+        } catch { }
+        
+        if (-not [string]::IsNullOrWhiteSpace($sessionStartSha)) {
+            $newCommitsCount = 0
+            try {
+                $newCommits = git -C "$WorkDir" log "$($sessionStartSha)..HEAD" --oneline
+                if ($newCommits) { $newCommitsCount = @($newCommits).Count }
+            } catch { }
+            if ($newCommitsCount -gt 0) { return $true }
+        }
+        return $false
+    }
+
+    $currentHead = ""
+    try {
+        $currentHead = (git -C "$WorkDir" rev-parse HEAD | Out-String).Trim()
+    } catch { }
+    
+    if ($currentHead -eq $script:lastPlanCommit) {
+        return $false # No new commits since last plan
+    }
+    return $true # There are new commits
 }
 
 function Get-ModeFromPromptName {
@@ -283,6 +356,7 @@ function Resolve-CyclePromptFromPlan {
         $script:cyclePosition = $rawCyclePos
         $promptIndex = $rawCyclePos % $script:cycleLength
         $script:resolvedPromptName = [string]$plan.cycle[$promptIndex]
+        $script:lastPlanCommit = [string]$plan.lastPlanCommit
         return (-not [string]::IsNullOrWhiteSpace($script:resolvedPromptName))
     } catch {
         return $false
@@ -342,6 +416,7 @@ function Persist-LoopPlanState {
             $plan.iteration = [int]$Iteration
         }
         $plan.allTasksMarkedDone = [bool]$script:allTasksMarkedDone
+        $plan.lastPlanCommit = [string]$script:lastPlanCommit
         $plan | ConvertTo-Json -Depth 12 | Set-Content -Encoding utf8 $loopPlanFile
     } catch { }
 }
@@ -1842,6 +1917,11 @@ function Run-QueueIfPresent {
             }
             Show-AgentSummary -ProviderName $queueIterProvider -ProviderOutput $providerOutput
             Update-ProviderHealthOnSuccess -ProviderName $queueIterProvider
+            if ($queueIterMode -eq 'plan') {
+                try {
+                    $script:lastPlanCommit = (git rev-parse HEAD | Out-String).Trim()
+                } catch { }
+            }
             Remove-Item $queueItem.FullName -Force -ErrorAction SilentlyContinue
             Write-LogEntry -Event "queue_override_complete" -Data @{
                 iteration = $iteration
@@ -1992,6 +2072,11 @@ try {
 
             Update-ProviderHealthOnSuccess -ProviderName $iterationProvider
             Register-IterationSuccess -IterationMode $iterationMode -WasForced $false
+            if ($iterationMode -eq 'plan') {
+                try {
+                    $script:lastPlanCommit = (git rev-parse HEAD | Out-String).Trim()
+                } catch { }
+            }
             Persist-LoopPlanState -Iteration $iteration
             $stuckState.StuckCount = 0
             $stuckState.LastTask = ""

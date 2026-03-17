@@ -369,6 +369,68 @@ resolve_iteration_mode() {
                     ;;
             esac
         fi
+
+    # Phase prerequisite guards (Rule 2)
+    RESOLVED_MODE=$(check_phase_prerequisites "$RESOLVED_MODE")
+}
+
+check_phase_prerequisites() {
+    local requested_phase="$1"
+    local actual_phase="$requested_phase"
+
+    if [ "${ALOOP_SKIP_PHASE_GUARDS:-}" = "true" ]; then
+        echo "$actual_phase"
+        return
+    fi
+
+    if [ "$requested_phase" = "build" ]; then
+        # build phase requires TODO.md with at least one unchecked task
+        if [ -f "${PLAN_FILE:-}" ]; then
+            local unchecked
+            unchecked=$(grep -c '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null) || unchecked=0
+            if [ "$unchecked" -eq 0 ]; then
+                actual_phase="plan"
+                write_log_entry "phase_prerequisite_miss" "requested" "build" "actual" "plan" "reason" "no_tasks"
+                echo "Warning: No unchecked tasks in TODO.md — forcing plan phase"
+            fi
+        fi
+    fi
+
+    if [ "$requested_phase" = "review" ]; then
+        # review phase requires at least one commit since last plan iteration
+        if [ -d "${WORK_DIR:-}/.git" ] && ! check_has_builds_to_review; then
+            actual_phase="build"
+            write_log_entry "phase_prerequisite_miss" "requested" "review" "actual" "build" "reason" "no_builds"
+            echo "Warning: No builds since last plan — forcing build phase"
+        fi
+    fi
+
+    echo "$actual_phase"
+}
+
+check_has_builds_to_review() {
+    # If we don't have a plan commit recorded, but we have ANY commits since session start,
+    # we allow review. If no commits at all since session start, force build.
+    # Actually, SPEC says "compare HEAD against stored last-plan-commit".
+    if [ -z "$LAST_PLAN_COMMIT" ]; then
+        # Fallback: if no lastPlanCommit is recorded, check if there are any non-harness commits
+        # since iteration 0.
+        local session_start_sha
+        session_start_sha=$(git -C "$WORK_DIR" log --grep="Aloop-Iteration: 0" --format="%h" -n 1 2>/dev/null || echo "")
+        if [ -n "$session_start_sha" ]; then
+            local new_commits
+            new_commits=$(git -C "$WORK_DIR" log "${session_start_sha}..HEAD" --oneline 2>/dev/null | wc -l)
+            if [ "$new_commits" -gt 0 ]; then return 0; fi
+        fi
+        return 1
+    fi
+
+    local current_head
+    current_head=$(git -C "$WORK_DIR" rev-parse HEAD 2>/dev/null || echo "")
+    if [ "$current_head" = "$LAST_PLAN_COMMIT" ]; then
+        return 1 # No new commits since last plan
+    fi
+    return 0 # There are new commits
 }
 
 derive_mode_from_prompt_name() {
@@ -406,15 +468,18 @@ index = cycle_pos % len(cycle)
 print(cycle_pos)
 print(len(cycle))
 print(cycle[index].strip())
+print(payload.get("lastPlanCommit", ""))
 PY
 ) || return 1
-    local parsed_cycle_pos parsed_cycle_len parsed_prompt_name
+    local parsed_cycle_pos parsed_cycle_len parsed_prompt_name parsed_last_plan_commit
     parsed_cycle_pos=$(printf '%s\n' "$parsed" | sed -n '1p')
     parsed_cycle_len=$(printf '%s\n' "$parsed" | sed -n '2p')
     parsed_prompt_name=$(printf '%s\n' "$parsed" | sed -n '3p')
+    parsed_last_plan_commit=$(printf '%s\n' "$parsed" | sed -n '4p')
     CYCLE_POSITION="${parsed_cycle_pos:-$CYCLE_POSITION}"
     CYCLE_LENGTH="${parsed_cycle_len:-0}"
     RESOLVED_PROMPT_NAME="$parsed_prompt_name"
+    LAST_PLAN_COMMIT="$parsed_last_plan_commit"
     return 0
 }
 
@@ -427,14 +492,15 @@ persist_loop_plan_state() {
     else
         ALL_TASKS_MARKED_DONE=false
     fi
-    python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" "$ITERATION" "$ALL_TASKS_MARKED_DONE" <<'PY'
+    python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" "$ITERATION" "$ALL_TASKS_MARKED_DONE" "$LAST_PLAN_COMMIT" <<'PY'
 import json, os, sys, tempfile
-path, cycle_pos, iteration, all_done = sys.argv[1:]
+path, cycle_pos, iteration, all_done, last_commit = sys.argv[1:]
 with open(path, encoding="utf-8") as f:
     payload = json.load(f)
 payload["cyclePosition"] = int(cycle_pos)
 payload["iteration"] = int(iteration)
 payload["allTasksMarkedDone"] = all_done.lower() == "true"
+payload["lastPlanCommit"] = last_commit
 fd, tmp = tempfile.mkstemp(prefix=".loop-plan.", suffix=".json", dir=os.path.dirname(path))
 os.close(fd)
 with open(tmp, "w", encoding="utf-8") as f:
@@ -1811,6 +1877,9 @@ run_queue_if_present() {
         cd "$WORK_DIR"
         if invoke_provider "$queue_iter_provider" "$queue_prompt_content" "$FRONTMATTER_MODEL"; then
             update_provider_health_on_success "$queue_iter_provider"
+            if [ "$queue_iter_mode" = "plan" ]; then
+                LAST_PLAN_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
+            fi
             rm -f "$QUEUE_ITEM"
             write_log_entry "queue_override_complete" "iteration" "$ITERATION" "queue_file" "$QUEUE_BASENAME" "provider" "$queue_iter_provider"
             echo ""
@@ -1949,6 +2018,9 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
         update_provider_health_on_success "$iter_provider"
         register_iteration_success "$iter_mode" false
+        if [ "$iter_mode" = "plan" ]; then
+            LAST_PLAN_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
+        fi
         persist_loop_plan_state
         STUCK_COUNT=0
         LAST_TASK=""

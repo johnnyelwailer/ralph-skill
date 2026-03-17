@@ -53,7 +53,13 @@ CALLS=$((CALLS + 1))
 PROMPT_TEXT="$(cat)"
 TODO_FILE="${PWD}/TODO.md"
 if echo "$PROMPT_TEXT" | grep -q "Building Mode" && grep -q -- '- \[ \]' "$TODO_FILE" 2>/dev/null; then
-    sed -i 's/- \[ \]/- [x]/g' "$TODO_FILE"
+    sed -i '0,/- \[ \]/s/- \[ \]/- [x]/' "$TODO_FILE"
+    git add "$TODO_FILE" 2>/dev/null
+    git commit -m "agent: completed task" -q 2>/dev/null || true
+elif echo "$PROMPT_TEXT" | grep -q "Planning Mode"; then
+    echo "- [ ] New task" >> "$TODO_FILE"
+    git add "$TODO_FILE" 2>/dev/null
+    git commit -m "agent: updated plan" -q 2>/dev/null || true
 elif echo "$PROMPT_TEXT" | grep -q "Review Mode"; then
     VERDICT_FILE=$(echo "$PROMPT_TEXT" | grep -A 1 "write a JSON verdict file at:" | tail -n 1 | tr -d '\r')
     ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE '"iteration": [0-9]+' | grep -oE '[0-9]+' | head -n 1)
@@ -100,9 +106,16 @@ exit 0
             foreach ($d in $workDir, $sessDir, $promptDir) {
                 New-Item -ItemType Directory -Force $d | Out-Null
             }
+            # Initialize git repo for phase guards
+            Push-Location $workDir
+            try {
+                git init -q
+                git config user.name "Test"
+                git config user.email "test@example.com"
+            } finally { Pop-Location }
             # Use no-BOM UTF-8 + LF endings so bash grep/sed work correctly on these files
             $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Task 1`n- [ ] Task 2`n- [ ] Task 3`n- [ ] Task 4`n- [ ] Task 5`n- [ ] Task 6`n- [ ] Task 7`n- [ ] Task 8`n- [ ] Task 9`n- [ ] Task 10`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_qa.md'),     "# QA Mode`nRun QA checks.`n", $utf8NoBom)
@@ -409,8 +422,15 @@ exit 0
             foreach ($d in $workDir, $sessDir, $promptDir) {
                 New-Item -ItemType Directory -Force $d | Out-Null
             }
+            # Initialize git repo for phase guards
+            Push-Location $workDir
+            try {
+                git init -q
+                git config user.name "Test"
+                git config user.email "test@example.com"
+            } finally { Pop-Location }
             $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Task 1`n- [ ] Task 2`n- [ ] Task 3`n- [ ] Task 4`n- [ ] Task 5`n- [ ] Task 6`n- [ ] Task 7`n- [ ] Task 8`n- [ ] Task 9`n- [ ] Task 10`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_qa.md'),     "# QA Mode`nRun QA checks.`n", $utf8NoBom)
@@ -561,6 +581,12 @@ $content  = if (Test-Path $todoFile) { Get-Content $todoFile -Raw } else { '' }
 if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
     # Incomplete tasks exist — simulate successful build by marking all done
     ($content -replace '- \[ \]', '- [x]') | Set-Content $todoFile
+    git add $todoFile 2>$null
+    git commit -m "agent: completed tasks" -q 2>$null
+} elseif ($promptText -match 'Planning Mode') {
+    $content + "`n- [ ] New task" | Set-Content $todoFile
+    git add $todoFile 2>$null
+    git commit -m "agent: updated plan" -q 2>$null
 } elseif ($promptText -match 'Review Mode') {
     $iterNum = if ($promptText -match '"iteration":\s*(\d+)') { $matches[1] } else { 0 }
     $verdictFile = if ($promptText -match 'write a JSON verdict file at:(?:\r?\n)(.*?)(?:\r?\n)Schema:') { $matches[1].Trim() } else { '' }
@@ -653,7 +679,14 @@ exit 0
             foreach ($d in $workDir, $sessDir, $promptDir) {
                 New-Item -ItemType Directory -Force $d | Out-Null
             }
-            Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
+            # Initialize git repo for phase guards
+            Push-Location $workDir
+            try {
+                git init -q
+                git config user.name "Test"
+                git config user.email "test@example.com"
+            } finally { Pop-Location }
+            Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Task 1`n- [ ] Task 2`n- [ ] Task 3`n- [ ] Task 4`n- [ ] Task 5`n- [ ] Task 6`n- [ ] Task 7`n- [ ] Task 8`n- [ ] Task 9`n- [ ] Task 10"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_qa.md')     "# QA Mode`nRun QA checks."
@@ -686,11 +719,13 @@ exit 0
             $prevRuntime = $env:ALOOP_RUNTIME_DIR
             $prevNoDash  = $env:ALOOP_NO_DASHBOARD
             $prevGhCalls = $env:FAKE_ALOOP_GH_CALLS
+            $prevSkipGuards = $env:ALOOP_SKIP_PHASE_GUARDS
             $env:PATH              = "$fakeBinDir;$prevPath"
             $env:FAKE_CLAUDE_STATE = $LoopEnv.StateFile
             $env:ALOOP_RUNTIME_DIR = Join-Path $LoopEnv.SessionDir '_runtime_stub'
             $env:ALOOP_NO_DASHBOARD = '1'
             $env:FAKE_ALOOP_GH_CALLS = $LoopEnv.GhCallsFile
+            $env:ALOOP_SKIP_PHASE_GUARDS = 'true'
             try {
                 $output = & $pwshPath -NoProfile -File $loopScript `
                     -PromptsDir    $LoopEnv.PromptsDir `
@@ -723,6 +758,11 @@ exit 0
                     Remove-Item Env:FAKE_ALOOP_GH_CALLS -ErrorAction SilentlyContinue
                 } else {
                     $env:FAKE_ALOOP_GH_CALLS = $prevGhCalls
+                }
+                if ($null -eq $prevSkipGuards) {
+                    Remove-Item Env:ALOOP_SKIP_PHASE_GUARDS -ErrorAction SilentlyContinue
+                } else {
+                    $env:ALOOP_SKIP_PHASE_GUARDS = $prevSkipGuards
                 }
             }
         }
@@ -962,7 +1002,16 @@ if ($promptText -match 'Building Mode' -and $state.buildFails -gt 0) {
 
 $todoFile = Join-Path $PWD 'TODO.md'
 if (($promptText -match 'Building Mode') -and (Test-Path $todoFile)) {
-    (Get-Content $todoFile -Raw -EA SilentlyContinue) -replace '- \[ \]', '- [x]' | Set-Content $todoFile
+    $content = Get-Content $todoFile -Raw -EA SilentlyContinue
+    $newContent = [regex]::Replace($content, '- \[ \]', '- [x]', 1)
+    $newContent | Set-Content $todoFile
+    git add $todoFile 2>$null
+    git commit -m "agent: completed task" -q 2>$null
+}
+if ($promptText -match 'Planning Mode' -and (Test-Path $todoFile)) {
+    Add-Content -Path $todoFile "`n- [ ] New task"
+    git add $todoFile 2>$null
+    git commit -m "agent: plan" -q 2>$null
 }
 if ($stateFile) { $state | ConvertTo-Json | Set-Content $stateFile }
 Write-Output "ok"
@@ -981,7 +1030,14 @@ exit 0
             foreach ($d in $workDir, $sessDir, $promptDir) {
                 New-Item -ItemType Directory -Force $d | Out-Null
             }
-            Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
+            # Initialize git repo for phase guards
+            Push-Location $workDir
+            try {
+                git init -q
+                git config user.name "Test"
+                git config user.email "test@example.com"
+            } finally { Pop-Location }
+            Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Task 1`n- [ ] Task 2`n- [ ] Task 3`n- [ ] Task 4`n- [ ] Task 5`n- [ ] Task 6`n- [ ] Task 7`n- [ ] Task 8`n- [ ] Task 9`n- [ ] Task 10"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_qa.md')     "# QA Mode`nRun QA checks."
@@ -1729,7 +1785,15 @@ $promptText = ($input | Out-String)
 $todoFile = Join-Path $PWD 'TODO.md'
 $content  = if (Test-Path $todoFile) { Get-Content $todoFile -Raw } else { '' }
 if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
-    ($content -replace '- \[ \]', '- [x]') | Set-Content $todoFile
+    # Incomplete tasks exist — simulate successful build by marking one done
+    $newContent = [regex]::Replace($content, '- \[ \]', '- [x]', 1)
+    $newContent | Set-Content $todoFile
+    git add $todoFile 2>$null
+    git commit -m "agent: completed task" -q 2>$null
+} elseif ($promptText -match 'Planning Mode') {
+    $content + "`n- [ ] New task" | Set-Content $todoFile
+    git add $todoFile 2>$null
+    git commit -m "agent: plan" -q 2>$null
 } elseif ($promptText -match 'Review Mode') {
     $verdictFile = if ($promptText -match 'write a JSON verdict file at:(?:\r?\n)(.*?)(?:\r?\n)Schema:') { $matches[1].Trim() } else { '' }
     $iterNum = if ($promptText -match '"iteration":\s*(\d+)') { $matches[1] } else { 0 }
@@ -1771,7 +1835,14 @@ exit 0
             foreach ($d in $workDir, $sessDir, $promptDir) {
                 New-Item -ItemType Directory -Force $d | Out-Null
             }
-            Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
+            # Initialize git repo for phase guards
+            Push-Location $workDir
+            try {
+                git init -q
+                git config user.name "Test"
+                git config user.email "test@example.com"
+            } finally { Pop-Location }
+            Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Task 1`n- [ ] Task 2`n- [ ] Task 3`n- [ ] Task 4`n- [ ] Task 5`n- [ ] Task 6`n- [ ] Task 7`n- [ ] Task 8`n- [ ] Task 9`n- [ ] Task 10"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_qa.md')     "# QA Mode`nRun QA checks."
@@ -1903,7 +1974,13 @@ Describe 'loop.sh — session lockfile' {
 PROMPT_TEXT="$(cat)"
 TODO_FILE="${PWD}/TODO.md"
 if echo "$PROMPT_TEXT" | grep -q "Building Mode" && grep -q -- '- \[ \]' "$TODO_FILE" 2>/dev/null; then
-    sed -i 's/- \[ \]/- [x]/g' "$TODO_FILE"
+    sed -i '0,/- \[ \]/s/- \[ \]/- [x]/' "$TODO_FILE"
+    git add "$TODO_FILE" 2>/dev/null
+    git commit -m "agent: completed task" -q 2>/dev/null || true
+elif echo "$PROMPT_TEXT" | grep -q "Planning Mode"; then
+    echo "- [ ] New task" >> "$TODO_FILE"
+    git add "$TODO_FILE" 2>/dev/null
+    git commit -m "agent: updated plan" -q 2>/dev/null || true
 elif echo "$PROMPT_TEXT" | grep -q "Review Mode"; then
     VERDICT_FILE=$(echo "$PROMPT_TEXT" | grep -A 1 "write a JSON verdict file at:" | tail -n 1 | tr -d '\r')
     ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE '"iteration": [0-9]+' | grep -oE '[0-9]+' | head -n 1)
@@ -1937,8 +2014,15 @@ exit 0
             foreach ($d in $workDir, $sessDir, $promptDir) {
                 New-Item -ItemType Directory -Force $d | Out-Null
             }
+            # Initialize git repo for phase guards
+            Push-Location $workDir
+            try {
+                git init -q
+                git config user.name "Test"
+                git config user.email "test@example.com"
+            } finally { Pop-Location }
             $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Task 1`n- [ ] Task 2`n- [ ] Task 3`n- [ ] Task 4`n- [ ] Task 5`n- [ ] Task 6`n- [ ] Task 7`n- [ ] Task 8`n- [ ] Task 9`n- [ ] Task 10`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_qa.md'),     "# QA Mode`nRun QA checks.`n", $utf8NoBom)
@@ -2052,7 +2136,15 @@ $promptText = ($input | Out-String)
 $todoFile = Join-Path $PWD 'TODO.md'
 $content  = if (Test-Path $todoFile) { Get-Content $todoFile -Raw } else { '' }
 if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
-    ($content -replace '- \[ \]', '- [x]') | Set-Content $todoFile
+    # Incomplete tasks exist — simulate successful build by marking one done
+    $newContent = [regex]::Replace($content, '- \[ \]', '- [x]', 1)
+    $newContent | Set-Content $todoFile
+    git add $todoFile 2>$null
+    git commit -m "agent: completed task" -q 2>$null
+} elseif ($promptText -match 'Planning Mode') {
+    $content + "`n- [ ] New task" | Set-Content $todoFile
+    git add $todoFile 2>$null
+    git commit -m "agent: plan" -q 2>$null
 } elseif ($promptText -match 'Review Mode') {
     $verdictFile = if ($promptText -match 'write a JSON verdict file at:(?:\r?\n)(.*?)(?:\r?\n)Schema:') { $matches[1].Trim() } else { '' }
     $iterNum = if ($promptText -match '"iteration":\s*(\d+)') { $matches[1] } else { 0 }
@@ -2092,7 +2184,14 @@ exit 0
             foreach ($d in $workDir, $sessDir, $promptDir) {
                 New-Item -ItemType Directory -Force $d | Out-Null
             }
-            Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Build something"
+            # Initialize git repo for phase guards
+            Push-Location $workDir
+            try {
+                git init -q
+                git config user.name "Test"
+                git config user.email "test@example.com"
+            } finally { Pop-Location }
+            Set-Content (Join-Path $workDir   'TODO.md')          "- [ ] Task 1`n- [ ] Task 2`n- [ ] Task 3`n- [ ] Task 4`n- [ ] Task 5`n- [ ] Task 6`n- [ ] Task 7`n- [ ] Task 8`n- [ ] Task 9`n- [ ] Task 10"
             Set-Content (Join-Path $promptDir 'PROMPT_plan.md')   "# Planning Mode`nPlan tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_build.md')  "# Building Mode`nBuild tasks."
             Set-Content (Join-Path $promptDir 'PROMPT_qa.md')     "# QA Mode`nRun QA checks."
@@ -2245,7 +2344,13 @@ Describe 'loop.sh — devcontainer auto-routing' {
 PROMPT_TEXT="$(cat)"
 TODO_FILE="${PWD}/TODO.md"
 if echo "$PROMPT_TEXT" | grep -q "Building Mode" && grep -q -- '- \[ \]' "$TODO_FILE" 2>/dev/null; then
-    sed -i 's/- \[ \]/- [x]/g' "$TODO_FILE"
+    sed -i '0,/- \[ \]/s/- \[ \]/- [x]/' "$TODO_FILE"
+    git add "$TODO_FILE" 2>/dev/null
+    git commit -m "agent: completed task" -q 2>/dev/null || true
+elif echo "$PROMPT_TEXT" | grep -q "Planning Mode"; then
+    echo "- [ ] New task" >> "$TODO_FILE"
+    git add "$TODO_FILE" 2>/dev/null
+    git commit -m "agent: updated plan" -q 2>/dev/null || true
 elif echo "$PROMPT_TEXT" | grep -q "Review Mode"; then
     VERDICT_FILE=$(echo "$PROMPT_TEXT" | grep -A 1 "write a JSON verdict file at:" | tail -n 1 | tr -d '\r')
     ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE '"iteration": [0-9]+' | grep -oE '[0-9]+' | head -n 1)
@@ -2279,8 +2384,15 @@ exit 0
             foreach ($d in $workDir, $sessDir, $promptDir) {
                 New-Item -ItemType Directory -Force $d | Out-Null
             }
+            # Initialize git repo for phase guards
+            Push-Location $workDir
+            try {
+                git init -q
+                git config user.name "Test"
+                git config user.email "test@example.com"
+            } finally { Pop-Location }
             $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Build something`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $workDir   'TODO.md'),          "- [ ] Task 1`n- [ ] Task 2`n- [ ] Task 3`n- [ ] Task 4`n- [ ] Task 5`n- [ ] Task 6`n- [ ] Task 7`n- [ ] Task 8`n- [ ] Task 9`n- [ ] Task 10`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_plan.md'),   "# Planning Mode`nPlan tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_build.md'),  "# Building Mode`nBuild tasks.`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $promptDir 'PROMPT_qa.md'),     "# QA Mode`nRun QA checks.`n", $utf8NoBom)
@@ -2401,6 +2513,26 @@ Describe 'loop.ps1 — cycle resolution + frontmatter branch evidence' {
         } else {
             throw "Could not extract Resolve-IterationMode from loop.ps1"
         }
+
+        # Extract Check-PhasePrerequisites function
+        if ($scriptContent -match '(?ms)(^function Check-PhasePrerequisites\s*\{.*?^})') {
+            $script:checkPhasePrerequisitesFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Check-PhasePrerequisites from loop.ps1"
+        }
+
+        # Extract Check-HasBuildsToReview function
+        if ($scriptContent -match '(?ms)(^function Check-HasBuildsToReview\s*\{.*?^})') {
+            $script:checkHasBuildsToReviewFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Check-HasBuildsToReview from loop.ps1"
+        }
+
+        # Source the functions into the Describe scope so they are available to all tests
+        function Write-LogEntry { param($Event, $Data) }
+        function Write-Warning { param($Message) }
+        . ([scriptblock]::Create($script:checkPhasePrerequisitesFuncSource))
+        . ([scriptblock]::Create($script:checkHasBuildsToReviewFuncSource))
 
         # Extract Parse-Frontmatter function
         if ($scriptContent -match '(?ms)(^function Parse-Frontmatter\s*\{.*?^})') {
@@ -3019,5 +3151,116 @@ exit 0
         } | ConvertTo-Json -Depth 6 | Set-Content -Path $reportFile
 
         $percent | Should -BeGreaterOrEqual 80
+    }
+}
+
+Describe 'loop.ps1 — phase prerequisite guards' {
+    BeforeAll {
+        $script:cfTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "aloop-guards-ps1-$PID"
+        New-Item -ItemType Directory -Path $script:cfTempRoot -Force | Out-Null
+    }
+
+    AfterAll {
+        Remove-Item -Recurse -Force $script:cfTempRoot -ErrorAction SilentlyContinue
+    }
+
+    It 'Resolve-IterationMode enforces build -> plan when no unchecked tasks exist' {
+        $PlanFile = Join-Path $script:cfTempRoot 'todo-no-unchecked.md'
+        '- [x] Task 1' | Set-Content $PlanFile
+
+        function Resolve-CyclePromptFromPlan { return $false }
+        function Get-ModeFromPromptName { param($p) return 'build' }
+        function Write-LogEntry { param($Event, $Data) }
+        $Mode = 'build'
+        $script:cyclePosition = 0
+
+        . ([scriptblock]::Create($script:resolveIterationModeFuncSource))
+        . ([scriptblock]::Create($script:checkPhasePrerequisitesFuncSource))
+        . ([scriptblock]::Create($script:checkHasBuildsToReviewFuncSource))
+
+        $resolved = Resolve-IterationMode -IterationNumber 1
+        $resolved | Should -Be 'plan'
+    }
+
+    It 'Resolve-IterationMode allows build when unchecked tasks exist' {
+        $PlanFile = Join-Path $script:cfTempRoot 'todo-with-unchecked.md'
+        '- [ ] Task 1' | Set-Content $PlanFile
+
+        function Resolve-CyclePromptFromPlan { return $false }
+        function Get-ModeFromPromptName { param($p) return 'build' }
+        function Write-LogEntry { param($Event, $Data) }
+        $Mode = 'build'
+        $script:cyclePosition = 0
+
+        . ([scriptblock]::Create($script:resolveIterationModeFuncSource))
+        . ([scriptblock]::Create($script:checkPhasePrerequisitesFuncSource))
+        . ([scriptblock]::Create($script:checkHasBuildsToReviewFuncSource))
+
+        $resolved = Resolve-IterationMode -IterationNumber 1
+        $resolved | Should -Be 'build'
+    }
+
+    It 'Resolve-IterationMode enforces review -> build when no new commits exist' {
+        $WorkDir = Join-Path $script:cfTempRoot 'repo-no-new'
+        New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
+        Push-Location $WorkDir
+        try {
+            git init -q
+            git config user.name "Test"
+            git config user.email "test@example.com"
+            "seed" | Set-Content seed.txt
+            git add seed.txt
+            git commit -m "seed" -m "Aloop-Iteration: 0" -q
+            $script:lastPlanCommit = (git rev-parse HEAD | Out-String).Trim()
+        } finally {
+            Pop-Location
+        }
+
+        function Resolve-CyclePromptFromPlan { return $false }
+        function Get-ModeFromPromptName { param($p) return 'review' }
+        function Write-LogEntry { param($Event, $Data) }
+        $Mode = 'review'
+        $script:cyclePosition = 0
+
+        . ([scriptblock]::Create($script:resolveIterationModeFuncSource))
+        . ([scriptblock]::Create($script:checkPhasePrerequisitesFuncSource))
+        . ([scriptblock]::Create($script:checkHasBuildsToReviewFuncSource))
+
+        $resolved = Resolve-IterationMode -IterationNumber 1
+        $resolved | Should -Be 'build'
+    }
+
+    It 'Resolve-IterationMode allows review when new commits exist' {
+        $WorkDir = Join-Path $script:cfTempRoot 'repo-with-new'
+        New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
+        Push-Location $WorkDir
+        try {
+            git init -q
+            git config user.name "Test"
+            git config user.email "test@example.com"
+            "seed" | Set-Content seed.txt
+            git add seed.txt
+            git commit -m "seed" -m "Aloop-Iteration: 0" -q
+            $script:lastPlanCommit = (git rev-parse HEAD | Out-String).Trim()
+            
+            "new" | Set-Content new.txt
+            git add new.txt
+            git commit -m "new" -q
+        } finally {
+            Pop-Location
+        }
+
+        function Resolve-CyclePromptFromPlan { return $false }
+        function Get-ModeFromPromptName { param($p) return 'review' }
+        function Write-LogEntry { param($Event, $Data) }
+        $Mode = 'review'
+        $script:cyclePosition = 0
+
+        . ([scriptblock]::Create($script:resolveIterationModeFuncSource))
+        . ([scriptblock]::Create($script:checkPhasePrerequisitesFuncSource))
+        . ([scriptblock]::Create($script:checkHasBuildsToReviewFuncSource))
+
+        $resolved = Resolve-IterationMode -IterationNumber 1
+        $resolved | Should -Be 'review'
     }
 }
