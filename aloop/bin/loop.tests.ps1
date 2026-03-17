@@ -310,14 +310,14 @@ exit 0
         $milestones = @($entries | ForEach-Object {
             if ($_.event -eq 'iteration_complete') { "iteration_complete:$($_.mode)" } else { $_.event }
         })
-        $proofIdx = [array]::IndexOf([string[]]$milestones, 'iteration_complete:proof')
         $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
-        $forceProofCovered = ($events -contains 'tasks_marked_complete') -and ($proofIdx -ge 0) -and ($appIdx -gt $proofIdx)
+        $queueInjectIdx = [array]::IndexOf([string[]]$events, 'queue_inject')
+        $reviewQueuedOnAllTasksDoneCovered = ($queueInjectIdx -ge 0) -and ($appIdx -gt $queueInjectIdx)
         $manifestInjectionCovered = -not ($result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.')
         $noBaselineUpdateCovered = -not ($events -contains 'baselines_updated')
 
         $branches = [ordered]@{
-            'proof.force_on_all_tasks_done' = $forceProofCovered
+            'review.queue_injected_on_all_tasks_done' = $reviewQueuedOnAllTasksDoneCovered
             'review.avoids_manifest_injection' = $manifestInjectionCovered
             'review.no_baseline_autoupdate' = $noBaselineUpdateCovered
         }
@@ -629,9 +629,13 @@ exit 0
 '@
         Set-Content $fakePs1 $fakePs1Content
 
-        # claude.cmd shim so loop.ps1 resolves 'claude' on PATH
+        # claude.cmd shim so loop.ps1 resolves 'claude' on PATH (Windows)
         $claudeCmd = Join-Path $fakeBinDir 'claude.cmd'
         Set-Content $claudeCmd "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+        # claude shell script for Linux/macOS
+        $claudeSh = Join-Path $fakeBinDir 'claude'
+        Set-Content $claudeSh "#!/bin/bash`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
+        if ($IsLinux -or $IsMacOS) { chmod +x $claudeSh }
 
         # aloop.cmd shim for convention-file GH processing tests
         $fakeAloopPs1 = Join-Path $fakeBinDir '_fake_aloop.ps1'
@@ -932,14 +936,14 @@ exit 0
         $milestones = @($entries | ForEach-Object {
             if ($_.event -eq 'iteration_complete') { "iteration_complete:$($_.mode)" } else { $_.event }
         })
-        $proofIdx = [array]::IndexOf([string[]]$milestones, 'iteration_complete:proof')
         $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
-        $forceProofCovered = ($events -contains 'tasks_marked_complete') -and ($proofIdx -ge 0) -and ($appIdx -gt $proofIdx)
+        $queueInjectIdx = [array]::IndexOf([string[]]$events, 'queue_inject')
+        $reviewQueuedOnAllTasksDoneCovered = ($queueInjectIdx -ge 0) -and ($appIdx -gt $queueInjectIdx)
         $manifestInjectionCovered = -not ($result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.')
         $noBaselineUpdateCovered = -not ($events -contains 'baselines_updated')
 
         $branches = [ordered]@{
-            'proof.force_on_all_tasks_done' = $forceProofCovered
+            'review.queue_injected_on_all_tasks_done' = $reviewQueuedOnAllTasksDoneCovered
             'review.avoids_manifest_injection' = $manifestInjectionCovered
             'review.no_baseline_autoupdate' = $noBaselineUpdateCovered
         }
@@ -1022,6 +1026,13 @@ exit 0
         Set-Content $fakePs1 $fakeProviderContent
         Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
         Set-Content (Join-Path $fakeBinDir 'codex.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+        if ($IsLinux -or $IsMacOS) {
+            foreach ($p in @('claude', 'codex')) {
+                $shim = Join-Path $fakeBinDir $p
+                Set-Content $shim "#!/bin/bash`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
+                chmod +x $shim
+            }
+        }
 
         function script:New-RetryEnv {
             param([int]$PlanFails = 0, [int]$BuildFails = 0)
@@ -1833,6 +1844,11 @@ exit 0
 '@
         Set-Content $fakePs1 $fakePs1Content
         Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+        if ($IsLinux -or $IsMacOS) {
+            $shimPath = Join-Path $fakeBinDir 'claude'
+            Set-Content $shimPath "#!/bin/bash`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
+            chmod +x $shimPath
+        }
 
         # Fake aloop.cmd shim (no-op)
         $fakeAloopPs1 = Join-Path $fakeBinDir '_fake_aloop.ps1'
@@ -2190,6 +2206,11 @@ Write-Output "Fake provider: done"
 exit 0
 '@ | Set-Content $fakePs1
         Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+        if ($IsLinux -or $IsMacOS) {
+            $shimPath = Join-Path $fakeBinDir 'claude'
+            Set-Content $shimPath "#!/bin/bash`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
+            chmod +x $shimPath
+        }
 
         # Fake aloop.cmd shim (no-op)
         Set-Content (Join-Path $fakeBinDir '_fake_aloop.ps1') 'Write-Output "{}"; exit 0'
@@ -2653,26 +2674,6 @@ Describe 'loop.ps1 — cycle resolution + frontmatter branch evidence' {
         }
 
         $actualModes | Should -Be @('plan', 'build', 'build', 'build', 'build', 'build', 'qa', 'review')
-    }
-
-    It 'Resolve-IterationMode ignores legacy forceReviewNext flag and follows cycle resolution' {
-        $SessionDir = Join-Path $script:cfTempRoot 'force-review-legacy-ignored'
-        New-Item -ItemType Directory -Force $SessionDir | Out-Null
-        $planFile = Join-Path $SessionDir 'loop-plan.json'
-        '{"cycle":["PROMPT_plan.md","PROMPT_build.md","PROMPT_review.md"],"cyclePosition":1,"forceReviewNext":true}' | Set-Content $planFile
-
-        function Resolve-CyclePromptFromPlan { return $false }
-        function Get-ModeFromPromptName { param([string]$PromptName) return 'plan' }
-        . ([scriptblock]::Create($script:resolveIterationModeFuncSource))
-
-        $Mode = 'plan-build-review'
-        $script:cyclePosition = 1
-        $script:resolvedPromptName = $null
-        $resolved = Resolve-IterationMode -IterationNumber 1
-
-        $resolved | Should -Be 'build'
-        $updated = Get-Content -Path $planFile -Raw | ConvertFrom-Json
-        $updated.forceReviewNext | Should -BeTrue
     }
 
     It 'Parse-Frontmatter extracts trigger-capable fields' {
