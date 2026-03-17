@@ -14,6 +14,7 @@ import {
   availableSlots,
   hasFileOwnershipConflict,
   filterByFileOwnership,
+  filterByHostCapabilities,
   launchChildLoop,
   dispatchChildLoops,
   checkPrGates,
@@ -1549,6 +1550,8 @@ function makeIssue(overrides: Partial<OrchestratorIssue> = {}): OrchestratorIssu
     number: 1,
     title: 'Test issue',
     body: '## Acceptance Criteria\n- [ ] Scenario is testable\n\n## Approach\nImplementation details are documented for dispatch readiness.',
+    sandbox: 'container',
+    requires: [],
     wave: 1,
     state: 'pending',
     child_session: null,
@@ -1763,6 +1766,42 @@ describe('filterByFileOwnership', () => {
     });
     const result = filterByFileOwnership(state.issues, state);
     assert.equal(result.length, 2);
+  });
+});
+
+describe('filterByHostCapabilities', () => {
+  it('keeps issues when all requires labels are satisfied', () => {
+    const candidates = [
+      makeIssue({ number: 1, requires: ['linux'] }),
+      makeIssue({ number: 2, requires: ['network-access'] }),
+      makeIssue({ number: 3, requires: [] }),
+    ];
+    const result = filterByHostCapabilities(candidates, {
+      platform: 'linux',
+      spawnSync: () => ({ status: 1, stdout: '', stderr: '' }),
+      env: {},
+    });
+
+    assert.deepStrictEqual(result.eligible.map((i) => i.number), [1, 2, 3]);
+    assert.equal(result.blocked.length, 0);
+  });
+
+  it('blocks issues with missing host capabilities', () => {
+    const candidates = [
+      makeIssue({ number: 1, requires: ['windows'] }),
+      makeIssue({ number: 2, requires: ['gpu'] }),
+      makeIssue({ number: 3, requires: ['linux'] }),
+    ];
+    const result = filterByHostCapabilities(candidates, {
+      platform: 'linux',
+      spawnSync: () => ({ status: 1, stdout: '', stderr: '' }),
+      env: {},
+    });
+
+    assert.deepStrictEqual(result.eligible.map((i) => i.number), [3]);
+    assert.deepStrictEqual(result.blocked.map((b) => b.issue.number), [1, 2]);
+    assert.deepStrictEqual(result.blocked[0].missing, ['windows']);
+    assert.deepStrictEqual(result.blocked[1].missing, ['gpu']);
   });
 });
 
@@ -2377,6 +2416,23 @@ describe('dispatchChildLoops', () => {
     assert.equal(result.launched[0].issue_number, 1);
     assert.equal(result.launched[1].issue_number, 3);
     assert.ok(result.skipped.includes(2));
+  });
+
+  it('skips issues with unsatisfied host requirements', async () => {
+    const issues = [
+      makeIssue({ number: 1, wave: 1, state: 'pending', requires: ['windows'] }),
+      makeIssue({ number: 2, wave: 1, state: 'pending', requires: ['linux'] }),
+    ];
+    const state = stateWithIssues(issues);
+    const deps = createMockDispatchDeps({
+      platform: 'linux',
+      readFile: async () => JSON.stringify(state),
+    });
+
+    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
+    assert.equal(result.launched.length, 1);
+    assert.equal(result.launched[0].issue_number, 2);
+    assert.ok(result.skipped.includes(1));
   });
 });
 

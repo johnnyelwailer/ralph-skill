@@ -40,6 +40,8 @@ export interface DecompositionPlanIssue {
   body: string;
   depends_on: number[];
   file_hints?: string[];
+  sandbox?: 'container' | 'none';
+  requires?: string[];
 }
 
 export interface DecompositionPlan {
@@ -65,6 +67,8 @@ export interface OrchestratorIssue {
   title: string;
   body?: string;
   file_hints?: string[];
+  sandbox?: 'container' | 'none';
+  requires?: string[];
   wave: number;
   state: OrchestratorIssueState;
   status?: OrchestratorIssueStatus;
@@ -242,6 +246,17 @@ const defaultDeps: OrchestrateDeps = {
   readdirSync,
   now: () => new Date(),
 };
+
+function normalizeTaskSandbox(sandbox: string | undefined): 'container' | 'none' {
+  return sandbox === 'none' ? 'none' : 'container';
+}
+
+function normalizeTaskRequires(requires: string[] | undefined): string[] {
+  if (!Array.isArray(requires)) return [];
+  return requires
+    .map((label) => label.trim().toLowerCase())
+    .filter((label, index, all) => label.length > 0 && all.indexOf(label) === index);
+}
 
 function parseConcurrency(value: string | undefined): number {
   if (!value) return 3;
@@ -629,6 +644,8 @@ export async function applyDecompositionPlan(
       title: planIssue.title,
       body: planIssue.body,
       file_hints: planIssue.file_hints ?? [],
+      sandbox: normalizeTaskSandbox(planIssue.sandbox),
+      requires: normalizeTaskRequires(planIssue.requires),
       wave,
       state: 'pending',
       status: 'Needs refinement',
@@ -2426,6 +2443,69 @@ export function filterByFileOwnership(
   return selected;
 }
 
+export interface HostCapabilityRequirementMiss {
+  issue: OrchestratorIssue;
+  missing: string[];
+}
+
+export interface HostCapabilityFilterResult {
+  eligible: OrchestratorIssue[];
+  blocked: HostCapabilityRequirementMiss[];
+}
+
+export function detectHostCapabilities(deps: Pick<DispatchDeps, 'platform' | 'spawnSync' | 'env'>): Set<string> {
+  const capabilities = new Set<string>();
+
+  if (deps.platform === 'win32') capabilities.add('windows');
+  if (deps.platform === 'darwin') capabilities.add('macos');
+  if (deps.platform === 'linux') capabilities.add('linux');
+  capabilities.add('network-access');
+
+  try {
+    const docker = deps.spawnSync('docker', ['--version'], { encoding: 'utf8' });
+    if (docker.status === 0) capabilities.add('docker');
+  } catch {
+    // Best-effort detection only.
+  }
+
+  const gpuEnv =
+    (deps.env.NVIDIA_VISIBLE_DEVICES && deps.env.NVIDIA_VISIBLE_DEVICES !== 'none') ||
+    (deps.env.CUDA_VISIBLE_DEVICES && deps.env.CUDA_VISIBLE_DEVICES.length > 0);
+  if (gpuEnv) {
+    capabilities.add('gpu');
+  } else {
+    try {
+      const nvidiaSmi = deps.spawnSync('nvidia-smi', ['-L'], { encoding: 'utf8' });
+      if (nvidiaSmi.status === 0) capabilities.add('gpu');
+    } catch {
+      // Best-effort detection only.
+    }
+  }
+
+  return capabilities;
+}
+
+export function filterByHostCapabilities(
+  candidates: OrchestratorIssue[],
+  deps: Pick<DispatchDeps, 'platform' | 'spawnSync' | 'env'>,
+): HostCapabilityFilterResult {
+  const capabilities = detectHostCapabilities(deps);
+  const eligible: OrchestratorIssue[] = [];
+  const blocked: HostCapabilityRequirementMiss[] = [];
+
+  for (const issue of candidates) {
+    const requires = normalizeTaskRequires(issue.requires);
+    const missing = requires.filter((label) => !capabilities.has(label));
+    if (missing.length === 0) {
+      eligible.push(issue);
+    } else {
+      blocked.push({ issue, missing });
+    }
+  }
+
+  return { eligible, blocked };
+}
+
 function formatChildSessionId(projectName: string, issueNumber: number, now: Date): string {
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}${String(now.getUTCSeconds()).padStart(2, '0')}`;
   const sanitized = projectName.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
@@ -2445,6 +2525,8 @@ export async function launchChildLoop(
   aloopRoot: string,
   deps: DispatchDeps,
 ): Promise<ChildLaunchResult> {
+  const sandbox = normalizeTaskSandbox(issue.sandbox);
+  const requires = normalizeTaskRequires(issue.requires);
   const now = deps.now();
   const sessionId = formatChildSessionId(projectName, issue.number, now);
   const sessionsRoot = path.join(aloopRoot, 'sessions');
@@ -2495,6 +2577,8 @@ export async function launchChildLoop(
     prompts_dir: promptsDir,
     session_dir: sessionDir,
     issue_number: issue.number,
+    sandbox,
+    requires,
     orchestrator_session: path.basename(orchestratorSessionDir),
     created_at: startedAt,
   };
@@ -2569,7 +2653,11 @@ export async function launchChildLoop(
     cwd: worktreePath,
     detached: true,
     stdio: 'ignore',
-    env: { ...deps.env },
+    env: {
+      ...deps.env,
+      ALOOP_TASK_SANDBOX: sandbox,
+      ALOOP_TASK_REQUIRES: requires.join(','),
+    },
     windowsHide: true,
   });
   child.unref();
@@ -2634,10 +2722,17 @@ export async function dispatchChildLoops(
   let state: OrchestratorState = JSON.parse(stateContent);
 
   const dispatchable = getDispatchableIssues(state);
-  const eligible = filterByFileOwnership(dispatchable, state);
+  const capabilityResult = filterByHostCapabilities(dispatchable, deps);
+  const eligible = filterByFileOwnership(capabilityResult.eligible, state);
   const slots = availableSlots(state);
   const toDispatch = eligible.slice(0, slots);
-  const skipped = dispatchable.filter((i) => !toDispatch.includes(i)).map((i) => i.number);
+  const skippedSet = new Set<number>(capabilityResult.blocked.map((entry) => entry.issue.number));
+  for (const issue of dispatchable) {
+    if (!toDispatch.includes(issue)) {
+      skippedSet.add(issue.number);
+    }
+  }
+  const skipped = [...skippedSet];
 
   const launched: ChildLaunchResult[] = [];
 
@@ -4496,9 +4591,21 @@ export async function runOrchestratorScanPass(
   // 2. Dispatch child loops for ready issues
   if (deps.dispatchDeps && !state.plan_only) {
     const dispatchable = getDispatchableIssues(state);
-    const eligible = filterByFileOwnership(dispatchable, state);
+    const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
+    const eligible = filterByFileOwnership(capabilityResult.eligible, state);
     const slots = availableSlots(state);
     const toDispatch = eligible.slice(0, slots);
+
+    for (const blocked of capabilityResult.blocked) {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'scan_dispatch_blocked_requirements',
+        iteration,
+        issue_number: blocked.issue.number,
+        requires: normalizeTaskRequires(blocked.issue.requires),
+        missing: blocked.missing,
+      });
+    }
 
     for (const issue of toDispatch) {
       try {

@@ -973,7 +973,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path15 = __require("node:path");
+    var path16 = __require("node:path");
     var fs7 = __require("node:fs");
     var process2 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -1916,10 +1916,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path15.resolve(baseDir, baseName);
+          const localBin = path16.resolve(baseDir, baseName);
           if (fs7.existsSync(localBin))
             return localBin;
-          if (sourceExt.includes(path15.extname(baseName)))
+          if (sourceExt.includes(path16.extname(baseName)))
             return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs7.existsSync(`${localBin}${ext}`)
@@ -1939,17 +1939,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch (err) {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path15.resolve(
-            path15.dirname(resolvedScriptPath),
+          executableDir = path16.resolve(
+            path16.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path15.basename(
+            const legacyName = path16.basename(
               this._scriptPath,
-              path15.extname(this._scriptPath)
+              path16.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -1960,7 +1960,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path15.extname(executableFile));
+        launchWithNode = sourceExt.includes(path16.extname(executableFile));
         let proc;
         if (process2.platform !== "win32") {
           if (launchWithNode) {
@@ -2817,7 +2817,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path15.basename(filename, path15.extname(filename));
+        this._name = path16.basename(filename, path16.extname(filename));
         return this;
       }
       /**
@@ -2831,10 +2831,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path16) {
-        if (path16 === void 0)
+      executableDir(path17) {
+        if (path17 === void 0)
           return this._executableDir;
-        this._executableDir = path16;
+        this._executableDir = path17;
         return this;
       }
       /**
@@ -9178,6 +9178,30 @@ var PROVIDER_AUTH_ENV_VARS = {
   opencode: ["OPENCODE_API_KEY"],
   copilot: ["GH_TOKEN"]
 };
+var PROVIDER_AUTH_GUIDANCE = {
+  claude: "Run `claude setup-token` to generate a headless OAuth token (requires Pro/Max subscription), or set ANTHROPIC_API_KEY from https://console.anthropic.com/",
+  codex: "Set OPENAI_API_KEY from https://platform.openai.com/api-keys",
+  gemini: "Set GEMINI_API_KEY from https://aistudio.google.com/apikey",
+  opencode: "Set OPENCODE_API_KEY for your configured backend provider",
+  copilot: "Set GH_TOKEN via `gh auth token` or from https://github.com/settings/tokens"
+};
+function checkAuthPreflight(providers, env = process.env) {
+  const warnings = [];
+  for (const provider of providers) {
+    const authVars = PROVIDER_AUTH_ENV_VARS[provider];
+    if (!authVars || authVars.length === 0)
+      continue;
+    const anySet = authVars.some((v) => env[v] && env[v].length > 0);
+    if (!anySet) {
+      warnings.push({
+        provider,
+        missingVars: authVars,
+        guidance: PROVIDER_AUTH_GUIDANCE[provider] || `Set one of: ${authVars.join(", ")}`
+      });
+    }
+  }
+  return warnings;
+}
 function buildProviderInstallCommands(installedProviders) {
   const commands = [];
   for (const provider of installedProviders) {
@@ -9366,6 +9390,7 @@ async function devcontainerCommandWithDeps(options = {}, deps = defaultDeps3) {
   await deps.mkdir(devcontainerDir, { recursive: true });
   await deps.writeFile(configPath, JSON.stringify(finalConfig, null, 2) + "\n", "utf8");
   const mapping = getLanguageMapping(discovery.context.detected_language, projectRoot, deps.existsSync);
+  const authWarnings = checkAuthPreflight(resolvedProviders);
   return {
     action,
     config_path: configPath,
@@ -9375,7 +9400,8 @@ async function devcontainerCommandWithDeps(options = {}, deps = defaultDeps3) {
     post_create_command: generated.postCreateCommand ?? null,
     mounts: generated.mounts,
     had_existing: hadExisting,
-    vscode_extensions: buildVSCodeExtensions(resolvedProviders)
+    vscode_extensions: buildVSCodeExtensions(resolvedProviders),
+    auth_warnings: authWarnings
   };
 }
 function execFilePromise(command, args, options) {
@@ -9539,6 +9565,14 @@ async function devcontainerCommand(options = {}, depsOrCommand) {
       console.log(`  Post-create: ${result.post_create_command}`);
     }
   }
+  if (result.auth_warnings.length > 0) {
+    console.log("");
+    console.log("Auth warnings:");
+    for (const warning of result.auth_warnings) {
+      console.log(`  [WARN] ${warning.provider}: none of [${warning.missingVars.join(", ")}] are set on the host.`);
+      console.log(`         ${warning.guidance}`);
+    }
+  }
   console.log("");
   console.log("Next steps:");
   console.log("  1. Review .devcontainer/devcontainer.json");
@@ -9547,19 +9581,314 @@ async function devcontainerCommand(options = {}, depsOrCommand) {
 }
 
 // src/commands/orchestrate.ts
-import { mkdir as mkdir6, readFile as readFile9, readdir as readdir5, unlink as unlink2, writeFile as writeFile9 } from "node:fs/promises";
-import { existsSync as existsSync10, readdirSync } from "node:fs";
+import { mkdir as mkdir7, readFile as readFile10, readdir as readdir5, unlink as unlink2, writeFile as writeFile10 } from "node:fs/promises";
+import { existsSync as existsSync11, readdirSync } from "node:fs";
+import path14 from "node:path";
+
+// src/lib/github-monitor.ts
+import { existsSync as existsSync10 } from "node:fs";
+import { readFile as readFile9, writeFile as writeFile9, mkdir as mkdir6 } from "node:fs/promises";
 import path13 from "node:path";
+var CACHE_VERSION = 1;
+var DEFAULT_CACHE_TTL_MS = 5 * 60 * 1e3;
+var EtagCache = class {
+  state;
+  cacheFile;
+  dirty;
+  constructor(cacheDir) {
+    this.cacheFile = path13.join(cacheDir, "github-etag-cache.json");
+    this.state = { version: CACHE_VERSION, entries: {} };
+    this.dirty = false;
+  }
+  async load() {
+    if (!existsSync10(this.cacheFile))
+      return;
+    try {
+      const raw = await readFile9(this.cacheFile, "utf8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && "version" in parsed && parsed.version === CACHE_VERSION && "entries" in parsed && typeof parsed.entries === "object") {
+        this.state = parsed;
+      }
+    } catch {
+      this.state = { version: CACHE_VERSION, entries: {} };
+    }
+  }
+  async save() {
+    if (!this.dirty)
+      return;
+    const dir = path13.dirname(this.cacheFile);
+    if (!existsSync10(dir)) {
+      await mkdir6(dir, { recursive: true });
+    }
+    await writeFile9(this.cacheFile, `${JSON.stringify(this.state, null, 2)}
+`, "utf8");
+    this.dirty = false;
+  }
+  get(key) {
+    return this.state.entries[key];
+  }
+  set(key, etag, data) {
+    this.state.entries[key] = {
+      etag,
+      cachedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      data
+    };
+    this.dirty = true;
+  }
+  invalidate(key) {
+    if (key in this.state.entries) {
+      delete this.state.entries[key];
+      this.dirty = true;
+      return true;
+    }
+    return false;
+  }
+  invalidatePrefix(prefix) {
+    let count = 0;
+    for (const key of Object.keys(this.state.entries)) {
+      if (key.startsWith(prefix)) {
+        delete this.state.entries[key];
+        count++;
+      }
+    }
+    if (count > 0)
+      this.dirty = true;
+    return count;
+  }
+  clear() {
+    this.state = { version: CACHE_VERSION, entries: {} };
+    this.dirty = true;
+  }
+  isFresh(key, ttlMs = DEFAULT_CACHE_TTL_MS) {
+    const entry = this.state.entries[key];
+    if (!entry)
+      return false;
+    const age = Date.now() - new Date(entry.cachedAt).getTime();
+    return age < ttlMs;
+  }
+};
+var BULK_ISSUE_QUERY = `
+query($owner: String!, $repo: String!, $states: [IssueState!], $since: DateTime) {
+  repository(owner: $owner, name: $repo) {
+    issues(first: 100, states: $states, filterBy: {since: $since}, orderBy: {field: UPDATED_AT, direction: DESC}) {
+      nodes {
+        number
+        title
+        state
+        updatedAt
+        labels(first: 20) {
+          nodes { name }
+        }
+        assignees(first: 10) {
+          nodes { login }
+        }
+        comments(last: 10) {
+          nodes {
+            id
+            author { login }
+            body
+            createdAt
+          }
+        }
+        projectItems(first: 5) {
+          nodes {
+            fieldValues(first: 20) {
+              nodes {
+                ... on ProjectV2ItemFieldSingleSelectValue {
+                  name
+                  field {
+                    ... on ProjectV2SingleSelectField { name }
+                  }
+                }
+              }
+            }
+          }
+        }
+        timelineItems(first: 1, itemTypes: [CROSS_REFERENCED_EVENT]) {
+          nodes {
+            ... on CrossReferencedEvent {
+              source {
+                ... on PullRequest {
+                  number
+                  state
+                  merged
+                  mergeable
+                  headRefOid
+                  commits(last: 1) {
+                    nodes {
+                      commit {
+                        checkSuites(first: 5) {
+                          nodes {
+                            checkRuns(first: 20) {
+                              nodes {
+                                name
+                                status
+                                conclusion
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`.trim();
+function parseRepoSlug(repo) {
+  const [owner, name, ...rest] = repo.split("/");
+  if (!owner || !name || rest.length > 0)
+    return null;
+  return { owner, name };
+}
+async function fetchBulkIssueState(repo, execGh, options = {}) {
+  const slug = parseRepoSlug(repo);
+  if (!slug) {
+    return { issues: [], fetchedAt: (/* @__PURE__ */ new Date()).toISOString(), fromCache: false };
+  }
+  const { states = ["OPEN"], since } = options;
+  const args = [
+    "api",
+    "graphql",
+    "-f",
+    `query=${BULK_ISSUE_QUERY}`,
+    "-F",
+    `owner=${slug.owner}`,
+    "-F",
+    `repo=${slug.name}`,
+    "-F",
+    `states=${states.join(",")}`
+  ];
+  if (since) {
+    args.push("-F", `since=${since}`);
+  }
+  const result = await execGh(args);
+  const parsed = JSON.parse(result.stdout);
+  const nodes = parsed.data?.repository?.issues?.nodes ?? [];
+  const issues = [];
+  for (const node of nodes) {
+    if (typeof node.number !== "number")
+      continue;
+    let pr = null;
+    const timelineNodes = node.timelineItems?.nodes ?? [];
+    for (const timelineNode of timelineNodes) {
+      const source = timelineNode?.source;
+      if (source && typeof source.number === "number") {
+        const checkRuns = [];
+        const commitNodes = source.commits?.nodes ?? [];
+        for (const commitNode of commitNodes) {
+          const suiteNodes = commitNode?.commit?.checkSuites?.nodes ?? [];
+          for (const suite of suiteNodes) {
+            const runNodes = suite?.checkRuns?.nodes ?? [];
+            for (const run of runNodes) {
+              if (typeof run?.name === "string") {
+                checkRuns.push({
+                  name: run.name,
+                  status: typeof run.status === "string" ? run.status : "",
+                  conclusion: typeof run.conclusion === "string" ? run.conclusion : null
+                });
+              }
+            }
+          }
+        }
+        pr = {
+          number: source.number,
+          state: typeof source.state === "string" ? source.state : "",
+          merged: source.merged === true,
+          mergeable: typeof source.mergeable === "string" ? source.mergeable : null,
+          headSha: typeof source.headRefOid === "string" ? source.headRefOid : "",
+          checkRuns
+        };
+        break;
+      }
+    }
+    let projectStatus = null;
+    const projectNodes = node.projectItems?.nodes ?? [];
+    for (const projectNode of projectNodes) {
+      const fieldNodes = projectNode?.fieldValues?.nodes ?? [];
+      for (const fieldNode of fieldNodes) {
+        if (fieldNode?.field?.name === "Status" && typeof fieldNode.name === "string") {
+          projectStatus = fieldNode.name;
+          break;
+        }
+      }
+      if (projectStatus)
+        break;
+    }
+    if (options.issueNumbers && !options.issueNumbers.includes(node.number)) {
+      continue;
+    }
+    issues.push({
+      number: node.number,
+      title: typeof node.title === "string" ? node.title : "",
+      state: typeof node.state === "string" ? node.state : "",
+      updatedAt: typeof node.updatedAt === "string" ? node.updatedAt : "",
+      labels: (node.labels?.nodes ?? []).map((l) => typeof l?.name === "string" ? l.name : "").filter(Boolean),
+      assignees: (node.assignees?.nodes ?? []).map((a) => typeof a?.login === "string" ? a.login : "").filter(Boolean),
+      pr,
+      comments: (node.comments?.nodes ?? []).filter((c) => typeof c?.id === "string" && typeof c?.body === "string").map((c) => ({
+        id: parseInt(c.id.replace(/\D/g, ""), 10) || 0,
+        author: typeof c.author?.login === "string" ? c.author.login : "unknown",
+        body: c.body,
+        createdAt: typeof c.createdAt === "string" ? c.createdAt : ""
+      })),
+      projectStatus
+    });
+  }
+  return {
+    issues,
+    fetchedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    fromCache: false
+  };
+}
+function detectIssueChanges(current, lastKnown) {
+  if (!lastKnown.updatedAt) {
+    return { changed: true, reason: "first_seen" };
+  }
+  if (current.updatedAt !== lastKnown.updatedAt) {
+    return {
+      changed: true,
+      reason: "timestamp_mismatch",
+      previousUpdatedAt: lastKnown.updatedAt,
+      currentUpdatedAt: current.updatedAt
+    };
+  }
+  if (current.pr && !lastKnown.prNumber) {
+    return { changed: true, reason: "pr_created" };
+  }
+  if (current.pr && lastKnown.prNumber && current.pr.number !== lastKnown.prNumber) {
+    return { changed: true, reason: "pr_changed" };
+  }
+  if (current.pr && current.pr.state === "MERGED" && lastKnown.state !== "merged") {
+    return { changed: true, reason: "pr_merged" };
+  }
+  return { changed: false, reason: "unchanged" };
+}
+
+// src/commands/orchestrate.ts
 var HOUSEKEEPING_AGENTS = /* @__PURE__ */ new Set(["spec-consistency", "spec-backfill", "guard", "loop-health-supervisor"]);
 var defaultDeps4 = {
-  existsSync: existsSync10,
-  readFile: readFile9,
-  writeFile: writeFile9,
-  mkdir: mkdir6,
+  existsSync: existsSync11,
+  readFile: readFile10,
+  writeFile: writeFile10,
+  mkdir: mkdir7,
   unlink: unlink2,
   readdirSync,
   now: () => /* @__PURE__ */ new Date()
 };
+function normalizeTaskSandbox(sandbox) {
+  return sandbox === "none" ? "none" : "container";
+}
+function normalizeTaskRequires(requires) {
+  if (!Array.isArray(requires))
+    return [];
+  return requires.map((label) => label.trim().toLowerCase()).filter((label, index, all) => label.length > 0 && all.indexOf(label) === index);
+}
 function parseConcurrency(value) {
   if (!value)
     return 3;
@@ -9592,7 +9921,7 @@ function parseBudget(value) {
 }
 var projectStatusContextCache = /* @__PURE__ */ new Map();
 var PROJECT_STATUS_FIELD_NAME = "Status";
-function parseRepoSlug(repo) {
+function parseRepoSlug2(repo) {
   const [owner, name, ...rest] = repo.split("/");
   if (!owner || !name || rest.length > 0)
     return null;
@@ -9603,7 +9932,7 @@ async function resolveIssueProjectStatusContext(repo, issueNumber, deps) {
   if (projectStatusContextCache.has(cacheKey)) {
     return projectStatusContextCache.get(cacheKey) ?? null;
   }
-  const slug = parseRepoSlug(repo);
+  const slug = parseRepoSlug2(repo);
   if (!slug) {
     projectStatusContextCache.set(cacheKey, null);
     return null;
@@ -9743,7 +10072,7 @@ async function resolveOrchestratorAutonomyLevel(options, homeDir, deps) {
   }
   const projectRoot = resolveProjectRoot2(options.projectRoot);
   const projectHash = getProjectHash2(projectRoot);
-  const configPath = path13.join(homeDir, ".aloop", "projects", projectHash, "config.yml");
+  const configPath = path14.join(homeDir, ".aloop", "projects", projectHash, "config.yml");
   if (!deps.existsSync(configPath)) {
     return "balanced";
   }
@@ -9850,7 +10179,7 @@ async function applyDecompositionPlan(plan, state, sessionDir, repo, deps) {
     const labels = ["aloop", `aloop/wave-${wave}`];
     let ghNumber;
     if (deps.execGhIssueCreate && repo) {
-      ghNumber = await deps.execGhIssueCreate(repo, path13.basename(sessionDir), planIssue.title, planIssue.body, labels);
+      ghNumber = await deps.execGhIssueCreate(repo, path14.basename(sessionDir), planIssue.title, planIssue.body, labels);
     } else {
       ghNumber = planIssue.id;
     }
@@ -9860,6 +10189,8 @@ async function applyDecompositionPlan(plan, state, sessionDir, repo, deps) {
       title: planIssue.title,
       body: planIssue.body,
       file_hints: planIssue.file_hints ?? [],
+      sandbox: normalizeTaskSandbox(planIssue.sandbox),
+      requires: normalizeTaskRequires(planIssue.requires),
       wave,
       state: "pending",
       status: "Needs refinement",
@@ -9896,8 +10227,8 @@ function resolveSpecFiles(specInput, projectRoot, deps) {
   const readdirFn = deps.readdirSync ?? readdirSync;
   for (const pattern of patterns) {
     if (pattern.includes("*")) {
-      const dir = path13.resolve(projectRoot, path13.dirname(pattern));
-      const ext = path13.extname(pattern.replace("*", "x"));
+      const dir = path14.resolve(projectRoot, path14.dirname(pattern));
+      const ext = path14.extname(pattern.replace("*", "x"));
       if (!deps.existsSync(dir))
         continue;
       let entries;
@@ -9906,7 +10237,7 @@ function resolveSpecFiles(specInput, projectRoot, deps) {
       } catch {
         continue;
       }
-      const matching = entries.filter((e) => ext ? e.endsWith(ext) : true).sort().map((e) => path13.join(dir, e));
+      const matching = entries.filter((e) => ext ? e.endsWith(ext) : true).sort().map((e) => path14.join(dir, e));
       for (const p of matching) {
         if (!seen.has(p)) {
           seen.add(p);
@@ -9914,7 +10245,7 @@ function resolveSpecFiles(specInput, projectRoot, deps) {
         }
       }
     } else {
-      const p = path13.resolve(projectRoot, pattern);
+      const p = path14.resolve(projectRoot, pattern);
       if (!seen.has(p)) {
         seen.add(p);
         resolved.push(p);
@@ -9933,7 +10264,7 @@ async function loadMergedSpecContent(specFiles, deps) {
   const sections = [];
   for (const file of existing) {
     const content = await deps.readFile(file, "utf8");
-    const basename3 = path13.basename(file);
+    const basename3 = path14.basename(file);
     sections.push(`<!-- spec: ${basename3} -->
 
 ${content}`);
@@ -10050,16 +10381,16 @@ Run one lightweight monitoring pass:
 }
 async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const homeDir = resolveHomeDir2(options.homeDir);
-  const aloopRoot = path13.join(homeDir, ".aloop");
-  const sessionsRoot = path13.join(aloopRoot, "sessions");
+  const aloopRoot = path14.join(homeDir, ".aloop");
+  const sessionsRoot = path14.join(aloopRoot, "sessions");
   const specInput = options.spec ?? "SPEC.md";
-  const projectRoot = options.projectRoot ? path13.resolve(options.projectRoot) : process.cwd();
+  const projectRoot = options.projectRoot ? path14.resolve(options.projectRoot) : process.cwd();
   const specFiles = resolveSpecFiles(specInput, projectRoot, deps);
   const existingSpecFiles = specFiles.filter((f) => deps.existsSync(f));
   if (existingSpecFiles.length === 0) {
     throw new Error(`No spec files found matching: ${specInput}`);
   }
-  const specFile = path13.relative(projectRoot, existingSpecFiles[0]) || existingSpecFiles[0];
+  const specFile = path14.relative(projectRoot, existingSpecFiles[0]) || existingSpecFiles[0];
   const trunkBranch = options.trunk ?? "agent/trunk";
   const concurrencyCap = parseConcurrency(options.concurrency);
   const filterIssues = parseIssueNumbers(options.issues);
@@ -10071,13 +10402,13 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const now = deps.now();
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(now.getUTCDate()).padStart(2, "0")}-${String(now.getUTCHours()).padStart(2, "0")}${String(now.getUTCMinutes()).padStart(2, "0")}${String(now.getUTCSeconds()).padStart(2, "0")}`;
   const sessionId = `orchestrator-${timestamp}`;
-  const sessionDir = path13.join(sessionsRoot, sessionId);
-  const promptsDir = path13.join(sessionDir, "prompts");
-  const queueDir = path13.join(sessionDir, "queue");
-  const requestsDir = path13.join(sessionDir, "requests");
-  const loopPlanFile = path13.join(sessionDir, "loop-plan.json");
-  const orchScanPromptFile = path13.join(promptsDir, ORCH_SCAN_PROMPT_FILENAME);
-  const orchEstimatePromptFile = path13.join(promptsDir, ORCH_ESTIMATE_PROMPT_FILENAME);
+  const sessionDir = path14.join(sessionsRoot, sessionId);
+  const promptsDir = path14.join(sessionDir, "prompts");
+  const queueDir = path14.join(sessionDir, "queue");
+  const requestsDir = path14.join(sessionDir, "requests");
+  const loopPlanFile = path14.join(sessionDir, "loop-plan.json");
+  const orchScanPromptFile = path14.join(promptsDir, ORCH_SCAN_PROMPT_FILENAME);
+  const orchEstimatePromptFile = path14.join(promptsDir, ORCH_ESTIMATE_PROMPT_FILENAME);
   await deps.mkdir(sessionDir, { recursive: true });
   await deps.mkdir(promptsDir, { recursive: true });
   await deps.mkdir(queueDir, { recursive: true });
@@ -10091,35 +10422,35 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   await deps.writeFile(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}
 `, "utf8");
   await deps.writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(), "utf8");
-  const estimateTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_ESTIMATE_PROMPT_FILENAME);
+  const estimateTemplatePath = path14.join(projectRoot, "aloop", "templates", ORCH_ESTIMATE_PROMPT_FILENAME);
   const estimatePrompt = deps.existsSync(estimateTemplatePath) ? await deps.readFile(estimateTemplatePath, "utf8") : ORCH_ESTIMATE_PROMPT_FALLBACK;
   await deps.writeFile(orchEstimatePromptFile, estimatePrompt, "utf8");
-  const productAnalystTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_PRODUCT_ANALYST_PROMPT_FILENAME);
+  const productAnalystTemplatePath = path14.join(projectRoot, "aloop", "templates", ORCH_PRODUCT_ANALYST_PROMPT_FILENAME);
   const productAnalystPrompt = deps.existsSync(productAnalystTemplatePath) ? await deps.readFile(productAnalystTemplatePath, "utf8") : ORCH_PRODUCT_ANALYST_FALLBACK;
-  await deps.writeFile(path13.join(promptsDir, ORCH_PRODUCT_ANALYST_PROMPT_FILENAME), productAnalystPrompt, "utf8");
-  const archAnalystTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_ARCH_ANALYST_PROMPT_FILENAME);
+  await deps.writeFile(path14.join(promptsDir, ORCH_PRODUCT_ANALYST_PROMPT_FILENAME), productAnalystPrompt, "utf8");
+  const archAnalystTemplatePath = path14.join(projectRoot, "aloop", "templates", ORCH_ARCH_ANALYST_PROMPT_FILENAME);
   const archAnalystPrompt = deps.existsSync(archAnalystTemplatePath) ? await deps.readFile(archAnalystTemplatePath, "utf8") : ORCH_ARCH_ANALYST_FALLBACK;
-  await deps.writeFile(path13.join(promptsDir, ORCH_ARCH_ANALYST_PROMPT_FILENAME), archAnalystPrompt, "utf8");
-  const decomposeTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_DECOMPOSE_PROMPT_FILENAME);
+  await deps.writeFile(path14.join(promptsDir, ORCH_ARCH_ANALYST_PROMPT_FILENAME), archAnalystPrompt, "utf8");
+  const decomposeTemplatePath = path14.join(projectRoot, "aloop", "templates", ORCH_DECOMPOSE_PROMPT_FILENAME);
   const decomposePrompt = deps.existsSync(decomposeTemplatePath) ? await deps.readFile(decomposeTemplatePath, "utf8") : ORCH_DECOMPOSE_FALLBACK;
-  await deps.writeFile(path13.join(promptsDir, ORCH_DECOMPOSE_PROMPT_FILENAME), decomposePrompt, "utf8");
-  const subDecomposeTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_SUB_DECOMPOSE_PROMPT_FILENAME);
+  await deps.writeFile(path14.join(promptsDir, ORCH_DECOMPOSE_PROMPT_FILENAME), decomposePrompt, "utf8");
+  const subDecomposeTemplatePath = path14.join(projectRoot, "aloop", "templates", ORCH_SUB_DECOMPOSE_PROMPT_FILENAME);
   const subDecomposePrompt = deps.existsSync(subDecomposeTemplatePath) ? await deps.readFile(subDecomposeTemplatePath, "utf8") : ORCH_SUB_DECOMPOSE_FALLBACK;
-  await deps.writeFile(path13.join(promptsDir, ORCH_SUB_DECOMPOSE_PROMPT_FILENAME), subDecomposePrompt, "utf8");
-  const replanTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_REPLAN_PROMPT_FILENAME);
+  await deps.writeFile(path14.join(promptsDir, ORCH_SUB_DECOMPOSE_PROMPT_FILENAME), subDecomposePrompt, "utf8");
+  const replanTemplatePath = path14.join(projectRoot, "aloop", "templates", ORCH_REPLAN_PROMPT_FILENAME);
   if (deps.existsSync(replanTemplatePath)) {
     const replanPrompt = await deps.readFile(replanTemplatePath, "utf8");
-    await deps.writeFile(path13.join(promptsDir, ORCH_REPLAN_PROMPT_FILENAME), replanPrompt, "utf8");
+    await deps.writeFile(path14.join(promptsDir, ORCH_REPLAN_PROMPT_FILENAME), replanPrompt, "utf8");
   }
-  const consistencyTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME);
+  const consistencyTemplatePath = path14.join(projectRoot, "aloop", "templates", ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME);
   if (deps.existsSync(consistencyTemplatePath)) {
     const consistencyPrompt = await deps.readFile(consistencyTemplatePath, "utf8");
-    await deps.writeFile(path13.join(promptsDir, ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME), consistencyPrompt, "utf8");
+    await deps.writeFile(path14.join(promptsDir, ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME), consistencyPrompt, "utf8");
   }
   const specGlob = specInput.includes("*") ? specInput : DEFAULT_SPEC_GLOB;
   let state = {
     spec_file: specFile,
-    spec_files: existingSpecFiles.map((f) => path13.relative(projectRoot, f) || f),
+    spec_files: existingSpecFiles.map((f) => path14.relative(projectRoot, f) || f),
     spec_glob: specGlob,
     autonomy_level: autonomyLevel,
     trunk_branch: trunkBranch,
@@ -10136,7 +10467,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     updated_at: now.toISOString()
   };
   if (options.plan) {
-    const planPath = path13.resolve(options.plan);
+    const planPath = path14.resolve(options.plan);
     if (!deps.existsSync(planPath)) {
       throw new Error(`Plan file not found: ${planPath}`);
     }
@@ -10152,7 +10483,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     }
     state = await applyDecompositionPlan(plan, state, sessionDir, filterRepo, deps);
   }
-  const epicDecompositionResultsFile = path13.join(requestsDir, "epic-decomposition-results.json");
+  const epicDecompositionResultsFile = path14.join(requestsDir, "epic-decomposition-results.json");
   if (deps.existsSync(epicDecompositionResultsFile)) {
     const epicResultsContent = await deps.readFile(epicDecompositionResultsFile, "utf8");
     try {
@@ -10164,12 +10495,12 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     }
   }
   if (!options.plan && state.issues.length === 0) {
-    const specLabel = existingSpecFiles.length > 1 ? existingSpecFiles.map((f) => path13.relative(projectRoot, f) || f).join(", ") : specFile;
+    const specLabel = existingSpecFiles.length > 1 ? existingSpecFiles.map((f) => path14.relative(projectRoot, f) || f).join(", ") : specFile;
     await createEpicDecompositionRequest(specLabel, requestsDir, { writeFile: deps.writeFile, now: deps.now });
     const specContent = await loadMergedSpecContent(existingSpecFiles, deps);
     await queueEpicDecomposition(specLabel, specContent, queueDir, decomposePrompt, { writeFile: deps.writeFile });
   }
-  const subDecompositionResultsFile = path13.join(requestsDir, "sub-decomposition-results.json");
+  const subDecompositionResultsFile = path14.join(requestsDir, "sub-decomposition-results.json");
   if (deps.existsSync(subDecompositionResultsFile)) {
     const subResultsContent = await deps.readFile(subDecompositionResultsFile, "utf8");
     try {
@@ -10202,7 +10533,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     );
   }
   if (filterRepo && state.issues.length > 0 && deps.execGh) {
-    await runTriageMonitorCycle(state, path13.basename(sessionDir), filterRepo, deps, aloopRoot);
+    await runTriageMonitorCycle(state, path14.basename(sessionDir), filterRepo, deps, aloopRoot);
   }
   const dorTargets = state.issues.filter((issue) => issue.status === "Needs refinement" && issue.dor_validated !== true).map((issue) => ({
     issue_number: issue.number,
@@ -10211,7 +10542,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     depends_on: issue.depends_on
   }));
   if (dorTargets.length > 0) {
-    const estimateRequestFile = path13.join(requestsDir, "estimate-readiness.json");
+    const estimateRequestFile = path14.join(requestsDir, "estimate-readiness.json");
     const estimateRequest = {
       type: "definition_of_ready_estimate",
       prompt_template: ORCH_ESTIMATE_PROMPT_FILENAME,
@@ -10227,7 +10558,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
       deps
     );
   }
-  const estimateResponseFile = path13.join(requestsDir, "estimate-results.json");
+  const estimateResponseFile = path14.join(requestsDir, "estimate-results.json");
   if (deps.existsSync(estimateResponseFile)) {
     const responseContent = await deps.readFile(estimateResponseFile, "utf8");
     try {
@@ -10243,14 +10574,14 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     } catch {
     }
   }
-  const stateFile = path13.join(sessionDir, "orchestrator.json");
+  const stateFile = path14.join(sessionDir, "orchestrator.json");
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
 `, "utf8");
   let scanLoopResult;
   if (options.runScanLoop && !planOnly && state.issues.length > 0) {
     const intervalMs = parseInterval(options.interval);
     const maxIter = parseMaxIterations(options.maxIterations);
-    const logFile = path13.join(sessionDir, "log.jsonl");
+    const logFile = path14.join(sessionDir, "log.jsonl");
     const appendLog2 = async (_dir, entry) => {
       let existing = "";
       try {
@@ -10262,6 +10593,9 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
       await deps.writeFile(logFile, `${existing}${JSON.stringify(entry)}
 `, "utf8");
     };
+    const aloopCacheDir = path14.join(aloopRoot, ".cache");
+    const etagCache = new EtagCache(aloopCacheDir);
+    await etagCache.load();
     const scanDeps = {
       existsSync: deps.existsSync,
       readFile: deps.readFile,
@@ -10271,6 +10605,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
       now: deps.now,
       execGh: deps.execGh,
       appendLog: appendLog2,
+      etagCache,
       prLifecycleDeps: deps.execGh ? {
         execGh: deps.execGh,
         readFile: deps.readFile,
@@ -10287,7 +10622,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
       stateFile,
       sessionDir,
       projectRoot,
-      path13.basename(sessionDir),
+      path14.basename(sessionDir),
       promptsSourceDir,
       aloopRoot,
       filterRepo,
@@ -10474,14 +10809,14 @@ ${sections.join("\n\n---\n\n")}
 async function injectSteeringToChildLoop(issue, comments, deps) {
   if (!deps.writeFile || !deps.aloopRoot || !issue.child_session)
     return;
-  const childSessionDir = path13.join(deps.aloopRoot, "sessions", issue.child_session);
+  const childSessionDir = path14.join(deps.aloopRoot, "sessions", issue.child_session);
   const steeringDoc = formatSteeringContent(comments, issue);
-  const steeringPath = path13.join(childSessionDir, "worktree", "STEERING.md");
+  const steeringPath = path14.join(childSessionDir, "worktree", "STEERING.md");
   await deps.writeFile(steeringPath, steeringDoc, "utf8");
-  const steerTemplatePath = path13.join(childSessionDir, "prompts", "PROMPT_steer.md");
+  const steerTemplatePath = path14.join(childSessionDir, "prompts", "PROMPT_steer.md");
   let steerPromptContent = steeringDoc;
-  if (existsSync10(steerTemplatePath)) {
-    const templateContent = await readFile9(steerTemplatePath, "utf8");
+  if (existsSync11(steerTemplatePath)) {
+    const templateContent = await readFile10(steerTemplatePath, "utf8");
     steerPromptContent = templateContent + "\n\n" + steeringDoc;
   }
   await writeQueueOverride(childSessionDir, "triage-steering", steerPromptContent, {
@@ -10981,7 +11316,7 @@ async function queueEstimateForIssues(issues, queueDir, estimatePrompt, deps) {
       "Produce your output as a JSON code block with fields: `issue_number`, `dor_passed`, `complexity_tier`, `iteration_estimate`, `risk_flags`, `confidence`, `gaps`."
     ].join("\n");
     const fileName = `estimate-issue-${issue.number}.md`;
-    await deps.writeFile(path13.join(queueDir, fileName), content, "utf8");
+    await deps.writeFile(path14.join(queueDir, fileName), content, "utf8");
   }
   return targets.length;
 }
@@ -11001,7 +11336,7 @@ async function createGapAnalysisRequests(issues, requestsDir, deps) {
     targets
   };
   await deps.writeFile(
-    path13.join(requestsDir, "product-analyst-review.json"),
+    path14.join(requestsDir, "product-analyst-review.json"),
     `${JSON.stringify(productRequest, null, 2)}
 `,
     "utf8"
@@ -11013,7 +11348,7 @@ async function createGapAnalysisRequests(issues, requestsDir, deps) {
     targets
   };
   await deps.writeFile(
-    path13.join(requestsDir, "architecture-analyst-review.json"),
+    path14.join(requestsDir, "architecture-analyst-review.json"),
     `${JSON.stringify(archRequest, null, 2)}
 `,
     "utf8"
@@ -11052,7 +11387,7 @@ ${issue.body ?? "(no body)"}
     "",
     "For each gap found, write a `requests/req-NNN-create_issues.json` file with `aloop/spec-question` label. If no gaps, do nothing."
   ].join("\n");
-  await deps.writeFile(path13.join(queueDir, "gap-analysis-product.md"), productContent, "utf8");
+  await deps.writeFile(path14.join(queueDir, "gap-analysis-product.md"), productContent, "utf8");
   const archContent = [
     "---",
     JSON.stringify(
@@ -11074,7 +11409,7 @@ ${issue.body ?? "(no body)"}
     "",
     "For each gap found, write a `requests/req-NNN-create_issues.json` file with `aloop/spec-question` label. If no gaps, do nothing."
   ].join("\n");
-  await deps.writeFile(path13.join(queueDir, "gap-analysis-architecture.md"), archContent, "utf8");
+  await deps.writeFile(path14.join(queueDir, "gap-analysis-architecture.md"), archContent, "utf8");
   return targets.length;
 }
 async function createEpicDecompositionRequest(specFile, requestsDir, deps) {
@@ -11085,7 +11420,7 @@ async function createEpicDecompositionRequest(specFile, requestsDir, deps) {
     spec_file: specFile
   };
   await deps.writeFile(
-    path13.join(requestsDir, "epic-decomposition.json"),
+    path14.join(requestsDir, "epic-decomposition.json"),
     `${JSON.stringify(request, null, 2)}
 `,
     "utf8"
@@ -11113,7 +11448,7 @@ async function queueEpicDecomposition(specFile, specContent, queueDir, decompose
     "",
     'Write decomposition output to `requests/epic-decomposition-results.json` as a `{"issues":[...]}` plan object.'
   ].join("\n");
-  await deps.writeFile(path13.join(queueDir, "decompose-epics.md"), content, "utf8");
+  await deps.writeFile(path14.join(queueDir, "decompose-epics.md"), content, "utf8");
 }
 async function createSubDecompositionRequests(issues, requestsDir, deps) {
   const targets = issues.filter((issue) => issue.status === "Needs decomposition").map((issue) => ({
@@ -11133,7 +11468,7 @@ async function createSubDecompositionRequests(issues, requestsDir, deps) {
     targets
   };
   await deps.writeFile(
-    path13.join(requestsDir, "sub-issue-decomposition.json"),
+    path14.join(requestsDir, "sub-issue-decomposition.json"),
     `${JSON.stringify(request, null, 2)}
 `,
     "utf8"
@@ -11170,7 +11505,7 @@ async function queueSubDecompositionForIssues(issues, queueDir, subDecomposeProm
       "",
       "Write decomposition output to `requests/sub-decomposition-results.json` as an array of parent issue updates."
     ].join("\n");
-    await deps.writeFile(path13.join(queueDir, `sub-decompose-issue-${issue.number}.md`), content, "utf8");
+    await deps.writeFile(path14.join(queueDir, `sub-decompose-issue-${issue.number}.md`), content, "utf8");
   }
   return targets.length;
 }
@@ -11257,19 +11592,64 @@ function filterByFileOwnership(candidates, state) {
   }
   return selected;
 }
+function detectHostCapabilities(deps) {
+  const capabilities = /* @__PURE__ */ new Set();
+  if (deps.platform === "win32")
+    capabilities.add("windows");
+  if (deps.platform === "darwin")
+    capabilities.add("macos");
+  if (deps.platform === "linux")
+    capabilities.add("linux");
+  capabilities.add("network-access");
+  try {
+    const docker = deps.spawnSync("docker", ["--version"], { encoding: "utf8" });
+    if (docker.status === 0)
+      capabilities.add("docker");
+  } catch {
+  }
+  const gpuEnv = deps.env.NVIDIA_VISIBLE_DEVICES && deps.env.NVIDIA_VISIBLE_DEVICES !== "none" || deps.env.CUDA_VISIBLE_DEVICES && deps.env.CUDA_VISIBLE_DEVICES.length > 0;
+  if (gpuEnv) {
+    capabilities.add("gpu");
+  } else {
+    try {
+      const nvidiaSmi = deps.spawnSync("nvidia-smi", ["-L"], { encoding: "utf8" });
+      if (nvidiaSmi.status === 0)
+        capabilities.add("gpu");
+    } catch {
+    }
+  }
+  return capabilities;
+}
+function filterByHostCapabilities(candidates, deps) {
+  const capabilities = detectHostCapabilities(deps);
+  const eligible = [];
+  const blocked = [];
+  for (const issue of candidates) {
+    const requires = normalizeTaskRequires(issue.requires);
+    const missing = requires.filter((label) => !capabilities.has(label));
+    if (missing.length === 0) {
+      eligible.push(issue);
+    } else {
+      blocked.push({ issue, missing });
+    }
+  }
+  return { eligible, blocked };
+}
 function formatChildSessionId(projectName, issueNumber, now) {
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(now.getUTCDate()).padStart(2, "0")}-${String(now.getUTCHours()).padStart(2, "0")}${String(now.getUTCMinutes()).padStart(2, "0")}${String(now.getUTCSeconds()).padStart(2, "0")}`;
   const sanitized = projectName.replace(/[^a-zA-Z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase();
   return `${sanitized}-issue-${issueNumber}-${timestamp}`;
 }
 async function launchChildLoop(issue, orchestratorSessionDir, projectRoot, projectName, promptsSourceDir, aloopRoot, deps) {
+  const sandbox = normalizeTaskSandbox(issue.sandbox);
+  const requires = normalizeTaskRequires(issue.requires);
   const now = deps.now();
   const sessionId = formatChildSessionId(projectName, issue.number, now);
-  const sessionsRoot = path13.join(aloopRoot, "sessions");
-  const sessionDir = path13.join(sessionsRoot, sessionId);
+  const sessionsRoot = path14.join(aloopRoot, "sessions");
+  const sessionDir = path14.join(sessionsRoot, sessionId);
   const branchName = `aloop/issue-${issue.number}`;
-  const worktreePath = path13.join(sessionDir, "worktree");
-  const promptsDir = path13.join(sessionDir, "prompts");
+  const worktreePath = path14.join(sessionDir, "worktree");
+  const promptsDir = path14.join(sessionDir, "prompts");
   await deps.mkdir(sessionDir, { recursive: true });
   await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
   const worktreeResult = deps.spawnSync("git", ["-C", projectRoot, "worktree", "add", worktreePath, "-b", branchName], { encoding: "utf8" });
@@ -11282,16 +11662,16 @@ async function launchChildLoop(issue, orchestratorSessionDir, projectRoot, proje
 
 - [ ] Implement as described in the issue
 `;
-  await deps.writeFile(path13.join(worktreePath, "TODO.md"), todoContent, "utf8");
+  await deps.writeFile(path14.join(worktreePath, "TODO.md"), todoContent, "utf8");
   const configJson = {
     repo: null,
     // Will be set by orchestrator if repo is known
     assignedIssueNumber: issue.number,
     childCreatedPrNumbers: [],
     role: "child-loop",
-    orchestrator_session: path13.basename(orchestratorSessionDir)
+    orchestrator_session: path14.basename(orchestratorSessionDir)
   };
-  await deps.writeFile(path13.join(sessionDir, "config.json"), `${JSON.stringify(configJson, null, 2)}
+  await deps.writeFile(path14.join(sessionDir, "config.json"), `${JSON.stringify(configJson, null, 2)}
 `, "utf8");
   const startedAt = now.toISOString();
   const meta = {
@@ -11308,19 +11688,21 @@ async function launchChildLoop(issue, orchestratorSessionDir, projectRoot, proje
     prompts_dir: promptsDir,
     session_dir: sessionDir,
     issue_number: issue.number,
-    orchestrator_session: path13.basename(orchestratorSessionDir),
+    sandbox,
+    requires,
+    orchestrator_session: path14.basename(orchestratorSessionDir),
     created_at: startedAt
   };
-  await deps.writeFile(path13.join(sessionDir, "meta.json"), `${JSON.stringify(meta, null, 2)}
+  await deps.writeFile(path14.join(sessionDir, "meta.json"), `${JSON.stringify(meta, null, 2)}
 `, "utf8");
   await deps.writeFile(
-    path13.join(sessionDir, "status.json"),
+    path14.join(sessionDir, "status.json"),
     `${JSON.stringify({ state: "starting", mode: "plan-build-review", provider: "round-robin", iteration: 0, updated_at: startedAt }, null, 2)}
 `,
     "utf8"
   );
   if (issue.body) {
-    await deps.writeFile(path13.join(worktreePath, "SPEC.md"), `# Sub-Spec: Issue #${issue.number} \u2014 ${issue.title}
+    await deps.writeFile(path14.join(worktreePath, "SPEC.md"), `# Sub-Spec: Issue #${issue.number} \u2014 ${issue.title}
 
 ${issue.body}
 `, "utf8");
@@ -11342,11 +11724,11 @@ ${issue.body}
       existsSync: deps.existsSync
     }
   );
-  const loopBinDir = path13.join(aloopRoot, "bin");
+  const loopBinDir = path14.join(aloopRoot, "bin");
   let command;
   let args;
   if (deps.platform === "win32") {
-    const loopScript = path13.join(loopBinDir, "loop.ps1");
+    const loopScript = path14.join(loopBinDir, "loop.ps1");
     command = "powershell";
     args = [
       "-NoProfile",
@@ -11370,7 +11752,7 @@ ${issue.body}
       "start"
     ];
   } else {
-    const loopScript = path13.join(loopBinDir, "loop.sh");
+    const loopScript = path14.join(loopBinDir, "loop.sh");
     command = loopScript;
     args = [
       "--prompts-dir",
@@ -11395,7 +11777,11 @@ ${issue.body}
     cwd: worktreePath,
     detached: true,
     stdio: "ignore",
-    env: { ...deps.env },
+    env: {
+      ...deps.env,
+      ALOOP_TASK_SANDBOX: sandbox,
+      ALOOP_TASK_REQUIRES: requires.join(",")
+    },
     windowsHide: true
   });
   child.unref();
@@ -11405,9 +11791,9 @@ ${issue.body}
   }
   meta.pid = pid;
   meta.started_at = startedAt;
-  await deps.writeFile(path13.join(sessionDir, "meta.json"), `${JSON.stringify(meta, null, 2)}
+  await deps.writeFile(path14.join(sessionDir, "meta.json"), `${JSON.stringify(meta, null, 2)}
 `, "utf8");
-  const activePath = path13.join(aloopRoot, "active.json");
+  const activePath = path14.join(aloopRoot, "active.json");
   let active = {};
   try {
     if (deps.existsSync(activePath)) {
@@ -11817,7 +12203,7 @@ function advanceWave(state) {
 }
 var DEFAULT_COST_PER_ITERATION_USD = 0.5;
 async function parseChildSessionCost(sessionDir, sessionId, issueNumber, deps) {
-  const logFile = path13.join(sessionDir, "log.jsonl");
+  const logFile = path14.join(sessionDir, "log.jsonl");
   const providers = {};
   let iterations = 0;
   if (deps.existsSync(logFile)) {
@@ -11850,7 +12236,7 @@ async function aggregateChildCosts(state, aloopRoot, deps) {
   const children = [];
   for (const issue of state.issues) {
     if (issue.child_session) {
-      const childDir = path13.join(aloopRoot, "sessions", issue.child_session);
+      const childDir = path14.join(aloopRoot, "sessions", issue.child_session);
       const cost = await parseChildSessionCost(childDir, issue.child_session, issue.number, deps);
       children.push(cost);
     }
@@ -11876,7 +12262,7 @@ function parsePrCreateOutput(stdout) {
   };
 }
 async function createPrForChild(issue, childSession, childDir, state, repo, deps) {
-  const metaPath = path13.join(childDir, "meta.json");
+  const metaPath = path14.join(childDir, "meta.json");
   let branch = `aloop/issue-${issue.number}`;
   let projectRoot = "";
   if (deps.existsSync(metaPath)) {
@@ -11956,8 +12342,8 @@ async function monitorChildSessions(state, sessionDir, repo, deps) {
   );
   for (const issue of inProgressIssues) {
     const childSession = issue.child_session;
-    const childDir = path13.join(deps.aloopRoot, "sessions", childSession);
-    const statusPath = path13.join(childDir, "status.json");
+    const childDir = path14.join(deps.aloopRoot, "sessions", childSession);
+    const statusPath = path14.join(childDir, "status.json");
     result.monitored++;
     let childStatus = null;
     try {
@@ -12160,7 +12546,7 @@ async function queueReplanForSpecChange(diff, changedFiles, state, queueDir, rep
     "",
     "Write replan actions to `requests/replan-spec-change-results.json`."
   ].join("\n");
-  await deps.writeFile(path13.join(queueDir, "replan-spec-change.md"), content, "utf8");
+  await deps.writeFile(path14.join(queueDir, "replan-spec-change.md"), content, "utf8");
 }
 function applyReplanActions(state, actions) {
   let applied = 0;
@@ -12273,10 +12659,10 @@ async function queueSpecConsistencyCheck(changedFiles, diff, state, queueDir, co
     "",
     "Write consistency report to `requests/spec-consistency-results.json`."
   ].join("\n");
-  await deps.writeFile(path13.join(queueDir, "spec-consistency-check.md"), content, "utf8");
+  await deps.writeFile(path14.join(queueDir, "spec-consistency-check.md"), content, "utf8");
 }
 async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteration, deps) {
-  const queueDir = path13.join(sessionDir, "queue");
+  const queueDir = path14.join(sessionDir, "queue");
   const result = { processed: 0, files: [] };
   if (!deps.existsSync(queueDir))
     return result;
@@ -12291,13 +12677,13 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
       "gap-analysis-product.md",
       "gap-analysis-architecture.md"
     ];
-    entries = knownFiles.filter((f) => deps.existsSync(path13.join(queueDir, f)));
+    entries = knownFiles.filter((f) => deps.existsSync(path14.join(queueDir, f)));
   }
   const mdFiles = entries.filter((f) => f.endsWith(".md")).sort();
   if (mdFiles.length === 0)
     return result;
   const fileName = mdFiles[0];
-  const filePath = path13.join(queueDir, fileName);
+  const filePath = path14.join(queueDir, fileName);
   try {
     const content = await deps.readFile(filePath, "utf8");
     if (content.trim().length === 0) {
@@ -12306,9 +12692,9 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
       }
       return result;
     }
-    const requestsDir = path13.join(sessionDir, "requests");
+    const requestsDir = path14.join(sessionDir, "requests");
     const baseName = fileName.replace(/\.md$/, "");
-    const requestFile = path13.join(requestsDir, `${baseName}-pending.json`);
+    const requestFile = path14.join(requestsDir, `${baseName}-pending.json`);
     const request = {
       type: "queued_prompt",
       source_file: fileName,
@@ -12319,11 +12705,11 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
     await deps.writeFile(requestFile, `${JSON.stringify(request, null, 2)}
 `, "utf8");
     if (deps.dispatchDeps && deps.aloopRoot) {
-      const loopBinDir = path13.join(deps.aloopRoot, "bin");
+      const loopBinDir = path14.join(deps.aloopRoot, "bin");
       const isWindows = deps.dispatchDeps.platform === "win32";
-      const agentPromptsDir = path13.join(sessionDir, "queue-agent-prompts");
+      const agentPromptsDir = path14.join(sessionDir, "queue-agent-prompts");
       await deps.dispatchDeps.mkdir(agentPromptsDir, { recursive: true });
-      const agentPromptFile = path13.join(agentPromptsDir, "PROMPT_queue_agent.md");
+      const agentPromptFile = path14.join(agentPromptsDir, "PROMPT_queue_agent.md");
       await deps.dispatchDeps.writeFile(agentPromptFile, content, "utf8");
       let command;
       let args;
@@ -12332,7 +12718,7 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
         args = [
           "-NoProfile",
           "-File",
-          path13.join(loopBinDir, "loop.ps1"),
+          path14.join(loopBinDir, "loop.ps1"),
           "-PromptsDir",
           agentPromptsDir,
           "-SessionDir",
@@ -12351,7 +12737,7 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
           "start"
         ];
       } else {
-        command = path13.join(loopBinDir, "loop.sh");
+        command = path14.join(loopBinDir, "loop.sh");
         args = [
           "--prompts-dir",
           agentPromptsDir,
@@ -12428,9 +12814,9 @@ async function runSpecChangeReplan(state, stateFile, sessionDir, projectRoot, it
     changed_files: detection.changed_files,
     diff_length: detection.diff.length
   });
-  const queueDir = path13.join(sessionDir, "queue");
-  const promptsDir = path13.join(sessionDir, "prompts");
-  const replanPromptPath = path13.join(promptsDir, ORCH_REPLAN_PROMPT_FILENAME);
+  const queueDir = path14.join(sessionDir, "queue");
+  const promptsDir = path14.join(sessionDir, "prompts");
+  const replanPromptPath = path14.join(promptsDir, ORCH_REPLAN_PROMPT_FILENAME);
   let replanPromptContent = `# Orchestrator Replan Agent
 
 React to spec changes and produce plan adjustments.
@@ -12447,7 +12833,7 @@ React to spec changes and produce plan adjustments.
     { writeFile: deps.writeFile }
   );
   result.diff_queued = true;
-  const consistencyPromptPath = path13.join(promptsDir, ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME);
+  const consistencyPromptPath = path14.join(promptsDir, ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME);
   let consistencyPromptContent = `# Spec Consistency Agent
 
 Verify spec consistency after changes.
@@ -12463,7 +12849,7 @@ Verify spec consistency after changes.
     consistencyPromptContent,
     { writeFile: deps.writeFile }
   );
-  const replanResultPath = path13.join(sessionDir, "requests", "replan-spec-change-results.json");
+  const replanResultPath = path14.join(sessionDir, "requests", "replan-spec-change-results.json");
   if (deps.existsSync(replanResultPath)) {
     try {
       const replanContent = await deps.readFile(replanResultPath, "utf8");
@@ -12491,7 +12877,7 @@ Verify spec consistency after changes.
       });
     }
   }
-  const backfillResultPath = path13.join(sessionDir, "requests", "spec-backfill-results.json");
+  const backfillResultPath = path14.join(sessionDir, "requests", "spec-backfill-results.json");
   if (deps.existsSync(backfillResultPath)) {
     try {
       const backfillContent = await deps.readFile(backfillResultPath, "utf8");
@@ -12502,7 +12888,7 @@ Verify spec consistency after changes.
             entry.file || state.spec_file,
             entry.section,
             entry.content,
-            path13.basename(sessionDir),
+            path14.basename(sessionDir),
             iteration,
             projectRoot,
             { readFile: deps.readFile, writeFile: deps.writeFile, execGit: deps.execGit }
@@ -12520,6 +12906,87 @@ Verify spec consistency after changes.
   }
   return result;
 }
+async function fetchAndApplyBulkIssueState(state, repo, deps, sessionDir, iteration) {
+  const startTime = Date.now();
+  const result = {
+    issuesFetched: 0,
+    issuesChanged: 0,
+    fromCache: false,
+    durationMs: 0
+  };
+  if (!deps.execGh)
+    return result;
+  try {
+    const issueNumbers = state.issues.map((i) => i.number);
+    const since = state.issues.reduce((earliest, issue) => {
+      const check = issue.last_comment_check;
+      if (!check)
+        return earliest;
+      return !earliest || check < earliest ? check : earliest;
+    }, void 0);
+    const bulkResult = await fetchBulkIssueState(repo, deps.execGh, {
+      states: ["OPEN"],
+      since,
+      issueNumbers
+    });
+    result.issuesFetched = bulkResult.issues.length;
+    result.fromCache = bulkResult.fromCache;
+    const fetchedMap = /* @__PURE__ */ new Map();
+    for (const issue of bulkResult.issues) {
+      fetchedMap.set(issue.number, issue);
+    }
+    for (const issue of state.issues) {
+      const fetched = fetchedMap.get(issue.number);
+      if (!fetched)
+        continue;
+      const changeResult = detectIssueChanges(fetched, {
+        updatedAt: issue.last_comment_check,
+        prNumber: issue.pr_number,
+        state: issue.state
+      });
+      if (changeResult.changed) {
+        result.issuesChanged++;
+        if (fetched.projectStatus) {
+          const statusMap = {
+            "todo": "Ready",
+            "in progress": "In progress",
+            "in review": "In review",
+            "done": "Done",
+            "blocked": "Blocked"
+          };
+          const mapped = statusMap[fetched.projectStatus.toLowerCase()];
+          if (mapped)
+            issue.status = mapped;
+        }
+        if (fetched.pr && !issue.pr_number) {
+          issue.pr_number = fetched.pr.number;
+        }
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "bulk_fetch_issue_changed",
+          iteration,
+          issue_number: issue.number,
+          reason: changeResult.reason,
+          pr_number: fetched.pr?.number ?? null,
+          project_status: fetched.projectStatus
+        });
+      }
+    }
+    if (deps.etagCache) {
+      await deps.etagCache.save();
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: "bulk_fetch_error",
+      iteration,
+      error: msg
+    });
+  }
+  result.durationMs = Date.now() - startTime;
+  return result;
+}
 async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, projectName, promptsSourceDir, aloopRoot, repo, iteration, deps) {
   const stateContent = await deps.readFile(stateFile, "utf8");
   const state = JSON.parse(stateContent);
@@ -12535,7 +13002,8 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
     budgetExceeded: false,
     allDone: false,
     shouldStop: false,
-    replan: null
+    replan: null,
+    bulkFetch: null
   };
   if (deps.execGit) {
     result.replan = await runSpecChangeReplan(
@@ -12545,6 +13013,15 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
       projectRoot,
       iteration,
       deps
+    );
+  }
+  if (repo && deps.execGh && state.issues.length > 0) {
+    result.bulkFetch = await fetchAndApplyBulkIssueState(
+      state,
+      repo,
+      { execGh: deps.execGh, etagCache: deps.etagCache, appendLog: deps.appendLog, now: deps.now },
+      sessionDir,
+      iteration
     );
   }
   const queueResult = await processQueuedPrompts(
@@ -12558,7 +13035,7 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
   if (repo && deps.execGh) {
     result.triage = await runTriageMonitorCycle(
       state,
-      path13.basename(sessionDir),
+      path14.basename(sessionDir),
       repo,
       { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile },
       aloopRoot
@@ -12572,9 +13049,20 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
   }
   if (deps.dispatchDeps && !state.plan_only) {
     const dispatchable = getDispatchableIssues(state);
-    const eligible = filterByFileOwnership(dispatchable, state);
+    const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
+    const eligible = filterByFileOwnership(capabilityResult.eligible, state);
     const slots = availableSlots(state);
     const toDispatch = eligible.slice(0, slots);
+    for (const blocked of capabilityResult.blocked) {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: "scan_dispatch_blocked_requirements",
+        iteration,
+        issue_number: blocked.issue.number,
+        requires: normalizeTaskRequires(blocked.issue.requires),
+        missing: blocked.missing
+      });
+    }
     for (const issue of toDispatch) {
       try {
         const launchResult = await launchChildLoop(
@@ -12727,7 +13215,11 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
     spec_questions_user_overrides: result.specQuestions.userOverrides,
     all_done: result.allDone,
     replan_spec_changed: result.replan?.spec_changed ?? false,
-    replan_actions_applied: result.replan?.actions_applied ?? 0
+    replan_actions_applied: result.replan?.actions_applied ?? 0,
+    bulk_fetch_issues: result.bulkFetch?.issuesFetched ?? 0,
+    bulk_fetch_changed: result.bulkFetch?.issuesChanged ?? 0,
+    bulk_fetch_cached: result.bulkFetch?.fromCache ?? false,
+    bulk_fetch_duration_ms: result.bulkFetch?.durationMs ?? 0
   });
   return result;
 }
@@ -12787,6 +13279,9 @@ async function runOrchestratorScanLoop(stateFile, sessionDir, projectRoot, proje
       await deps.sleep(intervalMs);
     }
   }
+  if (deps.etagCache) {
+    await deps.etagCache.save();
+  }
   deps.appendLog(sessionDir, {
     timestamp: deps.now().toISOString(),
     event: "scan_loop_complete",
@@ -12816,9 +13311,9 @@ function parseMaxIterations(value) {
 }
 
 // src/commands/steer.ts
-import { writeFile as writeFile10 } from "node:fs/promises";
-import { existsSync as existsSync11 } from "node:fs";
-import path14 from "node:path";
+import { writeFile as writeFile11 } from "node:fs/promises";
+import { existsSync as existsSync12 } from "node:fs";
+import path15 from "node:path";
 function buildSteeringDocument2(instruction, affectsCompletedWork, commit) {
   const timestamp = (/* @__PURE__ */ new Date()).toISOString();
   return [
@@ -12861,16 +13356,16 @@ async function steerCommand(instruction, options = {}) {
     return fail(outputMode, `Multiple active sessions. Specify one with --session: ${sessionIds.join(", ")}`);
   }
   const entry = active[sessionId];
-  const sessionDir = entry.session_dir ?? path14.join(homeDir, ".aloop", "sessions", sessionId);
-  const workdir = entry.work_dir ?? path14.join(sessionDir, "worktree");
-  const steeringPath = path14.join(workdir, "STEERING.md");
-  if (existsSync11(steeringPath) && !options.overwrite) {
+  const sessionDir = entry.session_dir ?? path15.join(homeDir, ".aloop", "sessions", sessionId);
+  const workdir = entry.work_dir ?? path15.join(sessionDir, "worktree");
+  const steeringPath = path15.join(workdir, "STEERING.md");
+  if (existsSync12(steeringPath) && !options.overwrite) {
     return fail(outputMode, "A steering instruction is already queued. Use --overwrite to replace it.");
   }
   const affectsCompletedWork = options.affectsCompletedWork ?? "unknown";
   const steeringDoc = buildSteeringDocument2(instruction.trim(), affectsCompletedWork, "cli");
-  await writeFile10(steeringPath, steeringDoc, "utf8");
-  const promptsDir = path14.join(sessionDir, "prompts");
+  await writeFile11(steeringPath, steeringDoc, "utf8");
+  const promptsDir = path15.join(sessionDir, "prompts");
   const queuePath = await queueSteeringPrompt(
     sessionDir,
     promptsDir,
