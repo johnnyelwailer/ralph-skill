@@ -720,6 +720,7 @@ The QA agent is a **black-box tester**. It:
 - [ ] QA_COVERAGE.md tracks per-feature test history
 - [ ] QA_LOG.md contains full command transcripts as evidence
 - [ ] Both `loop.ps1` and `loop.sh` support the qa phase in their cycle resolution
+- [ ] If PowerShell test infrastructure creates fake provider binaries, each fake binary has both a Windows shim (`*.cmd`) and a POSIX shim (no extension) so `Get-Command` resolves fakes correctly on Linux/macOS and Windows
 
 ---
 
@@ -2772,18 +2773,15 @@ When running multiple loops in parallel (orchestrator mode or manual), do NOT st
 
 **Principle: if you're authenticated on the host, it should just work in the container. Zero manual config.**
 
-All providers support authentication via environment variables. The skill auto-detects the host's auth state for each activated provider and generates `remoteEnv` entries to forward credentials into the container. The user should never have to manually configure container auth.
+All providers support authentication via environment variables. The skill auto-detects the host's auth state for each activated provider and forwards credentials into the container via `remoteEnv` (preferred) or auth file bind-mount fallback. The user should never have to manually configure container auth.
 
 **Auto-detection flow (runs during devcontainer setup/verification):**
 
 For each activated provider, the skill checks the host for existing auth and sets up forwarding automatically:
 
 1. **Check env vars first** — if the provider's env var is already set on the host (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`), add it to `remoteEnv` with `${localEnv:...}`. Done.
-2. **Check CLI auth state** — if no env var but the CLI is authenticated (e.g., `claude` has an active OAuth session), extract or generate a portable token automatically:
-   - Claude Code: run `claude setup-token` to generate a 1-year headless token, save it to a host-side env var or `.env` file, and reference via `remoteEnv`
-   - gh CLI: run `gh auth token` to extract the current token, set as `GH_TOKEN`
-   - Other providers: check their respective auth status commands
-3. **Prompt only as last resort** — if neither env var nor CLI auth exists, guide the user through the minimal setup (e.g., "Run `claude setup-token` and paste the result" or "Set OPENAI_API_KEY").
+2. **Check auth file fallback** — if no env var and the provider's auth file exists on host, add a bind-mount for that specific file into the container (never the entire provider config directory).
+3. **Warn/prompt only as last resort** — if neither env var nor auth file exists, guide the user through the minimal setup (e.g., `claude setup-token` or setting an API key env var).
 
 Only activated providers get forwarded — never expose unused credentials.
 
