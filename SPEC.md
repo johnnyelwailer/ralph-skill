@@ -804,9 +804,10 @@ Interactive mode:
 5. **Check if the GitHub repo supports Actions (public vs private, org policy, etc.)**
 6. **Analyze scope and recommend loop vs orchestrator mode**
 7. **Ask about data privacy**: internal/private project vs public/open-source? How sensitive is the code/data? This determines ZDR configuration (see [Zero Data Retention](#zero-data-retention-zdr) section below)
-8. If orchestrator: prompt for concurrency cap and budget limits
-9. Run `aloop scaffold` with gathered options
-10. Print confirmation summary with all chosen settings (including auto-suggested trunk branch name, e.g., `agent/trunk`, ZDR mode if enabled) — user confirms or adjusts
+8. **If devcontainer is enabled: propose a provider-auth strategy and let the user override it.** Default is `mount-first` (auth file bind-mounts first), with alternatives `env-first` and `env-only`.
+9. If orchestrator: prompt for concurrency cap and budget limits
+10. Run `aloop scaffold` with gathered options
+11. Print confirmation summary with all chosen settings (including auto-suggested trunk branch name, e.g., `agent/trunk`, ZDR mode if enabled, and proposed per-provider devcontainer auth methods) — user confirms or adjusts
 
 #### Zero Data Retention (ZDR)
 
@@ -1023,12 +1024,13 @@ HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
    - Image artifacts: clickable → lightbox overlay (ESC to close)
    - Diff badge if `diff_percentage` present: green <5%, yellow <20%, red >=20%
 
-3. **Provider output** (for `iteration_complete`/`iteration_error` entries):
+3. **Provider output + usage/cost** (for `iteration_complete`/`iteration_error` entries):
    - Rendered inline when entry is expanded (no extra toggle — shown alongside commits and artifacts)
    - Auto-loaded from `/api/artifacts/{iteration}/output.txt` on expand
    - Scrollable `<pre>` block (max 300px height), monospace, word-wrap
    - Dashboard parses output header for model info (e.g. opencode `> build · openrouter/model-name`)
-   - Future: extract token usage and cost from provider-specific output formats
+   - Dashboard extracts token/cost metrics when available and renders a compact usage row (`input`, `output`, `total`, `usd_estimate`)
+   - If token/cost is unavailable for that iteration, no usage row is shown
 
 4. **Raw JSON fallback** (if no commit/artifacts/output, show parsed event data)
 
@@ -1835,6 +1837,20 @@ With N parallel loops, provider costs scale linearly. The orchestrator should:
 - Enforce a session-level budget cap (configurable)
 - Pause dispatch when budget threshold is approached
 - Report cost breakdown in the final report
+
+### Basic Token/Price Tracking (OpenCode/OpenRouter)
+
+Token/price tracking is in-scope and required at a basic level for OpenCode/OpenRouter.
+
+- Parse usage/cost fields from per-iteration provider output when OpenCode/OpenRouter emits them.
+- Persist parsed metrics in iteration events so dashboard and orchestrator reporting use the same data source.
+- Show token/cost only when available; do not fabricate values when providers omit usage payloads.
+- Prefer real parsed usage/cost for budget calculations; fall back to estimates only for iterations/providers with no usage data.
+
+**Acceptance criteria:**
+- [ ] OpenCode/OpenRouter iterations with usage payloads record token/cost fields in iteration event data
+- [ ] Dashboard displays token/cost row only when usage data exists for that iteration
+- [ ] Orchestrator final report and budget accounting consume recorded usage/cost data when available
 
 ### CLI / Invocation
 
@@ -2771,17 +2787,20 @@ When running multiple loops in parallel (orchestrator mode or manual), do NOT st
 
 ### Provider Auth in Container
 
-**Principle: if you're authenticated on the host, it should just work in the container. Zero manual config.**
+**Principle: if you're authenticated on the host, it should just work in the container. Zero manual config, with user-controlled strategy.**
 
-All providers support authentication via environment variables. The skill auto-detects the host's auth state for each activated provider and forwards credentials into the container via `remoteEnv` (preferred) or auth file bind-mount fallback. The user should never have to manually configure container auth.
+The setup skill must let the user choose how devcontainer auth is resolved. Default is `mount-first` (auth file bind-mounts first), with `env-first` and `env-only` as alternatives. The confirmation summary must show the proposed method per activated provider before files are written.
 
 **Auto-detection flow (runs during devcontainer setup/verification):**
 
-For each activated provider, the skill checks the host for existing auth and sets up forwarding automatically:
+For each activated provider, the skill checks the host for existing auth and resolves it using the selected strategy:
 
-1. **Check env vars first** — if the provider's env var is already set on the host (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`), add it to `remoteEnv` with `${localEnv:...}`. Done.
-2. **Check auth file fallback** — if no env var and the provider's auth file exists on host, add a bind-mount for that specific file into the container (never the entire provider config directory).
-3. **Warn/prompt only as last resort** — if neither env var nor auth file exists, guide the user through the minimal setup (e.g., `claude setup-token` or setting an API key env var).
+1. Gather both available signals (env vars and auth files) per provider.
+2. Apply the selected strategy:
+   - `mount-first` (default): auth file bind-mount → env var forwarding → warn/prompt
+   - `env-first`: env var forwarding → auth file bind-mount → warn/prompt
+   - `env-only`: env var forwarding → warn/prompt
+3. Show a pre-write summary (`provider -> method`) and allow user override before scaffold/devcontainer generation.
 
 Only activated providers get forwarded — never expose unused credentials.
 
@@ -2846,7 +2865,7 @@ The skill's devcontainer generator MUST:
 
 #### Fallback: Auth File Bind-Mounts
 
-Env vars are the preferred auth mechanism, but most users authenticate providers via browser OAuth and never set env vars. For these users, the devcontainer skill MUST support bind-mounting individual auth credential files as a fallback. **Mount only the specific auth file, never the whole config directory** (provider config dirs contain SQLite DBs, lock files, and other state that conflicts with concurrent host access).
+Most users authenticate providers via browser OAuth and never set env vars. The default `mount-first` strategy should work for this path by bind-mounting individual auth credential files. **Mount only the specific auth file, never the whole config directory** (provider config dirs contain SQLite DBs, lock files, and other state that conflicts with concurrent host access).
 
 | Provider | Auth File Path | XDG? | Token Refresh Writes? |
 |----------|---------------|------|----------------------|
@@ -2864,9 +2883,9 @@ Env vars are the preferred auth mechanism, but most users authenticate providers
 - For Claude Code on macOS: the file may not exist if auth is keychain-only — fall back to `claude setup-token` guidance
 
 **Auth resolution order (per provider):**
-1. Env var set on host → `remoteEnv` forwarding (preferred)
-2. Auth file exists on host → bind-mount the file (fallback)
-3. Neither → warn user, suggest setup command (`claude setup-token`, API key from console, etc.)
+- `mount-first` (default): auth file exists on host -> bind-mount; else env var set on host -> `remoteEnv`; else warn user
+- `env-first`: env var set on host -> `remoteEnv`; else auth file exists on host -> bind-mount; else warn user
+- `env-only`: env var set on host -> `remoteEnv`; else warn user
 
 ```jsonc
 {
@@ -2896,7 +2915,9 @@ Env vars are the preferred auth mechanism, but most users authenticate providers
 - [ ] Verification step builds container, starts it, and checks all deps/providers/git/mount
 - [ ] Verification iterates on failure — fixes config and re-verifies until green
 - [ ] Existing projects with `.devcontainer/` get augmented (aloop mounts/env added) rather than overwritten
-- [ ] Provider auth forwarded via `remoteEnv`/`localEnv` only for activated providers (no secrets in config files)
+- [ ] Setup offers devcontainer auth strategy choice (`mount-first` default, `env-first`, `env-only`) and allows override before writing files
+- [ ] Setup confirmation summary includes proposed auth method per activated provider
+- [ ] Provider auth forwarding uses selected strategy for activated providers only (no secrets in config files)
 - [ ] For Claude Code: prefers `CLAUDE_CODE_OAUTH_TOKEN` (via `claude setup-token`), falls back to `ANTHROPIC_API_KEY`, then auth file mount, guides user if none available
 - [ ] Auth file bind-mount fallback: for providers authenticated via browser OAuth (no env var set), mount the individual auth credential file (not the whole config dir) read-write into the container
 - [ ] Auth file mounts are conditional — only added when the file exists on host and no env var is set
