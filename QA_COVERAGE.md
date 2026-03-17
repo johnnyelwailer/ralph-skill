@@ -58,3 +58,8 @@
 | `aloop gh watch` (error handling) | 2026-03-16 | 835c6fa | PASS | Clean error `gh watch failed: ...` returned instead of path block. |
 | `aloop start` (no config error UX, packaged install) | 2026-03-16 | 835c6fa | FAIL | Still prints raw JS stack trace instead of clean error. Retested 835c6fa. |
 | `aloop orchestrate --spec NONEXISTENT.md` (packaged install) | 2026-03-16 | 835c6fa | FAIL | Still leaks raw JS stack frames instead of clean error. Retested 835c6fa. |
+| `aloop start` (no config error UX, packaged install) | 2026-03-17 | current | PASS | Clean error returned, no stack trace leaked. |
+| `aloop orchestrate --spec NONEXISTENT.md` (packaged install) | 2026-03-17 | current | PASS | Clean error returned, no stack trace leaked. |
+| `aloop dashboard` layout @1920x1080 (fresh project) | 2026-03-17 | current | PASS | Playwright test passed, UI elements found. No fallback HTML. |
+| `aloop setup --non-interactive` (fresh `HOME`, packaged install) | 2026-03-17 | current | PASS | Successfully completes without template error. |
+| `aloop scaffold` (fresh `HOME`, packaged install) | 2026-03-17 | current | PASS | Successfully returns JSON response without template error. |

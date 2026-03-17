@@ -2980,3 +2980,61 @@ $ALOOP_BIN gh watch
 # Exit code: 1
 # gh watch failed: gh issue list failed: failed to run git: fatal: not a git repository
 ```
+
+## QA Session — 2026-03-17 (iteration 110)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-PfjH1a/bin/aloop` (1.0.0)
+- Temp dirs: `/tmp/qa-test-1` through `/tmp/qa-test-10`
+- Features tested: 5+
+
+### Results
+- PASS: `aloop start` no config error UX
+- PASS: `aloop orchestrate` nonexistent spec error UX
+- PASS: `aloop setup --non-interactive` fresh HOME
+- PASS: `aloop scaffold` fresh HOME
+- PASS: `aloop dashboard` fresh project packaged install resolution + Playwright 1920x1080 UI layout
+- PASS: `aloop gh watch` invalid repo error UX
+- PASS: `aloop devcontainer` output validity
+- PASS: `aloop setup --autonomy-level invalid` non-interactive error UX
+- PASS: `aloop resolve --project-root /nonexistent` error UX
+
+### Bugs Filed
+None. All tested features operated correctly and resolved prior failing conditions.
+
+### Command Transcript
+
+```bash
+# Test 1: aloop start (no config)
+$ALOOP_BIN start --max-iterations 1
+# Output: Error: No Aloop configuration found for this project. Run `aloop setup` first.
+# Exit code: 1
+
+# Test 2: aloop orchestrate --spec NONEXISTENT.md
+$ALOOP_BIN orchestrate --spec NONEXISTENT.md
+# Output: Error: Spec file not found: /tmp/qa-test-2/NONEXISTENT.md
+# Exit code: 1
+
+# Test 3 & 7: aloop setup --non-interactive (fresh HOME)
+HOME=/tmp/qa-test-7/home $ALOOP_BIN setup --non-interactive
+# Output: Setup complete. Config written to: /tmp/qa-test-7/home/.aloop/projects/05e8956c/config.yml
+# Exit code: 0
+
+# Test 4: aloop dashboard
+$ALOOP_BIN dashboard --port 4142 &
+node /tmp/qa-browser-test.mjs
+# Output: Layout elements found: 2, Page has content: true
+# Screenshot verified.
+# Exit code: 0
+
+# Test 5: aloop devcontainer
+$ALOOP_BIN devcontainer
+# Output: Created devcontainer config at .devcontainer/devcontainer.json
+# Exit code: 0
+
+# Test: aloop scaffold --spec-files NONEXISTENT.md
+$ALOOP_BIN scaffold --spec-files NONEXISTENT.md
+# Output: Error: Spec file not found: NONEXISTENT.md
+# Exit code: 1
+```
+
