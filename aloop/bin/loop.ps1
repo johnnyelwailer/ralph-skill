@@ -759,7 +759,6 @@ function Show-AgentSummary {
 # ============================================================================
 
 $planFile = Join-Path $WorkDir "TODO.md"
-$reviewVerdictFile = Join-Path $SessionDir "review-verdict.json"
 $artifactsDir = Join-Path $SessionDir "artifacts"
 
 function Get-PlanLines {
@@ -799,70 +798,6 @@ function Resolve-PromptPlaceholders {
     $resolved = $resolved.Replace('<session-dir>', $SessionDir)
     $resolved = $resolved.Replace('iter-<N>', "iter-$IterationNumber")
     return $resolved
-}
-
-function Reset-ReviewVerdict {
-    if (Test-Path $reviewVerdictFile) {
-        Remove-Item -Path $reviewVerdictFile -Force -ErrorAction SilentlyContinue
-    }
-}
-
-function Get-ReviewVerdict {
-    param([int]$ExpectedIteration)
-
-    if (-not (Test-Path $reviewVerdictFile)) {
-        Write-Warning "Review verdict file missing: $reviewVerdictFile"
-        Write-LogEntry -Event "review_verdict_missing" -Data @{
-            iteration = $ExpectedIteration
-            path = $reviewVerdictFile
-        }
-        return $null
-    }
-
-    $payload = $null
-    try {
-        $payload = Get-Content -Path $reviewVerdictFile -Raw | ConvertFrom-Json
-    }
-    catch {
-        Write-Warning "Review verdict file is not valid JSON: $reviewVerdictFile"
-        Write-LogEntry -Event "review_verdict_invalid" -Data @{
-            iteration = $ExpectedIteration
-            path = $reviewVerdictFile
-            reason = 'invalid_json'
-        }
-        return $null
-    }
-
-    $verdict = [string]$payload.verdict
-    $verdict = $verdict.Trim().ToUpperInvariant()
-    if ($verdict -notin @('PASS', 'FAIL')) {
-        Write-Warning "Review verdict file has invalid verdict value: $reviewVerdictFile"
-        Write-LogEntry -Event "review_verdict_invalid" -Data @{
-            iteration = $ExpectedIteration
-            path = $reviewVerdictFile
-            reason = 'invalid_verdict'
-        }
-        return $null
-    }
-
-    $parsedIteration = -1
-    if (-not [int]::TryParse([string]$payload.iteration, [ref]$parsedIteration) -or $parsedIteration -ne $ExpectedIteration) {
-        Write-Warning "Review verdict file has invalid or stale iteration value: $reviewVerdictFile"
-        Write-LogEntry -Event "review_verdict_invalid" -Data @{
-            iteration = $ExpectedIteration
-            path = $reviewVerdictFile
-            reason = 'invalid_iteration'
-            file_iteration = [string]$payload.iteration
-        }
-        return $null
-    }
-
-    Write-LogEntry -Event "review_verdict_read" -Data @{
-        iteration = $ExpectedIteration
-        path = $reviewVerdictFile
-        verdict = $verdict
-    }
-    return $verdict
 }
 
 # ============================================================================
@@ -2062,9 +1997,6 @@ try {
         try {
             $promptContent = Get-Content -Path $iterationPromptFile -Raw
 
-            if ($iterationMode -eq 'review') {
-                Reset-ReviewVerdict
-            }
             $promptContent = Resolve-PromptPlaceholders -PromptContent $promptContent -IterationNumber $iteration
 
             Push-Location $WorkDir
