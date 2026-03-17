@@ -1,5 +1,114 @@
 # QA Log
 
+## QA Session — 2026-03-17 (iteration 174)
+
+### Test Environment
+- Temp dir: `/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174`
+- Binary under test: `/tmp/aloop-test-install-7g8heD/bin/aloop` (`1.0.0`)
+- Commit: `9ec9cb8`
+- Dashboard URL (from session meta): `http://localhost:4040`
+- Features tested: 5 (`setup`, `start`, `orchestrate`, `devcontainer`, `gh watch`) + mandatory dashboard layout verification
+
+### Results
+- PASS: `aloop setup --non-interactive --mode orchestrate` (and invalid mode validation)
+- FAIL: `aloop start` after fresh setup in isolated `HOME` (`Loop script not found: ~/.aloop/bin/loop.sh`)
+- PASS: `aloop start` no-config error UX (clean message, no stack trace)
+- PASS: `aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only` + clean nonexistent-spec error
+- PASS: `aloop devcontainer` provider wiring (`OPENCODE_API_KEY` + opencode install present)
+- PASS: `aloop gh watch --repo ...` clean unauthenticated GH error handling
+- FAIL: Host dashboard desktop layout @1920x1080 (`visibleAside=false`, activity pane not visible)
+- PASS: Host dashboard Health tab now includes `codex`
+
+### Bugs Filed
+- [qa/P1] `aloop start` fails after fresh packaged-install setup in isolated `HOME`: loop script missing at `~/.aloop/bin/loop.sh`.
+
+### Command Transcript
+
+Full raw transcript with exact commands/stdout/stderr/exit codes:
+`/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/command-transcript.log`
+
+Key excerpts:
+
+```bash
+$ /tmp/aloop-test-install-7g8heD/bin/aloop --version
+1.0.0
+[exit 0]
+
+$ HOME=/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home /tmp/aloop-test-install-7g8heD/bin/aloop setup --non-interactive --mode orchestrate --providers "claude,opencode" --spec SPEC.md
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home/.aloop/projects/85cf36db/config.yml
+[exit 0]
+
+$ HOME=/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home /tmp/aloop-test-install-7g8heD/bin/aloop setup --non-interactive --mode banana --providers claude --spec SPEC.md
+Running setup in non-interactive mode...
+Error: Invalid setup mode: banana (must be loop or orchestrate)
+[exit 1]
+
+$ HOME=/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home /tmp/aloop-test-install-7g8heD/bin/aloop setup --non-interactive --mode loop --providers copilot --spec SPEC.md
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home/.aloop/projects/5eeb8ce2/config.yml
+[exit 0]
+
+$ HOME=/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home /tmp/aloop-test-install-7g8heD/bin/aloop start --max-iterations 1
+Error: Loop script not found: /home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home/.aloop/bin/loop.sh
+[exit 1]
+
+$ HOME=/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home /tmp/aloop-test-install-7g8heD/bin/aloop start --max-iterations 1   # in fresh no-config dir
+Error: No Aloop configuration found for this project. Run `aloop setup` first.
+[exit 1]
+
+$ HOME=/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home /tmp/aloop-test-install-7g8heD/bin/aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
+Orchestrator session initialized.
+Spec:         SPEC.md, specs/api.md, specs/auth.md
+Plan only:    true
+[exit 0]
+
+$ HOME=/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home /tmp/aloop-test-install-7g8heD/bin/aloop orchestrate --spec "DOES_NOT_EXIST.md" --plan-only
+Error: No spec files found matching: DOES_NOT_EXIST.md
+[exit 1]
+
+$ HOME=/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home /tmp/aloop-test-install-7g8heD/bin/aloop devcontainer
+Created devcontainer config at /home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/project/.devcontainer/devcontainer.json
+Post-create: npm install -g @anthropic-ai/claude-code && npm install -g opencode
+Auth warnings: ... OPENCODE_API_KEY ...
+[exit 0]
+
+$ sed -n '1,240p' /home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/project/.devcontainer/devcontainer.json
+...
+"remoteEnv": {
+  "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
+  "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
+  "OPENCODE_API_KEY": "${localEnv:OPENCODE_API_KEY}"
+},
+"postCreateCommand": "npm install -g @anthropic-ai/claude-code && npm install -g opencode"
+[exit 0]
+
+$ HOME=/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/home timeout 25 /tmp/aloop-test-install-7g8heD/bin/aloop gh watch --repo owner/definitely-missing-repo
+gh watch failed: gh issue list failed: To get started with GitHub CLI, please run:  gh auth login
+Alternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.
+[exit 1]
+
+$ npx playwright screenshot --browser chromium "http://localhost:4040" "/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/dashboard-1920x1080-host.png"
+Navigating to http://localhost:4040
+Capturing screenshot into /home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/dashboard-1920x1080-host.png
+[exit 0]
+
+$ node /home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/dashboard-check-host.mjs "http://localhost:4040" ...
+{
+  "visibleAside": false,
+  "panelGuess": 2,
+  "hasSessions": true,
+  "hasDocs": true,
+  "hasActivity": false
+}
+[exit 0]
+```
+
+### Screenshots / Evidence
+- `/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/dashboard-1920x1080-host.png`
+- `/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/dashboard-layout-host.json`
+- `/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/dashboard-health-host.json`
+
 ## QA Session — 2026-03-17 (iteration 171)
 
 ### Test Environment
