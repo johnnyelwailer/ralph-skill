@@ -926,6 +926,24 @@ test('resolveBundledBinDir resolves loop scripts from parent levels in packaged 
   assert.equal(resolved, binDir);
 });
 
+test('resolveBundledBinDir resolves loop scripts from aloop/bin in packaged dist layouts', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-bin-resolve-aloop-'));
+  const fakeModuleDir = path.join(tempRoot, 'dist', 'cli');
+  const binDir = path.join(tempRoot, 'aloop', 'bin');
+  await mkdir(fakeModuleDir, { recursive: true });
+  await mkdir(binDir, { recursive: true });
+  await writeFile(path.join(binDir, 'loop.sh'), '#!/bin/sh\n', 'utf8');
+  await writeFile(path.join(binDir, 'loop.ps1'), 'Write-Host "loop"', 'utf8');
+
+  const resolved = resolveBundledBinDir({
+    moduleDir: fakeModuleDir,
+    argv1: path.join(fakeModuleDir, 'index.js'),
+    cwd: tempRoot,
+  });
+
+  assert.equal(resolved, binDir);
+});
+
 test('scaffoldWorkspace bootstraps loop scripts to home bin for fresh HOME', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-bootstrap-bin-'));
   const homeRoot = path.join(tempRoot, 'home');

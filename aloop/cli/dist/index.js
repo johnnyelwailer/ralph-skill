@@ -3617,16 +3617,19 @@ function resolveBundledBinDir(options = {}) {
   const argvDir = typeof argv1 === "string" && argv1.length > 0 ? path.dirname(path.resolve(argv1)) : null;
   const cwdDir = path.resolve(options.cwd ?? process.cwd());
   const baseDirs = [moduleDir, argvDir, cwdDir].filter(Boolean);
+  const candidateSuffixes = [["bin"], ["aloop", "bin"]];
   const seen = /* @__PURE__ */ new Set();
   for (const baseDir of baseDirs) {
     for (let depth = 0; depth <= 6; depth++) {
       const up = depth === 0 ? [] : new Array(depth).fill("..");
-      const candidate = path.resolve(baseDir, ...up, "bin");
-      if (seen.has(candidate))
-        continue;
-      seen.add(candidate);
-      if (loopScriptsExist(candidate)) {
-        return candidate;
+      for (const suffix of candidateSuffixes) {
+        const candidate = path.resolve(baseDir, ...up, ...suffix);
+        if (seen.has(candidate))
+          continue;
+        seen.add(candidate);
+        if (loopScriptsExist(candidate)) {
+          return candidate;
+        }
       }
     }
   }
