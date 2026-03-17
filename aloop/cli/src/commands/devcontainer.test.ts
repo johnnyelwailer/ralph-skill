@@ -15,6 +15,7 @@ import {
   resolveDevcontainerDeps,
   verifyDevcontainer,
   verifyDevcontainerCommand,
+  checkAuthPreflight,
   type DevcontainerDeps,
   type DevcontainerConfig,
   type VerifyDeps,
@@ -1289,4 +1290,71 @@ test('devcontainerCommand - result includes vscode_extensions for claude', async
 
   const parsed = JSON.parse(writtenContent);
   assert.deepEqual(parsed.customizations.vscode.extensions, ['anthropic.claude-code']);
+});
+
+// --- auth preflight checks ---
+
+test('checkAuthPreflight - returns empty when all auth vars are set', () => {
+  const env = { CLAUDE_CODE_OAUTH_TOKEN: 'tok123', OPENAI_API_KEY: 'sk-abc' };
+  const warnings = checkAuthPreflight(['claude', 'codex'], env);
+  assert.equal(warnings.length, 0);
+});
+
+test('checkAuthPreflight - warns when no auth vars set for provider', () => {
+  const env: Record<string, string | undefined> = {};
+  const warnings = checkAuthPreflight(['claude'], env);
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].provider, 'claude');
+  assert.deepEqual(warnings[0].missingVars, ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']);
+  assert.ok(warnings[0].guidance.includes('setup-token'));
+});
+
+test('checkAuthPreflight - no warning when fallback auth var is set (Claude ANTHROPIC_API_KEY)', () => {
+  const env = { ANTHROPIC_API_KEY: 'sk-ant-abc' };
+  const warnings = checkAuthPreflight(['claude'], env);
+  assert.equal(warnings.length, 0);
+});
+
+test('checkAuthPreflight - warns for multiple missing providers', () => {
+  const env: Record<string, string | undefined> = {};
+  const warnings = checkAuthPreflight(['claude', 'codex', 'gemini'], env);
+  assert.equal(warnings.length, 3);
+  assert.equal(warnings[0].provider, 'claude');
+  assert.equal(warnings[1].provider, 'codex');
+  assert.equal(warnings[2].provider, 'gemini');
+});
+
+test('checkAuthPreflight - skips providers with no known auth vars', () => {
+  const env: Record<string, string | undefined> = {};
+  const warnings = checkAuthPreflight(['unknown-provider'], env);
+  assert.equal(warnings.length, 0);
+});
+
+test('checkAuthPreflight - empty string env var treated as missing', () => {
+  const env = { OPENAI_API_KEY: '' };
+  const warnings = checkAuthPreflight(['codex'], env);
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].provider, 'codex');
+});
+
+test('checkAuthPreflight - copilot warns when GH_TOKEN missing', () => {
+  const env: Record<string, string | undefined> = {};
+  const warnings = checkAuthPreflight(['copilot'], env);
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].provider, 'copilot');
+  assert.ok(warnings[0].guidance.includes('gh auth token'));
+});
+
+test('devcontainerCommandWithDeps - result includes auth_warnings', async () => {
+  const deps: DevcontainerDeps = {
+    discover: async () => mockDiscovery({ providers: { installed: ['claude', 'codex'], missing: [], default_provider: 'claude', default_models: { claude: 'opus', codex: 'gpt-5.3-codex', gemini: 'gemini-3.1-pro-preview', copilot: 'gpt-5.3-codex' }, round_robin_default: ['claude'] } } as Partial<DiscoveryResult>),
+    readFile: async () => '',
+    writeFile: async () => {},
+    mkdir: async () => undefined,
+    existsSync: () => false,
+  };
+
+  const result = await devcontainerCommandWithDeps({}, deps);
+  // auth_warnings field should exist (may have warnings depending on host env)
+  assert.ok(Array.isArray(result.auth_warnings));
 });

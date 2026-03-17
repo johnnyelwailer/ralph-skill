@@ -33,6 +33,7 @@ export interface DevcontainerResult {
   mounts: string[];
   had_existing: boolean;
   vscode_extensions: string[];
+  auth_warnings: AuthPreflightWarning[];
 }
 
 interface LanguageMapping {
@@ -229,6 +230,48 @@ const PROVIDER_AUTH_ENV_VARS: Record<string, string[]> = {
   opencode: ['OPENCODE_API_KEY'],
   copilot: ['GH_TOKEN'],
 };
+
+/**
+ * Actionable setup guidance for each provider when auth env vars are missing on the host.
+ */
+const PROVIDER_AUTH_GUIDANCE: Record<string, string> = {
+  claude: 'Run `claude setup-token` to generate a headless OAuth token (requires Pro/Max subscription), or set ANTHROPIC_API_KEY from https://console.anthropic.com/',
+  codex: 'Set OPENAI_API_KEY from https://platform.openai.com/api-keys',
+  gemini: 'Set GEMINI_API_KEY from https://aistudio.google.com/apikey',
+  opencode: 'Set OPENCODE_API_KEY for your configured backend provider',
+  copilot: 'Set GH_TOKEN via `gh auth token` or from https://github.com/settings/tokens',
+};
+
+export interface AuthPreflightWarning {
+  provider: string;
+  missingVars: string[];
+  guidance: string;
+}
+
+/**
+ * Check host environment for required auth env vars for each activated provider.
+ * Returns warnings for providers where no auth var is set on the host.
+ * Claude checks CLAUDE_CODE_OAUTH_TOKEN first, then ANTHROPIC_API_KEY.
+ */
+export function checkAuthPreflight(
+  providers: string[],
+  env: Record<string, string | undefined> = process.env,
+): AuthPreflightWarning[] {
+  const warnings: AuthPreflightWarning[] = [];
+  for (const provider of providers) {
+    const authVars = PROVIDER_AUTH_ENV_VARS[provider];
+    if (!authVars || authVars.length === 0) continue;
+    const anySet = authVars.some((v) => env[v] && env[v]!.length > 0);
+    if (!anySet) {
+      warnings.push({
+        provider,
+        missingVars: authVars,
+        guidance: PROVIDER_AUTH_GUIDANCE[provider] || `Set one of: ${authVars.join(', ')}`,
+      });
+    }
+  }
+  return warnings;
+}
 
 /**
  * Build provider install commands for postCreateCommand.
@@ -478,6 +521,8 @@ export async function devcontainerCommandWithDeps(
 
   const mapping = getLanguageMapping(discovery.context.detected_language, projectRoot, deps.existsSync);
 
+  const authWarnings = checkAuthPreflight(resolvedProviders);
+
   return {
     action,
     config_path: configPath,
@@ -488,6 +533,7 @@ export async function devcontainerCommandWithDeps(
     mounts: generated.mounts,
     had_existing: hadExisting,
     vscode_extensions: buildVSCodeExtensions(resolvedProviders),
+    auth_warnings: authWarnings,
   };
 }
 
@@ -741,6 +787,15 @@ export async function devcontainerCommand(options: DevcontainerCommandOptions = 
     console.log(`  Image: ${result.image}`);
     if (result.post_create_command) {
       console.log(`  Post-create: ${result.post_create_command}`);
+    }
+  }
+
+  if (result.auth_warnings.length > 0) {
+    console.log('');
+    console.log('Auth warnings:');
+    for (const warning of result.auth_warnings) {
+      console.log(`  [WARN] ${warning.provider}: none of [${warning.missingVars.join(', ')}] are set on the host.`);
+      console.log(`         ${warning.guidance}`);
     }
   }
 
