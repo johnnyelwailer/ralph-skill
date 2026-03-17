@@ -34,17 +34,17 @@ aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
 
 A coordination layer that breaks a spec into GitHub issues with dependency graphs, then dispatches parallel child loops — each in its own git worktree.
 
-1. **Decompose** — Reads `SPEC.md`, creates GitHub issues with labels and dependency edges
+1. **Decompose** — Reads one or more spec files (including globs), creates GitHub issues with labels and dependency edges
 2. **Dispatch** — Launches child loops per issue, respecting concurrency caps and wave ordering
 3. **PR lifecycle** — Squash-merges completed PRs, rebases on conflict, runs agent review gates
 4. **Budget tracking** — Aggregates cost across child sessions, pauses at 80% of cap
 
 ```bash
-# Full orchestration from spec
-aloop orchestrate --spec SPEC.md --concurrency 3 --budget 50.00
+# Full orchestration from multiple spec files
+aloop orchestrate --spec "SPEC.md specs/*.md" --concurrency 3 --budget 50.00
 
 # Plan only (create issues, don't dispatch)
-aloop orchestrate --spec SPEC.md --plan-only
+aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
 
 # Dispatch specific issues
 aloop orchestrate --issues 42,43,44 --concurrency 2
