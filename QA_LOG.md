@@ -1,5 +1,112 @@
 # QA Log
 
+## QA Session — 2026-03-17 (iteration 171)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-48ejfW/bin/aloop` (v1.0.0)
+- Commit: f4707ed
+- Features tested: 5
+
+### Results
+- PASS: `aloop start` (fresh project with setup, no-config error UX)
+- PASS: `aloop setup` input validation (invalid providers, spec files, mode)
+- PASS: `aloop steer` (queue file generation, missing arg error, multi-session disambiguation)
+- PASS: `aloop orchestrate --spec` multi-file glob (single spec, glob expansion, nonexistent spec error, plan-only)
+- PARTIAL: `aloop devcontainer` (generation, augment, JSON output work; opencode env/install missing)
+
+### Bugs Filed
+- [qa/P1] `aloop devcontainer` omits `OPENCODE_API_KEY` and opencode CLI install when opencode is configured
+
+### Command Transcript
+
+#### Test 1: `aloop start`
+```
+$ aloop start --max-iterations 1  # no config
+Error: Project prompts not found: .../prompts. Run `aloop setup` first.
+EXIT: 1  # PASS — clean error, no stack trace
+
+$ aloop setup --non-interactive --providers claude --spec SPEC.md
+Setup complete. Config written to: ~/.aloop/projects/6674a927/config.yml
+EXIT: 0
+
+$ aloop start --max-iterations 1
+Session: qa-test-start2-hdmlf2-20260317-133416
+Mode: plan-build-review, Provider: claude, PID: 3850548
+Dashboard: http://localhost:37931
+EXIT: 0  # PASS — session created, iteration 1 ran (plan phase)
+
+$ aloop stop qa-test-start2-hdmlf2-20260317-133416
+Session stopped.
+EXIT: 0
+```
+
+#### Test 2: `aloop setup` input validation
+```
+$ aloop setup --non-interactive --providers fakeprovider --spec README.md
+Error: Unknown provider(s): fakeprovider (valid: claude, codex, gemini, copilot, opencode)
+EXIT: 1  # PASS
+
+$ aloop setup --non-interactive --providers claude --spec NONEXISTENT.md
+Error: Spec file not found: NONEXISTENT.md
+EXIT: 1  # PASS
+
+$ aloop setup --non-interactive --providers "fakeprovider,anotherfake" --spec README.md
+Error: Unknown provider(s): fakeprovider, anotherfake (valid: ...)
+EXIT: 1  # PASS
+
+$ aloop setup --non-interactive --providers claude --spec README.md --mode banana
+Error: Invalid setup mode: banana (must be loop or orchestrate)
+EXIT: 1  # PASS
+```
+
+#### Test 3: `aloop steer`
+```
+$ aloop steer "Focus on writing tests first" --session qa-test-steer-w9nssz-20260317-133550
+Steering instruction queued for session qa-test-steer-w9nssz-20260317-133550.
+EXIT: 0  # PASS — queue file created with frontmatter + template + instruction
+
+$ aloop steer  # no instruction
+error: missing required argument 'instruction'
+EXIT: 1  # PASS
+
+$ ls queue/
+1773754550747-steering.md  # correct queue file created
+```
+
+#### Test 4: `aloop orchestrate --spec` multi-file glob
+```
+$ aloop orchestrate --spec SPEC.md --plan-only
+Spec: SPEC.md
+EXIT: 0  # PASS
+
+$ aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
+Spec: SPEC.md, specs/feature-c.md, specs/feature-d.md
+EXIT: 0  # PASS — glob correctly expanded
+
+$ aloop orchestrate --spec NONEXISTENT.md --plan-only
+Error: No spec files found matching: NONEXISTENT.md
+EXIT: 1  # PASS — clean error
+```
+
+#### Test 5: `aloop devcontainer`
+```
+$ aloop devcontainer --project-root $TESTDIR
+Created devcontainer config at .devcontainer/devcontainer.json
+Language: other, Image: mcr.microsoft.com/devcontainers/base:ubuntu
+EXIT: 0  # PASS — mounts, env vars, VS Code extensions present
+
+$ aloop devcontainer --project-root $TESTDIR  # re-run
+Augmented existing devcontainer config
+EXIT: 0  # PASS — augment mode works
+
+$ aloop devcontainer --project-root $TESTDIR --output json
+{"action":"augmented","config_path":"...","language":"other",...}
+EXIT: 0  # PASS — JSON output works
+
+# BUG: OPENCODE_API_KEY not in remoteEnv, opencode CLI install not in postCreateCommand
+# even when --providers "claude,opencode" is configured
+```
+
 ## QA Session — 2026-03-15 (iteration 26)
 
 ### Test Environment
