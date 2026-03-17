@@ -802,13 +802,53 @@ Interactive mode:
 4. **Ask the user if quality gate workflows should be set up (test, lint, type-check, coverage)**
 5. **Check if the GitHub repo supports Actions (public vs private, org policy, etc.)**
 6. **Analyze scope and recommend loop vs orchestrator mode**
-7. **Ask about data privacy**: internal/private project vs public/open-source? How sensitive is the code/data? This determines:
-   - Which providers/models are appropriate (some have better data retention policies)
-   - Whether to enable Zero Data Retention (ZDR) flags (e.g., `--zdr` for opencode)
-   - May exclude certain providers from the round-robin if privacy requirements demand it
+7. **Ask about data privacy**: internal/private project vs public/open-source? How sensitive is the code/data? This determines ZDR configuration (see [Zero Data Retention](#zero-data-retention-zdr) section below)
 8. If orchestrator: prompt for concurrency cap and budget limits
 9. Run `aloop scaffold` with gathered options
 10. Print confirmation summary with all chosen settings (including auto-suggested trunk branch name, e.g., `agent/trunk`, ZDR mode if enabled) — user confirms or adjusts
+
+#### Zero Data Retention (ZDR)
+
+When the user selects `data_privacy: private` during setup, the scaffold generates provider-specific ZDR configuration. ZDR is not a single flag — each provider handles it differently.
+
+**Provider ZDR summary:**
+
+| Provider | ZDR Level | Per-Request? | What Setup Does |
+|---|---|---|---|
+| **OpenRouter** (via opencode) | Account + Request | **Yes** | Generate `opencode.json` with `provider.zdr: true` in `extraBody` |
+| **Anthropic/Claude** | Organization | No | Warn: "ZDR requires an org agreement with Anthropic. Verify your org has it." |
+| **Google Gemini** | GCP Project | No | Warn: "ZDR requires project-level approval from Google." |
+| **OpenAI** | Organization | No | Warn: "ZDR requires a sales agreement with OpenAI. Note: images are excluded from ZDR." |
+| **GitHub Copilot** | Plan tier | No | Warn: "ZDR requires Business or Enterprise plan." |
+
+**What `aloop scaffold` does when `zdr_enabled: true`:**
+
+1. **OpenRouter via opencode** — writes the ZDR flag into `opencode.json` (or `.opencode/config.json`):
+   ```json
+   {
+     "provider": {
+       "openrouter": {
+         "options": {
+           "extraBody": {
+             "provider": {
+               "zdr": true
+             }
+           }
+         }
+       }
+     }
+   }
+   ```
+   This causes every OpenRouter request to route only to ZDR-eligible endpoints.
+
+2. **All other providers** — prints a warning during setup confirmation listing which providers require org/project-level agreements, with links to the relevant docs.
+
+3. **Config file** — records `zdr_enabled: true` and `data_classification: private` so the dashboard and monitoring can display the ZDR status. No runtime behavior change — the config is informational for providers that handle ZDR at the org level.
+
+**What setup does NOT do:**
+- Does not exclude providers from round-robin based on ZDR. The user chose their providers; setup warns but doesn't override.
+- Does not change model defaults. ZDR affects routing, not model availability.
+- Does not verify org-level ZDR is actually enabled. There's no API to check this.
 
 Non-interactive mode (for CI/automation):
 - All options passed as flags, no prompts
@@ -3456,19 +3496,7 @@ opencode run -m openrouter/google/gemini-3.1-flash-lite-preview \
 - Pixel size estimates **drift significantly** across models — no model produces reliable absolute pixel measurements. Treat estimates as directional (relative proportions and "too much/too little whitespace") rather than precise pixel values.
 - "Stealth" or test models (e.g., models from unknown providers marked as free/testing) may collect all input data. Do not use them for production workloads with sensitive UI content.
 
-**ZDR (Zero Data Retention) for vision**:
-
-| Provider | ZDR covers images? | How to enable |
-|---|---|---|
-| **Anthropic (direct API)** | Yes — all inputs including images | Enterprise agreement with Anthropic |
-| **AWS Bedrock** | Yes — architectural default | No opt-in needed |
-| **Google Vertex AI / Gemini** | Yes — with config (disable caching, avoid File API) | ZDR opt-out form + invoiced billing |
-| **OpenRouter** | Depends on downstream provider | `zdr: true` per-request flag, routes to ZDR endpoints |
-| **OpenAI (direct + Azure)** | **No** — images explicitly excluded from ZDR | N/A |
-| **Mistral** | Likely but unconfirmed | Contact sales |
-| **ByteDance (Seed models)** | Unknown | Investigate before production use |
-
-For production visual review with data sensitivity requirements, use **Anthropic Claude** (direct API with ZDR), **AWS Bedrock** (default no-retention), or **Gemini via Vertex AI** (ZDR with config). OpenAI's ZDR explicitly carves out image inputs.
+**ZDR (Zero Data Retention) for vision**: See [Zero Data Retention (ZDR)](#zero-data-retention-zdr) for full provider details. Key caveat for vision: **OpenAI's ZDR explicitly excludes image inputs.** For production visual review with sensitive content, use Anthropic Claude (direct API with org ZDR), AWS Bedrock (default no-retention), or Gemini via Vertex AI (project-level ZDR).
 
 ### Implementation Notes
 
