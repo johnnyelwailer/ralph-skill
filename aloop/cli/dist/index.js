@@ -6039,6 +6039,16 @@ var defaultDeps = {
   nodePath: process.execPath,
   aloopPath: path9.resolve(process.argv[1])
 };
+function isStartDeps(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value;
+  return typeof candidate.discoverWorkspace === "function" && typeof candidate.readFile === "function" && typeof candidate.writeFile === "function" && typeof candidate.mkdir === "function" && typeof candidate.cp === "function" && typeof candidate.existsSync === "function" && typeof candidate.spawn === "function" && typeof candidate.spawnSync === "function";
+}
+function resolveStartDeps(depsOrCommand, fallback = defaultDeps) {
+  return isStartDeps(depsOrCommand) ? depsOrCommand : fallback;
+}
 function stripInlineComment2(raw) {
   let inSingle = false;
   let inDouble = false;
@@ -6861,7 +6871,8 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     throw error;
   }
 }
-async function startCommand(sessionIdArg, options = {}, deps = defaultDeps) {
+async function startCommand(sessionIdArg, options = {}, depsOrCommand) {
+  const deps = resolveStartDeps(depsOrCommand);
   if (sessionIdArg) {
     options.sessionId = sessionIdArg;
   }
@@ -9463,7 +9474,7 @@ async function devcontainerCommand(options = {}, depsOrCommand) {
 
 // src/commands/orchestrate.ts
 import { mkdir as mkdir6, readFile as readFile9, readdir as readdir5, unlink as unlink2, writeFile as writeFile9 } from "node:fs/promises";
-import { existsSync as existsSync10 } from "node:fs";
+import { existsSync as existsSync10, readdirSync } from "node:fs";
 import path13 from "node:path";
 var HOUSEKEEPING_AGENTS = /* @__PURE__ */ new Set(["spec-consistency", "spec-backfill", "guard", "loop-health-supervisor"]);
 var defaultDeps4 = {
@@ -9472,6 +9483,7 @@ var defaultDeps4 = {
   writeFile: writeFile9,
   mkdir: mkdir6,
   unlink: unlink2,
+  readdirSync,
   now: () => /* @__PURE__ */ new Date()
 };
 function parseConcurrency(value) {
@@ -9803,6 +9815,57 @@ var ORCH_ARCH_ANALYST_PROMPT_FILENAME = "PROMPT_orch_arch_analyst.md";
 var ORCH_REPLAN_PROMPT_FILENAME = "PROMPT_orch_replan.md";
 var ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME = "PROMPT_orch_spec_consistency.md";
 var DEFAULT_SPEC_GLOB = "SPEC.md specs/*.md";
+function resolveSpecFiles(specInput, projectRoot, deps) {
+  const patterns = specInput.split(/[\s,]+/).filter((p) => p.length > 0);
+  const resolved = [];
+  const seen = /* @__PURE__ */ new Set();
+  const readdirFn = deps.readdirSync ?? readdirSync;
+  for (const pattern of patterns) {
+    if (pattern.includes("*")) {
+      const dir = path13.resolve(projectRoot, path13.dirname(pattern));
+      const ext = path13.extname(pattern.replace("*", "x"));
+      if (!deps.existsSync(dir))
+        continue;
+      let entries;
+      try {
+        entries = readdirFn(dir);
+      } catch {
+        continue;
+      }
+      const matching = entries.filter((e) => ext ? e.endsWith(ext) : true).sort().map((e) => path13.join(dir, e));
+      for (const p of matching) {
+        if (!seen.has(p)) {
+          seen.add(p);
+          resolved.push(p);
+        }
+      }
+    } else {
+      const p = path13.resolve(projectRoot, pattern);
+      if (!seen.has(p)) {
+        seen.add(p);
+        resolved.push(p);
+      }
+    }
+  }
+  return resolved;
+}
+async function loadMergedSpecContent(specFiles, deps) {
+  const existing = specFiles.filter((f) => deps.existsSync(f));
+  if (existing.length === 0)
+    return "";
+  if (existing.length === 1) {
+    return deps.readFile(existing[0], "utf8");
+  }
+  const sections = [];
+  for (const file of existing) {
+    const content = await deps.readFile(file, "utf8");
+    const basename3 = path13.basename(file);
+    sections.push(`<!-- spec: ${basename3} -->
+
+${content}`);
+  }
+  return sections.join("\n\n---\n\n");
+}
 var ORCH_ESTIMATE_PROMPT_FALLBACK = `# Orchestrator Estimation Agent
 
 You are Aloop, the estimation agent for orchestrator readiness checks.
@@ -9915,11 +9978,14 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const homeDir = resolveHomeDir2(options.homeDir);
   const aloopRoot = path13.join(homeDir, ".aloop");
   const sessionsRoot = path13.join(aloopRoot, "sessions");
-  const specFile = options.spec ?? "SPEC.md";
-  const specPath = path13.resolve(specFile);
-  if (!deps.existsSync(specPath)) {
-    throw new Error(`Spec file not found: ${specPath}`);
+  const specInput = options.spec ?? "SPEC.md";
+  const projectRoot = options.projectRoot ? path13.resolve(options.projectRoot) : process.cwd();
+  const specFiles = resolveSpecFiles(specInput, projectRoot, deps);
+  const existingSpecFiles = specFiles.filter((f) => deps.existsSync(f));
+  if (existingSpecFiles.length === 0) {
+    throw new Error(`No spec files found matching: ${specInput}`);
   }
+  const specFile = path13.relative(projectRoot, existingSpecFiles[0]) || existingSpecFiles[0];
   const trunkBranch = options.trunk ?? "agent/trunk";
   const concurrencyCap = parseConcurrency(options.concurrency);
   const filterIssues = parseIssueNumbers(options.issues);
@@ -9951,35 +10017,36 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   await deps.writeFile(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}
 `, "utf8");
   await deps.writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(), "utf8");
-  const templateRoot = options.projectRoot ? path13.resolve(options.projectRoot) : process.cwd();
-  const estimateTemplatePath = path13.join(templateRoot, "aloop", "templates", ORCH_ESTIMATE_PROMPT_FILENAME);
+  const estimateTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_ESTIMATE_PROMPT_FILENAME);
   const estimatePrompt = deps.existsSync(estimateTemplatePath) ? await deps.readFile(estimateTemplatePath, "utf8") : ORCH_ESTIMATE_PROMPT_FALLBACK;
   await deps.writeFile(orchEstimatePromptFile, estimatePrompt, "utf8");
-  const productAnalystTemplatePath = path13.join(templateRoot, "aloop", "templates", ORCH_PRODUCT_ANALYST_PROMPT_FILENAME);
+  const productAnalystTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_PRODUCT_ANALYST_PROMPT_FILENAME);
   const productAnalystPrompt = deps.existsSync(productAnalystTemplatePath) ? await deps.readFile(productAnalystTemplatePath, "utf8") : ORCH_PRODUCT_ANALYST_FALLBACK;
   await deps.writeFile(path13.join(promptsDir, ORCH_PRODUCT_ANALYST_PROMPT_FILENAME), productAnalystPrompt, "utf8");
-  const archAnalystTemplatePath = path13.join(templateRoot, "aloop", "templates", ORCH_ARCH_ANALYST_PROMPT_FILENAME);
+  const archAnalystTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_ARCH_ANALYST_PROMPT_FILENAME);
   const archAnalystPrompt = deps.existsSync(archAnalystTemplatePath) ? await deps.readFile(archAnalystTemplatePath, "utf8") : ORCH_ARCH_ANALYST_FALLBACK;
   await deps.writeFile(path13.join(promptsDir, ORCH_ARCH_ANALYST_PROMPT_FILENAME), archAnalystPrompt, "utf8");
-  const decomposeTemplatePath = path13.join(templateRoot, "aloop", "templates", ORCH_DECOMPOSE_PROMPT_FILENAME);
+  const decomposeTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_DECOMPOSE_PROMPT_FILENAME);
   const decomposePrompt = deps.existsSync(decomposeTemplatePath) ? await deps.readFile(decomposeTemplatePath, "utf8") : ORCH_DECOMPOSE_FALLBACK;
   await deps.writeFile(path13.join(promptsDir, ORCH_DECOMPOSE_PROMPT_FILENAME), decomposePrompt, "utf8");
-  const subDecomposeTemplatePath = path13.join(templateRoot, "aloop", "templates", ORCH_SUB_DECOMPOSE_PROMPT_FILENAME);
+  const subDecomposeTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_SUB_DECOMPOSE_PROMPT_FILENAME);
   const subDecomposePrompt = deps.existsSync(subDecomposeTemplatePath) ? await deps.readFile(subDecomposeTemplatePath, "utf8") : ORCH_SUB_DECOMPOSE_FALLBACK;
   await deps.writeFile(path13.join(promptsDir, ORCH_SUB_DECOMPOSE_PROMPT_FILENAME), subDecomposePrompt, "utf8");
-  const replanTemplatePath = path13.join(templateRoot, "aloop", "templates", ORCH_REPLAN_PROMPT_FILENAME);
+  const replanTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_REPLAN_PROMPT_FILENAME);
   if (deps.existsSync(replanTemplatePath)) {
     const replanPrompt = await deps.readFile(replanTemplatePath, "utf8");
     await deps.writeFile(path13.join(promptsDir, ORCH_REPLAN_PROMPT_FILENAME), replanPrompt, "utf8");
   }
-  const consistencyTemplatePath = path13.join(templateRoot, "aloop", "templates", ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME);
+  const consistencyTemplatePath = path13.join(projectRoot, "aloop", "templates", ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME);
   if (deps.existsSync(consistencyTemplatePath)) {
     const consistencyPrompt = await deps.readFile(consistencyTemplatePath, "utf8");
     await deps.writeFile(path13.join(promptsDir, ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME), consistencyPrompt, "utf8");
   }
+  const specGlob = specInput.includes("*") ? specInput : DEFAULT_SPEC_GLOB;
   let state = {
     spec_file: specFile,
-    spec_glob: DEFAULT_SPEC_GLOB,
+    spec_files: existingSpecFiles.map((f) => path13.relative(projectRoot, f) || f),
+    spec_glob: specGlob,
     autonomy_level: autonomyLevel,
     trunk_branch: trunkBranch,
     concurrency_cap: concurrencyCap,
@@ -10023,10 +10090,10 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     }
   }
   if (!options.plan && state.issues.length === 0) {
-    await createEpicDecompositionRequest(specFile, requestsDir, { writeFile: deps.writeFile, now: deps.now });
-    const specPath2 = path13.resolve(specFile);
-    const specContent = deps.existsSync(specPath2) ? await deps.readFile(specPath2, "utf8") : "";
-    await queueEpicDecomposition(specFile, specContent, queueDir, decomposePrompt, { writeFile: deps.writeFile });
+    const specLabel = existingSpecFiles.length > 1 ? existingSpecFiles.map((f) => path13.relative(projectRoot, f) || f).join(", ") : specFile;
+    await createEpicDecompositionRequest(specLabel, requestsDir, { writeFile: deps.writeFile, now: deps.now });
+    const specContent = await loadMergedSpecContent(existingSpecFiles, deps);
+    await queueEpicDecomposition(specLabel, specContent, queueDir, decomposePrompt, { writeFile: deps.writeFile });
   }
   const subDecompositionResultsFile = path13.join(requestsDir, "sub-decomposition-results.json");
   if (deps.existsSync(subDecompositionResultsFile)) {
@@ -10050,8 +10117,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const gapAnalysisTargets = state.issues.filter((issue) => issue.status === "Needs analysis");
   if (gapAnalysisTargets.length > 0) {
     await createGapAnalysisRequests(state.issues, requestsDir, deps);
-    const specPath2 = path13.resolve(specFile);
-    const specContent = deps.existsSync(specPath2) ? await deps.readFile(specPath2, "utf8") : "";
+    const specContent = await loadMergedSpecContent(existingSpecFiles, deps);
     await queueGapAnalysisForIssues(
       state.issues,
       queueDir,
@@ -10146,7 +10212,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     scanLoopResult = await runOrchestratorScanLoop(
       stateFile,
       sessionDir,
-      templateRoot,
+      projectRoot,
       path13.basename(sessionDir),
       promptsSourceDir,
       aloopRoot,
@@ -10184,7 +10250,7 @@ async function orchestrateCommand(options = {}, depsOrCommand) {
   console.log(`  Requests dir: ${result.requests_dir}`);
   console.log(`  Loop plan:    ${result.loop_plan_file}`);
   console.log(`  State file:   ${result.state_file}`);
-  console.log(`  Spec:         ${result.state.spec_file}`);
+  console.log(`  Spec:         ${result.state.spec_files && result.state.spec_files.length > 1 ? result.state.spec_files.join(", ") : result.state.spec_file}`);
   console.log(`  Trunk:        ${result.state.trunk_branch}`);
   console.log(`  Autonomy:     ${result.state.autonomy_level ?? "balanced"}`);
   console.log(`  Concurrency:  ${result.state.concurrency_cap}`);
@@ -12772,7 +12838,7 @@ program2.command("stop <session-id>").description("Stop a session by session-id"
 program2.command("update").description("Refresh ~/.aloop runtime assets from the current repo checkout").option("--repo-root <path>", "Path to aloop source repository root").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(updateCommand));
 program2.command("devcontainer").description("Generate or augment .devcontainer/devcontainer.json for isolated agent execution").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(devcontainerCommand));
 program2.command("devcontainer-verify").description("Verify devcontainer builds, starts, and passes all checks").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(verifyDevcontainerCommand));
-program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <path>", "Specification file to decompose", "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--interval <ms>", "Scan loop interval in milliseconds (default: 30000)").option("--max-iterations <n>", "Max scan loop iterations (default: 100)").option("--run-scan-loop", "Run the orchestrator scan loop after initialization").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(orchestrateCommand));
+program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <paths>", 'Spec file(s) or glob pattern (e.g. "SPEC.md specs/*.md")', "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--interval <ms>", "Scan loop interval in milliseconds (default: 30000)").option("--max-iterations <n>", "Max scan loop iterations (default: 100)").option("--run-scan-loop", "Run the orchestrator scan loop after initialization").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(orchestrateCommand));
 program2.command("steer <instruction>").description("Send a steering instruction to an active session").option("--session <id>", "Target session ID (auto-detected if only one active)").option("--affects-completed-work <value>", "Whether instruction affects completed work: yes, no, or unknown", "unknown").option("--overwrite", "Overwrite an existing queued steering instruction").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(steerCommand));
 program2.addCommand(ghCommand);
 program2.command("debug-env", { hidden: true }).description("Print current environment variables (for testing)").action(() => {
