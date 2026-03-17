@@ -1,18 +1,18 @@
 # Project TODO
 
-## Current Phase: Review Fixes + P1 Bug Fixes
+## Current Phase: Packaged-Install Parity + Review Gates
 
 Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) P1 hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
 - [ ] [review] Gate 1/2: The fix for `[qa/P1] aloop start fails...` in `1ff36db` is physically broken because `aloop/bin/` loop scripts are omitted from the npm package (tarball only includes `dist/`). The test added (`resolveBundledBinDir resolves...`) manually creates a fake `aloop/bin/loop.sh`, creating a false positive. Fix `package.json` build steps to include or copy the `bin/` directory, and update the test to verify actual package contents (or ensure the E2E `test-install` script validates loop script presence). (priority: high)
-- [ ] [review] Gate 5: `aloop/cli/src/index.test.ts` test `index CLI catches errors and prints clean messages without stack traces` fails in isolation/coverage because it relies on `SPEC.md` existing in `process.cwd()`. If it's missing, orchestrate throws a "No spec files" error before checking autonomy level. Refactor the test to use a temporary directory with a mock `SPEC.md`. (priority: high)
+- [x] [review] Gate 5: `aloop/cli/src/index.test.ts` test `index CLI catches errors and prints clean messages without stack traces` fails in isolation/coverage because it relies on `SPEC.md` existing in `process.cwd()`. If it's missing, orchestrate throws a "No spec files" error before checking autonomy level. Refactor the test to use a temporary directory with a mock `SPEC.md`. (priority: high)
 - [x] [review] Gate 1: `project.mjs` setup-mode recommendation overcounts complexity due to substring keyword collisions (`infra` + `infrastructure`, `auth` + `authentication`) and CI test detection treating generic `check` matches as test evidence (`checkout` false positive). Fix: replace substring `.includes()` matching in `analyzeSpecComplexity` with normalized category-level deduplication (group synonyms like `infra`/`infrastructure` into one category), and tighten CI classification in `detectCIWorkflowSupport` to use word-boundary or job-level semantics instead of raw `.includes('check')`. (priority: high) [reviewed: pass — iter 198]
 - [x] [review] Gate 2: add regression tests for recommendation correctness edge cases in `project.test.ts` — (a) overlapping workstream synonyms should count once (spec with both `Auth` and `Authentication` headers → `workstream_count` should not double-count), (b) workflow content containing `actions/checkout` without test jobs must not set `ci_support.workflow_types` to include `test`, (c) recommendation should stay `loop` for simple spec + non-test workflow. Use exact assertions on `workstream_count`, `workflow_types`, and `recommended_mode`. (priority: high) [reviewed: pass — iter 198]
 
 ### Up Next — P1 (blocks loop-mode usage)
-- [ ] [qa/P1] `aloop start` fails after fresh packaged-install setup in isolated `HOME`: `Error: Loop script not found: <HOME>/.aloop/bin/loop.sh`. Tested at iter 175. Root cause: `resolveBundledBinDir()` in `project.mjs` cannot locate bundled bin scripts when the CLI binary is installed to a temp/packaged location outside the source tree. Setup succeeds (templates found) but loop scripts are not copied to `~/.aloop/bin/`. Fixed by broadening bundled bin resolution to include packaged `aloop/bin` layouts and adding regression coverage in `project.test.ts`. (priority: high)
-  - Re-test 2026-03-17 (iter 176): FAIL persists on packaged install (`/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop`) with fresh isolated `HOME`; `aloop setup --non-interactive --providers codex --spec SPEC.md` succeeds, but `aloop start --max-iterations 1` still exits 1 with `Loop script not found: <HOME>/.aloop/bin/loop.sh`.
+- [ ] [qa/P1] Re-validate packaged-install `aloop setup` + `aloop start` in isolated `HOME` after Gate 1 fix lands, and capture a regression proof that loop scripts are bootstrapped from the installed package (not repo-local fixtures). (priority: high)
+  - Last verification (2026-03-17, iter 176): FAIL on packaged install (`/home/pj/.tmp/aloop-test-install-dN1hXP/bin/aloop`) with fresh isolated `HOME`; `aloop setup --non-interactive --providers codex --spec SPEC.md` succeeds, but `aloop start --max-iterations 1` exits 1 with `Loop script not found: <HOME>/.aloop/bin/loop.sh`.
 
 ### Up Next — P2 (after P1 bugs and review gates)
 *(No open P2 tasks — all completed or cancelled)*
@@ -35,6 +35,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 - [ ] [dashboard/low] Extend E2E `smoke.spec.ts` coverage for explicit 1920x1080 sidebar/docs/activity visibility checks once core gates are green.
 
 ### Cancelled / Superseded
+- [~] [qa/P1] Original packaged-install bin-resolution task text superseded by active `[review] Gate 1/2` + explicit packaged-install revalidation task in Up Next; keeping one canonical tracker avoids split ownership of the same root defect.
 - [~] [orchestrator/P0] Label-driven state machine — superseded by GitHub-native status/project-state progression with minimal-label fallback.
 - [~] [dashboard/low] Docs-tab trigger filtering — already implemented (`App.tsx` filters non-empty docs).
 - [~] [qa/P1] Provider health backoff — superseded: cooldown behavior in `loop.sh` is correct; remaining cross-platform defect is tracked separately as loop parity tasks.

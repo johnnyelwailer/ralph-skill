@@ -60,7 +60,12 @@ test('index CLI returns non-zero for unknown command', async () => {
 });
 
 test('index CLI catches errors and prints clean messages without stack traces', async () => {
-  const result = await runCli(['orchestrate', '--autonomy-level', 'invalid']);
+  // Run in a temp directory with a mock SPEC.md so the orchestrate command
+  // passes spec-file validation and reaches the autonomy-level check.
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-error-'));
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  const result = await runCli(['orchestrate', '--autonomy-level', 'invalid'], tempRoot);
   assert.equal(result.code, 1);
   assert.match(result.stderr, /^Error: Invalid autonomy level: invalid/);
   assert.ok(!result.stderr.includes('at '));
