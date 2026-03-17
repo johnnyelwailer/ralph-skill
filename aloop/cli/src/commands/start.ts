@@ -333,6 +333,17 @@ function assertLoopMode(value: string): LoopMode {
   return normalized;
 }
 
+function resolveConfiguredStartMode(value: string): LoopMode {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'loop') {
+    return 'plan-build-review';
+  }
+  if (normalized === 'orchestrate') {
+    throw new Error('Invalid mode: orchestrate (use `aloop orchestrate` for orchestrator sessions).');
+  }
+  return assertLoopMode(value);
+}
+
 function assertLaunchMode(value: string): LaunchMode {
   const normalized = value.trim().toLowerCase() as LaunchMode;
   if (!LAUNCH_MODE_SET.has(normalized)) {
@@ -621,8 +632,8 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
 
   const forcedMode = resolveModeFromFlags(options);
   const resolvedMode = forcedMode
-    ?? (options.mode ? assertLoopMode(options.mode) : null)
-    ?? assertLoopMode(String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, 'plan-build-review')));
+    ?? (options.mode ? resolveConfiguredStartMode(options.mode) : null)
+    ?? resolveConfiguredStartMode(String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, 'plan-build-review')));
 
   const launchMode: LaunchMode = options.launch ? assertLaunchMode(options.launch) : 'start';
 

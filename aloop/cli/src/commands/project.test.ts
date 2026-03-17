@@ -124,6 +124,31 @@ test('scaffoldWorkspace in orchestrate mode writes orchestrator prompts and conf
   assert.equal(generatedFiles.length, orchestratorTemplates.length, `should generate exactly ${orchestratorTemplates.length} prompt files, got ${generatedFiles.length}`);
 });
 
+test('scaffoldWorkspace normalizes mode loop to plan-build-review', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-loop-mode-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+
+  const result = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    mode: 'loop',
+  });
+
+  const config = await readFile(result.config_path, 'utf8');
+  assert.match(config, /mode: 'plan-build-review'/);
+});
+
 test('scaffoldWorkspace expands nested template includes before variable substitution', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-includes-'));
   const homeRoot = path.join(tempRoot, 'home');

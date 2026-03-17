@@ -192,6 +192,92 @@ test('startCommandWithDeps bootstraps in-place session and registers active map'
   assert.equal(active[result.session_id].work_dir, fixture.projectRoot);
 });
 
+test('startCommandWithDeps accepts legacy config mode loop as plan-build-review', async () => {
+  const fixture = await setupWorkspace('aloop-start-legacy-loop-mode-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'claude'",
+      "mode: 'loop'",
+      'enabled_providers:',
+      "  - 'claude'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 3141, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.mode, 'plan-build-review');
+});
+
+test('startCommandWithDeps accepts --mode loop as plan-build-review', async () => {
+  const fixture = await setupWorkspace('aloop-start-cli-loop-mode-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'claude'",
+      "mode: 'plan'",
+      'enabled_providers:',
+      "  - 'claude'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true, mode: 'loop' },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 4243, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.mode, 'plan-build-review');
+});
+
 test('startCommandWithDeps falls back to in-place when git worktree add fails', async () => {
   const fixture = await setupWorkspace('aloop-start-worktree-fallback-');
   await writeFile(

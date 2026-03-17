@@ -3442,6 +3442,23 @@ var ORCHESTRATOR_PROMPT_TEMPLATES = [
 function resolvePromptTemplates(mode) {
   return mode === "orchestrate" ? ORCHESTRATOR_PROMPT_TEMPLATES : LOOP_PROMPT_TEMPLATES;
 }
+function normalizeScaffoldMode(mode) {
+  if (typeof mode !== "string") {
+    return "plan-build-review";
+  }
+  const trimmed = mode.trim();
+  if (trimmed.length === 0) {
+    return "plan-build-review";
+  }
+  const lowered = trimmed.toLowerCase();
+  if (lowered === "loop") {
+    return "plan-build-review";
+  }
+  if (lowered === "orchestrate") {
+    return "orchestrate";
+  }
+  return trimmed;
+}
 var INCLUDE_DIRECTIVE_PATTERN = /\{\{include:([^}]+)\}\}/g;
 async function expandTemplateIncludes(content, templatesDir, seenIncludes = []) {
   const directives = [...content.matchAll(INCLUDE_DIRECTIVE_PATTERN)];
@@ -3485,7 +3502,7 @@ async function scaffoldWorkspace(options = {}) {
   const safetyRules = normalizeList(options.safetyRules);
   const resolvedSafetyRules = safetyRules.length > 0 ? safetyRules : ["Never delete the project directory or run destructive commands", "Never push to remote without explicit user approval"];
   const language = options.language ?? discovery.context.detected_language;
-  const mode = options.mode ?? "plan-build-review";
+  const mode = normalizeScaffoldMode(options.mode);
   const autonomyLevel = normalizeAutonomyLevel(options.autonomyLevel);
   const dataPrivacy = normalizeDataPrivacy(options.dataPrivacy);
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
@@ -6214,6 +6231,16 @@ function assertLoopMode(value) {
   }
   return normalized;
 }
+function resolveConfiguredStartMode(value) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "loop") {
+    return "plan-build-review";
+  }
+  if (normalized === "orchestrate") {
+    throw new Error("Invalid mode: orchestrate (use `aloop orchestrate` for orchestrator sessions).");
+  }
+  return assertLoopMode(value);
+}
 function assertLaunchMode(value) {
   const normalized = value.trim().toLowerCase();
   if (!LAUNCH_MODE_SET.has(normalized)) {
@@ -6447,7 +6474,7 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     enabledProviders.push("claude");
   }
   const forcedMode = resolveModeFromFlags(options);
-  const resolvedMode = forcedMode ?? (options.mode ? assertLoopMode(options.mode) : null) ?? assertLoopMode(String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, "plan-build-review")));
+  const resolvedMode = forcedMode ?? (options.mode ? resolveConfiguredStartMode(options.mode) : null) ?? resolveConfiguredStartMode(String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, "plan-build-review")));
   const launchMode = options.launch ? assertLaunchMode(options.launch) : "start";
   const selectedProvider = options.provider ? assertLoopProvider(options.provider) : assertLoopProvider(String(selectValue(projectConfig.values.provider, globalConfig.values.default_provider, discovery.providers.default_provider, "claude")));
   if (selectedProvider !== "round-robin" && !enabledProviders.includes(selectedProvider)) {

@@ -433,6 +433,24 @@ function resolvePromptTemplates(mode) {
   return mode === 'orchestrate' ? ORCHESTRATOR_PROMPT_TEMPLATES : LOOP_PROMPT_TEMPLATES;
 }
 
+function normalizeScaffoldMode(mode) {
+  if (typeof mode !== 'string') {
+    return 'plan-build-review';
+  }
+  const trimmed = mode.trim();
+  if (trimmed.length === 0) {
+    return 'plan-build-review';
+  }
+  const lowered = trimmed.toLowerCase();
+  if (lowered === 'loop') {
+    return 'plan-build-review';
+  }
+  if (lowered === 'orchestrate') {
+    return 'orchestrate';
+  }
+  return trimmed;
+}
+
 const INCLUDE_DIRECTIVE_PATTERN = /\{\{include:([^}]+)\}\}/g;
 
 async function expandTemplateIncludes(content, templatesDir, seenIncludes = []) {
@@ -497,7 +515,7 @@ export async function scaffoldWorkspace(options = {}) {
   const resolvedSafetyRules =
     safetyRules.length > 0 ? safetyRules : ['Never delete the project directory or run destructive commands', 'Never push to remote without explicit user approval'];
   const language = options.language ?? discovery.context.detected_language;
-  const mode = options.mode ?? 'plan-build-review';
+  const mode = normalizeScaffoldMode(options.mode);
   const autonomyLevel = normalizeAutonomyLevel(options.autonomyLevel);
   const dataPrivacy = normalizeDataPrivacy(options.dataPrivacy);
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
