@@ -1,5 +1,32 @@
 # Review Log
 
+## Review — 2026-03-17 18:00 UTC — commit 1260e17..2c94950
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/lib/github-monitor.ts`, `aloop/cli/src/lib/github-monitor.test.ts`, `aloop/cli/src/lib/github-webhook.ts`, `aloop/cli/src/lib/github-webhook.test.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/src/commands/devcontainer.ts`, `aloop/cli/src/commands/devcontainer.test.ts`, `aloop/cli/src/commands/project.test.ts`, `aloop/cli/lib/project.mjs`
+
+- Gate 3: **`github-monitor.ts` branch coverage is 69.83%** (target >=90% for new modules). `EtagCache.save()` mkdir branch, `ghApiWithEtag` non-CRLF header parsing, 304-without-cache edge, non-JSON body fallback, and `fetchBulkIssueState` node-filtering branches are untested.
+- Gate 3: **`github-webhook.ts` branch coverage is 75.38%** (target >=90% for new modules). `WebhookServer.start()` re-entry, `server.address()` type guard, `stop()` re-entry, and handler exception paths are untested.
+- Gate 4: **Dead code** — `github-webhook.ts` is not imported by any production module. Only its test file references it. `orchestrate.ts` imports only from `github-monitor.ts`. The webhook server, relevance filter, and invalidation key extractor are unreachable from any CLI entry point.
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: `loop.ps1` review-verdict removal completed (prior PASS review at 1260e17).
+- Gate 6 ✅: Start crash fix proof manifest verified (prior PASS review).
+
+**Positive observations:**
+- Gate 1: Host-capability dispatch routing correctly implements SPEC sandbox/requires fields — `detectHostCapabilities` checks platform, docker, GPU (env vars + nvidia-smi), network-access; `filterByHostCapabilities` blocks issues with missing labels and logs `scan_dispatch_blocked_requirements` events. `launchChildLoop` passes `ALOOP_TASK_SANDBOX` and `ALOOP_TASK_REQUIRES` env vars to child processes.
+- Gate 1: `checkAuthPreflight` correctly implements SPEC's auto-detection flow step 1 — checks `CLAUDE_CODE_OAUTH_TOKEN` before `ANTHROPIC_API_KEY` for Claude, provides actionable guidance per provider, and warnings are printed before "Next steps" in CLI output.
+- Gate 1: ETag-guarded GitHub monitoring matches SPEC strategy — `ghApiWithEtag` sends `If-None-Match` conditional requests, returns cached data on 304, skips network when within TTL. `fetchBulkIssueState` uses single GraphQL query with `since` filtering. Integrated into scan loop as step 0.3.
+- Gate 1: Provider resolution from config correctly prioritizes `enabled_providers` > `round_robin_order` > single `provider` > discovered installed providers, matching SPEC devcontainer generator requirements.
+- Gate 2: `github-monitor.test.ts` (28 tests) uses concrete value assertions — exact ETag strings, exact parsed JSON structures, exact change detection reasons. `github-webhook.test.ts` (20 tests) includes real HTTP requests to ephemeral server with signature verification using `createHmac`. `devcontainer.test.ts` auth preflight tests (8 new) assert exact provider names, missing var arrays, and guidance strings. All tests are substantive.
+- Gate 2: `orchestrate.test.ts` host-capability tests assert exact `eligible`/`blocked` arrays with specific issue numbers and missing labels — thorough.
+- Gate 5: All tests pass — orchestrate 294/294, devcontainer 101/101, github-monitor 28/28, github-webhook 20/20, project 38/38, CLI 8/8. Type-check clean. Build succeeds.
+- Gate 6: Proof manifest (iter 179) contains valid CLI captures — devcontainer auth warnings showing 5 provider warnings with actionable guidance, setup orchestrate config with `mode: 'orchestrate'`, and capability dispatch proof showing issue filtering on linux host. Skipped items (live GitHub API, multi-platform live dispatch) are reasonable.
+- Gate 8: No dependency changes; version compliance unchanged.
+- Gate 9: README already documents `orchestrate` and `devcontainer` at high level; new features are internal implementation details that don't change CLI interface. No drift.
+
+---
+
 ## Review — 2026-03-16 18:30 UTC — commit 011b264..deed10c
 
 **Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
