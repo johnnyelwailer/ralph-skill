@@ -10,9 +10,9 @@
 //   ALOOP_BIN=$(npm run --silent test-install -- --keep | tail -1)
 
 import { execSync } from 'node:child_process';
-import { mkdtempSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 
 const keep = process.argv.includes('--keep');
 const prefix = mkdtempSync(join(tmpdir(), 'aloop-test-install-'));
@@ -32,6 +32,19 @@ try {
   const bin = join(prefix, 'bin', 'aloop');
   console.error(`Verifying ${bin} ...`);
   execSync(`${bin} --help`, { stdio: ['inherit', 'pipe', 'inherit'] });
+
+  // Verify loop scripts are present in the installed package
+  // The installed package layout: <prefix>/lib/node_modules/aloop-cli/dist/bin/
+  const installedDistDir = join(prefix, 'lib', 'node_modules', 'aloop-cli', 'dist');
+  const installedBinDir = join(installedDistDir, 'bin');
+  const requiredScripts = ['loop.sh', 'loop.ps1'];
+  for (const scriptName of requiredScripts) {
+    const scriptPath = join(installedBinDir, scriptName);
+    if (!existsSync(scriptPath)) {
+      throw new Error(`Loop script missing from installed package: ${scriptPath}`);
+    }
+  }
+  console.error(`Verified loop scripts present at ${installedBinDir}`);
 
   if (keep) {
     console.error(`\n✓ test-install passed (prefix kept at ${prefix})`);

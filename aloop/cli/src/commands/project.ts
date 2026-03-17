@@ -31,6 +31,7 @@ export interface ScaffoldOptions extends BaseOptions {
   safetyRules?: string[];
   mode?: string;
   templatesDir?: string;
+  bundledBinDir?: string;
 }
 
 export interface SpecComplexity {

@@ -944,24 +944,40 @@ test('resolveBundledBinDir resolves loop scripts from aloop/bin in packaged dist
   assert.equal(resolved, binDir);
 });
 
+test('resolveBundledBinDir resolves dist/bin/ in actual package layout', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-bin-resolve-dist-'));
+  const distDir = path.join(tempRoot, 'dist');
+  const binDir = path.join(distDir, 'bin');
+  await mkdir(binDir, { recursive: true });
+  await writeFile(path.join(binDir, 'loop.sh'), '#!/bin/sh\n', 'utf8');
+  await writeFile(path.join(binDir, 'loop.ps1'), 'Write-Host "loop"', 'utf8');
+
+  const resolved = resolveBundledBinDir({
+    moduleDir: distDir,
+    argv1: path.join(distDir, 'index.js'),
+    cwd: tempRoot,
+  });
+
+  assert.equal(resolved, binDir);
+});
+
 test('scaffoldWorkspace bootstraps loop scripts to home bin for fresh HOME', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-bootstrap-bin-'));
   const homeRoot = path.join(tempRoot, 'home');
+  const bundledBinDir = path.join(tempRoot, 'fake-bundled-bin');
   await mkdir(homeRoot, { recursive: true });
+  await mkdir(bundledBinDir, { recursive: true });
   await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(bundledBinDir, 'loop.sh'), '#!/bin/sh\necho loop', 'utf8');
+  await writeFile(path.join(bundledBinDir, 'loop.ps1'), 'Write-Host "loop"', 'utf8');
 
   await scaffoldWorkspace({
     projectRoot: tempRoot,
     homeDir: homeRoot,
+    bundledBinDir,
   });
 
   const homeBinDir = path.join(homeRoot, '.aloop', 'bin');
-  const bundledBinDir = resolveBundledBinDir();
-  assert.ok(bundledBinDir, 'bundled bin dir should resolve for test fixture');
-  if (!bundledBinDir) {
-    throw new Error('bundled bin dir should resolve for test fixture');
-  }
-
   const requiredScripts = ['loop.sh', 'loop.ps1'];
   for (const scriptName of requiredScripts) {
     const copiedScriptPath = path.join(homeBinDir, scriptName);

@@ -3770,7 +3770,7 @@ async function scaffoldWorkspace(options = {}) {
   const loopBinDir = path.join(discovery.setup.templates_dir, "..", "bin");
   const loopScriptsMissing = LOOP_SCRIPT_FILES.some((file) => !existsSync(path.join(loopBinDir, file)));
   if (loopScriptsMissing) {
-    const bundledBinDir = resolveBundledBinDir();
+    const bundledBinDir = options.bundledBinDir ?? resolveBundledBinDir();
     if (bundledBinDir) {
       await mkdir(loopBinDir, { recursive: true });
       for (const scriptName of LOOP_SCRIPT_FILES) {
