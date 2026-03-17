@@ -77,23 +77,6 @@ RESEARCH.md
 - If no proof was generated at all but the work had observable output, reject.
 - **IMPORTANT: Test output is NOT proof.** If the proof manifest contains files like `*-tests.txt`, `*-test-output.txt`, test pass counts, file listings, config content dumps, or `tsc --noEmit` results — **that is a Gate 6 FAIL**. Write a `[review]` task telling the proof agent to skip instead of producing filler. Valid proof = screenshots, API response captures, CLI recordings, before/after comparisons, Playwright videos. If the work is purely internal (config files, templates, refactoring, type changes, plumbing), skipping proof with an empty artifacts array is the **expected correct outcome** — do not reject for that.
 
-## Mandatory Machine-Readable Verdict
-
-Before exiting this review iteration, write a JSON verdict file at:
-{{SESSION_DIR}}/review-verdict.json
-
-Schema:
-
-```json
-{
-  "iteration": {{ITERATION}},
-  "verdict": "PASS" | "FAIL",
-  "summary": "<one-sentence reason>"
-}
-```
-
-Do not skip writing this file.
-
 ### Gate 7: Runtime Layout Verification (UI changes only)
 
 **This gate applies when the build touched CSS, layout components, or visual structure.** Skip if the build was purely backend/logic.

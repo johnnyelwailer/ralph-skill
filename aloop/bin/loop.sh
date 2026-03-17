@@ -255,7 +255,6 @@ LOOP_PLAN_FILE="$SESSION_DIR/loop-plan.json"
 STATUS_FILE="$SESSION_DIR/status.json"
 LOG_FILE="$SESSION_DIR/log.jsonl"
 REPORT_FILE="$SESSION_DIR/report.md"
-REVIEW_VERDICT_FILE="$SESSION_DIR/review-verdict.json"
 ARTIFACTS_DIR="$SESSION_DIR/artifacts"
 START_TIME=$(date +%s)
 RUN_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || date +%s%N)
@@ -1313,44 +1312,6 @@ get_current_task() {
     grep '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null | head -1 | sed 's/.*- \[ \] //' || echo ""
 }
 
-reset_review_verdict() {
-    rm -f "$REVIEW_VERDICT_FILE"
-}
-
-get_review_verdict() {
-    local expected_iteration="$1"
-
-    if [ ! -f "$REVIEW_VERDICT_FILE" ]; then
-        echo "Warning: Review verdict file missing: $REVIEW_VERDICT_FILE" >&2
-        write_log_entry "review_verdict_missing" "iteration" "$expected_iteration" "path" "$REVIEW_VERDICT_FILE"
-        echo ""
-        return
-    fi
-
-    local raw
-    raw=$(tr -d '\r\n' < "$REVIEW_VERDICT_FILE")
-    local verdict
-    verdict=$(printf '%s' "$raw" | sed -nE 's/.*"verdict"[[:space:]]*:[[:space:]]*"([A-Za-z]+)".*/\1/p' | head -1 | tr '[:lower:]' '[:upper:]')
-    local file_iteration
-    file_iteration=$(printf '%s' "$raw" | sed -nE 's/.*"iteration"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' | head -1)
-
-    if [ -z "$verdict" ] || { [ "$verdict" != "PASS" ] && [ "$verdict" != "FAIL" ]; }; then
-        echo "Warning: Review verdict file has invalid verdict value: $REVIEW_VERDICT_FILE" >&2
-        write_log_entry "review_verdict_invalid" "iteration" "$expected_iteration" "path" "$REVIEW_VERDICT_FILE" "reason" "invalid_verdict"
-        echo ""
-        return
-    fi
-
-    if [ -z "$file_iteration" ] || [ "$file_iteration" -ne "$expected_iteration" ]; then
-        echo "Warning: Review verdict file has invalid or stale iteration value: $REVIEW_VERDICT_FILE" >&2
-        write_log_entry "review_verdict_invalid" "iteration" "$expected_iteration" "path" "$REVIEW_VERDICT_FILE" "reason" "invalid_iteration" "file_iteration" "${file_iteration:-}"
-        echo ""
-        return
-    fi
-
-    write_log_entry "review_verdict_read" "iteration" "$expected_iteration" "path" "$REVIEW_VERDICT_FILE" "verdict" "$verdict"
-    echo "$verdict"
-}
 
 # ============================================================================
 # STUCK DETECTION
@@ -2011,9 +1972,6 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     # Invoke provider
     prompt_content=$(cat "$iter_prompt_file")
 
-    if [ "$iter_mode" = "review" ]; then
-        reset_review_verdict
-    fi
     prompt_content="$(substitute_prompt_placeholders "$prompt_content")"
 
     cd "$WORK_DIR"

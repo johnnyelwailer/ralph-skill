@@ -942,7 +942,7 @@ Collapsible sidebar (Ctrl+B) showing all sessions in a tree grouped by project.
 
 **Activity log (right column):**
 
-Log entries from JSONL, parsed and filtered. Skip noise events (`frontmatter_applied`, duplicate `session_start`). Show only meaningful events: `iteration_complete`, `iteration_error`, `provider_cooldown`, `provider_recovered`, `review_verdict_read`, first `session_start`.
+Log entries from JSONL, parsed and filtered. Skip noise events (`frontmatter_applied`, duplicate `session_start`). Show only meaningful events: `iteration_complete`, `iteration_error`, `provider_cooldown`, `provider_recovered`, first `session_start`.
 
 Grouped by date (sticky headers with backdrop blur), **newest first** within each group and across groups.
 
