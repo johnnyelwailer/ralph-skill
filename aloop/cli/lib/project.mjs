@@ -186,19 +186,44 @@ async function discoverSpecCandidates(projectRoot) {
  * @param {string[]} specCandidates
  * @returns {Promise<Object>}
  */
+// Canonical workstream categories — synonyms map to one category to prevent
+// overlap overcounting (e.g., "infra" and "infrastructure").
+const WORKSTREAM_CATEGORIES = {
+  frontend: 'frontend',
+  backend: 'backend',
+  infrastructure: 'infrastructure',
+  infra: 'infrastructure',
+  api: 'api',
+  ui: 'ui',
+  database: 'database',
+  db: 'database',
+  auth: 'auth',
+  authentication: 'auth',
+  deployment: 'deployment',
+  devops: 'devops',
+  mobile: 'mobile',
+  web: 'web',
+  cli: 'cli',
+  sdk: 'sdk',
+  library: 'library',
+  service: 'service',
+  microservice: 'service',
+  integration: 'integration',
+};
+const WORKSTREAM_MATCHERS = Object.entries(WORKSTREAM_CATEGORIES).map(([keyword, category]) => ({
+  category,
+  regex: new RegExp(`\\b${keyword}\\b`, 'i'),
+}));
+
 async function analyzeSpecComplexity(projectRoot, specCandidates) {
-  const workstreamKeywords = [
-    'frontend', 'backend', 'infrastructure', 'infra', 'api', 'ui', 'database',
-    'db', 'auth', 'authentication', 'deployment', 'devops', 'mobile', 'web',
-    'cli', 'sdk', 'library', 'service', 'microservice', 'integration',
-  ];
   const parallelismKeywords = [
     'parallel', 'concurrent', 'simultaneous', 'independent', 'separate',
     'decoupled', 'async', 'asynchronous', 'fan-out', 'fanout', 'multi-track',
     'workstream', 'workstreams',
   ];
 
-  let totalWorkstreams = 0;
+  const discoveredWorkstreams = new Set();
+  let fallbackWorkstreamFiles = 0;
   let totalParallelismSignals = 0;
   let totalEstimatedIssues = 0;
   let analyzedFiles = 0;
@@ -211,23 +236,22 @@ async function analyzeSpecComplexity(projectRoot, specCandidates) {
       const lowered = content.toLowerCase();
       analyzedFiles++;
 
-      // Count distinct workstream sections: H2/H3 headers matching workstream keywords
+      // Count distinct workstream categories from H2/H3 headers.
       const headerLines = content.split(/\r?\n/).filter(line => /^#{2,3}\s/.test(line));
-      const workstreamHeaders = headerLines.filter(h => {
-        const hLower = h.toLowerCase();
-        return workstreamKeywords.some(kw => hLower.includes(kw));
-      });
-      // Unique workstream types (e.g., "frontend" appears in multiple headers = 1 workstream)
-      const uniqueWorkstreamTypes = new Set();
-      for (const h of workstreamHeaders) {
-        const hLower = h.toLowerCase();
-        for (const kw of workstreamKeywords) {
-          if (hLower.includes(kw)) {
-            uniqueWorkstreamTypes.add(kw);
+      const uniqueFileCategories = new Set();
+      for (const header of headerLines) {
+        for (const matcher of WORKSTREAM_MATCHERS) {
+          if (matcher.regex.test(header)) {
+            uniqueFileCategories.add(matcher.category);
           }
         }
       }
-      totalWorkstreams += uniqueWorkstreamTypes.size || (headerLines.length > 0 ? Math.min(headerLines.length, 1) : 0);
+      for (const category of uniqueFileCategories) {
+        discoveredWorkstreams.add(category);
+      }
+      if (uniqueFileCategories.size === 0 && headerLines.length > 0) {
+        fallbackWorkstreamFiles += 1;
+      }
 
       // Count parallelism signals
       for (const kw of parallelismKeywords) {
@@ -246,7 +270,9 @@ async function analyzeSpecComplexity(projectRoot, specCandidates) {
     }
   }
 
-  const workstreamCount = totalWorkstreams > 0 ? totalWorkstreams : 1;
+  const workstreamCount = discoveredWorkstreams.size > 0
+    ? discoveredWorkstreams.size
+    : (fallbackWorkstreamFiles > 0 ? fallbackWorkstreamFiles : 1);
   const parallelismScore = totalParallelismSignals;
   const estimatedIssueCount = totalEstimatedIssues > 0 ? totalEstimatedIssues : 1;
 
@@ -280,7 +306,11 @@ async function detectCIWorkflowSupport(projectRoot) {
         try {
           const content = await readFile(path.join(workflowsDir, file), 'utf8');
           const lowered = content.toLowerCase();
-          if (lowered.includes('test') || lowered.includes('ci') || lowered.includes('check')) {
+          const hasExplicitTestJob = /^\s{2,}(test|tests|check|checks)\s*:\s*$/gim.test(content);
+          const hasTestCommand = /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b/i.test(content)
+            || /\b(?:pytest|go test|cargo test|dotnet test|ctest)\b/i.test(content);
+          const hasTestKeyword = /\btests?\b/i.test(content) || /\btesting\b/i.test(content);
+          if (hasExplicitTestJob || hasTestCommand || hasTestKeyword) {
             workflowTypes.push('test');
           }
           if (lowered.includes('lint') || lowered.includes('eslint') || lowered.includes('ruff')) {
