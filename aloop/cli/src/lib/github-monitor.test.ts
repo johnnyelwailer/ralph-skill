@@ -128,6 +128,18 @@ describe('EtagCache', () => {
     assert.equal(parsed.version, 1);
     assert.ok(parsed.entries.key);
   });
+
+  it('saves to non-existent directory (creates recursive)', async () => {
+    const nestedDir = path.join(tmpDir, 'nested/path/to/cache');
+    const cache = new EtagCache(nestedDir);
+    cache.set('key', 'etag', 'data');
+    await cache.save();
+
+    const cacheFile = path.join(nestedDir, 'github-etag-cache.json');
+    const content = await readFile(cacheFile, 'utf8');
+    const parsed = JSON.parse(content);
+    assert.equal(parsed.entries.key.etag, 'etag');
+  });
 });
 
 // --- ghApiWithEtag tests ---
@@ -164,6 +176,40 @@ describe('ghApiWithEtag', () => {
     const entry = cache.get('GET:repos/test/repo');
     assert.ok(entry);
     assert.equal(entry.etag, 'abc123');
+  });
+
+  it('supports non-CRLF header separator', async () => {
+    const mockExec: GhExecFn = async () => ({
+      stdout: 'HTTP/1.1 200 OK\netag: abc\n\n{"key":"value"}',
+      stderr: '',
+    });
+
+    const result = await ghApiWithEtag('repos/test/repo', cache, mockExec);
+    assert.equal(result.status, 'modified');
+    assert.equal(result.etag, 'abc');
+    assert.deepEqual(result.data, { key: 'value' });
+  });
+
+  it('handles 304 with no cached entry (error path)', async () => {
+    const mockExec: GhExecFn = async () => ({
+      stdout: 'HTTP/1.1 304 Not Modified\r\n\r\n',
+      stderr: '',
+    });
+
+    const result = await ghApiWithEtag('repos/test/repo', cache, mockExec, { ttlMs: 0 });
+    assert.equal(result.status, 'error');
+    assert.ok(result.error?.includes('no cached data available'));
+  });
+
+  it('handles response without JSON body (returns raw string)', async () => {
+    const mockExec: GhExecFn = async () => ({
+      stdout: 'HTTP/1.1 200 OK\r\n\r\nNot-A-JSON-Body',
+      stderr: '',
+    });
+
+    const result = await ghApiWithEtag('repos/test/repo', cache, mockExec);
+    assert.equal(result.status, 'modified');
+    assert.equal(result.data, 'Not-A-JSON-Body');
   });
 
   it('sends conditional request with cached ETag', async () => {
@@ -410,6 +456,29 @@ describe('fetchBulkIssueState', () => {
 
     assert.equal(result.issues.length, 1);
     assert.equal(result.issues[0].number, 2);
+  });
+
+  it('skips nodes without number field', async () => {
+    const mockResponse = {
+      data: {
+        repository: {
+          issues: {
+            nodes: [
+              { title: 'Incomplete' },
+              { number: 5, title: 'Valid' },
+            ],
+          },
+        },
+      },
+    };
+
+    const result = await fetchBulkIssueState('o/r', async () => ({
+      stdout: JSON.stringify(mockResponse),
+      stderr: '',
+    }));
+
+    assert.equal(result.issues.length, 1);
+    assert.equal(result.issues[0].number, 5);
   });
 
   it('handles malformed response gracefully', async () => {
