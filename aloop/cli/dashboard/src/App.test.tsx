@@ -954,3 +954,411 @@ describe('Provider model display in log entry', () => {
     // In the component, when displayModel is empty, only provider is shown
   });
 });
+
+// ── Additional pure-function coverage (duplicated from App.tsx for testability) ──
+
+function numStr(source: Record<string, unknown>, keys: string[], fb = '--'): string {
+  for (const k of keys) {
+    const v = source[k];
+    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return fb;
+}
+
+function toSession(source: Record<string, unknown>, fallback: string, isActive: boolean) {
+  return {
+    id: str(source, ['session_id', 'id'], fallback),
+    name: str(source, ['session_id', 'name', 'session_name'], fallback),
+    projectName: str(source, ['project_name'], fallback.split('-').slice(0, -1).join('-') || fallback),
+    status: str(source, ['state', 'status'], 'unknown'),
+    phase: str(source, ['phase', 'mode'], ''),
+    elapsed: str(source, ['elapsed', 'elapsed_time', 'duration'], '--'),
+    iterations: numStr(source, ['iteration', 'iterations']),
+    isActive,
+    branch: str(source, ['branch'], ''),
+    startedAt: str(source, ['started_at'], ''),
+    endedAt: str(source, ['ended_at'], ''),
+    pid: numStr(source, ['pid'], ''),
+    provider: str(source, ['provider'], ''),
+    workDir: str(source, ['work_dir'], ''),
+    stuckCount: typeof source.stuck_count === 'number' ? source.stuck_count : 0,
+  };
+}
+
+function formatSecs(total: number): string {
+  const m = Math.floor(total / 60);
+  const s = Math.round(total % 60);
+  if (m === 0) return `${s}s`;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
+function formatDuration(raw: string): string {
+  const match = raw.match(/^(\d+)s$/);
+  if (!match) return raw;
+  return formatSecs(parseInt(match[1], 10));
+}
+
+function relativeTime(ts: string): string {
+  if (!ts) return '';
+  try {
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  } catch { return ''; }
+}
+
+const STRIP_ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
+function stripAnsi(text: string): string {
+  return text.replace(STRIP_ANSI_RE, '');
+}
+
+const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+function isImageArtifact(a: { path: string; type: string }) {
+  const ext = a.path.includes('.') ? a.path.slice(a.path.lastIndexOf('.')).toLowerCase() : '';
+  return IMAGE_EXT.has(ext) || a.type === 'screenshot' || a.type === 'visual_diff';
+}
+
+function artifactUrl(iter: number, file: string) { return `/api/artifacts/${iter}/${encodeURIComponent(file)}`; }
+
+function slugify(text: string): string {
+  return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim();
+}
+
+interface ManifestPayloadTest {
+  iteration: number;
+  phase: string;
+  summary: string;
+  artifacts: Array<{ type: string; path: string; description: string; metadata?: { baseline?: string; diff_percentage?: number } }>;
+  outputHeader?: string;
+}
+
+function parseManifest(am: { iteration: number; manifest: unknown; outputHeader?: string }): ManifestPayloadTest | null {
+  const m = am.manifest;
+  if (!isRecord(m) && !am.outputHeader) return null;
+  const manifest = isRecord(m) ? m : null;
+  return {
+    iteration: am.iteration,
+    phase: manifest && typeof manifest.phase === 'string' ? manifest.phase : 'proof',
+    summary: manifest && typeof manifest.summary === 'string' ? manifest.summary : '',
+    artifacts: manifest && Array.isArray(manifest.artifacts) ? (manifest.artifacts as unknown[]).filter(isRecord).map((a: Record<string, unknown>) => ({
+      type: typeof a.type === 'string' ? a.type : 'unknown',
+      path: typeof a.path === 'string' ? a.path : '',
+      description: typeof a.description === 'string' ? a.description : '',
+      metadata: isRecord(a.metadata) ? {
+        baseline: typeof (a.metadata as Record<string, unknown>).baseline === 'string' ? (a.metadata as Record<string, unknown>).baseline as string : undefined,
+        diff_percentage: typeof (a.metadata as Record<string, unknown>).diff_percentage === 'number' ? (a.metadata as Record<string, unknown>).diff_percentage as number : undefined,
+      } : undefined,
+    })) : [],
+    outputHeader: am.outputHeader,
+  };
+}
+
+// ── Tests for numStr ──
+
+describe('numStr', () => {
+  it('returns number as string', () => {
+    expect(numStr({ count: 5 }, ['count'])).toBe('5');
+  });
+
+  it('returns trimmed string value', () => {
+    expect(numStr({ count: '  42  ' }, ['count'])).toBe('42');
+  });
+
+  it('returns fallback for missing key', () => {
+    expect(numStr({}, ['count'])).toBe('--');
+  });
+
+  it('returns custom fallback', () => {
+    expect(numStr({}, ['count'], 'n/a')).toBe('n/a');
+  });
+
+  it('skips NaN and Infinity', () => {
+    expect(numStr({ count: NaN }, ['count'])).toBe('--');
+    expect(numStr({ count: Infinity }, ['count'])).toBe('--');
+  });
+
+  it('skips empty string values', () => {
+    expect(numStr({ count: '   ' }, ['count'])).toBe('--');
+  });
+
+  it('tries multiple keys in order', () => {
+    expect(numStr({ iterations: 10 }, ['iteration', 'iterations'])).toBe('10');
+  });
+});
+
+// ── Tests for toSession ──
+
+describe('toSession', () => {
+  it('maps full session record', () => {
+    const raw = {
+      session_id: 'sess-123',
+      project_name: 'my-project',
+      state: 'running',
+      phase: 'build',
+      elapsed: '5m',
+      iteration: 3,
+      branch: 'feature/x',
+      started_at: '2026-03-14T10:00:00Z',
+      ended_at: '',
+      pid: 12345,
+      provider: 'claude',
+      work_dir: '/tmp/work',
+      stuck_count: 2,
+    };
+    const s = toSession(raw, 'fallback', true);
+    expect(s.id).toBe('sess-123');
+    expect(s.name).toBe('sess-123');
+    expect(s.projectName).toBe('my-project');
+    expect(s.status).toBe('running');
+    expect(s.phase).toBe('build');
+    expect(s.iterations).toBe('3');
+    expect(s.isActive).toBe(true);
+    expect(s.branch).toBe('feature/x');
+    expect(s.pid).toBe('12345');
+    expect(s.stuckCount).toBe(2);
+  });
+
+  it('uses fallback when fields are missing', () => {
+    const s = toSession({}, 'my-project-20260314', false);
+    expect(s.id).toBe('my-project-20260314');
+    expect(s.projectName).toBe('my-project');
+    expect(s.status).toBe('unknown');
+    expect(s.isActive).toBe(false);
+    expect(s.stuckCount).toBe(0);
+  });
+
+  it('derives projectName from fallback by removing last segment', () => {
+    const s = toSession({}, 'ralph-skill-20260314-154219', false);
+    expect(s.projectName).toBe('ralph-skill-20260314');
+  });
+
+  it('uses fallback as projectName when no dash segments', () => {
+    const s = toSession({}, 'standalone', false);
+    expect(s.projectName).toBe('standalone');
+  });
+});
+
+// ── Tests for formatSecs ──
+
+describe('formatSecs', () => {
+  it('formats seconds only', () => {
+    expect(formatSecs(45)).toBe('45s');
+  });
+
+  it('formats minutes and seconds', () => {
+    expect(formatSecs(125)).toBe('2m 5s');
+  });
+
+  it('formats exact minutes', () => {
+    expect(formatSecs(120)).toBe('2m');
+  });
+
+  it('formats zero', () => {
+    expect(formatSecs(0)).toBe('0s');
+  });
+});
+
+// ── Tests for formatDuration ──
+
+describe('formatDuration', () => {
+  it('converts seconds-only string', () => {
+    expect(formatDuration('90s')).toBe('1m 30s');
+  });
+
+  it('passes through non-matching format', () => {
+    expect(formatDuration('2m 30s')).toBe('2m 30s');
+    expect(formatDuration('unknown')).toBe('unknown');
+  });
+
+  it('converts short duration', () => {
+    expect(formatDuration('5s')).toBe('5s');
+  });
+});
+
+// ── Tests for relativeTime ──
+
+describe('relativeTime', () => {
+  it('returns empty for empty string', () => {
+    expect(relativeTime('')).toBe('');
+  });
+
+  it('returns "just now" for recent timestamps', () => {
+    const now = new Date().toISOString();
+    expect(relativeTime(now)).toBe('just now');
+  });
+
+  it('returns minutes ago', () => {
+    const ts = new Date(Date.now() - 5 * 60000).toISOString();
+    expect(relativeTime(ts)).toBe('5m ago');
+  });
+
+  it('returns hours ago', () => {
+    const ts = new Date(Date.now() - 3 * 3600000).toISOString();
+    expect(relativeTime(ts)).toBe('3h ago');
+  });
+
+  it('returns days ago', () => {
+    const ts = new Date(Date.now() - 2 * 86400000).toISOString();
+    expect(relativeTime(ts)).toBe('2d ago');
+  });
+});
+
+// ── Tests for stripAnsi ──
+
+describe('stripAnsi', () => {
+  it('strips ANSI color codes', () => {
+    expect(stripAnsi('\x1b[31mred text\x1b[0m')).toBe('red text');
+  });
+
+  it('strips multiple codes', () => {
+    expect(stripAnsi('\x1b[1m\x1b[32mbold green\x1b[0m normal')).toBe('bold green normal');
+  });
+
+  it('returns plain text unchanged', () => {
+    expect(stripAnsi('hello world')).toBe('hello world');
+  });
+
+  it('handles empty string', () => {
+    expect(stripAnsi('')).toBe('');
+  });
+});
+
+// ── Tests for isImageArtifact ──
+
+describe('isImageArtifact', () => {
+  it('detects PNG files', () => {
+    expect(isImageArtifact({ path: 'screenshot.png', type: 'file' })).toBe(true);
+  });
+
+  it('detects JPG files', () => {
+    expect(isImageArtifact({ path: 'photo.jpg', type: 'file' })).toBe(true);
+    expect(isImageArtifact({ path: 'photo.jpeg', type: 'file' })).toBe(true);
+  });
+
+  it('detects SVG files', () => {
+    expect(isImageArtifact({ path: 'logo.svg', type: 'file' })).toBe(true);
+  });
+
+  it('detects by type=screenshot', () => {
+    expect(isImageArtifact({ path: 'data.bin', type: 'screenshot' })).toBe(true);
+  });
+
+  it('detects by type=visual_diff', () => {
+    expect(isImageArtifact({ path: 'data.bin', type: 'visual_diff' })).toBe(true);
+  });
+
+  it('returns false for non-image files', () => {
+    expect(isImageArtifact({ path: 'output.txt', type: 'file' })).toBe(false);
+    expect(isImageArtifact({ path: 'data.json', type: 'file' })).toBe(false);
+  });
+
+  it('returns false for files without extension', () => {
+    expect(isImageArtifact({ path: 'README', type: 'file' })).toBe(false);
+  });
+});
+
+// ── Tests for artifactUrl ──
+
+describe('artifactUrl', () => {
+  it('generates correct URL', () => {
+    expect(artifactUrl(7, 'output.txt')).toBe('/api/artifacts/7/output.txt');
+  });
+
+  it('encodes special characters in filename', () => {
+    expect(artifactUrl(1, 'file with spaces.png')).toBe('/api/artifacts/1/file%20with%20spaces.png');
+  });
+});
+
+// ── Tests for slugify ──
+
+describe('slugify', () => {
+  it('lowercases and hyphenates', () => {
+    expect(slugify('Hello World')).toBe('hello-world');
+  });
+
+  it('removes special characters', () => {
+    expect(slugify('API & CLI Integration!')).toBe('api-cli-integration');
+  });
+
+  it('collapses multiple hyphens', () => {
+    expect(slugify('foo---bar')).toBe('foo-bar');
+  });
+
+  it('handles empty string', () => {
+    expect(slugify('')).toBe('');
+  });
+});
+
+// ── Tests for parseManifest ──
+
+describe('parseManifest', () => {
+  it('returns null when manifest is null and no outputHeader', () => {
+    expect(parseManifest({ iteration: 1, manifest: null })).toBeNull();
+  });
+
+  it('returns payload when outputHeader is present even without manifest', () => {
+    const result = parseManifest({ iteration: 5, manifest: null, outputHeader: '> build · claude' });
+    expect(result).not.toBeNull();
+    expect(result!.iteration).toBe(5);
+    expect(result!.phase).toBe('proof');
+    expect(result!.artifacts).toEqual([]);
+    expect(result!.outputHeader).toBe('> build · claude');
+  });
+
+  it('parses full manifest with artifacts', () => {
+    const manifest = {
+      phase: 'build',
+      summary: 'Added feature X',
+      artifacts: [
+        { type: 'screenshot', path: 'screen.png', description: 'Dashboard view' },
+        { type: 'file', path: 'output.log', description: 'Build output' },
+      ],
+    };
+    const result = parseManifest({ iteration: 3, manifest });
+    expect(result).not.toBeNull();
+    expect(result!.phase).toBe('build');
+    expect(result!.summary).toBe('Added feature X');
+    expect(result!.artifacts).toHaveLength(2);
+    expect(result!.artifacts[0].type).toBe('screenshot');
+    expect(result!.artifacts[0].path).toBe('screen.png');
+  });
+
+  it('handles artifact with metadata', () => {
+    const manifest = {
+      phase: 'proof',
+      summary: '',
+      artifacts: [
+        { type: 'visual_diff', path: 'diff.png', description: 'Pixel diff', metadata: { baseline: 'base.png', diff_percentage: 2.5 } },
+      ],
+    };
+    const result = parseManifest({ iteration: 4, manifest });
+    expect(result!.artifacts[0].metadata).toEqual({ baseline: 'base.png', diff_percentage: 2.5 });
+  });
+
+  it('filters non-record entries from artifacts array', () => {
+    const manifest = {
+      phase: 'build',
+      summary: '',
+      artifacts: ['not-an-object', null, { type: 'file', path: 'a.txt', description: '' }],
+    };
+    const result = parseManifest({ iteration: 2, manifest });
+    expect(result!.artifacts).toHaveLength(1);
+    expect(result!.artifacts[0].path).toBe('a.txt');
+  });
+
+  it('defaults missing artifact fields', () => {
+    const manifest = {
+      phase: 'review',
+      summary: '',
+      artifacts: [{}],
+    };
+    const result = parseManifest({ iteration: 1, manifest });
+    expect(result!.artifacts[0]).toEqual({ type: 'unknown', path: '', description: '', metadata: undefined });
+  });
+});

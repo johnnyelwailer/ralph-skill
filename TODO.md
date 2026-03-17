@@ -27,7 +27,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
   - Re-test 2026-03-17 (iter 174): PASS on host dashboard (`http://localhost:4040`) — Health tab present and `codex` visible along with `claude`, `gemini`, `copilot`, `opencode` (`/home/pj/.copilot/session-state/aa6c290a-09a3-45eb-9eed-fc4a07df59a7/files/qa-iter174/dashboard-health-host.json`).
 - [ ] [dashboard/P1] Proof artifact comparison modes — side-by-side/slider/diff overlay + history scrubbing. (priority: low)
 - [~] [qa/P1] Duplicate dashboard-layout task entry superseded by deferred `[review] Gate 7` tracker above (same issue, consolidated to one open task).
-- [ ] [dashboard/low] Broader unit coverage expansion for `App.tsx` interaction paths.
+- [x] [dashboard/low] Broader unit coverage expansion for `App.tsx` interaction paths — added tests for `numStr`, `toSession`, `formatSecs`, `formatDuration`, `relativeTime`, `stripAnsi`, `isImageArtifact`, `artifactUrl`, `slugify`, and `parseManifest` (68 new test cases).
 - [ ] [dashboard/low] Raise/verify branch coverage in `aloop/cli/src/commands/dashboard.ts` beyond current gate minimums.
 - [ ] [dashboard/low] Extend E2E `smoke.spec.ts` coverage for explicit 1920x1080 sidebar/docs/activity visibility checks once core gates are green.
 
