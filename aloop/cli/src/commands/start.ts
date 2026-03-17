@@ -106,6 +106,27 @@ const defaultDeps: StartDeps = {
   aloopPath: path.resolve(process.argv[1]),
 };
 
+function isStartDeps(value: unknown): value is StartDeps {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Partial<StartDeps>;
+  return typeof candidate.discoverWorkspace === 'function'
+    && typeof candidate.readFile === 'function'
+    && typeof candidate.writeFile === 'function'
+    && typeof candidate.mkdir === 'function'
+    && typeof candidate.cp === 'function'
+    && typeof candidate.existsSync === 'function'
+    && typeof candidate.spawn === 'function'
+    && typeof candidate.spawnSync === 'function';
+}
+
+export function resolveStartDeps(depsOrCommand: unknown, fallback: StartDeps = defaultDeps): StartDeps {
+  // Commander passes the Command object as the 3rd argument to .action(...).
+  // Treat non-StartDeps values as framework arguments, not injected deps.
+  return isStartDeps(depsOrCommand) ? depsOrCommand : fallback;
+}
+
 function stripInlineComment(raw: string): string {
   let inSingle = false;
   let inDouble = false;
@@ -1018,7 +1039,8 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   }
 }
 
-export async function startCommand(sessionIdArg: string | undefined, options: StartCommandOptions = {}, deps: StartDeps = defaultDeps) {
+export async function startCommand(sessionIdArg: string | undefined, options: StartCommandOptions = {}, depsOrCommand?: StartDeps | unknown) {
+  const deps = resolveStartDeps(depsOrCommand);
   if (sessionIdArg) {
     options.sessionId = sessionIdArg;
   }

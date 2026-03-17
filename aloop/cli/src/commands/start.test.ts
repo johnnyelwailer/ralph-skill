@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { startCommandWithDeps, normalizeGitBashPathForWindows, type StartCommandOptions } from './start.js';
+import { startCommandWithDeps, normalizeGitBashPathForWindows, resolveStartDeps, type StartCommandOptions } from './start.js';
 import type { DiscoveryResult } from './project.js';
 
 interface SpawnRecord {
@@ -1926,4 +1926,57 @@ test('Branch Coverage: Windows backup enabled', async () => {
 
 test('Branch Coverage: selectValue undefined', () => {
   assert.equal(startCommandWithDeps.name, 'startCommandWithDeps');
+});
+
+// --- resolveStartDeps tests ---
+
+test('resolveStartDeps returns valid StartDeps when provided', () => {
+  const validDeps = {
+    discoverWorkspace: async () => ({} as DiscoveryResult),
+    readFile: async () => '',
+    writeFile: async () => {},
+    mkdir: async () => undefined,
+    cp: async () => {},
+    existsSync: () => true,
+    spawn: (() => {}) as any,
+    spawnSync: (() => {}) as any,
+    platform: 'linux' as NodeJS.Platform,
+    env: {},
+    now: () => new Date(),
+    nodePath: '/usr/bin/node',
+    aloopPath: '/usr/bin/aloop',
+  };
+  const result = resolveStartDeps(validDeps);
+  assert.strictEqual(result, validDeps, 'should return the provided deps when they match StartDeps shape');
+});
+
+test('resolveStartDeps falls back to defaultDeps when given Commander Command object', () => {
+  // Simulate a Commander Command object (has methods like opts(), parse(), etc.)
+  const commanderCommand = {
+    opts: () => ({}),
+    parse: () => {},
+    name: () => 'start',
+    description: () => 'Start a session',
+  };
+  const result = resolveStartDeps(commanderCommand);
+  assert.ok(typeof result.discoverWorkspace === 'function', 'should have discoverWorkspace function');
+  assert.ok(typeof result.readFile === 'function', 'should have readFile function');
+  assert.ok(typeof result.spawn === 'function', 'should have spawn function');
+  assert.notStrictEqual(result, commanderCommand, 'should not return the Commander object');
+});
+
+test('resolveStartDeps falls back to defaultDeps for undefined', () => {
+  const result = resolveStartDeps(undefined);
+  assert.ok(typeof result.discoverWorkspace === 'function');
+  assert.ok(typeof result.existsSync === 'function');
+});
+
+test('resolveStartDeps falls back to defaultDeps for null', () => {
+  const result = resolveStartDeps(null);
+  assert.ok(typeof result.discoverWorkspace === 'function');
+});
+
+test('resolveStartDeps falls back to defaultDeps for non-object', () => {
+  const result = resolveStartDeps('not-an-object');
+  assert.ok(typeof result.discoverWorkspace === 'function');
 });
