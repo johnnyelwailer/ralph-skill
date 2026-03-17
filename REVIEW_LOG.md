@@ -1,5 +1,26 @@
 # Review Log
 
+## Review — 2026-03-17 19:10 UTC — commit ecdd104..HEAD
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/package.json`, `aloop/cli/src/commands/project.test.ts`, `aloop/cli/src/index.test.ts`
+
+- Gate 1 / Gate 2: **Packaged install fix is physically broken** — the fix for the `aloop start` packaged-install regression (`1ff36db`) cannot work in reality because `aloop/bin/` loop scripts are completely omitted from the published npm tarball (`package.json` only includes `"dist"`). The new test for `resolveBundledBinDir` is a shallow fake that uses `fs.mkdir` and `fs.writeFile` to create a mock `aloop/bin/loop.sh` in the temp directory, producing a false positive that doesn't verify the actual package contents. The build pipeline must copy `bin` to `dist` or otherwise include the loop scripts in the published package.
+- Gate 5: **Test failure in isolation** — `aloop/cli/src/index.test.ts` fails when run directly (`tsx --test ...`) because the test `index CLI catches errors and prints clean messages without stack traces` runs `orchestrate --autonomy-level invalid` from `process.cwd()`. If `SPEC.md` does not exist there, the command throws "No spec files found matching: SPEC.md" before validating the autonomy level, breaking the assertion. The test must use a temporary directory with a mock `SPEC.md`.
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: `analyzeSpecComplexity` overcounting fixed by deduplicating synonyms using `WORKSTREAM_CATEGORIES` map.
+- Gate 1 ✅: `detectCIWorkflowSupport` checkout false positive fixed by using explicit job/command regexes instead of substring `.includes('check')`.
+- Gate 2 ✅: Gate 2 regression tests added for recommendation correctness edge cases with concrete value assertions.
+
+**Positive observations:**
+- Gate 1: Orchestrator trunk auto-merge implements PR creation accurately.
+- Gate 2: Extensive new unit test coverage added for pure functions in `App.tsx` (68 test cases).
+- Gate 3: `project.mjs` branch coverage is **87.71%**, `orchestrate.ts` is **82.65%**, passing the 80% threshold.
+- Gate 5: All 857 primary suite tests pass, type-check is clean, and the build succeeds.
+
+---
+
 ## Review — 2026-03-17 18:00 UTC — commit 1260e17..2c94950
 
 **Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
