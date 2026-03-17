@@ -394,3 +394,21 @@
 - Gate 1: Non-interactive setup mode mapping now preserves orchestrate mode (`setup.ts` + `setup.test.ts:427-460`), matching spec intent for explicit `--mode loop|orchestrate`.
 - Gate 5: Required validation command passed on this review run: `cd aloop/cli && npm test && npm run type-check && npm run build` (736/736 passing CLI tests, type-check clean, build successful).
 - Gate 8: Version compliance spot-check passed (`node v22.22.1`, `commander@12.1.0`, dashboard `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`) and matches `VERSIONS.md` major versions.
+
+---
+
+## Review — 2026-03-17 03:44 UTC — commit 912cb84..ca5faa5
+
+**Verdict: FAIL** (5 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/bin/loop.tests.ps1`, `aloop/cli/src/index.ts`, `aloop/cli/src/commands/start.ts`, `aloop/cli/src/commands/start.test.ts`, `aloop/cli/lib/project.mjs`, `aloop/cli/src/commands/project.ts`, `aloop/cli/src/commands/project.test.ts`, `aloop/cli/aloop.test.mjs`, `aloop/cli/src/commands/dashboard.ts`, `aloop/cli/dashboard/src/App.tsx`, `aloop/agents/opencode/*.md`, `aloop/templates/subagent-hints-*.md`, `check_argv.mjs`, `reproduce_setup_issue.sh`
+
+- Gate 1: Phase prerequisite guard mismatch with SPEC intent — `build` prerequisite currently only forces `plan` when `TODO.md` exists but has zero unchecked items; when `TODO.md` is missing, both runtimes skip the guard and allow `build` (`loop.sh:388-397`, `loop.ps1:277-287`). SPEC requires `build` to require TODO presence with at least one unchecked task.
+- Gate 2: New test for opencode agent copying is shallow — `project.test.ts:866-868` asserts `existsSync` and `content.length > 0`; this can pass with wrong or corrupted content and does not verify exact copied payloads.
+- Gate 3: Branch coverage for touched file `start.ts` is below threshold — measured at **70.68% branch** via `npx --yes tsx --test --experimental-test-coverage src/commands/start.test.ts`.
+- Gate 3: No updated branch-coverage artifact demonstrates >=80% for newly added phase-prerequisite branches (`check_phase_prerequisites`/`Check-PhasePrerequisites`, `check_has_builds_to_review`/`Check-HasBuildsToReview`, `lastPlanCommit` persistence paths) in `loop.sh` and `loop.ps1`.
+- Gate 4: Dead repository artifacts were committed (`check_argv.mjs`, `reproduce_setup_issue.sh`) with no integration or references; these appear to be debugging/repro leftovers.
+
+**Positive observations:**
+- Gate 5: Required validation suite passes on HEAD — `cd aloop/cli && npm test && npm run type-check && npm run build` (742/742 + 8/8 tests passing, type-check clean, build succeeds).
+- Gate 6: Proof manifest for iteration 143 contains human-verifiable CLI artifacts (invalid provider, nonexistent spec file, start-without-config), with non-filler metadata and clear expected behavior.
+- Gate 8: Version compliance spot-check passed against `VERSIONS.md` (`node v22.22.1`, `commander@12.1.0`, `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`).
