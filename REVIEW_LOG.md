@@ -432,3 +432,16 @@
 - Gate 3 ✅: `start.ts` branch coverage raised to >=80%.
 - Gate 4 ✅: Dead repository artifacts (`check_argv.mjs`, `reproduce_setup_issue.sh`) removed.
 - Gate 6 ✅: Proof manifest for iteration 143 verified.
+
+## Review — 2026-03-17 12:42 UTC — commit 3bfe61a..eb426be
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `SPEC.md`, `TODO.md`, `aloop/bin/loop.sh`, `aloop/bin/loop.tests.ps1`, `aloop/bin/loop_branch_coverage.tests.sh`, `aloop/cli/src/commands/start.ts`, `aloop/cli/src/commands/start.test.ts`, `aloop/templates/instructions/review.md`
+
+- Gate 1: **Cross-platform parity regression in review-verdict removal** — `loop.sh` removed `review-verdict.json` handling in this range, but `loop.ps1` still retains verdict-file state and related log events (`aloop/bin/loop.ps1:762-862`, plus `Reset-ReviewVerdict` call at `aloop/bin/loop.ps1:2066`). This leaves shell and PowerShell runtimes behaviorally divergent for the same SPEC change.
+- Gate 6: **Proof/evidence mismatch** — provided proof manifest for iteration 161 claims no externally observable output and has empty artifacts, but this review range includes an observable packaged CLI behavior fix (`aloop start` commander deps crash). Human-verifiable CLI proof for the fix is missing.
+
+**Positive observations:**
+- Gate 5: Validation command passed on HEAD: `cd aloop/cli && npm test && npm run type-check && npm run build` (779/779 tests passing, type-check clean, build successful).
+- Gate 3: Branch coverage thresholds pass for touched runtime files: `start.ts` branch coverage is 80.58% (`tsx --experimental-test-coverage src/commands/start.test.ts`), and shell runtime branch harness reports 37/37 (100%) in `aloop/bin/loop_branch_coverage.tests.sh`.
+- Gate 8: Version compliance spot-check remains aligned with `VERSIONS.md` (`node v22.22.1`, `commander@12.1.0`, dashboard `react@18.3.1`, `tailwindcss@3.4.19`, `@radix-ui/react-dropdown-menu@2.1.16`).
