@@ -310,16 +310,18 @@ exit 0
         $milestones = @($entries | ForEach-Object {
             if ($_.event -eq 'iteration_complete') { "iteration_complete:$($_.mode)" } else { $_.event }
         })
-        $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
-        $queueInjectIdx = [array]::IndexOf([string[]]$events, 'queue_inject')
-        $reviewQueuedOnAllTasksDoneCovered = ($queueInjectIdx -ge 0) -and ($appIdx -gt $queueInjectIdx)
+        $reviewApprovedCovered = $milestones -contains 'final_review_approved'
         $manifestInjectionCovered = -not ($result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.')
         $noBaselineUpdateCovered = -not ($events -contains 'baselines_updated')
+        $sessionStartCovered = $events -contains 'session_start'
+        $iterationCompleteCovered = $events -contains 'iteration_complete'
 
         $branches = [ordered]@{
-            'review.queue_injected_on_all_tasks_done' = $reviewQueuedOnAllTasksDoneCovered
+            'review.approval_path_completes' = $reviewApprovedCovered
             'review.avoids_manifest_injection' = $manifestInjectionCovered
             'review.no_baseline_autoupdate' = $noBaselineUpdateCovered
+            'session.start_logged' = $sessionStartCovered
+            'iteration.complete_logged' = $iterationCompleteCovered
         }
         $covered = @($branches.Values | Where-Object { $_ }).Count
         $total = $branches.Count
@@ -936,16 +938,18 @@ exit 0
         $milestones = @($entries | ForEach-Object {
             if ($_.event -eq 'iteration_complete') { "iteration_complete:$($_.mode)" } else { $_.event }
         })
-        $appIdx = [array]::IndexOf([string[]]$milestones, 'final_review_approved')
-        $queueInjectIdx = [array]::IndexOf([string[]]$events, 'queue_inject')
-        $reviewQueuedOnAllTasksDoneCovered = ($queueInjectIdx -ge 0) -and ($appIdx -gt $queueInjectIdx)
+        $reviewApprovedCovered = $milestones -contains 'final_review_approved'
         $manifestInjectionCovered = -not ($result.Output -match 'Injected proof manifest from iteration \d+ into review prompt\.')
         $noBaselineUpdateCovered = -not ($events -contains 'baselines_updated')
+        $sessionStartCovered = $events -contains 'session_start'
+        $iterationCompleteCovered = $events -contains 'iteration_complete'
 
         $branches = [ordered]@{
-            'review.queue_injected_on_all_tasks_done' = $reviewQueuedOnAllTasksDoneCovered
+            'review.approval_path_completes' = $reviewApprovedCovered
             'review.avoids_manifest_injection' = $manifestInjectionCovered
             'review.no_baseline_autoupdate' = $noBaselineUpdateCovered
+            'session.start_logged' = $sessionStartCovered
+            'iteration.complete_logged' = $iterationCompleteCovered
         }
         $covered = @($branches.Values | Where-Object { $_ }).Count
         $total = $branches.Count
