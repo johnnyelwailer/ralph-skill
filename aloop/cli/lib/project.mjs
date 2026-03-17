@@ -179,6 +179,192 @@ async function discoverSpecCandidates(projectRoot) {
   return found;
 }
 
+/**
+ * Analyze spec file content for complexity signals.
+ * Returns workstream count, parallelism potential, and estimated issue count.
+ * @param {string} projectRoot
+ * @param {string[]} specCandidates
+ * @returns {Promise<Object>}
+ */
+async function analyzeSpecComplexity(projectRoot, specCandidates) {
+  const workstreamKeywords = [
+    'frontend', 'backend', 'infrastructure', 'infra', 'api', 'ui', 'database',
+    'db', 'auth', 'authentication', 'deployment', 'devops', 'mobile', 'web',
+    'cli', 'sdk', 'library', 'service', 'microservice', 'integration',
+  ];
+  const parallelismKeywords = [
+    'parallel', 'concurrent', 'simultaneous', 'independent', 'separate',
+    'decoupled', 'async', 'asynchronous', 'fan-out', 'fanout', 'multi-track',
+    'workstream', 'workstreams',
+  ];
+
+  let totalWorkstreams = 0;
+  let totalParallelismSignals = 0;
+  let totalEstimatedIssues = 0;
+  let analyzedFiles = 0;
+
+  for (const specFile of specCandidates) {
+    const specPath = path.join(projectRoot, specFile);
+    if (!existsSync(specPath)) continue;
+    try {
+      const content = await readFile(specPath, 'utf8');
+      const lowered = content.toLowerCase();
+      analyzedFiles++;
+
+      // Count distinct workstream sections: H2/H3 headers matching workstream keywords
+      const headerLines = content.split(/\r?\n/).filter(line => /^#{2,3}\s/.test(line));
+      const workstreamHeaders = headerLines.filter(h => {
+        const hLower = h.toLowerCase();
+        return workstreamKeywords.some(kw => hLower.includes(kw));
+      });
+      // Unique workstream types (e.g., "frontend" appears in multiple headers = 1 workstream)
+      const uniqueWorkstreamTypes = new Set();
+      for (const h of workstreamHeaders) {
+        const hLower = h.toLowerCase();
+        for (const kw of workstreamKeywords) {
+          if (hLower.includes(kw)) {
+            uniqueWorkstreamTypes.add(kw);
+          }
+        }
+      }
+      totalWorkstreams += uniqueWorkstreamTypes.size || (headerLines.length > 0 ? Math.min(headerLines.length, 1) : 0);
+
+      // Count parallelism signals
+      for (const kw of parallelismKeywords) {
+        const regex = new RegExp(`\\b${kw}\\b`, 'gi');
+        const matches = lowered.match(regex);
+        if (matches) totalParallelismSignals += matches.length;
+      }
+
+      // Estimate issue count: count task-like headers (H2/H3) and bullet items with acceptance criteria
+      const taskHeaders = headerLines.length;
+      const acceptanceCriteria = (content.match(/acceptance criteria/gi) || []).length;
+      const checkboxItems = (content.match(/^\s*-\s+\[[ x]\]/gim) || []).length;
+      totalEstimatedIssues += Math.max(taskHeaders, acceptanceCriteria > 0 ? acceptanceCriteria + checkboxItems : checkboxItems, taskHeaders > 0 ? taskHeaders : 1);
+    } catch {
+      // Skip unreadable spec files
+    }
+  }
+
+  const workstreamCount = totalWorkstreams > 0 ? totalWorkstreams : 1;
+  const parallelismScore = totalParallelismSignals;
+  const estimatedIssueCount = totalEstimatedIssues > 0 ? totalEstimatedIssues : 1;
+
+  return {
+    workstream_count: workstreamCount,
+    parallelism_score: parallelismScore,
+    estimated_issue_count: estimatedIssueCount,
+    analyzed_files: analyzedFiles,
+  };
+}
+
+/**
+ * Detect CI workflow support in the project.
+ * @param {string} projectRoot
+ * @returns {Promise<Object>}
+ */
+async function detectCIWorkflowSupport(projectRoot) {
+  const workflowsDir = path.join(projectRoot, '.github', 'workflows');
+  let hasWorkflows = false;
+  let workflowCount = 0;
+  const workflowTypes = [];
+
+  try {
+    if (existsSync(workflowsDir)) {
+      const entries = await readdir(workflowsDir);
+      const yamlFiles = entries.filter(f => f.endsWith('.yml') || f.endsWith('.yaml'));
+      workflowCount = yamlFiles.length;
+      hasWorkflows = workflowCount > 0;
+
+      for (const file of yamlFiles) {
+        try {
+          const content = await readFile(path.join(workflowsDir, file), 'utf8');
+          const lowered = content.toLowerCase();
+          if (lowered.includes('test') || lowered.includes('ci') || lowered.includes('check')) {
+            workflowTypes.push('test');
+          }
+          if (lowered.includes('lint') || lowered.includes('eslint') || lowered.includes('ruff')) {
+            workflowTypes.push('lint');
+          }
+          if (lowered.includes('build') || lowered.includes('compile')) {
+            workflowTypes.push('build');
+          }
+          if (lowered.includes('deploy') || lowered.includes('release')) {
+            workflowTypes.push('deploy');
+          }
+        } catch {
+          // skip unreadable workflow files
+        }
+      }
+    }
+  } catch {
+    // skip if workflows dir is inaccessible
+  }
+
+  return {
+    has_workflows: hasWorkflows,
+    workflow_count: workflowCount,
+    workflow_types: [...new Set(workflowTypes)],
+  };
+}
+
+/**
+ * Recommend setup mode based on spec complexity and CI support.
+ * @param {Object} complexity - Result from analyzeSpecComplexity
+ * @param {Object} ciSupport - Result from detectCIWorkflowSupport
+ * @returns {{ recommended_mode: string, reasoning: string[] }}
+ */
+function recommendMode(complexity, ciSupport) {
+  const reasoning = [];
+  let orchestratorScore = 0;
+
+  // Factor 1: Workstream count
+  if (complexity.workstream_count >= 3) {
+    orchestratorScore += 2;
+    reasoning.push(`${complexity.workstream_count} distinct workstreams detected — parallelism would help`);
+  } else if (complexity.workstream_count >= 2) {
+    orchestratorScore += 1;
+    reasoning.push(`${complexity.workstream_count} workstreams found — moderate parallelism potential`);
+  } else {
+    reasoning.push('Single workstream — loop mode is sufficient');
+  }
+
+  // Factor 2: Parallelism signals
+  if (complexity.parallelism_score >= 3) {
+    orchestratorScore += 2;
+    reasoning.push(`Strong parallelism signals (${complexity.parallelism_score} mentions)`);
+  } else if (complexity.parallelism_score >= 1) {
+    orchestratorScore += 1;
+    reasoning.push(`Some parallelism signals (${complexity.parallelism_score} mentions)`);
+  }
+
+  // Factor 3: Estimated issue count
+  if (complexity.estimated_issue_count >= 10) {
+    orchestratorScore += 2;
+    reasoning.push(`Large scope (${complexity.estimated_issue_count} estimated issues) — orchestrator helps manage complexity`);
+  } else if (complexity.estimated_issue_count >= 5) {
+    orchestratorScore += 1;
+    reasoning.push(`Medium scope (${complexity.estimated_issue_count} estimated issues)`);
+  } else {
+    reasoning.push(`Small scope (${complexity.estimated_issue_count} estimated issues) — loop mode is efficient`);
+  }
+
+  // Factor 4: CI support
+  if (ciSupport.has_workflows && ciSupport.workflow_types.includes('test')) {
+    orchestratorScore += 1;
+    reasoning.push('CI test workflows detected — orchestrator can leverage automated gates');
+  }
+
+  const recommendedMode = orchestratorScore >= 3 ? 'orchestrate' : 'loop';
+  if (recommendedMode === 'orchestrate') {
+    reasoning.unshift('Recommendation: orchestrator mode (score: ' + orchestratorScore + '/7)');
+  } else {
+    reasoning.unshift('Recommendation: loop mode (score: ' + orchestratorScore + '/7)');
+  }
+
+  return { recommended_mode: recommendedMode, reasoning };
+}
+
 async function discoverReferenceCandidates(projectRoot, specCandidates) {
   const ordered = [
     'SPEC.md',
@@ -294,6 +480,9 @@ export async function discoverWorkspace(options = {}) {
   const referenceCandidates = await discoverReferenceCandidates(projectRoot, specCandidates);
   const providers = getInstalledProviders();
   const projectDir = path.join(homeDir, '.aloop', 'projects', projectHash);
+  const complexity = await analyzeSpecComplexity(projectRoot, specCandidates);
+  const ciSupport = await detectCIWorkflowSupport(projectRoot);
+  const modeRecommendation = recommendMode(complexity, ciSupport);
 
   return {
     project: {
@@ -336,6 +525,9 @@ export async function discoverWorkspace(options = {}) {
       },
       round_robin_default: ['claude', 'opencode', 'codex', 'gemini', 'copilot'],
     },
+    spec_complexity: complexity,
+    ci_support: ciSupport,
+    mode_recommendation: modeRecommendation,
     discovered_at: new Date().toISOString(),
   };
 }

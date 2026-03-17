@@ -3218,6 +3218,173 @@ async function discoverSpecCandidates(projectRoot) {
   }
   return found;
 }
+async function analyzeSpecComplexity(projectRoot, specCandidates) {
+  const workstreamKeywords = [
+    "frontend",
+    "backend",
+    "infrastructure",
+    "infra",
+    "api",
+    "ui",
+    "database",
+    "db",
+    "auth",
+    "authentication",
+    "deployment",
+    "devops",
+    "mobile",
+    "web",
+    "cli",
+    "sdk",
+    "library",
+    "service",
+    "microservice",
+    "integration"
+  ];
+  const parallelismKeywords = [
+    "parallel",
+    "concurrent",
+    "simultaneous",
+    "independent",
+    "separate",
+    "decoupled",
+    "async",
+    "asynchronous",
+    "fan-out",
+    "fanout",
+    "multi-track",
+    "workstream",
+    "workstreams"
+  ];
+  let totalWorkstreams = 0;
+  let totalParallelismSignals = 0;
+  let totalEstimatedIssues = 0;
+  let analyzedFiles = 0;
+  for (const specFile of specCandidates) {
+    const specPath = path.join(projectRoot, specFile);
+    if (!existsSync(specPath))
+      continue;
+    try {
+      const content = await readFile(specPath, "utf8");
+      const lowered = content.toLowerCase();
+      analyzedFiles++;
+      const headerLines = content.split(/\r?\n/).filter((line) => /^#{2,3}\s/.test(line));
+      const workstreamHeaders = headerLines.filter((h) => {
+        const hLower = h.toLowerCase();
+        return workstreamKeywords.some((kw) => hLower.includes(kw));
+      });
+      const uniqueWorkstreamTypes = /* @__PURE__ */ new Set();
+      for (const h of workstreamHeaders) {
+        const hLower = h.toLowerCase();
+        for (const kw of workstreamKeywords) {
+          if (hLower.includes(kw)) {
+            uniqueWorkstreamTypes.add(kw);
+          }
+        }
+      }
+      totalWorkstreams += uniqueWorkstreamTypes.size || (headerLines.length > 0 ? Math.min(headerLines.length, 1) : 0);
+      for (const kw of parallelismKeywords) {
+        const regex = new RegExp(`\\b${kw}\\b`, "gi");
+        const matches = lowered.match(regex);
+        if (matches)
+          totalParallelismSignals += matches.length;
+      }
+      const taskHeaders = headerLines.length;
+      const acceptanceCriteria = (content.match(/acceptance criteria/gi) || []).length;
+      const checkboxItems = (content.match(/^\s*-\s+\[[ x]\]/gim) || []).length;
+      totalEstimatedIssues += Math.max(taskHeaders, acceptanceCriteria > 0 ? acceptanceCriteria + checkboxItems : checkboxItems, taskHeaders > 0 ? taskHeaders : 1);
+    } catch {
+    }
+  }
+  const workstreamCount = totalWorkstreams > 0 ? totalWorkstreams : 1;
+  const parallelismScore = totalParallelismSignals;
+  const estimatedIssueCount = totalEstimatedIssues > 0 ? totalEstimatedIssues : 1;
+  return {
+    workstream_count: workstreamCount,
+    parallelism_score: parallelismScore,
+    estimated_issue_count: estimatedIssueCount,
+    analyzed_files: analyzedFiles
+  };
+}
+async function detectCIWorkflowSupport(projectRoot) {
+  const workflowsDir = path.join(projectRoot, ".github", "workflows");
+  let hasWorkflows = false;
+  let workflowCount = 0;
+  const workflowTypes = [];
+  try {
+    if (existsSync(workflowsDir)) {
+      const entries = await readdir(workflowsDir);
+      const yamlFiles = entries.filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
+      workflowCount = yamlFiles.length;
+      hasWorkflows = workflowCount > 0;
+      for (const file of yamlFiles) {
+        try {
+          const content = await readFile(path.join(workflowsDir, file), "utf8");
+          const lowered = content.toLowerCase();
+          if (lowered.includes("test") || lowered.includes("ci") || lowered.includes("check")) {
+            workflowTypes.push("test");
+          }
+          if (lowered.includes("lint") || lowered.includes("eslint") || lowered.includes("ruff")) {
+            workflowTypes.push("lint");
+          }
+          if (lowered.includes("build") || lowered.includes("compile")) {
+            workflowTypes.push("build");
+          }
+          if (lowered.includes("deploy") || lowered.includes("release")) {
+            workflowTypes.push("deploy");
+          }
+        } catch {
+        }
+      }
+    }
+  } catch {
+  }
+  return {
+    has_workflows: hasWorkflows,
+    workflow_count: workflowCount,
+    workflow_types: [...new Set(workflowTypes)]
+  };
+}
+function recommendMode(complexity, ciSupport) {
+  const reasoning = [];
+  let orchestratorScore = 0;
+  if (complexity.workstream_count >= 3) {
+    orchestratorScore += 2;
+    reasoning.push(`${complexity.workstream_count} distinct workstreams detected \u2014 parallelism would help`);
+  } else if (complexity.workstream_count >= 2) {
+    orchestratorScore += 1;
+    reasoning.push(`${complexity.workstream_count} workstreams found \u2014 moderate parallelism potential`);
+  } else {
+    reasoning.push("Single workstream \u2014 loop mode is sufficient");
+  }
+  if (complexity.parallelism_score >= 3) {
+    orchestratorScore += 2;
+    reasoning.push(`Strong parallelism signals (${complexity.parallelism_score} mentions)`);
+  } else if (complexity.parallelism_score >= 1) {
+    orchestratorScore += 1;
+    reasoning.push(`Some parallelism signals (${complexity.parallelism_score} mentions)`);
+  }
+  if (complexity.estimated_issue_count >= 10) {
+    orchestratorScore += 2;
+    reasoning.push(`Large scope (${complexity.estimated_issue_count} estimated issues) \u2014 orchestrator helps manage complexity`);
+  } else if (complexity.estimated_issue_count >= 5) {
+    orchestratorScore += 1;
+    reasoning.push(`Medium scope (${complexity.estimated_issue_count} estimated issues)`);
+  } else {
+    reasoning.push(`Small scope (${complexity.estimated_issue_count} estimated issues) \u2014 loop mode is efficient`);
+  }
+  if (ciSupport.has_workflows && ciSupport.workflow_types.includes("test")) {
+    orchestratorScore += 1;
+    reasoning.push("CI test workflows detected \u2014 orchestrator can leverage automated gates");
+  }
+  const recommendedMode = orchestratorScore >= 3 ? "orchestrate" : "loop";
+  if (recommendedMode === "orchestrate") {
+    reasoning.unshift("Recommendation: orchestrator mode (score: " + orchestratorScore + "/7)");
+  } else {
+    reasoning.unshift("Recommendation: loop mode (score: " + orchestratorScore + "/7)");
+  }
+  return { recommended_mode: recommendedMode, reasoning };
+}
 async function discoverReferenceCandidates(projectRoot, specCandidates) {
   const ordered = [
     "SPEC.md",
@@ -3312,6 +3479,9 @@ async function discoverWorkspace(options = {}) {
   const referenceCandidates = await discoverReferenceCandidates(projectRoot, specCandidates);
   const providers = getInstalledProviders();
   const projectDir = path.join(homeDir, ".aloop", "projects", projectHash);
+  const complexity = await analyzeSpecComplexity(projectRoot, specCandidates);
+  const ciSupport = await detectCIWorkflowSupport(projectRoot);
+  const modeRecommendation = recommendMode(complexity, ciSupport);
   return {
     project: {
       root: projectRoot,
@@ -3353,6 +3523,9 @@ async function discoverWorkspace(options = {}) {
       },
       round_robin_default: ["claude", "opencode", "codex", "gemini", "copilot"]
     },
+    spec_complexity: complexity,
+    ci_support: ciSupport,
+    mode_recommendation: modeRecommendation,
     discovered_at: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
@@ -8774,7 +8947,16 @@ async function setupCommandWithDeps(options, deps) {
   const language = await deps.prompt("Language", defaultLanguage);
   const defaultProvider = enabledProviders[0] || discovery.providers.default_provider;
   const provider = await deps.prompt("Primary Provider", defaultProvider);
-  const defaultMode = "plan-build-review";
+  const recommendedMode = discovery.mode_recommendation?.recommended_mode;
+  const recommendationReasons = discovery.mode_recommendation?.reasoning || [];
+  if (recommendedMode && recommendationReasons.length > 0) {
+    console.log("\n  Mode recommendation:");
+    for (const reason of recommendationReasons) {
+      console.log(`    ${reason}`);
+    }
+    console.log("");
+  }
+  const defaultMode = recommendedMode === "orchestrate" ? "orchestrate" : "plan-build-review";
   const mode = await deps.prompt("Mode", defaultMode);
   const defaultAutonomyLevel = options.autonomyLevel ?? "balanced";
   const autonomyLevel = parseAutonomyLevel(
@@ -10129,6 +10311,24 @@ async function resolveOrchestratorAutonomyLevel(options, homeDir, deps) {
     return "balanced";
   }
 }
+async function resolveAutoMerge(options, homeDir, deps) {
+  if (options.autoMerge !== void 0) {
+    return options.autoMerge;
+  }
+  const projectRoot = resolveProjectRoot2(options.projectRoot);
+  const projectHash = getProjectHash2(projectRoot);
+  const configPath = path14.join(homeDir, ".aloop", "projects", projectHash, "config.yml");
+  if (!deps.existsSync(configPath)) {
+    return false;
+  }
+  try {
+    const configContent = await deps.readFile(configPath, "utf8");
+    const value = parseConfigScalar(configContent, "auto_merge_to_main");
+    return value === "true";
+  } catch {
+    return false;
+  }
+}
 function validateDependencyGraph(issues) {
   const ids = new Set(issues.map((i) => i.id));
   if (ids.size !== issues.length) {
@@ -10445,6 +10645,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const planOnly = options.planOnly ?? false;
   const budgetCap = parseBudget(options.budget);
   const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
+  const autoMergeToMain = await resolveAutoMerge(options, homeDir, deps);
   const now = deps.now();
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(now.getUTCDate()).padStart(2, "0")}-${String(now.getUTCHours()).padStart(2, "0")}${String(now.getUTCMinutes()).padStart(2, "0")}${String(now.getUTCSeconds()).padStart(2, "0")}`;
   const sessionId = `orchestrator-${timestamp}`;
@@ -10509,6 +10710,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     filter_label: filterLabel,
     filter_repo: filterRepo,
     budget_cap: budgetCap,
+    auto_merge_to_main: autoMergeToMain || void 0,
     created_at: now.toISOString(),
     updated_at: now.toISOString()
   };
@@ -11995,6 +12197,83 @@ async function mergePr(prNumber, repo, deps) {
     return { pr_number: prNumber, merged: false, error: msg };
   }
 }
+async function createTrunkToMainPr(state, repo, deps, sessionDir) {
+  const trunkBranch = state.trunk_branch || "agent/trunk";
+  const mergedCount = state.issues.filter((i) => i.state === "merged").length;
+  const failedCount = state.issues.filter((i) => i.state === "failed").length;
+  const title = `[aloop] Promote ${trunkBranch} to main`;
+  const body = [
+    "## Summary",
+    "",
+    `All ${state.issues.length} sub-issues have reached terminal state.`,
+    `- Merged: ${mergedCount}`,
+    failedCount > 0 ? `- Failed: ${failedCount}` : "",
+    "",
+    `This PR promotes \`${trunkBranch}\` into \`main\` for human review.`,
+    "",
+    "_Created automatically by the aloop orchestrator._"
+  ].filter(Boolean).join("\n");
+  try {
+    const result = await deps.execGh([
+      "pr",
+      "create",
+      "--repo",
+      repo,
+      "--base",
+      "main",
+      "--head",
+      trunkBranch,
+      "--title",
+      title,
+      "--body",
+      body
+    ]);
+    const parsed = parsePrCreateOutput(result.stdout);
+    deps.appendLog(sessionDir, {
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      event: "trunk_to_main_pr_created",
+      pr_number: parsed.number,
+      trunk_branch: trunkBranch
+    });
+    return parsed.number;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    try {
+      const listResult = await deps.execGh([
+        "pr",
+        "list",
+        "--repo",
+        repo,
+        "--head",
+        trunkBranch,
+        "--base",
+        "main",
+        "--json",
+        "number",
+        "--jq",
+        ".[0].number"
+      ]);
+      const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
+      if (Number.isFinite(existingNumber) && existingNumber > 0) {
+        deps.appendLog(sessionDir, {
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          event: "trunk_to_main_pr_exists",
+          pr_number: existingNumber,
+          trunk_branch: trunkBranch
+        });
+        return existingNumber;
+      }
+    } catch {
+    }
+    deps.appendLog(sessionDir, {
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      event: "trunk_to_main_pr_failed",
+      error: msg,
+      trunk_branch: trunkBranch
+    });
+    return null;
+  }
+}
 async function requestRebase(issue, repo, trunkBranch, rebaseAttempt, deps) {
   const body = `Merge conflict with \`${trunkBranch}\` \u2014 rebase needed (attempt ${rebaseAttempt}/2).\\n\\nPlease rebase your branch against \`${trunkBranch}\` and push.`;
   await deps.execGh([
@@ -13292,11 +13571,22 @@ async function runOrchestratorScanLoop(stateFile, sessionDir, projectRoot, proje
       deps
     );
     if (passResult.allDone) {
+      const currentState = JSON.parse(await deps.readFile(stateFile, "utf8"));
+      if (currentState.auto_merge_to_main && repo && deps.execGh) {
+        const prNum = await createTrunkToMainPr(currentState, repo, deps, sessionDir);
+        if (prNum !== null) {
+          currentState.trunk_pr_number = prNum;
+          currentState.updated_at = deps.now().toISOString();
+          await deps.writeFile(stateFile, `${JSON.stringify(currentState, null, 2)}
+`, "utf8");
+        }
+      }
       deps.appendLog(sessionDir, {
         timestamp: deps.now().toISOString(),
         event: "scan_loop_complete",
         reason: "all_done",
-        iterations: iter
+        iterations: iter,
+        trunk_pr_number: currentState.trunk_pr_number ?? null
       });
       const finalContent2 = await deps.readFile(stateFile, "utf8");
       return { iterations: iter, finalState: JSON.parse(finalContent2), reason: "all_done" };
@@ -13439,7 +13729,7 @@ program2.command("stop <session-id>").description("Stop a session by session-id"
 program2.command("update").description("Refresh ~/.aloop runtime assets from the current repo checkout").option("--repo-root <path>", "Path to aloop source repository root").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(updateCommand));
 program2.command("devcontainer").description("Generate or augment .devcontainer/devcontainer.json for isolated agent execution").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(devcontainerCommand));
 program2.command("devcontainer-verify").description("Verify devcontainer builds, starts, and passes all checks").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(verifyDevcontainerCommand));
-program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <paths>", 'Spec file(s) or glob pattern (e.g. "SPEC.md specs/*.md")', "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--interval <ms>", "Scan loop interval in milliseconds (default: 30000)").option("--max-iterations <n>", "Max scan loop iterations (default: 100)").option("--run-scan-loop", "Run the orchestrator scan loop after initialization").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(orchestrateCommand));
+program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <paths>", 'Spec file(s) or glob pattern (e.g. "SPEC.md specs/*.md")', "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--interval <ms>", "Scan loop interval in milliseconds (default: 30000)").option("--max-iterations <n>", "Max scan loop iterations (default: 100)").option("--auto-merge", "Create a PR from trunk to main when all issues complete").option("--run-scan-loop", "Run the orchestrator scan loop after initialization").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(orchestrateCommand));
 program2.command("steer <instruction>").description("Send a steering instruction to an active session").option("--session <id>", "Target session ID (auto-detected if only one active)").option("--affects-completed-work <value>", "Whether instruction affects completed work: yes, no, or unknown", "unknown").option("--overwrite", "Overwrite an existing queued steering instruction").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(steerCommand));
 program2.addCommand(ghCommand);
 program2.command("debug-env", { hidden: true }).description("Print current environment variables (for testing)").action(withErrorHandling(() => {

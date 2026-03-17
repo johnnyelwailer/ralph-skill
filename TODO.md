@@ -13,8 +13,8 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 
 
 ### Up Next — P2 (after P1 bugs and review gates)
-- [ ] [gh/P2] Agent trunk auto-merge — auto-merge policy in config, human-only approval for `agent/trunk -> main`, default `agent/main` creation. Currently: orchestrator merges PRs into `agent/trunk` but never creates a PR from `agent/trunk` to `main`; hardcoded policy blocks all operations targeting `main`. Needs: configurable auto-merge policy in config.yml, trunk→main PR creation when all sub-issues complete, policy update to allow orchestrator promotion when configured. (priority: medium)
-- [ ] [setup/P2] Dual-mode setup recommendation — analyze spec complexity (workstream count, parallelism potential) and recommend loop vs orchestrator mode, including CI workflow support checks. Currently completely missing: no spec analysis, no complexity detection, no recommendation logic in setup.ts or project.mjs. (priority: medium)
+- [x] [gh/P2] Agent trunk auto-merge — added `--auto-merge` CLI flag and `auto_merge_to_main` config.yml field; orchestrator creates a PR from `agent/trunk` → `main` when all sub-issues complete and auto-merge is configured; trusted runtime bypasses agent GH policy (agents still cannot target main). Tests for `createTrunkToMainPr`, `resolveAutoMerge`, and scan loop integration. (priority: medium)
+- [x] [setup/P2] Dual-mode setup recommendation — analyze spec complexity (workstream count, parallelism potential) and recommend loop vs orchestrator mode, including CI workflow support checks. Implemented `analyzeSpecComplexity`, `detectCIWorkflowSupport`, and `recommendMode` in `project.mjs`; wired into `discoverWorkspace` result; interactive setup shows recommendation and uses it as default mode. Tests: 5 new project tests + 2 new setup tests. (priority: medium)
 - [~] [review] Gate 3: `github-webhook.ts` branch coverage at **75.38%** (target >=90%). Cancelled after Gate 4 removed dead `github-webhook.ts` + `github-webhook.test.ts` (module not wired into orchestrator runtime). (priority: medium)
 
 ### Deferred (Low Priority / After Core)

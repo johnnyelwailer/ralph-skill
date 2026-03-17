@@ -107,7 +107,16 @@ export async function setupCommandWithDeps(
   const defaultProvider = enabledProviders[0] || discovery.providers.default_provider;
   const provider = await deps.prompt('Primary Provider', defaultProvider);
 
-  const defaultMode = 'plan-build-review';
+  const recommendedMode = discovery.mode_recommendation?.recommended_mode;
+  const recommendationReasons = discovery.mode_recommendation?.reasoning || [];
+  if (recommendedMode && recommendationReasons.length > 0) {
+    console.log('\n  Mode recommendation:');
+    for (const reason of recommendationReasons) {
+      console.log(`    ${reason}`);
+    }
+    console.log('');
+  }
+  const defaultMode = recommendedMode === 'orchestrate' ? 'orchestrate' : 'plan-build-review';
   const mode = await deps.prompt('Mode', defaultMode);
 
   const defaultAutonomyLevel = options.autonomyLevel ?? 'balanced';

@@ -1036,3 +1036,136 @@ test('scaffoldWorkspace does not copy opencode agent files when opencode is not 
   const opencodeAgentsDir = path.join(tempRoot, '.opencode', 'agents');
   assert.ok(!existsSync(opencodeAgentsDir), '.opencode/agents/ should not exist when opencode is not enabled');
 });
+
+test('discoverWorkspace includes spec complexity analysis', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-complexity-'));
+  const specContent = `# Project Spec
+
+## Frontend
+Build the UI with React.
+
+## Backend
+Build the REST API with Node.js.
+
+## Database
+Set up PostgreSQL with migrations.
+
+### Parallel development
+Frontend and backend can be developed in parallel and concurrent workstreams.
+
+## Acceptance Criteria
+- [ ] User can login
+- [ ] User can view dashboard
+- [ ] API returns correct data
+
+## Infrastructure
+Deploy to AWS with Kubernetes.
+`;
+  await writeFile(path.join(tempRoot, 'SPEC.md'), specContent, 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+
+  assert.ok(result.spec_complexity, 'should include spec_complexity');
+  assert.ok(result.spec_complexity.workstream_count >= 3, `workstream_count should be >= 3, got ${result.spec_complexity.workstream_count}`);
+  assert.ok(result.spec_complexity.parallelism_score >= 2, `parallelism_score should be >= 2, got ${result.spec_complexity.parallelism_score}`);
+  assert.ok(result.spec_complexity.estimated_issue_count >= 3, `estimated_issue_count should be >= 3, got ${result.spec_complexity.estimated_issue_count}`);
+  assert.equal(result.spec_complexity.analyzed_files, 1);
+});
+
+test('discoverWorkspace includes CI workflow support detection', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-ci-detect-'));
+  const workflowsDir = path.join(tempRoot, '.github', 'workflows');
+  await mkdir(workflowsDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(workflowsDir, 'ci.yml'), 'name: CI\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n', 'utf8');
+  await writeFile(path.join(workflowsDir, 'lint.yml'), 'name: Lint\non: push\njobs:\n  lint:\n    runs-on: ubuntu-latest\n', 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+
+  assert.ok(result.ci_support, 'should include ci_support');
+  assert.equal(result.ci_support.has_workflows, true);
+  assert.equal(result.ci_support.workflow_count, 2);
+  assert.ok(result.ci_support.workflow_types.includes('test'), 'should detect test workflow');
+  assert.ok(result.ci_support.workflow_types.includes('lint'), 'should detect lint workflow');
+});
+
+test('discoverWorkspace includes mode recommendation for simple specs', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-simple-spec-'));
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# Simple Feature\n\nAdd a button to the page.\n\n- [ ] Add button\n', 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+
+  assert.ok(result.mode_recommendation, 'should include mode_recommendation');
+  assert.equal(result.mode_recommendation.recommended_mode, 'loop');
+  assert.ok(result.mode_recommendation.reasoning.length > 0, 'should have reasoning');
+});
+
+test('discoverWorkspace recommends orchestrate mode for complex multi-workstream specs', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-complex-spec-'));
+  const complexSpec = `# Large Project
+
+## Frontend
+Build React SPA with authentication and dashboard.
+
+## Backend
+Build Node.js API with user management, billing, and notifications.
+
+## Database
+Set up PostgreSQL with migrations for users, billing, and analytics.
+
+## Infrastructure
+Deploy to AWS with Kubernetes, CI/CD pipeline, and monitoring.
+
+## Mobile
+Build React Native app for iOS and Android.
+
+### Parallel Development
+All workstreams can proceed in parallel with concurrent development teams.
+Independent modules should be developed simultaneously.
+
+## Acceptance Criteria
+- [ ] Users can register and login
+- [ ] Dashboard shows real-time data
+- [ ] API handles 1000 req/s
+- [ ] Mobile app works offline
+- [ ] Billing integration complete
+- [ ] Notifications delivered reliably
+- [ ] CI/CD deploys automatically
+- [ ] Monitoring alerts configured
+- [ ] Load tests pass
+- [ ] Security audit complete
+- [ ] Documentation updated
+`;
+  await writeFile(path.join(tempRoot, 'SPEC.md'), complexSpec, 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+
+  assert.ok(result.mode_recommendation, 'should include mode_recommendation');
+  assert.equal(result.mode_recommendation.recommended_mode, 'orchestrate');
+  assert.ok(result.mode_recommendation.reasoning.length > 0, 'should have reasoning');
+});
+
+test('discoverWorkspace mode recommendation includes CI boost for orchestrate', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-ci-boost-'));
+  const workflowsDir = path.join(tempRoot, '.github', 'workflows');
+  await mkdir(workflowsDir, { recursive: true });
+  // Multi-workstream spec that's borderline for orchestrate
+  const spec = `# Project
+
+## Frontend
+React UI for the application.
+
+## Backend
+REST API for data management.
+
+## Infrastructure
+Cloud deployment setup.
+`;
+  await writeFile(path.join(tempRoot, 'SPEC.md'), spec, 'utf8');
+  await writeFile(path.join(workflowsDir, 'test.yml'), 'name: Test\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n', 'utf8');
+
+  const result = await discoverWorkspace({ projectRoot: tempRoot, homeDir: tempRoot });
+
+  assert.ok(result.ci_support.has_workflows, 'should detect CI workflows');
+  assert.ok(result.mode_recommendation.reasoning.some(r => r.includes('CI')), 'reasoning should mention CI support');
+});

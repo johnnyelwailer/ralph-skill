@@ -74,6 +74,9 @@ async function setupWorkspace(prefix: string): Promise<{ root: string; homeDir: 
       },
       round_robin_default: ['claude', 'codex', 'gemini', 'copilot'],
     },
+    spec_complexity: { workstream_count: 1, parallelism_score: 0, estimated_issue_count: 1, analyzed_files: 1 },
+    ci_support: { has_workflows: false, workflow_count: 0, workflow_types: [] },
+    mode_recommendation: { recommended_mode: 'loop', reasoning: ['Recommendation: loop mode'] },
     discovered_at: new Date().toISOString(),
   };
 

@@ -458,3 +458,94 @@ test('setupCommandWithDeps - non-interactive orchestrate mode is preserved', asy
   assert.ok(scaffoldCalledOpts);
   assert.equal(scaffoldCalledOpts.mode, 'orchestrate');
 });
+
+test('setupCommandWithDeps - interactive mode uses mode recommendation as default', async () => {
+  let scaffoldCalledOpts = null as unknown as ScaffoldOptions;
+  let capturedModeDefault = '';
+
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: [] },
+        spec_candidates: [],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+      spec_complexity: { workstream_count: 5, parallelism_score: 4, estimated_issue_count: 12, analyzed_files: 1 },
+      ci_support: { has_workflows: true, workflow_count: 2, workflow_types: ['test', 'lint'] },
+      mode_recommendation: {
+        recommended_mode: 'orchestrate',
+        reasoning: ['Recommendation: orchestrator mode (score: 6/7)', '5 distinct workstreams — parallelism would help'],
+      },
+    } as unknown as DiscoveryResult;
+  };
+
+  const mockScaffold = async (opts: ScaffoldOptions): Promise<ScaffoldResult> => {
+    scaffoldCalledOpts = opts;
+    return { config_path: '/mock/config', prompts_dir: '/mock/prompts', project_dir: '/mock/dir', project_hash: '123' };
+  };
+
+  const mockPrompt: PromptFunction = async (question: string, defaultValue: string) => {
+    if (question.includes('Mode')) {
+      capturedModeDefault = defaultValue;
+      return 'orchestrate';
+    }
+    return defaultValue;
+  };
+
+  await setupCommandWithDeps({}, { discover: mockDiscover, scaffold: mockScaffold, prompt: mockPrompt });
+
+  assert.equal(capturedModeDefault, 'orchestrate', 'default mode should be orchestrate based on recommendation');
+  assert.ok(scaffoldCalledOpts);
+  assert.equal(scaffoldCalledOpts.mode, 'orchestrate');
+});
+
+test('setupCommandWithDeps - interactive mode defaults to loop when recommendation is loop', async () => {
+  let capturedModeDefault = '';
+
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: [] },
+        spec_candidates: [],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+      spec_complexity: { workstream_count: 1, parallelism_score: 0, estimated_issue_count: 2, analyzed_files: 1 },
+      ci_support: { has_workflows: false, workflow_count: 0, workflow_types: [] },
+      mode_recommendation: {
+        recommended_mode: 'loop',
+        reasoning: ['Recommendation: loop mode (score: 1/7)', 'Single workstream — loop mode is sufficient'],
+      },
+    } as unknown as DiscoveryResult;
+  };
+
+  const mockScaffold = async (opts: ScaffoldOptions): Promise<ScaffoldResult> => {
+    return { config_path: '/mock/config', prompts_dir: '/mock/prompts', project_dir: '/mock/dir', project_hash: '123' };
+  };
+
+  const mockPrompt: PromptFunction = async (question: string, defaultValue: string) => {
+    if (question.includes('Mode')) {
+      capturedModeDefault = defaultValue;
+    }
+    return defaultValue;
+  };
+
+  await setupCommandWithDeps({}, { discover: mockDiscover, scaffold: mockScaffold, prompt: mockPrompt });
+
+  assert.equal(capturedModeDefault, 'plan-build-review', 'default mode should be plan-build-review when recommendation is loop');
+});

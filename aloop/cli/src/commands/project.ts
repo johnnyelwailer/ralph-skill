@@ -33,6 +33,24 @@ export interface ScaffoldOptions extends BaseOptions {
   templatesDir?: string;
 }
 
+export interface SpecComplexity {
+  workstream_count: number;
+  parallelism_score: number;
+  estimated_issue_count: number;
+  analyzed_files: number;
+}
+
+export interface CISupport {
+  has_workflows: boolean;
+  workflow_count: number;
+  workflow_types: string[];
+}
+
+export interface ModeRecommendation {
+  recommended_mode: string;
+  reasoning: string[];
+}
+
 export interface DiscoveryResult {
   project: {
     root: string;
@@ -67,6 +85,9 @@ export interface DiscoveryResult {
     default_models: Record<string, string>;
     round_robin_default: string[];
   };
+  spec_complexity: SpecComplexity;
+  ci_support: CISupport;
+  mode_recommendation: ModeRecommendation;
   discovered_at: string;
 }
 
