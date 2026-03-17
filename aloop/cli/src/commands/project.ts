@@ -92,3 +92,6 @@ export const assertProjectConfigured = projectCore.assertProjectConfigured as (d
 export const resolveProjectRoot = projectCore.resolveProjectRoot as (projectRoot?: string) => string;
 export const getProjectHash = projectCore.getProjectHash as (projectPath: string) => string;
 export const getHomeDir = projectCore.getHomeDir as (explicit?: string) => string;
+export const KNOWN_PROVIDERS: string[] = projectCore.KNOWN_PROVIDERS;
+export const validateProviders = projectCore.validateProviders as (providerList: string[]) => void;
+export const validateSpecFiles = projectCore.validateSpecFiles as (specFiles: string[], projectRoot: string) => void;

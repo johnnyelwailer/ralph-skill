@@ -232,6 +232,25 @@ export function readDefaultProvider(homeDir) {
   }
 }
 
+export const KNOWN_PROVIDERS = ['claude', 'codex', 'gemini', 'copilot', 'opencode'];
+
+export function validateProviders(providerList) {
+  const unknown = providerList.filter((p) => !KNOWN_PROVIDERS.includes(p));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown provider(s): ${unknown.join(', ')} (valid: ${KNOWN_PROVIDERS.join(', ')})`
+    );
+  }
+}
+
+export function validateSpecFiles(specFiles, projectRoot) {
+  for (const file of specFiles) {
+    if (!existsSync(path.resolve(projectRoot, file))) {
+      throw new Error(`Spec file not found: ${file}`);
+    }
+  }
+}
+
 export function getInstalledProviders() {
   const providers = ['claude', 'codex', 'gemini', 'copilot'];
   const installed = [];
@@ -520,6 +539,17 @@ export async function scaffoldWorkspace(options = {}) {
   const dataPrivacy = normalizeDataPrivacy(options.dataPrivacy);
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
   const promptsDir = path.join(discovery.setup.project_dir, 'prompts');
+
+  // Validate explicit inputs before writing any files
+  if (enabledProviders.length > 0) {
+    validateProviders(enabled);
+  }
+  if (options.provider) {
+    validateProviders([provider]);
+  }
+  if (specFiles.length > 0) {
+    validateSpecFiles(specFiles, discovery.project.root);
+  }
 
   // Bootstrap templates from bundled source if the HOME templates directory doesn't exist yet
   // Only auto-bootstrap when using the default templates path (not an explicit templatesDir option)

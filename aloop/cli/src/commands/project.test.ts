@@ -154,9 +154,12 @@ test('scaffoldWorkspace expands nested template includes before variable substit
   const homeRoot = path.join(tempRoot, 'home');
   const templatesDir = path.join(tempRoot, 'templates');
   const instructionsDir = path.join(templatesDir, 'instructions');
+  const docsDir = path.join(tempRoot, 'docs');
   await mkdir(homeRoot, { recursive: true });
   await mkdir(instructionsDir, { recursive: true });
+  await mkdir(docsDir, { recursive: true });
   await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(docsDir, 'SPEC-2.md'), '# spec 2', 'utf8');
   await writeFile(path.join(tempRoot, 'RESEARCH.md'), '# research', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
@@ -314,6 +317,7 @@ test('scaffoldWorkspace respects explicit enabledProviders and roundRobinOrder',
   const templatesDir = path.join(tempRoot, 'templates');
   await mkdir(homeRoot, { recursive: true });
   await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
@@ -327,7 +331,7 @@ test('scaffoldWorkspace respects explicit enabledProviders and roundRobinOrder',
     templatesDir,
     enabledProviders: ['claude', 'gemini'],
     roundRobinOrder: ['gemini', 'claude'],
-    specFiles: ['none']
+    specFiles: ['SPEC.md'],
   });
 
   const config = await readFile(result.config_path, 'utf8');
@@ -341,6 +345,7 @@ test('scaffoldWorkspace writes explicit autonomy level', async () => {
   const templatesDir = path.join(tempRoot, 'templates');
   await mkdir(homeRoot, { recursive: true });
   await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
@@ -353,7 +358,7 @@ test('scaffoldWorkspace writes explicit autonomy level', async () => {
     homeDir: homeRoot,
     templatesDir,
     autonomyLevel: 'autonomous',
-    specFiles: ['none'],
+    specFiles: ['SPEC.md'],
   });
 
   const config = await readFile(result.config_path, 'utf8');
@@ -530,7 +535,7 @@ test('scaffoldWorkspace does not bootstrap bundled templates when default HOME t
   assert.equal(generatedPlanPrompt, 'Existing PROMPT_plan.md');
 });
 
-test('scaffoldWorkspace leaves provider hints empty for unknown providers', async () => {
+test('scaffoldWorkspace rejects unknown provider names', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-'));
   const homeRoot = path.join(tempRoot, 'home');
   const templatesDir = path.join(tempRoot, 'templates');
@@ -539,20 +544,69 @@ test('scaffoldWorkspace leaves provider hints empty for unknown providers', asyn
   await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
-  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review{{PROVIDER_HINTS}}', 'utf8');
-  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer{{PROVIDER_HINTS}}', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
 
-  const result = await scaffoldWorkspace({
-    projectRoot: tempRoot,
-    homeDir: homeRoot,
-    templatesDir,
-    provider: 'unknown-provider',
-  });
+  await assert.rejects(
+    () => scaffoldWorkspace({
+      projectRoot: tempRoot,
+      homeDir: homeRoot,
+      templatesDir,
+      provider: 'unknown-provider',
+    }),
+    /Unknown provider\(s\): unknown-provider/,
+  );
+});
 
-  const reviewPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_review.md'), 'utf8');
-  assert.equal(reviewPrompt, 'Review');
+test('scaffoldWorkspace rejects unknown providers in enabledProviders', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-bad-providers-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+
+  await assert.rejects(
+    () => scaffoldWorkspace({
+      projectRoot: tempRoot,
+      homeDir: homeRoot,
+      templatesDir,
+      enabledProviders: ['claude', 'fakeprovider'],
+    }),
+    /Unknown provider\(s\): fakeprovider/,
+  );
+});
+
+test('scaffoldWorkspace rejects nonexistent spec files', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-bad-spec-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(templatesDir, 'PROMPT_plan.md'), 'Plan', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_build.md'), 'Build', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_review.md'), 'Review', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+
+  await assert.rejects(
+    () => scaffoldWorkspace({
+      projectRoot: tempRoot,
+      homeDir: homeRoot,
+      templatesDir,
+      specFiles: ['NONEXISTENT_SPEC.md'],
+    }),
+    /Spec file not found: NONEXISTENT_SPEC\.md/,
+  );
 });
 
 test('resolveProjectRoot correctly identifies git root', async () => {
@@ -604,18 +658,29 @@ test('resolveProviderHints covers all branches', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), '{{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), '{{PROVIDER_HINTS}}', 'utf8');
 
-  const providers = ['claude', 'codex', 'gemini', 'copilot', 'round-robin'];
+  const providers = ['claude', 'codex', 'gemini', 'copilot'];
   for (const p of providers) {
     const result = await scaffoldWorkspace({
       projectRoot: tempRoot,
       homeDir: homeRoot,
       templatesDir,
       provider: p,
-      specFiles: ['none'], // to avoid discovery errors if no spec files found
+      enabledProviders: [p],
     });
     const prompt = await readFile(path.join(result.prompts_dir, 'PROMPT_plan.md'), 'utf8');
     assert.ok(prompt.includes(p.charAt(0).toUpperCase() + p.slice(1)));
   }
+
+  // Test opencode provider (known but no provider hints)
+  const opencodeResult = await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: path.join(tempRoot, 'home-opencode'),
+    templatesDir,
+    provider: 'opencode',
+    enabledProviders: ['opencode'],
+  });
+  const opencodePrompt = await readFile(path.join(opencodeResult.prompts_dir, 'PROMPT_plan.md'), 'utf8');
+  assert.equal(opencodePrompt, '', 'opencode should have empty provider hints');
 });
 
 test('buildValidationPresets handles unknown language', async () => {

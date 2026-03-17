@@ -40,9 +40,13 @@ async function createWorkspaceFixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-entrypoint-'));
   const projectRoot = path.join(root, 'project');
   const homeDir = path.join(root, 'home');
+  const docsDir = path.join(projectRoot, 'docs');
   await mkdir(projectRoot, { recursive: true });
   await mkdir(homeDir, { recursive: true });
+  await mkdir(docsDir, { recursive: true });
   await writeFile(path.join(projectRoot, 'SPEC.md'), '# spec\n', 'utf8');
+  await writeFile(path.join(projectRoot, 'README.md'), '# readme\n', 'utf8');
+  await writeFile(path.join(docsDir, 'SPEC.md'), '# docs spec\n', 'utf8');
   await writeFile(path.join(projectRoot, 'package.json'), '{"name":"fixture","scripts":{"test":"node -v"}}\n', 'utf8');
   return { root, projectRoot, homeDir };
 }

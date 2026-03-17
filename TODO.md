@@ -31,8 +31,8 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
   - Re-test 2026-03-16 (835c6fa): FAIL - still leaks stack trace.
 - [x] [qa/P2] CLI `mode` flag conflict — `aloop setup` uses `--mode` for system mode (loop/orchestrate) but `aloop start` and `aloop scaffold` use it for phase (plan/build/review). Causes `Invalid mode: loop` error in `aloop start` if `mode: loop` is written to config. (priority: medium)
 - [x] [qa/P2] `aloop start` fails with "No Aloop configuration found" if config is only in global `~/.aloop/projects/<hash>/` — fixed: config check now accepts global `~/.aloop/config.yml` as fallback when project-specific config is absent.
-- [ ] [qa/P2] `aloop setup` accepts invalid inputs without validation — nonexistent spec files and unknown provider names are written silently. (priority: medium)
-- [ ] [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` writes nonexistent path to config without warning. (priority: medium)
+- [x] [qa/P2] `aloop setup` accepts invalid inputs without validation — nonexistent spec files and unknown provider names are written silently. Implemented `validateProviders` and `validateSpecFiles` in `project.mjs`, called from `scaffoldWorkspace` before writing any files. Both `setup` and `scaffold` paths validated since they share the same `scaffoldWorkspace` entry point. (priority: medium)
+- [x] [qa/P2] `aloop scaffold --spec-files NONEXISTENT.md` writes nonexistent path to config without warning. Fixed by the same `validateSpecFiles` validation in `scaffoldWorkspace` that rejects nonexistent spec file paths before writing config. (priority: medium)
 - [ ] [orchestrator/P2] Multi-file spec support — `specs/*.md` globbing, merge logic, master-spec + vertical-slice-group pattern. (priority: medium)
 - [ ] [orchestrator/P2] Efficient GitHub monitoring — ETag-guarded REST change detection, targeted GraphQL full-state fetch, `since` filtering, optional webhook push. (priority: medium)
 - [ ] [orchestrator/P2] Devcontainer routing — per-task `sandbox: container|none`, `requires: [windows, macos, gpu]`, dispatcher host-capability checks. (priority: medium)
