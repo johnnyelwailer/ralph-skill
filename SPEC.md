@@ -2296,7 +2296,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 - Read `loop-plan.json` each iteration, pick agent at `$cyclePosition`
 - Provider invocation (direct — loop and providers run in the same environment)
   - Must track child PIDs when invoking providers
-  - Per-iteration timeout (default 8 hours) with precedence: prompt frontmatter `timeout` -> `ALOOP_PROVIDER_TIMEOUT` -> default. Timeout remains a catastrophic safety net only; not a behavioral limit on agent runtime
+  - Per-iteration timeout (default 3 hours / 10800 seconds) with precedence: prompt frontmatter `timeout` -> `ALOOP_PROVIDER_TIMEOUT` -> default. The built-in default must be identical in `loop.sh` and `loop.ps1` for cross-runtime parity. Timeout remains a catastrophic safety net only; not a behavioral limit on agent runtime
   - On loop exit (`finally`/`trap`), kill all spawned child processes
 - Iteration counting
 - Status.json and log.jsonl writes

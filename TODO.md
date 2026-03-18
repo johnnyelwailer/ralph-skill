@@ -5,6 +5,7 @@
 Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) setup/QA hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
+- [ ] [runtime/P1] [steering] Set default execution-control provider timeout to 3 hours (10800s) in both `loop.sh` and `loop.ps1`, preserving precedence (`prompt timeout` -> `ALOOP_PROVIDER_TIMEOUT` -> built-in default) and adding parity regression coverage. (priority: high)
 - [ ] [orchestrator/P1] Implement Refinement Budget Cap: add `refinement_count` to `OrchestratorIssue`, increment on DoR failure, and enforce cap of 5 with autonomy-based auto-resolve vs wait behavior so refinement loops cannot spin forever. (priority: high)
 - [ ] [orchestrator/P1] Implement Orchestrator Review Layer: add `PROMPT_orch_review.md` and wire `invokeAgentReview` path so post-child PR review enforces spec compliance/proof quality before merge. (priority: high)
 
@@ -25,7 +26,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 - [ ] [dashboard/low] Extend E2E `smoke.spec.ts` coverage for explicit 1920x1080 sidebar/docs/activity visibility checks once core gates are green.
 
 ### Completed
-- [x] [review] Gate 1: default execution-control timeout is asymmetric across runtimes — `loop.sh:PROVIDER_TIMEOUT=28800` (8h) vs `loop.ps1:$ProviderTimeoutSec=600` (10m). Align to one default so identical prompts behave the same across platforms. (priority: high)
+- [ ] [review] Gate 1: default execution-control timeout is asymmetric across runtimes — `loop.sh:PROVIDER_TIMEOUT=28800` (8h) vs `loop.ps1:$ProviderTimeoutSec=600` (10m). Align to one default so identical prompts behave the same across platforms. (priority: high) (reopened: not actually implemented — defaults are still asymmetric, and steering now requires a unified 2-3 hour default)
 - [x] [review] Gate 1: `devcontainerCommandWithDeps` computes auth-file fallback mounts with `deps.existsSync`, but `checkAuthPreflight` is called without `existsFn`/`homeDir` (`aloop/cli/src/commands/devcontainer.ts:620`), so it still warns even when fallback auth files exist. Wire `deps.existsSync` + resolved host home into `checkAuthPreflight` and add a regression test that asserts no warning when a mountable auth file is present. (priority: high)
 - [x] [review] Gate 2: `buildProviderAuthFileMounts - default existsFn uses real filesystem` is a shallow assertion (`assert.ok(Array.isArray(mounts))`) in `aloop/cli/src/commands/devcontainer.test.ts:1482-1486`. Replace with concrete assertions by controlling HOME + fixture file presence/absence and checking exact mount count/content. (priority: medium)
 - [x] [review] Gate 3: touched UI file `aloop/cli/dashboard/src/App.tsx` lacks branch-coverage evidence for this iteration (and dashboard coverage run currently fails with missing `@vitest/coverage-v8`). Added dashboard coverage tooling (`@vitest/coverage-istanbul`) and App export coverage tests; latest dashboard run reports `App.tsx` branch coverage at **100%** (`npm run test:coverage`). (priority: high)
