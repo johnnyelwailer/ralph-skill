@@ -1,32 +1,31 @@
 # Project TODO
 
-## Current Phase: Packaged-Install Parity + Review Gates
+## Current Phase: Runtime Parity + Orchestrator P1 Closure
 
-Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) P1 hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
+Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) setup/QA hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
-- [x] [review] Gate 4: remove dead imports `spawn` and `readFile` from `aloop/cli/dashboard/e2e/smoke.spec.ts:2-3` (unused after test refactor). (priority: low)
-- [x] [loop/P1] [steering] Add per-prompt runtime frontmatter overrides for execution controls so updates are picked up next iteration in both loop and orchestrator child sessions: support `timeout`, `max_retries`, and `retry_backoff` with precedence `frontmatter -> session/env -> default`. (priority: high)
-- [x] [loop/P1] [steering] Extend frontmatter hot-reload contract/tests so runtime-mutable prompt settings (`provider`, `model`, `reasoning`, `timeout`, `max_retries`, `retry_backoff`, `color`) are re-read every iteration and applied consistently for cycle and queue prompts. (priority: high)
-- [x] [devcontainer/P1] [steering] Make devcontainer auth strategy a setup-time user choice and show per-provider proposed auth method in the setup confirmation summary. Default strategy: `mount-first` (auth file bind-mounts first), with `env-first` and `env-only` overrides. (priority: high)
-- [ ] [opencode/P1] [steering] Implement basic token/price tracking for OpenCode/OpenRouter where usage data is emitted: parse usage/cost into iteration events, show in dashboard only when available, and feed orchestrator budget/final report from recorded metrics. (priority: high)
-- [ ] [setup/P2] [steering] Run a focused UX iteration pass on setup + agent/skill/prompt surfaces across Claude/OpenCode/Copilot/Codex to improve smooth automation while preserving explicit user involvement/confirmation checkpoints. (priority: medium)
+- [ ] [orchestrator/P1] Implement Refinement Budget Cap: add `refinement_count` to `OrchestratorIssue`, increment on DoR failure, and enforce cap of 5 with autonomy-based auto-resolve vs wait behavior so refinement loops cannot spin forever. (priority: high)
+- [ ] [orchestrator/P1] Implement Orchestrator Review Layer: add `PROMPT_orch_review.md` and wire `invokeAgentReview` path so post-child PR review enforces spec compliance/proof quality before merge. (priority: high)
 
 ### Up Next
-- [ ] [orchestrator/P1] Implement Refinement Budget Cap: add `refinement_count` to `OrchestratorIssue`, increment when DoR fails, and enforce cap of 5 by auto-resolving or waiting based on autonomy level. (priority: high)
-- [ ] [orchestrator/P1] Implement Orchestrator Review Layer: create `PROMPT_orch_review.md` and wire it into `invokeAgentReview` in `orchestrate.ts` to validate spec compliance, proof, and integration before merge. (priority: high)
-- [ ] [orchestrator/P1] Implement Spec Consistency result processing: read and apply `requests/spec-consistency-results.json` in `runOrchestratorScanPass`. (priority: medium)
-- [ ] [dashboard/P1] Implement Proof artifact comparison modes: side-by-side/slider/diff overlay in `App.tsx` for visual artifacts. (priority: medium)
-- [ ] [setup/P1] Implement ZDR provider warnings: during setup confirmation, list providers requiring org-level agreements (Claude, Gemini, OpenAI, Copilot) with doc links. (priority: medium)
-- [ ] [qa/P2] [bug] Cross-platform PowerShell fake-provider shims — observed: Linux `Get-Command` ignored `.cmd` fake shims so tests called real provider CLIs; expected: all fake provider binaries resolve to shims on Windows/Linux/macOS. Keep `.cmd` (Windows) and no-extension shell shims (Linux/macOS) in lockstep for any touched test infrastructure. (priority: medium)
+- [ ] [opencode/P1] [steering] Implement basic token/price tracking for OpenCode/OpenRouter where usage data is emitted: parse usage/cost into iteration events, show in dashboard only when available, and feed orchestrator budget/final report from recorded metrics. (priority: high)
+- [ ] [orchestrator/P1] Implement Spec Consistency result processing: consume `requests/spec-consistency-results.json` in `runOrchestratorScanPass` and apply state/log actions so queued consistency checks have runtime effect. (priority: medium)
+- [ ] [setup/P1] Implement ZDR provider warnings in setup confirmation for org-level/provider-level constraints (Claude, Gemini, OpenAI, Copilot) with docs links so private-mode users get accurate risk guidance. (priority: medium)
+- [ ] [qa/P2] [bug] Cross-platform PowerShell fake-provider shims — Linux `Get-Command` ignored `.cmd` fake shims so tests called real provider CLIs; ensure `.cmd` + no-extension shims stay in lockstep for touched test infra. (priority: medium)
 
 ### Deferred (Low Priority / After Core)
+- [ ] [review] Gate 4: dead variable `callCount` in `aloop/cli/src/commands/devcontainer.test.ts:1248` — remove unused declaration. (priority: low)
+- [ ] [review] Gate 4: dead parameter `strategy` in `buildProviderRemoteEnv` (`aloop/cli/src/commands/devcontainer.ts:348`) — remove parameter or document intentional no-op. (priority: low)
+- [ ] [setup/P2] [steering] Run a focused UX iteration pass on setup + agent/skill/prompt surfaces across Claude/OpenCode/Copilot/Codex to improve smooth automation while preserving explicit user involvement/confirmation checkpoints. (priority: medium)
+- [ ] [dashboard/P1] Implement Proof artifact comparison modes (side-by-side/slider/diff overlay) in dashboard activity artifact viewer; defer until remaining loop/orchestrator core work is complete. (priority: medium)
 - [ ] [qa/P1] Dashboard docs tabs empty in some sessions (`/api/state` docs payload unresolved/empty due context/workdir mismatch reports) — keep deferred until current loop/runtime parity blockers are closed. (priority: low)
 - [ ] [qa/P1] Dashboard health tab missing `codex` when no recent codex event exists — likely requires configured-provider-based health baseline, not log-only derivation. (priority: low)
 - [ ] [dashboard/low] Raise/verify branch coverage in `aloop/cli/src/commands/dashboard.ts` beyond current gate minimums.
 - [ ] [dashboard/low] Extend E2E `smoke.spec.ts` coverage for explicit 1920x1080 sidebar/docs/activity visibility checks once core gates are green.
 
 ### Completed
+- [x] [review] Gate 1: default execution-control timeout is asymmetric across runtimes — `loop.sh:PROVIDER_TIMEOUT=28800` (8h) vs `loop.ps1:$ProviderTimeoutSec=600` (10m). Align to one default so identical prompts behave the same across platforms. (priority: high)
 - [x] [review] Gate 1: `devcontainerCommandWithDeps` computes auth-file fallback mounts with `deps.existsSync`, but `checkAuthPreflight` is called without `existsFn`/`homeDir` (`aloop/cli/src/commands/devcontainer.ts:620`), so it still warns even when fallback auth files exist. Wire `deps.existsSync` + resolved host home into `checkAuthPreflight` and add a regression test that asserts no warning when a mountable auth file is present. (priority: high)
 - [x] [review] Gate 2: `buildProviderAuthFileMounts - default existsFn uses real filesystem` is a shallow assertion (`assert.ok(Array.isArray(mounts))`) in `aloop/cli/src/commands/devcontainer.test.ts:1482-1486`. Replace with concrete assertions by controlling HOME + fixture file presence/absence and checking exact mount count/content. (priority: medium)
 - [x] [review] Gate 3: touched UI file `aloop/cli/dashboard/src/App.tsx` lacks branch-coverage evidence for this iteration (and dashboard coverage run currently fails with missing `@vitest/coverage-v8`). Added dashboard coverage tooling (`@vitest/coverage-istanbul`) and App export coverage tests; latest dashboard run reports `App.tsx` branch coverage at **100%** (`npm run test:coverage`). (priority: high)
