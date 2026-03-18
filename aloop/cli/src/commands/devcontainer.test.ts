@@ -1363,6 +1363,37 @@ test('devcontainerCommandWithDeps - result includes auth_warnings', async () => 
   assert.ok(Array.isArray(result.auth_warnings));
 });
 
+test('devcontainerCommandWithDeps - no auth warning when fallback auth file is mountable', async () => {
+  const originalAnthropic = process.env.ANTHROPIC_API_KEY;
+  const originalClaudeOauth = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  try {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+
+    const deps: DevcontainerDeps = {
+      discover: async () => mockDiscovery(),
+      readFile: async () => '',
+      writeFile: async () => {},
+      mkdir: async () => undefined,
+      existsSync: (p: string) => p.includes('.claude/.credentials.json'),
+    };
+
+    const result = await devcontainerCommandWithDeps({ homeDir: '/home/user' }, deps);
+    assert.equal(result.auth_warnings.length, 0);
+  } finally {
+    if (originalAnthropic === undefined) {
+      delete process.env.ANTHROPIC_API_KEY;
+    } else {
+      process.env.ANTHROPIC_API_KEY = originalAnthropic;
+    }
+    if (originalClaudeOauth === undefined) {
+      delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    } else {
+      process.env.CLAUDE_CODE_OAUTH_TOKEN = originalClaudeOauth;
+    }
+  }
+});
+
 // --- resolveHomePath ---
 
 test('resolveHomePath - expands tilde to home dir', () => {

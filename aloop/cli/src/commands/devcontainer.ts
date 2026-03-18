@@ -617,7 +617,7 @@ export async function devcontainerCommandWithDeps(
 
   const mapping = getLanguageMapping(discovery.context.detected_language, projectRoot, deps.existsSync);
 
-  const authWarnings = checkAuthPreflight(resolvedProviders);
+  const authWarnings = checkAuthPreflight(resolvedProviders, process.env, deps.existsSync, hostHome);
 
   return {
     action,
