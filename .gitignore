@@ -30,3 +30,4 @@ aloop/cli/coverage/
 aloop/cli/dashboard/test-results/
 *-proof.json
 *-verification.txt
+*.tgz
