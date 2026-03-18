@@ -257,6 +257,11 @@ function Resolve-IterationMode {
                 7 { $resolvedMode = 'review' }
             }
         }
+        if ($Mode -eq 'single') {
+            # One-shot mode: used by orchestrator for single-prompt child loops.
+            # The prompt is resolved from PROMPT_single.md in the prompts dir.
+            $resolvedMode = 'single'
+        }
     }
 
     # Phase prerequisite guards (Rule 2)

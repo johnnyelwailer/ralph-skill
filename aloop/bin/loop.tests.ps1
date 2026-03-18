@@ -2694,6 +2694,22 @@ Describe 'loop.ps1 — cycle resolution + frontmatter branch evidence' {
         $actualModes | Should -Be @('plan', 'build', 'build', 'build', 'build', 'build', 'qa', 'review')
     }
 
+    It 'Resolve-IterationMode handles single mode explicitly' {
+        function Resolve-CyclePromptFromPlan { return $false }
+        function Get-ModeFromPromptName { param([string]$PromptName) return 'plan' }
+        . ([scriptblock]::Create($script:resolveIterationModeFuncSource))
+
+        $Mode = 'single'
+        $script:cyclePosition = 0
+        $resolved = Resolve-IterationMode -IterationNumber 1
+        $resolved | Should -Be 'single'
+
+        # single mode should resolve to 'single' regardless of cycle position
+        $script:cyclePosition = 5
+        $resolved = Resolve-IterationMode -IterationNumber 1
+        $resolved | Should -Be 'single'
+    }
+
     It 'Parse-Frontmatter extracts trigger-capable fields' {
         $promptFile = Join-Path $script:cfTempRoot 'all-fields.md'
         @"

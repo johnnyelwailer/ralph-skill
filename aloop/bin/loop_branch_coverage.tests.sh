@@ -106,6 +106,7 @@ register_branch "cycle.resolve.success" "resolve_cycle_prompt_from_plan resolves
 register_branch "cycle.resolve.missing_file" "resolve_cycle_prompt_from_plan returns 1 when file is missing"
 register_branch "cycle.resolve.invalid_cycle" "resolve_cycle_prompt_from_plan returns 1 when cycle array is empty"
 register_branch "cycle.resolve.modulo_wrap" "resolve_cycle_prompt_from_plan wraps cyclePosition via modulo"
+register_branch "mode.single" "resolve_iteration_mode handles single mode explicitly"
 register_branch "frontmatter.all_fields" "parse_frontmatter extracts trigger-capable fields from valid frontmatter"
 register_branch "frontmatter.empty" "parse_frontmatter yields empty strings when no frontmatter block present"
 register_branch "frontmatter.partial" "parse_frontmatter handles partial frontmatter with missing fields"
@@ -558,6 +559,24 @@ else
 fi
 
 rm -rf "$CYCLE_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# Iteration mode resolution branches (resolve_iteration_mode)
+# ---------------------------------------------------------------------------
+
+# mode.single — single mode resolves explicitly
+LOOP_PLAN_FILE="/tmp/nonexistent-loop-plan-single-test.json"
+MODE="single"
+CYCLE_POSITION=0
+ALOOP_SKIP_PHASE_GUARDS="true"
+resolve_iteration_mode 1 > /dev/null 2>&1
+if [ "$RESOLVED_MODE" = "single" ]; then
+    cover_branch "mode.single"
+    pass_case "resolve_iteration_mode resolves single mode explicitly"
+else
+    fail_case "resolve_iteration_mode should resolve single mode (got: $RESOLVED_MODE)"
+fi
+unset ALOOP_SKIP_PHASE_GUARDS
 
 # ---------------------------------------------------------------------------
 # Phase prerequisite branches (check_phase_prerequisites)
