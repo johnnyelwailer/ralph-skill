@@ -3,12 +3,14 @@ import {
   artifactUrl,
   computeAvgDuration,
   deriveProviderHealth,
+  extractIterationUsage,
   extractModelFromOutput,
   formatDateKey,
   formatDuration,
   formatSecs,
   formatTime,
   formatTimeShort,
+  formatTokenCount,
   isImageArtifact,
   isRecord,
   numStr,
@@ -197,5 +199,48 @@ describe('App.tsx helper coverage', () => {
     expect(extractModelFromOutput(undefined)).toBe('');
 
     expect(slugify(' Hello,  World!  -- ')).toBe('-hello-world-');
+  });
+
+  it('covers extractIterationUsage', () => {
+    // Returns null when rawObj is null
+    expect(extractIterationUsage(null)).toBeNull();
+
+    // Returns null when no cost_usd field
+    expect(extractIterationUsage({ event: 'iteration_complete', provider: 'claude' })).toBeNull();
+
+    // Returns null when cost_usd is 0
+    expect(extractIterationUsage({ cost_usd: 0, tokens_input: 100 })).toBeNull();
+
+    // Returns usage when cost_usd is a number
+    const usage = extractIterationUsage({
+      tokens_input: 15200,
+      tokens_output: 3400,
+      tokens_cache_read: 48000,
+      cost_usd: 0.0034,
+    });
+    expect(usage).not.toBeNull();
+    expect(usage!.tokens_input).toBe(15200);
+    expect(usage!.tokens_output).toBe(3400);
+    expect(usage!.tokens_cache_read).toBe(48000);
+    expect(usage!.cost_usd).toBe(0.0034);
+
+    // Handles string cost_usd (from bash write_log_entry)
+    const strUsage = extractIterationUsage({
+      tokens_input: '5000',
+      tokens_output: '1000',
+      tokens_cache_read: '0',
+      cost_usd: '0.002',
+    });
+    expect(strUsage).not.toBeNull();
+    expect(strUsage!.tokens_input).toBe(5000);
+    expect(strUsage!.cost_usd).toBe(0.002);
+  });
+
+  it('covers formatTokenCount', () => {
+    expect(formatTokenCount(0)).toBe('0');
+    expect(formatTokenCount(500)).toBe('500');
+    expect(formatTokenCount(1500)).toBe('1.5k');
+    expect(formatTokenCount(15200)).toBe('15.2k');
+    expect(formatTokenCount(1500000)).toBe('1.5M');
   });
 });

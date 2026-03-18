@@ -12817,6 +12817,12 @@ async function parseChildSessionCost(sessionDir, sessionId, issueNumber, deps) {
   const logFile = path14.join(sessionDir, "log.jsonl");
   const providers = {};
   let iterations = 0;
+  let tokensInput = 0;
+  let tokensOutput = 0;
+  let tokensCacheRead = 0;
+  let realCostUsd = 0;
+  let hasUsageData = false;
+  let iterationsWithoutCost = 0;
   if (deps.existsSync(logFile)) {
     try {
       const content = await deps.readFile(logFile, "utf8");
@@ -12828,6 +12834,16 @@ async function parseChildSessionCost(sessionDir, sessionId, issueNumber, deps) {
             iterations++;
             const provider = entry.provider ?? "unknown";
             providers[provider] = (providers[provider] ?? 0) + 1;
+            const costVal = typeof entry.cost_usd === "number" ? entry.cost_usd : typeof entry.cost_usd === "string" ? parseFloat(entry.cost_usd) : NaN;
+            if (!isNaN(costVal) && costVal > 0) {
+              hasUsageData = true;
+              realCostUsd += costVal;
+              tokensInput += Number(entry.tokens_input) || 0;
+              tokensOutput += Number(entry.tokens_output) || 0;
+              tokensCacheRead += Number(entry.tokens_cache_read) || 0;
+            } else {
+              iterationsWithoutCost++;
+            }
           }
         } catch {
         }
@@ -12835,13 +12851,21 @@ async function parseChildSessionCost(sessionDir, sessionId, issueNumber, deps) {
     } catch {
     }
   }
-  return {
+  const estimatedCost = hasUsageData ? realCostUsd + iterationsWithoutCost * DEFAULT_COST_PER_ITERATION_USD : iterations * DEFAULT_COST_PER_ITERATION_USD;
+  const result = {
     session_id: sessionId,
     issue_number: issueNumber,
     iterations,
     providers,
-    estimated_cost_usd: iterations * DEFAULT_COST_PER_ITERATION_USD
+    estimated_cost_usd: estimatedCost
   };
+  if (hasUsageData) {
+    result.tokens_input = tokensInput;
+    result.tokens_output = tokensOutput;
+    result.tokens_cache_read = tokensCacheRead;
+    result.real_cost_usd = realCostUsd;
+  }
+  return result;
 }
 async function aggregateChildCosts(state, aloopRoot, deps) {
   const children = [];
@@ -13290,10 +13314,14 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
     ];
     entries = knownFiles.filter((f) => deps.existsSync(path14.join(queueDir, f)));
   }
-  const mdFiles = entries.filter((f) => f.endsWith(".md")).sort();
+  const mdFiles = entries.filter((f) => f.endsWith(".md"));
   if (mdFiles.length === 0)
     return result;
-  const fileName = mdFiles[0];
+  let nextFile = mdFiles.filter((f) => f.includes("-PROMPT_steer.md") || f.includes("-steering.md")).sort()[0];
+  if (!nextFile) {
+    nextFile = mdFiles.sort()[0];
+  }
+  const fileName = nextFile;
   const filePath = path14.join(queueDir, fileName);
   try {
     const content = await deps.readFile(filePath, "utf8");
@@ -13320,7 +13348,7 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
       const isWindows = deps.dispatchDeps.platform === "win32";
       const agentPromptsDir = path14.join(sessionDir, "queue-agent-prompts");
       await deps.dispatchDeps.mkdir(agentPromptsDir, { recursive: true });
-      const agentPromptFile = path14.join(agentPromptsDir, "PROMPT_queue_agent.md");
+      const agentPromptFile = path14.join(agentPromptsDir, "PROMPT_single.md");
       await deps.dispatchDeps.writeFile(agentPromptFile, content, "utf8");
       let command;
       let args;

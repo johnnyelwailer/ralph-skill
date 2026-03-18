@@ -479,6 +479,36 @@ function ElapsedTimer({ since }: { since: string }) {
   return <>{elapsed}</>;
 }
 
+// ── Token/cost usage helpers ──
+
+export interface IterationUsage {
+  tokens_input: number;
+  tokens_output: number;
+  tokens_cache_read: number;
+  cost_usd: number;
+}
+
+/** Extract token/cost usage from a log entry's rawObj. Returns null if no usage data. */
+export function extractIterationUsage(rawObj: Record<string, unknown> | null): IterationUsage | null {
+  if (!rawObj) return null;
+  const costVal = typeof rawObj.cost_usd === 'number' ? rawObj.cost_usd
+    : typeof rawObj.cost_usd === 'string' ? parseFloat(rawObj.cost_usd as string) : NaN;
+  if (isNaN(costVal) || costVal <= 0) return null;
+  return {
+    tokens_input: Number(rawObj.tokens_input) || 0,
+    tokens_output: Number(rawObj.tokens_output) || 0,
+    tokens_cache_read: Number(rawObj.tokens_cache_read) || 0,
+    cost_usd: costVal,
+  };
+}
+
+/** Format a token count for compact display (e.g., 15200 → "15.2k"). */
+export function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
 // ── Artifact helpers ──
 
 export const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
@@ -1347,6 +1377,23 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration }: { entry: LogEntry
               ))}
             </div>
           )}
+
+          {/* Token/cost usage row — shown only when usage data exists */}
+          {(() => {
+            const usage = extractIterationUsage(entry.rawObj);
+            if (!usage) return null;
+            return (
+              <div className="border-l-2 border-emerald-500/30 pl-2 py-1 mt-1 flex items-center gap-3 text-[10px] font-mono text-muted-foreground">
+                <Zap className="h-3 w-3 text-emerald-500 shrink-0" />
+                <span>in: <span className="text-foreground/80">{formatTokenCount(usage.tokens_input)}</span></span>
+                <span>out: <span className="text-foreground/80">{formatTokenCount(usage.tokens_output)}</span></span>
+                {usage.tokens_cache_read > 0 && (
+                  <span>cache: <span className="text-foreground/80">{formatTokenCount(usage.tokens_cache_read)}</span></span>
+                )}
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium">${usage.cost_usd.toFixed(4)}</span>
+              </div>
+            );
+          })()}
 
           {/* Provider output — rendered inline */}
           {hasOutput && (

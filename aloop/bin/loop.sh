@@ -728,6 +728,92 @@ write_log_entry() {
     echo "{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"run_id\":\"$RUN_ID\",\"event\":\"$event\"${data:+,$data}}" >> "$LOG_FILE"
 }
 
+# Write a log entry with mixed string and numeric fields.
+# Usage: write_log_entry_mixed "event_name" '{"key":"val","num":123}'
+# The extra_json arg is raw JSON key-value pairs (no outer braces) merged into the entry.
+write_log_entry_mixed() {
+    local event=$1
+    local extra_json=$2
+    echo "{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"run_id\":\"$RUN_ID\",\"event\":\"$event\"${extra_json:+,$extra_json}}" >> "$LOG_FILE"
+}
+
+# Extract token/cost usage from the latest opencode session.
+# Sets global variables: _OC_TOKENS_INPUT, _OC_TOKENS_OUTPUT, _OC_TOKENS_CACHE_READ, _OC_COST_USD
+# Returns 0 if usage was extracted, 1 otherwise. All values are empty on failure.
+_OC_TOKENS_INPUT=""
+_OC_TOKENS_OUTPUT=""
+_OC_TOKENS_CACHE_READ=""
+_OC_COST_USD=""
+
+extract_opencode_usage() {
+    _OC_TOKENS_INPUT=""
+    _OC_TOKENS_OUTPUT=""
+    _OC_TOKENS_CACHE_READ=""
+    _OC_COST_USD=""
+
+    # Requires opencode CLI and python3 for JSON parsing (no jq dependency)
+    if ! command -v python3 >/dev/null 2>&1; then
+        return 1
+    fi
+
+    # Get latest session ID
+    local session_json
+    session_json=$("${DC_EXEC[@]}" opencode session list --format json 2>/dev/null) || return 1
+    [ -z "$session_json" ] && return 1
+
+    local session_id
+    session_id=$(python3 -c "
+import json, sys
+try:
+    sessions = json.loads(sys.stdin.read())
+    if isinstance(sessions, list) and len(sessions) > 0:
+        print(sessions[0].get('id', ''))
+    else:
+        sys.exit(1)
+except Exception:
+    sys.exit(1)
+" <<< "$session_json" 2>/dev/null) || return 1
+    [ -z "$session_id" ] && return 1
+
+    # Export session and sum usage across assistant messages
+    local export_json
+    export_json=$("${DC_EXEC[@]}" opencode export "$session_id" 2>/dev/null) || return 1
+    [ -z "$export_json" ] && return 1
+
+    local usage
+    usage=$(python3 -c "
+import json, sys
+try:
+    data = json.loads(sys.stdin.read())
+    messages = data.get('messages', [])
+    ti = to = tc = cost = 0
+    found = False
+    for m in messages:
+        if m.get('role') != 'assistant':
+            continue
+        tokens = m.get('tokens', {})
+        c = m.get('cost')
+        if tokens or c:
+            found = True
+        ti += tokens.get('input', 0) or 0
+        to += tokens.get('output', 0) or 0
+        cache = tokens.get('cache', {})
+        tc += cache.get('read', 0) or 0
+        if c:
+            cost += float(c)
+    if not found:
+        sys.exit(1)
+    # Output as tab-separated: tokens_input tokens_output tokens_cache_read cost_usd
+    print(f'{ti}\t{to}\t{tc}\t{cost}')
+except Exception:
+    sys.exit(1)
+" <<< "$export_json" 2>/dev/null) || return 1
+    [ -z "$usage" ] && return 1
+
+    IFS=$'\t' read -r _OC_TOKENS_INPUT _OC_TOKENS_OUTPUT _OC_TOKENS_CACHE_READ _OC_COST_USD <<< "$usage"
+    return 0
+}
+
 # ============================================================================
 # PROVIDER HEALTH PRIMITIVES
 # ============================================================================
@@ -2089,7 +2175,20 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         ITERATION_COMMIT_COUNT="0"
         print_iteration_summary "$ITERATION_START"
 
-        write_log_entry "iteration_complete" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "duration" "$_iter_duration" "commits" "$ITERATION_COMMIT_COUNT" "commit_log" "$ITERATION_COMMITS"
+        # Extract token/cost usage for opencode provider (best-effort, non-blocking)
+        local _usage_json=""
+        if [ "$iter_provider" = "opencode" ]; then
+            if extract_opencode_usage; then
+                _usage_json="\"tokens_input\":${_OC_TOKENS_INPUT:-0},\"tokens_output\":${_OC_TOKENS_OUTPUT:-0},\"tokens_cache_read\":${_OC_TOKENS_CACHE_READ:-0},\"cost_usd\":${_OC_COST_USD:-0}"
+            fi
+        fi
+
+        # Write iteration_complete with usage data when available (numeric fields)
+        local _ic_json="\"iteration\":\"$ITERATION\",\"mode\":\"$iter_mode\",\"provider\":\"$iter_provider\",\"model\":\"$LAST_PROVIDER_MODEL\",\"duration\":\"$_iter_duration\",\"commits\":\"$ITERATION_COMMIT_COUNT\",\"commit_log\":\"$ITERATION_COMMITS\""
+        if [ -n "$_usage_json" ]; then
+            _ic_json="$_ic_json,$_usage_json"
+        fi
+        write_log_entry_mixed "iteration_complete" "$_ic_json"
 
         echo ""
         echo "[Iteration $ITERATION complete - $iter_mode]"

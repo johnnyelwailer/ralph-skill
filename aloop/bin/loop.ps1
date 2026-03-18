@@ -1076,6 +1076,48 @@ function Write-LogEntry {
     ($entry | ConvertTo-Json -Compress) | Add-Content -Encoding utf8 $logFile
 }
 
+# Extract token/cost usage from the latest opencode session.
+# Returns a hashtable with tokens_input, tokens_output, tokens_cache_read, cost_usd or $null on failure.
+function Extract-OpenCodeUsage {
+    try {
+        $sessionJson = & opencode session list --format json 2>$null
+        if (-not $sessionJson) { return $null }
+        $sessions = $sessionJson | ConvertFrom-Json
+        if (-not $sessions -or $sessions.Count -eq 0) { return $null }
+        $sessionId = $sessions[0].id
+        if (-not $sessionId) { return $null }
+
+        $exportJson = & opencode export $sessionId 2>$null
+        if (-not $exportJson) { return $null }
+        $data = $exportJson | ConvertFrom-Json
+        if (-not $data.messages) { return $null }
+
+        $ti = 0; $to = 0; $tc = 0; $cost = [double]0; $found = $false
+        foreach ($m in $data.messages) {
+            if ($m.role -ne 'assistant') { continue }
+            if ($m.tokens -or $m.cost) { $found = $true }
+            if ($m.tokens) {
+                $ti += [int]($m.tokens.input ?? 0)
+                $to += [int]($m.tokens.output ?? 0)
+                if ($m.tokens.cache) {
+                    $tc += [int]($m.tokens.cache.read ?? 0)
+                }
+            }
+            if ($m.cost) { $cost += [double]$m.cost }
+        }
+        if (-not $found) { return $null }
+        return @{
+            tokens_input = $ti
+            tokens_output = $to
+            tokens_cache_read = $tc
+            cost_usd = $cost
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
 # ============================================================================
 # PROVIDER HEALTH PRIMITIVES
 # ============================================================================
@@ -2105,11 +2147,23 @@ try {
             }
 
             Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
-            Write-LogEntry -Event "iteration_complete" -Data @{
+
+            # Extract token/cost usage for opencode provider (best-effort)
+            $usageData = @{
                 iteration = $iteration
                 mode = $iterationMode
                 provider = $iterationProvider
             }
+            if ($iterationProvider -eq 'opencode') {
+                $ocUsage = Extract-OpenCodeUsage
+                if ($ocUsage) {
+                    $usageData['tokens_input'] = $ocUsage.tokens_input
+                    $usageData['tokens_output'] = $ocUsage.tokens_output
+                    $usageData['tokens_cache_read'] = $ocUsage.tokens_cache_read
+                    $usageData['cost_usd'] = $ocUsage.cost_usd
+                }
+            }
+            Write-LogEntry -Event "iteration_complete" -Data $usageData
 
             Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
         }

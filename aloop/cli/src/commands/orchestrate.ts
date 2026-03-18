@@ -3536,6 +3536,14 @@ export interface ChildSessionCost {
   iterations: number;
   providers: Record<string, number>;
   estimated_cost_usd: number;
+  /** Total tokens_input across iterations with usage data. Omitted when no usage data. */
+  tokens_input?: number;
+  /** Total tokens_output across iterations with usage data. Omitted when no usage data. */
+  tokens_output?: number;
+  /** Total tokens_cache_read across iterations with usage data. Omitted when no usage data. */
+  tokens_cache_read?: number;
+  /** Sum of real cost_usd from iterations with usage data. Omitted when no usage data. */
+  real_cost_usd?: number;
 }
 
 export interface BudgetSummary {
@@ -3570,6 +3578,8 @@ export interface BudgetDeps {
 
 /**
  * Parse a child session's log.jsonl to count iterations and provider usage.
+ * When iterations include real token/cost data (from opencode), those are accumulated
+ * and used for cost estimation instead of the flat per-iteration default.
  */
 export async function parseChildSessionCost(
   sessionDir: string,
@@ -3580,6 +3590,12 @@ export async function parseChildSessionCost(
   const logFile = path.join(sessionDir, 'log.jsonl');
   const providers: Record<string, number> = {};
   let iterations = 0;
+  let tokensInput = 0;
+  let tokensOutput = 0;
+  let tokensCacheRead = 0;
+  let realCostUsd = 0;
+  let hasUsageData = false;
+  let iterationsWithoutCost = 0;
 
   if (deps.existsSync(logFile)) {
     try {
@@ -3592,6 +3608,19 @@ export async function parseChildSessionCost(
             iterations++;
             const provider = entry.provider ?? 'unknown';
             providers[provider] = (providers[provider] ?? 0) + 1;
+
+            // Accumulate real usage data when present
+            const costVal = typeof entry.cost_usd === 'number' ? entry.cost_usd
+              : typeof entry.cost_usd === 'string' ? parseFloat(entry.cost_usd) : NaN;
+            if (!isNaN(costVal) && costVal > 0) {
+              hasUsageData = true;
+              realCostUsd += costVal;
+              tokensInput += Number(entry.tokens_input) || 0;
+              tokensOutput += Number(entry.tokens_output) || 0;
+              tokensCacheRead += Number(entry.tokens_cache_read) || 0;
+            } else {
+              iterationsWithoutCost++;
+            }
           }
         } catch {
           // Skip malformed log lines
@@ -3602,13 +3631,27 @@ export async function parseChildSessionCost(
     }
   }
 
-  return {
+  // Use real cost for iterations that reported it, fall back to estimate for the rest
+  const estimatedCost = hasUsageData
+    ? realCostUsd + (iterationsWithoutCost * DEFAULT_COST_PER_ITERATION_USD)
+    : iterations * DEFAULT_COST_PER_ITERATION_USD;
+
+  const result: ChildSessionCost = {
     session_id: sessionId,
     issue_number: issueNumber,
     iterations,
     providers,
-    estimated_cost_usd: iterations * DEFAULT_COST_PER_ITERATION_USD,
+    estimated_cost_usd: estimatedCost,
   };
+
+  if (hasUsageData) {
+    result.tokens_input = tokensInput;
+    result.tokens_output = tokensOutput;
+    result.tokens_cache_read = tokensCacheRead;
+    result.real_cost_usd = realCostUsd;
+  }
+
+  return result;
 }
 
 /**
@@ -3719,18 +3762,38 @@ export function formatFinalReportText(report: FinalReport): string {
   if (report.budget.children.length > 0) {
     lines.push('');
     lines.push('--- Provider Usage ---');
-    // Aggregate provider counts across all children
+    // Aggregate provider counts and token data across all children
     const providerTotals: Record<string, number> = {};
     let totalIterations = 0;
+    let totalTokensIn = 0;
+    let totalTokensOut = 0;
+    let totalTokensCache = 0;
+    let totalRealCost = 0;
+    let hasRealCost = false;
     for (const child of report.budget.children) {
       totalIterations += child.iterations;
       for (const [provider, count] of Object.entries(child.providers)) {
         providerTotals[provider] = (providerTotals[provider] ?? 0) + count;
       }
+      if (child.real_cost_usd !== undefined) {
+        hasRealCost = true;
+        totalRealCost += child.real_cost_usd;
+        totalTokensIn += child.tokens_input ?? 0;
+        totalTokensOut += child.tokens_output ?? 0;
+        totalTokensCache += child.tokens_cache_read ?? 0;
+      }
     }
     lines.push(`Iterations:  ${totalIterations}`);
     for (const [provider, count] of Object.entries(providerTotals).sort()) {
       lines.push(`  ${provider}: ${count} iterations`);
+    }
+    if (hasRealCost) {
+      lines.push('');
+      lines.push('--- Token Usage (from providers with usage data) ---');
+      lines.push(`Input:       ${totalTokensIn.toLocaleString()}`);
+      lines.push(`Output:      ${totalTokensOut.toLocaleString()}`);
+      lines.push(`Cache read:  ${totalTokensCache.toLocaleString()}`);
+      lines.push(`Real cost:   $${totalRealCost.toFixed(4)}`);
     }
   }
 

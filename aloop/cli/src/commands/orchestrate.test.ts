@@ -3353,6 +3353,59 @@ describe('parseChildSessionCost', () => {
     assert.equal(result.iterations, 1);
     assert.deepStrictEqual(result.providers, { unknown: 1 });
   });
+
+  it('accumulates real cost_usd and token data from iteration events', async () => {
+    const logLines = [
+      JSON.stringify({ event: 'iteration_complete', provider: 'opencode', tokens_input: 15200, tokens_output: 3400, tokens_cache_read: 48000, cost_usd: 0.0034 }),
+      JSON.stringify({ event: 'iteration_complete', provider: 'opencode', tokens_input: 8000, tokens_output: 2000, tokens_cache_read: 0, cost_usd: 0.0018 }),
+    ].join('\n');
+
+    const deps = createMockBudgetDeps({ '/sessions/child-1/log.jsonl': logLines });
+    const result = await parseChildSessionCost('/sessions/child-1', 'child-1', 42, deps);
+    assert.equal(result.iterations, 2);
+    assert.equal(result.tokens_input, 23200);
+    assert.equal(result.tokens_output, 5400);
+    assert.equal(result.tokens_cache_read, 48000);
+    assert.strictEqual(result.real_cost_usd! > 0.005, true);
+    // estimated_cost_usd uses real cost (no fallback iterations)
+    assert.strictEqual(result.estimated_cost_usd, result.real_cost_usd);
+  });
+
+  it('mixes real cost with estimated cost for iterations without usage data', async () => {
+    const logLines = [
+      JSON.stringify({ event: 'iteration_complete', provider: 'opencode', tokens_input: 10000, tokens_output: 2000, tokens_cache_read: 5000, cost_usd: 0.005 }),
+      JSON.stringify({ event: 'iteration_complete', provider: 'claude' }), // no usage data
+    ].join('\n');
+
+    const deps = createMockBudgetDeps({ '/sessions/child-1/log.jsonl': logLines });
+    const result = await parseChildSessionCost('/sessions/child-1', 'child-1', 42, deps);
+    assert.equal(result.iterations, 2);
+    assert.equal(result.tokens_input, 10000);
+    assert.equal(result.tokens_output, 2000);
+    assert.strictEqual(result.real_cost_usd, 0.005);
+    // estimated = real cost + 1 iteration * $0.50 default
+    assert.strictEqual(result.estimated_cost_usd, 0.505);
+  });
+
+  it('handles cost_usd as string (from bash write_log_entry)', async () => {
+    const logLines = JSON.stringify({ event: 'iteration_complete', provider: 'opencode', tokens_input: '5000', tokens_output: '1000', tokens_cache_read: '0', cost_usd: '0.002' });
+    const deps = createMockBudgetDeps({ '/sessions/child-1/log.jsonl': logLines });
+    const result = await parseChildSessionCost('/sessions/child-1', 'child-1', 42, deps);
+    assert.equal(result.tokens_input, 5000);
+    assert.equal(result.tokens_output, 1000);
+    assert.strictEqual(result.real_cost_usd, 0.002);
+  });
+
+  it('omits usage fields when no iteration has cost data', async () => {
+    const logLines = JSON.stringify({ event: 'iteration_complete', provider: 'claude' });
+    const deps = createMockBudgetDeps({ '/sessions/child-1/log.jsonl': logLines });
+    const result = await parseChildSessionCost('/sessions/child-1', 'child-1', 42, deps);
+    assert.equal(result.tokens_input, undefined);
+    assert.equal(result.tokens_output, undefined);
+    assert.equal(result.tokens_cache_read, undefined);
+    assert.equal(result.real_cost_usd, undefined);
+    assert.equal(result.estimated_cost_usd, 0.5);
+  });
 });
 
 describe('aggregateChildCosts', () => {
@@ -3517,6 +3570,30 @@ describe('formatFinalReportText', () => {
     assert.ok(text.includes('Iterations:  6'));
     assert.ok(text.includes('claude: 5 iterations'));
     assert.ok(text.includes('copilot: 1 iterations'));
+  });
+
+  it('includes token usage section when real cost data is available', () => {
+    const budget: BudgetSummary = {
+      budget_cap: 10.0, total_estimated_cost_usd: 0.0052,
+      children: [
+        { session_id: 'c1', issue_number: 1, iterations: 2, providers: { opencode: 2 }, estimated_cost_usd: 0.0052, tokens_input: 23200, tokens_output: 5400, tokens_cache_read: 48000, real_cost_usd: 0.0052 },
+      ],
+      budget_exceeded: false, budget_approaching: false,
+    };
+
+    const report = generateFinalReport(
+      makeOrchestratorState([{ number: 1, wave: 1, state: 'merged' }]),
+      '/sessions/orch-1',
+      budget,
+      new Date('2026-03-09T11:30:00Z'),
+    );
+
+    const text = formatFinalReportText(report);
+    assert.ok(text.includes('--- Token Usage (from providers with usage data) ---'));
+    assert.ok(text.includes('Input:'));
+    assert.ok(text.includes('Output:'));
+    assert.ok(text.includes('Cache read:'));
+    assert.ok(text.includes('Real cost:'));
   });
 
   it('shows (none) when budget cap is null', () => {

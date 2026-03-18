@@ -5,7 +5,6 @@
 Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) setup/QA hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
-- [ ] [opencode/P1] [steering] Implement basic token/price tracking for OpenCode/OpenRouter where usage data is emitted: parse usage/cost into iteration events, show in dashboard only when available, and feed orchestrator budget/final report from recorded metrics. (priority: high)
 
 ### Up Next
 - [ ] [orchestrator/P1] Implement Spec Consistency result processing: consume `requests/spec-consistency-results.json` in `runOrchestratorScanPass` and apply state/log actions so queued consistency checks have runtime effect. (priority: medium)
@@ -24,6 +23,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 - [ ] [dashboard/low] Extend E2E `smoke.spec.ts` coverage for explicit 1920x1080 sidebar/docs/activity visibility checks once core gates are green.
 
 ### Completed
+- [x] [opencode/P1] [steering] Implement basic token/price tracking for OpenCode/OpenRouter: added `extract_opencode_usage()` in loop.sh/loop.ps1 to parse usage via `opencode export` CLI after each opencode iteration; extended `iteration_complete` events with optional `tokens_input`, `tokens_output`, `tokens_cache_read`, `cost_usd` fields; updated `parseChildSessionCost` in orchestrate.ts to use real cost when available (fallback to estimate otherwise); added dashboard usage row in expanded iteration details; 9 new tests across orchestrate.test.ts and App.coverage.test.ts. (priority: high)
 - [x] [review] [runtime/P1] [bug] Enforce steering priority over forced final review queue items: current loop queue ordering is lexicographical and steering uses timestamped names, so review can run before steering. Updated `loop.sh`, `loop.ps1`, and `orchestrate.ts` to explicitly prioritize steering prompts (*-PROMPT_steer.md, *-steering.md) in the queue. (priority: critical)
 - [x] [orchestrator/P1] Implement Orchestrator Review Layer: add `PROMPT_orch_review.md` and wire `invokeAgentReview` path so post-child PR review enforces spec compliance/proof quality before merge. (priority: high)
 - [x] [orchestrator/P1] Implement Refinement Budget Cap: add `refinement_count` to `OrchestratorIssue`, increment on DoR failure, and enforce cap of 5 with autonomy-based auto-resolve vs wait behavior so refinement loops cannot spin forever. (priority: high)

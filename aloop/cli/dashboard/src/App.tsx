@@ -34,6 +34,9 @@ export function parseManifest(am: { iteration: number; manifest: unknown; output
   return view.parseManifest(am);
 }
 
+export function extractIterationUsage(rawObj: Record<string, unknown> | null) { return view.extractIterationUsage(rawObj); }
+export function formatTokenCount(n: number): string { return view.formatTokenCount(n); }
+
 export function extractModelFromOutput(header?: string): string { return view.extractModelFromOutput(header); }
 export function parseDurationSeconds(raw: string): number | null { return view.parseDurationSeconds(raw); }
 export function computeAvgDuration(log: string): string { return view.computeAvgDuration(log); }
