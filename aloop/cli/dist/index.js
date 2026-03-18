@@ -13635,6 +13635,7 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
     specQuestions: { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 },
     dispatched: 0,
     queueProcessed: 0,
+    specConsistencyProcessed: false,
     childMonitoring: null,
     prLifecycles: [],
     waveAdvanced: false,
@@ -13671,6 +13672,37 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
     deps
   );
   result.queueProcessed = queueResult.processed;
+  const consistencyResultPath = path14.join(sessionDir, "requests", "spec-consistency-results.json");
+  if (deps.existsSync(consistencyResultPath)) {
+    try {
+      const consistencyContent = await deps.readFile(consistencyResultPath, "utf8");
+      const consistencyResult = JSON.parse(consistencyContent);
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: "spec_consistency_processed",
+        iteration,
+        changes_made: consistencyResult.changes_made ?? false,
+        issues_found: consistencyResult.issues_found?.length ?? 0,
+        files_modified: consistencyResult.files_modified ?? []
+      });
+      result.specConsistencyProcessed = true;
+      if (deps.unlink) {
+        await deps.unlink(consistencyResultPath);
+      }
+    } catch {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: "spec_consistency_parse_error",
+        iteration
+      });
+      if (deps.unlink) {
+        try {
+          await deps.unlink(consistencyResultPath);
+        } catch {
+        }
+      }
+    }
+  }
   if (repo && deps.execGh) {
     result.triage = await runTriageMonitorCycle(
       state,

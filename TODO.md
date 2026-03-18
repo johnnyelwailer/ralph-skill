@@ -9,7 +9,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 - [x] [review] Gate 4: committed binary artifact `aloop/cli/aloop-cli-1.0.0.tgz` (321KB npm tarball) tracked in git — removed from repo and added `*.tgz` to `.gitignore`. (priority: high)
 
 ### Up Next
-- [ ] [orchestrator/P1] Implement Spec Consistency result processing: consume `requests/spec-consistency-results.json` in `runOrchestratorScanPass` and apply state/log actions so queued consistency checks have runtime effect. (priority: medium)
+- [x] [orchestrator/P1] Implement Spec Consistency result processing: consume `requests/spec-consistency-results.json` in `runOrchestratorScanPass` and apply state/log actions so queued consistency checks have runtime effect. (priority: medium)
 - [ ] [setup/P1] Implement ZDR provider warnings in setup confirmation for org-level/provider-level constraints (Claude, Gemini, OpenAI, Copilot) with docs links so private-mode users get accurate risk guidance. (priority: medium)
 - [ ] [qa/P2] [bug] Cross-platform PowerShell fake-provider shims — Linux `Get-Command` ignored `.cmd` fake shims so tests called real provider CLIs; ensure `.cmd` + no-extension shims stay in lockstep for touched test infra. (priority: medium)
 - [x] [qa/P1] [bug] `single` mode accepted by loop.sh/loop.ps1 validation but has no handling logic — `resolve_iteration_mode` has no case for `single`, CLI (`aloop setup`/`aloop start`) rejects it as invalid. Either implement the mode or remove it from the loop script validation sets. Tested at commit 0a3db40. (priority: high)

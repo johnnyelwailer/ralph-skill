@@ -4085,6 +4085,40 @@ describe('runOrchestratorScanPass', () => {
     assert.equal(result.allDone, false);
     assert.equal(result.dispatched, 0);
     assert.equal(result.triage.processed_issues, 0);
+    assert.equal(result.specConsistencyProcessed, false);
+  });
+
+  it('processes spec-consistency-results.json and removes it', async () => {
+    const state = makeScanState({ issues: [] });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+    
+    // Provide a mock consistency result
+    deps.files['/session/requests/spec-consistency-results.json'] = JSON.stringify({
+      type: 'spec_consistency_check',
+      timestamp: '2026-03-18T00:00:00.000Z',
+      sections_checked: ['1.0'],
+      issues_found: [
+        { severity: 'must_fix', section: '1.0', description: 'desc', fix_applied: 'fix' }
+      ],
+      changes_made: true,
+      files_modified: ['SPEC.md']
+    });
+
+    let unlinkedPath = '';
+    deps.unlink = async (p: string) => {
+      unlinkedPath = p;
+      delete deps.files[p];
+    };
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.specConsistencyProcessed, true);
+    assert.ok(unlinkedPath.includes('spec-consistency-results.json'));
+    assert.equal(deps.files['/session/requests/spec-consistency-results.json'], undefined);
   });
 
   it('marks allDone when all issues are merged', async () => {
