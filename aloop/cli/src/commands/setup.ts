@@ -4,6 +4,25 @@ import { getProposedAuthMethod, type AuthStrategy } from './devcontainer.js';
 
 export type DataPrivacy = 'private' | 'public';
 
+/** Provider-level ZDR constraint warnings for private-mode users. */
+const ZDR_PROVIDER_WARNINGS: Record<string, string> = {
+  claude: 'ZDR requires an org agreement with Anthropic. Verify your org has ZDR enabled. https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching#zero-data-retention',
+  gemini: 'ZDR requires project-level approval from Google. https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance',
+  codex: 'ZDR requires a sales agreement with OpenAI. Note: images are excluded from ZDR. https://platform.openai.com/docs/models',
+  copilot: 'ZDR requires Business or Enterprise plan. https://docs.github.com/en/copilot/managing-copilot/managing-copilot-as-an-individual-subscriber/about-github-copilot-free',
+};
+
+export function getZdrWarnings(enabledProviders: string[]): string[] {
+  const warnings: string[] = [];
+  for (const provider of enabledProviders) {
+    const warning = ZDR_PROVIDER_WARNINGS[provider];
+    if (warning) {
+      warnings.push(`${provider}: ${warning}`);
+    }
+  }
+  return warnings;
+}
+
 export interface SetupCommandOptions {
   projectRoot?: string;
   homeDir?: string;
@@ -168,6 +187,12 @@ export async function setupCommandWithDeps(
   console.log(`- Autonomy Level: ${autonomyLevel}`);
   console.log(`- Data Privacy: ${dataPrivacy}`);
   console.log(`- ZDR Mode: ${dataPrivacy === 'private' ? 'Enabled' : 'Disabled'}`);
+  if (dataPrivacy === 'private') {
+    const zdrWarnings = getZdrWarnings(enabledProviders);
+    for (const warning of zdrWarnings) {
+      console.log(`  ⚠ ${warning}`);
+    }
+  }
   if (mode === 'orchestrate') {
     console.log('- Trunk Branch: agent/trunk');
   }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setupCommandWithDeps, type PromptFunction } from './setup.js';
+import { setupCommandWithDeps, getZdrWarnings, type PromptFunction } from './setup.js';
 import type { DiscoveryResult, ScaffoldResult, ScaffoldOptions } from './project.js';
 
 test('setupCommandWithDeps - non-interactive mode', async () => {
@@ -560,6 +560,124 @@ test('setupCommandWithDeps - interactive mode defaults to loop when recommendati
   await setupCommandWithDeps({}, { discover: mockDiscover, scaffold: mockScaffold, prompt: mockPrompt });
 
   assert.equal(capturedModeDefault, 'plan-build-review', 'default mode should be plan-build-review when recommendation is loop');
+});
+
+test('getZdrWarnings - returns warnings for providers with org-level constraints', () => {
+  const warnings = getZdrWarnings(['claude', 'gemini', 'codex', 'copilot']);
+  assert.equal(warnings.length, 4);
+  assert.ok(warnings[0].startsWith('claude:'));
+  assert.ok(warnings[0].includes('org agreement'));
+  assert.ok(warnings[1].startsWith('gemini:'));
+  assert.ok(warnings[1].includes('project-level'));
+  assert.ok(warnings[2].startsWith('codex:'));
+  assert.ok(warnings[2].includes('sales agreement'));
+  assert.ok(warnings[2].includes('images are excluded'));
+  assert.ok(warnings[3].startsWith('copilot:'));
+  assert.ok(warnings[3].includes('Business or Enterprise'));
+});
+
+test('getZdrWarnings - skips providers without ZDR constraints (opencode)', () => {
+  const warnings = getZdrWarnings(['opencode']);
+  assert.equal(warnings.length, 0);
+});
+
+test('getZdrWarnings - returns only matching provider warnings', () => {
+  const warnings = getZdrWarnings(['claude', 'opencode']);
+  assert.equal(warnings.length, 1);
+  assert.ok(warnings[0].startsWith('claude:'));
+});
+
+test('getZdrWarnings - returns empty array for empty providers', () => {
+  const warnings = getZdrWarnings([]);
+  assert.equal(warnings.length, 0);
+});
+
+test('setupCommandWithDeps - interactive mode shows ZDR warnings for private mode', async () => {
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => { logs.push(args.join(' ')); };
+
+  try {
+    const mockDiscover = async (): Promise<DiscoveryResult> => {
+      return {
+        project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+        setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+        context: {
+          detected_language: 'node-typescript',
+          language_confidence: 'high',
+          language_signals: [],
+          validation_presets: { tests_only: [], tests_and_types: [], full: ['npm test'] },
+          spec_candidates: ['SPEC.md'],
+          reference_candidates: [],
+          context_files: {},
+        },
+        providers: { installed: ['claude', 'copilot'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+        devcontainer: { enabled: false, config_path: null },
+        discovered_at: '2023-01-01T00:00:00.000Z',
+      } as unknown as DiscoveryResult;
+    };
+
+    const mockScaffold = async (): Promise<ScaffoldResult> => {
+      return { config_path: '/mock/config', prompts_dir: '/mock/prompts', project_dir: '/mock/dir', project_hash: '123' };
+    };
+
+    const mockPrompt: PromptFunction = async (question: string, defaultValue: string) => {
+      if (question.includes('Data Privacy')) return 'private';
+      return defaultValue;
+    };
+
+    await setupCommandWithDeps({}, { discover: mockDiscover, scaffold: mockScaffold, prompt: mockPrompt });
+
+    const warningLines = logs.filter(l => l.includes('⚠'));
+    assert.equal(warningLines.length, 2, 'Should show warnings for claude and copilot');
+    assert.ok(warningLines.some(l => l.includes('claude') && l.includes('org agreement')));
+    assert.ok(warningLines.some(l => l.includes('copilot') && l.includes('Business or Enterprise')));
+  } finally {
+    console.log = origLog;
+  }
+});
+
+test('setupCommandWithDeps - interactive mode skips ZDR warnings for public mode', async () => {
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => { logs.push(args.join(' ')); };
+
+  try {
+    const mockDiscover = async (): Promise<DiscoveryResult> => {
+      return {
+        project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+        setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+        context: {
+          detected_language: 'node-typescript',
+          language_confidence: 'high',
+          language_signals: [],
+          validation_presets: { tests_only: [], tests_and_types: [], full: ['npm test'] },
+          spec_candidates: ['SPEC.md'],
+          reference_candidates: [],
+          context_files: {},
+        },
+        providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+        devcontainer: { enabled: false, config_path: null },
+        discovered_at: '2023-01-01T00:00:00.000Z',
+      } as unknown as DiscoveryResult;
+    };
+
+    const mockScaffold = async (): Promise<ScaffoldResult> => {
+      return { config_path: '/mock/config', prompts_dir: '/mock/prompts', project_dir: '/mock/dir', project_hash: '123' };
+    };
+
+    const mockPrompt: PromptFunction = async (question: string, defaultValue: string) => {
+      if (question.includes('Data Privacy')) return 'public';
+      return defaultValue;
+    };
+
+    await setupCommandWithDeps({}, { discover: mockDiscover, scaffold: mockScaffold, prompt: mockPrompt });
+
+    const warningLines = logs.filter(l => l.includes('⚠'));
+    assert.equal(warningLines.length, 0, 'Should not show ZDR warnings for public mode');
+  } finally {
+    console.log = origLog;
+  }
 });
 
 test('setupCommandWithDeps - interactive mode prompts for devcontainer strategy when enabled', async () => {
