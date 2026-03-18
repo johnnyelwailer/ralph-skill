@@ -36,6 +36,9 @@ import { fileURLToPath } from 'node:url';
  * @property {string} providers.default_provider
  * @property {Record<string, string>} providers.default_models
  * @property {string[]} providers.round_robin_default
+ * @property {Object} devcontainer
+ * @property {boolean} devcontainer.enabled
+ * @property {string|null} devcontainer.config_path
  * @property {string} discovered_at
  */
 
@@ -492,6 +495,19 @@ export function assertProjectConfigured(discovery) {
   }
 }
 
+async function detectDevcontainer(projectRoot) {
+  const candidates = [
+    path.join(projectRoot, '.devcontainer', 'devcontainer.json'),
+    path.join(projectRoot, '.devcontainer.json'),
+  ];
+  for (const candidate of candidates) {
+    if (await fileExists(candidate)) {
+      return { enabled: true, config_path: candidate };
+    }
+  }
+  return { enabled: false, config_path: null };
+}
+
 /**
  * @param {Object} options
  * @param {string} [options.projectRoot]
@@ -513,6 +529,7 @@ export async function discoverWorkspace(options = {}) {
   const complexity = await analyzeSpecComplexity(projectRoot, specCandidates);
   const ciSupport = await detectCIWorkflowSupport(projectRoot);
   const modeRecommendation = recommendMode(complexity, ciSupport);
+  const devcontainer = await detectDevcontainer(projectRoot);
 
   return {
     project: {
@@ -555,6 +572,7 @@ export async function discoverWorkspace(options = {}) {
       },
       round_robin_default: ['claude', 'opencode', 'codex', 'gemini', 'copilot'],
     },
+    devcontainer,
     spec_complexity: complexity,
     ci_support: ciSupport,
     mode_recommendation: modeRecommendation,
@@ -773,6 +791,7 @@ async function expandTemplateIncludes(content, templatesDir, seenIncludes = []) 
  * @param {string} [options.mode]
  * @param {'cautious'|'balanced'|'autonomous'} [options.autonomyLevel]
  * @param {'private'|'public'} [options.dataPrivacy]
+ * @param {'mount-first'|'env-first'|'env-only'} [options.devcontainerAuthStrategy]
  * @param {string} [options.templatesDir]
  * @param {string} [options.bundledBinDir]
  */
@@ -796,6 +815,7 @@ export async function scaffoldWorkspace(options = {}) {
   const mode = normalizeScaffoldMode(options.mode);
   const autonomyLevel = normalizeAutonomyLevel(options.autonomyLevel);
   const dataPrivacy = normalizeDataPrivacy(options.dataPrivacy);
+  const devcontainerAuthStrategy = options.devcontainerAuthStrategy ?? 'mount-first';
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
   const promptsDir = path.join(discovery.setup.project_dir, 'prompts');
 
@@ -875,6 +895,7 @@ export async function scaffoldWorkspace(options = {}) {
     `mode: ${toYamlQuoted(mode)}`,
     `autonomy_level: ${toYamlQuoted(autonomyLevel)}`,
     `data_privacy: ${toYamlQuoted(dataPrivacy)}`,
+    `devcontainer_auth_strategy: ${toYamlQuoted(devcontainerAuthStrategy)}`,
     'spec_files:',
     ...resolvedSpecFiles.map((value) => `  - ${toYamlQuoted(value)}`),
     'reference_files:',

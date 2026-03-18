@@ -23,6 +23,7 @@ export interface ScaffoldOptions extends BaseOptions {
   provider?: string;
   autonomyLevel?: 'cautious' | 'balanced' | 'autonomous';
   dataPrivacy?: 'private' | 'public';
+  devcontainerAuthStrategy?: 'mount-first' | 'env-first' | 'env-only';
   enabledProviders?: string[];
   roundRobinOrder?: string[];
   specFiles?: string[];
@@ -85,6 +86,10 @@ export interface DiscoveryResult {
     default_provider: string;
     default_models: Record<string, string>;
     round_robin_default: string[];
+  };
+  devcontainer: {
+    enabled: boolean;
+    config_path: string | null;
   };
   spec_complexity: SpecComplexity;
   ci_support: CISupport;

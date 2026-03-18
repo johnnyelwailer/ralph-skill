@@ -23,6 +23,7 @@ test('setupCommandWithDeps - non-interactive mode', async () => {
         context_files: {},
       },
       providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
       discovered_at: '2023-01-01T00:00:00.000Z',
     } as unknown as DiscoveryResult;
   };
@@ -86,6 +87,7 @@ test('setupCommandWithDeps - interactive mode', async () => {
         context_files: {},
       },
       providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
       discovered_at: '2023-01-01T00:00:00.000Z',
     } as unknown as DiscoveryResult;
   };
@@ -148,6 +150,7 @@ test('setupCommandWithDeps - interactive mode uses defaults', async () => {
         context_files: {},
       },
       providers: { installed: ['codex'], missing: [], default_provider: 'codex', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
       discovered_at: '2023-01-01T00:00:00.000Z',
     } as unknown as DiscoveryResult;
   };
@@ -213,6 +216,7 @@ test('setupCommandWithDeps - propagates scaffold failure with exact error', asyn
       context_files: {},
     },
     providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+    devcontainer: { enabled: false, config_path: null },
     discovered_at: '2023-01-01T00:00:00.000Z',
   } as unknown as DiscoveryResult;
 
@@ -251,6 +255,7 @@ test('setupCommandWithDeps - interactive prompt parsing trims and filters comma 
         context_files: {},
       },
       providers: { installed: ['claude', 'codex'], missing: [], default_provider: 'copilot', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
       discovered_at: '2023-01-01T00:00:00.000Z',
     } as unknown as DiscoveryResult;
   };
@@ -300,6 +305,7 @@ test('setupCommandWithDeps - rejects invalid data privacy value', async () => {
         context_files: {},
       },
       providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
       discovered_at: '2023-01-01T00:00:00.000Z',
     } as unknown as DiscoveryResult;
   };
@@ -336,6 +342,7 @@ test('setupCommandWithDeps - non-interactive mode with dataPrivacy=public', asyn
         context_files: {},
       },
       providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
       discovered_at: '2023-01-01T00:00:00.000Z',
     } as unknown as DiscoveryResult;
   };
@@ -371,6 +378,7 @@ test('setupCommandWithDeps - dataPrivacy defaults to private in non-interactive 
         context_files: {},
       },
       providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
       discovered_at: '2023-01-01T00:00:00.000Z',
     } as unknown as DiscoveryResult;
   };
@@ -404,6 +412,7 @@ test('setupCommandWithDeps - rejects invalid setup mode in non-interactive mode'
         context_files: {},
       },
       providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
       discovered_at: '2023-01-01T00:00:00.000Z',
     } as unknown as DiscoveryResult;
   };
@@ -441,6 +450,7 @@ test('setupCommandWithDeps - non-interactive orchestrate mode is preserved', asy
         context_files: {},
       },
       providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
       discovered_at: '2023-01-01T00:00:00.000Z',
     } as unknown as DiscoveryResult;
   };
@@ -477,6 +487,7 @@ test('setupCommandWithDeps - interactive mode uses mode recommendation as defaul
         context_files: {},
       },
       providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
       discovered_at: '2023-01-01T00:00:00.000Z',
       spec_complexity: { workstream_count: 5, parallelism_score: 4, estimated_issue_count: 12, analyzed_files: 1 },
       ci_support: { has_workflows: true, workflow_count: 2, workflow_types: ['test', 'lint'] },
@@ -524,6 +535,7 @@ test('setupCommandWithDeps - interactive mode defaults to loop when recommendati
         context_files: {},
       },
       providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
       discovered_at: '2023-01-01T00:00:00.000Z',
       spec_complexity: { workstream_count: 1, parallelism_score: 0, estimated_issue_count: 2, analyzed_files: 1 },
       ci_support: { has_workflows: false, workflow_count: 0, workflow_types: [] },
@@ -548,4 +560,50 @@ test('setupCommandWithDeps - interactive mode defaults to loop when recommendati
   await setupCommandWithDeps({}, { discover: mockDiscover, scaffold: mockScaffold, prompt: mockPrompt });
 
   assert.equal(capturedModeDefault, 'plan-build-review', 'default mode should be plan-build-review when recommendation is loop');
+});
+
+test('setupCommandWithDeps - interactive mode prompts for devcontainer strategy when enabled', async () => {
+  let scaffoldCalledOpts = null as unknown as ScaffoldOptions;
+  let capturedStrategyDefault = '';
+  let strategyPromptCalled = false;
+
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: ['npm test'] },
+        spec_candidates: ['SPEC.md'],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: true, config_path: '/mock/root/.devcontainer/devcontainer.json' },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+    } as unknown as DiscoveryResult;
+  };
+
+  const mockScaffold = async (opts: ScaffoldOptions): Promise<ScaffoldResult> => {
+    scaffoldCalledOpts = opts;
+    return { config_path: '/mock/config', prompts_dir: '/mock/prompts', project_dir: '/mock/dir', project_hash: '123' };
+  };
+
+  const mockPrompt: PromptFunction = async (question: string, defaultValue: string) => {
+    if (question.includes('Devcontainer Auth Strategy')) {
+      strategyPromptCalled = true;
+      capturedStrategyDefault = defaultValue;
+      return 'env-first';
+    }
+    return defaultValue;
+  };
+
+  await setupCommandWithDeps({}, { discover: mockDiscover, scaffold: mockScaffold, prompt: mockPrompt });
+
+  assert.equal(strategyPromptCalled, true, 'Devcontainer strategy prompt should be called');
+  assert.equal(capturedStrategyDefault, 'mount-first', 'Default strategy should be mount-first');
+  assert.ok(scaffoldCalledOpts);
+  assert.equal(scaffoldCalledOpts.devcontainerAuthStrategy, 'env-first');
 });

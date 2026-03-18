@@ -266,6 +266,27 @@ export interface AuthPreflightWarning {
   guidance: string;
 }
 
+export type AuthStrategy = 'mount-first' | 'env-first' | 'env-only';
+
+export function getProposedAuthMethod(provider: string, strategy: AuthStrategy): string {
+  const envVars = PROVIDER_AUTH_ENV_VARS[provider] || [];
+  const files = PROVIDER_AUTH_FILES[provider] || [];
+
+  if (strategy === 'env-only') {
+    return `Env vars: ${envVars.join(', ')}`;
+  }
+  if (strategy === 'env-first') {
+    if (envVars.length > 0) {
+      return `Env vars: ${envVars.join(', ')}${files.length > 0 ? ` (fallback: mount ${files.join(', ')})` : ''}`;
+    }
+  }
+  // mount-first
+  if (files.length > 0) {
+    return `Mount: ${files.join(', ')}${envVars.length > 0 ? ` (fallback: env vars ${envVars.join(', ')})` : ''}`;
+  }
+  return envVars.length > 0 ? `Env vars: ${envVars.join(', ')}` : 'No known auth method';
+}
+
 /**
  * Check host environment for required auth env vars for each activated provider.
  * Returns warnings for providers where no auth var is set AND no auth file exists.
@@ -324,7 +345,7 @@ export function buildProviderInstallCommands(installedProviders: string[]): stri
  * Build remoteEnv entries for auth forwarding.
  * Only forwards env vars for activated providers using ${localEnv:VAR} syntax.
  */
-export function buildProviderRemoteEnv(installedProviders: string[]): Record<string, string> {
+export function buildProviderRemoteEnv(installedProviders: string[], strategy: AuthStrategy = 'mount-first'): Record<string, string> {
   const env: Record<string, string> = {};
   for (const provider of installedProviders) {
     const vars = PROVIDER_AUTH_ENV_VARS[provider];
@@ -358,18 +379,22 @@ export function resolveHomePath(filePath: string, homeDir: string): string {
  * Build bind-mount entries for provider auth files as a fallback when env vars are not set.
  *
  * For each activated provider:
- * 1. If env var is set → skip (remoteEnv handles it)
- * 2. If auth file exists on host → mount the file read-write
- * 3. If neither → skip (checkAuthPreflight will warn)
+ * 1. If strategy is 'env-only' → skip
+ * 2. If strategy is 'env-first' and env var is set → skip
+ * 3. If strategy is 'mount-first' → mount the file if it exists, regardless of env var
+ * 4. If neither → skip (checkAuthPreflight will warn)
  *
  * Only individual auth files are mounted, never entire provider config directories.
  */
 export function buildProviderAuthFileMounts(
   providers: string[],
+  strategy: AuthStrategy = 'mount-first',
   env: Record<string, string | undefined> = process.env,
   existsFn: (p: string) => boolean = existsSync,
   homeDir?: string,
 ): string[] {
+  if (strategy === 'env-only') return [];
+
   const resolvedHome = homeDir ?? env.HOME ?? env.USERPROFILE ?? '/root';
   const mounts: string[] = [];
 
@@ -378,9 +403,11 @@ export function buildProviderAuthFileMounts(
     const authFiles = PROVIDER_AUTH_FILES[provider];
     if (!authFiles || authFiles.length === 0) continue;
 
-    // Skip if any env var is already set (remoteEnv will handle it)
-    const anyEnvSet = authVars?.some((v) => env[v] && env[v]!.length > 0);
-    if (anyEnvSet) continue;
+    if (strategy === 'env-first') {
+      // Skip if any env var is already set (remoteEnv will handle it)
+      const anyEnvSet = authVars?.some((v) => env[v] && env[v]!.length > 0);
+      if (anyEnvSet) continue;
+    }
 
     // Mount auth files that exist on host
     for (const relPath of authFiles) {
@@ -439,6 +466,7 @@ export function generateDevcontainerConfig(
   configuredProviders?: string[],
   env: Record<string, string | undefined> = process.env,
   homeDir?: string,
+  authStrategy: AuthStrategy = 'mount-first',
 ): DevcontainerConfig {
   const projectRoot = discovery.project.root;
   const projectName = discovery.project.name;
@@ -454,7 +482,7 @@ export function generateDevcontainerConfig(
   ];
 
   // Auth file bind-mounts as fallback for providers without env vars
-  const authFileMounts = buildProviderAuthFileMounts(installedProviders, env, existsFn, homeDir);
+  const authFileMounts = buildProviderAuthFileMounts(installedProviders, authStrategy, env, existsFn, homeDir);
 
   const config: DevcontainerConfig = {
     name: `${projectName}-aloop`,
@@ -462,7 +490,7 @@ export function generateDevcontainerConfig(
     features: { ...mapping.features },
     mounts: [...buildAloopMounts(), ...authFileMounts],
     containerEnv: buildAloopContainerEnv(),
-    remoteEnv: buildProviderRemoteEnv(installedProviders),
+    remoteEnv: buildProviderRemoteEnv(installedProviders, authStrategy),
   };
 
   const vscodeExtensions = buildVSCodeExtensions(installedProviders);
@@ -595,8 +623,24 @@ export async function devcontainerCommandWithDeps(
   const hadExisting = deps.existsSync(configPath);
 
   const resolvedProviders = await resolveConfiguredProviders(discovery, deps);
+
+  // Resolve auth strategy from project config
+  let authStrategy: AuthStrategy = 'mount-first';
+  const projectConfigPath = discovery.setup.config_path;
+  if (deps.existsSync(projectConfigPath)) {
+    try {
+      const content = await deps.readFile(projectConfigPath, 'utf8');
+      const parsed = parseYaml(content) as { devcontainer_auth_strategy?: string };
+      if (parsed.devcontainer_auth_strategy === 'env-first' || parsed.devcontainer_auth_strategy === 'env-only') {
+        authStrategy = parsed.devcontainer_auth_strategy as AuthStrategy;
+      }
+    } catch {
+      // fallback to mount-first
+    }
+  }
+
   const hostHome = options.homeDir ?? process.env.HOME ?? process.env.USERPROFILE;
-  const generated = generateDevcontainerConfig(discovery, deps.existsSync, resolvedProviders, process.env, hostHome);
+  const generated = generateDevcontainerConfig(discovery, deps.existsSync, resolvedProviders, process.env, hostHome, authStrategy);
 
   let finalConfig: Record<string, unknown>;
   let action: 'created' | 'augmented';

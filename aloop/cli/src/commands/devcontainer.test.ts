@@ -1417,7 +1417,7 @@ test('resolveHomePath - leaves absolute paths unchanged', () => {
 test('buildProviderAuthFileMounts - mounts auth file when env var not set and file exists', () => {
   const env: Record<string, string | undefined> = {};
   const existsFn = (p: string) => p.includes('.claude/.credentials.json');
-  const mounts = buildProviderAuthFileMounts(['claude'], env, existsFn, '/home/user');
+  const mounts = buildProviderAuthFileMounts(['claude'], 'mount-first', env, existsFn, '/home/user');
 
   assert.equal(mounts.length, 1);
   assert.ok(mounts[0].includes('source=/home/user/.claude/.credentials.json'));
@@ -1425,18 +1425,10 @@ test('buildProviderAuthFileMounts - mounts auth file when env var not set and fi
   assert.ok(mounts[0].includes('type=bind'));
 });
 
-test('buildProviderAuthFileMounts - skips when env var is already set', () => {
-  const env = { ANTHROPIC_API_KEY: 'sk-ant-abc' };
-  const existsFn = () => true;
-  const mounts = buildProviderAuthFileMounts(['claude'], env, existsFn, '/home/user');
-
-  assert.equal(mounts.length, 0);
-});
-
 test('buildProviderAuthFileMounts - skips when auth file does not exist', () => {
   const env: Record<string, string | undefined> = {};
   const existsFn = () => false;
-  const mounts = buildProviderAuthFileMounts(['claude'], env, existsFn, '/home/user');
+  const mounts = buildProviderAuthFileMounts(['claude'], 'mount-first', env, existsFn, '/home/user');
 
   assert.equal(mounts.length, 0);
 });
@@ -1444,7 +1436,7 @@ test('buildProviderAuthFileMounts - skips when auth file does not exist', () => 
 test('buildProviderAuthFileMounts - mounts both gemini auth files when both exist', () => {
   const env: Record<string, string | undefined> = {};
   const existsFn = (p: string) => p.includes('.gemini/');
-  const mounts = buildProviderAuthFileMounts(['gemini'], env, existsFn, '/home/user');
+  const mounts = buildProviderAuthFileMounts(['gemini'], 'mount-first', env, existsFn, '/home/user');
 
   assert.equal(mounts.length, 2);
   assert.ok(mounts.some(m => m.includes('.gemini/oauth_creds.json')));
@@ -1454,7 +1446,7 @@ test('buildProviderAuthFileMounts - mounts both gemini auth files when both exis
 test('buildProviderAuthFileMounts - mounts gemini only existing file', () => {
   const env: Record<string, string | undefined> = {};
   const existsFn = (p: string) => p.includes('oauth_creds.json');
-  const mounts = buildProviderAuthFileMounts(['gemini'], env, existsFn, '/home/user');
+  const mounts = buildProviderAuthFileMounts(['gemini'], 'mount-first', env, existsFn, '/home/user');
 
   assert.equal(mounts.length, 1);
   assert.ok(mounts[0].includes('oauth_creds.json'));
@@ -1464,7 +1456,7 @@ test('buildProviderAuthFileMounts - mounts gemini only existing file', () => {
 test('buildProviderAuthFileMounts - codex auth file mount', () => {
   const env: Record<string, string | undefined> = {};
   const existsFn = (p: string) => p.includes('.codex/auth.json');
-  const mounts = buildProviderAuthFileMounts(['codex'], env, existsFn, '/home/user');
+  const mounts = buildProviderAuthFileMounts(['codex'], 'mount-first', env, existsFn, '/home/user');
 
   assert.equal(mounts.length, 1);
   assert.ok(mounts[0].includes('source=/home/user/.codex/auth.json'));
@@ -1474,7 +1466,7 @@ test('buildProviderAuthFileMounts - codex auth file mount', () => {
 test('buildProviderAuthFileMounts - copilot auth file mount', () => {
   const env: Record<string, string | undefined> = {};
   const existsFn = (p: string) => p.includes('.copilot/config.json');
-  const mounts = buildProviderAuthFileMounts(['copilot'], env, existsFn, '/home/user');
+  const mounts = buildProviderAuthFileMounts(['copilot'], 'mount-first', env, existsFn, '/home/user');
 
   assert.equal(mounts.length, 1);
   assert.ok(mounts[0].includes('source=/home/user/.copilot/config.json'));
@@ -1483,7 +1475,7 @@ test('buildProviderAuthFileMounts - copilot auth file mount', () => {
 test('buildProviderAuthFileMounts - opencode auth file mount uses XDG path', () => {
   const env: Record<string, string | undefined> = {};
   const existsFn = (p: string) => p.includes('.local/share/opencode/auth.json');
-  const mounts = buildProviderAuthFileMounts(['opencode'], env, existsFn, '/home/user');
+  const mounts = buildProviderAuthFileMounts(['opencode'], 'mount-first', env, existsFn, '/home/user');
 
   assert.equal(mounts.length, 1);
   assert.ok(mounts[0].includes('source=/home/user/.local/share/opencode/auth.json'));
@@ -1493,7 +1485,7 @@ test('buildProviderAuthFileMounts - opencode auth file mount uses XDG path', () 
 test('buildProviderAuthFileMounts - multiple providers each with their own file', () => {
   const env: Record<string, string | undefined> = {};
   const existsFn = (p: string) => p.includes('.claude/') || p.includes('.codex/');
-  const mounts = buildProviderAuthFileMounts(['claude', 'codex'], env, existsFn, '/home/user');
+  const mounts = buildProviderAuthFileMounts(['claude', 'codex'], 'mount-first', env, existsFn, '/home/user');
 
   assert.equal(mounts.length, 2);
   assert.ok(mounts.some(m => m.includes('.claude/.credentials.json')));
@@ -1501,26 +1493,26 @@ test('buildProviderAuthFileMounts - multiple providers each with their own file'
 });
 
 test('buildProviderAuthFileMounts - empty providers returns empty', () => {
-  const mounts = buildProviderAuthFileMounts([], {}, () => true, '/home/user');
+  const mounts = buildProviderAuthFileMounts([], 'mount-first', {}, () => true, '/home/user');
   assert.equal(mounts.length, 0);
 });
 
 test('buildProviderAuthFileMounts - unknown provider skipped', () => {
-  const mounts = buildProviderAuthFileMounts(['unknown'], {}, () => true, '/home/user');
+  const mounts = buildProviderAuthFileMounts(['unknown'], 'mount-first', {}, () => true, '/home/user');
   assert.equal(mounts.length, 0);
 });
 
 test('buildProviderAuthFileMounts - no auth files present returns empty mounts', () => {
   const env: Record<string, string | undefined> = {};
   const existsFn = () => false; // no auth files exist on host
-  const mounts = buildProviderAuthFileMounts(['claude'], env, existsFn, '/tmp/fakehome');
+  const mounts = buildProviderAuthFileMounts(['claude'], 'mount-first', env, existsFn, '/tmp/fakehome');
   assert.equal(mounts.length, 0);
 });
 
 test('buildProviderAuthFileMounts - gemini with both auth files present returns two mounts', () => {
   const env: Record<string, string | undefined> = {};
   const existsFn = (p: string) => p.includes('.gemini/');
-  const mounts = buildProviderAuthFileMounts(['gemini'], env, existsFn, '/tmp/fakehome');
+  const mounts = buildProviderAuthFileMounts(['gemini'], 'mount-first', env, existsFn, '/tmp/fakehome');
 
   assert.equal(mounts.length, 2);
   assert.ok(mounts[0].includes('source=/tmp/fakehome/.gemini/oauth_creds.json'));
@@ -1532,18 +1524,34 @@ test('buildProviderAuthFileMounts - gemini with both auth files present returns 
 test('buildProviderAuthFileMounts - gemini with only one auth file returns one mount', () => {
   const env: Record<string, string | undefined> = {};
   const existsFn = (p: string) => p.includes('oauth_creds.json');
-  const mounts = buildProviderAuthFileMounts(['gemini'], env, existsFn, '/tmp/fakehome');
+  const mounts = buildProviderAuthFileMounts(['gemini'], 'mount-first', env, existsFn, '/tmp/fakehome');
 
   assert.equal(mounts.length, 1);
   assert.ok(mounts[0].includes('source=/tmp/fakehome/.gemini/oauth_creds.json'));
 });
 
-test('buildProviderAuthFileMounts - env var set skips mount even when file exists', () => {
+test('buildProviderAuthFileMounts - env var set skips mount in env-first strategy', () => {
   const env: Record<string, string | undefined> = { ANTHROPIC_API_KEY: 'sk-test' };
   const existsFn = () => true; // all files exist
-  const mounts = buildProviderAuthFileMounts(['claude'], env, existsFn, '/tmp/fakehome');
+  const mounts = buildProviderAuthFileMounts(['claude'], 'env-first', env, existsFn, '/tmp/fakehome');
 
-  assert.equal(mounts.length, 0); // skipped because env var is set
+  assert.equal(mounts.length, 0); // skipped because env var is set and strategy is env-first
+});
+
+test('buildProviderAuthFileMounts - env var set does NOT skip mount in mount-first strategy', () => {
+  const env: Record<string, string | undefined> = { ANTHROPIC_API_KEY: 'sk-test' };
+  const existsFn = () => true; // all files exist
+  const mounts = buildProviderAuthFileMounts(['claude'], 'mount-first', env, existsFn, '/tmp/fakehome');
+
+  assert.equal(mounts.length, 1); // NOT skipped because strategy is mount-first
+});
+
+test('buildProviderAuthFileMounts - skips all mounts in env-only strategy', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = () => true; // all files exist
+  const mounts = buildProviderAuthFileMounts(['claude'], 'env-only', env, existsFn, '/tmp/fakehome');
+
+  assert.equal(mounts.length, 0);
 });
 
 // --- checkAuthPreflight with auth file fallback ---
@@ -1611,13 +1619,34 @@ test('generateDevcontainerConfig - includes auth file mount when file exists', (
   assert.ok(config.mounts.some(m => m.includes('/aloop-sessions')));
 });
 
-test('generateDevcontainerConfig - no auth file mount when env var is set', () => {
+test('generateDevcontainerConfig - mounts auth file when in mount-first strategy even if env var set', () => {
   const discovery = mockDiscovery(); // claude provider
   const existsFn = (p: string) => p.includes('.claude/.credentials.json');
   const env = { ANTHROPIC_API_KEY: 'sk-ant-abc' };
-  const config = generateDevcontainerConfig(discovery, existsFn, undefined, env, '/home/user');
+  const config = generateDevcontainerConfig(discovery, existsFn, ['claude'], env, '/home/user', 'mount-first');
 
-  // Should have only 2 aloop mounts (auth file mount skipped because env var is set)
+  // Should have 3 mounts: 2 aloop + 1 auth file mount
+  assert.equal(config.mounts.length, 3);
+  assert.ok(config.mounts.some(m => m.includes('.credentials.json')));
+});
+
+test('generateDevcontainerConfig - no auth file mount when env var is set in env-first strategy', () => {
+  const discovery = mockDiscovery(); // claude provider
+  const existsFn = (p: string) => p.includes('.claude/.credentials.json');
+  const env = { ANTHROPIC_API_KEY: 'sk-ant-abc' };
+  const config = generateDevcontainerConfig(discovery, existsFn, ['claude'], env, '/home/user', 'env-first');
+
+  // Should have only 2 aloop mounts (auth file mount skipped because env var is set and strategy is env-first)
+  assert.equal(config.mounts.length, 2);
+  assert.ok(!config.mounts.some(m => m.includes('.credentials.json')));
+});
+
+test('generateDevcontainerConfig - no auth file mount in env-only strategy', () => {
+  const discovery = mockDiscovery(); // claude provider
+  const existsFn = (p: string) => true;
+  const env = {};
+  const config = generateDevcontainerConfig(discovery, existsFn, ['claude'], env, '/home/user', 'env-only');
+
   assert.equal(config.mounts.length, 2);
   assert.ok(!config.mounts.some(m => m.includes('.credentials.json')));
 });

@@ -1,5 +1,6 @@
 import * as readline from 'node:readline';
 import { discoverWorkspace, scaffoldWorkspace, type DiscoveryResult, type ScaffoldResult, type ScaffoldOptions } from './project.js';
+import { getProposedAuthMethod, type AuthStrategy } from './devcontainer.js';
 
 export type DataPrivacy = 'private' | 'public';
 
@@ -12,6 +13,7 @@ export interface SetupCommandOptions {
   mode?: string;
   autonomyLevel?: string;
   dataPrivacy?: string;
+  devcontainerAuthStrategy?: string;
 }
 
 function parseDataPrivacy(value: string | undefined): DataPrivacy | undefined {
@@ -21,6 +23,17 @@ function parseDataPrivacy(value: string | undefined): DataPrivacy | undefined {
     return normalized;
   }
   throw new Error(`Invalid data privacy: ${value} (must be private or public)`);
+}
+
+type DevcontainerAuthStrategy = 'mount-first' | 'env-first' | 'env-only';
+
+function parseDevcontainerAuthStrategy(value: string | undefined): DevcontainerAuthStrategy | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'mount-first' || normalized === 'env-first' || normalized === 'env-only') {
+    return normalized as DevcontainerAuthStrategy;
+  }
+  throw new Error(`Invalid devcontainer auth strategy: ${value} (must be mount-first, env-first, or env-only)`);
 }
 
 export type PromptFunction = (question: string, defaultValue: string) => Promise<string>;
@@ -87,6 +100,7 @@ export async function setupCommandWithDeps(
       mode: mapSetupModeToLoopMode(setupMode),
       autonomyLevel: parseAutonomyLevel(options.autonomyLevel),
       dataPrivacy: parseDataPrivacy(options.dataPrivacy),
+      devcontainerAuthStrategy: parseDevcontainerAuthStrategy(options.devcontainerAuthStrategy),
     });
     console.log(`Setup complete. Config written to: ${result.config_path}`);
     return;
@@ -129,6 +143,14 @@ export async function setupCommandWithDeps(
     await deps.prompt('Data Privacy (private|public)', options.dataPrivacy ?? defaultDataPrivacy),
   ) ?? 'private';
 
+  let devcontainerAuthStrategy: DevcontainerAuthStrategy | undefined;
+  if (discovery.devcontainer.enabled) {
+    const defaultStrategy = options.devcontainerAuthStrategy ?? 'mount-first';
+    devcontainerAuthStrategy = parseDevcontainerAuthStrategy(
+      await deps.prompt('Devcontainer Auth Strategy (mount-first|env-first|env-only)', defaultStrategy),
+    ) ?? 'mount-first';
+  }
+
   const defaultValidation = discovery.context.validation_presets.full.join(', ') || 'npm test';
   const validationCommandsRaw = await deps.prompt('Validation Commands (comma-separated)', defaultValidation);
   const validationCommands = validationCommandsRaw.split(',').map((s) => s.trim()).filter(Boolean);
@@ -145,6 +167,17 @@ export async function setupCommandWithDeps(
   console.log(`- Mode: ${mode}`);
   console.log(`- Autonomy Level: ${autonomyLevel}`);
   console.log(`- Data Privacy: ${dataPrivacy}`);
+  console.log(`- ZDR Mode: ${dataPrivacy === 'private' ? 'Enabled' : 'Disabled'}`);
+  if (mode === 'orchestrate') {
+    console.log('- Trunk Branch: agent/trunk');
+  }
+  if (discovery.devcontainer.enabled) {
+    console.log(`- Devcontainer Auth Strategy: ${devcontainerAuthStrategy}`);
+    console.log('- Proposed Provider Auth:');
+    for (const p of enabledProviders) {
+      console.log(`    ${p}: ${getProposedAuthMethod(p, devcontainerAuthStrategy!)}`);
+    }
+  }
   console.log(`- Validation Commands: ${validationCommands.join(', ')}`);
   console.log(`- Safety Rules: ${safetyRules.join(', ')}`);
   console.log('');
@@ -159,6 +192,7 @@ export async function setupCommandWithDeps(
     mode,
     autonomyLevel,
     dataPrivacy,
+    devcontainerAuthStrategy,
     validationCommands,
     safetyRules,
   });
