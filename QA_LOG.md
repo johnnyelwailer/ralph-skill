@@ -3985,3 +3985,106 @@ $ ART_DIR=/home/pj/.copilot/session-state/9e271fa5-85cc-435e-b7ff-0cbf71862f3d/f
 }[stderr]
 [exit_code] 0
 ```
+
+## QA Session — 2026-03-18 (iteration 210)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-SgYEPp/bin/aloop` (v1.0.0)
+- Commit: fab965f
+- Temp dir: `/tmp/qa-test-iter210`
+- Features tested: 4
+
+### Results
+- PASS: `aloop devcontainer` auth file mounts + warnings
+- PASS: `aloop start` (packaged install, loop mode)
+- PASS: Dashboard layout @1920x1080 with docs visibility
+- PASS: `aloop steer` (packaged install, isolated session)
+
+### Bugs Filed
+- None (all tests passed)
+
+### Command Transcript
+
+#### Test 1: Devcontainer auth file mounts + warnings
+
+```
+$ aloop devcontainer --output json  (with real HOME, providers: claude,opencode,gemini,copilot)
+[stdout] auth_warnings: [] (all auth files present on host)
+[stdout] mounts include: claude credentials.json, opencode auth.json, gemini oauth_creds.json + google_accounts.json, copilot config.json
+[exit_code] 0
+
+$ aloop devcontainer --home-dir /tmp/qa-fake-home-iter210 --output json  (fake HOME, no auth files)
+[stdout] auth_warnings: 5 warnings for claude, opencode, codex, gemini, copilot
+[stdout] mounts: only session/aloop mounts (no auth file mounts)
+[exit_code] 0
+
+$ aloop devcontainer --home-dir /tmp/qa-fake-home-iter210  (text mode)
+[stdout] Auth warnings with per-provider guidance displayed cleanly
+[exit_code] 0
+```
+
+#### Test 2: aloop start (packaged install, loop mode)
+
+```
+$ aloop setup --non-interactive --providers claude --mode loop
+[stdout] Setup complete. Config written to: /home/pj/.aloop/projects/8002573b/config.yml
+[exit_code] 0
+
+$ aloop start --max-iterations 1
+[stdout] Session: qa-test-iter210-20260318-061050, PID: 412020, Dashboard: http://localhost:44493
+[exit_code] 0
+
+$ aloop status
+[stdout] Active Sessions: ralph-skill (running), qa-test-iter210 (running)
+[exit_code] 0
+
+$ aloop stop qa-test-iter210-20260318-061050
+[stdout] Session stopped.
+[exit_code] 0
+
+$ aloop start --max-iterations 1  (fresh project without setup)
+[stdout] Error: Project prompts not found: .../prompts. Run `aloop setup` first.
+[exit_code] 1
+```
+
+#### Test 3: Dashboard layout @1920x1080
+
+```
+$ npx playwright screenshot --browser chromium --viewport-size "1920,1080" http://localhost:4040 /tmp/qa-dashboard-iter210-1920x1080.png
+[exit_code] 0
+
+$ node playwright-metrics.js  (Playwright DOM inspection)
+[stdout] asideVisible: true, hasSessions: true, hasDocs: true, hasActivity: true
+[stdout] tabs: TODO, SPEC, RESEARCH, REVIEW LOG, Health, Documents, Activity
+[stdout] bodyLength: 14739
+[exit_code] 0
+
+Evidence: /tmp/qa-dashboard-iter210-final.png
+```
+
+#### Test 4: aloop steer (isolated session)
+
+```
+$ aloop start --max-iterations 3
+[stdout] Session: qa-test-iter210-20260318-061346
+[exit_code] 0
+
+$ aloop steer --session qa-test-iter210-20260318-061346 "Focus on creating hello.txt first"
+[stdout] Steering instruction queued for session qa-test-iter210-20260318-061346.
+[exit_code] 0
+
+$ ls session/queue/
+[stdout] 1773814433135-steering.md (3487 bytes, contains frontmatter + template + instruction)
+
+$ aloop steer --session qa-test-iter210-20260318-061346  (missing instruction)
+[stderr] error: missing required argument 'instruction'
+[exit_code] 1
+
+$ aloop steer --session nonexistent-session "test"
+[stderr] Session not found: nonexistent-session
+[exit_code] 1
+
+$ aloop stop qa-test-iter210-20260318-061346
+[stdout] Session stopped.
+[exit_code] 0
+```
