@@ -15,7 +15,8 @@ Examine recent build output (TODO.md, commits, changed files, specs), decide wha
 
 **NEVER generate these as proof artifacts — they will be REJECTED and waste an iteration:**
 
-- **Test output** — "343/345 tests pass", "18/18 tests pass", filtered test results, test summaries, files named `*-tests.txt` or `*-test-output.txt`. CI output is NOT proof. The reviewer runs tests themselves.
+- **Test output** — "343/345 tests pass", "18/18 tests pass", filtered test results, test summaries, files named `*-tests.txt`, `*-test-output.txt`, or `*-install-output.txt`. CI output is NOT proof. The reviewer runs tests themselves.
+- **Installation verification** — raw logs from `test-install.mjs` or similar installation test scripts are NOT proof. These are internal test artifacts. Good proof for installation work would be a recording or CLI capture of the *actual* installed binary running in a clean environment, showing behavioral success.
 - **Type-check results** — `tsc --noEmit` passing is a build check, not evidence of behavior.
 - **Git diffs or commit summaries** — the reviewer reads diffs and git log themselves.
 - **File listings or file content dumps** — showing that files exist or dumping their contents is not proof of behavior.
