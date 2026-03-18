@@ -652,3 +652,51 @@ test('compileLoopPlan — uses deps for file I/O', async () => {
   assert.ok('/session/loop-plan.json' in written, 'should write loop-plan.json via deps');
   assert.ok('/prompts/PROMPT_build.md' in written, 'should write frontmatter via deps');
 });
+
+test('compileLoopPlan — includes execution controls from agent YAML in frontmatter', async () => {
+  const { promptsDir, sessionDir } = await setupDirs('clp-exec-ctrl-');
+  const root = path.dirname(promptsDir);
+  const agentsDir = path.join(root, '.aloop', 'agents');
+  await mkdir(agentsDir, { recursive: true });
+  await writeFile(
+    path.join(agentsDir, 'build.yml'),
+    'prompt: PROMPT_build.md\nreasoning: high\ntimeout: 30m\nmax_retries: 5\nretry_backoff: exponential\n',
+    'utf8',
+  );
+
+  await compileLoopPlan({
+    mode: 'build',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  const content = await readFile(path.join(promptsDir, 'PROMPT_build.md'), 'utf8');
+  assert.ok(content.includes('timeout: 30m'), 'should include timeout from agent config');
+  assert.ok(content.includes('max_retries: 5'), 'should include max_retries from agent config');
+  assert.ok(content.includes('retry_backoff: exponential'), 'should include retry_backoff from agent config');
+  assert.ok(content.includes('reasoning: high'), 'should use reasoning from agent config');
+});
+
+test('compileLoopPlan — omits execution controls when not configured', async () => {
+  const { promptsDir, sessionDir } = await setupDirs('clp-no-exec-ctrl-');
+
+  await compileLoopPlan({
+    mode: 'build',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+  });
+
+  const content = await readFile(path.join(promptsDir, 'PROMPT_build.md'), 'utf8');
+  assert.ok(!content.includes('timeout:'), 'should not include timeout when not configured');
+  assert.ok(!content.includes('max_retries:'), 'should not include max_retries when not configured');
+  assert.ok(!content.includes('retry_backoff:'), 'should not include retry_backoff when not configured');
+});

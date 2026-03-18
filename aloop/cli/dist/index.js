@@ -6037,6 +6037,15 @@ async function getAgentConfig(agentName, projectRoot, deps) {
             config.reasoning = parsed.reasoning.effort;
           }
         }
+        if (parsed.timeout != null) {
+          config.timeout = String(parsed.timeout);
+        }
+        if (parsed.max_retries != null) {
+          config.max_retries = String(parsed.max_retries);
+        }
+        if (parsed.retry_backoff != null) {
+          config.retry_backoff = String(parsed.retry_backoff);
+        }
       } catch (err) {
         console.error(`Error parsing agent config for ${agentName}:`, err);
       }
@@ -6164,7 +6173,7 @@ function extractProviderSuffixFromFilename(filename, roundRobinOrder) {
     return customMatch[1];
   return null;
 }
-function buildFrontmatter(agent, provider, model, reasoning) {
+function buildFrontmatter(agent, provider, model, reasoning, opts) {
   const lines = ["---"];
   lines.push(`agent: ${agent}`);
   lines.push(`provider: ${provider}`);
@@ -6172,6 +6181,15 @@ function buildFrontmatter(agent, provider, model, reasoning) {
     lines.push(`model: ${model}`);
   }
   lines.push(`reasoning: ${reasoning}`);
+  if (opts?.timeout) {
+    lines.push(`timeout: ${opts.timeout}`);
+  }
+  if (opts?.max_retries) {
+    lines.push(`max_retries: ${opts.max_retries}`);
+  }
+  if (opts?.retry_backoff) {
+    lines.push(`retry_backoff: ${opts.retry_backoff}`);
+  }
   lines.push("---");
   return lines.join("\n");
 }
@@ -6219,7 +6237,11 @@ async function compileLoopPlan(options, deps = defaultCompileDeps) {
     }
     const agentConfig = await getAgentConfig(agent, projectRoot, deps);
     const reasoning = agentConfig.reasoning;
-    const frontmatter = buildFrontmatter(agent, promptProvider, promptModel, reasoning);
+    const frontmatter = buildFrontmatter(agent, promptProvider, promptModel, reasoning, {
+      timeout: agentConfig.timeout,
+      max_retries: agentConfig.max_retries,
+      retry_backoff: agentConfig.retry_backoff
+    });
     const filePath = path8.join(promptsDir, filename);
     if (providerSuffix) {
       const baseFilename = agentConfig.prompt;
@@ -9424,20 +9446,37 @@ var PROVIDER_AUTH_GUIDANCE = {
   opencode: "Set OPENCODE_API_KEY for your configured backend provider",
   copilot: "Set GH_TOKEN via `gh auth token` or from https://github.com/settings/tokens"
 };
-function checkAuthPreflight(providers, env = process.env) {
+var PROVIDER_AUTH_FILES = {
+  claude: [".claude/.credentials.json"],
+  opencode: [".local/share/opencode/auth.json"],
+  codex: [".codex/auth.json"],
+  copilot: [".copilot/config.json"],
+  gemini: [".gemini/oauth_creds.json", ".gemini/google_accounts.json"]
+};
+function checkAuthPreflight(providers, env = process.env, existsFn, homeDir) {
+  const resolvedHome = homeDir ?? env.HOME ?? env.USERPROFILE ?? "/root";
   const warnings = [];
   for (const provider of providers) {
     const authVars = PROVIDER_AUTH_ENV_VARS[provider];
     if (!authVars || authVars.length === 0)
       continue;
     const anySet = authVars.some((v) => env[v] && env[v].length > 0);
-    if (!anySet) {
-      warnings.push({
-        provider,
-        missingVars: authVars,
-        guidance: PROVIDER_AUTH_GUIDANCE[provider] || `Set one of: ${authVars.join(", ")}`
+    if (anySet)
+      continue;
+    const authFiles = PROVIDER_AUTH_FILES[provider];
+    if (existsFn && authFiles && authFiles.length > 0) {
+      const anyFileExists = authFiles.some((relPath) => {
+        const hostPath = resolveHomePath(relPath, resolvedHome);
+        return existsFn(hostPath);
       });
+      if (anyFileExists)
+        continue;
     }
+    warnings.push({
+      provider,
+      missingVars: authVars,
+      guidance: PROVIDER_AUTH_GUIDANCE[provider] || `Set one of: ${authVars.join(", ")}`
+    });
   }
   return warnings;
 }
@@ -9462,6 +9501,34 @@ function buildProviderRemoteEnv(installedProviders) {
     }
   }
   return env;
+}
+function resolveHomePath(filePath, homeDir) {
+  if (path12.isAbsolute(filePath)) {
+    return filePath;
+  }
+  const cleaned = filePath.startsWith("~/") ? filePath.slice(2) : filePath === "~" ? "" : filePath;
+  return path12.join(homeDir, cleaned);
+}
+function buildProviderAuthFileMounts(providers, env = process.env, existsFn = existsSync9, homeDir) {
+  const resolvedHome = homeDir ?? env.HOME ?? env.USERPROFILE ?? "/root";
+  const mounts = [];
+  for (const provider of providers) {
+    const authVars = PROVIDER_AUTH_ENV_VARS[provider];
+    const authFiles = PROVIDER_AUTH_FILES[provider];
+    if (!authFiles || authFiles.length === 0)
+      continue;
+    const anyEnvSet = authVars?.some((v) => env[v] && env[v].length > 0);
+    if (anyEnvSet)
+      continue;
+    for (const relPath of authFiles) {
+      const hostPath = resolveHomePath(relPath, resolvedHome);
+      if (existsFn(hostPath)) {
+        const containerPath = `\${containerEnv:HOME}/${relPath}`;
+        mounts.push(`source=${hostPath},target=${containerPath},type=bind`);
+      }
+    }
+  }
+  return mounts;
 }
 var PROVIDER_VSCODE_EXTENSIONS = {
   claude: "anthropic.claude-code",
@@ -9489,7 +9556,7 @@ function buildAloopContainerEnv() {
     ALOOP_CONTAINER: "1"
   };
 }
-function generateDevcontainerConfig(discovery, existsFn = existsSync9, configuredProviders) {
+function generateDevcontainerConfig(discovery, existsFn = existsSync9, configuredProviders, env = process.env, homeDir) {
   const projectRoot = discovery.project.root;
   const projectName = discovery.project.name;
   const language = discovery.context.detected_language;
@@ -9500,11 +9567,12 @@ function generateDevcontainerConfig(discovery, existsFn = existsSync9, configure
     ...mapping.postCreateCommand ? [mapping.postCreateCommand] : [],
     ...providerInstalls
   ];
+  const authFileMounts = buildProviderAuthFileMounts(installedProviders, env, existsFn, homeDir);
   const config = {
     name: `${projectName}-aloop`,
     image: mapping.image,
     features: { ...mapping.features },
-    mounts: buildAloopMounts(),
+    mounts: [...buildAloopMounts(), ...authFileMounts],
     containerEnv: buildAloopContainerEnv(),
     remoteEnv: buildProviderRemoteEnv(installedProviders)
   };
@@ -9613,7 +9681,8 @@ async function devcontainerCommandWithDeps(options = {}, deps = defaultDeps3) {
   const configPath = path12.join(devcontainerDir, "devcontainer.json");
   const hadExisting = deps.existsSync(configPath);
   const resolvedProviders = await resolveConfiguredProviders(discovery, deps);
-  const generated = generateDevcontainerConfig(discovery, deps.existsSync, resolvedProviders);
+  const hostHome = options.homeDir ?? process.env.HOME ?? process.env.USERPROFILE;
+  const generated = generateDevcontainerConfig(discovery, deps.existsSync, resolvedProviders, process.env, hostHome);
   let finalConfig;
   let action;
   if (hadExisting) {
@@ -9629,7 +9698,7 @@ async function devcontainerCommandWithDeps(options = {}, deps = defaultDeps3) {
   await deps.mkdir(devcontainerDir, { recursive: true });
   await deps.writeFile(configPath, JSON.stringify(finalConfig, null, 2) + "\n", "utf8");
   const mapping = getLanguageMapping(discovery.context.detected_language, projectRoot, deps.existsSync);
-  const authWarnings = checkAuthPreflight(resolvedProviders);
+  const authWarnings = checkAuthPreflight(resolvedProviders, process.env, deps.existsSync, hostHome);
   return {
     action,
     config_path: configPath,

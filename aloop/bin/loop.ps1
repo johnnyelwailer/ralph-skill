@@ -379,6 +379,9 @@ function Parse-Frontmatter {
         reasoning = ''
         color = ''
         trigger = ''
+        timeout = ''
+        max_retries = ''
+        retry_backoff = ''
     }
     if (-not (Test-Path $PromptFile)) { return }
     $content = Get-Content -Path $PromptFile -Raw
@@ -387,9 +390,46 @@ function Parse-Frontmatter {
     if ($parts.Count -lt 3) { return }
     $header = $parts[1] -split "`r?`n"
     foreach ($line in $header) {
-        if ($line -match '^\s*(provider|model|agent|reasoning|color|trigger)\s*:\s*(.+?)\s*$') {
+        if ($line -match '^\s*(provider|model|agent|reasoning|color|trigger|timeout|max_retries|retry_backoff)\s*:\s*(.+?)\s*$') {
             $script:frontmatter[$Matches[1].ToLowerInvariant()] = $Matches[2].Trim()
         }
+    }
+}
+
+function ConvertTo-DurationSeconds {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+    if ($Value -match '^\d+$') { return [int]$Value }
+    if ($Value -match '^(\d+)[mM]$') { return [int]$Matches[1] * 60 }
+    if ($Value -match '^(\d+)[hH]$') { return [int]$Matches[1] * 3600 }
+    if ($Value -match '^(\d+)[sS]$') { return [int]$Matches[1] }
+    return $null
+}
+
+function Resolve-ExecutionControls {
+    # Timeout: frontmatter -> ProviderTimeoutSec param -> default
+    $fmTimeout = $script:frontmatter.timeout
+    $parsed = ConvertTo-DurationSeconds $fmTimeout
+    if ($null -ne $parsed -and $parsed -gt 0) {
+        $script:effectiveTimeout = $parsed
+    } else {
+        $script:effectiveTimeout = $ProviderTimeoutSec
+    }
+
+    # Max retries: frontmatter -> maxPhaseRetries
+    $fmRetries = $script:frontmatter.max_retries
+    if (-not [string]::IsNullOrWhiteSpace($fmRetries) -and $fmRetries -match '^\d+$' -and [int]$fmRetries -gt 0) {
+        $script:effectiveMaxRetries = [int]$fmRetries
+    } else {
+        $script:effectiveMaxRetries = $script:maxPhaseRetries
+    }
+
+    # Retry backoff: frontmatter -> none
+    $fmBackoff = $script:frontmatter.retry_backoff
+    if ($fmBackoff -in @('none', 'linear', 'exponential')) {
+        $script:effectiveRetryBackoff = $fmBackoff
+    } else {
+        $script:effectiveRetryBackoff = 'none'
     }
 }
 
@@ -538,11 +578,12 @@ function Invoke-ProviderProcess {
         $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
         $stderrTask = $proc.StandardError.ReadToEndAsync()
 
-        $timeoutMs = $ProviderTimeoutSec * 1000
+        $effectiveTimeoutSec = if ($script:effectiveTimeout) { $script:effectiveTimeout } else { $ProviderTimeoutSec }
+        $timeoutMs = $effectiveTimeoutSec * 1000
         $exited = $proc.WaitForExit($timeoutMs)
         if (-not $exited) {
             Stop-ActiveProvider
-            throw "Provider '$Command' timed out after $ProviderTimeoutSec seconds"
+            throw "Provider '$Command' timed out after $effectiveTimeoutSec seconds"
         }
         # Ensure async reads have flushed
         $proc.WaitForExit()
@@ -811,7 +852,7 @@ $script:lastProviderOutputText = $null
 $script:cyclePosition = 0
 $script:cycleLength = 0
 $script:resolvedPromptName = $null
-$script:frontmatter = @{ provider = ''; model = ''; agent = ''; reasoning = ''; color = ''; trigger = '' }
+$script:frontmatter = @{ provider = ''; model = ''; agent = ''; reasoning = ''; color = ''; trigger = ''; timeout = ''; max_retries = ''; retry_backoff = '' }
 $script:phaseRetryState = @{
     phase = ''
     consecutive = 0
@@ -851,6 +892,9 @@ function Register-IterationFailure {
     if (-not ($Mode -in @('plan-build', 'plan-build-review'))) { return }
     if (-not ($IterationMode -in @('plan', 'build', 'qa', 'review'))) { return }
 
+    # Use per-prompt max_retries (from frontmatter) when set, else global default
+    $effectiveRetries = if ($script:effectiveMaxRetries) { $script:effectiveMaxRetries } else { $script:maxPhaseRetries }
+
     if ($script:phaseRetryState.phase -eq $IterationMode) {
         $script:phaseRetryState.consecutive++
     } else {
@@ -860,16 +904,30 @@ function Register-IterationFailure {
     }
 
     $script:phaseRetryState.failureReasons += [string]$ErrorText
-    if ($script:phaseRetryState.failureReasons.Count -gt $script:maxPhaseRetries) {
-        $script:phaseRetryState.failureReasons = @($script:phaseRetryState.failureReasons | Select-Object -Last $script:maxPhaseRetries)
+    if ($script:phaseRetryState.failureReasons.Count -gt $effectiveRetries) {
+        $script:phaseRetryState.failureReasons = @($script:phaseRetryState.failureReasons | Select-Object -Last $effectiveRetries)
     }
 
-    if ($script:phaseRetryState.consecutive -ge $script:maxPhaseRetries) {
+    # Apply retry backoff before next attempt (if not yet exhausted)
+    if ($script:phaseRetryState.consecutive -lt $effectiveRetries) {
+        $backoff = if ($script:effectiveRetryBackoff) { $script:effectiveRetryBackoff } else { 'none' }
+        $backoffSecs = 0
+        switch ($backoff) {
+            'linear'      { $backoffSecs = $script:phaseRetryState.consecutive * 5 }
+            'exponential' { $backoffSecs = [Math]::Pow(2, $script:phaseRetryState.consecutive) }
+        }
+        if ($backoffSecs -gt 0) {
+            Write-Host "Retry backoff ($backoff): sleeping ${backoffSecs}s before next attempt"
+            Start-Sleep -Seconds $backoffSecs
+        }
+    }
+
+    if ($script:phaseRetryState.consecutive -ge $effectiveRetries) {
         Write-Warning "Phase '$IterationMode' failed $($script:phaseRetryState.consecutive) times; advancing cycle position."
         Write-LogEntry -Event "phase_retry_exhausted" -Data @{
             phase = $IterationMode
             consecutive_failures = $script:phaseRetryState.consecutive
-            max_phase_retries = $script:maxPhaseRetries
+            max_phase_retries = $effectiveRetries
             failure_reasons = @($script:phaseRetryState.failureReasons)
         }
         Advance-CyclePosition
@@ -1826,6 +1884,7 @@ function Run-QueueIfPresent {
         Write-Host "`n--- Queue Override: $queueBasename [$timestamp] [$IterationProvider] ---" -ForegroundColor Blue
 
         Parse-Frontmatter -PromptFile $queueItem.FullName
+        Resolve-ExecutionControls
         $queueIterMode = if ($script:frontmatter.agent) { $script:frontmatter.agent } else { 'queue' }
         $queueIterProvider = $IterationProvider
         if (-not [string]::IsNullOrWhiteSpace($script:frontmatter.provider)) {
@@ -1926,6 +1985,7 @@ try {
             break
         }
         Parse-Frontmatter -PromptFile $iterationPromptFile
+        Resolve-ExecutionControls
         if (-not [string]::IsNullOrWhiteSpace($script:frontmatter.agent)) {
             $iterationMode = $script:frontmatter.agent
         }
@@ -1948,6 +2008,9 @@ try {
             reasoning = [string]$script:frontmatter.reasoning
             color = [string]$script:frontmatter.color
             trigger = [string]$script:frontmatter.trigger
+            timeout = [string]$script:effectiveTimeout
+            max_retries = [string]$script:effectiveMaxRetries
+            retry_backoff = [string]$script:effectiveRetryBackoff
         }
 
         # Update session status

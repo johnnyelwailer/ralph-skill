@@ -59,12 +59,20 @@ const DEFAULT_REASONING: Record<string, string> = {
   steer: 'medium',
 };
 
+interface AgentConfig {
+  prompt: string;
+  reasoning: string;
+  timeout?: string;
+  max_retries?: string;
+  retry_backoff?: string;
+}
+
 async function getAgentConfig(
   agentName: string,
   projectRoot: string | undefined,
   deps: CompileLoopPlanDeps,
-): Promise<{ prompt: string; reasoning: string }> {
-  const config: { prompt: string; reasoning: string } = {
+): Promise<AgentConfig> {
+  const config: AgentConfig = {
     prompt: DEFAULT_AGENT_PROMPT[agentName] ?? `PROMPT_${agentName}.md`,
     reasoning: DEFAULT_REASONING[agentName] ?? 'medium',
   };
@@ -84,6 +92,15 @@ async function getAgentConfig(
           } else if (typeof parsed.reasoning === 'object' && parsed.reasoning.effort) {
             config.reasoning = parsed.reasoning.effort;
           }
+        }
+        if (parsed.timeout != null) {
+          config.timeout = String(parsed.timeout);
+        }
+        if (parsed.max_retries != null) {
+          config.max_retries = String(parsed.max_retries);
+        }
+        if (parsed.retry_backoff != null) {
+          config.retry_backoff = String(parsed.retry_backoff);
         }
       } catch (err) {
         // Fallback to defaults on error
@@ -251,6 +268,7 @@ function buildFrontmatter(
   provider: string,
   model: string,
   reasoning: string,
+  opts?: { timeout?: string; max_retries?: string; retry_backoff?: string },
 ): string {
   const lines = ['---'];
   lines.push(`agent: ${agent}`);
@@ -259,6 +277,15 @@ function buildFrontmatter(
     lines.push(`model: ${model}`);
   }
   lines.push(`reasoning: ${reasoning}`);
+  if (opts?.timeout) {
+    lines.push(`timeout: ${opts.timeout}`);
+  }
+  if (opts?.max_retries) {
+    lines.push(`max_retries: ${opts.max_retries}`);
+  }
+  if (opts?.retry_backoff) {
+    lines.push(`retry_backoff: ${opts.retry_backoff}`);
+  }
   lines.push('---');
   return lines.join('\n');
 }
@@ -314,7 +341,11 @@ export async function compileLoopPlan(
 
     const agentConfig = await getAgentConfig(agent, projectRoot, deps);
     const reasoning = agentConfig.reasoning;
-    const frontmatter = buildFrontmatter(agent, promptProvider, promptModel, reasoning);
+    const frontmatter = buildFrontmatter(agent, promptProvider, promptModel, reasoning, {
+      timeout: agentConfig.timeout,
+      max_retries: agentConfig.max_retries,
+      retry_backoff: agentConfig.retry_backoff,
+    });
 
     const filePath = path.join(promptsDir, filename);
     if (providerSuffix) {

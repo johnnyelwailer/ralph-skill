@@ -522,12 +522,69 @@ parse_frontmatter() {
     FRONTMATTER_REASONING=$(sed -n '/^---$/,/^---$/{ /^reasoning:/s/reasoning: *//p }' "$file" | head -n1)
     FRONTMATTER_COLOR=$(sed -n '/^---$/,/^---$/{ /^color:/s/color: *//p }' "$file" | head -n1)
     FRONTMATTER_TRIGGER=$(sed -n '/^---$/,/^---$/{ /^trigger:/s/trigger: *//p }' "$file" | head -n1)
+    FRONTMATTER_TIMEOUT=$(sed -n '/^---$/,/^---$/{ /^timeout:/s/timeout: *//p }' "$file" | head -n1)
+    FRONTMATTER_MAX_RETRIES=$(sed -n '/^---$/,/^---$/{ /^max_retries:/s/max_retries: *//p }' "$file" | head -n1)
+    FRONTMATTER_RETRY_BACKOFF=$(sed -n '/^---$/,/^---$/{ /^retry_backoff:/s/retry_backoff: *//p }' "$file" | head -n1)
     FRONTMATTER_PROVIDER="${FRONTMATTER_PROVIDER:-}"
     FRONTMATTER_MODEL="${FRONTMATTER_MODEL:-}"
     FRONTMATTER_AGENT="${FRONTMATTER_AGENT:-}"
     FRONTMATTER_REASONING="${FRONTMATTER_REASONING:-}"
     FRONTMATTER_COLOR="${FRONTMATTER_COLOR:-}"
     FRONTMATTER_TRIGGER="${FRONTMATTER_TRIGGER:-}"
+    FRONTMATTER_TIMEOUT="${FRONTMATTER_TIMEOUT:-}"
+    FRONTMATTER_MAX_RETRIES="${FRONTMATTER_MAX_RETRIES:-}"
+    FRONTMATTER_RETRY_BACKOFF="${FRONTMATTER_RETRY_BACKOFF:-}"
+}
+
+# Convert a duration string (e.g. 30m, 2h, 90s, 3600) to seconds.
+# Supports integer seconds, Nm (minutes), Nh (hours). Returns empty on invalid input.
+parse_duration_to_seconds() {
+    local val="$1"
+    if [ -z "$val" ]; then echo ""; return; fi
+    # Pure integer → seconds
+    if [[ "$val" =~ ^[0-9]+$ ]]; then echo "$val"; return; fi
+    # Minutes
+    if [[ "$val" =~ ^([0-9]+)[mM]$ ]]; then echo "$(( ${BASH_REMATCH[1]} * 60 ))"; return; fi
+    # Hours
+    if [[ "$val" =~ ^([0-9]+)[hH]$ ]]; then echo "$(( ${BASH_REMATCH[1]} * 3600 ))"; return; fi
+    # Seconds suffix
+    if [[ "$val" =~ ^([0-9]+)[sS]$ ]]; then echo "${BASH_REMATCH[1]}"; return; fi
+    echo ""
+}
+
+# Resolve effective execution controls from frontmatter with precedence:
+#   frontmatter -> session/env -> default
+# Sets: EFFECTIVE_TIMEOUT, EFFECTIVE_MAX_RETRIES, EFFECTIVE_RETRY_BACKOFF
+resolve_execution_controls() {
+    # Timeout: frontmatter -> ALOOP_PROVIDER_TIMEOUT -> 28800
+    if [ -n "$FRONTMATTER_TIMEOUT" ]; then
+        local parsed_timeout
+        parsed_timeout=$(parse_duration_to_seconds "$FRONTMATTER_TIMEOUT")
+        if [ -n "$parsed_timeout" ] && [ "$parsed_timeout" -gt 0 ] 2>/dev/null; then
+            EFFECTIVE_TIMEOUT="$parsed_timeout"
+        else
+            EFFECTIVE_TIMEOUT="$PROVIDER_TIMEOUT"
+        fi
+    else
+        EFFECTIVE_TIMEOUT="$PROVIDER_TIMEOUT"
+    fi
+
+    # Max retries: frontmatter -> MAX_PHASE_RETRIES (already set from env/provider count)
+    if [ -n "$FRONTMATTER_MAX_RETRIES" ] && [ "$FRONTMATTER_MAX_RETRIES" -gt 0 ] 2>/dev/null; then
+        EFFECTIVE_MAX_RETRIES="$FRONTMATTER_MAX_RETRIES"
+    else
+        EFFECTIVE_MAX_RETRIES="$MAX_PHASE_RETRIES"
+    fi
+
+    # Retry backoff: frontmatter -> "none" (default — existing behavior is no backoff between retries)
+    if [ -n "$FRONTMATTER_RETRY_BACKOFF" ]; then
+        case "$FRONTMATTER_RETRY_BACKOFF" in
+            none|linear|exponential) EFFECTIVE_RETRY_BACKOFF="$FRONTMATTER_RETRY_BACKOFF" ;;
+            *) EFFECTIVE_RETRY_BACKOFF="none" ;;
+        esac
+    else
+        EFFECTIVE_RETRY_BACKOFF="none"
+    fi
 }
 
 advance_cycle_position() {
@@ -592,6 +649,9 @@ register_iteration_failure() {
         return
     fi
 
+    # Use per-prompt max_retries (from frontmatter) when set, else global default
+    local effective_retries="${EFFECTIVE_MAX_RETRIES:-$MAX_PHASE_RETRIES}"
+
     if [ "$PHASE_RETRY_PHASE" = "$iteration_mode" ]; then
         PHASE_RETRY_CONSECUTIVE=$((PHASE_RETRY_CONSECUTIVE + 1))
     else
@@ -601,16 +661,30 @@ register_iteration_failure() {
     fi
 
     PHASE_RETRY_FAILURE_REASONS+=("$error_text")
-    while [ "${#PHASE_RETRY_FAILURE_REASONS[@]}" -gt "$MAX_PHASE_RETRIES" ]; do
+    while [ "${#PHASE_RETRY_FAILURE_REASONS[@]}" -gt "$effective_retries" ]; do
         PHASE_RETRY_FAILURE_REASONS=("${PHASE_RETRY_FAILURE_REASONS[@]:1}")
     done
 
-    if [ "$PHASE_RETRY_CONSECUTIVE" -ge "$MAX_PHASE_RETRIES" ]; then
+    # Apply retry backoff before next attempt (if not yet exhausted)
+    if [ "$PHASE_RETRY_CONSECUTIVE" -lt "$effective_retries" ]; then
+        local backoff="${EFFECTIVE_RETRY_BACKOFF:-none}"
+        local backoff_secs=0
+        case "$backoff" in
+            linear)      backoff_secs=$(( PHASE_RETRY_CONSECUTIVE * 5 )) ;;
+            exponential) backoff_secs=$(( 2 ** PHASE_RETRY_CONSECUTIVE )) ;;
+        esac
+        if [ "$backoff_secs" -gt 0 ]; then
+            echo "Retry backoff ($backoff): sleeping ${backoff_secs}s before next attempt"
+            sleep "$backoff_secs"
+        fi
+    fi
+
+    if [ "$PHASE_RETRY_CONSECUTIVE" -ge "$effective_retries" ]; then
         echo "Warning: Phase '$iteration_mode' failed $PHASE_RETRY_CONSECUTIVE times; advancing cycle position."
         write_phase_retry_exhausted_entry \
             "$iteration_mode" \
             "$PHASE_RETRY_CONSECUTIVE" \
-            "$MAX_PHASE_RETRIES" \
+            "$effective_retries" \
             "${PHASE_RETRY_FAILURE_REASONS[@]}"
         advance_cycle_position
         PHASE_RETRY_PHASE=""
@@ -1068,7 +1142,8 @@ cleanup_gh_block() {
 # Returns the process exit code, or 124 on timeout (matching GNU timeout convention).
 # Uses wall-clock time so mocked sleep in tests doesn't cause false timeouts.
 _wait_for_provider() {
-    local deadline=$(( $(date +%s) + PROVIDER_TIMEOUT ))
+    local timeout_secs="${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT}"
+    local deadline=$(( $(date +%s) + timeout_secs ))
     while kill -0 "$ACTIVE_PROVIDER_PID" 2>/dev/null; do
         if [ "$(date +%s)" -ge "$deadline" ]; then
             kill_active_provider
@@ -1120,8 +1195,8 @@ invoke_provider() {
             _wait_for_provider
             exit_code=$?
             if [ "$exit_code" -eq 124 ]; then
-                LAST_PROVIDER_ERROR="claude timed out after $PROVIDER_TIMEOUT seconds"
-                echo "claude timed out after $PROVIDER_TIMEOUT seconds" >&2
+                LAST_PROVIDER_ERROR="claude timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds"
+                echo "claude timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds" >&2
                 invoke_rc=1
             elif [ "$exit_code" -ne 0 ]; then
                 LAST_PROVIDER_ERROR="claude exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
@@ -1142,8 +1217,8 @@ invoke_provider() {
             _wait_for_provider
             exit_code=$?
             if [ "$exit_code" -eq 124 ]; then
-                LAST_PROVIDER_ERROR="codex timed out after $PROVIDER_TIMEOUT seconds"
-                echo "codex timed out after $PROVIDER_TIMEOUT seconds" >&2
+                LAST_PROVIDER_ERROR="codex timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds"
+                echo "codex timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds" >&2
                 invoke_rc=1
             elif [ "$exit_code" -ne 0 ]; then
                 LAST_PROVIDER_ERROR="codex exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
@@ -1167,8 +1242,8 @@ invoke_provider() {
             _wait_for_provider
             exit_code=$?
             if [ "$exit_code" -eq 124 ]; then
-                LAST_PROVIDER_ERROR="opencode timed out after $PROVIDER_TIMEOUT seconds"
-                echo "opencode timed out after $PROVIDER_TIMEOUT seconds" >&2
+                LAST_PROVIDER_ERROR="opencode timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds"
+                echo "opencode timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds" >&2
                 invoke_rc=1
             elif [ "$exit_code" -ne 0 ]; then
                 LAST_PROVIDER_ERROR="opencode exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
@@ -1189,8 +1264,8 @@ invoke_provider() {
             _wait_for_provider
             exit_code=$?
             if [ "$exit_code" -eq 124 ]; then
-                LAST_PROVIDER_ERROR="gemini timed out after $PROVIDER_TIMEOUT seconds"
-                echo "gemini timed out after $PROVIDER_TIMEOUT seconds" >&2
+                LAST_PROVIDER_ERROR="gemini timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds"
+                echo "gemini timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds" >&2
                 invoke_rc=1
             elif [ "$exit_code" -ne 0 ]; then
                 echo "Gemini -m $GEMINI_MODEL failed. Retrying without explicit model." >&2
@@ -1202,7 +1277,7 @@ invoke_provider() {
                 _wait_for_provider
                 exit_code=$?
                 if [ "$exit_code" -eq 124 ]; then
-                    LAST_PROVIDER_ERROR="gemini timed out after $PROVIDER_TIMEOUT seconds"
+                    LAST_PROVIDER_ERROR="gemini timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds"
                     invoke_rc=1
                 elif [ "$exit_code" -ne 0 ]; then
                     LAST_PROVIDER_ERROR="gemini failed. Stderr: $(cat "$tmp_stderr")"
@@ -1227,8 +1302,8 @@ invoke_provider() {
             _wait_for_provider
             exit_code=$?
             if [ "$exit_code" -eq 124 ]; then
-                LAST_PROVIDER_ERROR="copilot timed out after $PROVIDER_TIMEOUT seconds"
-                echo "copilot timed out after $PROVIDER_TIMEOUT seconds" >&2
+                LAST_PROVIDER_ERROR="copilot timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds"
+                echo "copilot timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds" >&2
                 invoke_rc=1
             elif [ "$exit_code" -ne 0 ]; then
                 echo "Copilot --model $copilot_model failed. Retrying with $COPILOT_RETRY_MODEL." >&2
@@ -1240,7 +1315,7 @@ invoke_provider() {
                 _wait_for_provider
                 exit_code=$?
                 if [ "$exit_code" -eq 124 ]; then
-                    LAST_PROVIDER_ERROR="copilot timed out after $PROVIDER_TIMEOUT seconds"
+                    LAST_PROVIDER_ERROR="copilot timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds"
                     invoke_rc=1
                 elif [ "$exit_code" -ne 0 ]; then
                     echo "Copilot retry failed. Trying without explicit model." >&2
@@ -1252,7 +1327,7 @@ invoke_provider() {
                     _wait_for_provider
                     exit_code=$?
                     if [ "$exit_code" -eq 124 ]; then
-                        LAST_PROVIDER_ERROR="copilot timed out after $PROVIDER_TIMEOUT seconds"
+                        LAST_PROVIDER_ERROR="copilot timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds"
                         invoke_rc=1
                     elif [ "$exit_code" -ne 0 ]; then
                         LAST_PROVIDER_ERROR="copilot failed. Stderr: $(cat "$tmp_stderr")"
@@ -1822,6 +1897,7 @@ run_queue_if_present() {
         echo -e "\033[34m--- Queue Override: $QUEUE_BASENAME [$(date '+%Y-%m-%d %H:%M:%S')] [$iter_provider] ---\033[0m"
 
         parse_frontmatter "$QUEUE_ITEM"
+        resolve_execution_controls
         local queue_iter_mode="${FRONTMATTER_AGENT:-queue}"
         local queue_iter_provider="$iter_provider"
         if [ -n "$FRONTMATTER_PROVIDER" ]; then
@@ -1930,6 +2006,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 "prompt_file" "$iter_prompt_file"
         fi
     fi
+    resolve_execution_controls
     write_log_entry "frontmatter_applied" \
         "prompt_file" "$iter_prompt_file" \
         "agent" "${FRONTMATTER_AGENT:-}" \
@@ -1937,7 +2014,10 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         "model" "${FRONTMATTER_MODEL:-}" \
         "reasoning" "${FRONTMATTER_REASONING:-}" \
         "color" "${FRONTMATTER_COLOR:-}" \
-        "trigger" "${FRONTMATTER_TRIGGER:-}"
+        "trigger" "${FRONTMATTER_TRIGGER:-}" \
+        "timeout" "${EFFECTIVE_TIMEOUT:-}" \
+        "max_retries" "${EFFECTIVE_MAX_RETRIES:-}" \
+        "retry_backoff" "${EFFECTIVE_RETRY_BACKOFF:-}"
 
     # Update session status
     write_status "$ITERATION" "$iter_mode" "$iter_provider" 0
