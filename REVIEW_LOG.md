@@ -536,3 +536,21 @@
 - Gate 4: Dead `github-webhook` module and tests were fully removed, and no production references remain (`rg "github-webhook" aloop/cli/src` returned no matches).
 - Gate 5: Integration sanity passed on HEAD with full validation command: `cd aloop/cli && npm test && npm run type-check && npm run build` (tests green, type-check clean, build succeeds).
 - Gate 6: Iteration 188 proof manifest is evidence-based for observable behavior changes (CLI captures for discover recommendation and setup→start flow), and correctly skips internal-only deletion/coverage tasks.
+
+## Review — 2026-03-18 05:19 UTC — commit f317642..92e5317
+
+**Verdict: FAIL** (5 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/commands/devcontainer.ts`, `aloop/cli/src/commands/devcontainer.test.ts`, `aloop/cli/package.json`, `aloop/cli/scripts/test-install.mjs`, `aloop/cli/src/index.test.ts`, `aloop/cli/src/commands/project.ts`, `aloop/cli/src/commands/project.test.ts`, `aloop/cli/lib/project.mjs`, `aloop/cli/dashboard/src/App.tsx`, `aloop/cli/dashboard/e2e/smoke.spec.ts`
+
+- Gate 1: `devcontainerCommandWithDeps` generates auth-file fallback mounts with `deps.existsSync`, but `checkAuthPreflight` is invoked without `existsFn`/`homeDir` (`devcontainer.ts:620`), so warnings are emitted even when fallback auth files are present. This breaks the required `env -> auth file bind-mount -> warn` decision order.
+- Gate 2: `devcontainer.test.ts:1482-1486` adds a shallow test (`assert.ok(Array.isArray(mounts))`) for default `existsFn`; it does not assert concrete fallback behavior and would pass for incorrect outputs.
+- Gate 3: Touched UI file `dashboard/src/App.tsx` has no branch-coverage evidence for this iteration. Dashboard coverage command currently fails due missing `@vitest/coverage-v8`, so the gate threshold cannot be verified.
+- Gate 4: Dead imports remain in `dashboard/e2e/smoke.spec.ts` (`spawn`, `readFile`) after refactor.
+- Gate 6: Iteration-209 proof manifest includes `test-install-output.txt` test output as proof artifact, which violates the proof policy (test output is not valid proof evidence).
+
+**Positive observations:**
+- Gate 5: Validation passed in this workspace: `cd aloop/cli && npm test && npm run type-check && npm run build` all succeeded.
+- Gate 7: Runtime layout checks were executed via Playwright (`dashboard/e2e/smoke.spec.ts` desktop/mobile layout tests); 1920x1080 and 375x667 layout assertions passed.
+- Gate 1 / Gate 2 prior blockers were resolved: packaged install now includes `dist/bin/{loop.sh,loop.ps1}` (`package.json` `build:bin` + `scripts/test-install.mjs` isolated HOME validation), and `index.test.ts` now uses a temp dir with mock `SPEC.md` for deterministic autonomy-level error path testing.
+
+---
