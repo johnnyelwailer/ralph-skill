@@ -5,7 +5,7 @@
 Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) setup/QA hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
-- [ ] [runtime/P1] [steering] Set default execution-control provider timeout to 3 hours (10800s) in both `loop.sh` and `loop.ps1`, preserving precedence (`prompt timeout` -> `ALOOP_PROVIDER_TIMEOUT` -> built-in default) and adding parity regression coverage. (priority: high)
+- [x] [runtime/P1] [steering] Set default execution-control provider timeout to 3 hours (10800s) in both `loop.sh` and `loop.ps1`, preserving precedence (`prompt timeout` -> `ALOOP_PROVIDER_TIMEOUT` -> built-in default) and adding parity regression coverage. (priority: high)
 - [ ] [orchestrator/P1] Implement Refinement Budget Cap: add `refinement_count` to `OrchestratorIssue`, increment on DoR failure, and enforce cap of 5 with autonomy-based auto-resolve vs wait behavior so refinement loops cannot spin forever. (priority: high)
 - [ ] [orchestrator/P1] Implement Orchestrator Review Layer: add `PROMPT_orch_review.md` and wire `invokeAgentReview` path so post-child PR review enforces spec compliance/proof quality before merge. (priority: high)
 

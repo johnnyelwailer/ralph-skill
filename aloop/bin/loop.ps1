@@ -40,7 +40,7 @@ param(
     [int]$MaxIterations = 50,
     [int]$MaxStuck = 3,
 
-    [int]$ProviderTimeoutSec = $(if ($env:ALOOP_PROVIDER_TIMEOUT) { [int]$env:ALOOP_PROVIDER_TIMEOUT } else { 28800 }),
+    [int]$ProviderTimeoutSec = $(if ($env:ALOOP_PROVIDER_TIMEOUT) { [int]$env:ALOOP_PROVIDER_TIMEOUT } else { 10800 }),
 
     [ValidateSet('start', 'restart', 'resume')]
     [string]$LaunchMode = 'start',

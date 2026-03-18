@@ -41,7 +41,7 @@ BACKUP_ENABLED="${ALOOP_BACKUP:-false}"
 DRY_RUN=false
 DANGEROUSLY_SKIP_CONTAINER=false
 LAUNCH_MODE="start"
-PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-28800}"
+PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-10800}"
 PROVIDER_HEALTH_DIR="${ALOOP_HEALTH_DIR:-$HOME/.aloop/health}"
 HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
 SESSION_ID=""
@@ -556,7 +556,7 @@ parse_duration_to_seconds() {
 #   frontmatter -> session/env -> default
 # Sets: EFFECTIVE_TIMEOUT, EFFECTIVE_MAX_RETRIES, EFFECTIVE_RETRY_BACKOFF
 resolve_execution_controls() {
-    # Timeout: frontmatter -> ALOOP_PROVIDER_TIMEOUT -> 28800
+    # Timeout: frontmatter -> ALOOP_PROVIDER_TIMEOUT -> 10800
     if [ -n "$FRONTMATTER_TIMEOUT" ]; then
         local parsed_timeout
         parsed_timeout=$(parse_duration_to_seconds "$FRONTMATTER_TIMEOUT")

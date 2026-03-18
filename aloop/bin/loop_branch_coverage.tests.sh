@@ -796,18 +796,18 @@ fi
 
 # exec_controls.timeout_default — falls back when no frontmatter timeout
 FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF=""
-PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+PROVIDER_TIMEOUT="10800" MAX_PHASE_RETRIES="10"
 resolve_execution_controls
-if [ "$EFFECTIVE_TIMEOUT" = "28800" ]; then
+if [ "$EFFECTIVE_TIMEOUT" = "10800" ]; then
     cover_branch "exec_controls.timeout_default"
     pass_case "resolve_execution_controls falls back to default timeout"
 else
-    fail_case "exec_controls.timeout_default failed (got '$EFFECTIVE_TIMEOUT', expected '28800')"
+    fail_case "exec_controls.timeout_default failed (got '$EFFECTIVE_TIMEOUT', expected '10800')"
 fi
 
 # exec_controls.retries_frontmatter — frontmatter max_retries takes precedence
 FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="7" FRONTMATTER_RETRY_BACKOFF=""
-PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+PROVIDER_TIMEOUT="10800" MAX_PHASE_RETRIES="10"
 resolve_execution_controls
 if [ "$EFFECTIVE_MAX_RETRIES" = "7" ]; then
     cover_branch "exec_controls.retries_frontmatter"
@@ -818,7 +818,7 @@ fi
 
 # exec_controls.retries_default — falls back when no frontmatter max_retries
 FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF=""
-PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+PROVIDER_TIMEOUT="10800" MAX_PHASE_RETRIES="10"
 resolve_execution_controls
 if [ "$EFFECTIVE_MAX_RETRIES" = "10" ]; then
     cover_branch "exec_controls.retries_default"
@@ -829,7 +829,7 @@ fi
 
 # exec_controls.backoff_none — explicit none
 FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF="none"
-PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+PROVIDER_TIMEOUT="10800" MAX_PHASE_RETRIES="10"
 resolve_execution_controls
 if [ "$EFFECTIVE_RETRY_BACKOFF" = "none" ]; then
     cover_branch "exec_controls.backoff_none"
@@ -840,7 +840,7 @@ fi
 
 # exec_controls.backoff_linear — explicit linear
 FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF="linear"
-PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+PROVIDER_TIMEOUT="10800" MAX_PHASE_RETRIES="10"
 resolve_execution_controls
 if [ "$EFFECTIVE_RETRY_BACKOFF" = "linear" ]; then
     cover_branch "exec_controls.backoff_linear"
@@ -851,7 +851,7 @@ fi
 
 # exec_controls.backoff_exponential — explicit exponential
 FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF="exponential"
-PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+PROVIDER_TIMEOUT="10800" MAX_PHASE_RETRIES="10"
 resolve_execution_controls
 if [ "$EFFECTIVE_RETRY_BACKOFF" = "exponential" ]; then
     cover_branch "exec_controls.backoff_exponential"
@@ -862,7 +862,7 @@ fi
 
 # exec_controls.backoff_default — no frontmatter backoff, defaults to none
 FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF=""
-PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+PROVIDER_TIMEOUT="10800" MAX_PHASE_RETRIES="10"
 resolve_execution_controls
 if [ "$EFFECTIVE_RETRY_BACKOFF" = "none" ]; then
     cover_branch "exec_controls.backoff_default"

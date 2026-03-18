@@ -2812,17 +2812,17 @@ Execute with controls.
 
     It 'Resolve-ExecutionControls falls back to default timeout' {
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
-        $ProviderTimeoutSec = 28800
+        $ProviderTimeoutSec = 10800
         $script:maxPhaseRetries = 10
         . ([scriptblock]::Create($script:durationFuncSource))
         . ([scriptblock]::Create($script:execControlsFuncSource))
         Resolve-ExecutionControls
-        $script:effectiveTimeout | Should -Be 28800
+        $script:effectiveTimeout | Should -Be 10800
     }
 
     It 'Resolve-ExecutionControls uses frontmatter max_retries when valid' {
         $script:frontmatter = @{ timeout = ''; max_retries = '7'; retry_backoff = '' }
-        $ProviderTimeoutSec = 28800
+        $ProviderTimeoutSec = 10800
         $script:maxPhaseRetries = 10
         . ([scriptblock]::Create($script:durationFuncSource))
         . ([scriptblock]::Create($script:execControlsFuncSource))
@@ -2832,7 +2832,7 @@ Execute with controls.
 
     It 'Resolve-ExecutionControls falls back to default max_retries' {
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
-        $ProviderTimeoutSec = 28800
+        $ProviderTimeoutSec = 10800
         $script:maxPhaseRetries = 10
         . ([scriptblock]::Create($script:durationFuncSource))
         . ([scriptblock]::Create($script:execControlsFuncSource))
@@ -2842,7 +2842,7 @@ Execute with controls.
 
     It 'Resolve-ExecutionControls applies none backoff' {
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'none' }
-        $ProviderTimeoutSec = 28800
+        $ProviderTimeoutSec = 10800
         $script:maxPhaseRetries = 10
         . ([scriptblock]::Create($script:durationFuncSource))
         . ([scriptblock]::Create($script:execControlsFuncSource))
@@ -2852,7 +2852,7 @@ Execute with controls.
 
     It 'Resolve-ExecutionControls applies linear backoff' {
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'linear' }
-        $ProviderTimeoutSec = 28800
+        $ProviderTimeoutSec = 10800
         $script:maxPhaseRetries = 10
         . ([scriptblock]::Create($script:durationFuncSource))
         . ([scriptblock]::Create($script:execControlsFuncSource))
@@ -2862,7 +2862,7 @@ Execute with controls.
 
     It 'Resolve-ExecutionControls applies exponential backoff' {
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'exponential' }
-        $ProviderTimeoutSec = 28800
+        $ProviderTimeoutSec = 10800
         $script:maxPhaseRetries = 10
         . ([scriptblock]::Create($script:durationFuncSource))
         . ([scriptblock]::Create($script:execControlsFuncSource))
@@ -2872,7 +2872,7 @@ Execute with controls.
 
     It 'Resolve-ExecutionControls defaults to none backoff when no frontmatter' {
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
-        $ProviderTimeoutSec = 28800
+        $ProviderTimeoutSec = 10800
         $script:maxPhaseRetries = 10
         . ([scriptblock]::Create($script:durationFuncSource))
         . ([scriptblock]::Create($script:execControlsFuncSource))
@@ -2974,43 +2974,43 @@ Execute with controls.
 
         # exec_controls.timeout_default
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
-        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        $ProviderTimeoutSec = 10800; $script:maxPhaseRetries = 10
         Resolve-ExecutionControls
-        $branches['exec_controls.timeout_default'] = ($script:effectiveTimeout -eq 28800)
+        $branches['exec_controls.timeout_default'] = ($script:effectiveTimeout -eq 10800)
 
         # exec_controls.retries_frontmatter
         $script:frontmatter = @{ timeout = ''; max_retries = '7'; retry_backoff = '' }
-        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        $ProviderTimeoutSec = 10800; $script:maxPhaseRetries = 10
         Resolve-ExecutionControls
         $branches['exec_controls.retries_frontmatter'] = ($script:effectiveMaxRetries -eq 7)
 
         # exec_controls.retries_default
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
-        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        $ProviderTimeoutSec = 10800; $script:maxPhaseRetries = 10
         Resolve-ExecutionControls
         $branches['exec_controls.retries_default'] = ($script:effectiveMaxRetries -eq 10)
 
         # exec_controls.backoff_none
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'none' }
-        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        $ProviderTimeoutSec = 10800; $script:maxPhaseRetries = 10
         Resolve-ExecutionControls
         $branches['exec_controls.backoff_none'] = ($script:effectiveRetryBackoff -eq 'none')
 
         # exec_controls.backoff_linear
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'linear' }
-        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        $ProviderTimeoutSec = 10800; $script:maxPhaseRetries = 10
         Resolve-ExecutionControls
         $branches['exec_controls.backoff_linear'] = ($script:effectiveRetryBackoff -eq 'linear')
 
         # exec_controls.backoff_exponential
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'exponential' }
-        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        $ProviderTimeoutSec = 10800; $script:maxPhaseRetries = 10
         Resolve-ExecutionControls
         $branches['exec_controls.backoff_exponential'] = ($script:effectiveRetryBackoff -eq 'exponential')
 
         # exec_controls.backoff_default
         $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
-        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        $ProviderTimeoutSec = 10800; $script:maxPhaseRetries = 10
         Resolve-ExecutionControls
         $branches['exec_controls.backoff_default'] = ($script:effectiveRetryBackoff -eq 'none')
 
