@@ -109,6 +109,21 @@ register_branch "cycle.resolve.modulo_wrap" "resolve_cycle_prompt_from_plan wrap
 register_branch "frontmatter.all_fields" "parse_frontmatter extracts trigger-capable fields from valid frontmatter"
 register_branch "frontmatter.empty" "parse_frontmatter yields empty strings when no frontmatter block present"
 register_branch "frontmatter.partial" "parse_frontmatter handles partial frontmatter with missing fields"
+register_branch "frontmatter.exec_controls" "parse_frontmatter extracts timeout, max_retries, retry_backoff from valid frontmatter"
+register_branch "duration.parse_seconds" "parse_duration_to_seconds parses plain integer as seconds"
+register_branch "duration.parse_minutes" "parse_duration_to_seconds parses Nm as minutes"
+register_branch "duration.parse_hours" "parse_duration_to_seconds parses Nh as hours"
+register_branch "duration.parse_suffix_s" "parse_duration_to_seconds parses Ns as seconds"
+register_branch "duration.parse_empty" "parse_duration_to_seconds returns empty for empty input"
+register_branch "duration.parse_invalid" "parse_duration_to_seconds returns empty for invalid input"
+register_branch "exec_controls.timeout_frontmatter" "resolve_execution_controls uses frontmatter timeout when valid"
+register_branch "exec_controls.timeout_default" "resolve_execution_controls falls back to default timeout"
+register_branch "exec_controls.retries_frontmatter" "resolve_execution_controls uses frontmatter max_retries when valid"
+register_branch "exec_controls.retries_default" "resolve_execution_controls falls back to default max_retries"
+register_branch "exec_controls.backoff_none" "resolve_execution_controls applies none backoff"
+register_branch "exec_controls.backoff_linear" "resolve_execution_controls applies linear backoff"
+register_branch "exec_controls.backoff_exponential" "resolve_execution_controls applies exponential backoff"
+register_branch "exec_controls.backoff_default" "resolve_execution_controls defaults to none backoff"
 register_branch "advance.with_cycle_length" "advance_cycle_position uses CYCLE_LENGTH for modulo when set"
 register_branch "advance.fallback_mode" "advance_cycle_position falls back to MODE-based modulo when CYCLE_LENGTH unset"
 register_branch "requests.wait.empty" "wait_for_requests returns immediately when no requests exist"
@@ -135,6 +150,8 @@ CYCLE_RESOLVE_FUNC="$(extract_function resolve_cycle_prompt_from_plan)"
 CHECK_PHASE_PREREQ_FUNC="$(extract_function check_phase_prerequisites)"
 CHECK_HAS_BUILDS_FUNC="$(extract_function check_has_builds_to_review)"
 FRONTMATTER_FUNC="$(extract_function parse_frontmatter)"
+DURATION_FUNC="$(extract_function parse_duration_to_seconds)"
+EXEC_CONTROLS_FUNC="$(extract_function resolve_execution_controls)"
 ADVANCE_FUNC="$(extract_function advance_cycle_position)"
 WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
 RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
@@ -146,8 +163,8 @@ if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [
     exit 1
 fi
 
-if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ]; then
-    echo "FAIL: could not extract cycle/frontmatter/advance/requests/queue functions from $LOOP_SH"
+if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ]; then
+    echo "FAIL: could not extract cycle/frontmatter/duration/exec-controls/advance/requests/queue functions from $LOOP_SH"
     exit 1
 fi
 
@@ -161,6 +178,8 @@ eval "$CYCLE_RESOLVE_FUNC"
 eval "$CHECK_PHASE_PREREQ_FUNC"
 eval "$CHECK_HAS_BUILDS_FUNC"
 eval "$FRONTMATTER_FUNC"
+eval "$DURATION_FUNC"
+eval "$EXEC_CONTROLS_FUNC"
 eval "$ADVANCE_FUNC"
 eval "$WAIT_FOR_REQUESTS_FUNC"
 eval "$RUN_QUEUE_FUNC"
@@ -679,7 +698,178 @@ else
     fail_case "parse_frontmatter partial failed (provider=$FRONTMATTER_PROVIDER model=$FRONTMATTER_MODEL reasoning=$FRONTMATTER_REASONING trigger=$FRONTMATTER_TRIGGER)"
 fi
 
+# frontmatter.exec_controls — file with timeout, max_retries, retry_backoff
+FM_EXEC="$FM_TMPDIR/exec-controls.md"
+cat > "$FM_EXEC" << 'EOF'
+---
+provider: claude
+model: opus
+timeout: 30m
+max_retries: 5
+retry_backoff: exponential
+---
+Execute with controls.
+EOF
+FRONTMATTER_PROVIDER="" FRONTMATTER_MODEL="" FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF=""
+parse_frontmatter "$FM_EXEC"
+if [ "$FRONTMATTER_TIMEOUT" = "30m" ] && [ "$FRONTMATTER_MAX_RETRIES" = "5" ] && [ "$FRONTMATTER_RETRY_BACKOFF" = "exponential" ]; then
+    cover_branch "frontmatter.exec_controls"
+    pass_case "parse_frontmatter extracts execution control fields"
+else
+    fail_case "parse_frontmatter exec_controls failed (timeout=$FRONTMATTER_TIMEOUT max_retries=$FRONTMATTER_MAX_RETRIES retry_backoff=$FRONTMATTER_RETRY_BACKOFF)"
+fi
+
 rm -rf "$FM_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# Duration parsing branches (parse_duration_to_seconds)
+# ---------------------------------------------------------------------------
+
+# duration.parse_seconds — plain integer
+_result=$(parse_duration_to_seconds "3600")
+if [ "$_result" = "3600" ]; then
+    cover_branch "duration.parse_seconds"
+    pass_case "parse_duration_to_seconds parses plain integer"
+else
+    fail_case "duration.parse_seconds failed (got '$_result', expected '3600')"
+fi
+
+# duration.parse_minutes — Nm
+_result=$(parse_duration_to_seconds "30m")
+if [ "$_result" = "1800" ]; then
+    cover_branch "duration.parse_minutes"
+    pass_case "parse_duration_to_seconds parses minutes (30m = 1800)"
+else
+    fail_case "duration.parse_minutes failed (got '$_result', expected '1800')"
+fi
+
+# duration.parse_hours — Nh
+_result=$(parse_duration_to_seconds "2h")
+if [ "$_result" = "7200" ]; then
+    cover_branch "duration.parse_hours"
+    pass_case "parse_duration_to_seconds parses hours (2h = 7200)"
+else
+    fail_case "duration.parse_hours failed (got '$_result', expected '7200')"
+fi
+
+# duration.parse_suffix_s — Ns
+_result=$(parse_duration_to_seconds "90s")
+if [ "$_result" = "90" ]; then
+    cover_branch "duration.parse_suffix_s"
+    pass_case "parse_duration_to_seconds parses seconds suffix (90s = 90)"
+else
+    fail_case "duration.parse_suffix_s failed (got '$_result', expected '90')"
+fi
+
+# duration.parse_empty — empty input
+_result=$(parse_duration_to_seconds "")
+if [ -z "$_result" ]; then
+    cover_branch "duration.parse_empty"
+    pass_case "parse_duration_to_seconds returns empty for empty input"
+else
+    fail_case "duration.parse_empty failed (got '$_result', expected empty)"
+fi
+
+# duration.parse_invalid — invalid input
+_result=$(parse_duration_to_seconds "abc")
+if [ -z "$_result" ]; then
+    cover_branch "duration.parse_invalid"
+    pass_case "parse_duration_to_seconds returns empty for invalid input"
+else
+    fail_case "duration.parse_invalid failed (got '$_result', expected empty)"
+fi
+
+# ---------------------------------------------------------------------------
+# Execution controls resolution branches (resolve_execution_controls)
+# ---------------------------------------------------------------------------
+
+# exec_controls.timeout_frontmatter — frontmatter timeout takes precedence
+FRONTMATTER_TIMEOUT="10m" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF=""
+PROVIDER_TIMEOUT="999" MAX_PHASE_RETRIES="10"
+resolve_execution_controls
+if [ "$EFFECTIVE_TIMEOUT" = "600" ]; then
+    cover_branch "exec_controls.timeout_frontmatter"
+    pass_case "resolve_execution_controls uses frontmatter timeout (10m = 600s)"
+else
+    fail_case "exec_controls.timeout_frontmatter failed (got '$EFFECTIVE_TIMEOUT', expected '600')"
+fi
+
+# exec_controls.timeout_default — falls back when no frontmatter timeout
+FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF=""
+PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+resolve_execution_controls
+if [ "$EFFECTIVE_TIMEOUT" = "28800" ]; then
+    cover_branch "exec_controls.timeout_default"
+    pass_case "resolve_execution_controls falls back to default timeout"
+else
+    fail_case "exec_controls.timeout_default failed (got '$EFFECTIVE_TIMEOUT', expected '28800')"
+fi
+
+# exec_controls.retries_frontmatter — frontmatter max_retries takes precedence
+FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="7" FRONTMATTER_RETRY_BACKOFF=""
+PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+resolve_execution_controls
+if [ "$EFFECTIVE_MAX_RETRIES" = "7" ]; then
+    cover_branch "exec_controls.retries_frontmatter"
+    pass_case "resolve_execution_controls uses frontmatter max_retries"
+else
+    fail_case "exec_controls.retries_frontmatter failed (got '$EFFECTIVE_MAX_RETRIES', expected '7')"
+fi
+
+# exec_controls.retries_default — falls back when no frontmatter max_retries
+FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF=""
+PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+resolve_execution_controls
+if [ "$EFFECTIVE_MAX_RETRIES" = "10" ]; then
+    cover_branch "exec_controls.retries_default"
+    pass_case "resolve_execution_controls falls back to default max_retries"
+else
+    fail_case "exec_controls.retries_default failed (got '$EFFECTIVE_MAX_RETRIES', expected '10')"
+fi
+
+# exec_controls.backoff_none — explicit none
+FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF="none"
+PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+resolve_execution_controls
+if [ "$EFFECTIVE_RETRY_BACKOFF" = "none" ]; then
+    cover_branch "exec_controls.backoff_none"
+    pass_case "resolve_execution_controls applies none backoff"
+else
+    fail_case "exec_controls.backoff_none failed (got '$EFFECTIVE_RETRY_BACKOFF', expected 'none')"
+fi
+
+# exec_controls.backoff_linear — explicit linear
+FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF="linear"
+PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+resolve_execution_controls
+if [ "$EFFECTIVE_RETRY_BACKOFF" = "linear" ]; then
+    cover_branch "exec_controls.backoff_linear"
+    pass_case "resolve_execution_controls applies linear backoff"
+else
+    fail_case "exec_controls.backoff_linear failed (got '$EFFECTIVE_RETRY_BACKOFF', expected 'linear')"
+fi
+
+# exec_controls.backoff_exponential — explicit exponential
+FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF="exponential"
+PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+resolve_execution_controls
+if [ "$EFFECTIVE_RETRY_BACKOFF" = "exponential" ]; then
+    cover_branch "exec_controls.backoff_exponential"
+    pass_case "resolve_execution_controls applies exponential backoff"
+else
+    fail_case "exec_controls.backoff_exponential failed (got '$EFFECTIVE_RETRY_BACKOFF', expected 'exponential')"
+fi
+
+# exec_controls.backoff_default — no frontmatter backoff, defaults to none
+FRONTMATTER_TIMEOUT="" FRONTMATTER_MAX_RETRIES="" FRONTMATTER_RETRY_BACKOFF=""
+PROVIDER_TIMEOUT="28800" MAX_PHASE_RETRIES="10"
+resolve_execution_controls
+if [ "$EFFECTIVE_RETRY_BACKOFF" = "none" ]; then
+    cover_branch "exec_controls.backoff_default"
+    pass_case "resolve_execution_controls defaults to none backoff"
+else
+    fail_case "exec_controls.backoff_default failed (got '$EFFECTIVE_RETRY_BACKOFF', expected 'none')"
+fi
 
 # ---------------------------------------------------------------------------
 # advance_cycle_position branches

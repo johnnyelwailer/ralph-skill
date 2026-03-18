@@ -2595,6 +2595,20 @@ Describe 'loop.ps1 — cycle resolution + frontmatter branch evidence' {
             throw "Could not extract Parse-Frontmatter from loop.ps1"
         }
 
+        # Extract ConvertTo-DurationSeconds function
+        if ($scriptContent -match '(?ms)(^function ConvertTo-DurationSeconds\s*\{.*?^})') {
+            $script:durationFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract ConvertTo-DurationSeconds from loop.ps1"
+        }
+
+        # Extract Resolve-ExecutionControls function
+        if ($scriptContent -match '(?ms)(^function Resolve-ExecutionControls\s*\{.*?^})') {
+            $script:execControlsFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Resolve-ExecutionControls from loop.ps1"
+        }
+
         $script:cfTempRoot = Join-Path ([IO.Path]::GetTempPath()) ("aloop-cf-tests-" + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Force $script:cfTempRoot | Out-Null
     }
@@ -2735,6 +2749,137 @@ Do partial thing.
         $script:frontmatter['trigger'] | Should -Be ''
     }
 
+    It 'Parse-Frontmatter extracts execution control fields (timeout, max_retries, retry_backoff)' {
+        $promptFile = Join-Path $script:cfTempRoot 'exec-controls.md'
+        @"
+---
+provider: claude
+model: opus
+timeout: 30m
+max_retries: 5
+retry_backoff: exponential
+---
+Execute with controls.
+"@ | Set-Content $promptFile
+
+        $script:frontmatter = @{}
+        . ([scriptblock]::Create($script:frontmatterFuncSource))
+        Parse-Frontmatter -PromptFile $promptFile
+        $script:frontmatter['timeout'] | Should -Be '30m'
+        $script:frontmatter['max_retries'] | Should -Be '5'
+        $script:frontmatter['retry_backoff'] | Should -Be 'exponential'
+    }
+
+    It 'ConvertTo-DurationSeconds parses plain integer as seconds' {
+        . ([scriptblock]::Create($script:durationFuncSource))
+        (ConvertTo-DurationSeconds '3600') | Should -Be 3600
+    }
+
+    It 'ConvertTo-DurationSeconds parses minutes (30m = 1800)' {
+        . ([scriptblock]::Create($script:durationFuncSource))
+        (ConvertTo-DurationSeconds '30m') | Should -Be 1800
+    }
+
+    It 'ConvertTo-DurationSeconds parses hours (2h = 7200)' {
+        . ([scriptblock]::Create($script:durationFuncSource))
+        (ConvertTo-DurationSeconds '2h') | Should -Be 7200
+    }
+
+    It 'ConvertTo-DurationSeconds parses seconds suffix (90s = 90)' {
+        . ([scriptblock]::Create($script:durationFuncSource))
+        (ConvertTo-DurationSeconds '90s') | Should -Be 90
+    }
+
+    It 'ConvertTo-DurationSeconds returns null for empty input' {
+        . ([scriptblock]::Create($script:durationFuncSource))
+        (ConvertTo-DurationSeconds '') | Should -BeNullOrEmpty
+    }
+
+    It 'ConvertTo-DurationSeconds returns null for invalid input' {
+        . ([scriptblock]::Create($script:durationFuncSource))
+        (ConvertTo-DurationSeconds 'abc') | Should -BeNullOrEmpty
+    }
+
+    It 'Resolve-ExecutionControls uses frontmatter timeout when valid' {
+        $script:frontmatter = @{ timeout = '10m'; max_retries = ''; retry_backoff = '' }
+        $ProviderTimeoutSec = 999
+        $script:maxPhaseRetries = 10
+        . ([scriptblock]::Create($script:durationFuncSource))
+        . ([scriptblock]::Create($script:execControlsFuncSource))
+        Resolve-ExecutionControls
+        $script:effectiveTimeout | Should -Be 600
+    }
+
+    It 'Resolve-ExecutionControls falls back to default timeout' {
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
+        $ProviderTimeoutSec = 28800
+        $script:maxPhaseRetries = 10
+        . ([scriptblock]::Create($script:durationFuncSource))
+        . ([scriptblock]::Create($script:execControlsFuncSource))
+        Resolve-ExecutionControls
+        $script:effectiveTimeout | Should -Be 28800
+    }
+
+    It 'Resolve-ExecutionControls uses frontmatter max_retries when valid' {
+        $script:frontmatter = @{ timeout = ''; max_retries = '7'; retry_backoff = '' }
+        $ProviderTimeoutSec = 28800
+        $script:maxPhaseRetries = 10
+        . ([scriptblock]::Create($script:durationFuncSource))
+        . ([scriptblock]::Create($script:execControlsFuncSource))
+        Resolve-ExecutionControls
+        $script:effectiveMaxRetries | Should -Be 7
+    }
+
+    It 'Resolve-ExecutionControls falls back to default max_retries' {
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
+        $ProviderTimeoutSec = 28800
+        $script:maxPhaseRetries = 10
+        . ([scriptblock]::Create($script:durationFuncSource))
+        . ([scriptblock]::Create($script:execControlsFuncSource))
+        Resolve-ExecutionControls
+        $script:effectiveMaxRetries | Should -Be 10
+    }
+
+    It 'Resolve-ExecutionControls applies none backoff' {
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'none' }
+        $ProviderTimeoutSec = 28800
+        $script:maxPhaseRetries = 10
+        . ([scriptblock]::Create($script:durationFuncSource))
+        . ([scriptblock]::Create($script:execControlsFuncSource))
+        Resolve-ExecutionControls
+        $script:effectiveRetryBackoff | Should -Be 'none'
+    }
+
+    It 'Resolve-ExecutionControls applies linear backoff' {
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'linear' }
+        $ProviderTimeoutSec = 28800
+        $script:maxPhaseRetries = 10
+        . ([scriptblock]::Create($script:durationFuncSource))
+        . ([scriptblock]::Create($script:execControlsFuncSource))
+        Resolve-ExecutionControls
+        $script:effectiveRetryBackoff | Should -Be 'linear'
+    }
+
+    It 'Resolve-ExecutionControls applies exponential backoff' {
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'exponential' }
+        $ProviderTimeoutSec = 28800
+        $script:maxPhaseRetries = 10
+        . ([scriptblock]::Create($script:durationFuncSource))
+        . ([scriptblock]::Create($script:execControlsFuncSource))
+        Resolve-ExecutionControls
+        $script:effectiveRetryBackoff | Should -Be 'exponential'
+    }
+
+    It 'Resolve-ExecutionControls defaults to none backoff when no frontmatter' {
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
+        $ProviderTimeoutSec = 28800
+        $script:maxPhaseRetries = 10
+        . ([scriptblock]::Create($script:durationFuncSource))
+        . ([scriptblock]::Create($script:execControlsFuncSource))
+        Resolve-ExecutionControls
+        $script:effectiveRetryBackoff | Should -Be 'none'
+    }
+
     It 'records cycle+frontmatter branch coverage evidence at >=80%' {
         $branches = [ordered]@{}
 
@@ -2792,6 +2937,82 @@ Do partial thing.
         . ([scriptblock]::Create($script:frontmatterFuncSource))
         Parse-Frontmatter -PromptFile $fmPartial
         $branches['frontmatter.partial'] = ($script:frontmatter['provider'] -eq 'opencode') -and ($script:frontmatter['model'] -eq '') -and ($script:frontmatter['reasoning'] -eq 'medium') -and ($script:frontmatter['trigger'] -eq '')
+
+        # frontmatter.exec_controls
+        $fmExec = Join-Path $script:cfTempRoot 'ev-fm-exec.md'
+        "---`nprovider: claude`ntimeout: 30m`nmax_retries: 5`nretry_backoff: exponential`n---`nBody." | Set-Content $fmExec
+        $script:frontmatter = @{}
+        . ([scriptblock]::Create($script:frontmatterFuncSource))
+        Parse-Frontmatter -PromptFile $fmExec
+        $branches['frontmatter.exec_controls'] = ($script:frontmatter['timeout'] -eq '30m') -and ($script:frontmatter['max_retries'] -eq '5') -and ($script:frontmatter['retry_backoff'] -eq 'exponential')
+
+        # duration.parse_seconds
+        . ([scriptblock]::Create($script:durationFuncSource))
+        $branches['duration.parse_seconds'] = ((ConvertTo-DurationSeconds '3600') -eq 3600)
+
+        # duration.parse_minutes
+        $branches['duration.parse_minutes'] = ((ConvertTo-DurationSeconds '30m') -eq 1800)
+
+        # duration.parse_hours
+        $branches['duration.parse_hours'] = ((ConvertTo-DurationSeconds '2h') -eq 7200)
+
+        # duration.parse_suffix_s
+        $branches['duration.parse_suffix_s'] = ((ConvertTo-DurationSeconds '90s') -eq 90)
+
+        # duration.parse_empty
+        $branches['duration.parse_empty'] = ($null -eq (ConvertTo-DurationSeconds ''))
+
+        # duration.parse_invalid
+        $branches['duration.parse_invalid'] = ($null -eq (ConvertTo-DurationSeconds 'abc'))
+
+        # exec_controls.timeout_frontmatter
+        $script:frontmatter = @{ timeout = '10m'; max_retries = ''; retry_backoff = '' }
+        $ProviderTimeoutSec = 999; $script:maxPhaseRetries = 10
+        . ([scriptblock]::Create($script:execControlsFuncSource))
+        Resolve-ExecutionControls
+        $branches['exec_controls.timeout_frontmatter'] = ($script:effectiveTimeout -eq 600)
+
+        # exec_controls.timeout_default
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
+        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        Resolve-ExecutionControls
+        $branches['exec_controls.timeout_default'] = ($script:effectiveTimeout -eq 28800)
+
+        # exec_controls.retries_frontmatter
+        $script:frontmatter = @{ timeout = ''; max_retries = '7'; retry_backoff = '' }
+        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        Resolve-ExecutionControls
+        $branches['exec_controls.retries_frontmatter'] = ($script:effectiveMaxRetries -eq 7)
+
+        # exec_controls.retries_default
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
+        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        Resolve-ExecutionControls
+        $branches['exec_controls.retries_default'] = ($script:effectiveMaxRetries -eq 10)
+
+        # exec_controls.backoff_none
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'none' }
+        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        Resolve-ExecutionControls
+        $branches['exec_controls.backoff_none'] = ($script:effectiveRetryBackoff -eq 'none')
+
+        # exec_controls.backoff_linear
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'linear' }
+        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        Resolve-ExecutionControls
+        $branches['exec_controls.backoff_linear'] = ($script:effectiveRetryBackoff -eq 'linear')
+
+        # exec_controls.backoff_exponential
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = 'exponential' }
+        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        Resolve-ExecutionControls
+        $branches['exec_controls.backoff_exponential'] = ($script:effectiveRetryBackoff -eq 'exponential')
+
+        # exec_controls.backoff_default
+        $script:frontmatter = @{ timeout = ''; max_retries = ''; retry_backoff = '' }
+        $ProviderTimeoutSec = 28800; $script:maxPhaseRetries = 10
+        Resolve-ExecutionControls
+        $branches['exec_controls.backoff_default'] = ($script:effectiveRetryBackoff -eq 'none')
 
         # Write coverage report
         $covered = @($branches.Values | Where-Object { $_ }).Count
