@@ -4088,3 +4088,114 @@ $ aloop stop qa-test-iter210-20260318-061346
 [stdout] Session stopped.
 [exit_code] 0
 ```
+
+## QA Session — 2026-03-18 (iteration 213)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-4YuPEC/bin/aloop` v1.0.0
+- Test project: `/tmp/qa-test-1773823944` (git repo with SPEC.md)
+- Commit: b68e758
+- Features tested: 5
+
+### Results
+- PASS: Devcontainer auth strategy setup-time choice (mount-first/env-first/env-only)
+- PASS: Per-prompt execution control frontmatter (timeout, max_retries, retry_backoff)
+- PASS: Frontmatter hot-reload for runtime-mutable settings
+- PASS: `aloop steer` queue mechanics (re-verify)
+- PASS: Dashboard layout @1920x1080 (re-verify)
+
+### Minor Findings (not bugs, noted for completeness)
+- Invalid `devcontainer_auth_strategy` value (e.g., `banana`) silently falls back to `mount-first` instead of warning/erroring. Low severity.
+- `setup --non-interactive` does not show per-provider auth method in output summary. Acceptable for non-interactive mode.
+
+### Bugs Filed
+- None (all tests passed)
+
+### Command Transcript
+
+#### Test 1: Devcontainer Auth Strategy
+
+```
+$ aloop setup --non-interactive --providers claude
+[stdout] Running setup in non-interactive mode...
+[stdout] Setup complete. Config written to: /home/pj/.aloop/projects/28c6e555/config.yml
+[exit_code] 0
+# Config contains: devcontainer_auth_strategy: 'mount-first'
+
+$ aloop devcontainer  # with mount-first
+[stdout] Created devcontainer config at .../.devcontainer/devcontainer.json
+[exit_code] 0
+# mounts include: source=/home/pj/.claude/.credentials.json (auth file bind-mount present)
+
+# Changed config to env-only, regenerated:
+# mounts do NOT include auth file bind-mount (correct for env-only)
+
+# Changed config to env-first, regenerated:
+# mounts include auth file bind-mount (correct for env-first fallback)
+
+# Changed config to 'banana' (invalid):
+# No error/warning — silently falls back to mount-first behavior
+[exit_code] 0
+```
+
+#### Test 2: Per-Prompt Execution Control Frontmatter
+
+```
+# Verified loop.sh parse_frontmatter() reads timeout, max_retries, retry_backoff (lines 525-527)
+# Verified resolve_execution_controls() applies precedence: frontmatter -> env -> default
+# Verified parse_duration_to_seconds() handles: integer, Nm, Nh, Ns formats
+# Verified loop.ps1 Parse-Frontmatter + Resolve-ExecutionControls have parity
+```
+
+#### Test 3: Frontmatter Hot-Reload
+
+```
+# Verified parse_frontmatter() is called at line 1994 (per-iteration cycle prompt)
+# Verified parse_frontmatter() is called at line 1899 (queue items)
+# NOT cached at startup — re-read from file on every iteration
+# All mutable fields covered: provider, model, reasoning, timeout, max_retries, retry_backoff, color, trigger
+```
+
+#### Test 4: `aloop steer`
+
+```
+$ aloop start --max-iterations 2
+[stdout] Aloop loop started! Session: qa-test-1773823944-20260318-085715
+[exit_code] 0
+
+$ aloop steer --session qa-test-1773823944-20260318-085715 "focus on error handling"
+[stdout] Steering instruction queued for session qa-test-1773823944-20260318-085715.
+[exit_code] 0
+
+# Queue file content verified:
+# - Frontmatter: agent: steer, type: steering_override
+# - Template: full steer prompt
+# - User instruction at bottom: "focus on error handling" with timestamp metadata
+
+$ aloop steer --session qa-test-1773823944-20260318-085715
+[stderr] error: missing required argument 'instruction'
+[exit_code] 1
+
+$ aloop steer --session nonexistent-session-999 "test"
+[stderr] Session not found: nonexistent-session-999
+[exit_code] 1
+```
+
+#### Test 5: Dashboard Layout @1920x1080
+
+```
+$ npx playwright screenshot --browser chromium --viewport-size "1920,1080" http://localhost:4040 /tmp/qa-dashboard-iter-latest.png
+[stdout] Navigating to http://localhost:4040
+[stdout] Capturing screenshot into /tmp/qa-dashboard-iter-latest.png
+
+# Visual verification:
+# - SESSIONS sidebar (left): visible with "OLDER" section
+# - DOCUMENTS panel (center-left): Health tab visible, "No provider data yet"
+# - ACTIVITY panel (right): "0 events"
+# - Header: "Current", iter counter, progress bar, "Live", Ctrl+K
+# - Footer: Steer textarea, Send button, Resume button
+# Evidence: /tmp/qa-dashboard-iter-latest.png
+
+$ curl -s http://localhost:4040/api/state | python3 (parse)
+# Docs: TODO.md (18474 chars), SPEC.md (194334 chars), RESEARCH.md (14124 chars), REVIEW_LOG.md (61966 chars), STEERING.md (0 chars)
+```
