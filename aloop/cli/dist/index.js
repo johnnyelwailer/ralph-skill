@@ -3475,6 +3475,18 @@ function assertProjectConfigured(discovery) {
     throw new Error("No Aloop configuration found for this project. Run `aloop setup` first.");
   }
 }
+async function detectDevcontainer(projectRoot) {
+  const candidates = [
+    path.join(projectRoot, ".devcontainer", "devcontainer.json"),
+    path.join(projectRoot, ".devcontainer.json")
+  ];
+  for (const candidate of candidates) {
+    if (await fileExists(candidate)) {
+      return { enabled: true, config_path: candidate };
+    }
+  }
+  return { enabled: false, config_path: null };
+}
 async function discoverWorkspace(options = {}) {
   const homeDir = getHomeDir(options.homeDir);
   const projectRoot = resolveProjectRoot(options.projectRoot);
@@ -3490,6 +3502,7 @@ async function discoverWorkspace(options = {}) {
   const complexity = await analyzeSpecComplexity(projectRoot, specCandidates);
   const ciSupport = await detectCIWorkflowSupport(projectRoot);
   const modeRecommendation = recommendMode(complexity, ciSupport);
+  const devcontainer = await detectDevcontainer(projectRoot);
   return {
     project: {
       root: projectRoot,
@@ -3531,6 +3544,7 @@ async function discoverWorkspace(options = {}) {
       },
       round_robin_default: ["claude", "opencode", "codex", "gemini", "copilot"]
     },
+    devcontainer,
     spec_complexity: complexity,
     ci_support: ciSupport,
     mode_recommendation: modeRecommendation,
@@ -3731,6 +3745,7 @@ async function scaffoldWorkspace(options = {}) {
   const mode = normalizeScaffoldMode(options.mode);
   const autonomyLevel = normalizeAutonomyLevel(options.autonomyLevel);
   const dataPrivacy = normalizeDataPrivacy(options.dataPrivacy);
+  const devcontainerAuthStrategy = options.devcontainerAuthStrategy ?? "mount-first";
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
   const promptsDir = path.join(discovery.setup.project_dir, "prompts");
   if (enabledProviders.length > 0) {
@@ -3802,6 +3817,7 @@ async function scaffoldWorkspace(options = {}) {
     `mode: ${toYamlQuoted(mode)}`,
     `autonomy_level: ${toYamlQuoted(autonomyLevel)}`,
     `data_privacy: ${toYamlQuoted(dataPrivacy)}`,
+    `devcontainer_auth_strategy: ${toYamlQuoted(devcontainerAuthStrategy)}`,
     "spec_files:",
     ...resolvedSpecFiles.map((value) => `  - ${toYamlQuoted(value)}`),
     "reference_files:",
@@ -8908,386 +8924,13 @@ function evaluatePolicy(operation, role, payload, sessionPolicy) {
 
 // src/commands/setup.ts
 import * as readline from "node:readline";
-function parseDataPrivacy(value) {
-  if (!value)
-    return void 0;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "private" || normalized === "public") {
-    return normalized;
-  }
-  throw new Error(`Invalid data privacy: ${value} (must be private or public)`);
-}
-function parseAutonomyLevel(value) {
-  if (!value)
-    return void 0;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "cautious" || normalized === "balanced" || normalized === "autonomous") {
-    return normalized;
-  }
-  throw new Error(`Invalid autonomy level: ${value} (must be cautious, balanced, or autonomous)`);
-}
-function parseSetupMode(value) {
-  if (!value)
-    return void 0;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "loop" || normalized === "orchestrate") {
-    return normalized;
-  }
-  throw new Error(`Invalid setup mode: ${value} (must be loop or orchestrate)`);
-}
-function mapSetupModeToLoopMode(value) {
-  if (!value)
-    return void 0;
-  if (value === "orchestrate") {
-    return "orchestrate";
-  }
-  return "plan-build-review";
-}
-async function defaultPromptUser(rl, question, defaultValue) {
-  return new Promise((resolve2) => {
-    rl.question(`${question} [${defaultValue}]: `, (answer) => {
-      resolve2(answer.trim() || defaultValue);
-    });
-  });
-}
-async function setupCommandWithDeps(options, deps) {
-  const discovery = await deps.discover({
-    projectRoot: options.projectRoot,
-    homeDir: options.homeDir
-  });
-  if (options.nonInteractive) {
-    console.log("Running setup in non-interactive mode...");
-    const setupMode = parseSetupMode(options.mode);
-    const result2 = await deps.scaffold({
-      projectRoot: options.projectRoot,
-      homeDir: options.homeDir,
-      specFiles: options.spec ? [options.spec] : void 0,
-      enabledProviders: options.providers ? options.providers.split(",").map((p) => p.trim()) : void 0,
-      mode: mapSetupModeToLoopMode(setupMode),
-      autonomyLevel: parseAutonomyLevel(options.autonomyLevel),
-      dataPrivacy: parseDataPrivacy(options.dataPrivacy)
-    });
-    console.log(`Setup complete. Config written to: ${result2.config_path}`);
-    return;
-  }
-  console.log("\n--- Aloop Interactive Setup ---\n");
-  const defaultSpec = options.spec || discovery.context.spec_candidates[0] || "SPEC.md";
-  const spec = await deps.prompt("Spec File", defaultSpec);
-  const defaultProviders = options.providers || discovery.providers.installed.join(",") || "claude";
-  const providersRaw = await deps.prompt("Enabled Providers (comma-separated)", defaultProviders);
-  const enabledProviders = providersRaw.split(",").map((s) => s.trim()).filter(Boolean);
-  const defaultLanguage = discovery.context.detected_language;
-  const language = await deps.prompt("Language", defaultLanguage);
-  const defaultProvider = enabledProviders[0] || discovery.providers.default_provider;
-  const provider = await deps.prompt("Primary Provider", defaultProvider);
-  const recommendedMode = discovery.mode_recommendation?.recommended_mode;
-  const recommendationReasons = discovery.mode_recommendation?.reasoning || [];
-  if (recommendedMode && recommendationReasons.length > 0) {
-    console.log("\n  Mode recommendation:");
-    for (const reason of recommendationReasons) {
-      console.log(`    ${reason}`);
-    }
-    console.log("");
-  }
-  const defaultMode = recommendedMode === "orchestrate" ? "orchestrate" : "plan-build-review";
-  const mode = await deps.prompt("Mode", defaultMode);
-  const defaultAutonomyLevel = options.autonomyLevel ?? "balanced";
-  const autonomyLevel = parseAutonomyLevel(
-    await deps.prompt("Autonomy Level (cautious|balanced|autonomous)", defaultAutonomyLevel)
-  ) ?? "balanced";
-  const defaultDataPrivacy = "private";
-  const dataPrivacy = parseDataPrivacy(
-    await deps.prompt("Data Privacy (private|public)", options.dataPrivacy ?? defaultDataPrivacy)
-  ) ?? "private";
-  const defaultValidation = discovery.context.validation_presets.full.join(", ") || "npm test";
-  const validationCommandsRaw = await deps.prompt("Validation Commands (comma-separated)", defaultValidation);
-  const validationCommands = validationCommandsRaw.split(",").map((s) => s.trim()).filter(Boolean);
-  const defaultSafety = "Never delete the project directory or run destructive commands, Never push to remote without explicit user approval";
-  const safetyRulesRaw = await deps.prompt("Safety Rules (comma-separated)", defaultSafety);
-  const safetyRules = safetyRulesRaw.split(",").map((s) => s.trim()).filter(Boolean);
-  console.log("\nScaffolding workspace with the following configuration:");
-  console.log(`- Spec: ${spec}`);
-  console.log(`- Providers: ${enabledProviders.join(", ")}`);
-  console.log(`- Language: ${language}`);
-  console.log(`- Primary Provider: ${provider}`);
-  console.log(`- Mode: ${mode}`);
-  console.log(`- Autonomy Level: ${autonomyLevel}`);
-  console.log(`- Data Privacy: ${dataPrivacy}`);
-  console.log(`- Validation Commands: ${validationCommands.join(", ")}`);
-  console.log(`- Safety Rules: ${safetyRules.join(", ")}`);
-  console.log("");
-  const result = await deps.scaffold({
-    projectRoot: options.projectRoot,
-    homeDir: options.homeDir,
-    specFiles: [spec],
-    enabledProviders,
-    language,
-    provider,
-    mode,
-    autonomyLevel,
-    dataPrivacy,
-    validationCommands,
-    safetyRules
-  });
-  console.log(`Setup complete. Config written to: ${result.config_path}`);
-}
-async function setupCommand(options = {}) {
-  let rl = null;
-  const deps = {
-    discover: discoverWorkspace2,
-    scaffold: scaffoldWorkspace2,
-    prompt: async (question, defaultValue) => {
-      if (!rl) {
-        rl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout
-        });
-      }
-      return defaultPromptUser(rl, question, defaultValue);
-    }
-  };
-  try {
-    await setupCommandWithDeps(options, deps);
-  } finally {
-    if (rl) {
-      rl.close();
-    }
-  }
-}
-
-// src/commands/update.ts
-import fs6 from "node:fs";
-import fsp from "node:fs/promises";
-import path11 from "node:path";
-import os5 from "node:os";
-import { spawnSync as spawnSync6 } from "node:child_process";
-var defaultDeps2 = {
-  homeDir: () => os5.homedir(),
-  existsSync: fs6.existsSync,
-  readdir: fsp.readdir,
-  mkdir: fsp.mkdir,
-  copyFile: fsp.copyFile,
-  writeFile: fsp.writeFile,
-  chmod: fsp.chmod,
-  spawnSync: spawnSync6
-};
-async function copyTree(src, dest, deps) {
-  const written = [];
-  if (!deps.existsSync(src))
-    return written;
-  const stat2 = fs6.statSync(src);
-  if (!stat2.isDirectory()) {
-    await deps.mkdir(path11.dirname(dest), { recursive: true });
-    await deps.copyFile(src, dest);
-    written.push(dest);
-    return written;
-  }
-  const entries = await deps.readdir(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const srcPath = path11.join(src, entry.name);
-    const destPath = path11.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      const sub = await copyTree(srcPath, destPath, deps);
-      written.push(...sub);
-    } else {
-      await deps.mkdir(path11.dirname(destPath), { recursive: true });
-      await deps.copyFile(srcPath, destPath);
-      written.push(destPath);
-    }
-  }
-  return written;
-}
-function findRepoRoot(startDir, deps) {
-  let dir = path11.resolve(startDir);
-  const root = path11.parse(dir).root;
-  while (dir !== root) {
-    if (deps.existsSync(path11.join(dir, "install.ps1")) && deps.existsSync(path11.join(dir, "aloop", "bin"))) {
-      return dir;
-    }
-    const parent = path11.dirname(dir);
-    if (parent === dir)
-      break;
-    dir = parent;
-  }
-  return null;
-}
-async function executeUpdate(options = {}, deps = defaultDeps2) {
-  const homeDir = options.homeDir || deps.homeDir();
-  const aloopDir = path11.join(homeDir, ".aloop");
-  const repoRoot = options.repoRoot ? path11.resolve(options.repoRoot) : findRepoRoot(process.cwd(), deps);
-  if (!repoRoot) {
-    return {
-      success: false,
-      repoRoot: "",
-      aloopDir,
-      commit: "",
-      installedAt: "",
-      updated: [],
-      errors: ["Could not find aloop source repository. Run from within the repo or use --repo-root."]
-    };
-  }
-  const requiredPaths = ["aloop/bin", "aloop/cli", "aloop/templates"];
-  const missing = requiredPaths.filter((p) => !deps.existsSync(path11.join(repoRoot, p)));
-  if (missing.length > 0) {
-    return {
-      success: false,
-      repoRoot,
-      aloopDir,
-      commit: "",
-      installedAt: "",
-      updated: [],
-      errors: [`Missing expected directories in repo: ${missing.join(", ")}`]
-    };
-  }
-  const updated = [];
-  const errors = [];
-  try {
-    const binFiles = await copyTree(
-      path11.join(repoRoot, "aloop", "bin"),
-      path11.join(aloopDir, "bin"),
-      deps
-    );
-    updated.push(...binFiles);
-    if (os5.platform() !== "win32") {
-      for (const f of binFiles) {
-        if (f.endsWith(".sh") || !path11.basename(f).includes(".")) {
-          await deps.chmod(f, 493);
-        }
-      }
-    }
-  } catch (e) {
-    errors.push(`bin: ${e.message}`);
-  }
-  try {
-    const configSrc = path11.join(repoRoot, "aloop", "config.yml");
-    const configDest = path11.join(aloopDir, "config.yml");
-    if (deps.existsSync(configSrc)) {
-      await deps.mkdir(path11.dirname(configDest), { recursive: true });
-      await deps.copyFile(configSrc, configDest);
-      updated.push(configDest);
-    }
-  } catch (e) {
-    errors.push(`config: ${e.message}`);
-  }
-  try {
-    const tmplFiles = await copyTree(
-      path11.join(repoRoot, "aloop", "templates"),
-      path11.join(aloopDir, "templates"),
-      deps
-    );
-    updated.push(...tmplFiles);
-  } catch (e) {
-    errors.push(`templates: ${e.message}`);
-  }
-  try {
-    const distFiles = await copyTree(
-      path11.join(repoRoot, "aloop", "cli", "dist"),
-      path11.join(aloopDir, "cli", "dist"),
-      deps
-    );
-    updated.push(...distFiles);
-  } catch (e) {
-    errors.push(`cli/dist: ${e.message}`);
-  }
-  try {
-    const libFiles = await copyTree(
-      path11.join(repoRoot, "aloop", "cli", "lib"),
-      path11.join(aloopDir, "cli", "lib"),
-      deps
-    );
-    updated.push(...libFiles);
-  } catch (e) {
-    errors.push(`cli/lib: ${e.message}`);
-  }
-  try {
-    const entrySrc = path11.join(repoRoot, "aloop", "cli", "aloop.mjs");
-    const entryDest = path11.join(aloopDir, "cli", "aloop.mjs");
-    if (deps.existsSync(entrySrc)) {
-      await deps.mkdir(path11.dirname(entryDest), { recursive: true });
-      await deps.copyFile(entrySrc, entryDest);
-      updated.push(entryDest);
-    }
-  } catch (e) {
-    errors.push(`cli/aloop.mjs: ${e.message}`);
-  }
-  try {
-    const binDir = path11.join(aloopDir, "bin");
-    await deps.mkdir(binDir, { recursive: true });
-    const cmdShimPath = path11.join(binDir, "aloop.cmd");
-    const cmdShimContent = '@echo off\nnode "%~dp0..\\cli\\aloop.mjs" %*\n';
-    await deps.writeFile(cmdShimPath, cmdShimContent, "utf8");
-    updated.push(cmdShimPath);
-    const shShimPath = path11.join(binDir, "aloop");
-    const shShimContent = '#!/bin/sh\nexec node "$(dirname "$0")/../cli/aloop.mjs" "$@"\n';
-    await deps.writeFile(shShimPath, shShimContent, "utf8");
-    updated.push(shShimPath);
-    if (os5.platform() !== "win32") {
-      await deps.chmod(shShimPath, 493);
-    }
-  } catch (e) {
-    errors.push(`shims: ${e.message}`);
-  }
-  for (const sub of ["projects", "sessions"]) {
-    const dir = path11.join(aloopDir, sub);
-    try {
-      await deps.mkdir(dir, { recursive: true });
-    } catch {
-    }
-  }
-  let commit = "";
-  const installedAt = (/* @__PURE__ */ new Date()).toISOString().replace(/\.\d{3}Z$/, "Z");
-  try {
-    const gitResult = deps.spawnSync("git", ["-C", repoRoot, "rev-parse", "--short", "HEAD"], {
-      encoding: "utf8"
-    });
-    if (gitResult.status === 0) {
-      commit = gitResult.stdout.trim();
-    }
-  } catch {
-  }
-  const versionJson = JSON.stringify({ commit, installed_at: installedAt });
-  try {
-    await deps.writeFile(path11.join(aloopDir, "version.json"), versionJson, "utf8");
-  } catch (e) {
-    errors.push(`version.json: ${e.message}`);
-  }
-  return {
-    success: errors.length === 0,
-    repoRoot,
-    aloopDir,
-    commit,
-    installedAt,
-    updated,
-    errors
-  };
-}
-async function updateCommand(options = {}) {
-  const outputMode = options.output || "text";
-  const result = await executeUpdate(options);
-  if (outputMode === "json") {
-    console.log(JSON.stringify(result, null, 2));
-    if (!result.success)
-      process.exit(1);
-    return;
-  }
-  if (!result.success) {
-    for (const err of result.errors) {
-      console.error(`Error: ${err}`);
-    }
-    process.exit(1);
-  }
-  const versionLabel = result.commit ? `${result.commit} (${result.installedAt})` : result.installedAt;
-  console.log(`Updated ~/.aloop from ${result.repoRoot}`);
-  console.log(`Version: ${versionLabel}`);
-  console.log(`Files updated: ${result.updated.length}`);
-}
 
 // src/commands/devcontainer.ts
 import { readFile as readFile8, writeFile as writeFile8, mkdir as mkdir5 } from "node:fs/promises";
 import { existsSync as existsSync9 } from "node:fs";
 import { execFile as execFileCb } from "node:child_process";
-import path12 from "node:path";
-var defaultDeps3 = {
+import path11 from "node:path";
+var defaultDeps2 = {
   discover: discoverWorkspace2,
   readFile: readFile8,
   writeFile: writeFile8,
@@ -9354,7 +8997,7 @@ function isDevcontainerDeps(value) {
   const candidate = value;
   return typeof candidate.discover === "function" && typeof candidate.readFile === "function" && typeof candidate.writeFile === "function" && typeof candidate.mkdir === "function" && typeof candidate.existsSync === "function";
 }
-function resolveDevcontainerDeps(depsOrCommand, fallback = defaultDeps3) {
+function resolveDevcontainerDeps(depsOrCommand, fallback = defaultDeps2) {
   return isDevcontainerDeps(depsOrCommand) ? depsOrCommand : fallback;
 }
 function getLanguageMapping(language, projectRoot, existsFn = existsSync9) {
@@ -9411,18 +9054,18 @@ function getLanguageMapping(language, projectRoot, existsFn = existsSync9) {
   }
 }
 function detectNodeInstallCommand(projectRoot, existsFn = existsSync9) {
-  if (existsFn(path12.join(projectRoot, "pnpm-lock.yaml")))
+  if (existsFn(path11.join(projectRoot, "pnpm-lock.yaml")))
     return "pnpm install";
-  if (existsFn(path12.join(projectRoot, "yarn.lock")))
+  if (existsFn(path11.join(projectRoot, "yarn.lock")))
     return "yarn install";
-  if (existsFn(path12.join(projectRoot, "bun.lockb")) || existsFn(path12.join(projectRoot, "bun.lock")))
+  if (existsFn(path11.join(projectRoot, "bun.lockb")) || existsFn(path11.join(projectRoot, "bun.lock")))
     return "bun install";
   return "npm install";
 }
 function detectPythonInstallCommand(projectRoot, existsFn = existsSync9) {
-  if (existsFn(path12.join(projectRoot, "pyproject.toml")))
+  if (existsFn(path11.join(projectRoot, "pyproject.toml")))
     return "pip install -e .";
-  if (existsFn(path12.join(projectRoot, "requirements.txt")))
+  if (existsFn(path11.join(projectRoot, "requirements.txt")))
     return "pip install -r requirements.txt";
   return "pip install -e .";
 }
@@ -9453,6 +9096,22 @@ var PROVIDER_AUTH_FILES = {
   copilot: [".copilot/config.json"],
   gemini: [".gemini/oauth_creds.json", ".gemini/google_accounts.json"]
 };
+function getProposedAuthMethod(provider, strategy) {
+  const envVars = PROVIDER_AUTH_ENV_VARS[provider] || [];
+  const files = PROVIDER_AUTH_FILES[provider] || [];
+  if (strategy === "env-only") {
+    return `Env vars: ${envVars.join(", ")}`;
+  }
+  if (strategy === "env-first") {
+    if (envVars.length > 0) {
+      return `Env vars: ${envVars.join(", ")}${files.length > 0 ? ` (fallback: mount ${files.join(", ")})` : ""}`;
+    }
+  }
+  if (files.length > 0) {
+    return `Mount: ${files.join(", ")}${envVars.length > 0 ? ` (fallback: env vars ${envVars.join(", ")})` : ""}`;
+  }
+  return envVars.length > 0 ? `Env vars: ${envVars.join(", ")}` : "No known auth method";
+}
 function checkAuthPreflight(providers, env = process.env, existsFn, homeDir) {
   const resolvedHome = homeDir ?? env.HOME ?? env.USERPROFILE ?? "/root";
   const warnings = [];
@@ -9490,7 +9149,7 @@ function buildProviderInstallCommands(installedProviders) {
   }
   return commands;
 }
-function buildProviderRemoteEnv(installedProviders) {
+function buildProviderRemoteEnv(installedProviders, strategy = "mount-first") {
   const env = {};
   for (const provider of installedProviders) {
     const vars = PROVIDER_AUTH_ENV_VARS[provider];
@@ -9503,13 +9162,15 @@ function buildProviderRemoteEnv(installedProviders) {
   return env;
 }
 function resolveHomePath(filePath, homeDir) {
-  if (path12.isAbsolute(filePath)) {
+  if (path11.isAbsolute(filePath)) {
     return filePath;
   }
   const cleaned = filePath.startsWith("~/") ? filePath.slice(2) : filePath === "~" ? "" : filePath;
-  return path12.join(homeDir, cleaned);
+  return path11.join(homeDir, cleaned);
 }
-function buildProviderAuthFileMounts(providers, env = process.env, existsFn = existsSync9, homeDir) {
+function buildProviderAuthFileMounts(providers, strategy = "mount-first", env = process.env, existsFn = existsSync9, homeDir) {
+  if (strategy === "env-only")
+    return [];
   const resolvedHome = homeDir ?? env.HOME ?? env.USERPROFILE ?? "/root";
   const mounts = [];
   for (const provider of providers) {
@@ -9517,9 +9178,11 @@ function buildProviderAuthFileMounts(providers, env = process.env, existsFn = ex
     const authFiles = PROVIDER_AUTH_FILES[provider];
     if (!authFiles || authFiles.length === 0)
       continue;
-    const anyEnvSet = authVars?.some((v) => env[v] && env[v].length > 0);
-    if (anyEnvSet)
-      continue;
+    if (strategy === "env-first") {
+      const anyEnvSet = authVars?.some((v) => env[v] && env[v].length > 0);
+      if (anyEnvSet)
+        continue;
+    }
     for (const relPath of authFiles) {
       const hostPath = resolveHomePath(relPath, resolvedHome);
       if (existsFn(hostPath)) {
@@ -9556,7 +9219,7 @@ function buildAloopContainerEnv() {
     ALOOP_CONTAINER: "1"
   };
 }
-function generateDevcontainerConfig(discovery, existsFn = existsSync9, configuredProviders, env = process.env, homeDir) {
+function generateDevcontainerConfig(discovery, existsFn = existsSync9, configuredProviders, env = process.env, homeDir, authStrategy = "mount-first") {
   const projectRoot = discovery.project.root;
   const projectName = discovery.project.name;
   const language = discovery.context.detected_language;
@@ -9567,14 +9230,14 @@ function generateDevcontainerConfig(discovery, existsFn = existsSync9, configure
     ...mapping.postCreateCommand ? [mapping.postCreateCommand] : [],
     ...providerInstalls
   ];
-  const authFileMounts = buildProviderAuthFileMounts(installedProviders, env, existsFn, homeDir);
+  const authFileMounts = buildProviderAuthFileMounts(installedProviders, authStrategy, env, existsFn, homeDir);
   const config = {
     name: `${projectName}-aloop`,
     image: mapping.image,
     features: { ...mapping.features },
     mounts: [...buildAloopMounts(), ...authFileMounts],
     containerEnv: buildAloopContainerEnv(),
-    remoteEnv: buildProviderRemoteEnv(installedProviders)
+    remoteEnv: buildProviderRemoteEnv(installedProviders, authStrategy)
   };
   const vscodeExtensions = buildVSCodeExtensions(installedProviders);
   if (vscodeExtensions.length > 0) {
@@ -9671,18 +9334,30 @@ function stripJsoncComments(raw) {
   }
   return result;
 }
-async function devcontainerCommandWithDeps(options = {}, deps = defaultDeps3) {
+async function devcontainerCommandWithDeps(options = {}, deps = defaultDeps2) {
   const discovery = await deps.discover({
     projectRoot: options.projectRoot,
     homeDir: options.homeDir
   });
   const projectRoot = discovery.project.root;
-  const devcontainerDir = path12.join(projectRoot, ".devcontainer");
-  const configPath = path12.join(devcontainerDir, "devcontainer.json");
+  const devcontainerDir = path11.join(projectRoot, ".devcontainer");
+  const configPath = path11.join(devcontainerDir, "devcontainer.json");
   const hadExisting = deps.existsSync(configPath);
   const resolvedProviders = await resolveConfiguredProviders(discovery, deps);
+  let authStrategy = "mount-first";
+  const projectConfigPath = discovery.setup.config_path;
+  if (deps.existsSync(projectConfigPath)) {
+    try {
+      const content = await deps.readFile(projectConfigPath, "utf8");
+      const parsed = parseYaml(content);
+      if (parsed.devcontainer_auth_strategy === "env-first" || parsed.devcontainer_auth_strategy === "env-only") {
+        authStrategy = parsed.devcontainer_auth_strategy;
+      }
+    } catch {
+    }
+  }
   const hostHome = options.homeDir ?? process.env.HOME ?? process.env.USERPROFILE;
-  const generated = generateDevcontainerConfig(discovery, deps.existsSync, resolvedProviders, process.env, hostHome);
+  const generated = generateDevcontainerConfig(discovery, deps.existsSync, resolvedProviders, process.env, hostHome, authStrategy);
   let finalConfig;
   let action;
   if (hadExisting) {
@@ -9746,7 +9421,7 @@ async function execCheck(deps, projectRoot, name, containerArgs) {
   };
 }
 async function verifyDevcontainer(projectRoot, providers, deps = defaultVerifyDeps, maxIterations = 1) {
-  const configPath = path12.join(projectRoot, ".devcontainer", "devcontainer.json");
+  const configPath = path11.join(projectRoot, ".devcontainer", "devcontainer.json");
   if (!deps.existsSync(configPath)) {
     return {
       passed: false,
@@ -9828,7 +9503,7 @@ async function verifyDevcontainer(projectRoot, providers, deps = defaultVerifyDe
   return { passed: false, checks: [], iteration: maxIterations };
 }
 async function verifyDevcontainerCommand(options = {}, depsOrCommand, verifyDepsOverride) {
-  const deps = resolveDevcontainerDeps(depsOrCommand, defaultDeps3);
+  const deps = resolveDevcontainerDeps(depsOrCommand, defaultDeps2);
   const discovery = await deps.discover({
     projectRoot: options.projectRoot,
     homeDir: options.homeDir
@@ -9855,7 +9530,7 @@ async function verifyDevcontainerCommand(options = {}, depsOrCommand, verifyDeps
   }
 }
 async function devcontainerCommand(options = {}, depsOrCommand) {
-  const deps = resolveDevcontainerDeps(depsOrCommand, defaultDeps3);
+  const deps = resolveDevcontainerDeps(depsOrCommand, defaultDeps2);
   const result = await devcontainerCommandWithDeps(options, deps);
   const outputMode = options.output || "text";
   if (outputMode === "json") {
@@ -9886,6 +9561,410 @@ async function devcontainerCommand(options = {}, depsOrCommand) {
   console.log("  1. Review .devcontainer/devcontainer.json");
   console.log("  2. Run `devcontainer build --workspace-folder .` to verify");
   console.log("  3. Start a loop with `aloop start` \u2014 container will be used automatically");
+}
+
+// src/commands/setup.ts
+function parseDataPrivacy(value) {
+  if (!value)
+    return void 0;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "private" || normalized === "public") {
+    return normalized;
+  }
+  throw new Error(`Invalid data privacy: ${value} (must be private or public)`);
+}
+function parseDevcontainerAuthStrategy(value) {
+  if (!value)
+    return void 0;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "mount-first" || normalized === "env-first" || normalized === "env-only") {
+    return normalized;
+  }
+  throw new Error(`Invalid devcontainer auth strategy: ${value} (must be mount-first, env-first, or env-only)`);
+}
+function parseAutonomyLevel(value) {
+  if (!value)
+    return void 0;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "cautious" || normalized === "balanced" || normalized === "autonomous") {
+    return normalized;
+  }
+  throw new Error(`Invalid autonomy level: ${value} (must be cautious, balanced, or autonomous)`);
+}
+function parseSetupMode(value) {
+  if (!value)
+    return void 0;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "loop" || normalized === "orchestrate") {
+    return normalized;
+  }
+  throw new Error(`Invalid setup mode: ${value} (must be loop or orchestrate)`);
+}
+function mapSetupModeToLoopMode(value) {
+  if (!value)
+    return void 0;
+  if (value === "orchestrate") {
+    return "orchestrate";
+  }
+  return "plan-build-review";
+}
+async function defaultPromptUser(rl, question, defaultValue) {
+  return new Promise((resolve2) => {
+    rl.question(`${question} [${defaultValue}]: `, (answer) => {
+      resolve2(answer.trim() || defaultValue);
+    });
+  });
+}
+async function setupCommandWithDeps(options, deps) {
+  const discovery = await deps.discover({
+    projectRoot: options.projectRoot,
+    homeDir: options.homeDir
+  });
+  if (options.nonInteractive) {
+    console.log("Running setup in non-interactive mode...");
+    const setupMode = parseSetupMode(options.mode);
+    const result2 = await deps.scaffold({
+      projectRoot: options.projectRoot,
+      homeDir: options.homeDir,
+      specFiles: options.spec ? [options.spec] : void 0,
+      enabledProviders: options.providers ? options.providers.split(",").map((p) => p.trim()) : void 0,
+      mode: mapSetupModeToLoopMode(setupMode),
+      autonomyLevel: parseAutonomyLevel(options.autonomyLevel),
+      dataPrivacy: parseDataPrivacy(options.dataPrivacy),
+      devcontainerAuthStrategy: parseDevcontainerAuthStrategy(options.devcontainerAuthStrategy)
+    });
+    console.log(`Setup complete. Config written to: ${result2.config_path}`);
+    return;
+  }
+  console.log("\n--- Aloop Interactive Setup ---\n");
+  const defaultSpec = options.spec || discovery.context.spec_candidates[0] || "SPEC.md";
+  const spec = await deps.prompt("Spec File", defaultSpec);
+  const defaultProviders = options.providers || discovery.providers.installed.join(",") || "claude";
+  const providersRaw = await deps.prompt("Enabled Providers (comma-separated)", defaultProviders);
+  const enabledProviders = providersRaw.split(",").map((s) => s.trim()).filter(Boolean);
+  const defaultLanguage = discovery.context.detected_language;
+  const language = await deps.prompt("Language", defaultLanguage);
+  const defaultProvider = enabledProviders[0] || discovery.providers.default_provider;
+  const provider = await deps.prompt("Primary Provider", defaultProvider);
+  const recommendedMode = discovery.mode_recommendation?.recommended_mode;
+  const recommendationReasons = discovery.mode_recommendation?.reasoning || [];
+  if (recommendedMode && recommendationReasons.length > 0) {
+    console.log("\n  Mode recommendation:");
+    for (const reason of recommendationReasons) {
+      console.log(`    ${reason}`);
+    }
+    console.log("");
+  }
+  const defaultMode = recommendedMode === "orchestrate" ? "orchestrate" : "plan-build-review";
+  const mode = await deps.prompt("Mode", defaultMode);
+  const defaultAutonomyLevel = options.autonomyLevel ?? "balanced";
+  const autonomyLevel = parseAutonomyLevel(
+    await deps.prompt("Autonomy Level (cautious|balanced|autonomous)", defaultAutonomyLevel)
+  ) ?? "balanced";
+  const defaultDataPrivacy = "private";
+  const dataPrivacy = parseDataPrivacy(
+    await deps.prompt("Data Privacy (private|public)", options.dataPrivacy ?? defaultDataPrivacy)
+  ) ?? "private";
+  let devcontainerAuthStrategy;
+  if (discovery.devcontainer.enabled) {
+    const defaultStrategy = options.devcontainerAuthStrategy ?? "mount-first";
+    devcontainerAuthStrategy = parseDevcontainerAuthStrategy(
+      await deps.prompt("Devcontainer Auth Strategy (mount-first|env-first|env-only)", defaultStrategy)
+    ) ?? "mount-first";
+  }
+  const defaultValidation = discovery.context.validation_presets.full.join(", ") || "npm test";
+  const validationCommandsRaw = await deps.prompt("Validation Commands (comma-separated)", defaultValidation);
+  const validationCommands = validationCommandsRaw.split(",").map((s) => s.trim()).filter(Boolean);
+  const defaultSafety = "Never delete the project directory or run destructive commands, Never push to remote without explicit user approval";
+  const safetyRulesRaw = await deps.prompt("Safety Rules (comma-separated)", defaultSafety);
+  const safetyRules = safetyRulesRaw.split(",").map((s) => s.trim()).filter(Boolean);
+  console.log("\nScaffolding workspace with the following configuration:");
+  console.log(`- Spec: ${spec}`);
+  console.log(`- Providers: ${enabledProviders.join(", ")}`);
+  console.log(`- Language: ${language}`);
+  console.log(`- Primary Provider: ${provider}`);
+  console.log(`- Mode: ${mode}`);
+  console.log(`- Autonomy Level: ${autonomyLevel}`);
+  console.log(`- Data Privacy: ${dataPrivacy}`);
+  console.log(`- ZDR Mode: ${dataPrivacy === "private" ? "Enabled" : "Disabled"}`);
+  if (mode === "orchestrate") {
+    console.log("- Trunk Branch: agent/trunk");
+  }
+  if (discovery.devcontainer.enabled) {
+    console.log(`- Devcontainer Auth Strategy: ${devcontainerAuthStrategy}`);
+    console.log("- Proposed Provider Auth:");
+    for (const p of enabledProviders) {
+      console.log(`    ${p}: ${getProposedAuthMethod(p, devcontainerAuthStrategy)}`);
+    }
+  }
+  console.log(`- Validation Commands: ${validationCommands.join(", ")}`);
+  console.log(`- Safety Rules: ${safetyRules.join(", ")}`);
+  console.log("");
+  const result = await deps.scaffold({
+    projectRoot: options.projectRoot,
+    homeDir: options.homeDir,
+    specFiles: [spec],
+    enabledProviders,
+    language,
+    provider,
+    mode,
+    autonomyLevel,
+    dataPrivacy,
+    devcontainerAuthStrategy,
+    validationCommands,
+    safetyRules
+  });
+  console.log(`Setup complete. Config written to: ${result.config_path}`);
+}
+async function setupCommand(options = {}) {
+  let rl = null;
+  const deps = {
+    discover: discoverWorkspace2,
+    scaffold: scaffoldWorkspace2,
+    prompt: async (question, defaultValue) => {
+      if (!rl) {
+        rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout
+        });
+      }
+      return defaultPromptUser(rl, question, defaultValue);
+    }
+  };
+  try {
+    await setupCommandWithDeps(options, deps);
+  } finally {
+    if (rl) {
+      rl.close();
+    }
+  }
+}
+
+// src/commands/update.ts
+import fs6 from "node:fs";
+import fsp from "node:fs/promises";
+import path12 from "node:path";
+import os5 from "node:os";
+import { spawnSync as spawnSync6 } from "node:child_process";
+var defaultDeps3 = {
+  homeDir: () => os5.homedir(),
+  existsSync: fs6.existsSync,
+  readdir: fsp.readdir,
+  mkdir: fsp.mkdir,
+  copyFile: fsp.copyFile,
+  writeFile: fsp.writeFile,
+  chmod: fsp.chmod,
+  spawnSync: spawnSync6
+};
+async function copyTree(src, dest, deps) {
+  const written = [];
+  if (!deps.existsSync(src))
+    return written;
+  const stat2 = fs6.statSync(src);
+  if (!stat2.isDirectory()) {
+    await deps.mkdir(path12.dirname(dest), { recursive: true });
+    await deps.copyFile(src, dest);
+    written.push(dest);
+    return written;
+  }
+  const entries = await deps.readdir(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path12.join(src, entry.name);
+    const destPath = path12.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      const sub = await copyTree(srcPath, destPath, deps);
+      written.push(...sub);
+    } else {
+      await deps.mkdir(path12.dirname(destPath), { recursive: true });
+      await deps.copyFile(srcPath, destPath);
+      written.push(destPath);
+    }
+  }
+  return written;
+}
+function findRepoRoot(startDir, deps) {
+  let dir = path12.resolve(startDir);
+  const root = path12.parse(dir).root;
+  while (dir !== root) {
+    if (deps.existsSync(path12.join(dir, "install.ps1")) && deps.existsSync(path12.join(dir, "aloop", "bin"))) {
+      return dir;
+    }
+    const parent = path12.dirname(dir);
+    if (parent === dir)
+      break;
+    dir = parent;
+  }
+  return null;
+}
+async function executeUpdate(options = {}, deps = defaultDeps3) {
+  const homeDir = options.homeDir || deps.homeDir();
+  const aloopDir = path12.join(homeDir, ".aloop");
+  const repoRoot = options.repoRoot ? path12.resolve(options.repoRoot) : findRepoRoot(process.cwd(), deps);
+  if (!repoRoot) {
+    return {
+      success: false,
+      repoRoot: "",
+      aloopDir,
+      commit: "",
+      installedAt: "",
+      updated: [],
+      errors: ["Could not find aloop source repository. Run from within the repo or use --repo-root."]
+    };
+  }
+  const requiredPaths = ["aloop/bin", "aloop/cli", "aloop/templates"];
+  const missing = requiredPaths.filter((p) => !deps.existsSync(path12.join(repoRoot, p)));
+  if (missing.length > 0) {
+    return {
+      success: false,
+      repoRoot,
+      aloopDir,
+      commit: "",
+      installedAt: "",
+      updated: [],
+      errors: [`Missing expected directories in repo: ${missing.join(", ")}`]
+    };
+  }
+  const updated = [];
+  const errors = [];
+  try {
+    const binFiles = await copyTree(
+      path12.join(repoRoot, "aloop", "bin"),
+      path12.join(aloopDir, "bin"),
+      deps
+    );
+    updated.push(...binFiles);
+    if (os5.platform() !== "win32") {
+      for (const f of binFiles) {
+        if (f.endsWith(".sh") || !path12.basename(f).includes(".")) {
+          await deps.chmod(f, 493);
+        }
+      }
+    }
+  } catch (e) {
+    errors.push(`bin: ${e.message}`);
+  }
+  try {
+    const configSrc = path12.join(repoRoot, "aloop", "config.yml");
+    const configDest = path12.join(aloopDir, "config.yml");
+    if (deps.existsSync(configSrc)) {
+      await deps.mkdir(path12.dirname(configDest), { recursive: true });
+      await deps.copyFile(configSrc, configDest);
+      updated.push(configDest);
+    }
+  } catch (e) {
+    errors.push(`config: ${e.message}`);
+  }
+  try {
+    const tmplFiles = await copyTree(
+      path12.join(repoRoot, "aloop", "templates"),
+      path12.join(aloopDir, "templates"),
+      deps
+    );
+    updated.push(...tmplFiles);
+  } catch (e) {
+    errors.push(`templates: ${e.message}`);
+  }
+  try {
+    const distFiles = await copyTree(
+      path12.join(repoRoot, "aloop", "cli", "dist"),
+      path12.join(aloopDir, "cli", "dist"),
+      deps
+    );
+    updated.push(...distFiles);
+  } catch (e) {
+    errors.push(`cli/dist: ${e.message}`);
+  }
+  try {
+    const libFiles = await copyTree(
+      path12.join(repoRoot, "aloop", "cli", "lib"),
+      path12.join(aloopDir, "cli", "lib"),
+      deps
+    );
+    updated.push(...libFiles);
+  } catch (e) {
+    errors.push(`cli/lib: ${e.message}`);
+  }
+  try {
+    const entrySrc = path12.join(repoRoot, "aloop", "cli", "aloop.mjs");
+    const entryDest = path12.join(aloopDir, "cli", "aloop.mjs");
+    if (deps.existsSync(entrySrc)) {
+      await deps.mkdir(path12.dirname(entryDest), { recursive: true });
+      await deps.copyFile(entrySrc, entryDest);
+      updated.push(entryDest);
+    }
+  } catch (e) {
+    errors.push(`cli/aloop.mjs: ${e.message}`);
+  }
+  try {
+    const binDir = path12.join(aloopDir, "bin");
+    await deps.mkdir(binDir, { recursive: true });
+    const cmdShimPath = path12.join(binDir, "aloop.cmd");
+    const cmdShimContent = '@echo off\nnode "%~dp0..\\cli\\aloop.mjs" %*\n';
+    await deps.writeFile(cmdShimPath, cmdShimContent, "utf8");
+    updated.push(cmdShimPath);
+    const shShimPath = path12.join(binDir, "aloop");
+    const shShimContent = '#!/bin/sh\nexec node "$(dirname "$0")/../cli/aloop.mjs" "$@"\n';
+    await deps.writeFile(shShimPath, shShimContent, "utf8");
+    updated.push(shShimPath);
+    if (os5.platform() !== "win32") {
+      await deps.chmod(shShimPath, 493);
+    }
+  } catch (e) {
+    errors.push(`shims: ${e.message}`);
+  }
+  for (const sub of ["projects", "sessions"]) {
+    const dir = path12.join(aloopDir, sub);
+    try {
+      await deps.mkdir(dir, { recursive: true });
+    } catch {
+    }
+  }
+  let commit = "";
+  const installedAt = (/* @__PURE__ */ new Date()).toISOString().replace(/\.\d{3}Z$/, "Z");
+  try {
+    const gitResult = deps.spawnSync("git", ["-C", repoRoot, "rev-parse", "--short", "HEAD"], {
+      encoding: "utf8"
+    });
+    if (gitResult.status === 0) {
+      commit = gitResult.stdout.trim();
+    }
+  } catch {
+  }
+  const versionJson = JSON.stringify({ commit, installed_at: installedAt });
+  try {
+    await deps.writeFile(path12.join(aloopDir, "version.json"), versionJson, "utf8");
+  } catch (e) {
+    errors.push(`version.json: ${e.message}`);
+  }
+  return {
+    success: errors.length === 0,
+    repoRoot,
+    aloopDir,
+    commit,
+    installedAt,
+    updated,
+    errors
+  };
+}
+async function updateCommand(options = {}) {
+  const outputMode = options.output || "text";
+  const result = await executeUpdate(options);
+  if (outputMode === "json") {
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.success)
+      process.exit(1);
+    return;
+  }
+  if (!result.success) {
+    for (const err of result.errors) {
+      console.error(`Error: ${err}`);
+    }
+    process.exit(1);
+  }
+  const versionLabel = result.commit ? `${result.commit} (${result.installedAt})` : result.installedAt;
+  console.log(`Updated ~/.aloop from ${result.repoRoot}`);
+  console.log(`Version: ${versionLabel}`);
+  console.log(`Files updated: ${result.updated.length}`);
 }
 
 // src/commands/orchestrate.ts
@@ -10545,6 +10624,7 @@ var ORCH_PRODUCT_ANALYST_PROMPT_FILENAME = "PROMPT_orch_product_analyst.md";
 var ORCH_ARCH_ANALYST_PROMPT_FILENAME = "PROMPT_orch_arch_analyst.md";
 var ORCH_REPLAN_PROMPT_FILENAME = "PROMPT_orch_replan.md";
 var ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME = "PROMPT_orch_spec_consistency.md";
+var ORCH_REVIEW_PROMPT_FILENAME = "PROMPT_orch_review.md";
 var DEFAULT_SPEC_GLOB = "SPEC.md specs/*.md";
 function resolveSpecFiles(specInput, projectRoot, deps) {
   const patterns = specInput.split(/[\s,]+/).filter((p) => p.length > 0);
@@ -10688,6 +10768,27 @@ You are Aloop, the sub-issue decomposition agent.
 Break one refined epic into scoped work units suitable for child loops.
 Each sub-issue must be independently actionable with clear file ownership hints.
 `;
+var ORCH_REVIEW_FALLBACK = `# Orchestrator Review Layer
+
+You are Aloop, the orchestrator review agent.
+
+## Objective
+
+Review a child loop's PR to ensure it meets the requirements of the issue and the overall specification.
+
+## Process
+
+1. Read the issue description and the global specification.
+2. Review the PR diff for correctness, style, and completeness.
+3. Verify that proof of work (if any) is valid and matches the changes.
+4. Provide a verdict: \`approve\`, \`request-changes\`, or \`flag-for-human\`.
+
+## Rules
+
+- Reject code that deviates from the specification or architectural standards.
+- Flag ambiguous or high-risk changes for human review.
+- Provide clear, actionable feedback when requesting changes.
+`;
 function buildOrchestratorScanPrompt() {
   return `---
 agent: orch_scan
@@ -10764,6 +10865,9 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const subDecomposeTemplatePath = path14.join(projectRoot, "aloop", "templates", ORCH_SUB_DECOMPOSE_PROMPT_FILENAME);
   const subDecomposePrompt = deps.existsSync(subDecomposeTemplatePath) ? await deps.readFile(subDecomposeTemplatePath, "utf8") : ORCH_SUB_DECOMPOSE_FALLBACK;
   await deps.writeFile(path14.join(promptsDir, ORCH_SUB_DECOMPOSE_PROMPT_FILENAME), subDecomposePrompt, "utf8");
+  const reviewTemplatePath = path14.join(projectRoot, "aloop", "templates", ORCH_REVIEW_PROMPT_FILENAME);
+  const reviewPrompt = deps.existsSync(reviewTemplatePath) ? await deps.readFile(reviewTemplatePath, "utf8") : ORCH_REVIEW_FALLBACK;
+  await deps.writeFile(path14.join(promptsDir, ORCH_REVIEW_PROMPT_FILENAME), reviewPrompt, "utf8");
   const replanTemplatePath = path14.join(projectRoot, "aloop", "templates", ORCH_REPLAN_PROMPT_FILENAME);
   if (deps.existsSync(replanTemplatePath)) {
     const replanPrompt = await deps.readFile(replanTemplatePath, "utf8");
@@ -10941,6 +11045,54 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
         now: deps.now,
         appendLog: (dir, entry) => {
           appendLog2(dir, entry);
+        },
+        invokeAgentReview: async (prNumber, repo, diff) => {
+          const resultFile = path14.join(requestsDir, `review-result-${prNumber}.json`);
+          if (deps.existsSync(resultFile)) {
+            try {
+              const content = await deps.readFile(resultFile, "utf8");
+              const result = JSON.parse(content);
+              if (deps.unlink)
+                await deps.unlink(resultFile);
+              return result;
+            } catch (e) {
+              return {
+                pr_number: prNumber,
+                verdict: "flag-for-human",
+                summary: `Failed to parse review result: ${e instanceof Error ? e.message : String(e)}`
+              };
+            }
+          }
+          const queueFile = path14.join(queueDir, `review-${prNumber}.md`);
+          if (!deps.existsSync(queueFile)) {
+            const reviewPrompt2 = await deps.readFile(path14.join(promptsDir, ORCH_REVIEW_PROMPT_FILENAME), "utf8");
+            const fullPrompt = `---
+agent: orch_review
+pr_number: ${prNumber}
+---
+
+${reviewPrompt2}
+
+## PR Diff
+
+\`\`\`diff
+${diff}
+\`\`\`
+`;
+            await deps.writeFile(queueFile, fullPrompt, "utf8");
+            const requestFile = path14.join(requestsDir, `review-request-${prNumber}.json`);
+            await deps.writeFile(requestFile, JSON.stringify({
+              type: "agent_review",
+              pr_number: prNumber,
+              repo,
+              queued_at: deps.now().toISOString()
+            }, null, 2), "utf8");
+          }
+          return {
+            pr_number: prNumber,
+            verdict: "pending",
+            summary: "Review queued and waiting for agent execution."
+          };
         }
       } : void 0,
       sleep: (ms) => new Promise((resolve2) => setTimeout(resolve2, ms))
@@ -11564,12 +11716,32 @@ ${issue.body ?? ""}`;
   }
   return { passed: gaps.length === 0, gaps };
 }
+var REFINEMENT_BUDGET_CAP = 5;
+function classifyGapRisk(gaps) {
+  if (!gaps || gaps.length === 0)
+    return "low";
+  const highRiskTerms = ["security", "auth", "data loss", "breaking", "migration", "compliance"];
+  const text = gaps.join(" ").toLowerCase();
+  if (highRiskTerms.some((term) => text.includes(term)))
+    return "high";
+  if (gaps.length > 3)
+    return "medium";
+  return "low";
+}
+function resolveRefinementBudgetAction(autonomy, gapRisk) {
+  if (autonomy === "autonomous")
+    return true;
+  if (autonomy === "balanced")
+    return gapRisk === "low";
+  return false;
+}
 async function applyEstimateResults(state, results, deps) {
-  const outcome = { updated: [], blocked: [] };
+  const outcome = { updated: [], blocked: [], budgetExceeded: [] };
   const issueByNumber = /* @__PURE__ */ new Map();
   for (const issue of state.issues) {
     issueByNumber.set(issue.number, issue);
   }
+  const autonomyLevel = state.autonomy_level ?? "balanced";
   for (const result of results) {
     const issue = issueByNumber.get(result.issue_number);
     if (!issue)
@@ -11590,6 +11762,37 @@ async function applyEstimateResults(state, results, deps) {
       outcome.updated.push(result.issue_number);
     } else {
       issue.dor_validated = false;
+      issue.refinement_count = (issue.refinement_count ?? 0) + 1;
+      if (issue.refinement_count >= REFINEMENT_BUDGET_CAP) {
+        issue.refinement_budget_exceeded = true;
+        outcome.budgetExceeded.push(result.issue_number);
+        const gapRisk = classifyGapRisk(result.gaps);
+        const shouldAutoResolve = resolveRefinementBudgetAction(autonomyLevel, gapRisk);
+        if (shouldAutoResolve) {
+          issue.status = "Ready";
+          issue.dor_validated = true;
+          outcome.updated.push(result.issue_number);
+          deps?.appendLog?.(deps.sessionDir ?? "", {
+            timestamp: (deps?.now?.() ?? /* @__PURE__ */ new Date()).toISOString(),
+            event: "refinement_budget_auto_resolved",
+            issue_number: result.issue_number,
+            refinement_count: issue.refinement_count,
+            autonomy_level: autonomyLevel,
+            gap_risk: gapRisk
+          });
+          continue;
+        } else {
+          issue.status = "Blocked";
+          deps?.appendLog?.(deps.sessionDir ?? "", {
+            timestamp: (deps?.now?.() ?? /* @__PURE__ */ new Date()).toISOString(),
+            event: "refinement_budget_exceeded",
+            issue_number: result.issue_number,
+            refinement_count: issue.refinement_count,
+            autonomy_level: autonomyLevel,
+            gap_risk: gapRisk
+          });
+        }
+      }
       outcome.blocked.push(result.issue_number);
       if (result.gaps && result.gaps.length > 0 && deps?.execGhIssueCreate && deps.repo && deps.sessionId) {
         for (const gap of result.gaps) {
@@ -11612,7 +11815,7 @@ This spec-question must be resolved before the parent issue can be dispatched.`,
 }
 async function queueEstimateForIssues(issues, queueDir, estimatePrompt, deps) {
   const targets = issues.filter(
-    (issue) => issue.status === "Needs refinement" && issue.dor_validated !== true
+    (issue) => issue.status === "Needs refinement" && issue.dor_validated !== true && !issue.refinement_budget_exceeded
   );
   if (targets.length === 0)
     return 0;
@@ -12530,6 +12733,9 @@ async function processPrLifecycle(issue, state, stateFile, sessionDir, repo, dep
     verdict: reviewResult.verdict,
     summary: reviewResult.summary
   });
+  if (reviewResult.verdict === "pending") {
+    return { pr_number: prNumber, action: "review_pending", detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
+  }
   if (reviewResult.verdict === "request-changes") {
     try {
       await deps.execGh([

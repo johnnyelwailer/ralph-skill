@@ -1,5 +1,27 @@
 # Review Log
 
+## Review — 2026-03-18 10:20 UTC — commit ecdd104..3f188d7
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/bin/loop_branch_coverage.tests.sh`, `aloop/bin/loop.tests.ps1`, `aloop/cli/src/commands/compile-loop-plan.ts`, `aloop/cli/src/commands/compile-loop-plan.test.ts`, `aloop/cli/src/commands/devcontainer.ts`, `aloop/cli/src/commands/devcontainer.test.ts`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/src/commands/setup.test.ts`, `aloop/cli/src/commands/project.test.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/dashboard/e2e/smoke.spec.ts`, `aloop/cli/dashboard/src/App.tsx`, `aloop/cli/dashboard/src/AppView.tsx`, `aloop/templates/PROMPT_proof.md`
+
+- Gate 1: **Cross-platform timeout default mismatch** — `loop.sh:PROVIDER_TIMEOUT=28800` (8 hours) vs `loop.ps1:$ProviderTimeoutSec=600` (10 minutes). When no frontmatter timeout is set, identical prompts will have 48x different effective timeouts depending on platform. This is a parity defect.
+- Gate 4: **Dead variable** — `devcontainer.test.ts:1248`: `let callCount = 0;` declared but never incremented or read.
+- Gate 4: **Dead parameter** — `buildProviderRemoteEnv` (`devcontainer.ts:348`) accepts `strategy: AuthStrategy` but always emits all env vars regardless of value. The parameter is intentionally unused but its presence is misleading.
+
+**Positive observations:**
+- Gate 2: `loop_branch_coverage.tests.sh` execution control tests are thorough — 8 exact-value tests for frontmatter parsing, duration parsing (6 variants), and resolution precedence (8 branches). All assertions use string equality (`=`), no shallow checks.
+- Gate 2: `devcontainer.test.ts` auth strategy tests are comprehensive — 23 tests covering mount-first/env-first/env-only strategies, preflight warnings, file existence edge cases, and written config verification. All use exact value assertions.
+- Gate 2: `setup.test.ts` auth strategy test correctly verifies prompt shown, default value, and scaffold passthrough with exact assertions.
+- Gate 2: `compile-loop-plan.test.ts` includes/omits execution controls tests verify frontmatter content generation.
+- Gate 4: Dead import removal (`spawn`, `readFile`) in `smoke.spec.ts` cleanly executed.
+- Gate 5: All test suites pass individually (devcontainer 135/135, setup 14/14, compile-loop-plan 29/29, orchestrate 305/305, project 12/12, dashboard 125/125). Type-check clean. Build succeeds.
+- Gate 6: Proof manifest (iter 230) captures valid CLI output — default mount-first strategy and explicit env-first override with per-provider auth method display. Skipped items (runtime execution controls, dead import cleanup) are reasonable internal-only skips.
+- Gate 8: VERSIONS.md present and aligned — no dependency changes this iteration.
+- Gate 9: PROMPT_proof.md updated to forbid `*-install-output.txt` test output artifacts — documentation is fresh.
+
+---
+
 ## Review — 2026-03-17 19:10 UTC — commit ecdd104..HEAD
 
 **Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)

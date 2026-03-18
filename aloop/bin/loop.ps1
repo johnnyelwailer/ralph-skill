@@ -22,7 +22,7 @@ param(
     [Parameter(Mandatory)]
     [string]$WorkDir,
 
-    [ValidateSet('plan', 'build', 'review', 'plan-build', 'plan-build-review')]
+    [ValidateSet('plan', 'build', 'review', 'plan-build', 'plan-build-review', 'single')]
     [string]$Mode = 'plan-build-review',
 
     [ValidateSet('claude', 'opencode', 'codex', 'gemini', 'copilot', 'round-robin')]

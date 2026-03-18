@@ -42,8 +42,11 @@ import {
   generateFinalReport,
   formatFinalReportText,
   validateDoR,
-  applyEstimateResults,
-  queueEstimateForIssues,
+   applyEstimateResults,
+   queueEstimateForIssues,
+   classifyGapRisk,
+   resolveRefinementBudgetAction,
+   REFINEMENT_BUDGET_CAP,
   createEpicDecompositionRequest,
   queueEpicDecomposition,
   createSubDecompositionRequests,
@@ -1975,6 +1978,182 @@ describe('applyEstimateResults', () => {
     assert.equal(state.issues[0].dor_validated, true);
     assert.equal(state.issues[0].status, 'In progress');
   });
+
+  it('increments refinement_count on DoR failure', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false, refinement_count: 2 }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: false, gaps: ['Missing criteria'] },
+    ];
+    await applyEstimateResults(state, results);
+    assert.equal(state.issues[0].refinement_count, 3);
+    assert.equal(state.issues[0].status, 'Needs refinement');
+  });
+
+  it('initializes refinement_count from 0 on first failure', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: false, gaps: ['No approach'] },
+    ];
+    await applyEstimateResults(state, results);
+    assert.equal(state.issues[0].refinement_count, 1);
+  });
+
+  it('auto-resolves when refinement budget exceeded in autonomous mode', async () => {
+    const logs: Record<string, unknown>[] = [];
+    const state = makeState({
+      autonomy_level: 'autonomous',
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false, refinement_count: 4 }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: false, gaps: ['Minor gap'] },
+    ];
+    const outcome = await applyEstimateResults(state, results, {
+      appendLog: (_dir, entry) => logs.push(entry),
+      sessionDir: '/sessions/orch-1',
+      now: () => new Date('2026-03-14T12:00:00Z'),
+    });
+    assert.equal(state.issues[0].refinement_count, 5);
+    assert.equal(state.issues[0].refinement_budget_exceeded, true);
+    assert.equal(state.issues[0].status, 'Ready');
+    assert.equal(state.issues[0].dor_validated, true);
+    assert.deepStrictEqual(outcome.budgetExceeded, [1]);
+    assert.deepStrictEqual(outcome.updated, [1]);
+    assert.ok(logs.some((l) => l.event === 'refinement_budget_auto_resolved'));
+  });
+
+  it('blocks when refinement budget exceeded in cautious mode', async () => {
+    const logs: Record<string, unknown>[] = [];
+    const state = makeState({
+      autonomy_level: 'cautious',
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false, refinement_count: 4 }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: false, gaps: ['Missing criteria'] },
+    ];
+    const outcome = await applyEstimateResults(state, results, {
+      appendLog: (_dir, entry) => logs.push(entry),
+      sessionDir: '/sessions/orch-1',
+      now: () => new Date('2026-03-14T12:00:00Z'),
+    });
+    assert.equal(state.issues[0].refinement_count, 5);
+    assert.equal(state.issues[0].refinement_budget_exceeded, true);
+    assert.equal(state.issues[0].status, 'Blocked');
+    assert.equal(state.issues[0].dor_validated, false);
+    assert.deepStrictEqual(outcome.budgetExceeded, [1]);
+    assert.deepStrictEqual(outcome.blocked, [1]);
+    assert.ok(logs.some((l) => l.event === 'refinement_budget_exceeded'));
+  });
+
+  it('auto-resolves low-risk gaps in balanced mode at budget cap', async () => {
+    const state = makeState({
+      autonomy_level: 'balanced',
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false, refinement_count: 4 }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: false, gaps: ['Minor wording issue'] },
+    ];
+    const outcome = await applyEstimateResults(state, results, {
+      appendLog: () => {},
+      sessionDir: '/sessions/orch-1',
+      now: () => new Date('2026-03-14T12:00:00Z'),
+    });
+    assert.equal(state.issues[0].status, 'Ready');
+    assert.equal(state.issues[0].dor_validated, true);
+    assert.deepStrictEqual(outcome.updated, [1]);
+  });
+
+  it('blocks high-risk gaps in balanced mode at budget cap', async () => {
+    const state = makeState({
+      autonomy_level: 'balanced',
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false, refinement_count: 4 }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: false, gaps: ['Security vulnerability in auth flow'] },
+    ];
+    const outcome = await applyEstimateResults(state, results, {
+      appendLog: () => {},
+      sessionDir: '/sessions/orch-1',
+      now: () => new Date('2026-03-14T12:00:00Z'),
+    });
+    assert.equal(state.issues[0].status, 'Blocked');
+    assert.deepStrictEqual(outcome.blocked, [1]);
+  });
+
+  it('does not apply budget cap when refinement_count is below threshold', async () => {
+    const state = makeState({
+      autonomy_level: 'cautious',
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false, refinement_count: 3 }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: false, gaps: ['Missing criteria'] },
+    ];
+    const outcome = await applyEstimateResults(state, results);
+    assert.equal(state.issues[0].refinement_count, 4);
+    assert.equal(state.issues[0].refinement_budget_exceeded, undefined);
+    assert.equal(state.issues[0].status, 'Needs refinement');
+    assert.deepStrictEqual(outcome.budgetExceeded, []);
+  });
+});
+
+describe('classifyGapRisk', () => {
+  it('returns low for empty gaps', () => {
+    assert.equal(classifyGapRisk([]), 'low');
+    assert.equal(classifyGapRisk(undefined), 'low');
+  });
+
+  it('returns high for security-related gaps', () => {
+    assert.equal(classifyGapRisk(['Security issue in authentication']), 'high');
+  });
+
+  it('returns high for data loss gaps', () => {
+    assert.equal(classifyGapRisk(['Risk of data loss during migration']), 'high');
+  });
+
+  it('returns medium for many gaps', () => {
+    assert.equal(classifyGapRisk(['Gap 1', 'Gap 2', 'Gap 3', 'Gap 4']), 'medium');
+  });
+
+  it('returns low for few non-critical gaps', () => {
+    assert.equal(classifyGapRisk(['Minor wording issue']), 'low');
+  });
+});
+
+describe('resolveRefinementBudgetAction', () => {
+  it('always auto-resolves in autonomous mode', () => {
+    assert.equal(resolveRefinementBudgetAction('autonomous', 'low'), true);
+    assert.equal(resolveRefinementBudgetAction('autonomous', 'medium'), true);
+    assert.equal(resolveRefinementBudgetAction('autonomous', 'high'), true);
+  });
+
+  it('auto-resolves only low-risk in balanced mode', () => {
+    assert.equal(resolveRefinementBudgetAction('balanced', 'low'), true);
+    assert.equal(resolveRefinementBudgetAction('balanced', 'medium'), false);
+    assert.equal(resolveRefinementBudgetAction('balanced', 'high'), false);
+  });
+
+  it('never auto-resolves in cautious mode', () => {
+    assert.equal(resolveRefinementBudgetAction('cautious', 'low'), false);
+    assert.equal(resolveRefinementBudgetAction('cautious', 'medium'), false);
+    assert.equal(resolveRefinementBudgetAction('cautious', 'high'), false);
+  });
 });
 
 describe('queueEstimateForIssues', () => {
@@ -2046,6 +2225,21 @@ describe('queueEstimateForIssues', () => {
     assert.match(content, /^---/);
     assert.match(content, /"agent": "orch_estimate"/);
     assert.match(content, /"issue_number": 7/);
+  });
+
+  it('skips issues that have exceeded refinement budget', async () => {
+    const writtenFiles: Record<string, string> = {};
+    const mockDeps = {
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+    };
+    const issues = [
+      makeIssue({ number: 1, status: 'Needs refinement', dor_validated: false, refinement_budget_exceeded: true }),
+      makeIssue({ number: 2, status: 'Needs refinement', dor_validated: false }),
+    ];
+    const count = await queueEstimateForIssues(issues, '/queue', '# Prompt', mockDeps);
+    assert.equal(count, 1);
+    assert.ok(!writtenFiles['/queue/estimate-issue-1.md']);
+    assert.ok(writtenFiles['/queue/estimate-issue-2.md']);
   });
 });
 
@@ -2867,6 +3061,32 @@ describe('processPrLifecycle', () => {
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'flagged_for_human');
+  });
+
+  it('returns review_pending when agent review returns pending verdict', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'pending' as const,
+        summary: 'Review queued',
+      }),
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'review_pending');
+    assert.equal(result.review?.verdict, 'pending');
   });
 
   it('returns gates_failed when no pr_number on issue', async () => {

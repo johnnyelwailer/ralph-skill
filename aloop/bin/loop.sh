@@ -59,7 +59,7 @@ usage() {
     echo "  --work-dir <path>       Project working directory"
     echo ""
     echo "Options:"
-    echo "  --mode <mode>           plan|build|review|plan-build|plan-build-review (default: plan-build-review)"
+    echo "  --mode <mode>           plan|build|review|plan-build|plan-build-review|single (default: plan-build-review)"
     echo "  --provider <provider>   claude|codex|gemini|copilot|round-robin (default: claude)"
     echo "  --round-robin <list>    Comma-separated provider list (default: claude,codex,gemini,copilot)"
     echo "  --max-iterations <n>    Maximum iterations (default: 50)"

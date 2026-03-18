@@ -83,6 +83,8 @@ export interface OrchestratorIssue {
   triage_log?: TriageLogEntry[];
   pending_steering_comments?: TriageComment[];
   dor_validated?: boolean;
+  refinement_count?: number;
+  refinement_budget_exceeded?: boolean;
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
@@ -721,6 +723,7 @@ const ORCH_PRODUCT_ANALYST_PROMPT_FILENAME = 'PROMPT_orch_product_analyst.md';
 const ORCH_ARCH_ANALYST_PROMPT_FILENAME = 'PROMPT_orch_arch_analyst.md';
 const ORCH_REPLAN_PROMPT_FILENAME = 'PROMPT_orch_replan.md';
 const ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME = 'PROMPT_orch_spec_consistency.md';
+const ORCH_REVIEW_PROMPT_FILENAME = 'PROMPT_orch_review.md';
 const DEFAULT_SPEC_GLOB = 'SPEC.md specs/*.md';
 
 /**
@@ -893,6 +896,28 @@ Break one refined epic into scoped work units suitable for child loops.
 Each sub-issue must be independently actionable with clear file ownership hints.
 `;
 
+const ORCH_REVIEW_FALLBACK = `# Orchestrator Review Layer
+
+You are Aloop, the orchestrator review agent.
+
+## Objective
+
+Review a child loop's PR to ensure it meets the requirements of the issue and the overall specification.
+
+## Process
+
+1. Read the issue description and the global specification.
+2. Review the PR diff for correctness, style, and completeness.
+3. Verify that proof of work (if any) is valid and matches the changes.
+4. Provide a verdict: \`approve\`, \`request-changes\`, or \`flag-for-human\`.
+
+## Rules
+
+- Reject code that deviates from the specification or architectural standards.
+- Flag ambiguous or high-risk changes for human review.
+- Provide clear, actionable feedback when requesting changes.
+`;
+
 function buildOrchestratorScanPrompt(): string {
   return `---
 agent: orch_scan
@@ -992,6 +1017,12 @@ export async function orchestrateCommandWithDeps(
     ? await deps.readFile(subDecomposeTemplatePath, 'utf8')
     : ORCH_SUB_DECOMPOSE_FALLBACK;
   await deps.writeFile(path.join(promptsDir, ORCH_SUB_DECOMPOSE_PROMPT_FILENAME), subDecomposePrompt, 'utf8');
+
+  const reviewTemplatePath = path.join(projectRoot, 'aloop', 'templates', ORCH_REVIEW_PROMPT_FILENAME);
+  const reviewPrompt = deps.existsSync(reviewTemplatePath)
+    ? await deps.readFile(reviewTemplatePath, 'utf8')
+    : ORCH_REVIEW_FALLBACK;
+  await deps.writeFile(path.join(promptsDir, ORCH_REVIEW_PROMPT_FILENAME), reviewPrompt, 'utf8');
 
   // Load replan and spec consistency templates
   const replanTemplatePath = path.join(projectRoot, 'aloop', 'templates', ORCH_REPLAN_PROMPT_FILENAME);
@@ -1208,6 +1239,57 @@ export async function orchestrateCommandWithDeps(
         now: deps.now,
         appendLog: (dir: string, entry: Record<string, unknown>) => {
           appendLog(dir, entry);
+        },
+        invokeAgentReview: async (prNumber: number, repo: string, diff: string) => {
+          const resultFile = path.join(requestsDir, `review-result-${prNumber}.json`);
+          if (deps.existsSync(resultFile)) {
+            try {
+              const content = await deps.readFile(resultFile, 'utf8');
+              const result = JSON.parse(content);
+              if (deps.unlink) await deps.unlink(resultFile);
+              return result;
+            } catch (e) {
+              return {
+                pr_number: prNumber,
+                verdict: 'flag-for-human',
+                summary: `Failed to parse review result: ${e instanceof Error ? e.message : String(e)}`,
+              };
+            }
+          }
+
+          const queueFile = path.join(queueDir, `review-${prNumber}.md`);
+          if (!deps.existsSync(queueFile)) {
+            const reviewPrompt = await deps.readFile(path.join(promptsDir, ORCH_REVIEW_PROMPT_FILENAME), 'utf8');
+            const fullPrompt = `---
+agent: orch_review
+pr_number: ${prNumber}
+---
+
+${reviewPrompt}
+
+## PR Diff
+
+\`\`\`diff
+${diff}
+\`\`\`
+`;
+            await deps.writeFile(queueFile, fullPrompt, 'utf8');
+
+            // Also write a request file for visibility
+            const requestFile = path.join(requestsDir, `review-request-${prNumber}.json`);
+            await deps.writeFile(requestFile, JSON.stringify({
+              type: 'agent_review',
+              pr_number: prNumber,
+              repo,
+              queued_at: deps.now().toISOString(),
+            }, null, 2), 'utf8');
+          }
+
+          return {
+            pr_number: prNumber,
+            verdict: 'pending',
+            summary: 'Review queued and waiting for agent execution.',
+          };
         },
       } : undefined,
       sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -1977,9 +2059,39 @@ export interface EstimateResult {
   gaps?: string[];
 }
 
+export const REFINEMENT_BUDGET_CAP = 5;
+
 export interface ApplyEstimateResultsOutcome {
   updated: number[];
   blocked: number[];
+  budgetExceeded: number[];
+}
+
+/**
+ * Classify the risk level of DoR gaps based on gap content.
+ * High-risk gaps mention critical terms; otherwise medium/low.
+ */
+export function classifyGapRisk(gaps?: string[]): SpecQuestionRisk {
+  if (!gaps || gaps.length === 0) return 'low';
+  const highRiskTerms = ['security', 'auth', 'data loss', 'breaking', 'migration', 'compliance'];
+  const text = gaps.join(' ').toLowerCase();
+  if (highRiskTerms.some((term) => text.includes(term))) return 'high';
+  if (gaps.length > 3) return 'medium';
+  return 'low';
+}
+
+/**
+ * Determine whether refinement budget cap should auto-resolve or block,
+ * based on autonomy level and gap risk.
+ * Returns true to auto-resolve, false to block and wait for user.
+ */
+export function resolveRefinementBudgetAction(
+  autonomy: AutonomyLevel,
+  gapRisk: SpecQuestionRisk,
+): boolean {
+  if (autonomy === 'autonomous') return true;
+  if (autonomy === 'balanced') return gapRisk === 'low';
+  return false;
 }
 
 /**
@@ -2003,11 +2115,13 @@ export async function applyEstimateResults(
     sessionDir?: string;
   },
 ): Promise<ApplyEstimateResultsOutcome> {
-  const outcome: ApplyEstimateResultsOutcome = { updated: [], blocked: [] };
+  const outcome: ApplyEstimateResultsOutcome = { updated: [], blocked: [], budgetExceeded: [] };
   const issueByNumber = new Map<number, OrchestratorIssue>();
   for (const issue of state.issues) {
     issueByNumber.set(issue.number, issue);
   }
+
+  const autonomyLevel = state.autonomy_level ?? 'balanced';
 
   for (const result of results) {
     const issue = issueByNumber.get(result.issue_number);
@@ -2029,6 +2143,42 @@ export async function applyEstimateResults(
       outcome.updated.push(result.issue_number);
     } else {
       issue.dor_validated = false;
+      issue.refinement_count = (issue.refinement_count ?? 0) + 1;
+
+      // Check refinement budget cap
+      if (issue.refinement_count >= REFINEMENT_BUDGET_CAP) {
+        issue.refinement_budget_exceeded = true;
+        outcome.budgetExceeded.push(result.issue_number);
+
+        const gapRisk = classifyGapRisk(result.gaps);
+        const shouldAutoResolve = resolveRefinementBudgetAction(autonomyLevel, gapRisk);
+
+        if (shouldAutoResolve) {
+          issue.status = 'Ready';
+          issue.dor_validated = true;
+          outcome.updated.push(result.issue_number);
+          deps?.appendLog?.(deps.sessionDir ?? '', {
+            timestamp: (deps?.now?.() ?? new Date()).toISOString(),
+            event: 'refinement_budget_auto_resolved',
+            issue_number: result.issue_number,
+            refinement_count: issue.refinement_count,
+            autonomy_level: autonomyLevel,
+            gap_risk: gapRisk,
+          });
+          continue;
+        } else {
+          issue.status = 'Blocked';
+          deps?.appendLog?.(deps.sessionDir ?? '', {
+            timestamp: (deps?.now?.() ?? new Date()).toISOString(),
+            event: 'refinement_budget_exceeded',
+            issue_number: result.issue_number,
+            refinement_count: issue.refinement_count,
+            autonomy_level: autonomyLevel,
+            gap_risk: gapRisk,
+          });
+        }
+      }
+
       outcome.blocked.push(result.issue_number);
 
       // Create aloop/spec-question issues for each gap
@@ -2061,7 +2211,7 @@ export async function queueEstimateForIssues(
   deps: { writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void> },
 ): Promise<number> {
   const targets = issues.filter(
-    (issue) => issue.status === 'Needs refinement' && issue.dor_validated !== true,
+    (issue) => issue.status === 'Needs refinement' && issue.dor_validated !== true && !issue.refinement_budget_exceeded,
   );
   if (targets.length === 0) return 0;
 
@@ -2808,7 +2958,7 @@ export interface PrGatesResult {
   gates: PrGateResult[];
 }
 
-export type AgentReviewVerdict = 'approve' | 'request-changes' | 'flag-for-human';
+export type AgentReviewVerdict = 'approve' | 'request-changes' | 'flag-for-human' | 'pending';
 
 export interface AgentReviewResult {
   pr_number: number;
@@ -3098,7 +3248,7 @@ export async function flagForHuman(
 
 export interface PrLifecycleResult {
   pr_number: number;
-  action: 'merged' | 'rebase_requested' | 'flagged_for_human' | 'rejected' | 'gates_pending' | 'gates_failed';
+  action: 'merged' | 'rebase_requested' | 'flagged_for_human' | 'rejected' | 'gates_pending' | 'gates_failed' | 'review_pending';
   detail: string;
   gates?: PrGatesResult;
   review?: AgentReviewResult;
@@ -3276,6 +3426,10 @@ export async function processPrLifecycle(
     verdict: reviewResult.verdict,
     summary: reviewResult.summary,
   });
+
+  if (reviewResult.verdict === 'pending') {
+    return { pr_number: prNumber, action: 'review_pending', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
+  }
 
   if (reviewResult.verdict === 'request-changes') {
     // Post review feedback on the issue
@@ -4292,7 +4446,7 @@ export async function processQueuedPrompts(
       await deps.dispatchDeps.mkdir(agentPromptsDir, { recursive: true });
 
       // Write the queue prompt as the agent's prompt
-      const agentPromptFile = path.join(agentPromptsDir, 'PROMPT_queue_agent.md');
+      const agentPromptFile = path.join(agentPromptsDir, 'PROMPT_single.md');
       await deps.dispatchDeps.writeFile(agentPromptFile, content, 'utf8');
 
       let command: string;

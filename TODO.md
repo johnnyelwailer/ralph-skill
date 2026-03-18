@@ -5,12 +5,9 @@
 Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) critical loop/runtime parity defects, (3) loop/orchestrator core features, (4) setup/QA hardening, (5) dashboard polish/testing after core loop/orchestrator work is stable.
 
 ### In Progress
-- [x] [runtime/P1] [steering] Set default execution-control provider timeout to 3 hours (10800s) in both `loop.sh` and `loop.ps1`, preserving precedence (`prompt timeout` -> `ALOOP_PROVIDER_TIMEOUT` -> built-in default) and adding parity regression coverage. (priority: high)
-- [ ] [orchestrator/P1] Implement Refinement Budget Cap: add `refinement_count` to `OrchestratorIssue`, increment on DoR failure, and enforce cap of 5 with autonomy-based auto-resolve vs wait behavior so refinement loops cannot spin forever. (priority: high)
-- [ ] [orchestrator/P1] Implement Orchestrator Review Layer: add `PROMPT_orch_review.md` and wire `invokeAgentReview` path so post-child PR review enforces spec compliance/proof quality before merge. (priority: high)
+- [ ] [opencode/P1] [steering] Implement basic token/price tracking for OpenCode/OpenRouter where usage data is emitted: parse usage/cost into iteration events, show in dashboard only when available, and feed orchestrator budget/final report from recorded metrics. (priority: high)
 
 ### Up Next
-- [ ] [opencode/P1] [steering] Implement basic token/price tracking for OpenCode/OpenRouter where usage data is emitted: parse usage/cost into iteration events, show in dashboard only when available, and feed orchestrator budget/final report from recorded metrics. (priority: high)
 - [ ] [orchestrator/P1] Implement Spec Consistency result processing: consume `requests/spec-consistency-results.json` in `runOrchestratorScanPass` and apply state/log actions so queued consistency checks have runtime effect. (priority: medium)
 - [ ] [setup/P1] Implement ZDR provider warnings in setup confirmation for org-level/provider-level constraints (Claude, Gemini, OpenAI, Copilot) with docs links so private-mode users get accurate risk guidance. (priority: medium)
 - [ ] [qa/P2] [bug] Cross-platform PowerShell fake-provider shims — Linux `Get-Command` ignored `.cmd` fake shims so tests called real provider CLIs; ensure `.cmd` + no-extension shims stay in lockstep for touched test infra. (priority: medium)
@@ -26,6 +23,9 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 - [ ] [dashboard/low] Extend E2E `smoke.spec.ts` coverage for explicit 1920x1080 sidebar/docs/activity visibility checks once core gates are green.
 
 ### Completed
+- [x] [orchestrator/P1] Implement Orchestrator Review Layer: add `PROMPT_orch_review.md` and wire `invokeAgentReview` path so post-child PR review enforces spec compliance/proof quality before merge. (priority: high)
+- [x] [orchestrator/P1] Implement Refinement Budget Cap: add `refinement_count` to `OrchestratorIssue`, increment on DoR failure, and enforce cap of 5 with autonomy-based auto-resolve vs wait behavior so refinement loops cannot spin forever. (priority: high)
+- [x] [runtime/P1] [steering] Set default execution-control provider timeout to 3 hours (10800s) in both `loop.sh` and `loop.ps1`, preserving precedence (`prompt timeout` -> `ALOOP_PROVIDER_TIMEOUT` -> built-in default) and adding parity regression coverage. (priority: high)
 - [ ] [review] Gate 1: default execution-control timeout is asymmetric across runtimes — `loop.sh:PROVIDER_TIMEOUT=28800` (8h) vs `loop.ps1:$ProviderTimeoutSec=600` (10m). Align to one default so identical prompts behave the same across platforms. (priority: high) (reopened: not actually implemented — defaults are still asymmetric, and steering now requires a unified 2-3 hour default)
 - [x] [review] Gate 1: `devcontainerCommandWithDeps` computes auth-file fallback mounts with `deps.existsSync`, but `checkAuthPreflight` is called without `existsFn`/`homeDir` (`aloop/cli/src/commands/devcontainer.ts:620`), so it still warns even when fallback auth files exist. Wire `deps.existsSync` + resolved host home into `checkAuthPreflight` and add a regression test that asserts no warning when a mountable auth file is present. (priority: high)
 - [x] [review] Gate 2: `buildProviderAuthFileMounts - default existsFn uses real filesystem` is a shallow assertion (`assert.ok(Array.isArray(mounts))`) in `aloop/cli/src/commands/devcontainer.test.ts:1482-1486`. Replace with concrete assertions by controlling HOME + fixture file presence/absence and checking exact mount count/content. (priority: medium)

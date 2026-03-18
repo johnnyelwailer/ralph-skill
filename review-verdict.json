@@ -1,5 +1,5 @@
 {
-  "iteration": 29,
+  "iteration": 199,
   "verdict": "FAIL",
-  "summary": "Gate 1 (Spec Compliance): monitor.ts missing steering instruction prepending; aloop steer hidden from CLI help."
+  "summary": "The packaged install fix is physically broken due to missing loop scripts in the NPM tarball, and index.test.ts fails in isolation because of missing SPEC.md in cwd."
 }
