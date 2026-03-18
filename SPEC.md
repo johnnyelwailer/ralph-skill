@@ -1861,9 +1861,25 @@ OpenRouter includes a `usage` object in every API response (streaming and non-st
 }
 ```
 
-OpenCode persists this per-message in its SQLite database (`$XDG_DATA_HOME/opencode/opencode.db`), with fields: `cost` (float), `tokens.input`, `tokens.output`, `tokens.reasoning`, `tokens.cache.read`, `tokens.cache.write`. The `opencode stats` command aggregates these.
+OpenCode persists this per-message in its internal storage, with fields: `cost` (float), `tokens.input`, `tokens.output`, `tokens.reasoning`, `tokens.cache.read`, `tokens.cache.write`.
 
-**Extraction approach:** After each opencode iteration, query the opencode SQLite DB for messages created during that iteration's time window (between `iteration_started_at` and `iteration_complete` timestamps). Sum `cost` and token fields. This is more reliable than parsing stdout — opencode's stdout doesn't include usage data in `run` mode.
+**Extraction approach:** After each opencode iteration, use the opencode CLI to extract usage data — do NOT query the internal SQLite DB directly (internal schema is subject to change):
+
+```bash
+# Get the latest session ID
+session_id=$(opencode session list --format json | jq -r '.[0].id')
+# Export and sum token/cost across assistant messages
+opencode export "$session_id" | jq '{
+  tokens_input: [.messages[] | select(.role=="assistant") | .tokens.input] | add,
+  tokens_output: [.messages[] | select(.role=="assistant") | .tokens.output] | add,
+  tokens_cache_read: [.messages[] | select(.role=="assistant") | .tokens.cache.read] | add,
+  cost: [.messages[] | select(.role=="assistant") | .cost] | add
+}'
+```
+
+Alternative: `opencode stats --days 1 --project ''` for aggregate stats (less precise but simpler).
+
+Note: `opencode run` does NOT output usage data to stdout/stderr. The export API is the only supported way to retrieve per-run token/cost data.
 
 **Log schema extension** — add optional fields to `iteration_complete` events:
 ```json
@@ -1887,7 +1903,7 @@ Fields are omitted (not zero) when unavailable. Dashboard and orchestrator check
 - [ ] OpenCode/OpenRouter iterations with usage payloads record token/cost fields in iteration event data
 - [ ] Dashboard displays token/cost row only when usage data exists for that iteration
 - [ ] Orchestrator final report and budget accounting consume recorded usage/cost data when available
-- [ ] Token extraction queries opencode SQLite DB by time window, not stdout parsing
+- [ ] Token extraction uses `opencode export <sessionID>` CLI, not internal SQLite DB
 
 ### CLI / Invocation
 
