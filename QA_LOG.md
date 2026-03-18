@@ -4199,3 +4199,97 @@ $ npx playwright screenshot --browser chromium --viewport-size "1920,1080" http:
 $ curl -s http://localhost:4040/api/state | python3 (parse)
 # Docs: TODO.md (18474 chars), SPEC.md (194334 chars), RESEARCH.md (14124 chars), REVIEW_LOG.md (61966 chars), STEERING.md (0 chars)
 ```
+
+## QA Session — 2026-03-18 (iteration 213)
+
+### Test Environment
+- Binary: `/tmp/aloop-test-install-m2Hnf5/bin/aloop` (v1.0.0)
+- Commit: 0a3db40
+- Test dirs: `/tmp/qa-test-E8CNvF`, `/tmp/qa-home-single`, `/tmp/qa-home-orch`
+- Features tested: 4
+
+### Results
+- FAIL: `single` mode in loop runtimes (incomplete implementation — bug filed)
+- PASS: Default provider timeout 3h cross-runtime parity
+- PASS: Orchestrator review layer (`PROMPT_orch_review.md`)
+- PASS: Per-prompt execution control frontmatter (timeout, max_retries, retry_backoff)
+
+### Bugs Filed
+- [qa/P1] `single` mode accepted by loop script validation but unimplemented — no handling logic, CLI rejects it
+
+### Command Transcript
+
+```bash
+# === TEST 1: Single mode ===
+
+$ aloop setup --non-interactive --mode single
+# Running setup in non-interactive mode...
+# Error: Invalid setup mode: single (must be loop or orchestrate)
+# EXIT: 1
+
+$ aloop setup --non-interactive --mode loop  # setup with loop, then manually set mode: 'single' in config
+# EXIT: 0
+
+$ sed -i "s/mode: 'plan-build-review'/mode: 'single'/" config.yml
+$ aloop start --max-iterations 1
+# Error: Invalid mode: single
+# EXIT: 1
+
+# loop.sh only reference: help text line 62 lists 'single' as valid mode
+# No resolve_iteration_mode case, no cycle compilation logic for 'single'
+# loop.ps1: ValidateSet includes 'single' (line 25) but no handling logic
+
+# === TEST 2: Default provider timeout 3h parity ===
+
+$ grep "PROVIDER_TIMEOUT" ~/.aloop/bin/loop.sh
+# PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-10800}"
+
+$ grep "ProviderTimeoutSec" ~/.aloop/bin/loop.ps1
+# [int]$ProviderTimeoutSec = $(if ($env:ALOOP_PROVIDER_TIMEOUT) { [int]$env:ALOOP_PROVIDER_TIMEOUT } else { 10800 })
+
+# Both default to 10800 (3 hours). PASS.
+
+# === TEST 3: Orchestrator review layer ===
+
+$ aloop setup --non-interactive --mode orchestrate  # in isolated HOME
+# EXIT: 0
+
+$ aloop orchestrate --spec SPEC.md --plan-only
+# Session dir: ~/.aloop/sessions/orchestrator-20260318-112951
+# EXIT: 0
+
+$ ls ~/.aloop/sessions/orchestrator-20260318-112951/prompts/
+# PROMPT_orch_arch_analyst.md  PROMPT_orch_decompose.md  PROMPT_orch_estimate.md
+# PROMPT_orch_product_analyst.md  PROMPT_orch_review.md  PROMPT_orch_scan.md
+# PROMPT_orch_sub_decompose.md
+
+$ cat ~/.aloop/sessions/orchestrator-20260318-112951/prompts/PROMPT_orch_review.md
+# Contains: review instructions, spec compliance, proof validation, verdict output
+# PASS.
+
+# === TEST 4: Per-prompt execution control frontmatter ===
+
+$ cat > /tmp/test-prompt-exec.md << 'EOF'
+---
+agent: build
+provider: claude
+timeout: 30m
+max_retries: 3
+retry_backoff: exponential
+---
+# Test
+EOF
+
+# Extracted parse_frontmatter from installed loop.sh and tested:
+# FRONTMATTER_TIMEOUT=30m → EFFECTIVE_TIMEOUT=1800 (correct)
+# FRONTMATTER_MAX_RETRIES=3 → EFFECTIVE_MAX_RETRIES=3 (correct)
+# FRONTMATTER_RETRY_BACKOFF=exponential → EFFECTIVE_RETRY_BACKOFF=exponential (correct)
+
+# Duration parsing:
+# 30m → 1800, 2h → 7200, 90s → 90, 3600 → 3600, invalid → '' (all correct)
+
+# Without frontmatter: falls back to defaults (10800, MAX_PHASE_RETRIES, none). PASS.
+
+# loop.ps1 parity confirmed: Resolve-ExecutionControls at line 409,
+# effectiveTimeout/effectiveMaxRetries/effectiveRetryBackoff all wired.
+```
