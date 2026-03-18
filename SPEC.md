@@ -2159,15 +2159,15 @@ Agent skills ([agentskills.io](https://agentskills.io), [skills.sh](https://skil
 
 ### Provider Skill Directories
 
-| Provider | Project-level search paths | Global search paths | Auto-discovery? |
-|----------|---------------------------|---------------------|-----------------|
-| Claude Code | `.claude/skills/`, `.agents/skills/` | `~/.claude/skills/`, `~/.agents/skills/` | Yes |
-| OpenCode | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/` | `~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/` | Yes |
-| Codex | `.codex/skills/`, `.agents/skills/` | `~/.codex/skills/`, `~/.agents/skills/` | Yes |
-| Copilot | `.github/copilot/skills/` | TBD | TBD |
-| Gemini | `.gemini/skills/` | TBD | TBD |
+| Provider | `.agents/skills/`? | Project-level search paths | Global search paths |
+|----------|:--:|---------------------------|---------------------|
+| Claude Code | **No** | `.claude/skills/` | `~/.claude/skills/` |
+| OpenCode | Yes | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/` | `~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/` |
+| Codex CLI | Yes (primary) | `.agents/skills/` | `~/.agents/skills/` |
+| Copilot CLI | Yes | `.github/skills/`, `.agents/skills/`, `.claude/skills/` | `~/.copilot/skills/`, `~/.claude/skills/` |
+| Gemini CLI | Yes (alias) | `.gemini/skills/`, `.agents/skills/` | `~/.gemini/skills/`, `~/.agents/skills/` |
 
-**Cross-provider path:** `.agents/skills/` is recognized by Claude Code, OpenCode, and Codex. When multiple providers are active, install skills into `.agents/skills/` as the single shared location — no need to duplicate into each provider's directory. Only use provider-specific directories if a skill should be scoped to one provider.
+**Install strategy:** `.agents/skills/` covers OpenCode, Codex, Copilot, and Gemini — but **not Claude Code**. When Claude Code is an active provider, also install into `.claude/skills/`. Two install targets max (`.agents/skills/` + `.claude/skills/`), not five.
 
 ### Phase 1: Setup-Time Discovery (project-wide)
 
@@ -2175,7 +2175,7 @@ During `aloop setup`, after project analysis:
 
 1. Run `tessl init --project-dependencies` to auto-detect stack and suggest skills
 2. Or `tessl search --type skills "<technology>"` for specific domains
-3. Install discovered skills into `.agents/skills/` (cross-provider) or provider-specific directories
+3. Install discovered skills into `.agents/skills/` + `.claude/skills/` if Claude Code is active (two targets max)
 4. **List all installed skills in the setup summary** — the user reviews the complete list at the end, not one-by-one
 5. If the user doesn't like a skill, they can request removal or swap — no per-skill approval dialog
 6. Record installed skills in `config.yml` under `installed_skills`
@@ -2229,7 +2229,7 @@ This is a static one-liner — it doesn't change per skill, per task, or per ite
 - [ ] Setup skill runs `tessl init --project-dependencies` (or equivalent) during discovery
 - [ ] Discovered skills are listed in setup summary — no per-skill approval dialog
 - [ ] Setup informs user that orchestrator may install additional skills per-task
-- [ ] Skills are installed into `.agents/skills/` (cross-provider) or provider-specific directories as appropriate
+- [ ] Skills are installed into `.agents/skills/` (+ `.claude/skills/` when Claude Code is active)
 - [ ] `PROMPT_orch_skill_scout.md` agent prompt exists for orchestrator per-task skill discovery
 - [ ] Skill scout runs after decomposition, before dispatch — one pass per planning cycle
 - [ ] Installed skills are recorded in config/state for traceability
