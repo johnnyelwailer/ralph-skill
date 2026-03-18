@@ -603,3 +603,18 @@
 - Gate 1 / Gate 2 prior blockers were resolved: packaged install now includes `dist/bin/{loop.sh,loop.ps1}` (`package.json` `build:bin` + `scripts/test-install.mjs` isolated HOME validation), and `index.test.ts` now uses a temp dir with mock `SPEC.md` for deterministic autonomy-level error path testing.
 
 ---
+
+## Review — 2026-03-18 16:53 UTC — commit a002567..433d86b
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `.gitignore`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/src/commands/setup.test.ts`, `aloop/cli/src/commands/devcontainer.ts`, `aloop/cli/aloop-cli-1.0.0.tgz`, `QA_LOG.md`, `QA_COVERAGE.md`
+
+- Gate 1: `spec-consistency-results` is not integrated end-to-end. `queueSpecConsistencyCheck` instructs the queued single-run agent to write `requests/spec-consistency-results.json` (`orchestrate.ts:4429`) while `processQueuedPrompts` launches that agent with `--work-dir projectRoot` (`orchestrate.ts:4547`), but scan consumption only checks `${sessionDir}/requests/spec-consistency-results.json` (`orchestrate.ts:4912`). This path mismatch makes the feature unreliable in real runs.
+- Gate 2: New coverage for this feature is shallow/happy-path-only (`orchestrate.test.ts:4091-4122`): it validates only `specConsistencyProcessed=true` and file removal, but not concrete log payload fields or parse-error cleanup behavior.
+
+**Positive observations:**
+- Gate 3: Branch coverage for touched modules passes thresholds with concrete evidence from targeted run (`tsx --test --experimental-test-coverage`): `orchestrate.ts` 82.27%, `setup.ts` 90.24%, `devcontainer.ts` 89.24%.
+- Gate 5: Required validation command succeeded on this review pass: `cd aloop/cli && npm test && npm run type-check && npm run build`.
+- Gate 6: Proof manifest for iteration 258 is evidence-based for the user-visible setup change (interactive CLI transcript showing private-mode ZDR warnings) and correctly skips internal-only changes.
+
+---

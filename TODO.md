@@ -7,6 +7,8 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 ### In Progress
 
 - [x] [review] Gate 4: committed binary artifact `aloop/cli/aloop-cli-1.0.0.tgz` (321KB npm tarball) tracked in git — removed from repo and added `*.tgz` to `.gitignore`. (priority: high)
+- [ ] [review] Gate 1: `spec-consistency-results` pipeline is not wired end-to-end. `queueSpecConsistencyCheck` tells the one-shot agent to write `requests/spec-consistency-results.json` from `--work-dir` (`orchestrate.ts:4429`, `processQueuedPrompts` spawns with `--work-dir projectRoot`), but `runOrchestratorScanPass` only reads `${sessionDir}/requests/spec-consistency-results.json` (`orchestrate.ts:4912`). Align writer/reader paths (or use an explicit session-scoped path in prompt) and add a regression test that exercises the real queue -> single-run -> scan consumption flow. (priority: high)
+- [ ] [review] Gate 2: new spec-consistency test is shallow/happy-path-only (`orchestrate.test.ts:4091-4122`) — it asserts only boolean + unlink side effect and does not verify concrete log payload (`changes_made`, `issues_found`, `files_modified`) or parse-error cleanup behavior. Strengthen with exact-value assertions for processed + parse-error branches. (priority: high)
 
 ### Up Next
 - [x] [orchestrator/P1] Implement Spec Consistency result processing: consume `requests/spec-consistency-results.json` in `runOrchestratorScanPass` and apply state/log actions so queued consistency checks have runtime effect. (priority: medium)
