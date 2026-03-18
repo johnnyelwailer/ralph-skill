@@ -4325,3 +4325,44 @@ Full raw transcript (exact commands/stdout/stderr/exit codes):
 - `/home/pj/.copilot/session-state/658dc0b3-22c4-4303-bfdf-9fc120f2aa72/files/qa-iter250/dashboard-host-1920x1080.png`
 - `/home/pj/.copilot/session-state/658dc0b3-22c4-4303-bfdf-9fc120f2aa72/files/qa-iter250/dashboard-host-layout.json`
 - `/home/pj/.copilot/session-state/658dc0b3-22c4-4303-bfdf-9fc120f2aa72/files/qa-iter250/dashboard-local-fallback.png`
+
+## QA Session — 2026-03-18 (iteration 251)
+
+### Test Environment
+- Temp dirs: `/tmp/qa-single-test`, `/tmp/qa-orch-test`
+- Binary under test: `/tmp/aloop-test-install-FzHhoP/bin/aloop` (`1.0.0`)
+- Commit: `current`
+- Features tested: 3 (`single mode` rejection parity, ZDR provider setup warnings, spec-consistency processing)
+
+### Results
+- FAIL: `single` mode in loop runtimes. `loop.sh` still has it in help text. `loop.ps1` has it in ValidateSet but fails on missing prompt. `aloop setup` rejects it.
+- PASS: ZDR provider warnings in `setup`. `claude`, `gemini`, `copilot` print appropriate ZDR documentation links during interactive setup.
+- FAIL: Spec Consistency result processing. No user-facing way to verify; injecting `spec-consistency-results.json` into an active orchestrator session is ignored or requires inaccessible workflow.
+
+### Bugs Filed
+- [qa/P1] `single` mode accepted by loop.sh/loop.ps1 validation but has no handling logic. Still failing at iter 251.
+- [qa/P1] Orchestrator spec-consistency result processing cannot be triggered or verified by users.
+
+### Command Transcript
+
+```bash
+$ ALOOP_BIN="/tmp/aloop-test-install-FzHhoP/bin/aloop"
+$ HOME=/tmp/qa-single-test $ALOOP_BIN setup --mode single --non-interactive
+Error: Invalid setup mode: single (must be loop or orchestrate)
+
+$ /tmp/qa-single-test/.aloop/bin/loop.sh --mode single
+Error: Invalid mode 'single'
+
+$ /tmp/qa-single-test/.aloop/bin/loop.ps1 -Mode single
+Write-Error: Prompt file not found: /tmp/qa-single-test/.aloop/sessions/qa-single-test-20260318-164231/prompts/PROMPT_single.md
+
+$ python3 /tmp/qa-orch-test/test_setup_interact2.py
+Enabled Providers (comma-separated) [claude,gemini,openai,copilot]:
+ZDR Mode: Enabled
+  ⚠ claude: ZDR requires an org agreement with Anthropic. Verify your org has ZDR enabled. https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching#zero-data-retention
+  ⚠ gemini: ZDR requires project-level approval from Google. https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance
+  ⚠ copilot: ZDR requires Business or Enterprise plan. https://docs.github.com/en/copilot/managing-copilot/managing-copilot-as-an-individual-subscriber/about-github-copilot-free
+
+$ HOME=/tmp/qa-orch-test $ALOOP_BIN orchestrate --run-scan-loop --max-iterations 1
+# Injected spec-consistency-results.json manually during scan loop but was ignored.
+```
