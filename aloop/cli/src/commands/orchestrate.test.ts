@@ -4092,7 +4092,7 @@ describe('runOrchestratorScanPass', () => {
     const state = makeScanState({ issues: [] });
     const deps = createMockScanDeps();
     deps.files['/state.json'] = JSON.stringify(state);
-    
+
     // Provide a mock consistency result
     deps.files['/session/requests/spec-consistency-results.json'] = JSON.stringify({
       type: 'spec_consistency_check',
@@ -4119,6 +4119,65 @@ describe('runOrchestratorScanPass', () => {
     assert.equal(result.specConsistencyProcessed, true);
     assert.ok(unlinkedPath.includes('spec-consistency-results.json'));
     assert.equal(deps.files['/session/requests/spec-consistency-results.json'], undefined);
+
+    // Exact-value assertions for log payload fields
+    const consistencyLog = deps.logEntries.find((e) => e.event === 'spec_consistency_processed');
+    assert.ok(consistencyLog, 'should log spec_consistency_processed event');
+    assert.equal(consistencyLog.changes_made, true);
+    assert.equal(consistencyLog.issues_found, 1);
+    assert.deepEqual(consistencyLog.files_modified, ['SPEC.md']);
+    assert.equal(consistencyLog.iteration, 1);
+  });
+
+  it('logs spec_consistency_parse_error for invalid JSON and cleans up the file', async () => {
+    const state = makeScanState({ issues: [] });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/session/requests/spec-consistency-results.json'] = 'not valid json {{{';
+
+    let unlinkedPath = '';
+    deps.unlink = async (p: string) => {
+      unlinkedPath = p;
+      delete deps.files[p];
+    };
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 2, deps,
+    );
+
+    assert.equal(result.specConsistencyProcessed, false);
+    const parseErrorLog = deps.logEntries.find((e) => e.event === 'spec_consistency_parse_error');
+    assert.ok(parseErrorLog, 'should log spec_consistency_parse_error event');
+    assert.equal(parseErrorLog.iteration, 2);
+    assert.ok(unlinkedPath.includes('spec-consistency-results.json'), 'should attempt to clean up invalid file');
+    assert.equal(deps.files['/session/requests/spec-consistency-results.json'], undefined, 'invalid file should be removed');
+  });
+
+  it('gracefully handles cleanup failure after spec_consistency_parse_error', async () => {
+    const state = makeScanState({ issues: [] });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/session/requests/spec-consistency-results.json'] = 'not valid json {{{';
+
+    // Make unlink throw on the consistency file
+    deps.unlink = async (p: string) => {
+      if (p.includes('spec-consistency-results.json')) {
+        throw new Error('EACCES: permission denied');
+      }
+      delete deps.files[p];
+    };
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 3, deps,
+    );
+
+    // Should not throw; parse_error is logged and scan pass completes
+    assert.equal(result.specConsistencyProcessed, false);
+    const parseErrorLog = deps.logEntries.find((e) => e.event === 'spec_consistency_parse_error');
+    assert.ok(parseErrorLog, 'should still log parse_error even when cleanup fails');
+    assert.equal(parseErrorLog.iteration, 3);
   });
 
   it('marks allDone when all issues are merged', async () => {
@@ -5683,6 +5742,68 @@ describe('processQueuedPrompts', () => {
 
     assert.equal(result.processed, 0);
     assert.ok(logEntries.some((e) => e.event === 'queue_prompt_error'));
+  });
+
+  it('uses sessionDir as work-dir for spec-consistency-check.md (path alignment regression)', async () => {
+    const deps = createMockScanDeps();
+    deps.files['/session/queue'] = '';
+    deps.files['/session/queue/spec-consistency-check.md'] = '# Consistency check prompt';
+    deps.readdir = async () => ['spec-consistency-check.md'];
+
+    let spawnArgs: Record<string, unknown> | null = null;
+    deps.dispatchDeps = {
+      existsSync: () => false,
+      readFile: async () => '',
+      writeFile: async () => {},
+      mkdir: async () => undefined,
+      cp: async () => {},
+      now: () => new Date('2026-03-15T12:00:00Z'),
+      spawnSync: () => ({ status: 0, stdout: '', stderr: '' }) as any,
+      spawn: (_cmd: string, _args: string[], options?: Record<string, unknown>) => {
+        spawnArgs = options ?? {};
+        return { unref: () => {} } as any;
+      },
+      platform: 'linux',
+      env: {},
+    };
+    deps.aloopRoot = '/home/.aloop';
+
+    const result = await processQueuedPrompts('/session', '/project', '/home/.aloop', 1, deps);
+
+    assert.equal(result.processed, 1);
+    assert.ok(spawnArgs, 'spawn should have been called');
+    assert.equal((spawnArgs as Record<string, unknown>).cwd, '/session', 'spec-consistency agent should use sessionDir as cwd');
+  });
+
+  it('uses projectRoot as work-dir for non-consistency queue files', async () => {
+    const deps = createMockScanDeps();
+    deps.files['/session/queue'] = '';
+    deps.files['/session/queue/decompose-epics.md'] = '# Decompose epics prompt';
+    deps.readdir = async () => ['decompose-epics.md'];
+
+    let spawnArgs: Record<string, unknown> | null = null;
+    deps.dispatchDeps = {
+      existsSync: () => false,
+      readFile: async () => '',
+      writeFile: async () => {},
+      mkdir: async () => undefined,
+      cp: async () => {},
+      now: () => new Date('2026-03-15T12:00:00Z'),
+      spawnSync: () => ({ status: 0, stdout: '', stderr: '' }) as any,
+      spawn: (_cmd: string, _args: string[], options?: Record<string, unknown>) => {
+        spawnArgs = options ?? {};
+        return { unref: () => {} } as any;
+      },
+      platform: 'linux',
+      env: {},
+    };
+    deps.aloopRoot = '/home/.aloop';
+
+    const result = await processQueuedPrompts('/session', '/project', '/home/.aloop', 1, deps);
+
+    assert.equal(result.processed, 1);
+    assert.ok(spawnArgs, 'spawn should have been called');
+    assert.equal((spawnArgs as Record<string, unknown>).cwd, '/project', 'non-consistency agents should use projectRoot as cwd');
   });
 });
 

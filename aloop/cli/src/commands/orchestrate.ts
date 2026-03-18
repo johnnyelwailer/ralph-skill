@@ -4524,6 +4524,13 @@ export async function processQueuedPrompts(
       const agentPromptFile = path.join(agentPromptsDir, 'PROMPT_single.md');
       await deps.dispatchDeps.writeFile(agentPromptFile, content, 'utf8');
 
+      // For spec-consistency, use sessionDir as work-dir so the agent's
+      // relative output path (requests/spec-consistency-results.json)
+      // resolves under the session directory where the scan pass reads it.
+      // The prompt already embeds changed-files list and diff, so the agent
+      // does not need projectRoot as cwd.
+      const agentWorkDir = fileName === 'spec-consistency-check.md' ? sessionDir : projectRoot;
+
       let command: string;
       let args: string[];
       if (isWindows) {
@@ -4532,7 +4539,7 @@ export async function processQueuedPrompts(
           '-NoProfile', '-File', path.join(loopBinDir, 'loop.ps1'),
           '-PromptsDir', agentPromptsDir,
           '-SessionDir', sessionDir,
-          '-WorkDir', projectRoot,
+          '-WorkDir', agentWorkDir,
           '-Mode', 'single',
           '-Provider', 'round-robin',
           '-MaxIterations', '1',
@@ -4544,7 +4551,7 @@ export async function processQueuedPrompts(
         args = [
           '--prompts-dir', agentPromptsDir,
           '--session-dir', sessionDir,
-          '--work-dir', projectRoot,
+          '--work-dir', agentWorkDir,
           '--mode', 'single',
           '--provider', 'round-robin',
           '--max-iterations', '1',
@@ -4554,7 +4561,7 @@ export async function processQueuedPrompts(
       }
 
       const child = deps.dispatchDeps.spawn(command, args, {
-        cwd: projectRoot,
+        cwd: agentWorkDir,
         detached: true,
         stdio: 'ignore',
         env: { ...deps.dispatchDeps.env },
