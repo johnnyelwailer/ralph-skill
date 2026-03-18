@@ -1,5 +1,32 @@
 # Review Log
 
+## Review — 2026-03-18 17:45 UTC — commit 3f188d7..72ef614
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/bin/loop.tests.ps1`, `aloop/bin/loop_branch_coverage.tests.sh`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/dashboard/src/App.tsx`, `aloop/cli/dashboard/src/AppView.tsx`, `aloop/cli/dashboard/src/App.coverage.test.ts`, `aloop/cli/src/commands/devcontainer.test.ts`, `aloop/templates/PROMPT_orch_review.md`, `.opencode/agents/*.md`, `aloop/cli/aloop-cli-1.0.0.tgz`
+
+- Gate 4: **Committed binary artifact** — `aloop/cli/aloop-cli-1.0.0.tgz` (321KB npm pack tarball) is tracked in git. This is a build artifact that should not be committed. Remove from repo and add `*.tgz` to `.gitignore`.
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: Cross-platform timeout default mismatch fixed — both `loop.sh` and `loop.ps1` now default to `10800` (3 hours), matching spec.
+- Gate 4 ✅: Dead variable `callCount` removed from `devcontainer.test.ts` (commit `8bc4efd`).
+
+**Positive observations:**
+- Gate 1: Single mode (`single`) correctly implemented in both `loop.sh:366-370` and `loop.ps1:260-264` with matching behavior — resolves to `PROMPT_single.md`, used by orchestrator for one-shot child loops. `processQueuedPrompts` in `orchestrate.ts:4523` writes `PROMPT_single.md` and spawns with `--mode single`, completing the orchestrator→child dispatch pipeline.
+- Gate 1: Steering priority correctly enforced in all three runtimes — `loop.sh:1982-1986` prioritizes `*-PROMPT_steer.md` and `*-steering.md` files in queue before generic `.md`; `loop.ps1:1924-1930` uses identical `Where-Object` filter; `orchestrate.ts:4470-4479` uses `includes()` match with same patterns. All fall back to lexicographic sort when no steering prompt exists.
+- Gate 1: Orchestrator review layer (`invokeAgentReview` at `orchestrate.ts:1243-1293`) correctly implements the spec's queue-based review pattern — writes review request to `queue/review-{prNumber}.md` with PR diff, returns `pending` verdict on first call, consumes `requests/review-result-{prNumber}.json` on subsequent calls. `processPrLifecycle` correctly handles `pending` verdict by returning `review_pending` action.
+- Gate 1: Refinement budget cap at `REFINEMENT_BUDGET_CAP=5` with autonomy-based resolution (`classifyGapRisk` + `resolveRefinementBudgetAction`) matches spec intent — autonomous auto-resolves all, balanced auto-resolves low-risk only, cautious blocks all. `queueEstimateForIssues` correctly skips issues with `refinement_budget_exceeded: true`.
+- Gate 1: Token/price tracking uses `opencode export` CLI (not SQLite) per spec. `extract_opencode_usage()` in `loop.sh:742-821` and `Extract-OpenCodeUsage` in `loop.ps1:1084-1124` both parse the export JSON and sum usage across assistant messages. Parity is clean.
+- Gate 2: Refinement budget tests (orchestrate.test.ts) are thorough — 8 tests covering: increment on failure, initialization from 0, autonomous auto-resolve, cautious block, balanced low/high risk paths, below-threshold no-op, and budget-exceeded queue skip. All assert exact field values.
+- Gate 2: `parseChildSessionCost` tests (4 new) cover real cost accumulation, mixed real+estimated cost, string cost_usd parsing (from bash), and absence of usage fields when no data — all with exact numeric assertions.
+- Gate 2: `classifyGapRisk` tests (5) and `resolveRefinementBudgetAction` tests (3×3 matrix) use exact return value assertions. Thorough.
+- Gate 2: Dashboard `extractIterationUsage` tests cover null, missing field, zero cost, numeric cost, and string cost_usd edge cases. `formatTokenCount` covers 0, 500, 1.5k, 15.2k, 1.5M. Concrete value assertions throughout.
+- Gate 6: Proof manifest (iter 249) contains valid artifacts — packaged install verification log (CLI output, not test output), dashboard usage row screenshot at 1920x1080, and parity audit grep output. No filler. Skipped list is empty (all work proven).
+- Gate 8: No dependency changes; version compliance unchanged.
+- Gate 9: No user-facing documentation changes needed — all features are internal runtime/orchestrator mechanics.
+
+---
+
 ## Review — 2026-03-18 10:20 UTC — commit ecdd104..3f188d7
 
 **Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)

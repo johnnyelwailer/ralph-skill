@@ -6,6 +6,8 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 
 ### In Progress
 
+- [ ] [review] Gate 4: committed binary artifact `aloop/cli/aloop-cli-1.0.0.tgz` (321KB npm tarball) tracked in git — remove from repo and add `*.tgz` to `.gitignore`. (priority: high)
+
 ### Up Next
 - [ ] [orchestrator/P1] Implement Spec Consistency result processing: consume `requests/spec-consistency-results.json` in `runOrchestratorScanPass` and apply state/log actions so queued consistency checks have runtime effect. (priority: medium)
 - [ ] [setup/P1] Implement ZDR provider warnings in setup confirmation for org-level/provider-level constraints (Claude, Gemini, OpenAI, Copilot) with docs links so private-mode users get accurate risk guidance. (priority: medium)
