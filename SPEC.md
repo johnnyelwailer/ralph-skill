@@ -2169,16 +2169,20 @@ tessl install <workspace/tile>      # installs to .tessl/tiles/<workspace>/<tile
 tessl list                          # shows installed tiles with sync status
 ```
 
-**Discovery mechanism:** tessl registers itself as an MCP server in each provider's config (`.mcp.json` for Claude, `.codex/config.toml` for Codex, `.gemini/settings.json` for Gemini, `.vscode/mcp.json` for Copilot). Providers call the tessl MCP tool to discover and load skills on demand — skills are NOT copied into `.agents/skills/` or `.claude/skills/`.
+**Discovery mechanism:** tessl registers itself as an MCP server in each provider's config (`.mcp.json` for Claude, `.codex/config.toml` for Codex, `.gemini/settings.json` for Gemini, `.vscode/mcp.json` for Copilot). Providers call the tessl MCP tool to discover and load skills on demand.
+
+**Supported providers:** Claude Code, Cursor, Gemini CLI, Codex CLI, Copilot CLI, Copilot VS Code. **OpenCode is NOT supported** by tessl — no MCP config is generated for it.
+
+**OpenCode workaround:** After `tessl install`, copy/symlink `SKILL.md` files from `.tessl/tiles/<workspace>/<tile>/SKILL.md` into `.agents/skills/<tile>/SKILL.md`. OpenCode natively scans `.agents/skills/` so it picks them up via filesystem discovery — no MCP needed.
 
 **Files tessl creates:**
 - `tessl.json` — manifest with dependencies and versions
 - `.tessl/tiles/` — installed skill content (SKILL.md + references/)
-- MCP client configs per detected provider
+- MCP client configs per detected provider (not OpenCode)
 
 **No auth required** for public tiles (search + install). `tessl login` only needed for private/workspace tiles.
 
-### Provider Skill Directories (for internal/aloop skills only)
+### Provider Skill Directories
 
 | Provider | `.agents/skills/`? | Project-level search paths | Global search paths |
 |----------|:--:|---------------------------|---------------------|
