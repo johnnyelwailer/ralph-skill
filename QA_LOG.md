@@ -4293,3 +4293,35 @@ EOF
 # loop.ps1 parity confirmed: Resolve-ExecutionControls at line 409,
 # effectiveTimeout/effectiveMaxRetries/effectiveRetryBackoff all wired.
 ```
+
+## QA Session — 2026-03-18 (iteration 250)
+
+### Test Environment
+- Temp dir: `/home/pj/.copilot/session-state/658dc0b3-22c4-4303-bfdf-9fc120f2aa72/files/qa-iter250`
+- Isolated HOME: `/tmp/qa-home-yfccwk`
+- Binary under test: `/tmp/aloop-test-install-WRB7Yp/bin/aloop` (`1.0.0`)
+- Commit: `8bc4efd`
+- Dashboard URL (from host `meta.json`): `http://localhost:4040`
+- Features tested: 5 (`setup/start/stop`, `status --watch`, `steer`, `gh watch`, dashboard layout/docs)
+
+### Results
+- PASS: `aloop setup --non-interactive --mode loop --providers codex --spec SPEC.md`
+- PASS: `aloop start --max-iterations 1` launches session and prints dashboard URL
+- PASS: `aloop status` + `aloop status --watch` (live refresh every 2s)
+- PASS: `aloop steer --session <id> <instruction>` queues steering; missing instruction errors cleanly
+- PASS: `aloop stop <session-id>`
+- PASS: `aloop start` in fresh no-config repo returns clean guidance (`Run aloop setup first`)
+- PASS: `aloop gh watch --repo owner/repo` returns clean unauthenticated GH guidance (no stack trace)
+- PASS: Host dashboard layout/docs verification at 1920x1080 (`sidebarVisible=true`, `hasDocuments=true`, `hasActivity=true`; docs API non-empty)
+
+### Bugs Filed
+- None (no new regressions found in this run)
+
+### Command Transcript
+Full raw transcript (exact commands/stdout/stderr/exit codes):
+`/home/pj/.copilot/session-state/658dc0b3-22c4-4303-bfdf-9fc120f2aa72/files/qa-iter250/command-transcript.txt`
+
+### Screenshots / Evidence
+- `/home/pj/.copilot/session-state/658dc0b3-22c4-4303-bfdf-9fc120f2aa72/files/qa-iter250/dashboard-host-1920x1080.png`
+- `/home/pj/.copilot/session-state/658dc0b3-22c4-4303-bfdf-9fc120f2aa72/files/qa-iter250/dashboard-host-layout.json`
+- `/home/pj/.copilot/session-state/658dc0b3-22c4-4303-bfdf-9fc120f2aa72/files/qa-iter250/dashboard-local-fallback.png`
