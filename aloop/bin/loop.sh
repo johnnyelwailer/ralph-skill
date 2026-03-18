@@ -488,13 +488,14 @@ PY
 }
 
 persist_loop_plan_state() {
-    if [ ! -f "$LOOP_PLAN_FILE" ]; then
-        return
-    fi
     if check_all_tasks_complete; then
         ALL_TASKS_MARKED_DONE=true
     else
         ALL_TASKS_MARKED_DONE=false
+    fi
+
+    if [ ! -f "$LOOP_PLAN_FILE" ]; then
+        return
     fi
     python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" "$ITERATION" "$ALL_TASKS_MARKED_DONE" "$LAST_PLAN_COMMIT" <<'PY'
 import json, os, sys, tempfile
@@ -1887,7 +1888,11 @@ run_queue_if_present() {
     local QUEUE_DIR="$SESSION_DIR/queue"
     local QUEUE_ITEM=""
     if [ -d "$QUEUE_DIR" ]; then
-        QUEUE_ITEM=$(find "$QUEUE_DIR" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort | head -n1)
+        # Prioritize steering prompts (*-PROMPT_steer.md or *-steering.md)
+        QUEUE_ITEM=$(find "$QUEUE_DIR" -maxdepth 1 \( -name '*-PROMPT_steer.md' -o -name '*-steering.md' \) -type f 2>/dev/null | sort | head -n1)
+        if [ -z "$QUEUE_ITEM" ]; then
+            QUEUE_ITEM=$(find "$QUEUE_DIR" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort | head -n1)
+        fi
     fi
 
     if [ -n "$QUEUE_ITEM" ] && [ -f "$QUEUE_ITEM" ]; then

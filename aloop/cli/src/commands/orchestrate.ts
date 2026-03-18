@@ -4404,12 +4404,23 @@ export async function processQueuedPrompts(
     entries = knownFiles.filter((f) => deps.existsSync(path.join(queueDir, f)));
   }
 
-  const mdFiles = entries.filter((f) => f.endsWith('.md')).sort();
+  const mdFiles = entries.filter((f) => f.endsWith('.md'));
   if (mdFiles.length === 0) return result;
 
+  // Prioritize steering prompts (*-PROMPT_steer.md or *-steering.md)
+  let nextFile = mdFiles
+    .filter((f) => f.includes('-PROMPT_steer.md') || f.includes('-steering.md'))
+    .sort()[0];
+
+  if (!nextFile) {
+    nextFile = mdFiles.sort()[0];
+  }
+
   // Process one file per pass (oldest first by filename sort), like loop.sh
-  const fileName = mdFiles[0];
+  const fileName = nextFile;
+
   const filePath = path.join(queueDir, fileName);
+
 
   try {
     const content = await deps.readFile(filePath, 'utf8');

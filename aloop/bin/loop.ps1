@@ -450,12 +450,12 @@ function Get-ModeColor {
 
 function Persist-LoopPlanState {
     param([int]$Iteration = 0)
+    # Update script:allTasksMarkedDone before persisting (or early return)
+    $script:allTasksMarkedDone = Check-AllTasksComplete
+
     $loopPlanFile = Join-Path $SessionDir "loop-plan.json"
     if (-not (Test-Path $loopPlanFile)) { return }
     
-    # Update script:allTasksMarkedDone before persisting
-    $script:allTasksMarkedDone = Check-AllTasksComplete
-
     try {
         $plan = Get-Content -Path $loopPlanFile -Raw | ConvertFrom-Json
         $plan.cyclePosition = [int]$script:cyclePosition
@@ -1874,8 +1874,14 @@ function Run-QueueIfPresent {
     $queueDir = Join-Path $SessionDir "queue"
     $queueItem = $null
     if (Test-Path $queueDir) {
-        $queueItem = Get-ChildItem -Path $queueDir -Filter '*.md' -File -ErrorAction SilentlyContinue |
+        # Prioritize steering prompts (*-PROMPT_steer.md or *-steering.md)
+        $queueItem = Get-ChildItem -Path $queueDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "*-PROMPT_steer.md" -or $_.Name -like "*-steering.md" } |
             Sort-Object Name | Select-Object -First 1
+        if (-not $queueItem) {
+            $queueItem = Get-ChildItem -Path $queueDir -Filter '*.md' -File -ErrorAction SilentlyContinue |
+                Sort-Object Name | Select-Object -First 1
+        }
     }
 
     if ($queueItem) {

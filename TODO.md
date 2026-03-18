@@ -24,6 +24,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 - [ ] [dashboard/low] Extend E2E `smoke.spec.ts` coverage for explicit 1920x1080 sidebar/docs/activity visibility checks once core gates are green.
 
 ### Completed
+- [x] [review] [runtime/P1] [bug] Enforce steering priority over forced final review queue items: current loop queue ordering is lexicographical and steering uses timestamped names, so review can run before steering. Updated `loop.sh`, `loop.ps1`, and `orchestrate.ts` to explicitly prioritize steering prompts (*-PROMPT_steer.md, *-steering.md) in the queue. (priority: critical)
 - [x] [orchestrator/P1] Implement Orchestrator Review Layer: add `PROMPT_orch_review.md` and wire `invokeAgentReview` path so post-child PR review enforces spec compliance/proof quality before merge. (priority: high)
 - [x] [orchestrator/P1] Implement Refinement Budget Cap: add `refinement_count` to `OrchestratorIssue`, increment on DoR failure, and enforce cap of 5 with autonomy-based auto-resolve vs wait behavior so refinement loops cannot spin forever. (priority: high)
 - [x] [runtime/P1] [steering] Set default execution-control provider timeout to 3 hours (10800s) in both `loop.sh` and `loop.ps1`, preserving precedence (`prompt timeout` -> `ALOOP_PROVIDER_TIMEOUT` -> built-in default) and adding parity regression coverage. (priority: high)
