@@ -1510,10 +1510,40 @@ test('buildProviderAuthFileMounts - unknown provider skipped', () => {
   assert.equal(mounts.length, 0);
 });
 
-test('buildProviderAuthFileMounts - default existsFn uses real filesystem', () => {
-  // Using default args: should not throw, may return empty if no auth files on host
-  const mounts = buildProviderAuthFileMounts(['claude'], {});
-  assert.ok(Array.isArray(mounts));
+test('buildProviderAuthFileMounts - no auth files present returns empty mounts', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = () => false; // no auth files exist on host
+  const mounts = buildProviderAuthFileMounts(['claude'], env, existsFn, '/tmp/fakehome');
+  assert.equal(mounts.length, 0);
+});
+
+test('buildProviderAuthFileMounts - gemini with both auth files present returns two mounts', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = (p: string) => p.includes('.gemini/');
+  const mounts = buildProviderAuthFileMounts(['gemini'], env, existsFn, '/tmp/fakehome');
+
+  assert.equal(mounts.length, 2);
+  assert.ok(mounts[0].includes('source=/tmp/fakehome/.gemini/oauth_creds.json'));
+  assert.ok(mounts[0].includes('target=${containerEnv:HOME}/.gemini/oauth_creds.json'));
+  assert.ok(mounts[1].includes('source=/tmp/fakehome/.gemini/google_accounts.json'));
+  assert.ok(mounts[1].includes('target=${containerEnv:HOME}/.gemini/google_accounts.json'));
+});
+
+test('buildProviderAuthFileMounts - gemini with only one auth file returns one mount', () => {
+  const env: Record<string, string | undefined> = {};
+  const existsFn = (p: string) => p.includes('oauth_creds.json');
+  const mounts = buildProviderAuthFileMounts(['gemini'], env, existsFn, '/tmp/fakehome');
+
+  assert.equal(mounts.length, 1);
+  assert.ok(mounts[0].includes('source=/tmp/fakehome/.gemini/oauth_creds.json'));
+});
+
+test('buildProviderAuthFileMounts - env var set skips mount even when file exists', () => {
+  const env: Record<string, string | undefined> = { ANTHROPIC_API_KEY: 'sk-test' };
+  const existsFn = () => true; // all files exist
+  const mounts = buildProviderAuthFileMounts(['claude'], env, existsFn, '/tmp/fakehome');
+
+  assert.equal(mounts.length, 0); // skipped because env var is set
 });
 
 // --- checkAuthPreflight with auth file fallback ---
