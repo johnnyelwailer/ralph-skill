@@ -1092,40 +1092,85 @@ Wave scheduling rules:
   - Human can cherry-pick from `agent/trunk` if needed
   - Easy rollback: just delete `agent/trunk` and recreate from main
 
-### Orchestrator State
+### Orchestrator State — GitHub-Native (Projects V2)
 
-Stored at `~/.aloop/sessions/<orchestrator-session-id>/orchestrator.json`:
+**GitHub is the source of truth.** The orchestrator uses a Projects V2 board with a custom Status field as its state machine. Local state is minimal — just PID tracking.
+
+#### Prerequisites
+
+The `gh` CLI must have `project` scope. The setup skill detects and prompts:
+```bash
+gh auth status 2>&1 | grep -q 'project' || gh auth refresh -s project
+```
+
+#### Projects V2 Status Field (custom single-select)
+
+| Status | Color | Orchestrator meaning |
+|--------|-------|---------------------|
+| Backlog | GRAY | Decomposed, not yet scheduled |
+| Todo | GREEN | Scheduled in current wave |
+| In Progress | YELLOW | Child loop actively working |
+| Blocked | RED | Waiting on dependency or human |
+| In Review | BLUE | PR created, under review |
+| Done | PURPLE | PR merged |
+
+Statuses are created/updated via GraphQL `updateProjectV2Field` mutation with `singleSelectOptions` array. Options matched by **name** (IDs regenerate on update — always re-read after mutation).
+
+Available colors: `GRAY`, `BLUE`, `GREEN`, `YELLOW`, `ORANGE`, `RED`, `PINK`, `PURPLE`
+
+#### Moving issues between statuses
+
+```graphql
+mutation {
+  updateProjectV2ItemFieldValue(input: {
+    projectId: "<project-node-id>"
+    itemId: "<item-node-id>"
+    fieldId: "<status-field-id>"
+    value: { singleSelectOptionId: "<option-id>" }
+  }) { projectV2Item { id } }
+}
+```
+
+CLI: `gh project item-edit --project-id <id> --id <item-id> --field-id <field-id> --single-select-option-id <opt-id>`
+
+#### Dependencies (native, GA)
+
+- `addBlockedBy(input: {issueId, blockingIssueId})` / `removeBlockedBy` — GraphQL mutations
+- Query: `issue { blockedBy(first:50) { nodes { number } } blocking(first:50) { nodes { number } } }`
+- REST: `/repos/{o}/{r}/issues/{n}/issue-dependencies`
+- Limit: 50 per relationship type per issue
+- Search: `is:blocked`, `blocking:<n>`
+
+#### Sub-issues (native, GA, all plans)
+
+- 50 sub-issues/parent, 8 nesting levels
+- GraphQL: `addSubIssue(input: {issueId, subIssueId})`, `removeSubIssue`, `reprioritizeSubIssue`
+- Query: `issue { subIssues(first:50) { nodes { number state } } parent { number } }`
+
+#### Minimal local state
+
+Stored at `~/.aloop/sessions/<orchestrator-session-id>/sessions.json`:
 
 ```json
 {
-  "spec_file": "SPEC.md",
-  "trunk_branch": "agent/trunk",
-  "concurrency_cap": 3,
-  "current_wave": 1,
-  "issues": [
-    {
-      "number": 42,
-      "title": "Implement provider health subsystem",
-      "wave": 1,
-      "state": "merged",
-      "child_session": "ralph-skill-20260227-issue42",
-      "pr_number": 15,
-      "depends_on": []
-    },
-    {
-      "number": 43,
-      "title": "Add aloop status CLI subcommand",
-      "wave": 2,
-      "state": "in_progress",
-      "child_session": "ralph-skill-20260227-issue43",
-      "pr_number": null,
-      "depends_on": [42]
-    }
-  ],
-  "completed_waves": [1],
-  "created_at": "2026-02-27T12:00:00Z"
+  "project_id": "PVT_kwHOAA0LoM4BRU99",
+  "status_field_id": "PVTSSF_lAHOAA0LoM4BRU99zg_MBM8",
+  "status_options": {"Backlog": "abc123", "Todo": "def456", "In Progress": "ghi789", "Blocked": "jkl012", "In Review": "mno345", "Done": "pqr678"},
+  "issues": {
+    "42": {"session_id": "ralph-skill-20260227-issue42", "pid": 12345, "item_id": "PVTI_abc"},
+    "43": {"session_id": "ralph-skill-20260227-issue43", "pid": null, "item_id": "PVTI_def"}
+  }
 }
 ```
+
+Everything else (issue state, status, labels, dependencies, PRs) is queried from GitHub on demand.
+
+#### Efficient polling
+
+- **ETag**: `GET /repos/{o}/{r}/issues` returns `Etag` header; `304 Not Modified` is free (no rate limit cost)
+- **`since` param**: filter to issues updated after a timestamp
+- **GraphQL**: single query for all project items + statuses + dependencies ≈ 172 points (budget: 5,000/hr)
+- **Webhooks** (optional): `issues`, `sub_issues`, `projects_v2_item`, `pull_request` events
 
 ### Conflict Resolution
 
@@ -1188,7 +1233,7 @@ aloop orchestrate --spec SPEC.md --plan-only
 - [ ] Merge conflicts trigger automatic rebase attempts (max 2 before human flag)
 - [ ] Wave N+1 only dispatches after all wave N issues are merged
 - [ ] `aloop orchestrate --plan-only` creates issues without launching loops
-- [ ] Orchestrator state is persisted in `orchestrator.json`
+- [ ] Orchestrator state uses GitHub Projects V2 as source of truth with minimal local `sessions.json`
 - [ ] `aloop status` shows orchestrator tree (orchestrator → children → issues → PRs)
 - [ ] Final report includes: issues created/completed/failed, time, provider usage, cost estimates
 - [ ] Provider health subsystem is shared across all child loops (file-lock safe)
@@ -1767,36 +1812,23 @@ Agent-generated comments are identified by a footer marker:
 Session: ralph-skill-20260227-issue42*
 ```
 
-### Orchestrator State Addition
+### Triage State (in local sessions.json)
 
 ```json
 {
-  "issues": [{
-    "number": 42,
-    "last_comment_check": "2026-02-27T12:00:00Z",
-    "blocked_on_human": false,
-    "triage_log": [
-      {
-        "comment_id": 456,
-        "author": "pj",
-        "classification": "needs_clarification",
-        "confidence": 0.6,
-        "action_taken": "post_reply_and_block",
-        "reply_comment_id": 457,
-        "timestamp": "2026-02-27T12:05:00Z"
-      },
-      {
-        "comment_id": 458,
-        "author": "pj",
-        "classification": "actionable",
-        "confidence": 0.95,
-        "action_taken": "steering_injected",
-        "timestamp": "2026-02-27T12:30:00Z"
-      }
-    ]
-  }]
+  "issues": {
+    "42": {
+      "session_id": "ralph-skill-20260227-issue42",
+      "pid": 12345,
+      "item_id": "PVTI_abc",
+      "last_comment_check": "2026-02-27T12:00:00Z",
+      "blocked_on_human": false
+    }
+  }
 }
 ```
+
+Triage decisions are logged to `log.jsonl` (not duplicated in local state). The `blocked_on_human` flag maps to the `Blocked` status in the Projects V2 board and the `aloop/blocked-on-human` label on the issue.
 
 ### Integration with Security Model
 
@@ -1820,7 +1852,7 @@ The triage agent runs inside the orchestrator (Layer 1 — trusted). It uses `al
 - [ ] Confidence below 0.7 forces `needs_clarification` classification regardless of agent output
 - [ ] Agent-generated comments are marked with a footer and skipped during triage
 - [ ] Processed comment IDs are tracked to prevent re-triage
-- [ ] All triage decisions are logged in `orchestrator.json` triage_log
+- [ ] All triage decisions are logged in `log.jsonl` and optionally in `sessions.json` triage_log
 - [ ] Triage agent uses `aloop gh` for all GH operations (subject to orchestrator policy)
 
 ---
@@ -2116,6 +2148,93 @@ The skill's devcontainer generator MUST:
 - [ ] Container is started by first loop, reused by subsequent loops (detect via `devcontainer exec -- echo ok`)
 - [ ] No per-loop container startup overhead after the first
 - [ ] Session worktrees are accessible inside the container via bind mount of `~/.aloop/sessions/`
+
+---
+
+## Domain Skill Discovery — Agent Skills / tessl (Priority: P2)
+
+Agent skills ([agentskills.io](https://agentskills.io), [skills.sh](https://skills.sh), [tessl.io](https://tessl.io)) are an open standard for domain-specific agent instructions. A skill is a `SKILL.md` file with YAML frontmatter and markdown instructions — framework patterns, pitfalls, best practices, conventions. Providers that support the standard auto-discover skills from their native skill directories.
+
+**How aloop uses skills:** Install skill files into each active provider's native directory. The provider discovers and loads them natively. Agent prompts include a lightweight hint to check installed skills — the hint is a one-liner, never skill content.
+
+### Provider Skill Directories
+
+| Provider | Skill Directory | Auto-discovery? |
+|----------|----------------|-----------------|
+| Claude Code | `.claude/skills/` (project) or `~/.claude/skills/` (global) | Yes — loaded automatically |
+| OpenCode | `.opencode/skills/` (project) | Yes — loaded automatically |
+| Codex | `.codex/skills/` (project) or `~/.codex/skills/` (global) | Yes — loaded automatically |
+| Copilot | `.github/copilot/skills/` (project) | TBD — check current spec |
+| Gemini | `.gemini/skills/` (project) | TBD — check current spec |
+
+When multiple providers are enabled, the same `SKILL.md` is copied into **all** active providers' directories. The file is identical — only the target directory differs.
+
+### Phase 1: Setup-Time Discovery (project-wide)
+
+During `aloop setup`, after project analysis:
+
+1. Run `tessl init --project-dependencies` to auto-detect stack and suggest skills
+2. Or `tessl search --type skills "<technology>"` for specific domains
+3. Install discovered skills into all active providers' skill directories
+4. **List all installed skills in the setup summary** — the user reviews the complete list at the end, not one-by-one
+5. If the user doesn't like a skill, they can request removal or swap — no per-skill approval dialog
+6. Record installed skills in `config.yml` under `installed_skills`
+7. **Inform the user:** "The orchestrator may install additional domain skills per-task during planning. You can review/remove skills at any time."
+
+This gives every agent iteration domain context from the start — a Next.js project's build agent knows Next.js conventions, the review agent knows Next.js anti-patterns.
+
+### Phase 2: Orchestrator Skill Scout Agent (per-task, autonomous)
+
+The real value: a dedicated **skill scout** agent (`PROMPT_orch_skill_scout.md`) that runs after task decomposition but before child loop dispatch. It evaluates each task and discovers domain-specific skills autonomously.
+
+**When it runs:** After `PROMPT_orch_decompose.md` produces issues, before dispatch. One pass per planning cycle — not per-iteration.
+
+**What it does:**
+1. Read all decomposed task issues
+2. For each task, extract domain keywords (technology, framework, library, pattern)
+3. Search for matching skills: `tessl search --type skills "<keywords>"`
+4. Evaluate relevance — does this skill actually help with this specific task?
+5. Install relevant skills into the child loop's worktree skill directories
+6. Log which skills were installed for which tasks (for traceability)
+
+**What it does NOT do:**
+- Modify agent prompts (skills are files, not prompt injections)
+- Install skills globally (only into the child loop's worktree)
+- Run during loop iterations (one-shot at planning time)
+- Override user-rejected skills from setup
+
+**Example flow:**
+```
+Task: "Implement OAuth2 PKCE flow with NextAuth.js"
+  → Keywords: oauth2, pkce, nextauth, next.js, authentication
+  → tessl search: finds "nextauth-patterns", "oauth2-security", "next-app-router"
+  → Installs into child worktree: .claude/skills/nextauth-patterns/SKILL.md, etc.
+  → Child loop's build agent auto-discovers NextAuth.js-specific guidance
+```
+
+### Prompt Hint (not content injection)
+
+Agent prompts (build, review, qa) include a lightweight hint via `{{PROVIDER_HINTS}}`:
+
+```markdown
+Domain skills are installed for this project's tech stack. Check your skills
+directory before implementing — they contain framework-specific patterns,
+conventions, and known pitfalls.
+```
+
+This is a static one-liner — it doesn't change per skill, per task, or per iteration. It just reminds the agent to look. The provider's native skill loading handles the rest.
+
+### Acceptance Criteria
+
+- [ ] Setup skill runs `tessl init --project-dependencies` (or equivalent) during discovery
+- [ ] Discovered skills are listed in setup summary — no per-skill approval dialog
+- [ ] Setup informs user that orchestrator may install additional skills per-task
+- [ ] Approved skills are copied into all active providers' native skill directories
+- [ ] `PROMPT_orch_skill_scout.md` agent prompt exists for orchestrator per-task skill discovery
+- [ ] Skill scout runs after decomposition, before dispatch — one pass per planning cycle
+- [ ] Installed skills are recorded in config/state for traceability
+- [ ] Agent prompts contain a one-line hint to check skills — never skill content injection
+- [ ] Skills in child loop worktrees are isolated — different tasks can have different skills
 
 ---
 
