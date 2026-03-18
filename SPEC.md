@@ -1881,6 +1881,8 @@ Alternative: `opencode stats --days 1 --project ''` for aggregate stats (less pr
 
 Note: `opencode run` does NOT output usage data to stdout/stderr. The export API is the only supported way to retrieve per-run token/cost data.
 
+**Container awareness:** When opencode runs inside a devcontainer, its session data lives inside the container. The extraction commands must run in the same environment as the provider — use `${DC_EXEC[@]}` (which expands to `devcontainer exec --workspace-folder "$WORK_DIR" --` when containerized, or empty when running on host). This is the same prefix already used for provider invocation, so no new mechanism is needed.
+
 **Log schema extension** — add optional fields to `iteration_complete` events:
 ```json
 {
