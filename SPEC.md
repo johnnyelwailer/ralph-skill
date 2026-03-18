@@ -1847,10 +1847,47 @@ Token/price tracking is in-scope and required at a basic level for OpenCode/Open
 - Show token/cost only when available; do not fabricate values when providers omit usage payloads.
 - Prefer real parsed usage/cost for budget calculations; fall back to estimates only for iterations/providers with no usage data.
 
+**Data sources for OpenCode/OpenRouter:**
+
+OpenRouter includes a `usage` object in every API response (streaming and non-streaming):
+```json
+{
+  "usage": {
+    "prompt_tokens": 1940,
+    "completion_tokens": 512,
+    "total_tokens": 2452,
+    "cost": 0.0034
+  }
+}
+```
+
+OpenCode persists this per-message in its SQLite database (`$XDG_DATA_HOME/opencode/opencode.db`), with fields: `cost` (float), `tokens.input`, `tokens.output`, `tokens.reasoning`, `tokens.cache.read`, `tokens.cache.write`. The `opencode stats` command aggregates these.
+
+**Extraction approach:** After each opencode iteration, query the opencode SQLite DB for messages created during that iteration's time window (between `iteration_started_at` and `iteration_complete` timestamps). Sum `cost` and token fields. This is more reliable than parsing stdout — opencode's stdout doesn't include usage data in `run` mode.
+
+**Log schema extension** — add optional fields to `iteration_complete` events:
+```json
+{
+  "event": "iteration_complete",
+  "iteration": "42",
+  "mode": "build",
+  "provider": "opencode",
+  "model": "openrouter/hunter-alpha",
+  "duration": "180s",
+  "tokens_input": 15200,
+  "tokens_output": 3400,
+  "tokens_cache_read": 48000,
+  "cost_usd": 0.0034
+}
+```
+
+Fields are omitted (not zero) when unavailable. Dashboard and orchestrator check for field presence before rendering/accounting.
+
 **Acceptance criteria:**
 - [ ] OpenCode/OpenRouter iterations with usage payloads record token/cost fields in iteration event data
 - [ ] Dashboard displays token/cost row only when usage data exists for that iteration
 - [ ] Orchestrator final report and budget accounting consume recorded usage/cost data when available
+- [ ] Token extraction queries opencode SQLite DB by time window, not stdout parsing
 
 ### CLI / Invocation
 
@@ -3247,6 +3284,35 @@ reasoning: high
 ```
 
 The `{{include:path}}` directive is expanded alongside other template variables (`{{SPEC_FILES}}`, `{{REFERENCE_FILES}}`, etc.) during the same expansion pass. Includes can themselves contain template variables — they are expanded after inlining.
+
+### Template Variable Reference
+
+All template variables used in prompt templates. Variables are expanded at two stages:
+
+**Setup-time** (expanded by `project.mjs` when copying templates to session `prompts/`):
+
+| Variable | Value | Example |
+|----------|-------|---------|
+| `{{SPEC_FILES}}` | Comma-joined spec file paths from config | `SPEC.md, specs/auth.md` |
+| `{{REFERENCE_FILES}}` | Comma-joined reference file paths (RESEARCH.md, VERSIONS.md, etc.) | `RESEARCH.md, VERSIONS.md` |
+| `{{VALIDATION_COMMANDS}}` | Bulleted list of backpressure validation commands | `- cd aloop/cli && npm test` |
+| `{{SAFETY_RULES}}` | Bulleted list of project-specific safety rules | `- Never modify production database` |
+| `{{PROVIDER_HINTS}}` | Provider-specific guidance (e.g., subagent usage for Claude) | `- Claude hint: Use parallel subagents...` |
+| `{{include:path}}` | Inlined file contents, relative to `aloop/templates/` | `{{include:instructions/review.md}}` |
+
+**Runtime** (expanded by `loop.sh`/`loop.ps1` before each provider invocation):
+
+| Variable | Value | Example |
+|----------|-------|---------|
+| `{{ITERATION}}` | Current iteration number | `42` |
+| `{{ARTIFACTS_DIR}}` | Session artifacts directory path | `/home/user/.aloop/sessions/abc123/artifacts` |
+| `iter-<N>` | Also replaced with current iteration (legacy pattern) | `iter-42` |
+
+**Planned but not yet implemented:**
+
+| Variable | Value | Status |
+|----------|-------|--------|
+| `{{SUBAGENT_HINTS}}` | Per-phase subagent delegation hints (opencode only) | Spec'd, not yet in expansion code |
 
 ### Event-Driven Agent Dispatch (decoupling the loop from agent knowledge)
 
