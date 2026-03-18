@@ -2155,19 +2155,19 @@ The skill's devcontainer generator MUST:
 
 Agent skills ([agentskills.io](https://agentskills.io), [skills.sh](https://skills.sh), [tessl.io](https://tessl.io)) are an open standard for domain-specific agent instructions. A skill is a `SKILL.md` file with YAML frontmatter and markdown instructions — framework patterns, pitfalls, best practices, conventions. Providers that support the standard auto-discover skills from their native skill directories.
 
-**How aloop uses skills:** Install skill files into each active provider's native directory. The provider discovers and loads them natively. Agent prompts include a lightweight hint to check installed skills — the hint is a one-liner, never skill content.
+**How aloop uses skills:** Install skill files into provider skill directories. The provider discovers and loads them natively. Agent prompts include a lightweight hint to check installed skills — the hint is a one-liner, never skill content.
 
 ### Provider Skill Directories
 
-| Provider | Skill Directory | Auto-discovery? |
-|----------|----------------|-----------------|
-| Claude Code | `.claude/skills/` (project) or `~/.claude/skills/` (global) | Yes — loaded automatically |
-| OpenCode | `.opencode/skills/` (project) | Yes — loaded automatically |
-| Codex | `.codex/skills/` (project) or `~/.codex/skills/` (global) | Yes — loaded automatically |
-| Copilot | `.github/copilot/skills/` (project) | TBD — check current spec |
-| Gemini | `.gemini/skills/` (project) | TBD — check current spec |
+| Provider | Project-level search paths | Global search paths | Auto-discovery? |
+|----------|---------------------------|---------------------|-----------------|
+| Claude Code | `.claude/skills/`, `.agents/skills/` | `~/.claude/skills/`, `~/.agents/skills/` | Yes |
+| OpenCode | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/` | `~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/` | Yes |
+| Codex | `.codex/skills/`, `.agents/skills/` | `~/.codex/skills/`, `~/.agents/skills/` | Yes |
+| Copilot | `.github/copilot/skills/` | TBD | TBD |
+| Gemini | `.gemini/skills/` | TBD | TBD |
 
-When multiple providers are enabled, the same `SKILL.md` is copied into **all** active providers' directories. The file is identical — only the target directory differs.
+**Cross-provider path:** `.agents/skills/` is recognized by Claude Code, OpenCode, and Codex. When multiple providers are active, install skills into `.agents/skills/` as the single shared location — no need to duplicate into each provider's directory. Only use provider-specific directories if a skill should be scoped to one provider.
 
 ### Phase 1: Setup-Time Discovery (project-wide)
 
@@ -2175,7 +2175,7 @@ During `aloop setup`, after project analysis:
 
 1. Run `tessl init --project-dependencies` to auto-detect stack and suggest skills
 2. Or `tessl search --type skills "<technology>"` for specific domains
-3. Install discovered skills into all active providers' skill directories
+3. Install discovered skills into `.agents/skills/` (cross-provider) or provider-specific directories
 4. **List all installed skills in the setup summary** — the user reviews the complete list at the end, not one-by-one
 5. If the user doesn't like a skill, they can request removal or swap — no per-skill approval dialog
 6. Record installed skills in `config.yml` under `installed_skills`
@@ -2229,7 +2229,7 @@ This is a static one-liner — it doesn't change per skill, per task, or per ite
 - [ ] Setup skill runs `tessl init --project-dependencies` (or equivalent) during discovery
 - [ ] Discovered skills are listed in setup summary — no per-skill approval dialog
 - [ ] Setup informs user that orchestrator may install additional skills per-task
-- [ ] Approved skills are copied into all active providers' native skill directories
+- [ ] Skills are installed into `.agents/skills/` (cross-provider) or provider-specific directories as appropriate
 - [ ] `PROMPT_orch_skill_scout.md` agent prompt exists for orchestrator per-task skill discovery
 - [ ] Skill scout runs after decomposition, before dispatch — one pass per planning cycle
 - [ ] Installed skills are recorded in config/state for traceability
