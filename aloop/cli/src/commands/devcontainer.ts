@@ -345,7 +345,7 @@ export function buildProviderInstallCommands(installedProviders: string[]): stri
  * Build remoteEnv entries for auth forwarding.
  * Only forwards env vars for activated providers using ${localEnv:VAR} syntax.
  */
-export function buildProviderRemoteEnv(installedProviders: string[], strategy: AuthStrategy = 'mount-first'): Record<string, string> {
+export function buildProviderRemoteEnv(installedProviders: string[]): Record<string, string> {
   const env: Record<string, string> = {};
   for (const provider of installedProviders) {
     const vars = PROVIDER_AUTH_ENV_VARS[provider];
@@ -490,7 +490,7 @@ export function generateDevcontainerConfig(
     features: { ...mapping.features },
     mounts: [...buildAloopMounts(), ...authFileMounts],
     containerEnv: buildAloopContainerEnv(),
-    remoteEnv: buildProviderRemoteEnv(installedProviders, authStrategy),
+    remoteEnv: buildProviderRemoteEnv(installedProviders),
   };
 
   const vscodeExtensions = buildVSCodeExtensions(installedProviders);

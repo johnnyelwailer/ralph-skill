@@ -16,7 +16,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 
 ### Deferred (Low Priority / After Core)
 - [x] [review] Gate 4: dead variable `callCount` in `aloop/cli/src/commands/devcontainer.test.ts:1248` — remove unused declaration. (priority: low)
-- [ ] [review] Gate 4: dead parameter `strategy` in `buildProviderRemoteEnv` (`aloop/cli/src/commands/devcontainer.ts:348`) — remove parameter or document intentional no-op. (priority: low)
+- [x] [review] Gate 4: dead parameter `strategy` in `buildProviderRemoteEnv` (`aloop/cli/src/commands/devcontainer.ts:348`) — removed unused parameter and updated call site in `generateDevcontainerConfig`. (priority: low)
 - [ ] [setup/P2] [steering] Run a focused UX iteration pass on setup + agent/skill/prompt surfaces across Claude/OpenCode/Copilot/Codex to improve smooth automation while preserving explicit user involvement/confirmation checkpoints. (priority: medium)
 - [ ] [dashboard/P1] Implement Proof artifact comparison modes (side-by-side/slider/diff overlay) in dashboard activity artifact viewer; defer until remaining loop/orchestrator core work is complete. (priority: medium)
 - [ ] [qa/P1] Dashboard docs tabs empty in some sessions (`/api/state` docs payload unresolved/empty due context/workdir mismatch reports) — keep deferred until current loop/runtime parity blockers are closed. (priority: low)

@@ -9149,7 +9149,7 @@ function buildProviderInstallCommands(installedProviders) {
   }
   return commands;
 }
-function buildProviderRemoteEnv(installedProviders, strategy = "mount-first") {
+function buildProviderRemoteEnv(installedProviders) {
   const env = {};
   for (const provider of installedProviders) {
     const vars = PROVIDER_AUTH_ENV_VARS[provider];
@@ -9237,7 +9237,7 @@ function generateDevcontainerConfig(discovery, existsFn = existsSync9, configure
     features: { ...mapping.features },
     mounts: [...buildAloopMounts(), ...authFileMounts],
     containerEnv: buildAloopContainerEnv(),
-    remoteEnv: buildProviderRemoteEnv(installedProviders, authStrategy)
+    remoteEnv: buildProviderRemoteEnv(installedProviders)
   };
   const vscodeExtensions = buildVSCodeExtensions(installedProviders);
   if (vscodeExtensions.length > 0) {
