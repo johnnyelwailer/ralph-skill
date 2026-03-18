@@ -14,5 +14,11 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
     exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**', '**/test-results/**'],
+    coverage: {
+      provider: 'istanbul',
+      reportsDirectory: './coverage',
+      include: ['src/App.tsx'],
+      reporter: ['text', 'json-summary'],
+    },
   },
 });
