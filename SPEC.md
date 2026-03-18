@@ -2296,7 +2296,7 @@ All host-side operations (GH requests, steering injection, dashboard, request pr
 - Read `loop-plan.json` each iteration, pick agent at `$cyclePosition`
 - Provider invocation (direct — loop and providers run in the same environment)
   - Must track child PIDs when invoking providers
-  - Per-iteration timeout (configurable via `ALOOP_PROVIDER_TIMEOUT`, default 8 hours) — catastrophic safety net only; not a behavioral limit on agent runtime
+  - Per-iteration timeout (default 8 hours) with precedence: prompt frontmatter `timeout` -> `ALOOP_PROVIDER_TIMEOUT` -> default. Timeout remains a catastrophic safety net only; not a behavioral limit on agent runtime
   - On loop exit (`finally`/`trap`), kill all spawned child processes
 - Iteration counting
 - Status.json and log.jsonl writes
@@ -3252,8 +3252,31 @@ Frontmatter fields:
 - `reasoning` — reasoning effort level (low, medium, high, xhigh)
 - `color` — terminal color for this phase (magenta, yellow, cyan, blue, green, red, white). Default: white
 - `trigger` — event key(s) that cause the runtime to inject this agent via the queue (see Event-Driven Agent Dispatch below)
+- `timeout` — per-prompt provider timeout override (duration string like `30m`, `2h`, or integer seconds)
+- `max_retries` — per-prompt retry cap before declaring iteration failure (overrides global default for that prompt only)
+- `retry_backoff` — per-prompt retry backoff policy (`none`, `linear`, `exponential`)
 
 All fields are optional — defaults apply if omitted (`provider: claude`, `model: claude-opus-4-6`, `agent: build`, `reasoning: medium`).
+
+### Runtime-Mutable Prompt Settings
+
+Prompt frontmatter is re-read on every iteration, so edits to these settings take effect the next time that prompt is selected (cycle or queue):
+
+- `provider`
+- `model`
+- `reasoning`
+- `timeout`
+- `max_retries`
+- `retry_backoff`
+- `color`
+
+Precedence for execution settings is:
+
+1. Prompt frontmatter value (highest)
+2. Session/env setting (for example `ALOOP_PROVIDER_TIMEOUT`)
+3. Built-in default (lowest)
+
+This applies to both loop mode and orchestrator child loops because both use the same prompt/frontmatter execution path.
 
 ### Shared Instructions via `{{include:path}}`
 
@@ -3402,7 +3425,7 @@ Files are sorted lexicographically and consumed in order. Naming convention: `NN
 - The runtime compiles this file once at session start from the pipeline YAML config, then **rewrites it** whenever the pipeline mutates (failure recovery, agent injection). It preserves `cyclePosition` and `iteration` (or adjusts them if the mutation requires it, e.g., `goto build` resets `cyclePosition`).
 - The loop script re-reads the file every iteration, so mutations take effect on the next turn.
 - The `version` field increments on each runtime rewrite — the loop script logs when it detects a plan change.
-- To change an agent's provider/model/reasoning, edit its prompt file's frontmatter — no plan recompilation needed. Changes take effect on the next iteration that uses that prompt.
+- To change an agent's provider/model/reasoning/timeout/retry behavior, edit its prompt file's frontmatter — no plan recompilation needed. Changes take effect on the next iteration that uses that prompt.
 - Transition rules (`onFailure: goto build`, escalation ladders) are **resolved by the runtime**, not the shell. When the runtime observes a failure via `status.json`, it rewrites the plan accordingly.
 - This keeps all complex logic in TS/Bun and all shell logic trivial: read JSON for cycle index, parse frontmatter for config, check queue folder, invoke, update index.
 
@@ -3426,7 +3449,7 @@ The pipeline is **mutable at runtime** via two mechanisms:
 - User steering says "add `security-audit` after every `build`" → runtime adds the prompt file and inserts its filename into the `cycle` array
 - User steering says "remove `docs-generator`" → runtime removes it from the `cycle` array
 - Provider consistently timing out → runtime edits that prompt file's frontmatter to swap providers
-- To change model/reasoning for an agent → edit the prompt file's frontmatter (no plan rewrite needed)
+- To change model/reasoning/timeout/max_retries/retry_backoff for an agent -> edit the prompt file's frontmatter (no plan rewrite needed)
 
 Agents do **not** modify the pipeline themselves — control stays with the user and host-side monitor (avoids perverse incentives like agents removing their own reviewers).
 
