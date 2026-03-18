@@ -2153,11 +2153,32 @@ The skill's devcontainer generator MUST:
 
 ## Domain Skill Discovery — Agent Skills / tessl (Priority: P2)
 
-Agent skills ([agentskills.io](https://agentskills.io), [skills.sh](https://skills.sh), [tessl.io](https://tessl.io)) are an open standard for domain-specific agent instructions. A skill is a `SKILL.md` file with YAML frontmatter and markdown instructions — framework patterns, pitfalls, best practices, conventions. Providers that support the standard auto-discover skills from their native skill directories.
+Agent skills ([agentskills.io](https://agentskills.io), [skills.sh](https://skills.sh), [tessl.io](https://tessl.io)) are an open standard for domain-specific agent instructions. A skill is a `SKILL.md` file with YAML frontmatter and markdown instructions — framework patterns, pitfalls, best practices, conventions.
 
-**How aloop uses skills:** Install skill files into provider skill directories. The provider discovers and loads them natively. Agent prompts include a lightweight hint to check installed skills — the hint is a one-liner, never skill content.
+**Two-track approach:**
 
-### Provider Skill Directories
+1. **External/community skills (via tessl)** — managed by tessl's own toolchain. `tessl install` puts skills in `.tessl/tiles/`, providers discover them via tessl's MCP server. tessl handles versioning, updates, quality scores, and security checks. No auth required for public tiles.
+2. **Internal/aloop skills** — our own `SKILL.md` files (project-specific agents, prompts, conventions) installed directly into provider-native skill directories. Version-controlled in the repo, no external dependency.
+
+### How tessl Works (verified)
+
+```
+tessl init                          # creates tessl.json + MCP configs for all detected providers
+tessl search --type skills "next"   # search registry (no auth needed for public)
+tessl install <workspace/tile>      # installs to .tessl/tiles/<workspace>/<tile>/SKILL.md
+tessl list                          # shows installed tiles with sync status
+```
+
+**Discovery mechanism:** tessl registers itself as an MCP server in each provider's config (`.mcp.json` for Claude, `.codex/config.toml` for Codex, `.gemini/settings.json` for Gemini, `.vscode/mcp.json` for Copilot). Providers call the tessl MCP tool to discover and load skills on demand — skills are NOT copied into `.agents/skills/` or `.claude/skills/`.
+
+**Files tessl creates:**
+- `tessl.json` — manifest with dependencies and versions
+- `.tessl/tiles/` — installed skill content (SKILL.md + references/)
+- MCP client configs per detected provider
+
+**No auth required** for public tiles (search + install). `tessl login` only needed for private/workspace tiles.
+
+### Provider Skill Directories (for internal/aloop skills only)
 
 | Provider | `.agents/skills/`? | Project-level search paths | Global search paths |
 |----------|:--:|---------------------------|---------------------|
@@ -2167,25 +2188,24 @@ Agent skills ([agentskills.io](https://agentskills.io), [skills.sh](https://skil
 | Copilot CLI | Yes | `.github/skills/`, `.agents/skills/`, `.claude/skills/` | `~/.copilot/skills/`, `~/.claude/skills/` |
 | Gemini CLI | Yes (alias) | `.gemini/skills/`, `.agents/skills/` | `~/.gemini/skills/`, `~/.agents/skills/` |
 
-**Install strategy:** `.agents/skills/` covers OpenCode, Codex, Copilot, and Gemini — but **not Claude Code**. When Claude Code is an active provider, also install into `.claude/skills/`. Two install targets max (`.agents/skills/` + `.claude/skills/`), not five.
+**Internal skill install strategy:** `.agents/skills/` covers OpenCode, Codex, Copilot, and Gemini — but **not Claude Code**. When Claude Code is active, also install into `.claude/skills/`. Two targets max.
 
 ### Phase 1: Setup-Time Discovery (project-wide)
 
 During `aloop setup`, after project analysis:
 
-1. Run `tessl init --project-dependencies` to auto-detect stack and suggest skills
-2. Or `tessl search --type skills "<technology>"` for specific domains
-3. Install discovered skills into `.agents/skills/` + `.claude/skills/` if Claude Code is active (two targets max)
+1. Run `tessl init --project-dependencies` to auto-detect stack, create MCP configs for all active providers
+2. tessl auto-suggests skills based on detected dependencies
+3. Install suggested skills via `tessl install` (goes into `.tessl/tiles/`, exposed via MCP)
 4. **List all installed skills in the setup summary** — the user reviews the complete list at the end, not one-by-one
 5. If the user doesn't like a skill, they can request removal or swap — no per-skill approval dialog
-6. Record installed skills in `config.yml` under `installed_skills`
-7. **Inform the user:** "The orchestrator may install additional domain skills per-task during planning. You can review/remove skills at any time."
+6. **Inform the user:** "The orchestrator may install additional domain skills per-task during planning. You can review/remove skills at any time."
 
 This gives every agent iteration domain context from the start — a Next.js project's build agent knows Next.js conventions, the review agent knows Next.js anti-patterns.
 
 ### Phase 2: Orchestrator Skill Scout Agent (per-task, autonomous)
 
-The real value: a dedicated **skill scout** agent (`PROMPT_orch_skill_scout.md`) that runs after task decomposition but before child loop dispatch. It evaluates each task and discovers domain-specific skills autonomously.
+A dedicated **skill scout** agent (`PROMPT_orch_skill_scout.md`) runs after task decomposition but before child loop dispatch. It evaluates each task and discovers domain-specific skills autonomously.
 
 **When it runs:** After `PROMPT_orch_decompose.md` produces issues, before dispatch. One pass per planning cycle — not per-iteration.
 
@@ -2194,11 +2214,11 @@ The real value: a dedicated **skill scout** agent (`PROMPT_orch_skill_scout.md`)
 2. For each task, extract domain keywords (technology, framework, library, pattern)
 3. Search for matching skills: `tessl search --type skills "<keywords>"`
 4. Evaluate relevance — does this skill actually help with this specific task?
-5. Install relevant skills into the child loop's worktree skill directories
+5. Install relevant skills via `tessl install` into the child loop's worktree
 6. Log which skills were installed for which tasks (for traceability)
 
 **What it does NOT do:**
-- Modify agent prompts (skills are files, not prompt injections)
+- Modify agent prompts (skills are loaded via MCP or native discovery, not prompt injection)
 - Install skills globally (only into the child loop's worktree)
 - Run during loop iterations (one-shot at planning time)
 - Override user-rejected skills from setup
@@ -2208,8 +2228,8 @@ The real value: a dedicated **skill scout** agent (`PROMPT_orch_skill_scout.md`)
 Task: "Implement OAuth2 PKCE flow with NextAuth.js"
   → Keywords: oauth2, pkce, nextauth, next.js, authentication
   → tessl search: finds "nextauth-patterns", "oauth2-security", "next-app-router"
-  → Installs into child worktree: .claude/skills/nextauth-patterns/SKILL.md, etc.
-  → Child loop's build agent auto-discovers NextAuth.js-specific guidance
+  → tessl install in child worktree → .tessl/tiles/ + MCP config
+  → Child loop's build agent discovers skills via MCP tool
 ```
 
 ### Prompt Hint (not content injection)
@@ -2218,18 +2238,19 @@ Agent prompts (build, review, qa) include a lightweight hint via `{{PROVIDER_HIN
 
 ```markdown
 Domain skills are installed for this project's tech stack. Check your skills
-directory before implementing — they contain framework-specific patterns,
-conventions, and known pitfalls.
+directory and MCP-provided skills before implementing — they contain
+framework-specific patterns, conventions, and known pitfalls.
 ```
 
-This is a static one-liner — it doesn't change per skill, per task, or per iteration. It just reminds the agent to look. The provider's native skill loading handles the rest.
+This is a static one-liner — it doesn't change per skill, per task, or per iteration. It just reminds the agent to look. The provider's native skill loading and tessl MCP handle the rest.
 
 ### Acceptance Criteria
 
-- [ ] Setup skill runs `tessl init --project-dependencies` (or equivalent) during discovery
+- [ ] Setup runs `tessl init --project-dependencies` to detect stack and configure MCP for all active providers
+- [ ] External skills installed via `tessl install` (into `.tessl/tiles/`, exposed via MCP)
+- [ ] Internal/aloop skills installed into `.agents/skills/` (+ `.claude/skills/` when Claude Code is active)
 - [ ] Discovered skills are listed in setup summary — no per-skill approval dialog
 - [ ] Setup informs user that orchestrator may install additional skills per-task
-- [ ] Skills are installed into `.agents/skills/` (+ `.claude/skills/` when Claude Code is active)
 - [ ] `PROMPT_orch_skill_scout.md` agent prompt exists for orchestrator per-task skill discovery
 - [ ] Skill scout runs after decomposition, before dispatch — one pass per planning cycle
 - [ ] Installed skills are recorded in config/state for traceability
