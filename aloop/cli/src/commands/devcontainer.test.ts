@@ -1245,7 +1245,6 @@ test('verifyDevcontainer - auth check fails when no auth vars set', async () => 
 
 test('verifyDevcontainer - auth check passes when fallback var is set', async () => {
   // First var fails, second succeeds
-  let callCount = 0;
   const deps: VerifyDeps = {
     exec: async (_command: string, args: string[]) => {
       const key = args.join(' ');
