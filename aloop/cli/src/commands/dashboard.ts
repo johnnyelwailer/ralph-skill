@@ -62,27 +62,6 @@ const MAX_LOG_BYTES = 1024 * 1024;
 const MAX_BODY_BYTES = 64 * 1024;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const DEFAULT_REQUEST_POLL_INTERVAL_MS = 1_000;
-const GH_REQUEST_TYPES = new Set([
-  'create_issues',
-  'update_issue',
-  'close_issue',
-  'create_pr',
-  'merge_pr',
-  'dispatch_child',
-  'steer_child',
-  'stop_child',
-  'post_comment',
-  'query_issues',
-  'spec_backfill',
-  // legacy names
-  'pr-create',
-  'pr-comment',
-  'issue-comment',
-  'issue-create',
-  'issue-close',
-  'pr-merge',
-  'branch-delete',
-]);
 
 interface GhCommandRunnerResult {
   exitCode: number;

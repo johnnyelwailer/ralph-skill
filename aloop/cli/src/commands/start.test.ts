@@ -335,6 +335,61 @@ test('startCommandWithDeps accepts --mode loop as plan-build-review', async () =
   assert.equal(result.mode, 'plan-build-review');
 });
 
+test('startCommandWithDeps accepts --mode single', async () => {
+  const fixture = await setupWorkspace('aloop-start-cli-single-mode-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'claude'",
+      "mode: 'plan'",
+      'enabled_providers:',
+      "  - 'claude'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const launchCalls: SpawnRecord[] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true, mode: 'single' },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const planContent = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), planContent, 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_single.md'), '# Single Mode\n', 'utf8');
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        launchCalls.push({ command, args: [...(args ?? [])] });
+        return { pid: 4244, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.mode, 'single');
+  assert.equal(launchCalls.length, 1);
+  const modeIndex = launchCalls[0].args.indexOf('--mode');
+  assert.ok(modeIndex > -1, 'Expected --mode arg');
+  assert.equal(launchCalls[0].args[modeIndex + 1], 'single');
+
+  const loopPlan = JSON.parse(await readFile(path.join(result.session_dir, 'loop-plan.json'), 'utf8')) as { cycle: string[] };
+  assert.deepStrictEqual(loopPlan.cycle, ['PROMPT_single.md']);
+});
+
 test('startCommandWithDeps falls back to in-place when git worktree add fails', async () => {
   const fixture = await setupWorkspace('aloop-start-worktree-fallback-');
   await writeFile(

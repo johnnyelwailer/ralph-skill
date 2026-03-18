@@ -6122,6 +6122,8 @@ async function buildCycleForMode(mode, projectRoot, deps) {
         await getEntry("qa"),
         await getEntry("review")
       ];
+    case "single":
+      return [await getEntry("single")];
   }
 }
 async function buildRoundRobinCycle(mode, roundRobinOrder, promptsDir, projectRoot, deps) {
@@ -6287,7 +6289,7 @@ async function compileLoopPlan(options, deps = defaultCompileDeps) {
 var LAUNCH_MODE_SET = /* @__PURE__ */ new Set(["start", "restart", "resume"]);
 var PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot", "round-robin"]);
 var MODEL_PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot"]);
-var LOOP_MODE_SET = /* @__PURE__ */ new Set(["plan", "build", "review", "plan-build", "plan-build-review"]);
+var LOOP_MODE_SET = /* @__PURE__ */ new Set(["plan", "build", "review", "plan-build", "plan-build-review", "single"]);
 var DEFAULT_MODELS = {
   claude: "opus",
   codex: "gpt-5.3-codex",
@@ -9564,6 +9566,22 @@ async function devcontainerCommand(options = {}, depsOrCommand) {
 }
 
 // src/commands/setup.ts
+var ZDR_PROVIDER_WARNINGS = {
+  claude: "ZDR requires an org agreement with Anthropic. Verify your org has ZDR enabled. https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching#zero-data-retention",
+  gemini: "ZDR requires project-level approval from Google. https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance",
+  codex: "ZDR requires a sales agreement with OpenAI. Note: images are excluded from ZDR. https://platform.openai.com/docs/models",
+  copilot: "ZDR requires Business or Enterprise plan. https://docs.github.com/en/copilot/managing-copilot/managing-copilot-as-an-individual-subscriber/about-github-copilot-free"
+};
+function getZdrWarnings(enabledProviders) {
+  const warnings = [];
+  for (const provider of enabledProviders) {
+    const warning = ZDR_PROVIDER_WARNINGS[provider];
+    if (warning) {
+      warnings.push(`${provider}: ${warning}`);
+    }
+  }
+  return warnings;
+}
 function parseDataPrivacy(value) {
   if (!value)
     return void 0;
@@ -9687,6 +9705,12 @@ async function setupCommandWithDeps(options, deps) {
   console.log(`- Autonomy Level: ${autonomyLevel}`);
   console.log(`- Data Privacy: ${dataPrivacy}`);
   console.log(`- ZDR Mode: ${dataPrivacy === "private" ? "Enabled" : "Disabled"}`);
+  if (dataPrivacy === "private") {
+    const zdrWarnings = getZdrWarnings(enabledProviders);
+    for (const warning of zdrWarnings) {
+      console.log(`  \u26A0 ${warning}`);
+    }
+  }
   if (mode === "orchestrate") {
     console.log("- Trunk Branch: agent/trunk");
   }
@@ -13350,6 +13374,7 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
       await deps.dispatchDeps.mkdir(agentPromptsDir, { recursive: true });
       const agentPromptFile = path14.join(agentPromptsDir, "PROMPT_single.md");
       await deps.dispatchDeps.writeFile(agentPromptFile, content, "utf8");
+      const agentWorkDir = fileName === "spec-consistency-check.md" ? sessionDir : projectRoot;
       let command;
       let args;
       if (isWindows) {
@@ -13363,7 +13388,7 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
           "-SessionDir",
           sessionDir,
           "-WorkDir",
-          projectRoot,
+          agentWorkDir,
           "-Mode",
           "single",
           "-Provider",
@@ -13383,7 +13408,7 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
           "--session-dir",
           sessionDir,
           "--work-dir",
-          projectRoot,
+          agentWorkDir,
           "--mode",
           "single",
           "--provider",
@@ -13397,7 +13422,7 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
         ];
       }
       const child = deps.dispatchDeps.spawn(command, args, {
-        cwd: projectRoot,
+        cwd: agentWorkDir,
         detached: true,
         stdio: "ignore",
         env: { ...deps.dispatchDeps.env },

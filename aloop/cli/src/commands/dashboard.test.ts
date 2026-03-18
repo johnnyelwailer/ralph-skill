@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, writeFile, chmod, readdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, chmod, readdir, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { startDashboardServer } from './dashboard.js';
 
@@ -1418,5 +1418,323 @@ test('GET and POST /api/plan reads and mutates loop-plan.json', async () => {
     assert.equal(savedPlan.cyclePosition, 2);
   } finally {
     await fixture.handle.close();
+  }
+});
+// We need to mock some things or use temporary files
+async function createTempDir() {
+  return await mkdtemp(path.join(os.tmpdir(), 'aloop-dashboard-coverage-'));
+}
+
+test('parsePort validates port range', async () => {
+  const root = await createTempDir();
+  try {
+    await assert.rejects(
+      startDashboardServer({ port: '0', sessionDir: root }),
+      /Invalid port "0"/
+    );
+    await assert.rejects(
+      startDashboardServer({ port: '65536', sessionDir: root }),
+      /Invalid port "65536"/
+    );
+    await assert.rejects(
+      startDashboardServer({ port: 'abc', sessionDir: root }),
+      /Invalid port "abc"/
+    );
+  } finally {
+    await rm(root, { recursive: true });
+  }
+});
+
+test('readJsonFile returns null for missing or invalid files', async () => {
+  const root = await createTempDir();
+  const runtimeDir = path.join(root, 'runtime');
+  await mkdir(runtimeDir);
+  
+  const port = await reservePort();
+  const handle = await startDashboardServer({ port: String(port), sessionDir: root, runtimeDir });
+  try {
+    const response = await fetch(`${handle.url}/api/state`);
+    const payload = await response.json() as any;
+    assert.equal(payload.status, null);
+    assert.equal(payload.meta, null);
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('getRepoUrl parses git remotes and handles no match', async (t) => {
+  const root = await createTempDir();
+  try {
+    spawnSync('git', ['init'], { cwd: root });
+    
+    // 1. SSH format
+    spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:owner/repo.git'], { cwd: root });
+    const port = await reservePort();
+    const handle = await startDashboardServer({ port: String(port), sessionDir: root, workdir: root });
+    try {
+      const response = await fetch(`${handle.url}/api/state`);
+      const payload = await response.json() as any;
+      assert.equal(payload.repoUrl, 'https://github.com/owner/repo');
+    } finally {
+      await handle.close();
+    }
+
+    // 2. HTTPS format
+    spawnSync('git', ['remote', 'set-url', 'origin', 'https://github.com/owner/repo.git'], { cwd: root });
+    const port2 = await reservePort();
+    const handle2 = await startDashboardServer({ port: String(port2), sessionDir: root, workdir: root });
+    try {
+      const response = await fetch(`${handle2.url}/api/state`);
+      const payload = await response.json() as any;
+      assert.equal(payload.repoUrl, 'https://github.com/owner/repo');
+    } finally {
+      await handle2.close();
+    }
+
+    // 3. No git or no remote (non-standard)
+    spawnSync('git', ['remote', 'remove', 'origin'], { cwd: root });
+    const port3 = await reservePort();
+    const handle3 = await startDashboardServer({ port: String(port3), sessionDir: root, workdir: root });
+    try {
+      const response = await fetch(`${handle3.url}/api/state`);
+      const payload = await response.json() as any;
+      assert.equal(payload.repoUrl, null);
+    } finally {
+      await handle3.close();
+    }
+  } finally {
+    await rm(root, { recursive: true });
+  }
+});
+
+test('POST /api/resume handles success and already-running cases', async () => {
+  const root = await createTempDir();
+  const sessionDir = path.join(root, 'session');
+  await mkdir(sessionDir);
+  await mkdir(path.join(root, 'aloop', 'bin'), { recursive: true });
+  
+  const loopSh = path.join(root, 'aloop', 'bin', 'loop.sh');
+  await writeFile(loopSh, '#!/bin/bash\nsleep 1\nexit 0', { mode: 0o755 });
+  
+  const metaPath = path.join(sessionDir, 'meta.json');
+  await writeFile(metaPath, JSON.stringify({ pid: 1234567 }), 'utf8');
+
+  const port = await reservePort();
+  const handle = await startDashboardServer({ port: String(port), sessionDir, workdir: root });
+  try {
+    await rm(metaPath);
+    const res1 = await fetch(`${handle.url}/api/resume`, { method: 'POST' });
+    assert.equal(res1.status, 409);
+    assert.match(await res1.text(), /No meta.json found/);
+
+    await writeFile(metaPath, JSON.stringify({ pid: process.pid }), 'utf8');
+    const res2 = await fetch(`${handle.url}/api/resume`, { method: 'POST' });
+    assert.equal(res2.status, 409);
+    assert.match(await res2.text(), /is already running/);
+
+    await writeFile(metaPath, JSON.stringify({ pid: 999999 }), 'utf8');
+    const res3 = await fetch(`${handle.url}/api/resume`, { method: 'POST' });
+    assert.equal(res3.status, 202);
+    const payload3 = await res3.json() as any;
+    assert.ok(payload3.resumed);
+    assert.ok(payload3.pid);
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('readLogTail handles large files', async () => {
+  const root = await createTempDir();
+  const logPath = path.join(root, 'log.jsonl');
+  
+  // MAX_LOG_BYTES = 1MB
+  const line = 'some log data\n';
+  const repeatCount = 100000; // Enough to exceed 1MB
+  const largeContent = line.repeat(repeatCount);
+  await writeFile(logPath, largeContent, 'utf8');
+
+  const port = await reservePort();
+  const handle = await startDashboardServer({ port: String(port), sessionDir: root });
+  try {
+    const response = await fetch(`${handle.url}/api/state`);
+    const payload = await response.json() as any;
+    assert.ok(payload.log.length > 0);
+    assert.ok(payload.log.length <= 1024 * 1024);
+    assert.ok(payload.log.length < largeContent.length);
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('loadArtifactManifests handles output.txt without manifest', async () => {
+  const root = await createTempDir();
+  const artifactsDir = path.join(root, 'artifacts', 'iter-1');
+  await mkdir(artifactsDir, { recursive: true });
+  await writeFile(path.join(artifactsDir, 'output.txt'), 'Model: gpt-4\nProvider: openai\nSome logs...', 'utf8');
+
+  const port = await reservePort();
+  const handle = await startDashboardServer({ port: String(port), sessionDir: root });
+  try {
+    const response = await fetch(`${handle.url}/api/state`);
+    const payload = await response.json() as any;
+    assert.equal(payload.artifacts.length, 1);
+    assert.equal(payload.artifacts[0].iteration, 1);
+    assert.match(payload.artifacts[0].outputHeader, /Model: gpt-4/);
+    assert.equal(payload.artifacts[0].manifest, null);
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('resolvePid fallback to active.json', async () => {
+  const root = await createTempDir();
+  const runtimeDir = path.join(root, 'runtime');
+  const sessionDir = path.join(root, 'session-abc');
+  await mkdir(runtimeDir);
+  await mkdir(sessionDir);
+
+  await writeFile(path.join(sessionDir, 'meta.json'), JSON.stringify({ pid: 999999 }), 'utf8');
+  await writeFile(path.join(sessionDir, 'status.json'), JSON.stringify({ state: 'running' }), 'utf8');
+
+  await writeFile(path.join(runtimeDir, 'active.json'), JSON.stringify({
+    'session-abc': { session_dir: sessionDir, pid: process.pid }
+  }), 'utf8');
+
+  const port = await reservePort();
+  const handle = await startDashboardServer({ port: String(port), sessionDir, runtimeDir });
+  try {
+    const response = await fetch(`${handle.url}/api/state`);
+    const payload = await response.json() as any;
+    assert.equal(payload.status.state, 'running');
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('getContentType covers various extensions', async () => {
+  const root = await createTempDir();
+  const iterDir = path.join(root, 'artifacts', 'iter-1');
+  await mkdir(iterDir, { recursive: true });
+
+  const files = [
+    { name: 't.css', type: 'text/css; charset=utf-8' },
+    { name: 't.js', type: 'application/javascript; charset=utf-8' },
+    { name: 't.mjs', type: 'application/javascript; charset=utf-8' },
+    { name: 't.json', type: 'application/json; charset=utf-8' },
+    { name: 't.jpg', type: 'image/jpeg' },
+    { name: 't.gif', type: 'image/gif' },
+    { name: 't.webp', type: 'image/webp' },
+    { name: 't.svg', type: 'image/svg+xml' },
+    { name: 't.ico', type: 'image/x-icon' },
+    { name: 't.unknown', type: 'application/octet-stream' },
+  ];
+
+  const port = await reservePort();
+  const handle = await startDashboardServer({ port: String(port), sessionDir: root });
+  try {
+    for (const file of files) {
+      await writeFile(path.join(iterDir, file.name), 'content');
+      const res = await fetch(`${handle.url}/api/artifacts/1/${file.name}`);
+      assert.equal(res.headers.get('content-type'), file.type);
+    }
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('readJsonBody handles empty body and oversized body', async () => {
+  const root = await createTempDir();
+  const sessionDir = path.join(root, 'session');
+  await mkdir(sessionDir);
+  await writeFile(path.join(sessionDir, 'loop-plan.json'), JSON.stringify({ cycle: ['a.md'], iteration: 1 }), 'utf8');
+
+  const port = await reservePort();
+  const handle = await startDashboardServer({ port: String(port), sessionDir });
+  try {
+    const res = await fetch(`${handle.url}/api/plan`, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }
+    });
+    assert.equal(res.status, 200);
+
+    const largeBody = JSON.stringify({ instruction: 'a'.repeat(65 * 1024) });
+    const res2 = await fetch(`${handle.url}/api/steer`, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' },
+      body: largeBody
+    });
+    assert.equal(res2.status, 400);
+    assert.match(await res2.text(), /Request body too large/);
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('resolveDefaultAssetsDir fallback logic', async (t) => {
+  const root = await createTempDir();
+  const originalArgv1 = process.argv[1];
+  try {
+    // 1. Mocking candidate directory
+    // runtimeScriptPath candidate: dirname(argv[1]) + '/dashboard'
+    const binDir = path.join(root, 'bin');
+    const fakeAssetsDir = path.join(binDir, 'dashboard');
+    await mkdir(fakeAssetsDir, { recursive: true });
+    await writeFile(path.join(fakeAssetsDir, 'index.html'), '<html data-mocked="true"></html>');
+    
+    process.argv[1] = path.join(binDir, 'aloop.mjs');
+    
+    const port = await reservePort();
+    const handle = await startDashboardServer({ port: String(port), sessionDir: root });
+    try {
+      const res = await fetch(`${handle.url}/`);
+      assert.equal(res.status, 200);
+      const text = await res.text();
+      assert.match(text, /data-mocked="true"/);
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    process.argv[1] = originalArgv1;
+    await rm(root, { recursive: true });
+  }
+});
+
+test('watch logic triggers request processing', async () => {
+  const root = await createTempDir();
+  const workdir = path.join(root, 'workdir');
+  const sessionDir = path.join(root, 'session');
+  await mkdir(workdir, { recursive: true });
+  await mkdir(sessionDir, { recursive: true });
+  
+  const requestsDir = path.join(workdir, '.aloop', 'requests');
+  await mkdir(requestsDir, { recursive: true });
+
+  const port = await reservePort();
+  let processTriggered = false;
+  
+  // We can check if it triggers by providing a custom ghCommandRunner 
+  // but watch calls processGhConventionRequests which uses processAgentRequests.
+  // We can't easily spy on it, but we can verify it doesn't crash.
+  
+  const handle = await startDashboardServer({ 
+    port: String(port), 
+    sessionDir, 
+    workdir 
+  });
+  
+  try {
+    await writeFile(path.join(requestsDir, 'new-request.json'), '{}');
+    await sleep(200);
+    // Should not crash
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
   }
 });

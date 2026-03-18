@@ -10,14 +10,14 @@ import { compileLoopPlan } from './compile-loop-plan.js';
 
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot';
 type LoopProvider = ProviderName | 'round-robin';
-type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review';
+type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review' | 'single';
 type LaunchMode = 'start' | 'restart' | 'resume';
 type StartMonitorMode = 'dashboard' | 'terminal' | 'none';
 
 const LAUNCH_MODE_SET = new Set<LaunchMode>(['start', 'restart', 'resume']);
 const PROVIDER_SET = new Set<LoopProvider>(['claude', 'codex', 'gemini', 'copilot', 'round-robin']);
 const MODEL_PROVIDER_SET = new Set<ProviderName>(['claude', 'codex', 'gemini', 'copilot']);
-const LOOP_MODE_SET = new Set<LoopMode>(['plan', 'build', 'review', 'plan-build', 'plan-build-review']);
+const LOOP_MODE_SET = new Set<LoopMode>(['plan', 'build', 'review', 'plan-build', 'plan-build-review', 'single']);
 const DEFAULT_MODELS: Record<ProviderName, string> = {
   claude: 'opus',
   codex: 'gpt-5.3-codex',

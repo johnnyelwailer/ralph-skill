@@ -58,6 +58,22 @@ test('compileLoopPlan — build mode produces single-entry cycle', async () => {
   assert.deepStrictEqual(plan.cycle, ['PROMPT_build.md']);
 });
 
+test('compileLoopPlan — single mode produces single-entry cycle', async () => {
+  const { promptsDir, sessionDir } = await setupDirs('clp-single-');
+  await writeFile(path.join(promptsDir, 'PROMPT_single.md'), '# Single Mode\n\nSingle content here.\n', 'utf8');
+  const plan = await compileLoopPlan({
+    mode: 'single',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+  });
+
+  assert.deepStrictEqual(plan.cycle, ['PROMPT_single.md']);
+});
+
 test('compileLoopPlan — plan-build mode produces 2-entry cycle', async () => {
   const { promptsDir, sessionDir } = await setupDirs('clp-pb-');
   const plan = await compileLoopPlan({

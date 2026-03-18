@@ -4,7 +4,7 @@ import path from 'node:path';
 import { parseYaml } from '../lib/yaml.js';
 
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode';
-type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review';
+type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review' | 'single';
 
 interface LoopPlan {
   cycle: string[];
@@ -176,6 +176,8 @@ async function buildCycleForMode(
         await getEntry('qa'),
         await getEntry('review'),
       ];
+    case 'single':
+      return [await getEntry('single')];
   }
 }
 

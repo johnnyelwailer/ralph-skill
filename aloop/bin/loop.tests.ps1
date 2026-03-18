@@ -676,6 +676,9 @@ exit 0
 '@
         Set-Content $fakeAloopPs1 $fakeAloopContent
         Set-Content (Join-Path $fakeBinDir 'aloop.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakeAloopPs1`" %*`r`n"
+        $aloopSh = Join-Path $fakeBinDir 'aloop'
+        Set-Content $aloopSh "#!/bin/bash`npwsh -NoProfile -File `"$fakeAloopPs1`" `"`$@`"`n"
+        if ($IsLinux -or $IsMacOS) { chmod +x $aloopSh }
 
         # ── Helper: create an isolated test environment ──────────────────────
         function script:New-LoopEnv {
@@ -1030,12 +1033,10 @@ exit 0
         Set-Content $fakePs1 $fakeProviderContent
         Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
         Set-Content (Join-Path $fakeBinDir 'codex.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
-        if ($IsLinux -or $IsMacOS) {
-            foreach ($p in @('claude', 'codex')) {
-                $shim = Join-Path $fakeBinDir $p
-                Set-Content $shim "#!/bin/bash`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
-                chmod +x $shim
-            }
+        foreach ($p in @('claude', 'codex')) {
+            $shim = Join-Path $fakeBinDir $p
+            Set-Content $shim "#!/bin/bash`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
+            if ($IsLinux -or $IsMacOS) { chmod +x $shim }
         }
 
         function script:New-RetryEnv {
@@ -1224,6 +1225,14 @@ switch ($scenario) {
 
         $codexCmd = Join-Path $fakeBinDir 'codex.cmd'
         Set-Content $codexCmd "@echo off`r`nset FAKE_PROVIDER_SCENARIO=%FAKE_CODEX_SCENARIO%`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+
+        # POSIX shims for Linux/macOS
+        $claudeShim = Join-Path $fakeBinDir 'claude'
+        Set-Content $claudeShim "#!/bin/bash`nexport FAKE_PROVIDER_SCENARIO=`"`$FAKE_CLAUDE_SCENARIO`"`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
+        if ($IsLinux -or $IsMacOS) { chmod +x $claudeShim }
+        $codexShim = Join-Path $fakeBinDir 'codex'
+        Set-Content $codexShim "#!/bin/bash`nexport FAKE_PROVIDER_SCENARIO=`"`$FAKE_CODEX_SCENARIO`"`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
+        if ($IsLinux -or $IsMacOS) { chmod +x $codexShim }
 
         # ── Helper: isolated test env with its own health dir ─────────────────
         function script:New-HealthEnv {
@@ -1640,17 +1649,15 @@ Describe 'loop.ps1 — PATH hardening' {
         $colocDir = Join-Path ([IO.Path]::GetTempPath()) ("aloop-coloc-test-" + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Force $colocDir | Out-Null
         try {
-            if ($IsWindows) {
-                # Real gh in coloc dir
-                Set-Content (Join-Path $colocDir 'gh.cmd') "@echo off`r`necho real-gh`r`n"
-                # Provider binary in same dir
-                Set-Content (Join-Path $colocDir 'myprovider.cmd') "@echo off`r`necho provider-ok`r`n"
-            } else {
-                Set-Content (Join-Path $colocDir 'gh') "#!/bin/sh`necho real-gh`n"
-                Set-Content (Join-Path $colocDir 'myprovider') "#!/bin/sh`necho provider-ok`n"
-                chmod +x (Join-Path $colocDir 'gh')
-                chmod +x (Join-Path $colocDir 'myprovider')
-            }
+            # Real gh in coloc dir
+            Set-Content (Join-Path $colocDir 'gh.cmd') "@echo off`r`necho real-gh`r`n"
+            Set-Content (Join-Path $colocDir 'gh') "#!/bin/sh`necho real-gh`n"
+            if ($IsLinux -or $IsMacOS) { chmod +x (Join-Path $colocDir 'gh') }
+
+            # Provider binary in same dir
+            Set-Content (Join-Path $colocDir 'myprovider.cmd') "@echo off`r`necho provider-ok`r`n"
+            Set-Content (Join-Path $colocDir 'myprovider') "#!/bin/sh`necho provider-ok`n"
+            if ($IsLinux -or $IsMacOS) { chmod +x (Join-Path $colocDir 'myprovider') }
 
             $savedPath = $env:PATH
             $env:PATH = "$dir$([IO.Path]::PathSeparator)$colocDir$([IO.Path]::PathSeparator)$env:PATH"
@@ -1848,16 +1855,17 @@ exit 0
 '@
         Set-Content $fakePs1 $fakePs1Content
         Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
-        if ($IsLinux -or $IsMacOS) {
-            $shimPath = Join-Path $fakeBinDir 'claude'
-            Set-Content $shimPath "#!/bin/bash`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
-            chmod +x $shimPath
-        }
+        $shimPath = Join-Path $fakeBinDir 'claude'
+        Set-Content $shimPath "#!/bin/bash`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
+        if ($IsLinux -or $IsMacOS) { chmod +x $shimPath }
 
         # Fake aloop.cmd shim (no-op)
         $fakeAloopPs1 = Join-Path $fakeBinDir '_fake_aloop.ps1'
         Set-Content $fakeAloopPs1 'Write-Output "{}"; exit 0'
         Set-Content (Join-Path $fakeBinDir 'aloop.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakeAloopPs1`" %*`r`n"
+        $aloopSh = Join-Path $fakeBinDir 'aloop'
+        Set-Content $aloopSh "#!/bin/bash`npwsh -NoProfile -File `"$fakeAloopPs1`" `"`$@`"`n"
+        if ($IsLinux -or $IsMacOS) { chmod +x $aloopSh }
 
         function script:New-LockTestEnv {
             $testDir   = Join-Path $tempRoot ("env-" + [guid]::NewGuid().ToString('N'))
@@ -2210,11 +2218,9 @@ Write-Output "Fake provider: done"
 exit 0
 '@ | Set-Content $fakePs1
         Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
-        if ($IsLinux -or $IsMacOS) {
-            $shimPath = Join-Path $fakeBinDir 'claude'
-            Set-Content $shimPath "#!/bin/bash`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
-            chmod +x $shimPath
-        }
+        $shimPath = Join-Path $fakeBinDir 'claude'
+        Set-Content $shimPath "#!/bin/bash`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n"
+        if ($IsLinux -or $IsMacOS) { chmod +x $shimPath }
 
         # Fake aloop.cmd shim (no-op)
         Set-Content (Join-Path $fakeBinDir '_fake_aloop.ps1') 'Write-Output "{}"; exit 0'
@@ -3070,17 +3076,14 @@ Describe 'loop.ps1 — queue and requests behavioral' {
 Write-Output "Fake provider: ok"
 exit 0
 '@ | Set-Content $fakePs1
-        Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
-        Set-Content (Join-Path $fakeBinDir 'opencode.cmd') "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
         # Create plain executable shims for Linux
         # Note: PowerShell escapes '!' in double-quoted strings, so build shebang via char codes
         $script:shebang = [char]35, [char]33 -join ''  # '#!'
-        if (-not $IsWindows) {
-            foreach ($provName in @('claude', 'opencode')) {
-                $shimPath = Join-Path $fakeBinDir $provName
-                [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n")
-                chmod +x $shimPath
-            }
+        foreach ($provName in @('claude', 'opencode')) {
+            Set-Content (Join-Path $fakeBinDir "$provName.cmd") "@echo off`r`npwsh -NoProfile -File `"$fakePs1`" %*`r`n"
+            $shimPath = Join-Path $fakeBinDir $provName
+            [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$fakePs1`" `"`$@`"`n")
+            if ($IsLinux -or $IsMacOS) { chmod +x $shimPath }
         }
 
         function script:New-QueueEnv {
@@ -3302,11 +3305,9 @@ exit 0
         $failPs1 = Join-Path $fakeBinDir '_fail_provider.ps1'
         [IO.File]::WriteAllText($failPs1, "Write-Error `"simulated failure`"`nexit 1`n")
         Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$failPs1`" %*`r`n"
-        if (-not $IsWindows) {
-            $shimPath = Join-Path $fakeBinDir 'claude'
-            [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$failPs1`" `"`$@`"`n")
-            chmod +x $shimPath
-        }
+        $shimPath = Join-Path $fakeBinDir 'claude'
+        [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$failPs1`" `"`$@`"`n")
+        if ($IsLinux -or $IsMacOS) { chmod +x $shimPath }
 
         $e = New-QueueEnv
         Set-Content (Join-Path $e.QueueDir '05-fail.md') "Failing prompt"
@@ -3323,10 +3324,9 @@ exit 0
         # Restore default provider for other tests
         $restorePs1 = Join-Path $fakeBinDir '_fake_provider.ps1'
         Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$restorePs1`" %*`r`n"
-        if (-not $IsWindows) {
-            [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$restorePs1`" `"`$@`"`n")
-            chmod +x $shimPath
-        }
+        $shimPath = Join-Path $fakeBinDir 'claude'
+        [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$restorePs1`" `"`$@`"`n")
+        if ($IsLinux -or $IsMacOS) { chmod +x $shimPath }
     }
 
     It 'opencode as direct provider executes a normal build iteration' {
