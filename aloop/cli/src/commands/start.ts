@@ -356,8 +356,11 @@ function assertLoopMode(value: string): LoopMode {
 
 function resolveConfiguredStartMode(value: string): LoopMode {
   const normalized = value.trim().toLowerCase();
-  if (normalized === 'loop' || normalized === 'single') {
+  if (normalized === 'loop') {
     return 'plan-build-review';
+  }
+  if (normalized === 'single') {
+    return 'single';
   }
   if (normalized === 'orchestrate') {
     throw new Error('Invalid mode: orchestrate (use `aloop orchestrate` for orchestrator sessions).');

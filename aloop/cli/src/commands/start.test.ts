@@ -380,14 +380,14 @@ test('startCommandWithDeps accepts --mode single', async () => {
     },
   );
 
-  assert.equal(result.mode, 'plan-build-review');
+  assert.equal(result.mode, 'single');
   assert.equal(launchCalls.length, 1);
   const modeIndex = launchCalls[0].args.indexOf('--mode');
   assert.ok(modeIndex > -1, 'Expected --mode arg');
-  assert.equal(launchCalls[0].args[modeIndex + 1], 'plan-build-review');
+  assert.equal(launchCalls[0].args[modeIndex + 1], 'single');
 
   const loopPlan = JSON.parse(await readFile(path.join(result.session_dir, 'loop-plan.json'), 'utf8')) as { cycle: string[] };
-  assert.ok(loopPlan.cycle.includes('PROMPT_plan.md'));
+  assert.ok(loopPlan.cycle.includes('PROMPT_single.md'));
 });
 
 test('startCommandWithDeps falls back to in-place when git worktree add fails', async () => {

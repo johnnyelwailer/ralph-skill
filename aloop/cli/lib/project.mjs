@@ -723,7 +723,7 @@ function resolveProviderHints(provider, enabledProviders = []) {
     .join('\n');
 }
 
-const LOOP_PROMPT_TEMPLATES = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+const LOOP_PROMPT_TEMPLATES = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_single.md'];
 const ORCHESTRATOR_PROMPT_TEMPLATES = [
   'PROMPT_orch_scan.md',
   'PROMPT_orch_product_analyst.md',
@@ -754,8 +754,11 @@ function normalizeScaffoldMode(mode) {
     return 'plan-build-review';
   }
   const lowered = trimmed.toLowerCase();
-  if (lowered === 'loop' || lowered === 'single') {
+  if (lowered === 'loop') {
     return 'plan-build-review';
+  }
+  if (lowered === 'single') {
+    return 'single';
   }
   if (lowered === 'orchestrate') {
     return 'orchestrate';
