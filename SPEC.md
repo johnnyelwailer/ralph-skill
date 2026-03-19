@@ -421,18 +421,23 @@ A new loop phase (`proof`) where a dedicated agent autonomously decides what evi
 
 ```
 Previous:  plan → build × 3 → review
-New:       plan → build × 3 → proof → review
+Current:   plan → build × 5 → qa → review
 
-5-step cycle becomes 6-step:
+8-step cycle:
   0: plan
   1: build
   2: build
   3: build
-  4: proof    ← new
-  5: review
+  4: build
+  5: build
+  6: qa
+  7: review
+
+Completion chain (rattail, triggered after review PASS):
+  all_tasks_done → spec-gap → spec-review → final-review → final-qa → proof
 ```
 
-The proof phase runs exactly once per cycle, after builds and before review. It gets its own prompt template (`PROMPT_proof.md`) and its own iteration, just like plan/build/review/steer.
+The qa phase runs before review. Proof runs at the end of the completion chain (after review PASS), not in the main cycle. Each rattail agent triggers the next via frontmatter `trigger:` field.
 
 ### Proof Agent Behavior
 
@@ -646,6 +651,54 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 - [ ] Reviewer can reject if proof is missing for work that should have been proven
 - [ ] Proof skip is a valid outcome (empty artifacts, documented skip reasons)
 - [ ] Both `loop.ps1` and `loop.sh` support the proof phase in their cycle resolution
+
+---
+
+## Spec-Gap Analysis Agent (End-of-Cycle Validation)
+
+A dedicated agent (`PROMPT_spec-gap.md`) that validates codebase consistency against SPEC.md. It runs as the **first step of the completion chain** — triggered by `all_tasks_done`, before `spec-review`.
+
+### Purpose
+
+The plan and review agents focus on individual tasks. Neither cross-references the full spec against the full codebase. This creates drift:
+- Config files fall out of sync with runtime code (e.g., `config.yml` missing a provider that loop scripts support)
+- Features get implemented but never added to spec, or spec describes features that were never built
+- QA/build agents hallucinate features not in spec, and subsequent agents treat them as real
+- TODO items reference code that no longer exists
+
+The spec-gap agent catches these systematically.
+
+### Completion chain (rattail)
+
+```
+all_tasks_done → spec-gap → spec-review → final-review → final-qa → proof
+```
+
+Each agent triggers the next via frontmatter `trigger:` field. The spec-gap agent is analysis-only — it adds `[spec-gap]` items to TODO.md but does not modify code or spec.
+
+### What it checks
+
+1. **Config completeness** — config.yml vs loop script provider/model support
+2. **Spec vs code alignment** — acceptance criteria referencing removed code, undocumented features
+3. **Prompt template consistency** — frontmatter referencing invalid providers, orphan templates
+4. **Cross-runtime parity** — validation sets in CLI vs loop.sh vs loop.ps1
+5. **TODO hygiene** — stale items, hallucinated features, completed items still open
+
+### Rules
+
+- Analysis only — documents gaps in TODO.md, does not fix them
+- Maximum 10 items per run (prioritize most impactful)
+- Tags items as `[spec-gap]` with priority P1/P2/P3
+- Distinguishes "spec is wrong" vs "code is wrong"
+
+### Acceptance Criteria
+
+- [ ] `PROMPT_spec-gap.md` exists with `trigger: all_tasks_done`
+- [ ] `PROMPT_spec-review.md` trigger updated from `all_tasks_done` to `spec-gap`
+- [ ] Agent runs after review PASS, before spec-review in the completion chain
+- [ ] Findings are written to TODO.md with `[spec-gap]` tag, file paths, and suggested fix direction
+- [ ] Agent does not modify code or SPEC.md — analysis only
+- [ ] Both `loop.sh` and `loop.ps1` support the `spec-gap` agent name in rattail dispatch
 
 ---
 

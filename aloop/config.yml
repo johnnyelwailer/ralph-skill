@@ -16,9 +16,10 @@ backup_enabled: false
 # KEEP CURRENT: Update these when new model versions release.
 # This file is the single source of truth for default model IDs.
 # Loop scripts and setup commands inherit from here.
-# Last updated: 2026-02-21
+# Last updated: 2026-03-19
 models:
   claude: opus               # Claude Opus 4.6 (latest)
+  opencode: null             # OpenCode uses its own model config / OpenRouter routing
   codex: gpt-5.3-codex       # OpenAI Codex (latest)
   gemini: gemini-3.1-pro-preview  # Gemini Pro 3.1 Preview (latest, NOT GA)
   copilot: gpt-5.3-codex     # Copilot default (latest)
@@ -28,9 +29,20 @@ retry_models:
   copilot: claude-sonnet-4.6  # Claude Sonnet 4.6 (fallback)
   gemini: null                 # fallback: no explicit model flag
 
+# OpenRouter models (usable via opencode with model: frontmatter in prompts)
+# These are model IDs on openrouter.ai — use with provider: opencode + model: <id>
+openrouter_models:
+  - xiaomi/mimo-v2-pro         # MiMo-V2-Pro (released 2026-03-18, reasoning model)
+  - zhipu/glm-5               # GLM-5 (ZhipuAI)
+  - minimax/minimax-2.7       # MiniMax 2.7
+  - anthropic/claude-opus-4.6  # Claude Opus 4.6 via OpenRouter
+  - openai/gpt-5.3-codex      # GPT-5.3 Codex via OpenRouter
+  - google/gemini-3.1-pro      # Gemini 3.1 Pro via OpenRouter
+
 # Round-robin provider order (when provider=round-robin)
 round_robin_order:
   - claude
+  - opencode
   - codex
   - gemini
   - copilot
