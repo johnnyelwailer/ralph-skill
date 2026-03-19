@@ -654,9 +654,9 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 
 ---
 
-## Spec-Gap Analysis Agent (End-of-Cycle Validation)
+## Spec-Gap Analysis Agent (Continuous Spec Enforcement)
 
-A dedicated agent (`PROMPT_spec-gap.md`) that validates codebase consistency against SPEC.md. It runs as the **first step of the completion chain** — triggered by `all_tasks_done`, before `spec-review`.
+A dedicated agent (`PROMPT_spec-gap.md`) that validates codebase consistency against SPEC.md. It runs **both periodically during the loop and in the completion chain**. The loop cannot finish while spec-gap findings remain open.
 
 ### Purpose
 
@@ -668,13 +668,27 @@ The plan and review agents focus on individual tasks. Neither cross-references t
 
 The spec-gap agent catches these systematically.
 
-### Completion chain (rattail)
+### When it runs
+
+**1. Periodically during the loop** — runs before every 2nd plan phase (i.e., every other cycle). This catches drift early, while builds are still happening. Gaps found become `[spec-gap]` TODO items that the build agent picks up in the next cycle.
+
+```
+Cycle 1:  plan → build x5 → qa → review
+Cycle 2:  spec-gap → plan → build x5 → qa → review
+Cycle 3:  plan → build x5 → qa → review
+Cycle 4:  spec-gap → plan → build x5 → qa → review
+...
+```
+
+**2. In the completion chain (rattail)** — runs as the first step after `all_tasks_done`. If it finds gaps, they become new TODO items, preventing loop completion. The loop only finishes when spec-gap produces zero findings.
 
 ```
 all_tasks_done → spec-gap → spec-review → final-review → final-qa → proof
+                    ↓ (if gaps found)
+              new TODO items → loop continues → build fixes them → ...
 ```
 
-Each agent triggers the next via frontmatter `trigger:` field. The spec-gap agent is analysis-only — it adds `[spec-gap]` items to TODO.md but does not modify code or spec.
+**Unlimited runs** — there is no cap on how many times spec-gap can run. It runs every other cycle plus at every completion attempt. The loop is done when the spec is fully fulfilled.
 
 ### What it checks
 
@@ -690,15 +704,19 @@ Each agent triggers the next via frontmatter `trigger:` field. The spec-gap agen
 - Maximum 10 items per run (prioritize most impactful)
 - Tags items as `[spec-gap]` with priority P1/P2/P3
 - Distinguishes "spec is wrong" vs "code is wrong"
+- If zero gaps found, writes "spec-gap analysis: no discrepancies" and allows the chain to proceed
 
 ### Acceptance Criteria
 
-- [ ] `PROMPT_spec-gap.md` exists with `trigger: all_tasks_done`
+- [ ] `PROMPT_spec-gap.md` exists with periodic scheduling (every 2nd cycle) and `trigger: all_tasks_done`
 - [ ] `PROMPT_spec-review.md` trigger updated from `all_tasks_done` to `spec-gap`
-- [ ] Agent runs after review PASS, before spec-review in the completion chain
+- [ ] Spec-gap runs before every 2nd plan phase during normal loop execution
+- [ ] Spec-gap runs as first step of completion chain after `all_tasks_done`
+- [ ] If spec-gap finds issues, they become TODO items and the loop continues (no completion)
+- [ ] Loop can only complete when spec-gap produces zero findings
 - [ ] Findings are written to TODO.md with `[spec-gap]` tag, file paths, and suggested fix direction
 - [ ] Agent does not modify code or SPEC.md — analysis only
-- [ ] Both `loop.sh` and `loop.ps1` support the `spec-gap` agent name in rattail dispatch
+- [ ] Both `loop.sh` and `loop.ps1` support the `spec-gap` agent in cycle resolution and rattail dispatch
 
 ---
 
