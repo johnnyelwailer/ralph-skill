@@ -2460,14 +2460,13 @@ Current `Invoke-Provider` / `invoke_provider` uses synchronous pipe (`|`) with n
 - [ ] On loop exit (`finally`/`trap`), kill all spawned child processes
 - [ ] Consider the zombie dashboard process issue too (already partially mitigated by `ALOOP_NO_DASHBOARD` in tests, but production loops need cleanup)
 
-### 8. Installed runtime staleness
+### 8. Runtime versioning
 
-The installed runtime at `~/.aloop/bin/` (or `~/.ralph/bin/` on older installs) is copied once during `install.ps1` and never auto-updated. When bugs are fixed in the repo, the installed copy stays broken until the user re-runs `install.ps1`.
+The installed CLI is self-contained — it knows its own version from `version.json` (commit hash + install timestamp). It does NOT compare against a source repo checkout (which may not exist for installed users who install via npm or direct download).
 
 **Mitigations needed:**
-- [ ] `aloop` CLI should check if installed runtime is older than repo source and warn/offer to update
-- [ ] Consider `aloop update` command that re-copies runtime files from repo
-- [ ] `install.ps1` should print a version or timestamp so staleness is detectable
+- [ ] `aloop update` command handles version management (future: check npm registry or GitHub releases)
+- [ ] `install.ps1` should write `version.json` with commit hash and timestamp
 - [ ] Loop scripts should log their own version/timestamp at `session_start` for debugging
 
 ### 9. No distinction between start, restart, and resume
