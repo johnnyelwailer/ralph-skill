@@ -50,3 +50,14 @@ export function findBaselineIterations(
 ): number[] {
   return view.findBaselineIterations(artifactPath, currentIteration, allManifests);
 }
+
+export function ArtifactComparisonDialog(
+  props: {
+    artifact: { type: string; path: string; description: string; metadata?: { baseline?: string; diff_percentage?: number } };
+    currentIteration: number;
+    allManifests: Array<{ iteration: number; phase: string; summary: string; artifacts: Array<{ type: string; path: string; description: string; metadata?: { baseline?: string; diff_percentage?: number } }>; outputHeader?: string }>;
+    onClose: () => void;
+  },
+) {
+  return view.ArtifactComparisonDialog(props);
+}

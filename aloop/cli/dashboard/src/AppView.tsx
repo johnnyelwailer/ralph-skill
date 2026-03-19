@@ -1475,9 +1475,9 @@ export function findBaselineIterations(artifactPath: string, currentIteration: n
     .sort((a, b) => b - a); // newest first
 }
 
-type ComparisonMode = 'side-by-side' | 'slider';
+type ComparisonMode = 'side-by-side' | 'slider' | 'diff-overlay';
 
-function ArtifactComparisonDialog({
+export function ArtifactComparisonDialog({
   artifact, currentIteration, allManifests, onClose,
 }: {
   artifact: ArtifactEntry;
@@ -1487,6 +1487,7 @@ function ArtifactComparisonDialog({
 }) {
   const [mode, setMode] = useState<ComparisonMode>('side-by-side');
   const [sliderPos, setSliderPos] = useState(50);
+  const [overlayOpacity, setOverlayOpacity] = useState(50);
   const sliderContainerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
 
@@ -1558,9 +1559,16 @@ function ArtifactComparisonDialog({
                   type="button"
                   role="tab"
                   aria-selected={mode === 'slider'}
-                  className={`px-2 py-1 rounded-r-md border-l border-border transition-colors ${mode === 'slider' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`px-2 py-1 border-l border-border transition-colors ${mode === 'slider' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                   onClick={() => setMode('slider')}
                 >Slider</button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === 'diff-overlay'}
+                  className={`px-2 py-1 rounded-r-md border-l border-border transition-colors ${mode === 'diff-overlay' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => setMode('diff-overlay')}
+                >Diff Overlay</button>
               </div>
             )}
             {/* History scrubbing dropdown */}
@@ -1604,7 +1612,7 @@ function ArtifactComparisonDialog({
                 </div>
               </div>
             </div>
-          ) : (
+          ) : mode === 'slider' ? (
             /* Slider mode */
             <div className="flex flex-col items-center gap-2">
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -1639,6 +1647,41 @@ function ArtifactComparisonDialog({
                     <span className="text-[10px] text-gray-500 select-none">&harr;</span>
                   </div>
                 </div>
+              </div>
+            </div>
+          ) : (
+            /* Diff overlay mode */
+            <div className="flex flex-col items-center gap-3" aria-label="Diff overlay comparison">
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span>Overlay: baseline + current</span>
+                <label className="inline-flex items-center gap-2">
+                  <span>Current opacity</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={overlayOpacity}
+                    onChange={(e) => setOverlayOpacity(Number(e.target.value))}
+                    aria-label="Overlay opacity"
+                  />
+                  <span className="w-10 text-right">{overlayOpacity}%</span>
+                </label>
+              </div>
+              <div className="relative w-full max-w-[900px] overflow-hidden rounded border border-border">
+                <img src={baselineSrc} alt={`Baseline iter ${selectedBaseline}`} className="w-full block" draggable={false} />
+                <img
+                  src={currentSrc}
+                  alt={`Current iter ${currentIteration}`}
+                  className="absolute inset-0 w-full h-full object-contain"
+                  style={{ opacity: overlayOpacity / 100 }}
+                  draggable={false}
+                />
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span>Baseline (iter {selectedBaseline})</span>
+                <span>|</span>
+                <span>Current (iter {currentIteration})</span>
               </div>
             </div>
           )}
