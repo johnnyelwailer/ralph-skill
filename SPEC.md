@@ -203,12 +203,12 @@ If ALL providers are in cooldown/degraded: sleep until the earliest cooldown exp
 In any pipeline that includes a `review` agent, the loop MUST NOT exit on task completion during a build phase. The build agent can mark all tasks done, but only the review agent can approve a clean exit. Instead:
 
 1. **Build detects all tasks complete** → set `allTasksMarkedDone` flag in `loop-plan.json`, log `tasks_marked_complete`, but **do not exit** — cycle continues normally through qa and review
-2. **Cycle completes** → at the cycle boundary, the runtime sees `allTasksMarkedDone` is true, emits `all_tasks_done` trigger, and the rattail chain begins via trigger resolution
-3. **Rattail decides**:
-   - If all rattail agents pass (no new TODOs) → proof completes → loop exits with `state: "completed"`
-   - If any rattail agent finds issues → new TODOs created, `allTasksMarkedDone` resets, cycle resumes
+2. **Cycle completes** → at the cycle boundary, the loop checks `allTasksMarkedDone`. If true, switches to the `finalizer[]` array.
+3. **Finalizer decides**:
+   - If all finalizer agents pass (no new TODOs) → proof completes → loop exits with `state: "completed"`
+   - If any finalizer agent finds issues → new TODOs created, `allTasksMarkedDone` resets, `finalizerPosition` resets to 0, cycle resumes
 
-This ensures the review phase is the **only** path to a clean exit when the pipeline includes a review agent.
+This ensures the finalizer (which includes review, QA, and proof) is the **only** path to a clean exit when a finalizer is configured.
 
 ### State machine
 
@@ -217,22 +217,22 @@ build works on tasks → cycle continues normally (plan → build × 5 → qa �
     ↓
 cycle ends (review completes) → loop checks: all TODOs done?
   NO  → start next cycle
-  YES → runtime emits all_tasks_done → trigger chain begins
+  YES → switch to finalizer[] array
     ↓
-any rattail agent adds new TODOs?
+any finalizer agent adds new TODOs?
   YES → back to normal cycle (plan → build × 5 → qa → review)
   NO  → proof completes → state=completed, loop exits
 ```
 
-The loop does NOT exit mid-cycle. The cycle always runs to completion (though queue entries like steering can interrupt individual agents). Only at the cycle boundary does the runtime check `allTasksMarkedDone` and decide: next cycle or trigger the rattail chain.
+The loop does NOT exit mid-cycle. The cycle always runs to completion (though queue entries like steering can interrupt individual agents). Only at the cycle boundary does the loop check `allTasksMarkedDone` and decide: next cycle or switch to finalizer.
 
 ### Edge cases
 
 - **Review-only pipeline**: No build phase exists, so this invariant doesn't apply. The single review runs and exits.
-- **Build-only pipeline**: No review phase exists. Current behavior (exit on all tasks done) is correct for this pipeline, but rattail still runs if configured.
-- **Plan-build pipeline** (no review agent configured): No review phase. Cycle ends after last build. Rattail entry check happens there.
-- **Steering mid-flight**: If steering arrives while the rattail is running, the steer phase takes priority, the rattail is aborted, and the loop resumes the normal cycle after steering.
-- **Rattail agent adds TODOs**: `allTasksMarkedDone` flips back to false. Remaining rattail items are discarded from the queue. Loop resumes normal cycle. When all tasks are done again, the full rattail fires from the beginning.
+- **Build-only pipeline**: No review phase exists. Current behavior (exit on all tasks done) is correct for this pipeline, but finalizer still runs if configured.
+- **Plan-build pipeline** (no review agent configured): No review phase. Cycle ends after last build. Finalizer entry check happens there.
+- **Steering mid-flight**: If steering arrives while the finalizer is running, the steer phase takes priority, the finalizer is aborted (position reset to 0), and the loop resumes the normal cycle after steering.
+- **Finalizer agent adds TODOs**: `allTasksMarkedDone` flips back to false, `finalizerPosition` resets to 0. Loop resumes normal cycle. When all tasks are done again, the full finalizer fires from the beginning.
 
 ### Implementation notes
 
@@ -808,15 +808,15 @@ Cycle 4:  spec-gap → plan → build x5 → qa → docs → review
 ...
 ```
 
-**2. In the completion chain (rattail)** — runs as the first step after `all_tasks_done`. If it finds gaps, they become new TODO items, preventing loop completion. The loop only finishes when spec-gap produces zero findings.
+**2. In the finalizer** — spec-gap is the first element of the `finalizer[]` array in `loop-plan.json`. When all tasks are done at the cycle boundary, the loop switches to the finalizer. If spec-gap finds gaps, it creates new TODO items, the finalizer aborts, and the cycle resumes. The loop only finishes when spec-gap produces zero findings.
 
 ```
-all_tasks_done → spec-gap → docs → spec-review → final-review → final-qa → proof
-                    ↓ (if gaps found)        ↓ (if docs stale)
-              new TODO items → loop continues → build fixes them → ...
+finalizer[]:  spec-gap → docs → spec-review → final-review → final-qa → proof
+                  ↓ (if gaps found)        ↓ (if docs stale)
+            new TODO items → finalizer aborts → cycle resumes → build fixes them → ...
 ```
 
-**Unlimited runs** — there is no cap on how many times spec-gap can run. It runs every other cycle plus at every completion attempt. The loop is done when the spec is fully fulfilled.
+**Unlimited runs** — there is no cap on how many times spec-gap can run. It runs every other cycle plus at every finalizer attempt. The loop is done when the spec is fully fulfilled.
 
 ### What it checks
 
@@ -836,21 +836,21 @@ all_tasks_done → spec-gap → docs → spec-review → final-review → final-
 
 ### Acceptance Criteria
 
-- [ ] `PROMPT_spec-gap.md` exists with periodic scheduling (every 2nd cycle) and `trigger: all_tasks_done`
-- [ ] `PROMPT_spec-review.md` trigger updated from `all_tasks_done` to `docs`
+- [ ] `PROMPT_spec-gap.md` exists with periodic scheduling (every 2nd cycle)
+- [ ] Spec-gap is the first element of the `finalizer[]` array in `pipeline.yml` / `loop-plan.json`
 - [ ] Spec-gap runs before every 2nd plan phase during normal loop execution
-- [ ] Spec-gap runs as first step of completion chain after `all_tasks_done`
-- [ ] If spec-gap finds issues, they become TODO items and the loop continues (no completion)
+- [ ] Spec-gap runs as first finalizer agent when all tasks are done
+- [ ] If spec-gap finds issues, they become TODO items, finalizer aborts, cycle resumes
 - [ ] Loop can only complete when spec-gap produces zero findings
 - [ ] Findings are written to TODO.md with `[spec-gap]` tag, file paths, and suggested fix direction
 - [ ] Agent does not modify code or SPEC.md — analysis only
-- [ ] Both `loop.sh` and `loop.ps1` support the `spec-gap` agent in cycle resolution and rattail dispatch
+- [ ] Both `loop.sh` and `loop.ps1` support finalizer mode with `finalizerPosition` tracking
 
 ---
 
 ## Documentation Sync Agent (Honest Docs)
 
-A dedicated agent (`PROMPT_docs.md`) that keeps project documentation accurate and honest about implementation status. It runs **periodically** (every 2nd cycle, after qa) and in the **completion chain** (after spec-gap, before spec-review).
+A dedicated agent (`PROMPT_docs.md`) that keeps project documentation accurate and honest about implementation status. It runs **periodically** (every 2nd cycle, after qa) and in the **finalizer** (after spec-gap, before spec-review).
 
 ### Purpose
 
@@ -859,7 +859,7 @@ Documentation drifts from reality fast during iterative development. README clai
 ### When it runs
 
 - **Periodic**: every 2nd cycle, after qa (same cycles as spec-gap)
-- **Completion chain**: after spec-gap, before spec-review — `trigger: spec-gap`
+- **Finalizer**: second element of `finalizer[]` array (after spec-gap, before spec-review)
 - The docs agent **can modify documentation files** (unlike spec-gap which is analysis-only)
 
 ### What it does
@@ -872,8 +872,8 @@ Documentation drifts from reality fast during iterative development. README clai
 
 ### Acceptance Criteria
 
-- [ ] `PROMPT_docs.md` exists with `trigger: spec-gap` and periodic scheduling
-- [ ] Docs agent runs after qa in every 2nd cycle and after spec-gap in completion chain
+- [ ] `PROMPT_docs.md` exists with periodic scheduling (every 2nd cycle)
+- [ ] Docs is the second element of the `finalizer[]` array (runs after spec-gap in finalizer)
 - [ ] Documentation reflects actual implementation status, not aspirational spec
 - [ ] Completeness markers are used for partial/planned features
 - [ ] Agent does not modify SPEC.md or implementation code
@@ -3669,7 +3669,7 @@ This applies to both loop mode and orchestrator child loops because both use the
 
 ### Shared Instructions via `{{include:path}}`
 
-Prompt templates support `{{include:path}}` to inline shared instruction files. This avoids duplicating instructions between cycle agents and their rattail counterparts (e.g., `review` and `final-review` share the same 9-gate instructions).
+Prompt templates support `{{include:path}}` to inline shared instruction files. This avoids duplicating instructions between cycle agents and their finalizer counterparts (e.g., `review` and `final-review` share the same 9-gate instructions).
 
 **How it works:** During template expansion (at session start or queue injection), `{{include:path}}` is replaced with the contents of the referenced file. Paths are relative to `aloop/templates/`.
 
