@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,22 +92,29 @@ test('layout at 1920x1080 shows all three columns', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto('/');
 
-  // Sidebar (Aside) should be visible
-  await expect(page.locator('aside')).toBeVisible();
-  
-  // Both Docs and Activity panels should be visible side-by-side
-  // Use headings to avoid ambiguity with mobile toggle buttons
-  await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Activity' })).toBeVisible();
+  const sidebar = page.locator('aside').first();
+  const docsHeading = page.getByRole('heading', { name: 'Documents' });
+  const activityHeading = page.getByRole('heading', { name: 'Activity' });
 
-  // Verify they are actually side-by-side (different X coordinates)
-  const docsBox = await page.getByRole('heading', { name: 'Documents' }).boundingBox();
-  const activityBox = await page.getByRole('heading', { name: 'Activity' }).boundingBox();
-  
+  await expect(sidebar).toBeVisible();
+  await expect(docsHeading).toBeVisible();
+  await expect(activityHeading).toBeVisible();
+
+  const sidebarBox = await sidebar.boundingBox();
+  const docsBox = await docsHeading.boundingBox();
+  const activityBox = await activityHeading.boundingBox();
+
+  expect(sidebarBox).not.toBeNull();
   expect(docsBox).not.toBeNull();
   expect(activityBox).not.toBeNull();
-  if (docsBox && activityBox) {
+
+  if (sidebarBox && docsBox && activityBox) {
+    // Explicit desktop visibility checks for all three major layout regions.
+    expect(sidebarBox.width).toBeGreaterThan(0);
+    expect(sidebarBox.x + sidebarBox.width).toBeGreaterThan(0);
+    expect(docsBox.x).toBeGreaterThan(sidebarBox.x + sidebarBox.width);
     expect(docsBox.x).toBeLessThan(activityBox.x);
+    expect(activityBox.x).toBeLessThan(1920);
   }
 });
 
