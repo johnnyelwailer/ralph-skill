@@ -1,5 +1,29 @@
 # Review Log
 
+## Review — 2026-03-19 16:40 UTC — commit 4b300dc..5f40be3
+
+**Verdict: PASS** (all 9 gates pass)
+**Scope:** `aloop/cli/src/commands/start.ts`, `aloop/cli/src/commands/start.test.ts`, `aloop/cli/src/commands/dashboard.ts`, `aloop/cli/src/commands/dashboard.test.ts`, `aloop/cli/lib/project.mjs`, `aloop/cli/dashboard/src/App.tsx`, `aloop/cli/dashboard/src/AppView.tsx`, `aloop/cli/dashboard/src/App.test.tsx`, `aloop/cli/dashboard/src/App.coverage.test.ts`, `aloop/cli/dashboard/e2e/smoke.spec.ts`, `aloop/cli/dashboard/vitest.config.ts`, `aloop/bin/loop.sh`, `aloop/templates/PROMPT_single.md`
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: `single` mode end-to-end support restored — `resolveConfiguredStartMode` and `normalizeScaffoldMode` now preserve `single` instead of normalizing to `plan-build-review`. `PROMPT_single.md` template added to `LOOP_PROMPT_TEMPLATES` via `SINGLE_PROMPT_TEMPLATES`. `loop.sh` single case resolves to `single` instead of `plan`. Proof manifest (`single-mode-proof.json`) shows before/after packaged-install CLI captures.
+- Gate 2 ✅: Dashboard `App.test.tsx` tautological local function copies replaced — all helper functions (`parseLogLine`, `str`, `isRecord`, `formatDateKey`, `computeAvgDuration`, `deriveProviderHealth`, etc.) now imported from production `AppView.tsx`.
+- Gate 3 ✅: `AppView.tsx` branch coverage raised to **81.62%** (was 29.53%), above the 80% threshold. `vitest.config.ts` now includes `src/AppView.tsx` in coverage tracking.
+- Gate 5 ✅: Test suite handle leakage fixed — 87/87 dashboard tests pass, 8/8 CLI tests pass. Type-check clean. Build succeeds.
+
+**Gate-by-gate:**
+- Gate 1: Single mode correctly wired end-to-end — `resolveConfiguredStartMode('single')` returns `'single'` (not `'plan-build-review'`), `resolvePromptTemplates('single')` returns `['PROMPT_single.md']`, `loop.sh` single case resolves to `RESOLVED_MODE="single"`. Stale runtime warning fix correctly targets the aloop source repo (`isAloopRepo` checks `install.ps1` + `aloop/bin`) instead of the target project repo. `resolveSessionContext` history.json fallback iterates newest-first and correctly matches on `session_id` or `id`.
+- Gate 2: New tests use concrete value assertions throughout. `start.test.ts` adds 3 new tests: non-aloop repo gets no staleness warning (exact assertion), aloopPath-based repo root resolution (verifies `-C` arg matches source repo), single mode passes `single` not `plan-build-review`. `dashboard.test.ts` adds history.json fallback test with exact field assertions (`sessionDir`, `workdir`, `status.state`, `status.phase`, `status.iteration`, `docs['SPEC.md']`). `App.coverage.test.ts` adds substantial component-level integration tests (MockEventSource, steer/stop interactions, panel toggles, session switching, docs overflow, older-session grouping) with specific DOM assertions.
+- Gate 3: `AppView.tsx` 81.62% branch, `App.tsx` 100% branch. Both above threshold.
+- Gate 4: No dead code introduced. `Page` type import removed from `smoke.spec.ts`. Old tautological test-local function copies removed from `App.test.tsx` (~530 lines deleted). No copy-paste duplication found.
+- Gate 5: `cd aloop/cli && npm test && npm run type-check && npm run build` — all pass. 87/87 dashboard unit tests. 8/8 CLI tests.
+- Gate 6: Proof manifest (iter 304) contains 3 screenshots (desktop layout, health tab, archived session) + CLI output + API response capture. All evidence-based, no filler. Single-mode proof (iter 286) at `proof/single-mode-proof.json` has valid before/after CLI captures.
+- Gate 7: `smoke.spec.ts` strengthened with bounding box assertions — sidebar width > 0, docs heading X > sidebar right edge, docs X < activity X, activity X < 1920. Concrete position/ordering checks, not just visibility.
+- Gate 8: No dependency changes; version compliance unchanged.
+- Gate 9: No new user-facing docs changes needed — single mode is an internal orchestrator mechanism. README `--provider` vs `--providers` mismatch is a pre-existing issue already tracked in TODO.md.
+
+---
+
 ## Review — 2026-03-18 17:45 UTC — commit 3f188d7..72ef614
 
 **Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
