@@ -11,6 +11,8 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 
 ### Up Next
 - [x] [qa/P1] [bug] `single` mode parity gap: loop.sh (`resolve_iteration_mode` line 366) and loop.ps1 (`Resolve-IterationMode` line 260) accept and handle `single` mode, but `start.ts:20` (`LOOP_MODE_SET`) does NOT include `single`, so `aloop start --mode single` rejects it before ever reaching the loop scripts. Fixed by adding `'single'` to start-command mode validation/type and extending `compile-loop-plan` cycle support + regression tests (`start.test.ts`, `compile-loop-plan.test.ts`). QA tested at iter 251 — now passing in CLI tests. (priority: high)
+- [ ] [qa/P1] [bug] `aloop start --mode single` fails because `PROMPT_single.md` is missing from scaffolded prompts. Tested at iter 252. (priority: high)
+- [ ] [qa/P2] [bug] `aloop start` stale runtime warning compares against current directory's git repo instead of aloop source repo. Tested at iter 252. (priority: low)
 - [x] [qa/P1] Orchestrator spec-consistency result processing cannot be triggered or verified by users: the path mismatch (Gate 1 above) means results written by the spec-consistency agent under `projectRoot/requests/` are never read by the orchestrator scan pass reading from `sessionDir/requests/`. This is a symptom of Gate 1 — fixing the path alignment will resolve this. QA tested at iter 251. (priority: high)
 - [x] [qa/P2] [bug] Cross-platform PowerShell fake-provider shims — Linux `Get-Command` ignores `.cmd` fake shims so tests may call real provider CLIs; ensure `.cmd` + no-extension shims stay in lockstep for touched test infra. SPEC QA acceptance criteria explicitly requires both Windows shim (`*.cmd`) and POSIX shim (no extension). (priority: medium)
 

@@ -4366,3 +4366,38 @@ ZDR Mode: Enabled
 $ HOME=/tmp/qa-orch-test $ALOOP_BIN orchestrate --run-scan-loop --max-iterations 1
 # Injected spec-consistency-results.json manually during scan loop but was ignored.
 ```
+
+## QA Session — 2026-03-19 (iteration 252)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-cwWax1/bin/aloop
+- Version: 1.0.0
+- Temp project: /tmp/qa-test-project
+- Mock HOME: /tmp/qa-test-home
+
+### Results
+- PASS: aloop setup --non-interactive (fresh HOME)
+- PASS: aloop start (initialization)
+- PASS: aloop status (listing and health)
+- PASS: aloop status --watch (live refresh)
+- PASS: aloop stop (graceful termination)
+- PASS: aloop steer (instruction queuing)
+- PASS: aloop update (permissions and refresh)
+- PASS: aloop devcontainer (config generation)
+- PASS: Dashboard docs data (/api/state populated)
+- FAIL: aloop start --mode single (PROMPT_single.md missing)
+- FAIL: aloop start stale warning (incorrect git repo comparison)
+
+### Bugs Filed
+- [qa/P1] [bug] 'aloop start --mode single' fails because 'PROMPT_single.md' is missing from scaffolded prompts.
+- [qa/P2] [bug] 'aloop start' stale runtime warning compares against current directory's git repo instead of aloop's source repo.
+
+### Command Transcript
+(Note: key operations)
+- aloop setup --non-interactive --mode loop --providers codex --spec SPEC.md
+- aloop start --max-iterations 1
+- aloop status
+- aloop steer 'Wait 5 seconds and then create hello.txt'
+- aloop update
+- aloop start --mode single --max-iterations 1
+- curl -s 'http://localhost:DASHBOARD_PORT/api/state'
