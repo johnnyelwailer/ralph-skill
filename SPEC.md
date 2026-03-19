@@ -674,17 +674,17 @@ The spec-gap agent catches these systematically.
 
 ```
 Cycle 1:  plan → build x5 → qa → review
-Cycle 2:  spec-gap → plan → build x5 → qa → review
+Cycle 2:  spec-gap → plan → build x5 → qa → docs → review
 Cycle 3:  plan → build x5 → qa → review
-Cycle 4:  spec-gap → plan → build x5 → qa → review
+Cycle 4:  spec-gap → plan → build x5 → qa → docs → review
 ...
 ```
 
 **2. In the completion chain (rattail)** — runs as the first step after `all_tasks_done`. If it finds gaps, they become new TODO items, preventing loop completion. The loop only finishes when spec-gap produces zero findings.
 
 ```
-all_tasks_done → spec-gap → spec-review → final-review → final-qa → proof
-                    ↓ (if gaps found)
+all_tasks_done → spec-gap → docs → spec-review → final-review → final-qa → proof
+                    ↓ (if gaps found)        ↓ (if docs stale)
               new TODO items → loop continues → build fixes them → ...
 ```
 
@@ -717,6 +717,38 @@ all_tasks_done → spec-gap → spec-review → final-review → final-qa → pr
 - [ ] Findings are written to TODO.md with `[spec-gap]` tag, file paths, and suggested fix direction
 - [ ] Agent does not modify code or SPEC.md — analysis only
 - [ ] Both `loop.sh` and `loop.ps1` support the `spec-gap` agent in cycle resolution and rattail dispatch
+
+---
+
+## Documentation Sync Agent (Honest Docs)
+
+A dedicated agent (`PROMPT_docs.md`) that keeps project documentation accurate and honest about implementation status. It runs **periodically** (every 2nd cycle, after qa) and in the **completion chain** (after spec-gap, before spec-review).
+
+### Purpose
+
+Documentation drifts from reality fast during iterative development. README claims features that are half-built, CLI help text references flags that changed, and there's no honest accounting of what's actually done vs planned. The docs agent fixes this by cross-referencing docs against actual code.
+
+### When it runs
+
+- **Periodic**: every 2nd cycle, after qa (same cycles as spec-gap)
+- **Completion chain**: after spec-gap, before spec-review — `trigger: spec-gap`
+- The docs agent **can modify documentation files** (unlike spec-gap which is analysis-only)
+
+### What it does
+
+1. Syncs README.md feature lists with actual implementation state
+2. Updates CLI help text to match current flags/commands
+3. Adds honest completeness markers: "Implemented", "Partial (missing X)", "Planned", "Experimental"
+4. Documents config fields and override precedence
+5. Does NOT modify SPEC.md or code — only documentation files
+
+### Acceptance Criteria
+
+- [ ] `PROMPT_docs.md` exists with `trigger: spec-gap` and periodic scheduling
+- [ ] Docs agent runs after qa in every 2nd cycle and after spec-gap in completion chain
+- [ ] Documentation reflects actual implementation status, not aspirational spec
+- [ ] Completeness markers are used for partial/planned features
+- [ ] Agent does not modify SPEC.md or implementation code
 
 ---
 
