@@ -364,9 +364,9 @@ resolve_iteration_mode() {
                     esac
                     ;;
                 single)
-                    # One-shot mode: used by orchestrator for single-prompt child loops.
-                    # The prompt is resolved from PROMPT_single.md in the prompts dir.
-                    RESOLVED_MODE="single"
+                    # Normalize stale 'single' mode to standard loop cycle
+                    MODE="plan-build-review"
+                    RESOLVED_MODE="plan"
                     ;;
                 *)
                     RESOLVED_MODE="$MODE"

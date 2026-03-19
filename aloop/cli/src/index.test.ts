@@ -5,6 +5,9 @@ import os from 'node:os';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 
+// Isolate tests from the repository's git root to ensure pure temporary-fixture discovery
+process.env.GIT_CEILING_DIRECTORIES = os.tmpdir();
+
 type CliResult = {
   code: number | null;
   stdout: string;

@@ -74,8 +74,8 @@ type SetupConfirmation = 'confirm' | 'adjust' | 'cancel';
 function parseSetupMode(value: string | undefined): SetupMode | undefined {
   if (!value) return undefined;
   const normalized = value.trim().toLowerCase();
-  if (normalized === 'loop' || normalized === 'orchestrate') {
-    return normalized;
+  if (normalized === 'loop' || normalized === 'orchestrate' || normalized === 'single') {
+    return (normalized === 'loop' || normalized === 'single') ? 'loop' : 'orchestrate';
   }
   throw new Error(`Invalid setup mode: ${value} (must be loop or orchestrate)`);
 }

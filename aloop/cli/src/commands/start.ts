@@ -356,7 +356,7 @@ function assertLoopMode(value: string): LoopMode {
 
 function resolveConfiguredStartMode(value: string): LoopMode {
   const normalized = value.trim().toLowerCase();
-  if (normalized === 'loop') {
+  if (normalized === 'loop' || normalized === 'single') {
     return 'plan-build-review';
   }
   if (normalized === 'orchestrate') {

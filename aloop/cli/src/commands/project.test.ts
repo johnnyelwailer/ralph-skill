@@ -7,6 +7,9 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { discoverWorkspace, resolveBundledTemplatesDir, resolveBundledAgentsDir, resolveBundledBinDir, scaffoldWorkspace } from './project.js';
 
+// Isolate tests from the repository's git root to ensure pure temporary-fixture discovery
+process.env.GIT_CEILING_DIRECTORIES = os.tmpdir();
+
 test('discoverWorkspace resolves project details and language signals', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-discover-'));
   await writeFile(path.join(tempRoot, 'package.json'), JSON.stringify({ name: 'demo', scripts: { test: 'node --test' } }), 'utf8');

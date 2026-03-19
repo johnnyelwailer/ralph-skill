@@ -754,7 +754,7 @@ function normalizeScaffoldMode(mode) {
     return 'plan-build-review';
   }
   const lowered = trimmed.toLowerCase();
-  if (lowered === 'loop') {
+  if (lowered === 'loop' || lowered === 'single') {
     return 'plan-build-review';
   }
   if (lowered === 'orchestrate') {
