@@ -1,5 +1,0 @@
-{
-  "iteration": 279,
-  "verdict": "FAIL",
-  "summary": "21 CLI tests are failing (regression/isolation), AppView.tsx branch coverage is only 29.5%, and tautological tests remain unresolved."
-}

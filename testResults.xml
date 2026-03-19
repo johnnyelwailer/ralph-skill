@@ -1,8 +1,0 @@
-﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
-<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="0" errors="0" failures="0" not-run="81" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2026-03-14" time="21:28:51">
-  <environment platform="Linux" nunit-version="2.5.8.0" cwd="/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree" clr-version="9.0.13" user-domain="" os-version="6.17.8-orbstack-00308-g8f9c941121b1" machine-name="sandbox" user="pj" />
-  <culture-info current-culture="" current-uiculture="" />
-  <test-suite type="TestFixture" name="Pester" executed="True" result="Success" success="True" time="0.12" asserts="0" description="Pester">
-    <results />
-  </test-suite>
-</test-results>

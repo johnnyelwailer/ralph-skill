@@ -44,7 +44,7 @@ export function formatTokenCount(n: number): string { return view.formatTokenCou
 export function extractModelFromOutput(header?: string): string { return view.extractModelFromOutput(header); }
 export function parseDurationSeconds(raw: string): number | null { return view.parseDurationSeconds(raw); }
 export function computeAvgDuration(log: string): string { return view.computeAvgDuration(log); }
-export function deriveProviderHealth(log: string) { return view.deriveProviderHealth(log); }
+export function deriveProviderHealth(log: string, configuredProviders?: string[]) { return view.deriveProviderHealth(log, configuredProviders); }
 export function slugify(text: string): string { return view.slugify(text); }
 
 export function findBaselineIterations(

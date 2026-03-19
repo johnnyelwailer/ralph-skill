@@ -228,7 +228,7 @@ interface ManifestPayload {
 
 interface ProviderHealth {
   name: string;
-  status: 'healthy' | 'cooldown' | 'failed';
+  status: 'healthy' | 'cooldown' | 'failed' | 'unknown';
   lastEvent: string;
   reason?: string;
   consecutiveFailures?: number;
@@ -587,8 +587,16 @@ export function computeAvgDuration(log: string): string {
 
 // ── Provider health derived from log ──
 
-export function deriveProviderHealth(log: string): ProviderHealth[] {
+export function deriveProviderHealth(log: string, configuredProviders?: string[]): ProviderHealth[] {
   const providers = new Map<string, ProviderHealth>();
+
+  // Seed configured providers as baseline with 'unknown' status
+  if (configuredProviders) {
+    for (const name of configuredProviders) {
+      if (name) providers.set(name, { name, status: 'unknown', lastEvent: '' });
+    }
+  }
+
   for (const line of log.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -612,7 +620,7 @@ export function deriveProviderHealth(log: string): ProviderHealth[] {
       } else if (event === 'provider_recovered') {
         providers.set(provider, { name: provider, status: 'healthy', lastEvent: ts });
       } else if (event === 'iteration_complete' || event === 'iteration_error') {
-        if (!providers.has(provider)) {
+        if (!providers.has(provider) || providers.get(provider)!.status === 'unknown') {
           providers.set(provider, { name: provider, status: 'healthy', lastEvent: ts });
         } else {
           const existing = providers.get(provider)!;
@@ -1032,6 +1040,7 @@ export function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
                 {p.status === 'healthy' && <Circle className="h-3 w-3 text-green-500 fill-green-500" />}
                 {p.status === 'cooldown' && <Pause className="h-3 w-3 text-orange-500" />}
                 {p.status === 'failed' && <XCircle className="h-3 w-3 text-red-500" />}
+                {p.status === 'unknown' && <Circle className="h-3 w-3 text-muted-foreground" />}
                 <span className="font-medium">{p.name}</span>
                 <span className="text-muted-foreground ml-auto">
                   {p.status === 'cooldown' && p.cooldownUntil ? (() => {
@@ -1040,7 +1049,7 @@ export function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
                     const h = Math.floor(remaining / 3600);
                     const m = Math.floor((remaining % 3600) / 60);
                     return `cooldown for ${h > 0 ? `${h}h ` : ''}${m}min`;
-                  })() : p.status}
+                  })() : p.status === 'unknown' ? 'no activity' : p.status}
                 </span>
                 <span className="text-muted-foreground/50 text-[10px]">{relativeTime(p.lastEvent)}</span>
               </div>
@@ -1935,7 +1944,12 @@ export function App() {
   const { completed: tasksCompleted, total: tasksTotal } = useMemo(() => parseTodoProgress(todoContent), [todoContent]);
   const progressPercent = tasksTotal > 0 ? Math.round((tasksCompleted / tasksTotal) * 100) : 0;
 
-  const providerHealth = useMemo(() => deriveProviderHealth(state?.log ?? ''), [state?.log]);
+  const configuredProviders = useMemo(() => {
+    if (!metaRecord) return undefined;
+    const list = metaRecord.enabled_providers ?? metaRecord.round_robin_order;
+    return Array.isArray(list) ? list.filter((v): v is string => typeof v === 'string') : undefined;
+  }, [metaRecord]);
+  const providerHealth = useMemo(() => deriveProviderHealth(state?.log ?? '', configuredProviders), [state?.log, configuredProviders]);
 
   const currentSession = sessions.find((s) => selectedSessionId === null ? sessions.indexOf(s) === 0 : s.id === selectedSessionId);
   const sessionName = currentSession?.name ?? 'No session';

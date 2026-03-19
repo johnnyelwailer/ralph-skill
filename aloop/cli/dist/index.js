@@ -4905,18 +4905,33 @@ async function loadArtifactManifests(sessionDir) {
 }
 async function resolveSessionContext(runtimeDir, sessionId) {
   const activeSessionsPath = path6.join(runtimeDir, "active.json");
+  const recentSessionsPath = path6.join(runtimeDir, "history.json");
   const active = await readJsonFile(activeSessionsPath);
-  if (!isRecord(active)) {
-    return null;
+  const toSessionContext = (entry) => {
+    const sessionDir = typeof entry.session_dir === "string" ? entry.session_dir : path6.join(runtimeDir, "sessions", sessionId);
+    const workdir = typeof entry.work_dir === "string" ? entry.work_dir : process.cwd();
+    const pid = typeof entry.pid === "number" && Number.isInteger(entry.pid) && entry.pid > 0 ? entry.pid : null;
+    return { sessionDir, workdir, pid };
+  };
+  if (isRecord(active)) {
+    const activeEntry = active[sessionId];
+    if (isRecord(activeEntry)) {
+      return toSessionContext(activeEntry);
+    }
   }
-  const entry = active[sessionId];
-  if (!isRecord(entry)) {
-    return null;
+  const recentSessions = await readJsonArrayFile(recentSessionsPath);
+  for (let index = recentSessions.length - 1; index >= 0; index -= 1) {
+    const entry = recentSessions[index];
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const entrySessionId = typeof entry.session_id === "string" ? entry.session_id : typeof entry.id === "string" ? entry.id : "";
+    if (entrySessionId !== sessionId) {
+      continue;
+    }
+    return toSessionContext(entry);
   }
-  const sessionDir = typeof entry.session_dir === "string" ? entry.session_dir : path6.join(runtimeDir, "sessions", sessionId);
-  const workdir = typeof entry.work_dir === "string" ? entry.work_dir : process.cwd();
-  const pid = typeof entry.pid === "number" && Number.isInteger(entry.pid) && entry.pid > 0 ? entry.pid : null;
-  return { sessionDir, workdir, pid };
+  return null;
 }
 function isProcessAlive(pid) {
   try {
@@ -9687,6 +9702,8 @@ async function defaultPromptUser(rl, question, defaultValue) {
   });
 }
 async function setupCommandWithDeps(options, deps) {
+  const providerListInput = options.providers ?? options.provider;
+  const parsedProviderList = providerListInput ? providerListInput.split(",").map((p) => p.trim()).filter(Boolean) : void 0;
   const discovery = await deps.discover({
     projectRoot: options.projectRoot,
     homeDir: options.homeDir
@@ -9698,7 +9715,7 @@ async function setupCommandWithDeps(options, deps) {
       projectRoot: options.projectRoot,
       homeDir: options.homeDir,
       specFiles: options.spec ? [options.spec] : void 0,
-      enabledProviders: options.providers ? options.providers.split(",").map((p) => p.trim()) : void 0,
+      enabledProviders: parsedProviderList,
       mode: mapSetupModeToLoopMode(setupMode),
       autonomyLevel: parseAutonomyLevel(options.autonomyLevel),
       dataPrivacy: parseDataPrivacy(options.dataPrivacy),
@@ -9709,7 +9726,7 @@ async function setupCommandWithDeps(options, deps) {
   }
   console.log("\n--- Aloop Interactive Setup ---\n");
   let spec = options.spec || discovery.context.spec_candidates[0] || "SPEC.md";
-  let enabledProviders = (options.providers || discovery.providers.installed.join(",") || "claude").split(",").map((s) => s.trim()).filter(Boolean);
+  let enabledProviders = (parsedProviderList?.join(",") || discovery.providers.installed.join(",") || "claude").split(",").map((s) => s.trim()).filter(Boolean);
   let language = discovery.context.detected_language;
   let provider = enabledProviders[0] || discovery.providers.default_provider;
   const recommendedMode = discovery.mode_recommendation?.recommended_mode;
@@ -14162,7 +14179,7 @@ var program2 = new Command();
 program2.name("aloop").description("Aloop CLI for dashboard and project orchestration").version("1.0.0");
 program2.command("resolve").description("Resolve project workspace and configuration").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(withErrorHandling(resolveCommand));
 program2.command("discover").description("Discover workspace specs, files, and validation commands").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "json").action(withErrorHandling(discoverCommand));
-program2.command("setup").description("Interactive setup and scaffold for aloop project").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--spec <path>", "Specification file to use").option("--providers <providers>", "Comma-separated list of providers to enable").option("--mode <mode>", "Setup mode: loop or orchestrate").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--non-interactive", "Skip interactive prompts and use defaults").action(withErrorHandling(setupCommand));
+program2.command("setup").description("Interactive setup and scaffold for aloop project").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--spec <path>", "Specification file to use").option("--providers <providers>", "Comma-separated list of providers to enable").option("--provider <provider>", "Alias for --providers (comma-separated)").option("--mode <mode>", "Setup mode: loop or orchestrate").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--non-interactive", "Skip interactive prompts and use defaults").action(withErrorHandling(setupCommand));
 program2.command("scaffold").description("Scaffold project workdir and prompts").option("--project-root <path>", "Project root override").option("--language <language>", "Language override").option("--provider <provider>", "Provider override").option("--enabled-providers <providers...>", "Enabled providers list or csv values").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--round-robin-order <providers...>", "Round-robin provider order list or csv values").option("--spec-files <files...>", "Spec file list or csv values").option("--reference-files <files...>", "Reference file list or csv values").option("--validation-commands <commands...>", "Validation command list or csv values").option("--safety-rules <rules...>", "Safety rule list or csv values").option("--mode <mode>", "Loop mode", "plan-build-review").option("--templates-dir <path>", "Template directory override").option("--output <mode>", "Output format: json or text", "json").action(withErrorHandling(scaffoldCommand));
 program2.command("start").description("Start an aloop session for the current project").argument("[session-id]", "Session ID to resume (used with --launch resume)").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--provider <provider>", "Provider override").option("--mode <mode>", "Loop mode override").option("--launch <mode>", "Session launch mode: start, restart, or resume").option("--plan", "Shortcut for --mode plan").option("--build", "Shortcut for --mode build").option("--review", "Shortcut for --mode review").option("--in-place", "Run in project root instead of creating a git worktree").option("--max-iterations <number>", "Max iteration override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(startCommand));
 program2.command("dashboard").description("Launch real-time progress dashboard").option("-p, --port <number>", "Port to run the dashboard on", "3000").option("--session-dir <path>", "Session directory containing status.json and log.jsonl").option("--workdir <path>", "Project work directory containing TODO.md and related docs").option("--assets-dir <path>", "Directory containing bundled dashboard frontend assets").action(withErrorHandling(dashboardCommand));
