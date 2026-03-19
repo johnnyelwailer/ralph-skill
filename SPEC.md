@@ -701,7 +701,7 @@ all_tasks_done → spec-gap → docs → spec-review → final-review → final-
 ### Rules
 
 - Analysis only — documents gaps in TODO.md, does not fix them
-- Maximum 10 items per run (prioritize most impactful)
+- No cap on findings — report all gaps found, prioritize most impactful first
 - Tags items as `[spec-gap]` with priority P1/P2/P3
 - Distinguishes "spec is wrong" vs "code is wrong"
 - If zero gaps found, writes "spec-gap analysis: no discrepancies" and allows the chain to proceed
