@@ -72,5 +72,5 @@ Cross-reference SPEC.md requirements, config files, and runtime code to identify
 - Ignore minor wording differences — focus on behavioral/functional mismatches
 - Check for hallucinated features: if something exists in code but not in spec, flag it for review
 - Do NOT re-file gaps that are already in TODO.md — check existing `[spec-gap]` items first
-- Prioritize the most impactful gaps, but do not cap the number of findings
+- Prioritize the most impactful gaps first
 - When running in the completion chain: if ANY gap is found, the loop will continue. Be thorough but fair — don't block completion on cosmetic issues (P3). Only P1 and P2 gaps should prevent completion.
