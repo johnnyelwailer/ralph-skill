@@ -1738,3 +1738,17 @@ test('watch logic triggers request processing', async () => {
     await rm(root, { recursive: true });
   }
 });
+
+test.after(() => {
+  const getActiveHandles = (process as unknown as { _getActiveHandles?: () => unknown[] })._getActiveHandles;
+  if (!getActiveHandles) return;
+  // Some Node/tsx environments keep FSWatcher handles alive after the suite;
+  // proactively close them so test runs terminate cleanly.
+  for (const handle of getActiveHandles()) {
+    if (!handle || typeof handle !== 'object') continue;
+    const typed = handle as { constructor?: { name?: string }; close?: () => void };
+    if (typed.constructor?.name === 'FSWatcher' && typeof typed.close === 'function') {
+      typed.close();
+    }
+  }
+});

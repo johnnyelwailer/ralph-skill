@@ -1792,6 +1792,10 @@ export function App() {
     let cancelled = false;
     const controller = new AbortController();
     let eventSource: EventSource | null = null;
+    let stateListener: ((evt: Event) => void) | null = null;
+    let heartbeatListener: (() => void) | null = null;
+    let openListener: (() => void) | null = null;
+    let errorListener: (() => void) | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelay = 1000;
     const sp = selectedSessionId ? `?session=${encodeURIComponent(selectedSessionId)}` : '';
@@ -1805,27 +1809,51 @@ export function App() {
       finally { if (!cancelled) setLoading(false); }
     }
 
+    function cleanupEventSource() {
+      if (!eventSource) return;
+      if (stateListener) eventSource.removeEventListener('state', stateListener);
+      if (heartbeatListener) eventSource.removeEventListener('heartbeat', heartbeatListener);
+      eventSource.onopen = null;
+      eventSource.onerror = null;
+      eventSource.close();
+      eventSource = null;
+      stateListener = null;
+      heartbeatListener = null;
+      openListener = null;
+      errorListener = null;
+    }
+
     function connectSSE() {
       if (cancelled) return;
       setConnectionStatus('connecting');
       eventSource = new EventSource(`/events${sp}`);
-      eventSource.addEventListener('state', (evt) => {
+      stateListener = (evt: Event) => {
         try {
           setState(JSON.parse((evt as MessageEvent<string>).data) as DashboardState);
           setLoadError(null); setConnectionStatus('connected'); reconnectDelay = 1000;
         } catch (e) { setLoadError((e as Error).message); }
-      });
-      eventSource.addEventListener('heartbeat', () => { setConnectionStatus('connected'); });
-      eventSource.onopen = () => { setConnectionStatus('connected'); reconnectDelay = 1000; };
-      eventSource.onerror = () => {
-        setConnectionStatus('disconnected'); eventSource?.close(); eventSource = null;
+      };
+      heartbeatListener = () => { setConnectionStatus('connected'); };
+      openListener = () => { setConnectionStatus('connected'); reconnectDelay = 1000; };
+      errorListener = () => {
+        setConnectionStatus('disconnected');
+        cleanupEventSource();
         if (!cancelled) { reconnectTimer = setTimeout(connectSSE, reconnectDelay); reconnectDelay = Math.min(reconnectDelay * 2, 30000); }
       };
+      eventSource.addEventListener('state', stateListener);
+      eventSource.addEventListener('heartbeat', heartbeatListener);
+      eventSource.onopen = openListener;
+      eventSource.onerror = errorListener;
     }
 
     load().catch(() => undefined);
     connectSSE();
-    return () => { cancelled = true; controller.abort(); eventSource?.close(); if (reconnectTimer) clearTimeout(reconnectTimer); };
+    return () => {
+      cancelled = true;
+      controller.abort();
+      cleanupEventSource();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
   }, [selectedSessionId]);
 
   const sessions = useMemo<SessionSummary[]>(() => {
