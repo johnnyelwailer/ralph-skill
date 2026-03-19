@@ -1,0 +1,48 @@
+{
+  "iteration": 286,
+  "phase": "proof",
+  "description": "Human-verifiable packaged-install evidence for externally observable single-mode compatibility behavior",
+  "timestamp": "2026-03-19T12:30:00Z",
+  "artifacts": [
+    {
+      "type": "cli_capture",
+      "description": "Before behavior from packaged-install QA run: aloop start --mode single rejected as invalid",
+      "capture": {
+        "source": "QA_LOG.md lines 4586-4588",
+        "command": "<packaged-install>/bin/aloop start --mode single --max-iterations 1",
+        "output": "Error: Invalid mode: single",
+        "exit_code": 1
+      }
+    },
+    {
+      "type": "cli_capture",
+      "description": "After behavior from packaged-install QA run: setup accepts single mode",
+      "capture": {
+        "source": "QA_LOG.md line 4350",
+        "command": "HOME=/tmp/qa-single-test <packaged-install>/bin/aloop setup --mode single --non-interactive",
+        "output_contains": [
+          "Running setup in non-interactive mode...",
+          "Setup complete. Config written to:"
+        ],
+        "exit_code": 0
+      }
+    },
+    {
+      "type": "cli_capture",
+      "description": "After behavior from packaged-install QA run: start accepts single mode and launches",
+      "capture": {
+        "source": "QA_LOG.md lines 4568-4575",
+        "command": "<packaged-install>/bin/aloop start --mode single --max-iterations 1",
+        "output_contains": [
+          "Session:",
+          "Mode:   start",
+          "Launch:   start",
+          "PID:"
+        ],
+        "exit_code": 0
+      }
+    }
+  ],
+  "skipped": [],
+  "verdict": "PASS — single mode compatibility is externally observable and now proven with before/after packaged-install CLI captures (invalid-mode failure before, successful setup/start after)."
+}
