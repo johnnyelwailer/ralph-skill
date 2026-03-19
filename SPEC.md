@@ -212,7 +212,9 @@ review approves?
 ### Implementation notes
 
 - New `loop-plan.json` field: `"allTasksMarkedDone": false`
-- When build marks all tasks done: set `allTasksMarkedDone`, inject review prompt into queue (`$SESSION_DIR/queue/001-force-review.md`), and `continue`
+- When build marks all tasks done: set `allTasksMarkedDone`, emit `all_tasks_done` event to `$SESSION_DIR/events/`
+- The event dispatcher (external to loop script) resolves this event against prompt triggers and copies matching prompts to `queue/`
+- The loop script does NOT hardcode which prompt to inject — it just emits the event and continues processing queue
 - Queue injection replaces the old `forceReviewNext` flag — the queue system already handles priority ordering and one-shot consumption
 - The review prompt (`PROMPT_review.md`) must already instruct the reviewer to reopen tasks or add new ones if quality gates fail — verify this is the case
 - Log events: `tasks_marked_complete` (build), `final_review_approved` (review exits), `final_review_rejected` (review reopens tasks)
@@ -388,32 +390,61 @@ When all TODO.md tasks are marked done, a chain of final validation agents fires
 ```
 Continuous cycle:  plan → build × 5 → qa → review  (no triggers, just cycle order)
 
-Rattail chain:     all_tasks_done → spec-review → final-review → final-qa → proof → completed
+Rattail chain:     all_tasks_done → spec-gap → docs → spec-review → final-review → final-qa → proof → completed
 ```
 
-Each agent's `trigger` field is the name of the agent (or event) that must complete before it runs. The runtime emits the completing agent's name as an event, scans the catalog for agents triggered by that name, and queues them. Cycle agents (`qa`, `review`) don't trigger anything because no catalog entry has `trigger: qa` or `trigger: review`.
+Each agent's `trigger` field is the name of the agent (or event) that must complete before it runs. **Trigger resolution does not happen in the loop script.** The loop script is a dumb queue processor — it pops prompt files from `queue/` and runs them. A thin event dispatcher (part of the runtime/CLI layer, not `loop.sh`) watches for events, scans the prompt catalog for matching `trigger:` values, and copies matching prompts into `queue/`. The loop picks them up on the next iteration.
+
+**Event flow:**
+1. Loop script detects condition (e.g., `all_tasks_done`) → writes event to `$SESSION_DIR/events/`
+2. Event dispatcher (external to loop script) reads event, scans `PROMPTS_DIR/*.md` frontmatter for `trigger: <event>`
+3. Matching prompts are copied to `$SESSION_DIR/queue/` with priority ordering
+4. Loop script checks queue on next iteration, finds prompt, runs it
+5. When that agent completes, its agent name becomes the next event → repeat
+
+The loop script has **zero knowledge** of triggers, chains, or agent relationships. It just processes queue files.
 
 **The rattail agents:**
 
-1. **spec-review** (`trigger: all_tasks_done`) — new agent, own prompt. Focuses solely on: "do the changes satisfy the requirements from the spec?" Reads the spec sections relevant to the completed work and verifies every acceptance criterion is met. Does NOT look at code quality — only requirement coverage.
-2. **final-review** (`trigger: spec-review`) — reuses `PROMPT_review.md`. Same 9 gates as the cycle's review, but triggered by spec-review completion rather than cycle position.
-3. **final-qa** (`trigger: final-review`) — reuses `PROMPT_qa.md`. Final round of user-perspective testing. Same behavior as cycle QA but triggered, not cycled.
-4. **proof** (`trigger: final-qa`) — own prompt. Generates human-verifiable evidence: screenshots, API captures, CLI recordings, before/after comparisons. Only runs here, never in the continuous cycle.
+1. **spec-gap** (`trigger: all_tasks_done`) — validates codebase against SPEC.md. Finds config drift, hallucinated features, cross-runtime parity issues. Analysis only — writes `[spec-gap]` items to TODO.md.
+2. **docs** (`trigger: spec-gap`) — syncs documentation to reality. Updates README, CLI help, completeness markers. Can modify doc files.
+3. **spec-review** (`trigger: docs`) — focuses solely on: "do the changes satisfy the requirements from the spec?" Reads the spec sections relevant to the completed work and verifies every acceptance criterion is met. Does NOT look at code quality — only requirement coverage.
+4. **final-review** (`trigger: spec-review`) — reuses `PROMPT_review.md`. Same 9 gates as the cycle's review, but triggered by spec-review completion rather than cycle position.
+5. **final-qa** (`trigger: final-review`) — reuses `PROMPT_qa.md`. Final round of user-perspective testing. Same behavior as cycle QA but triggered, not cycled.
+6. **proof** (`trigger: final-qa`) — own prompt. Generates human-verifiable evidence: screenshots, API captures, CLI recordings, before/after comparisons. Only runs here, never in the continuous cycle.
 
-**If ANY rattail agent creates new TODO items**, the loop goes back to building. The chain fires again naturally when tasks are done again. This is self-healing — no special retry logic needed.
+**If ANY rattail agent creates new TODO items**, `allTasksMarkedDone` flips back to false and the loop resumes the normal cycle. The chain fires again naturally when tasks are done again. This is self-healing — no special retry logic needed. The loop cannot complete while spec-gap has findings.
 
 **Only when proof completes with no new TODOs** does the runtime set `status.json` state=completed (or enter watch mode if orchestrated).
 
 **Agent catalog entries** (frontmatter + shared instructions):
 ```yaml
-# aloop/templates/PROMPT_spec-review.md — own instructions, first rattail link
+# aloop/templates/PROMPT_spec-gap.md — spec enforcement, first rattail link
 ---
-agent: spec-review
+agent: spec-gap
 trigger: all_tasks_done
 provider: claude
 reasoning: high
 ---
-# (own spec-review instructions here — not shared with any cycle agent)
+# (spec-gap analysis instructions)
+
+# aloop/templates/PROMPT_docs.md — documentation sync
+---
+agent: docs
+trigger: spec-gap
+provider: claude
+reasoning: medium
+---
+# (documentation sync instructions)
+
+# aloop/templates/PROMPT_spec-review.md — own instructions
+---
+agent: spec-review
+trigger: docs
+provider: claude
+reasoning: high
+---
+# (spec-review instructions)
 
 # aloop/templates/PROMPT_final-review.md — shares instructions with cycle review
 ---
@@ -436,7 +467,7 @@ trigger: final-review
 agent: proof
 trigger: final-qa
 ---
-# (own proof instructions here — not shared with any cycle agent)
+# (own proof instructions here)
 ```
 
 ### Orchestrator Review Layer
@@ -779,7 +810,7 @@ all_tasks_done → spec-gap → docs → spec-review → final-review → final-
 ### Acceptance Criteria
 
 - [ ] `PROMPT_spec-gap.md` exists with periodic scheduling (every 2nd cycle) and `trigger: all_tasks_done`
-- [ ] `PROMPT_spec-review.md` trigger updated from `all_tasks_done` to `spec-gap`
+- [ ] `PROMPT_spec-review.md` trigger updated from `all_tasks_done` to `docs`
 - [ ] Spec-gap runs before every 2nd plan phase during normal loop execution
 - [ ] Spec-gap runs as first step of completion chain after `all_tasks_done`
 - [ ] If spec-gap finds issues, they become TODO items and the loop continues (no completion)
@@ -2760,6 +2791,126 @@ The triage agent runs inside the orchestrator (Layer 1 — trusted). It uses `al
 
 ---
 
+## Branch Sync & Auto-Merge (Priority: P1)
+
+Aloop operates on a branch hierarchy that must be kept in sync continuously. Without automatic merging, worktree branches drift from upstream, leading to painful conflicts at PR time and wasted iterations building on stale code.
+
+### Branch Hierarchy
+
+```
+main / develop  (upstream base — configurable per project)
+  └── aloop/<session>  (trunk — created at session start from base)
+        ├── aloop/<session>/task-1  (feature branch — orchestrator only)
+        ├── aloop/<session>/task-2
+        └── ...
+```
+
+- **Base branch** (`main`, `develop`, or custom) — the upstream branch the project merges into. Configured at setup time, stored in `meta.json` as `base_branch`.
+- **Trunk branch** (`aloop/<session>`) — created from base at session start. All single-loop work happens here. For orchestrator mode, this is the integration branch.
+- **Feature branches** (`aloop/<session>/task-N`) — orchestrator only. Each child loop gets its own branch off trunk. PRs merge feature → trunk, then trunk → base.
+
+### Pre-Iteration Base Merge
+
+Before every iteration, the loop script performs a base branch sync:
+
+```
+1. git fetch origin <base_branch>
+2. git merge origin/<base_branch> --no-edit
+   → Clean merge? Continue to iteration.
+   → Conflict? Write conflict state to $SESSION_DIR/events/merge_conflict
+              Queue PROMPT_merge.md → merge agent resolves conflicts
+              After merge agent completes, iteration proceeds normally.
+   → Already up to date? Continue (no-op).
+```
+
+This is the **one piece of git awareness** the loop script has. It's mechanical — fetch, merge, detect conflict, queue prompt if needed. The loop script does NOT resolve conflicts itself.
+
+**Why before every iteration:** The base branch can advance at any time (other developers pushing, other aloop sessions merging). Syncing every iteration keeps drift minimal. A 50-iteration loop that never syncs will have 50 iterations of divergence to resolve at PR time.
+
+### Merge Agent (`PROMPT_merge.md`)
+
+A specialized agent prompt for conflict resolution:
+
+```yaml
+---
+agent: merge
+trigger: merge_conflict
+provider: claude
+reasoning: high
+color: red
+---
+```
+
+**What it does:**
+1. Reads `git diff --name-only --diff-filter=U` to find conflicted files
+2. For each conflict, understands both sides: what upstream changed vs what the loop changed
+3. Resolves conflicts preserving the loop's intent while incorporating upstream changes
+4. Runs any affected tests to verify the merge doesn't break anything
+5. Commits the merge resolution
+6. If it can't resolve a conflict confidently (e.g., both sides modified the same logic substantially), it flags it for user review via a steering event
+
+**Rules:**
+- Prefer the loop's changes when both sides modify the same feature (the loop is building new work)
+- Prefer upstream's changes for infrastructure/config that the loop didn't intentionally modify
+- Never silently drop upstream changes — if upstream added something, keep it
+- Run tests after resolution to verify nothing broke
+
+### Upstream Change Detection
+
+Beyond pre-iteration sync, the runtime should detect when the base branch advances:
+
+1. **Periodic fetch** — every N iterations (configurable, default: every 5), run `git fetch origin <base_branch>` and compare `origin/<base_branch>` against the last merged commit
+2. **If new commits detected** — emit `upstream_changed` event. The event dispatcher can queue a merge immediately or wait for the next pre-iteration sync (configurable)
+3. **Webhook-triggered** (future/orchestrator) — GitHub webhook notifies the orchestrator of pushes to base branch, triggering immediate sync across all active child loops
+
+### Orchestrator Branch Sync
+
+In orchestrator mode, the hierarchy has an extra level:
+
+```
+main → trunk → feature-1
+                feature-2
+                feature-3
+```
+
+**Trunk ← base sync:** Same as single-loop — pre-iteration fetch + merge.
+
+**Feature ← trunk sync:** When trunk advances (e.g., another feature branch was merged into trunk), all active feature branches need to sync:
+
+1. After a feature branch PR is merged into trunk, emit `trunk_advanced` event
+2. Event dispatcher queues merge prompts for all active feature branch sessions
+3. Each child loop's next iteration starts with the trunk merge
+
+**Conflict between feature branches:** If two feature branches modify the same files, the second to merge will conflict with trunk. The merge agent handles this. If the conflict is too complex, the orchestrator can pause one branch until the other completes.
+
+### Configuration
+
+```yaml
+# In meta.json (per-session)
+{
+  "base_branch": "main",           # upstream base
+  "auto_merge": true,              # enable pre-iteration sync (default: true)
+  "merge_fetch_interval": 5,       # fetch every N iterations (default: 5)
+  "merge_on_upstream_change": true  # immediate merge when upstream advances
+}
+```
+
+### Acceptance Criteria
+
+- [ ] `base_branch` is configurable at setup time and stored in `meta.json`
+- [ ] Pre-iteration base merge runs before every iteration in both `loop.sh` and `loop.ps1`
+- [ ] Clean merges proceed silently (only logged)
+- [ ] Merge conflicts emit `merge_conflict` event and queue `PROMPT_merge.md`
+- [ ] Merge agent resolves conflicts, runs affected tests, commits resolution
+- [ ] Merge agent flags unresolvable conflicts for user review (steering event)
+- [ ] Periodic fetch detects upstream changes between iterations
+- [ ] Orchestrator syncs trunk ← base and feature ← trunk
+- [ ] Feature branch conflicts from trunk advancement are handled by merge agent
+- [ ] Both `loop.sh` and `loop.ps1` implement pre-iteration merge logic
+- [ ] Session can be configured to disable auto-merge (`auto_merge: false`) if needed
+
+---
+
 ## Devcontainer Support (Priority: P1)
 
 ### Goal
@@ -3505,10 +3656,13 @@ aloop/templates/
   PROMPT_build.md            # cycle agent
   PROMPT_review.md           # cycle agent: frontmatter + {{include:instructions/review.md}}
   PROMPT_qa.md               # cycle agent: frontmatter + {{include:instructions/qa.md}}
-  PROMPT_spec-review.md      # rattail agent: own instructions (trigger: all_tasks_done)
+  PROMPT_spec-gap.md         # rattail agent: spec enforcement (trigger: all_tasks_done)
+  PROMPT_docs.md             # rattail agent: doc sync (trigger: spec-gap)
+  PROMPT_spec-review.md      # rattail agent: own instructions (trigger: docs)
   PROMPT_final-review.md     # rattail agent: frontmatter + {{include:instructions/review.md}}
   PROMPT_final-qa.md         # rattail agent: frontmatter + {{include:instructions/qa.md}}
   PROMPT_proof.md            # rattail agent: own instructions (trigger: final-qa)
+  PROMPT_merge.md            # triggered agent: conflict resolution (trigger: merge_conflict)
   PROMPT_steer.md            # triggered agent
 ```
 
@@ -3610,7 +3764,7 @@ Triggers can be event keys (runtime-emitted conditions) or agent names (agent co
 | `wave_complete` | orchestrator (all wave N PRs merged) | — | Dispatch wave N+1 issues |
 
 **Examples:**
-- Runtime detects all TODO.md tasks are done → emits `all_tasks_done` → finds `PROMPT_spec-review.md` has `trigger: all_tasks_done` → queues it → spec-review runs → on completion, runtime emits `spec-review` → finds `PROMPT_final-review.md` has `trigger: spec-review` → queues it → and so on through the chain
+- Runtime detects all TODO.md tasks are done → emits `all_tasks_done` → finds `PROMPT_spec-gap.md` has `trigger: all_tasks_done` → queues it → spec-gap runs → on completion, runtime emits `spec-gap` → finds `PROMPT_docs.md` has `trigger: spec-gap` → queues it → and so on through `docs → spec-review → final-review → final-qa → proof`
 - User runs `aloop steer "focus on tests"` → CLI writes a steer prompt directly to queue (no event needed — direct queue injection)
 - Runtime detects 3 consecutive failures → emits `stuck_detected` → finds `PROMPT_debug.md` has `trigger: stuck_detected` → copies it to queue
 - Code-review creates 2 new TODO items → runtime detects unchecked tasks → cycle resumes with builds → rattail chain restarts when tasks are done again

@@ -8,6 +8,11 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 No active tasks in progress.
 
 ### Up Next
+- [ ] [runtime/P1] Branch sync & auto-merge — pre-iteration `git fetch + merge` from base branch, merge conflict detection → queue `PROMPT_merge.md`, orchestrator trunk↔feature sync. Base branch configurable in `meta.json`. Both `loop.sh` and `loop.ps1`. (priority: high)
+- [ ] [runtime/P1] Event dispatcher — extract trigger resolution out of loop script into thin event dispatcher. Loop emits events to `$SESSION_DIR/events/`, dispatcher scans prompt catalog for matching `trigger:` frontmatter, copies to queue. Loop script stays dumb. (priority: high)
+- [ ] [runtime/P1] Rattail chain update — add `PROMPT_spec-gap.md` and `PROMPT_docs.md` to rattail chain: `all_tasks_done → spec-gap → docs → spec-review → final-review → final-qa → proof`. Update `PROMPT_spec-review.md` trigger from `all_tasks_done` to `docs`. (priority: high)
+- [ ] [runtime/P1] `PROMPT_merge.md` — create merge agent prompt template for automated conflict resolution (`trigger: merge_conflict`). (priority: high)
+
 - [x] [qa/P1] README setup flag mismatch (`--provider` vs `--providers`): packaged CLI rejects documented singular flag (`error: unknown option '--provider'`). Fixed by adding `setup` CLI alias support for `--provider` (mapped to `--providers`) and covering both parser and command behavior in `index.test.ts` and `setup.test.ts`. Repro now succeeds: `aloop setup --non-interactive --provider claude`. Tested at iter 307. (priority: high) — **COMPLETED**
 
 ### Deferred (Low Priority / After Core)

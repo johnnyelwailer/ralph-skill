@@ -1,6 +1,6 @@
 ---
 agent: spec-review
-trigger: all_tasks_done
+trigger: docs
 provider: claude
 reasoning: high
 ---
