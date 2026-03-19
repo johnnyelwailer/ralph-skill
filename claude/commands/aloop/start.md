@@ -2,159 +2,56 @@
 allowed-tools:
   - Bash
   - Read
-  - Write
-  - Glob
   - AskUserQuestion
 ---
 
 <objective>
-Launch a Aloop loop for the current project. Create a session, optionally set up a git worktree, and start the loop script.
+Launch an Aloop loop for the current project by delegating to `aloop start`.
 </objective>
 
 <process>
 
-## Step 1: Find Project Config
+## Step 1: Translate Arguments
 
-1. Find the git root of the current working directory
-2. Compute the project hash (first 8 chars of SHA-256 of absolute path)
-3. Resolve config path in this order:
-  - `<project-root>/.aloop/config.yml` (project-local runtime)
-  - `~/.aloop/projects/<hash>/config.yml` (global runtime)
-4. If not found, tell the user: "No Aloop configuration found for this project. Run `/aloop:setup` first."
+Map any user-provided arguments after `/$skillName:start` to `aloop start` flags:
+- `--plan` → `--plan`
+- `--build` → `--build`
+- `--review` → `--review`
+- `--provider <name>` → `--provider <name>`
+- `--in-place` → `--in-place`
+- `--max <n>` → `--max-iterations <n>`
+- `--launch <mode>` → `--launch <mode>` (start, restart, or resume)
+- `--resume` → `--launch resume` (shorthand)
+- `--restart` → `--launch restart` (shorthand)
+- No args → no extra flags (CLI uses project config defaults)
 
-Read the project config to get provider, mode, validation commands, etc.
-Read `runtime_scope` and `runtime_root` from config. If missing, default to `runtime_scope=global` and `runtime_root=~/.aloop`.
+## Step 2: Run `aloop start`
 
-## Step 2: Parse Arguments
+Run the CLI command with the translated flags:
 
-Check if the user provided arguments after `/aloop:start`:
-- `--plan` → override mode to `plan`
-- `--build` → override mode to `build`
-- `--review` → override mode to `review`
-- `--provider <name>` → override provider
-- `--in-place` → skip worktree, run in current directory
-- `--max <n>` → override max iterations
-- No args → use defaults from project config
-
-## Step 3: Create Session
-
-1. Generate a session ID: `<project-name>-<timestamp>` (e.g., `my-app-20260221-143052`)
-2. Create session directory: `<runtime_root>/sessions/<session-id>/`
-3. Copy prompts from `<config-dir>/prompts/` to `<runtime_root>/sessions/<session-id>/prompts/`
-   - If `PROMPT_steer.md` is not present in `<config-dir>/prompts/`, copy it from `<runtime_root>/templates/PROMPT_steer.md` as a fallback — steering requires it
-4. Write `<runtime_root>/sessions/<session-id>/meta.json`:
-   ```json
-   {
-     "session_id": "<id>",
-     "project_name": "<name>",
-     "project_root": "<path>",
-     "project_hash": "<hash>",
-     "provider": "<provider>",
-     "mode": "<mode>",
-     "max_iterations": 50,
-     "worktree": true,
-     "worktree_path": "<path>",
-     "created_at": "<timestamp>"
-   }
-   ```
-
-## Step 4: Set Up Worktree (unless --in-place)
-
-Unless `--in-place` was specified:
-
-1. Create a branch name: `aloop/<session-id>`
-2. Create a git worktree:
-   ```bash
-  git worktree add <runtime_root>/sessions/<session-id>/worktree -b aloop/<session-id>
-   ```
-3. The work directory for the loop is the worktree path
-
-If `--in-place`, the work directory is the project root itself.
-
-## Step 5: Register Active Session
-
-Read `<runtime_root>/active.json` (create if doesn't exist as `[]`).
-Add the new session:
-```json
-{
-  "session_id": "<id>",
-  "project_name": "<name>",
-  "project_root": "<path>",
-  "pid": null,
-  "started_at": "<timestamp>"
-}
-```
-Write back to `<runtime_root>/active.json`.
-
-## Step 6: Launch Loop
-
-Determine the loop script based on OS:
-- Windows/PowerShell: `<runtime_root>/bin/loop.ps1`
-- macOS/Linux: `<runtime_root>/bin/loop.sh`
-
-Build the command:
-
-Read the project config to get `enabled_providers`, `models`, and `round_robin_order`. Pass these to the loop script.
-
-**PowerShell:**
-```powershell
-& <runtime_root>/bin/loop.ps1 `
-  -PromptsDir "<runtime_root>/sessions/<session-id>/prompts" `
-  -SessionDir "<runtime_root>/sessions/<session-id>" `
-  -WorkDir "<work-directory>" `
-  -Mode <mode> `
-  -Provider <provider> `
-  -RoundRobinProviders <enabled-providers-csv> `
-  -ClaudeModel <model> -CodexModel <model> -GeminiModel <model> -CopilotModel <model> `
-  -MaxIterations <max>
-```
-
-**Bash:**
 ```bash
-<runtime_root>/bin/loop.sh \
-  --prompts-dir "<runtime_root>/sessions/<session-id>/prompts" \
-  --session-dir "<runtime_root>/sessions/<session-id>" \
-  --work-dir "<work-directory>" \
-  --mode <mode> \
-  --provider <provider> \
-  --round-robin "<enabled-providers-csv>" \
-  --claude-model <model> --codex-model <model> --gemini-model <model> --copilot-model <model> \
-  --max-iterations <max>
+aloop start [flags...]
 ```
 
-Only pass model flags for enabled providers. The round-robin list should only contain enabled providers.
+Fallback if `aloop` is not on PATH:
 
-Launch the loop as a background process. Capture the PID and update `active.json`.
-
-## Step 7: Confirm Launch
-
-Display to user:
-
+```bash
+node ~/.aloop/cli/aloop.mjs start [flags...]
 ```
-Aloop loop started!
 
-  Session: <session-id>
-  Mode: <mode>
-  Provider: <provider>
-  Work directory: <work-dir>
-  Prompts: <runtime_root>/sessions/<session-id>/prompts/
-  Runtime root: <runtime_root>
+## Step 3: Report Result
 
-Monitor:
-  /aloop:status         Check progress
-  /aloop:stop           Stop the loop
+Show the CLI output to the user. If the command fails, relay the error message.
 
-Session logs:
-  <runtime_root>/sessions/<session-id>/log.jsonl
-  <runtime_root>/sessions/<session-id>/status.json
-```
+Remind the user of available commands:
+- `/$skillName:status` — check progress
+- `/$skillName:steer` — adjust the loop
+- `/$skillName:stop` — stop the loop
 
 </process>
 
 <notes>
-- Worktree creation requires the project to be a git repo
-- If git worktree fails (e.g., branch already exists), fall back to --in-place with a warning
-- The loop script handles all provider invocation, stuck detection, and reporting
-- Session ID format ensures uniqueness and sortability
-- On Windows, prefer PowerShell loop.ps1; on macOS/Linux, prefer loop.sh
+- The `aloop start` CLI handles all session setup: resolve, config, session creation, worktree, loop launch, dashboard, and active registration.
+- Do not duplicate any of that logic here — just call the CLI and report results.
+- If the user has not run setup yet, the CLI will report a clear error.
 </notes>

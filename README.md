@@ -1,231 +1,226 @@
-# Aloop — Autonomous AI Coding Loop
+# Aloop — Autonomous AI Development System
 
-Aloop is based on  Geoffrey Huntley's autonomous AI coding methodology "Ralph Loops", packaged as an installable skill for Claude Code, Codex CLI, GitHub Copilot, and Gemini CLI. It runs plan-build-review loops with multi-provider support, backpressure validation, and stuck detection.
+Aloop runs autonomous AI coding agents in two modes: a **single-session loop** for focused tasks, and a **multi-session orchestrator** that decomposes specs into GitHub issues and dispatches parallel loops. Built on Geoffrey Huntley's autonomous coding methodology with plan-build-review cycles, multi-provider round-robin, backpressure validation, and a real-time dashboard.
 
-## What is Aloop?
+## Two Modes of Operation
 
-Aloop is an iterative coding loop: feed a prompt to an AI coding agent, the agent completes one task, commits, and exits. The loop restarts with fresh context. Three phases cycle:
+### Loop Mode (`aloop start`)
 
-1. **Plan** — Gap analysis between specs and code, outputs prioritized TODO
-2. **Build** — Picks one task, implements, validates, commits
-3. **Review** — Audits the last build against 5 quality gates
+A single autonomous coding session. The agent cycles through three phases until all tasks are done:
+
+1. **Plan** — Gap analysis between spec and code, outputs prioritized `TODO.md`
+2. **Build** — Picks one task, implements, validates (types/tests/lint), commits
+3. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
+
+Additional agents run between cycles:
+- **Proof** — Captures screenshots, API responses, test output as evidence
+- **Steer** — Applies live direction changes from the dashboard mid-flight
+- **QA** — Tests features as a real user (never reads source code)
+
+Each iteration gets fresh context. The loop handles stuck detection, provider failover, and worktree isolation automatically.
+
+```bash
+# Single provider
+aloop start --provider claude
+
+# Round-robin across providers
+aloop start --provider round-robin
+
+# Resume a stopped session
+aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
+```
+
+### Orchestrator Mode (`aloop orchestrate`)
+
+A coordination layer that breaks a spec into GitHub issues with dependency graphs, then dispatches parallel child loops — each in its own git worktree.
+
+1. **Decompose** — Reads one or more spec files (including globs), creates GitHub issues with labels and dependency edges
+2. **Dispatch** — Launches child loops per issue, respecting concurrency caps and wave ordering
+3. **PR lifecycle** — Squash-merges completed PRs, rebases on conflict, runs agent review gates
+4. **Budget tracking** — Aggregates cost across child sessions, pauses at 80% of cap
+
+```bash
+# Full orchestration from multiple spec files
+aloop orchestrate --spec "SPEC.md specs/*.md" --concurrency 3 --budget 50.00
+
+# Plan only (create issues, don't dispatch)
+aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
+
+# Dispatch specific issues
+aloop orchestrate --issues 42,43,44 --concurrency 2
+```
+
+The orchestrator enforces role-based GitHub policies — child loops can create PRs and comment, but only the orchestrator can merge PRs and close issues.
+
+## Dashboard
+
+Real-time monitoring UI with SSE updates. Runs as a local web server.
+
+```bash
+aloop dashboard
+aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
+```
+
+- Session sidebar with hierarchy (repo > project > issue > session)
+- Live activity log with phase transitions, provider info, and commit history
+- Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md
+- Proof artifact gallery (screenshots, test output, layout assertions)
+- **Live steering** — send instructions to the running loop from the dashboard
+- **Stop controls** — graceful (SIGTERM) or force (SIGKILL)
+
+## Quality Gates
+
+The review agent enforces 9 gates on every build iteration:
+
+| Gate | What it checks |
+|------|---------------|
+| 1. Spec Compliance | Code matches spec intent, not just TODO wording |
+| 2. Test Depth | No shallow assertions (`toBeDefined`, `toBeTruthy`) — concrete values only |
+| 3. Coverage | ≥80% branch on touched files, ≥90% on new modules |
+| 4. Code Quality | No dead code, no copy-paste, no over-engineering |
+| 5. Integration Sanity | All existing tests pass, validation commands succeed |
+| 6. Proof Verification | Evidence matches changes, screenshots consistent with spec |
+| 7. Layout Verification | Playwright bounding-box checks for CSS/layout changes |
+| 8. Version Compliance | Installed versions match VERSIONS.md declarations |
+| 9. Documentation Freshness | README/docs reflect actual commands, flags, and behavior |
+
+Failed gates produce `[review]` fix tasks that the next build iteration picks up before any new work.
+
+## Providers
+
+Five AI coding agents supported — use one, or round-robin across multiple:
+
+| Provider | CLI | Autonomous flag |
+|----------|-----|-----------------|
+| Claude Code | `claude` | `--dangerously-skip-permissions --print` |
+| OpenAI Codex | `codex` | `--dangerously-bypass-approvals-and-sandbox` |
+| GitHub Copilot | `copilot` | `--yolo` |
+| Gemini CLI | `gemini` | `--yolo` |
+| OpenCode | `opencode` | `run --dir <workdir>` |
+
+**Round-robin mode** cycles providers each iteration — e.g., Claude plans, Codex builds, Gemini reviews, OpenCode builds.
+
+Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry.
 
 ## Prerequisites
 
 | Requirement | Minimum | Notes |
 |-------------|---------|-------|
-| **PowerShell** | 7.x (`pwsh`) | Required to run `install.ps1` and `loop.ps1`. Install: `winget install Microsoft.PowerShell` or https://aka.ms/pscore6 |
-| **Git** | any recent | Must be on `$PATH`. Required for commits, branches, and worktree isolation. |
-| **Node.js + npm** | 18 LTS | Required only to install provider CLIs via `npm install -g`. Install: `winget install OpenJS.NodeJS.LTS` or https://nodejs.org |
-| **At least one provider CLI** | — | `claude`, `codex`, `gemini`, or `copilot` — see [Provider CLIs](#provider-clis) below |
+| **Git** | any recent | Commits, branches, worktree isolation |
+| **Node.js + npm** | 22 LTS | CLI runtime and provider CLI installs |
+| **Bash** or **PowerShell 7** | — | `loop.sh` (macOS/Linux) or `loop.ps1` (all platforms) |
+| **At least one provider CLI** | — | See provider table above |
 
-### Provider CLIs
+### Installing Provider CLIs
 
-The installer detects which CLIs are present and offers to install missing ones automatically.
-
-| Provider | CLI binary | Install | Auth |
-|----------|-----------|---------|------|
-| **Claude Code** | `claude` | `npm install -g @anthropic-ai/claude-code` | `claude auth` or `$env:ANTHROPIC_API_KEY` |
-| **OpenAI Codex** | `codex` | `npm install -g @openai/codex` | `codex auth` or `$env:OPENAI_API_KEY` |
-| **Gemini CLI** | `gemini` | `npm install -g @google/gemini-cli` | `gemini auth` (free browser OAuth) or `$env:GEMINI_API_KEY` |
-| **GitHub Copilot** | `copilot` | `npm install -g @github/copilot` | Run `copilot` and use `/login`, or set `$env:GH_TOKEN` / `$env:GITHUB_TOKEN` |
-
-> **Copilot CLI note:** Requires an active GitHub Copilot subscription.
-
-### Persisting API keys
-
-Add keys to your PowerShell profile so they survive reboots:
-
-```powershell
-code $PROFILE   # open profile in VS Code, then add:
+```bash
+npm install -g @anthropic-ai/claude-code    # Claude Code
+npm install -g @openai/codex                 # OpenAI Codex
+npm install -g @google/gemini-cli            # Gemini CLI
+npm install -g @github/copilot              # GitHub Copilot
+# OpenCode — see https://opencode.ai for install instructions
 ```
-```powershell
-$env:ANTHROPIC_API_KEY = 'sk-ant-...'
-$env:OPENAI_API_KEY    = 'sk-...'
-$env:GEMINI_API_KEY    = 'AIza...'
-```
-
-## Platform Support
-
-| Component | Windows | macOS | Linux |
-|-----------|:-------:|:-----:|:-----:|
-| `install.ps1` | ✅ | ✅ (requires `pwsh`) | ✅ (requires `pwsh`) |
-| `loop.ps1` | ✅ | ✅ (requires `pwsh`) | ✅ (requires `pwsh`) |
-| `loop.sh` | ❌ | ✅ | ✅ |
-| `winget install` hints in installer | ✅ | ❌ | ❌ |
-| All four provider CLIs | ✅ | ✅ | ✅ |
-
-> **macOS/Linux:** Use `loop.sh` (bash), or install `pwsh` and use `loop.ps1`. Path separators in `install.ps1` are handled cross-platform by PowerShell's `Join-Path`.
-
-## Multi-Provider Support
-
-Aloop works with any of these AI coding agents — mix and match, or let them take turns:
-
-| Provider | CLI | Autonomous flag | Slash commands |
-|----------|-----|-----------------|----------------|
-| Claude Code | `claude` | `--dangerously-skip-permissions --print` | `/aloop:setup`, `/aloop:start`, etc. |
-| Codex CLI | `codex` | `--dangerously-bypass-approvals-and-sandbox` | `/aloop:setup`, `/aloop:start`, etc. |
-| GitHub Copilot | `copilot` | `--yolo` | skill only (no slash commands) |
-| Gemini CLI | `gemini` | `--yolo` | — |
-
-**Round-robin mode** cycles through providers each iteration — e.g. Claude plans, Codex builds, Gemini reviews.
-
-```powershell
-# Single provider
-~/.aloop/bin/loop.ps1 -Provider claude
-
-# Explicit round-robin
-~/.aloop/bin/loop.ps1 -Provider round-robin -RoundRobinProviders claude,codex,gemini
-
-# Per-provider model override
-~/.aloop/bin/loop.ps1 -Provider codex -CodexModel gpt-5.3-codex
-```
-
-> **Gemini note:** The `-m <model>` flag is version-dependent. The loop automatically retries without the flag if the specified model is rejected.
->
-> **Copilot note:** The loop uses a retry chain: preferred model → fallback model → no explicit model flag. Auth errors are detected from output text and surface as hard failures.
 
 ## Installation
 
 ```powershell
-# Interactive — detects missing CLIs, then choose which harnesses to install
+# Interactive — detects missing CLIs, choose harnesses to install
 ./install.ps1
 
-# Install everything without prompting (also auto-installs any missing CLIs via npm)
+# Install everything without prompting
 ./install.ps1 -All
-
-# Pre-select specific harnesses (still checks for missing CLIs interactively)
-./install.ps1 -Harnesses claude,codex
 
 # Force overwrite existing files
 ./install.ps1 -Force
 
-# Skip CLI detection/install entirely (useful for CI)
-./install.ps1 -SkipCliCheck
-
-# Preview what would be installed (no changes made)
+# Preview what would be installed
 ./install.ps1 -DryRun
 ```
 
-### What the installer does
+The installer deploys skill files to each harness directory and the Aloop runtime to `~/.aloop/`.
 
-1. **Detects provider CLIs** — shows `[OK]` / `[MISSING]` for `claude`, `codex`, `gemini`, `copilot`
-2. **Offers to install missing CLIs** via `npm install -g <package>` (skipped if npm is absent; all installed automatically with `-All`)
-3. **Installs skill files** into the selected harness directories
-4. **Installs the Aloop runtime** (`~/.aloop/` — config, loop scripts, templates)
-5. **Prints auth instructions** for every provider at the end, with `[installed]`/`[not found]` badges
+## CLI Commands
 
-### What gets installed where
+| Command | Purpose |
+|---------|---------|
+| `aloop start` | Launch a single-session loop |
+| `aloop orchestrate` | Multi-issue decomposition and parallel dispatch |
+| `aloop dashboard` | Real-time monitoring UI |
+| `aloop status` | List active sessions and provider health |
+| `aloop stop <id>` | Stop a running session |
+| `aloop setup` | Interactive project configuration |
+| `aloop steer` | Send live instruction to a running loop |
+| `aloop gh <op>` | Policy-enforced GitHub operations |
+| `aloop discover` | Auto-detect project specs and validation |
+| `aloop update` | Refresh runtime from repo |
+| `aloop devcontainer` | Generate .devcontainer config |
 
-| Harness | Skill | Commands / Prompts |
-|---------|-------|--------------------|
-| Claude Code | `~/.claude/skills/aloop/` | `~/.claude/commands/aloop/` (5 slash commands) |
-| Codex CLI | `~/.codex/skills/aloop/` | `~/.codex/commands/aloop/` (5 slash commands) |
-| GH Copilot (VS Code) | `~/.copilot/skills/aloop/` | `%APPDATA%\Code\User\prompts\` (4 `.prompt.md`) |
-| GH Copilot (VS Code Insiders) | `~/.copilot/skills/aloop/` | `%APPDATA%\Code - Insiders\User\prompts\` (4 `.prompt.md`) |
-| Agents (generic) | `~/.agents/skills/aloop/` | — |
-
-VS Code prompt files are installed automatically for any VS Code variant that is present — independently of which harness you select in the interactive menu.
-
-The Aloop runtime always goes to `~/.aloop/` regardless of harness selection.
-
-## Usage
-
-In any project with Claude Code or Codex:
+### Slash commands (Claude Code / Codex / Copilot)
 
 ```
-/aloop:setup     Configure Aloop for the current project
-/aloop:start     Launch a loop
-/aloop:status    Check running sessions
-/aloop:stop      Stop a loop
-/aloop:steer     Send a live steering instruction to a running loop
+/aloop:setup       Configure Aloop for the current project
+/aloop:start       Launch a loop
+/aloop:status      Check running sessions
+/aloop:dashboard   Launch the dashboard
+/aloop:stop        Stop a loop
+/aloop:steer       Send a steering instruction
+/aloop:orchestrate Launch multi-issue orchestration
 ```
-
-In VS Code (stable or Insiders) with GitHub Copilot, type `/` and select:
-
-```
-/aloop-setup     Configure Aloop for the current project
-/aloop-start     Launch a loop
-/aloop-status    Check running sessions
-/aloop-stop      Stop a loop
-```
-
-The skill (`~/.copilot/skills/aloop/`) is also loaded automatically by Copilot based on context.
-
-`/aloop:setup` and `/aloop-setup` are discovery-first and interview-first: they use `~/.aloop/bin/setup-discovery.ps1` to auto-detect repo context (project root/hash, language, validation presets, providers, existing Aloop config), run a spec/context interview first, and ask loop run details only after explicit user go-ahead.
-
-When no strong spec exists, setup defaults to a short interview to create/refine `SPEC.md` instead of forcing a spec-path-first workflow.
-
-Runtime storage is configurable during setup:
-- `global` (default): runtime/session state under `~/.aloop/`
-- `project-local`: runtime/session state under `<project-root>/.aloop/`
-
-When `project-local` is selected, setup ensures `<project-root>/.gitignore` includes `.aloop/`.
 
 ## Architecture
 
 ```
-~/.claude/   (or ~/.codex/)
-  skills/aloop/
-    SKILL.md                    # Background knowledge (auto-loaded)
-    references/                 # 4 methodology reference files
-  commands/aloop/               # Claude + Codex only
-    setup.md                    # /aloop:setup — configure project
-    start.md                    # /aloop:start — launch loop
-    status.md                   # /aloop:status — check sessions
-    stop.md                     # /aloop:stop — stop loop
-    steer.md                    # /aloop:steer — live steering
-
-~/.copilot/
-  skills/aloop/
-    SKILL.md                    # Same skill, no commands dir
-
-%APPDATA%\Code\User\prompts\             (VS Code stable)
-%APPDATA%\Code - Insiders\User\prompts\ (VS Code Insiders)
-    aloop-setup.prompt.md       # /aloop-setup
-    aloop-start.prompt.md       # /aloop-start
-    aloop-status.prompt.md      # /aloop-status
-    aloop-stop.prompt.md        # /aloop-stop
-
 ~/.aloop/
-  config.yml                   # Global defaults (providers, models)
+  config.yml                    # Global defaults (providers, models)
+  active.json                   # Currently running sessions
+  health/<provider>.json        # Per-provider health state
   bin/
-    loop.ps1                   # PowerShell loop (Windows / macOS / Linux)
-    loop.sh                    # Bash loop (macOS / Linux)
-    setup-discovery.ps1        # Discovery + scaffold script for /aloop:setup
+    loop.sh                     # Bash loop harness
+    loop.ps1                    # PowerShell loop harness
+  cli/
+    aloop.mjs                   # CLI entry point
   templates/
-    PROMPT_plan.md             # Plan template with {{variables}}
-    PROMPT_build.md            # Build template
-    PROMPT_review.md           # Review template (+ REVIEW_LOG.md tracking)
-    PROMPT_steer.md            # Steering template (spec-update agent)
-  projects/<hash>/             # Per-project config
-    config.yml
-    prompts/                   # Generated project-specific prompts
-  sessions/<id>/               # Per-session state
-    meta.json, status.json, log.jsonl, report.md
+    PROMPT_plan.md              # Plan agent template
+    PROMPT_build.md             # Build agent template
+    PROMPT_review.md            # Review agent (9 gates)
+    PROMPT_proof.md             # Proof agent template
+    PROMPT_steer.md             # Steering agent template
+    PROMPT_setup.md             # Setup/discovery agent
+    conventions/                # Code quality, testing, git conventions
+  sessions/<session-id>/
+    meta.json                   # Session metadata
+    status.json                 # Current state (iteration, phase, provider)
+    log.jsonl                   # Structured event log
+    orchestrator.json           # Orchestrator state (issues, waves, PRs)
+    prompts/                    # Copied prompt templates
+    artifacts/iter-<N>/         # Proof artifacts per iteration
+    worktree/                   # Isolated git worktree
+    steering-history/           # Archived steering instructions
 
-<project work-dir>/           # Lives in the project (or worktree)
-  TODO.md                     # Task plan (volatile — regenerated each plan cycle)
-  RESEARCH.md                 # Planner research log (append-only, never deleted)
-  REVIEW_LOG.md               # Reviewer findings log (append-only, never deleted)
+<project>/
+  SPEC.md                       # Project specification (contract)
+  VERSIONS.md                   # Dependency version table (enforced)
+  TODO.md                       # Task plan (regenerated each plan cycle)
+  RESEARCH.md                   # External knowledge log (append-only)
+  REVIEW_LOG.md                 # Review findings log (append-only)
+  docs/conventions/             # Project-specific conventions
 ```
 
 ## Key Features
 
-- **Multi-provider**: Claude, Codex, Gemini, Copilot — single provider or round-robin
-- **Multi-harness install**: One installer, choose Claude Code / Codex / Copilot / Agents
-- **Auto-installs CLIs**: Detects missing providers at install time and installs via npm
-- **Plan-build-review cycle**: Three distinct mindsets per iteration (plan → build × 3 → review)
-- **Backpressure**: Tests/types/lints gate every commit
+- **Two modes**: Single-session loop for focused work, orchestrator for spec-to-ship parallelism
+- **5 providers**: Claude, Codex, Gemini, Copilot, OpenCode — single or round-robin
+- **9 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance, documentation freshness
+- **Live steering**: Change direction mid-flight without stopping the loop
+- **Real-time dashboard**: SSE-powered UI with activity log, docs, proof gallery, and steering controls
+- **GitHub integration**: Issue decomposition, PR lifecycle, squash-merge, conflict rebase, agent review
+- **Budget tracking**: Cost aggregation across child sessions with configurable caps
+- **Provider health**: Automatic cooldown and failover on provider errors
+- **Worktree isolation**: Each session runs on its own git branch
+- **Backpressure validation**: Types, tests, and lint gate every commit
 - **Stuck detection**: Auto-skip tasks after N consecutive failures
-- **Live steering**: Send mid-flight direction changes via `/aloop:steer` — loop picks up `STEERING.md` at the next iteration boundary, invokes a spec-update agent, force-replans, then resumes
-- **Persistent research log**: Planner appends timestamped findings to `RESEARCH.md` (append-only) — survives TODO regenerations, prevents re-researching already-investigated topics across runs
-- **Review log**: Persistent `REVIEW_LOG.md` tracks every review verdict and resolved findings across iterations
-- **Worktree isolation**: Loops run on separate git branches
-- **Session tracking**: Status, logs, and reports per session
-- **Configurable runtime state**: Choose global (`~/.aloop/`) or project-local (`<project-root>/.aloop/`) storage at setup time
-- **Minimal repo footprint**: Runtime/session state is in `~/.aloop/`; project working files are `TODO.md`, `RESEARCH.md`, `REVIEW_LOG.md` (and temporary `STEERING.md` while steering is being processed)
+- **Persistent logs**: RESEARCH.md and REVIEW_LOG.md survive TODO regenerations
 
 ## Development
 
-This repo is the development/source location. Edit files here, then run `install.ps1` to deploy to the live harness directories.
+This repo is the development/source location. Edit files here, then run `install.ps1` to deploy, or `aloop update` to refresh the runtime.

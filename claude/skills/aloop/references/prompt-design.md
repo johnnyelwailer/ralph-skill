@@ -52,7 +52,7 @@ Keep prompts tight to maximize smart zone.
 <template_variables>
 ## Template Variables
 
-Aloop prompt templates use `{{variables}}` that are resolved during `/aloop:setup`:
+Aloop prompt templates use `{{variables}}` that are resolved during `/$skillName:setup`:
 
 | Variable | Purpose | Example |
 |----------|---------|---------|

@@ -7,247 +7,160 @@ allowed-tools:
   - Glob
   - Grep
   - Agent
-  - AskUserQuestion
 ---
 
 <objective>
-Configure Aloop for the current project. Capture requirements as-is into a PRD, build a multi-perspective plan, verify completeness, then scaffold the loop config.
+Set up Aloop for the current project through an adaptive interview and parallel discovery.
+Produce: SPEC.md, VERSIONS.md, docs/conventions/, agent config, and aloop project scaffolding.
 </objective>
 
 <process>
 
-## Phase 1: Discovery
+## Phase 1: Parallel Discovery (launch subagents)
 
-### Step 1: Run project-scope discovery (required)
+Before asking the user anything, gather all available information. Launch these **4 subagents in parallel** — they are fully independent. Send a single message with all 4 Agent tool calls.
 
-Do NOT perform ad-hoc shell probing. Do NOT compose custom bash discovery pipelines.
-Before explicit user go-ahead, do not read files outside the current project root.
+### Subagent A: Stack Detection
+Prompt the agent to:
+- Read package.json, Cargo.toml, go.mod, requirements.txt, Gemfile, *.csproj, pyproject.toml, pom.xml, build.gradle (whichever exist)
+- Read lockfiles: package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.lock, go.sum, poetry.lock
+- Read config files: tsconfig.json, vite.config.*, next.config.*, tailwind.config.*, .eslintrc*, jest.config.*, vitest.config.*, playwright.config.*
+- Read .tool-versions, .nvmrc, .node-version, .python-version, Dockerfile, docker-compose.yml
+- Return structured output: language, framework, test runner, CSS approach, bundler, runtime versions
 
-Run this command first:
+### Subagent B: Codebase Structure
+Prompt the agent to:
+- Map directory structure (top 3 levels)
+- Count files by extension
+- Identify entry points (src/index.*, src/main.*, app.*, cmd/, lib/)
+- Detect folder organization (feature-based vs layer-based)
+- Check for existing docs: README.md, CONTRIBUTING.md, CHANGELOG.md, docs/, SPEC.md
+- Check for existing conventions: docs/conventions/, .editorconfig, linter configs
+- Return: project shape, organization pattern, existing documentation, estimated maturity (greenfield/early/established)
 
-`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command discover -Scope project -Output json`
+### Subagent C: Code Pattern Analysis
+Prompt the agent to:
+- Sample 5-10 representative source files across the project
+- Detect naming conventions (camelCase, snake_case, PascalCase)
+- Detect component/module patterns (class-based, functional, hooks)
+- Detect error handling patterns (try/catch, Result types)
+- Detect test patterns (runner, assertion style, mocking approach)
+- Check for UI library usage (shadcn, MUI, Chakra, hand-rolled)
+- Check for API patterns (REST, GraphQL, tRPC)
+- Return: detected conventions summary
 
-Treat the JSON output as source of truth for:
-- project root/name/hash
-- language guess + confidence
-- validation presets
-- spec candidates
-- context files (`TODO.md`, `RESEARCH.md`, `REVIEW_LOG.md`, `STEERING.md`)
-- installed/missing providers
+### Subagent D: Build & Test Baseline
+Prompt the agent to:
+- Attempt dependency install (npm install, pip install, cargo build, etc.)
+- Attempt running existing test suite
+- Attempt build
+- Attempt linter
+- Return: build pass/fail + errors, test pass/fail + count, lint status
 
-Show: "Setting up Aloop for: <project-name> (<project-root>)"
+**Wait for all 4 to complete before proceeding.**
 
-### Step 2: Use current conversation context
+---
 
-Assume setup is often run inside an ongoing discussion.
+## Phase 2: Present Findings (interactive)
 
-Before asking questions:
-1. Summarize discovered repo context
-2. Summarize context already present in conversation
-3. Ask only delta questions
-
-Do NOT repeat questions answered by discovery or earlier messages in the same conversation.
-
-### Step 3: Existing config behavior
-
-In interview phase, treat external config checks as deferred.
-Do not inspect `~/.aloop/projects/*` yet.
-
-After go-ahead and full-scope discovery, if `config_exists=true`, ask:
-- "Patch existing setup (recommended) or fully reconfigure?"
-
-Default to patching unless user explicitly requests full reset.
-
-## Phase 2: PRD Capture
-
-### Step 4: Interview the user and capture requirements into PRD
-
-You are conducting a requirements interview. Ask targeted questions, probe vague answers, and dig into specifics — but **record the user's answers verbatim** into the PRD. Your questions guide the conversation; their answers ARE the document.
-
-**Interview flow:**
-
-1. Start broad: "What are you trying to build?"
-2. After the initial description, ask follow-up questions to fill gaps. Use your judgment — good interview questions include:
-   - "Who uses this? What's their workflow?"
-   - "You mentioned X — how should that work exactly?"
-   - "What happens when Y fails / is missing / is invalid?"
-   - "Are there existing systems this needs to integrate with?"
-   - "What's the MVP vs nice-to-have?"
-   - "Any hard constraints — tech stack, timeline, compatibility?"
-   - "What's explicitly out of scope?"
-3. When an answer is vague, push back: "Can you be more specific about...?" or "What does 'fast' / 'simple' / 'good' mean concretely here?"
-4. After each major topic, briefly confirm your understanding before moving on
-5. When you've covered the core areas and follow-ups are yielding diminishing returns, wrap up: "I think I have a solid picture. Anything I didn't ask about that matters?"
-
-**Recording rules:**
-
-- After each user response, append it to `PRD.md` immediately (don't wait until the end)
-- Record the user's words verbatim — do not paraphrase, summarize, or restructure
-- You may add your question as a heading/label so the PRD reads as a structured interview transcript
-- Format:
-
-```markdown
-# Product Requirements Document
-
-_Captured from requirements interview during setup._
-
-### What are you building?
-
-<user's answer, verbatim>
-
-### Who uses this and what's their workflow?
-
-<user's answer, verbatim>
-
-### How should X work exactly?
-
-<user's answer, verbatim>
-
-### Constraints
-
-<user's answer, verbatim>
-
-### Out of scope
-
-<user's answer, verbatim>
-```
-
-If discovery found existing spec candidates, ask: "I found these existing docs: <list>. Should I include their content in the PRD as reference, or are you starting fresh?"
-
-### Step 5: PRD confirmation gate
-
-Show the user the completed PRD. Ask:
-- "Does this capture everything? Want to change or add anything, or good to plan?"
-
-Do not proceed until the user confirms. If they add or change things, update `PRD.md` and re-confirm.
-
-## Phase 3: Multi-Perspective Planning
-
-### Step 6: Parallel planning subagents
-
-Launch 3-5 subagents in parallel using the Agent tool. Each reads `PRD.md` and produces planning notes from a specific perspective. The agent output is returned to you — do NOT ask agents to write files directly.
-
-Required perspectives (launch all in parallel):
-1. **Architecture** — "Read PRD.md. Propose a technical architecture: components, data flow, key abstractions, technology choices. Flag any requirements that are ambiguous or contradictory from an architecture standpoint."
-2. **Implementation** — "Read PRD.md. Break the requirements into an ordered list of implementation tasks. Identify dependencies between tasks. Flag requirements that are too vague to implement as-is."
-3. **Testing & QA** — "Read PRD.md. For each requirement, describe how you would verify it works. Identify requirements that lack clear acceptance criteria. Propose a testing strategy."
-
-Optional perspectives (add when relevant based on the PRD):
-4. **Security & Privacy** — only if the PRD mentions auth, user data, APIs, or external services
-5. **UX / Developer Experience** — only if the PRD describes a UI, CLI, or developer-facing API
-6. **Operations / Deployment** — only if the PRD mentions deployment, infrastructure, or scaling
-
-Each subagent prompt must start with: "You are a planning advisor reviewing a PRD. Read PRD.md in the current directory, then provide your analysis from the following perspective:"
-
-### Step 7: Synthesize plan into SPEC.md
-
-Collect all subagent outputs. Synthesize into a single `SPEC.md`:
-
-1. **Merge, don't append** — the spec should read as one coherent document, not 3-5 separate sections pasted together
-2. **Preserve all concerns** — every flag, gap, or ambiguity raised by any subagent must appear in the spec (either resolved by another perspective's input, or called out as an open question)
-3. **Structure the spec** with these sections:
-   - Overview (from PRD, lightly edited for clarity)
-   - Architecture (from architecture agent, refined)
-   - Implementation Plan (ordered tasks with dependencies)
-   - Acceptance Criteria (from testing agent, mapped to requirements)
-   - Open Questions (unresolved ambiguities from any perspective)
-   - Non-Goals (from PRD constraints)
-4. **Cross-reference the PRD** — every requirement in PRD.md must map to at least one task in the implementation plan and one acceptance criterion
-
-If an existing `SPEC.md` exists, ask: "Merge into existing spec or replace?"
-
-### Step 8: Verification pass — PRD coverage check
-
-After writing SPEC.md, run a verification subagent:
-
-Launch one Agent: "Read both PRD.md and SPEC.md. For each requirement in the PRD, check whether SPEC.md contains: (1) a corresponding implementation task, and (2) a way to verify it. Output a coverage table:
+Synthesize subagent results into a structured summary:
 
 ```
-| PRD Requirement | Spec Task | Acceptance Criterion | Status |
-|-----------------|-----------|---------------------|--------|
-| <requirement>   | <task or MISSING> | <criterion or MISSING> | ✓ / GAP |
+## Project Discovery
+
+**Stack:** [language] + [framework] + [bundler]
+**Test runner:** [detected] | **CSS:** [detected] | **UI lib:** [detected]
+**Structure:** [feature-based / layer-based / mixed]
+**Maturity:** [greenfield / early / established]
+
+**Build:** [pass / fail / N/A]
+**Tests:** [X passing, Y failing / no tests / N/A]
+**Lint:** [pass / N failing / N/A]
+
+**Detected patterns:**
+- [3-5 key patterns from code analysis]
+
+**Missing/unusual:**
+- [noteworthy gaps]
 ```
 
-List any GAPs at the end."
+Ask: "Does this look right? Anything I'm missing or got wrong?"
+Wait for confirmation.
 
-If gaps are found:
-1. Show the coverage table to the user
-2. Ask: "These requirements don't have full coverage in the plan. Should I add tasks for them, or are they intentionally deferred?"
-3. Update SPEC.md accordingly
-4. Re-run verification until clean (max 2 rounds, then show remaining gaps and move on)
+---
 
-## Phase 4: Loop Configuration
+## Phase 3: Adaptive Interview (sequential, one topic at a time)
 
-### Step 9: Explicit go-ahead gate (required)
+Cover each topic in order. Skip what Phase 1 already answered. For each:
+1. State what you already know from discovery
+2. Ask only what you couldn't determine
+3. Confirm before moving on
 
-After plan verification passes, ask:
-- "Plan is complete and verified. Proceed to configure the Aloop loop? (yes/no)"
+**Topic 1: Project Goal** — What is the desired outcome? Scope: in vs out? Pin down vague descriptions.
 
-If no:
-- stop after summarizing PRD + SPEC output
-- do not ask provider/run details
-- do not scaffold config/prompts
+**Topic 2: Environment & Secrets** — Confirm runtime versions. Any API keys needed? Guide secure secret management (env vars, never .env by default). Walk through setup if needed.
 
-If yes:
-- continue to Step 10
+**Topic 3: Testing & Proof Strategy** — TDD is strong default (suggest with reasoning, user can opt out). Define "done": Playwright screenshots with viewport sizes for UI, response shapes for API, command output for CLI.
 
-### Step 10: Collect run details (only after go-ahead)
+**Topic 4: Approach & Constraints** — Technology constraints, performance requirements, accessibility (WCAG level), deployment target.
 
-Ask only now:
-1. Validation level (tests only / tests+types / full / custom)
-2. Enabled providers (from installed list)
-3. Default provider vs round-robin (only if 2+ enabled)
-4. Runtime storage mode:
-  - `global` (default): keep runtime/session state in `~/.aloop/`
-  - `project-local`: store runtime/session state in `<project-root>/.aloop/`
+**Topic 5: Versions** — Default: latest stable. Cross-check detected versions. Confirm.
 
-Now it is allowed to read outside project root for runtime preparation. Re-run discovery in full scope:
+---
 
-`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command discover -Scope full -Output json`
+## Phase 4: Parallel Generation (launch subagents)
 
-### Step 11: Use scaffold script to write config and prompts (required)
+After interview, generate all artifacts. Launch these **4 subagents in parallel**:
 
-After decisions are finalized, run:
+### Subagent E: SPEC.md
+Prompt with all interview answers + discovery results. Generate spec where every acceptance criterion is machine-verifiable. Reference deps without versions ("see VERSIONS.md"). Include integration scenarios and explicit viewport sizes for UI proof.
 
-`pwsh -NoProfile -File ~/.aloop/bin/setup-discovery.ps1 -Command scaffold -Output json -RuntimeScope <global|project-local> -Provider <provider> -EnabledProviders <csv-or-list> -RoundRobinOrder <csv-or-list> -Language <language> -SpecFiles <list> -ValidationCommands <list>`
+### Subagent F: VERSIONS.md
+Generate version table from detected + confirmed versions. Include version policy (latest stable, LTS, pinned) and constraints.
 
-This script writes:
-- `~/.aloop/projects/<hash>/config.yml`
-- `~/.aloop/projects/<hash>/prompts/PROMPT_{plan,build,review,steer}.md`
+### Subagent G: Convention Docs
+Seed docs/conventions/ from templates. Always seed: CODE_QUALITY.md, TESTING.md, GIT.md, SECURITY.md, ARCHITECTURE.md (copy from ~/.aloop/templates/conventions/ and customize with project-specific details — replace generic examples with actual stack examples). Conditionally seed based on detected stack: FRONTEND.md, BACKEND.md, DATABASE.md, INFRA.md.
 
-If `RuntimeScope=project-local`, scaffold writes config/prompts under `<project-root>/.aloop/`, hydrates loop assets there once, and ensures `<project-root>/.gitignore` contains `.aloop/`.
+### Subagent H: Project Scaffolding
+Run `aloop setup --non-interactive` with detected values to scaffold ~/.aloop/projects/ config, prompts, and agent YAML. Add convention bindings to agent configs.
 
-### Step 12: Confirm setup
+**Wait for all 4 to complete.**
 
-Display to user:
+---
 
-```
-Aloop configured for <project-name>!
+## Phase 5: Review & Confirm (interactive)
 
-  PRD:      PRD.md (captured verbatim)
-  Spec:     SPEC.md (multi-perspective plan, verified)
-  Config:   ~/.aloop/projects/<hash>/config.yml
-  Prompts:  ~/.aloop/projects/<hash>/prompts/
+Present generated artifacts:
+1. SPEC.md — show full spec, ask for approval
+2. VERSIONS.md — show version table, confirm
+3. Convention docs — list generated files with brief summary
+4. Summary of all decisions (agents, triggers, testing strategy)
 
-  Provider:   <selected>
-  Enabled:    <provider+model list>
-  Mode:       plan-build-review (plan -> build x5 -> qa -> review)
-  Validation: <commands summary>
-  Spec files: <selected spec files>
-  Runtime:    <global|project-local> (<resolved runtime root>)
+Ask: "Ready to start the loop? Any changes needed?"
 
-Next steps:
-  /aloop:start          Launch an Aloop loop
-  /aloop:start --plan   Run planning mode only
-```
+User signs off → done. Remind them of `/$skillName:start`.
 
 </process>
 
-<notes>
-- The project hash is computed from the absolute path of the project root
-- On Windows, use `$HOME/.aloop/` (PowerShell resolves `~` correctly)
-- If `~/.aloop/templates/` doesn't exist, stop and ask the user to run the install script
-- Keep setup script-driven for consistency across machines and harnesses.
-- PRD.md is a living document — the loop's plan agent can reference it as the source of truth for "what was asked"
-- SPEC.md is the plan agent's starting point — it should not need to re-derive architecture or task ordering from scratch
-</notes>
+<subagent-rules>
+## Subagent Execution Rules
+
+- Phases 1 and 4 are **parallel fan-outs**. Launch all subagents in a single message with multiple Agent tool calls.
+- Phases 2, 3, and 5 are **sequential**. They require user interaction.
+- Each subagent gets a **self-contained prompt** with all needed context. Don't assume it sees the conversation.
+- Subagent output must be **structured data** (key-value, tables, lists), not prose.
+- If a subagent fails (e.g., build fails), capture the error and report to user in Phase 2.
+- Never pass user secrets to subagents.
+
+```
+Phase 1: [A] [B] [C] [D]  ← parallel fan-out, no user interaction
+              |
+Phase 2: present findings  ← sequential, user confirms
+              |
+Phase 3: interview topics  ← sequential, one at a time
+              |
+Phase 4: [E] [F] [G] [H]  ← parallel fan-out, no user interaction
+              |
+Phase 5: review & confirm  ← sequential, user signs off
+```
+</subagent-rules>

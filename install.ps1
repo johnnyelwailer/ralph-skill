@@ -1,9 +1,9 @@
 #!/usr/bin/env pwsh
-# Aloop Skill Installer
+# Skill Installer
 # Copies skill/command files to the correct directories for each AI harness,
-# and installs the Aloop runtime (~/.aloop/).
+# and installs the runtime (~/.aloop/).
 #
-# Usage: ./install.ps1 [-Force] [-DryRun] [-All] [-Harnesses claude,codex,...] [-SkipCliCheck]
+# Usage: ./install.ps1 [-Help] [-Force] [-DryRun] [-All] [-Harnesses claude,codex,...] [-SkipCliCheck]
 #
 # Harness skill/command directories (official sources):
 #   Claude Code      : ~/.claude/skills/  + ~/.claude/commands/  (https://docs.anthropic.com/claude-code)
@@ -14,39 +14,65 @@
 #   VS Code Insiders : $APPDATA\Code - Insiders\User\prompts\ — .prompt.md slash commands
 
 param(
-    [switch]$Force,                  # Overwrite existing files without prompting
+    [switch]$Help,                   # Show this help message and exit
+    [switch]$Force,                  # Overwrite ALL existing files without prompting or content checks
     [switch]$DryRun,                 # Show what would be done without doing it
     [switch]$All,                    # Install all harnesses without prompting
     [string[]]$Harnesses = @(),      # Pre-select harnesses: claude, codex, copilot, agents
     [switch]$SkipCliCheck            # Skip CLI detection and auto-install
 )
 
+if ($Help) {
+    Write-Host @"
+Usage: ./install.ps1 [-Help] [-Force] [-DryRun] [-All] [-Harnesses <csv>] [-SkipCliCheck]
+
+Parameters:
+  -Help           Show this help message and exit.
+  -Force          Overwrite ALL existing files, even if content is identical.
+  -DryRun         Preview what would be done without making any changes.
+  -All            Install all harnesses and auto-install missing CLIs without prompting.
+  -Harnesses      Pre-select harnesses (comma-separated): claude, codex, copilot, agents
+  -SkipCliCheck   Skip AI provider CLI detection and auto-install step.
+
+Examples:
+  ./install.ps1                              # Interactive — choose harnesses, optionally install CLIs
+  ./install.ps1 -All                         # Install everything non-interactively
+  ./install.ps1 -Harnesses claude,codex      # Install only Claude Code + Codex CLI
+  ./install.ps1 -DryRun                      # Preview changes without writing anything
+  ./install.ps1 -Force                       # Re-install and overwrite all existing files
+
+Note: Without -Force, existing files are updated only when the source content differs.
+"@
+    exit 0
+}
+
 $ErrorActionPreference = 'Stop'
 $scriptDir = $PSScriptRoot
 $aloopDir = Join-Path $HOME ".aloop"
+$skillName = 'aloop'
 
 # ---- Harness definitions -------------------------------------------------------
-# HasCommands = $true  → also installs claude\commands\aloop to <harness>/commands/aloop
+# HasCommands = $true  → also installs claude\commands\<skill> to <harness>/commands/<skill>
 # HasCommands = $false → harness uses a different mechanism (e.g. .prompt.md); skip
 $allHarnesses = @(
     [PSCustomObject]@{
         Id          = 'claude'
         Name        = 'Claude Code'
-        SkillDest   = Join-Path $HOME ".claude\skills\aloop"
-        CmdDest     = Join-Path $HOME ".claude\commands\aloop"
+        SkillDest   = Join-Path $HOME ".claude\skills\$skillName"
+        CmdDest     = Join-Path $HOME ".claude\commands\$skillName"
         HasCommands = $true
     }
     [PSCustomObject]@{
         Id          = 'codex'
         Name        = 'Codex CLI'
-        SkillDest   = Join-Path $HOME ".codex\skills\aloop"
-        CmdDest     = Join-Path $HOME ".codex\commands\aloop"
+        SkillDest   = Join-Path $HOME ".codex\skills\$skillName"
+        CmdDest     = Join-Path $HOME ".codex\commands\$skillName"
         HasCommands = $true
     }
     [PSCustomObject]@{
         Id          = 'copilot'
         Name        = 'GH Copilot (VS Code / VS Code Insiders)'
-        SkillDest   = Join-Path $HOME ".copilot\skills\aloop"
+        SkillDest   = Join-Path $HOME ".copilot\skills\$skillName"
         CmdDest     = $null
         HasCommands = $false
         # Note: .prompt.md files are installed separately into VS Code user prompts dirs
@@ -54,7 +80,7 @@ $allHarnesses = @(
     [PSCustomObject]@{
         Id          = 'agents'
         Name        = 'Agents (generic / agentskills.io)'
-        SkillDest   = Join-Path $HOME ".agents\skills\aloop"
+        SkillDest   = Join-Path $HOME ".agents\skills\$skillName"
         CmdDest     = $null
         HasCommands = $false
     }
@@ -173,13 +199,21 @@ function Copy-TreeItem {
             }
 
             $exists = Test-Path $destPath
+
+            $shouldSkip = $false
             if ($exists -and -not $Force) {
-                Write-Host "  SKIP (exists): $destPath" -ForegroundColor Yellow
+                $srcHash = (Get-FileHash -Path $item.FullName -Algorithm SHA256).Hash
+                $dstHash = (Get-FileHash -Path $destPath      -Algorithm SHA256).Hash
+                $shouldSkip = ($srcHash -eq $dstHash)
+            }
+
+            if ($shouldSkip) {
+                Write-Host "  SKIP (up-to-date): $destPath" -ForegroundColor DarkGray
                 continue
             }
 
             if ($DryRun) {
-                $action = if ($exists) { "OVERWRITE" } else { "COPY" }
+                $action = if ($exists) { "UPDATE (content changed)" } else { "COPY" }
                 Write-Host "  [DRY RUN] $action $($item.FullName) -> $destPath" -ForegroundColor DarkGray
             } else {
                 Copy-Item -Path $item.FullName -Destination $destPath -Force
@@ -199,13 +233,21 @@ function Copy-TreeItem {
         }
 
         $exists = Test-Path $Destination
+
+        $shouldSkip = $false
         if ($exists -and -not $Force) {
-            Write-Host "  SKIP (exists): $Destination" -ForegroundColor Yellow
+            $srcHash = (Get-FileHash -Path $Source      -Algorithm SHA256).Hash
+            $dstHash = (Get-FileHash -Path $Destination -Algorithm SHA256).Hash
+            $shouldSkip = ($srcHash -eq $dstHash)
+        }
+
+        if ($shouldSkip) {
+            Write-Host "  SKIP (up-to-date): $Destination" -ForegroundColor DarkGray
             return
         }
 
         if ($DryRun) {
-            $action = if ($exists) { "OVERWRITE" } else { "COPY" }
+            $action = if ($exists) { "UPDATE (content changed)" } else { "COPY" }
             Write-Host "  [DRY RUN] $action $Source -> $Destination" -ForegroundColor DarkGray
         } else {
             Copy-Item -Path $Source -Destination $Destination -Force
@@ -213,6 +255,36 @@ function Copy-TreeItem {
             Write-Host "  $action`: $Destination" -ForegroundColor Green
         }
     }
+}
+
+function Normalize-LoopScriptLineEndings {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][ValidateSet('CRLF', 'LF')][string]$LineEnding
+    )
+
+    if (-not (Test-Path $Path)) {
+        Write-Warning "Line ending normalization skipped; file not found: $Path"
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host "  [DRY RUN] Normalize line endings ($LineEnding): $Path" -ForegroundColor DarkGray
+        return
+    }
+
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $content = [System.IO.File]::ReadAllText($Path, $utf8NoBom)
+    $normalizedLf = $content -replace "`r`n", "`n" -replace "`r", "`n"
+
+    $normalized = if ($LineEnding -eq 'CRLF') {
+        $normalizedLf -replace "`n", "`r`n"
+    } else {
+        $normalizedLf
+    }
+
+    [System.IO.File]::WriteAllText($Path, $normalized, $utf8NoBom)
+    Write-Host "  Normalized line endings ($LineEnding): $Path" -ForegroundColor Green
 }
 
 # ============================================================================
@@ -318,9 +390,9 @@ function Show-CheckboxMenu {
 # ============================================================================
 
 Write-Host ""
-Write-Host "=== Aloop Skill Installer ===" -ForegroundColor Cyan
+Write-Host "=== Skill Installer ===" -ForegroundColor Cyan
 Write-Host "Source: $scriptDir" -ForegroundColor Gray
-Write-Host "Aloop runtime: $aloopDir" -ForegroundColor Gray
+Write-Host "Runtime: $aloopDir" -ForegroundColor Gray
 if ($DryRun) { Write-Host "Mode: DRY RUN (no changes will be made)" -ForegroundColor Yellow }
 if ($Force)  { Write-Host "Mode: FORCE (overwriting existing files)" -ForegroundColor Yellow }
 Write-Host ""
@@ -444,7 +516,7 @@ if ($selectedHarnesses.Count -eq 0) {
         # --- Skill ---
         Write-Host "  skill -> $($h.SkillDest)" -ForegroundColor Gray
         Copy-TreeItem `
-            -Source (Join-Path $scriptDir "claude\skills\aloop") `
+            -Source (Join-Path $scriptDir "claude\skills\$skillName") `
             -Destination $h.SkillDest `
             -Label "skill"
 
@@ -452,7 +524,7 @@ if ($selectedHarnesses.Count -eq 0) {
         if ($h.HasCommands) {
             Write-Host "  commands -> $($h.CmdDest)" -ForegroundColor Gray
             Copy-TreeItem `
-                -Source (Join-Path $scriptDir "claude\commands\aloop") `
+                -Source (Join-Path $scriptDir "claude\commands\$skillName") `
                 -Destination $h.CmdDest `
                 -Label "commands"
         }
@@ -464,9 +536,11 @@ if ($selectedHarnesses.Count -eq 0) {
 # VS Code uses a separate user-level prompts folder (not ~/.copilot/)
 # that is independent of which harness was selected above.
 # Official path: $APPDATA\Code\User\prompts\ and $APPDATA\Code - Insiders\User\prompts\
+$appData = $env:APPDATA
+if (-not $appData) { $appData = Join-Path $HOME ".config" }   # Linux/macOS fallback
 $vscodePromptDirs = @(
-    [PSCustomObject]@{ Name = 'VS Code (stable)';   Path = Join-Path $env:APPDATA "Code\User\prompts" }
-    [PSCustomObject]@{ Name = 'VS Code Insiders';   Path = Join-Path $env:APPDATA "Code - Insiders\User\prompts" }
+    [PSCustomObject]@{ Name = 'VS Code (stable)';   Path = Join-Path $appData "Code/User/prompts" }
+    [PSCustomObject]@{ Name = 'VS Code Insiders';   Path = Join-Path $appData "Code - Insiders/User/prompts" }
 )
 
 $promptSource = Join-Path $scriptDir "copilot\prompts"
@@ -492,29 +566,94 @@ if (-not (Test-Path $promptSource)) {
     }
 }
 
-# --- Aloop runtime: config ---
+# --- Runtime: config ---
 Write-Host ""
-Write-Host "Installing Aloop runtime config..." -ForegroundColor White
+Write-Host "Installing runtime config..." -ForegroundColor White
 Copy-TreeItem `
-    -Source (Join-Path $scriptDir "aloop\config.yml") `
+    -Source (Join-Path $scriptDir "$skillName\config.yml") `
     -Destination (Join-Path $aloopDir "config.yml") `
     -Label "config"
 
-# --- Aloop runtime: bin ---
+# --- Runtime: bin ---
 Write-Host ""
-Write-Host "Installing Aloop loop scripts..." -ForegroundColor White
+Write-Host "Installing loop scripts..." -ForegroundColor White
 Copy-TreeItem `
-    -Source (Join-Path $scriptDir "aloop\bin") `
+    -Source (Join-Path $scriptDir "$skillName\bin") `
     -Destination (Join-Path $aloopDir "bin") `
     -Label "bin"
+Normalize-LoopScriptLineEndings -Path (Join-Path $aloopDir "bin\loop.ps1") -LineEnding CRLF
+Normalize-LoopScriptLineEndings -Path (Join-Path $aloopDir "bin\loop.sh") -LineEnding LF
 
-# --- Aloop runtime: templates ---
+# --- Runtime: version stamp ---
+$versionCommit = ''
+$versionTimestamp = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+try {
+    $gitDir = Join-Path $scriptDir '.git'
+    if (Test-Path $gitDir) {
+        $versionCommit = (git -C $scriptDir rev-parse --short HEAD 2>$null)
+        if (-not $versionCommit) { $versionCommit = '' }
+    }
+} catch { }
+$versionData = @{
+    commit = $versionCommit
+    installed_at = $versionTimestamp
+} | ConvertTo-Json -Compress
+Set-Content -Path (Join-Path $aloopDir "version.json") -Value $versionData -Encoding utf8
+
+# --- Runtime: templates ---
 Write-Host ""
-Write-Host "Installing Aloop prompt templates..." -ForegroundColor White
+Write-Host "Installing prompt templates..." -ForegroundColor White
 Copy-TreeItem `
-    -Source (Join-Path $scriptDir "aloop\templates") `
+    -Source (Join-Path $scriptDir "$skillName\templates") `
     -Destination (Join-Path $aloopDir "templates") `
     -Label "templates"
+
+# --- Runtime: CLI ---
+Write-Host ""
+Write-Host "Installing CLI and dashboard..." -ForegroundColor White
+
+# Build dashboard from source if npm is available
+$dashboardSrc = Join-Path $scriptDir "$skillName/cli/dashboard"
+if ((Test-Path (Join-Path $dashboardSrc "package.json")) -and (Test-CommandExists 'npm')) {
+    Write-Host "  Building dashboard from source..." -ForegroundColor Gray
+    Push-Location $dashboardSrc
+    try {
+        & npm install --silent 2>&1 | Out-Null
+        & npm run build 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $dashboardDist = Join-Path $dashboardSrc "dist"
+            $cliDashboardDist = Join-Path $scriptDir "$skillName/cli/dist/dashboard"
+            if (Test-Path $dashboardDist) {
+                if (-not (Test-Path $cliDashboardDist)) {
+                    New-Item -ItemType Directory -Path $cliDashboardDist -Force | Out-Null
+                }
+                Copy-Item -Path (Join-Path $dashboardDist "*") -Destination $cliDashboardDist -Recurse -Force
+                Write-Host "  Dashboard built successfully." -ForegroundColor Green
+            }
+        } else {
+            Write-Warning "  Dashboard build failed — installing without fresh build."
+        }
+    } finally {
+        Pop-Location
+    }
+} else {
+    Write-Host "  Skipping dashboard build (npm not found or no dashboard source)." -ForegroundColor Yellow
+}
+
+Copy-TreeItem `
+    -Source (Join-Path $scriptDir "$skillName\cli\dist") `
+    -Destination (Join-Path $aloopDir "cli\dist") `
+    -Label "cli/dist"
+
+Copy-TreeItem `
+    -Source (Join-Path $scriptDir "$skillName\cli\lib") `
+    -Destination (Join-Path $aloopDir "cli\lib") `
+    -Label "cli/lib"
+
+Copy-TreeItem `
+    -Source (Join-Path $scriptDir "$skillName\cli\aloop.mjs") `
+    -Destination (Join-Path $aloopDir "cli\aloop.mjs") `
+    -Label "cli/aloop.mjs"
 
 # --- Create runtime directories ---
 Write-Host ""
@@ -551,24 +690,79 @@ if ($IsLinux -or $IsMacOS) {
     }
 }
 
+# --- Create CLI shims ---
+Write-Host ""
+Write-Host "Creating CLI shims..." -ForegroundColor White
+$cmdShim = Join-Path $aloopDir "bin\aloop.cmd"
+$shShim  = Join-Path $aloopDir "bin\aloop"
+
+$cmdShimContent = @'
+@echo off
+node "%~dp0..\cli\aloop.mjs" %*
+'@
+
+$shShimContent = @'
+#!/bin/sh
+exec node "$(dirname "$0")/../cli/aloop.mjs" "$@"
+'@
+
+foreach ($shim in @(
+    [PSCustomObject]@{ Path = $cmdShim; Content = $cmdShimContent; Label = "aloop.cmd (Windows)" }
+    [PSCustomObject]@{ Path = $shShim;  Content = $shShimContent;  Label = "aloop (POSIX)"       }
+)) {
+    $exists = Test-Path $shim.Path
+
+    $shouldSkipShim = $false
+    if ($exists -and -not $Force -and -not $DryRun) {
+        $dstShimContent = Get-Content -Path $shim.Path -Raw -Encoding utf8
+        $shouldSkipShim = ($dstShimContent -eq $shim.Content)
+    }
+
+    if ($DryRun) {
+        if ($exists) {
+            $dstShimContent = Get-Content -Path $shim.Path -Raw -Encoding utf8
+            $action = if ($dstShimContent -eq $shim.Content) { "SKIP (up-to-date)" } else { "UPDATE (content changed)" }
+        } else {
+            $action = "CREATE"
+        }
+        Write-Host "  [DRY RUN] $action $($shim.Path)" -ForegroundColor DarkGray
+    } elseif ($shouldSkipShim) {
+        Write-Host "  SKIP (up-to-date): $($shim.Path)" -ForegroundColor DarkGray
+    } else {
+        Set-Content -Path $shim.Path -Value $shim.Content
+        $action = if ($exists) { "Updated" } else { "Created" }
+        Write-Host "  ${action}: $($shim.Path)" -ForegroundColor Green
+    }
+}
+
+if (($IsLinux -or $IsMacOS) -and -not $DryRun -and (Test-Path $shShim)) {
+    chmod +x $shShim
+    Write-Host "  chmod +x $shShim" -ForegroundColor Green
+}
+
 # --- Summary ---
 Write-Host ""
-Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
+$versionLabel = if ($versionCommit) { "$versionCommit ($versionTimestamp)" } else { $versionTimestamp }
+Write-Host "=== Installation Complete ($versionLabel) ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Installed components:" -ForegroundColor White
-Write-Host "  Skill:     ~/.{claude|codex|copilot|agents}/skills/aloop/SKILL.md"
-Write-Host "  Commands:  ~/.{claude|codex}/commands/aloop/  (setup, start, status, stop)"
+Write-Host "  Skill:     ~/.{claude|codex|copilot|agents}/skills/$skillName/SKILL.md"
+Write-Host "  Commands:  ~/.{claude|codex}/commands/$skillName/  (setup, start, status, dashboard, stop, steer, devcontainer, orchestrate)"
 Write-Host "  Prompts:   %APPDATA%\Code{,-Insiders}\User\prompts\  (aloop-*.prompt.md)"
 Write-Host "  Config:    $aloopDir\config.yml"
-Write-Host "  Scripts:   $aloopDir\bin\ (loop.ps1, loop.sh)"
+Write-Host "  CLI:       $aloopDir\cli\  (aloop.mjs, lib/, dist/)"
+Write-Host "  Entry:     $aloopDir\cli\aloop.mjs"
+Write-Host "  Shims:     $aloopDir\bin\aloop.cmd  (Windows)  |  $aloopDir\bin\aloop  (POSIX)"
+Write-Host "  Scripts:   $aloopDir\bin\  (loop.ps1, loop.sh)"
 Write-Host "  Templates: $aloopDir\templates\ (PROMPT_plan.md, PROMPT_build.md, PROMPT_review.md)"
 Write-Host ""
 Write-Host "Usage:" -ForegroundColor White
-Write-Host "  Claude Code / Codex: /aloop:setup  /aloop:start  /aloop:status  /aloop:stop"
-Write-Host "  VS Code Copilot:     /aloop-setup  /aloop-start  /aloop-status  /aloop-stop  (prompt files)"
-Write-Host "  GH Copilot skill:    type '/' in chat and select aloop, or let Copilot load it automatically"
+Write-Host "  Claude Code / Codex: /$skillName`:setup  /$skillName`:start  /$skillName`:status  /$skillName`:dashboard  /$skillName`:stop  /$skillName`:steer  /$skillName`:devcontainer  /$skillName`:orchestrate"
+Write-Host "  VS Code Copilot:     /aloop-setup  /aloop-start  /aloop-status  /aloop-dashboard  /aloop-stop  /aloop-steer  /aloop-devcontainer  /aloop-orchestrate  (prompt files)"
+Write-Host "  GH Copilot skill:    type '/' in chat and select $skillName, or let Copilot load it automatically"
 Write-Host ""
-Write-Host "To reinstall: $scriptDir\install.ps1 -Force" -ForegroundColor Gray
+Write-Host "To reinstall/update: $scriptDir\install.ps1 -Force" -ForegroundColor Gray
+Write-Host "Help:                $scriptDir\install.ps1 -Help" -ForegroundColor Gray
 Write-Host ""
 Write-Host "=== Authentication ===" -ForegroundColor Cyan
 Write-Host ""

@@ -24,7 +24,7 @@ Each cycle runs 5 iterations: one plan, three builds, one review. This ratio giv
 
 1. **Planning Phase** (1x): Gap analysis (specs vs code) outputs prioritized TODO list — no implementation, no commits
 2. **Building Phase** (3x): Picks tasks from plan, implements, runs tests (backpressure), commits — three consecutive iterations for real progress
-3. **Review Phase** (1x): Critically audits the build iterations against 5 quality gates — the adversarial critic that catches shallow tests, spec deviations, and coverage gaps
+3. **Review Phase** (1x): Critically audits the build iterations against 6 quality gates — the adversarial critic that catches shallow tests, spec deviations, and coverage gaps
 4. **Observation Phase** (yours): You sit on the loop, not in it — engineer the setup and environment that allows Aloop to succeed
 
 ### Key Principles
@@ -39,13 +39,13 @@ Each cycle runs 5 iterations: one plan, three builds, one review. This ratio giv
 
 **File I/O as State**: The plan file persists between isolated loop executions, serving as deterministic shared state — no sophisticated orchestration needed.
 
-**Persistent Research Log**: The planner appends externally verifiable, cited research discoveries to `RESEARCH.md` in the work directory (append-only, timestamped). `RESEARCH.md` is not an execution journal; progress/loop telemetry belongs outside that file. Each planning iteration reads it first to avoid re-researching things already investigated. The file survives TODO.md regenerations and spec updates.
+**Persistent Research Log**: The planner appends discoveries to `RESEARCH.md` in the work directory (append-only, timestamped). Each planning iteration reads it first to avoid re-researching things already investigated. The file survives TODO.md regenerations and spec updates.
 
 **Multi-Provider**: Aloop supports claude, codex, gemini, and copilot as providers. Round-robin mode cycles through providers each iteration for diversity.
 
 **Stuck Detection**: When Aloop fails on the same task N times in a row, the task is automatically marked as blocked and skipped so the loop can continue making progress.
 
-**Live Steering**: While the loop runs, you can redirect it mid-flight without stopping it. Use `/aloop:steer` to tell the host agent what to change — it interviews you, reads current loop state, and drops a structured `STEERING.md` (with commit SHA + timestamp) into the session directory. At the next iteration boundary the loop detects it, invokes a spec-update agent that applies the changes to specs and TODO.md, then forces a re-plan before resuming normal cycles.
+**Live Steering**: While the loop runs, you can redirect it mid-flight without stopping it. Use `/$skillName:steer` to tell the host agent what to change — it interviews you, reads current loop state, and drops a structured `STEERING.md` (with commit SHA + timestamp) into the work directory. At the next iteration boundary the loop detects it, invokes a spec-update agent that applies the changes to specs and TODO.md, then forces a re-plan before resuming normal cycles.
 
 **Worktree Isolation**: By default, Aloop loops run on a separate git worktree to keep your main branch clean while development progresses.
 </essential_principles>
@@ -62,32 +62,8 @@ All Aloop runtime state lives in `~/.aloop/`, not in your project repository:
 - `~/.aloop/sessions/<id>/` — Per-session state, logs, and reports
 - `~/.aloop/active.json` — Registry of running sessions
 
-Use `/aloop:setup` to configure a project, `/aloop:start` to launch a loop, `/aloop:status` to check progress, and `/aloop:stop` to end a loop.
+Use `/$skillName:setup` to configure a project, `/$skillName:start` to launch a loop, `/$skillName:status` to check progress, and `/$skillName:stop` to end a loop.
 </infrastructure>
-
-<orchestration_playbook>
-## Orchestration Playbook (Critical)
-
-When Ralph is run by another agent/tooling layer, orchestration quality determines whether loops make progress or silently die.
-
-1. **Use a persistent execution channel for long runs.**
-   - Prefer a PTY/session model for `loop.sh`/`loop.ps1`.
-   - Do not assume detached/background children survive after a one-shot command wrapper exits.
-2. **Default to no provider timeout for real loops.**
-   - Use `RALPH_PROVIDER_TIMEOUT=0` (or `--provider-timeout 0`) unless you explicitly want enforced cutoff behavior.
-3. **Track liveness with both process and artifact signals.**
-   - Process signal: loop process exists plus active provider child process (`claude`, `codex`, etc.).
-   - Artifact signal: `status.json` `updated_at` advances, `log.jsonl` gains events, and `log.jsonl.raw` grows.
-4. **Treat stale `running` sessions as dead when process is gone.**
-   - If `status.json` still says `state=running` but no loop/provider process exists and file mtimes are stale, consider the run crashed/terminated.
-   - In this case, cleanup hooks may not have executed, so `report.md` may be missing.
-5. **Use a recovery-first restart protocol.**
-   - Start a new session id; keep old session artifacts for forensics.
-   - If first iteration repeatedly hangs, run a short foreground/debug iteration to capture concrete failure text before restarting the full loop.
-6. **Be explicit with provider strategy.**
-   - For diversity: `--provider round-robin --round-robin claude,codex` (or your chosen list).
-   - If one provider is unstable in current context, temporarily pin provider rather than burning iterations.
-</orchestration_playbook>
 
 <reference_index>
 ## Domain Knowledge
@@ -103,7 +79,7 @@ All in `references/`:
 <success_criteria>
 Skill is successful when:
 - User understands Aloop methodology (plan-build-review loop)
-- User can configure and run Aloop loops via /aloop commands
+- User can configure and run Aloop loops via /$skillName commands
 - User knows where Aloop state lives (~/.aloop/)
 - User understands backpressure, stuck detection, and observation roles
 </success_criteria>

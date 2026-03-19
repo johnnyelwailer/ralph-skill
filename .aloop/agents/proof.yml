@@ -1,0 +1,4 @@
+agent: proof
+prompt: PROMPT_proof.md
+reasoning:
+  effort: medium

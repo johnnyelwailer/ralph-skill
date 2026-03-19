@@ -1,0 +1,9 @@
+# Continuous cycle — repeats until all_tasks_done
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 5
+    onFailure: retry
+  - agent: qa
+  - agent: review
+    onFailure: goto build

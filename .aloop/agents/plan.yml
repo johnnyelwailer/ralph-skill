@@ -1,0 +1,4 @@
+agent: plan
+prompt: PROMPT_plan.md
+reasoning:
+  effort: high

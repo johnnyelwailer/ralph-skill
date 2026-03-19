@@ -1,0 +1,4 @@
+agent: build
+prompt: PROMPT_build.md
+reasoning:
+  effort: medium

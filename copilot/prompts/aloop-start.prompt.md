@@ -1,115 +1,42 @@
 ---
 name: aloop-start
-description: Launch a Aloop autonomous coding loop for the current project. Accepts --plan, --build, --review, --provider, --in-place, --max flags.
-argument-hint: "[--plan|--build|--review] [--provider claude|codex|gemini|copilot] [--in-place] [--max N]"
+description: Launch an Aloop autonomous coding loop for the current project by delegating to the `aloop start` CLI.
+argument-hint: "[--plan|--build|--review] [--provider claude|codex|gemini|copilot] [--in-place] [--max N] [--launch start|restart|resume]"
 agent: agent
 ---
 
-Launch a Aloop loop for the current project. Create a session, optionally set up a git worktree, and start the loop script.
+Launch an Aloop loop for the current project by running the `aloop start` CLI command.
 
-## Step 1: Find Project Config
+## Step 1: Translate Arguments
 
-1. Find the git root of the current working directory
-2. Compute the project hash (first 8 chars of SHA-256 of absolute path)
-3. Resolve config path in this order:
-  - `<project-root>/.aloop/config.yml` (project-local runtime)
-  - `~/.aloop/projects/<hash>/config.yml` (global runtime)
-4. If not found: "No Aloop configuration found for this project. Run `/aloop-setup` first."
+Map any user-provided arguments to `aloop start` flags:
+- `--plan` → `--plan`
+- `--build` → `--build`
+- `--review` → `--review`
+- `--provider <name>` → `--provider <name>`
+- `--in-place` → `--in-place`
+- `--max <n>` → `--max-iterations <n>`
+- `--launch <mode>` → `--launch <mode>` (start, restart, or resume)
+- `--resume` → `--launch resume` (shorthand)
+- `--restart` → `--launch restart` (shorthand)
+- No args → no extra flags (CLI uses project config defaults)
 
-Read `runtime_scope` and `runtime_root` from config. If missing, default to:
-- `runtime_scope=global`
-- `runtime_root=~/.aloop`
+## Step 2: Run `aloop start`
 
-## Step 2: Parse Arguments
-
-Check for arguments passed after invoking this prompt:
-- `--plan` → override mode to `plan`
-- `--build` → override mode to `build`
-- `--review` → override mode to `review`
-- `--provider <name>` → override provider
-- `--in-place` → skip worktree, run in current directory
-- `--max <n>` → override max iterations
-- No args → use defaults from project config
-
-## Step 3: Create Session
-
-1. Generate session ID: `<project-name>-<timestamp>` (e.g., `my-app-20260221-143052`)
-2. Create `<runtime_root>/sessions/<session-id>/`
-3. Copy prompts from `<config-dir>/prompts/` to `<runtime_root>/sessions/<session-id>/prompts/`
-4. Write `<runtime_root>/sessions/<session-id>/meta.json`:
-   ```json
-   {
-     "session_id": "<id>",
-     "project_name": "<name>",
-     "project_root": "<path>",
-     "project_hash": "<hash>",
-     "provider": "<provider>",
-     "mode": "<mode>",
-     "max_iterations": 50,
-     "worktree": true,
-     "created_at": "<timestamp>"
-   }
-   ```
-
-## Step 4: Set Up Worktree (unless --in-place)
-
-Unless `--in-place`:
-1. Create branch: `aloop/<session-id>`
-2. Run: `git worktree add <runtime_root>/sessions/<session-id>/worktree -b aloop/<session-id>`
-3. Work directory = worktree path
-
-If `--in-place`, work directory = project root.
-
-## Step 5: Register Active Session
-
-Read `<runtime_root>/active.json` (create as `[]` if missing). Add the new session entry. Write back.
-
-## Step 6: Launch Loop
-
-Determine script: `<runtime_root>/bin/loop.ps1` (Windows) or `<runtime_root>/bin/loop.sh` (macOS/Linux).
-
-Read `enabled_providers`, `models`, and `round_robin_order` from project config and pass to loop.
-
-**PowerShell:**
-```powershell
-& <runtime_root>/bin/loop.ps1 `
-  -PromptsDir "<runtime_root>/sessions/<session-id>/prompts" `
-  -SessionDir "<runtime_root>/sessions/<session-id>" `
-  -WorkDir "<work-directory>" `
-  -Mode <mode> -Provider <provider> `
-  -RoundRobinProviders <enabled-csv> `
-  -ClaudeModel <m> -CodexModel <m> -GeminiModel <m> -CopilotModel <m> `
-  -MaxIterations <max>
-```
-
-**Bash:**
 ```bash
-<runtime_root>/bin/loop.sh \
-  --prompts-dir <runtime_root>/sessions/<session-id>/prompts \
-  --session-dir <runtime_root>/sessions/<session-id> \
-  --work-dir <work-directory> \
-  --mode <mode> --provider <provider> \
-  --round-robin <enabled-csv> \
-  --claude-model <m> --codex-model <m> --gemini-model <m> --copilot-model <m> \
-  --max-iterations <max>
+aloop start [flags...]
 ```
 
-Launch as a background process. Capture PID and update `active.json`.
+Fallback if `aloop` is not on PATH:
 
-## Step 7: Confirm Launch
-
-Display:
+```bash
+node ~/.aloop/cli/aloop.mjs start [flags...]
 ```
-Aloop loop started!
 
-  Session:  <session-id>
-  Mode:     <mode>
-  Provider: <provider>
-  Work dir: <work-dir>
+## Step 3: Report Result
 
-Monitor:  /aloop-status
-Stop:     /aloop-stop
-Logs:     ~/.aloop/sessions/<session-id>/log.jsonl
+Show the CLI output to the user. If the command fails, relay the error message.
 
-Display runtime root in confirmation (e.g., `Runtime root: <runtime_root>`).
-```
+Remind the user:
+- `/aloop-status` — check progress
+- `/aloop-stop` — stop the loop

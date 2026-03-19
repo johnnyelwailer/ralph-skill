@@ -13,18 +13,33 @@ Read `STEERING.md`, update affected spec files and `TODO.md` to reflect the new 
 0c. Study `TODO.md` to understand current task state
 {{REFERENCE_FILES}}
 
-1. **Apply steering to spec files**
-   - Update only the spec sections the instruction affects
+1. **Classify the steering instruction**
+   - **New requirement or changed requirement** → update spec (step 2) AND add TODO tasks (step 3)
+   - **Bug report or broken behavior** → add TODO tasks only (step 3). Do NOT add bugs to the spec. The spec describes target state, not current problems.
+   - **Prioritization change** → update TODO only (step 3)
+   - **Mixed** → split and handle each part accordingly
+
+2. **Update spec files (only for requirements, not bugs)**
+   - The spec describes **what the system should do** (target state), not what's currently broken
+   - Update existing spec sections the instruction affects
+   - Add new spec sections or acceptance criteria if the steering describes features not yet in the spec
+   - Do NOT add "Problem" sections, "Current bug" descriptions, or diagnostic code snippets to the spec
    - Do NOT add requirements beyond what the instruction says
    - Do NOT touch spec sections that are unaffected
+   - The spec is the source of truth for all other agents — if it's not in the spec, it won't get built or verified
 
-2. **Update TODO.md**
+3. **Update TODO.md**
    - Mark tasks invalidated by the steering as `[~]` (cancelled) with a short reason
-   - Add new tasks the steering requires (they will be re-prioritized by the next plan iteration)
-   - Leave already-completed `[x]` tasks untouched — do not undo implemented work unless explicitly asked
-   - Do NOT re-prioritize the whole plan — that is the next plan iteration's job
+   - Add new tasks the steering requires (including bugs). **Position based on urgency:**
+     - Critical/blocking/urgent → insert at the **top** of "In Progress" as the first unchecked `[ ]` item
+     - Normal-priority → insert after existing `[review]` tasks but before lower-priority items
+     - Future/backlog ("eventually", "later", "P2") → add to "Up Next" section
+   - **Bug tasks** should be tagged with `[bug]` and include a brief description of the observed vs expected behavior
+   - If the steering says a completed `[x]` task is NOT actually implemented, **reopen it**: change `[x]` to `[ ]` and add `(reopened: not actually implemented — <reason from steering>)`
+   - Otherwise leave completed `[x]` tasks untouched
+   - Do NOT re-prioritize unrelated tasks
 
-3. **Delete `STEERING.md`** from the work directory
+3. **Delete `STEERING.md`** to signal completion.
 
 4. **Commit** all changes with message: `chore(steer): apply steering — <one-line summary>`
 

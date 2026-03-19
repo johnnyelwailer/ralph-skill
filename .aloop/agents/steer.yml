@@ -1,0 +1,4 @@
+agent: steer
+prompt: PROMPT_steer.md
+reasoning:
+  effort: high
