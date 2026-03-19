@@ -8,7 +8,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 No active tasks in progress.
 
 ### Up Next
-- [ ] [qa/P1] README setup flag mismatch (`--provider` vs `--providers`): packaged CLI rejects documented singular flag (`error: unknown option '--provider'`). Repro: run `aloop setup --non-interactive --provider claude` from README-style usage; expected setup to succeed per docs, actual exit 1. Tested at iter 305. (priority: high)
+- [x] [qa/P1] README setup flag mismatch (`--provider` vs `--providers`): packaged CLI rejects documented singular flag (`error: unknown option '--provider'`). Fixed by adding `setup` CLI alias support for `--provider` (mapped to `--providers`) and covering both parser and command behavior in `index.test.ts` and `setup.test.ts`. Repro now succeeds: `aloop setup --non-interactive --provider claude`. Tested at iter 307. (priority: high) — **COMPLETED**
 
 ### Deferred (Low Priority / After Core)
 - [x] [qa/P1] Dashboard docs tabs empty in some sessions (`/api/state` docs payload unresolved/empty due context/workdir mismatch reports) — resolved by teaching `resolveSessionContext` to fall back from `active.json` to matching `history.json` session entries (newest-first) so archived/non-active sessions still return the correct `session_dir`/`work_dir` and docs payload. Added regression coverage in `dashboard.test.ts` for `GET /api/state?session=<id>` history fallback. (priority: low) — **COMPLETED** (iter 289)

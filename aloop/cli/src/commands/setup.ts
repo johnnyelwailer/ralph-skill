@@ -28,6 +28,7 @@ export interface SetupCommandOptions {
   homeDir?: string;
   nonInteractive?: boolean;
   spec?: string;
+  provider?: string;
   providers?: string;
   mode?: string;
   autonomyLevel?: string;
@@ -113,6 +114,11 @@ export async function setupCommandWithDeps(
     prompt: PromptFunction;
   }
 ) {
+  const providerListInput = options.providers ?? options.provider;
+  const parsedProviderList = providerListInput
+    ? providerListInput.split(',').map(p => p.trim()).filter(Boolean)
+    : undefined;
+
   const discovery = await deps.discover({
     projectRoot: options.projectRoot,
     homeDir: options.homeDir,
@@ -125,7 +131,7 @@ export async function setupCommandWithDeps(
       projectRoot: options.projectRoot,
       homeDir: options.homeDir,
       specFiles: options.spec ? [options.spec] : undefined,
-      enabledProviders: options.providers ? options.providers.split(',').map(p => p.trim()) : undefined,
+      enabledProviders: parsedProviderList,
       mode: mapSetupModeToLoopMode(setupMode),
       autonomyLevel: parseAutonomyLevel(options.autonomyLevel),
       dataPrivacy: parseDataPrivacy(options.dataPrivacy),
@@ -138,7 +144,7 @@ export async function setupCommandWithDeps(
   console.log('\n--- Aloop Interactive Setup ---\n');
 
   let spec = options.spec || discovery.context.spec_candidates[0] || 'SPEC.md';
-  let enabledProviders = (options.providers || discovery.providers.installed.join(',') || 'claude')
+  let enabledProviders = ((parsedProviderList?.join(',')) || discovery.providers.installed.join(',') || 'claude')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);

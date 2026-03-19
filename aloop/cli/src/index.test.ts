@@ -56,6 +56,26 @@ test('index CLI parses discover command and runs action', async () => {
   assert.equal(parsed.project.root, tempRoot);
 });
 
+test('index CLI accepts setup --provider alias in non-interactive mode', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-setup-provider-'));
+  const tempHome = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-home-'));
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  const result = await runCli([
+    'setup',
+    '--non-interactive',
+    '--project-root',
+    tempRoot,
+    '--home-dir',
+    tempHome,
+    '--provider',
+    'claude',
+  ]);
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /Setup complete\./);
+});
+
 test('index CLI returns non-zero for unknown command', async () => {
   const result = await runCli(['unknown-command']);
   assert.notEqual(result.code, 0);
