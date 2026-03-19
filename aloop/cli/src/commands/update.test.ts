@@ -105,7 +105,12 @@ test('executeUpdate fails when repo root not found', async () => {
       { homeDir },
       {
         homeDir: () => homeDir,
-        existsSync,
+        existsSync: (targetPath: string) => {
+          // Keep this test deterministic even when TMPDIR is inside this repository.
+          if (targetPath.endsWith(path.join('install.ps1'))) return false;
+          if (targetPath.endsWith(path.join('aloop', 'bin'))) return false;
+          return existsSync(targetPath);
+        },
         readdir,
         mkdir,
         copyFile: (await import('node:fs/promises')).copyFile,

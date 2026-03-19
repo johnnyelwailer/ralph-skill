@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
+import { findBaselineIterations } from './AppView';
 
 // ── Extracted pure functions (duplicated from App.tsx for testability) ──
 
@@ -1365,23 +1366,8 @@ describe('parseManifest', () => {
 
 // ── Tests for findBaselineIterations (artifact comparison history scrubbing) ──
 
-interface ManifestPayloadForTest {
-  iteration: number;
-  phase: string;
-  summary: string;
-  artifacts: Array<{ type: string; path: string; description: string; metadata?: { baseline?: string; diff_percentage?: number } }>;
-  outputHeader?: string;
-}
-
-function findBaselineIterations(artifactPath: string, currentIteration: number, allManifests: ManifestPayloadForTest[]): number[] {
-  return allManifests
-    .filter((m) => m.iteration < currentIteration && m.artifacts.some((a) => a.path === artifactPath))
-    .map((m) => m.iteration)
-    .sort((a, b) => b - a);
-}
-
 describe('findBaselineIterations', () => {
-  const mkManifest = (iteration: number, paths: string[]): ManifestPayloadForTest => ({
+  const mkManifest = (iteration: number, paths: string[]) => ({
     iteration,
     phase: 'proof',
     summary: '',

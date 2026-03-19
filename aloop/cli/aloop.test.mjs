@@ -51,6 +51,13 @@ async function createWorkspaceFixture() {
   return { root, projectRoot, homeDir };
 }
 
+function fixtureEnv(root) {
+  return {
+    ...process.env,
+    GIT_CEILING_DIRECTORIES: root,
+  };
+}
+
 test('aloop entrypoint shows help for no args and explicit --help', async () => {
   const noArgs = await runAloop([]);
   assert.equal(noArgs.code, 0);
@@ -63,13 +70,14 @@ test('aloop entrypoint shows help for no args and explicit --help', async () => 
 });
 
 test('aloop entrypoint runs discover scaffold and resolve', async () => {
-  const { projectRoot, homeDir } = await createWorkspaceFixture();
+  const { root, projectRoot, homeDir } = await createWorkspaceFixture();
+  const env = fixtureEnv(root);
 
-  const discoverText = await runAloop(['discover', '--project-root', projectRoot, '--home-dir', homeDir, '--output', 'text']);
+  const discoverText = await runAloop(['discover', '--project-root', projectRoot, '--home-dir', homeDir, '--output', 'text'], { env });
   assert.equal(discoverText.code, 0);
   assert.match(discoverText.stdout, /Workspace discovered at/);
 
-  const discover = await runAloop(['discover', '--project-root', projectRoot, '--home-dir', homeDir, '--output', 'json']);
+  const discover = await runAloop(['discover', '--project-root', projectRoot, '--home-dir', homeDir, '--output', 'json'], { env });
   assert.equal(discover.code, 0);
   const discoverJson = JSON.parse(discover.stdout);
   assert.equal(discoverJson.project.root, projectRoot);
@@ -96,7 +104,7 @@ test('aloop entrypoint runs discover scaffold and resolve', async () => {
     'Rule 3',
     '--output',
     'text',
-  ]);
+  ], { env });
   assert.equal(scaffold.code, 0);
   assert.match(scaffold.stdout, /Scaffold complete for project hash:/);
 
@@ -110,26 +118,27 @@ test('aloop entrypoint runs discover scaffold and resolve', async () => {
     templatesDir,
     '--output',
     'json',
-  ]);
+  ], { env });
   assert.equal(scaffoldJson.code, 0);
   const scaffoldData = JSON.parse(scaffoldJson.stdout);
   assert.equal(scaffoldData.project_dir.endsWith(discoverJson.project.hash), true);
 
-  const resolveText = await runAloop(['resolve', '--project-root', projectRoot, '--home-dir', homeDir, '--output', 'text']);
+  const resolveText = await runAloop(['resolve', '--project-root', projectRoot, '--home-dir', homeDir, '--output', 'text'], { env });
   assert.equal(resolveText.code, 0);
   assert.match(resolveText.stdout, /Project:\s+/);
   assert.match(resolveText.stdout, /Project config:/);
 
-  const resolveJson = await runAloop(['resolve', '--project-root', projectRoot, '--home-dir', homeDir, '--output', 'json']);
+  const resolveJson = await runAloop(['resolve', '--project-root', projectRoot, '--home-dir', homeDir, '--output', 'json'], { env });
   assert.equal(resolveJson.code, 0);
   const resolveData = JSON.parse(resolveJson.stdout);
   assert.equal(resolveData.project.root, projectRoot);
 });
 
 test('aloop entrypoint surfaces resolve misconfiguration and stop validation errors', async () => {
-  const { projectRoot, homeDir } = await createWorkspaceFixture();
+  const { root, projectRoot, homeDir } = await createWorkspaceFixture();
+  const env = fixtureEnv(root);
 
-  const resolve = await runAloop(['resolve', '--project-root', projectRoot, '--home-dir', homeDir]);
+  const resolve = await runAloop(['resolve', '--project-root', projectRoot, '--home-dir', homeDir], { env });
   assert.notEqual(resolve.code, 0);
   assert.match(resolve.stderr, /No Aloop configuration found/i);
 
@@ -139,7 +148,8 @@ test('aloop entrypoint surfaces resolve misconfiguration and stop validation err
 });
 
 test('aloop entrypoint runs status active and stop text/json paths', async () => {
-  const { homeDir } = await createWorkspaceFixture();
+  const { root, homeDir } = await createWorkspaceFixture();
+  const env = fixtureEnv(root);
   const sessionId = 'sess-1';
   const secondSessionId = 'sess-2';
   const sessionDir = path.join(homeDir, '.aloop', 'sessions', sessionId);
@@ -188,46 +198,46 @@ test('aloop entrypoint runs status active and stop text/json paths', async () =>
     consecutive_failures: 2,
   });
 
-  const statusText = await runAloop(['status', '--home-dir', homeDir, '--output', 'text']);
+  const statusText = await runAloop(['status', '--home-dir', homeDir, '--output', 'text'], { env });
   assert.equal(statusText.code, 0);
   assert.match(statusText.stdout, /Active Sessions:/);
   assert.match(statusText.stdout, /Provider Health:/);
 
-  const statusJson = await runAloop(['status', '--home-dir', homeDir, '--output', 'json']);
+  const statusJson = await runAloop(['status', '--home-dir', homeDir, '--output', 'json'], { env });
   assert.equal(statusJson.code, 0);
   const statusParsed = JSON.parse(statusJson.stdout);
   assert.equal(statusParsed.sessions.length, 2);
   assert.equal(statusParsed.sessions[0].session_id, sessionId);
   assert.equal(statusParsed.health.claude.status, 'healthy');
 
-  const activeText = await runAloop(['active', '--home-dir', homeDir, '--output', 'text']);
+  const activeText = await runAloop(['active', '--home-dir', homeDir, '--output', 'text'], { env });
   assert.equal(activeText.code, 0);
   assert.match(activeText.stdout, /sess-1 \(running\)/);
 
-  const activeJson = await runAloop(['active', '--home-dir', homeDir, '--output', 'json']);
+  const activeJson = await runAloop(['active', '--home-dir', homeDir, '--output', 'json'], { env });
   assert.equal(activeJson.code, 0);
   const activeParsed = JSON.parse(activeJson.stdout);
   assert.equal(activeParsed.length, 2);
 
-  const stopJson = await runAloop(['stop', sessionId, '--home-dir', homeDir, '--output', 'json']);
+  const stopJson = await runAloop(['stop', sessionId, '--home-dir', homeDir, '--output', 'json'], { env });
   assert.equal(stopJson.code, 0);
   const stopParsed = JSON.parse(stopJson.stdout);
   assert.equal(stopParsed.success, true);
   assert.equal(stopParsed.session_id, sessionId);
 
-  const stopText = await runAloop(['stop', secondSessionId, '--home-dir', homeDir, '--output', 'text']);
+  const stopText = await runAloop(['stop', secondSessionId, '--home-dir', homeDir, '--output', 'text'], { env });
   assert.equal(stopText.code, 0);
   assert.match(stopText.stdout, /Stopped session: sess-2/);
 
-  const activeAfterStop = await runAloop(['active', '--home-dir', homeDir, '--output', 'text']);
+  const activeAfterStop = await runAloop(['active', '--home-dir', homeDir, '--output', 'text'], { env });
   assert.equal(activeAfterStop.code, 0);
   assert.match(activeAfterStop.stdout, /No active sessions\./);
 
-  const statusAfterStop = await runAloop(['status', '--home-dir', homeDir, '--output', 'text']);
+  const statusAfterStop = await runAloop(['status', '--home-dir', homeDir, '--output', 'text'], { env });
   assert.equal(statusAfterStop.code, 0);
   assert.match(statusAfterStop.stdout, /No active sessions\./);
 
-  const stopMissingSession = await runAloop(['stop', 'missing-session', '--home-dir', homeDir, '--output', 'json']);
+  const stopMissingSession = await runAloop(['stop', 'missing-session', '--home-dir', homeDir, '--output', 'json'], { env });
   assert.notEqual(stopMissingSession.code, 0);
   assert.match(stopMissingSession.stderr, /Session not found/i);
 
@@ -244,7 +254,8 @@ test('aloop entrypoint supports debug-env command', async () => {
 });
 
 test('aloop entrypoint exercises status formatting edge cases and short help', async () => {
-  const { homeDir } = await createWorkspaceFixture();
+  const { root, homeDir } = await createWorkspaceFixture();
+  const env = fixtureEnv(root);
   const now = Date.now();
   const sessionsDir = path.join(homeDir, '.aloop', 'sessions');
   const active = {
@@ -268,7 +279,7 @@ test('aloop entrypoint exercises status formatting edge cases and short help', a
     status: 'healthy',
   });
 
-  const status = await runAloop(['status', '--home-dir', homeDir, '--output', 'text', '--verbose']);
+  const status = await runAloop(['status', '--home-dir', homeDir, '--output', 'text', '--verbose'], { env });
   assert.equal(status.code, 0);
   assert.match(status.stdout, /unknownAge/);
   assert.match(status.stdout, /secondsAge/);
