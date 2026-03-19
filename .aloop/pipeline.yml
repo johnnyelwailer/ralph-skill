@@ -8,13 +8,7 @@ pipeline:
   - agent: review
     onFailure: goto build
 
-# Completion chain — loaded into queue when all tasks done at cycle boundary.
-# Processed sequentially. If any agent adds TODOs, remaining items are flushed
-# and the cycle resumes. Only proof completing with zero new TODOs ends the loop.
-rattail:
-  - PROMPT_spec-gap.md
-  - PROMPT_docs.md
-  - PROMPT_spec-review.md
-  - PROMPT_final-review.md
-  - PROMPT_final-qa.md
-  - PROMPT_proof.md
+# Completion chain (rattail) is NOT configured here — it's defined by
+# trigger: fields in prompt frontmatter. The runtime resolves the chain:
+#   all_tasks_done → spec-gap → docs → spec-review → final-review → final-qa → proof
+# See PROMPT_*.md trigger: values for the actual chain definition.

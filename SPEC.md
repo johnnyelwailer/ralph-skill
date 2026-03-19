@@ -181,11 +181,11 @@ If ALL providers are in cooldown/degraded: sleep until the earliest cooldown exp
 
 In any pipeline that includes a `review` agent, the loop MUST NOT exit on task completion during a build phase. The build agent can mark all tasks done, but only the review agent can approve a clean exit. Instead:
 
-1. **Build detects all tasks complete** → set `allTasksMarkedDone` flag in `loop-plan.json`, log `tasks_marked_complete`, but **do not exit**
-2. **Next iteration becomes a forced review** → inject the review prompt into the queue (`$SESSION_DIR/queue/001-force-review.md`), which the loop picks up before the normal cycle
-3. **Review decides**:
-   - If review approves → loop exits with `state: "completed"`
-   - If review finds issues → review reopens tasks (marks them `[ ]` again or adds new ones), resets `allTasksMarkedDone` in `loop-plan.json`, and the loop continues with a forced re-plan
+1. **Build detects all tasks complete** → set `allTasksMarkedDone` flag in `loop-plan.json`, log `tasks_marked_complete`, but **do not exit** — cycle continues normally through qa and review
+2. **Cycle completes** → at the cycle boundary, the runtime sees `allTasksMarkedDone` is true, emits `all_tasks_done` trigger, and the rattail chain begins via trigger resolution
+3. **Rattail decides**:
+   - If all rattail agents pass (no new TODOs) → proof completes → loop exits with `state: "completed"`
+   - If any rattail agent finds issues → new TODOs created, `allTasksMarkedDone` resets, cycle resumes
 
 This ensures the review phase is the **only** path to a clean exit when the pipeline includes a review agent.
 
@@ -196,14 +196,14 @@ build works on tasks → cycle continues normally (plan → build × 5 → qa �
     ↓
 cycle ends (review completes) → loop checks: all TODOs done?
   NO  → start next cycle
-  YES → load rattail chain into queue → run sequentially
+  YES → runtime emits all_tasks_done → trigger chain begins
     ↓
 any rattail agent adds new TODOs?
   YES → back to normal cycle (plan → build × 5 → qa → review)
   NO  → proof completes → state=completed, loop exits
 ```
 
-The loop does NOT exit mid-cycle. It does NOT emit events from build agents. The cycle always runs to completion. Only at the cycle boundary does the loop check `allTasksMarkedDone` and decide: next cycle or rattail.
+The loop does NOT exit mid-cycle. The cycle always runs to completion (though queue entries like steering can interrupt individual agents). Only at the cycle boundary does the runtime check `allTasksMarkedDone` and decide: next cycle or trigger the rattail chain.
 
 ### Edge cases
 
@@ -217,10 +217,10 @@ The loop does NOT exit mid-cycle. It does NOT emit events from build agents. The
 
 - `loop-plan.json` field: `"allTasksMarkedDone": false`
 - The loop checks `allTasksMarkedDone` **only at the cycle boundary** (after the last agent in the cycle completes)
-- If true: load the rattail chain (list of prompt files) into `queue/` in order
-- The rattail chain is defined in the pipeline config, not hardcoded in the loop script
-- After each rattail agent runs, re-check `allTasksMarkedDone` — if flipped false, flush remaining queue and resume cycle
-- No "event emission" from agents — the loop detects the condition mechanically by reading TODO.md
+- If true: runtime emits `all_tasks_done` trigger → scans prompt catalog for matching `trigger:` frontmatter → queues matching prompt(s)
+- The rattail chain is defined entirely by `trigger:` fields in prompt frontmatter — no list, no hardcoded prompt names
+- After each rattail agent completes, runtime re-checks TODOs — if new open items exist, stop chaining and resume cycle
+- When an agent completes cleanly, its agent name becomes the next trigger key (e.g., `spec-gap` completing emits trigger key `spec-gap`)
 - Log events: `rattail_entered` (all tasks done at cycle boundary), `rattail_aborted` (new TODOs mid-rattail), `rattail_completed` (proof done, no new TODOs)
 
 ### Acceptance Criteria
@@ -228,7 +228,7 @@ The loop does NOT exit mid-cycle. It does NOT emit events from build agents. The
 - [ ] Loop NEVER exits (completes) mid-cycle — completion can only happen via rattail. Queue interruptions (steering, merge) can still preempt cycle agents.
 - [ ] `allTasksMarkedDone` is only checked at the cycle boundary (after last cycle agent)
 - [ ] When all tasks done at cycle boundary, rattail chain is loaded into queue
-- [ ] Rattail chain order is defined in pipeline config, not hardcoded
+- [ ] Rattail chain is defined by `trigger:` frontmatter in prompt files — no hardcoded list
 - [ ] After each rattail agent, TODO state is re-checked — new TODOs abort rattail and resume cycle
 - [ ] Only proof completing with zero new TODOs sets `state: "completed"`
 - [ ] Steering takes priority over rattail (steering always drains first)
@@ -389,9 +389,9 @@ Current default:   plan → build × 5 → qa → review  (8-step continuous cyc
 
 ### Completion Rattail (sequential queue chain)
 
-When the cycle completes and all TODO.md tasks are marked done, the loop loads a **rattail chain** — an ordered list of validation prompts — into the queue. The loop processes them sequentially, one per iteration. After each rattail agent runs, the loop re-checks TODO state. If any agent created new TODOs, the rattail is aborted and the loop resumes the normal cycle.
+When the cycle completes and all TODO.md tasks are marked done, the **runtime** (not the loop script) kicks off the rattail by scanning prompt frontmatter for `trigger: all_tasks_done` and queueing the matching prompt. When that agent completes, the runtime scans for prompts triggered by that agent's name, queues the next one, and so on. The chain is defined entirely by `trigger:` fields in prompt frontmatter — no hardcoded list.
 
-There is no event system, no trigger resolution, no chaining logic. The rattail is just a preconfigured list of prompt files loaded into the queue in order. The loop script stays dumb.
+After each rattail agent runs, the runtime re-checks TODO state. If any agent created new TODOs, the chain stops and the loop resumes the normal cycle.
 
 **Important:** The rattail agents are **separate prompt files** from the cycle agents, even when they reuse the same instructions (via `{{include:}}`). This prevents the cycle's `qa` or `review` from accidentally appearing in the rattail.
 
@@ -400,30 +400,20 @@ Continuous cycle:  plan → build × 5 → qa → review  (repeats until all tas
                                                       ↓ (all tasks done at cycle boundary)
 Rattail chain:     spec-gap → docs → spec-review → final-review → final-qa → proof
                       ↓ (any agent adds TODOs)
-                   abort rattail → resume cycle from plan
+                   abort chain → resume cycle from plan
 ```
 
 **How it works:**
 
-1. Cycle completes (last cycle agent finishes). Loop checks `allTasksMarkedDone`.
+1. Cycle completes (last cycle agent finishes). Loop script checks `allTasksMarkedDone`.
 2. If false → start next cycle.
-3. If true → load rattail prompts into `queue/` in order: `001-spec-gap.md`, `002-docs.md`, `003-spec-review.md`, `004-final-review.md`, `005-final-qa.md`, `006-proof.md`
-4. Loop processes queue normally (one file per iteration, delete after completion).
-5. **After each rattail agent**: re-check TODO state. If new open TODOs exist → flush remaining queue files, reset `allTasksMarkedDone`, resume cycle from plan.
-6. If proof completes and no new TODOs → `state: "completed"`, loop exits.
+3. If true → loop script signals the runtime (or the runtime detects the condition). Runtime finds `PROMPT_spec-gap.md` has `trigger: all_tasks_done`, copies it to `queue/`.
+4. Loop processes queue file normally (run agent, delete file).
+5. **After agent completes**: runtime re-checks TODOs. If new open TODOs → stop chaining, `allTasksMarkedDone` flips false, cycle resumes. If still all done → runtime scans for next trigger (`trigger: spec-gap` → finds `PROMPT_docs.md`), queues it.
+6. Chain continues: `docs → spec-review → final-review → final-qa → proof`.
+7. If proof completes and no new TODOs → `state: "completed"`, loop exits.
 
-**The rattail is defined in the pipeline config**, not hardcoded:
-
-```yaml
-# In pipeline.yml (or loop-plan.json compiled equivalent)
-rattail:
-  - PROMPT_spec-gap.md
-  - PROMPT_docs.md
-  - PROMPT_spec-review.md
-  - PROMPT_final-review.md
-  - PROMPT_final-qa.md
-  - PROMPT_proof.md
-```
+**The rattail chain is configured by prompt frontmatter triggers**, not a separate list:
 
 **The rattail agents:**
 
@@ -3624,7 +3614,7 @@ Frontmatter fields:
 - `model` — model ID, provider-specific (e.g., `claude-opus-4-6`, `openrouter/openai/gpt-5.1`, `codex-mini-latest`)
 - `reasoning` — reasoning effort level (low, medium, high, xhigh)
 - `color` — terminal color for this phase (magenta, yellow, cyan, blue, green, red, white). Default: white
-- `trigger` — documentation-only field indicating when this agent is typically queued (e.g., `all_tasks_done`, `merge_conflict`). Not used by the loop script — rattail ordering comes from `pipeline.yml`, other injections are condition-based.
+- `trigger` — condition or agent name that causes the runtime to queue this agent (e.g., `all_tasks_done`, `spec-gap`, `merge_conflict`). Resolved by the runtime, NOT the loop script. The rattail chain is defined entirely by these trigger fields — no separate list needed.
 - `timeout` — per-prompt provider timeout override (duration string like `30m`, `2h`, or integer seconds)
 - `max_retries` — per-prompt retry cap before declaring iteration failure (overrides global default for that prompt only)
 - `retry_backoff` — per-prompt retry backoff policy (`none`, `linear`, `exponential`)
@@ -3744,29 +3734,37 @@ All template variables used in prompt templates. Variables are expanded at two s
 
 **How runtime-driven queue injection works:**
 
-The loop script is a dumb queue processor. It does not resolve triggers or chain agents. However, the **runtime** (monitor process, CLI, or inline checks in the loop script) can inject prompts into the queue based on detected conditions. These are simple condition → action mappings, not a generic event system.
+The loop script is a dumb queue processor. It does not resolve triggers or chain agents. The **runtime** (monitor process / CLI layer) handles all intelligence:
 
-**Condition-based queue injection:**
+1. **Detects conditions** — all tasks done, merge conflict, stuck, steering requested, agent completed
+2. **Emits condition as a trigger key** — e.g., `all_tasks_done`, `merge_conflict`, `stuck_detected`, or the completing agent's name (e.g., `spec-gap`)
+3. **Scans prompt catalog** — finds prompts whose `trigger:` frontmatter matches the key
+4. **Copies matching prompt(s) to queue** — loop picks them up on next iteration
 
-| Condition | Detected By | Action | Notes |
-|-----------|------------|--------|-------|
-| All tasks done at cycle boundary | Loop script (checks TODO.md) | Load rattail chain into queue | See Completion Rattail above |
-| New TODOs during rattail | Loop script (re-checks after each rattail agent) | Flush remaining queue, resume cycle | Rattail aborted |
-| Proof completes, no new TODOs | Loop script | Set `status.json` state=completed, exit | Loop done |
-| Merge conflict | Loop script (pre-iteration merge) | Copy `PROMPT_merge.md` to queue | See Branch Sync |
-| Steering requested | CLI (`aloop steer`) | Write steer prompt directly to queue | Direct queue injection, no event |
-| Stuck detected (N consecutive failures) | Loop script (stuck counter) | Copy `PROMPT_debug.md` to queue | |
-| PR feedback | Orchestrator (polls GH comments) | Write steer prompt into child's queue | |
-| Child completed | Orchestrator (polls child status.json) | Orchestrator runs its own review | Not queue injection |
-| Wave complete | Orchestrator (all wave N PRs merged) | Dispatch wave N+1 issues | Not queue injection |
+Everything goes through triggers. There are no hardcoded prompt references anywhere — not in the loop script, not in the runtime, not in pipeline.yml. The trigger fields in prompt frontmatter are the single source of truth for what runs when.
+
+**Trigger table:**
+
+| Trigger Key | Emitted When | Matched By | Notes |
+|-------------|-------------|------------|-------|
+| `all_tasks_done` | All TODOs checked at cycle boundary | `PROMPT_spec-gap.md` | First rattail link |
+| `spec-gap` | spec-gap agent completes (no new TODOs) | `PROMPT_docs.md` | Chain continues |
+| `docs` | docs agent completes (no new TODOs) | `PROMPT_spec-review.md` | Chain continues |
+| `spec-review` | spec-review completes | `PROMPT_final-review.md` | Chain continues |
+| `final-review` | final-review completes | `PROMPT_final-qa.md` | Chain continues |
+| `final-qa` | final-qa completes | `PROMPT_proof.md` | Last rattail link |
+| `merge_conflict` | Pre-iteration merge has conflicts | `PROMPT_merge.md` | See Branch Sync |
+| `stuck_detected` | N consecutive failures | `PROMPT_debug.md` | |
+| `steering_created` | User writes STEERING.md / `aloop steer` | `PROMPT_steer.md` | |
+| `pr_feedback` | Orchestrator detects GH PR comments | `PROMPT_steer.md` | Injected into child queue |
 
 **Examples:**
-- Cycle ends, all TODOs done → loop loads `001-spec-gap.md`, `002-docs.md`, ..., `006-proof.md` into queue → processes them one by one → spec-gap adds 2 TODOs → loop flushes `002-006`, resumes cycle
-- User runs `aloop steer "focus on tests"` → CLI writes a steer prompt directly to queue (direct injection)
-- Pre-iteration fetch detects merge conflict → loop copies `PROMPT_merge.md` to queue → merge agent runs → iteration proceeds
-- Loop detects 3 consecutive failures → copies `PROMPT_debug.md` to queue
+- Cycle ends, all TODOs done → runtime emits `all_tasks_done` → finds `PROMPT_spec-gap.md` (`trigger: all_tasks_done`) → queues it → spec-gap runs, adds 2 TODOs → runtime sees new TODOs, stops chaining, cycle resumes
+- Cycle ends, all TODOs done → rattail runs cleanly through spec-gap → docs → spec-review → final-review → final-qa → proof → no new TODOs → `state: completed`
+- Pre-iteration merge conflicts → runtime emits `merge_conflict` → finds `PROMPT_merge.md` → queues it
+- User runs `aloop steer "focus on tests"` → CLI writes steer prompt directly to queue (direct injection, bypass trigger scan)
 
-**This is the entire mechanism.** No event bus, no trigger resolution, no lifecycle hooks. The loop checks conditions mechanically and injects prompt files into the queue. Agents handle their own cleanup within their prompts.
+**This is the entire mechanism.** No event bus, no lifecycle hooks, no hardcoded prompt names. The runtime emits trigger keys, scans frontmatter, and copies matching prompts to queue. The loop processes queue files. Agents declare when they should run via `trigger:` frontmatter.
 
 The frontmatter parser extracts agent config from any prompt file, whether from the cycle or the queue. The loop engine itself has no knowledge of what any specific agent does.
 
