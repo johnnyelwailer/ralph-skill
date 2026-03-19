@@ -723,7 +723,8 @@ function resolveProviderHints(provider, enabledProviders = []) {
     .join('\n');
 }
 
-const LOOP_PROMPT_TEMPLATES = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_single.md'];
+const LOOP_PROMPT_TEMPLATES = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+const SINGLE_PROMPT_TEMPLATES = ['PROMPT_single.md'];
 const ORCHESTRATOR_PROMPT_TEMPLATES = [
   'PROMPT_orch_scan.md',
   'PROMPT_orch_product_analyst.md',
@@ -742,7 +743,9 @@ const ORCHESTRATOR_PROMPT_TEMPLATES = [
 ];
 
 function resolvePromptTemplates(mode) {
-  return mode === 'orchestrate' ? ORCHESTRATOR_PROMPT_TEMPLATES : LOOP_PROMPT_TEMPLATES;
+  if (mode === 'orchestrate') return ORCHESTRATOR_PROMPT_TEMPLATES;
+  if (mode === 'single') return SINGLE_PROMPT_TEMPLATES;
+  return LOOP_PROMPT_TEMPLATES;
 }
 
 function normalizeScaffoldMode(mode) {
