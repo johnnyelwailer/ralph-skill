@@ -653,3 +653,16 @@
 - Gate 1 ✅: Dashboard comparison widget now implements all three comparison modes (`Side by Side`, `Slider`, `Diff Overlay`) with UI controls per SPEC.
 - Gate 5 ✅: Dashboard handle leakage fixed — EventSource listener teardown and watcher cleanup implemented; `npm test` now exits cleanly.
 - Gate 1 ✅: Hallucinated `single` mode references removed from runtime and coverage tests (though parity gap still exists in `start.ts`).
+
+---
+
+## Review — 2026-03-19 12:08 UTC — commit db65405..97186ff
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/bin/loop.sh`, `aloop/cli/src/commands/start.ts`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/lib/project.mjs`, `aloop/cli/src/commands/{start,setup,project,index,update}.test.ts`, `aloop/cli/aloop.test.mjs`, `aloop/cli/dashboard/src/App.test.tsx`
+
+- Gate 6: Iteration 286 proof manifest marks the `single` mode normalization as internal-only and provides no proof artifacts, but this is externally observable CLI behavior (`aloop setup/start --mode single` compatibility) and requires human-verifiable CLI evidence.
+
+**Positive observations:**
+- Gate 5: Validation passes when temp files are redirected off a full `/tmp`: `cd aloop/cli && npm test && npm run type-check && npm run build`.
+- Gate 3: Branch coverage for touched runtime files meets threshold (`start.ts` 80.58%, `setup.ts` 84.16%, `project.mjs` 87.67%; shell harness `loop.sh` 52/52 = 100%).
