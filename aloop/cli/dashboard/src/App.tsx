@@ -42,3 +42,11 @@ export function parseDurationSeconds(raw: string): number | null { return view.p
 export function computeAvgDuration(log: string): string { return view.computeAvgDuration(log); }
 export function deriveProviderHealth(log: string) { return view.deriveProviderHealth(log); }
 export function slugify(text: string): string { return view.slugify(text); }
+
+export function findBaselineIterations(
+  artifactPath: string,
+  currentIteration: number,
+  allManifests: Array<{ iteration: number; phase: string; summary: string; artifacts: Array<{ type: string; path: string; description: string; metadata?: { baseline?: string; diff_percentage?: number } }>; outputHeader?: string }>,
+): number[] {
+  return view.findBaselineIterations(artifactPath, currentIteration, allManifests);
+}

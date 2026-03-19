@@ -1362,3 +1362,74 @@ describe('parseManifest', () => {
     expect(result!.artifacts[0]).toEqual({ type: 'unknown', path: '', description: '', metadata: undefined });
   });
 });
+
+// ── Tests for findBaselineIterations (artifact comparison history scrubbing) ──
+
+interface ManifestPayloadForTest {
+  iteration: number;
+  phase: string;
+  summary: string;
+  artifacts: Array<{ type: string; path: string; description: string; metadata?: { baseline?: string; diff_percentage?: number } }>;
+  outputHeader?: string;
+}
+
+function findBaselineIterations(artifactPath: string, currentIteration: number, allManifests: ManifestPayloadForTest[]): number[] {
+  return allManifests
+    .filter((m) => m.iteration < currentIteration && m.artifacts.some((a) => a.path === artifactPath))
+    .map((m) => m.iteration)
+    .sort((a, b) => b - a);
+}
+
+describe('findBaselineIterations', () => {
+  const mkManifest = (iteration: number, paths: string[]): ManifestPayloadForTest => ({
+    iteration,
+    phase: 'proof',
+    summary: '',
+    artifacts: paths.map((p) => ({ type: 'screenshot', path: p, description: '' })),
+  });
+
+  it('returns empty array when no prior iterations exist', () => {
+    const manifests = [mkManifest(5, ['dashboard.png'])];
+    expect(findBaselineIterations('dashboard.png', 5, manifests)).toEqual([]);
+  });
+
+  it('returns prior iterations with matching artifact path, newest first', () => {
+    const manifests = [
+      mkManifest(2, ['dashboard.png']),
+      mkManifest(4, ['dashboard.png']),
+      mkManifest(7, ['dashboard.png']),
+    ];
+    expect(findBaselineIterations('dashboard.png', 7, manifests)).toEqual([4, 2]);
+  });
+
+  it('excludes iterations that do not contain the artifact', () => {
+    const manifests = [
+      mkManifest(1, ['other.png']),
+      mkManifest(3, ['dashboard.png']),
+      mkManifest(5, ['dashboard.png', 'other.png']),
+    ];
+    expect(findBaselineIterations('dashboard.png', 5, manifests)).toEqual([3]);
+  });
+
+  it('excludes iterations >= current iteration', () => {
+    const manifests = [
+      mkManifest(3, ['dash.png']),
+      mkManifest(5, ['dash.png']),
+      mkManifest(8, ['dash.png']),
+    ];
+    // current is 5 — should only see iter 3
+    expect(findBaselineIterations('dash.png', 5, manifests)).toEqual([3]);
+  });
+
+  it('returns empty array when artifact path matches no manifests', () => {
+    const manifests = [
+      mkManifest(1, ['a.png']),
+      mkManifest(2, ['b.png']),
+    ];
+    expect(findBaselineIterations('nonexistent.png', 3, manifests)).toEqual([]);
+  });
+
+  it('handles empty manifests array', () => {
+    expect(findBaselineIterations('anything.png', 1, [])).toEqual([]);
+  });
+});
