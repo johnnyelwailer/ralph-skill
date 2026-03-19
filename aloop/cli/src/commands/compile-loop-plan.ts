@@ -11,6 +11,8 @@ interface LoopPlan {
   cyclePosition: number;
   iteration: number;
   version: number;
+  finalizer: string[];
+  finalizerPosition: number;
 }
 
 interface CompileLoopPlanOptions {
@@ -253,6 +255,24 @@ async function buildRoundRobinCycle(
   return cycle;
 }
 
+async function readFinalizerFromPipeline(
+  projectRoot: string | undefined,
+  deps: CompileLoopPlanDeps,
+): Promise<string[]> {
+  if (!projectRoot) return [];
+  const pipelineYamlPath = path.join(projectRoot, '.aloop', 'pipeline.yml');
+  if (!deps.existsSync(pipelineYamlPath)) return [];
+
+  try {
+    const content = await deps.readFile(pipelineYamlPath, 'utf8');
+    const parsed = parseYaml(content);
+    if (!parsed.finalizer || !Array.isArray(parsed.finalizer)) return [];
+    return parsed.finalizer.filter((e: unknown) => typeof e === 'string' && e.trim());
+  } catch {
+    return [];
+  }
+}
+
 function extractProviderSuffixFromFilename(filename: string, roundRobinOrder: string[]): string | null {
   // PROMPT_build_claude.md -> claude
   const match = filename.match(/^PROMPT_[a-z]+_([a-z]+)\.md$/);
@@ -363,11 +383,15 @@ export async function compileLoopPlan(
     }
   }
 
+  const finalizer = await readFinalizerFromPipeline(projectRoot, deps);
+
   const plan: LoopPlan = {
     cycle,
     cyclePosition: 0,
     iteration: 1,
     version: 1,
+    finalizer,
+    finalizerPosition: 0,
   };
 
   const planPath = path.join(sessionDir, 'loop-plan.json');

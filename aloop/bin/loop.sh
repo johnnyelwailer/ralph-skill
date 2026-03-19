@@ -478,17 +478,58 @@ print(cycle_pos)
 print(len(cycle))
 print(cycle[index].strip())
 print(payload.get("lastPlanCommit", ""))
+# Finalizer array support
+finalizer = payload.get("finalizer")
+if isinstance(finalizer, list):
+    finalizer = [e for e in finalizer if isinstance(e, str) and e.strip()]
+else:
+    finalizer = []
+fin_pos = int(payload.get("finalizerPosition", 0))
+print(len(finalizer))
+print(fin_pos)
 PY
 ) || return 1
     local parsed_cycle_pos parsed_cycle_len parsed_prompt_name parsed_last_plan_commit
+    local parsed_finalizer_len parsed_finalizer_pos
     parsed_cycle_pos=$(printf '%s\n' "$parsed" | sed -n '1p')
     parsed_cycle_len=$(printf '%s\n' "$parsed" | sed -n '2p')
     parsed_prompt_name=$(printf '%s\n' "$parsed" | sed -n '3p')
     parsed_last_plan_commit=$(printf '%s\n' "$parsed" | sed -n '4p')
+    parsed_finalizer_len=$(printf '%s\n' "$parsed" | sed -n '5p')
+    parsed_finalizer_pos=$(printf '%s\n' "$parsed" | sed -n '6p')
     CYCLE_POSITION="${parsed_cycle_pos:-$CYCLE_POSITION}"
     CYCLE_LENGTH="${parsed_cycle_len:-0}"
     RESOLVED_PROMPT_NAME="$parsed_prompt_name"
     LAST_PLAN_COMMIT="$parsed_last_plan_commit"
+    FINALIZER_LENGTH="${parsed_finalizer_len:-0}"
+    FINALIZER_POSITION="${parsed_finalizer_pos:-0}"
+    return 0
+}
+
+resolve_finalizer_prompt() {
+    if [ ! -f "$LOOP_PLAN_FILE" ]; then
+        return 1
+    fi
+    local parsed
+    parsed=$(python3 - "$LOOP_PLAN_FILE" "$FINALIZER_POSITION" <<'PY'
+import json, sys
+path = sys.argv[1]
+fin_pos = int(sys.argv[2])
+with open(path, encoding="utf-8") as f:
+    payload = json.load(f)
+finalizer = payload.get("finalizer")
+if not isinstance(finalizer, list) or not finalizer:
+    raise SystemExit(1)
+finalizer = [e for e in finalizer if isinstance(e, str) and e.strip()]
+if not finalizer:
+    raise SystemExit(1)
+if fin_pos >= len(finalizer):
+    raise SystemExit(1)
+print(finalizer[fin_pos].strip())
+PY
+) || return 1
+    RESOLVED_PROMPT_NAME="$parsed"
+    RESOLVED_MODE=$(derive_mode_from_prompt_name "$RESOLVED_PROMPT_NAME")
     return 0
 }
 
@@ -502,15 +543,16 @@ persist_loop_plan_state() {
     if [ ! -f "$LOOP_PLAN_FILE" ]; then
         return
     fi
-    python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" "$ITERATION" "$ALL_TASKS_MARKED_DONE" "$LAST_PLAN_COMMIT" <<'PY'
+    python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" "$ITERATION" "$ALL_TASKS_MARKED_DONE" "$LAST_PLAN_COMMIT" "$FINALIZER_POSITION" <<'PY'
 import json, os, sys, tempfile
-path, cycle_pos, iteration, all_done, last_commit = sys.argv[1:]
+path, cycle_pos, iteration, all_done, last_commit, fin_pos = sys.argv[1:]
 with open(path, encoding="utf-8") as f:
     payload = json.load(f)
 payload["cyclePosition"] = int(cycle_pos)
 payload["iteration"] = int(iteration)
 payload["allTasksMarkedDone"] = all_done.lower() == "true"
 payload["lastPlanCommit"] = last_commit
+payload["finalizerPosition"] = int(fin_pos)
 fd, tmp = tempfile.mkstemp(prefix=".loop-plan.", suffix=".json", dir=os.path.dirname(path))
 os.close(fd)
 with open(tmp, "w", encoding="utf-8") as f:
@@ -1494,6 +1536,9 @@ ITERATION_COMMIT_COUNT="0"
 CYCLE_POSITION=0
 RESOLVED_PROMPT_NAME=""
 CYCLE_LENGTH=0
+FINALIZER_MODE=false
+FINALIZER_POSITION=0
+FINALIZER_LENGTH=0
 PHASE_RETRY_PHASE=""
 PHASE_RETRY_CONSECUTIVE=0
 PHASE_RETRY_FAILURE_REASONS=()
@@ -2070,10 +2115,27 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         continue
     fi
 
-    # Call directly (not via subshell) so flag-clearing affects the main shell
-    resolve_iteration_mode "$ITERATION" > /dev/null
-    iter_mode="$RESOLVED_MODE"
-    LAST_ITER_MODE="$iter_mode"
+    # Finalizer mode: run finalizer prompts instead of normal cycle
+    if [ "$FINALIZER_MODE" = "true" ]; then
+        if [ "$FINALIZER_POSITION" -ge "$FINALIZER_LENGTH" ]; then
+            write_log_entry "finalizer_completed" "iteration" "$ITERATION"
+            echo "[Finalizer sequence completed — all tasks done]"
+            write_status "$ITERATION" "finalizer" "$(resolve_iteration_provider $ITERATION)" 0 "completed"
+            generate_report "Finalizer completed — all tasks done."
+            stop_dashboard
+            echo ""
+            echo "=== Aloop Loop Complete ($ITERATION iterations) ==="
+            exit 0
+        fi
+        resolve_finalizer_prompt
+        iter_mode="$RESOLVED_MODE"
+        LAST_ITER_MODE="$iter_mode"
+    else
+        # Call directly (not via subshell) so flag-clearing affects the main shell
+        resolve_iteration_mode "$ITERATION" > /dev/null
+        iter_mode="$RESOLVED_MODE"
+        LAST_ITER_MODE="$iter_mode"
+    fi
 
     if [ -n "$RESOLVED_PROMPT_NAME" ]; then
         iter_prompt_file="$PROMPTS_DIR/$RESOLVED_PROMPT_NAME"
@@ -2156,7 +2218,24 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     if invoke_provider "$iter_provider" "$prompt_content" "$FRONTMATTER_MODEL"; then
         _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
         update_provider_health_on_success "$iter_provider"
-        register_iteration_success "$iter_mode" false
+        if [ "$FINALIZER_MODE" = "true" ]; then
+            # Don't advance cycle position during finalizer mode
+            PHASE_RETRY_PHASE=""
+            PHASE_RETRY_CONSECUTIVE=0
+            PHASE_RETRY_FAILURE_REASONS=()
+            # Advance finalizer position
+            FINALIZER_POSITION=$((FINALIZER_POSITION + 1))
+            # Re-check TODO.md — if new incomplete tasks appeared, abort finalizer
+            if ! check_all_tasks_complete; then
+                FINALIZER_MODE=false
+                FINALIZER_POSITION=0
+                ALL_TASKS_MARKED_DONE=false
+                write_log_entry "finalizer_aborted" "iteration" "$ITERATION" "reason" "new_incomplete_tasks"
+                echo "[Finalizer aborted — new incomplete tasks found in TODO.md]"
+            fi
+        else
+            register_iteration_success "$iter_mode" false
+        fi
         if [ "$iter_mode" = "plan" ]; then
             LAST_PLAN_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
         fi
@@ -2164,15 +2243,13 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         STUCK_COUNT=0
         LAST_TASK=""
 
-        # If build completed all tasks, inject review into queue instead of exiting
-        if [ "$iter_mode" = "build" ] && [ "$ALL_TASKS_MARKED_DONE" = "true" ]; then
-            local queue_dir="$SESSION_DIR/queue"
-            local review_prompt="$PROMPTS_DIR/PROMPT_review.md"
-            if [ -f "$review_prompt" ] && [ -d "$queue_dir" ] || mkdir -p "$queue_dir"; then
-                cp "$review_prompt" "$queue_dir/001-force-review.md"
-                write_log_entry "queue_inject" "iteration" "$ITERATION" "reason" "all_tasks_done" "prompt" "PROMPT_review.md"
-                echo "[All tasks marked done — review queued for next iteration]"
-            fi
+        # Check for finalizer entry at cycle boundary
+        if [ "$FINALIZER_MODE" = "false" ] && [ "$ALL_TASKS_MARKED_DONE" = "true" ] \
+           && [ "$FINALIZER_LENGTH" -gt 0 ] && [ "$CYCLE_POSITION" -eq 0 ]; then
+            FINALIZER_MODE=true
+            FINALIZER_POSITION=0
+            write_log_entry "finalizer_entered" "iteration" "$ITERATION"
+            echo "[All tasks marked done — entering finalizer sequence]"
         fi
 
         # Capture all commits made during this iteration (any agent may commit)

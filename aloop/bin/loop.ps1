@@ -369,7 +369,34 @@ function Resolve-CyclePromptFromPlan {
         $promptIndex = $rawCyclePos % $script:cycleLength
         $script:resolvedPromptName = [string]$plan.cycle[$promptIndex]
         $script:lastPlanCommit = [string]$plan.lastPlanCommit
+        # Finalizer array support
+        $finalizer = $plan.finalizer
+        if ($finalizer -is [System.Collections.IEnumerable] -and $finalizer -isnot [string]) {
+            $validFinalizer = @($finalizer | Where-Object { $_ -is [string] -and -not [string]::IsNullOrWhiteSpace($_) })
+            $script:finalizerLength = $validFinalizer.Count
+        } else {
+            $script:finalizerLength = 0
+        }
+        $script:finalizerPosition = if ($null -ne $plan.finalizerPosition) { [int]$plan.finalizerPosition } else { 0 }
         return (-not [string]::IsNullOrWhiteSpace($script:resolvedPromptName))
+    } catch {
+        return $false
+    }
+}
+
+function Resolve-FinalizerPrompt {
+    $loopPlanFile = Join-Path $SessionDir "loop-plan.json"
+    if (-not (Test-Path $loopPlanFile)) { return $false }
+    try {
+        $plan = Get-Content -Path $loopPlanFile -Raw | ConvertFrom-Json
+        $finalizer = $plan.finalizer
+        if (-not ($finalizer -is [System.Collections.IEnumerable]) -or $finalizer -is [string]) { return $false }
+        $validFinalizer = @($finalizer | Where-Object { $_ -is [string] -and -not [string]::IsNullOrWhiteSpace($_) })
+        if ($validFinalizer.Count -eq 0) { return $false }
+        if ($script:finalizerPosition -ge $validFinalizer.Count) { return $false }
+        $script:resolvedPromptName = [string]$validFinalizer[$script:finalizerPosition]
+        $resolvedMode = Get-ModeFromPromptName -PromptName $script:resolvedPromptName
+        return $true
     } catch {
         return $false
     }
@@ -469,6 +496,7 @@ function Persist-LoopPlanState {
         }
         $plan.allTasksMarkedDone = [bool]$script:allTasksMarkedDone
         $plan.lastPlanCommit = [string]$script:lastPlanCommit
+        $plan.finalizerPosition = [int]$script:finalizerPosition
         $plan | ConvertTo-Json -Depth 12 | Set-Content -Encoding utf8 $loopPlanFile
     } catch { }
 }
@@ -857,6 +885,9 @@ $script:lastProviderOutputText = $null
 $script:cyclePosition = 0
 $script:cycleLength = 0
 $script:resolvedPromptName = $null
+$script:finalizerMode = $false
+$script:finalizerPosition = 0
+$script:finalizerLength = 0
 $script:frontmatter = @{ provider = ''; model = ''; agent = ''; reasoning = ''; color = ''; trigger = ''; timeout = ''; max_retries = ''; retry_backoff = '' }
 $script:phaseRetryState = @{
     phase = ''
@@ -2019,7 +2050,22 @@ try {
             continue
         }
 
-        $iterationMode = Resolve-IterationMode -IterationNumber $iteration
+        # Finalizer mode: run finalizer prompts instead of normal cycle
+        if ($script:finalizerMode) {
+            if ($script:finalizerPosition -ge $script:finalizerLength) {
+                Write-LogEntry -Event "finalizer_completed" -Data @{ iteration = $iteration }
+                Write-Host "[Finalizer sequence completed — all tasks done]" -ForegroundColor Green
+                Write-Status -Iteration $iteration -Phase "finalizer" -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
+                Generate-Report -ExitReason "Finalizer completed — all tasks done." -Iteration $iteration
+                Stop-DashboardProcess
+                Write-Host "`n=== Aloop Loop Complete ($iteration iterations) ===" -ForegroundColor Cyan
+                exit 0
+            }
+            Resolve-FinalizerPrompt | Out-Null
+            $iterationMode = Get-ModeFromPromptName -PromptName $script:resolvedPromptName
+        } else {
+            $iterationMode = Resolve-IterationMode -IterationNumber $iteration
+        }
 
         if (-not [string]::IsNullOrWhiteSpace($script:resolvedPromptName)) {
             $iterationPromptFile = Join-Path $PromptsDir $script:resolvedPromptName
@@ -2126,7 +2172,27 @@ try {
             Show-AgentSummary -ProviderName $iterationProvider -ProviderOutput $providerOutput
 
             Update-ProviderHealthOnSuccess -ProviderName $iterationProvider
-            Register-IterationSuccess -IterationMode $iterationMode -WasForced $false
+            if ($script:finalizerMode) {
+                # Don't advance cycle position during finalizer mode
+                $script:phaseRetryState.phase = ''
+                $script:phaseRetryState.consecutive = 0
+                $script:phaseRetryState.failureReasons = @()
+                # Advance finalizer position
+                $script:finalizerPosition++
+                # Re-check TODO.md — if new incomplete tasks appeared, abort finalizer
+                if (-not (Check-AllTasksComplete)) {
+                    $script:finalizerMode = $false
+                    $script:finalizerPosition = 0
+                    $script:allTasksMarkedDone = $false
+                    Write-LogEntry -Event "finalizer_aborted" -Data @{
+                        iteration = $iteration
+                        reason = 'new_incomplete_tasks'
+                    }
+                    Write-Host "[Finalizer aborted — new incomplete tasks found in TODO.md]" -ForegroundColor Yellow
+                }
+            } else {
+                Register-IterationSuccess -IterationMode $iterationMode -WasForced $false
+            }
             if ($iterationMode -eq 'plan') {
                 try {
                     $script:lastPlanCommit = (git rev-parse HEAD | Out-String).Trim()
@@ -2136,19 +2202,13 @@ try {
             $stuckState.StuckCount = 0
             $stuckState.LastTask = ""
 
-            if ($iterationMode -eq 'build' -and $script:allTasksMarkedDone) {
-                $queueDir = Join-Path $SessionDir 'queue'
-                $reviewPrompt = Join-Path $PromptsDir 'PROMPT_review.md'
-                if (Test-Path $reviewPrompt) {
-                    New-Item -ItemType Directory -Path $queueDir -Force | Out-Null
-                    Copy-Item -Path $reviewPrompt -Destination (Join-Path $queueDir '001-force-review.md') -Force
-                    Write-LogEntry -Event "queue_inject" -Data @{
-                        iteration = $iteration
-                        reason = 'all_tasks_done'
-                        prompt = 'PROMPT_review.md'
-                    }
-                    Write-Host "[All tasks marked done — review queued for next iteration]" -ForegroundColor Yellow
-                }
+            # Check for finalizer entry at cycle boundary
+            if (-not $script:finalizerMode -and $script:allTasksMarkedDone `
+                -and $script:finalizerLength -gt 0 -and $script:cyclePosition -eq 0) {
+                $script:finalizerMode = $true
+                $script:finalizerPosition = 0
+                Write-LogEntry -Event "finalizer_entered" -Data @{ iteration = $iteration }
+                Write-Host "[All tasks marked done — entering finalizer sequence]" -ForegroundColor Yellow
             }
 
             Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration

@@ -698,6 +698,81 @@ test('compileLoopPlan — includes execution controls from agent YAML in frontma
   assert.ok(content.includes('reasoning: high'), 'should use reasoning from agent config');
 });
 
+test('compileLoopPlan — includes finalizer from pipeline.yml', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-finalizer-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline:
+  - agent: plan
+  - agent: build
+  - agent: review
+finalizer:
+  - PROMPT_spec-gap.md
+  - PROMPT_changelog.md
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  assert.deepStrictEqual(plan.finalizer, ['PROMPT_spec-gap.md', 'PROMPT_changelog.md']);
+  assert.equal(plan.finalizerPosition, 0);
+
+  // Verify loop-plan.json written with finalizer
+  const planJson = JSON.parse(await readFile(path.join(sessionDir, 'loop-plan.json'), 'utf8'));
+  assert.deepStrictEqual(planJson.finalizer, ['PROMPT_spec-gap.md', 'PROMPT_changelog.md']);
+  assert.equal(planJson.finalizerPosition, 0);
+});
+
+test('compileLoopPlan — outputs empty finalizer when pipeline.yml has no finalizer section', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-no-finalizer-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline:
+  - agent: plan
+  - agent: build
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  assert.deepStrictEqual(plan.finalizer, []);
+  assert.equal(plan.finalizerPosition, 0);
+});
+
+test('compileLoopPlan — outputs empty finalizer when no pipeline.yml exists', async () => {
+  const { promptsDir, sessionDir } = await setupDirs('clp-no-pipeline-finalizer-');
+  const plan = await compileLoopPlan({
+    mode: 'build',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+  });
+
+  assert.deepStrictEqual(plan.finalizer, []);
+  assert.equal(plan.finalizerPosition, 0);
+});
+
 test('compileLoopPlan — omits execution controls when not configured', async () => {
   const { promptsDir, sessionDir } = await setupDirs('clp-no-exec-ctrl-');
 
