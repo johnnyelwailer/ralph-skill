@@ -663,6 +663,10 @@ test('startCommandWithDeps warns when installed runtime commit differs from repo
   const fixture = await setupWorkspace('aloop-start-staleness-');
   await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\non_start:\n  monitor: 'none'\n", 'utf8');
 
+  // Make it an aloop repo
+  await writeFile(path.join(fixture.projectRoot, 'install.ps1'), 'install', 'utf8');
+  await mkdir(path.join(fixture.projectRoot, 'aloop', 'bin'), { recursive: true });
+
   // Write version.json with an old commit
   await writeFile(
     path.join(fixture.homeDir, '.aloop', 'version.json'),
@@ -709,6 +713,10 @@ test('startCommandWithDeps does not warn when installed commit matches repo HEAD
   const fixture = await setupWorkspace('aloop-start-no-stale-');
   await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\non_start:\n  monitor: 'none'\n", 'utf8');
 
+  // Make it an aloop repo
+  await writeFile(path.join(fixture.projectRoot, 'install.ps1'), 'install', 'utf8');
+  await mkdir(path.join(fixture.projectRoot, 'aloop', 'bin'), { recursive: true });
+
   // Write version.json with the same commit as HEAD
   await writeFile(
     path.join(fixture.homeDir, '.aloop', 'version.json'),
@@ -746,6 +754,115 @@ test('startCommandWithDeps does not warn when installed commit matches repo HEAD
 
   assert.ok(!result.warnings.some((w: string) => w.includes('stale')),
     `Expected no staleness warning, got: ${result.warnings.join('; ')}`);
+});
+
+test('startCommandWithDeps does NOT warn when versions differ but NOT in an aloop repo', async () => {
+  const fixture = await setupWorkspace('aloop-start-no-warn-non-aloop-');
+  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\non_start:\n  monitor: 'none'\n", 'utf8');
+
+  // This IS a git repo (from setupWorkspace) but NOT an aloop repo (no install.ps1/bin)
+
+  // Write version.json with an old commit
+  await writeFile(
+    path.join(fixture.homeDir, '.aloop', 'version.json'),
+    JSON.stringify({ commit: 'old1234', installed_at: '2026-01-01T00:00:00Z' }),
+    'utf8',
+  );
+
+  const spawnSyncCalls: Array<{ command: string; args: string[] }> = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: ((command: string, args?: readonly string[]) => {
+        spawnSyncCalls.push({ command, args: [...(args ?? [])] });
+        // Return a different commit than what's in version.json
+        if (args && args.includes('rev-parse')) {
+          return { status: 0, stdout: 'new5678\n', stderr: '' };
+        }
+        return { status: 0, stdout: '', stderr: '' };
+      }) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop', // Walking up from here won't find it either
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+      },
+    );
+
+  assert.ok(!result.warnings.some((w: string) => w.includes('stale')),
+    `Expected no staleness warning in non-aloop repo, got: ${result.warnings.join('; ')}`);
+});
+
+test('startCommandWithDeps warns when versions differ and findAloopRepoRoot resolves via aloopPath', async () => {
+  const fixture = await setupWorkspace('aloop-start-stale-via-path-');
+  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\non_start:\n  monitor: 'none'\n", 'utf8');
+
+  // The projectRoot is NOT an aloop repo
+  
+  // But we make another directory that IS an aloop repo and use it as aloopPath
+  const sourceRepo = path.join(fixture.root, 'source-repo');
+  const sourceRepoCli = path.join(sourceRepo, 'aloop', 'cli');
+  await mkdir(sourceRepoCli, { recursive: true });
+  await mkdir(path.join(sourceRepo, 'aloop', 'bin'), { recursive: true });
+  await writeFile(path.join(sourceRepo, 'install.ps1'), 'install', 'utf8');
+  
+  const aloopPath = path.join(sourceRepoCli, 'aloop.mjs');
+
+  // Write version.json with an old commit
+  await writeFile(
+    path.join(fixture.homeDir, '.aloop', 'version.json'),
+    JSON.stringify({ commit: 'old1234', installed_at: '2026-01-01T00:00:00Z' }),
+    'utf8',
+  );
+
+  const spawnSyncCalls: Array<{ command: string; args: string[] }> = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: ((command: string, args?: readonly string[]) => {
+        spawnSyncCalls.push({ command, args: [...(args ?? [])] });
+        // Return a different commit than what's in version.json
+        if (args && args.includes('rev-parse')) {
+          // Verify that it uses sourceRepo for -C
+          const cIndex = args.indexOf('-C');
+          if (cIndex !== -1 && args[cIndex + 1] === sourceRepo) {
+            return { status: 0, stdout: 'new5678\n', stderr: '' };
+          }
+        }
+        return { status: 0, stdout: '', stderr: '' };
+      }) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: aloopPath,
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+      },
+    );
+
+  assert.ok(result.warnings.some((w: string) => w.includes('stale') && w.includes('old1234')),
+    `Expected staleness warning resolving via aloopPath, got: ${result.warnings.join('; ')}`);
 });
 
 test('startCommandWithDeps defaults launch_mode to start and passes --launch-mode to loop script', async () => {

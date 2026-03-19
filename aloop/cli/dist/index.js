@@ -3649,20 +3649,28 @@ function resolveBundledBinDir(options = {}) {
   }
   return null;
 }
-function resolveProviderHints(provider) {
-  if (provider === "claude")
-    return "- Claude hint: Use parallel subagents when large searches are needed; summarize before coding.";
-  if (provider === "codex")
-    return "- Codex hint: Prefer stdin prompt mode and keep outputs concise and action-focused.";
-  if (provider === "gemini")
-    return "- Gemini hint: Keep prompts explicit and deterministic; re-check assumptions before writing code.";
-  if (provider === "copilot")
-    return "- Copilot hint: Keep edits surgical and validate with focused checks after changes.";
-  if (provider === "round-robin")
-    return "- Round-robin hint: Keep context handoff explicit in TODO.md and REVIEW_LOG.md between providers.";
-  return "";
+var PROVIDER_HINTS = {
+  claude: "- Claude hint: Use parallel subagents when large searches are needed; summarize before coding.",
+  opencode: "- OpenCode hint: Use delegated agents for broad repo scans; keep edits in small validated patches.",
+  codex: "- Codex hint: Prefer stdin prompt mode and keep outputs concise and action-focused.",
+  gemini: "- Gemini hint: Keep prompts explicit and deterministic; re-check assumptions before writing code.",
+  copilot: "- Copilot hint: Keep edits surgical and validate with focused checks after changes.",
+  "round-robin": "- Round-robin hint: Keep context handoff explicit in TODO.md and REVIEW_LOG.md between providers."
+};
+function resolveProviderHints(provider, enabledProviders = []) {
+  const orderedProviders = [];
+  for (const candidate of normalizeList(enabledProviders)) {
+    if (!orderedProviders.includes(candidate)) {
+      orderedProviders.push(candidate);
+    }
+  }
+  if (provider && !orderedProviders.includes(provider)) {
+    orderedProviders.unshift(provider);
+  }
+  return orderedProviders.map((candidate) => PROVIDER_HINTS[candidate]).filter((value) => Boolean(value)).join("\n");
 }
 var LOOP_PROMPT_TEMPLATES = ["PROMPT_plan.md", "PROMPT_build.md", "PROMPT_review.md", "PROMPT_steer.md", "PROMPT_proof.md", "PROMPT_qa.md"];
+var SINGLE_PROMPT_TEMPLATES = ["PROMPT_single.md"];
 var ORCHESTRATOR_PROMPT_TEMPLATES = [
   "PROMPT_orch_scan.md",
   "PROMPT_orch_product_analyst.md",
@@ -3680,7 +3688,11 @@ var ORCHESTRATOR_PROMPT_TEMPLATES = [
   "PROMPT_orch_spec_consistency.md"
 ];
 function resolvePromptTemplates(mode) {
-  return mode === "orchestrate" ? ORCHESTRATOR_PROMPT_TEMPLATES : LOOP_PROMPT_TEMPLATES;
+  if (mode === "orchestrate")
+    return ORCHESTRATOR_PROMPT_TEMPLATES;
+  if (mode === "single")
+    return SINGLE_PROMPT_TEMPLATES;
+  return LOOP_PROMPT_TEMPLATES;
 }
 function normalizeScaffoldMode(mode) {
   if (typeof mode !== "string") {
@@ -3693,6 +3705,9 @@ function normalizeScaffoldMode(mode) {
   const lowered = trimmed.toLowerCase();
   if (lowered === "loop") {
     return "plan-build-review";
+  }
+  if (lowered === "single") {
+    return "single";
   }
   if (lowered === "orchestrate") {
     return "orchestrate";
@@ -3854,7 +3869,7 @@ async function scaffoldWorkspace(options = {}) {
     "{{REFERENCE_FILES}}": resolvedReferenceFiles.join(", "),
     "{{VALIDATION_COMMANDS}}": resolvedValidation.map((value) => `- ${value}`).join("\n"),
     "{{SAFETY_RULES}}": resolvedSafetyRules.map((value) => `- ${value}`).join("\n"),
-    "{{PROVIDER_HINTS}}": resolveProviderHints(provider)
+    "{{PROVIDER_HINTS}}": resolveProviderHints(provider, enabled)
   };
   for (const fileName of requiredTemplates) {
     const templatePath = path.join(templatesDir, fileName);
@@ -6543,6 +6558,9 @@ function resolveConfiguredStartMode(value) {
   if (normalized === "loop") {
     return "plan-build-review";
   }
+  if (normalized === "single") {
+    return "single";
+  }
   if (normalized === "orchestrate") {
     throw new Error("Invalid mode: orchestrate (use `aloop orchestrate` for orchestrator sessions).");
   }
@@ -6745,6 +6763,24 @@ async function reserveLocalPort() {
     });
   });
 }
+function isAloopRepo(dir, existsSync13) {
+  return existsSync13(path9.join(dir, "install.ps1")) && existsSync13(path9.join(dir, "aloop", "bin"));
+}
+function findAloopRepoRoot(startDir, existsSync13) {
+  const dir = path9.resolve(startDir);
+  const root = path9.parse(dir).root;
+  let current = dir;
+  while (current !== root) {
+    if (isAloopRepo(current, existsSync13)) {
+      return current;
+    }
+    const parent = path9.dirname(current);
+    if (parent === current)
+      break;
+    current = parent;
+  }
+  return null;
+}
 async function startCommandWithDeps(options = {}, deps = defaultDeps) {
   const homeDir = resolveHomeDir2(options.homeDir);
   const discovery = await deps.discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
@@ -6762,14 +6798,22 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
   try {
     const versionRaw = await deps.readFile(versionJsonPath, "utf8");
     const versionData = JSON.parse(versionRaw);
-    if (versionData.commit && discovery.project.is_git_repo) {
-      const headResult = deps.spawnSync("git", ["-C", discovery.project.root, "rev-parse", "--short", "HEAD"], { encoding: "utf8" });
-      if (headResult.status === 0) {
-        const currentCommit = headResult.stdout.trim();
-        if (currentCommit && currentCommit !== versionData.commit) {
-          warnings.push(
-            `Installed runtime (commit ${versionData.commit}, installed ${versionData.installed_at ?? "unknown"}) may be stale \u2014 current repo HEAD is ${currentCommit}. Run \`aloop update\` to refresh.`
-          );
+    if (versionData.commit) {
+      let repoRoot = null;
+      if (isAloopRepo(discovery.project.root, deps.existsSync)) {
+        repoRoot = discovery.project.root;
+      } else {
+        repoRoot = findAloopRepoRoot(path9.dirname(deps.aloopPath), deps.existsSync);
+      }
+      if (repoRoot) {
+        const headResult = deps.spawnSync("git", ["-C", repoRoot, "rev-parse", "--short", "HEAD"], { encoding: "utf8" });
+        if (headResult.status === 0) {
+          const currentCommit = headResult.stdout.trim();
+          if (currentCommit && currentCommit !== versionData.commit) {
+            warnings.push(
+              `Installed runtime (commit ${versionData.commit}, installed ${versionData.installed_at ?? "unknown"}) may be stale \u2014 current repo HEAD is ${currentCommit}. Run \`aloop update\` to refresh.`
+            );
+          }
         }
       }
     }
@@ -9613,8 +9657,8 @@ function parseSetupMode(value) {
   if (!value)
     return void 0;
   const normalized = value.trim().toLowerCase();
-  if (normalized === "loop" || normalized === "orchestrate") {
-    return normalized;
+  if (normalized === "loop" || normalized === "orchestrate" || normalized === "single") {
+    return normalized === "loop" || normalized === "single" ? "loop" : "orchestrate";
   }
   throw new Error(`Invalid setup mode: ${value} (must be loop or orchestrate)`);
 }
@@ -9625,6 +9669,15 @@ function mapSetupModeToLoopMode(value) {
     return "orchestrate";
   }
   return "plan-build-review";
+}
+function parseSetupConfirmation(value) {
+  if (!value)
+    return void 0;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "confirm" || normalized === "adjust" || normalized === "cancel") {
+    return normalized;
+  }
+  throw new Error(`Invalid setup confirmation: ${value} (must be confirm, adjust, or cancel)`);
 }
 async function defaultPromptUser(rl, question, defaultValue) {
   return new Promise((resolve2) => {
@@ -9655,15 +9708,10 @@ async function setupCommandWithDeps(options, deps) {
     return;
   }
   console.log("\n--- Aloop Interactive Setup ---\n");
-  const defaultSpec = options.spec || discovery.context.spec_candidates[0] || "SPEC.md";
-  const spec = await deps.prompt("Spec File", defaultSpec);
-  const defaultProviders = options.providers || discovery.providers.installed.join(",") || "claude";
-  const providersRaw = await deps.prompt("Enabled Providers (comma-separated)", defaultProviders);
-  const enabledProviders = providersRaw.split(",").map((s) => s.trim()).filter(Boolean);
-  const defaultLanguage = discovery.context.detected_language;
-  const language = await deps.prompt("Language", defaultLanguage);
-  const defaultProvider = enabledProviders[0] || discovery.providers.default_provider;
-  const provider = await deps.prompt("Primary Provider", defaultProvider);
+  let spec = options.spec || discovery.context.spec_candidates[0] || "SPEC.md";
+  let enabledProviders = (options.providers || discovery.providers.installed.join(",") || "claude").split(",").map((s) => s.trim()).filter(Boolean);
+  let language = discovery.context.detected_language;
+  let provider = enabledProviders[0] || discovery.providers.default_provider;
   const recommendedMode = discovery.mode_recommendation?.recommended_mode;
   const recommendationReasons = discovery.mode_recommendation?.reasoning || [];
   if (recommendedMode && recommendationReasons.length > 0) {
@@ -9673,57 +9721,81 @@ async function setupCommandWithDeps(options, deps) {
     }
     console.log("");
   }
-  const defaultMode = recommendedMode === "orchestrate" ? "orchestrate" : "plan-build-review";
-  const mode = await deps.prompt("Mode", defaultMode);
-  const defaultAutonomyLevel = options.autonomyLevel ?? "balanced";
-  const autonomyLevel = parseAutonomyLevel(
-    await deps.prompt("Autonomy Level (cautious|balanced|autonomous)", defaultAutonomyLevel)
-  ) ?? "balanced";
-  const defaultDataPrivacy = "private";
-  const dataPrivacy = parseDataPrivacy(
-    await deps.prompt("Data Privacy (private|public)", options.dataPrivacy ?? defaultDataPrivacy)
-  ) ?? "private";
-  let devcontainerAuthStrategy;
-  if (discovery.devcontainer.enabled) {
-    const defaultStrategy = options.devcontainerAuthStrategy ?? "mount-first";
-    devcontainerAuthStrategy = parseDevcontainerAuthStrategy(
-      await deps.prompt("Devcontainer Auth Strategy (mount-first|env-first|env-only)", defaultStrategy)
-    ) ?? "mount-first";
-  }
-  const defaultValidation = discovery.context.validation_presets.full.join(", ") || "npm test";
-  const validationCommandsRaw = await deps.prompt("Validation Commands (comma-separated)", defaultValidation);
-  const validationCommands = validationCommandsRaw.split(",").map((s) => s.trim()).filter(Boolean);
-  const defaultSafety = "Never delete the project directory or run destructive commands, Never push to remote without explicit user approval";
-  const safetyRulesRaw = await deps.prompt("Safety Rules (comma-separated)", defaultSafety);
-  const safetyRules = safetyRulesRaw.split(",").map((s) => s.trim()).filter(Boolean);
-  console.log("\nScaffolding workspace with the following configuration:");
-  console.log(`- Spec: ${spec}`);
-  console.log(`- Providers: ${enabledProviders.join(", ")}`);
-  console.log(`- Language: ${language}`);
-  console.log(`- Primary Provider: ${provider}`);
-  console.log(`- Mode: ${mode}`);
-  console.log(`- Autonomy Level: ${autonomyLevel}`);
-  console.log(`- Data Privacy: ${dataPrivacy}`);
-  console.log(`- ZDR Mode: ${dataPrivacy === "private" ? "Enabled" : "Disabled"}`);
-  if (dataPrivacy === "private") {
-    const zdrWarnings = getZdrWarnings(enabledProviders);
-    for (const warning of zdrWarnings) {
-      console.log(`  \u26A0 ${warning}`);
+  let mode = recommendedMode === "orchestrate" ? "orchestrate" : "plan-build-review";
+  let autonomyLevel = parseAutonomyLevel(options.autonomyLevel ?? "balanced") ?? "balanced";
+  let dataPrivacy = parseDataPrivacy(options.dataPrivacy ?? "private") ?? "private";
+  let devcontainerAuthStrategy = parseDevcontainerAuthStrategy(options.devcontainerAuthStrategy ?? (discovery.devcontainer.enabled ? "mount-first" : void 0));
+  let validationCommands = (discovery.context.validation_presets.full.join(", ") || "npm test").split(",").map((s) => s.trim()).filter(Boolean);
+  let safetyRules = "Never delete the project directory or run destructive commands, Never push to remote without explicit user approval".split(",").map((s) => s.trim()).filter(Boolean);
+  while (true) {
+    spec = await deps.prompt("Spec File", spec);
+    const providersRaw = await deps.prompt("Enabled Providers (comma-separated)", enabledProviders.join(",") || "claude");
+    enabledProviders = providersRaw.split(",").map((s) => s.trim()).filter(Boolean);
+    const providerDefault = enabledProviders[0] || discovery.providers.default_provider;
+    if (!enabledProviders.includes(provider)) {
+      provider = providerDefault;
     }
-  }
-  if (mode === "orchestrate") {
-    console.log("- Trunk Branch: agent/trunk");
-  }
-  if (discovery.devcontainer.enabled) {
-    console.log(`- Devcontainer Auth Strategy: ${devcontainerAuthStrategy}`);
-    console.log("- Proposed Provider Auth:");
-    for (const p of enabledProviders) {
-      console.log(`    ${p}: ${getProposedAuthMethod(p, devcontainerAuthStrategy)}`);
+    language = await deps.prompt("Language", language);
+    provider = await deps.prompt("Primary Provider", providerDefault);
+    mode = await deps.prompt("Mode", mode);
+    autonomyLevel = parseAutonomyLevel(
+      await deps.prompt("Autonomy Level (cautious|balanced|autonomous)", autonomyLevel)
+    ) ?? "balanced";
+    dataPrivacy = parseDataPrivacy(
+      await deps.prompt("Data Privacy (private|public)", dataPrivacy)
+    ) ?? "private";
+    if (discovery.devcontainer.enabled) {
+      devcontainerAuthStrategy = parseDevcontainerAuthStrategy(
+        await deps.prompt(
+          "Devcontainer Auth Strategy (mount-first|env-first|env-only)",
+          devcontainerAuthStrategy ?? "mount-first"
+        )
+      ) ?? "mount-first";
     }
+    const validationCommandsRaw = await deps.prompt("Validation Commands (comma-separated)", validationCommands.join(", "));
+    validationCommands = validationCommandsRaw.split(",").map((s) => s.trim()).filter(Boolean);
+    const safetyRulesRaw = await deps.prompt("Safety Rules (comma-separated)", safetyRules.join(", "));
+    safetyRules = safetyRulesRaw.split(",").map((s) => s.trim()).filter(Boolean);
+    console.log("\nScaffolding workspace with the following configuration:");
+    console.log(`- Spec: ${spec}`);
+    console.log(`- Providers: ${enabledProviders.join(", ")}`);
+    console.log(`- Language: ${language}`);
+    console.log(`- Primary Provider: ${provider}`);
+    console.log(`- Mode: ${mode}`);
+    console.log(`- Autonomy Level: ${autonomyLevel}`);
+    console.log(`- Data Privacy: ${dataPrivacy}`);
+    console.log(`- ZDR Mode: ${dataPrivacy === "private" ? "Enabled" : "Disabled"}`);
+    if (dataPrivacy === "private") {
+      const zdrWarnings = getZdrWarnings(enabledProviders);
+      for (const warning of zdrWarnings) {
+        console.log(`  \u26A0 ${warning}`);
+      }
+    }
+    if (mode === "orchestrate") {
+      console.log("- Trunk Branch: agent/trunk");
+    }
+    if (discovery.devcontainer.enabled) {
+      console.log(`- Devcontainer Auth Strategy: ${devcontainerAuthStrategy}`);
+      console.log("- Proposed Provider Auth:");
+      for (const p of enabledProviders) {
+        console.log(`    ${p}: ${getProposedAuthMethod(p, devcontainerAuthStrategy)}`);
+      }
+    }
+    console.log(`- Validation Commands: ${validationCommands.join(", ")}`);
+    console.log(`- Safety Rules: ${safetyRules.join(", ")}`);
+    console.log("");
+    const confirmation = parseSetupConfirmation(
+      await deps.prompt("Setup Confirmation (confirm|adjust|cancel)", "confirm")
+    ) ?? "confirm";
+    if (confirmation === "confirm") {
+      break;
+    }
+    if (confirmation === "cancel") {
+      console.log("Setup cancelled. No files were written.");
+      return;
+    }
+    console.log("Adjusting setup selections...\n");
   }
-  console.log(`- Validation Commands: ${validationCommands.join(", ")}`);
-  console.log(`- Safety Rules: ${safetyRules.join(", ")}`);
-  console.log("");
   const result = await deps.scaffold({
     projectRoot: options.projectRoot,
     homeDir: options.homeDir,

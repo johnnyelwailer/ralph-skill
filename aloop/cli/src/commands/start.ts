@@ -605,6 +605,25 @@ async function reserveLocalPort(): Promise<number> {
   });
 }
 
+function isAloopRepo(dir: string, existsSync: (p: string) => boolean): boolean {
+  return existsSync(path.join(dir, 'install.ps1')) && existsSync(path.join(dir, 'aloop', 'bin'));
+}
+
+function findAloopRepoRoot(startDir: string, existsSync: (p: string) => boolean): string | null {
+  const dir = path.resolve(startDir);
+  const root = path.parse(dir).root;
+  let current = dir;
+  while (current !== root) {
+    if (isAloopRepo(current, existsSync)) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return null;
+}
+
 export async function startCommandWithDeps(options: StartCommandOptions = {}, deps: StartDeps = defaultDeps): Promise<StartCommandResult> {
   const homeDir = resolveHomeDir(options.homeDir);
   const discovery = await deps.discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
@@ -627,15 +646,26 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   try {
     const versionRaw = await deps.readFile(versionJsonPath, 'utf8');
     const versionData = JSON.parse(versionRaw) as { commit?: string; installed_at?: string };
-    if (versionData.commit && discovery.project.is_git_repo) {
-      const headResult = deps.spawnSync('git', ['-C', discovery.project.root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' });
-      if (headResult.status === 0) {
-        const currentCommit = headResult.stdout.trim();
-        if (currentCommit && currentCommit !== versionData.commit) {
-          warnings.push(
-            `Installed runtime (commit ${versionData.commit}, installed ${versionData.installed_at ?? 'unknown'}) ` +
-            `may be stale — current repo HEAD is ${currentCommit}. Run \`aloop update\` to refresh.`,
-          );
+    if (versionData.commit) {
+      // Find aloop source repo root: try current project first (if it's the aloop repo),
+      // then walk up from the CLI entry point path.
+      let repoRoot: string | null = null;
+      if (isAloopRepo(discovery.project.root, deps.existsSync)) {
+        repoRoot = discovery.project.root;
+      } else {
+        repoRoot = findAloopRepoRoot(path.dirname(deps.aloopPath), deps.existsSync);
+      }
+
+      if (repoRoot) {
+        const headResult = deps.spawnSync('git', ['-C', repoRoot, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' });
+        if (headResult.status === 0) {
+          const currentCommit = headResult.stdout.trim();
+          if (currentCommit && currentCommit !== versionData.commit) {
+            warnings.push(
+              `Installed runtime (commit ${versionData.commit}, installed ${versionData.installed_at ?? 'unknown'}) ` +
+              `may be stale — current repo HEAD is ${currentCommit}. Run \`aloop update\` to refresh.`,
+            );
+          }
         }
       }
     }

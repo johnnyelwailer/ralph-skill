@@ -6,7 +6,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 
 ### In Progress
 - [x] [qa/P1] [bug] `single` mode parity gap: fix end-to-end support for `single` mode by adding `PROMPT_single.md` template to `project.mjs`, removing normalization in `project.mjs` and `start.ts`, and fixing `loop.sh` one-shot logic. (priority: high) — **COMPLETED** (added `PROMPT_single.md` template, added to `LOOP_PROMPT_TEMPLATES`, removed normalization in `project.mjs:normalizeScaffoldMode`, `start.ts:resolveConfiguredStartMode`, fixed `loop.sh` one-shot passthrough to match `loop.ps1`, updated `start.test.ts` assertions)
-- [ ] [qa/P1] [bug] `aloop start` stale runtime warning: fix git comparison in `start.ts` to check `aloop` source repo metadata instead of target project repo HEAD. (priority: high)
+- [x] [qa/P1] [bug] `aloop start` stale runtime warning: fix git comparison in `start.ts` to check `aloop` source repo metadata instead of target project repo HEAD. (priority: high) — **COMPLETED** (added `isAloopRepo` and `findAloopRepoRoot` helpers, updated staleness check to only compare against `aloop` source repo HEAD, and added regression tests in `start.test.ts`)
 - [ ] [qa/P1] [bug] `aloop devcontainer` opencode missing: fix `devcontainer.ts` to include `OPENCODE_API_KEY` in `remoteEnv` and opencode install in `postCreateCommand` when opencode is configured. (priority: high)
 
 ### Up Next
