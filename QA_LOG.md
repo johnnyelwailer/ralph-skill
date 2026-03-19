@@ -1,5 +1,169 @@
 # QA Log
 
+## QA Session — 2026-03-19 (iteration 305)
+
+### Test Environment
+- Temp dir: `/tmp/qa-test-20260319-151659`
+- Binary under test: `/tmp/aloop-test-install-TIOqXp/bin/aloop` (`1.0.0`)
+- Commit: `34e71ba`
+- Dashboard URL (from session meta): `http://localhost:4040` (unresponsive in this run; used isolated dashboard from packaged binary for layout verification)
+- Features tested: 5 + mandatory dashboard layout verification
+
+### Results
+- PASS: Dashboard layout/docs visibility @1920x1080 (isolated packaged-dashboard on `http://127.0.0.1:43111`)
+- FAIL: README setup flag usage mismatch (`--provider` rejected by CLI; CLI requires `--providers`)
+- PASS: `aloop setup --non-interactive --providers` happy path + unknown-provider validation
+- PASS: `aloop start` + `aloop status` + `aloop status --watch` + `aloop stop` lifecycle in isolated `HOME`
+- PASS: `aloop steer` with active session and duplicate-queue error path
+- PASS: `aloop orchestrate --spec 'SPEC.md specs/*.md' --plan-only` + clean nonexistent-spec error
+- PASS: `aloop start --mode single` re-test (single mode starts successfully)
+
+### Bugs Filed
+- [qa/P1] README setup flag mismatch (`--provider` vs `--providers`) — added to `TODO.md` Up Next.
+
+### Screenshots / Evidence
+- `/home/pj/.copilot/session-state/ecfa4894-c620-48fb-8dd8-4f2ed7f652cb/files/qa-20260319-151659/dashboard-1920x1080.png`
+- `/home/pj/.copilot/session-state/ecfa4894-c620-48fb-8dd8-4f2ed7f652cb/files/qa-20260319-151659/dashboard-layout.json`
+- Full transcript: `/home/pj/.copilot/session-state/ecfa4894-c620-48fb-8dd8-4f2ed7f652cb/files/qa-20260319-151659/command-transcript.txt`
+
+### Command Transcript
+
+```bash
+$ echo "Binary under test: /tmp/aloop-test-install-TIOqXp/bin/aloop"
+Binary under test: /tmp/aloop-test-install-TIOqXp/bin/aloop
+[exit_code] 0
+
+$ /tmp/aloop-test-install-TIOqXp/bin/aloop --version
+1.0.0
+[exit_code] 0
+
+$ cd '/tmp/qa-test-20260319-151659/proj-setup' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' setup --non-interactive --provider claude
+error: unknown option '--provider'
+(Did you mean --providers?)
+[exit_code] 1
+
+$ cd '/tmp/qa-test-20260319-151659/proj-setup' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' setup --non-interactive --providers claude
+Running setup in non-interactive mode...
+Setup complete. Config written to: /tmp/qa-test-20260319-151659/home/.aloop/projects/f5006af3/config.yml
+[exit_code] 0
+
+$ cd '/tmp/qa-test-20260319-151659/proj-setup' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' setup --non-interactive --providers badprovider
+Running setup in non-interactive mode...
+Error: Unknown provider(s): badprovider (valid: claude, codex, gemini, copilot, opencode)
+[exit_code] 1
+
+$ cd '/tmp/qa-test-20260319-151659/proj-loop' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' setup --non-interactive --providers claude
+Running setup in non-interactive mode...
+Setup complete. Config written to: /tmp/qa-test-20260319-151659/home/.aloop/projects/3ff3994d/config.yml
+[exit_code] 0
+
+$ cd '/tmp/qa-test-20260319-151659/proj-loop' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' start --max-iterations 1
+Aloop loop started!
+  Session:  proj-loop-20260319-151759
+  Mode:     plan-build-review
+  Dashboard: http://localhost:39999
+[exit_code] 0
+
+$ cd '/tmp/qa-test-20260319-151659/proj-loop' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' status
+Active Sessions:
+  proj-loop-20260319-151759  pid=2945066  running  iter 1, plan
+[exit_code] 0
+
+$ cd '/tmp/qa-test-20260319-151659/proj-loop' && HOME='/tmp/qa-test-20260319-151659/home' timeout 6 '/tmp/aloop-test-install-TIOqXp/bin/aloop' status --watch
+aloop status  (refreshing every 2s ...)
+Active Sessions: ...
+Provider Health:
+  claude     healthy
+[exit_code] 124
+
+$ cd '/tmp/qa-test-20260319-151659/proj-loop' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' stop 'proj-loop-20260319-151759'
+Session proj-loop-20260319-151759 stopped.
+[exit_code] 0
+
+$ cd '/tmp/qa-test-20260319-151659/proj-loop' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' start --max-iterations 2
+Aloop loop started!
+  Session:  proj-loop-20260319-151807
+  Mode:     plan-build-review
+[exit_code] 0
+
+$ cd '/tmp/qa-test-20260319-151659/proj-loop' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' steer --session 'proj-loop-20260319-151807' 'QA steer instruction: prioritize README alignment'
+Steering instruction queued for session proj-loop-20260319-151807.
+[exit_code] 0
+
+$ cd '/tmp/qa-test-20260319-151659/proj-loop' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' steer 'instruction without explicit session id'
+A steering instruction is already queued. Use --overwrite to replace it.
+[exit_code] 1
+
+$ cd '/tmp/qa-test-20260319-151659/proj-loop' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' stop 'proj-loop-20260319-151807'
+Session proj-loop-20260319-151807 stopped.
+[exit_code] 0
+
+$ cd '/tmp/qa-test-20260319-151659/proj-orch' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' orchestrate --spec 'SPEC.md specs/*.md' --plan-only
+Orchestrator session initialized.
+  Spec:         SPEC.md, specs/extra.md
+  Plan only:    true
+[exit_code] 0
+
+$ cd '/tmp/qa-test-20260319-151659/proj-orch' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' orchestrate --spec 'NONEXISTENT.md' --plan-only
+Error: No spec files found matching: NONEXISTENT.md
+[exit_code] 1
+
+$ cd '/tmp/qa-test-20260319-151659/proj-orch' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' setup --non-interactive --mode single --providers claude
+Running setup in non-interactive mode...
+Setup complete. Config written to: /tmp/qa-test-20260319-151659/home/.aloop/projects/97c0958f/config.yml
+[exit_code] 0
+
+$ cd '/tmp/qa-test-20260319-151659/proj-orch' && HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' start --mode single --max-iterations 1
+Aloop loop started!
+  Session:  proj-orch-20260319-151813
+  Mode:     single
+  Dashboard: http://localhost:46771
+[exit_code] 0
+
+$ HOME='/tmp/qa-test-20260319-151659/home' '/tmp/aloop-test-install-TIOqXp/bin/aloop' dashboard --port 43111 --session-dir '/tmp/qa-test-20260319-151659/home/.aloop/sessions/proj-orch-20260319-151813' > dashboard-server.log 2>&1 &
+[exit_code] 0
+
+$ curl -s -I http://127.0.0.1:43111 | head -n 10
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+[exit_code] 0
+
+$ npx playwright screenshot --browser chromium --viewport-size=1920,1080 http://127.0.0.1:43111 /home/pj/.copilot/session-state/ecfa4894-c620-48fb-8dd8-4f2ed7f652cb/files/qa-20260319-151659/dashboard-1920x1080.png
+Navigating to http://127.0.0.1:43111
+Capturing screenshot into .../dashboard-1920x1080.png
+[exit_code] 0
+
+$ node -e "<playwright metric probe>"
+QA_LAYOUT_METRICS {"sidebarVisible":true,"hasDocuments":true,"hasActivity":true,"columnCountGuess":3,"sessions":{"x":0,"y":0,"w":255},"docs":{"x":269,"y":56,"w":812},"activity":{"x":1095,"y":56,"w":812}}
+[exit_code] 0
+```
+
+## QA Session — 2026-03-19 (BLOCKED — shell environment failure)
+
+### Test Environment
+- Working directory: `/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree`
+- Binary under test: N/A (could not install)
+- Dashboard URL (from session meta): `http://localhost:4040`
+- Features planned: 3 (devcontainer opencode, single mode parity, stale runtime warning)
+
+### Blocker
+Every Bash tool invocation fails with exit codes 1/128/134 and produces no stdout/stderr. Even trivial commands (`echo hello`, `ls`, `date`, `true`, `id`) fail. This prevents:
+- Installing the packaged CLI via `npm --prefix aloop/cli run test-install`
+- Running any `aloop` commands
+- Executing browser tests for dashboard verification
+- Creating test projects in temp directories
+
+### Planned Test Targets (not executed)
+1. **`aloop devcontainer` opencode support** (TODO line 10, open P1 bug) — verify `OPENCODE_API_KEY` in `remoteEnv` and opencode install in `postCreateCommand` when opencode is configured as a provider
+2. **`single` mode parity** (TODO lines 8-9, recently completed) — verify `aloop start --mode single` works end-to-end with `PROMPT_single.md` template
+3. **`aloop start` stale runtime warning fix** (TODO line 9, recently completed) — verify staleness check compares against aloop source repo HEAD, not target project repo
+
+### Results
+- NO TESTS EXECUTED — session blocked by shell environment failure
+
+### Bugs Filed
+- None (no tests could run)
+
 ## QA Session — 2026-03-17 (iteration 174)
 
 ### Test Environment

@@ -8,7 +8,7 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 No active tasks in progress.
 
 ### Up Next
-No additional non-deferred tasks until the active Phase closure is complete.
+- [ ] [qa/P1] README setup flag mismatch (`--provider` vs `--providers`): packaged CLI rejects documented singular flag (`error: unknown option '--provider'`). Repro: run `aloop setup --non-interactive --provider claude` from README-style usage; expected setup to succeed per docs, actual exit 1. Tested at iter 305. (priority: high)
 
 ### Deferred (Low Priority / After Core)
 - [x] [qa/P1] Dashboard docs tabs empty in some sessions (`/api/state` docs payload unresolved/empty due context/workdir mismatch reports) — resolved by teaching `resolveSessionContext` to fall back from `active.json` to matching `history.json` session entries (newest-first) so archived/non-active sessions still return the correct `session_dir`/`work_dir` and docs payload. Added regression coverage in `dashboard.test.ts` for `GET /api/state?session=<id>` history fallback. (priority: low) — **COMPLETED** (iter 289)
