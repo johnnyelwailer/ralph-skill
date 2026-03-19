@@ -658,7 +658,14 @@ test('resolveProviderHints covers all branches', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), '{{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), '{{PROVIDER_HINTS}}', 'utf8');
 
-  const providers = ['claude', 'codex', 'gemini', 'copilot'];
+  const providers = ['claude', 'opencode', 'codex', 'gemini', 'copilot'];
+  const expectedHintFragments: Record<string, string> = {
+    claude: 'Claude hint',
+    opencode: 'OpenCode hint',
+    codex: 'Codex hint',
+    gemini: 'Gemini hint',
+    copilot: 'Copilot hint',
+  };
   for (const p of providers) {
     const result = await scaffoldWorkspace({
       projectRoot: tempRoot,
@@ -668,19 +675,21 @@ test('resolveProviderHints covers all branches', async () => {
       enabledProviders: [p],
     });
     const prompt = await readFile(path.join(result.prompts_dir, 'PROMPT_plan.md'), 'utf8');
-    assert.ok(prompt.includes(p.charAt(0).toUpperCase() + p.slice(1)));
+    assert.ok(prompt.includes(expectedHintFragments[p]));
   }
 
-  // Test opencode provider (known but no provider hints)
-  const opencodeResult = await scaffoldWorkspace({
+  const multiProviderResult = await scaffoldWorkspace({
     projectRoot: tempRoot,
-    homeDir: path.join(tempRoot, 'home-opencode'),
+    homeDir: path.join(tempRoot, 'home-multi'),
     templatesDir,
-    provider: 'opencode',
-    enabledProviders: ['opencode'],
+    provider: 'claude',
+    enabledProviders: ['claude', 'opencode', 'codex', 'copilot'],
   });
-  const opencodePrompt = await readFile(path.join(opencodeResult.prompts_dir, 'PROMPT_plan.md'), 'utf8');
-  assert.equal(opencodePrompt, '', 'opencode should have empty provider hints');
+  const multiProviderPrompt = await readFile(path.join(multiProviderResult.prompts_dir, 'PROMPT_plan.md'), 'utf8');
+  assert.ok(multiProviderPrompt.includes('Claude hint'));
+  assert.ok(multiProviderPrompt.includes('OpenCode hint'));
+  assert.ok(multiProviderPrompt.includes('Codex hint'));
+  assert.ok(multiProviderPrompt.includes('Copilot hint'));
 });
 
 test('buildValidationPresets handles unknown language', async () => {

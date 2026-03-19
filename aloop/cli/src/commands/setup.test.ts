@@ -120,7 +120,7 @@ test('setupCommandWithDeps - interactive mode', async () => {
   await setupCommandWithDeps({}, deps);
 
   assert.equal(discoverCalled, true);
-  assert.equal(promptCallCount, 9, 'Should ask 9 questions');
+  assert.equal(promptCallCount, 10, 'Should ask 10 questions including confirmation');
   assert.ok(scaffoldCalledOpts);
   assert.deepEqual(scaffoldCalledOpts.specFiles, ['CUSTOM_SPEC.md']);
   assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['gemini']);
@@ -288,6 +288,90 @@ test('setupCommandWithDeps - interactive prompt parsing trims and filters comma 
   assert.equal(scaffoldCalledOpts.autonomyLevel, 'cautious');
   assert.deepEqual(scaffoldCalledOpts.validationCommands, ['npm test', 'npm run typecheck']);
   assert.deepEqual(scaffoldCalledOpts.safetyRules, ['Rule 1', 'Rule 2']);
+});
+
+test('setupCommandWithDeps - interactive confirmation allows adjustment before scaffolding', async () => {
+  let scaffoldCalledOpts = null as unknown as ScaffoldOptions;
+  let specPromptCount = 0;
+
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: ['npm test'] },
+        spec_candidates: ['SPEC.md'],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+    } as unknown as DiscoveryResult;
+  };
+
+  const mockScaffold = async (opts: ScaffoldOptions): Promise<ScaffoldResult> => {
+    scaffoldCalledOpts = opts;
+    return { config_path: '/mock/config', prompts_dir: '/mock/prompts', project_dir: '/mock/dir', project_hash: '123' };
+  };
+
+  let confirmationCount = 0;
+  const mockPrompt: PromptFunction = async (question: string, defaultValue: string) => {
+    if (question.includes('Spec File')) {
+      specPromptCount += 1;
+      return specPromptCount === 1 ? 'SPEC-draft.md' : 'SPEC-final.md';
+    }
+    if (question.includes('Setup Confirmation')) {
+      confirmationCount += 1;
+      return confirmationCount === 1 ? 'adjust' : 'confirm';
+    }
+    return defaultValue;
+  };
+
+  await setupCommandWithDeps({}, { discover: mockDiscover, scaffold: mockScaffold, prompt: mockPrompt });
+
+  assert.ok(scaffoldCalledOpts);
+  assert.deepEqual(scaffoldCalledOpts.specFiles, ['SPEC-final.md']);
+});
+
+test('setupCommandWithDeps - interactive confirmation cancel exits without scaffolding', async () => {
+  let scaffoldCallCount = 0;
+
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: ['npm test'] },
+        spec_candidates: ['SPEC.md'],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+    } as unknown as DiscoveryResult;
+  };
+
+  const mockScaffold = async (_opts: ScaffoldOptions): Promise<ScaffoldResult> => {
+    scaffoldCallCount += 1;
+    return { config_path: '/mock/config', prompts_dir: '/mock/prompts', project_dir: '/mock/dir', project_hash: '123' };
+  };
+
+  const mockPrompt: PromptFunction = async (question: string, defaultValue: string) => {
+    if (question.includes('Setup Confirmation')) return 'cancel';
+    return defaultValue;
+  };
+
+  await setupCommandWithDeps({}, { discover: mockDiscover, scaffold: mockScaffold, prompt: mockPrompt });
+
+  assert.equal(scaffoldCallCount, 0);
 });
 
 test('setupCommandWithDeps - rejects invalid data privacy value', async () => {

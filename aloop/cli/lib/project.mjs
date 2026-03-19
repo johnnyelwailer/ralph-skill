@@ -697,13 +697,30 @@ export function resolveBundledBinDir(options = {}) {
   return null;
 }
 
-function resolveProviderHints(provider) {
-  if (provider === 'claude') return '- Claude hint: Use parallel subagents when large searches are needed; summarize before coding.';
-  if (provider === 'codex') return '- Codex hint: Prefer stdin prompt mode and keep outputs concise and action-focused.';
-  if (provider === 'gemini') return '- Gemini hint: Keep prompts explicit and deterministic; re-check assumptions before writing code.';
-  if (provider === 'copilot') return '- Copilot hint: Keep edits surgical and validate with focused checks after changes.';
-  if (provider === 'round-robin') return '- Round-robin hint: Keep context handoff explicit in TODO.md and REVIEW_LOG.md between providers.';
-  return '';
+const PROVIDER_HINTS = {
+  claude: '- Claude hint: Use parallel subagents when large searches are needed; summarize before coding.',
+  opencode: '- OpenCode hint: Use delegated agents for broad repo scans; keep edits in small validated patches.',
+  codex: '- Codex hint: Prefer stdin prompt mode and keep outputs concise and action-focused.',
+  gemini: '- Gemini hint: Keep prompts explicit and deterministic; re-check assumptions before writing code.',
+  copilot: '- Copilot hint: Keep edits surgical and validate with focused checks after changes.',
+  'round-robin': '- Round-robin hint: Keep context handoff explicit in TODO.md and REVIEW_LOG.md between providers.',
+};
+
+function resolveProviderHints(provider, enabledProviders = []) {
+  const orderedProviders = [];
+  for (const candidate of normalizeList(enabledProviders)) {
+    if (!orderedProviders.includes(candidate)) {
+      orderedProviders.push(candidate);
+    }
+  }
+  if (provider && !orderedProviders.includes(provider)) {
+    orderedProviders.unshift(provider);
+  }
+
+  return orderedProviders
+    .map((candidate) => PROVIDER_HINTS[candidate])
+    .filter((value) => Boolean(value))
+    .join('\n');
 }
 
 const LOOP_PROMPT_TEMPLATES = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
@@ -933,7 +950,7 @@ export async function scaffoldWorkspace(options = {}) {
     '{{REFERENCE_FILES}}': resolvedReferenceFiles.join(', '),
     '{{VALIDATION_COMMANDS}}': resolvedValidation.map((value) => `- ${value}`).join('\n'),
     '{{SAFETY_RULES}}': resolvedSafetyRules.map((value) => `- ${value}`).join('\n'),
-    '{{PROVIDER_HINTS}}': resolveProviderHints(provider),
+    '{{PROVIDER_HINTS}}': resolveProviderHints(provider, enabled),
   };
 
   for (const fileName of requiredTemplates) {

@@ -69,6 +69,7 @@ function parseAutonomyLevel(value: string | undefined): AutonomyLevel | undefine
 }
 
 type SetupMode = 'loop' | 'orchestrate';
+type SetupConfirmation = 'confirm' | 'adjust' | 'cancel';
 
 function parseSetupMode(value: string | undefined): SetupMode | undefined {
   if (!value) return undefined;
@@ -85,6 +86,15 @@ function mapSetupModeToLoopMode(value: SetupMode | undefined): string | undefine
     return 'orchestrate';
   }
   return 'plan-build-review';
+}
+
+function parseSetupConfirmation(value: string | undefined): SetupConfirmation | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'confirm' || normalized === 'adjust' || normalized === 'cancel') {
+    return normalized;
+  }
+  throw new Error(`Invalid setup confirmation: ${value} (must be confirm, adjust, or cancel)`);
 }
 
 async function defaultPromptUser(rl: readline.Interface, question: string, defaultValue: string): Promise<string> {
@@ -127,18 +137,13 @@ export async function setupCommandWithDeps(
 
   console.log('\n--- Aloop Interactive Setup ---\n');
 
-  const defaultSpec = options.spec || discovery.context.spec_candidates[0] || 'SPEC.md';
-  const spec = await deps.prompt('Spec File', defaultSpec);
-
-  const defaultProviders = options.providers || discovery.providers.installed.join(',') || 'claude';
-  const providersRaw = await deps.prompt('Enabled Providers (comma-separated)', defaultProviders);
-  const enabledProviders = providersRaw.split(',').map((s) => s.trim()).filter(Boolean);
-
-  const defaultLanguage = discovery.context.detected_language;
-  const language = await deps.prompt('Language', defaultLanguage);
-
-  const defaultProvider = enabledProviders[0] || discovery.providers.default_provider;
-  const provider = await deps.prompt('Primary Provider', defaultProvider);
+  let spec = options.spec || discovery.context.spec_candidates[0] || 'SPEC.md';
+  let enabledProviders = (options.providers || discovery.providers.installed.join(',') || 'claude')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  let language = discovery.context.detected_language;
+  let provider = enabledProviders[0] || discovery.providers.default_provider;
 
   const recommendedMode = discovery.mode_recommendation?.recommended_mode;
   const recommendationReasons = discovery.mode_recommendation?.reasoning || [];
@@ -149,63 +154,96 @@ export async function setupCommandWithDeps(
     }
     console.log('');
   }
-  const defaultMode = recommendedMode === 'orchestrate' ? 'orchestrate' : 'plan-build-review';
-  const mode = await deps.prompt('Mode', defaultMode);
 
-  const defaultAutonomyLevel = options.autonomyLevel ?? 'balanced';
-  const autonomyLevel = parseAutonomyLevel(
-    await deps.prompt('Autonomy Level (cautious|balanced|autonomous)', defaultAutonomyLevel),
-  ) ?? 'balanced';
+  let mode = recommendedMode === 'orchestrate' ? 'orchestrate' : 'plan-build-review';
+  let autonomyLevel = parseAutonomyLevel(options.autonomyLevel ?? 'balanced') ?? 'balanced';
+  let dataPrivacy = parseDataPrivacy(options.dataPrivacy ?? 'private') ?? 'private';
+  let devcontainerAuthStrategy: DevcontainerAuthStrategy | undefined =
+    parseDevcontainerAuthStrategy(options.devcontainerAuthStrategy ?? (discovery.devcontainer.enabled ? 'mount-first' : undefined));
+  let validationCommands = (discovery.context.validation_presets.full.join(', ') || 'npm test')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  let safetyRules = 'Never delete the project directory or run destructive commands, Never push to remote without explicit user approval'
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
-  const defaultDataPrivacy: DataPrivacy = 'private';
-  const dataPrivacy = parseDataPrivacy(
-    await deps.prompt('Data Privacy (private|public)', options.dataPrivacy ?? defaultDataPrivacy),
-  ) ?? 'private';
-
-  let devcontainerAuthStrategy: DevcontainerAuthStrategy | undefined;
-  if (discovery.devcontainer.enabled) {
-    const defaultStrategy = options.devcontainerAuthStrategy ?? 'mount-first';
-    devcontainerAuthStrategy = parseDevcontainerAuthStrategy(
-      await deps.prompt('Devcontainer Auth Strategy (mount-first|env-first|env-only)', defaultStrategy),
-    ) ?? 'mount-first';
-  }
-
-  const defaultValidation = discovery.context.validation_presets.full.join(', ') || 'npm test';
-  const validationCommandsRaw = await deps.prompt('Validation Commands (comma-separated)', defaultValidation);
-  const validationCommands = validationCommandsRaw.split(',').map((s) => s.trim()).filter(Boolean);
-
-  const defaultSafety = 'Never delete the project directory or run destructive commands, Never push to remote without explicit user approval';
-  const safetyRulesRaw = await deps.prompt('Safety Rules (comma-separated)', defaultSafety);
-  const safetyRules = safetyRulesRaw.split(',').map((s) => s.trim()).filter(Boolean);
-
-  console.log('\nScaffolding workspace with the following configuration:');
-  console.log(`- Spec: ${spec}`);
-  console.log(`- Providers: ${enabledProviders.join(', ')}`);
-  console.log(`- Language: ${language}`);
-  console.log(`- Primary Provider: ${provider}`);
-  console.log(`- Mode: ${mode}`);
-  console.log(`- Autonomy Level: ${autonomyLevel}`);
-  console.log(`- Data Privacy: ${dataPrivacy}`);
-  console.log(`- ZDR Mode: ${dataPrivacy === 'private' ? 'Enabled' : 'Disabled'}`);
-  if (dataPrivacy === 'private') {
-    const zdrWarnings = getZdrWarnings(enabledProviders);
-    for (const warning of zdrWarnings) {
-      console.log(`  ⚠ ${warning}`);
+  while (true) {
+    spec = await deps.prompt('Spec File', spec);
+    const providersRaw = await deps.prompt('Enabled Providers (comma-separated)', enabledProviders.join(',') || 'claude');
+    enabledProviders = providersRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    const providerDefault = enabledProviders[0] || discovery.providers.default_provider;
+    if (!enabledProviders.includes(provider)) {
+      provider = providerDefault;
     }
-  }
-  if (mode === 'orchestrate') {
-    console.log('- Trunk Branch: agent/trunk');
-  }
-  if (discovery.devcontainer.enabled) {
-    console.log(`- Devcontainer Auth Strategy: ${devcontainerAuthStrategy}`);
-    console.log('- Proposed Provider Auth:');
-    for (const p of enabledProviders) {
-      console.log(`    ${p}: ${getProposedAuthMethod(p, devcontainerAuthStrategy!)}`);
+
+    language = await deps.prompt('Language', language);
+    provider = await deps.prompt('Primary Provider', providerDefault);
+    mode = await deps.prompt('Mode', mode);
+    autonomyLevel = parseAutonomyLevel(
+      await deps.prompt('Autonomy Level (cautious|balanced|autonomous)', autonomyLevel),
+    ) ?? 'balanced';
+    dataPrivacy = parseDataPrivacy(
+      await deps.prompt('Data Privacy (private|public)', dataPrivacy),
+    ) ?? 'private';
+
+    if (discovery.devcontainer.enabled) {
+      devcontainerAuthStrategy = parseDevcontainerAuthStrategy(
+        await deps.prompt(
+          'Devcontainer Auth Strategy (mount-first|env-first|env-only)',
+          devcontainerAuthStrategy ?? 'mount-first',
+        ),
+      ) ?? 'mount-first';
     }
+
+    const validationCommandsRaw = await deps.prompt('Validation Commands (comma-separated)', validationCommands.join(', '));
+    validationCommands = validationCommandsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+
+    const safetyRulesRaw = await deps.prompt('Safety Rules (comma-separated)', safetyRules.join(', '));
+    safetyRules = safetyRulesRaw.split(',').map((s) => s.trim()).filter(Boolean);
+
+    console.log('\nScaffolding workspace with the following configuration:');
+    console.log(`- Spec: ${spec}`);
+    console.log(`- Providers: ${enabledProviders.join(', ')}`);
+    console.log(`- Language: ${language}`);
+    console.log(`- Primary Provider: ${provider}`);
+    console.log(`- Mode: ${mode}`);
+    console.log(`- Autonomy Level: ${autonomyLevel}`);
+    console.log(`- Data Privacy: ${dataPrivacy}`);
+    console.log(`- ZDR Mode: ${dataPrivacy === 'private' ? 'Enabled' : 'Disabled'}`);
+    if (dataPrivacy === 'private') {
+      const zdrWarnings = getZdrWarnings(enabledProviders);
+      for (const warning of zdrWarnings) {
+        console.log(`  ⚠ ${warning}`);
+      }
+    }
+    if (mode === 'orchestrate') {
+      console.log('- Trunk Branch: agent/trunk');
+    }
+    if (discovery.devcontainer.enabled) {
+      console.log(`- Devcontainer Auth Strategy: ${devcontainerAuthStrategy}`);
+      console.log('- Proposed Provider Auth:');
+      for (const p of enabledProviders) {
+        console.log(`    ${p}: ${getProposedAuthMethod(p, devcontainerAuthStrategy!)}`);
+      }
+    }
+    console.log(`- Validation Commands: ${validationCommands.join(', ')}`);
+    console.log(`- Safety Rules: ${safetyRules.join(', ')}`);
+    console.log('');
+
+    const confirmation = parseSetupConfirmation(
+      await deps.prompt('Setup Confirmation (confirm|adjust|cancel)', 'confirm'),
+    ) ?? 'confirm';
+    if (confirmation === 'confirm') {
+      break;
+    }
+    if (confirmation === 'cancel') {
+      console.log('Setup cancelled. No files were written.');
+      return;
+    }
+    console.log('Adjusting setup selections...\n');
   }
-  console.log(`- Validation Commands: ${validationCommands.join(', ')}`);
-  console.log(`- Safety Rules: ${safetyRules.join(', ')}`);
-  console.log('');
 
   const result = await deps.scaffold({
     projectRoot: options.projectRoot,
