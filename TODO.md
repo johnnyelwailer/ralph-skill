@@ -6,6 +6,10 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 
 ### In Progress
 
+- [ ] [review] Gate 5: 21 tests are failing in `aloop/cli` (e.g. `discoverWorkspace resolves project details`, `scaffoldWorkspace expands nested template includes`). Failures are due to lack of test isolation where `resolveProjectRoot` climbs into the workspace git repo instead of using the temp test directory. Fix by ensuring tests are properly isolated (e.g., initializing a local git repo in temp dirs) and verify with `cd aloop/cli && npm test`. (priority: critical)
+- [ ] [review] Gate 3: `aloop/cli/dashboard/src/AppView.tsx` branch coverage is only **29.53%** (target >=80%). The file was excluded from the coverage report in `vitest.config.ts`. Add comprehensive tests for comparison modes, slider interactions, and dialog states to reach the threshold. (priority: high)
+- [ ] [review] Gate 2: `findBaselineIterations` tests in `App.test.tsx:1376-1434` remain tautological (using a local copy). This was an unresolved finding from the prior review. Import and test the production function from `AppView.tsx`. (priority: high)
+- [ ] [review] Gate 1: `single` mode still fails in packaged install with `Error: Invalid mode: single`. Despite the [cleanup/P1] task claiming removal, the `single` mode parity gap remains unresolved and continues to fail in QA re-tests. (priority: high)
 - [x] [review] Gate 5: required validation command now completes cleanly. Implemented explicit EventSource listener teardown before `close()` in `AppView.tsx` cleanup/reconnect paths, and added `dashboard.test.ts` suite teardown cleanup for lingering `FSWatcher` handles so Node test process exits deterministically. Verified `cd aloop/cli && npm test && npm run type-check && npm run build` completes successfully. (priority: high)
 
 ### Up Next

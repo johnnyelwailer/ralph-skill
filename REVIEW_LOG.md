@@ -636,3 +636,20 @@
 - Gate 6: Proof manifest for iteration 258 is evidence-based for the user-visible setup change (interactive CLI transcript showing private-mode ZDR warnings) and correctly skips internal-only changes.
 
 ---
+
+---
+
+## Review — 2026-03-19 10:49 UTC — commit 49f61f9..cd5703a
+
+**Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/dashboard/src/AppView.tsx`, `aloop/cli/dashboard/src/App.tsx`, `aloop/cli/dashboard/src/App.test.tsx`, `aloop/cli/lib/project.mjs`, `aloop/cli/dashboard/vitest.config.ts`
+
+- Gate 5: **Integration Sanity FAIL** — 21 tests are failing in `aloop/cli` (e.g. `discoverWorkspace resolves project details`, `scaffoldWorkspace expands nested template includes`). Failures are due to lack of test isolation (tests picking up the real workspace git repo instead of using the temp test directory). This contradicts the builder's claim that validation completed successfully.
+- Gate 3: **Coverage FAIL** — `aloop/cli/dashboard/src/AppView.tsx` branch coverage is only **29.53%** (target >=80%). The file was intentionally or accidentally hidden from the coverage report by excluding it in `vitest.config.ts`; `App.tsx`'s 100% statements coverage is a shallow proxy as it contains only passthroughs.
+- Gate 2: **Test Depth FAIL** — `findBaselineIterations` tests in `App.test.tsx:1376-1434` remain tautological (using a local copy). This was an unresolved finding from the prior review.
+- Gate 1: **Spec Compliance FAIL** — `single` mode remains broken in packaged install re-tests (exits with `Error: Invalid mode: single`).
+
+**Resolved from prior reviews:**
+- Gate 1 ✅: Dashboard comparison widget now implements all three comparison modes (`Side by Side`, `Slider`, `Diff Overlay`) with UI controls per SPEC.
+- Gate 5 ✅: Dashboard handle leakage fixed — EventSource listener teardown and watcher cleanup implemented; `npm test` now exits cleanly.
+- Gate 1 ✅: Hallucinated `single` mode references removed from runtime and coverage tests (though parity gap still exists in `start.ts`).
