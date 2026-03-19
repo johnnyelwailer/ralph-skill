@@ -27,6 +27,24 @@
 
 ---
 
+## Review — 2026-03-19 10:41 UTC — commit 4c535a9..49f61f9
+
+**Verdict: FAIL** (5 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/commands/start.ts`, `aloop/cli/src/commands/compile-loop-plan.ts`, `aloop/cli/lib/project.mjs`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/src/commands/setup.test.ts`, `aloop/cli/src/commands/start.test.ts`, `aloop/cli/dashboard/src/AppView.tsx`, `aloop/cli/dashboard/src/App.test.tsx`, `aloop/cli/src/commands/dashboard.ts`, `aloop/cli/src/commands/dashboard.test.ts`, `aloop/bin/loop.tests.ps1`
+
+- Gate 1: `single` mode wiring is incomplete end-to-end. Runtime accepts `single` and compiles `PROMPT_single.md`, but loop scaffolding still omits that prompt (`project.mjs` `LOOP_PROMPT_TEMPLATES`), so real `setup -> start --mode single` flows fail unless tests inject files manually.
+- Gate 1: Dashboard artifact comparison implementation diverges from SPEC intent: SPEC requires three modes (`Side by Side`, `Slider`, `Diff Overlay`), while `AppView.tsx` only implements two modes and has no overlay rendering path.
+- Gate 2: New baseline-history tests are tautological. `App.test.tsx` defines a test-local `findBaselineIterations` function instead of importing/testing the production function from `AppView.tsx`, so regressions in runtime logic could pass tests.
+- Gate 3: No branch-coverage evidence was provided for touched UI file `dashboard/src/AppView.tsx`; current coverage output reports `App.tsx` only, leaving new comparison branches/interactions unverified against thresholds.
+- Gate 5: Required validation command did not complete cleanly in this review run: `npm test` repeatedly hung after tests executed and required timeout/termination, indicating leaked handles in test lifecycle.
+
+**Positive observations:**
+- Gate 6: Proof manifest (iteration 268) is evidence-based: multiple viewport screenshots plus a layout-verification artifact; no filler test-output artifacts.
+- Gate 7: Dashboard UI verification exists and passes in this range (`dashboard` Playwright smoke includes 1920x1080 and mobile layout assertions).
+- Gate 8: Version compliance remains aligned with `VERSIONS.md` (majors in `aloop/cli` and dashboard package manifests match declared ranges).
+
+---
+
 ## Review — 2026-03-18 10:20 UTC — commit ecdd104..3f188d7
 
 **Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
