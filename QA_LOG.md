@@ -4401,3 +4401,223 @@ $ HOME=/tmp/qa-orch-test $ALOOP_BIN orchestrate --run-scan-loop --max-iterations
 - aloop update
 - aloop start --mode single --max-iterations 1
 - curl -s 'http://localhost:DASHBOARD_PORT/api/state'
+
+## QA Session — 2026-03-19 (iteration 253)
+
+### Test Environment
+- Temp dir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk
+- Features tested: 6
+- Binary under test: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-Wjoxfw/bin/aloop (initial install)
+- Version: 1.0.0
+- Dashboard URL (host meta.json): http://localhost:4040
+- Dashboard evidence:
+  - /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/evidence/dashboard-1920x1080.png
+  - /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/evidence/dashboard-layout.json
+  - /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/evidence/dashboard-state.json
+
+### Results
+- PASS: Dashboard layout/docs visibility @1920x1080 (sidebar/docs/activity visible; panel count >=3)
+- PASS: aloop setup --non-interactive (happy path + invalid provider error path)
+- PASS: aloop start/status/status --watch/stop lifecycle in isolated session
+- PASS: aloop steer --session <id> instruction queueing and ambiguity handling
+- PASS: aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only + nonexistent spec error path
+- FAIL: aloop start --mode single (still returns `Error: Invalid mode: single`)
+
+### Bugs Filed
+- [qa/P1] Existing bug re-test: `single` mode parity gap is still failing (updated existing TODO entry; no duplicate filed).
+- [qa/P1] New bug: `aloop start` stale runtime warning compares against current project git metadata instead of aloop runtime metadata.
+
+### Command Transcript
+```text
+\n$ export TMPDIR="/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp"; ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1); echo "$ALOOP_BIN" > "/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/aloop_bin_path.txt"; echo "Binary under test: $ALOOP_BIN"; "$ALOOP_BIN" --version
+Binary under test: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-Wjoxfw/bin/aloop
+1.0.0
+[exit_code]=0
+\n$ export TMPDIR="/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp"; npx playwright --version || true
+Version 1.58.2
+[exit_code]=0
+\n$ export TMPDIR="/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp"; npx playwright install chromium 2>/dev/null || true
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-arm64.
+[exit_code]=0
+\n$ export TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp'; DASHBOARD_URL='http://localhost:4040' OUT_PNG='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/evidence/dashboard-1920x1080.png' OUT_JSON='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/evidence/dashboard-layout.json' node '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/layout_check.mjs'
+{"title":"Aloop Dashboard","url":"http://localhost:4040/","sidebarVisible":true,"mainVisible":true,"hasDocuments":true,"hasActivity":true,"panelGuess":5,"bodyChars":16932}
+[exit_code]=0
+\n$ curl -s 'http://localhost:4040/api/state' > '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/evidence/dashboard-state.json'; wc -c '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/evidence/dashboard-state.json'
+1442712 /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/evidence/dashboard-state.json
+[exit_code]=0
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-Wjoxfw/bin/aloop' setup --non-interactive --mode loop --providers codex --spec SPEC.md
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/projects/b7af2ec4/config.yml
+[exit_code]=0
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-Wjoxfw/bin/aloop' setup --non-interactive --mode loop --providers badprovider --spec SPEC.md
+Running setup in non-interactive mode...
+Error: Unknown provider(s): badprovider (valid: claude, codex, gemini, copilot, opencode)
+[exit_code]=1
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-Wjoxfw/bin/aloop' start --max-iterations 1 --no-dashboard
+error: unknown option '--no-dashboard'
+[exit_code]=1
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-Wjoxfw/bin/aloop' status
+No active sessions.
+[exit_code]=0
+SESSION_ID=
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-Wjoxfw/bin/aloop' orchestrate --spec 'SPEC.md specs/*.md' --plan-only
+Orchestrator session initialized.
+
+  Session dir:  /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/orchestrator-20260319-104043
+  Prompts dir:  /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/orchestrator-20260319-104043/prompts
+  Queue dir:    /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/orchestrator-20260319-104043/queue
+  Requests dir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/orchestrator-20260319-104043/requests
+  Loop plan:    /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/orchestrator-20260319-104043/loop-plan.json
+  State file:   /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/orchestrator-20260319-104043/orchestrator.json
+  Spec:         SPEC.md, specs/additional.md, specs/notes.md
+  Trunk:        agent/trunk
+  Autonomy:     balanced
+  Concurrency:  3
+  Plan only:    true
+[exit_code]=0
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-Wjoxfw/bin/aloop' orchestrate --spec 'NOPE.md' --plan-only
+Error: No spec files found matching: NOPE.md
+[exit_code]=1
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-Wjoxfw/bin/aloop' start --mode single --max-iterations 1 --no-dashboard
+error: unknown option '--no-dashboard'
+[exit_code]=1
+\n$ rm -rf '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-Wjoxfw'
+[exit_code]=0
+QA_DIR=/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk
+ALOOP_BIN=/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-Wjoxfw/bin/aloop
+\n$ export TMPDIR="/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp"; ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1); echo "$ALOOP_BIN" > "/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/aloop_bin_path_2.txt"; echo "Binary under test (reinstall): $ALOOP_BIN"; "$ALOOP_BIN" --version; "$ALOOP_BIN" start --help | sed -n "1,120p"
+Binary under test (reinstall): /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-p9N8Ix/bin/aloop
+1.0.0
+Usage: aloop start [options] [session-id]
+
+Start an aloop session for the current project
+
+Arguments:
+  session-id                 Session ID to resume (used with --launch resume)
+
+Options:
+  --project-root <path>      Project root override
+  --home-dir <path>          Home directory override
+  --provider <provider>      Provider override
+  --mode <mode>              Loop mode override
+  --launch <mode>            Session launch mode: start, restart, or resume
+  --plan                     Shortcut for --mode plan
+  --build                    Shortcut for --mode build
+  --review                   Shortcut for --mode review
+  --in-place                 Run in project root instead of creating a git
+                             worktree
+  --max-iterations <number>  Max iteration override
+  --output <mode>            Output format: json or text (default: "text")
+  -h, --help                 display help for command
+[exit_code]=0
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-p9N8Ix/bin/aloop' start --max-iterations 1
+Aloop loop started!
+
+  Session:  worktree-20260319-104114
+  Mode:     plan-build-review
+  Launch:   start
+  Provider: claude
+  Work dir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/worktree-20260319-104114/worktree
+  PID:      2644059
+  Prompts:  /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/worktree-20260319-104114/prompts
+  Monitor:  dashboard (auto_open=true)
+  Dashboard: http://localhost:40971
+[exit_code]=0
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-p9N8Ix/bin/aloop' status
+Active Sessions:
+  worktree-20260319-104114  pid=2644059  running  iter 1, plan  (0s ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/worktree-20260319-104114/worktree
+[exit_code]=0
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' timeout 6 '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-p9N8Ix/bin/aloop' status --watch
+[2J[Haloop status  (refreshing every 2s — 11:41:14 AM)
+
+Active Sessions:
+  worktree-20260319-104114  pid=2644059  running  iter 1, plan  (0s ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/worktree-20260319-104114/worktree
+[2J[Haloop status  (refreshing every 2s — 11:41:16 AM)
+
+Active Sessions:
+  worktree-20260319-104114  pid=2644059  running  iter 1, plan  (2s ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/worktree-20260319-104114/worktree
+
+Provider Health:
+  claude     healthy
+[2J[Haloop status  (refreshing every 2s — 11:41:18 AM)
+
+Active Sessions:
+  worktree-20260319-104114  pid=2644059  unknown    (4s ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/worktree-20260319-104114/worktree
+
+Provider Health:
+  claude     healthy
+[2J[Haloop status  (refreshing every 2s — 11:41:20 AM)
+
+Active Sessions:
+  worktree-20260319-104114  pid=2644059  stopped  iter 1, plan  (6s ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/worktree-20260319-104114/worktree
+
+Provider Health:
+  claude     healthy
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-p9N8Ix/bin/aloop' start --max-iterations 3
+Aloop loop started!
+
+  Session:  worktree-20260319-104140
+  Mode:     plan-build-review
+  Launch:   start
+  Provider: claude
+  Work dir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/worktree-20260319-104140/worktree
+  PID:      2644607
+  Prompts:  /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/worktree-20260319-104140/prompts
+  Monitor:  dashboard (auto_open=true)
+  Dashboard: http://localhost:38265
+[exit_code]=0
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-p9N8Ix/bin/aloop' status --json
+error: unknown option '--json'
+[exit_code]=1
+SESSION_ID=
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-p9N8Ix/bin/aloop' steer --session '' 'QA steer: confirm steering command works during active loop'
+Multiple active sessions. Specify one with --session: worktree-20260319-104114, worktree-20260319-104140
+[exit_code]=1
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-p9N8Ix/bin/aloop' stop ''
+Session not found: 
+[exit_code]=1
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-p9N8Ix/bin/aloop' start --mode single --max-iterations 1
+Error: Invalid mode: single
+[exit_code]=1
+\n$ rm -rf '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-p9N8Ix'
+[exit_code]=0
+\n$ export TMPDIR="/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp"; ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1); echo "$ALOOP_BIN" > "/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/aloop_bin_path_3.txt"; echo "Binary under test (final): $ALOOP_BIN"; "$ALOOP_BIN" --version
+Binary under test (final): /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-BePgHQ/bin/aloop
+1.0.0
+[exit_code]=0
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-BePgHQ/bin/aloop' status
+Active Sessions:
+  worktree-20260319-104114  pid=2644059  stopped  iter 1, plan  (57s ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/worktree-20260319-104114/worktree
+  worktree-20260319-104140  pid=2644607  stopped  iter 3, build  (31s ago)
+    workdir: /home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home/.aloop/sessions/worktree-20260319-104140/worktree
+
+Provider Health:
+  claude     cooldown     (4 failures, resumes in 15m)
+[exit_code]=0
+SESSION_IDS=worktree-20260319-104114 worktree-20260319-104140 
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-BePgHQ/bin/aloop' steer --session 'worktree-20260319-104114' 'QA steer: validate steering in isolated session'
+Steering instruction queued for session worktree-20260319-104114.
+[exit_code]=0
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-BePgHQ/bin/aloop' stop 'worktree-20260319-104114'
+Session worktree-20260319-104114 stopped.
+[exit_code]=0
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-BePgHQ/bin/aloop' stop 'worktree-20260319-104140'
+Session worktree-20260319-104140 stopped.
+[exit_code]=0
+\n$ cd '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/project' && HOME='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/qa-test-20260319-9bjfrk/home' TMPDIR='/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp' '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-BePgHQ/bin/aloop' status
+No active sessions.
+
+Provider Health:
+  claude     cooldown     (4 failures, resumes in 15m)
+[exit_code]=0
+\n$ rm -rf '/home/pj/.aloop/sessions/ralph-skill-20260314-173930/worktree/.qa-tmp/aloop-test-install-BePgHQ'
+[exit_code]=0
+```
