@@ -32,16 +32,20 @@ Aloop is an autonomous coding agent orchestrator that runs configurable agent pi
 The inner loop (`loop.sh` / `loop.ps1`) and the aloop runtime (`aloop` CLI, TS/Bun) are **separate programs** with a strict boundary. The inner loop may run inside a container where the aloop CLI is not available.
 
 ### Inner Loop Responsibilities (loop.sh / loop.ps1)
-- Check `queue/` folder for override prompts before checking cycle (queue takes priority)
-- Read `loop-plan.json` each iteration, pick prompt file at `cyclePosition % cycle.length` (when queue is empty)
-- Parse frontmatter from prompt files (provider, model, agent, reasoning) — same parser for cycle and queue prompts
+
+The loop has exactly **three concepts**: cycle, finalizer, and queue.
+
+- **Queue** — check `queue/` folder for override prompts before anything else (queue always takes priority)
+- **Cycle** — read `loop-plan.json`, pick prompt at `cyclePosition % cycle.length`. Repeats while tasks remain.
+- **Finalizer** — when all TODO.md tasks are done at cycle boundary, switch to `finalizer[]` array in `loop-plan.json`. Process sequentially with its own `finalizerPosition`. If any finalizer agent creates new TODOs → abort finalizer, reset `finalizerPosition` to 0, resume cycle. If finalizer completes with no new TODOs → set `state: completed`, exit.
+- Parse frontmatter from prompt files (provider, model, agent, reasoning, trigger) — same parser for cycle, finalizer, and queue prompts. **`trigger:` is parsed and logged but never acted upon by the loop.**
 - Invoke provider CLIs directly (claude, opencode, codex, gemini, copilot)
 - Write `status.json` and `log.jsonl` after each iteration
-- Update `cyclePosition` and `iteration` in `loop-plan.json` (only for cycle iterations, not queue)
+- Update `cyclePosition`/`finalizerPosition` and `iteration` in `loop-plan.json`
 - Delete consumed queue files after agent completes
 - Wait for pending `requests/*.json` to be processed by runtime before next iteration (with timeout)
 - Iteration counting and status tracking
-- Read `TODO.md` for phase prerequisites
+- Read `TODO.md` to detect `allTasksMarkedDone` (mechanical checkbox count, not agent-emitted)
 - Hot-reload provider list from `meta.json` each iteration (for round-robin fallback when frontmatter provider is unavailable)
 - Track and kill child processes (provider timeout, cleanup on exit)
 - Sanitize environment (`CLAUDECODE`, `PATH` hardening)
@@ -49,29 +53,46 @@ The inner loop (`loop.sh` / `loop.ps1`) and the aloop runtime (`aloop` CLI, TS/B
 ### Inner Loop Does NOT
 - Parse pipeline YAML config
 - Evaluate transition rules (`onFailure`, escalation ladders)
+- Resolve triggers (loop parses `trigger:` but never acts on it — that's the runtime's job)
 - Talk to GitHub API or any external service
 - Know about other child loops or the orchestrator
-- Run the dashboard
+- Run the dashboard or any HTTP server
 - Process requests (it writes them; the runtime processes them)
-- Decide what work to do next (cycle order and queue contents are controlled externally)
+- Decide what work to do next (cycle/finalizer order and queue contents are controlled externally)
 
-### Runtime Responsibilities (aloop CLI, TS/Bun)
-- Compile pipeline YAML into `loop-plan.json` (cycle of prompt filenames)
+### Aloop Runtime (shared base — `aloop/cli/src/lib/runtime.ts`)
+
+The runtime is a **shared library** used by both the dashboard and the orchestrator. It is NOT the dashboard — the dashboard imports it. The runtime handles all intelligence that the loop script cannot:
+
+- Compile pipeline YAML into `loop-plan.json` (cycle + finalizer arrays of prompt filenames)
 - Generate prompt files with frontmatter from pipeline config
 - Rewrite `loop-plan.json` on permanent mutations (cycle changes, position adjustments)
-- Write prompt files to `queue/` for one-shot overrides (steering, forced review, debugger)
+- **Trigger resolution** — scan prompt catalog for `trigger:` frontmatter, resolve chains, write matching prompts to `queue/`
+- **Steering** — detect STEERING.md, queue steer + follow-up plan
+- **Stuck detection** — detect N consecutive failures, queue debug agent
 - Process `requests/*.json` from agents — execute side effects (GitHub API, child dispatch, PR ops)
 - Queue follow-up prompts into `queue/` after processing requests (response baked into prompt)
 - Manage sessions (create, resume, stop, cleanup, lockfiles)
-- Serve the dashboard
 - Monitor provider health (cross-session)
 - GitHub operations (`aloop gh` subcommands)
-- Orchestrator mode: spec gap analysis, decompose, schedule, dispatch, monitor, gate, replan
+
+### Dashboard (uses runtime + adds UI)
+
+- Imports and calls `runtime.monitorSessionState()` on file changes
+- Serves HTTP API + WebSocket for dashboard UI
+- Pure observability + user steering interface
+- **NOT essential** — loop works without it. Runtime features (trigger resolution, steering) work through other entry points too.
+
+### Orchestrator (uses runtime + adds issue management)
+
+- Imports runtime for trigger resolution, queue management, session lifecycle
+- Adds: spec decomposition, issue tracking, wave scheduling, child loop dispatch, PR gating, replan
+- Runs as `aloop orchestrate` — separate process from dashboard
 
 ### Communication Contract
-- **Runtime → Inner Loop**: `loop-plan.json` (cycle), `meta.json` (providers), `queue/*.md` (overrides with frontmatter)
+- **Runtime → Inner Loop**: `loop-plan.json` (cycle + finalizer), `meta.json` (providers), `queue/*.md` (overrides with frontmatter)
 - **Inner Loop → Runtime**: `status.json` (current state), `log.jsonl` (history), `requests/*.json` (side-effect requests)
-- **Prompt files** (shared): frontmatter carries agent config (provider, model, reasoning); body is the prompt. Same format for cycle prompts and queue prompts.
+- **Prompt files** (shared): frontmatter carries agent config (provider, model, reasoning, trigger); body is the prompt. Same format for cycle, finalizer, and queue prompts.
 
 ---
 
@@ -215,25 +236,25 @@ The loop does NOT exit mid-cycle. The cycle always runs to completion (though qu
 
 ### Implementation notes
 
-- `loop-plan.json` field: `"allTasksMarkedDone": false`
+- `loop-plan.json` fields: `"allTasksMarkedDone": false`, `"finalizerPosition": 0`, `"finalizer": [...]`
 - The loop checks `allTasksMarkedDone` **only at the cycle boundary** (after the last agent in the cycle completes)
-- If true: runtime emits `all_tasks_done` trigger → scans prompt catalog for matching `trigger:` frontmatter → queues matching prompt(s)
-- The rattail chain is defined entirely by `trigger:` fields in prompt frontmatter — no list, no hardcoded prompt names
-- After each rattail agent completes, runtime re-checks TODOs — if new open items exist, stop chaining and resume cycle
-- When an agent completes cleanly, its agent name becomes the next trigger key (e.g., `spec-gap` completing emits trigger key `spec-gap`)
-- Log events: `rattail_entered` (all tasks done at cycle boundary), `rattail_aborted` (new TODOs mid-rattail), `rattail_completed` (proof done, no new TODOs)
+- If true: switch to finalizer mode — pick prompt from `finalizer[finalizerPosition]`, advance `finalizerPosition`
+- After each finalizer agent: re-check TODO.md — if new open items exist, reset `finalizerPosition` to 0, set `allTasksMarkedDone` to false, resume cycle
+- If `finalizerPosition` reaches end of `finalizer[]` with no new TODOs: set `state: completed`, exit
+- No trigger resolution, no runtime dependency — the loop handles this mechanically with two arrays
+- Log events: `finalizer_entered` (all tasks done at cycle boundary), `finalizer_aborted` (new TODOs mid-finalizer), `finalizer_completed` (last agent done, no new TODOs)
 
 ### Acceptance Criteria
 
-- [ ] Loop NEVER exits (completes) mid-cycle — completion can only happen via rattail. Queue interruptions (steering, merge) can still preempt cycle agents.
+- [ ] Loop NEVER exits (completes) mid-cycle — completion can only happen via finalizer. Queue interruptions (steering, merge) can still preempt cycle/finalizer agents.
 - [ ] `allTasksMarkedDone` is only checked at the cycle boundary (after last cycle agent)
-- [ ] When all tasks done at cycle boundary, rattail chain is loaded into queue
-- [ ] Rattail chain is defined by `trigger:` frontmatter in prompt files — no hardcoded list
-- [ ] After each rattail agent, TODO state is re-checked — new TODOs abort rattail and resume cycle
-- [ ] Only proof completing with zero new TODOs sets `state: "completed"`
-- [ ] Steering takes priority over rattail (steering always drains first)
-- [ ] `rattail_entered`, `rattail_aborted`, and `rattail_completed` events are logged
-- [ ] In `build`-only pipelines without rattail config, current early-exit behavior is preserved
+- [ ] When all tasks done at cycle boundary, loop switches to `finalizer[]` array
+- [ ] `finalizer[]` is a compiled array in `loop-plan.json` — no trigger resolution needed
+- [ ] After each finalizer agent, TODO state is re-checked — new TODOs abort finalizer (`finalizerPosition` resets to 0) and resume cycle
+- [ ] Only the last finalizer agent completing with zero new TODOs sets `state: "completed"`
+- [ ] Steering takes priority over finalizer (queue always drains first)
+- [ ] `finalizer_entered`, `finalizer_aborted`, and `finalizer_completed` events are logged
+- [ ] In pipelines without `finalizer` config, loop exits when all tasks done at cycle boundary (current behavior)
 
 ---
 
@@ -385,88 +406,93 @@ Current default:   plan → build × 5 → qa → review  (8-step continuous cyc
 
 **The continuous cycle** repeats until all tasks are done: `plan → build × 5 → qa → review`. QA and review run every cycle to catch bugs and code quality issues early. Proof does NOT run in the cycle — it's expensive and only meaningful as final evidence.
 
-**Proof runs only at the end** — it's the last step of the completion rattail (see below).
+**Proof runs only at the end** — it's the last step of the finalizer (see below).
 
-### Completion Rattail (sequential queue chain)
+### Completion Finalizer (second array in loop-plan.json)
 
-When the cycle completes and all TODO.md tasks are marked done, the **runtime** (not the loop script) kicks off the rattail by scanning prompt frontmatter for `trigger: all_tasks_done` and queueing the matching prompt. When that agent completes, the runtime scans for prompts triggered by that agent's name, queues the next one, and so on. The chain is defined entirely by `trigger:` fields in prompt frontmatter — no hardcoded list.
+The loop script has two prompt arrays: `cycle[]` (repeating work) and `finalizer[]` (one-shot completion validation). Both are compiled from `pipeline.yml` into `loop-plan.json` at session start.
 
-After each rattail agent runs, the runtime re-checks TODO state. If any agent created new TODOs, the chain stops and the loop resumes the normal cycle.
+When all TODO.md tasks are marked done at a **cycle boundary** (after the last cycle agent completes), the loop switches from the cycle array to the finalizer array. If any finalizer agent creates new TODOs, the finalizer aborts and the cycle resumes. This is entirely self-contained in the loop script — no runtime, no trigger resolution, no external process needed.
 
-**Important:** The rattail agents are **separate prompt files** from the cycle agents, even when they reuse the same instructions (via `{{include:}}`). This prevents the cycle's `qa` or `review` from accidentally appearing in the rattail.
+**Important:** The finalizer agents are **separate prompt files** from the cycle agents, even when they reuse the same instructions (via `{{include:}}`). This prevents the cycle's `qa` or `review` from accidentally appearing in the finalizer.
 
 ```
 Continuous cycle:  plan → build × 5 → qa → review  (repeats until all tasks done)
                                                       ↓ (all tasks done at cycle boundary)
-Rattail chain:     spec-gap → docs → spec-review → final-review → final-qa → proof
+Finalizer:         spec-gap → docs → spec-review → final-review → final-qa → proof
                       ↓ (any agent adds TODOs)
-                   abort chain → resume cycle from plan
+                   abort finalizer → reset finalizerPosition → resume cycle
 ```
 
 **How it works:**
 
-1. Cycle completes (last cycle agent finishes). Loop script checks `allTasksMarkedDone`.
-2. If false → start next cycle.
-3. If true → loop script signals the runtime (or the runtime detects the condition). Runtime finds `PROMPT_spec-gap.md` has `trigger: all_tasks_done`, copies it to `queue/`.
-4. Loop processes queue file normally (run agent, delete file).
-5. **After agent completes**: runtime re-checks TODOs. If new open TODOs → stop chaining, `allTasksMarkedDone` flips false, cycle resumes. If still all done → runtime scans for next trigger (`trigger: spec-gap` → finds `PROMPT_docs.md`), queues it.
-6. Chain continues: `docs → spec-review → final-review → final-qa → proof`.
-7. If proof completes and no new TODOs → `state: "completed"`, loop exits.
+1. Cycle completes (last cycle agent finishes). Loop checks `allTasksMarkedDone` (mechanical TODO.md checkbox count).
+2. If false → start next cycle (wrap `cyclePosition` to 0).
+3. If true → switch to finalizer mode. Pick prompt at `finalizerPosition` from `finalizer[]`.
+4. Run finalizer agent. Advance `finalizerPosition`.
+5. **After each finalizer agent**: re-check TODO.md. If new open TODOs → reset `finalizerPosition` to 0, set `allTasksMarkedDone` to false, resume cycle. Log `finalizer_aborted`.
+6. If `finalizerPosition` reaches end of `finalizer[]` and no new TODOs → set `state: "completed"` in `status.json`, log `finalizer_completed`, exit loop.
 
-**The rattail chain is configured by prompt frontmatter triggers**, not a separate list:
+**Queue still takes priority during finalizer** — steering, merge agent, or any other queue entry interrupts the finalizer just like it interrupts the cycle.
 
-**The rattail agents:**
+**The finalizer agents:**
 
-1. **spec-gap** — validates codebase against SPEC.md. Finds config drift, hallucinated features, cross-runtime parity issues. Analysis only — writes `[spec-gap]` items to TODO.md. If it finds anything, the loop goes back to building.
+1. **spec-gap** — validates codebase against SPEC.md. Finds config drift, hallucinated features, cross-runtime parity issues. Analysis only — writes `[spec-gap]` items to TODO.md. If it finds anything, the finalizer aborts and the loop goes back to building.
 2. **docs** — syncs documentation to reality. Updates README, CLI help, completeness markers. Can modify doc files.
-3. **spec-review** — focuses solely on: "do the changes satisfy the requirements from the spec?" Reads the spec sections relevant to the completed work and verifies every acceptance criterion is met. Does NOT look at code quality — only requirement coverage.
+3. **spec-review** — focuses solely on: "do the changes satisfy the requirements from the spec?" Verifies every acceptance criterion is met. Does NOT look at code quality — only requirement coverage.
 4. **final-review** — reuses review instructions (`{{include:instructions/review.md}}`). Same 9 gates as the cycle's review.
 5. **final-qa** — reuses QA instructions (`{{include:instructions/qa.md}}`). Final round of user-perspective testing.
 6. **proof** — generates human-verifiable evidence: screenshots, API captures, CLI recordings, before/after comparisons. Only runs here, never in the continuous cycle. **This is the only agent whose clean completion means the loop is truly done.**
 
-**Self-healing:** If spec-gap or any other rattail agent creates new TODOs, the loop goes back to plan → build × 5 → qa → review. When all tasks are done again, the entire rattail fires from the beginning. No partial rattail re-entry — it always starts from spec-gap.
+**Self-healing:** If any finalizer agent creates new TODOs, the loop goes back to plan → build × 5 → qa → review. When all tasks are done again, the entire finalizer fires from the beginning (`finalizerPosition` resets to 0). No partial re-entry.
 
-**Only when proof completes with no new TODOs** does the runtime set `status.json` state=completed (or enter watch mode if orchestrated).
+**Only when proof completes with no new TODOs** does the loop set `status.json` state=completed and exit (or enter watch mode if orchestrated).
 
-**Prompt files** (frontmatter only — `trigger:` field is unused by loop script, kept for documentation/tooling):
+**`loop-plan.json` structure:**
+```json
+{
+  "cycle": [
+    "PROMPT_plan.md",
+    "PROMPT_build.md", "PROMPT_build.md", "PROMPT_build.md",
+    "PROMPT_build.md", "PROMPT_build.md",
+    "PROMPT_qa.md",
+    "PROMPT_review.md"
+  ],
+  "finalizer": [
+    "PROMPT_spec-gap.md",
+    "PROMPT_docs.md",
+    "PROMPT_spec-review.md",
+    "PROMPT_final-review.md",
+    "PROMPT_final-qa.md",
+    "PROMPT_proof.md"
+  ],
+  "cyclePosition": 0,
+  "finalizerPosition": 0,
+  "iteration": 1,
+  "allTasksMarkedDone": false,
+  "version": 1
+}
+```
+
+**`pipeline.yml` configuration:**
 ```yaml
-# aloop/templates/PROMPT_spec-gap.md
----
-agent: spec-gap
-provider: claude
-reasoning: high
----
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 5
+    onFailure: retry
+  - agent: qa
+  - agent: review
+    onFailure: goto build
 
-# aloop/templates/PROMPT_docs.md
----
-agent: docs
-provider: claude
-reasoning: medium
----
-
-# aloop/templates/PROMPT_spec-review.md
----
-agent: spec-review
-provider: claude
-reasoning: high
----
-
-# aloop/templates/PROMPT_final-review.md
----
-agent: final-review
-provider: claude
-reasoning: high
----
-{{include:instructions/review.md}}
-
-# aloop/templates/PROMPT_final-qa.md
----
-agent: final-qa
----
-{{include:instructions/qa.md}}
-
-# aloop/templates/PROMPT_proof.md
----
+finalizer:
+  - PROMPT_spec-gap.md
+  - PROMPT_docs.md
+  - PROMPT_spec-review.md
+  - PROMPT_final-review.md
+  - PROMPT_final-qa.md
+  - PROMPT_proof.md
+```
 agent: proof
 ---
 ```
@@ -3614,7 +3640,7 @@ Frontmatter fields:
 - `model` — model ID, provider-specific (e.g., `claude-opus-4-6`, `openrouter/openai/gpt-5.1`, `codex-mini-latest`)
 - `reasoning` — reasoning effort level (low, medium, high, xhigh)
 - `color` — terminal color for this phase (magenta, yellow, cyan, blue, green, red, white). Default: white
-- `trigger` — condition or agent name that causes the runtime to queue this agent (e.g., `all_tasks_done`, `spec-gap`, `merge_conflict`). Resolved by the runtime, NOT the loop script. The rattail chain is defined entirely by these trigger fields — no separate list needed.
+- `trigger` — condition that causes the runtime to queue this agent (e.g., `merge_conflict`, `stuck_detected`). Resolved by the runtime, NOT the loop script. The loop parses and logs this field but never acts on it. Finalizer ordering comes from the compiled `finalizer[]` array, not from trigger chaining.
 - `timeout` — per-prompt provider timeout override (duration string like `30m`, `2h`, or integer seconds)
 - `max_retries` — per-prompt retry cap before declaring iteration failure (overrides global default for that prompt only)
 - `retry_backoff` — per-prompt retry backoff policy (`none`, `linear`, `exponential`)
@@ -3657,14 +3683,14 @@ aloop/templates/
   PROMPT_build.md            # cycle agent
   PROMPT_review.md           # cycle agent: frontmatter + {{include:instructions/review.md}}
   PROMPT_qa.md               # cycle agent: frontmatter + {{include:instructions/qa.md}}
-  PROMPT_spec-gap.md         # rattail agent: spec enforcement (trigger: all_tasks_done)
-  PROMPT_docs.md             # rattail agent: doc sync (trigger: spec-gap)
-  PROMPT_spec-review.md      # rattail agent: own instructions (trigger: docs)
-  PROMPT_final-review.md     # rattail agent: frontmatter + {{include:instructions/review.md}}
-  PROMPT_final-qa.md         # rattail agent: frontmatter + {{include:instructions/qa.md}}
-  PROMPT_proof.md            # rattail agent: own instructions (trigger: final-qa)
-  PROMPT_merge.md            # triggered agent: conflict resolution (trigger: merge_conflict)
-  PROMPT_steer.md            # triggered agent
+  PROMPT_spec-gap.md         # finalizer agent: spec enforcement
+  PROMPT_docs.md             # finalizer agent: doc sync
+  PROMPT_spec-review.md      # finalizer agent: own instructions
+  PROMPT_final-review.md     # finalizer agent: frontmatter + {{include:instructions/review.md}}
+  PROMPT_final-qa.md         # finalizer agent: frontmatter + {{include:instructions/qa.md}}
+  PROMPT_proof.md            # finalizer agent: own instructions (last step)
+  PROMPT_merge.md            # runtime-triggered: conflict resolution (trigger: merge_conflict)
+  PROMPT_steer.md            # runtime-triggered: steering
 ```
 
 **Example — `PROMPT_final-review.md`:**
@@ -3721,50 +3747,40 @@ All template variables used in prompt templates. Variables are expanded at two s
 |----------|-------|--------|
 | `{{SUBAGENT_HINTS}}` | Per-phase subagent delegation hints (opencode only) | Spec'd, not yet in expansion code |
 
-### Event-Driven Agent Dispatch (decoupling the loop from agent knowledge)
+### Event-Driven Agent Dispatch (runtime responsibility)
 
-**Principle:** The loop engine is a dumb cycle+queue runner. It has ZERO knowledge of what any specific agent does. All it does is:
+**Principle:** The loop engine is a dumb cycle+finalizer+queue runner. It has ZERO knowledge of what any specific agent does. All it does is:
 1. Check the queue — if there's a file, run it, delete it
-2. Otherwise pick the next prompt from the cycle
-3. Parse frontmatter for provider/model/reasoning config
-4. Invoke the provider
-5. Advance the cycle position
+2. Check if in finalizer mode — if yes, pick next from `finalizer[]`
+3. Otherwise pick the next prompt from `cycle[]`
+4. Parse frontmatter for provider/model/reasoning config
+5. Invoke the provider
+6. Advance position (cycle or finalizer)
 
-**The loop never decides which agent to run based on conditions.** That's the runtime's job.
+**The loop handles `allTasksMarkedDone` mechanically** (TODO.md checkbox count) and switches between cycle and finalizer. That's its only "intelligence." Everything else — trigger resolution, steering, stuck detection, custom events — is the **runtime's** job.
 
 **How runtime-driven queue injection works:**
 
-The loop script is a dumb queue processor. It does not resolve triggers or chain agents. The **runtime** (monitor process / CLI layer) handles all intelligence:
+The runtime (shared base library used by dashboard and orchestrator) watches `status.json` and `log.jsonl` to detect conditions, then writes prompt files to `queue/`. The loop picks them up. The runtime handles:
 
-1. **Detects conditions** — all tasks done, merge conflict, stuck, steering requested, agent completed
-2. **Emits condition as a trigger key** — e.g., `all_tasks_done`, `merge_conflict`, `stuck_detected`, or the completing agent's name (e.g., `spec-gap`)
-3. **Scans prompt catalog** — finds prompts whose `trigger:` frontmatter matches the key
-4. **Copies matching prompt(s) to queue** — loop picks them up on next iteration
+| Condition | Detected By Runtime Via | Action |
+|-----------|------------------------|--------|
+| Steering requested | STEERING.md file appears | Queue steer prompt + follow-up plan |
+| Stuck detected | N consecutive failures in log.jsonl | Queue debug agent via `trigger: stuck_detected` scan |
+| Merge conflict | Pre-iteration merge event in log.jsonl | Queue merge agent via `trigger: merge_conflict` scan |
+| PR feedback | Orchestrator polls GH PR comments | Queue steer prompt into child's queue |
+| Custom events | Agent writes to `requests/*.json` | Runtime processes request, queues follow-up |
 
-Everything goes through triggers. There are no hardcoded prompt references anywhere — not in the loop script, not in the runtime, not in pipeline.yml. The trigger fields in prompt frontmatter are the single source of truth for what runs when.
+**Trigger resolution is the runtime's mechanism** for deciding which prompt to queue for a given condition. The runtime scans prompt catalog for matching `trigger:` frontmatter values. This is useful for extensibility — custom agents can declare `trigger: my_custom_event` and the runtime will queue them when that event occurs.
 
-**Trigger table:**
-
-| Trigger Key | Emitted When | Matched By | Notes |
-|-------------|-------------|------------|-------|
-| `all_tasks_done` | All TODOs checked at cycle boundary | `PROMPT_spec-gap.md` | First rattail link |
-| `spec-gap` | spec-gap agent completes (no new TODOs) | `PROMPT_docs.md` | Chain continues |
-| `docs` | docs agent completes (no new TODOs) | `PROMPT_spec-review.md` | Chain continues |
-| `spec-review` | spec-review completes | `PROMPT_final-review.md` | Chain continues |
-| `final-review` | final-review completes | `PROMPT_final-qa.md` | Chain continues |
-| `final-qa` | final-qa completes | `PROMPT_proof.md` | Last rattail link |
-| `merge_conflict` | Pre-iteration merge has conflicts | `PROMPT_merge.md` | See Branch Sync |
-| `stuck_detected` | N consecutive failures | `PROMPT_debug.md` | |
-| `steering_created` | User writes STEERING.md / `aloop steer` | `PROMPT_steer.md` | |
-| `pr_feedback` | Orchestrator detects GH PR comments | `PROMPT_steer.md` | Injected into child queue |
+**The finalizer chain does NOT use triggers.** It's a compiled array in `loop-plan.json` — the loop processes it mechanically. Triggers are only for runtime-driven queue injection (steering, stuck, merge, custom events).
 
 **Examples:**
-- Cycle ends, all TODOs done → runtime emits `all_tasks_done` → finds `PROMPT_spec-gap.md` (`trigger: all_tasks_done`) → queues it → spec-gap runs, adds 2 TODOs → runtime sees new TODOs, stops chaining, cycle resumes
-- Cycle ends, all TODOs done → rattail runs cleanly through spec-gap → docs → spec-review → final-review → final-qa → proof → no new TODOs → `state: completed`
-- Pre-iteration merge conflicts → runtime emits `merge_conflict` → finds `PROMPT_merge.md` → queues it
-- User runs `aloop steer "focus on tests"` → CLI writes steer prompt directly to queue (direct injection, bypass trigger scan)
-
-**This is the entire mechanism.** No event bus, no lifecycle hooks, no hardcoded prompt names. The runtime emits trigger keys, scans frontmatter, and copies matching prompts to queue. The loop processes queue files. Agents declare when they should run via `trigger:` frontmatter.
+- Cycle ends, all TODOs done → loop switches to finalizer (no runtime involved) → spec-gap runs, adds 2 TODOs → loop aborts finalizer, resumes cycle
+- Cycle ends, all TODOs done → finalizer runs cleanly → proof completes → loop sets `state: completed`
+- User runs `aloop steer "focus on tests"` → CLI writes steer prompt directly to queue
+- Runtime detects 3 consecutive failures → scans for `trigger: stuck_detected` → queues matching prompt
+- Pre-iteration merge conflicts → runtime scans for `trigger: merge_conflict` → queues merge agent
 
 The frontmatter parser extracts agent config from any prompt file, whether from the cycle or the queue. The loop engine itself has no knowledge of what any specific agent does.
 
@@ -3777,7 +3793,7 @@ Files are sorted lexicographically and consumed in order. Naming convention: `NN
 **Who writes to the queue:**
 - **User** — drops a prompt markdown into `queue/` and it gets picked up next iteration. Works without any runtime.
 - **CLI (`aloop steer`)** — writes the user's instruction into a queue file with appropriate frontmatter.
-- **Runtime** — injects forced review, debugger, escalation entries as queue files when it detects conditions via `status.json` polling.
+- **Runtime** — injects steering, debugger, merge agent, and other triggered prompts as queue files when it detects conditions via `status.json`/`log.jsonl` polling. Uses `trigger:` frontmatter to find matching prompts.
 
 **Key properties:**
 - The `cycle` array is a **short repeating pattern** of prompt filenames (typically 5-7 entries), NOT an unrolled list of all iterations. The loop script wraps around with `% length`.
