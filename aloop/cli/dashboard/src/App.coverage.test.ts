@@ -27,10 +27,15 @@ import {
   str,
   stripAnsi,
   toSession,
+  Sidebar,
+  ActivityPanel,
+  DocContent,
+  HealthPanel,
 } from './App';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { createElement } from 'react';
+import { TooltipProvider } from './components/ui/tooltip';
 
 describe('App.tsx helper coverage', () => {
   it('covers ansi helpers', () => {
@@ -619,5 +624,75 @@ describe('App.tsx AppView integration coverage', () => {
     await waitFor(() => {
       expect(window.history.replaceState).toHaveBeenCalled();
     });
+  });
+
+  it('covers Sidebar exhaustive', () => {
+    const sessions = [
+      { id: 's1', name: 's1', projectName: 'p1', status: 'running', phase: 'build', iteration: '1', isActive: true, branch: 'b1', startedAt: 't', endedAt: '', pid: '1', provider: 'c', workDir: 'w', stuckCount: 0 },
+      { id: 's2', name: 's2', projectName: 'p1', status: 'exited', phase: 'build', iteration: '1', isActive: false, branch: 'b1', startedAt: 't', endedAt: new Date(Date.now() - 48 * 3600 * 1000).toISOString(), pid: '2', provider: 'c', workDir: 'w', stuckCount: 0 },
+    ];
+    const onSelect = vi.fn();
+    const onToggle = vi.fn();
+    const { container } = render(createElement(TooltipProvider, {}, createElement(Sidebar, {
+      sessions: sessions as any[],
+      selectedSessionId: 's1',
+      onSelectSession: onSelect,
+      collapsed: false,
+      onToggle: onToggle,
+    })));
+    expect(screen.getByText('p1')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('s1'));
+    expect(onSelect).toHaveBeenCalled();
+    const toggleBtn = container.querySelector('button .lucide-panel-left-close')?.closest('button');
+    if (toggleBtn) fireEvent.click(toggleBtn);
+    expect(onToggle).toHaveBeenCalled();
+    fireEvent.click(screen.getByText(/Older/i));
+    expect(screen.getByText('s2')).toBeInTheDocument();
+  });
+
+  it('covers ActivityPanel and LogEntryRow exhaustive', async () => {
+    const log = JSON.stringify({
+      event: 'iteration_complete',
+      provider: 'c',
+      iteration: 1,
+      timestamp: new Date().toISOString(),
+      message: 'built something',
+      files: [{ path: 'f1.ts', status: 'M', additions: 10, deletions: 5 }],
+      metadata: { some: 'data' },
+    });
+    const artifacts = [{
+      iteration: 1,
+      manifest: {
+        phase: 'build',
+        artifacts: [
+          { path: 'a.png', type: 'screenshot', description: 'desc' },
+          { path: 'b.txt', type: 'file', description: 'desc', metadata: { diff_percentage: 10 } },
+        ],
+      },
+    }];
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('build output', { status: 200 })));
+    render(createElement(TooltipProvider, {}, createElement(ActivityPanel, {
+      log,
+      artifacts: artifacts as any[],
+      currentIteration: 2,
+      currentPhase: 'build',
+      currentProvider: 'c',
+      isRunning: true,
+    })));
+    const row = screen.getByText('built something').closest('div');
+    if (row) fireEvent.click(row);
+    expect(await screen.findByText('a.png')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('a.png'));
+    fireEvent.click(screen.getByText('b.txt'));
+  });
+
+  it('covers DocContent and HealthPanel', () => {
+    render(createElement(DocContent, { content: '# H1\n## H2', name: 'SPEC.md', wide: true }));
+    expect(screen.getByText(/Table of Contents/i)).toBeInTheDocument();
+    render(createElement(DocContent, { content: '', name: 'Empty.md' }));
+    expect(screen.getByText(/No content/i)).toBeInTheDocument();
+    const providers = [{ name: 'p1', status: 'cooldown', lastEvent: 't', cooldownUntil: new Date(Date.now() + 100000).toISOString() }];
+    render(createElement(TooltipProvider, {}, createElement(HealthPanel, { providers: providers as any[] })));
+    expect(screen.getByText('p1')).toBeInTheDocument();
   });
 });

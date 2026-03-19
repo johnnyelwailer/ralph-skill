@@ -629,7 +629,7 @@ export function deriveProviderHealth(log: string): ProviderHealth[] {
 
 // ── Sidebar ──
 
-function Sidebar({
+export function Sidebar({
   sessions, selectedSessionId, onSelectSession, collapsed, onToggle,
 }: {
   sessions: SessionSummary[];
@@ -953,7 +953,7 @@ export function slugify(text: string): string {
   return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim();
 }
 
-function DocContent({ content, name, wide }: { content: string; name: string; wide?: boolean }) {
+export function DocContent({ content, name, wide }: { content: string; name: string; wide?: boolean }) {
   const isSpec = /spec/i.test(name);
   const { rendered, toc } = useMemo(() => {
     if (!content) return { rendered: '', toc: [] as Array<{ level: number; text: string; id: string }> };
@@ -1018,7 +1018,7 @@ function DocContent({ content, name, wide }: { content: string; name: string; wi
   );
 }
 
-function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
+export function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
   if (providers.length === 0) {
     return <p className="text-xs text-muted-foreground p-3">No provider data yet.</p>;
   }
@@ -1064,7 +1064,7 @@ function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
 
 // ── Activity Panel ──
 
-function ActivityPanel({ log, artifacts, currentIteration, currentPhase, currentProvider, isRunning, iterationStartedAt }: { log: string; artifacts: ArtifactManifest[]; currentIteration: number | null; currentPhase: string; currentProvider: string; isRunning: boolean; iterationStartedAt?: string }) {
+export function ActivityPanel({ log, artifacts, currentIteration, currentPhase, currentProvider, isRunning, iterationStartedAt }: { log: string; artifacts: ArtifactManifest[]; currentIteration: number | null; currentPhase: string; currentProvider: string; isRunning: boolean; iterationStartedAt?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
 
