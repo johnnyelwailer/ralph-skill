@@ -1254,6 +1254,54 @@ test('resolveSessionContext falls back to process.cwd() when entry missing work_
   }
 });
 
+test('GET /api/state?session=<id> falls back to history.json when active session is missing', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const archivedSessionDir = path.join(fixture.root, 'archived-session');
+    const archivedWorkdir = path.join(fixture.root, 'archived-workdir');
+    await mkdir(archivedSessionDir, { recursive: true });
+    await mkdir(archivedWorkdir, { recursive: true });
+    await writeFile(
+      path.join(archivedSessionDir, 'status.json'),
+      JSON.stringify({ state: 'stopped', phase: 'review', iteration: 12 }),
+      'utf8',
+    );
+    await writeFile(path.join(archivedWorkdir, 'SPEC.md'), '# Archived Spec\n', 'utf8');
+
+    await writeFile(path.join(fixture.runtimeDir, 'active.json'), '{}', 'utf8');
+    await writeFile(
+      path.join(fixture.runtimeDir, 'history.json'),
+      JSON.stringify([
+        {
+          session_id: 'archived-session',
+          session_dir: archivedSessionDir,
+          work_dir: archivedWorkdir,
+          ended_at: '2026-03-18T10:00:00Z',
+        },
+      ]),
+      'utf8',
+    );
+
+    const response = await fetch(`${fixture.handle.url}/api/state?session=archived-session`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      sessionDir: string;
+      workdir: string;
+      status: { state: string; phase: string; iteration: number };
+      docs: Record<string, string>;
+    };
+    assert.equal(payload.sessionDir, archivedSessionDir);
+    assert.equal(payload.workdir, archivedWorkdir);
+    assert.equal(payload.status.state, 'stopped');
+    assert.equal(payload.status.phase, 'review');
+    assert.equal(payload.status.iteration, 12);
+    assert.match(payload.docs['SPEC.md'], /Archived Spec/);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test('GET /api/artifacts/<iteration>/<filename> serves artifact files', async () => {
   const fixture = await createServerFixture();
 

@@ -11,7 +11,7 @@ No active tasks in progress.
 No additional non-deferred tasks until the active Phase closure is complete.
 
 ### Deferred (Low Priority / After Core)
-- [ ] [qa/P1] Dashboard docs tabs empty in some sessions (`/api/state` docs payload unresolved/empty due context/workdir mismatch reports) — keep deferred until current loop/runtime parity blockers are closed. (priority: low)
+- [x] [qa/P1] Dashboard docs tabs empty in some sessions (`/api/state` docs payload unresolved/empty due context/workdir mismatch reports) — resolved by teaching `resolveSessionContext` to fall back from `active.json` to matching `history.json` session entries (newest-first) so archived/non-active sessions still return the correct `session_dir`/`work_dir` and docs payload. Added regression coverage in `dashboard.test.ts` for `GET /api/state?session=<id>` history fallback. (priority: low) — **COMPLETED** (iter 289)
 - [ ] [qa/P1] Dashboard health tab missing `codex` when no recent codex event exists — likely requires configured-provider-based health baseline, not log-only derivation. (priority: low)
 - [ ] [dashboard/low] Extend E2E `smoke.spec.ts` coverage for explicit 1920x1080 sidebar/docs/activity visibility checks once core gates are green.
 

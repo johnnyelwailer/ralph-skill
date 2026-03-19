@@ -169,23 +169,44 @@ async function loadArtifactManifests(sessionDir: string): Promise<ArtifactManife
 
 async function resolveSessionContext(runtimeDir: string, sessionId: string): Promise<SessionContext | null> {
   const activeSessionsPath = path.join(runtimeDir, 'active.json');
+  const recentSessionsPath = path.join(runtimeDir, 'history.json');
   const active = await readJsonFile(activeSessionsPath);
-  if (!isRecord(active)) {
-    return null;
+
+  const toSessionContext = (entry: Record<string, unknown>): SessionContext => {
+    const sessionDir =
+      typeof entry.session_dir === 'string'
+        ? entry.session_dir
+        : path.join(runtimeDir, 'sessions', sessionId);
+    const workdir = typeof entry.work_dir === 'string' ? entry.work_dir : process.cwd();
+    const pid = typeof entry.pid === 'number' && Number.isInteger(entry.pid) && entry.pid > 0
+      ? entry.pid
+      : null;
+    return { sessionDir, workdir, pid };
+  };
+
+  if (isRecord(active)) {
+    const activeEntry = active[sessionId];
+    if (isRecord(activeEntry)) {
+      return toSessionContext(activeEntry);
+    }
   }
-  const entry = active[sessionId];
-  if (!isRecord(entry)) {
-    return null;
+
+  const recentSessions = await readJsonArrayFile(recentSessionsPath);
+  for (let index = recentSessions.length - 1; index >= 0; index -= 1) {
+    const entry = recentSessions[index];
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const entrySessionId = typeof entry.session_id === 'string'
+      ? entry.session_id
+      : (typeof entry.id === 'string' ? entry.id : '');
+    if (entrySessionId !== sessionId) {
+      continue;
+    }
+    return toSessionContext(entry);
   }
-  const sessionDir =
-    typeof entry.session_dir === 'string'
-      ? entry.session_dir
-      : path.join(runtimeDir, 'sessions', sessionId);
-  const workdir = typeof entry.work_dir === 'string' ? entry.work_dir : process.cwd();
-  const pid = typeof entry.pid === 'number' && Number.isInteger(entry.pid) && entry.pid > 0
-    ? entry.pid
-    : null;
-  return { sessionDir, workdir, pid };
+
+  return null;
 }
 
 function isProcessAlive(pid: number): boolean {
