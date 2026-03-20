@@ -4,7 +4,12 @@ import path from 'node:path';
 import { resolveHomeDir } from './session.js';
 import {
   runOrchestratorScanPass,
+  applyDecompositionPlan,
+  applySubDecompositionResults,
   type ScanLoopDeps,
+  type OrchestratorState,
+  type DecompositionPlan,
+  type SubDecompositionResult,
 } from './orchestrate.js';
 import { EtagCache } from '../lib/github-monitor.js';
 
@@ -25,7 +30,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     return;
   }
 
-  const state = JSON.parse(await readFile(stateFile, 'utf8'));
+  let state: OrchestratorState = JSON.parse(await readFile(stateFile, 'utf8'));
   const metaFile = path.join(sessionDir, 'meta.json');
   const meta = existsSync(metaFile) ? JSON.parse(await readFile(metaFile, 'utf8')) : {};
   const projectRoot = meta.project_root ?? process.cwd();
@@ -33,6 +38,56 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const promptsDir = path.join(sessionDir, 'prompts');
   const requestsDir = path.join(sessionDir, 'requests');
   const repo = state.filter_repo ?? null;
+
+  // Apply decomposition results if present (produced by decompose agent between iterations)
+  let stateChanged = false;
+  const epicResultsFile = path.join(requestsDir, 'epic-decomposition-results.json');
+  if (existsSync(epicResultsFile) && state.issues.length === 0) {
+    try {
+      const epicPlan: DecompositionPlan = JSON.parse(await readFile(epicResultsFile, 'utf8'));
+      const issues = epicPlan.issues ?? (Array.isArray(epicPlan) ? epicPlan : []);
+      if (issues.length > 0) {
+        const planObj = Array.isArray(epicPlan) ? { issues: epicPlan } : epicPlan;
+        state = await applyDecompositionPlan(planObj, state, sessionDir, repo, {
+          existsSync,
+          readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
+          writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
+          mkdir: (p: string, opts?: { recursive?: boolean }) => mkdir(p, opts).then(() => undefined),
+          now: () => new Date(),
+        });
+        stateChanged = true;
+        console.log(`[process-requests] Applied epic decomposition: ${state.issues.length} issues`);
+      }
+      // Archive the results file
+      const processedDir = path.join(requestsDir, 'processed');
+      await mkdir(processedDir, { recursive: true });
+      await writeFile(
+        path.join(processedDir, 'epic-decomposition-results.json'),
+        await readFile(epicResultsFile, 'utf8'),
+        'utf8',
+      );
+      await unlink(epicResultsFile);
+    } catch (e) {
+      console.error(`[process-requests] Failed to apply decomposition: ${e}`);
+    }
+  }
+
+  // Apply sub-decomposition results if present
+  const subResultsFile = path.join(requestsDir, 'sub-decomposition-results.json');
+  if (existsSync(subResultsFile)) {
+    try {
+      const subResults: SubDecompositionResult[] = JSON.parse(await readFile(subResultsFile, 'utf8'));
+      applySubDecompositionResults(state, subResults, new Date());
+      stateChanged = true;
+      await unlink(subResultsFile);
+    } catch {
+      // Malformed — skip
+    }
+  }
+
+  if (stateChanged) {
+    await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+  }
 
   // Read current iteration from loop-plan.json
   const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
