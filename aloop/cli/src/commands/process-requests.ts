@@ -44,10 +44,18 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const epicResultsFile = path.join(requestsDir, 'epic-decomposition-results.json');
   if (existsSync(epicResultsFile) && state.issues.length === 0) {
     try {
-      const epicPlan: DecompositionPlan = JSON.parse(await readFile(epicResultsFile, 'utf8'));
-      const issues = epicPlan.issues ?? (Array.isArray(epicPlan) ? epicPlan : []);
-      if (issues.length > 0) {
-        const planObj = Array.isArray(epicPlan) ? { issues: epicPlan } : epicPlan;
+      const rawPlan = JSON.parse(await readFile(epicResultsFile, 'utf8'));
+      const rawIssues = rawPlan.issues ?? (Array.isArray(rawPlan) ? rawPlan : []);
+      // Normalize: ensure each issue has id and depends_on fields
+      const normalizedIssues = rawIssues.map((issue: any, idx: number) => ({
+        id: issue.id ?? idx + 1,
+        title: issue.title ?? `Epic ${idx + 1}`,
+        body: issue.body ?? '',
+        depends_on: issue.depends_on ?? issue.dependencies ?? [],
+        file_hints: issue.file_hints,
+      }));
+      if (normalizedIssues.length > 0) {
+        const planObj: DecompositionPlan = { issues: normalizedIssues };
         state = await applyDecompositionPlan(planObj, state, sessionDir, repo, {
           existsSync,
           readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
