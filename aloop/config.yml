@@ -3,7 +3,7 @@
 
 default_provider: claude
 default_mode: plan-build-review
-max_iterations: 50
+max_iterations: 50        # loop mode default; orchestrate mode has no limit
 worktree_default: true
 
 # Stuck detection: skip task after N consecutive failures

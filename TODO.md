@@ -8,10 +8,44 @@ Priority order follows SPEC.md: (1) review-fix tasks that block core work, (2) c
 No active tasks in progress.
 
 ### Up Next
+
+#### High Priority
+- [ ] [orchestrator/P0] Orchestrator must be fully autonomous — currently runs synchronously and exits after init. Must spawn background daemon (like `aloop start` does), register in `active.json`, run scan loop indefinitely, be visible in dashboard, stoppable via `aloop stop`. See SPEC-ADDENDUM "Orchestrator Must Be Fully Autonomous". (priority: critical)
+- [ ] [qa/P0] QA coverage-aware testing — QA agent tests randomly with no memory. Must: create/maintain QA_COVERAGE.md with structured format, use priority selection algorithm (UNTESTED > FAIL > incomplete > stale), extract acceptance criteria from SPEC.md, never test PASS features while UNTESTED remain. Add Review Gate 10 for QA trend. Finalizer must abort if coverage < 70% or FAIL features remain. See SPEC-ADDENDUM "QA Agent: Coverage-Aware Testing". (priority: critical)
+- [ ] [cli/P1] Orchestrator not visible in dashboard — `aloop orchestrate` does not register in `active.json`, so the dashboard never discovers it. Fix: orchestrate command must register session in `active.json` (same as `start` does), and dashboard should also display orchestrator sessions with their child loops. (priority: high)
+- [ ] [cli/P1] Dashboard stale asset bug — `install.ps1` and `aloop update` must clean `~/.aloop/cli/dashboard/` and `~/.aloop/cli/dist/dashboard/` before copying fresh build. The asset resolver (`resolveDefaultAssetsDir`) finds whichever `index.html` exists first, so stale copies from old installs shadow the current build. Fix: (1) both install paths must `rm -rf` the target dashboard dir before copy, (2) `resolveDefaultAssetsDir` should prefer `dist/dashboard/` over `dashboard/`. (priority: high)
+- [ ] [cli/P1] `aloop start` should dispatch to orchestrator — when project config has `mode: orchestrate`, `aloop start` should automatically run `aloop orchestrate` instead of rejecting with "Invalid mode". `start` should be the single entry point that reads config and dispatches. Currently `start.ts:365` explicitly throws. Also update `/aloop:start` skill prompt to handle both modes. (priority: high)
+- [ ] [cli/P1] Orchestrate mode: remove default `max_iterations` — `compile-loop-plan` must not inject `max_iterations` into `loop-plan.json` when mode is `orchestrate`. `loop.sh`/`loop.ps1` must treat missing `max_iterations` as unlimited. `aloop setup` must not prompt for max iterations in orchestrate mode. Currently `orchestrate --max-iterations` defaults to 100. (priority: high)
 - [ ] [runtime/P1] Branch sync & auto-merge — pre-iteration `git fetch + merge` from base branch, merge conflict detection → queue `PROMPT_merge.md`, orchestrator trunk↔feature sync. Base branch configurable in `meta.json`. Both `loop.sh` and `loop.ps1`. (priority: high)
 - [ ] [runtime/P1] Extract runtime from dashboard — move trigger resolution, steering detection, stuck detection from `monitor.ts` into shared `runtime.ts` base library. Dashboard and orchestrator both import runtime. Dashboard becomes pure observability. (priority: high)
 - [ ] [loop/P1] Finalizer in loop.ps1 — parity with loop.sh finalizer implementation. (priority: high)
 - [ ] [loop/P1] Finalizer in compile-loop-plan.ts — compile `finalizer:` from pipeline.yml into loop-plan.json `finalizer[]` array + `finalizerPosition`. (priority: high)
+- [ ] [runtime/P1] Phase prerequisites — build phase requires unchecked TODO.md tasks, review phase requires commits since plan. MAX_PHASE_RETRIES = len(providers) * 2 before forced advance. (priority: high)
+- [ ] [runtime/P1] Provider health file locking — implement file locking with 5-attempt retry and exponential backoff for concurrent write protection. (priority: high)
+- [ ] [loop/P1] Merge conflict resolution — implement PROMPT_merge.md invocation when pre-iteration merge detects conflicts, emit merge_conflict event. (priority: high)
+- [ ] [opencode/P1] First-class OpenCode parity — full agent YAML parity with Claude agents, OpenRouter model selection, reasoning effort per phase, cost-aware provider routing. (priority: high)
+- [ ] [cost/P1] OpenRouter credit monitoring — reuse OpenCode auth key, query /api/v1/auth/key for balance, surface in dashboard as account balance widget + per-session cost + cumulative chart. (priority: high)
+- [ ] [dashboard/P1] Storybook integration — add @storybook/react-vite, create stories for existing UI components (Card, Button, Tabs, Tooltip, HealthPanel), stories alongside components as *.stories.tsx. (priority: high)
+- [ ] [dashboard/P1] Responsiveness — implement mobile/tablet/desktop breakpoints (640/1024px), collapsible sidebar, stacked panels on mobile, touch-friendly steer input. (priority: high)
+- [ ] [test/P1] Synthetic orchestrator test scenario — define reproducible E2E test using agent-forge repo, validate decomposition → dispatch → CI gates → PR flow → resumability, all on separate branch. (priority: high)
+
+#### Medium Priority
+- [ ] [dashboard/P1] Command palette — implement Ctrl+K/Cmd+K with cmdk, search sessions/commands/docs. (priority: medium)
+- [ ] [dashboard/P1] Before/after comparison widget — side-by-side, slider, and diff overlay modes for proof artifacts. (priority: medium)
+- [ ] [cost/P1] OpenRouter analytics integration — query /api/v1/analytics for usage breakdown by model/date, budget warnings when approaching cap. (priority: medium)
+- [ ] [qa/P2] QA coverage tracking — generate QA_COVERAGE.md test matrix and QA_LOG.md session transcripts, insert [qa/P1] tasks into TODO.md. (priority: medium)
+- [ ] [loop/P2] Spec-gap periodic scheduling — trigger spec-gap agent every 2nd cycle with priority classification (P1/P2/P3). (priority: medium)
+- [ ] [orchestrator/P2] Triage agent — implement PROMPT_orch_triage.md for user comment classification (actionable/needs_clarification/question/out_of_scope), confidence threshold <0.7 → needs_clarification. (priority: medium)
+- [ ] [loop/P2] Loop health supervisor — implement infinite loop prevention agent (every N iterations), detect repetitive cycling/queue thrashing/stuck cascades, circuit breaker. (priority: medium)
+- [ ] [test/P1] Agent-forge real orchestrator test — run orchestrator on /Users/pj/agent-forge with safety constraints (separate branch, no main merges), validate real-world workflow. (priority: medium)
+
+#### Low Priority
+- [ ] [runtime/P2] Subagent hints expansion — implement {{SUBAGENT_HINTS}} template variable expansion in loop.sh/loop.ps1. (priority: low)
+- [ ] [orchestrator/P2] UI variant exploration logic — implement decompose agent variant creation, feature flag generation, variant toggling. (priority: low)
+- [ ] [cli/P2] Missing commands — create /aloop:dashboard command file and copilot aloop-dashboard.prompt.md. (priority: low)
+- [ ] [loop/P2] Domain skill discovery — tessl init integration in setup, skill installation and provider hint injection. (priority: low)
+
+#### Completed (Up Next)
 - [x] [loop/P1] Finalizer in loop.sh — `finalizer[]` array support: cycle→finalizer switch at cycle boundary when all tasks done, `finalizerPosition` tracking, abort on new TODOs, completion on last agent. (priority: high)
 - [x] [runtime/P1] `PROMPT_merge.md` — merge agent prompt template for automated conflict resolution (`trigger: merge_conflict`). (priority: high)
 
