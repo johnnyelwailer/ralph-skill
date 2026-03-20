@@ -1100,10 +1100,12 @@ export async function orchestrateCommandWithDeps(
   }
 
   // Preload existing GitHub issues into state (dedup on restart/resume)
-  if (filterRepo && state.issues.length === 0 && deps.execGh) {
+  if (filterRepo && state.issues.length === 0) {
     try {
-      const listResult = await deps.execGh(['issue', 'list', '--repo', filterRepo, '--label', 'aloop/auto', '--state', 'open', '--limit', '200', '--json', 'number,title,body,labels']);
-      const ghIssues = JSON.parse(listResult.stdout);
+      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+      const listResult = nodeSpawnSync('gh', ['issue', 'list', '--repo', filterRepo, '--label', 'aloop/auto', '--state', 'open', '--limit', '200', '--json', 'number,title,body,labels'], { encoding: 'utf8' });
+      if (listResult.status !== 0) throw new Error(listResult.stderr ?? 'gh failed');
+      const ghIssues = JSON.parse(listResult.stdout ?? '[]');
       if (Array.isArray(ghIssues) && ghIssues.length > 0) {
         for (const gi of ghIssues) {
           const isEpic = gi.labels?.some((l: any) => (l.name ?? l) === 'aloop/epic');
