@@ -195,6 +195,51 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
+  // Create GitHub issues for any issues that don't have GH numbers yet
+  if (repo && state.issues.length > 0) {
+    const needsGh = state.issues.filter((i: any) => !(i as any).gh_number && i.number === 0);
+    if (needsGh.length > 0) {
+      let nextLocalNumber = Math.max(0, ...state.issues.map((i: any) => i.number ?? 0)) + 1;
+      for (const issue of needsGh) {
+        try {
+          const bodyFile = path.join(requestsDir, `gh-issue-body-${Date.now()}.md`);
+          const body = issue.body ?? `## ${issue.title}\n\nNo description provided.`;
+          await writeFile(bodyFile, body, 'utf8');
+          const labels = ['aloop/epic', 'aloop/auto'];
+          const result = spawnSync('gh', [
+            'issue', 'create',
+            '--repo', repo,
+            '--title', issue.title,
+            '--body-file', bodyFile,
+            ...labels.flatMap((l: string) => ['--label', l]),
+          ], { encoding: 'utf8' });
+
+          try { await unlink(bodyFile); } catch {}
+
+          if (result.status === 0 && result.stdout) {
+            const urlMatch = result.stdout.match(/\/issues\/(\d+)/);
+            const ghNumber = urlMatch ? parseInt(urlMatch[1], 10) : 0;
+            if (ghNumber > 0) {
+              (issue as any).gh_number = ghNumber;
+              issue.number = ghNumber;
+              stateChanged = true;
+              console.log(`[process-requests] Created GH issue #${ghNumber}: ${issue.title.substring(0, 50)}`);
+            }
+          } else {
+            // Assign local number so we don't retry every pass
+            if (issue.number === 0) {
+              issue.number = nextLocalNumber++;
+              stateChanged = true;
+            }
+            console.error(`[process-requests] gh issue create failed: ${result.stderr?.trim()}`);
+          }
+        } catch (e) {
+          console.error(`[process-requests] Failed to create GH issue: ${e}`);
+        }
+      }
+    }
+  }
+
   if (stateChanged) {
     await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
   }
