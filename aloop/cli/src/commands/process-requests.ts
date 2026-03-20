@@ -6,6 +6,8 @@ import {
   runOrchestratorScanPass,
   applyDecompositionPlan,
   applySubDecompositionResults,
+  queueEstimateForIssues,
+  queueSubDecompositionForIssues,
   type ScanLoopDeps,
   type OrchestratorState,
   type DecompositionPlan,
@@ -88,6 +90,55 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       applySubDecompositionResults(state, subResults, new Date());
       stateChanged = true;
       await unlink(subResultsFile);
+    } catch {
+      // Malformed — skip
+    }
+  }
+
+  // Advance pipeline: queue prompts based on issue status
+  const queueDir = path.join(sessionDir, 'queue');
+
+  // Issues needing sub-decomposition → queue sub-decompose prompts
+  const decompTargets = state.issues.filter((i: any) => i.status === 'Needs decomposition');
+  if (decompTargets.length > 0) {
+    const subDecomposePromptFile = path.join(promptsDir, 'PROMPT_orch_sub_decompose.md');
+    if (existsSync(subDecomposePromptFile)) {
+      const subDecomposePrompt = await readFile(subDecomposePromptFile, 'utf8');
+      await queueSubDecompositionForIssues(state.issues, queueDir, subDecomposePrompt, { writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e) });
+      console.log(`[process-requests] Queued sub-decomposition for ${decompTargets.length} issues`);
+      stateChanged = true;
+    }
+  }
+
+  // Issues needing refinement → queue estimate/readiness prompts
+  const refineTargets = state.issues.filter((i: any) => i.status === 'Needs refinement' && !i.dor_validated);
+  if (refineTargets.length > 0) {
+    const estimatePromptFile = path.join(promptsDir, 'PROMPT_orch_estimate.md');
+    if (existsSync(estimatePromptFile)) {
+      const estimatePrompt = await readFile(estimatePromptFile, 'utf8');
+      await queueEstimateForIssues(state.issues, queueDir, estimatePrompt, {
+        writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e),
+      });
+      console.log(`[process-requests] Queued estimation for ${refineTargets.length} issues`);
+      stateChanged = true;
+    }
+  }
+
+  // Apply estimate results if present
+  const estimateResultsFile = path.join(requestsDir, 'estimate-results.json');
+  if (existsSync(estimateResultsFile)) {
+    try {
+      const results = JSON.parse(await readFile(estimateResultsFile, 'utf8'));
+      for (const r of results) {
+        const issue = state.issues.find((i: any) => i.number === r.issue_number);
+        if (issue && r.dor_passed) {
+          issue.dor_validated = true;
+          issue.status = 'Ready';
+        }
+      }
+      stateChanged = true;
+      await unlink(estimateResultsFile);
+      console.log(`[process-requests] Applied estimate results`);
     } catch {
       // Malformed — skip
     }
