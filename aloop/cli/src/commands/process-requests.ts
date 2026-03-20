@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
-import { readFile, readdir, unlink, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, readdir, unlink, writeFile, mkdir, cp } from 'node:fs/promises';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
 import {
@@ -209,7 +210,6 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
   // execGh helper — calls aloop gh CLI
   const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
-    const { spawnSync } = await import('node:child_process');
     const aloopBin = process.env.ALOOP_BIN ?? 'aloop';
     const result = spawnSync(aloopBin, ['gh', ...args], {
       encoding: 'utf8',
@@ -273,6 +273,24 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
           summary: 'Review queued and waiting for agent execution.',
         };
       },
+    },
+    dispatchDeps: {
+      existsSync,
+      readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
+      writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
+      mkdir: (p: string, opts?: { recursive?: boolean }) => mkdir(p, opts).then(() => undefined),
+      cp: (src: string, dest: string, opts?: { recursive?: boolean }) => cp(src, dest, opts),
+      now: () => new Date(),
+      spawnSync: (cmd: string, args: string[], opts?: Record<string, unknown>) => {
+        const r = spawnSync(cmd, args, opts as any);
+        return { status: r.status, stdout: r.stdout?.toString() ?? '', stderr: r.stderr?.toString() ?? '' };
+      },
+      spawn: (cmd: string, args: string[], opts?: Record<string, unknown>) => {
+        const child = spawn(cmd, args, opts as any);
+        return { pid: child.pid, unref: () => child.unref() };
+      },
+      platform: process.platform,
+      env: process.env as Record<string, string | undefined>,
     },
   };
 
