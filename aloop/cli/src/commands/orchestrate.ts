@@ -2320,9 +2320,9 @@ export async function queueGapAnalysisForIssues(
     '',
     productAnalystPrompt,
     '',
-    '## Spec',
+    '## Spec Files (read from project)',
     '',
-    specContent,
+    'Read SPEC.md and SPEC-ADDENDUM.md from the project working directory.',
     '',
     '## Issues Under Analysis',
     '',
@@ -2344,9 +2344,9 @@ export async function queueGapAnalysisForIssues(
     '',
     archAnalystPrompt,
     '',
-    '## Spec',
+    '## Spec Files (read from project)',
     '',
-    specContent,
+    'Read SPEC.md and SPEC-ADDENDUM.md from the project working directory.',
     '',
     '## Issues Under Analysis',
     '',
@@ -2388,7 +2388,7 @@ export async function createEpicDecompositionRequest(
 
 export async function queueEpicDecomposition(
   specFile: string,
-  specContent: string,
+  _specContent: string,
   queueDir: string,
   decomposePrompt: string,
   deps: { writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void> },
@@ -2396,6 +2396,8 @@ export async function queueEpicDecomposition(
   // Derive session dir from queue dir (queue is a direct child of session dir)
   const sessionDir = path.dirname(queueDir);
   const outputPath = path.join(sessionDir, 'requests', 'epic-decomposition-results.json');
+  // Reference spec files by path — never embed content. The agent runs in a
+  // worktree with full project access and can read them directly.
   const content = [
     '---',
     JSON.stringify(
@@ -2407,15 +2409,14 @@ export async function queueEpicDecomposition(
     '',
     decomposePrompt,
     '',
-    `## Spec File`,
+    `## Spec Files (read these from the project)`,
     '',
-    specFile,
+    ...specFile.split(',').map((f: string) => `- \`${f.trim()}\``),
     '',
-    '## Spec',
-    '',
-    specContent,
+    `Read the spec files listed above from the project working directory. Do NOT expect them to be embedded in this prompt.`,
     '',
     `Write decomposition output to \`${outputPath}\` as a \`{"issues":[...]}\` plan object.`,
+    `Each issue must have: \`id\` (sequential number), \`title\`, \`body\` (markdown with acceptance criteria), \`depends_on\` (array of ids).`,
   ].join('\n');
   await deps.writeFile(path.join(queueDir, 'decompose-epics.md'), content, 'utf8');
 }

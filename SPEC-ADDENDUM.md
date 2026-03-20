@@ -4,6 +4,28 @@ This addendum covers features and clarifications not yet in `SPEC.md`. It follow
 
 ---
 
+## Prompt Content Rule: Reference Files, Never Embed
+
+Orchestrator prompts (decompose, gap analysis, estimation, sub-decompose, etc.) must **never embed file contents** in the prompt body. Instead, reference files by path and let the agent read them from the worktree.
+
+**Why:** SPEC.md alone is 220KB. Embedding it in a queue prompt creates a 220KB+ prompt file that wastes tokens, slows iteration, and may exceed context limits. The agent runs in a git worktree with full project access — it can read any file.
+
+**Rule:** Queue prompts must only contain:
+- The task instructions (the agent prompt template)
+- File paths to read (e.g., "Read `SPEC.md` and `SPEC-ADDENDUM.md` from the project")
+- The output path for results (absolute, pointing to session dir)
+- Contextual metadata (issue numbers, titles, wave info — small structured data)
+
+**Never embed:** spec content, source code, large JSON payloads, or any content the agent can read from disk.
+
+### Acceptance Criteria
+
+- [ ] No queue prompt file exceeds 10KB (excluding frontmatter)
+- [ ] All spec references use file paths, not inline content
+- [ ] Decompose, gap analysis, estimation, and sub-decompose prompts reference files by path
+
+---
+
 ## Dashboard Component Architecture (Mandatory Refactor)
 
 ### Purpose
