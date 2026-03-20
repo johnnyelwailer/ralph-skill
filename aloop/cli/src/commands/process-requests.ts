@@ -166,6 +166,39 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         parent.status = 'Needs refinement';
         (parent as any).decomposed = true;
         stateChanged = true;
+
+        // Update parent epic body on GH with tasklist linking sub-issues
+        if (repo && parentNum > 0) {
+          const subNums = state.issues
+            .filter((i: any) => i.parent_issue === parentNum && i.number > 0)
+            .map((i: any) => i.number);
+          if (subNums.length > 0) {
+            const tasklist = [
+              '',
+              '```[tasklist]',
+              '### Sub-issues',
+              ...subNums.map((n: number) => `- [ ] #${n}`),
+              '```',
+            ].join('\n');
+            try {
+              // Append tasklist to existing body
+              const viewResult = spawnSync('gh', ['issue', 'view', String(parentNum), '--repo', repo, '--json', 'body'], { encoding: 'utf8' });
+              if (viewResult.status === 0) {
+                const currentBody = JSON.parse(viewResult.stdout).body ?? '';
+                if (!currentBody.includes('[tasklist]')) {
+                  const newBody = currentBody + tasklist;
+                  const bodyFile = path.join(requestsDir, `gh-parent-body-${Date.now()}.md`);
+                  await writeFile(bodyFile, newBody, 'utf8');
+                  spawnSync('gh', ['issue', 'edit', String(parentNum), '--repo', repo, '--body-file', bodyFile], { encoding: 'utf8' });
+                  try { await unlink(bodyFile); } catch {}
+                  console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
+                }
+              }
+            } catch {
+              // Non-critical — sub-issues still work without tasklist
+            }
+          }
+        }
       }
 
       // Archive
