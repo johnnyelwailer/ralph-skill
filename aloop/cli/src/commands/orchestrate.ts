@@ -2598,6 +2598,9 @@ export function getDispatchableIssues(state: OrchestratorState): OrchestratorIss
     // Primary signal: Project status 'Ready'
     if (issue.status && issue.status !== 'Ready') return false;
 
+    // Already dispatched — has child session
+    if (issue.child_session) return false;
+
     // Legacy/fallback signal: state 'pending'
     if (issue.state !== 'pending') return false;
 
@@ -2768,10 +2771,14 @@ export async function launchChildLoop(
   // Copy prompts
   await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
 
-  // Create git worktree with branch
-  const worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName], { encoding: 'utf8' });
+  // Create git worktree with branch (or reuse existing branch)
+  let worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName], { encoding: 'utf8' });
   if (worktreeResult.status !== 0) {
-    throw new Error(`Failed to create worktree for issue #${issue.number}: ${worktreeResult.stderr || worktreeResult.stdout}`);
+    // Branch may already exist — try without -b
+    worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, branchName], { encoding: 'utf8' });
+    if (worktreeResult.status !== 0) {
+      throw new Error(`Failed to create worktree for issue #${issue.number}: ${worktreeResult.stderr || worktreeResult.stdout}`);
+    }
   }
 
   // Seed TODO.md in worktree from issue body
@@ -5049,6 +5056,7 @@ export async function runOrchestratorScanPass(
         if (stateIssue) {
           stateIssue.state = 'in_progress';
           stateIssue.child_session = launchResult.session_id;
+          (stateIssue as any).child_pid = launchResult.pid;
           stateIssue.status = 'In progress';
           if (repo && deps.execGh) {
             await syncIssueProjectStatus(issue.number, repo, 'In progress', {

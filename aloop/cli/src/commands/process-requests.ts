@@ -147,9 +147,28 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // ── Phase 3: Persist state before scan pass ──
+  // ── Phase 3: Persist state + clean active.json ──
   if (stateChanged) {
     await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+  }
+
+  // Clean dead sessions from active.json
+  const activePath = path.join(aloopRoot, 'active.json');
+  if (existsSync(activePath)) {
+    try {
+      const active = JSON.parse(await readFile(activePath, 'utf8'));
+      let cleaned = false;
+      for (const [key, val] of Object.entries(active)) {
+        const pid = (val as any)?.pid;
+        if (pid && !existsSync(`/proc/${pid}`)) {
+          delete active[key];
+          cleaned = true;
+        }
+      }
+      if (cleaned) {
+        await writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+      }
+    } catch { /* ignore */ }
   }
 
   // ── Phase 4: Run one orchestrator scan pass ──
