@@ -1099,6 +1099,38 @@ export async function orchestrateCommandWithDeps(
     }
   }
 
+  // Preload existing GitHub issues into state (dedup on restart/resume)
+  if (filterRepo && state.issues.length === 0 && deps.execGh) {
+    try {
+      const listResult = await deps.execGh(['issue', 'list', '--repo', filterRepo, '--label', 'aloop/auto', '--state', 'open', '--limit', '200', '--json', 'number,title,body,labels']);
+      const ghIssues = JSON.parse(listResult.stdout);
+      if (Array.isArray(ghIssues) && ghIssues.length > 0) {
+        for (const gi of ghIssues) {
+          const isEpic = gi.labels?.some((l: any) => (l.name ?? l) === 'aloop/epic');
+          state.issues.push({
+            number: gi.number,
+            title: gi.title,
+            body: gi.body ?? '',
+            file_hints: [],
+            wave: 1,
+            state: 'pending',
+            status: isEpic ? 'Needs decomposition' : 'Needs refinement',
+            child_session: null,
+            pr_number: null,
+            depends_on: [],
+            blocked_on_human: false,
+            processed_comment_ids: [],
+            dor_validated: false,
+          } as any);
+        }
+        if (state.current_wave === 0) state.current_wave = 1;
+        console.log(`[orchestrate] Preloaded ${ghIssues.length} existing GH issues into state`);
+      }
+    } catch {
+      // GH fetch failed — proceed without preloading
+    }
+  }
+
   // If no decomposition has been applied yet, queue epic decomposition from spec.
   if (!options.plan && state.issues.length === 0) {
     const specLabel = existingSpecFiles.length > 1

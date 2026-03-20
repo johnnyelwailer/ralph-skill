@@ -119,32 +119,11 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       if (parent && subIssues.length > 0) {
         // Create sub-issues as new entries in state + on GitHub
         let nextNum = Math.max(0, ...state.issues.map((i: any) => i.number ?? 0)) + 1;
-        // Fetch existing issues for dedup
-        let existingSubIssues: Array<{ number: number; title: string }> = [];
-        if (repo) {
-          try {
-            const listResult = spawnSync('gh', [
-              'issue', 'list', '--repo', repo,
-              '--label', 'aloop/auto', '--state', 'open',
-              '--limit', '200', '--json', 'number,title',
-            ], { encoding: 'utf8' });
-            if (listResult.status === 0 && listResult.stdout) {
-              existingSubIssues = JSON.parse(listResult.stdout);
-            }
-          } catch { /* ignore */ }
-        }
-        const existingSubTitles = new Map(existingSubIssues.map(i => [i.title.toLowerCase().trim(), i.number]));
-
         for (const sub of subIssues) {
           const subBody = sub.body ?? `Sub-issue of #${parentNum}: ${parent.title}`;
           let ghNumber = 0;
 
-          // Dedup: check if sub-issue already exists on GH
-          const existingNum = existingSubTitles.get(sub.title.toLowerCase().trim());
-          if (existingNum) {
-            ghNumber = existingNum;
-            console.log(`[process-requests] Matched existing sub-issue #${ghNumber}: ${sub.title.substring(0, 50)}`);
-          } else if (repo) {
+          if (repo) {
             const bodyFile = path.join(requestsDir, `gh-sub-issue-body-${Date.now()}.md`);
             await writeFile(bodyFile, subBody, 'utf8');
             const ghResult = spawnSync('gh', [
@@ -280,33 +259,8 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   if (repo && state.issues.length > 0) {
     const needsGh = state.issues.filter((i: any) => !(i as any).gh_number && i.number === 0);
     if (needsGh.length > 0) {
-      // Fetch existing GH issues to avoid duplicates
-      let existingIssues: Array<{ number: number; title: string }> = [];
-      try {
-        const listResult = spawnSync('gh', [
-          'issue', 'list', '--repo', repo,
-          '--label', 'aloop/auto', '--state', 'open',
-          '--limit', '200', '--json', 'number,title',
-        ], { encoding: 'utf8' });
-        if (listResult.status === 0 && listResult.stdout) {
-          existingIssues = JSON.parse(listResult.stdout);
-        }
-      } catch { /* ignore */ }
-
-      const existingTitles = new Map(existingIssues.map(i => [i.title.toLowerCase().trim(), i.number]));
-
       let nextLocalNumber = Math.max(0, ...state.issues.map((i: any) => i.number ?? 0)) + 1;
       for (const issue of needsGh) {
-        // Check for existing issue with same title (dedup)
-        const existingNum = existingTitles.get(issue.title.toLowerCase().trim());
-        if (existingNum) {
-          (issue as any).gh_number = existingNum;
-          issue.number = existingNum;
-          stateChanged = true;
-          console.log(`[process-requests] Matched existing GH issue #${existingNum}: ${issue.title.substring(0, 50)}`);
-          continue;
-        }
-
         try {
           const bodyFile = path.join(requestsDir, `gh-issue-body-${Date.now()}.md`);
           const body = issue.body ?? `## ${issue.title}\n\nNo description provided.`;
