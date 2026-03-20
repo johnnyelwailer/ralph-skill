@@ -1034,6 +1034,91 @@ Don't over-abstract before a second adapter exists. Extract `execGh` calls into 
 
 ---
 
+## Scan Agent Self-Healing, Diagnostics & Alerting
+
+### Problem
+
+The scan agent detects blockers (missing config, unprocessed requests, stuck pipelines) and reports them in text output — but nobody reads the text, nothing gets fixed, and the loop burns iterations repeating the same observation.
+
+### Required Capabilities
+
+**1. Stuck detection with escalation:**
+- Track blocker signatures across iterations (hash the blocker description)
+- If the same blocker persists for N iterations (configurable, default 5), escalate:
+  - Write `diagnostics.json` to session dir with structured blocker info
+  - Set a `stuck: true` flag in `orchestrator.json`
+  - If configured, pause the loop (write `state: paused` to status.json)
+
+**2. Structured diagnostics:**
+- `{sessionDir}/diagnostics.json`: array of current blockers with `{type, message, first_seen_iteration, current_iteration, severity, suggested_fix}`
+- Dashboard reads this and displays a banner/panel
+- Persisted across iterations (not just text in raw log)
+
+**3. Self-healing for known issues:**
+- Missing GitHub labels → create them via `gh label create`
+- Missing `config.json` → derive from `meta.json` and `orchestrator.json`
+- Unprocessed request files → log exactly which request type is unhandled and why
+- Permission errors → log the specific permission needed and suggest fix
+
+**4. User alerting:**
+- Write `ALERT.md` in session dir when critical blocker detected
+- Dashboard shows alerts as a red banner
+- Include: what's blocked, how long, suggested action
+
+### `process-requests` Must Handle All Request Types
+
+The `process-requests` command currently handles:
+- `epic-decomposition-results.json` → apply decomposition
+- `estimate-result-{N}.json` → apply estimates
+- `sub-decomposition-result-{N}.json` → apply sub-decomposition
+
+It must also handle request files written by agents:
+- `create_issues` → create GitHub issues via `gh issue create`
+- `update_issue` → update issue state/labels/body
+- `close_issue` → close issue
+- `dispatch_child` → spawn child loop
+- `merge_pr` → merge PR after gates pass
+- `post_comment` → post comment on issue/PR
+- `steer_child` → write steering to child session
+
+These are the standard request types defined in `lib/requests.ts`. The existing `processAgentRequests` function handles them — `process-requests` should call it.
+
+### Acceptance Criteria
+
+- [ ] Scan agent tracks blocker persistence across iterations
+- [ ] After N iterations with same blocker, `diagnostics.json` is written
+- [ ] Dashboard displays diagnostics as alert banner
+- [ ] Known issues (missing labels, config, permissions) are self-healed
+- [ ] `process-requests` calls `processAgentRequests` for standard request types
+- [ ] Unhandled request types are logged with clear error messages
+
+---
+
+## Orchestrator Session Resumability
+
+### Problem
+
+Each `aloop orchestrate` invocation creates a fresh session. Previous decomposition, estimation, and GH issue creation work is lost. The orchestrator must be able to resume from an existing session.
+
+### Required Behavior
+
+- `aloop orchestrate --resume <session-id>` restarts the loop for an existing session
+- Reads `orchestrator.json` from the existing session dir
+- Does NOT re-decompose if issues already exist in state
+- Does NOT re-create GH issues if `gh_number` is already set
+- Detects which children are alive (PID check) and which need re-dispatch
+- Resumes the scan loop from current state
+
+### Acceptance Criteria
+
+- [ ] `aloop orchestrate --resume <session-id>` works
+- [ ] Existing issues are preserved, not re-created
+- [ ] GH issues are not duplicated
+- [ ] Dead children are detected and re-dispatched
+- [ ] Alive children are left running
+
+---
+
 ## Known Implementation Gaps
 
 The following features are described in `SPEC.md` but are not yet implemented. Items are grouped by priority and cross-referenced to the relevant spec section.
