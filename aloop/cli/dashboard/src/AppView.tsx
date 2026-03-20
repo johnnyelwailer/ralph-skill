@@ -164,6 +164,7 @@ interface DashboardState {
   recentSessions: unknown[];
   artifacts: ArtifactManifest[];
   repoUrl: string | null;
+  meta: Record<string, unknown> | null;
 }
 
 interface SessionSummary {
@@ -262,7 +263,11 @@ export function toSession(source: Record<string, unknown>, fallback: string, isA
   return {
     id: str(source, ['session_id', 'id'], fallback),
     name: str(source, ['session_id', 'name', 'session_name'], fallback),
-    projectName: str(source, ['project_name'], fallback.split('-').slice(0, -1).join('-') || fallback),
+    projectName: str(source, ['project_name'], '') || (() => {
+      const root = str(source, ['project_root'], '');
+      if (root) { const parts = root.replace(/[\\/]+$/, '').split(/[\\/]/); return parts[parts.length - 1] || root; }
+      return fallback.split('-').slice(0, -1).join('-') || fallback;
+    })(),
     status: str(source, ['state', 'status'], 'unknown'),
     phase: str(source, ['phase', 'mode'], ''),
     elapsed: str(source, ['elapsed', 'elapsed_time', 'duration'], '--'),
@@ -1080,8 +1085,8 @@ export function ActivityPanel({ log, artifacts, currentIteration, currentPhase, 
   const entries = useMemo(() => {
     if (!log) return [];
     const all = log.split('\n').map(parseLogLine).filter((e): e is LogEntry => e !== null);
-    // Filter to significant events only
-    return all.filter((e) => e.isSignificant);
+    // Show all structured (JSON) log entries — plain text lines (stderr noise) are excluded
+    return all.filter((e) => e.rawObj !== null);
   }, [log]);
 
   // Deduplicate session_start — keep only first
