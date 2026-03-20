@@ -1995,6 +1995,16 @@ echo ""
 # Wait for pending requests before next iteration
 wait_for_requests() {
     if [ "${ALOOP_SKIP_WAIT:-}" = "true" ]; then return 0; fi
+
+    # Orchestrator sessions: call process-requests command to handle requests inline
+    if [ -f "$SESSION_DIR/orchestrator.json" ]; then
+        local aloop_bin="${ALOOP_BIN:-aloop}"
+        echo "Running orchestrator process-requests..."
+        "$aloop_bin" process-requests --session-dir "$SESSION_DIR" 2>&1 || true
+        return 0
+    fi
+
+    # Non-orchestrator sessions: poll for external request processing
     local requests_dir="$SESSION_DIR/requests"
     if [ -d "$requests_dir" ] && ls "$requests_dir"/*.json 2>/dev/null | grep -q .; then
         local count

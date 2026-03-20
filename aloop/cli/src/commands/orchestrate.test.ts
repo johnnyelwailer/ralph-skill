@@ -321,7 +321,7 @@ describe('orchestrateCommand', () => {
     const origLog = console.log;
     console.log = (...args: unknown[]) => logs.push(args.join(' '));
     try {
-      await orchestrateCommand({}, createMockDeps());
+      await orchestrateCommand({ planOnly: true }, createMockDeps());
     } finally {
       console.log = origLog;
     }
@@ -336,7 +336,7 @@ describe('orchestrateCommand', () => {
     assert.ok(allOutput.includes('Concurrency:'));
     assert.ok(allOutput.includes('3'));
     assert.ok(allOutput.includes('Plan only:'));
-    assert.ok(allOutput.includes('false'));
+    assert.ok(allOutput.includes('true'));
   });
 
   it('json output emits valid JSON with orchestrator loop artifacts', async () => {
@@ -344,7 +344,7 @@ describe('orchestrateCommand', () => {
     const origLog = console.log;
     console.log = (...args: unknown[]) => logs.push(args.join(' '));
     try {
-      await orchestrateCommand({ output: 'json' }, createMockDeps());
+      await orchestrateCommand({ output: 'json', planOnly: true }, createMockDeps());
     } finally {
       console.log = origLog;
     }
@@ -366,7 +366,7 @@ describe('orchestrateCommand', () => {
     const origLog = console.log;
     console.log = (...args: unknown[]) => logs.push(args.join(' '));
     try {
-      await orchestrateCommand({ issues: '10,20' }, createMockDeps());
+      await orchestrateCommand({ issues: '10,20', planOnly: true }, createMockDeps());
     } finally {
       console.log = origLog;
     }
@@ -381,7 +381,7 @@ describe('orchestrateCommand', () => {
     const origLog = console.log;
     console.log = (...args: unknown[]) => logs.push(args.join(' '));
     try {
-      await orchestrateCommand({}, createMockDeps());
+      await orchestrateCommand({ planOnly: true }, createMockDeps());
     } finally {
       console.log = origLog;
     }
@@ -395,7 +395,7 @@ describe('orchestrateCommand', () => {
     const origLog = console.log;
     console.log = (...args: unknown[]) => logs.push(args.join(' '));
     try {
-      await orchestrateCommand({ label: 'aloop/auto' }, createMockDeps());
+      await orchestrateCommand({ label: 'aloop/auto', planOnly: true }, createMockDeps());
     } finally {
       console.log = origLog;
     }
@@ -410,7 +410,7 @@ describe('orchestrateCommand', () => {
     const origLog = console.log;
     console.log = (...args: unknown[]) => logs.push(args.join(' '));
     try {
-      await orchestrateCommand({}, createMockDeps());
+      await orchestrateCommand({ planOnly: true }, createMockDeps());
     } finally {
       console.log = origLog;
     }
@@ -424,7 +424,7 @@ describe('orchestrateCommand', () => {
     const origLog = console.log;
     console.log = (...args: unknown[]) => logs.push(args.join(' '));
     try {
-      await orchestrateCommand({ repo: 'owner/repo' }, createMockDeps());
+      await orchestrateCommand({ repo: 'owner/repo', planOnly: true }, createMockDeps());
     } finally {
       console.log = origLog;
     }
@@ -439,7 +439,7 @@ describe('orchestrateCommand', () => {
     const origLog = console.log;
     console.log = (...args: unknown[]) => logs.push(args.join(' '));
     try {
-      await orchestrateCommand({}, createMockDeps());
+      await orchestrateCommand({ planOnly: true }, createMockDeps());
     } finally {
       console.log = origLog;
     }
@@ -854,7 +854,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
       readFile: async () => samplePlan,
     });
     try {
-      await orchestrateCommand({ plan: 'plan.json' }, deps);
+      await orchestrateCommand({ plan: 'plan.json', planOnly: true }, deps);
     } finally {
       console.log = origLog;
     }
@@ -4785,8 +4785,8 @@ describe('runOrchestratorScanLoop auto-merge', () => {
   });
 });
 
-describe('orchestrateCommandWithDeps with --run-scan-loop', () => {
-  it('runs scan loop after initialization when runScanLoop is true and issues exist', async () => {
+describe('orchestrateCommandWithDeps initialization', () => {
+  it('initializes session with plan and returns result with aloopRoot and projectRoot', async () => {
     const samplePlan = JSON.stringify({
       issues: [
         { id: 1, title: 'Task A', body: 'Do A', depends_on: [] },
@@ -4807,32 +4807,25 @@ describe('orchestrateCommandWithDeps with --run-scan-loop', () => {
     });
 
     const result = await orchestrateCommandWithDeps(
-      { plan: 'plan.json', runScanLoop: true, maxIterations: '1' },
+      { plan: 'plan.json' },
       deps,
     );
 
-    assert.ok(result.scan_loop);
-    assert.equal(result.scan_loop!.iterations, 1);
+    assert.ok(result.aloopRoot);
+    assert.ok(result.projectRoot);
+    assert.ok(result.state.issues.length > 0);
   });
 
-  it('does not run scan loop when planOnly is true', async () => {
+  it('returns result without issues when no plan provided', async () => {
     const deps = createMockDeps();
     const result = await orchestrateCommandWithDeps(
-      { planOnly: true, runScanLoop: true },
+      {},
       deps,
     );
 
-    assert.equal(result.scan_loop, undefined);
-  });
-
-  it('does not run scan loop when no issues exist', async () => {
-    const deps = createMockDeps();
-    const result = await orchestrateCommandWithDeps(
-      { runScanLoop: true },
-      deps,
-    );
-
-    assert.equal(result.scan_loop, undefined);
+    // Epic decomposition is queued but no issues yet
+    assert.ok(result.session_dir);
+    assert.ok(result.aloopRoot);
   });
 });
 

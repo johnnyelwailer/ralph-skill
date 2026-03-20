@@ -973,7 +973,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path16 = __require("node:path");
+    var path17 = __require("node:path");
     var fs7 = __require("node:fs");
     var process2 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -1916,10 +1916,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path16.resolve(baseDir, baseName);
+          const localBin = path17.resolve(baseDir, baseName);
           if (fs7.existsSync(localBin))
             return localBin;
-          if (sourceExt.includes(path16.extname(baseName)))
+          if (sourceExt.includes(path17.extname(baseName)))
             return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs7.existsSync(`${localBin}${ext}`)
@@ -1939,17 +1939,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch (err) {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path16.resolve(
-            path16.dirname(resolvedScriptPath),
+          executableDir = path17.resolve(
+            path17.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path16.basename(
+            const legacyName = path17.basename(
               this._scriptPath,
-              path16.extname(this._scriptPath)
+              path17.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -1960,7 +1960,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path16.extname(executableFile));
+        launchWithNode = sourceExt.includes(path17.extname(executableFile));
         let proc;
         if (process2.platform !== "win32") {
           if (launchWithNode) {
@@ -2817,7 +2817,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path16.basename(filename, path16.extname(filename));
+        this._name = path17.basename(filename, path17.extname(filename));
         return this;
       }
       /**
@@ -2831,10 +2831,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path17) {
-        if (path17 === void 0)
+      executableDir(path18) {
+        if (path18 === void 0)
           return this._executableDir;
-        this._executableDir = path17;
+        this._executableDir = path18;
         return this;
       }
       /**
@@ -4016,6 +4016,10 @@ async function mutateLoopPlan(sessionDir, options) {
     plan.iteration = options.iteration;
   if (options.allTasksMarkedDone !== void 0)
     plan.allTasksMarkedDone = options.allTasksMarkedDone;
+  if (options.finalizer !== void 0)
+    plan.finalizer = options.finalizer;
+  if (options.finalizerPosition !== void 0)
+    plan.finalizerPosition = options.finalizerPosition;
   plan.version = (plan.version || 1) + 1;
   await writeLoopPlan(sessionDir, plan);
   return plan;
@@ -6212,6 +6216,22 @@ async function buildRoundRobinCycle(mode, roundRobinOrder, promptsDir, projectRo
   );
   return cycle;
 }
+async function readFinalizerFromPipeline(projectRoot, deps) {
+  if (!projectRoot)
+    return [];
+  const pipelineYamlPath = path8.join(projectRoot, ".aloop", "pipeline.yml");
+  if (!deps.existsSync(pipelineYamlPath))
+    return [];
+  try {
+    const content = await deps.readFile(pipelineYamlPath, "utf8");
+    const parsed = parseYaml(content);
+    if (!parsed.finalizer || !Array.isArray(parsed.finalizer))
+      return [];
+    return parsed.finalizer.filter((e) => typeof e === "string" && e.trim());
+  } catch {
+    return [];
+  }
+}
 function extractProviderSuffixFromFilename(filename, roundRobinOrder) {
   const match = filename.match(/^PROMPT_[a-z]+_([a-z]+)\.md$/);
   if (match && roundRobinOrder.includes(match[1]))
@@ -6303,11 +6323,14 @@ async function compileLoopPlan(options, deps = defaultCompileDeps) {
       await deps.writeFile(filePath, prependFrontmatter(content, frontmatter), "utf8");
     }
   }
+  const finalizer = await readFinalizerFromPipeline(projectRoot, deps);
   const plan = {
     cycle,
     cyclePosition: 0,
     iteration: 1,
-    version: 1
+    version: 1,
+    finalizer,
+    finalizerPosition: 0
   };
   const planPath = path8.join(sessionDir, "loop-plan.json");
   await deps.writeFile(planPath, `${JSON.stringify(plan, null, 2)}
@@ -6778,15 +6801,15 @@ async function reserveLocalPort() {
     });
   });
 }
-function isAloopRepo(dir, existsSync13) {
-  return existsSync13(path9.join(dir, "install.ps1")) && existsSync13(path9.join(dir, "aloop", "bin"));
+function isAloopRepo(dir, existsSync14) {
+  return existsSync14(path9.join(dir, "install.ps1")) && existsSync14(path9.join(dir, "aloop", "bin"));
 }
-function findAloopRepoRoot(startDir, existsSync13) {
+function findAloopRepoRoot(startDir, existsSync14) {
   const dir = path9.resolve(startDir);
   const root = path9.parse(dir).root;
   let current = dir;
   while (current !== root) {
-    if (isAloopRepo(current, existsSync13)) {
+    if (isAloopRepo(current, existsSync14)) {
       return current;
     }
     const parent = path9.dirname(current);
@@ -10081,7 +10104,7 @@ async function updateCommand(options = {}) {
 }
 
 // src/commands/orchestrate.ts
-import { mkdir as mkdir7, readFile as readFile10, readdir as readdir5, unlink as unlink2, writeFile as writeFile10 } from "node:fs/promises";
+import { mkdir as mkdir7, readFile as readFile10, unlink as unlink2, writeFile as writeFile10 } from "node:fs/promises";
 import { existsSync as existsSync11, readdirSync } from "node:fs";
 import path14 from "node:path";
 
@@ -11122,109 +11145,6 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   const stateFile = path14.join(sessionDir, "orchestrator.json");
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
 `, "utf8");
-  let scanLoopResult;
-  if (options.runScanLoop && !planOnly && state.issues.length > 0) {
-    const intervalMs = parseInterval(options.interval);
-    const maxIter = parseMaxIterations(options.maxIterations);
-    const logFile = path14.join(sessionDir, "log.jsonl");
-    const appendLog2 = async (_dir, entry) => {
-      let existing = "";
-      try {
-        if (deps.existsSync(logFile)) {
-          existing = await deps.readFile(logFile, "utf8");
-        }
-      } catch {
-      }
-      await deps.writeFile(logFile, `${existing}${JSON.stringify(entry)}
-`, "utf8");
-    };
-    const aloopCacheDir = path14.join(aloopRoot, ".cache");
-    const etagCache = new EtagCache(aloopCacheDir);
-    await etagCache.load();
-    const scanDeps = {
-      existsSync: deps.existsSync,
-      readFile: deps.readFile,
-      writeFile: deps.writeFile,
-      readdir: async (p) => readdir5(p),
-      unlink: deps.unlink,
-      now: deps.now,
-      execGh: deps.execGh,
-      appendLog: appendLog2,
-      etagCache,
-      prLifecycleDeps: deps.execGh ? {
-        execGh: deps.execGh,
-        readFile: deps.readFile,
-        writeFile: deps.writeFile,
-        now: deps.now,
-        appendLog: (dir, entry) => {
-          appendLog2(dir, entry);
-        },
-        invokeAgentReview: async (prNumber, repo, diff) => {
-          const resultFile = path14.join(requestsDir, `review-result-${prNumber}.json`);
-          if (deps.existsSync(resultFile)) {
-            try {
-              const content = await deps.readFile(resultFile, "utf8");
-              const result = JSON.parse(content);
-              if (deps.unlink)
-                await deps.unlink(resultFile);
-              return result;
-            } catch (e) {
-              return {
-                pr_number: prNumber,
-                verdict: "flag-for-human",
-                summary: `Failed to parse review result: ${e instanceof Error ? e.message : String(e)}`
-              };
-            }
-          }
-          const queueFile = path14.join(queueDir, `review-${prNumber}.md`);
-          if (!deps.existsSync(queueFile)) {
-            const reviewPrompt2 = await deps.readFile(path14.join(promptsDir, ORCH_REVIEW_PROMPT_FILENAME), "utf8");
-            const fullPrompt = `---
-agent: orch_review
-pr_number: ${prNumber}
----
-
-${reviewPrompt2}
-
-## PR Diff
-
-\`\`\`diff
-${diff}
-\`\`\`
-`;
-            await deps.writeFile(queueFile, fullPrompt, "utf8");
-            const requestFile = path14.join(requestsDir, `review-request-${prNumber}.json`);
-            await deps.writeFile(requestFile, JSON.stringify({
-              type: "agent_review",
-              pr_number: prNumber,
-              repo,
-              queued_at: deps.now().toISOString()
-            }, null, 2), "utf8");
-          }
-          return {
-            pr_number: prNumber,
-            verdict: "pending",
-            summary: "Review queued and waiting for agent execution."
-          };
-        }
-      } : void 0,
-      sleep: (ms) => new Promise((resolve2) => setTimeout(resolve2, ms))
-    };
-    const promptsSourceDir = promptsDir;
-    scanLoopResult = await runOrchestratorScanLoop(
-      stateFile,
-      sessionDir,
-      projectRoot,
-      path14.basename(sessionDir),
-      promptsSourceDir,
-      aloopRoot,
-      filterRepo,
-      intervalMs,
-      maxIter,
-      scanDeps
-    );
-    state = scanLoopResult.finalState;
-  }
   return {
     session_dir: sessionDir,
     prompts_dir: promptsDir,
@@ -11233,15 +11153,92 @@ ${diff}
     loop_plan_file: loopPlanFile,
     state_file: stateFile,
     state,
-    scan_loop: scanLoopResult
+    aloopRoot,
+    projectRoot
   };
 }
 async function orchestrateCommand(options = {}, depsOrCommand) {
   const outputMode = options.output ?? "text";
   const deps = depsOrCommand && typeof depsOrCommand === "object" && "existsSync" in depsOrCommand ? depsOrCommand : void 0;
   const result = await orchestrateCommandWithDeps(options, deps);
+  const planOnly = options.planOnly ?? false;
+  let loopPid = null;
+  if (!planOnly) {
+    const { spawn: nodeSpawn } = await import("node:child_process");
+    const loopBinDir = path14.join(result.aloopRoot, "bin");
+    const loopScript = path14.join(loopBinDir, "loop.sh");
+    if (!existsSync11(loopScript)) {
+      throw new Error(`Loop script not found: ${loopScript}`);
+    }
+    const args = [
+      "--prompts-dir",
+      result.prompts_dir,
+      "--session-dir",
+      result.session_dir,
+      "--work-dir",
+      result.projectRoot,
+      "--mode",
+      "single",
+      "--provider",
+      "claude",
+      "--round-robin",
+      "claude",
+      "--launch-mode",
+      "start"
+    ];
+    const child = nodeSpawn(loopScript, args, {
+      cwd: result.projectRoot,
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env },
+      windowsHide: true
+    });
+    child.unref();
+    loopPid = child.pid ?? null;
+    if (!loopPid) {
+      throw new Error("Failed to launch orchestrator loop process.");
+    }
+    const metaPath = path14.join(result.session_dir, "meta.json");
+    const startedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const meta = {
+      session_id: path14.basename(result.session_dir),
+      project_root: result.projectRoot,
+      provider: "claude",
+      mode: "orchestrate",
+      work_dir: result.projectRoot,
+      pid: loopPid,
+      started_at: startedAt
+    };
+    await writeFile10(metaPath, `${JSON.stringify(meta, null, 2)}
+`, "utf8");
+    const activePath = path14.join(result.aloopRoot, "active.json");
+    let active = {};
+    try {
+      if (existsSync11(activePath)) {
+        const content = await readFile10(activePath, "utf8");
+        const parsed = JSON.parse(content);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          active = parsed;
+        }
+      }
+    } catch {
+    }
+    const sessionId = path14.basename(result.session_dir);
+    active[sessionId] = {
+      session_id: sessionId,
+      session_dir: result.session_dir,
+      project_root: result.projectRoot,
+      pid: loopPid,
+      work_dir: result.projectRoot,
+      started_at: startedAt,
+      provider: "claude",
+      mode: "orchestrate"
+    };
+    await writeFile10(activePath, `${JSON.stringify(active, null, 2)}
+`, "utf8");
+  }
   if (outputMode === "json") {
-    console.log(JSON.stringify(result, null, 2));
+    console.log(JSON.stringify({ ...result, pid: loopPid }, null, 2));
     return;
   }
   console.log("Orchestrator session initialized.");
@@ -11257,6 +11254,9 @@ async function orchestrateCommand(options = {}, depsOrCommand) {
   console.log(`  Autonomy:     ${result.state.autonomy_level ?? "balanced"}`);
   console.log(`  Concurrency:  ${result.state.concurrency_cap}`);
   console.log(`  Plan only:    ${result.state.plan_only}`);
+  if (loopPid) {
+    console.log(`  Loop PID:     ${loopPid}`);
+  }
   if (result.state.issues.length > 0) {
     const waves = new Set(result.state.issues.map((i) => i.wave));
     console.log(`  Issues:       ${result.state.issues.length} (${waves.size} wave${waves.size !== 1 ? "s" : ""})`);
@@ -12591,83 +12591,6 @@ async function mergePr(prNumber, repo, deps) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { pr_number: prNumber, merged: false, error: msg };
-  }
-}
-async function createTrunkToMainPr(state, repo, deps, sessionDir) {
-  const trunkBranch = state.trunk_branch || "agent/trunk";
-  const mergedCount = state.issues.filter((i) => i.state === "merged").length;
-  const failedCount = state.issues.filter((i) => i.state === "failed").length;
-  const title = `[aloop] Promote ${trunkBranch} to main`;
-  const body = [
-    "## Summary",
-    "",
-    `All ${state.issues.length} sub-issues have reached terminal state.`,
-    `- Merged: ${mergedCount}`,
-    failedCount > 0 ? `- Failed: ${failedCount}` : "",
-    "",
-    `This PR promotes \`${trunkBranch}\` into \`main\` for human review.`,
-    "",
-    "_Created automatically by the aloop orchestrator._"
-  ].filter(Boolean).join("\n");
-  try {
-    const result = await deps.execGh([
-      "pr",
-      "create",
-      "--repo",
-      repo,
-      "--base",
-      "main",
-      "--head",
-      trunkBranch,
-      "--title",
-      title,
-      "--body",
-      body
-    ]);
-    const parsed = parsePrCreateOutput(result.stdout);
-    deps.appendLog(sessionDir, {
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      event: "trunk_to_main_pr_created",
-      pr_number: parsed.number,
-      trunk_branch: trunkBranch
-    });
-    return parsed.number;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    try {
-      const listResult = await deps.execGh([
-        "pr",
-        "list",
-        "--repo",
-        repo,
-        "--head",
-        trunkBranch,
-        "--base",
-        "main",
-        "--json",
-        "number",
-        "--jq",
-        ".[0].number"
-      ]);
-      const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
-      if (Number.isFinite(existingNumber) && existingNumber > 0) {
-        deps.appendLog(sessionDir, {
-          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-          event: "trunk_to_main_pr_exists",
-          pr_number: existingNumber,
-          trunk_branch: trunkBranch
-        });
-        return existingNumber;
-      }
-    } catch {
-    }
-    deps.appendLog(sessionDir, {
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      event: "trunk_to_main_pr_failed",
-      error: msg,
-      trunk_branch: trunkBranch
-    });
-    return null;
   }
 }
 async function requestRebase(issue, repo, trunkBranch, rebaseAttempt, deps) {
@@ -14008,103 +13931,6 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
   });
   return result;
 }
-async function runOrchestratorScanLoop(stateFile, sessionDir, projectRoot, projectName, promptsSourceDir, aloopRoot, repo, intervalMs, maxIterations, deps) {
-  const stateContent = await deps.readFile(stateFile, "utf8");
-  const initialState = JSON.parse(stateContent);
-  if (initialState.plan_only) {
-    return {
-      iterations: 0,
-      finalState: initialState,
-      reason: "plan_only"
-    };
-  }
-  for (let iter = 1; iter <= maxIterations; iter++) {
-    const passResult = await runOrchestratorScanPass(
-      stateFile,
-      sessionDir,
-      projectRoot,
-      projectName,
-      promptsSourceDir,
-      aloopRoot,
-      repo,
-      iter,
-      deps
-    );
-    if (passResult.allDone) {
-      const currentState = JSON.parse(await deps.readFile(stateFile, "utf8"));
-      if (currentState.auto_merge_to_main && repo && deps.execGh) {
-        const prNum = await createTrunkToMainPr(currentState, repo, deps, sessionDir);
-        if (prNum !== null) {
-          currentState.trunk_pr_number = prNum;
-          currentState.updated_at = deps.now().toISOString();
-          await deps.writeFile(stateFile, `${JSON.stringify(currentState, null, 2)}
-`, "utf8");
-        }
-      }
-      deps.appendLog(sessionDir, {
-        timestamp: deps.now().toISOString(),
-        event: "scan_loop_complete",
-        reason: "all_done",
-        iterations: iter,
-        trunk_pr_number: currentState.trunk_pr_number ?? null
-      });
-      const finalContent2 = await deps.readFile(stateFile, "utf8");
-      return { iterations: iter, finalState: JSON.parse(finalContent2), reason: "all_done" };
-    }
-    if (passResult.budgetExceeded) {
-      deps.appendLog(sessionDir, {
-        timestamp: deps.now().toISOString(),
-        event: "scan_loop_complete",
-        reason: "budget_exceeded",
-        iterations: iter
-      });
-      const finalContent2 = await deps.readFile(stateFile, "utf8");
-      return { iterations: iter, finalState: JSON.parse(finalContent2), reason: "budget_exceeded" };
-    }
-    if (passResult.shouldStop) {
-      deps.appendLog(sessionDir, {
-        timestamp: deps.now().toISOString(),
-        event: "scan_loop_complete",
-        reason: "stopped",
-        iterations: iter
-      });
-      const finalContent2 = await deps.readFile(stateFile, "utf8");
-      return { iterations: iter, finalState: JSON.parse(finalContent2), reason: "stopped" };
-    }
-    if (iter < maxIterations && deps.sleep) {
-      await deps.sleep(intervalMs);
-    }
-  }
-  if (deps.etagCache) {
-    await deps.etagCache.save();
-  }
-  deps.appendLog(sessionDir, {
-    timestamp: deps.now().toISOString(),
-    event: "scan_loop_complete",
-    reason: "max_iterations",
-    iterations: maxIterations
-  });
-  const finalContent = await deps.readFile(stateFile, "utf8");
-  return { iterations: maxIterations, finalState: JSON.parse(finalContent), reason: "max_iterations" };
-}
-function parseInterval(value) {
-  if (!value)
-    return 3e4;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 1e3) {
-    throw new Error(`Invalid interval value: ${value} (must be >= 1000ms)`);
-  }
-  return parsed;
-}
-function parseMaxIterations(value) {
-  if (!value)
-    return 100;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    throw new Error(`Invalid max-iterations value: ${value} (must be a positive integer)`);
-  }
-  return parsed;
-}
 
 // src/commands/steer.ts
 import { writeFile as writeFile11 } from "node:fs/promises";
@@ -14174,6 +14000,158 @@ async function steerCommand(instruction, options = {}) {
   }
 }
 
+// src/commands/process-requests.ts
+import { existsSync as existsSync13 } from "node:fs";
+import { readFile as readFile12, readdir as readdir6, unlink as unlink3, writeFile as writeFile12, mkdir as mkdir8 } from "node:fs/promises";
+import path16 from "node:path";
+async function processRequestsCommand(options) {
+  const sessionDir = path16.resolve(options.sessionDir);
+  const homeDir = resolveHomeDir2(options.homeDir);
+  const aloopRoot = path16.join(homeDir, ".aloop");
+  const stateFile = path16.join(sessionDir, "orchestrator.json");
+  if (!existsSync13(stateFile)) {
+    return;
+  }
+  const state = JSON.parse(await readFile12(stateFile, "utf8"));
+  const metaFile = path16.join(sessionDir, "meta.json");
+  const meta = existsSync13(metaFile) ? JSON.parse(await readFile12(metaFile, "utf8")) : {};
+  const projectRoot = meta.project_root ?? process.cwd();
+  const sessionId = path16.basename(sessionDir);
+  const promptsDir = path16.join(sessionDir, "prompts");
+  const requestsDir = path16.join(sessionDir, "requests");
+  const repo = state.filter_repo ?? null;
+  const loopPlanFile = path16.join(sessionDir, "loop-plan.json");
+  let iteration = 1;
+  if (existsSync13(loopPlanFile)) {
+    try {
+      const plan = JSON.parse(await readFile12(loopPlanFile, "utf8"));
+      iteration = plan.iteration ?? 1;
+    } catch {
+    }
+  }
+  const logFile = path16.join(sessionDir, "log.jsonl");
+  const appendLog2 = async (_dir, entry) => {
+    let existing = "";
+    try {
+      if (existsSync13(logFile)) {
+        existing = await readFile12(logFile, "utf8");
+      }
+    } catch {
+    }
+    await writeFile12(logFile, `${existing}${JSON.stringify(entry)}
+`, "utf8");
+  };
+  const aloopCacheDir = path16.join(aloopRoot, ".cache");
+  const etagCache = new EtagCache(aloopCacheDir);
+  await etagCache.load();
+  const execGh = async (args) => {
+    const { spawnSync: spawnSync7 } = await import("node:child_process");
+    const aloopBin = process.env.ALOOP_BIN ?? "aloop";
+    const result2 = spawnSync7(aloopBin, ["gh", ...args], {
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true
+    });
+    return { stdout: result2.stdout ?? "", stderr: result2.stderr ?? "" };
+  };
+  const scanDeps = {
+    existsSync: existsSync13,
+    readFile: (p, enc) => readFile12(p, enc),
+    writeFile: (p, data, enc) => writeFile12(p, data, enc),
+    readdir: (p) => readdir6(p),
+    unlink: (p) => unlink3(p),
+    now: () => /* @__PURE__ */ new Date(),
+    execGh,
+    appendLog: appendLog2,
+    etagCache,
+    aloopRoot,
+    prLifecycleDeps: {
+      execGh,
+      readFile: (p, enc) => readFile12(p, enc),
+      writeFile: (p, data, enc) => writeFile12(p, data, enc),
+      now: () => /* @__PURE__ */ new Date(),
+      appendLog: (dir, entry) => {
+        appendLog2(dir, entry);
+      },
+      invokeAgentReview: async (prNumber, _repo, diff) => {
+        const resultFile = path16.join(requestsDir, `review-result-${prNumber}.json`);
+        if (existsSync13(resultFile)) {
+          try {
+            const content = await readFile12(resultFile, "utf8");
+            const result2 = JSON.parse(content);
+            await unlink3(resultFile);
+            return result2;
+          } catch (e) {
+            return {
+              pr_number: prNumber,
+              verdict: "flag-for-human",
+              summary: `Failed to parse review result: ${e instanceof Error ? e.message : String(e)}`
+            };
+          }
+        }
+        const queueDir = path16.join(sessionDir, "queue");
+        const queueFile = path16.join(queueDir, `review-${prNumber}.md`);
+        if (!existsSync13(queueFile)) {
+          const reviewPromptPath = path16.join(promptsDir, "PROMPT_orch_review.md");
+          if (existsSync13(reviewPromptPath)) {
+            const reviewPrompt = await readFile12(reviewPromptPath, "utf8");
+            await mkdir8(queueDir, { recursive: true });
+            await writeFile12(queueFile, `---
+agent: orch_review
+pr_number: ${prNumber}
+---
+
+${reviewPrompt}
+
+## PR Diff
+
+\`\`\`diff
+${diff}
+\`\`\`
+`, "utf8");
+          }
+        }
+        return {
+          pr_number: prNumber,
+          verdict: "pending",
+          summary: "Review queued and waiting for agent execution."
+        };
+      }
+    }
+  };
+  const result = await runOrchestratorScanPass(
+    stateFile,
+    sessionDir,
+    projectRoot,
+    sessionId,
+    promptsDir,
+    aloopRoot,
+    repo,
+    iteration,
+    scanDeps
+  );
+  await etagCache.save();
+  const outputMode = options.output ?? "text";
+  if (outputMode === "json") {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    const parts = [];
+    if (result.dispatched > 0)
+      parts.push(`dispatched: ${result.dispatched}`);
+    if (result.queueProcessed > 0)
+      parts.push(`queue: ${result.queueProcessed}`);
+    if (result.triage.triaged_entries > 0)
+      parts.push(`triaged: ${result.triage.triaged_entries}`);
+    if (result.prLifecycles.length > 0)
+      parts.push(`PRs: ${result.prLifecycles.length}`);
+    if (result.allDone)
+      parts.push("ALL DONE");
+    if (parts.length > 0) {
+      console.log(`[process-requests] ${parts.join(", ")}`);
+    }
+  }
+}
+
 // src/index.ts
 var program2 = new Command();
 program2.name("aloop").description("Aloop CLI for dashboard and project orchestration").version("1.0.0");
@@ -14189,8 +14167,9 @@ program2.command("stop <session-id>").description("Stop a session by session-id"
 program2.command("update").description("Refresh ~/.aloop runtime assets from the current repo checkout").option("--repo-root <path>", "Path to aloop source repository root").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(updateCommand));
 program2.command("devcontainer").description("Generate or augment .devcontainer/devcontainer.json for isolated agent execution").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(devcontainerCommand));
 program2.command("devcontainer-verify").description("Verify devcontainer builds, starts, and passes all checks").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(verifyDevcontainerCommand));
-program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <paths>", 'Spec file(s) or glob pattern (e.g. "SPEC.md specs/*.md")', "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--interval <ms>", "Scan loop interval in milliseconds (default: 30000)").option("--max-iterations <n>", "Max scan loop iterations (default: 100)").option("--auto-merge", "Create a PR from trunk to main when all issues complete").option("--run-scan-loop", "Run the orchestrator scan loop after initialization").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(orchestrateCommand));
+program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <paths>", 'Spec file(s) or glob pattern (e.g. "SPEC.md specs/*.md")', "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--interval <ms>", "Scan loop interval in milliseconds (default: 30000)").option("--max-iterations <n>", "Max scan loop iterations (default: 100)").option("--auto-merge", "Create a PR from trunk to main when all issues complete").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(orchestrateCommand));
 program2.command("steer <instruction>").description("Send a steering instruction to an active session").option("--session <id>", "Target session ID (auto-detected if only one active)").option("--affects-completed-work <value>", "Whether instruction affects completed work: yes, no, or unknown", "unknown").option("--overwrite", "Overwrite an existing queued steering instruction").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(steerCommand));
+program2.command("process-requests").description("Process pending orchestrator requests (called by loop.sh between iterations)").requiredOption("--session-dir <path>", "Orchestrator session directory").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(processRequestsCommand));
 program2.addCommand(ghCommand);
 program2.command("debug-env", { hidden: true }).description("Print current environment variables (for testing)").action(withErrorHandling(() => {
   console.log(JSON.stringify(process.env));

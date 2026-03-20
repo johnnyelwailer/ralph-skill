@@ -14,6 +14,7 @@ import { updateCommand } from './commands/update.js';
 import { devcontainerCommand, verifyDevcontainerCommand } from './commands/devcontainer.js';
 import { orchestrateCommand } from './commands/orchestrate.js';
 import { steerCommand } from './commands/steer.js';
+import { processRequestsCommand } from './commands/process-requests.js';
 
 import { withErrorHandling } from './lib/error-handling.js';
 
@@ -157,7 +158,6 @@ program
   .option('--interval <ms>', 'Scan loop interval in milliseconds (default: 30000)')
   .option('--max-iterations <n>', 'Max scan loop iterations (default: 100)')
   .option('--auto-merge', 'Create a PR from trunk to main when all issues complete')
-  .option('--run-scan-loop', 'Run the orchestrator scan loop after initialization')
   .option('--home-dir <path>', 'Home directory override')
   .option('--project-root <path>', 'Project root override')
   .option('--output <mode>', 'Output format: json or text', 'text')
@@ -172,6 +172,14 @@ program
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(withErrorHandling(steerCommand));
+
+program
+  .command('process-requests')
+  .description('Process pending orchestrator requests (called by loop.sh between iterations)')
+  .requiredOption('--session-dir <path>', 'Orchestrator session directory')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(withErrorHandling(processRequestsCommand));
 
 // For subcommands like ghCommand that might have their own actions, we might need to be careful,
 // but since ghCommand is a Command object added via addCommand, we can't wrap it easily here.

@@ -705,7 +705,8 @@ export interface OrchestrateCommandResult {
   loop_plan_file: string;
   state_file: string;
   state: OrchestratorState;
-  scan_loop?: ScanLoopResult;
+  aloopRoot: string;
+  projectRoot: string;
 }
 
 interface LoopPlan {
@@ -1196,124 +1197,6 @@ export async function orchestrateCommandWithDeps(
   const stateFile = path.join(sessionDir, 'orchestrator.json');
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
-  let scanLoopResult: ScanLoopResult | undefined;
-
-  if (options.runScanLoop && !planOnly && state.issues.length > 0) {
-    const intervalMs = parseInterval(options.interval);
-    const maxIter = parseMaxIterations(options.maxIterations);
-
-    // Build appendLog helper using writeFile
-    const logFile = path.join(sessionDir, 'log.jsonl');
-    const appendLog = async (_dir: string, entry: Record<string, unknown>) => {
-      let existing = '';
-      try {
-        if (deps.existsSync(logFile)) {
-          existing = await deps.readFile(logFile, 'utf8');
-        }
-      } catch {
-        // File doesn't exist yet
-      }
-      await deps.writeFile(logFile, `${existing}${JSON.stringify(entry)}\n`, 'utf8');
-    };
-
-    // Initialize ETag cache for efficient GitHub API monitoring
-    const aloopCacheDir = path.join(aloopRoot, '.cache');
-    const etagCache = new EtagCache(aloopCacheDir);
-    await etagCache.load();
-
-    // Build scan loop deps from orchestrate deps
-    const scanDeps: ScanLoopDeps = {
-      existsSync: deps.existsSync,
-      readFile: deps.readFile,
-      writeFile: deps.writeFile,
-      readdir: async (p: string) => readdir(p),
-      unlink: deps.unlink,
-      now: deps.now,
-      execGh: deps.execGh,
-      appendLog,
-      etagCache,
-      prLifecycleDeps: deps.execGh ? {
-        execGh: deps.execGh,
-        readFile: deps.readFile,
-        writeFile: deps.writeFile,
-        now: deps.now,
-        appendLog: (dir: string, entry: Record<string, unknown>) => {
-          appendLog(dir, entry);
-        },
-        invokeAgentReview: async (prNumber: number, repo: string, diff: string) => {
-          const resultFile = path.join(requestsDir, `review-result-${prNumber}.json`);
-          if (deps.existsSync(resultFile)) {
-            try {
-              const content = await deps.readFile(resultFile, 'utf8');
-              const result = JSON.parse(content);
-              if (deps.unlink) await deps.unlink(resultFile);
-              return result;
-            } catch (e) {
-              return {
-                pr_number: prNumber,
-                verdict: 'flag-for-human',
-                summary: `Failed to parse review result: ${e instanceof Error ? e.message : String(e)}`,
-              };
-            }
-          }
-
-          const queueFile = path.join(queueDir, `review-${prNumber}.md`);
-          if (!deps.existsSync(queueFile)) {
-            const reviewPrompt = await deps.readFile(path.join(promptsDir, ORCH_REVIEW_PROMPT_FILENAME), 'utf8');
-            const fullPrompt = `---
-agent: orch_review
-pr_number: ${prNumber}
----
-
-${reviewPrompt}
-
-## PR Diff
-
-\`\`\`diff
-${diff}
-\`\`\`
-`;
-            await deps.writeFile(queueFile, fullPrompt, 'utf8');
-
-            // Also write a request file for visibility
-            const requestFile = path.join(requestsDir, `review-request-${prNumber}.json`);
-            await deps.writeFile(requestFile, JSON.stringify({
-              type: 'agent_review',
-              pr_number: prNumber,
-              repo,
-              queued_at: deps.now().toISOString(),
-            }, null, 2), 'utf8');
-          }
-
-          return {
-            pr_number: prNumber,
-            verdict: 'pending',
-            summary: 'Review queued and waiting for agent execution.',
-          };
-        },
-      } : undefined,
-      sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
-    };
-
-    const promptsSourceDir = promptsDir;
-
-    scanLoopResult = await runOrchestratorScanLoop(
-      stateFile,
-      sessionDir,
-      projectRoot,
-      path.basename(sessionDir),
-      promptsSourceDir,
-      aloopRoot,
-      filterRepo,
-      intervalMs,
-      maxIter,
-      scanDeps,
-    );
-
-    // Update state from scan loop result
-    state = scanLoopResult.finalState;
-  }
-
   return {
     session_dir: sessionDir,
     prompts_dir: promptsDir,
@@ -1322,7 +1205,8 @@ ${diff}
     loop_plan_file: loopPlanFile,
     state_file: stateFile,
     state,
-    scan_loop: scanLoopResult,
+    aloopRoot,
+    projectRoot,
   };
 }
 
@@ -1335,8 +1219,87 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     : undefined;
   const result = await orchestrateCommandWithDeps(options, deps);
 
+  const planOnly = options.planOnly ?? false;
+
+  // Spawn loop.sh as a detached background process (unless plan-only)
+  let loopPid: number | null = null;
+  if (!planOnly) {
+    const { spawn: nodeSpawn } = await import('node:child_process');
+    const loopBinDir = path.join(result.aloopRoot, 'bin');
+    const loopScript = path.join(loopBinDir, 'loop.sh');
+
+    if (!existsSync(loopScript)) {
+      throw new Error(`Loop script not found: ${loopScript}`);
+    }
+
+    const args = [
+      '--prompts-dir', result.prompts_dir,
+      '--session-dir', result.session_dir,
+      '--work-dir', result.projectRoot,
+      '--mode', 'single',
+      '--provider', 'claude',
+      '--round-robin', 'claude',
+      '--launch-mode', 'start',
+    ];
+
+    const child = nodeSpawn(loopScript, args, {
+      cwd: result.projectRoot,
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env },
+      windowsHide: true,
+    });
+    child.unref();
+    loopPid = child.pid ?? null;
+
+    if (!loopPid) {
+      throw new Error('Failed to launch orchestrator loop process.');
+    }
+
+    // Write meta.json
+    const metaPath = path.join(result.session_dir, 'meta.json');
+    const startedAt = new Date().toISOString();
+    const meta = {
+      session_id: path.basename(result.session_dir),
+      project_root: result.projectRoot,
+      provider: 'claude',
+      mode: 'orchestrate',
+      work_dir: result.projectRoot,
+      pid: loopPid,
+      started_at: startedAt,
+    };
+    await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
+    // Register in active.json
+    const activePath = path.join(result.aloopRoot, 'active.json');
+    let active: Record<string, unknown> = {};
+    try {
+      if (existsSync(activePath)) {
+        const content = await readFile(activePath, 'utf8');
+        const parsed = JSON.parse(content);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          active = parsed as Record<string, unknown>;
+        }
+      }
+    } catch {
+      // Start fresh
+    }
+    const sessionId = path.basename(result.session_dir);
+    active[sessionId] = {
+      session_id: sessionId,
+      session_dir: result.session_dir,
+      project_root: result.projectRoot,
+      pid: loopPid,
+      work_dir: result.projectRoot,
+      started_at: startedAt,
+      provider: 'claude',
+      mode: 'orchestrate',
+    };
+    await writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+  }
+
   if (outputMode === 'json') {
-    console.log(JSON.stringify(result, null, 2));
+    console.log(JSON.stringify({ ...result, pid: loopPid }, null, 2));
     return;
   }
 
@@ -1353,6 +1316,9 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   console.log(`  Autonomy:     ${result.state.autonomy_level ?? 'balanced'}`);
   console.log(`  Concurrency:  ${result.state.concurrency_cap}`);
   console.log(`  Plan only:    ${result.state.plan_only}`);
+  if (loopPid) {
+    console.log(`  Loop PID:     ${loopPid}`);
+  }
 
   if (result.state.issues.length > 0) {
     const waves = new Set(result.state.issues.map((i) => i.wave));
