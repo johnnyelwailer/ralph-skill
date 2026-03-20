@@ -17,7 +17,7 @@ Convert the spec into top-level vertical slices (epics) that can be scheduled an
 
 ## UI Variant Exploration
 
-When the session is configured with high parallelism or autonomous autonomy, and an epic involves user-facing UI:
+When `ui_variant_exploration` is enabled in `meta.json`, and an epic involves user-facing UI:
 
 - Create 2-3 sibling sub-issues for the UI portion, each with a different design direction (e.g., minimal/data-dense vs visual/spacious vs progressive-disclosure)
 - Each variant gets its own child loop with distinct sub-spec emphasis
@@ -25,7 +25,7 @@ When the session is configured with high parallelism or autonomous autonomy, and
 - Variants share the same data layer / API — only presentation differs
 - The parent epic tracks which variants were planned and links to their PRs
 
-Skip this if: autonomy is cautious, the feature is backend-only, or parallelism budget is too low for extra loops.
+Skip this if: `ui_variant_exploration` is false/unset, or the feature is backend-only.
 
 ## Rules
 

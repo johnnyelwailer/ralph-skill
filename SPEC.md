@@ -963,6 +963,7 @@ Interactive mode:
 7. **Ask about data privacy**: internal/private project vs public/open-source? How sensitive is the code/data? This determines ZDR configuration (see [Zero Data Retention](#zero-data-retention-zdr) section below)
 8. **If devcontainer is enabled: propose a provider-auth strategy and let the user override it.** Default is `mount-first` (auth file bind-mounts first), with alternatives `env-first` and `env-only`.
 9. If orchestrator: prompt for concurrency cap and budget limits
+9b. If orchestrator: estimate `ui_variant_exploration` based on session config, include in summary
 10. Run `aloop scaffold` with gathered options
 11. Print confirmation summary with all chosen settings (including auto-suggested trunk branch name, e.g., `agent/trunk`, ZDR mode if enabled, and proposed per-provider devcontainer auth methods) — user confirms or adjusts
 
@@ -1218,6 +1219,7 @@ HH:MM  ●  phase  provider·model  ✓ result   duration  ▸
 
 - [ ] `aloop start` CLI command handles full session setup + loop launch in a single invocation
 - [ ] `aloop setup` CLI command handles interactive config creation in a single invocation
+- [ ] `aloop setup` estimates `ui_variant_exploration` based on session config, includes it in confirmation summary (user can override), stores in `meta.json`
 - [ ] `aloop start` auto-launches dashboard and opens browser (configurable via `on_start` in config.yml)
 - [ ] `/aloop:start` agent command delegates to `aloop start` CLI (thin wrapper)
 - [ ] `/aloop:setup` agent command delegates to `aloop setup` CLI (thin wrapper)
@@ -1355,7 +1357,7 @@ This scoping is critical — the child loop shouldn't make system-wide decisions
 
 ### UI Variant Exploration (Competitive Designs)
 
-When the orchestrator decomposes work that includes user-facing UI features, and the session is configured with **high parallelism** or **autonomous** autonomy level, the decompose agent should plan **multiple distinct UI variants** for the same feature — each built by a separate child loop with different design direction in its sub-spec instructions.
+When `ui_variant_exploration` is enabled in the session's `meta.json`, and an epic involves user-facing UI features, the decompose agent should plan **multiple distinct UI variants** for the same feature — each built by a separate child loop with different design direction in its sub-spec instructions.
 
 **Why:** AI-generated UIs are cheap to produce but hard to evaluate from a spec alone. Instead of committing to one approach and iterating toward "good enough," build 2-3 competing implementations simultaneously. The user picks the direction they prefer. This is faster than serial iteration on a single design and produces better outcomes because the user sees concrete alternatives instead of describing what they want in the abstract.
 
@@ -1378,22 +1380,14 @@ FEATURE_<epic>_VARIANT=A|B|C   (env var)
 Or in a shared config file the app reads at startup. The flag defaults to variant A. All variants share the same data layer / API — only the presentation differs.
 
 **When this activates:**
-- `autonomy_level: autonomous` AND the feature involves UI components, OR
-- `max_parallel_loops >= 3` AND the feature involves UI components
+- `ui_variant_exploration: true` in `meta.json` AND the feature involves UI components
 - The decompose agent decides how many variants (2-3) based on available parallelism budget
 
 **When this does NOT activate:**
-- `autonomy_level: cautious` — user is hands-on, prefers to direct design themselves
+- `ui_variant_exploration: false` (or not set) — default is disabled
 - Backend-only features, API-only, infrastructure, data pipelines
-- Low parallelism budget (variants would serialize, defeating the purpose)
 
-**Setup integration:** During `aloop setup`, when the user configures autonomy level and parallelism, the summary should include a line like:
-
-```
-UI variant exploration:  enabled (2 variants per UI feature, togglable via feature flags)
-```
-
-or `disabled` if conditions aren't met. This is part of the summary — not a separate question. The user can override it in the summary review step if they want.
+**Setup integration:** During `aloop setup`, the setup agent estimates whether UI variant exploration makes sense based on the overall session configuration (autonomy level, parallelism budget, nature of the spec). This is not a separate question — it's included in the confirmation summary alongside other derived settings. The user can override it there.
 
 ### Multi-File Specs
 
@@ -2960,7 +2954,8 @@ main → trunk → feature-1
   "base_branch": "main",           # upstream base
   "auto_merge": true,              # enable pre-iteration sync (default: true)
   "merge_fetch_interval": 5,       # fetch every N iterations (default: 5)
-  "merge_on_upstream_change": true  # immediate merge when upstream advances
+  "merge_on_upstream_change": true, # immediate merge when upstream advances
+  "ui_variant_exploration": false   # build competing UI variants per feature (default: false)
 }
 ```
 
