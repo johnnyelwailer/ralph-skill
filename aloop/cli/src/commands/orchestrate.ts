@@ -928,17 +928,19 @@ reasoning: medium
 
 # Orchestrator Scan (Heartbeat)
 
-You are the orchestrator scan agent.
+You are the orchestrator scan agent. You are running in a git worktree of the project.
 
 **Session directory:** \`${sessionDir}\`
+
+The session directory contains \`orchestrator.json\`, \`requests/\`, \`queue/\`, and \`prompts/\`.
+Your working directory is \`${sessionDir}/worktree\` — a git worktree with full project access.
 
 Run one lightweight monitoring pass:
 - Read \`${sessionDir}/orchestrator.json\` to understand current state (issues, waves, dependencies).
 - Check \`${sessionDir}/queue/\` for override prompts to prioritize.
 - Write any required side effects into \`${sessionDir}/requests/*.json\`.
+- You can read project files (SPEC.md, source code) from your working directory.
 - Keep this step reactive and minimal; avoid large speculative planning.
-
-**Important:** All orchestrator files use absolute paths under the session directory above.
 `;
 }
 
@@ -1236,7 +1238,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   // Spawn loop.sh as a detached background process (unless plan-only)
   let loopPid: number | null = null;
   if (!planOnly) {
-    const { spawn: nodeSpawn } = await import('node:child_process');
+    const { spawn: nodeSpawn, spawnSync: nodeSpawnSync } = await import('node:child_process');
     const loopBinDir = path.join(result.aloopRoot, 'bin');
     const loopScript = path.join(loopBinDir, 'loop.sh');
 
@@ -1244,14 +1246,24 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       throw new Error(`Loop script not found: ${loopScript}`);
     }
 
-    // Work-dir is the session dir so agents can write to requests/, queue/.
-    // cwd is the parent (sessions/) so the session dir is a child — providers
-    // grant permissions to child dirs of the cwd.
-    const sessionsRoot = path.dirname(result.session_dir);
+    // Create a git worktree inside the session dir (same as aloop start).
+    // The agent works in the worktree (full project access to SPEC.md, source),
+    // while requests/, queue/, orchestrator.json are siblings at ../
+    let workDir = result.projectRoot;
+    const worktreePath = path.join(result.session_dir, 'worktree');
+    const worktreeBranch = `aloop/${path.basename(result.session_dir)}`;
+    const worktreeResult = nodeSpawnSync('git', ['-C', result.projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
+    if (worktreeResult.status === 0) {
+      workDir = worktreePath;
+    } else {
+      // Worktree failed — fall back to project root
+      console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
+    }
+
     const args = [
       '--prompts-dir', result.prompts_dir,
       '--session-dir', result.session_dir,
-      '--work-dir', result.session_dir,
+      '--work-dir', workDir,
       '--mode', 'plan',
       '--provider', 'claude',
       '--round-robin', 'claude',
@@ -1260,7 +1272,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     ];
 
     const child = nodeSpawn(loopScript, args, {
-      cwd: sessionsRoot,
+      cwd: workDir,
       detached: true,
       stdio: 'ignore',
       env: { ...process.env },
