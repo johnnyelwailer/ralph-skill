@@ -1267,6 +1267,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       '--mode', 'plan',
       '--provider', 'claude',
       '--round-robin', 'claude',
+      '--max-iterations', '999999',
       '--launch-mode', 'start',
       '--dangerously-skip-container',
     ];
