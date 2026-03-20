@@ -1244,10 +1244,14 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       throw new Error(`Loop script not found: ${loopScript}`);
     }
 
+    // Work-dir is the session dir so agents can write to requests/, queue/.
+    // cwd is the parent (sessions/) so the session dir is a child — providers
+    // grant permissions to child dirs of the cwd.
+    const sessionsRoot = path.dirname(result.session_dir);
     const args = [
       '--prompts-dir', result.prompts_dir,
       '--session-dir', result.session_dir,
-      '--work-dir', result.projectRoot,
+      '--work-dir', result.session_dir,
       '--mode', 'plan',
       '--provider', 'claude',
       '--round-robin', 'claude',
@@ -1256,7 +1260,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     ];
 
     const child = nodeSpawn(loopScript, args, {
-      cwd: result.projectRoot,
+      cwd: sessionsRoot,
       detached: true,
       stdio: 'ignore',
       env: { ...process.env },
@@ -2207,7 +2211,7 @@ export async function queueEstimateForIssues(
     const content = [
       '---',
       JSON.stringify({
-        agent: 'orch_estimate', provider: 'claude',
+        agent: 'orch_estimate',
         reasoning: 'high',
         type: 'estimate_override',
         issue_number: issue.number,
@@ -2296,7 +2300,7 @@ export async function queueGapAnalysisForIssues(
   const productContent = [
     '---',
     JSON.stringify(
-      { agent: 'orch_product_analyst', reasoning: 'xhigh', type: 'gap_analysis', provider: 'claude' },
+      { agent: 'orch_product_analyst', reasoning: 'xhigh', type: 'gap_analysis' },
       null,
       2,
     ),
@@ -2320,7 +2324,7 @@ export async function queueGapAnalysisForIssues(
   const archContent = [
     '---',
     JSON.stringify(
-      { agent: 'orch_arch_analyst', reasoning: 'xhigh', type: 'gap_analysis', provider: 'claude' },
+      { agent: 'orch_arch_analyst', reasoning: 'xhigh', type: 'gap_analysis' },
       null,
       2,
     ),
@@ -2383,7 +2387,7 @@ export async function queueEpicDecomposition(
   const content = [
     '---',
     JSON.stringify(
-      { agent: 'orch_decompose', reasoning: 'xhigh', type: 'epic_decomposition', provider: 'claude' },
+      { agent: 'orch_decompose', reasoning: 'xhigh', type: 'epic_decomposition' },
       null,
       2,
     ),
@@ -2449,7 +2453,7 @@ export async function queueSubDecompositionForIssues(
     const content = [
       '---',
       JSON.stringify(
-        { agent: 'orch_sub_decompose', reasoning: 'xhigh', type: 'sub_issue_decomposition', provider: 'claude', issue_number: issue.number },
+        { agent: 'orch_sub_decompose', reasoning: 'xhigh', type: 'sub_issue_decomposition', issue_number: issue.number },
         null,
         2,
       ),
@@ -4236,7 +4240,7 @@ export async function queueReplanForSpecChange(
   const content = [
     '---',
     JSON.stringify(
-      { agent: 'orch_replan', reasoning: 'xhigh', type: 'replan', provider: 'claude', trigger: 'spec_change' },
+      { agent: 'orch_replan', reasoning: 'xhigh', type: 'replan', trigger: 'spec_change' },
       null,
       2,
     ),
@@ -4386,7 +4390,7 @@ export async function queueSpecConsistencyCheck(
   const content = [
     '---',
     JSON.stringify(
-      { agent: 'orch_spec_consistency', reasoning: 'xhigh', type: 'spec_consistency', provider: 'claude' },
+      { agent: 'orch_spec_consistency', reasoning: 'xhigh', type: 'spec_consistency' },
       null,
       2,
     ),
