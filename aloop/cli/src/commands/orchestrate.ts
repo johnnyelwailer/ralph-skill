@@ -920,7 +920,7 @@ Review a child loop's PR to ensure it meets the requirements of the issue and th
 - Provide clear, actionable feedback when requesting changes.
 `;
 
-function buildOrchestratorScanPrompt(): string {
+function buildOrchestratorScanPrompt(sessionDir: string): string {
   return `---
 agent: orch_scan
 reasoning: medium
@@ -928,15 +928,17 @@ reasoning: medium
 
 # Orchestrator Scan (Heartbeat)
 
-You are the orchestrator scan agent. Your working directory is the orchestrator session directory.
+You are the orchestrator scan agent.
+
+**Session directory:** \`${sessionDir}\`
 
 Run one lightweight monitoring pass:
-- Read \`orchestrator.json\` to understand current state (issues, waves, dependencies).
-- Check \`queue/\` for override prompts to prioritize.
-- Write any required side effects into \`requests/*.json\`.
+- Read \`${sessionDir}/orchestrator.json\` to understand current state (issues, waves, dependencies).
+- Check \`${sessionDir}/queue/\` for override prompts to prioritize.
+- Write any required side effects into \`${sessionDir}/requests/*.json\`.
 - Keep this step reactive and minimal; avoid large speculative planning.
 
-All paths are relative to your working directory (the session dir): \`orchestrator.json\`, \`requests/\`, \`queue/\`.
+**Important:** All orchestrator files use absolute paths under the session directory above.
 `;
 }
 
@@ -990,7 +992,7 @@ export async function orchestrateCommandWithDeps(
     version: 1,
   };
   await deps.writeFile(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}\n`, 'utf8');
-  await deps.writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(), 'utf8');
+  await deps.writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(sessionDir), 'utf8');
   const estimateTemplatePath = path.join(projectRoot, 'aloop', 'templates', ORCH_ESTIMATE_PROMPT_FILENAME);
   const estimatePrompt = deps.existsSync(estimateTemplatePath)
     ? await deps.readFile(estimateTemplatePath, 'utf8')
@@ -1245,7 +1247,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     const args = [
       '--prompts-dir', result.prompts_dir,
       '--session-dir', result.session_dir,
-      '--work-dir', result.session_dir,
+      '--work-dir', result.projectRoot,
       '--mode', 'plan',
       '--provider', 'claude',
       '--round-robin', 'claude',
@@ -1254,7 +1256,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     ];
 
     const child = nodeSpawn(loopScript, args, {
-      cwd: result.session_dir,
+      cwd: result.projectRoot,
       detached: true,
       stdio: 'ignore',
       env: { ...process.env },
@@ -2375,6 +2377,9 @@ export async function queueEpicDecomposition(
   decomposePrompt: string,
   deps: { writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void> },
 ): Promise<void> {
+  // Derive session dir from queue dir (queue is a direct child of session dir)
+  const sessionDir = path.dirname(queueDir);
+  const outputPath = path.join(sessionDir, 'requests', 'epic-decomposition-results.json');
   const content = [
     '---',
     JSON.stringify(
@@ -2394,7 +2399,7 @@ export async function queueEpicDecomposition(
     '',
     specContent,
     '',
-    'Write decomposition output to `requests/epic-decomposition-results.json` as a `{"issues":[...]}` plan object.',
+    `Write decomposition output to \`${outputPath}\` as a \`{"issues":[...]}\` plan object.`,
   ].join('\n');
   await deps.writeFile(path.join(queueDir, 'decompose-epics.md'), content, 'utf8');
 }
