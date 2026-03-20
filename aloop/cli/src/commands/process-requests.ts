@@ -124,21 +124,49 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // Apply estimate results if present
-  const estimateResultsFile = path.join(requestsDir, 'estimate-results.json');
-  if (existsSync(estimateResultsFile)) {
+  // Apply estimate results — one file per issue: estimate-result-{N}.json
+  const requestFiles = existsSync(requestsDir) ? await readdir(requestsDir) : [];
+  const estimateFiles = requestFiles.filter(f => f.match(/^estimate-result-\d+\.json$/));
+  for (const file of estimateFiles) {
+    const filePath = path.join(requestsDir, file);
     try {
-      const results = JSON.parse(await readFile(estimateResultsFile, 'utf8'));
-      for (const r of results) {
+      const result = JSON.parse(await readFile(filePath, 'utf8'));
+      const issueNum = result.issue_number;
+      const issue = state.issues.find((i: any) => i.number === issueNum);
+      if (issue) {
+        issue.dor_validated = result.dor_passed ?? true;
+        (issue as any).complexity_tier = result.complexity_tier;
+        (issue as any).iteration_estimate = result.iteration_estimate;
+        if (result.dor_passed) {
+          issue.status = 'Ready';
+        }
+        stateChanged = true;
+        console.log(`[process-requests] Issue #${issueNum}: ${result.dor_passed ? 'Ready' : 'needs work'} (${result.complexity_tier})`);
+      }
+      // Archive
+      const processedDir = path.join(requestsDir, 'processed');
+      await mkdir(processedDir, { recursive: true });
+      await writeFile(path.join(processedDir, file), await readFile(filePath, 'utf8'), 'utf8');
+      await unlink(filePath);
+    } catch {
+      // Malformed — skip
+    }
+  }
+
+  // Also handle legacy single estimate-results.json (array format)
+  const legacyEstimateFile = path.join(requestsDir, 'estimate-results.json');
+  if (existsSync(legacyEstimateFile)) {
+    try {
+      const results = JSON.parse(await readFile(legacyEstimateFile, 'utf8'));
+      for (const r of (Array.isArray(results) ? results : [])) {
         const issue = state.issues.find((i: any) => i.number === r.issue_number);
         if (issue && r.dor_passed) {
           issue.dor_validated = true;
           issue.status = 'Ready';
+          stateChanged = true;
         }
       }
-      stateChanged = true;
-      await unlink(estimateResultsFile);
-      console.log(`[process-requests] Applied estimate results`);
+      await unlink(legacyEstimateFile);
     } catch {
       // Malformed — skip
     }

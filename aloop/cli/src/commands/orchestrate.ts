@@ -2221,6 +2221,10 @@ export async function queueEstimateForIssues(
       `**Dependencies:** ${issue.depends_on.length > 0 ? issue.depends_on.map((d) => `#${d}`).join(', ') : 'none'}`,
     ].join('\n');
 
+    // Derive session dir from queue dir
+    const sessionDir = path.dirname(queueDir);
+    const outputPath = path.join(sessionDir, 'requests', `estimate-result-${issue.number}.json`);
+
     const content = [
       '---',
       JSON.stringify({
@@ -2237,7 +2241,10 @@ export async function queueEstimateForIssues(
       '',
       contextBlock,
       '',
-      'Produce your output as a JSON code block with fields: `issue_number`, `dor_passed`, `complexity_tier`, `iteration_estimate`, `risk_flags`, `confidence`, `gaps`.',
+      `Read the project spec files (SPEC.md, SPEC-ADDENDUM.md) for full context.`,
+      '',
+      `Write your result as a JSON file to \`${outputPath}\` with fields:`,
+      '`{ "issue_number": <number>, "dor_passed": <boolean>, "complexity_tier": "S|M|L|XL", "iteration_estimate": <number>, "risk_flags": [...], "confidence": { "level": "low|medium|high", "rationale": "..." }, "gaps": [...] }`',
     ].join('\n');
 
     const fileName = `estimate-issue-${issue.number}.md`;
@@ -2487,7 +2494,9 @@ export async function queueSubDecompositionForIssues(
       '',
       issue.depends_on.length > 0 ? issue.depends_on.join(', ') : '(none)',
       '',
-      'Write decomposition output to `requests/sub-decomposition-results.json` as an array of parent issue updates.',
+      `Read the project spec files (SPEC.md, SPEC-ADDENDUM.md) for full context.`,
+      '',
+      `Write decomposition output to \`${path.join(path.dirname(queueDir), 'requests', `sub-decomposition-result-${issue.number}.json`)}\` as a JSON object: \`{"issue_number": ${issue.number}, "sub_issues": [{"title": "...", "body": "...", "depends_on": [...]}]}\`.`,
     ].join('\n');
     await deps.writeFile(path.join(queueDir, `sub-decompose-issue-${issue.number}.md`), content, 'utf8');
   }
