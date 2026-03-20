@@ -59,12 +59,34 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       }));
       if (normalizedIssues.length > 0) {
         const planObj: DecompositionPlan = { issues: normalizedIssues };
+        // Create GitHub issues if repo is configured
+        const execGhIssueCreate = repo
+          ? async (repoName: string, sid: string, title: string, body: string, labels: string[]): Promise<number> => {
+              const bodyFile = path.join(requestsDir, `gh-issue-body-${Date.now()}.md`);
+              await writeFile(bodyFile, body, 'utf8');
+              try {
+                const result = spawnSync('gh', ['issue', 'create', '--repo', repoName, '--title', title, '--body-file', bodyFile, ...labels.flatMap(l => ['--label', l])], { encoding: 'utf8' });
+                if (result.status === 0 && result.stdout) {
+                  const match = result.stdout.match(/(\d+)\s*$/);
+                  if (match) return parseInt(match[1], 10);
+                  const urlMatch = result.stdout.match(/\/issues\/(\d+)/);
+                  if (urlMatch) return parseInt(urlMatch[1], 10);
+                }
+                console.error(`[process-requests] gh issue create failed: ${result.stderr?.trim()}`);
+                return 0;
+              } finally {
+                try { await unlink(bodyFile); } catch {}
+              }
+            }
+          : undefined;
+
         state = await applyDecompositionPlan(planObj, state, sessionDir, repo, {
           existsSync,
           readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
           writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
           mkdir: (p: string, opts?: { recursive?: boolean }) => mkdir(p, opts).then(() => undefined),
           now: () => new Date(),
+          execGhIssueCreate,
         });
         stateChanged = true;
         console.log(`[process-requests] Applied epic decomposition: ${state.issues.length} issues`);
