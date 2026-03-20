@@ -676,7 +676,7 @@ export async function applyDecompositionPlan(
       requires: normalizeTaskRequires(planIssue.requires),
       wave,
       state: 'pending',
-      status: 'Needs refinement',
+      status: 'Needs decomposition',
       child_session: null,
       pr_number: null,
       depends_on: planIssue.depends_on.map((depId) => idToGhNumber.get(depId) ?? depId),

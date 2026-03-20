@@ -105,16 +105,76 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // Apply sub-decomposition results if present
-  const subResultsFile = path.join(requestsDir, 'sub-decomposition-results.json');
-  if (existsSync(subResultsFile)) {
+  // Apply per-issue sub-decomposition results
+  const currentRequestFiles = existsSync(requestsDir) ? await readdir(requestsDir) : [];
+  const subDecompFiles = currentRequestFiles.filter(f => f.match(/^sub-decomposition-result-\d+\.json$/));
+  for (const file of subDecompFiles) {
+    const filePath = path.join(requestsDir, file);
     try {
-      const subResults: SubDecompositionResult[] = JSON.parse(await readFile(subResultsFile, 'utf8'));
-      applySubDecompositionResults(state, subResults, new Date());
-      stateChanged = true;
-      await unlink(subResultsFile);
-    } catch {
-      // Malformed — skip
+      const result = JSON.parse(await readFile(filePath, 'utf8'));
+      const parentNum = result.issue_number ?? result.parent_issue_number;
+      const parent = state.issues.find((i: any) => i.number === parentNum);
+      const subIssues = result.sub_issues ?? [];
+
+      if (parent && subIssues.length > 0) {
+        // Create sub-issues as new entries in state + on GitHub
+        let nextNum = Math.max(0, ...state.issues.map((i: any) => i.number ?? 0)) + 1;
+        for (const sub of subIssues) {
+          const subBody = sub.body ?? `Sub-issue of #${parentNum}: ${parent.title}`;
+          let ghNumber = 0;
+
+          if (repo) {
+            const bodyFile = path.join(requestsDir, `gh-sub-issue-body-${Date.now()}.md`);
+            await writeFile(bodyFile, subBody, 'utf8');
+            const ghResult = spawnSync('gh', [
+              'issue', 'create', '--repo', repo,
+              '--title', sub.title,
+              '--body-file', bodyFile,
+              '--label', 'aloop/auto',
+            ], { encoding: 'utf8' });
+            try { await unlink(bodyFile); } catch {}
+            if (ghResult.status === 0 && ghResult.stdout) {
+              const urlMatch = ghResult.stdout.match(/\/issues\/(\d+)/);
+              ghNumber = urlMatch ? parseInt(urlMatch[1], 10) : nextNum++;
+            } else {
+              ghNumber = nextNum++;
+            }
+          } else {
+            ghNumber = nextNum++;
+          }
+
+          state.issues.push({
+            number: ghNumber,
+            title: sub.title,
+            body: subBody,
+            file_hints: sub.file_hints ?? [],
+            wave: parent.wave,
+            state: 'pending',
+            status: 'Needs refinement',
+            child_session: null,
+            pr_number: null,
+            depends_on: (sub.depends_on ?? []).map((d: number) => d),
+            blocked_on_human: false,
+            processed_comment_ids: [],
+            dor_validated: false,
+            parent_issue: parentNum,
+          } as any);
+          console.log(`[process-requests] Created sub-issue #${ghNumber}: ${sub.title.substring(0, 50)}`);
+        }
+
+        // Mark parent as decomposed (no longer dispatchable itself)
+        parent.status = 'Needs refinement';
+        (parent as any).decomposed = true;
+        stateChanged = true;
+      }
+
+      // Archive
+      const processedDir = path.join(requestsDir, 'processed');
+      await mkdir(processedDir, { recursive: true });
+      await writeFile(path.join(processedDir, file), await readFile(filePath, 'utf8'), 'utf8');
+      await unlink(filePath);
+    } catch (e) {
+      console.error(`[process-requests] Failed to apply sub-decomposition: ${e}`);
     }
   }
 
