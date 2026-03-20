@@ -970,6 +970,70 @@ Extends **QA Agent — Black-Box User Testing** and **Mandatory Final Review Gat
 
 ---
 
+## Orchestrator Adapter Pattern (Pluggable Issue/PR Backend)
+
+### Purpose
+
+The orchestrator is currently coupled to GitHub via `gh` CLI calls. All issue/PR operations must go through a pluggable adapter interface so the orchestrator can work with different backends: GitHub, local file-based (no remote needed), GitLab, Gitea, Linear, etc.
+
+### Adapter Interface
+
+```typescript
+interface OrchestratorAdapter {
+  // Issue lifecycle
+  createIssue(title: string, body: string, labels: string[]): Promise<{ number: number; url: string }>;
+  updateIssue(number: number, update: { body?: string; labels_add?: string[]; labels_remove?: string[]; state?: 'open' | 'closed' }): Promise<void>;
+  closeIssue(number: number): Promise<void>;
+  getIssue(number: number): Promise<{ number: number; title: string; body: string; state: string; labels: string[] }>;
+  listIssues(filters: { labels?: string[]; state?: 'open' | 'closed' | 'all' }): Promise<Array<{ number: number; title: string; state: string }>>;
+
+  // Comments
+  postComment(issueNumber: number, body: string): Promise<void>;
+  listComments(issueNumber: number, since?: string): Promise<Array<{ id: number; body: string; author: string; created_at: string }>>;
+
+  // PR lifecycle
+  createPR(title: string, body: string, head: string, base: string): Promise<{ number: number; url: string }>;
+  mergePR(number: number, method: 'squash' | 'merge' | 'rebase'): Promise<void>;
+  getPRStatus(number: number): Promise<{ mergeable: boolean; ci_status: 'success' | 'failure' | 'pending'; reviews: Array<{ verdict: string }> }>;
+
+  // Project status (optional — GitHub Projects, Linear states, etc.)
+  setIssueStatus?(number: number, status: string): Promise<void>;
+}
+```
+
+### Planned Adapters
+
+| Adapter | Backend | Use Case |
+|---------|---------|----------|
+| `github` | `gh` CLI | Default — real GitHub/GHE repos |
+| `local` | File-based (`.aloop/issues/`) + git branches | Offline development, no remote platform needed |
+| `gitlab` | `glab` CLI | GitLab repos |
+| `linear` | Linear API | Linear issue tracking |
+
+### Current State
+
+`PrLifecycleDeps`, `DispatchDeps`, and `execGh`/`execGhIssueCreate` in `orchestrate.ts` are already dependency-injected — the adapter boundary is halfway there. The work is to:
+
+1. Define the formal `OrchestratorAdapter` interface
+2. Wrap existing `gh` CLI calls into a `GitHubAdapter` implementation
+3. Add adapter selection to `aloop setup` and `meta.json` config
+4. Implement `LocalAdapter` for file-based orchestration without a remote
+
+### Approach
+
+Don't over-abstract before a second adapter exists. Extract `execGh` calls into the typed adapter, keep GitHub as default, implement local adapter when there's demand. The interface above is the target — implement incrementally.
+
+### Acceptance Criteria
+
+- [ ] `OrchestratorAdapter` interface defined in `src/lib/adapter.ts`
+- [ ] `GitHubAdapter` wraps all existing `gh` CLI calls
+- [ ] `orchestrate.ts` uses adapter interface, not raw `execGh`
+- [ ] Adapter selection configurable in `meta.json` (`adapter: "github" | "local"`)
+- [ ] `LocalAdapter` stores issues as JSON files in `.aloop/issues/`, PRs as branches
+- [ ] All GitHub URL construction derives from adapter, never hardcoded
+
+---
+
 ## Known Implementation Gaps
 
 The following features are described in `SPEC.md` but are not yet implemented. Items are grouped by priority and cross-referenced to the relevant spec section.
