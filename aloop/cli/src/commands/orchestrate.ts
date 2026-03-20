@@ -2207,7 +2207,7 @@ export async function queueEstimateForIssues(
     const content = [
       '---',
       JSON.stringify({
-        agent: 'orch_estimate',
+        agent: 'orch_estimate', provider: 'claude',
         reasoning: 'high',
         type: 'estimate_override',
         issue_number: issue.number,
@@ -2296,7 +2296,7 @@ export async function queueGapAnalysisForIssues(
   const productContent = [
     '---',
     JSON.stringify(
-      { agent: 'orch_product_analyst', reasoning: 'xhigh', type: 'gap_analysis' },
+      { agent: 'orch_product_analyst', reasoning: 'xhigh', type: 'gap_analysis', provider: 'claude' },
       null,
       2,
     ),
@@ -2320,7 +2320,7 @@ export async function queueGapAnalysisForIssues(
   const archContent = [
     '---',
     JSON.stringify(
-      { agent: 'orch_arch_analyst', reasoning: 'xhigh', type: 'gap_analysis' },
+      { agent: 'orch_arch_analyst', reasoning: 'xhigh', type: 'gap_analysis', provider: 'claude' },
       null,
       2,
     ),
@@ -2383,7 +2383,7 @@ export async function queueEpicDecomposition(
   const content = [
     '---',
     JSON.stringify(
-      { agent: 'orch_decompose', reasoning: 'xhigh', type: 'epic_decomposition' },
+      { agent: 'orch_decompose', reasoning: 'xhigh', type: 'epic_decomposition', provider: 'claude' },
       null,
       2,
     ),
@@ -2449,7 +2449,7 @@ export async function queueSubDecompositionForIssues(
     const content = [
       '---',
       JSON.stringify(
-        { agent: 'orch_sub_decompose', reasoning: 'xhigh', type: 'sub_issue_decomposition', issue_number: issue.number },
+        { agent: 'orch_sub_decompose', reasoning: 'xhigh', type: 'sub_issue_decomposition', provider: 'claude', issue_number: issue.number },
         null,
         2,
       ),
@@ -4236,7 +4236,7 @@ export async function queueReplanForSpecChange(
   const content = [
     '---',
     JSON.stringify(
-      { agent: 'orch_replan', reasoning: 'xhigh', type: 'replan', trigger: 'spec_change' },
+      { agent: 'orch_replan', reasoning: 'xhigh', type: 'replan', provider: 'claude', trigger: 'spec_change' },
       null,
       2,
     ),
@@ -4386,7 +4386,7 @@ export async function queueSpecConsistencyCheck(
   const content = [
     '---',
     JSON.stringify(
-      { agent: 'orch_spec_consistency', reasoning: 'xhigh', type: 'spec_consistency' },
+      { agent: 'orch_spec_consistency', reasoning: 'xhigh', type: 'spec_consistency', provider: 'claude' },
       null,
       2,
     ),
