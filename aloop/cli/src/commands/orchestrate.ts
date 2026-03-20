@@ -2768,8 +2768,26 @@ export async function launchChildLoop(
   // Create session directory
   await deps.mkdir(sessionDir, { recursive: true });
 
-  // Copy prompts
-  await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
+  // Copy prompts — use project prompts (for loop agents), not orchestrator prompts
+  // Look for project prompts first, fall back to orchestrator prompts
+  const projectPromptsDir = path.join(aloopRoot, 'templates');
+  if (deps.existsSync(projectPromptsDir)) {
+    await deps.mkdir(promptsDir, { recursive: true });
+    // Copy standard loop prompt templates
+    const templateFiles = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_qa.md', 'PROMPT_review.md',
+      'PROMPT_proof.md', 'PROMPT_steer.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md',
+      'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md', 'PROMPT_merge.md'];
+    for (const tmpl of templateFiles) {
+      const src = path.join(projectPromptsDir, tmpl);
+      if (deps.existsSync(src)) {
+        const content = await deps.readFile(src, 'utf8');
+        await deps.writeFile(path.join(promptsDir, tmpl), content, 'utf8');
+      }
+    }
+  } else {
+    // Fallback: copy whatever prompts source has
+    await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
+  }
 
   // Create git worktree with branch (or reuse existing branch)
   let worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName], { encoding: 'utf8' });
