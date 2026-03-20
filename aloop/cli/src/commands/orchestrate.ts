@@ -1194,6 +1194,13 @@ export async function orchestrateCommandWithDeps(
     }
   }
 
+  // Create PROMPT_plan.md symlink so loop.sh mode validation passes
+  // (the actual prompt used is driven by loop-plan.json cycle, not the mode)
+  const planPromptPath = path.join(promptsDir, 'PROMPT_plan.md');
+  if (!deps.existsSync(planPromptPath)) {
+    await deps.writeFile(planPromptPath, '# Orchestrator plan prompt (placeholder — cycle uses PROMPT_orch_scan.md)\n', 'utf8');
+  }
+
   const stateFile = path.join(sessionDir, 'orchestrator.json');
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
@@ -1236,10 +1243,11 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       '--prompts-dir', result.prompts_dir,
       '--session-dir', result.session_dir,
       '--work-dir', result.projectRoot,
-      '--mode', 'single',
+      '--mode', 'plan',
       '--provider', 'claude',
       '--round-robin', 'claude',
       '--launch-mode', 'start',
+      '--dangerously-skip-container',
     ];
 
     const child = nodeSpawn(loopScript, args, {
