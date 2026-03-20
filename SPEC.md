@@ -1353,6 +1353,48 @@ The sub-spec in the issue body contains:
 
 This scoping is critical — the child loop shouldn't make system-wide decisions. It delivers its slice and nothing more.
 
+### UI Variant Exploration (Competitive Designs)
+
+When the orchestrator decomposes work that includes user-facing UI features, and the session is configured with **high parallelism** or **autonomous** autonomy level, the decompose agent should plan **multiple distinct UI variants** for the same feature — each built by a separate child loop with different design direction in its sub-spec instructions.
+
+**Why:** AI-generated UIs are cheap to produce but hard to evaluate from a spec alone. Instead of committing to one approach and iterating toward "good enough," build 2-3 competing implementations simultaneously. The user picks the direction they prefer. This is faster than serial iteration on a single design and produces better outcomes because the user sees concrete alternatives instead of describing what they want in the abstract.
+
+**How it works:**
+
+1. **Decompose agent** identifies sub-issues that involve UI work (components, pages, layouts, interactions)
+2. For qualifying features, creates 2-3 sibling sub-issues instead of one, each with a different design focus:
+   - Variant A: "minimal / data-dense / power-user focused"
+   - Variant B: "visual / spacious / guided UX"
+   - Variant C: "progressive disclosure / mobile-first" (if 3 variants)
+3. Each variant sub-issue gets a distinct sub-spec that emphasizes different trade-offs
+4. All variants are **togglable via runtime feature flags** — a simple env var or config toggle, not compile-time branching. All variants ship in the same build.
+5. The parent issue tracks which variants were produced and links to their PRs
+6. User reviews the variants (side-by-side if dashboard supports it) and picks one — or combines elements from multiple
+
+**Feature flag convention:**
+```
+FEATURE_<epic>_VARIANT=A|B|C   (env var)
+```
+Or in a shared config file the app reads at startup. The flag defaults to variant A. All variants share the same data layer / API — only the presentation differs.
+
+**When this activates:**
+- `autonomy_level: autonomous` AND the feature involves UI components, OR
+- `max_parallel_loops >= 3` AND the feature involves UI components
+- The decompose agent decides how many variants (2-3) based on available parallelism budget
+
+**When this does NOT activate:**
+- `autonomy_level: cautious` — user is hands-on, prefers to direct design themselves
+- Backend-only features, API-only, infrastructure, data pipelines
+- Low parallelism budget (variants would serialize, defeating the purpose)
+
+**Setup integration:** During `aloop setup`, when the user configures autonomy level and parallelism, the summary should include a line like:
+
+```
+UI variant exploration:  enabled (2 variants per UI feature, togglable via feature flags)
+```
+
+or `disabled` if conditions aren't met. This is part of the summary — not a separate question. The user can override it in the summary review step if they want.
+
 ### Multi-File Specs
 
 Single `SPEC.md` breaks down at scale. The orchestrator supports multiple spec files:

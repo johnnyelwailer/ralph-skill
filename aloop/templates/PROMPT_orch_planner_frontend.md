@@ -13,6 +13,7 @@ Define a concrete frontend implementation approach for a single sub-issue.
 - Routing/navigation implications
 - Error/loading/empty states
 - Test strategy for acceptance criteria
+- If this is a **UI variant** sub-issue: implement the specific design direction from the sub-spec, ensure the variant is togglable via the feature flag (`FEATURE_<epic>_VARIANT`), and share data layer/API with sibling variants
 
 ## Output
 
