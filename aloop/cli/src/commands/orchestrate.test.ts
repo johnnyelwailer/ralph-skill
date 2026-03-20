@@ -612,7 +612,7 @@ describe('applyDecompositionPlan', () => {
 
     for (const issue of result.issues) {
       assert.equal(issue.state, 'pending');
-      assert.equal(issue.status, 'Needs refinement');
+      assert.equal(issue.status, 'Needs decomposition');
       assert.equal(issue.dor_validated, false);
       assert.equal(issue.child_session, null);
       assert.equal(issue.pr_number, null);
@@ -728,7 +728,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     assert.equal(persisted.current_wave, 1);
   });
 
-  it('writes estimate-readiness request for unvalidated refinement issues', async () => {
+  it('queues sub-decomposition for epics in Needs decomposition status', async () => {
     const deps = createMockDeps({
       existsSync: () => true,
       readFile: async () => samplePlan,
@@ -737,16 +737,9 @@ describe('orchestrateCommandWithDeps with --plan', () => {
 
     await orchestrateCommandWithDeps({ plan: 'plan.json' }, deps);
 
-    const requestPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/requests/estimate-readiness.json'));
-    assert.ok(requestPath, 'estimate-readiness.json should be written');
-    const request = JSON.parse(mockDeps._writtenFiles[requestPath!]);
-    assert.equal(request.type, 'definition_of_ready_estimate');
-    assert.equal(request.prompt_template, 'PROMPT_orch_estimate.md');
-    assert.equal(request.targets.length, 2);
-
-    // Verify estimate queue prompts are also written
-    const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/estimate-issue-'));
-    assert.equal(queueFiles.length, 2, 'Should write queue override for each unvalidated issue');
+    // Epics start at Needs decomposition — sub-decomposition should be queued
+    const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/sub-decompose-issue-'));
+    assert.equal(queueFiles.length, 2, 'Should write sub-decompose queue prompts for each epic');
     const queueContent = mockDeps._writtenFiles[queueFiles[0]];
     assert.match(queueContent, /orch_estimate/, 'Queue override should reference orch_estimate agent');
   });
@@ -779,7 +772,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     assert.equal(issue1!.dor_validated, true);
     assert.equal(issue1!.status, 'Ready');
     assert.equal(issue2!.dor_validated, false);
-    assert.equal(issue2!.status, 'Needs refinement');
+    assert.equal(issue2!.status, 'Needs decomposition');
   });
 
   it('throws when spec file does not exist', async () => {

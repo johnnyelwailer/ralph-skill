@@ -6,13 +6,9 @@ import { resolveHomeDir } from './session.js';
 import {
   runOrchestratorScanPass,
   applyDecompositionPlan,
-  applySubDecompositionResults,
-  queueEstimateForIssues,
-  queueSubDecompositionForIssues,
   type ScanLoopDeps,
   type OrchestratorState,
   type DecompositionPlan,
-  type SubDecompositionResult,
 } from './orchestrate.js';
 import { EtagCache } from '../lib/github-monitor.js';
 
@@ -22,16 +18,24 @@ export interface ProcessRequestsOptions {
   output?: string;
 }
 
+/**
+ * One-shot command called by loop.sh between iterations for orchestrator sessions.
+ *
+ * Phase 1: Apply agent-produced result files to orchestrator state
+ *          (decomposition results, sub-decomposition results, estimate results)
+ * Phase 2: Create GH issues for any issues with number === 0
+ * Phase 3: Persist state
+ * Phase 4: Run one orchestrator scan pass (delegates ALL orchestration logic
+ *          to runOrchestratorScanPass — dispatch, triage, PR lifecycle, wave
+ *          advancement, budget, child monitoring, etc.)
+ */
 export async function processRequestsCommand(options: ProcessRequestsOptions): Promise<void> {
   const sessionDir = path.resolve(options.sessionDir);
   const homeDir = resolveHomeDir(options.homeDir);
   const aloopRoot = path.join(homeDir, '.aloop');
 
   const stateFile = path.join(sessionDir, 'orchestrator.json');
-  if (!existsSync(stateFile)) {
-    // Not an orchestrator session — nothing to do
-    return;
-  }
+  if (!existsSync(stateFile)) return;
 
   let state: OrchestratorState = JSON.parse(await readFile(stateFile, 'utf8'));
   const metaFile = path.join(sessionDir, 'meta.json');
@@ -41,15 +45,16 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const promptsDir = path.join(sessionDir, 'prompts');
   const requestsDir = path.join(sessionDir, 'requests');
   const repo = state.filter_repo ?? null;
-
-  // Apply decomposition results if present (produced by decompose agent between iterations)
   let stateChanged = false;
+
+  // ── Phase 1: Apply agent-produced result files ──
+
+  // 1a. Epic decomposition results → apply to state
   const epicResultsFile = path.join(requestsDir, 'epic-decomposition-results.json');
   if (existsSync(epicResultsFile) && state.issues.length === 0) {
     try {
       const rawPlan = JSON.parse(await readFile(epicResultsFile, 'utf8'));
       const rawIssues = rawPlan.issues ?? (Array.isArray(rawPlan) ? rawPlan : []);
-      // Normalize: ensure each issue has id and depends_on fields
       const normalizedIssues = rawIssues.map((issue: any, idx: number) => ({
         id: issue.id ?? idx + 1,
         title: issue.title ?? `Epic ${idx + 1}`,
@@ -58,328 +63,126 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         file_hints: issue.file_hints,
       }));
       if (normalizedIssues.length > 0) {
-        const planObj: DecompositionPlan = { issues: normalizedIssues };
-        // Create GitHub issues if repo is configured
-        const execGhIssueCreate = repo
-          ? async (repoName: string, sid: string, title: string, body: string, labels: string[]): Promise<number> => {
-              const bodyFile = path.join(requestsDir, `gh-issue-body-${Date.now()}.md`);
-              await writeFile(bodyFile, body, 'utf8');
-              try {
-                const result = spawnSync('gh', ['issue', 'create', '--repo', repoName, '--title', title, '--body-file', bodyFile, ...labels.flatMap(l => ['--label', l])], { encoding: 'utf8' });
-                if (result.status === 0 && result.stdout) {
-                  const match = result.stdout.match(/(\d+)\s*$/);
-                  if (match) return parseInt(match[1], 10);
-                  const urlMatch = result.stdout.match(/\/issues\/(\d+)/);
-                  if (urlMatch) return parseInt(urlMatch[1], 10);
-                }
-                console.error(`[process-requests] gh issue create failed: ${result.stderr?.trim()}`);
-                return 0;
-              } finally {
-                try { await unlink(bodyFile); } catch {}
-              }
-            }
-          : undefined;
-
-        state = await applyDecompositionPlan(planObj, state, sessionDir, repo, {
-          existsSync,
-          readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
-          writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
-          mkdir: (p: string, opts?: { recursive?: boolean }) => mkdir(p, opts).then(() => undefined),
-          now: () => new Date(),
-          execGhIssueCreate,
-        });
+        const ghIssueCreator = repo ? makeGhIssueCreator(requestsDir) : undefined;
+        state = await applyDecompositionPlan(
+          { issues: normalizedIssues } as DecompositionPlan,
+          state, sessionDir, repo,
+          { existsSync, readFile: (p: string, e: BufferEncoding) => readFile(p, e), writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e), mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined), now: () => new Date(), execGhIssueCreate: ghIssueCreator },
+        );
         stateChanged = true;
         console.log(`[process-requests] Applied epic decomposition: ${state.issues.length} issues`);
       }
-      // Archive the results file
-      const processedDir = path.join(requestsDir, 'processed');
-      await mkdir(processedDir, { recursive: true });
-      await writeFile(
-        path.join(processedDir, 'epic-decomposition-results.json'),
-        await readFile(epicResultsFile, 'utf8'),
-        'utf8',
-      );
-      await unlink(epicResultsFile);
+      await archiveRequestFile(requestsDir, epicResultsFile);
     } catch (e) {
       console.error(`[process-requests] Failed to apply decomposition: ${e}`);
     }
   }
 
-  // Apply per-issue sub-decomposition results
-  const currentRequestFiles = existsSync(requestsDir) ? await readdir(requestsDir) : [];
-  const subDecompFiles = currentRequestFiles.filter(f => f.match(/^sub-decomposition-result-\d+\.json$/));
-  for (const file of subDecompFiles) {
+  // 1b. Sub-decomposition results → create sub-issues in state + GH
+  const allFiles = existsSync(requestsDir) ? await readdir(requestsDir) : [];
+  for (const file of allFiles.filter(f => f.match(/^sub-decomposition-result-\d+\.json$/))) {
     const filePath = path.join(requestsDir, file);
     try {
       const result = JSON.parse(await readFile(filePath, 'utf8'));
       const parentNum = result.issue_number ?? result.parent_issue_number;
       const parent = state.issues.find((i: any) => i.number === parentNum);
       const subIssues = result.sub_issues ?? [];
-
       if (parent && subIssues.length > 0) {
-        // Create sub-issues as new entries in state + on GitHub
         let nextNum = Math.max(0, ...state.issues.map((i: any) => i.number ?? 0)) + 1;
         for (const sub of subIssues) {
-          const subBody = sub.body ?? `Sub-issue of #${parentNum}: ${parent.title}`;
-          let ghNumber = 0;
-
-          if (repo) {
-            const bodyFile = path.join(requestsDir, `gh-sub-issue-body-${Date.now()}.md`);
-            await writeFile(bodyFile, subBody, 'utf8');
-            const ghResult = spawnSync('gh', [
-              'issue', 'create', '--repo', repo,
-              '--title', sub.title,
-              '--body-file', bodyFile,
-              '--label', 'aloop/auto',
-            ], { encoding: 'utf8' });
-            try { await unlink(bodyFile); } catch {}
-            if (ghResult.status === 0 && ghResult.stdout) {
-              const urlMatch = ghResult.stdout.match(/\/issues\/(\d+)/);
-              ghNumber = urlMatch ? parseInt(urlMatch[1], 10) : nextNum++;
-            } else {
-              ghNumber = nextNum++;
-            }
-          } else {
-            ghNumber = nextNum++;
-          }
-
+          const ghNumber = repo ? await createGhIssue(repo, sub.title, sub.body ?? '', ['aloop/auto'], requestsDir) : nextNum++;
           state.issues.push({
-            number: ghNumber,
-            title: sub.title,
-            body: subBody,
-            file_hints: sub.file_hints ?? [],
-            wave: parent.wave,
-            state: 'pending',
-            status: 'Needs refinement',
-            child_session: null,
-            pr_number: null,
-            depends_on: (sub.depends_on ?? []).map((d: number) => d),
-            blocked_on_human: false,
-            processed_comment_ids: [],
-            dor_validated: false,
-            parent_issue: parentNum,
+            number: ghNumber || nextNum++,
+            title: sub.title, body: sub.body ?? '', file_hints: sub.file_hints ?? [],
+            wave: parent.wave, state: 'pending', status: 'Needs refinement',
+            child_session: null, pr_number: null,
+            depends_on: sub.depends_on ?? [], blocked_on_human: false,
+            processed_comment_ids: [], dor_validated: false,
           } as any);
-          console.log(`[process-requests] Created sub-issue #${ghNumber}: ${sub.title.substring(0, 50)}`);
+          console.log(`[process-requests] Created sub-issue #${ghNumber || nextNum - 1}: ${sub.title.substring(0, 50)}`);
         }
-
-        // Mark parent as decomposed (no longer dispatchable itself)
         parent.status = 'Needs refinement';
         (parent as any).decomposed = true;
         stateChanged = true;
-
-        // Update parent epic body on GH with tasklist linking sub-issues
+        // Update parent with tasklist on GH
         if (repo && parentNum > 0) {
-          const subNums = state.issues
-            .filter((i: any) => i.parent_issue === parentNum && i.number > 0)
-            .map((i: any) => i.number);
-          if (subNums.length > 0) {
-            const tasklist = [
-              '',
-              '```[tasklist]',
-              '### Sub-issues',
-              ...subNums.map((n: number) => `- [ ] #${n}`),
-              '```',
-            ].join('\n');
-            try {
-              // Append tasklist to existing body
-              const viewResult = spawnSync('gh', ['issue', 'view', String(parentNum), '--repo', repo, '--json', 'body'], { encoding: 'utf8' });
-              if (viewResult.status === 0) {
-                const currentBody = JSON.parse(viewResult.stdout).body ?? '';
-                if (!currentBody.includes('[tasklist]')) {
-                  const newBody = currentBody + tasklist;
-                  const bodyFile = path.join(requestsDir, `gh-parent-body-${Date.now()}.md`);
-                  await writeFile(bodyFile, newBody, 'utf8');
-                  spawnSync('gh', ['issue', 'edit', String(parentNum), '--repo', repo, '--body-file', bodyFile], { encoding: 'utf8' });
-                  try { await unlink(bodyFile); } catch {}
-                  console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
-                }
-              }
-            } catch {
-              // Non-critical — sub-issues still work without tasklist
-            }
-          }
+          await updateParentTasklist(repo, parentNum, state.issues, requestsDir);
         }
       }
-
-      // Archive
-      const processedDir = path.join(requestsDir, 'processed');
-      await mkdir(processedDir, { recursive: true });
-      await writeFile(path.join(processedDir, file), await readFile(filePath, 'utf8'), 'utf8');
-      await unlink(filePath);
+      await archiveRequestFile(requestsDir, filePath);
     } catch (e) {
       console.error(`[process-requests] Failed to apply sub-decomposition: ${e}`);
     }
   }
 
-  // Advance pipeline: queue prompts based on issue status
-  const queueDir = path.join(sessionDir, 'queue');
-
-  // Issues needing sub-decomposition → queue sub-decompose prompts
-  const decompTargets = state.issues.filter((i: any) => i.status === 'Needs decomposition');
-  if (decompTargets.length > 0) {
-    const subDecomposePromptFile = path.join(promptsDir, 'PROMPT_orch_sub_decompose.md');
-    if (existsSync(subDecomposePromptFile)) {
-      const subDecomposePrompt = await readFile(subDecomposePromptFile, 'utf8');
-      await queueSubDecompositionForIssues(state.issues, queueDir, subDecomposePrompt, { writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e) });
-      console.log(`[process-requests] Queued sub-decomposition for ${decompTargets.length} issues`);
-      stateChanged = true;
-    }
-  }
-
-  // Issues needing refinement → queue estimate/readiness prompts
-  const refineTargets = state.issues.filter((i: any) => i.status === 'Needs refinement' && !i.dor_validated);
-  if (refineTargets.length > 0) {
-    const estimatePromptFile = path.join(promptsDir, 'PROMPT_orch_estimate.md');
-    if (existsSync(estimatePromptFile)) {
-      const estimatePrompt = await readFile(estimatePromptFile, 'utf8');
-      await queueEstimateForIssues(state.issues, queueDir, estimatePrompt, {
-        writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e),
-      });
-      console.log(`[process-requests] Queued estimation for ${refineTargets.length} issues`);
-      stateChanged = true;
-    }
-  }
-
-  // Apply estimate results — one file per issue: estimate-result-{N}.json
-  const requestFiles = existsSync(requestsDir) ? await readdir(requestsDir) : [];
-  const estimateFiles = requestFiles.filter(f => f.match(/^estimate-result-\d+\.json$/));
-  for (const file of estimateFiles) {
+  // 1c. Estimate results → apply to state (per-issue files)
+  for (const file of allFiles.filter(f => f.match(/^estimate-result-\d+\.json$/))) {
     const filePath = path.join(requestsDir, file);
     try {
       const result = JSON.parse(await readFile(filePath, 'utf8'));
-      const issueNum = result.issue_number;
-      const issue = state.issues.find((i: any) => i.number === issueNum);
+      const issue = state.issues.find((i: any) => i.number === result.issue_number);
       if (issue) {
         issue.dor_validated = result.dor_passed ?? true;
         (issue as any).complexity_tier = result.complexity_tier;
         (issue as any).iteration_estimate = result.iteration_estimate;
-        if (result.dor_passed) {
-          issue.status = 'Ready';
-        }
+        if (result.dor_passed) issue.status = 'Ready';
         stateChanged = true;
-        console.log(`[process-requests] Issue #${issueNum}: ${result.dor_passed ? 'Ready' : 'needs work'} (${result.complexity_tier})`);
+        console.log(`[process-requests] Issue #${result.issue_number}: ${result.dor_passed ? 'Ready' : 'needs work'}`);
       }
-      // Archive
-      const processedDir = path.join(requestsDir, 'processed');
-      await mkdir(processedDir, { recursive: true });
-      await writeFile(path.join(processedDir, file), await readFile(filePath, 'utf8'), 'utf8');
-      await unlink(filePath);
-    } catch {
-      // Malformed — skip
-    }
+      await archiveRequestFile(requestsDir, filePath);
+    } catch { /* skip malformed */ }
   }
 
-  // Also handle legacy single estimate-results.json (array format)
-  const legacyEstimateFile = path.join(requestsDir, 'estimate-results.json');
-  if (existsSync(legacyEstimateFile)) {
-    try {
-      const results = JSON.parse(await readFile(legacyEstimateFile, 'utf8'));
-      for (const r of (Array.isArray(results) ? results : [])) {
-        const issue = state.issues.find((i: any) => i.number === r.issue_number);
-        if (issue && r.dor_passed) {
-          issue.dor_validated = true;
-          issue.status = 'Ready';
-          stateChanged = true;
-        }
-      }
-      await unlink(legacyEstimateFile);
-    } catch {
-      // Malformed — skip
-    }
-  }
-
-  // Create GitHub issues for any issues that don't have GH numbers yet
-  if (repo && state.issues.length > 0) {
-    const needsGh = state.issues.filter((i: any) => !(i as any).gh_number && i.number === 0);
-    if (needsGh.length > 0) {
-      let nextLocalNumber = Math.max(0, ...state.issues.map((i: any) => i.number ?? 0)) + 1;
-      for (const issue of needsGh) {
-        try {
-          const bodyFile = path.join(requestsDir, `gh-issue-body-${Date.now()}.md`);
-          const body = issue.body ?? `## ${issue.title}\n\nNo description provided.`;
-          await writeFile(bodyFile, body, 'utf8');
-          const labels = (issue as any).parent_issue ? ['aloop/auto'] : ['aloop/epic', 'aloop/auto'];
-          const result = spawnSync('gh', [
-            'issue', 'create',
-            '--repo', repo,
-            '--title', issue.title,
-            '--body-file', bodyFile,
-            ...labels.flatMap((l: string) => ['--label', l]),
-          ], { encoding: 'utf8' });
-
-          try { await unlink(bodyFile); } catch {}
-
-          if (result.status === 0 && result.stdout) {
-            const urlMatch = result.stdout.match(/\/issues\/(\d+)/);
-            const ghNumber = urlMatch ? parseInt(urlMatch[1], 10) : 0;
-            if (ghNumber > 0) {
-              (issue as any).gh_number = ghNumber;
-              issue.number = ghNumber;
-              stateChanged = true;
-              console.log(`[process-requests] Created GH issue #${ghNumber}: ${issue.title.substring(0, 50)}`);
-            }
-          } else {
-            // Assign local number so we don't retry every pass
-            if (issue.number === 0) {
-              issue.number = nextLocalNumber++;
-              stateChanged = true;
-            }
-            console.error(`[process-requests] gh issue create failed: ${result.stderr?.trim()}`);
-          }
-        } catch (e) {
-          console.error(`[process-requests] Failed to create GH issue: ${e}`);
-        }
+  // ── Phase 2: Create GH issues for state entries with number=0 ──
+  if (repo) {
+    for (const issue of state.issues.filter((i: any) => i.number === 0)) {
+      const labels = (issue as any).parent_issue ? ['aloop/auto'] : ['aloop/epic', 'aloop/auto'];
+      const ghNum = await createGhIssue(repo, issue.title, issue.body ?? '', labels, requestsDir);
+      if (ghNum > 0) {
+        issue.number = ghNum;
+        (issue as any).gh_number = ghNum;
+        stateChanged = true;
+        console.log(`[process-requests] Created GH issue #${ghNum}: ${issue.title.substring(0, 50)}`);
       }
     }
   }
 
+  // ── Phase 3: Persist state before scan pass ──
   if (stateChanged) {
     await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
   }
 
-  // Read current iteration from loop-plan.json
+  // ── Phase 4: Run one orchestrator scan pass ──
+  // This delegates ALL orchestration to the existing runOrchestratorScanPass:
+  // triage, dispatch, child monitoring, PR lifecycle, wave advancement, budget, etc.
+
   const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
   let iteration = 1;
-  if (existsSync(loopPlanFile)) {
-    try {
-      const plan = JSON.parse(await readFile(loopPlanFile, 'utf8'));
-      iteration = plan.iteration ?? 1;
-    } catch {
-      // ignore
+  try {
+    if (existsSync(loopPlanFile)) {
+      iteration = JSON.parse(await readFile(loopPlanFile, 'utf8')).iteration ?? 1;
     }
-  }
+  } catch { /* ignore */ }
 
-  // Log helper
   const logFile = path.join(sessionDir, 'log.jsonl');
   const appendLog = async (_dir: string, entry: Record<string, unknown>) => {
-    let existing = '';
-    try {
-      if (existsSync(logFile)) {
-        existing = await readFile(logFile, 'utf8');
-      }
-    } catch {
-      // File doesn't exist yet
-    }
+    const existing = existsSync(logFile) ? await readFile(logFile, 'utf8').catch(() => '') : '';
     await writeFile(logFile, `${existing}${JSON.stringify(entry)}\n`, 'utf8');
   };
 
-  // Load ETag cache
-  const aloopCacheDir = path.join(aloopRoot, '.cache');
-  const etagCache = new EtagCache(aloopCacheDir);
+  const etagCache = new EtagCache(path.join(aloopRoot, '.cache'));
   await etagCache.load();
 
-  // execGh helper — calls aloop gh CLI
   const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
-    const aloopBin = process.env.ALOOP_BIN ?? 'aloop';
-    const result = spawnSync(aloopBin, ['gh', ...args], {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
-    return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+    const r = spawnSync(process.env.ALOOP_BIN ?? 'aloop', ['gh', ...args], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
 
-  // Build scan deps
+  const execGit = async (args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> => {
+    const r = spawnSync('git', args, { encoding: 'utf8', cwd: cwd ?? projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
+    return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+  };
+
   const scanDeps: ScanLoopDeps = {
     existsSync,
     readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
@@ -388,6 +191,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     unlink: (p: string) => unlink(p),
     now: () => new Date(),
     execGh,
+    execGit,
     appendLog,
     etagCache,
     aloopRoot,
@@ -396,57 +200,44 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
       writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
       now: () => new Date(),
-      appendLog: (dir: string, entry: Record<string, unknown>) => {
-        appendLog(dir, entry);
-      },
+      appendLog: (dir: string, entry: Record<string, unknown>) => { appendLog(dir, entry); },
       invokeAgentReview: async (prNumber: number, _repo: string, diff: string) => {
         const resultFile = path.join(requestsDir, `review-result-${prNumber}.json`);
         if (existsSync(resultFile)) {
           try {
             const content = await readFile(resultFile, 'utf8');
-            const result = JSON.parse(content);
+            const parsed = JSON.parse(content);
             await unlink(resultFile);
-            return result;
+            return parsed;
           } catch (e) {
-            return {
-              pr_number: prNumber,
-              verdict: 'flag-for-human',
-              summary: `Failed to parse review result: ${e instanceof Error ? e.message : String(e)}`,
-            };
+            return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Parse error: ${e}` };
           }
         }
-
-        const queueDir = path.join(sessionDir, 'queue');
-        const queueFile = path.join(queueDir, `review-${prNumber}.md`);
+        const queueFile = path.join(sessionDir, 'queue', `review-${prNumber}.md`);
         if (!existsSync(queueFile)) {
-          const reviewPromptPath = path.join(promptsDir, 'PROMPT_orch_review.md');
-          if (existsSync(reviewPromptPath)) {
-            const reviewPrompt = await readFile(reviewPromptPath, 'utf8');
-            await mkdir(queueDir, { recursive: true });
-            await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${reviewPrompt}\n\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
+          const reviewPath = path.join(promptsDir, 'PROMPT_orch_review.md');
+          if (existsSync(reviewPath)) {
+            const prompt = await readFile(reviewPath, 'utf8');
+            await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
+            await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${prompt}\n\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
           }
         }
-
-        return {
-          pr_number: prNumber,
-          verdict: 'pending',
-          summary: 'Review queued and waiting for agent execution.',
-        };
+        return { pr_number: prNumber, verdict: 'pending', summary: 'Review queued.' };
       },
     },
     dispatchDeps: {
       existsSync,
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
       writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
-      mkdir: (p: string, opts?: { recursive?: boolean }) => mkdir(p, opts).then(() => undefined),
-      cp: (src: string, dest: string, opts?: { recursive?: boolean }) => cp(src, dest, opts),
+      mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined),
+      cp: (src: string, dest: string, o?: { recursive?: boolean }) => cp(src, dest, o),
       now: () => new Date(),
-      spawnSync: (cmd: string, args: string[], opts?: Record<string, unknown>) => {
-        const r = spawnSync(cmd, args, opts as any);
+      spawnSync: (cmd: string, a: string[], o?: Record<string, unknown>) => {
+        const r = spawnSync(cmd, a, o as any);
         return { status: r.status, stdout: r.stdout?.toString() ?? '', stderr: r.stderr?.toString() ?? '' };
       },
-      spawn: (cmd: string, args: string[], opts?: Record<string, unknown>) => {
-        const child = spawn(cmd, args, opts as any);
+      spawn: (cmd: string, a: string[], o?: Record<string, unknown>) => {
+        const child = spawn(cmd, a, o as any);
         return { pid: child.pid, unref: () => child.unref() };
       },
       platform: process.platform,
@@ -454,20 +245,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     },
   };
 
-  // Run one scan pass
   const result = await runOrchestratorScanPass(
-    stateFile,
-    sessionDir,
-    projectRoot,
-    sessionId,
-    promptsDir,
-    aloopRoot,
-    repo,
-    iteration,
-    scanDeps,
+    stateFile, sessionDir, projectRoot, sessionId, promptsDir, aloopRoot, repo, iteration, scanDeps,
   );
 
-  // Save ETag cache
   await etagCache.save();
 
   // Report
@@ -485,4 +266,52 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       console.log(`[process-requests] ${parts.join(', ')}`);
     }
   }
+}
+
+// ── Helpers ──
+
+async function archiveRequestFile(requestsDir: string, filePath: string): Promise<void> {
+  const processedDir = path.join(requestsDir, 'processed');
+  await mkdir(processedDir, { recursive: true });
+  await writeFile(path.join(processedDir, path.basename(filePath)), await readFile(filePath, 'utf8'), 'utf8');
+  await unlink(filePath);
+}
+
+async function createGhIssue(repo: string, title: string, body: string, labels: string[], requestsDir: string): Promise<number> {
+  const bodyFile = path.join(requestsDir, `gh-issue-body-${Date.now()}.md`);
+  await writeFile(bodyFile, body, 'utf8');
+  try {
+    const result = spawnSync('gh', ['issue', 'create', '--repo', repo, '--title', title, '--body-file', bodyFile, ...labels.flatMap(l => ['--label', l])], { encoding: 'utf8' });
+    if (result.status === 0 && result.stdout) {
+      const urlMatch = result.stdout.match(/\/issues\/(\d+)/);
+      if (urlMatch) return parseInt(urlMatch[1], 10);
+    }
+    console.error(`[process-requests] gh issue create failed: ${result.stderr?.trim()}`);
+    return 0;
+  } finally {
+    try { await unlink(bodyFile); } catch {}
+  }
+}
+
+function makeGhIssueCreator(requestsDir: string) {
+  return async (_repo: string, _sid: string, title: string, body: string, labels: string[]): Promise<number> => {
+    return createGhIssue(_repo, title, body, labels, requestsDir);
+  };
+}
+
+async function updateParentTasklist(repo: string, parentNum: number, issues: any[], requestsDir: string): Promise<void> {
+  const subNums = issues.filter((i: any) => i.parent_issue === parentNum && i.number > 0).map((i: any) => i.number);
+  if (subNums.length === 0) return;
+  try {
+    const viewResult = spawnSync('gh', ['issue', 'view', String(parentNum), '--repo', repo, '--json', 'body'], { encoding: 'utf8' });
+    if (viewResult.status !== 0) return;
+    const currentBody = JSON.parse(viewResult.stdout).body ?? '';
+    if (currentBody.includes('[tasklist]')) return;
+    const tasklist = `\n\`\`\`[tasklist]\n### Sub-issues\n${subNums.map((n: number) => `- [ ] #${n}`).join('\n')}\n\`\`\``;
+    const bodyFile = path.join(requestsDir, `gh-parent-body-${Date.now()}.md`);
+    await writeFile(bodyFile, currentBody + tasklist, 'utf8');
+    spawnSync('gh', ['issue', 'edit', String(parentNum), '--repo', repo, '--body-file', bodyFile], { encoding: 'utf8' });
+    try { await unlink(bodyFile); } catch {}
+    console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
+  } catch { /* non-critical */ }
 }
