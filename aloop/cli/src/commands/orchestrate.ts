@@ -883,10 +883,11 @@ Find architecture and technical gaps before decomposition or dispatch.
 
 const ORCH_DECOMPOSE_FALLBACK = `# Orchestrator Decompose (Epic Creation)
 
-You are Aloop, the epic decomposition agent.
+You are Aloop, the epic decomposition agent. Your working directory is the orchestrator session directory.
 
 Convert the spec into top-level vertical slices (epics) with acceptance criteria and dependency hints.
-Write concrete \`requests/*.json\` files for issue creation, and prefer coherent end-to-end slices.
+Write the result to \`requests/epic-decomposition-results.json\` as a JSON object with an \`issues\` array.
+All paths are relative to your working directory.
 `;
 
 const ORCH_SUB_DECOMPOSE_FALLBACK = `# Orchestrator Sub-Issue Decompose
@@ -927,13 +928,15 @@ reasoning: medium
 
 # Orchestrator Scan (Heartbeat)
 
-You are the orchestrator scan agent.
+You are the orchestrator scan agent. Your working directory is the orchestrator session directory.
 
 Run one lightweight monitoring pass:
-- Read current orchestrator state and identify items ready for progress.
-- Prioritize queued override prompts from \`queue/\` when present.
+- Read \`orchestrator.json\` to understand current state (issues, waves, dependencies).
+- Check \`queue/\` for override prompts to prioritize.
 - Write any required side effects into \`requests/*.json\`.
 - Keep this step reactive and minimal; avoid large speculative planning.
+
+All paths are relative to your working directory (the session dir): \`orchestrator.json\`, \`requests/\`, \`queue/\`.
 `;
 }
 
@@ -1242,7 +1245,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     const args = [
       '--prompts-dir', result.prompts_dir,
       '--session-dir', result.session_dir,
-      '--work-dir', result.projectRoot,
+      '--work-dir', result.session_dir,
       '--mode', 'plan',
       '--provider', 'claude',
       '--round-robin', 'claude',
@@ -1251,7 +1254,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     ];
 
     const child = nodeSpawn(loopScript, args, {
-      cwd: result.projectRoot,
+      cwd: result.session_dir,
       detached: true,
       stdio: 'ignore',
       env: { ...process.env },
