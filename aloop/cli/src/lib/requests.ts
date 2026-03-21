@@ -544,6 +544,24 @@ async function handleCloseIssue(request: CloseIssueRequest, fileName: string, op
 }
 
 async function handleCreatePr(request: CreatePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
+  const existingPr = findExistingPrForHeadBase(request.payload.head, request.payload.base, options);
+  if (existingPr) {
+    await writeSessionLogEntry(options.logPath, 'gh_request_skipped_existing_pr', {
+      type: request.type,
+      id: request.id,
+      head: request.payload.head,
+      base: request.payload.base,
+      existing_pr_number: existingPr.number,
+      existing_pr_url: existingPr.url,
+    });
+    await writeSuccessToQueue(request, {
+      status: 'skipped',
+      reason: 'duplicate_pr_head_base',
+      existing_pr: existingPr,
+    }, options, fileName);
+    return;
+  }
+
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'pr-create',
@@ -556,6 +574,36 @@ async function handleCreatePr(request: CreatePrRequest, fileName: string, option
   await fs.unlink(tempRequestPath);
   if (result.exitCode !== 0) throw new Error(result.output);
   await writeSuccessToQueue(request, JSON.parse(result.output), options, fileName);
+}
+
+function findExistingPrForHeadBase(
+  head: string,
+  base: string,
+  options: RequestProcessorOptions
+): { number: number; url?: string } | null {
+  const spawn = options.spawnSync || spawnSync;
+  const result = spawn(
+    'gh',
+    ['pr', 'list', '--head', head, '--base', base, '--state', 'all', '--json', 'number,url', '--limit', '100'],
+    { encoding: 'utf8' }
+  );
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || 'Failed to query existing PRs');
+  }
+
+  const parsed = JSON.parse(result.stdout) as unknown;
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return null;
+  }
+
+  const [first] = parsed as Array<{ number?: unknown; url?: unknown }>;
+  if (typeof first.number !== 'number' || !Number.isInteger(first.number) || first.number <= 0) {
+    return null;
+  }
+  return {
+    number: first.number,
+    url: typeof first.url === 'string' ? first.url : undefined,
+  };
 }
 
 async function handleMergePr(request: MergePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {

@@ -4367,8 +4367,21 @@ async function handleRequest(request, fileName, options) {
   }
 }
 async function handleCreateIssues(request, fileName, options) {
+  const existingIssueTitles = await loadOrchestratorIssueTitles(options.sessionDir);
   const results = [];
+  const skippedTitles = [];
   for (const issueReq of request.payload.issues) {
+    const normalizedTitle = normalizeIssueTitle(issueReq.title);
+    if (existingIssueTitles.has(normalizedTitle)) {
+      skippedTitles.push(issueReq.title);
+      await writeSessionLogEntry(options.logPath, "gh_request_skipped_existing_issue_title", {
+        type: request.type,
+        id: request.id,
+        issue_title: issueReq.title,
+        reason: "duplicate_issue_title_in_orchestrator_state"
+      });
+      continue;
+    }
     const tempRequestPath = path4.join(options.aloopDir, "requests", `_tmp_${request.id}_${results.length}.json`);
     await fs2.writeFile(tempRequestPath, JSON.stringify({
       type: "issue-create",
@@ -4382,8 +4395,32 @@ async function handleCreateIssues(request, fileName, options) {
       throw new Error(`issue-create failed: ${result.output}`);
     }
     results.push(JSON.parse(result.output));
+    existingIssueTitles.add(normalizedTitle);
   }
-  await writeSuccessToQueue(request, { issues: results }, options, fileName);
+  await writeSuccessToQueue(request, { issues: results, skipped_titles: skippedTitles }, options, fileName);
+}
+function normalizeIssueTitle(title) {
+  return title.trim().toLowerCase();
+}
+async function loadOrchestratorIssueTitles(sessionDir) {
+  const statePath = path4.join(sessionDir, "orchestrator.json");
+  if (!existsSync3(statePath))
+    return /* @__PURE__ */ new Set();
+  const raw = await fs2.readFile(statePath, "utf8");
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed.issues)) {
+    throw new Error(`Invalid orchestrator state: expected "issues" array in ${statePath}`);
+  }
+  const titles = /* @__PURE__ */ new Set();
+  for (const issue of parsed.issues) {
+    if (typeof issue?.title !== "string")
+      continue;
+    const normalized = normalizeIssueTitle(issue.title);
+    if (normalized.length === 0)
+      continue;
+    titles.add(normalized);
+  }
+  return titles;
 }
 async function handleUpdateIssue(request, fileName, options) {
   const args = ["issue", "edit", String(request.payload.number)];
@@ -4433,6 +4470,23 @@ async function handleCloseIssue(request, fileName, options) {
   await writeSuccessToQueue(request, { status: "closed" }, options, fileName);
 }
 async function handleCreatePr(request, fileName, options) {
+  const existingPr = findExistingPrForHeadBase(request.payload.head, request.payload.base, options);
+  if (existingPr) {
+    await writeSessionLogEntry(options.logPath, "gh_request_skipped_existing_pr", {
+      type: request.type,
+      id: request.id,
+      head: request.payload.head,
+      base: request.payload.base,
+      existing_pr_number: existingPr.number,
+      existing_pr_url: existingPr.url
+    });
+    await writeSuccessToQueue(request, {
+      status: "skipped",
+      reason: "duplicate_pr_head_base",
+      existing_pr: existingPr
+    }, options, fileName);
+    return;
+  }
   const tempRequestPath = path4.join(options.aloopDir, "requests", `_tmp_${request.id}.json`);
   await fs2.writeFile(tempRequestPath, JSON.stringify({
     type: "pr-create",
@@ -4446,6 +4500,29 @@ async function handleCreatePr(request, fileName, options) {
   if (result.exitCode !== 0)
     throw new Error(result.output);
   await writeSuccessToQueue(request, JSON.parse(result.output), options, fileName);
+}
+function findExistingPrForHeadBase(head, base, options) {
+  const spawn4 = options.spawnSync || spawnSync2;
+  const result = spawn4(
+    "gh",
+    ["pr", "list", "--head", head, "--base", base, "--state", "all", "--json", "number,url", "--limit", "100"],
+    { encoding: "utf8" }
+  );
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || "Failed to query existing PRs");
+  }
+  const parsed = JSON.parse(result.stdout);
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return null;
+  }
+  const [first] = parsed;
+  if (typeof first.number !== "number" || !Number.isInteger(first.number) || first.number <= 0) {
+    return null;
+  }
+  return {
+    number: first.number,
+    url: typeof first.url === "string" ? first.url : void 0
+  };
 }
 async function handleMergePr(request, fileName, options) {
   const tempRequestPath = path4.join(options.aloopDir, "requests", `_tmp_${request.id}.json`);
@@ -11446,6 +11523,7 @@ async function orchestrateCommand(options = {}, depsOrCommand) {
     } else {
       console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
     }
+    await writeFile10(path14.join(workDir, "TODO.md"), "# Orchestrator\n\n- [ ] Orchestrator scan loop (never completes \u2014 managed by process-requests)\n", "utf8");
     const args = [
       "--prompts-dir",
       result.prompts_dir,
@@ -12733,7 +12811,7 @@ ${issue.body}
       "-Provider",
       "round-robin",
       "-MaxIterations",
-      "20",
+      "100",
       "-MaxStuck",
       "3",
       "-LaunchMode",
@@ -12754,7 +12832,7 @@ ${issue.body}
       "--provider",
       "round-robin",
       "--max-iterations",
-      "20",
+      "100",
       "--max-stuck",
       "3",
       "--launch-mode",
@@ -13469,14 +13547,8 @@ async function monitorChildSessions(state, sessionDir, repo, deps) {
     } else if (childStatus.state === "stopped") {
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
-        stateIssue.state = "failed";
-        stateIssue.status = "Blocked";
-        await syncIssueProjectStatus(issue.number, repo, "Blocked", {
-          execGh: deps.execGh,
-          appendLog: deps.appendLog,
-          now: deps.now,
-          sessionDir
-        });
+        stateIssue.needs_redispatch = true;
+        stateIssue.review_feedback = `Child loop stopped after ${childStatus.iteration ?? "?"} iterations (limit reached). Resume and continue working.`;
       }
       result.failed++;
       entry.action = "failed";
