@@ -2916,9 +2916,9 @@ export async function launchChildLoop(
     'utf8',
   );
 
-  // Seed sub-spec (SPEC.md) from issue body into child worktree
+  // Seed sub-spec as TASK_SPEC.md (NOT SPEC.md — that's the project spec and must not be overwritten)
   if (issue.body) {
-    await deps.writeFile(path.join(worktreePath, 'SPEC.md'), `# Sub-Spec: Issue #${issue.number} — ${issue.title}\n\n${issue.body}\n`, 'utf8');
+    await deps.writeFile(path.join(worktreePath, 'TASK_SPEC.md'), `# Sub-Spec: Issue #${issue.number} — ${issue.title}\n\n${issue.body}\n`, 'utf8');
   }
 
   // Copy pipeline.yml so child gets finalizer config (not tracked in git)
@@ -5237,7 +5237,7 @@ export async function runOrchestratorScanPass(
 
   // 3. Process PR lifecycles for issues with open PRs
   if (repo && deps.prLifecycleDeps) {
-    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open');
+    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
     for (const issue of prIssues) {
       try {
         const lifecycleResult = await processPrLifecycle(
