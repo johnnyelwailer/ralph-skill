@@ -149,120 +149,135 @@ const VALID_REQUEST_TYPES = new Set<string>([
   'dispatch_child', 'steer_child', 'stop_child', 'post_comment', 'query_issues', 'spec_backfill',
 ]);
 
-const VALID_MERGE_STRATEGIES = new Set(['squash', 'merge', 'rebase']);
-
-export function validateRequest(raw: unknown): AgentRequest {
-  if (typeof raw !== 'object' || raw === null) {
-    throw new ValidationError('Request must be a non-null object');
+export function validateRequest(raw: unknown): { valid: true; request: AgentRequest } | { valid: false; error: string } {
+  if (raw === null || typeof raw !== 'object') {
+    return { valid: false, error: 'Request must be a JSON object' };
   }
   const obj = raw as Record<string, unknown>;
 
+  // Base fields
   if (typeof obj.id !== 'string' || obj.id.length === 0) {
-    throw new ValidationError('Request must have a non-empty string "id"');
+    return { valid: false, error: 'Missing or empty required field: id (string)' };
   }
   if (typeof obj.type !== 'string' || !VALID_REQUEST_TYPES.has(obj.type)) {
-    throw new ValidationError(`Invalid request type: ${JSON.stringify(obj.type)}`);
+    return { valid: false, error: `Invalid or missing request type: ${JSON.stringify(obj.type)}. Must be one of: ${[...VALID_REQUEST_TYPES].join(', ')}` };
   }
-  if (typeof obj.payload !== 'object' || obj.payload === null) {
-    throw new ValidationError('Request must have a non-null "payload" object');
+  if (obj.payload === null || typeof obj.payload !== 'object') {
+    return { valid: false, error: 'Missing or invalid required field: payload (object)' };
   }
 
-  const p = obj.payload as Record<string, unknown>;
+  const payload = obj.payload as Record<string, unknown>;
+  const type = obj.type as RequestType;
 
-  switch (obj.type) {
+  const err = validatePayload(type, payload);
+  if (err) return { valid: false, error: err };
+
+  return { valid: true, request: raw as AgentRequest };
+}
+
+function requireString(payload: Record<string, unknown>, field: string): string | null {
+  if (typeof payload[field] !== 'string' || (payload[field] as string).length === 0) {
+    return `payload.${field} must be a non-empty string`;
+  }
+  return null;
+}
+
+function requirePositiveInt(payload: Record<string, unknown>, field: string): string | null {
+  if (typeof payload[field] !== 'number' || !Number.isInteger(payload[field]) || (payload[field] as number) <= 0) {
+    return `payload.${field} must be a positive integer`;
+  }
+  return null;
+}
+
+function requireOneOf(payload: Record<string, unknown>, field: string, values: readonly string[]): string | null {
+  if (typeof payload[field] !== 'string' || !values.includes(payload[field] as string)) {
+    return `payload.${field} must be one of: ${values.join(', ')}`;
+  }
+  return null;
+}
+
+function optionalStringArray(payload: Record<string, unknown>, field: string): string | null {
+  if (payload[field] === undefined) return null;
+  if (!Array.isArray(payload[field])) return `payload.${field} must be an array of strings`;
+  if (!(payload[field] as unknown[]).every((v) => typeof v === 'string')) return `payload.${field} must contain only strings`;
+  return null;
+}
+
+function validatePayload(type: RequestType, payload: Record<string, unknown>): string | null {
+  switch (type) {
     case 'create_issues': {
-      if (!Array.isArray(p.issues) || p.issues.length === 0) {
-        throw new ValidationError('create_issues: payload.issues must be a non-empty array');
+      if (!Array.isArray(payload.issues) || payload.issues.length === 0) {
+        return 'payload.issues must be a non-empty array';
       }
-      for (let i = 0; i < p.issues.length; i++) {
-        const issue = p.issues[i] as Record<string, unknown>;
-        if (typeof issue.title !== 'string' || issue.title.length === 0)
-          throw new ValidationError(`create_issues: issues[${i}].title must be a non-empty string`);
-        if (typeof issue.body_file !== 'string' || issue.body_file.length === 0)
-          throw new ValidationError(`create_issues: issues[${i}].body_file must be a non-empty string`);
+      for (let i = 0; i < payload.issues.length; i++) {
+        const issue = payload.issues[i];
+        if (issue === null || typeof issue !== 'object') return `payload.issues[${i}] must be an object`;
+        const iss = issue as Record<string, unknown>;
+        const titleErr = requireString(iss, 'title');
+        if (titleErr) return `payload.issues[${i}].title must be a non-empty string`;
+        const bodyErr = requireString(iss, 'body_file');
+        if (bodyErr) return `payload.issues[${i}].body_file must be a non-empty string`;
+        const labelsErr = optionalStringArray(iss, 'labels');
+        if (labelsErr) return `payload.issues[${i}].${labelsErr.replace('payload.', '')}`;
+        if (iss.parent !== undefined) {
+          if (typeof iss.parent !== 'number' || !Number.isInteger(iss.parent) || (iss.parent as number) <= 0) {
+            return `payload.issues[${i}].parent must be a positive integer`;
+          }
+        }
       }
-      break;
+      return null;
     }
     case 'update_issue': {
-      if (typeof p.number !== 'number' || !Number.isInteger(p.number) || p.number <= 0)
-        throw new ValidationError('update_issue: payload.number must be a positive integer');
-      break;
+      return requirePositiveInt(payload, 'number');
     }
     case 'close_issue': {
-      if (typeof p.number !== 'number' || !Number.isInteger(p.number) || p.number <= 0)
-        throw new ValidationError('close_issue: payload.number must be a positive integer');
-      if (typeof p.reason !== 'string' || p.reason.length === 0)
-        throw new ValidationError('close_issue: payload.reason must be a non-empty string');
-      break;
+      return requirePositiveInt(payload, 'number') || requireString(payload, 'reason');
     }
     case 'create_pr': {
-      if (typeof p.head !== 'string' || p.head.length === 0)
-        throw new ValidationError('create_pr: payload.head must be a non-empty string');
-      if (typeof p.base !== 'string' || p.base.length === 0)
-        throw new ValidationError('create_pr: payload.base must be a non-empty string');
-      if (typeof p.title !== 'string' || p.title.length === 0)
-        throw new ValidationError('create_pr: payload.title must be a non-empty string');
-      if (typeof p.body_file !== 'string' || p.body_file.length === 0)
-        throw new ValidationError('create_pr: payload.body_file must be a non-empty string');
-      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
-        throw new ValidationError('create_pr: payload.issue_number must be a positive integer');
-      break;
+      return requireString(payload, 'head')
+        || requireString(payload, 'base')
+        || requireString(payload, 'title')
+        || requireString(payload, 'body_file')
+        || requirePositiveInt(payload, 'issue_number');
     }
     case 'merge_pr': {
-      if (typeof p.number !== 'number' || !Number.isInteger(p.number) || p.number <= 0)
-        throw new ValidationError('merge_pr: payload.number must be a positive integer');
-      if (typeof p.strategy !== 'string' || !VALID_MERGE_STRATEGIES.has(p.strategy))
-        throw new ValidationError('merge_pr: payload.strategy must be one of: squash, merge, rebase');
-      break;
+      return requirePositiveInt(payload, 'number')
+        || requireOneOf(payload, 'strategy', ['squash', 'merge', 'rebase']);
     }
     case 'dispatch_child': {
-      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
-        throw new ValidationError('dispatch_child: payload.issue_number must be a positive integer');
-      if (typeof p.branch !== 'string' || p.branch.length === 0)
-        throw new ValidationError('dispatch_child: payload.branch must be a non-empty string');
-      if (typeof p.pipeline !== 'string' || p.pipeline.length === 0)
-        throw new ValidationError('dispatch_child: payload.pipeline must be a non-empty string');
-      if (typeof p.sub_spec_file !== 'string' || p.sub_spec_file.length === 0)
-        throw new ValidationError('dispatch_child: payload.sub_spec_file must be a non-empty string');
-      break;
+      return requirePositiveInt(payload, 'issue_number')
+        || requireString(payload, 'branch')
+        || requireString(payload, 'pipeline')
+        || requireString(payload, 'sub_spec_file');
     }
     case 'steer_child': {
-      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
-        throw new ValidationError('steer_child: payload.issue_number must be a positive integer');
-      if (typeof p.prompt_file !== 'string' || p.prompt_file.length === 0)
-        throw new ValidationError('steer_child: payload.prompt_file must be a non-empty string');
-      break;
+      return requirePositiveInt(payload, 'issue_number')
+        || requireString(payload, 'prompt_file');
     }
     case 'stop_child': {
-      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
-        throw new ValidationError('stop_child: payload.issue_number must be a positive integer');
-      if (typeof p.reason !== 'string' || p.reason.length === 0)
-        throw new ValidationError('stop_child: payload.reason must be a non-empty string');
-      break;
+      return requirePositiveInt(payload, 'issue_number')
+        || requireString(payload, 'reason');
     }
     case 'post_comment': {
-      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
-        throw new ValidationError('post_comment: payload.issue_number must be a positive integer');
-      if (typeof p.body_file !== 'string' || p.body_file.length === 0)
-        throw new ValidationError('post_comment: payload.body_file must be a non-empty string');
-      break;
+      return requirePositiveInt(payload, 'issue_number')
+        || requireString(payload, 'body_file');
     }
     case 'query_issues': {
-      // All fields optional — no required field validation
-      break;
+      const labelsErr = optionalStringArray(payload, 'labels');
+      if (labelsErr) return labelsErr;
+      if (payload.state !== undefined) {
+        return requireOneOf(payload, 'state', ['open', 'closed', 'all']);
+      }
+      return null;
     }
     case 'spec_backfill': {
-      if (typeof p.file !== 'string' || p.file.length === 0)
-        throw new ValidationError('spec_backfill: payload.file must be a non-empty string');
-      if (typeof p.section !== 'string' || p.section.length === 0)
-        throw new ValidationError('spec_backfill: payload.section must be a non-empty string');
-      if (typeof p.content_file !== 'string' || p.content_file.length === 0)
-        throw new ValidationError('spec_backfill: payload.content_file must be a non-empty string');
-      break;
+      return requireString(payload, 'file')
+        || requireString(payload, 'section')
+        || requireString(payload, 'content_file');
     }
+    default:
+      return `Unknown request type: ${type}`;
   }
-
-  return raw as AgentRequest;
 }
 
 export interface RequestProcessorOptions {
@@ -303,7 +318,19 @@ export async function processAgentRequests(options: RequestProcessorOptions): Pr
     try {
       const content = await fs.readFile(requestPath, 'utf8');
       const parsed = JSON.parse(content);
-      request = validateRequest(parsed);
+      const validation = validateRequest(parsed);
+      if (!validation.valid) {
+        const archivePath = getArchivePath(failedDir, fileName, new Set());
+        await fs.rename(requestPath, archivePath);
+        await writeSessionLogEntry(options.logPath, 'gh_request_failed', {
+          type: (parsed as any)?.type ?? 'unknown',
+          id: (parsed as any)?.id ?? 'unknown',
+          request_file: fileName,
+          error: `Validation failed: ${validation.error}`
+        });
+        continue;
+      }
+      request = validation.request;
     } catch (e) {
       const isValidation = e instanceof ValidationError;
       const archivePath = getArchivePath(failedDir, fileName, new Set());
