@@ -1,7 +1,7 @@
 import * as view from './AppView';
+export { Sidebar } from './components/layout/Sidebar';
 
 export const App = view.App;
-export const Sidebar = view.Sidebar;
 export const ActivityPanel = view.ActivityPanel;
 export const DocContent = view.DocContent;
 export const HealthPanel = view.HealthPanel;

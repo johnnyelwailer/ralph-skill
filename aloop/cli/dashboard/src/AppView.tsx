@@ -21,8 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 import { relativeTime, phaseColors, phaseBarColors, phaseDotColors, statusColors, PhaseBadge, STATUS_DOT_CONFIG, StatusDot } from '@/components/session/helpers';
-import { SessionCard } from '@/components/session/SessionCard';
-import { SessionList, type SessionListSession } from '@/components/session/SessionList';
+import { Sidebar } from '@/components/layout/Sidebar';
 export { relativeTime } from '@/components/session/helpers';
 
 // ── ANSI + Markdown rendering ──
@@ -189,9 +188,6 @@ interface SessionSummary {
   stuckCount: number;
 }
 
-const asSessionListSession = (session: SessionSummary): SessionListSession => ({
-  ...session,
-});
 
 interface LogEntry {
   timestamp: string;
@@ -572,64 +568,6 @@ export function deriveProviderHealth(log: string, configuredProviders?: string[]
     } catch { /* skip */ }
   }
   return Array.from(providers.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-// ── Sidebar ──
-
-export function Sidebar({
-  sessions, selectedSessionId, onSelectSession, collapsed, onToggle,
-}: {
-  sessions: SessionSummary[];
-  selectedSessionId: string | null;
-  onSelectSession: (id: string | null) => void;
-  collapsed: boolean;
-  onToggle: () => void;
-}) {
-  const listSessions = useMemo(() => sessions.map(asSessionListSession), [sessions]);
-
-  if (collapsed) {
-    return (
-      <aside className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button type="button" className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggle}>
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right"><p>Expand sidebar (Ctrl+B)</p></TooltipContent>
-        </Tooltip>
-        <div className="mt-3 space-y-2">
-          {sessions.slice(0, 8).map((s) => (
-            <Tooltip key={s.id}>
-              <TooltipTrigger asChild>
-                <button type="button" className="block" onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}>
-                  <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right"><p>{s.name} ({s.status})</p></TooltipContent>
-            </Tooltip>
-          ))}
-        </div>
-      </aside>
-    );
-  }
-
-  return (
-    <aside className="flex flex-col border-r border-border bg-sidebar w-64 shrink-0 animate-slide-in-left">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button type="button" className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggle}>
-              <PanelLeftClose className="h-4 w-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent><p>Collapse (Ctrl+B)</p></TooltipContent>
-        </Tooltip>
-      </div>
-      <SessionList sessions={listSessions} selectedSessionId={selectedSessionId} onSelectSession={onSelectSession} />
-    </aside>
-  );
 }
 
 // ── Header ──
