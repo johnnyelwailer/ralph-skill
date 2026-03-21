@@ -201,10 +201,12 @@ async function stopSessionInternal(homeDir, sessionId, stopping) {
     await writeJsonFile(statusPath, status);
   }
 
-  // Remove from active.json
-  delete active[sessionId];
+  // Remove from active.json using a fresh read to avoid resurrecting children
+  // that may have been stopped recursively earlier in this call.
+  const latestActive = await readActiveSessions(homeDir);
+  delete latestActive[sessionId];
   const activePath = path.join(homeDir, '.aloop', 'active.json');
-  await writeJsonFile(activePath, active);
+  await writeJsonFile(activePath, latestActive);
 
   // Append to history.json
   const historyPath = path.join(homeDir, '.aloop', 'history.json');
