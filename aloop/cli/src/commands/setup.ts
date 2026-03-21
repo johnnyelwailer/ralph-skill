@@ -12,6 +12,23 @@ const ZDR_PROVIDER_WARNINGS: Record<string, string> = {
   copilot: 'ZDR requires Business or Enterprise plan. https://docs.github.com/en/copilot/managing-copilot/managing-copilot-as-an-individual-subscriber/about-github-copilot-free',
 };
 
+/** Render a two-column ASCII table from [Setting, Value] rows. */
+export function formatSettingsTable(rows: [string, string][]): string {
+  const header: [string, string] = ['Setting', 'Value'];
+  const allRows = [header, ...rows];
+  const col0Width = Math.max(...allRows.map(r => r[0].length));
+  const col1Width = Math.max(...allRows.map(r => r[1].length));
+  const sep = `+-${'-'.repeat(col0Width)}-+-${'-'.repeat(col1Width)}-+`;
+  const lines: string[] = [sep];
+  for (let i = 0; i < allRows.length; i++) {
+    const [k, v] = allRows[i];
+    lines.push(`| ${k.padEnd(col0Width)} | ${v.padEnd(col1Width)} |`);
+    if (i === 0) lines.push(sep);
+  }
+  lines.push(sep);
+  return lines.join('\n');
+}
+
 export function getZdrWarnings(enabledProviders: string[]): string[] {
   const warnings: string[] = [];
   for (const provider of enabledProviders) {
@@ -209,33 +226,36 @@ export async function setupCommandWithDeps(
     const safetyRulesRaw = await deps.prompt('Safety Rules (comma-separated)', safetyRules.join(', '));
     safetyRules = safetyRulesRaw.split(',').map((s) => s.trim()).filter(Boolean);
 
-    console.log('\nScaffolding workspace with the following configuration:');
-    console.log(`- Spec: ${spec}`);
-    console.log(`- Providers: ${enabledProviders.join(', ')}`);
-    console.log(`- Language: ${language}`);
-    console.log(`- Primary Provider: ${provider}`);
-    console.log(`- Mode: ${mode}`);
-    console.log(`- Autonomy Level: ${autonomyLevel}`);
-    console.log(`- Data Privacy: ${dataPrivacy}`);
-    console.log(`- ZDR Mode: ${dataPrivacy === 'private' ? 'Enabled' : 'Disabled'}`);
+    const tableRows: [string, string][] = [
+      ['Spec', spec],
+      ['Providers', enabledProviders.join(', ')],
+      ['Language', language],
+      ['Primary Provider', provider],
+      ['Mode', mode],
+      ['Autonomy Level', autonomyLevel],
+      ['Data Privacy', dataPrivacy],
+      ['ZDR Mode', dataPrivacy === 'private' ? 'Enabled' : 'Disabled'],
+    ];
+    if (mode === 'orchestrate') {
+      tableRows.push(['Trunk Branch', 'agent/trunk']);
+    }
+    if (discovery.devcontainer.enabled) {
+      tableRows.push(['Devcontainer Auth Strategy', devcontainerAuthStrategy ?? 'mount-first']);
+      for (const p of enabledProviders) {
+        tableRows.push([`  ${p} Auth`, getProposedAuthMethod(p, devcontainerAuthStrategy!)]);
+      }
+    }
+    tableRows.push(['Validation Commands', validationCommands.join(', ')]);
+    tableRows.push(['Safety Rules', safetyRules.join(', ')]);
+
+    console.log('\n' + formatSettingsTable(tableRows));
+
     if (dataPrivacy === 'private') {
       const zdrWarnings = getZdrWarnings(enabledProviders);
       for (const warning of zdrWarnings) {
         console.log(`  ⚠ ${warning}`);
       }
     }
-    if (mode === 'orchestrate') {
-      console.log('- Trunk Branch: agent/trunk');
-    }
-    if (discovery.devcontainer.enabled) {
-      console.log(`- Devcontainer Auth Strategy: ${devcontainerAuthStrategy}`);
-      console.log('- Proposed Provider Auth:');
-      for (const p of enabledProviders) {
-        console.log(`    ${p}: ${getProposedAuthMethod(p, devcontainerAuthStrategy!)}`);
-      }
-    }
-    console.log(`- Validation Commands: ${validationCommands.join(', ')}`);
-    console.log(`- Safety Rules: ${safetyRules.join(', ')}`);
     console.log('');
 
     const confirmation = parseSetupConfirmation(

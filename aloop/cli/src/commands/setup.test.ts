@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setupCommandWithDeps, getZdrWarnings, type PromptFunction } from './setup.js';
+import { setupCommandWithDeps, getZdrWarnings, formatSettingsTable, type PromptFunction } from './setup.js';
 import type { DiscoveryResult, ScaffoldResult, ScaffoldOptions } from './project.js';
 
 test('setupCommandWithDeps - non-interactive mode', async () => {
@@ -890,4 +890,31 @@ test('setupCommandWithDeps - interactive mode prompts for devcontainer strategy 
   assert.equal(capturedStrategyDefault, 'mount-first', 'Default strategy should be mount-first');
   assert.ok(scaffoldCalledOpts);
   assert.equal(scaffoldCalledOpts.devcontainerAuthStrategy, 'env-first');
+});
+
+test('formatSettingsTable - renders a two-column ASCII table', () => {
+  const table = formatSettingsTable([
+    ['Mode', 'loop'],
+    ['Provider', 'claude'],
+  ]);
+  const lines = table.split('\n');
+  assert.equal(lines.length, 6); // sep, header, sep, row1, row2, sep
+  assert.ok(lines[0].startsWith('+'));
+  assert.ok(lines[1].includes('Setting'));
+  assert.ok(lines[1].includes('Value'));
+  assert.ok(lines[3].includes('Mode'));
+  assert.ok(lines[3].includes('loop'));
+  assert.ok(lines[4].includes('Provider'));
+  assert.ok(lines[4].includes('claude'));
+});
+
+test('formatSettingsTable - pads columns to max width', () => {
+  const table = formatSettingsTable([
+    ['A', 'short'],
+    ['Long Setting Name', 'x'],
+  ]);
+  // All rows should have the same length
+  const lines = table.split('\n');
+  const lengths = lines.map(l => l.length);
+  assert.ok(lengths.every(l => l === lengths[0]), 'All lines should have equal length');
 });
