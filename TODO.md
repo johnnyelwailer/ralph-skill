@@ -20,6 +20,14 @@
 
 - [ ] [qa/P1] Tooltip tap-toggle not working on touch devices: Emulated touch device (iPhone, pointer:coarse), tapped buttons/session cards/status indicators → no tooltip appeared. Spec says "No hover-only interactions — all tooltips/hover-cards must have tap equivalents." Desktop hover works fine (e.g., sidebar collapse shows "Collapse (Ctrl+B)"), but touch tap produces nothing. Tested at iter 17, commit 1cc2c25. (priority: high)
 
+### Review Findings
+
+- [ ] [review] Gate 3: `useLongPress.ts` branch coverage below 90% — add tests for: (1) non-primary pointer (`isPrimary: false`) should be ignored, (2) mouse right-click (`button !== 0`) should be ignored, (3) `onPointerCancel` handler cancels press, (4) `onPointerLeave` handler cancels press, (5) public `cancel()` method cancels an active press (priority: high)
+- [ ] [review] Gate 3: `tooltip.tsx` branch coverage below 90% — add tests for: (1) desktop (non-touch) path does NOT toggle on click, (2) controlled `open` prop is respected, (3) click with `event.preventDefault()` called skips toggle (line 64 `defaultPrevented` guard), (4) device-change effect resets `uncontrolledTouchOpen` to false when switching from touch to mouse (priority: high)
+- [ ] [review] Gate 3: `useIsTouchLikePointer.ts` SSR branch untested — add test where `window` is undefined (or mock `matchMedia` absent) to cover the `typeof window === 'undefined'` guard at line 13 (priority: medium)
+- [ ] [review] Gate 3: `vitest.config.ts` coverage `include` array only lists `App.tsx` and `AppView.tsx` — add `src/hooks/*.ts` and `src/components/**/*.tsx` so new modules are tracked in coverage reports (priority: medium)
+- [ ] [review] Gate 4: `useLongPress.ts:85-91` inconsistent indentation in `addScrollListener` — the `if` body is indented further than the callback body wrapping it; normalize to consistent 2-space indent (priority: low)
+
 ### Up Next
 
 - [ ] Fix dashboard `npm run type-check` baseline failures in `src/App.coverage.test.ts` and `src/App.test.tsx` (currently unrelated to Issue #84 hook work but blocks full type-check backpressure)
