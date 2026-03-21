@@ -4237,27 +4237,12 @@ export async function monitorChildSessions(
         });
       }
     } else if (childStatus.state === 'stopped') {
-      // Child stopped (limit reached, interrupted) — mark for redispatch, not permanent failure
+      // Child stopped (limit reached, interrupted) — re-queue to continue where it left off
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
-        const stopCount = ((stateIssue as any).stop_count ?? 0) + 1;
-        (stateIssue as any).stop_count = stopCount;
-        if (stopCount >= 3) {
-          // Stopped 3+ times — permanent failure, escalate
-          stateIssue.state = 'failed';
-          stateIssue.status = 'Blocked';
-          await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-            execGh: deps.execGh,
-            appendLog: deps.appendLog,
-            now: deps.now,
-            sessionDir,
-          });
-        } else {
-          // Retry — mark as Ready so it gets re-dispatched
-          stateIssue.state = 'pending';
-          stateIssue.status = 'Ready';
-          stateIssue.child_session = null;
-        }
+        // Keep child_session so resume works on the same branch/worktree
+        (stateIssue as any).needs_redispatch = true;
+        (stateIssue as any).review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
       }
       result.failed++;
       entry.action = 'failed';
