@@ -92,6 +92,7 @@ interface StartDeps {
   now: () => Date;
   nodePath: string;
   aloopPath: string;
+  orchestrateCommand?: (options: OrchestrateCommandOptions) => Promise<void>;
 }
 
 const defaultDeps: StartDeps = {
@@ -108,6 +109,7 @@ const defaultDeps: StartDeps = {
   now: () => new Date(),
   nodePath: process.execPath,
   aloopPath: path.resolve(process.argv[1]),
+  orchestrateCommand,
 };
 
 function isStartDeps(value: unknown): value is StartDeps {
@@ -1157,22 +1159,44 @@ export async function startCommand(sessionIdArg: string | undefined, options: St
   if (sessionIdArg) {
     options.sessionId = sessionIdArg;
   }
+  const forcedMode = resolveModeFromFlags(options);
+  const explicitMode = typeof options.mode === 'string' ? options.mode.trim().toLowerCase() : null;
+  let dispatchToOrchestrate = explicitMode === 'orchestrate';
 
-  // Check if mode resolves to 'orchestrate' — if so, delegate to orchestrateCommand
-  const effectiveMode = await resolveEffectiveStartMode(options, deps);
-  if (effectiveMode === 'orchestrate') {
-    const orchOptions: OrchestrateCommandOptions = {
-      homeDir: options.homeDir,
-      projectRoot: options.projectRoot,
-      output: options.output,
-    };
-    if (options.maxIterations !== undefined) {
-      orchOptions.maxIterations = String(options.maxIterations);
+  if (!dispatchToOrchestrate && !forcedMode && !explicitMode) {
+    const homeDir = resolveHomeDir(options.homeDir);
+    const discovery = await deps.discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
+    const aloopRoot = path.join(homeDir, '.aloop');
+    const globalConfigPath = path.join(aloopRoot, 'config.yml');
+    const hasProjectConfig = discovery.setup.config_exists && deps.existsSync(discovery.setup.config_path);
+    const hasGlobalConfig = deps.existsSync(globalConfigPath);
+
+    if (!hasProjectConfig && !hasGlobalConfig) {
+      throw new Error('No Aloop configuration found for this project. Run `aloop setup` first.');
     }
-    return orchestrateCommand(orchOptions);
+
+    const projectConfig = (await readOptionalConfig(discovery.setup.config_path, deps)) ?? emptyParsedConfig();
+    const globalConfig = (await readOptionalConfig(globalConfigPath, deps)) ?? emptyParsedConfig();
+    const configuredMode = String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, 'plan-build-review')).trim().toLowerCase();
+    dispatchToOrchestrate = configuredMode === 'orchestrate';
   }
 
   const outputMode = options.output ?? 'text';
+
+  if (dispatchToOrchestrate) {
+    const orchestrateOptions: OrchestrateCommandOptions = {
+      homeDir: options.homeDir,
+      projectRoot: options.projectRoot,
+      output: outputMode,
+    };
+    if (options.maxIterations !== undefined) {
+      orchestrateOptions.maxIterations = String(options.maxIterations);
+    }
+    const runOrchestrate = deps.orchestrateCommand ?? orchestrateCommand;
+    await runOrchestrate(orchestrateOptions);
+    return;
+  }
+
   const result = await startCommandWithDeps(options, deps);
 
   if (outputMode === 'json') {
