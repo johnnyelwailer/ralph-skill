@@ -11,3 +11,7 @@
 - [ ] Clean up orphaned V8 cache from dead children — in the Phase 2d cleanup section, also check for child sessions where the PID is no longer alive (process exited without reaching merged/failed). Remove their `.v8-cache` directories. This handles the crash/kill scenario where normal cleanup never runs
 
 - [ ] Add tests for NODE_COMPILE_CACHE in child dispatch — add test coverage verifying that: (a) main child dispatch sets NODE_COMPILE_CACHE to per-session .v8-cache path, (b) queue-prompt dispatch also sets it, (c) disk space check returns correct gate behavior, (d) V8 cache pruning logic works for in-progress and orphaned sessions
+
+## Spec-Gap Analysis
+
+- [ ] [spec-gap/P2] SPEC.md does not document V8 cache management or disk space gating — SPEC.md has zero references to NODE_COMPILE_CACHE, per-session `.v8-cache` directories, or the disk space dispatch gate. The implementation sets `NODE_COMPILE_CACHE` at `orchestrate.ts:2998` and `orchestrate.ts:4748`, and `process-requests.ts:327` cleans up V8 cache for completed children. **Suggested fix:** Add a section to SPEC.md (near the orchestrator dispatch docs) documenting: (a) per-session V8 cache directory strategy, (b) cleanup lifecycle (Phase 2d), (c) planned disk space gating for dispatch
