@@ -248,6 +248,9 @@ function copyToClipboard(value: string, successMessage: string) {
 }
 
 function openLongPressContextMenu(point: { clientX: number; clientY: number }, target: HTMLElement) {
+  // Radix ContextMenu (tested with @radix-ui/react-context-menu 2.2.x) opens from
+  // a pointerdown gesture on ContextMenuTrigger. For touch long-press we synthesize
+  // that event at the press coordinates; MouseEvent fallback keeps jsdom/legacy support.
   const PointerDownEvent = typeof window.PointerEvent === 'function' ? window.PointerEvent : MouseEvent;
   target.dispatchEvent(new PointerDownEvent('pointerdown', {
     bubbles: true,

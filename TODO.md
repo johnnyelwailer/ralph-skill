@@ -9,7 +9,7 @@
 
 ### Up Next
 - [x] [review] Gate 2+3 (merged): `useLongPress` tests have ~25% branch coverage (2 of ~7 branches). Add tests for: (a) touchEnd before 500ms should NOT fire onLongPress, (b) multi-touch cancellation (touchStart with 2+ fingers), (c) touchCancel handler, (d) onClickCapture suppression after long-press fires, (e) clearPress when no timeout is pending. Target >=90% branch coverage. (priority: high)
-- [ ] [review] Gate 4: `AppView.tsx` `openLongPressContextMenu` function dispatches a synthetic PointerEvent with a MouseEvent fallback — this is a brittle coupling to Radix ContextMenu internals. If Radix changes its trigger mechanism, this breaks silently. Add a code comment documenting why this hack is needed and which Radix version it targets. (priority: medium)
+- [x] [review] Gate 4: `AppView.tsx` `openLongPressContextMenu` function dispatches a synthetic PointerEvent with a MouseEvent fallback — this is a brittle coupling to Radix ContextMenu internals. If Radix changes its trigger mechanism, this breaks silently. Add a code comment documenting why this hack is needed and which Radix version it targets. (priority: medium)
 - [ ] Integrate Lighthouse accessibility audit into the test pipeline — no Lighthouse or axe-core integration exists. Add `@axe-core/playwright` to Playwright E2E tests for automated accessibility checks. Optionally add an npm script for `npx lighthouse --only-categories=accessibility --output=json` against the dev server. Target score >= 90. (priority: high)
 - [ ] Fix any accessibility issues flagged by Lighthouse/axe audit — run the audit, triage findings, fix issues (missing ARIA labels, color contrast, focus management, semantic HTML). This task depends on the Lighthouse integration task. (priority: high)
 
