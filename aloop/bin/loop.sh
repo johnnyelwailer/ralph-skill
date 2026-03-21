@@ -2300,6 +2300,13 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         tail -c +"$((_raw_offset_before + 1))" "$LOG_FILE.raw" | head -c "$((_raw_offset_after - _raw_offset_before))" > "$SESSION_DIR/artifacts/iter-$ITERATION/output.txt" 2>/dev/null
     fi
 
+    # Auto-push to remote after commits (orchestrator child loops)
+    if [ "$ITERATION_COMMIT_COUNT" -gt 0 ] 2>/dev/null; then
+        if git remote get-url origin &>/dev/null; then
+            git push -u origin HEAD 2>&1 | tail -1 || true
+        fi
+    fi
+
     wait_for_requests
     sleep 3
 done

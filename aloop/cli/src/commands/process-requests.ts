@@ -147,6 +147,53 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
+  // ── Phase 2b: Create PRs for completed children ──
+  if (repo) {
+    for (const issue of state.issues) {
+      if (!issue.child_session) continue;
+      if (issue.pr_number) continue; // PR already exists
+      if (issue.status === 'In progress' || issue.status === 'Ready') {
+        // Check if child is completed
+        const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+        const childStatusFile = path.join(childDir, 'status.json');
+        if (existsSync(childStatusFile)) {
+          try {
+            const childStatus = JSON.parse(await readFile(childStatusFile, 'utf8'));
+            if (childStatus.state === 'completed' || childStatus.state === 'stopped') {
+              const branch = `aloop/issue-${issue.number}`;
+              const trunkBranch = state.trunk_branch ?? 'agent/trunk';
+              // Create PR
+              const prResult = spawnSync('gh', [
+                'pr', 'create',
+                '--repo', repo,
+                '--title', `${issue.title}`,
+                '--body', `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
+                '--head', branch,
+                '--base', trunkBranch,
+              ], { encoding: 'utf8' });
+
+              if (prResult.status === 0 && prResult.stdout) {
+                const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
+                if (urlMatch) {
+                  issue.pr_number = parseInt(urlMatch[1], 10);
+                  issue.status = 'In review';
+                  stateChanged = true;
+                  console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
+                }
+              } else {
+                const err = prResult.stderr?.trim() ?? '';
+                // Don't spam — only log if it's not "no commits" or "already exists"
+                if (!err.includes('already exists') && !err.includes('No commits')) {
+                  console.error(`[process-requests] PR create failed for #${issue.number}: ${err.substring(0, 100)}`);
+                }
+              }
+            }
+          } catch { /* skip */ }
+        }
+      }
+    }
+  }
+
   // ── Phase 3: Persist state + clean active.json ──
   if (stateChanged) {
     await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
