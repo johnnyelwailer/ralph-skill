@@ -167,10 +167,9 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     // Commit any dirty files and remove working artifacts before rebase
     const statusResult = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
     if (statusResult.stdout?.trim()) {
-      // Remove working artifacts that would conflict
+      // Untrack working artifacts from git (keep on disk — child still needs them)
       for (const art of ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md']) {
         spawnSync('git', ['-C', childWorktree, 'rm', '-f', '--cached', art], { encoding: 'utf8' });
-        try { await unlink(path.join(childWorktree, art)); } catch { /* ok */ }
       }
       spawnSync('git', ['-C', childWorktree, 'add', '-A'], { encoding: 'utf8' });
       spawnSync('git', ['-C', childWorktree, 'commit', '--allow-empty', '-m', 'chore: save work-in-progress before rebase'], { encoding: 'utf8' });
