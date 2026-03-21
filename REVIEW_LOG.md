@@ -1,48 +1,43 @@
 # Review Log
 
-## Review — 2026-03-22 10:00 — commit 1d76633..6c3ca5d
+## Review — 2026-03-21 19:15 — commit c35cb51..a43b4d8
 
-**Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
-**Scope:** tooltip.tsx, tooltip.test.tsx, hover-card.tsx, hover-card.test.tsx, button.tsx, dropdown-menu.tsx, tabs.tsx, AppView.tsx
+**Verdict: FAIL** (5 findings → written to TODO.md as [review] tasks)
+**Scope:** aloop/cli/src/commands/orchestrate.ts, aloop/cli/src/commands/orchestrate.test.ts, aloop/bin/loop.sh
 
-- Gate 2/3: Both new test files (tooltip.test.tsx, hover-card.test.tsx) fail to execute — vitest cannot resolve `@/lib/utils` from the source modules. 0% verified coverage on ~200 lines of new logic. Each test has only 1 scenario with no edge cases (no close-on-second-tap, no desktop-mode passthrough, no controlled/uncontrolled variants).
-- Gate 4: `useIsTouchDevice()` hook and `TOUCH_MEDIA_QUERY` constant duplicated verbatim across tooltip.tsx:5-40 and hover-card.tsx:5-37. Should be a shared hook.
-- Gate 6: No proof artifacts directory or manifest exists. UI changes (tap target sizing, touch-tap behavior) require visual proof — screenshots or Playwright recordings at mobile viewport.
-- Gate 7: No runtime layout verification. CSS changes to `min-h-[44px]` alter bounding boxes. QA already found hamburger button at 0x0px and SPEC tab at 42px — these should have been caught by Gate 7 runtime checks before QA.
+### Gate 1: Spec Compliance — FAIL (3 findings)
+- `deriveFilterRepo` line 459: `GITHUB_REPOSITORY` env var only used when `GH_HOST` is also set (`if (envRepo && ghHost && ...)`). Spec says env vars should be an unconditional fallback. QA confirmed this bug independently.
+- Startup health check only writes label self-healing results to `session-health.json`. Spec requires `gh auth status`, `gh repo view`, and `git status` checks — none implemented.
+- No `ALERT.md` generation or non-zero exit on critical startup failures — spec explicitly requires both.
+- What IS implemented correctly: label self-healing (`ensureLabels`), config derivation from `gh repo view`, git remote origin, and `meta.json` all work per spec.
 
-Gates passed: 1 (spec compliance for completed work), 5 (type-check + build pass, no regressions), 8 (no dep changes), 9 (no docs changes needed).
+### Gate 2: Test Depth — FAIL (1 finding)
+- `deriveFilterRepo` env var test (line 322) sets both `GITHUB_REPOSITORY=derived/from-env` AND `GH_HOST=github.com`, which masks the production bug where `GH_HOST` is not set. Need a test with only `GITHUB_REPOSITORY` to catch the gate on line 459.
+- Positive: `ensureLabels` tests (lines 6189-6243) cover all paths — create, skip, list-fail, partial-fail, all-exist — with specific value assertions. `deriveFilterRepo` tests assert exact repo slug values, not just truthiness.
 
----
+### Gate 3: Coverage — PASS (conditional)
+- `parseRepoFromRemoteUrl`: SCP and HTTPS paths tested indirectly through integration tests. Edge cases (empty string, malformed URL) handled in code but not directly tested — acceptable since the function is internal.
+- `ensureLabels`: all branches covered.
+- `toSpawnSyncResult`: exercised indirectly via all spawnSync-using tests.
+- Coverage would likely meet 80% threshold given the test volume, but the env-var-without-GH_HOST path is completely uncovered (see Gate 2 finding).
 
-## Review — 2026-03-22 12:30 — commit 6c3ca5d..fb3696a
+### Gate 4: Code Quality — FAIL (1 finding)
+- `runGh` helper duplicated near-identically in `deriveFilterRepo` (lines 373-396) and `deriveTrunkBranch` (lines 486-509). Same error handling, same spawnSync wrapping, same warn pattern.
 
-**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
-**Scope:** AppView.tsx, tooltip.tsx, tooltip.test.tsx, hover-card.tsx, hover-card.test.tsx, tabs.tsx, hooks/useIsTouchDevice.ts
+### Gate 5: Integration Sanity — PASS
+- 23 test failures are pre-existing on master (same count, same tests). No regressions introduced.
+- Type-check passes. Build passes.
 
-**Prior findings resolution:**
-- Gate 2/3 (tests 1-scenario-only, vitest alias broken): RESOLVED — tooltip now has 5 tests, hover-card has 4, all with specific value assertions (exact true/false on `onOpenChange`, nth-call checks, controlled passthrough verifying content text, defaultOpen). Tests cover: open-on-tap, close-on-second-tap, desktop-no-toggle, controlled prop, defaultOpen.
-- Gate 4 (useIsTouchDevice duplication): RESOLVED — extracted to `hooks/useIsTouchDevice.ts`, both components import the shared hook.
-- Gate 7 (no runtime layout verification): RESOLVED — QA session 2 performed Playwright layout measurement at 390x844: hamburger 44x44, GitHub link 44x44, QA badge 86x44, SPEC tab 44x44, 13/14 elements pass.
+### Gate 6: Proof Verification — PASS (N/A)
+- No proof manifest found. Work is purely internal (config derivation, label creation plumbing) — no observable UI/API output. Skipping proof is the expected correct outcome.
 
-**New findings:**
-- Gate 3: `hooks/useIsTouchDevice.ts` is a new 27-line module with no direct test file. SSR branches (lines 7-8, 14-15: `typeof window === 'undefined'`), `matchMedia` undefined guard, and effect cleanup (removeEventListener) are untested. Also, `vitest.config.ts` coverage `include` only lists `App.tsx` and `AppView.tsx` — tooltip.tsx, hover-card.tsx, and useIsTouchDevice.ts are excluded from coverage measurement.
-- Gate 6 (repeat, softened): No proof-manifest.json. QA session 2 provides equivalent Playwright evidence, but proof agent should either produce artifacts or explicitly skip. Downgraded to medium priority.
+### Gate 7: Runtime Layout — SKIP
+- No CSS/layout/UI changes.
 
-Gates passed: 1 (spec compliance), 2 (test depth substantially improved), 4 (duplication resolved), 5 (unable to verify due to env SIGABRT — not a code issue), 7 (via QA Playwright evidence), 8 (no dep changes), 9 (no docs changes needed).
+### Gate 8: Version Compliance — PASS
+- No dependency changes in orchestrate.ts/test.ts. Storybook devDeps added in commit 96414e8 are `@storybook/* 8.x` matching VERSIONS.md.
 
----
-
-## Review — 2026-03-22 14:10 — commit fb3696a..0341dbc
-
-**Verdict: PASS** (1 observation)
-**Scope:** useIsTouchDevice.test.ts (new), vitest.config.ts, proof-manifest.json (new)
-
-**Prior findings resolution:**
-- Gate 3 (useIsTouchDevice untested, coverage config incomplete): RESOLVED — `useIsTouchDevice.test.ts` (109 lines, 5 tests) covers matchMedia-undefined guard, initial true/false states, dynamic change event, and cleanup listener identity. All assertions use exact `toBe(false)`/`toBe(true)`. Coverage config updated to include `useIsTouchDevice.ts`, `tooltip.tsx`, `hover-card.tsx`. All three files at 100% branch coverage.
-- Gate 6 (no proof manifest): RESOLVED — `proof-manifest.json` created with `{"artifacts": []}`, correct for internal-only changes per gate rules.
-
-**Observation:** Gate 2: `useIsTouchDevice.test.ts:93-107` verifies add/remove listener callback identity — ensures no leaked listeners on unmount. Thorough.
-
-All gates pass. Integration suite: 125 dashboard tests + 8 CLI tests pass, type-check clean, build ok.
+### Gate 9: Documentation Freshness — PASS
+- Purely internal changes; no user-facing behavior changes requiring doc updates.
 
 ---
