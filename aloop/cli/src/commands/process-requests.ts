@@ -284,11 +284,14 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       appendLog: (dir: string, entry: Record<string, unknown>) => { appendLog(dir, entry); },
       invokeAgentReview: async (prNumber: number, _repo: string, diff: string) => {
         const resultFile = path.join(requestsDir, `review-result-${prNumber}.json`);
-        if (existsSync(resultFile)) {
+        // Also check worktree/requests/ (agent may write relative to its cwd)
+        const worktreeResultFile = path.join(sessionDir, 'worktree', 'requests', `review-result-${prNumber}.json`);
+        const actualResultFile = existsSync(resultFile) ? resultFile : existsSync(worktreeResultFile) ? worktreeResultFile : null;
+        if (actualResultFile) {
           try {
-            const content = await readFile(resultFile, 'utf8');
+            const content = await readFile(actualResultFile, 'utf8');
             const parsed = JSON.parse(content);
-            await unlink(resultFile);
+            await unlink(actualResultFile);
             return parsed;
           } catch (e) {
             return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Parse error: ${e}` };
@@ -303,7 +306,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             const prompt = await readFile(reviewPath, 'utf8');
             await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
             const resultPath = path.join(requestsDir, `review-result-${prNumber}.json`);
-            const outputInstr = `\n\n## Output\n\nWrite your verdict to \`${resultPath}\` as JSON: \`{"pr_number": ${prNumber}, "verdict": "approve"|"request-changes"|"flag-for-human", "summary": "..."}\`\n`;
+            const outputInstr = `\n\n## Output\n\nWrite your verdict to \`${resultPath}\` as JSON: \`{"pr_number": ${prNumber}, "verdict": "approve"|"request-changes"|"flag-for-human", "summary": "..."}\`\n\nIMPORTANT: Use the EXACT absolute path above. Do NOT write to a relative \`requests/\` path.\n`;
             await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${prompt}\n${outputInstr}\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
           }
         }
