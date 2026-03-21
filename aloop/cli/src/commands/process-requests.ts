@@ -47,6 +47,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const requestsDir = path.join(sessionDir, 'requests');
   const repo = state.filter_repo ?? null;
   let stateChanged = false;
+  const statusPath = path.join(sessionDir, 'status.json');
 
   // ── Phase 1: Apply agent-produced result files ──
 
@@ -756,6 +757,23 @@ ${recent.slice(-4000)}
   const result = await runOrchestratorScanPass(
     stateFile, sessionDir, projectRoot, sessionId, promptsDir, aloopRoot, repo, iteration, scanDeps,
   );
+
+  let statusPayload: Record<string, unknown> = {};
+  try {
+    if (existsSync(statusPath)) {
+      statusPayload = JSON.parse(await readFile(statusPath, 'utf8'));
+    }
+  } catch {
+    statusPayload = {};
+  }
+  statusPayload.mode = 'orchestrate';
+  if (typeof statusPayload.provider !== 'string' || statusPayload.provider.length === 0) {
+    statusPayload.provider = meta.provider ?? 'claude';
+  }
+  statusPayload.state = result.allDone ? 'completed' : 'running';
+  statusPayload.iteration = iteration;
+  statusPayload.updated_at = new Date().toISOString();
+  await writeFile(statusPath, `${JSON.stringify(statusPayload, null, 2)}\n`, 'utf8');
 
   await etagCache.save();
 
