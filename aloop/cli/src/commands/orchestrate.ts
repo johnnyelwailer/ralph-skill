@@ -3191,9 +3191,14 @@ export async function checkPrGates(
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
   try {
     const checksResult = await deps.execGh([
-      'pr', 'checks', String(prNumber), '--repo', repo, '--json', 'name,state,conclusion',
+      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
     ]);
-    const checks: Array<{ name: string; state: string; conclusion: string }> = JSON.parse(checksResult.stdout);
+    const parsed = JSON.parse(checksResult.stdout);
+    const checks: Array<{ name: string; state: string; conclusion: string }> = (parsed.statusCheckRollup ?? []).map((c: any) => ({
+      name: c.name ?? c.context ?? 'unknown',
+      state: c.status ?? c.state ?? 'COMPLETED',
+      conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
+    }));
     const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
     const allPassed = checks.every(
       (c) => (c.state === 'COMPLETED' || c.state === 'completed') &&
