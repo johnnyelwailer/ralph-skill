@@ -4757,7 +4757,10 @@ export async function processQueuedPrompts(
         cwd: agentWorkDir,
         detached: true,
         stdio: 'ignore',
-        env: { ...deps.dispatchDeps.env },
+        env: {
+          ...deps.dispatchDeps.env,
+          NODE_COMPILE_CACHE: path.join(sessionDir, '.v8-cache'),
+        },
         windowsHide: true,
       });
       child.unref();
