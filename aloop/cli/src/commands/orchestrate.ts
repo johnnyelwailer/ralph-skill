@@ -1142,7 +1142,8 @@ export async function orchestrateCommandWithDeps(
             if (projStatus === 'Ready' || projStatus === 'In progress' || projStatus === 'In review' || projStatus === 'Done') {
               dorValidated = true;
             }
-            if (projStatus === 'In progress') issueState = 'in_progress';
+            // Only set in_progress state for non-epics (epics are tracking, not child loops)
+            if (projStatus === 'In progress' && !isEpic) issueState = 'in_progress';
             if (projStatus === 'In review') issueState = 'pr_open';
             if (projStatus === 'Done') issueState = 'merged';
           }

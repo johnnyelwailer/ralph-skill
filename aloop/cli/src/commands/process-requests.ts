@@ -272,6 +272,42 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   } catch { /* cleanup is best-effort */ }
 
+  // ── Phase 2e: Sync issue statuses to GH project ──
+  if (repo && stateChanged) {
+    try {
+      // Get project items and their current statuses
+      const projResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: 2) { items(first: 100) { nodes { id content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+      if (projResult.status === 0) {
+        const projData = JSON.parse(projResult.stdout);
+        const items = projData?.data?.user?.projectV2?.items?.nodes ?? [];
+        const itemMap = new Map<number, { id: string; status: string }>();
+        for (const item of items) {
+          const num = item?.content?.number;
+          const status = item?.fieldValueByName?.name ?? '';
+          if (num) itemMap.set(num, { id: item.id, status });
+        }
+        // Status option IDs
+        const optionIds: Record<string, string> = {
+          'needs analysis': 'd47f6692', 'needs decomposition': '275018e9',
+          'needs refinement': '3b01b877', 'ready': '095faf66', 'todo': '17da09ac',
+          'in progress': '2ae44a4c', 'in review': 'ba361d5e', 'blocked': '3ba43ccd', 'done': 'b74f47a5',
+        };
+        let synced = 0;
+        for (const issue of state.issues) {
+          const item = itemMap.get(issue.number);
+          if (!item) continue;
+          const targetStatus = (issue.status ?? '').toLowerCase();
+          if (item.status.toLowerCase() === targetStatus) continue;
+          const optionId = optionIds[targetStatus];
+          if (!optionId) continue;
+          spawnSync('gh', ['api', 'graphql', '-f', `query=mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOAA0LoM4BSXz2" itemId: "${item.id}" fieldId: "PVTSSF_lAHOAA0LoM4BSXz2zg_7SKI" value: { singleSelectOptionId: "${optionId}" } }) { projectV2Item { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+          synced++;
+        }
+        if (synced > 0) console.log(`[process-requests] Synced ${synced} issue statuses to GH project`);
+      }
+    } catch { /* best-effort */ }
+  }
+
   // ── Phase 3: Persist state + clean active.json ──
   if (stateChanged) {
     await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
