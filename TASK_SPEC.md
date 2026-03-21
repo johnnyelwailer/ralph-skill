@@ -1,46 +1,39 @@
-# Sub-Spec: Issue #114 — Responsive layout: touch targets, tap equivalents & accessibility audit
+# Sub-Spec: Issue #172 — Replace mkdir locking with POSIX flock in loop.sh health file access
+
+Part of #24: Epic: Provider Health & Rate-Limit Resilience
 
 ## Objective
 
-Ensure all interactive elements meet mobile accessibility requirements: minimum tap target sizes, tap equivalents for hover interactions, long-press context menus, and Lighthouse mobile accessibility score >= 90.
+Upgrade the provider health file locking in `loop.sh` from the current `mkdir`-based atomic lock to POSIX `flock(2)` for proper shared/exclusive semantics.
 
 ## Context
 
-WCAG 2.5.8 requires minimum 44x44px tap targets. The current dashboard uses hover-cards, tooltips, and small icon buttons that need tap equivalents. See SPEC-ADDENDUM.md § Touch Considerations.
+The current implementation uses `mkdir`/`rmdir` as a lock primitive. While atomic, it doesn't support shared-read/exclusive-write semantics and is vulnerable to stale locks if a process crashes. POSIX `flock` provides proper file locking with automatic cleanup on process exit.
 
-## Scope
+## Inputs
+- Current `acquire_health_lock()` and `release_health_lock()` functions in `loop.sh` (lines ~879-906)
+- Health files at `~/.aloop/health/<provider>.json`
 
-### Tap targets
-- Audit all buttons, links, and interactive elements — ensure minimum 44x44px on mobile
-- Apply `min-h-[44px] min-w-[44px]` on mobile breakpoint where needed
-- Session cards, log entries, tab triggers, dropdown items must all meet the target
-
-### Hover → Tap equivalents
-- All `HoverCard` components must also work on tap/click (HoverCard already supports this via Radix, verify)
-- All `Tooltip` components must have tap-to-show behavior on mobile
-- No interaction should be hover-only — verify every hover interaction has a touch alternative
-
-### Long-press context menu
-- Long-press (500ms) on session card opens context menu (stop, force-stop, copy session ID)
-- Implement via `onTouchStart`/`onTouchEnd` timer with haptic feedback if available
-
-### Lighthouse audit
-- Run Lighthouse mobile accessibility audit
-- Target score >= 90
-- Fix any flagged issues (color contrast, ARIA labels, focus management)
+## Deliverables
+- Replace `mkdir`-based locking with `flock -x` (exclusive) for writes and `flock -s` (shared) for reads
+- Maintain 5-attempt progressive backoff (50ms, 100ms, 150ms, 200ms, 250ms)
+- Graceful degradation: if lock fails after all retries, skip health update, log `health_lock_failed`, continue
+- Clean up any stale `.lock` directories from the old approach
+- No changes to `loop.ps1` — it already uses `System.IO.File.Open()` with `FileShare.None` which is correct for Windows
 
 ## Acceptance Criteria
-
-- [ ] All tap targets at least 44x44px on mobile viewports
-- [ ] No hover-only interactions — all have tap/click equivalents
-- [ ] Long-press on session card opens context menu
-- [ ] Lighthouse mobile accessibility score >= 90
-- [ ] Focus management works correctly on mobile (no focus traps, logical tab order)
+- [ ] `flock -x` used for all health file writes
+- [ ] `flock -s` used for all health file reads
+- [ ] 5-attempt retry with progressive backoff preserved
+- [ ] Lock failure logs `health_lock_failed` and continues without corruption
+- [ ] Stale `.lock` directories cleaned up on first run
+- [ ] Existing provider health tests pass
 
 ## Files
-- `aloop/cli/dashboard/src/AppView.tsx` — tap target sizing, long-press handler
-- Various component files with HoverCard/Tooltip usage
-- CSS/Tailwind adjustments for mobile sizing
+- `aloop/bin/loop.sh`
+
+## Existing Issue
+#41
 
 ## Labels
 `aloop/sub-issue`, `aloop/needs-refine`
