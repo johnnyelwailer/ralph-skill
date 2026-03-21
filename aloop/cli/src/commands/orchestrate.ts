@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, statfs, unlink, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
@@ -221,6 +221,7 @@ export interface DispatchDeps {
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   mkdir: (path: string, options?: { recursive?: boolean }) => Promise<string | undefined>;
   cp: (src: string, dest: string, options?: { recursive?: boolean }) => Promise<void>;
+  statfs?: (path: string) => Promise<{ bavail: number | bigint; bsize: number | bigint; frsize?: number | bigint }>;
   now: () => Date;
   spawnSync: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
   spawn: (command: string, args: string[], options?: Record<string, unknown>) => ChildProcess;
@@ -241,6 +242,39 @@ export interface DispatchResult {
   launched: ChildLaunchResult[];
   skipped: number[];
   state: OrchestratorState;
+  pausedTmpLowSpace?: { freeBytes: number; thresholdBytes: number; path: string };
+}
+
+const TMP_DISPATCH_CHECK_PATH = '/tmp';
+const TMP_DISPATCH_MIN_FREE_BYTES = 500 * 1024 * 1024;
+
+function toBigIntOrNull(value: number | bigint | undefined): bigint | null {
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return BigInt(Math.trunc(value));
+  return null;
+}
+
+function computeFreeBytesFromStatfs(
+  stats: { bavail: number | bigint; bsize: number | bigint; frsize?: number | bigint },
+): number | null {
+  const availableBlocks = toBigIntOrNull(stats.bavail);
+  const blockSize = toBigIntOrNull(stats.frsize ?? stats.bsize);
+  if (availableBlocks === null || blockSize === null) return null;
+
+  const freeBytes = availableBlocks * blockSize;
+  if (freeBytes < 0n) return null;
+  if (freeBytes > BigInt(Number.MAX_SAFE_INTEGER)) return Number.MAX_SAFE_INTEGER;
+  return Number(freeBytes);
+}
+
+async function getTmpFreeBytes(deps: Pick<DispatchDeps, 'statfs'>): Promise<number | null> {
+  if (!deps.statfs) return null;
+  try {
+    const stats = await deps.statfs(TMP_DISPATCH_CHECK_PATH);
+    return computeFreeBytesFromStatfs(stats);
+  } catch {
+    return null;
+  }
 }
 
 const defaultDeps: OrchestrateDeps = {
@@ -3078,7 +3112,19 @@ export async function dispatchChildLoops(
   const capabilityResult = filterByHostCapabilities(dispatchable, deps);
   const eligible = filterByFileOwnership(capabilityResult.eligible, state);
   const slots = availableSlots(state);
-  const toDispatch = eligible.slice(0, slots);
+  let toDispatch = eligible.slice(0, slots);
+  let pausedTmpLowSpace: DispatchResult['pausedTmpLowSpace'];
+  if (toDispatch.length > 0) {
+    const freeBytes = await getTmpFreeBytes(deps);
+    if (freeBytes !== null && freeBytes < TMP_DISPATCH_MIN_FREE_BYTES) {
+      toDispatch = [];
+      pausedTmpLowSpace = {
+        freeBytes,
+        thresholdBytes: TMP_DISPATCH_MIN_FREE_BYTES,
+        path: TMP_DISPATCH_CHECK_PATH,
+      };
+    }
+  }
   const skippedSet = new Set<number>(capabilityResult.blocked.map((entry) => entry.issue.number));
   for (const issue of dispatchable) {
     if (!toDispatch.includes(issue)) {
@@ -3113,7 +3159,7 @@ export async function dispatchChildLoops(
   state = { ...state, updated_at: deps.now().toISOString() };
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
-  return { launched, skipped, state };
+  return { launched, skipped, state, pausedTmpLowSpace };
 }
 
 // --- PR lifecycle gates ---
@@ -4757,7 +4803,10 @@ export async function processQueuedPrompts(
         cwd: agentWorkDir,
         detached: true,
         stdio: 'ignore',
-        env: { ...deps.dispatchDeps.env },
+        env: {
+          ...deps.dispatchDeps.env,
+          NODE_COMPILE_CACHE: path.join(sessionDir, '.v8-cache'),
+        },
         windowsHide: true,
       });
       child.unref();
@@ -5165,7 +5214,21 @@ export async function runOrchestratorScanPass(
     const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
     const eligible = filterByFileOwnership(capabilityResult.eligible, state);
     const slots = availableSlots(state);
-    const toDispatch = eligible.slice(0, slots);
+    let toDispatch = eligible.slice(0, slots);
+    if (toDispatch.length > 0) {
+      const freeBytes = await getTmpFreeBytes(deps.dispatchDeps);
+      if (freeBytes !== null && freeBytes < TMP_DISPATCH_MIN_FREE_BYTES) {
+        toDispatch = [];
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'scan_dispatch_paused_tmp_low_space',
+          iteration,
+          free_bytes: freeBytes,
+          threshold_bytes: TMP_DISPATCH_MIN_FREE_BYTES,
+          path: TMP_DISPATCH_CHECK_PATH,
+        });
+      }
+    }
 
     for (const blocked of capabilityResult.blocked) {
       deps.appendLog(sessionDir, {
