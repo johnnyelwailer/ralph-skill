@@ -276,34 +276,44 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   if (repo && stateChanged) {
     try {
       // Get project items and their current statuses
-      const projResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: 2) { items(first: 100) { nodes { id content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+      const projResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: 2) { id items(first: 100) { nodes { id content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
       if (projResult.status === 0) {
         const projData = JSON.parse(projResult.stdout);
-        const items = projData?.data?.user?.projectV2?.items?.nodes ?? [];
+        const projV2 = projData?.data?.user?.projectV2 ?? {};
+        const items = projV2?.items?.nodes ?? [];
         const itemMap = new Map<number, { id: string; status: string }>();
         for (const item of items) {
           const num = item?.content?.number;
           const status = item?.fieldValueByName?.name ?? '';
           if (num) itemMap.set(num, { id: item.id, status });
         }
-        // Status option IDs
-        const optionIds: Record<string, string> = {
-          'needs analysis': 'd47f6692', 'needs decomposition': '275018e9',
-          'needs refinement': '3b01b877', 'ready': '095faf66', 'todo': '17da09ac',
-          'in progress': '2ae44a4c', 'in review': 'ba361d5e', 'blocked': '3ba43ccd', 'done': 'b74f47a5',
-        };
-        let synced = 0;
-        for (const issue of state.issues) {
-          const item = itemMap.get(issue.number);
-          if (!item) continue;
-          const targetStatus = (issue.status ?? '').toLowerCase();
-          if (item.status.toLowerCase() === targetStatus) continue;
-          const optionId = optionIds[targetStatus];
-          if (!optionId) continue;
-          spawnSync('gh', ['api', 'graphql', '-f', `query=mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOAA0LoM4BSXz2" itemId: "${item.id}" fieldId: "PVTSSF_lAHOAA0LoM4BSXz2zg_7SKI" value: { singleSelectOptionId: "${optionId}" } }) { projectV2Item { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-          synced++;
+
+        // Fetch status field options dynamically (never hardcode IDs)
+        const fieldResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: 2) { field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } } } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+        if (fieldResult.status !== 0) throw new Error('field query failed');
+        const fieldData = JSON.parse(fieldResult.stdout);
+        const statusField = fieldData?.data?.user?.projectV2?.field ?? {};
+        const statusFieldId = statusField.id;
+        const projectId = projV2.id ?? projData?.data?.user?.projectV2?.id;
+        const optionIds = new Map<string, string>();
+        for (const opt of statusField.options ?? []) {
+          optionIds.set(opt.name.toLowerCase(), opt.id);
         }
-        if (synced > 0) console.log(`[process-requests] Synced ${synced} issue statuses to GH project`);
+
+        if (statusFieldId && projectId) {
+          let synced = 0;
+          for (const issue of state.issues) {
+            const item = itemMap.get(issue.number);
+            if (!item) continue;
+            const targetStatus = (issue.status ?? '').toLowerCase();
+            if (item.status.toLowerCase() === targetStatus) continue;
+            const optionId = optionIds.get(targetStatus);
+            if (!optionId) continue;
+            spawnSync('gh', ['api', 'graphql', '-f', `query=mutation { updateProjectV2ItemFieldValue(input: { projectId: "${projectId}" itemId: "${item.id}" fieldId: "${statusFieldId}" value: { singleSelectOptionId: "${optionId}" } }) { projectV2Item { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+            synced++;
+          }
+          if (synced > 0) console.log(`[process-requests] Synced ${synced} issue statuses to GH project`);
+        }
       }
     } catch { /* best-effort */ }
   }
