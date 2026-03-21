@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import {
   App,
   ArtifactComparisonDialog,
@@ -633,13 +633,15 @@ describe('App.tsx AppView integration coverage', () => {
     ];
     const onSelect = vi.fn();
     const onToggle = vi.fn();
-    const { container } = render(createElement(TooltipProvider, {}, createElement(Sidebar, {
-      sessions: sessions as any[],
-      selectedSessionId: 's1',
-      onSelectSession: onSelect,
-      collapsed: false,
-      onToggle: onToggle,
-    })));
+    const { container } = render(createElement(TooltipProvider, {
+      children: createElement(Sidebar, {
+        sessions: sessions as any[],
+        selectedSessionId: 's1',
+        onSelectSession: onSelect,
+        collapsed: false,
+        onToggle: onToggle,
+      }),
+    }));
     expect(screen.getByText('p1')).toBeInTheDocument();
     fireEvent.click(screen.getByText('s1'));
     expect(onSelect).toHaveBeenCalled();
@@ -671,14 +673,16 @@ describe('App.tsx AppView integration coverage', () => {
       },
     }];
     vi.stubGlobal('fetch', vi.fn(async () => new Response('build output', { status: 200 })));
-    render(createElement(TooltipProvider, {}, createElement(ActivityPanel, {
-      log,
-      artifacts: artifacts as any[],
-      currentIteration: 2,
-      currentPhase: 'build',
-      currentProvider: 'c',
-      isRunning: true,
-    })));
+    render(createElement(TooltipProvider, {
+      children: createElement(ActivityPanel, {
+        log,
+        artifacts: artifacts as any[],
+        currentIteration: 2,
+        currentPhase: 'build',
+        currentProvider: 'c',
+        isRunning: true,
+      }),
+    }));
     const row = screen.getByText('built something').closest('div');
     if (row) fireEvent.click(row);
     expect(await screen.findByText('a.png')).toBeInTheDocument();
@@ -692,7 +696,7 @@ describe('App.tsx AppView integration coverage', () => {
     render(createElement(DocContent, { content: '', name: 'Empty.md' }));
     expect(screen.getByText(/No content/i)).toBeInTheDocument();
     const providers = [{ name: 'p1', status: 'cooldown', lastEvent: 't', cooldownUntil: new Date(Date.now() + 100000).toISOString() }];
-    render(createElement(TooltipProvider, {}, createElement(HealthPanel, { providers: providers as any[] })));
+    render(createElement(TooltipProvider, { children: createElement(HealthPanel, { providers: providers as any[] }) }));
     expect(screen.getByText('p1')).toBeInTheDocument();
   });
 });

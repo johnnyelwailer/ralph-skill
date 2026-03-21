@@ -10,7 +10,7 @@
 - [x] Add loading states to `ArtifactViewer` — show a skeleton/spinner while artifact content or thumbnail is loading. Currently no loading indicator exists for artifact fetches. (priority: medium)
 - [x] Add error fallbacks to `ArtifactViewer` — when an artifact image fails to load, show an error placeholder icon instead of a broken image. Use `<img onError>` for images and catch fetch errors for code artifacts. (priority: medium)
 - [ ] Migrate `ImageLightbox` to use Radix `Dialog` primitive for accessible modal (spec requirement). `@radix-ui/react-dialog` is already a transitive dependency (in lock file) but not a direct dependency — needs to be added. Current lightbox is a custom div overlay without proper focus trapping or ARIA. (priority: medium)
-- [ ] Wire `ArtifactViewer` into `LogEntryRow` — replace the current text-link artifact list (AppView.tsx:1366-1400) with inline `ArtifactViewer` thumbnails/code blocks. Clicking an image thumbnail should still open the lightbox or comparison dialog. (priority: high)
+- [x] Wire `ArtifactViewer` into `LogEntryRow` — replace the current text-link artifact list (AppView.tsx:1366-1400) with inline `ArtifactViewer` thumbnails/code blocks. Clicking an image thumbnail should still open the lightbox or comparison dialog. (priority: high)
 
 ### Completed
 - [x] `isImageArtifact` helper identifies image types by extension and type field

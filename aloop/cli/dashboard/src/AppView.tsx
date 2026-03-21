@@ -20,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
+import { ArtifactViewer } from './components/ArtifactViewer';
 
 // ── ANSI + Markdown rendering ──
 // Strip ANSI escape codes from text (for compact log entries)
@@ -1364,38 +1365,33 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
               </span>
               {artifacts.summary && <p className="text-muted-foreground italic text-[10px]">{artifacts.summary}</p>}
               {artifacts.artifacts.map((a) => (
-                <div key={a.path} className="flex items-center gap-2">
-                  {isImageArtifact(a) ? <Image className="h-3 w-3 text-muted-foreground" /> : <FileText className="h-3 w-3 text-muted-foreground" />}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      {isImageArtifact(a) ? (
-                        <button type="button" className="text-blue-600 dark:text-blue-400 hover:underline truncate" onClick={(e) => {
-                          e.stopPropagation();
-                          if (a.metadata?.baseline || findBaselineIterations(a.path, artifacts.iteration, allManifests).length > 0) {
-                            setComparisonArtifact({ artifact: a, iteration: artifacts.iteration });
-                          } else {
-                            setLightboxSrc(artifactUrl(artifacts.iteration, a.path));
-                          }
-                        }}>
-                          {a.path}
-                        </button>
-                      ) : <span className="text-foreground/80 truncate">{a.path}</span>}
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-lg"><p className="break-all">{a.path}</p></TooltipContent>
-                  </Tooltip>
-                  {a.description && (
+                <div key={a.path} className="rounded border border-border/60 bg-background/60 p-1.5 space-y-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {isImageArtifact(a) ? <Image className="h-3 w-3 text-muted-foreground shrink-0" /> : <FileText className="h-3 w-3 text-muted-foreground shrink-0" />}
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="text-muted-foreground/60 truncate">{a.description}</span>
+                        <span className="text-foreground/80 truncate">{a.path}</span>
                       </TooltipTrigger>
-                      <TooltipContent className="max-w-lg"><p className="break-words">{a.description}</p></TooltipContent>
+                      <TooltipContent className="max-w-lg"><p className="break-all">{a.path}</p></TooltipContent>
                     </Tooltip>
-                  )}
-                  {a.metadata?.diff_percentage !== undefined && (
-                    <span className={`shrink-0 text-[9px] px-1 rounded ${a.metadata.diff_percentage < 5 ? 'bg-green-500/20 text-green-500' : a.metadata.diff_percentage < 20 ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'}`}>
-                      diff: {a.metadata.diff_percentage.toFixed(1)}%
-                    </span>
-                  )}
+                    {a.metadata?.diff_percentage !== undefined && (
+                      <span className={`shrink-0 text-[9px] px-1 rounded ${a.metadata.diff_percentage < 5 ? 'bg-green-500/20 text-green-500' : a.metadata.diff_percentage < 20 ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'}`}>
+                        diff: {a.metadata.diff_percentage.toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+                  {a.description && <p className="text-[10px] text-muted-foreground/70">{a.description}</p>}
+                  <ArtifactViewer
+                    artifact={a}
+                    iteration={artifacts.iteration}
+                    onImageClick={(src) => {
+                      if (a.metadata?.baseline || findBaselineIterations(a.path, artifacts.iteration, allManifests).length > 0) {
+                        setComparisonArtifact({ artifact: a, iteration: artifacts.iteration });
+                      } else {
+                        setLightboxSrc(src);
+                      }
+                    }}
+                  />
                 </div>
               ))}
             </div>
