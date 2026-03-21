@@ -1132,7 +1132,9 @@ export async function orchestrateCommandWithDeps(
           const isEpic = gi.labels?.some((l: any) => (l.name ?? l) === 'aloop/epic');
           const projStatus = projectStatusMap.get(gi.number);
           // Use project status if available, otherwise infer from labels
-          let status = isEpic ? 'Needs decomposition' : 'Needs refinement';
+          // Epics with tasklists (sub-issues) are tracking epics — not dispatchable
+          const hasSubIssues = isEpic && gi.body && gi.body.includes('[tasklist]');
+          let status = isEpic ? (hasSubIssues ? 'In progress' : 'Needs decomposition') : 'Needs refinement';
           let dorValidated = false;
           let issueState: string = 'pending';
           if (projStatus) {
@@ -2976,6 +2978,7 @@ export async function launchChildLoop(
       ...deps.env,
       ALOOP_TASK_SANDBOX: sandbox,
       ALOOP_TASK_REQUIRES: requires.join(','),
+      NODE_COMPILE_CACHE: '', // Disable V8 code cache to prevent /tmp disk exhaustion
     },
     windowsHide: true,
   });
