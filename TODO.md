@@ -4,19 +4,13 @@
 
 ### In Progress
 
-- [x] Extend `AgentReviewResult` to include structured inline comments array (`{path, line, end_line?, body, suggestion?}`) in `orchestrate.ts:3104-3108`. The current type only has `summary: string` — no way to represent per-file, per-line feedback. (priority: critical, foundational)
+- [x] Replace `gh pr comment` in `processPrLifecycle` (`orchestrate.ts:3588-3602`) with `gh api repos/{owner}/{repo}/pulls/{pr}/reviews` to post a proper GH review with inline comments. Each inline comment should specify `path`, `line`, and `body` (with suggestion syntax). The top-level review body should be the summary linking all findings. Currently still uses flat `gh pr comment` with `reviewResult.summary`. (priority: critical)
 
-- [x] Update review prompt `PROMPT_orch_review.md` to instruct the agent to return structured inline comments with file paths, line ranges, and suggestion blocks using GH suggestion syntax (` ```suggestion\nfixed code\n``` `). Currently the prompt only asks for a flat verdict JSON. (priority: critical, foundational)
+- [ ] Update builder re-dispatch steering (`orchestrate.ts:5259-5294`) to pass individual review comments (not a flat `review_feedback` summary blob) so the builder can address each one separately. Include comment IDs so the builder can resolve them after fixing. (priority: high)
 
-- [x] Update `invokeAgentReview` in `process-requests.ts:285-340` to parse the new inline comments from the review result JSON. The current parser only reads `{pr_number, verdict, summary}`. Must also handle the fallback verdict parser (lines 300-324) gracefully when inline comments aren't present. (priority: critical)
+- [ ] Add builder capability to resolve individual review comment threads via `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}` (GraphQL `minimizeComment` or resolve conversation). No resolution code exists yet. The builder should resolve each thread after addressing it and commit with messages like `fix: address review comment on file.ts:42`. (priority: high)
 
-- [ ] Replace `gh pr comment` in `processPrLifecycle` (`orchestrate.ts:3579-3588`) with `gh api repos/{owner}/{repo}/pulls/{pr}/reviews` to post a proper GH review with inline comments. Each inline comment should specify `path`, `line`, and `body` (with suggestion syntax). The top-level review body should be the summary linking all findings. (priority: critical)
-
-- [ ] Update builder re-dispatch steering (`orchestrate.ts:5262-5266`) to pass individual review comments (not a flat summary blob) so the builder can address each one separately. Include comment IDs so the builder can resolve them after fixing. (priority: high)
-
-- [ ] Add builder capability to resolve individual review comment threads via `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}` (GraphQL `minimizeComment` or resolve conversation). The builder should resolve each thread after addressing it and commit with messages like `fix: address review comment on file.ts:42`. (priority: high)
-
-- [ ] Update `buildFeedbackSteering` in `gh.ts:801-858` to format orchestrator-originated inline review comments distinctly from external human comments, preserving comment IDs for resolution tracking. (priority: medium)
+- [ ] Update `buildFeedbackSteering` in `gh.ts:801-858` to format orchestrator-originated inline review comments distinctly from external human comments, preserving comment IDs for resolution tracking. Currently no orchestrator-origin tracking or comment ID preservation. (priority: medium)
 
 ### Up Next
 
@@ -26,4 +20,8 @@
 
 ### Completed
 
-_(none yet)_
+- [x] Extend `AgentReviewResult` to include structured inline comments array (`{path, line, end_line?, body, suggestion?}`) in `orchestrate.ts:3104-3117`. Added `InlineReviewComment` interface and optional `comments` field.
+
+- [x] Update review prompt `PROMPT_orch_review.md` to instruct the agent to return structured inline comments with file paths, line ranges, and suggestion blocks using GH suggestion syntax.
+
+- [x] Update `invokeAgentReview` in `process-requests.ts:442-480` to parse the new inline comments from the review result JSON. Added `parseInlineReviewComment()` and `normalizeAgentReviewResult()` with validation. Test coverage in `process-requests.test.ts`.
