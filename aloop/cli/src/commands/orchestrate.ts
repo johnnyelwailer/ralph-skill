@@ -1396,6 +1396,20 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     };
     await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
 
+    // Write status.json so `aloop status` and dashboard can track this session
+    const statusPath = path.join(result.session_dir, 'status.json');
+    await writeFile(
+      statusPath,
+      `${JSON.stringify({
+        state: 'starting',
+        mode: 'orchestrate',
+        provider: 'claude',
+        iteration: 0,
+        updated_at: startedAt,
+      }, null, 2)}\n`,
+      'utf8',
+    );
+
     // Register in active.json
     const activePath = path.join(result.aloopRoot, 'active.json');
     let active: Record<string, unknown> = {};
