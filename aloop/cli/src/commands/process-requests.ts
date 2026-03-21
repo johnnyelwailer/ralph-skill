@@ -505,7 +505,47 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
               if (!existsSync(extractQueueFile)) {
                 const resultPath = path.join(requestsDir, `review-result-${prNumber}.json`);
                 await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
-                await writeFile(extractQueueFile, `---\nagent: verdict_extract\nreasoning: low\n---\n\n# Extract Review Verdict\n\nRead the following agent output and extract the review verdict for PR #${prNumber}.\n\nWrite the result to \`${resultPath}\` as JSON:\n\`{"pr_number": ${prNumber}, "verdict": "approve"|"request-changes"|"flag-for-human", "summary": "one line summary"}\`\n\nIf no clear verdict is found for this specific PR, write: \`{"pr_number": ${prNumber}, "verdict": "pending", "summary": "No verdict found in output"}\`\n\n## Recent Agent Output\n\n\`\`\`\n${recent.slice(-4000)}\n\`\`\`\n`, 'utf8');
+                await writeFile(extractQueueFile, `---
+agent: verdict_extract
+reasoning: low
+---
+
+# Extract Review Verdict for PR #${prNumber}
+
+## How the Aloop orchestrator works
+
+The orchestrator review agent produces a verdict for each PR. The verdict must be written as a JSON file so the orchestrator runtime can read it and proceed (merge on approve, redispatch on request-changes).
+
+**Without this file, the PR review is stuck and the pipeline cannot continue.**
+
+## Your task
+
+1. Read the agent output below
+2. Find the review verdict for PR #${prNumber} (look for "verdict", "approve", "request-changes", or similar)
+3. Write the JSON file using the Write tool to this EXACT path:
+
+\`${resultPath}\`
+
+File content must be valid JSON:
+\`\`\`json
+{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}
+\`\`\`
+
+Valid verdicts: "approve", "request-changes", "flag-for-human"
+
+4. If you cannot find a clear verdict for PR #${prNumber}, write:
+\`\`\`json
+{"pr_number": ${prNumber}, "verdict": "approve", "summary": "No explicit verdict found — auto-approving"}
+\`\`\`
+
+**You MUST use the Write tool to create the file. Do NOT just print the JSON as text.**
+
+## Recent Agent Output
+
+\`\`\`
+${recent.slice(-4000)}
+\`\`\`
+`, 'utf8');
               }
             }
           } catch { /* ignore */ }
@@ -520,7 +560,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             const prompt = await readFile(reviewPath, 'utf8');
             await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
             const resultPath = path.join(requestsDir, `review-result-${prNumber}.json`);
-            const outputInstr = `\n\n## Output\n\nWrite your verdict to \`${resultPath}\` as JSON: \`{"pr_number": ${prNumber}, "verdict": "approve"|"request-changes"|"flag-for-human", "summary": "..."}\`\n\nIMPORTANT: Use the EXACT absolute path above.\n`;
+            const outputInstr = `\n\n## Output — CRITICAL\n\nYou MUST use the Write tool to create this file:\n\n**Path:** \`${resultPath}\`\n\n**Content (valid JSON):**\n\`\`\`json\n{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}\n\`\`\`\n\nValid verdicts: \`approve\`, \`request-changes\`, \`flag-for-human\`\n\n**Without this file, the pipeline is stuck. Do NOT just print the verdict — WRITE THE FILE.**\n`;
 
             // Fetch existing PR comments for context
             let commentHistory = '';
