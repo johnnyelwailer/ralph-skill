@@ -5239,6 +5239,16 @@ export async function runOrchestratorScanPass(
   if (repo && deps.prLifecycleDeps) {
     const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
     for (const issue of prIssues) {
+      // Skip if already reviewed this commit (prevent spam)
+      if (deps.execGh && (issue as any).last_reviewed_sha) {
+        try {
+          const headResult = await deps.execGh(['pr', 'view', String(issue.pr_number), '--repo', repo, '--json', 'headRefOid']);
+          const headSha = JSON.parse(headResult.stdout).headRefOid;
+          if (headSha === (issue as any).last_reviewed_sha) {
+            continue; // Same commit, skip
+          }
+        } catch { /* proceed with review */ }
+      }
       try {
         const lifecycleResult = await processPrLifecycle(
           issue,
@@ -5249,6 +5259,13 @@ export async function runOrchestratorScanPass(
           deps.prLifecycleDeps,
         );
         result.prLifecycles.push(lifecycleResult);
+        // Store reviewed commit SHA to prevent re-review spam
+        if (deps.execGh) {
+          try {
+            const headResult = await deps.execGh(['pr', 'view', String(issue.pr_number), '--repo', repo, '--json', 'headRefOid']);
+            (issue as any).last_reviewed_sha = JSON.parse(headResult.stdout).headRefOid;
+          } catch { /* ignore */ }
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         deps.appendLog(sessionDir, {
