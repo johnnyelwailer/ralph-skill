@@ -979,6 +979,93 @@ Run one lightweight monitoring pass:
 `;
 }
 
+// --- Label self-healing ---
+
+export interface RequiredLabel {
+  name: string;
+  color: string;
+  description: string;
+}
+
+export const REQUIRED_LABELS: RequiredLabel[] = [
+  { name: 'aloop/auto', color: '6f42c1', description: 'Managed by aloop orchestrator' },
+  { name: 'aloop/epic', color: '0075ca', description: 'Epic issue tracked by aloop' },
+  { name: 'aloop/sub-issue', color: '0e8a16', description: 'Sub-issue of an aloop epic' },
+  { name: 'aloop/needs-refine', color: 'fbca04', description: 'Needs refinement before work begins' },
+  { name: 'aloop/needs-review', color: 'e4e669', description: 'PR ready for review' },
+  { name: 'aloop/in-progress', color: '1d76db', description: 'Work in progress' },
+  { name: 'aloop/done', color: '0e8a16', description: 'Completed' },
+];
+
+export interface EnsureLabelsResult {
+  created: string[];
+  already_existed: string[];
+  failed: string[];
+}
+
+export interface EnsureLabelsDeps {
+  spawnSync: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
+}
+
+export function ensureLabels(
+  repo: string,
+  deps: EnsureLabelsDeps,
+): EnsureLabelsResult {
+  const result: EnsureLabelsResult = { created: [], already_existed: [], failed: [] };
+
+  // Fetch existing labels
+  let existingNames: Set<string>;
+  try {
+    const listResult = deps.spawnSync(
+      'gh',
+      ['label', 'list', '--repo', repo, '--limit', '200', '--json', 'name'],
+      { encoding: 'utf8' },
+    );
+    if (listResult.status !== 0) {
+      console.warn(`[orchestrate] Failed to list labels: ${listResult.stderr?.substring(0, 200)}`);
+      // Can't determine existing labels — mark all as failed and return
+      for (const label of REQUIRED_LABELS) result.failed.push(label.name);
+      return result;
+    }
+    const labels = JSON.parse(listResult.stdout ?? '[]') as Array<{ name: string }>;
+    existingNames = new Set(labels.map((l) => l.name));
+  } catch (e) {
+    console.warn(`[orchestrate] Failed to parse label list: ${e}`);
+    for (const label of REQUIRED_LABELS) result.failed.push(label.name);
+    return result;
+  }
+
+  for (const label of REQUIRED_LABELS) {
+    if (existingNames.has(label.name)) {
+      result.already_existed.push(label.name);
+      continue;
+    }
+    try {
+      const createResult = deps.spawnSync(
+        'gh',
+        ['label', 'create', label.name, '--repo', repo, '--color', label.color, '--description', label.description],
+        { encoding: 'utf8' },
+      );
+      if (createResult.status === 0) {
+        result.created.push(label.name);
+        console.log(`[orchestrate] Created label: ${label.name}`);
+      } else {
+        result.failed.push(label.name);
+        console.warn(`[orchestrate] Failed to create label ${label.name}: ${createResult.stderr?.substring(0, 200)}`);
+      }
+    } catch (e) {
+      result.failed.push(label.name);
+      console.warn(`[orchestrate] Failed to create label ${label.name}: ${e}`);
+    }
+  }
+
+  if (result.created.length > 0) {
+    console.log(`[orchestrate] Label self-healing: created ${result.created.length}, existed ${result.already_existed.length}, failed ${result.failed.length}`);
+  }
+
+  return result;
+}
+
 export async function orchestrateCommandWithDeps(
   options: OrchestrateCommandOptions = {},
   deps: OrchestrateDeps = defaultDeps,
@@ -1021,6 +1108,17 @@ export async function orchestrateCommandWithDeps(
   await deps.mkdir(promptsDir, { recursive: true });
   await deps.mkdir(queueDir, { recursive: true });
   await deps.mkdir(requestsDir, { recursive: true });
+
+  // Label self-healing: ensure required labels exist before preloading issues
+  let labelsResult: EnsureLabelsResult | null = null;
+  if (filterRepo) {
+    try {
+      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+      labelsResult = ensureLabels(filterRepo, { spawnSync: nodeSpawnSync });
+    } catch (e) {
+      console.warn(`[orchestrate] Label self-healing failed: ${e}`);
+    }
+  }
 
   const loopPlan: LoopPlan = {
     cycle: [ORCH_SCAN_PROMPT_FILENAME],
@@ -1339,6 +1437,13 @@ export async function orchestrateCommandWithDeps(
 
   const stateFile = path.join(sessionDir, 'orchestrator.json');
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+
+  // Write label self-healing results to session for diagnostics
+  if (labelsResult) {
+    const healthFile = path.join(sessionDir, 'session-health.json');
+    const health = { labels: labelsResult, checked_at: deps.now().toISOString() };
+    await deps.writeFile(healthFile, `${JSON.stringify(health, null, 2)}\n`, 'utf8');
+  }
 
   return {
     session_dir: sessionDir,

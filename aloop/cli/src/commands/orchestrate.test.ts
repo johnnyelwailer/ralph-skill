@@ -90,6 +90,10 @@ import {
   type ReplanAction,
   type ReplanResult,
   type SpecChangeDetection,
+  ensureLabels,
+  REQUIRED_LABELS,
+  type EnsureLabelsDeps,
+  type EnsureLabelsResult,
 } from './orchestrate.js';
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
@@ -6091,5 +6095,89 @@ describe('runOrchestratorScanPass with replan', () => {
     );
 
     assert.equal(result.replan, null);
+  });
+});
+
+// --- ensureLabels tests ---
+
+describe('ensureLabels', () => {
+  function createLabelDeps(
+    existingLabels: string[] = [],
+    failCreate: string[] = [],
+    listFails = false,
+  ): EnsureLabelsDeps {
+    return {
+      spawnSync: (cmd: string, args: string[]) => {
+        if (args[0] === 'label' && args[1] === 'list') {
+          if (listFails) return { status: 1, stdout: '', stderr: 'permission denied' };
+          const labels = existingLabels.map((name) => ({ name }));
+          return { status: 0, stdout: JSON.stringify(labels), stderr: '' };
+        }
+        if (args[0] === 'label' && args[1] === 'create') {
+          const labelName = args[2];
+          if (failCreate.includes(labelName)) {
+            return { status: 1, stdout: '', stderr: `failed to create ${labelName}` };
+          }
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: 'unknown command' };
+      },
+    };
+  }
+
+  it('creates all labels when none exist', () => {
+    const deps = createLabelDeps([]);
+    const result = ensureLabels('owner/repo', deps);
+
+    assert.equal(result.created.length, REQUIRED_LABELS.length);
+    assert.equal(result.already_existed.length, 0);
+    assert.equal(result.failed.length, 0);
+    for (const label of REQUIRED_LABELS) {
+      assert.ok(result.created.includes(label.name), `Expected ${label.name} to be created`);
+    }
+  });
+
+  it('skips labels that already exist', () => {
+    const existing = ['aloop/auto', 'aloop/epic', 'aloop/done'];
+    const deps = createLabelDeps(existing);
+    const result = ensureLabels('owner/repo', deps);
+
+    assert.equal(result.already_existed.length, 3);
+    assert.equal(result.created.length, REQUIRED_LABELS.length - 3);
+    assert.equal(result.failed.length, 0);
+    for (const name of existing) {
+      assert.ok(result.already_existed.includes(name));
+      assert.ok(!result.created.includes(name));
+    }
+  });
+
+  it('reports all as failed when label list fails', () => {
+    const deps = createLabelDeps([], [], true);
+    const result = ensureLabels('owner/repo', deps);
+
+    assert.equal(result.failed.length, REQUIRED_LABELS.length);
+    assert.equal(result.created.length, 0);
+    assert.equal(result.already_existed.length, 0);
+  });
+
+  it('handles partial creation failure', () => {
+    const deps = createLabelDeps([], ['aloop/epic', 'aloop/done']);
+    const result = ensureLabels('owner/repo', deps);
+
+    assert.equal(result.failed.length, 2);
+    assert.ok(result.failed.includes('aloop/epic'));
+    assert.ok(result.failed.includes('aloop/done'));
+    assert.equal(result.created.length, REQUIRED_LABELS.length - 2);
+    assert.equal(result.already_existed.length, 0);
+  });
+
+  it('does not fail when all labels already exist', () => {
+    const allNames = REQUIRED_LABELS.map((l) => l.name);
+    const deps = createLabelDeps(allNames);
+    const result = ensureLabels('owner/repo', deps);
+
+    assert.equal(result.already_existed.length, REQUIRED_LABELS.length);
+    assert.equal(result.created.length, 0);
+    assert.equal(result.failed.length, 0);
   });
 });

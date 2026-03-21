@@ -1,4 +1,4 @@
-# Issue #183: Configure Storybook 8 with react-vite and Tailwind decorators
+# Issue #181: Self-healing: auto-create missing labels and derive missing config
 
 ## Current Phase: Implementation
 
@@ -20,10 +20,18 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 ### In Progress
 
 ### Up Next
-- [ ] Create `.storybook/main.ts` in `aloop/cli/dashboard/` — configure `@storybook/react-vite` framework, set stories glob to `../src/**/*.stories.@(ts|tsx)`, add `@storybook/addon-essentials` and `@storybook/addon-themes` addons
-- [ ] Create `.storybook/preview.ts` in `aloop/cli/dashboard/` — import `../src/index.css` for Tailwind styles, add dark mode decorator toggling `.dark` class on `document.documentElement` (using `@storybook/addon-themes` `withThemeByClassName`), wrap stories in Radix `TooltipProvider`
-- [ ] Create `aloop/cli/dashboard/src/components/ui/button.stories.tsx` — verification story for the Button component. Include stories for each variant (default, ghost, outline, destructive) and both sizes (default, sm). Stories should render correctly in both light and dark mode via the global decorator.
-- [ ] Verify `storybook build` produces static output without errors — confirms full pipeline works. Run `npx storybook build` from dashboard directory.
+- [x] **Label self-healing: ensure required labels exist at startup** — Add `ensureLabels()` function that checks for `aloop/auto`, `aloop/epic`, `aloop/sub-issue`, `aloop/needs-refine`, `aloop/needs-review`, `aloop/in-progress`, `aloop/done` via `gh label list`, creates missing ones via `gh label create` with appropriate colors. Call once at startup in `orchestrateCommandWithDeps` before the scan loop. Cache result in session state. Log warnings on failure but don't block. (priority: critical)
+
+- [ ] **Config derivation: derive filter_repo from git remote** — When `filter_repo` is null (no `--repo` flag), derive it from `gh repo view --json nameWithOwner` or parse `git remote get-url origin`. Also check `meta.json` fields (`repo`, `project_root`) and env vars (`GITHUB_REPOSITORY`, `GH_HOST`). Log all derivations. (priority: critical)
+
+- [ ] **Config derivation: detect trunk branch from repo default branch** — When `trunk_branch` is the default `'agent/trunk'` and no `--trunk` flag was given, detect the repo's actual default branch via `gh repo view --json defaultBranchRef` and use it. Log the derivation. (priority: high)
+
+- [ ] **Config derivation: verify gh_project_number discovery works** — The dynamic project number discovery (lines 1115-1126) already exists but only runs inside the `filterRepo && state.issues.length === 0` block. Verify it works correctly and consider running it earlier/unconditionally so `gh_project_number` is always available. (priority: medium)
+
+- [ ] **Startup health check: implement pre-scan-loop verification** — Before entering the scan loop, run: `gh auth status` (verify authenticated), `gh repo view` (verify repo access), `git status` (verify clean worktree). Write results to `session-health.json` in the session dir. If critical checks fail (auth, repo access), write `ALERT.md` and exit with clear error message. (priority: high)
+
+- [ ] **Missing config recovery: reconstruct from multiple sources** — If `meta.json` is missing critical fields, attempt reconstruction from: git remote URL → repo slug, `orchestrator.json` state → spec file / trunk branch, environment variables (`GH_HOST`, `GITHUB_REPOSITORY`). Log all derivations for user verification. (priority: medium)
+
+- [ ] **Tests: add unit tests for self-healing functions** — Add tests to `orchestrate.test.ts` covering: label creation (success, partial failure, permission denied), config derivation (from git remote, from meta.json, from env vars), startup health check (all pass, auth failure, repo access failure), graceful degradation. (priority: high)
 
 ### Completed
-- [x] Install Storybook 8 devDependencies and add `storybook`/`build-storybook` scripts to `aloop/cli/dashboard/package.json` — foundation for all other tasks. Required deps: `storybook`, `@storybook/react-vite`, `@storybook/react`, `@storybook/addon-essentials`, `@storybook/addon-themes`. Scripts: `"storybook": "storybook dev -p 6006"`, `"build-storybook": "storybook build"`. Run `npm install` to generate lock file changes.
