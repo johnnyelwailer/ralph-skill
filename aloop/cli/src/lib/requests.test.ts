@@ -811,6 +811,45 @@ test('processAgentRequests - duplicate archive path collision', async () => {
   }
 });
 
+test('processAgentRequests - request ID idempotency persists and skips duplicate IDs', async () => {
+  const env = await setupTestEnv();
+  try {
+    let ghCalls = 0;
+    const ghRunner = async () => {
+      ghCalls += 1;
+      return { exitCode: 0, output: 'closed' };
+    };
+
+    const firstReq = { id: 'req-idem-1', type: 'close_issue', payload: { number: 1, reason: 'done' } };
+    await fs.writeFile(path.join(env.requestsDir, 'req-idem-first.json'), JSON.stringify(firstReq));
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+
+    const processedIdsPath = path.join(env.requestsDir, 'processed-ids.json');
+    const processedIds = JSON.parse(await fs.readFile(processedIdsPath, 'utf8'));
+    assert.deepStrictEqual(processedIds, ['req-idem-1']);
+    assert.strictEqual(ghCalls, 1);
+
+    const duplicateReq = { id: 'req-idem-1', type: 'close_issue', payload: { number: 2, reason: 'done-again' } };
+    await fs.writeFile(path.join(env.requestsDir, 'req-idem-second.json'), JSON.stringify(duplicateReq));
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+
+    assert.strictEqual(ghCalls, 1, 'duplicate request ID should be skipped without calling handler');
+
+    const processedFiles = await fs.readdir(path.join(env.requestsDir, 'processed'));
+    assert.ok(processedFiles.includes('req-idem-first.json'));
+    assert.ok(processedFiles.includes('req-idem-second.json'));
+
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    assert.strictEqual(queueFiles.length, 1, 'duplicate request should not produce a second queue success file');
+
+    const logContent = await fs.readFile(env.logPath, 'utf8');
+    assert.ok(logContent.includes('gh_request_skipped_duplicate'));
+    assert.ok(logContent.includes('"id":"req-idem-1"'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test('processAgentRequests - no requests directory', async () => {
   const env = await setupTestEnv();
   try {
