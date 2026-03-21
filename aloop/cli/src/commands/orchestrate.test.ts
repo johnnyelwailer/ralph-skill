@@ -2642,6 +2642,29 @@ describe('dispatchChildLoops', () => {
     assert.equal(result.launched.length, 0);
     assert.ok(result.skipped.includes(1));
     assert.ok(result.skipped.includes(2));
+    assert.ok(result.pausedTmpLowSpace);
+    assert.equal(result.pausedTmpLowSpace!.path, '/tmp');
+    assert.equal(result.pausedTmpLowSpace!.freeBytes, 100 * 1024 * 1024);
+    assert.equal(result.pausedTmpLowSpace!.thresholdBytes, 500 * 1024 * 1024);
+  });
+
+  it('pauses dispatch when disk is 100% full (bavail=0)', async () => {
+    const issues = [
+      makeIssue({ number: 1, wave: 1, state: 'pending' }),
+    ];
+    const state = stateWithIssues(issues);
+    const deps = createMockDispatchDeps({
+      readFile: async () => JSON.stringify(state),
+      statfs: async () => ({
+        bavail: 0,
+        bsize: 4096,
+      }),
+    });
+
+    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
+    assert.equal(result.launched.length, 0);
+    assert.ok(result.pausedTmpLowSpace);
+    assert.equal(result.pausedTmpLowSpace!.freeBytes, 0);
   });
 });
 

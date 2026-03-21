@@ -10747,7 +10747,7 @@ function computeFreeBytesFromStatfs(stats) {
   if (availableBlocks === null || blockSize === null)
     return null;
   const freeBytes = availableBlocks * blockSize;
-  if (freeBytes <= 0n)
+  if (freeBytes < 0n)
     return null;
   if (freeBytes > BigInt(Number.MAX_SAFE_INTEGER))
     return Number.MAX_SAFE_INTEGER;
@@ -11699,6 +11699,19 @@ async function orchestrateCommand(options = {}, depsOrCommand) {
     };
     await writeFile10(metaPath, `${JSON.stringify(meta, null, 2)}
 `, "utf8");
+    const statusPath = path14.join(result.session_dir, "status.json");
+    await writeFile10(
+      statusPath,
+      `${JSON.stringify({
+        state: "starting",
+        mode: "orchestrate",
+        provider: "claude",
+        iteration: 0,
+        updated_at: startedAt
+      }, null, 2)}
+`,
+      "utf8"
+    );
     const activePath = path14.join(result.aloopRoot, "active.json");
     let active = {};
     try {

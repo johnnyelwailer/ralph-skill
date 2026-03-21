@@ -242,6 +242,7 @@ export interface DispatchResult {
   launched: ChildLaunchResult[];
   skipped: number[];
   state: OrchestratorState;
+  pausedTmpLowSpace?: { freeBytes: number; thresholdBytes: number; path: string };
 }
 
 const TMP_DISPATCH_CHECK_PATH = '/tmp';
@@ -261,7 +262,7 @@ function computeFreeBytesFromStatfs(
   if (availableBlocks === null || blockSize === null) return null;
 
   const freeBytes = availableBlocks * blockSize;
-  if (freeBytes <= 0n) return null;
+  if (freeBytes < 0n) return null;
   if (freeBytes > BigInt(Number.MAX_SAFE_INTEGER)) return Number.MAX_SAFE_INTEGER;
   return Number(freeBytes);
 }
@@ -3112,10 +3113,16 @@ export async function dispatchChildLoops(
   const eligible = filterByFileOwnership(capabilityResult.eligible, state);
   const slots = availableSlots(state);
   let toDispatch = eligible.slice(0, slots);
+  let pausedTmpLowSpace: DispatchResult['pausedTmpLowSpace'];
   if (toDispatch.length > 0) {
     const freeBytes = await getTmpFreeBytes(deps);
     if (freeBytes !== null && freeBytes < TMP_DISPATCH_MIN_FREE_BYTES) {
       toDispatch = [];
+      pausedTmpLowSpace = {
+        freeBytes,
+        thresholdBytes: TMP_DISPATCH_MIN_FREE_BYTES,
+        path: TMP_DISPATCH_CHECK_PATH,
+      };
     }
   }
   const skippedSet = new Set<number>(capabilityResult.blocked.map((entry) => entry.issue.number));
@@ -3152,7 +3159,7 @@ export async function dispatchChildLoops(
   state = { ...state, updated_at: deps.now().toISOString() };
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
-  return { launched, skipped, state };
+  return { launched, skipped, state, pausedTmpLowSpace };
 }
 
 // --- PR lifecycle gates ---
