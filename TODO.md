@@ -30,6 +30,11 @@ _(none — ready for next task)_
 
 - [ ] [qa/P1] aloop steer accepts empty instruction: `aloop steer "" --session <id>` → "Steering instruction queued" with exit 0, writes an empty queue file. Expected: reject with error message and non-zero exit code. Tested at iter 19. (priority: high)
 
+### Review Findings
+
+- [ ] [review] Gate 2: No tests for SHA dedup mechanism — add tests to orchestrate.test.ts covering: (a) `invokeAgentReview` in process-requests.ts:466-478 returns early with `verdict: 'pending'` when `last_reviewed_sha` matches HEAD, (b) `invokeAgentReview` proceeds when `last_reviewed_sha` differs from HEAD or is undefined, (c) orchestrate.ts:5261-5265 stores `last_reviewed_sha` only on non-pending verdicts (`merged`, `rejected`, `flagged_for_human`), does NOT store on `review_pending` or `gates_pending`. Assert exact values, not just toBeDefined(). (priority: high)
+- [ ] [review] Gate 3: Zero branch coverage on SHA dedup paths — the test from the Gate 2 task above should cover: the early-return path in process-requests.ts:473-474, the SHA storage conditional in orchestrate.ts:5261, and the SHA clear on redispatch in orchestrate.ts:5311. Target >=80% branch coverage for these code paths. (priority: high)
+
 ### Up Next
 
 - [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
