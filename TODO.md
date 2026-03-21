@@ -3,7 +3,7 @@
 ## Current Phase: Implementation
 
 ### Up Next
-- [ ] Print settings table in non-interactive mode before scaffolding (setup.ts:127-141). Spec: "In non-interactive mode, print the table to stdout for verification." Currently non-interactive skips the display entirely.
+- [x] Print settings table in non-interactive mode before scaffolding (setup.ts:127-141). Spec: "In non-interactive mode, print the table to stdout for verification." Currently non-interactive skips the display entirely.
 - [ ] Add required-value validation in non-interactive mode. Spec: "Validates all required values are provided, errors if missing." Currently no validation — missing `--provider` or `--mode` silently uses undefined defaults. Should error with a clear message listing missing flags.
 - [ ] Generate `opencode.json` with `provider.zdr: true` when provider includes opencode/openrouter AND `data_privacy: private`. Spec: "Generate `opencode.json` with `provider.zdr: true` when OpenCode + OpenRouter + ZDR." No OpenRouter-specific ZDR logic exists in setup.ts or scaffold.ts today.
 - [ ] Add ZDR and devcontainer auth-strategy schema documentation to `aloop/config.yml`. Spec lists this file explicitly. Currently config.yml has no mention of `zdr_enabled`, `data_classification`, or `devcontainer_auth_strategy`.

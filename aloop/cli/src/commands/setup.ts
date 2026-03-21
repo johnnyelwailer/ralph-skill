@@ -144,6 +144,21 @@ export async function setupCommandWithDeps(
   if (options.nonInteractive) {
     console.log('Running setup in non-interactive mode...');
     const setupMode = parseSetupMode(options.mode);
+    const dataPrivacy = parseDataPrivacy(options.dataPrivacy);
+    const devcontainerAuthStrategy = parseDevcontainerAuthStrategy(options.devcontainerAuthStrategy);
+    const tableRows: [string, string][] = [
+      ['Spec', options.spec ?? '(auto)'],
+      ['Providers', (parsedProviderList && parsedProviderList.length > 0) ? parsedProviderList.join(', ') : '(auto)'],
+      ['Mode', setupMode ?? '(default)'],
+      ['Autonomy Level', parseAutonomyLevel(options.autonomyLevel) ?? '(default)'],
+      ['Data Privacy', dataPrivacy ?? '(default)'],
+      ['ZDR Mode', dataPrivacy === 'private' ? 'Enabled' : dataPrivacy === 'public' ? 'Disabled' : '(default)'],
+    ];
+    if (devcontainerAuthStrategy) {
+      tableRows.push(['Devcontainer Auth Strategy', devcontainerAuthStrategy]);
+    }
+    console.log('\n' + formatSettingsTable(tableRows));
+
     const result = await deps.scaffold({
       projectRoot: options.projectRoot,
       homeDir: options.homeDir,
@@ -151,8 +166,8 @@ export async function setupCommandWithDeps(
       enabledProviders: parsedProviderList,
       mode: mapSetupModeToLoopMode(setupMode),
       autonomyLevel: parseAutonomyLevel(options.autonomyLevel),
-      dataPrivacy: parseDataPrivacy(options.dataPrivacy),
-      devcontainerAuthStrategy: parseDevcontainerAuthStrategy(options.devcontainerAuthStrategy),
+      dataPrivacy,
+      devcontainerAuthStrategy,
     });
     console.log(`Setup complete. Config written to: ${result.config_path}`);
     return;

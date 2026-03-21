@@ -108,6 +108,56 @@ test('setupCommandWithDeps - non-interactive mode accepts provider alias', async
   assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['claude']);
 });
 
+test('setupCommandWithDeps - non-interactive mode prints settings table before scaffolding', async () => {
+  const logs: string[] = [];
+  const origLog = console.log;
+  let scaffoldCalled = false;
+  console.log = (...args: unknown[]) => { logs.push(args.join(' ')); };
+
+  try {
+    const mockDiscover = async (): Promise<DiscoveryResult> => {
+      return {
+        project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+        setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+        context: {
+          detected_language: 'node-typescript',
+          language_confidence: 'high',
+          language_signals: [],
+          validation_presets: { tests_only: [], tests_and_types: [], full: ['npm run typecheck', 'npm test'] },
+          spec_candidates: [],
+          reference_candidates: [],
+          context_files: {},
+        },
+        providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+        devcontainer: { enabled: false, config_path: null },
+        discovered_at: '2023-01-01T00:00:00.000Z',
+      } as unknown as DiscoveryResult;
+    };
+
+    const mockScaffold = async (_opts: ScaffoldOptions): Promise<ScaffoldResult> => {
+      scaffoldCalled = true;
+      return { config_path: '/mock/config', prompts_dir: '/mock/prompts', project_dir: '/mock/dir', project_hash: '123' };
+    };
+
+    await setupCommandWithDeps({
+      nonInteractive: true,
+      spec: 'SPEC.md',
+      provider: 'claude',
+      mode: 'loop',
+      autonomyLevel: 'balanced',
+      dataPrivacy: 'private',
+    }, { discover: mockDiscover, scaffold: mockScaffold, prompt: async () => '' });
+
+    assert.equal(scaffoldCalled, true);
+    const output = logs.join('\n');
+    assert.match(output, /\|\s+Setting\s+\|\s+Value\s+\|/);
+    assert.match(output, /\|\s+Mode\s+\|\s+loop\s+\|/);
+    assert.match(output, /\|\s+Providers\s+\|\s+claude\s+\|/);
+  } finally {
+    console.log = origLog;
+  }
+});
+
 test('setupCommandWithDeps - non-interactive mode with single mode', async () => {
   let scaffoldCalledOpts = null as unknown as ScaffoldOptions;
 
