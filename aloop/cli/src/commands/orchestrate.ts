@@ -5261,8 +5261,9 @@ export async function runOrchestratorScanPass(
           deps.prLifecycleDeps,
         );
         result.prLifecycles.push(lifecycleResult);
-        // Store reviewed commit SHA to prevent re-review spam
-        if (deps.execGh) {
+        // Store reviewed commit SHA only on final verdicts (not pending)
+        const action = lifecycleResult?.action;
+        if (action && action !== 'review_pending' && action !== 'gates_pending' && deps.execGh) {
           try {
             const headResult = await deps.execGh(['pr', 'view', String(issue.pr_number), '--repo', repo, '--json', 'headRefOid']);
             (issue as any).last_reviewed_sha = JSON.parse(headResult.stdout).headRefOid;
