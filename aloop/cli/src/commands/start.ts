@@ -7,6 +7,14 @@ import { discoverWorkspace, type DiscoveryResult } from './project.js';
 import { resolveHomeDir } from './session.js';
 import type { OutputMode } from './status.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
+import {
+  launchOrchestrator,
+  orchestrateCommandWithDeps,
+  type LaunchOrchestratorOptions,
+  type LaunchOrchestratorResult,
+  type OrchestrateCommandOptions,
+  type OrchestrateCommandResult,
+} from './orchestrate.js';
 
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode';
 type LoopProvider = ProviderName | 'round-robin';
@@ -51,7 +59,9 @@ export interface StartCommandOptions {
   build?: boolean;
   review?: boolean;
   inPlace?: boolean;
+  max?: number | string;
   maxIterations?: number | string;
+  concurrency?: number | string;
   output?: OutputMode;
   sessionId?: string;
 }
@@ -92,6 +102,8 @@ interface StartDeps {
   now: () => Date;
   nodePath: string;
   aloopPath: string;
+  orchestrateCommandWithDeps?: (options: OrchestrateCommandOptions) => Promise<OrchestrateCommandResult>;
+  launchOrchestrator?: (options: LaunchOrchestratorOptions) => Promise<LaunchOrchestratorResult>;
 }
 
 const defaultDeps: StartDeps = {
@@ -108,6 +120,8 @@ const defaultDeps: StartDeps = {
   now: () => new Date(),
   nodePath: process.execPath,
   aloopPath: path.resolve(process.argv[1]),
+  orchestrateCommandWithDeps: (options: OrchestrateCommandOptions) => orchestrateCommandWithDeps(options),
+  launchOrchestrator: (options: LaunchOrchestratorOptions) => launchOrchestrator(options),
 };
 
 function isStartDeps(value: unknown): value is StartDeps {
@@ -718,11 +732,6 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     ?? (options.mode ? resolveConfiguredStartMode(options.mode) : null)
     ?? resolveConfiguredStartMode(String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, 'plan-build-review')));
 
-  if (resolvedMode === 'orchestrate') {
-    // TODO(#105): dispatch to orchestrator launch function once extracted
-    throw new Error('Orchestrate mode accepted but dispatch is not yet wired. Use `aloop orchestrate` for now.');
-  }
-
   const launchMode: LaunchMode = options.launch ? assertLaunchMode(options.launch) : 'start';
 
   const selectedProvider = options.provider
@@ -743,12 +752,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     roundRobinOrder = [...enabledProviders];
   }
 
-  const maxIterationsValue = selectValue(options.maxIterations, projectConfig.values.max_iterations, globalConfig.values.max_iterations);
-  const parsedMaxIterations = toPositiveInt(maxIterationsValue);
-  if (hasConfiguredValue(maxIterationsValue) && parsedMaxIterations === null) {
-    throw new Error(`Invalid --max-iterations value: ${String(maxIterationsValue)} (must be a positive integer)`);
-  }
-  const maxIterations = parsedMaxIterations ?? 50;
+  const maxIterations = toPositiveInt(selectValue(options.maxIterations, options.max, projectConfig.values.max_iterations, globalConfig.values.max_iterations)) ?? 50;
   const maxStuck = toPositiveInt(selectValue(projectConfig.values.max_stuck, globalConfig.values.max_stuck)) ?? 3;
   const backupEnabled = toBoolean(selectValue(projectConfig.values.backup_enabled, globalConfig.values.backup_enabled), false);
   const worktreeDefault = toBoolean(selectValue(projectConfig.values.worktree_default, globalConfig.values.worktree_default), true);
@@ -778,6 +782,49 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     }
   }
   const copilotRetryModel = String(selectValue(projectConfig.retry_models.copilot, globalConfig.retry_models.copilot, 'claude-sonnet-4.6') ?? 'claude-sonnet-4.6');
+
+  if (resolvedMode === 'orchestrate') {
+    const runOrchestrateCommandWithDeps = deps.orchestrateCommandWithDeps ?? ((overrideOptions: OrchestrateCommandOptions) => orchestrateCommandWithDeps(overrideOptions));
+    const runLaunchOrchestrator = deps.launchOrchestrator ?? ((launchOptions: LaunchOrchestratorOptions) => launchOrchestrator(launchOptions));
+    const orchestrateResult = await runOrchestrateCommandWithDeps({
+      homeDir: options.homeDir,
+      projectRoot: options.projectRoot,
+      concurrency: options.concurrency !== undefined ? String(options.concurrency) : undefined,
+    });
+    const orchestratorLaunchMode: 'start' | 'resume' = launchMode === 'resume' ? 'resume' : 'start';
+    const launch = await runLaunchOrchestrator({
+      sessionDir: orchestrateResult.session_dir,
+      promptsDir: orchestrateResult.prompts_dir,
+      projectRoot: orchestrateResult.projectRoot,
+      aloopRoot: orchestrateResult.aloopRoot,
+      provider: selectedProvider,
+      roundRobinProviders: roundRobinOrder.join(','),
+      maxScans: maxIterations,
+      launchMode: orchestratorLaunchMode,
+    });
+
+    return {
+      session_id: path.basename(orchestrateResult.session_dir),
+      session_dir: orchestrateResult.session_dir,
+      prompts_dir: orchestrateResult.prompts_dir,
+      work_dir: launch.work_dir,
+      worktree: launch.worktree,
+      worktree_path: launch.worktree_path,
+      branch: null,
+      provider: selectedProvider,
+      mode: resolvedMode,
+      launch_mode: launchMode,
+      max_iterations: maxIterations,
+      max_stuck: maxStuck,
+      pid: launch.pid,
+      started_at: launch.started_at,
+      monitor_mode: 'none',
+      monitor_auto_open: false,
+      monitor_pid: null,
+      dashboard_url: null,
+      warnings: launch.warnings,
+    };
+  }
 
   const startedAt = deps.now().toISOString();
   let sessionId: string;

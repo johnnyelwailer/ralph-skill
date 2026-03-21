@@ -10,7 +10,7 @@
 
 - [x] **Extract reusable orchestrator launch function from `orchestrate.ts`** — The `orchestrateCommand` (line 1308) currently does everything: resolve options, call `orchestrateCommandWithDeps`, create worktree, spawn loop.sh. Extract the worktree+spawn+scan-loop launch portion into a shared function (e.g. `launchOrchestrator`) that `start.ts` can also call, so both `aloop start --mode orchestrate` and `aloop orchestrate` use the same path.
 
-- [ ] **Wire orchestrator dispatch into `startCommandWithDeps`** — When `resolvedMode` is `'orchestrate'`, call the extracted orchestrator launch function instead of the loop.sh spawn path. Map `--max` to `--max-scans` and forward `--concurrency` if present. Return an appropriate `StartCommandResult` (or a compatible shape).
+- [x] **Wire orchestrator dispatch into `startCommandWithDeps`** — When `resolvedMode` is `'orchestrate'`, call the extracted orchestrator launch function instead of the loop.sh spawn path. Map `--max` to `--max-scans` and forward `--concurrency` if present. Return an appropriate `StartCommandResult` (or a compatible shape).
 
 - [ ] **Add `--concurrency` and `--max` flag mapping to start command** — The spec says `--max` maps to `--max-iterations` (loop) or `--max-scans` (orchestrate). Add `--concurrency <n>` option to the `start` command definition in `index.ts`. Ensure `--max-iterations` is forwarded as `--max-scans` when mode is orchestrate.
 

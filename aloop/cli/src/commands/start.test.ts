@@ -1886,31 +1886,75 @@ test('startCommandWithDeps parses cost_routing and openrouter_models for opencod
   assert.match(reviewPrompt, /model:\s+openrouter\/anthropic\/claude-opus-4\.6/);
 });
 
-test('Branch Coverage: orchestrate mode resolves but dispatch is not yet wired', async () => {
+test('Branch Coverage: orchestrate mode dispatches through orchestrator launch with mapped limits', async () => {
   const fixture = await setupWorkspace('aloop-branch-orchestrate-');
   await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\nmode: 'plan'\n", 'utf8');
-  await assert.rejects(
-    () =>
-      startCommandWithDeps(
-        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, mode: 'orchestrate' },
-        {
-          discoverWorkspace: async () => fixture.discovery,
-          readFile,
-          writeFile,
-          mkdir,
-          cp: async () => undefined,
-          existsSync,
-          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
-          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
-          platform: 'linux',
-          nodePath: '/usr/bin/node',
-          aloopPath: '/usr/local/bin/aloop',
-          env: process.env,
-          now: () => new Date(),
-        }
-      ),
-    /Orchestrate mode accepted but dispatch is not yet wired/
+
+  let capturedConcurrency: unknown;
+  let capturedMaxScans: unknown;
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, mode: 'orchestrate', max: 88, concurrency: 5 },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync,
+      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+      orchestrateCommandWithDeps: async (options) => {
+        capturedConcurrency = options.concurrency;
+        return {
+          session_dir: path.join(fixture.homeDir, '.aloop', 'sessions', 'orchestrator-20260301-123456'),
+          prompts_dir: path.join(fixture.homeDir, '.aloop', 'sessions', 'orchestrator-20260301-123456', 'prompts'),
+          queue_dir: path.join(fixture.homeDir, '.aloop', 'sessions', 'orchestrator-20260301-123456', 'queue'),
+          requests_dir: path.join(fixture.homeDir, '.aloop', 'sessions', 'orchestrator-20260301-123456', 'requests'),
+          loop_plan_file: path.join(fixture.homeDir, '.aloop', 'sessions', 'orchestrator-20260301-123456', 'loop-plan.json'),
+          state_file: path.join(fixture.homeDir, '.aloop', 'sessions', 'orchestrator-20260301-123456', 'orchestrator.json'),
+          state: {
+            spec_file: 'SPEC.md',
+            trunk_branch: 'agent/trunk',
+            concurrency_cap: 3,
+            current_wave: 0,
+            plan_only: false,
+            issues: [],
+            completed_waves: [],
+            filter_issues: null,
+            filter_label: null,
+            filter_repo: null,
+            budget_cap: null,
+            created_at: new Date('2026-03-01T12:34:56.000Z').toISOString(),
+            updated_at: new Date('2026-03-01T12:34:56.000Z').toISOString(),
+          },
+          aloopRoot: path.join(fixture.homeDir, '.aloop'),
+          projectRoot: fixture.projectRoot,
+        };
+      },
+      launchOrchestrator: async (options) => {
+        capturedMaxScans = options.maxScans;
+        return {
+          pid: 6789,
+          work_dir: fixture.projectRoot,
+          worktree: false,
+          worktree_path: null,
+          started_at: '2026-03-01T12:34:56.000Z',
+          warnings: [],
+        };
+      },
+    },
   );
+
+  assert.equal(result.mode, 'orchestrate');
+  assert.equal(result.session_id, 'orchestrator-20260301-123456');
+  assert.equal(result.pid, 6789);
+  assert.equal(capturedConcurrency, '5');
+  assert.equal(capturedMaxScans, 88);
 });
 
 test('Branch Coverage: resolvePowerShellBinary fails if no powershell', async () => {
