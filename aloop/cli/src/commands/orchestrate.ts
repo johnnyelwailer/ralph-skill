@@ -3129,6 +3129,7 @@ export interface PrLifecycleDeps {
 }
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
+const ORCHESTRATOR_REDISPATCH_LIMIT = 3;
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
@@ -5255,6 +5256,40 @@ export async function runOrchestratorScanPass(
   if (deps.dispatchDeps && deps.aloopRoot) {
     const needsRedispatch = state.issues.filter((i) => i.needs_redispatch && i.child_session);
     for (const issue of needsRedispatch) {
+      const redispatchCount = issue.redispatch_count ?? 0;
+      if (redispatchCount >= ORCHESTRATOR_REDISPATCH_LIMIT) {
+        issue.needs_redispatch = false;
+        issue.state = 'failed';
+        issue.status = 'Blocked';
+        issue.blocked_on_human = true;
+
+        if (repo && deps.execGh) {
+          await flagForHuman(
+            issue,
+            repo,
+            `Review requested changes ${redispatchCount}/${ORCHESTRATOR_REDISPATCH_LIMIT} times for PR #${issue.pr_number}; escalating to human`,
+            {
+              execGh: deps.execGh,
+              readFile: deps.readFile,
+              writeFile: deps.writeFile,
+              now: deps.now,
+              appendLog: deps.appendLog,
+            },
+          );
+        }
+
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_redispatch_limit_reached',
+          iteration,
+          issue_number: issue.number,
+          pr_number: issue.pr_number,
+          redispatch_count: redispatchCount,
+          redispatch_limit: ORCHESTRATOR_REDISPATCH_LIMIT,
+        });
+        continue;
+      }
+
       const childDir = path.join(deps.aloopRoot, 'sessions', issue.child_session!);
       const childWorktree = path.join(childDir, 'worktree');
       const childPromptsDir = path.join(childDir, 'prompts');
@@ -5289,6 +5324,7 @@ export async function runOrchestratorScanPass(
           issue.child_pid = child.pid;
           issue.needs_redispatch = false;
           issue.review_feedback = undefined;
+          issue.redispatch_count = redispatchCount + 1;
 
           deps.appendLog(sessionDir, {
             timestamp: deps.now().toISOString(),
@@ -5298,6 +5334,7 @@ export async function runOrchestratorScanPass(
             pr_number: issue.pr_number,
             child_session: issue.child_session,
             pid: child.pid,
+            redispatch_count: issue.redispatch_count,
           });
         } catch (e) {
           deps.appendLog(sessionDir, {

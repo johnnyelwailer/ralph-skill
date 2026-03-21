@@ -6,7 +6,7 @@
 
 ### Up Next
 - [x] Add `needs_redispatch`, `review_feedback`, and `redispatch_count` to `OrchestratorIssue` interface (remove `as any` casts) — type safety for the re-dispatch fields that already exist in runtime
-- [ ] Add re-dispatch retry limit (max 3) — flag for human after N failed review cycles to prevent infinite re-dispatch loops. Use `redispatch_count` on the issue, increment in the scan pass step 3.5, and check before re-dispatching
+- [x] Add re-dispatch retry limit (max 3) — flag for human after N failed review cycles to prevent infinite re-dispatch loops. Use `redispatch_count` on the issue, increment in the scan pass step 3.5, and check before re-dispatching
 - [ ] Add test: request-changes verdict sets `needs_redispatch` flag on issue state — unit test in `orchestrate.test.ts` for `processPrLifecycle` with `request-changes` verdict
 - [ ] Add test: scan pass re-dispatches child when `needs_redispatch` is true — integration test for `runOrchestratorScanPass` with `dispatchDeps` verifying child re-launch and state transitions
 - [ ] Add test: duplicate review comment prevention — verify `last_review_comment` prevents posting same comment twice
