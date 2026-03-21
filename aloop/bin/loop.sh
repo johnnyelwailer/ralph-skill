@@ -870,7 +870,14 @@ except Exception:
 
 ensure_provider_health_dir() {
     mkdir -p "$PROVIDER_HEALTH_DIR"
+    # Clean up stale .lock directories from the old mkdir-based locking approach
+    if [ -d "$PROVIDER_HEALTH_DIR" ]; then
+        find "$PROVIDER_HEALTH_DIR" -maxdepth 1 -type d -name '*.lock' -exec rmdir {} + 2>/dev/null || true
+    fi
 }
+
+# Global FD for flock-based health file locking
+HEALTH_LOCK_FD=""
 
 get_provider_health_path() {
     local provider_name
@@ -883,51 +890,39 @@ acquire_provider_health_lock() {
     local path="$1"
     local provider_name="$2"
     local operation_name="$3"
-    local lock_dir="${path}.lock"
+    local lock_file="${path}.flock"
+    local flock_mode
+    if [ "$operation_name" = "read" ]; then
+        flock_mode="-s"
+    else
+        flock_mode="-x"
+    fi
     local retries=${#HEALTH_LOCK_RETRY_DELAYS[@]}
     local i
-
+    # Open lock file on FD 9
+    exec 9>"$lock_file"
     for ((i=0; i<retries; i++)); do
-        if mkdir "$lock_dir" 2>/dev/null; then
-            printf '%s
-' "$$" > "$lock_dir/pid" 2>/dev/null || true
-            date -u +%Y-%m-%dT%H:%M:%SZ > "$lock_dir/created_at" 2>/dev/null || true
-            echo "$lock_dir"
+        if flock -n $flock_mode 9 2>/dev/null; then
+            HEALTH_LOCK_FD="9"
             return 0
         fi
-
-        # Stale lock recovery: remove orphaned or old lock dirs.
-        if [ -d "$lock_dir" ]; then
-            local owner_pid lock_mtime now_epoch age
-            owner_pid=""
-            lock_mtime=""
-            now_epoch=$(date -u +%s)
-
-            if [ -f "$lock_dir/pid" ]; then
-                owner_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
-            fi
-            lock_mtime=$(stat -c %Y "$lock_dir" 2>/dev/null || true)
-            age=0
-            if [ -n "$lock_mtime" ]; then
-                age=$((now_epoch - lock_mtime))
-            fi
-
-            if { [ -n "$owner_pid" ] && ! kill -0 "$owner_pid" 2>/dev/null; } || [ "$age" -gt "$HEALTH_LOCK_STALE_SECONDS" ]; then
-                rm -rf "$lock_dir" 2>/dev/null || true
-            fi
-        fi
-
         sleep "${HEALTH_LOCK_RETRY_DELAYS[$i]}"
     done
-
-    write_log_entry "health_lock_failed"         "provider" "$provider_name"         "operation" "$operation_name"         "path" "$path"         "retries" "$retries"
+    # Failed to acquire lock after all retries — close FD and report
+    exec 9>&-
+    HEALTH_LOCK_FD=""
+    write_log_entry "health_lock_failed" \
+        "provider" "$provider_name" \
+        "operation" "$operation_name" \
+        "path" "$path" \
+        "retries" "$retries"
     return 1
 }
 
 release_provider_health_lock() {
-    local lock_dir="$1"
-    if [ -n "$lock_dir" ] && [ -d "$lock_dir" ]; then
-        rm -rf "$lock_dir" 2>/dev/null || true
+    if [ -n "$HEALTH_LOCK_FD" ]; then
+        exec 9>&-
+        HEALTH_LOCK_FD=""
     fi
 }
 
@@ -981,11 +976,10 @@ get_provider_health_state() {
         return 0
     fi
 
-    local lock_dir
-    lock_dir=$(acquire_provider_health_lock "$path" "$provider_name" "read") || return 1
+    acquire_provider_health_lock "$path" "$provider_name" "read" || return 1
     local raw=""
     raw=$(cat "$path" 2>/dev/null || true)
-    release_provider_health_lock "$lock_dir"
+    release_provider_health_lock
 
     if [ -z "${raw//[[:space:]]/}" ]; then
         return 0
@@ -1027,15 +1021,14 @@ set_provider_health_state() {
     local cooldown_until="$7"
     local path
     path=$(get_provider_health_path "$provider_name")
-    local lock_dir
-    lock_dir=$(acquire_provider_health_lock "$path" "$provider_name" "write") || return 1
+    acquire_provider_health_lock "$path" "$provider_name" "write" || return 1
 
     local tmp_file="${path}.tmp.$$"
     cat > "$tmp_file" << EOF
 {"status":"$(json_escape "$status")","last_success":$(json_nullable_string "$last_success"),"last_failure":$(json_nullable_string "$last_failure"),"failure_reason":$(json_nullable_string "$failure_reason"),"consecutive_failures":$consecutive_failures,"cooldown_until":$(json_nullable_string "$cooldown_until")}
 EOF
     mv "$tmp_file" "$path"
-    release_provider_health_lock "$lock_dir"
+    release_provider_health_lock
     return 0
 }
 
