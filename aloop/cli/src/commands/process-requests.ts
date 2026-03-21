@@ -484,6 +484,25 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
           } catch { /* ignore */ }
         }
 
+        // 2c. Last resort: queue a verdict extraction prompt for the agent
+        // The scan agent produced review text but we couldn't parse the verdict — ask an agent to extract it
+        const rawLogFile2 = path.join(sessionDir, 'log.jsonl.raw');
+        if (existsSync(rawLogFile2)) {
+          try {
+            const rawLog = await readFile(rawLogFile2, 'utf8');
+            const recent = rawLog.slice(-8000);
+            // Only if the raw log mentions this PR
+            if (recent.includes(String(prNumber)) || recent.includes(`PR #${prNumber}`)) {
+              const extractQueueFile = path.join(sessionDir, 'queue', `000-extract-verdict-${prNumber}.md`);
+              if (!existsSync(extractQueueFile)) {
+                const resultPath = path.join(requestsDir, `review-result-${prNumber}.json`);
+                await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
+                await writeFile(extractQueueFile, `---\nagent: verdict_extract\nreasoning: low\n---\n\n# Extract Review Verdict\n\nRead the following agent output and extract the review verdict for PR #${prNumber}.\n\nWrite the result to \`${resultPath}\` as JSON:\n\`{"pr_number": ${prNumber}, "verdict": "approve"|"request-changes"|"flag-for-human", "summary": "one line summary"}\`\n\nIf no clear verdict is found for this specific PR, write: \`{"pr_number": ${prNumber}, "verdict": "pending", "summary": "No verdict found in output"}\`\n\n## Recent Agent Output\n\n\`\`\`\n${recent.slice(-4000)}\n\`\`\`\n`, 'utf8');
+              }
+            }
+          } catch { /* ignore */ }
+        }
+
         // 3. Check if PR head commit has already been reviewed (prevent spam)
         const stateIssue = state.issues.find((i: any) => i.pr_number === prNumber);
         if (stateIssue && repo) {
