@@ -3843,15 +3843,38 @@ export async function processPrLifecycle(
   }
 
   if (reviewResult.verdict === 'request-changes') {
-    // Post review feedback on the PR (only if not already posted)
+    // Post review feedback as a proper GH review with inline comments (only if not already posted)
     const stateIssue = state.issues.find((i) => i.number === issue.number);
     const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
-        await deps.execGh([
-          'pr', 'comment', String(prNumber), '--repo', repo,
-          '--body', `Agent review requested changes:\n\n${reviewResult.summary}`,
-        ]);
+        const inlineComments = (reviewResult.comments ?? []).map((c) => {
+          let commentBody = c.body;
+          if (c.suggestion) {
+            commentBody += `\n\n\`\`\`suggestion\n${c.suggestion}\n\`\`\``;
+          }
+          const entry: Record<string, unknown> = { path: c.path, line: c.line, body: commentBody };
+          if (c.end_line && c.end_line !== c.line) {
+            entry.start_line = c.line;
+            entry.line = c.end_line;
+            entry.side = 'RIGHT';
+            entry.start_side = 'RIGHT';
+          }
+          return entry;
+        });
+        // Post a proper GH pull request review via gh api.
+        // Use -f for string fields and -F for the JSON-typed comments array.
+        const reviewBody = `Agent review requested changes:\n\n${reviewResult.summary}`;
+        const ghArgs = [
+          'api', `repos/${repo}/pulls/${prNumber}/reviews`,
+          '--method', 'POST',
+          '-f', `event=REQUEST_CHANGES`,
+          '-f', `body=${reviewBody}`,
+        ];
+        if (inlineComments.length > 0) {
+          ghArgs.push('-F', `comments=${JSON.stringify(inlineComments)}`);
+        }
+        await deps.execGh(ghArgs);
       } catch {
         // Best-effort
       }
