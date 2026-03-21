@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  dashboard-tests:
+    name: Dashboard Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dashboard dependencies
+        working-directory: aloop/cli/dashboard
+        run: npm ci
+
+      - name: Run dashboard unit tests
+        working-directory: aloop/cli/dashboard
+        run: npm test
