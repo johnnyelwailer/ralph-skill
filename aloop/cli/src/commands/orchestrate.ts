@@ -2735,6 +2735,19 @@ export async function applyEstimateResults(
           continue;
         } else {
           issue.status = 'Blocked';
+          if (deps?.execGh && deps.repo) {
+            await postBlockedReasonComment(
+              result.issue_number,
+              deps.repo,
+              `Refinement budget exceeded (${issue.refinement_count}/${REFINEMENT_BUDGET_CAP}); gap risk: ${gapRisk}.`,
+              {
+                execGh: deps.execGh,
+                appendLog: deps.appendLog,
+                now: deps.now,
+              },
+              deps.sessionDir,
+            );
+          }
           deps?.appendLog?.(deps.sessionDir ?? '', {
             timestamp: (deps?.now?.() ?? new Date()).toISOString(),
             event: 'refinement_budget_exceeded',
@@ -3627,6 +3640,48 @@ export interface PrLifecycleDeps {
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 
+interface BlockedStatusDeps {
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  appendLog?: (sessionDir: string, entry: Record<string, unknown>) => void;
+  now?: () => Date;
+}
+
+async function postBlockedReasonComment(
+  issueNumber: number,
+  repo: string,
+  reason: string,
+  deps: BlockedStatusDeps,
+  sessionDir?: string,
+): Promise<boolean> {
+  try {
+    await deps.execGh([
+      'issue',
+      'comment',
+      String(issueNumber),
+      '--repo',
+      repo,
+      '--body',
+      `Blocking reason: ${reason}`,
+    ]);
+    deps.appendLog?.(sessionDir ?? '', {
+      timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
+      event: 'blocked_reason_comment_posted',
+      issue_number: issueNumber,
+      reason,
+    });
+    return true;
+  } catch (error: unknown) {
+    deps.appendLog?.(sessionDir ?? '', {
+      timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
+      event: 'blocked_reason_comment_failed',
+      issue_number: issueNumber,
+      reason,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
     const response = await deps.execGh([
@@ -3965,6 +4020,13 @@ export async function processPrLifecycle(
       if (stateIssue) {
         stateIssue.state = 'failed';
         stateIssue.status = 'Blocked';
+        await postBlockedReasonComment(
+          issue.number,
+          repo,
+          `Merge conflicts persisted after ${rebaseAttempts} rebase attempts for PR #${prNumber}.`,
+          deps,
+          sessionDir,
+        );
       }
       await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
         execGh: deps.execGh,
@@ -4028,6 +4090,13 @@ export async function processPrLifecycle(
         );
         stateIssue.state = 'failed';
         stateIssue.status = 'Blocked';
+        await postBlockedReasonComment(
+          issue.number,
+          repo,
+          `Persistent CI failure after ${retries} attempts: ${ciFailure.detail}`,
+          deps,
+          sessionDir,
+        );
         await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
           execGh: deps.execGh,
           appendLog: deps.appendLog,
@@ -4732,9 +4801,21 @@ export async function monitorChildSessions(
       // Child stopped (limit reached, interrupted) — re-queue to continue where it left off
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
-        // Keep child_session so resume works on the same branch/worktree
-        (stateIssue as any).needs_redispatch = true;
-        (stateIssue as any).review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
+        stateIssue.state = 'failed';
+        stateIssue.status = 'Blocked';
+        await postBlockedReasonComment(
+          issue.number,
+          repo,
+          `Child session ${childSession} stopped (stuck_count=${childStatus.stuck_count ?? 0}, phase=${childStatus.phase ?? 'unknown'}).`,
+          deps,
+          sessionDir,
+        );
+        await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
+          execGh: deps.execGh,
+          appendLog: deps.appendLog,
+          now: deps.now,
+          sessionDir,
+        });
       }
       result.failed++;
       entry.action = 'failed';

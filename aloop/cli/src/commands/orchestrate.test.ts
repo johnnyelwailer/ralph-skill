@@ -2238,6 +2238,7 @@ describe('applyEstimateResults', () => {
 
   it('blocks when refinement budget exceeded in cautious mode', async () => {
     const logs: Record<string, unknown>[] = [];
+    const ghCalls: string[][] = [];
     const state = makeState({
       autonomy_level: 'cautious',
       issues: [
@@ -2249,6 +2250,11 @@ describe('applyEstimateResults', () => {
     ];
     const outcome = await applyEstimateResults(state, results, {
       appendLog: (_dir, entry) => logs.push(entry),
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
+      repo: 'owner/repo',
       sessionDir: '/sessions/orch-1',
       now: () => new Date('2026-03-14T12:00:00Z'),
     });
@@ -2259,6 +2265,11 @@ describe('applyEstimateResults', () => {
     assert.deepStrictEqual(outcome.budgetExceeded, [1]);
     assert.deepStrictEqual(outcome.blocked, [1]);
     assert.ok(logs.some((l) => l.event === 'refinement_budget_exceeded'));
+    assert.ok(
+      ghCalls.some((call) =>
+        call[0] === 'issue' && call[1] === 'comment' && call.includes('1') && call.includes('Blocking reason:'),
+      ),
+    );
   });
 
   it('auto-resolves low-risk gaps in balanced mode at budget cap', async () => {
@@ -3266,8 +3277,10 @@ describe('processPrLifecycle', () => {
 
   it('flags for human after 2 rebase attempts', async () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open', rebase_attempts: 2 }]);
+    const ghCalls: string[][] = [];
     const deps = createMockPrDeps({
       execGh: async (args) => {
+        ghCalls.push(args);
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'CONFLICTING' }), stderr: '' };
         }
@@ -3281,6 +3294,11 @@ describe('processPrLifecycle', () => {
     assert.equal(result.action, 'flagged_for_human');
     assert.equal(state.issues[0].state, 'failed');
     assert.ok(deps.logs.some((l) => l.event === 'pr_flagged_for_human'));
+    assert.ok(
+      ghCalls.some((call) =>
+        call[0] === 'issue' && call[1] === 'comment' && call.includes('42') && call.includes('Blocking reason:'),
+      ),
+    );
   });
 
   it('rejects PR when agent review requests changes', async () => {
@@ -3403,8 +3421,10 @@ describe('processPrLifecycle', () => {
         ci_failure_retries: 2,
       },
     ]);
+    const ghCalls: string[][] = [];
     const deps = createMockPrDeps({
       execGh: async (args) => {
+        ghCalls.push(args);
         if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
           return { stdout: '1', stderr: '' };
         }
@@ -3423,6 +3443,11 @@ describe('processPrLifecycle', () => {
     assert.equal(state.issues[0].status, 'Blocked');
     assert.equal(state.issues[0].ci_failure_retries, 3);
     assert.ok(deps.logs.some((l) => l.event === 'pr_ci_failure_persistent'));
+    assert.ok(
+      ghCalls.some((call) =>
+        call[0] === 'issue' && call[1] === 'comment' && call.includes('42') && call.includes('Blocking reason:'),
+      ),
+    );
   });
 
   it('handles merge failure after approval', async () => {
@@ -5271,7 +5296,7 @@ describe('monitorChildSessions', () => {
       }),
     };
 
-    const { deps, logEntries } = createMockMonitorDeps({ files });
+    const { deps, logEntries, ghCalls } = createMockMonitorDeps({ files });
     const result = await monitorChildSessions(state, '/session', 'owner/repo', deps);
 
     assert.equal(result.monitored, 1);
@@ -5280,6 +5305,11 @@ describe('monitorChildSessions', () => {
     assert.equal((state.issues[0] as any).needs_redispatch, true);
     assert.match((state.issues[0] as any).review_feedback, /Child loop stopped/i);
     assert.ok(logEntries.some((e) => e.event === 'child_failed'));
+    assert.ok(
+      ghCalls.some((call) =>
+        call[0] === 'issue' && call[1] === 'comment' && call.includes('2') && call.includes('Blocking reason:'),
+      ),
+    );
   });
 
   it('keeps running child as in_progress', async () => {
