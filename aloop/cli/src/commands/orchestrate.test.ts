@@ -3031,7 +3031,7 @@ describe('checkPrGates', () => {
     assert.match(result.gates[1].detail, /no checks ran/i);
   });
 
-  it('returns api_error for CI gate when workflows exist and check query errors', async () => {
+  it('sets CI gate to pending (not fail) when workflows exist and check query errors', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
@@ -3048,8 +3048,8 @@ describe('checkPrGates', () => {
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.all_passed, false);
-    assert.equal(result.gates[1].status, 'api_error');
-    assert.match(result.gates[1].detail, /failed to query ci checks/i);
+    assert.equal(result.gates[1].status, 'pending');
+    assert.match(result.gates[1].detail, /CI check query failed.*will retry/i);
   });
 
   it('returns api_error for mergeability gate on gh API error', async () => {
