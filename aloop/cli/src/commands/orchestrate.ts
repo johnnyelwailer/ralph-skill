@@ -88,6 +88,11 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
+  needs_redispatch?: boolean;
+  review_feedback?: string;
+  redispatch_count?: number;
+  last_review_comment?: string;
+  child_pid?: number;
 }
 
 export interface OrchestratorState {
@@ -3579,7 +3584,7 @@ export async function processPrLifecycle(
   if (reviewResult.verdict === 'request-changes') {
     // Post review feedback on the PR (only if not already posted)
     const stateIssue = state.issues.find((i) => i.number === issue.number);
-    const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
+    const alreadyCommented = stateIssue?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
         await deps.execGh([
@@ -3589,13 +3594,13 @@ export async function processPrLifecycle(
       } catch {
         // Best-effort
       }
-      if (stateIssue) (stateIssue as any).last_review_comment = reviewResult.summary;
+      if (stateIssue) stateIssue.last_review_comment = reviewResult.summary;
     }
 
     // Mark for re-dispatch by the scan pass (which has dispatchDeps)
     if (stateIssue) {
-      (stateIssue as any).needs_redispatch = true;
-      (stateIssue as any).review_feedback = reviewResult.summary;
+      stateIssue.needs_redispatch = true;
+      stateIssue.review_feedback = reviewResult.summary;
     }
 
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
@@ -5157,7 +5162,7 @@ export async function runOrchestratorScanPass(
         if (stateIssue) {
           stateIssue.state = 'in_progress';
           stateIssue.child_session = launchResult.session_id;
-          (stateIssue as any).child_pid = launchResult.pid;
+          stateIssue.child_pid = launchResult.pid;
           stateIssue.status = 'In progress';
           if (repo && deps.execGh) {
             await syncIssueProjectStatus(issue.number, repo, 'In progress', {
@@ -5248,7 +5253,7 @@ export async function runOrchestratorScanPass(
 
   // 3.5. Re-dispatch children that need review fixes
   if (deps.dispatchDeps && deps.aloopRoot) {
-    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch && i.child_session);
+    const needsRedispatch = state.issues.filter((i) => i.needs_redispatch && i.child_session);
     for (const issue of needsRedispatch) {
       const childDir = path.join(deps.aloopRoot, 'sessions', issue.child_session!);
       const childWorktree = path.join(childDir, 'worktree');
@@ -5261,7 +5266,7 @@ export async function runOrchestratorScanPass(
           // Write review feedback as steering prompt
           await deps.writeFile(
             path.join(childQueueDir, '000-review-fixes.md'),
-            `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, or other working artifacts to the commit.\n`,
+            `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${issue.review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, or other working artifacts to the commit.\n`,
             'utf8',
           );
 
@@ -5281,9 +5286,9 @@ export async function runOrchestratorScanPass(
 
           issue.state = 'in_progress';
           issue.status = 'In progress';
-          (issue as any).child_pid = child.pid;
-          (issue as any).needs_redispatch = false;
-          (issue as any).review_feedback = undefined;
+          issue.child_pid = child.pid;
+          issue.needs_redispatch = false;
+          issue.review_feedback = undefined;
 
           deps.appendLog(sessionDir, {
             timestamp: deps.now().toISOString(),
