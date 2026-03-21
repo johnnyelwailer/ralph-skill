@@ -236,6 +236,12 @@ interface ProviderHealth {
   cooldownUntil?: string;
 }
 
+interface QACoverageData {
+  percentage: number | null;
+  raw: string;
+  available: boolean;
+}
+
 // ── Helpers ──
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
@@ -892,6 +898,70 @@ function Header({
         </span>
       </div>
     </header>
+  );
+}
+
+export function QACoverageBadge() {
+  const [coverage, setCoverage] = useState<QACoverageData | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function loadCoverage() {
+      try {
+        const response = await fetch('/api/qa-coverage', { signal: controller.signal });
+        if (!response.ok) return;
+        const payload = await response.json() as QACoverageData;
+        if (!cancelled) setCoverage(payload);
+      } catch {
+        if (!cancelled) setCoverage({ percentage: null, raw: '', available: false });
+      }
+    }
+
+    loadCoverage().catch(() => undefined);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, []);
+
+  const rendered = useMemo(() => {
+    if (!coverage?.raw) return '';
+    return marked.parse(coverage.raw, { gfm: true, breaks: true }) as string;
+  }, [coverage?.raw]);
+
+  if (!coverage?.available) return null;
+
+  const percentage = coverage.percentage;
+  const tone = percentage === null
+    ? 'border-border bg-muted/40 text-muted-foreground'
+    : percentage >= 80
+      ? 'border-green-500/40 bg-green-500/15 text-green-700 dark:text-green-400'
+      : percentage >= 60
+        ? 'border-yellow-500/40 bg-yellow-500/15 text-yellow-700 dark:text-yellow-400'
+        : 'border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-400';
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors hover:opacity-90 ${tone}`}
+      >
+        <CheckCircle2 className="h-3 w-3" />
+        <span>QA {percentage === null ? 'N/A' : `${percentage}%`}</span>
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      </button>
+      {expanded && (
+        <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-[min(560px,92vw)] rounded-md border border-border bg-popover shadow-lg">
+          <ScrollArea className="max-h-80">
+            <div className="prose-dashboard p-3 text-xs" dangerouslySetInnerHTML={{ __html: rendered }} />
+          </ScrollArea>
+        </div>
+      )}
+    </div>
   );
 }
 
