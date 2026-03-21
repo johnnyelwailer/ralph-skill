@@ -12,6 +12,11 @@ _(none)_
 - [x] Create `.github/workflows/ci.yml` with Node.js setup, dependency install, and a dashboard unit test step that runs `npm test` in `aloop/cli/dashboard/`
 - [x] Verify the workflow file is valid YAML and the test step references the correct working directory (`aloop/cli/dashboard`)
 
+### Spec-Gap Analysis
+- spec-gap analysis: no discrepancies found — spec fully fulfilled
+- All acceptance criteria verified: CI workflow runs `vitest run` via `npm test`, triggers on PRs to master, uses jsdom (no browser needed), excludes Playwright e2e tests
+- Tests pass locally: 87 tests, 2 test files
+
 ### Notes
 - No `.github/workflows/` directory or `ci.yml` exists on master or this branch
 - The spec says "Dashboard deps should already be installed from the core workflow" but that core workflow hasn't been created yet — we need to include basic setup (checkout + Node + npm ci) so the dashboard test step can run
