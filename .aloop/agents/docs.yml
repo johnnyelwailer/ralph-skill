@@ -1,0 +1,4 @@
+agent: docs
+prompt: PROMPT_docs.md
+reasoning:
+  effort: medium
