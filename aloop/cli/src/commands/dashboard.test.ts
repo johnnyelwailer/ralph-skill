@@ -1787,6 +1787,62 @@ test('watch logic triggers request processing', async () => {
   }
 });
 
+// ── QA Coverage endpoint tests ──
+
+test('GET /api/qa-coverage returns available:false when file is missing', async () => {
+  const { handle, root } = await createServerFixture();
+  try {
+    const response = await fetch(`${handle.url}/api/qa-coverage`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { percentage: number | null; raw: string; available: boolean };
+    assert.equal(body.available, false);
+    assert.equal(body.percentage, null);
+    assert.equal(body.raw, '');
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('GET /api/qa-coverage parses percentage from QA_COVERAGE.md', async () => {
+  const { handle, root, workdir } = await createServerFixture();
+  try {
+    await writeFile(
+      path.join(workdir, 'QA_COVERAGE.md'),
+      '# QA Coverage Report\n\nCoverage: 85%\n\nSome details here.',
+      'utf8',
+    );
+    const response = await fetch(`${handle.url}/api/qa-coverage`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { percentage: number | null; raw: string; available: boolean };
+    assert.equal(body.available, true);
+    assert.equal(body.percentage, 85);
+    assert.ok(body.raw.includes('Coverage: 85%'));
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('GET /api/qa-coverage returns null percentage when no match in file', async () => {
+  const { handle, root, workdir } = await createServerFixture();
+  try {
+    await writeFile(
+      path.join(workdir, 'QA_COVERAGE.md'),
+      '# QA Report\n\nNo coverage line here.',
+      'utf8',
+    );
+    const response = await fetch(`${handle.url}/api/qa-coverage`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { percentage: number | null; raw: string; available: boolean };
+    assert.equal(body.available, true);
+    assert.equal(body.percentage, null);
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
 test.after(() => {
   const getActiveHandles = (process as unknown as { _getActiveHandles?: () => unknown[] })._getActiveHandles;
   if (!getActiveHandles) return;
