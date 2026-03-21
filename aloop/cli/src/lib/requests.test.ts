@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import os from 'node:os';
 import * as child_process from 'node:child_process';
-import { processAgentRequests, type RequestProcessorOptions } from './requests.js';
+import { processAgentRequests, validateRequest, type RequestProcessorOptions } from './requests.js';
 
 async function setupTestEnv() {
   const tmpBase = path.join(os.tmpdir(), `aloop-test-${Date.now()}`);
@@ -40,6 +40,161 @@ async function setupTestEnv() {
     }
   };
 }
+
+test('validateRequest - accepts valid payloads for all request types', () => {
+  const validRequests = [
+    {
+      id: 'v-create-issues',
+      type: 'create_issues',
+      payload: { issues: [{ title: 'Issue 1', body_file: 'body.md' }] },
+    },
+    {
+      id: 'v-update-issue',
+      type: 'update_issue',
+      payload: { number: 1 },
+    },
+    {
+      id: 'v-close-issue',
+      type: 'close_issue',
+      payload: { number: 2, reason: 'done' },
+    },
+    {
+      id: 'v-create-pr',
+      type: 'create_pr',
+      payload: { head: 'feat/x', base: 'main', title: 'PR', body_file: 'pr.md', issue_number: 3 },
+    },
+    {
+      id: 'v-merge-pr',
+      type: 'merge_pr',
+      payload: { number: 4, strategy: 'squash' },
+    },
+    {
+      id: 'v-dispatch-child',
+      type: 'dispatch_child',
+      payload: { issue_number: 5, branch: 'child/5', pipeline: 'plan-build', sub_spec_file: 'SPEC.md' },
+    },
+    {
+      id: 'v-steer-child',
+      type: 'steer_child',
+      payload: { issue_number: 6, prompt_file: 'STEERING.md' },
+    },
+    {
+      id: 'v-stop-child',
+      type: 'stop_child',
+      payload: { issue_number: 7, reason: 'human stop' },
+    },
+    {
+      id: 'v-post-comment',
+      type: 'post_comment',
+      payload: { issue_number: 8, body_file: 'comment.md' },
+    },
+    {
+      id: 'v-query-issues',
+      type: 'query_issues',
+      payload: {},
+    },
+    {
+      id: 'v-spec-backfill',
+      type: 'spec_backfill',
+      payload: { file: 'SPEC.md', section: '## Objective', content_file: 'content.md' },
+    },
+  ];
+
+  for (const request of validRequests) {
+    assert.doesNotThrow(() => validateRequest(request));
+  }
+});
+
+test('validateRequest - rejects top-level malformed request objects', () => {
+  const invalidRequests: Array<{ input: unknown; match: RegExp }> = [
+    { input: null, match: /non-null object/ },
+    { input: 'bad', match: /non-null object/ },
+    { input: { id: '', type: 'close_issue', payload: {} }, match: /non-empty string "id"/ },
+    { input: { id: 'x', type: 'unknown_type', payload: {} }, match: /Invalid request type/ },
+    { input: { id: 'x', type: 'close_issue', payload: null }, match: /non-null "payload" object/ },
+  ];
+
+  for (const { input, match } of invalidRequests) {
+    assert.throws(() => validateRequest(input), match);
+  }
+});
+
+test('validateRequest - rejects request-specific edge cases', () => {
+  const invalidRequests: Array<{ input: unknown; match: RegExp }> = [
+    {
+      input: { id: 'bad-create-empty', type: 'create_issues', payload: { issues: [] } },
+      match: /payload\.issues must be a non-empty array/,
+    },
+    {
+      input: { id: 'bad-create-title', type: 'create_issues', payload: { issues: [{ title: '', body_file: 'body.md' }] } },
+      match: /issues\[0\]\.title must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-create-body', type: 'create_issues', payload: { issues: [{ title: 'ok', body_file: '' }] } },
+      match: /issues\[0\]\.body_file must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-update-number', type: 'update_issue', payload: { number: -1 } },
+      match: /payload\.number must be a positive integer/,
+    },
+    {
+      input: { id: 'bad-close-reason', type: 'close_issue', payload: { number: 1, reason: '' } },
+      match: /payload\.reason must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-create-pr-head', type: 'create_pr', payload: { head: '', base: 'main', title: 't', body_file: 'b.md', issue_number: 1 } },
+      match: /payload\.head must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-create-pr-issue-number', type: 'create_pr', payload: { head: 'h', base: 'main', title: 't', body_file: 'b.md', issue_number: 0 } },
+      match: /payload\.issue_number must be a positive integer/,
+    },
+    {
+      input: { id: 'bad-merge-strategy', type: 'merge_pr', payload: { number: 1, strategy: 'fast-forward' } },
+      match: /payload\.strategy must be one of/,
+    },
+    {
+      input: { id: 'bad-dispatch-branch', type: 'dispatch_child', payload: { issue_number: 1, branch: '', pipeline: 'p', sub_spec_file: 's.md' } },
+      match: /payload\.branch must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-steer-prompt', type: 'steer_child', payload: { issue_number: 1, prompt_file: '' } },
+      match: /payload\.prompt_file must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-stop-reason', type: 'stop_child', payload: { issue_number: 1, reason: '' } },
+      match: /payload\.reason must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-post-comment-number', type: 'post_comment', payload: { issue_number: -2, body_file: 'x.md' } },
+      match: /payload\.issue_number must be a positive integer/,
+    },
+    {
+      input: { id: 'bad-post-comment-body', type: 'post_comment', payload: { issue_number: 2, body_file: '' } },
+      match: /payload\.body_file must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-spec-file', type: 'spec_backfill', payload: { file: '', section: 'sec', content_file: 'c.md' } },
+      match: /payload\.file must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-spec-section', type: 'spec_backfill', payload: { file: 'SPEC.md', section: '', content_file: 'c.md' } },
+      match: /payload\.section must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-spec-content-file', type: 'spec_backfill', payload: { file: 'SPEC.md', section: 'sec', content_file: '' } },
+      match: /payload\.content_file must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-query-payload', type: 'query_issues', payload: null },
+      match: /non-null "payload" object/,
+    },
+  ];
+
+  for (const { input, match } of invalidRequests) {
+    assert.throws(() => validateRequest(input), match);
+  }
+});
 
 test('processAgentRequests - create_issues', async () => {
   const env = await setupTestEnv();
