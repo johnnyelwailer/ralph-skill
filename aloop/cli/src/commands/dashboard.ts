@@ -981,6 +981,26 @@ export async function startDashboardServer(
         return;
       }
 
+      // ── QA Coverage endpoint ──
+      if (requestUrl.pathname === '/api/qa-coverage' && request.method === 'GET') {
+        const targetSessionId = requestUrl.searchParams.get('session');
+        let coverageWorkdir = workdir;
+        if (targetSessionId) {
+          const ctx = await resolveSessionContext(runtimeDir, targetSessionId);
+          if (ctx) coverageWorkdir = ctx.workdir;
+        }
+        const coveragePath = path.join(coverageWorkdir, 'QA_COVERAGE.md');
+        const raw = await readTextFile(coveragePath);
+        if (!raw) {
+          writeJson(response, 200, { percentage: null, raw: '', available: false });
+          return;
+        }
+        const match = raw.match(/Coverage:\s*(\d+)%/i);
+        const percentage = match ? parseInt(match[1], 10) : null;
+        writeJson(response, 200, { percentage, raw, available: true });
+        return;
+      }
+
       const artifactMatch = requestUrl.pathname.match(/^\/api\/artifacts\/(\d+)\/(.+)$/);
       if (artifactMatch && request.method === 'GET') {
         const iteration = artifactMatch[1];
