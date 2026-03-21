@@ -3052,7 +3052,7 @@ describe('checkPrGates', () => {
     assert.match(result.gates[1].detail, /CI check query failed.*will retry/i);
   });
 
-  it('returns api_error for mergeability gate on gh API error', async () => {
+  it('sets mergeability gate to pending (not fail) when mergeability query errors', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         if (args.includes('mergeable,mergeStateStatus')) {
@@ -3066,7 +3066,9 @@ describe('checkPrGates', () => {
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.mergeable, false);
-    assert.equal(result.gates[0].status, 'api_error');
+    assert.equal(result.all_passed, false);
+    assert.equal(result.gates[0].status, 'pending');
+    assert.match(result.gates[0].detail, /merge check failed.*will retry/i);
   });
 
   it('treats SKIPPED and NEUTRAL checks as passing', async () => {
@@ -3221,6 +3223,25 @@ describe('processPrLifecycle', () => {
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'gates_pending');
+  });
+
+  it('returns gates_pending and preserves issue state when mergeability check errors', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          throw new Error('unexpected end of JSON input');
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'gates_pending');
+    assert.equal(state.issues[0].state, 'pr_open');
+    assert.notEqual(state.issues[0].status, 'Blocked');
   });
 
   it('requests rebase on first merge conflict', async () => {

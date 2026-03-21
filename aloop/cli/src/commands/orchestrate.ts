@@ -3667,9 +3667,8 @@ export async function checkPrGates(
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    // API error — report as api_error so processPrLifecycle retries next pass
-    mergeable = false;
-    gates.push({ gate: 'merge_conflicts', status: 'api_error', detail: `Merge check failed (API error): ${msg}` });
+    // API error — do not transition issue state; retry this gate on the next pass.
+    gates.push({ gate: 'merge_conflicts', status: 'pending', detail: `Merge check failed (will retry): ${msg}` });
   }
 
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
