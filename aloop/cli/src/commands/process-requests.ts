@@ -90,10 +90,12 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       if (parent && subIssues.length > 0) {
         let nextNum = Math.max(0, ...state.issues.map((i: any) => i.number ?? 0)) + 1;
         for (const sub of subIssues) {
-          const ghNumber = repo ? await createGhIssue(repo, sub.title, sub.body ?? '', ['aloop/auto'], requestsDir) : nextNum++;
+          const subTitle = sub.title;
+          const subBody = `Part of #${parentNum}: ${parent.title}\n\n${sub.body ?? ''}`;
+          const ghNumber = repo ? await createGhIssue(repo, subTitle, subBody, ['aloop/auto'], requestsDir) : nextNum++;
           state.issues.push({
             number: ghNumber || nextNum++,
-            title: sub.title, body: sub.body ?? '', file_hints: sub.file_hints ?? [],
+            title: subTitle, body: subBody, file_hints: sub.file_hints ?? [],
             wave: parent.wave, state: 'pending', status: 'Needs refinement',
             child_session: null, pr_number: null,
             depends_on: sub.depends_on ?? [], blocked_on_human: false,
