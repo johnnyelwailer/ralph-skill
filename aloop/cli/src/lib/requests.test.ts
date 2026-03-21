@@ -1384,3 +1384,222 @@ test('processAgentRequests - handler failure', async () => {
     await env.cleanup();
   }
 });
+
+// ─── validateRequest unit tests ───────────────────────────────────────────────
+
+test('validateRequest - null input', () => {
+  const result = validateRequest(null);
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('JSON object'));
+});
+
+test('validateRequest - non-object input (string)', () => {
+  const result = validateRequest('hello');
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('JSON object'));
+});
+
+test('validateRequest - non-object input (number)', () => {
+  const result = validateRequest(42);
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('JSON object'));
+});
+
+test('validateRequest - missing id', () => {
+  const result = validateRequest({ type: 'close_issue', payload: { number: 1, reason: 'done' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('id'));
+});
+
+test('validateRequest - empty id', () => {
+  const result = validateRequest({ id: '', type: 'close_issue', payload: { number: 1, reason: 'done' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('id'));
+});
+
+test('validateRequest - missing payload', () => {
+  const result = validateRequest({ id: 'r1', type: 'close_issue' });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('payload'));
+});
+
+test('validateRequest - null payload', () => {
+  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: null });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('payload'));
+});
+
+test('validateRequest - invalid type', () => {
+  const result = validateRequest({ id: 'r1', type: 'invalid_type', payload: {} });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('Invalid or missing request type'));
+});
+
+test('validateRequest - missing type', () => {
+  const result = validateRequest({ id: 'r1', payload: {} });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('Invalid or missing request type'));
+});
+
+test('validateRequest - create_issues with empty array', () => {
+  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [] } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('non-empty array'));
+});
+
+test('validateRequest - create_issues with non-array', () => {
+  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: 'nope' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('non-empty array'));
+});
+
+test('validateRequest - create_issues with null issue entry', () => {
+  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [null] } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('issues[0]'));
+});
+
+test('validateRequest - create_issues missing title', () => {
+  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [{ body_file: 'a.md' }] } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('title'));
+});
+
+test('validateRequest - create_issues missing body_file', () => {
+  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [{ title: 'T' }] } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('body_file'));
+});
+
+test('validateRequest - create_issues invalid labels (non-string elements)', () => {
+  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [{ title: 'T', body_file: 'a.md', labels: [123] }] } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('labels'));
+});
+
+test('validateRequest - create_issues invalid parent (negative)', () => {
+  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [{ title: 'T', body_file: 'a.md', parent: -1 }] } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('parent'));
+});
+
+test('validateRequest - create_issues valid request', () => {
+  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [{ title: 'T', body_file: 'a.md', labels: ['bug'], parent: 5 }] } });
+  assert.strictEqual(result.valid, true);
+});
+
+test('validateRequest - merge_pr invalid strategy', () => {
+  const result = validateRequest({ id: 'r1', type: 'merge_pr', payload: { number: 1, strategy: 'invalid' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('strategy'));
+});
+
+test('validateRequest - merge_pr missing number', () => {
+  const result = validateRequest({ id: 'r1', type: 'merge_pr', payload: { strategy: 'squash' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('number'));
+});
+
+test('validateRequest - merge_pr valid', () => {
+  const result = validateRequest({ id: 'r1', type: 'merge_pr', payload: { number: 1, strategy: 'squash' } });
+  assert.strictEqual(result.valid, true);
+});
+
+test('validateRequest - dispatch_child missing sub_spec_file', () => {
+  const result = validateRequest({ id: 'r1', type: 'dispatch_child', payload: { issue_number: 1, branch: 'b', pipeline: 'p' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('sub_spec_file'));
+});
+
+test('validateRequest - dispatch_child valid', () => {
+  const result = validateRequest({ id: 'r1', type: 'dispatch_child', payload: { issue_number: 1, branch: 'b', pipeline: 'p', sub_spec_file: 's.md' } });
+  assert.strictEqual(result.valid, true);
+});
+
+test('validateRequest - close_issue missing reason', () => {
+  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: { number: 1 } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('reason'));
+});
+
+test('validateRequest - close_issue valid', () => {
+  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: { number: 1, reason: 'done' } });
+  assert.strictEqual(result.valid, true);
+});
+
+test('validateRequest - requirePositiveInt with negative value', () => {
+  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: { number: -5, reason: 'done' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('positive integer'));
+});
+
+test('validateRequest - requirePositiveInt with non-integer (float)', () => {
+  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: { number: 1.5, reason: 'done' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('positive integer'));
+});
+
+test('validateRequest - requirePositiveInt with zero', () => {
+  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: { number: 0, reason: 'done' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('positive integer'));
+});
+
+test('validateRequest - optionalStringArray with non-array', () => {
+  const result = validateRequest({ id: 'r1', type: 'query_issues', payload: { labels: 'bug' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('labels'));
+});
+
+test('validateRequest - optionalStringArray with non-string elements', () => {
+  const result = validateRequest({ id: 'r1', type: 'query_issues', payload: { labels: [1, 2] } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('labels'));
+});
+
+test('validateRequest - query_issues invalid state', () => {
+  const result = validateRequest({ id: 'r1', type: 'query_issues', payload: { state: 'invalid' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('state'));
+});
+
+test('validateRequest - query_issues valid with no optional fields', () => {
+  const result = validateRequest({ id: 'r1', type: 'query_issues', payload: {} });
+  assert.strictEqual(result.valid, true);
+});
+
+test('validateRequest - update_issue missing number', () => {
+  const result = validateRequest({ id: 'r1', type: 'update_issue', payload: {} });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('number'));
+});
+
+test('validateRequest - create_pr missing fields', () => {
+  const result = validateRequest({ id: 'r1', type: 'create_pr', payload: { head: 'h' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('base'));
+});
+
+test('validateRequest - steer_child missing prompt_file', () => {
+  const result = validateRequest({ id: 'r1', type: 'steer_child', payload: { issue_number: 1 } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('prompt_file'));
+});
+
+test('validateRequest - stop_child missing reason', () => {
+  const result = validateRequest({ id: 'r1', type: 'stop_child', payload: { issue_number: 1 } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('reason'));
+});
+
+test('validateRequest - post_comment missing body_file', () => {
+  const result = validateRequest({ id: 'r1', type: 'post_comment', payload: { issue_number: 1 } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('body_file'));
+});
+
+test('validateRequest - spec_backfill missing section', () => {
+  const result = validateRequest({ id: 'r1', type: 'spec_backfill', payload: { file: 'f.md', content_file: 'c.md' } });
+  assert.strictEqual(result.valid, false);
+  assert.ok(!result.valid && result.error.includes('section'));
+});
