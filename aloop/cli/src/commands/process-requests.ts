@@ -503,7 +503,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             if (recent.includes(String(prNumber)) || recent.includes(`PR #${prNumber}`)) {
               const extractQueueFile = path.join(sessionDir, 'queue', `000-extract-verdict-${prNumber}.md`);
               if (!existsSync(extractQueueFile)) {
-                const resultPath = path.join(requestsDir, `review-result-${prNumber}.json`);
+                const relResultPath = `requests/review-result-${prNumber}.json`;
                 await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
                 await writeFile(extractQueueFile, `---
 agent: verdict_extract
@@ -522,9 +522,11 @@ The orchestrator review agent produces a verdict for each PR. The verdict must b
 
 1. Read the agent output below
 2. Find the review verdict for PR #${prNumber} (look for "verdict", "approve", "request-changes", or similar)
-3. Write the JSON file using the Write tool to this EXACT path:
+3. Write the JSON file using the Write tool to:
 
-\`${resultPath}\`
+**Path:** \`${relResultPath}\`
+
+(This is relative to your working directory. Create the \`requests/\` directory if needed.)
 
 File content must be valid JSON:
 \`\`\`json
@@ -559,8 +561,10 @@ ${recent.slice(-4000)}
           if (existsSync(reviewPath)) {
             const prompt = await readFile(reviewPath, 'utf8');
             await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
-            const resultPath = path.join(requestsDir, `review-result-${prNumber}.json`);
-            const outputInstr = `\n\n## Output — CRITICAL\n\nYou MUST use the Write tool to create this file:\n\n**Path:** \`${resultPath}\`\n\n**Content (valid JSON):**\n\`\`\`json\n{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}\n\`\`\`\n\nValid verdicts: \`approve\`, \`request-changes\`, \`flag-for-human\`\n\n**Without this file, the pipeline is stuck. Do NOT just print the verdict — WRITE THE FILE.**\n`;
+            // Write to requests/ inside the worktree (agent's working dir) — process-requests checks both locations
+            const worktreeRequestsDir = path.join(sessionDir, 'worktree', 'requests');
+            const resultPath = path.join(worktreeRequestsDir, `review-result-${prNumber}.json`);
+            const outputInstr = `\n\n## Output — CRITICAL\n\nYou MUST use the Write tool to create this file:\n\n**Path:** \`requests/review-result-${prNumber}.json\`\n\n(This is relative to your working directory. Full path: \`${resultPath}\`)\n\n**Content (valid JSON):**\n\`\`\`json\n{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}\n\`\`\`\n\nValid verdicts: \`approve\`, \`request-changes\`, \`flag-for-human\`\n\n**Without this file, the pipeline is stuck. Do NOT just print the verdict — WRITE THE FILE.**\n`;
 
             // Fetch existing PR comments for context
             let commentHistory = '';
