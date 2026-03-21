@@ -3715,7 +3715,7 @@ export async function checkPrGates(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (ciWorkflowsConfigured) {
-      gates.push({ gate: 'ci_checks', status: 'api_error', detail: `Failed to query CI checks: ${msg}` });
+      gates.push({ gate: 'ci_checks', status: 'pending', detail: `CI check query failed (will retry): ${msg}` });
     } else {
       gates.push({ gate: 'ci_checks', status: 'pass', detail: `No GitHub Actions workflows detected; CI check query skipped (${msg})` });
     }
