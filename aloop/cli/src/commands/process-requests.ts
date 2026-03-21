@@ -6,6 +6,9 @@ import { resolveHomeDir } from './session.js';
 import {
   runOrchestratorScanPass,
   applyDecompositionPlan,
+  type AgentReviewResult,
+  type AgentReviewVerdict,
+  type InlineReviewComment,
   type ScanLoopDeps,
   type OrchestratorState,
   type DecompositionPlan,
@@ -17,6 +20,13 @@ export interface ProcessRequestsOptions {
   homeDir?: string;
   output?: string;
 }
+
+const AGENT_REVIEW_VERDICTS = new Set<AgentReviewVerdict>([
+  'approve',
+  'request-changes',
+  'flag-for-human',
+  'pending',
+]);
 
 /**
  * One-shot command called by loop.sh between iterations for orchestrator sessions.
@@ -290,8 +300,11 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         if (actualResultFile) {
           try {
             const content = await readFile(actualResultFile, 'utf8');
-            const parsed = JSON.parse(content);
+            const parsed = normalizeAgentReviewResult(JSON.parse(content), prNumber);
             await unlink(actualResultFile);
+            if (!parsed) {
+              return { pr_number: prNumber, verdict: 'flag-for-human', summary: 'Parse error: invalid review result schema' };
+            }
             return parsed;
           } catch (e) {
             return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Parse error: ${e}` };
@@ -309,16 +322,8 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
               const outputFile = path.join(artifactsDir, iterDir, 'output.txt');
               if (!existsSync(outputFile)) continue;
               const output = await readFile(outputFile, 'utf8');
-              // Only match if this output mentions this PR number
-              if (!output.includes(String(prNumber)) && !output.includes(`PR #${prNumber}`)) continue;
-              const verdictMatch = output.match(/\*\*[Vv]erdict:\s*(approve|request-changes|flag-for-human)\*\*/i)
-                ?? output.match(/["']verdict["']\s*:\s*["'](approve|request-changes|flag-for-human)["']/i);
-              if (verdictMatch) {
-                const verdict = verdictMatch[1].toLowerCase();
-                const summaryMatch = output.match(/(?:summary|reason|feedback|issues?)[:\s]+([^\n]{10,300})/i);
-                const summary = summaryMatch ? summaryMatch[1].trim() : `Agent verdict: ${verdict}`;
-                return { pr_number: prNumber, verdict, summary };
-              }
+              const fallback = parseReviewVerdictFromOutput(output, prNumber);
+              if (fallback) return fallback;
             }
           } catch { /* ignore */ }
         }
@@ -428,4 +433,59 @@ async function updateParentTasklist(repo: string, parentNum: number, issues: any
     try { await unlink(bodyFile); } catch {}
     console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
   } catch { /* non-critical */ }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseInlineReviewComment(value: unknown): InlineReviewComment | null {
+  if (!isObject(value)) return null;
+  const path = typeof value.path === 'string' ? value.path.trim() : '';
+  const line = typeof value.line === 'number' ? value.line : Number.NaN;
+  if (!path || !Number.isInteger(line) || line <= 0) return null;
+  const body = typeof value.body === 'string' ? value.body : '';
+  if (!body) return null;
+
+  const comment: InlineReviewComment = { path, line, body };
+  if (typeof value.end_line === 'number' && Number.isInteger(value.end_line) && value.end_line >= line) {
+    comment.end_line = value.end_line;
+  }
+  if (typeof value.suggestion === 'string' && value.suggestion.trim()) {
+    comment.suggestion = value.suggestion;
+  }
+  return comment;
+}
+
+export function normalizeAgentReviewResult(raw: unknown, prNumber: number): AgentReviewResult | null {
+  if (!isObject(raw)) return null;
+  const verdict = typeof raw.verdict === 'string' ? raw.verdict.toLowerCase() : '';
+  if (!AGENT_REVIEW_VERDICTS.has(verdict as AgentReviewVerdict)) return null;
+  if (typeof raw.summary !== 'string') return null;
+
+  const result: AgentReviewResult = {
+    pr_number: prNumber,
+    verdict: verdict as AgentReviewVerdict,
+    summary: raw.summary,
+  };
+
+  if (Array.isArray(raw.comments)) {
+    const comments = raw.comments
+      .map((entry) => parseInlineReviewComment(entry))
+      .filter((entry): entry is InlineReviewComment => entry !== null);
+    if (comments.length > 0) result.comments = comments;
+  }
+
+  return result;
+}
+
+export function parseReviewVerdictFromOutput(output: string, prNumber: number): AgentReviewResult | null {
+  if (!output.includes(String(prNumber)) && !output.includes(`PR #${prNumber}`)) return null;
+  const verdictMatch = output.match(/\*\*[Vv]erdict:\s*(approve|request-changes|flag-for-human)\*\*/i)
+    ?? output.match(/["']verdict["']\s*:\s*["'](approve|request-changes|flag-for-human)["']/i);
+  if (!verdictMatch) return null;
+  const verdict = verdictMatch[1].toLowerCase() as AgentReviewVerdict;
+  const summaryMatch = output.match(/(?:summary|reason|feedback|issues?)[:\s]+([^\n]{10,300})/i);
+  const summary = summaryMatch ? summaryMatch[1].trim() : `Agent verdict: ${verdict}`;
+  return { pr_number: prNumber, verdict, summary };
 }

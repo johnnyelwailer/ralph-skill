@@ -8,7 +8,7 @@
 
 - [x] Update review prompt `PROMPT_orch_review.md` to instruct the agent to return structured inline comments with file paths, line ranges, and suggestion blocks using GH suggestion syntax (` ```suggestion\nfixed code\n``` `). Currently the prompt only asks for a flat verdict JSON. (priority: critical, foundational)
 
-- [ ] Update `invokeAgentReview` in `process-requests.ts:285-340` to parse the new inline comments from the review result JSON. The current parser only reads `{pr_number, verdict, summary}`. Must also handle the fallback verdict parser (lines 300-324) gracefully when inline comments aren't present. (priority: critical)
+- [x] Update `invokeAgentReview` in `process-requests.ts:285-340` to parse the new inline comments from the review result JSON. The current parser only reads `{pr_number, verdict, summary}`. Must also handle the fallback verdict parser (lines 300-324) gracefully when inline comments aren't present. (priority: critical)
 
 - [ ] Replace `gh pr comment` in `processPrLifecycle` (`orchestrate.ts:3579-3588`) with `gh api repos/{owner}/{repo}/pulls/{pr}/reviews` to post a proper GH review with inline comments. Each inline comment should specify `path`, `line`, and `body` (with suggestion syntax). The top-level review body should be the summary linking all findings. (priority: critical)
 
