@@ -1110,20 +1110,15 @@ export async function orchestrateCommandWithDeps(
         // Fetch project status for each issue to avoid re-estimating
         const projectStatusMap = new Map<number, string>();
         try {
-          const projResult = nodeSpawnSync('gh', ['api', 'graphql', '-f', `query={
-            user(login: "${filterRepo.split('/')[0]}") {
-              projectV2(number: 2) {
-                items(first: 200) {
-                  nodes {
-                    content { ... on Issue { number } }
-                    fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
-                  }
-                }
-              }
-            }
-          }`], { encoding: 'utf8' });
-          if (projResult.status === 0) {
+          const owner = filterRepo.split('/')[0];
+          const gqlQuery = `{ user(login: "${owner}") { projectV2(number: 2) { items(first: 100) { nodes { content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`;
+          const projResult = nodeSpawnSync('gh', ['api', 'graphql', '-f', `query=${gqlQuery}`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+          if (projResult.status !== 0) {
+            console.error(`[orchestrate] Project status query failed (exit ${projResult.status}): ${projResult.stderr?.substring(0, 200)}`);
+          }
+          if (projResult.status === 0 && projResult.stdout) {
             const projData = JSON.parse(projResult.stdout);
+            console.log(`[orchestrate] Project status query returned ${projResult.stdout.length} bytes`);
             const items = projData?.data?.user?.projectV2?.items?.nodes ?? [];
             for (const item of items) {
               const num = item?.content?.number;
@@ -1131,7 +1126,7 @@ export async function orchestrateCommandWithDeps(
               if (num && status) projectStatusMap.set(num, status);
             }
           }
-        } catch { /* best effort */ }
+        } catch (e) { console.error(`[orchestrate] Project status fetch failed: ${e}`); }
 
         for (const gi of ghIssues) {
           const isEpic = gi.labels?.some((l: any) => (l.name ?? l) === 'aloop/epic');
