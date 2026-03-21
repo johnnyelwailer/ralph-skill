@@ -1,0 +1,17 @@
+{
+  "name": "jamesmoss/frontend-skills",
+  "version": "0.1.0",
+  "private": false,
+  "summary": "Structured guidance for frontend development",
+  "skills": {
+    "chakra-ui": {
+      "path": "chakra-ui/SKILL.md"
+    },
+    "tailwind": {
+      "path": "tailwind/SKILL.md"
+    },
+    "figma-to-code": {
+      "path": "figma-to-code/SKILL.md"
+    }
+  }
+}

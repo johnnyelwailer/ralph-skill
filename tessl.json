@@ -1,0 +1,18 @@
+{
+  "name": "my-project",
+  "mode": "vendored",
+  "dependencies": {
+    "pantheon-ai/typescript-advanced": {
+      "version": "0.1.1"
+    },
+    "jamesmoss/frontend-skills": {
+      "version": "0.1.0"
+    },
+    "tessl/npm-vitest": {
+      "version": "4.0.0"
+    },
+    "tessl/npm-react": {
+      "version": "19.2.0"
+    }
+  }
+}
