@@ -85,8 +85,14 @@ elif echo "$PROMPT_TEXT" | grep -q "Proof Mode"; then
     ITER_NUM=$(echo "$PROMPT_TEXT" | grep -oE 'iter-[0-9]+' | grep -oE '[0-9]+' | head -n 1)
     if [ -n "$ITER_NUM" ]; then
         mkdir -p "../session/artifacts/iter-$ITER_NUM"
-        echo '[]' > "../session/artifacts/iter-$ITER_NUM/proof-manifest.json"
         echo 'dummy artifact' > "../session/artifacts/iter-$ITER_NUM/dummy.txt"
+        if [ "$SCENARIO" = "proof-missing-manifest" ]; then
+            :
+        elif [ "$SCENARIO" = "proof-invalid-manifest" ]; then
+            echo '{"artifacts": [' > "../session/artifacts/iter-$ITER_NUM/proof-manifest.json"
+        else
+            echo '[]' > "../session/artifacts/iter-$ITER_NUM/proof-manifest.json"
+        fi
     fi
 fi
 [ -n "$STATE_FILE" ] && printf 'calls=%d\nscenario=%s\nrejected=%s\n' "$CALLS" "$SCENARIO" "$REJECTED" > "$STATE_FILE"
@@ -241,6 +247,51 @@ exit 0
         $proofIdx | Should -BeLessThan $appIdx
         $events | Should -Contain 'final_review_approved'
         $events | Should -Not -Contain 'final_review_rejected'
+    }
+
+    It 'proof manifest validation logs valid manifest details' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e = New-ShLoopEnv -Scenario 'approve'
+        @"
+---
+agent: proof
+---
+# Proof Mode
+Collect proof iter-<N>.
+"@ | Set-Content -Path (Join-Path $e.PromptsDir 'PROMPT_build.md') -NoNewline
+        $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 8
+        $entries = Get-ShLogEntries -LogFile $e.LogFile
+        $result.ExitCode | Should -Be 0
+        $validation = $entries |
+            Where-Object { $_.event -eq 'proof_manifest_validated' -and $_.status -eq 'valid' } |
+            Select-Object -Last 1
+        $validation | Should -Not -BeNullOrEmpty
+        [int]$validation.iteration | Should -BeGreaterThan 0
+        [int]$validation.last_proof_iteration | Should -Be ([int]$validation.iteration)
+    }
+
+    It 'proof manifest validation fails proof iteration when JSON is invalid' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e = New-ShLoopEnv -Scenario 'proof-invalid-manifest'
+        @"
+---
+agent: proof
+---
+# Proof Mode
+Collect proof iter-<N>.
+"@ | Set-Content -Path (Join-Path $e.PromptsDir 'PROMPT_build.md') -NoNewline
+        $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 8
+        $entries = Get-ShLogEntries -LogFile $e.LogFile
+        $events = Get-ShLogEvents -LogFile $e.LogFile
+        $result.ExitCode | Should -Be 0
+        $events | Should -Contain 'proof_manifest_validated'
+        $invalidValidation = $entries |
+            Where-Object { $_.event -eq 'proof_manifest_validated' -and $_.status -eq 'invalid' -and $_.error -eq 'invalid_json' } |
+            Select-Object -First 1
+        $invalidValidation | Should -Not -BeNullOrEmpty
+        $proofIteration = [int]$invalidValidation.iteration
+        ($entries | Where-Object { $_.event -eq 'iteration_error' -and $_.mode -eq 'proof' -and $_.error -eq 'proof_manifest_invalid_json' }).Count | Should -BeGreaterThan 0
+        ($entries | Where-Object { $_.event -eq 'iteration_complete' -and $_.mode -eq 'proof' -and [int]$_.iteration -eq $proofIteration }).Count | Should -Be 0
     }
 
     It 'iteration limit writes stopped session state' {
