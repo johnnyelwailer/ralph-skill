@@ -2187,6 +2187,11 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         "max_retries" "${EFFECTIVE_MAX_RETRIES:-}" \
         "retry_backoff" "${EFFECTIVE_RETRY_BACKOFF:-}"
 
+    # Pre-iteration branch sync (runtime handles the logic)
+    if [ -f "$SESSION_DIR/orchestrator.json" ] || [ -f "$SESSION_DIR/meta.json" ]; then
+        "${ALOOP_BIN:-aloop}" sync-branch --session-dir "$SESSION_DIR" 2>&1 || true
+    fi
+
     # Update session status
     write_status "$ITERATION" "$iter_mode" "$iter_provider" 0
     persist_loop_plan_state
