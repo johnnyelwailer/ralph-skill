@@ -202,12 +202,31 @@ export interface OrchestrateDeps {
   now: () => Date;
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  spawnSync?: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
 }
 
 export interface SpawnSyncResult {
   status: number | null;
   stdout: string;
   stderr: string;
+}
+
+function toSpawnSyncResult(result: { status: number | null; stdout?: unknown; stderr?: unknown }): SpawnSyncResult {
+  const stdout = typeof result.stdout === 'string'
+    ? result.stdout
+    : Buffer.isBuffer(result.stdout)
+      ? result.stdout.toString('utf8')
+      : '';
+  const stderr = typeof result.stderr === 'string'
+    ? result.stderr
+    : Buffer.isBuffer(result.stderr)
+      ? result.stderr.toString('utf8')
+      : '';
+  return {
+    status: result.status,
+    stdout,
+    stderr,
+  };
 }
 
 export interface ChildProcess {
@@ -349,6 +368,137 @@ function parseRepoSlug(repo: string): { owner: string; name: string } | null {
   const [owner, name, ...rest] = repo.split('/');
   if (!owner || !name || rest.length > 0) return null;
   return { owner, name };
+}
+
+function parseRepoFromRemoteUrl(remoteUrl: string): string | null {
+  const trimmed = remoteUrl.trim();
+  if (!trimmed) return null;
+
+  const scpMatch = trimmed.match(/^[^@\s]+@[^:\s]+:([^/\s]+)\/([^/\s]+?)(?:\.git)?$/);
+  if (scpMatch) {
+    return `${scpMatch[1]}/${scpMatch[2]}`;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const parts = parsed.pathname.replace(/^\/+/, '').replace(/\.git$/, '').split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0]}/${parts[1]}`;
+    }
+  } catch {
+    // Not a URL; fall through.
+  }
+
+  return null;
+}
+
+async function deriveFilterRepo(
+  filterRepo: string | null,
+  projectRoot: string,
+  deps: OrchestrateDeps,
+): Promise<string | null> {
+  if (filterRepo) return filterRepo;
+
+  const envRepo = process.env.GITHUB_REPOSITORY?.trim() || null;
+  const ghHost = process.env.GH_HOST?.trim() || null;
+  const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
+
+  const runGh = async (args: string[]): Promise<{ stdout: string; stderr: string } | null> => {
+    if (deps.execGh) {
+      try {
+        return await deps.execGh(args);
+      } catch (error) {
+        console.warn(`[orchestrate] filter_repo derive via gh ${args.join(' ')} failed: ${error}`);
+        return null;
+      }
+    }
+    try {
+      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+      const runner = deps.spawnSync ?? ((command: string, runArgs: string[], options?: Record<string, unknown>) =>
+        toSpawnSyncResult(nodeSpawnSync(command, runArgs, options as any)));
+      const result = runner('gh', args, { encoding: 'utf8', cwd: projectRoot });
+      if (result.status !== 0) {
+        console.warn(`[orchestrate] filter_repo derive via gh ${args.join(' ')} failed: ${result.stderr?.substring(0, 200)}`);
+        return null;
+      }
+      return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+    } catch (error) {
+      console.warn(`[orchestrate] filter_repo derive via gh ${args.join(' ')} failed: ${error}`);
+      return null;
+    }
+  };
+
+  const ghRepoView = await runGh(['repo', 'view', '--json', 'nameWithOwner', ...ghHostArgs]);
+  if (ghRepoView) {
+    try {
+      const parsed = JSON.parse(ghRepoView.stdout);
+      const value = typeof parsed?.nameWithOwner === 'string' ? parsed.nameWithOwner.trim() : '';
+      if (parseRepoSlug(value)) {
+        console.log(`[orchestrate] Derived filter_repo from gh repo view: ${value}`);
+        return value;
+      }
+    } catch (error) {
+      console.warn(`[orchestrate] filter_repo derive: invalid gh repo view JSON: ${error}`);
+    }
+  }
+
+  const runGitRemote = async (cwd: string): Promise<string | null> => {
+    try {
+      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+      const runner = deps.spawnSync ?? ((command: string, args: string[], options?: Record<string, unknown>) =>
+        toSpawnSyncResult(nodeSpawnSync(command, args, options as any)));
+      const remoteResult = runner('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8', cwd });
+      if (remoteResult.status !== 0) {
+        return null;
+      }
+      return parseRepoFromRemoteUrl(remoteResult.stdout ?? '');
+    } catch {
+      return null;
+    }
+  };
+
+  const remoteRepo = await runGitRemote(projectRoot);
+  if (remoteRepo && parseRepoSlug(remoteRepo)) {
+    console.log(`[orchestrate] Derived filter_repo from git remote origin: ${remoteRepo}`);
+    return remoteRepo;
+  }
+
+  const metaCandidates = [
+    path.join(projectRoot, 'meta.json'),
+    path.join(path.dirname(projectRoot), 'meta.json'),
+  ];
+  for (const metaPath of metaCandidates) {
+    if (!deps.existsSync(metaPath)) continue;
+    try {
+      const metaRaw = await deps.readFile(metaPath, 'utf8');
+      const meta = JSON.parse(metaRaw) as { repo?: unknown; project_root?: unknown };
+      if (typeof meta.repo === 'string' && parseRepoSlug(meta.repo.trim())) {
+        const repoFromMeta = meta.repo.trim();
+        console.log(`[orchestrate] Derived filter_repo from ${metaPath} repo field: ${repoFromMeta}`);
+        return repoFromMeta;
+      }
+      if (typeof meta.project_root === 'string' && meta.project_root.trim()) {
+        const fromProjectRoot = await runGitRemote(meta.project_root.trim());
+        if (fromProjectRoot && parseRepoSlug(fromProjectRoot)) {
+          console.log(`[orchestrate] Derived filter_repo from ${metaPath} project_root git remote: ${fromProjectRoot}`);
+          return fromProjectRoot;
+        }
+      }
+    } catch (error) {
+      console.warn(`[orchestrate] filter_repo derive: failed reading ${metaPath}: ${error}`);
+    }
+  }
+
+  if (envRepo && ghHost && parseRepoSlug(envRepo)) {
+    console.log(`[orchestrate] Derived filter_repo from GITHUB_REPOSITORY: ${envRepo}`);
+    console.log(`[orchestrate] GH_HOST detected during filter_repo derivation: ${ghHost}`);
+    return envRepo;
+  }
+
+  if (ghHost) {
+    console.log(`[orchestrate] GH_HOST set to ${ghHost}, but filter_repo could not be derived`);
+  }
+  return null;
 }
 
 async function resolveIssueProjectStatusContext(
@@ -1087,7 +1237,7 @@ export async function orchestrateCommandWithDeps(
   const concurrencyCap = parseConcurrency(options.concurrency);
   const filterIssues = parseIssueNumbers(options.issues);
   const filterLabel = options.label ?? null;
-  const filterRepo = options.repo ?? null;
+  let filterRepo = options.repo ?? null;
   const planOnly = options.planOnly ?? false;
   const budgetCap = parseBudget(options.budget);
   const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
@@ -1109,12 +1259,16 @@ export async function orchestrateCommandWithDeps(
   await deps.mkdir(queueDir, { recursive: true });
   await deps.mkdir(requestsDir, { recursive: true });
 
+  filterRepo = await deriveFilterRepo(filterRepo, projectRoot, deps);
+
   // Label self-healing: ensure required labels exist before preloading issues
   let labelsResult: EnsureLabelsResult | null = null;
   if (filterRepo) {
     try {
       const { spawnSync: nodeSpawnSync } = await import('node:child_process');
-      labelsResult = ensureLabels(filterRepo, { spawnSync: nodeSpawnSync });
+      labelsResult = ensureLabels(filterRepo, {
+        spawnSync: (command, args, options) => toSpawnSyncResult(nodeSpawnSync(command, args, options as any)),
+      });
     } catch (e) {
       console.warn(`[orchestrate] Label self-healing failed: ${e}`);
     }

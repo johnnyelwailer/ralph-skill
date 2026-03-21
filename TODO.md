@@ -22,7 +22,7 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 ### Up Next
 - [x] **Label self-healing: ensure required labels exist at startup** — Add `ensureLabels()` function that checks for `aloop/auto`, `aloop/epic`, `aloop/sub-issue`, `aloop/needs-refine`, `aloop/needs-review`, `aloop/in-progress`, `aloop/done` via `gh label list`, creates missing ones via `gh label create` with appropriate colors. Call once at startup in `orchestrateCommandWithDeps` before the scan loop. Cache result in session state. Log warnings on failure but don't block. (priority: critical)
 
-- [ ] **Config derivation: derive filter_repo from git remote** — When `filter_repo` is null (no `--repo` flag), derive it from `gh repo view --json nameWithOwner` or parse `git remote get-url origin`. Also check `meta.json` fields (`repo`, `project_root`) and env vars (`GITHUB_REPOSITORY`, `GH_HOST`). Log all derivations. (priority: critical)
+- [x] **Config derivation: derive filter_repo from git remote** — When `filter_repo` is null (no `--repo` flag), derive it from `gh repo view --json nameWithOwner` or parse `git remote get-url origin`. Also check `meta.json` fields (`repo`, `project_root`) and env vars (`GITHUB_REPOSITORY`, `GH_HOST`). Log all derivations. (priority: critical)
 
 - [ ] **Config derivation: detect trunk branch from repo default branch** — When `trunk_branch` is the default `'agent/trunk'` and no `--trunk` flag was given, detect the repo's actual default branch via `gh repo view --json defaultBranchRef` and use it. Log the derivation. (priority: high)
 

@@ -110,6 +110,7 @@ function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDe
       createdDirs.push(path);
       return undefined;
     },
+    spawnSync: () => ({ status: 1, stdout: '', stderr: 'mocked' }),
     now: () => new Date('2026-03-09T10:30:00Z'),
     ...overrides,
     // expose for assertions
@@ -208,6 +209,86 @@ describe('orchestrateCommandWithDeps', () => {
 
     assert.equal(result.state.filter_label, 'aloop/auto');
     assert.equal(result.state.filter_repo, 'owner/repo');
+  });
+
+  it('derives filter_repo from gh repo view when --repo is unset', async () => {
+    const deps = createMockDeps({
+      execGh: async (args) => {
+        if (args[0] === 'repo' && args[1] === 'view') {
+          return { stdout: JSON.stringify({ nameWithOwner: 'derived/from-gh' }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps({}, deps);
+    assert.equal(result.state.filter_repo, 'derived/from-gh');
+  });
+
+  it('falls back to git remote origin when gh repo view derivation fails', async () => {
+    const deps = createMockDeps({
+      execGh: async () => {
+        throw new Error('gh unavailable');
+      },
+      spawnSync: (command, args) => {
+        if (command === 'git' && args[0] === 'remote' && args[1] === 'get-url') {
+          return { status: 0, stdout: 'git@github.com:derived/from-git.git\n', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: 'fail' };
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps({}, deps);
+    assert.equal(result.state.filter_repo, 'derived/from-git');
+  });
+
+  it('derives filter_repo from meta.json repo field when gh/git derivation fails', async () => {
+    const projectRoot = process.cwd();
+    const deps = createMockDeps({
+      execGh: async () => {
+        throw new Error('gh unavailable');
+      },
+      existsSync: (p: string) => p.includes('SPEC.md') || p === path.join(projectRoot, 'meta.json'),
+      readFile: async (p: string) => {
+        if (p === path.join(projectRoot, 'meta.json')) {
+          return JSON.stringify({ repo: 'derived/from-meta' });
+        }
+        return '';
+      },
+      spawnSync: () => ({ status: 1, stdout: '', stderr: 'no git' }),
+    });
+
+    const result = await orchestrateCommandWithDeps({}, deps);
+    assert.equal(result.state.filter_repo, 'derived/from-meta');
+  });
+
+  it('derives filter_repo from GITHUB_REPOSITORY when other derivations fail', async () => {
+    const previous = process.env.GITHUB_REPOSITORY;
+    const previousHost = process.env.GH_HOST;
+    process.env.GITHUB_REPOSITORY = 'derived/from-env';
+    process.env.GH_HOST = 'github.com';
+    try {
+      const deps = createMockDeps({
+        execGh: async () => {
+          throw new Error('gh unavailable');
+        },
+        spawnSync: () => ({ status: 1, stdout: '', stderr: 'no git' }),
+      });
+
+      const result = await orchestrateCommandWithDeps({}, deps);
+      assert.equal(result.state.filter_repo, 'derived/from-env');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.GITHUB_REPOSITORY;
+      } else {
+        process.env.GITHUB_REPOSITORY = previous;
+      }
+      if (previousHost === undefined) {
+        delete process.env.GH_HOST;
+      } else {
+        process.env.GH_HOST = previousHost;
+      }
+    }
   });
 
   it('throws on invalid concurrency value', async () => {
