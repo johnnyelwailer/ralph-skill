@@ -137,6 +137,134 @@ export type AgentRequest =
   | QueryIssuesRequest
   | SpecBackfillRequest;
 
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+
+const VALID_REQUEST_TYPES = new Set<string>([
+  'create_issues', 'update_issue', 'close_issue', 'create_pr', 'merge_pr',
+  'dispatch_child', 'steer_child', 'stop_child', 'post_comment', 'query_issues', 'spec_backfill',
+]);
+
+const VALID_MERGE_STRATEGIES = new Set(['squash', 'merge', 'rebase']);
+
+export function validateRequest(raw: unknown): AgentRequest {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new ValidationError('Request must be a non-null object');
+  }
+  const obj = raw as Record<string, unknown>;
+
+  if (typeof obj.id !== 'string' || obj.id.length === 0) {
+    throw new ValidationError('Request must have a non-empty string "id"');
+  }
+  if (typeof obj.type !== 'string' || !VALID_REQUEST_TYPES.has(obj.type)) {
+    throw new ValidationError(`Invalid request type: ${JSON.stringify(obj.type)}`);
+  }
+  if (typeof obj.payload !== 'object' || obj.payload === null) {
+    throw new ValidationError('Request must have a non-null "payload" object');
+  }
+
+  const p = obj.payload as Record<string, unknown>;
+
+  switch (obj.type) {
+    case 'create_issues': {
+      if (!Array.isArray(p.issues) || p.issues.length === 0) {
+        throw new ValidationError('create_issues: payload.issues must be a non-empty array');
+      }
+      for (let i = 0; i < p.issues.length; i++) {
+        const issue = p.issues[i] as Record<string, unknown>;
+        if (typeof issue.title !== 'string' || issue.title.length === 0)
+          throw new ValidationError(`create_issues: issues[${i}].title must be a non-empty string`);
+        if (typeof issue.body_file !== 'string' || issue.body_file.length === 0)
+          throw new ValidationError(`create_issues: issues[${i}].body_file must be a non-empty string`);
+      }
+      break;
+    }
+    case 'update_issue': {
+      if (typeof p.number !== 'number' || !Number.isInteger(p.number) || p.number <= 0)
+        throw new ValidationError('update_issue: payload.number must be a positive integer');
+      break;
+    }
+    case 'close_issue': {
+      if (typeof p.number !== 'number' || !Number.isInteger(p.number) || p.number <= 0)
+        throw new ValidationError('close_issue: payload.number must be a positive integer');
+      if (typeof p.reason !== 'string' || p.reason.length === 0)
+        throw new ValidationError('close_issue: payload.reason must be a non-empty string');
+      break;
+    }
+    case 'create_pr': {
+      if (typeof p.head !== 'string' || p.head.length === 0)
+        throw new ValidationError('create_pr: payload.head must be a non-empty string');
+      if (typeof p.base !== 'string' || p.base.length === 0)
+        throw new ValidationError('create_pr: payload.base must be a non-empty string');
+      if (typeof p.title !== 'string' || p.title.length === 0)
+        throw new ValidationError('create_pr: payload.title must be a non-empty string');
+      if (typeof p.body_file !== 'string' || p.body_file.length === 0)
+        throw new ValidationError('create_pr: payload.body_file must be a non-empty string');
+      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError('create_pr: payload.issue_number must be a positive integer');
+      break;
+    }
+    case 'merge_pr': {
+      if (typeof p.number !== 'number' || !Number.isInteger(p.number) || p.number <= 0)
+        throw new ValidationError('merge_pr: payload.number must be a positive integer');
+      if (typeof p.strategy !== 'string' || !VALID_MERGE_STRATEGIES.has(p.strategy))
+        throw new ValidationError('merge_pr: payload.strategy must be one of: squash, merge, rebase');
+      break;
+    }
+    case 'dispatch_child': {
+      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError('dispatch_child: payload.issue_number must be a positive integer');
+      if (typeof p.branch !== 'string' || p.branch.length === 0)
+        throw new ValidationError('dispatch_child: payload.branch must be a non-empty string');
+      if (typeof p.pipeline !== 'string' || p.pipeline.length === 0)
+        throw new ValidationError('dispatch_child: payload.pipeline must be a non-empty string');
+      if (typeof p.sub_spec_file !== 'string' || p.sub_spec_file.length === 0)
+        throw new ValidationError('dispatch_child: payload.sub_spec_file must be a non-empty string');
+      break;
+    }
+    case 'steer_child': {
+      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError('steer_child: payload.issue_number must be a positive integer');
+      if (typeof p.prompt_file !== 'string' || p.prompt_file.length === 0)
+        throw new ValidationError('steer_child: payload.prompt_file must be a non-empty string');
+      break;
+    }
+    case 'stop_child': {
+      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError('stop_child: payload.issue_number must be a positive integer');
+      if (typeof p.reason !== 'string' || p.reason.length === 0)
+        throw new ValidationError('stop_child: payload.reason must be a non-empty string');
+      break;
+    }
+    case 'post_comment': {
+      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError('post_comment: payload.issue_number must be a positive integer');
+      if (typeof p.body_file !== 'string' || p.body_file.length === 0)
+        throw new ValidationError('post_comment: payload.body_file must be a non-empty string');
+      break;
+    }
+    case 'query_issues': {
+      // All fields optional — no required field validation
+      break;
+    }
+    case 'spec_backfill': {
+      if (typeof p.file !== 'string' || p.file.length === 0)
+        throw new ValidationError('spec_backfill: payload.file must be a non-empty string');
+      if (typeof p.section !== 'string' || p.section.length === 0)
+        throw new ValidationError('spec_backfill: payload.section must be a non-empty string');
+      if (typeof p.content_file !== 'string' || p.content_file.length === 0)
+        throw new ValidationError('spec_backfill: payload.content_file must be a non-empty string');
+      break;
+    }
+  }
+
+  return raw as AgentRequest;
+}
+
 export interface RequestProcessorOptions {
   workdir: string;
   sessionId: string;
@@ -172,15 +300,19 @@ export async function processAgentRequests(options: RequestProcessorOptions): Pr
     let request: AgentRequest;
     try {
       const content = await fs.readFile(requestPath, 'utf8');
-      request = JSON.parse(content) as AgentRequest;
+      const parsed = JSON.parse(content);
+      request = validateRequest(parsed);
     } catch (e) {
+      const isValidation = e instanceof ValidationError;
       const archivePath = getArchivePath(failedDir, fileName, new Set());
       await fs.rename(requestPath, archivePath);
       await writeSessionLogEntry(options.logPath, 'gh_request_failed', {
         type: 'unknown',
         id: 'unknown',
         request_file: fileName,
-        error: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`
+        error: isValidation
+          ? `Validation failed: ${e.message}`
+          : `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`
       });
       continue;
     }

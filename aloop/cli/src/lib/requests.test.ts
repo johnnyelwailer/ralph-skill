@@ -778,9 +778,10 @@ test('processAgentRequests - unsupported request type', async () => {
 
     const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
     assert.ok(failedFiles.includes('req-bad-type.json'));
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('Unsupported request type'));
+    // Validation catches invalid type early — logged but no queue entry
+    const logContent = await fs.readFile(env.logPath, 'utf8');
+    assert.ok(logContent.includes('Validation failed'));
+    assert.ok(logContent.includes('Invalid request type'));
   } finally {
     await env.cleanup();
   }
