@@ -14313,6 +14313,14 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
           deps.prLifecycleDeps
         );
         result.prLifecycles.push(lifecycleResult);
+        const action = lifecycleResult?.action;
+        if (action && action !== "review_pending" && action !== "gates_pending" && deps.execGh) {
+          try {
+            const headResult = await deps.execGh(["pr", "view", String(issue.pr_number), "--repo", repo, "--json", "headRefOid"]);
+            issue.last_reviewed_sha = JSON.parse(headResult.stdout).headRefOid;
+          } catch {
+          }
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         deps.appendLog(sessionDir, {

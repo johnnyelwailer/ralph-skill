@@ -5764,8 +5764,16 @@ export async function runOrchestratorScanPass(
           deps.prLifecycleDeps,
         );
         result.prLifecycles.push(lifecycleResult);
-        // No SHA tracking needed — state transitions (needs_redispatch, Blocked, merged)
-        // already prevent re-processing. SHA was causing stuck-on-reviewed states.
+        // Store reviewed commit SHA to prevent re-review spam, but only after
+        // a non-pending review action. Pending means the review agent has not
+        // produced a verdict yet, so storing SHA would block future review.
+        const action = lifecycleResult?.action;
+        if (action && action !== 'review_pending' && action !== 'gates_pending' && deps.execGh) {
+          try {
+            const headResult = await deps.execGh(['pr', 'view', String(issue.pr_number), '--repo', repo, '--json', 'headRefOid']);
+            (issue as any).last_reviewed_sha = JSON.parse(headResult.stdout).headRefOid;
+          } catch { /* ignore */ }
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         deps.appendLog(sessionDir, {
