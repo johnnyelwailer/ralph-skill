@@ -490,9 +490,11 @@ async function deriveFilterRepo(
     }
   }
 
-  if (envRepo && ghHost && parseRepoSlug(envRepo)) {
+  if (envRepo && parseRepoSlug(envRepo)) {
     console.log(`[orchestrate] Derived filter_repo from GITHUB_REPOSITORY: ${envRepo}`);
-    console.log(`[orchestrate] GH_HOST detected during filter_repo derivation: ${ghHost}`);
+    if (ghHost) {
+      console.log(`[orchestrate] GH_HOST detected during filter_repo derivation: ${ghHost}`);
+    }
     return envRepo;
   }
 

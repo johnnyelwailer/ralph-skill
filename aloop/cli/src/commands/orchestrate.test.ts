@@ -348,6 +348,35 @@ describe('orchestrateCommandWithDeps', () => {
     }
   });
 
+  it('derives filter_repo from GITHUB_REPOSITORY without GH_HOST', async () => {
+    const previous = process.env.GITHUB_REPOSITORY;
+    const previousHost = process.env.GH_HOST;
+    process.env.GITHUB_REPOSITORY = 'derived/from-env-only';
+    delete process.env.GH_HOST;
+    try {
+      const deps = createMockDeps({
+        execGh: async () => {
+          throw new Error('gh unavailable');
+        },
+        spawnSync: () => ({ status: 1, stdout: '', stderr: 'no git' }),
+      });
+
+      const result = await orchestrateCommandWithDeps({}, deps);
+      assert.equal(result.state.filter_repo, 'derived/from-env-only');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.GITHUB_REPOSITORY;
+      } else {
+        process.env.GITHUB_REPOSITORY = previous;
+      }
+      if (previousHost === undefined) {
+        delete process.env.GH_HOST;
+      } else {
+        process.env.GH_HOST = previousHost;
+      }
+    }
+  });
+
   it('throws on invalid concurrency value', async () => {
     const deps = createMockDeps();
     await assert.rejects(
