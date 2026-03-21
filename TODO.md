@@ -4,6 +4,10 @@
 
 ### In Progress
 
+- [ ] [review] Gate 4 (Bug): `computeFreeBytesFromStatfs` at `orchestrate.ts:264` returns `null` when disk is 100% full (`bavail=0` → `freeBytes=0n` → `<= 0n` → `null`). Since `getTmpFreeBytes` returns `null` and the dispatch gate checks `freeBytes !== null`, a full disk **bypasses** the gate — the exact scenario it exists to prevent. Fix: change `freeBytes <= 0n` to `freeBytes < 0n` (or guard `blockSize === 0n` separately), so 0 free bytes returns `0` and correctly triggers the threshold check. (priority: high)
+
+- [ ] [review] Gate 4: `dispatchChildLoops` at `orchestrate.ts:3101-3106` silently zeros the dispatch list when /tmp is low on space — no log event is emitted. By contrast, `runOrchestratorScanPass` at `orchestrate.ts:5201-5208` correctly logs `scan_dispatch_paused_tmp_low_space`. Add equivalent logging to the `dispatchChildLoops` path so operators can diagnose why children aren't being dispatched. (priority: medium)
+
 - [x] Add disk space check before dispatch — add a function that checks available space on the /tmp filesystem (via `node:fs` `statfs`). If free space is below a threshold (e.g., 500MB), skip dispatching new children and log a warning. Integrate into the dispatch gate in `runOrchestratorScanPass` (in `dispatchChildLoops`) alongside the existing budget pause and slot availability checks. Location: `orchestrate.ts` near `availableSlots()`/`filterByHostCapabilities()`
 
 - [x] Add periodic V8 cache pruning for in-progress children — in process-requests.ts Phase 2d (or a new phase), iterate over in-progress child sessions and prune their `.v8-cache` directories if they exceed a size threshold (e.g., 50MB). V8 code cache files are safe to delete while the process runs; Node.js will regenerate them on next cold start. This prevents unbounded growth during long-running children
