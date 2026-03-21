@@ -11,6 +11,7 @@ import {
   type DecompositionPlan,
 } from './orchestrate.js';
 import { EtagCache } from '../lib/github-monitor.js';
+import { processAgentRequests } from '../lib/requests.js';
 
 export interface ProcessRequestsOptions {
   sessionDir: string;
@@ -134,6 +135,37 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       }
       await archiveRequestFile(requestsDir, filePath);
     } catch { /* skip malformed */ }
+  }
+
+  // ── Phase 1d: Process agent convention requests (create_issues, post_comment, etc.) ──
+  // This runs the validation/idempotency/dedup pipeline from requests.ts so that
+  // convention requests placed in the session's requests dir are processed during
+  // the main orchestrator loop — not only when the dashboard polls.
+  const logFile = path.join(sessionDir, 'log.jsonl');
+  try {
+    await processAgentRequests({
+      workdir: projectRoot,
+      sessionId,
+      aloopDir: sessionDir,
+      sessionDir,
+      logPath: logFile,
+      ghCommandRunner: async (operation: string, _sessionId: string, requestPath: string) => {
+        try {
+          const result = spawnSync('aloop', ['gh', operation, '--session', sessionId, '--request', requestPath], {
+            encoding: 'utf8',
+            timeout: 30000,
+          });
+          return {
+            exitCode: result.status ?? 1,
+            output: [result.stdout ?? '', result.stderr ?? ''].map(s => s.trim()).filter(s => s.length > 0).join('\n').trim(),
+          };
+        } catch (error) {
+          return { exitCode: 1, output: (error as Error).message };
+        }
+      },
+    });
+  } catch (e) {
+    console.error(`[process-requests] Convention request processing failed: ${e}`);
   }
 
   // ── Phase 2: Create GH issues for state entries with number=0 ──
@@ -393,7 +425,6 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   } catch { /* ignore */ }
 
-  const logFile = path.join(sessionDir, 'log.jsonl');
   const appendLog = async (_dir: string, entry: Record<string, unknown>) => {
     const existing = existsSync(logFile) ? await readFile(logFile, 'utf8').catch(() => '') : '';
     await writeFile(logFile, `${existing}${JSON.stringify(entry)}\n`, 'utf8');

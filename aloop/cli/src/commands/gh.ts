@@ -1918,7 +1918,8 @@ function buildGhArgs(operation: string, payload: any, enforced: any): string[] {
     }
     case 'pr-merge': {
       const prNum = payload.pr_number;
-      return ['pr', 'merge', String(prNum), '--repo', repo, '--squash'];
+      const method = enforced.merge_method ?? payload.strategy ?? 'squash';
+      return ['pr', 'merge', String(prNum), '--repo', repo, `--${method}`];
     }
     case 'issue-comments': {
       return ['api', `repos/${repo}/issues/comments`, '--method', 'GET', '-f', `since=${String(enforced.since)}`];

@@ -300,7 +300,7 @@ test('GH request processor writes error response for unsupported request type', 
 
   try {
     await mkdir(requestsDir, { recursive: true });
-    await writeFile(path.join(requestsDir, '001-unknown.json'), '{"id":"req-unsupp","type":"repo-delete","target":"foo"}', 'utf8');
+    await writeFile(path.join(requestsDir, '001-unknown.json'), '{"id":"req-unsupp","type":"repo-delete","payload":{"target":"foo"}}', 'utf8');
 
     await waitFor(async () => {
       try {
@@ -312,19 +312,18 @@ test('GH request processor writes error response for unsupported request type', 
     });
 
     assert.deepEqual(calls, []);
-    const queueFiles = (await readdir(queueDir)).filter(f => f.endsWith('.md')).sort();
-    assert.equal(queueFiles.length, 1);
-    const response = await readFile(path.join(queueDir, queueFiles[0]), 'utf8');
-    assert.match(response, /"status": "error"/);
-    assert.match(response, /"request_type": "repo-delete"/);
-    assert.match(response, /Unsupported request type/);
+    if (await exists(queueDir)) {
+      const queueFiles = (await readdir(queueDir)).filter(f => f.endsWith('.md')).sort();
+      assert.equal(queueFiles.length, 0);
+    }
 
     const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
       .trim()
       .split('\n')
       .filter(Boolean)
-      .map((line) => JSON.parse(line) as { event?: string });
+      .map((line) => JSON.parse(line) as { event?: string; error?: string });
     assert.equal(logs.filter((entry) => entry.event === 'gh_request_failed').length, 1);
+    assert.match((logs.find((entry) => entry.event === 'gh_request_failed')?.error ?? ''), /Validation failed: Invalid request type/);
   } finally {
     await fixture.handle.close();
   }
