@@ -179,13 +179,18 @@ test('processAgentRequests - post_comment', async () => {
     await fs.writeFile(path.join(env.requestsDir, 'req-3.json'), JSON.stringify(req));
     
     let ghOp = '';
-    const ghRunner = async (op: string) => {
+    let sentBody = '';
+    const ghRunner = async (op: string, _sid: string, requestPath: string) => {
       ghOp = op;
+      const requestPayload = JSON.parse(await fs.readFile(requestPath, 'utf8')) as { body?: unknown };
+      sentBody = typeof requestPayload.body === 'string' ? requestPayload.body : '';
       return { exitCode: 0, output: 'posted' };
     };
     
     await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
     assert.strictEqual(ghOp, 'issue-comment');
+    assert.ok(sentBody.includes('Nice work'));
+    assert.ok(sentBody.includes('<!-- aloop-request-id: req-3 -->'));
   } finally {
     await env.cleanup();
   }

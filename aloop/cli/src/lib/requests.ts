@@ -734,11 +734,15 @@ async function handleStopChild(request: StopChildRequest, fileName: string, opti
 
 async function handlePostComment(request: PostCommentRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
   const body = await fs.readFile(path.join(options.workdir, request.payload.body_file), 'utf8');
+  const requestIdMarker = `<!-- aloop-request-id: ${request.id} -->`;
+  const bodyWithRequestId = body.includes(requestIdMarker)
+    ? body
+    : `${body.replace(/\s*$/, '')}\n\n${requestIdMarker}`;
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'issue-comment',
     issue_number: request.payload.issue_number,
-    body
+    body: bodyWithRequestId
   }));
   const result = await options.ghCommandRunner('issue-comment', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);
