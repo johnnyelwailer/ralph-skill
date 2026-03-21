@@ -3373,7 +3373,7 @@ export async function launchIssues(
 
 // --- PR lifecycle gates ---
 
-export type PrGateStatus = 'pass' | 'fail' | 'pending';
+export type PrGateStatus = 'pass' | 'fail' | 'pending' | 'api_error';
 
 export interface PrGateResult {
   gate: string;
@@ -5521,8 +5521,8 @@ export async function runOrchestratorScanPass(
     }
   }
 
-  // 3. Process PR lifecycles for issues with open PRs
-  if (repo && deps.prLifecycleDeps) {
+  // 3. Process PR lifecycles every 5th scan pass to reduce GH API pressure.
+  if (repo && deps.prLifecycleDeps && iteration % 5 === 0) {
     const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
     for (const issue of prIssues) {
       try {

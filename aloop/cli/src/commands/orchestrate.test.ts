@@ -4655,6 +4655,63 @@ describe('runOrchestratorScanPass', () => {
       await rm(tmpAloopRoot, { recursive: true, force: true });
     }
   });
+
+  it('skips PR lifecycle on non-5th iterations', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const deps = createMockScanDeps({
+      prLifecycleDeps: createMockPrDeps(),
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 4, deps,
+    );
+
+    assert.equal(result.prLifecycles.length, 0);
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].state, 'pr_open');
+  });
+
+  it('processes PR lifecycle on every 5th iteration', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const prDeps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ path: '.github/workflows/ci.yml' }]), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff content', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const deps = createMockScanDeps({
+      prLifecycleDeps: prDeps,
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 5, deps,
+    );
+
+    assert.equal(result.prLifecycles.length, 1);
+    assert.equal(result.prLifecycles[0].action, 'merged');
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].state, 'merged');
+  });
+  });
 });
 
 describe('runOrchestratorScanLoop', () => {
