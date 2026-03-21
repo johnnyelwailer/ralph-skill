@@ -2990,7 +2990,7 @@ describe('processPrLifecycle', () => {
     assert.ok((state.issues[0] as any).needs_redispatch === true);
   });
 
-  it('rejects PR when agent review requests changes', async () => {
+  it('sets needs_redispatch when agent review requests changes', async () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
     const deps = createMockPrDeps({
       execGh: async (args) => {
@@ -3014,6 +3014,8 @@ describe('processPrLifecycle', () => {
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'rejected');
     assert.equal(result.review?.verdict, 'request-changes');
+    assert.equal(state.issues[0].needs_redispatch, true);
+    assert.equal(state.issues[0].review_feedback, 'Missing test coverage');
   });
 
   it('flags for human when agent review flags', async () => {
@@ -3183,35 +3185,10 @@ describe('processPrLifecycle', () => {
     assert.ok(closeCall, 'Should have closed the issue');
   });
 
-  it('increments redispatch_failures when review requests changes', async () => {
-    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
-    const deps = createMockPrDeps({
-      execGh: async (args) => {
-        if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
-        }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
-        }
-        if (args.includes('diff')) return { stdout: 'diff', stderr: '' };
-        return { stdout: '', stderr: '' };
-      },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'request-changes' as const,
-        summary: 'Needs more tests',
-      }),
-    });
-    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'rejected');
-    assert.equal(state.issues[0].redispatch_failures, 1);
-    assert.equal((state.issues[0] as any).needs_redispatch, true);
-    assert.equal(state.issues[0].redispatch_paused, undefined);
-  });
-
-  it('escalates with comment and aloop/needs-human label after 3 failed redispatches', async () => {
+  it('skips duplicate review comment when last_review_comment matches summary', async () => {
     const state = makeOrchestratorState([{
-      number: 42, pr_number: 100, state: 'pr_open', redispatch_failures: 2,
+      number: 42, pr_number: 100, state: 'pr_open',
+      last_review_comment: 'Missing test coverage',
     }]);
     const ghCalls: string[][] = [];
     const deps = createMockPrDeps({
@@ -3223,28 +3200,59 @@ describe('processPrLifecycle', () => {
         if (args.includes('checks')) {
           return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
         }
-        if (args.includes('diff')) return { stdout: 'diff', stderr: '' };
+        if (args.includes('diff')) {
+          return { stdout: 'diff', stderr: '' };
+        }
         return { stdout: '', stderr: '' };
       },
       invokeAgentReview: async (prNum) => ({
         pr_number: prNum,
         verdict: 'request-changes' as const,
-        summary: 'Still missing tests',
+        summary: 'Missing test coverage',
       }),
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'rejected');
-    assert.equal(state.issues[0].redispatch_failures, 3);
-    assert.equal(state.issues[0].redispatch_paused, true);
-    assert.equal((state.issues[0] as any).needs_redispatch, undefined);
-    // Should have posted a comment on the issue
-    const issueComment = ghCalls.find((c) => c.includes('issue') && c.includes('comment') && c.includes('42'));
-    assert.ok(issueComment, 'Should post comment on issue');
-    // Should have added aloop/needs-human label
-    const labelCall = ghCalls.find((c) => c.includes('edit') && c.includes('aloop/needs-human'));
-    assert.ok(labelCall, 'Should add aloop/needs-human label');
-    // Should log redispatch_escalated event
-    assert.ok(deps.logs.some((l) => l.event === 'redispatch_escalated'));
+    // Should NOT have posted a duplicate comment
+    const commentCalls = ghCalls.filter((c) => c.includes('comment') && c.includes('100'));
+    assert.equal(commentCalls.length, 0, 'Should not post duplicate review comment');
+    // Should still set redispatch
+    assert.equal(state.issues[0].needs_redispatch, true);
+  });
+
+  it('posts review comment when last_review_comment differs from summary', async () => {
+    const state = makeOrchestratorState([{
+      number: 42, pr_number: 100, state: 'pr_open',
+      last_review_comment: 'Old feedback',
+    }]);
+    const ghCalls: string[][] = [];
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        ghCalls.push(args);
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'request-changes' as const,
+        summary: 'New feedback',
+      }),
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'rejected');
+    // Should have posted a comment since summary differs
+    const commentCalls = ghCalls.filter((c) => c.includes('comment') && c.includes('100'));
+    assert.equal(commentCalls.length, 1, 'Should post comment when feedback differs');
+    // Should update last_review_comment
+    assert.equal(state.issues[0].last_review_comment, 'New feedback');
   });
 });
 
@@ -4512,58 +4520,185 @@ describe('runOrchestratorScanPass', () => {
     assert.equal(result.childMonitoring, null);
   });
 
-  it('does not redispatch issues with redispatch_paused set', async () => {
-    const issue = makeIssue({ number: 5, wave: 1, state: 'pr_open', pr_number: 99 });
-    (issue as any).needs_redispatch = true;
-    (issue as any).redispatch_paused = true;
-    (issue as any).review_feedback = 'Still needs work';
-    const state = makeScanState({ issues: [issue] });
+  it('re-dispatches review fixes and increments redispatch_count', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 55,
+          wave: 1,
+          state: 'pr_open',
+          child_session: 'session-redisp',
+          pr_number: 321,
+          needs_redispatch: true,
+          review_feedback: 'Please add missing tests',
+          redispatch_count: 1,
+        }),
+      ],
+    });
+
     const deps = createMockScanDeps({ aloopRoot: '/home/.aloop' });
-    deps.files['/state.json'] = JSON.stringify(state);
     const dispatchDeps = createMockDispatchDeps();
     deps.dispatchDeps = dispatchDeps;
-    deps.execGh = async (args) => {
-      if (args.includes('labels')) return { stdout: JSON.stringify({ labels: [{ name: 'aloop/needs-human' }] }), stderr: '' };
-      return { stdout: '', stderr: '' };
-    };
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/home/.aloop/bin/loop.sh'] = '#!/usr/bin/env bash';
+    deps.files['/home/.aloop/sessions/session-redisp/worktree'] = '';
 
     await runOrchestratorScanPass(
       '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 1, deps,
+      'owner/repo', 2, deps,
     );
 
-    // Should not have spawned any child process
-    assert.equal(dispatchDeps._spawnCalls.length, 0, 'Paused issue should not be redispatched');
-    const writtenState = JSON.parse(deps.files['/state.json']);
-    assert.equal(writtenState.issues[0].redispatch_paused, true, 'redispatch_paused should remain true');
+    const writtenState = JSON.parse(deps.files['/state.json']) as OrchestratorState;
+    const issue = writtenState.issues[0];
+    assert.equal(issue.state, 'in_progress');
+    assert.equal(issue.status, 'In progress');
+    assert.equal(issue.needs_redispatch, false);
+    assert.equal(issue.redispatch_count, 2);
+
+    assert.equal(dispatchDeps._spawnCalls.length, 1);
+    assert.equal(dispatchDeps._spawnCalls[0].command, '/home/.aloop/bin/loop.sh');
+    assert.ok(
+      deps.files['/home/.aloop/sessions/session-redisp/queue/000-review-fixes.md'].includes('Please add missing tests'),
+    );
   });
 
-  it('resumes redispatch when aloop/needs-human label is removed', async () => {
-    const issue = makeIssue({ number: 7, wave: 1, state: 'pr_open', pr_number: 88 });
-    (issue as any).redispatch_paused = true;
-    (issue as any).redispatch_failures = 3;
-    const state = makeScanState({ issues: [issue] });
+  it('self-fixes artifact-only review feedback without redispatch', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 57,
+          wave: 1,
+          state: 'pr_open',
+          child_session: 'session-redisp-self-fix',
+          pr_number: 333,
+          needs_redispatch: true,
+          review_feedback: 'Please remove TODO.md and STEERING.md from this PR.',
+          redispatch_count: 1,
+        }),
+      ],
+    });
+
     const deps = createMockScanDeps({ aloopRoot: '/home/.aloop' });
+    const gitCalls: string[][] = [];
+    const dispatchDeps = createMockDispatchDeps({
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'git') gitCalls.push(args);
+        if (command === 'git' && args.includes('diff') && args.includes('--cached') && args.includes('--name-only')) {
+          return { status: 0, stdout: 'TODO.md\nSTEERING.md\n', stderr: '' };
+        }
+        return { status: 0, stdout: '', stderr: '' };
+      },
+    });
+    deps.dispatchDeps = dispatchDeps;
     deps.files['/state.json'] = JSON.stringify(state);
-    deps.execGh = async (args) => {
-      // Label has been removed — return empty labels
-      if (args.includes('labels')) return { stdout: JSON.stringify({ labels: [] }), stderr: '' };
-      return { stdout: '', stderr: '' };
-    };
+    deps.files['/home/.aloop/bin/loop.sh'] = '#!/usr/bin/env bash';
+    deps.files['/home/.aloop/sessions/session-redisp-self-fix/worktree'] = '';
 
     await runOrchestratorScanPass(
       '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 1, deps,
+      'owner/repo', 2, deps,
     );
 
-    const writtenState = JSON.parse(deps.files['/state.json']);
-    assert.equal(writtenState.issues[0].redispatch_paused, false, 'redispatch_paused should be reset');
-    assert.equal(writtenState.issues[0].redispatch_failures, 0, 'redispatch_failures should be reset');
-    assert.equal(writtenState.issues[0].needs_redispatch, true, 'needs_redispatch should be set for next pass');
-    // Should log redispatch_resumed event
-    const resumedLog = deps.logEntries.find((e) => e.event === 'redispatch_resumed');
-    assert.ok(resumedLog, 'Should log redispatch_resumed event');
-    assert.equal(resumedLog.issue_number, 7);
+    const writtenState = JSON.parse(deps.files['/state.json']) as OrchestratorState;
+    const issue = writtenState.issues[0];
+    assert.equal(issue.state, 'pr_open');
+    assert.equal(issue.needs_redispatch, false);
+    assert.equal(issue.review_feedback, undefined);
+    assert.equal(issue.redispatch_count, 1);
+
+    assert.equal(dispatchDeps._spawnCalls.length, 0);
+    assert.ok(gitCalls.some((args) => args.includes('commit')));
+    assert.ok(gitCalls.some((args) => args.includes('push')));
+    assert.ok(deps.logEntries.some((entry) => entry.event === 'child_self_fixed_artifact_cleanup'));
+  });
+
+  it('falls back to redispatch when review feedback is not artifact-only', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 58,
+          wave: 1,
+          state: 'pr_open',
+          child_session: 'session-redisp-fallback',
+          pr_number: 334,
+          needs_redispatch: true,
+          review_feedback: 'Remove TODO.md and also add missing tests.',
+          redispatch_count: 0,
+        }),
+      ],
+    });
+
+    const deps = createMockScanDeps({ aloopRoot: '/home/.aloop' });
+    const dispatchDeps = createMockDispatchDeps();
+    deps.dispatchDeps = dispatchDeps;
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/home/.aloop/bin/loop.sh'] = '#!/usr/bin/env bash';
+    deps.files['/home/.aloop/sessions/session-redisp-fallback/worktree'] = '';
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 2, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']) as OrchestratorState;
+    const issue = writtenState.issues[0];
+    assert.equal(issue.state, 'in_progress');
+    assert.equal(issue.needs_redispatch, false);
+    assert.equal(issue.redispatch_count, 1);
+
+    assert.equal(dispatchDeps._spawnCalls.length, 1);
+    assert.ok(
+      deps.files['/home/.aloop/sessions/session-redisp-fallback/queue/000-review-fixes.md'].includes('add missing tests'),
+    );
+  });
+
+  it('flags issue for human when redispatch_count reaches retry limit', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 56,
+          wave: 1,
+          state: 'pr_open',
+          child_session: 'session-redisp-limit',
+          pr_number: 322,
+          needs_redispatch: true,
+          review_feedback: 'Still failing review',
+          redispatch_count: 3,
+        }),
+      ],
+    });
+
+    const deps = createMockScanDeps({
+      aloopRoot: '/home/.aloop',
+      execGh: async (args: string[]) => {
+        ghCalls.push(args);
+        if (args[0] === 'issue-comments') return { stdout: JSON.stringify({ comments: [] }), stderr: '' };
+        if (args[0] === 'pr-comments') return { stdout: JSON.stringify({ comments: [] }), stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const dispatchDeps = createMockDispatchDeps();
+    deps.dispatchDeps = dispatchDeps;
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 3, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']) as OrchestratorState;
+    const issue = writtenState.issues[0];
+    assert.equal(issue.state, 'failed');
+    assert.equal(issue.status, 'Blocked');
+    assert.equal(issue.blocked_on_human, true);
+    assert.equal(issue.needs_redispatch, false);
+    assert.equal(issue.redispatch_count, 3);
+
+    assert.equal(dispatchDeps._spawnCalls.length, 0);
+    assert.ok(ghCalls.some((call) => call[0] === 'issue' && call[1] === 'comment' && call[2] === '56'));
+    assert.ok(ghCalls.some((call) => call[0] === 'issue' && call[1] === 'edit' && call[2] === '56'));
+    assert.ok(deps.logEntries.some((entry) => entry.event === 'child_redispatch_limit_reached'));
   });
 });
 
