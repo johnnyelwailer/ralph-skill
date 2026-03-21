@@ -459,21 +459,21 @@ async function handleRequest(request: AgentRequest, fileName: string, options: R
 }
 
 async function handleCreateIssues(request: CreateIssuesRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  const existingIssueTitles = await loadOrchestratorIssueTitles(options.sessionDir);
   // Map to gh.ts 'issue-create'
   // Since 'create_issues' can have multiple issues, we might need to loop or use a specialized subcommand
   // For now, let's assume one by one if not supported as batch
   const results = [];
-  const skippedTitles: string[] = [];
-  for (const issueReq of request.payload.issues) {
-    const normalizedTitle = normalizeIssueTitle(issueReq.title);
-    if (existingIssueTitles.has(normalizedTitle)) {
-      skippedTitles.push(issueReq.title);
-      await writeSessionLogEntry(options.logPath, 'gh_request_skipped_existing_issue_title', {
-        type: request.type,
-        id: request.id,
-        issue_title: issueReq.title,
-        reason: 'duplicate_issue_title_in_orchestrator_state',
+  for (const [issueIndex, issueReq] of request.payload.issues.entries()) {
+    const existingIssue = await findExistingIssueByTitle(issueReq.title, options);
+    if (existingIssue) {
+      results.push({
+        number: existingIssue.number,
+        url: existingIssue.url,
+        title: existingIssue.title,
+        state: existingIssue.state,
+        skipped: true,
+        idempotent: true,
+        reason: 'existing_issue_title_match'
       });
       continue;
     }
@@ -482,7 +482,7 @@ async function handleCreateIssues(request: CreateIssuesRequest, fileName: string
     // So we create temporary request files for each issue if needed, 
     // or we modify gh.ts to handle 'create_issues' payload directly.
     // For simplicity, let's just use the current ghCommandRunner with a temporary file if needed.
-    const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}_${results.length}.json`);
+    const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}_${issueIndex}.json`);
     await fs.writeFile(tempRequestPath, JSON.stringify({
       type: 'issue-create',
       title: issueReq.title,
@@ -497,10 +497,9 @@ async function handleCreateIssues(request: CreateIssuesRequest, fileName: string
       throw new Error(`issue-create failed: ${result.output}`);
     }
     results.push(JSON.parse(result.output));
-    existingIssueTitles.add(normalizedTitle);
   }
 
-  await writeSuccessToQueue(request, { issues: results, skipped_titles: skippedTitles }, options, fileName);
+  await writeSuccessToQueue(request, { issues: results }, options, fileName);
 }
 
 function normalizeIssueTitle(title: string): string {
@@ -525,6 +524,50 @@ async function loadOrchestratorIssueTitles(sessionDir: string): Promise<Set<stri
     titles.add(normalized);
   }
   return titles;
+}
+
+async function findExistingIssueByTitle(
+  title: string,
+  options: RequestProcessorOptions
+): Promise<{ number?: number; title?: string; url?: string; state?: string } | null> {
+  const spawn = options.spawnSync || spawnSync;
+  const args = [
+    'issue', 'list',
+    '--state', 'all',
+    '--json', 'number,title,url,state',
+    '--limit', '100',
+    '--search', `${title} in:title`
+  ];
+  const result = spawn('gh', args, { encoding: 'utf8' });
+  if (result.status !== 0) {
+    throw new Error(`issue-list failed while checking idempotency for title "${title}": ${result.stderr || result.stdout}`);
+  }
+
+  let issues: unknown[] = [];
+  try {
+    issues = JSON.parse(result.stdout || '[]');
+  } catch (error) {
+    throw new Error(`issue-list returned invalid JSON while checking idempotency for title "${title}": ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!Array.isArray(issues)) return null;
+
+  const normalized = title.trim();
+  const existing = issues.find((issue) => {
+    if (issue === null || typeof issue !== 'object') return false;
+    const issueTitle = (issue as Record<string, unknown>).title;
+    return typeof issueTitle === 'string' && issueTitle.trim() === normalized;
+  });
+
+  if (!existing || existing === null || typeof existing !== 'object') {
+    return null;
+  }
+  const record = existing as Record<string, unknown>;
+  return {
+    number: typeof record.number === 'number' ? record.number : undefined,
+    title: typeof record.title === 'string' ? record.title : undefined,
+    url: typeof record.url === 'string' ? record.url : undefined,
+    state: typeof record.state === 'string' ? record.state : undefined,
+  };
 }
 
 async function handleUpdateIssue(request: UpdateIssueRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {

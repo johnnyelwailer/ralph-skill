@@ -214,8 +214,14 @@ test('processAgentRequests - create_issues', async () => {
       ghOp = op;
       return { exitCode: 0, output: JSON.stringify({ number: 101, url: 'http://gh/101' }) };
     };
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list') {
+        return { status: 0, stdout: '[]', stderr: '' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
     
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
     
     assert.strictEqual(ghOp, 'issue-create');
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
@@ -289,11 +295,61 @@ test('processAgentRequests - create_issues failure', async () => {
     const ghRunner = async () => {
       return { exitCode: 1, output: 'create failed' };
     };
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list') {
+        return { status: 0, stdout: '[]', stderr: '' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
     
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
     
     const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
     assert.ok(failedFiles.includes('req-fail-create.json'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - create_issues idempotent skip on duplicate title', async () => {
+  const env = await setupTestEnv();
+  try {
+    await fs.writeFile(path.join(env.workdir, 'body1.md'), 'Body 1');
+    const req = {
+      id: 'req-dup-title',
+      type: 'create_issues',
+      payload: {
+        issues: [{ title: 'Issue 1', body_file: 'body1.md', labels: ['l1'] }]
+      }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-dup-title.json'), JSON.stringify(req));
+
+    let createCalls = 0;
+    const ghRunner = async (_op: string) => {
+      createCalls += 1;
+      return { exitCode: 0, output: JSON.stringify({ number: 101, url: 'http://gh/101' }) };
+    };
+
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list') {
+        return {
+          status: 0,
+          stdout: JSON.stringify([{ number: 42, title: 'Issue 1', state: 'open', url: 'http://gh/42' }]),
+          stderr: ''
+        };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
+
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+
+    assert.strictEqual(createCalls, 0);
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    assert.strictEqual(queueFiles.length, 1);
+    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(content.includes('"skipped": true'));
+    assert.ok(content.includes('"idempotent": true'));
+    assert.ok(content.includes('"number": 42'));
   } finally {
     await env.cleanup();
   }
