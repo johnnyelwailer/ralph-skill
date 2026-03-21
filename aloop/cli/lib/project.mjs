@@ -987,6 +987,29 @@ export async function scaffoldWorkspace(options = {}) {
     }
   }
 
+  // Generate opencode.json with ZDR flag when data privacy is private and opencode is enabled
+  if (dataPrivacy === 'private' && enabled.includes('opencode')) {
+    const projectRoot = discovery.project.root;
+    const opencodeJsonPath = path.join(projectRoot, 'opencode.json');
+    let existing = {};
+    if (existsSync(opencodeJsonPath)) {
+      try {
+        existing = JSON.parse(await readFile(opencodeJsonPath, 'utf8'));
+      } catch {
+        // If the file is malformed, start fresh
+        existing = {};
+      }
+    }
+    const merged = {
+      ...existing,
+      provider: {
+        ...(existing.provider || {}),
+        zdr: true,
+      },
+    };
+    await writeFile(opencodeJsonPath, JSON.stringify(merged, null, 2) + '\n', 'utf8');
+  }
+
   return {
     config_path: discovery.setup.config_path,
     prompts_dir: promptsDir,

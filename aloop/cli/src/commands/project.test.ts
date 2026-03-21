@@ -1348,3 +1348,92 @@ jobs:
   assert.ok(result.ci_support.workflow_types.includes('test'),
     `workflow with "check:" job should classify as test, got types: ${JSON.stringify(result.ci_support.workflow_types)}`);
 });
+
+// --- opencode.json ZDR generation tests ---
+
+async function setupScaffoldFixture(prefix: string) {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), `aloop-${prefix}-`));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'package.json'), JSON.stringify({ name: 'demo', scripts: { test: 'node --test' } }), 'utf8');
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  for (const tmpl of ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md']) {
+    await writeFile(path.join(templatesDir, tmpl), `template ${tmpl}`, 'utf8');
+  }
+  return { tempRoot, homeRoot, templatesDir };
+}
+
+test('scaffoldWorkspace generates opencode.json with ZDR when private and opencode enabled', async () => {
+  const { tempRoot, homeRoot, templatesDir } = await setupScaffoldFixture('zdr-create');
+  await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    dataPrivacy: 'private',
+    enabledProviders: ['opencode'],
+    provider: 'opencode',
+  });
+
+  const opencodeJsonPath = path.join(tempRoot, 'opencode.json');
+  assert.ok(existsSync(opencodeJsonPath), 'opencode.json should be created');
+  const content = JSON.parse(await readFile(opencodeJsonPath, 'utf8'));
+  assert.deepStrictEqual(content.provider, { zdr: true });
+});
+
+test('scaffoldWorkspace does not generate opencode.json when data privacy is public', async () => {
+  const { tempRoot, homeRoot, templatesDir } = await setupScaffoldFixture('zdr-public');
+  await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    dataPrivacy: 'public',
+    enabledProviders: ['opencode'],
+    provider: 'opencode',
+  });
+
+  const opencodeJsonPath = path.join(tempRoot, 'opencode.json');
+  assert.ok(!existsSync(opencodeJsonPath), 'opencode.json should not be created when public');
+});
+
+test('scaffoldWorkspace does not generate opencode.json when opencode not in providers', async () => {
+  const { tempRoot, homeRoot, templatesDir } = await setupScaffoldFixture('zdr-no-opencode');
+  await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    dataPrivacy: 'private',
+    enabledProviders: ['claude'],
+    provider: 'claude',
+  });
+
+  const opencodeJsonPath = path.join(tempRoot, 'opencode.json');
+  assert.ok(!existsSync(opencodeJsonPath), 'opencode.json should not be created when opencode not enabled');
+});
+
+test('scaffoldWorkspace preserves existing opencode.json settings during merge', async () => {
+  const { tempRoot, homeRoot, templatesDir } = await setupScaffoldFixture('zdr-merge');
+  const opencodeJsonPath = path.join(tempRoot, 'opencode.json');
+  await writeFile(opencodeJsonPath, JSON.stringify({
+    theme: 'dark',
+    provider: { model: 'custom-model', timeout: 30 },
+    experimental: true,
+  }, null, 2), 'utf8');
+
+  await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    dataPrivacy: 'private',
+    enabledProviders: ['opencode'],
+    provider: 'opencode',
+  });
+
+  const content = JSON.parse(await readFile(opencodeJsonPath, 'utf8'));
+  assert.strictEqual(content.theme, 'dark', 'existing top-level settings should be preserved');
+  assert.strictEqual(content.experimental, true, 'existing top-level settings should be preserved');
+  assert.strictEqual(content.provider.model, 'custom-model', 'existing provider settings should be preserved');
+  assert.strictEqual(content.provider.timeout, 30, 'existing provider settings should be preserved');
+  assert.strictEqual(content.provider.zdr, true, 'zdr flag should be merged in');
+});
