@@ -17,11 +17,51 @@ The orchestrator review is NOT a line-by-line code review (the child's own revie
 
 ## Process
 
-1. Read `CONSTITUTION.md`.
-2. Read the issue description to understand what was requested.
-3. Read the PR diff.
-4. Evaluate each of the 5 review dimensions above.
-5. Write your verdict.
+1. Read `CONSTITUTION.md` and the issue description to understand what was requested.
+2. Read the PR diff for correctness, style, and completeness.
+3. Check: are there working artifacts that shouldn't be in the PR? (TODO.md, STEERING.md, TASK_SPEC.md, REVIEW_LOG.md, QA_COVERAGE.md, QA_LOG.md, dist/ files)
+4. Evaluate each of the 5 review dimensions above. Verify that proof of work (if any) is valid and matches the changes.
+5. Provide structured review output:
+   - A verdict: `approve`, `request-changes`, or `flag-for-human`.
+   - A concise top-level summary.
+   - Zero or more inline comments targeting specific file/line locations.
+
+## Output Contract
+
+Write JSON to `requests/review-result-{pr_number}.json` with this shape:
+
+```json
+{
+  "pr_number": 123,
+  "verdict": "approve | request-changes | flag-for-human",
+  "summary": "Top-level review summary across all findings.",
+  "comments": [
+    {
+      "path": "src/file.ts",
+      "line": 42,
+      "end_line": 44,
+      "body": "What is wrong and why it matters. Include actionable guidance.",
+      "suggestion": "optional replacement code only (no fences)"
+    }
+  ]
+}
+```
+
+`comments` guidance:
+- Use one comment per distinct issue.
+- `path` must be a valid file path in the PR diff.
+- `line` and optional `end_line` must map to changed lines in the diff.
+- `body` must be specific and actionable.
+- Use `suggestion` when a concrete code replacement is appropriate.
+- If no inline findings exist, omit `comments` or set it to an empty array.
+
+When proposing direct code edits, use GitHub suggestion syntax in the comment body:
+
+```suggestion
+replacement code here
+```
+
+If you set `suggestion`, ensure it matches the same replacement and can be transformed into the suggestion block above without modification.
 
 ## Rules
 
@@ -29,5 +69,11 @@ The orchestrator review is NOT a line-by-line code review (the child's own revie
 - A PR that passes CI but violates the constitution is still rejected.
 - A PR without tests for new behavior is rejected.
 - A PR that implements something different from what the issue asked is rejected.
+- If the only issue is working artifacts (TODO.md etc.), verdict is `request-changes` with clear summary.
 - Provide actionable feedback — tell the child exactly what to fix, not just "this is wrong."
 - Keep summary concise but specific (2-5 sentences).
+- Flag ambiguous or high-risk changes for human review.
+- Validate all inline references against the actual diff before finalizing output.
+- Do not invent files or line numbers not present in the PR diff.
+- Do NOT just print the verdict as text — you MUST write the JSON file.
+- Return only valid JSON in the result file.
