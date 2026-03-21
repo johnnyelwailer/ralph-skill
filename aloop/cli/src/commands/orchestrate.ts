@@ -88,6 +88,11 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
+  needs_redispatch?: boolean;
+  review_feedback?: string;
+  redispatch_count?: number;
+  last_review_comment?: string;
+  child_pid?: number;
 }
 
 export interface OrchestratorState {
@@ -3127,6 +3132,58 @@ export interface PrLifecycleDeps {
 }
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
+const ORCHESTRATOR_REDISPATCH_LIMIT = 3;
+const WORKING_ARTIFACT_FILES = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'] as const;
+
+function parseArtifactRemovalTargets(feedback: string | undefined): string[] | null {
+  if (!feedback) return null;
+
+  const normalized = feedback.toLowerCase();
+  const mentionsGenericArtifacts = normalized.includes('working artifact');
+  const mentionedFiles = WORKING_ARTIFACT_FILES.filter((file) => normalized.includes(file.toLowerCase()));
+  const hasRemovalIntent =
+    /\b(remove|delete|drop|exclude|clean(?:\s*up)?|rm)\b/i.test(normalized)
+    || /do\s+not\s+(add|include|commit)/i.test(normalized)
+    || /should\s+not\s+(add|include|commit)/i.test(normalized);
+
+  if (!hasRemovalIntent || (mentionedFiles.length === 0 && !mentionsGenericArtifacts)) {
+    return null;
+  }
+
+  let stripped = normalized;
+  for (const file of WORKING_ARTIFACT_FILES) {
+    stripped = stripped.replaceAll(file.toLowerCase(), ' ');
+  }
+  stripped = stripped
+    .replaceAll('working artifacts', ' ')
+    .replaceAll('working artifact', ' ')
+    .replaceAll('artifact files', ' ')
+    .replaceAll('artifact', ' ')
+    .replaceAll('pull request', ' ')
+    .replaceAll('pr', ' ')
+    .replaceAll('commit', ' ')
+    .replaceAll('branch', ' ')
+    .replaceAll('please', ' ');
+
+  const allowedTokens = new Set([
+    'remove', 'delete', 'drop', 'exclude', 'clean', 'cleanup', 'rm', 'cache', 'cached',
+    'do', 'not', 'should', 'add', 'include', 'from', 'in', 'on', 'to', 'the', 'a', 'an',
+    'and', 'or', 'these', 'this', 'files', 'file', 'only', 'just', 'all', 'any', 'no',
+  ]);
+  const residualTokens = stripped
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length > 0)
+    .filter((token) => !allowedTokens.has(token));
+  if (residualTokens.length > 0) {
+    return null;
+  }
+
+  if (mentionedFiles.length > 0) {
+    return [...mentionedFiles];
+  }
+  return [...WORKING_ARTIFACT_FILES];
+}
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
@@ -3582,7 +3639,7 @@ export async function processPrLifecycle(
   if (reviewResult.verdict === 'request-changes') {
     // Post review feedback on the PR (only if not already posted)
     const stateIssue = state.issues.find((i) => i.number === issue.number);
-    const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
+    const alreadyCommented = stateIssue?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
         await deps.execGh([
@@ -3592,13 +3649,13 @@ export async function processPrLifecycle(
       } catch {
         // Best-effort
       }
-      if (stateIssue) (stateIssue as any).last_review_comment = reviewResult.summary;
+      if (stateIssue) stateIssue.last_review_comment = reviewResult.summary;
     }
 
     // Mark for re-dispatch by the scan pass (which has dispatchDeps)
     if (stateIssue) {
-      (stateIssue as any).needs_redispatch = true;
-      (stateIssue as any).review_feedback = reviewResult.summary;
+      stateIssue.needs_redispatch = true;
+      stateIssue.review_feedback = reviewResult.summary;
     }
 
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
@@ -5160,7 +5217,7 @@ export async function runOrchestratorScanPass(
         if (stateIssue) {
           stateIssue.state = 'in_progress';
           stateIssue.child_session = launchResult.session_id;
-          (stateIssue as any).child_pid = launchResult.pid;
+          stateIssue.child_pid = launchResult.pid;
           stateIssue.status = 'In progress';
           if (repo && deps.execGh) {
             await syncIssueProjectStatus(issue.number, repo, 'In progress', {
@@ -5251,8 +5308,42 @@ export async function runOrchestratorScanPass(
 
   // 3.5. Re-dispatch children that need review fixes
   if (deps.dispatchDeps && deps.aloopRoot) {
-    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch && i.child_session);
+    const needsRedispatch = state.issues.filter((i) => i.needs_redispatch && i.child_session);
     for (const issue of needsRedispatch) {
+      const redispatchCount = issue.redispatch_count ?? 0;
+      if (redispatchCount >= ORCHESTRATOR_REDISPATCH_LIMIT) {
+        issue.needs_redispatch = false;
+        issue.state = 'failed';
+        issue.status = 'Blocked';
+        issue.blocked_on_human = true;
+
+        if (repo && deps.execGh) {
+          await flagForHuman(
+            issue,
+            repo,
+            `Review requested changes ${redispatchCount}/${ORCHESTRATOR_REDISPATCH_LIMIT} times for PR #${issue.pr_number}; escalating to human`,
+            {
+              execGh: deps.execGh,
+              readFile: deps.readFile,
+              writeFile: deps.writeFile,
+              now: deps.now,
+              appendLog: deps.appendLog,
+            },
+          );
+        }
+
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_redispatch_limit_reached',
+          iteration,
+          issue_number: issue.number,
+          pr_number: issue.pr_number,
+          redispatch_count: redispatchCount,
+          redispatch_limit: ORCHESTRATOR_REDISPATCH_LIMIT,
+        });
+        continue;
+      }
+
       const childDir = path.join(deps.aloopRoot, 'sessions', issue.child_session!);
       const childWorktree = path.join(childDir, 'worktree');
       const childPromptsDir = path.join(childDir, 'prompts');
@@ -5261,10 +5352,60 @@ export async function runOrchestratorScanPass(
 
       if (deps.existsSync(childWorktree) && deps.existsSync(loopScript)) {
         try {
+          const artifactTargets = parseArtifactRemovalTargets(issue.review_feedback);
+          if (artifactTargets && deps.dispatchDeps) {
+            for (const artifact of artifactTargets) {
+              deps.dispatchDeps.spawnSync(
+                'git',
+                ['-C', childWorktree, 'rm', '--cached', '--ignore-unmatch', artifact],
+                { encoding: 'utf8' },
+              );
+            }
+
+            const stagedResult = deps.dispatchDeps.spawnSync(
+              'git',
+              ['-C', childWorktree, 'diff', '--cached', '--name-only'],
+              { encoding: 'utf8' },
+            );
+            const stagedFiles = stagedResult.stdout
+              .split('\n')
+              .map((line) => line.trim())
+              .filter(Boolean);
+            const onlyExpectedFiles = stagedFiles.length > 0 && stagedFiles.every((file) => artifactTargets.includes(file));
+
+            if (stagedResult.status === 0 && onlyExpectedFiles) {
+              const commitResult = deps.dispatchDeps.spawnSync(
+                'git',
+                ['-C', childWorktree, 'commit', '-m', 'chore: remove working artifacts from PR'],
+                { encoding: 'utf8' },
+              );
+              if (commitResult.status === 0) {
+                const pushResult = deps.dispatchDeps.spawnSync(
+                  'git',
+                  ['-C', childWorktree, 'push', 'origin', 'HEAD'],
+                  { encoding: 'utf8' },
+                );
+                if (pushResult.status === 0) {
+                  issue.needs_redispatch = false;
+                  issue.review_feedback = undefined;
+                  deps.appendLog(sessionDir, {
+                    timestamp: deps.now().toISOString(),
+                    event: 'child_self_fixed_artifact_cleanup',
+                    iteration,
+                    issue_number: issue.number,
+                    pr_number: issue.pr_number,
+                    files: artifactTargets,
+                  });
+                  continue;
+                }
+              }
+            }
+          }
+
           // Write review feedback as steering prompt
           await deps.writeFile(
             path.join(childQueueDir, '000-review-fixes.md'),
-            `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, or other working artifacts to the commit.\n`,
+            `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${issue.review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, or other working artifacts to the commit.\n`,
             'utf8',
           );
 
@@ -5284,9 +5425,10 @@ export async function runOrchestratorScanPass(
 
           issue.state = 'in_progress';
           issue.status = 'In progress';
-          (issue as any).child_pid = child.pid;
-          (issue as any).needs_redispatch = false;
-          (issue as any).review_feedback = undefined;
+          issue.child_pid = child.pid;
+          issue.needs_redispatch = false;
+          issue.review_feedback = undefined;
+          issue.redispatch_count = redispatchCount + 1;
 
           deps.appendLog(sessionDir, {
             timestamp: deps.now().toISOString(),
@@ -5296,6 +5438,7 @@ export async function runOrchestratorScanPass(
             pr_number: issue.pr_number,
             child_session: issue.child_session,
             pid: child.pid,
+            redispatch_count: issue.redispatch_count,
           });
         } catch (e) {
           deps.appendLog(sessionDir, {
