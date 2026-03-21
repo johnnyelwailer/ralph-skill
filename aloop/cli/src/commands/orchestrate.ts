@@ -5290,8 +5290,31 @@ export async function runOrchestratorScanPass(
       const childQueueDir = path.join(childDir, 'queue');
       const loopScript = path.join(deps.aloopRoot, 'bin', 'loop.sh');
 
-      if (deps.existsSync(childWorktree) && deps.existsSync(loopScript)) {
+      if (deps.existsSync(loopScript)) {
         try {
+          // Recreate worktree if missing (may have been cleaned up)
+          if (!deps.existsSync(childWorktree)) {
+            const branchName = `aloop/issue-${issue.number}`;
+            // Try checkout existing remote branch
+            let wtResult = deps.dispatchDeps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', childWorktree, branchName], { encoding: 'utf8' });
+            if (wtResult.status !== 0) {
+              // Try fetching from origin first
+              deps.dispatchDeps.spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', branchName], { encoding: 'utf8' });
+              wtResult = deps.dispatchDeps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', childWorktree, `origin/${branchName}`], { encoding: 'utf8' });
+            }
+            if (wtResult.status !== 0) {
+              deps.appendLog(sessionDir, { timestamp: deps.now().toISOString(), event: 'redispatch_worktree_failed', issue_number: issue.number, error: wtResult.stderr });
+              continue;
+            }
+            // Recreate prompts dir
+            await deps.dispatchDeps.mkdir(childPromptsDir, { recursive: true });
+            const templateDir = path.join(deps.aloopRoot, 'templates');
+            for (const tmpl of ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_qa.md', 'PROMPT_review.md', 'PROMPT_proof.md', 'PROMPT_steer.md', 'PROMPT_merge.md']) {
+              const src = path.join(templateDir, tmpl);
+              if (deps.existsSync(src)) await deps.writeFile(path.join(childPromptsDir, tmpl), await deps.readFile(src, 'utf8'), 'utf8');
+            }
+          }
+
           // Write review feedback as steering prompt
           await deps.writeFile(
             path.join(childQueueDir, '000-review-fixes.md'),
