@@ -162,6 +162,19 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             if (childStatus.state === 'completed' || childStatus.state === 'stopped') {
               const branch = `aloop/issue-${issue.number}`;
               const trunkBranch = state.trunk_branch ?? 'agent/trunk';
+              const childWorktree = path.join(childDir, 'worktree');
+
+              // Clean working artifacts from branch before PR
+              const artifacts = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'];
+              for (const art of artifacts) {
+                spawnSync('git', ['-C', childWorktree, 'rm', '--cached', '--ignore-unmatch', art], { encoding: 'utf8' });
+              }
+              const rmStatus = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
+              if (rmStatus.stdout?.trim()) {
+                spawnSync('git', ['-C', childWorktree, 'commit', '-m', 'chore: remove working artifacts from PR'], { encoding: 'utf8' });
+                spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
+              }
+
               // Create PR
               const prResult = spawnSync('gh', [
                 'pr', 'create',
