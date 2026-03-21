@@ -1107,26 +1107,70 @@ export async function orchestrateCommandWithDeps(
       if (listResult.status !== 0) throw new Error(listResult.stderr ?? 'gh failed');
       const ghIssues = JSON.parse(listResult.stdout ?? '[]');
       if (Array.isArray(ghIssues) && ghIssues.length > 0) {
+        // Fetch project status for each issue to avoid re-estimating
+        const projectStatusMap = new Map<number, string>();
+        try {
+          const projResult = nodeSpawnSync('gh', ['api', 'graphql', '-f', `query={
+            user(login: "${filterRepo.split('/')[0]}") {
+              projectV2(number: 2) {
+                items(first: 200) {
+                  nodes {
+                    content { ... on Issue { number } }
+                    fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+                  }
+                }
+              }
+            }
+          }`], { encoding: 'utf8' });
+          if (projResult.status === 0) {
+            const projData = JSON.parse(projResult.stdout);
+            const items = projData?.data?.user?.projectV2?.items?.nodes ?? [];
+            for (const item of items) {
+              const num = item?.content?.number;
+              const status = item?.fieldValueByName?.name;
+              if (num && status) projectStatusMap.set(num, status);
+            }
+          }
+        } catch { /* best effort */ }
+
         for (const gi of ghIssues) {
           const isEpic = gi.labels?.some((l: any) => (l.name ?? l) === 'aloop/epic');
+          const projStatus = projectStatusMap.get(gi.number);
+          // Use project status if available, otherwise infer from labels
+          let status = isEpic ? 'Needs decomposition' : 'Needs refinement';
+          let dorValidated = false;
+          let issueState: string = 'pending';
+          if (projStatus) {
+            status = projStatus;
+            if (projStatus === 'Ready' || projStatus === 'In progress' || projStatus === 'In review' || projStatus === 'Done') {
+              dorValidated = true;
+            }
+            if (projStatus === 'In progress') issueState = 'in_progress';
+            if (projStatus === 'In review') issueState = 'pr_open';
+            if (projStatus === 'Done') issueState = 'merged';
+          }
+
           state.issues.push({
             number: gi.number,
             title: gi.title,
             body: gi.body ?? '',
             file_hints: [],
             wave: 1,
-            state: 'pending',
-            status: isEpic ? 'Needs decomposition' : 'Needs refinement',
+            state: issueState,
+            status,
             child_session: null,
             pr_number: null,
             depends_on: [],
             blocked_on_human: false,
             processed_comment_ids: [],
-            dor_validated: false,
+            dor_validated: dorValidated,
           } as any);
         }
         if (state.current_wave === 0) state.current_wave = 1;
-        console.log(`[orchestrate] Preloaded ${ghIssues.length} existing GH issues into state`);
+        const statusCounts = new Map<string, number>();
+        for (const i of state.issues) { statusCounts.set(i.status ?? '?', (statusCounts.get(i.status ?? '?') ?? 0) + 1); }
+        const statusStr = [...statusCounts.entries()].map(([k,v]) => `${k}:${v}`).join(' ');
+        console.log(`[orchestrate] Preloaded ${ghIssues.length} issues (${statusStr})`);
       }
     } catch {
       // GH fetch failed — proceed without preloading
