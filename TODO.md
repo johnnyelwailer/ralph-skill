@@ -8,7 +8,7 @@
 
 - [x] Add periodic V8 cache pruning for in-progress children — in process-requests.ts Phase 2d (or a new phase), iterate over in-progress child sessions and prune their `.v8-cache` directories if they exceed a size threshold (e.g., 50MB). V8 code cache files are safe to delete while the process runs; Node.js will regenerate them on next cold start. This prevents unbounded growth during long-running children
 
-- [ ] Clean up orphaned V8 cache from dead children — Phase 2d currently only cleans `.v8-cache` for `merged`/`failed` children (process-requests.ts:327-344). Extend to also detect children whose PID is no longer alive (process exited without reaching merged/failed state) and remove their `.v8-cache` directories. This handles the crash/kill scenario where normal cleanup never runs
+- [ ] Clean up orphaned V8 cache from dead children — Phase 2d currently only cleans `.v8-cache` for `merged`/`failed` children (process-requests.ts:327-344). Extend to also detect children whose PID is no longer alive (process exited without reaching merged/failed state) and remove their `.v8-cache` directories. This handles the crash/kill scenario where normal cleanup never runs. **QA re-test (iter 18):** Confirmed — issue-81 session (173152) is in `stopped` state with 48MB V8 cache still present. All other stopped sessions (154, 183, 84, 91) were cleaned correctly. The `stopped` state is not covered by the existing cleanup path.
 
 ### Up Next
 
