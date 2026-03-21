@@ -465,6 +465,53 @@ function writeJson(response: ServerResponse, statusCode: number, payload: unknow
   response.end(JSON.stringify(payload));
 }
 
+/** Parse a pipe-delimited QA_COVERAGE.md table into structured coverage data. */
+export function parseQaCoverageTable(raw: string): {
+  coverage_percent: number;
+  total_features: number;
+  tested_features: number;
+  passed: number;
+  failed: number;
+  untested: number;
+  features: Array<{ feature: string; component: string; last_tested: string; commit: string; status: string; criteria_met: string; notes: string }>;
+} {
+  const lines = raw.split('\n');
+  const features: Array<{ feature: string; component: string; last_tested: string; commit: string; status: string; criteria_met: string; notes: string }> = [];
+
+  // Find table rows: lines starting with | that are not separator lines (|---|...)
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('|')) continue;
+    // Skip separator lines like |---|---|...|
+    if (/^\|[\s-]+\|/.test(trimmed) && !trimmed.match(/[a-zA-Z0-9]/)) continue;
+    // Skip header line (contains "Feature" column header)
+    if (/\bFeature\b/i.test(trimmed) && /\bStatus\b/i.test(trimmed)) continue;
+
+    const cells = trimmed.split('|').map((c) => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length - 1);
+    if (cells.length < 5) continue;
+
+    const status = (cells[4] || '').toUpperCase();
+    features.push({
+      feature: cells[0] || '',
+      component: cells[1] || '',
+      last_tested: cells[2] || '',
+      commit: cells[3] || '',
+      status: status === 'PASS' || status === 'FAIL' ? status : 'UNTESTED',
+      criteria_met: cells[5] || '',
+      notes: cells[6] || '',
+    });
+  }
+
+  const total_features = features.length;
+  const passed = features.filter((f) => f.status === 'PASS').length;
+  const failed = features.filter((f) => f.status === 'FAIL').length;
+  const untested = features.filter((f) => f.status === 'UNTESTED').length;
+  const tested_features = passed + failed;
+  const coverage_percent = total_features > 0 ? Math.round((tested_features / total_features) * 100) : 0;
+
+  return { coverage_percent, total_features, tested_features, passed, failed, untested, features };
+}
+
 function extractPid(meta: unknown): number | null {
   if (!isRecord(meta)) {
     return null;
@@ -1027,12 +1074,11 @@ export async function startDashboardServer(
         const coveragePath = path.join(coverageWorkdir, 'QA_COVERAGE.md');
         const raw = await readTextFile(coveragePath);
         if (!raw) {
-          writeJson(response, 200, { percentage: null, raw: '', available: false });
+          writeJson(response, 200, { coverage_percent: 0, total_features: 0, tested_features: 0, passed: 0, failed: 0, untested: 0, features: [], available: false, error: 'not_found' });
           return;
         }
-        const match = raw.match(/Coverage:\s*(\d+)%/i);
-        const percentage = match ? parseInt(match[1], 10) : null;
-        writeJson(response, 200, { percentage, raw, available: true });
+        const parsed = parseQaCoverageTable(raw);
+        writeJson(response, 200, { ...parsed, available: true });
         return;
       }
 

@@ -1793,49 +1793,74 @@ test('GET /api/qa-coverage returns available:false when file is missing', async 
   try {
     const response = await fetch(`${handle.url}/api/qa-coverage`);
     assert.equal(response.status, 200);
-    const body = (await response.json()) as { percentage: number | null; raw: string; available: boolean };
+    const body = (await response.json()) as Record<string, unknown>;
     assert.equal(body.available, false);
-    assert.equal(body.percentage, null);
-    assert.equal(body.raw, '');
+    assert.equal(body.error, 'not_found');
+    assert.equal(body.coverage_percent, 0);
+    assert.equal(body.total_features, 0);
+    assert.equal(body.tested_features, 0);
+    assert.equal(body.passed, 0);
+    assert.equal(body.failed, 0);
+    assert.equal(body.untested, 0);
+    assert.deepStrictEqual(body.features, []);
   } finally {
     await handle.close();
     await rm(root, { recursive: true });
   }
 });
 
-test('GET /api/qa-coverage parses percentage from QA_COVERAGE.md', async () => {
+test('GET /api/qa-coverage parses pipe-delimited table from QA_COVERAGE.md', async () => {
   const { handle, root, workdir } = await createServerFixture();
   try {
-    await writeFile(
-      path.join(workdir, 'QA_COVERAGE.md'),
-      '# QA Coverage Report\n\nCoverage: 85%\n\nSome details here.',
-      'utf8',
-    );
+    const tableContent = [
+      '# QA Coverage Matrix',
+      '',
+      '| Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |',
+      '|---------|-----------|-------------|--------|--------|--------------|-------|',
+      '| aloop start | CLI/start.ts | 2026-03-20 | a1b2c3d | PASS | 4/5 | signal handling untested |',
+      '| dashboard health | UI/HealthPanel | 2026-03-19 | f4e5d6a | FAIL | 2/4 | codex missing |',
+      '| aloop gh watch | CLI/gh.ts | never | - | UNTESTED | 0/3 | - |',
+    ].join('\n');
+    await writeFile(path.join(workdir, 'QA_COVERAGE.md'), tableContent, 'utf8');
     const response = await fetch(`${handle.url}/api/qa-coverage`);
     assert.equal(response.status, 200);
-    const body = (await response.json()) as { percentage: number | null; raw: string; available: boolean };
+    const body = (await response.json()) as Record<string, unknown>;
     assert.equal(body.available, true);
-    assert.equal(body.percentage, 85);
-    assert.ok(body.raw.includes('Coverage: 85%'));
+    assert.equal(body.coverage_percent, 67); // 2 tested out of 3
+    assert.equal(body.total_features, 3);
+    assert.equal(body.tested_features, 2);
+    assert.equal(body.passed, 1);
+    assert.equal(body.failed, 1);
+    assert.equal(body.untested, 1);
+    const features = body.features as Array<Record<string, string>>;
+    assert.equal(features.length, 3);
+    assert.equal(features[0].feature, 'aloop start');
+    assert.equal(features[0].status, 'PASS');
+    assert.equal(features[1].feature, 'dashboard health');
+    assert.equal(features[1].status, 'FAIL');
+    assert.equal(features[2].feature, 'aloop gh watch');
+    assert.equal(features[2].status, 'UNTESTED');
   } finally {
     await handle.close();
     await rm(root, { recursive: true });
   }
 });
 
-test('GET /api/qa-coverage returns null percentage when no match in file', async () => {
+test('GET /api/qa-coverage returns 0% when file has no parseable table', async () => {
   const { handle, root, workdir } = await createServerFixture();
   try {
     await writeFile(
       path.join(workdir, 'QA_COVERAGE.md'),
-      '# QA Report\n\nNo coverage line here.',
+      '# QA Report\n\nNo coverage table here.',
       'utf8',
     );
     const response = await fetch(`${handle.url}/api/qa-coverage`);
     assert.equal(response.status, 200);
-    const body = (await response.json()) as { percentage: number | null; raw: string; available: boolean };
+    const body = (await response.json()) as Record<string, unknown>;
     assert.equal(body.available, true);
-    assert.equal(body.percentage, null);
+    assert.equal(body.coverage_percent, 0);
+    assert.equal(body.total_features, 0);
+    assert.deepStrictEqual(body.features, []);
   } finally {
     await handle.close();
     await rm(root, { recursive: true });
