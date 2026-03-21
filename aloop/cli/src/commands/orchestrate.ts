@@ -3183,10 +3183,11 @@ export async function reviewPrDiff(
     diff = diffResult.stdout;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
+    // API error — retry next pass, don't permanently fail
     return {
       pr_number: prNumber,
-      verdict: 'flag-for-human',
-      summary: `Failed to fetch PR diff: ${msg}`,
+      verdict: 'pending',
+      summary: `PR diff fetch failed (will retry): ${msg}`,
     };
   }
 
