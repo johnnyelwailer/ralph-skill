@@ -24,6 +24,7 @@ import { ArtifactViewer } from '@/components/artifacts/ArtifactViewer';
 import { useCost } from '@/hooks/useCost';
 import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
+import { ResponsiveLayout, useResponsiveLayout } from '@/components/layout/ResponsiveLayout';
 
 // ── ANSI + Markdown rendering ──
 // Strip ANSI escape codes from text (for compact log entries)
@@ -2142,7 +2143,7 @@ function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
 
 // ── Main App ──
 
-export function App() {
+function AppInner() {
   const [state, setState] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -2150,25 +2151,23 @@ export function App() {
   const [steerSubmitting, setSteerSubmitting] = useState(false);
   const [stopSubmitting, setStopSubmitting] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('session'));
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const mobileSidebarRef = useRef<HTMLDivElement>(null);
   const [activePanel, setActivePanel] = useState<'docs' | 'activity'>('docs');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [qaCoverageRefreshKey, setQaCoverageRefreshKey] = useState('');
   const prevPhaseRef = useRef<string>('');
   const latestQaSignalRef = useRef<string | null>(null);
+  const { isDesktop, sidebarOpen, toggleSidebar, openSidebar, closeSidebar } = useResponsiveLayout();
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'b' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setSidebarCollapsed((p) => !p); }
+      if (e.key === 'b' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); toggleSidebar(); }
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setCommandOpen((p) => !p); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [toggleSidebar]);
 
   // Mobile sidebar: Escape key closes drawer, focus moves into sidebar on open
   useEffect(() => {
@@ -2444,53 +2443,73 @@ export function App() {
   );
 
   return (
-    <TooltipProvider delayDuration={300}>
-      <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
-        <div className="flex flex-1 min-h-0">
-          {/* Desktop sidebar */}
-          <div className="hidden md:flex">
-            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
-          </div>
-          {/* Mobile sidebar drawer */}
-          {mobileMenuOpen && (
-            <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
-              <div className="absolute inset-0 bg-black/50" />
-              <div ref={mobileSidebarRef} className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
-                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
-              </div>
-            </div>
-          )}
-          <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
-            {/* Mobile panel toggle */}
-            <div className="lg:hidden flex border-b border-border shrink-0">
-              <button
-                type="button"
-                className={`flex-1 py-1.5 min-h-[44px] text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setActivePanel('docs')}
-              >
-                <FileText className="h-3.5 w-3.5 inline mr-1" />Documents
-              </button>
-              <button
-                type="button"
-                className={`flex-1 py-1.5 min-h-[44px] text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setActivePanel('activity')}
-              >
-                <Activity className="h-3.5 w-3.5 inline mr-1" />Activity
-              </button>
-            </div>
-            <main className="flex-1 min-h-0 p-2 md:p-3">
-              <div className="flex gap-3 h-full">
-                {docsPanel}
-                {activityPanel}
-              </div>
-            </main>
-            <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} onResume={() => void handleResume()} resumeSubmitting={resumeSubmitting} isRunning={isRunning} />
-          </div>
+    <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
+      <div className="flex flex-1 min-h-0">
+        {/* Desktop sidebar */}
+        <div className="hidden md:flex">
+          <Sidebar
+            sessions={sessions}
+            selectedSessionId={selectedSessionId}
+            onSelectSession={selectSession}
+            collapsed={isDesktop ? false : !sidebarOpen}
+            onToggle={toggleSidebar}
+          />
         </div>
-        <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} sessions={sessions} onSelectSession={selectSession} onStop={(f) => void handleStop(f)} />
-        <Toaster />
+        {/* Mobile/Tablet sidebar drawer */}
+        {!isDesktop && sidebarOpen && (
+          <div className="fixed inset-0 z-40 animate-fade-in" onClick={closeSidebar}>
+            <div className="absolute inset-0 bg-black/50" />
+            <div className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
+              <Sidebar
+                sessions={sessions}
+                selectedSessionId={selectedSessionId}
+                onSelectSession={(id) => { selectSession(id); closeSidebar(); }}
+                collapsed={false}
+                onToggle={closeSidebar}
+              />
+            </div>
+          </div>
+        )}
+        <div className="flex flex-col flex-1 min-w-0">
+          <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={openSidebar} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={toggleSidebar} />
+          {/* Mobile panel toggle */}
+          <div className="lg:hidden flex border-b border-border shrink-0">
+            <button
+              type="button"
+              className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setActivePanel('docs')}
+            >
+              <FileText className="h-3.5 w-3.5 inline mr-1" />Documents
+            </button>
+            <button
+              type="button"
+              className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setActivePanel('activity')}
+            >
+              <Activity className="h-3.5 w-3.5 inline mr-1" />Activity
+            </button>
+          </div>
+          <main className="flex-1 min-h-0 p-2 md:p-3">
+            <div className="flex gap-3 h-full">
+              {docsPanel}
+              {activityPanel}
+            </div>
+          </main>
+          <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} onResume={() => void handleResume()} resumeSubmitting={resumeSubmitting} isRunning={isRunning} />
+        </div>
       </div>
+      <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} sessions={sessions} onSelectSession={selectSession} onStop={(f) => void handleStop(f)} />
+      <Toaster />
+    </div>
+  );
+}
+
+export function App() {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <ResponsiveLayout>
+        <AppInner />
+      </ResponsiveLayout>
     </TooltipProvider>
   );
 }

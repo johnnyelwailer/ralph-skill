@@ -26,7 +26,7 @@ Significant responsive behavior already exists inline in `AppView.tsx`:
 ### Up Next
 
 - [x] Create `ResponsiveLayout.tsx` — Wrapper component that provides breakpoint context via React context, consumes `useBreakpoint`, and controls layout mode. Other components read breakpoint from context instead of relying solely on CSS.
-- [ ] Integrate `ResponsiveLayout.tsx` into `AppView.tsx` — Wrap the app shell with `ResponsiveLayout`, replace inline `mobileMenuOpen`/`sidebarCollapsed` logic with context-driven behavior. Desktop layout must remain unchanged.
+- [x] Integrate `ResponsiveLayout.tsx` into `AppView.tsx` — Wrap the app shell with `ResponsiveLayout`, replace inline `mobileMenuOpen`/`sidebarCollapsed` logic with context-driven behavior. Desktop layout must remain unchanged.
 - [ ] Add swipe-right gesture on mobile — Touch event handler on left edge (e.g., touchstart within 20px of left edge, touchmove rightward > 50px) opens the sidebar drawer. Only active at mobile breakpoint.
 - [ ] Verify 320px no-scroll and 375px session list — Ensure no horizontal overflow at 320px viewport width. Verify session list is scrollable on 375px. Fix any overflow issues (likely needs `max-w-full`, `overflow-hidden` on key containers).
 - [ ] Wire `Ctrl+B` to sidebar toggle at tablet breakpoint specifically — Current implementation toggles `sidebarCollapsed` at all breakpoints. Spec says `Ctrl+B` should toggle sidebar at tablet (640-1024px). At desktop it may remain as-is (sidebar always visible). Verify behavior matches spec.
