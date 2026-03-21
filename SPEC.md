@@ -1,15 +1,12 @@
-# SPEC: Aloop — Autonomous Multi-Provider Coding Agent
+# Sub-Spec: Issue #112 — Responsive layout: breakpoint hooks & mobile sidebar collapse
 
-## Desired Outcome
+## Objective
 
-Aloop is an autonomous coding agent orchestrator that runs configurable agent pipelines with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops). The default pipeline is `plan → build × 5 → proof → qa → review`, but pipelines are fully configurable via agent YAML definitions (see Configurable Agent Pipeline).
+Implement the responsive layout infrastructure — breakpoint detection hooks and mobile sidebar behavior — so the dashboard renders correctly on all viewport sizes.
 
-## Constraints
-- **TypeScript / Bun** — CLI source is TypeScript, built with Bun into a bundled `dist/index.js`
-- **Config stays YAML** — shell-friendly for loop.sh/loop.ps1 parsing
-- **Runtime state stays JSON** — active.json, status.json, session state, loop-plan.json
+## Context
 
-## Architecture
+The dashboard is currently desktop-only (three-column layout). This sub-issue adds the foundational responsive infrastructure: a `useBreakpoint` hook, the `ResponsiveLayout.tsx` wrapper, and mobile sidebar collapse with hamburger menu. See SPEC-ADDENDUM.md § Dashboard Responsiveness for full breakpoint table.
 
 | Layer | Runs where | Tech | Deps |
 |-------|-----------|------|------|
@@ -1482,14 +1479,25 @@ Dependencies use **GitHub's native issue dependency tracking** (`blocked_by` / `
 **Issue body format:**
 ```markdown
 ## Scope
-Registration form with email/password, API endpoint for account creation,
-database schema for users table. Includes input validation and error handling.
+
+### New files
+- `aloop/cli/dashboard/src/hooks/useBreakpoint.ts` — React hook returning current breakpoint (`mobile | tablet | desktop`) based on Tailwind breakpoints (640px, 1024px). Uses `matchMedia` listeners.
+- `aloop/cli/dashboard/src/components/layout/ResponsiveLayout.tsx` — Wrapper that provides breakpoint context and controls layout mode. Mobile-first: base styles target mobile, enhanced at `sm:` / `md:` / `lg:`.
+
+### Modified files
+- Sidebar component (extracted or in `AppView.tsx`) — wrap with responsive behavior:
+  - Desktop (> 1024px): sidebar always visible, full three-column layout unchanged
+  - Tablet (640-1024px): sidebar collapsible, hidden by default, toggled via `Ctrl+B` or hamburger icon
+  - Mobile (< 640px): sidebar hidden behind hamburger menu (top-left), session list as vertically scrollable stack
+- Add swipe-right gesture from left edge to open sidebar on mobile (touch event handler)
+- Hamburger icon uses existing `Menu` lucide icon already imported in AppView.tsx
+
+### Constraints
+- Desktop layout MUST remain unchanged — this is additive responsive behavior only
+- Use Tailwind responsive prefixes (`sm:`, `md:`, `lg:`) — no custom media query CSS
+- `Ctrl+B` keyboard shortcut for sidebar toggle at tablet breakpoint
 
 ## Acceptance Criteria
-- [ ] User can fill out registration form and submit
-- [ ] API validates input and creates user record
-- [ ] Duplicate email returns clear error
-- [ ] Success redirects to login page
 
 ## Aloop Metadata
 - Wave: 2
@@ -4084,3 +4092,19 @@ opencode run -m openrouter/google/gemini-3.1-flash-lite-preview \
 - Runtime pipeline mutations are applied via the host-side monitor rewriting `loop-plan.json`
 - Pipeline state (`cyclePosition`, `iteration`, `version`, escalation counts, mutation history) lives in `loop-plan.json` itself
 - The parallel orchestrator creates per-slice pipelines — each child loop runs its own `loop-plan.json` independently
+- [ ] `useBreakpoint` hook returns correct breakpoint for viewport widths < 640px, 640-1024px, > 1024px
+- [ ] Sidebar collapses to hamburger menu below 640px
+- [ ] Hamburger icon visible on mobile, toggles sidebar overlay
+- [ ] Swipe right from left edge opens sidebar on mobile
+- [ ] `Ctrl+B` toggles sidebar at tablet breakpoint
+- [ ] Desktop layout (> 1024px) is unchanged from current implementation
+- [ ] Dashboard renders without horizontal scroll at 320px viewport width
+- [ ] Session list is scrollable on 375px viewport (iPhone SE)
+
+## Files
+- `aloop/cli/dashboard/src/hooks/useBreakpoint.ts` (new)
+- `aloop/cli/dashboard/src/components/layout/ResponsiveLayout.tsx` (new)
+- `aloop/cli/dashboard/src/AppView.tsx` — integrate responsive wrapper and sidebar behavior
+
+## Labels
+`aloop/sub-issue`, `aloop/needs-refine`
