@@ -294,8 +294,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Parse error: ${e}` };
           }
         }
-        const queueFile = path.join(sessionDir, 'queue', `review-${prNumber}.md`);
-        if (!existsSync(queueFile)) {
+        // Prefix with 000- so reviews sort before estimates/sub-decompose
+        const queueFile = path.join(sessionDir, 'queue', `000-review-${prNumber}.md`);
+        const legacyQueueFile = path.join(sessionDir, 'queue', `review-${prNumber}.md`);
+        if (!existsSync(queueFile) && !existsSync(legacyQueueFile)) {
           const reviewPath = path.join(promptsDir, 'PROMPT_orch_review.md');
           if (existsSync(reviewPath)) {
             const prompt = await readFile(reviewPath, 'utf8');
