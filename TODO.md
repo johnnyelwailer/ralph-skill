@@ -26,6 +26,10 @@ _(none — ready for next task)_
 
 [spec-gap] **P2: Review prompt missing conversation-aware instructions (TASK_SPEC req #3 not implemented)** — TASK_SPEC requires "if previous review said 'fix X, Y, Z' and the child pushed commits fixing X and Y, the next review should say 'X and Y are fixed, Z still needs work'." `PROMPT_orch_review.md` has no such instructions — it only has generic review guidance. Fix: add delta-review instructions to the prompt template.
 
+### QA Bugs (review agent)
+
+- [ ] [qa/P1] aloop steer accepts empty instruction: `aloop steer "" --session <id>` → "Steering instruction queued" with exit 0, writes an empty queue file. Expected: reject with error message and non-zero exit code. Tested at iter 19. (priority: high)
+
 ### Up Next
 
 - [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
