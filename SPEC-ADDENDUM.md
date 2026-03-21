@@ -1239,3 +1239,22 @@ Child loops receive their task specification as `TASK_SPEC.md` (NOT `SPEC.md`). 
 - [ ] Review prompt includes previous PR comments with "do not repeat" instruction
 - [ ] Sub-spec written to `TASK_SPEC.md`, not `SPEC.md`
 - [ ] `TASK_SPEC.md` excluded from PR diffs
+
+---
+
+## Loop Flag: `--no-task-exit`
+
+The orchestrator scan loop must never auto-complete based on TODO.md task status. The `--no-task-exit` flag on `loop.sh`/`loop.ps1` disables the `check_all_tasks_complete` check entirely.
+
+- **Child loops**: do NOT use this flag — they complete when all tasks are done (normal behavior)
+- **Orchestrator loop**: ALWAYS uses this flag — completion is managed by `process-requests` (all issues merged/failed)
+
+### Implementation
+- `loop.sh`: `NO_TASK_EXIT=false` default, `--no-task-exit` sets it to true
+- `check_all_tasks_complete()`: returns 1 immediately if `NO_TASK_EXIT=true`
+- `orchestrate.ts`: passes `--no-task-exit` in loop.sh args
+
+### Acceptance Criteria
+- [ ] `--no-task-exit` flag accepted by loop.sh and loop.ps1
+- [ ] Orchestrator loop runs indefinitely regardless of TODO.md state
+- [ ] Child loops still complete normally when all tasks are done
