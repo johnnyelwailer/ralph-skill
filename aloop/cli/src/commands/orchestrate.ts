@@ -2804,9 +2804,22 @@ export async function launchChildLoop(
     }
   }
 
-  // Seed TODO.md in worktree from issue body
+  // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
   await deps.writeFile(path.join(worktreePath, 'TODO.md'), todoContent, 'utf8');
+
+  // Ensure TODO.md and other working artifacts don't pollute PRs
+  const gitignorePath = path.join(worktreePath, '.gitignore');
+  let gitignoreContent = '';
+  if (deps.existsSync(gitignorePath)) {
+    gitignoreContent = await deps.readFile(gitignorePath, 'utf8');
+  }
+  const ignoreEntries = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'];
+  const missing = ignoreEntries.filter(e => !gitignoreContent.includes(e));
+  if (missing.length > 0) {
+    gitignoreContent += `\n# Aloop working artifacts (not for PR)\n${missing.join('\n')}\n`;
+    await deps.writeFile(gitignorePath, gitignoreContent, 'utf8');
+  }
 
   // Write child session config.json for policy enforcement
   const configJson = {
