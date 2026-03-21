@@ -27,6 +27,14 @@ The endpoint (`GET /api/qa-coverage`) and widget (`QACoverageBadge`) already exi
 
 - [ ] [qa/P1] QA badge hidden when QA_COVERAGE.md missing: Removed QA_COVERAGE.md from worktree → QA badge completely disappears from dashboard top bar → Spec says should show "0% or No QA data". Tested at iter 1. (priority: high)
 
+### Review Findings
+
+- [ ] [review] Gate 1: `AppView.tsx:972` — `if (!coverage?.available) return null` hides badge entirely when QA_COVERAGE.md missing. Spec requires showing "0%" or "No QA data". Change to render a grey/muted badge with "QA: N/A" or "QA: 0%" instead of returning null. (priority: high)
+- [ ] [review] Gate 1: `AppView.tsx:2189` — `qaCoverageRefreshKey={state?.updatedAt ?? ''}` refreshes QA badge on every state change. Spec requires refresh only on `iteration_complete` SSE events where phase is `qa`. Wire up SSE event filtering to only bump the refresh key on QA-phase iteration completions. (priority: high)
+- [ ] [review] Gate 5: `orchestrate.ts:3526` — TypeScript compilation error: `PrGateStatus` and `"api_error"` have no overlap. The `api_error` status was added (commit 2149734) but not added to the `PrGateStatus` type union. Fix the type definition. (priority: high)
+- [ ] [review] Gate 5: 23 test failures in `orchestrate.test.ts` and related suites. Verify which are regressions introduced by this branch vs pre-existing on master, and fix any regressions. (priority: medium)
+- [ ] [review] Gate 6: Proof artifacts (`iter-16/output.txt`) contain only text output, not screenshots. For a UI widget change (QACoverageBadge), proof should include a screenshot of the badge in green/yellow/red states. If screenshot capture is not feasible, proof agent should skip rather than produce text filler. (priority: medium)
+
 ### Up Next
 
 - [ ] Add graceful fallback: if `QA_COVERAGE.md` exists but has no parseable table, return `{ coverage_percent: 0, error: "parse_error", ... }` with empty features array
