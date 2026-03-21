@@ -1,66 +1,57 @@
-# Sub-Spec: Issue #139 — Failure classification, exponential backoff, and health state transitions
+# Sub-Spec: Issue #117 — Cost monitoring: data hook, summary widget & graceful degradation
 
 ## Objective
 
-Implement failure classification logic, exponential backoff calculations, and health state transition functions that update provider health files on success and failure. Both `loop.sh` and `loop.ps1`.
+Implement the cost data fetching layer and the main cost summary widget showing cumulative spend vs budget cap with a color-coded progress bar.
+
+## Context
+
+Cost data comes from two sources: (1) `iteration_complete` events in `log.jsonl` for per-session cost, and (2) `opencode db` CLI queries for aggregate cost across sessions. The `extractIterationUsage()` function already exists in AppView.tsx. See SPEC-ADDENDUM.md § OpenRouter Cost Monitoring for data source details and widget specs.
 
 ## Scope
 
-### Failure Classification
-Classify provider errors from stderr/exit output into categories:
-| Signal | Classification |
-|--------|---------------|
-| HTTP 429 / rate limit pattern | `rate_limit` |
-| Connection timeout / network error | `timeout` |
-| Auth error (expired token, invalid key) | `auth` |
-| "Cannot launch inside another session" | `concurrent_cap` |
-| Unknown non-zero exit | `unknown` |
+### useCost hook
+- `aloop/cli/dashboard/src/hooks/useCost.ts` (new)
+- Aggregates cost from `iteration_complete` SSE events (per-session, real-time)
+- On mount and every 5 minutes (`cost_poll_interval_minutes` from config): fetches aggregate cost via server API
+- Returns: `{ sessionCost, totalCost, budgetCap, budgetUsedPercent, isLoading, error }`
+- Graceful degradation: if `opencode` CLI unavailable, returns `totalCost: null` (per-session cost from log still works)
 
-### Exponential Backoff (hard-capped)
-| Consecutive failures | Cooldown |
-|---------------------|----------|
-| 1 | none (could be flaky) |
-| 2 | 2 min |
-| 3 | 5 min |
-| 4 | 15 min |
-| 5 | 30 min |
-| 6+ | 60 min (cap) |
+### Server-side cost API
+- `GET /api/cost/aggregate` — executes `opencode db` query for total spend, returns JSON `{ total_usd, by_model: [...] }`
+- `GET /api/cost/session/<sessionId>` — returns cumulative cost for a specific session from `opencode export`
+- Both endpoints return `{ error: "opencode_unavailable" }` with 200 status if CLI not found (graceful degradation)
+- Cache `opencode db` results for `cost_poll_interval_minutes` to avoid excessive CLI calls
 
-### State Transitions
-- **On success**: Reset to `healthy`, clear `consecutive_failures` to 0, update `last_success`. If previously unhealthy, log `provider_recovered` event.
-- **On failure (non-auth)**: Increment `consecutive_failures`. If ≥2, set `cooldown` with backoff-derived `cooldown_until`. Log `provider_cooldown` event.
-- **On failure (auth)**: Set `degraded` immediately (no auto-recover). Log `provider_degraded` event.
-- **Concurrent cap**: Always 2-min cooldown regardless of failure count.
-- **Cross-session reset**: Any session's successful call resets that provider to `healthy`.
+### CostDisplay widget
+- `aloop/cli/dashboard/src/components/progress/CostDisplay.tsx` (new or extend existing)
+- Displays in top bar or sidebar header:
+  - Cumulative spend: `$X.XX / $Y.YY` (current / cap)
+  - Progress bar (Radix Progress component already available)
+  - Color coding: green (< 70%), yellow (70-90%), red (> 90%)
+- Per-session cost displayed alongside iteration count and duration in session detail
+- If no budget cap configured: show spend only, no progress bar
+- If `opencode` unavailable: show "Cost data unavailable" with muted styling
 
-### Observability
-- Every health state change logged to `log.jsonl`:
-  - `provider_cooldown` — with provider, reason, consecutive_failures, cooldown_until
-  - `provider_recovered` — with provider, previous_status
-  - `provider_degraded` — with provider, reason, consecutive_failures
-
-### Functions to Implement/Verify
-- `classify_provider_failure` / `Classify-ProviderFailure`
-- `get_provider_cooldown_seconds` / `Get-ProviderCooldownSeconds`
-- `update_provider_health_on_success` / `Update-ProviderHealthOnSuccess`
-- `update_provider_health_on_failure` / `Update-ProviderHealthOnFailure`
+### Config
+- Read `budget_cap_usd`, `budget_warnings`, `budget_pause_threshold` from `meta.json`
+- Read `cost_poll_interval_minutes` from config (default: 5)
 
 ## Acceptance Criteria
 
-- [ ] Failure classifier correctly categorizes rate_limit, timeout, auth, concurrent_cap, unknown
-- [ ] 2 consecutive failures trigger cooldown with correct exponential backoff durations
-- [ ] Auth failures mark provider as `degraded` (no auto-recover)
-- [ ] Successful provider call resets health to `healthy` (cross-session)
-- [ ] Concurrent cap failures always use 2-min cooldown
-- [ ] Health state changes logged to `log.jsonl` with correct event types
-- [ ] Both `loop.sh` and `loop.ps1` implement matching logic
+- [ ] Cost summary widget displays cumulative spend vs budget cap
+- [ ] Color-coded progress bar (green/yellow/red)
+- [ ] Per-session cost aggregated from `iteration_complete` events in real-time
+- [ ] Aggregate cost fetched via `opencode db` every 5 minutes
+- [ ] All cost data via `opencode export` or `opencode db` — no internal file access
+- [ ] Missing `opencode` CLI degrades gracefully (widget shows unavailable, no errors)
+- [ ] Budget cap and thresholds read from `meta.json`
 
 ## Files
-- `aloop/bin/loop.sh` (classify/update functions)
-- `aloop/bin/loop.ps1` (classify/update functions)
+- `aloop/cli/dashboard/src/hooks/useCost.ts` (new)
+- `aloop/cli/dashboard/src/components/progress/CostDisplay.tsx` (new or extend)
+- `aloop/cli/src/commands/dashboard.ts` — add `/api/cost/` routes
+- `aloop/cli/dashboard/src/AppView.tsx` — integrate CostDisplay widget
 
 ## Labels
 `aloop/sub-issue`, `aloop/needs-refine`
-
-## Parent Epic
-#24
