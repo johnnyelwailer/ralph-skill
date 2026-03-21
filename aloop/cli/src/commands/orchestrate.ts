@@ -3577,15 +3577,27 @@ export async function processPrLifecycle(
   }
 
   if (reviewResult.verdict === 'request-changes') {
-    // Post review feedback on the PR
-    try {
-      await deps.execGh([
-        'pr', 'comment', String(prNumber), '--repo', repo,
-        '--body', `Agent review requested changes:\n\n${reviewResult.summary}`,
-      ]);
-    } catch {
-      // Best-effort
+    // Post review feedback on the PR (only if not already posted)
+    const stateIssue = state.issues.find((i) => i.number === issue.number);
+    const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
+    if (!alreadyCommented) {
+      try {
+        await deps.execGh([
+          'pr', 'comment', String(prNumber), '--repo', repo,
+          '--body', `Agent review requested changes:\n\n${reviewResult.summary}`,
+        ]);
+      } catch {
+        // Best-effort
+      }
+      if (stateIssue) (stateIssue as any).last_review_comment = reviewResult.summary;
     }
+
+    // Mark for re-dispatch by the scan pass (which has dispatchDeps)
+    if (stateIssue) {
+      (stateIssue as any).needs_redispatch = true;
+      (stateIssue as any).review_feedback = reviewResult.summary;
+    }
+
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
   }
 
@@ -5230,6 +5242,67 @@ export async function runOrchestratorScanPass(
           pr_number: issue.pr_number,
           error: msg,
         });
+      }
+    }
+  }
+
+  // 3.5. Re-dispatch children that need review fixes
+  if (deps.dispatchDeps && deps.aloopRoot) {
+    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch && i.child_session);
+    for (const issue of needsRedispatch) {
+      const childDir = path.join(deps.aloopRoot, 'sessions', issue.child_session!);
+      const childWorktree = path.join(childDir, 'worktree');
+      const childPromptsDir = path.join(childDir, 'prompts');
+      const childQueueDir = path.join(childDir, 'queue');
+      const loopScript = path.join(deps.aloopRoot, 'bin', 'loop.sh');
+
+      if (deps.existsSync(childWorktree) && deps.existsSync(loopScript)) {
+        try {
+          // Write review feedback as steering prompt
+          await deps.writeFile(
+            path.join(childQueueDir, '000-review-fixes.md'),
+            `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, or other working artifacts to the commit.\n`,
+            'utf8',
+          );
+
+          // Re-launch child loop
+          const child = deps.dispatchDeps.spawn(loopScript, [
+            '--prompts-dir', childPromptsDir,
+            '--session-dir', childDir,
+            '--work-dir', childWorktree,
+            '--mode', 'plan-build-review',
+            '--provider', 'round-robin',
+            '--max-iterations', '5',
+            '--max-stuck', '3',
+            '--launch-mode', 'resume',
+            '--dangerously-skip-container',
+          ], { cwd: childWorktree, detached: true, stdio: 'ignore', windowsHide: true });
+          child.unref();
+
+          issue.state = 'in_progress';
+          issue.status = 'In progress';
+          (issue as any).child_pid = child.pid;
+          (issue as any).needs_redispatch = false;
+          (issue as any).review_feedback = undefined;
+
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'child_redispatched_for_review',
+            iteration,
+            issue_number: issue.number,
+            pr_number: issue.pr_number,
+            child_session: issue.child_session,
+            pid: child.pid,
+          });
+        } catch (e) {
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'child_redispatch_failed',
+            iteration,
+            issue_number: issue.number,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
       }
     }
   }
