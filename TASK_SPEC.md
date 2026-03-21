@@ -1,12 +1,37 @@
-# Sub-Spec: Issue #164 — Orchestrator fills /tmp disk with V8 code cache — need NODE_COMPILE_CACHE cleanup
+# Sub-Spec: Issue #142 — OrchestratorAdapter interface & GitHubAdapter implementation
 
-## Problem
+## Objective
 
-Running the orchestrator with multiple child loops fills /tmp with V8 code cache files (.da*.so). Each Node.js process creates ~4.4MB of cache. With 7+ children + orchestrator + monitors, 2760 files accumulated = 12GB, filling the tmpfs and crashing everything.
+Define the pluggable adapter pattern for issue/PR backends and implement the GitHub adapter.
 
-## Fix
+## Scope
 
-1. Set NODE_COMPILE_CACHE to a bounded location or disable it for child processes
-2. Clean V8 cache files periodically (process-requests could do this)
-3. Or set ulimits / tmpfs quotas for child processes
-4. The orchestrator should monitor disk space and pause dispatch when low
+- Create `aloop/cli/src/lib/adapter.ts` with the `OrchestratorAdapter` interface
+- Interface methods must cover all orchestrator-needed operations:
+  - Issue CRUD: `createIssue`, `updateIssue`, `closeIssue`, `queryIssues`, `getIssue`
+  - PR operations: `createPr`, `mergePr`, `getPrStatus`, `getPrChecks`
+  - Comments: `postComment`, `listComments`
+  - Labels: `addLabels`, `removeLabels`, `ensureLabelExists`
+  - Bulk fetch: `fetchBulkIssueState` (with ETag support)
+- Implement `GitHubAdapter` class wrapping all existing `gh` CLI calls
+- GitHub Enterprise URL support: derive all URLs from adapter config (repo owner/name), never hardcode `github.com`
+- Adapter selection driven by `meta.json` config field (default: `github`)
+- Export a factory function `createAdapter(config): OrchestratorAdapter`
+
+## Inputs
+- Existing `gh` CLI call patterns in `orchestrate.ts`, `process-requests.ts`, `gh.ts`
+- SPEC-ADDENDUM §Orchestrator Adapter Pattern
+
+## Outputs
+- `aloop/cli/src/lib/adapter.ts` with interface + GitHubAdapter + factory
+- Unit tests for GitHubAdapter (mock `gh` CLI calls)
+
+## Acceptance Criteria
+- [ ] `OrchestratorAdapter` interface defined with all required methods
+- [ ] `GitHubAdapter` wraps existing `gh` CLI calls
+- [ ] No hardcoded `github.com` URLs in adapter
+- [ ] Factory function selects adapter from config
+- [ ] Unit tests pass
+
+## Labels
+`aloop/sub-issue`, `aloop/needs-refine`
