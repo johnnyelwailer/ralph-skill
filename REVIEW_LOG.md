@@ -1,48 +1,37 @@
 # Review Log
 
-## Review — 2026-03-22 10:00 — commit 1d76633..6c3ca5d
+## Review — 2026-03-21 — commit bfcd883..12ddb5e
 
-**Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
-**Scope:** tooltip.tsx, tooltip.test.tsx, hover-card.tsx, hover-card.test.tsx, button.tsx, dropdown-menu.tsx, tabs.tsx, AppView.tsx
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** aloop/cli/dashboard/src/components/session/SessionCard.tsx, SessionList.tsx, helpers.tsx, hooks/useIsTouchLikePointer.ts, AppView.tsx, aloop/bin/loop_provider_health_integration.tests.sh
 
-- Gate 2/3: Both new test files (tooltip.test.tsx, hover-card.test.tsx) fail to execute — vitest cannot resolve `@/lib/utils` from the source modules. 0% verified coverage on ~200 lines of new logic. Each test has only 1 scenario with no edge cases (no close-on-second-tap, no desktop-mode passthrough, no controlled/uncontrolled variants).
-- Gate 4: `useIsTouchDevice()` hook and `TOUCH_MEDIA_QUERY` constant duplicated verbatim across tooltip.tsx:5-40 and hover-card.tsx:5-37. Should be a shared hook.
-- Gate 6: No proof artifacts directory or manifest exists. UI changes (tap target sizing, touch-tap behavior) require visual proof — screenshots or Playwright recordings at mobile viewport.
-- Gate 7: No runtime layout verification. CSS changes to `min-h-[44px]` alter bounding boxes. QA already found hamburger button at 0x0px and SPEC tab at 42px — these should have been caught by Gate 7 runtime checks before QA.
+### Gate Results
 
-Gates passed: 1 (spec compliance for completed work), 5 (type-check + build pass, no regressions), 8 (no dep changes), 9 (no docs changes needed).
+| Gate | Result | Notes |
+|------|--------|-------|
+| 1. Spec Compliance | FAIL | 2 of 4 spec'd component files not created (SessionDetail.tsx, layout/Sidebar.tsx). Branch data not flowing to UI. |
+| 2. Test Depth | PASS | useIsTouchLikePointer tests assert exact booleans, test change events and cleanup. Bash integration tests assert specific field values. No shallow fakes detected. |
+| 3. Coverage | FAIL | New modules (SessionCard, SessionList, helpers) have no dedicated test files. Only exercised indirectly via App.coverage.test.ts Sidebar test. Likely below 90% threshold for new modules. |
+| 4. Code Quality | PASS | All new files <150 LOC. No dead code, no duplication. Re-export at AppView.tsx:26 is acceptable backward compat for existing test imports. |
+| 5. Integration Sanity | PASS | type-check passes. 12 test failures are all pre-existing on master (none in files touched by this branch). No regressions introduced. |
+| 6. Proof Verification | PASS (skip) | Component extraction is internal refactoring — no observable output requiring proof. Empty artifacts is expected correct outcome. |
+| 7. Runtime Layout | SKIP | No CSS/layout changes — components extracted without layout modification. QA_LOG confirms layout correct at 1920x1080. |
+| 8. Version Compliance | PASS | package.json versions match VERSIONS.md. Storybook 8.x devDeps added, aligns with `@storybook/* | 8.x`. |
+| 9. Documentation Freshness | PASS | Internal refactoring, no doc changes needed. |
 
----
+### Findings
 
-## Review — 2026-03-22 12:30 — commit 6c3ca5d..fb3696a
+1. **Gate 1 — Missing components:** TASK_SPEC.md specifies creating `SessionDetail.tsx` and `layout/Sidebar.tsx`. Neither exists. The Sidebar function (AppView.tsx:579-633) was not extracted — it still uses the new SessionList component internally but remains inline. SessionDetail was never created.
 
-**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
-**Scope:** AppView.tsx, tooltip.tsx, tooltip.test.tsx, hover-card.tsx, hover-card.test.tsx, tabs.tsx, hooks/useIsTouchDevice.ts
+2. **Gate 3 — No unit tests for new modules:** SessionCard.tsx, SessionList.tsx, and helpers.tsx are new files that should have >=90% branch coverage. The only test coverage comes from `App.coverage.test.ts:629-651` which renders Sidebar and clicks through it. Untested branches include: empty branch in SessionCard, missing phase, iterations of '--', all 7 StatusDot status variants, PhaseBadge with unknown phase, relativeTime with invalid date, empty sessions array in SessionList, isSelected logic when selectedSessionId is null.
 
-**Prior findings resolution:**
-- Gate 2/3 (tests 1-scenario-only, vitest alias broken): RESOLVED — tooltip now has 5 tests, hover-card has 4, all with specific value assertions (exact true/false on `onOpenChange`, nth-call checks, controlled passthrough verifying content text, defaultOpen). Tests cover: open-on-tap, close-on-second-tap, desktop-no-toggle, controlled prop, defaultOpen.
-- Gate 4 (useIsTouchDevice duplication): RESOLVED — extracted to `hooks/useIsTouchDevice.ts`, both components import the shared hook.
-- Gate 7 (no runtime layout verification): RESOLVED — QA session 2 performed Playwright layout measurement at 390x844: hamburger 44x44, GitHub link 44x44, QA badge 86x44, SPEC tab 44x44, 13/14 elements pass.
+3. **Gate 1 — Branch data pipeline:** SessionCard.tsx correctly renders `session.branch` (lines 44-45), but QA confirms the branch field is empty at runtime. The server-side data mapper populating SessionSummary does not include branch data from meta.json.
 
-**New findings:**
-- Gate 3: `hooks/useIsTouchDevice.ts` is a new 27-line module with no direct test file. SSR branches (lines 7-8, 14-15: `typeof window === 'undefined'`), `matchMedia` undefined guard, and effect cleanup (removeEventListener) are untested. Also, `vitest.config.ts` coverage `include` only lists `App.tsx` and `AppView.tsx` — tooltip.tsx, hover-card.tsx, and useIsTouchDevice.ts are excluded from coverage measurement.
-- Gate 6 (repeat, softened): No proof-manifest.json. QA session 2 provides equivalent Playwright evidence, but proof agent should either produce artifacts or explicitly skip. Downgraded to medium priority.
+### Positive Observations
 
-Gates passed: 1 (spec compliance), 2 (test depth substantially improved), 4 (duplication resolved), 5 (unable to verify due to env SIGABRT — not a code issue), 7 (via QA Playwright evidence), 8 (no dep changes), 9 (no docs changes needed).
-
----
-
-## Review — 2026-03-22 14:10 — commit fb3696a..0341dbc
-
-**Verdict: PASS** (1 observation)
-**Scope:** useIsTouchDevice.test.ts (new), vitest.config.ts, proof-manifest.json (new)
-
-**Prior findings resolution:**
-- Gate 3 (useIsTouchDevice untested, coverage config incomplete): RESOLVED — `useIsTouchDevice.test.ts` (109 lines, 5 tests) covers matchMedia-undefined guard, initial true/false states, dynamic change event, and cleanup listener identity. All assertions use exact `toBe(false)`/`toBe(true)`. Coverage config updated to include `useIsTouchDevice.ts`, `tooltip.tsx`, `hover-card.tsx`. All three files at 100% branch coverage.
-- Gate 6 (no proof manifest): RESOLVED — `proof-manifest.json` created with `{"artifacts": []}`, correct for internal-only changes per gate rules.
-
-**Observation:** Gate 2: `useIsTouchDevice.test.ts:93-107` verifies add/remove listener callback identity — ensures no leaked listeners on unmount. Thorough.
-
-All gates pass. Integration suite: 125 dashboard tests + 8 CLI tests pass, type-check clean, build ok.
+- helpers.tsx cleanly extracts StatusDot, PhaseBadge, relativeTime with proper TypeScript typing and comprehensive status/phase color maps
+- SessionList.tsx implements the Active/Older split correctly using 24h cutoff with project-based grouping
+- useIsTouchLikePointer hook is well-implemented with SSR safety and runtime change detection; tests are thorough (5 tests, all asserting specific values)
+- Bash integration tests (loop_provider_health_integration.tests.sh) are solid — 4 tests covering state transitions, JSON validity, and data preservation with exact field assertions
 
 ---

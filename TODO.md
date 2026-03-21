@@ -22,6 +22,12 @@
 
 - [x] Status formatting tests verify correct output for all 3 states — already covered in `aloop/cli/src/commands/status.test.ts` with tests for cooldown (failure count + resume time), degraded (auth hint), and healthy (last success) (AC6)
 
+### Review Findings (2026-03-21, review of bfcd883..12ddb5e)
+
+- [ ] [review] Gate 1: TASK_SPEC requires `SessionDetail.tsx` and `layout/Sidebar.tsx` — neither was created. The `Sidebar` function remains inline in `AppView.tsx:579-633`. Extract it to `src/components/layout/Sidebar.tsx` and create `SessionDetail.tsx` per spec. (priority: high)
+- [ ] [review] Gate 3: New modules `SessionCard.tsx`, `SessionList.tsx`, `helpers.tsx` have no dedicated unit tests — they are only exercised indirectly through `App.coverage.test.ts:629` Sidebar test. New modules require >=90% branch coverage. Add tests for: empty branch/phase/iterations in SessionCard, empty sessions list in SessionList, all StatusDot status variants, PhaseBadge with unknown phase, relativeTime with invalid date string. (priority: high)
+- [ ] [review] Gate 1: SessionCard component correctly renders branch name (`SessionCard.tsx:44-45`) but QA confirms branch is empty at runtime — the data pipeline populating `SessionSummary.branch` (via `/api/state` endpoint) is not including `meta.json` branch data. Fix the server-side session data mapper to include the branch field. (priority: high)
+
 ### QA Bugs (from dashboard component extraction testing, 2026-03-21)
 
 - [ ] [qa/P1] Session card missing branch name: Session cards in sidebar show session name, status dot, elapsed time, iteration count, and phase — but NOT the branch name. Spec (SPEC.md:1092) requires "branch name" as a session card field. Tested at iter 16. (priority: high)
