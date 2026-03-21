@@ -699,6 +699,80 @@ test('setupCommandWithDeps - rejects non-interactive mode when required flags ar
   );
 });
 
+test('setupCommandWithDeps - rejects non-interactive mode when only provider is given (missing --mode)', async () => {
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: [] },
+        spec_candidates: [],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+    } as unknown as DiscoveryResult;
+  };
+
+  const deps = {
+    discover: mockDiscover,
+    scaffold: async (): Promise<ScaffoldResult> => ({ config_path: '', prompts_dir: '', project_dir: '', project_hash: '' }),
+    prompt: async () => '',
+  };
+
+  await assert.rejects(
+    setupCommandWithDeps({ nonInteractive: true, provider: 'claude' }, deps),
+    (error) => {
+      const msg = (error as Error).message;
+      assert.match(msg, /Missing required flags for --non-interactive mode: --mode/);
+      assert.doesNotMatch(msg, /--provider/);
+      return true;
+    },
+  );
+});
+
+test('setupCommandWithDeps - rejects non-interactive mode when only mode is given (missing --provider)', async () => {
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: [] },
+        spec_candidates: [],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+    } as unknown as DiscoveryResult;
+  };
+
+  const deps = {
+    discover: mockDiscover,
+    scaffold: async (): Promise<ScaffoldResult> => ({ config_path: '', prompts_dir: '', project_dir: '', project_hash: '' }),
+    prompt: async () => '',
+  };
+
+  await assert.rejects(
+    setupCommandWithDeps({ nonInteractive: true, mode: 'loop' }, deps),
+    (error) => {
+      const msg = (error as Error).message;
+      assert.match(msg, /Missing required flags for --non-interactive mode: --provider \(or --providers\)/);
+      assert.doesNotMatch(msg, /--mode/);
+      return true;
+    },
+  );
+});
+
 test('setupCommandWithDeps - non-interactive orchestrate mode is preserved', async () => {
   let scaffoldCalledOpts = null as unknown as ScaffoldOptions;
 

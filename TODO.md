@@ -3,12 +3,10 @@
 ## Current Phase: Implementation
 
 ### Up Next
-- [x] Print settings table in non-interactive mode before scaffolding (setup.ts:127-141). Spec: "In non-interactive mode, print the table to stdout for verification." Currently non-interactive skips the display entirely.
-- [x] Add required-value validation in non-interactive mode. Spec: "Validates all required values are provided, errors if missing." Currently no validation — missing `--provider` or `--mode` silently uses undefined defaults. Should error with a clear message listing missing flags.
-- [ ] Generate `opencode.json` with `provider.zdr: true` when provider includes opencode/openrouter AND `data_privacy: private`. Spec: "Generate `opencode.json` with `provider.zdr: true` when OpenCode + OpenRouter + ZDR." No OpenRouter-specific ZDR logic exists in setup.ts or scaffold.ts today.
-- [ ] Add ZDR and devcontainer auth-strategy schema documentation to `aloop/config.yml`. Spec lists this file explicitly. Currently config.yml has no mention of `zdr_enabled`, `data_classification`, or `devcontainer_auth_strategy`.
-- [ ] [review] Gate 3: `getMissingNonInteractiveFlags` (setup.ts:92-107) — add tests for single-missing-flag branches: (1) provider present + mode missing, (2) mode present + provider missing. Currently only the both-missing case is tested (setup.test.ts:664-700). (priority: medium)
-- [ ] Add/update tests for new behaviors: settings table output assertion, non-interactive validation errors, opencode.json generation, config.yml schema comments.
+- [ ] Generate `opencode.json` with `provider.zdr: true` when provider includes opencode AND `data_privacy: private`. In `scaffoldWorkspace()` (project.mjs), after copying opencode agent files (~line 988), write an `opencode.json` at project root with `{ "provider": { "zdr": true } }` when ZDR conditions are met. Spec: "Generate `opencode.json` with `provider.zdr: true` when OpenCode + OpenRouter + ZDR."
+- [ ] Add ZDR and devcontainer auth-strategy schema documentation to `aloop/config.yml`. Add commented-out example sections showing `privacy_policy` (with `data_classification`, `zdr_enabled`, `require_data_retention_safe`) and `devcontainer_auth_strategy` fields. Spec lists this file explicitly.
+- [x] [review] Gate 3: `getMissingNonInteractiveFlags` — add tests for single-missing-flag branches: (1) `{ provider: 'claude' }` without mode, (2) `{ mode: 'loop' }` without provider. Currently only both-missing is tested (setup.test.ts:664-700). (priority: medium)
+- [ ] Add tests for opencode.json ZDR generation: verify `opencode.json` is written when opencode provider + private data, and NOT written when public data or non-opencode provider.
 
 ### Completed
 - [x] Format settings display as a proper ASCII table with Setting/Value columns (formatSettingsTable helper)
@@ -19,3 +17,5 @@
 - [x] Non-interactive mode basic path (`--non-interactive` flag, skips prompts, calls scaffold)
 - [x] Adjust/cancel confirmation flow in interactive mode
 - [x] CLI flags: `--provider`, `--mode`, `--autonomy-level`, `--data-privacy`, `--devcontainer-auth-strategy`
+- [x] Print settings table in non-interactive mode before scaffolding (setup.ts:172-183)
+- [x] Add required-value validation in non-interactive mode (setup.ts:92-107, 161-167)
