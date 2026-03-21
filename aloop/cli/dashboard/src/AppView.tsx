@@ -1363,41 +1363,72 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
                 <Image className="h-3 w-3" /> {artifacts.artifacts.length} artifact{artifacts.artifacts.length !== 1 ? 's' : ''}
               </span>
               {artifacts.summary && <p className="text-muted-foreground italic text-[10px]">{artifacts.summary}</p>}
-              {artifacts.artifacts.map((a) => (
-                <div key={a.path} className="flex items-center gap-2">
-                  {isImageArtifact(a) ? <Image className="h-3 w-3 text-muted-foreground" /> : <FileText className="h-3 w-3 text-muted-foreground" />}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      {isImageArtifact(a) ? (
-                        <button type="button" className="text-blue-600 dark:text-blue-400 hover:underline truncate" onClick={(e) => {
-                          e.stopPropagation();
-                          if (a.metadata?.baseline || findBaselineIterations(a.path, artifacts.iteration, allManifests).length > 0) {
-                            setComparisonArtifact({ artifact: a, iteration: artifacts.iteration });
-                          } else {
-                            setLightboxSrc(artifactUrl(artifacts.iteration, a.path));
-                          }
-                        }}>
-                          {a.path}
-                        </button>
-                      ) : <span className="text-foreground/80 truncate">{a.path}</span>}
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-lg"><p className="break-all">{a.path}</p></TooltipContent>
-                  </Tooltip>
-                  {a.description && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="text-muted-foreground/60 truncate">{a.description}</span>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-lg"><p className="break-words">{a.description}</p></TooltipContent>
-                    </Tooltip>
+              {artifacts.artifacts.map((a) => {
+                const isImg = isImageArtifact(a);
+                const openArtifact = (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  if (a.metadata?.baseline || findBaselineIterations(a.path, artifacts.iteration, allManifests).length > 0) {
+                    setComparisonArtifact({ artifact: a, iteration: artifacts.iteration });
+                  } else {
+                    setLightboxSrc(artifactUrl(artifacts.iteration, a.path));
+                  }
+                };
+                return (
+                <div key={a.path} className={isImg ? 'space-y-1' : 'flex items-center gap-2'}>
+                  {isImg ? (
+                    <button type="button" className="block rounded border border-border/50 hover:border-blue-400 transition-colors overflow-hidden" onClick={openArtifact}>
+                      <img
+                        src={artifactUrl(artifacts.iteration, a.path)}
+                        alt={a.description || a.path}
+                        loading="lazy"
+                        className="max-w-[150px] max-h-[150px] object-contain"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          target.style.display = 'none';
+                          const fallback = document.createElement('span');
+                          fallback.className = 'text-muted-foreground text-[10px] px-2 py-1 block';
+                          fallback.textContent = `Failed to load: ${a.path}`;
+                          target.parentElement?.appendChild(fallback);
+                        }}
+                      />
+                    </button>
+                  ) : (
+                    <>
+                      <FileText className="h-3 w-3 text-muted-foreground" />
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-foreground/80 truncate">{a.path}</span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-lg"><p className="break-all">{a.path}</p></TooltipContent>
+                      </Tooltip>
+                    </>
                   )}
-                  {a.metadata?.diff_percentage !== undefined && (
-                    <span className={`shrink-0 text-[9px] px-1 rounded ${a.metadata.diff_percentage < 5 ? 'bg-green-500/20 text-green-500' : a.metadata.diff_percentage < 20 ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'}`}>
-                      diff: {a.metadata.diff_percentage.toFixed(1)}%
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {isImg && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-muted-foreground/60 text-[10px] truncate">{a.path}</span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-lg"><p className="break-all">{a.path}</p></TooltipContent>
+                      </Tooltip>
+                    )}
+                    {a.description && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-muted-foreground/60 truncate">{a.description}</span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-lg"><p className="break-words">{a.description}</p></TooltipContent>
+                      </Tooltip>
+                    )}
+                    {a.metadata?.diff_percentage !== undefined && (
+                      <span className={`shrink-0 text-[9px] px-1 rounded ${a.metadata.diff_percentage < 5 ? 'bg-green-500/20 text-green-500' : a.metadata.diff_percentage < 20 ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'}`}>
+                        diff: {a.metadata.diff_percentage.toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
