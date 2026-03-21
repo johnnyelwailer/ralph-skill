@@ -1,14 +1,23 @@
-# Issue #183: Configure Storybook 8 with react-vite and Tailwind decorators
+# Issue #174: Add provider health integration tests for concurrent access and state transitions
 
-## Current Phase: Verification
+## Current Phase: Implementation
 
 ### In Progress
 
+- [x] Add state transition integration tests to `loop_provider_health_integration.tests.sh` — test healthy→cooldown→healthy (success after cooldown) and healthy→degraded (auth failure) paths using `update_provider_health_on_success` and `update_provider_health_on_failure` against real health JSON files in a temp dir (AC1)
+
 ### Up Next
-- [ ] Create `.storybook/main.ts` in `aloop/cli/dashboard/` — configure `@storybook/react-vite` framework, set stories glob to `../src/**/*.stories.@(ts|tsx)`, add `@storybook/addon-essentials` and `@storybook/addon-themes` addons
-- [ ] Create `.storybook/preview.ts` in `aloop/cli/dashboard/` — import `../src/index.css` for Tailwind styles, add dark mode decorator toggling `.dark` class on `document.documentElement` (using `@storybook/addon-themes` `withThemeByClassName`), wrap stories in Radix `TooltipProvider`
-- [ ] Create `aloop/cli/dashboard/src/components/ui/button.stories.tsx` — verification story for the Button component. Include stories for each variant (default, ghost, outline, destructive) and both sizes (default, sm). Stories should render correctly in both light and dark mode via the global decorator.
-- [ ] Verify `storybook build` produces static output without errors — confirms full pipeline works. Run `npx storybook build` from dashboard directory.
+
+- [ ] Add backoff escalation test — call `update_provider_health_on_failure` repeatedly (non-auth errors) and verify cooldown_until escalates through all 5 tiers: 0s → 2m → 5m → 15m → 30m → 60m cap. Verify `get_provider_cooldown_seconds` returns correct values for failures 1–7+ (AC2)
+
+- [ ] Add concurrent write safety test — spawn 2+ background subshells that simultaneously call `set_provider_health_state` on the same provider health file, then verify the resulting JSON is valid (not corrupted/truncated). Run multiple rounds to increase confidence (AC3)
+
+- [ ] Add lock failure graceful degradation test — simulate lock contention by pre-creating the lock dir, then call `get_provider_health_state`; verify it returns exit code 1 (not crash), and that the caller can continue operating. Verify warning is logged via `write_log_entry` (AC4)
+
+- [ ] Add TypeScript `readProviderHealth()` tests in `aloop/cli/src/__tests__/provider-health.test.ts` — create temp `~/.aloop/health/` dir with sample health JSON files, call `readProviderHealth(tempHome)`, verify correct parsing. Test edge cases: missing health dir, empty dir, malformed JSON files, mixed valid/invalid files (AC5)
+
+- [ ] Add cross-session health reset test — session A calls `update_provider_health_on_failure` to put a provider in cooldown, then session B (separate process or separate function call with different context) calls `update_provider_health_on_success` on the same provider and verify status resets to healthy with consecutive_failures=0 (AC7)
 
 ### Completed
-- [x] Install Storybook 8 devDependencies and add `storybook`/`build-storybook` scripts to `aloop/cli/dashboard/package.json` — foundation for all other tasks. Required deps: `storybook`, `@storybook/react-vite`, `@storybook/react`, `@storybook/addon-essentials`, `@storybook/addon-themes`. Scripts: `"storybook": "storybook dev -p 6006"`, `"build-storybook": "storybook build"`. Run `npm install` to generate lock file changes.
+
+- [x] Status formatting tests verify correct output for all 3 states — already covered in `aloop/cli/src/commands/status.test.ts` with tests for cooldown (failure count + resume time), degraded (auth hint), and healthy (last success) (AC6)
