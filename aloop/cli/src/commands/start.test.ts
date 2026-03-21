@@ -1886,7 +1886,7 @@ test('startCommandWithDeps parses cost_routing and openrouter_models for opencod
   assert.match(reviewPrompt, /model:\s+openrouter\/anthropic\/claude-opus-4\.6/);
 });
 
-test('Branch Coverage: orchestrate mode throws', async () => {
+test('Branch Coverage: orchestrate mode resolves but dispatch is not yet wired', async () => {
   const fixture = await setupWorkspace('aloop-branch-orchestrate-');
   await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\nmode: 'plan'\n", 'utf8');
   await assert.rejects(
@@ -1909,7 +1909,7 @@ test('Branch Coverage: orchestrate mode throws', async () => {
           now: () => new Date(),
         }
       ),
-    /Invalid mode: orchestrate/
+    /Orchestrate mode accepted but dispatch is not yet wired/
   );
 });
 

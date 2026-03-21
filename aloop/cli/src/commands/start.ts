@@ -11,6 +11,7 @@ import { compileLoopPlan } from './compile-loop-plan.js';
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode';
 type LoopProvider = ProviderName | 'round-robin';
 type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review' | 'single';
+type StartMode = LoopMode | 'orchestrate';
 type LaunchMode = 'start' | 'restart' | 'resume';
 type StartMonitorMode = 'dashboard' | 'terminal' | 'none';
 
@@ -64,7 +65,7 @@ export interface StartCommandResult {
   worktree_path: string | null;
   branch: string | null;
   provider: LoopProvider;
-  mode: LoopMode;
+  mode: StartMode;
   launch_mode: LaunchMode;
   max_iterations: number;
   max_stuck: number;
@@ -379,7 +380,7 @@ function assertLoopMode(value: string): LoopMode {
   return normalized;
 }
 
-function resolveConfiguredStartMode(value: string): LoopMode {
+function resolveConfiguredStartMode(value: string): StartMode {
   const normalized = value.trim().toLowerCase();
   if (normalized === 'loop') {
     return 'plan-build-review';
@@ -388,7 +389,7 @@ function resolveConfiguredStartMode(value: string): LoopMode {
     return 'single';
   }
   if (normalized === 'orchestrate') {
-    throw new Error('Invalid mode: orchestrate (use `aloop orchestrate` for orchestrator sessions).');
+    return 'orchestrate';
   }
   return assertLoopMode(value);
 }
@@ -713,9 +714,14 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   }
 
   const forcedMode = resolveModeFromFlags(options);
-  const resolvedMode = forcedMode
+  const resolvedMode: StartMode = forcedMode
     ?? (options.mode ? resolveConfiguredStartMode(options.mode) : null)
     ?? resolveConfiguredStartMode(String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, 'plan-build-review')));
+
+  if (resolvedMode === 'orchestrate') {
+    // TODO(#105): dispatch to orchestrator launch function once extracted
+    throw new Error('Orchestrate mode accepted but dispatch is not yet wired. Use `aloop orchestrate` for now.');
+  }
 
   const launchMode: LaunchMode = options.launch ? assertLaunchMode(options.launch) : 'start';
 
