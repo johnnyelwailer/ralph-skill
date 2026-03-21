@@ -103,6 +103,7 @@ test('setupCommandWithDeps - non-interactive mode accepts provider alias', async
   await setupCommandWithDeps({
     nonInteractive: true,
     provider: 'claude',
+    mode: 'loop',
   }, deps);
 
   assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['claude']);
@@ -193,6 +194,7 @@ test('setupCommandWithDeps - non-interactive mode with single mode', async () =>
 
   await setupCommandWithDeps({
     nonInteractive: true,
+    provider: 'claude',
     mode: 'single',
   }, deps);
 
@@ -533,7 +535,12 @@ test('setupCommandWithDeps - rejects invalid data privacy value', async () => {
   };
 
   await assert.rejects(
-    setupCommandWithDeps({ nonInteractive: true, dataPrivacy: 'invalid' }, deps),
+    setupCommandWithDeps({
+      nonInteractive: true,
+      provider: 'claude',
+      mode: 'loop',
+      dataPrivacy: 'invalid',
+    }, deps),
     (error) => {
       assert.match((error as Error).message, /Invalid data privacy/);
       return true;
@@ -570,6 +577,8 @@ test('setupCommandWithDeps - non-interactive mode with dataPrivacy=public', asyn
 
   await setupCommandWithDeps({
     nonInteractive: true,
+    provider: 'claude',
+    mode: 'loop',
     dataPrivacy: 'public',
   }, { discover: mockDiscover, scaffold: mockScaffold, prompt: async () => '' });
 
@@ -606,6 +615,8 @@ test('setupCommandWithDeps - dataPrivacy defaults to private in non-interactive 
 
   await setupCommandWithDeps({
     nonInteractive: true,
+    provider: 'claude',
+    mode: 'loop',
   }, { discover: mockDiscover, scaffold: mockScaffold, prompt: async () => '' });
 
   assert.ok(scaffoldCalledOpts);
@@ -636,6 +647,7 @@ test('setupCommandWithDeps - rejects invalid setup mode in non-interactive mode'
   await assert.rejects(
     setupCommandWithDeps({
       nonInteractive: true,
+      provider: 'claude',
       mode: 'invalid-mode',
     }, {
       discover: mockDiscover,
@@ -644,6 +656,44 @@ test('setupCommandWithDeps - rejects invalid setup mode in non-interactive mode'
     }),
     (error) => {
       assert.match((error as Error).message, /Invalid setup mode/);
+      return true;
+    },
+  );
+});
+
+test('setupCommandWithDeps - rejects non-interactive mode when required flags are missing', async () => {
+  const mockDiscover = async (): Promise<DiscoveryResult> => {
+    return {
+      project: { root: '/mock/root', name: 'mock', hash: '123', is_git_repo: true, git_branch: 'main' },
+      setup: { project_dir: '/mock/dir', config_path: '/mock/config', config_exists: false, templates_dir: '/mock/templates' },
+      context: {
+        detected_language: 'node-typescript',
+        language_confidence: 'high',
+        language_signals: [],
+        validation_presets: { tests_only: [], tests_and_types: [], full: [] },
+        spec_candidates: [],
+        reference_candidates: [],
+        context_files: {},
+      },
+      providers: { installed: ['claude'], missing: [], default_provider: 'claude', default_models: {}, round_robin_default: [] },
+      devcontainer: { enabled: false, config_path: null },
+      discovered_at: '2023-01-01T00:00:00.000Z',
+    } as unknown as DiscoveryResult;
+  };
+
+  const deps = {
+    discover: mockDiscover,
+    scaffold: async (): Promise<ScaffoldResult> => ({ config_path: '', prompts_dir: '', project_dir: '', project_hash: '' }),
+    prompt: async () => '',
+  };
+
+  await assert.rejects(
+    setupCommandWithDeps({ nonInteractive: true }, deps),
+    (error) => {
+      assert.match(
+        (error as Error).message,
+        /Missing required flags for --non-interactive mode: --provider \(or --providers\), --mode/,
+      );
       return true;
     },
   );
@@ -678,6 +728,7 @@ test('setupCommandWithDeps - non-interactive orchestrate mode is preserved', asy
 
   await setupCommandWithDeps({
     nonInteractive: true,
+    provider: 'claude',
     mode: 'orchestrate',
   }, { discover: mockDiscover, scaffold: mockScaffold, prompt: async () => '' });
 

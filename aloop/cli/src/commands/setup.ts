@@ -89,6 +89,23 @@ function parseAutonomyLevel(value: string | undefined): AutonomyLevel | undefine
 type SetupMode = 'loop' | 'orchestrate';
 type SetupConfirmation = 'confirm' | 'adjust' | 'cancel';
 
+function getMissingNonInteractiveFlags(options: SetupCommandOptions): string[] {
+  const providerListInput = options.providers ?? options.provider;
+  const hasProviders = Boolean(
+    providerListInput &&
+    providerListInput.split(',').map(p => p.trim()).filter(Boolean).length > 0,
+  );
+  const hasMode = Boolean(options.mode && options.mode.trim().length > 0);
+  const missingFlags: string[] = [];
+  if (!hasProviders) {
+    missingFlags.push('--provider (or --providers)');
+  }
+  if (!hasMode) {
+    missingFlags.push('--mode');
+  }
+  return missingFlags;
+}
+
 function parseSetupMode(value: string | undefined): SetupMode | undefined {
   if (!value) return undefined;
   const normalized = value.trim().toLowerCase();
@@ -143,6 +160,12 @@ export async function setupCommandWithDeps(
 
   if (options.nonInteractive) {
     console.log('Running setup in non-interactive mode...');
+    const missingFlags = getMissingNonInteractiveFlags(options);
+    if (missingFlags.length > 0) {
+      throw new Error(
+        `Missing required flags for --non-interactive mode: ${missingFlags.join(', ')}`,
+      );
+    }
     const setupMode = parseSetupMode(options.mode);
     const dataPrivacy = parseDataPrivacy(options.dataPrivacy);
     const devcontainerAuthStrategy = parseDevcontainerAuthStrategy(options.devcontainerAuthStrategy);
