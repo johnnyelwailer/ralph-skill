@@ -597,8 +597,14 @@ test('processAgentRequests - create_pr', async () => {
       ghPayload = JSON.parse(await fs.readFile(path, 'utf8'));
       return { exitCode: 0, output: JSON.stringify({ number: 202, url: 'http://gh/pr/202' }) };
     };
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'pr' && args[1] === 'list') {
+        return { status: 0, stdout: '[]', stderr: '' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
     
-    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: ghRunner });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
     
     assert.strictEqual(ghOp, 'pr-create');
     assert.strictEqual(spawnCalled, true);
@@ -609,46 +615,56 @@ test('processAgentRequests - create_pr', async () => {
   }
 });
 
-test('processAgentRequests - create_pr skips duplicate head/base', async () => {
+test('processAgentRequests - create_pr idempotent skip on duplicate head', async () => {
   const env = await setupTestEnv();
   try {
     await fs.writeFile(path.join(env.workdir, 'pr.md'), 'PR body');
     const req = {
-      id: 'req-pr-dup',
+      id: 'req-pr-dup-head',
       type: 'create_pr',
       payload: {
         head: 'feat/x',
         base: 'main',
-        title: 'Duplicate PR',
+        title: 'New PR',
         body_file: 'pr.md',
         issue_number: 101
       }
     };
-    await fs.writeFile(path.join(env.requestsDir, 'req-pr-dup.json'), JSON.stringify(req));
+    await fs.writeFile(path.join(env.requestsDir, 'req-pr-dup-head.json'), JSON.stringify(req));
 
-    let ghCalled = false;
+    let createCalls = 0;
     const ghRunner = async () => {
-      ghCalled = true;
-      return { exitCode: 0, output: JSON.stringify({ number: 999 }) };
+      createCalls += 1;
+      return { exitCode: 0, output: JSON.stringify({ number: 202, url: 'http://gh/pr/202' }) };
     };
-    const spawnSync = ((_cmd: string, _args: string[]) => ({
-      status: 0,
-      stdout: JSON.stringify([{ number: 777, url: 'https://github.com/o/r/pull/777' }]),
-      stderr: ''
-    })) as any;
 
-    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: ghRunner });
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'pr' && args[1] === 'list') {
+        return {
+          status: 0,
+          stdout: JSON.stringify([{
+            number: 88,
+            url: 'http://gh/pr/88',
+            title: 'Existing PR',
+            state: 'OPEN',
+            headRefName: 'feat/x',
+            baseRefName: 'main'
+          }]),
+          stderr: ''
+        };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
 
-    assert.strictEqual(ghCalled, false, 'duplicate PR should skip pr-create operation');
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+
+    assert.strictEqual(createCalls, 0);
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     assert.strictEqual(queueFiles.length, 1);
-    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('"status": "skipped"'));
-    assert.ok(queueContent.includes('"duplicate_pr_head_base"'));
-    assert.ok(queueContent.includes('"number": 777'));
-
-    const logContent = await fs.readFile(env.logPath, 'utf8');
-    assert.ok(logContent.includes('gh_request_skipped_existing_pr'));
+    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(content.includes('"skipped": true'));
+    assert.ok(content.includes('"idempotent": true'));
+    assert.ok(content.includes('"number": 88'));
   } finally {
     await env.cleanup();
   }

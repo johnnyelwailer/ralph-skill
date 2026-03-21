@@ -614,20 +614,18 @@ async function handleCloseIssue(request: CloseIssueRequest, fileName: string, op
 }
 
 async function handleCreatePr(request: CreatePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  const existingPr = findExistingPrForHeadBase(request.payload.head, request.payload.base, options);
+  const existingPr = await findExistingPrByHead(request.payload.head, options);
   if (existingPr) {
-    await writeSessionLogEntry(options.logPath, 'gh_request_skipped_existing_pr', {
-      type: request.type,
-      id: request.id,
-      head: request.payload.head,
-      base: request.payload.base,
-      existing_pr_number: existingPr.number,
-      existing_pr_url: existingPr.url,
-    });
     await writeSuccessToQueue(request, {
-      status: 'skipped',
-      reason: 'duplicate_pr_head_base',
-      existing_pr: existingPr,
+      number: existingPr.number,
+      url: existingPr.url,
+      title: existingPr.title,
+      state: existingPr.state,
+      head: existingPr.headRefName,
+      base: existingPr.baseRefName,
+      skipped: true,
+      idempotent: true,
+      reason: 'existing_pr_head_match'
     }, options, fileName);
     return;
   }
@@ -646,40 +644,59 @@ async function handleCreatePr(request: CreatePrRequest, fileName: string, option
   await writeSuccessToQueue(request, JSON.parse(result.output), options, fileName);
 }
 
-function findExistingPrForHeadBase(
+async function findExistingPrByHead(
   head: string,
-  base: string,
   options: RequestProcessorOptions
-): { number: number; url?: string } | null {
+): Promise<{ number?: number; url?: string; title?: string; state?: string; headRefName?: string; baseRefName?: string } | null> {
+  const normalizedHead = normalizeBranchName(head);
   const spawn = options.spawnSync || spawnSync;
-  const result = spawn(
-    'gh',
-    ['pr', 'list', '--head', head, '--base', base, '--state', 'all', '--json', 'number,url', '--limit', '100'],
-    { encoding: 'utf8' }
-  );
+  const args = [
+    'pr', 'list',
+    '--state', 'all',
+    '--head', normalizedHead,
+    '--json', 'number,url,title,state,headRefName,baseRefName',
+    '--limit', '100'
+  ];
+  const result = spawn('gh', args, { encoding: 'utf8' });
   if (result.status !== 0) {
-    return null;
+    throw new Error(`pr-list failed while checking idempotency for head "${head}": ${result.stderr || result.stdout}`);
   }
 
-  let parsed: unknown;
+  let prs: unknown[] = [];
   try {
-    parsed = JSON.parse(result.stdout);
-  } catch {
-    return null;
+    prs = JSON.parse(result.stdout || '[]');
+  } catch (error) {
+    throw new Error(`pr-list returned invalid JSON while checking idempotency for head "${head}": ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (!Array.isArray(parsed) || parsed.length === 0) {
+  if (!Array.isArray(prs)) return null;
+
+  const existing = prs.find((pr) => {
+    if (pr === null || typeof pr !== 'object') return false;
+    const prHead = (pr as Record<string, unknown>).headRefName;
+    return typeof prHead === 'string' && normalizeBranchName(prHead) === normalizedHead;
+  });
+  if (!existing || existing === null || typeof existing !== 'object') {
     return null;
   }
 
-  const [first] = parsed as Array<{ number?: unknown; url?: unknown }>;
-  if (typeof first.number !== 'number' || !Number.isInteger(first.number) || first.number <= 0) {
-    return null;
-  }
+  const record = existing as Record<string, unknown>;
   return {
-    number: first.number,
-    url: typeof first.url === 'string' ? first.url : undefined,
+    number: typeof record.number === 'number' ? record.number : undefined,
+    url: typeof record.url === 'string' ? record.url : undefined,
+    title: typeof record.title === 'string' ? record.title : undefined,
+    state: typeof record.state === 'string' ? record.state : undefined,
+    headRefName: typeof record.headRefName === 'string' ? record.headRefName : undefined,
+    baseRefName: typeof record.baseRefName === 'string' ? record.baseRefName : undefined,
   };
 }
+
+function normalizeBranchName(value: string): string {
+  const trimmed = value.trim();
+  const colonIndex = trimmed.lastIndexOf(':');
+  if (colonIndex === -1) return trimmed;
+  return trimmed.slice(colonIndex + 1);
+}
+
 
 async function handleMergePr(request: MergePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
   // Check if PR is already merged before attempting merge
