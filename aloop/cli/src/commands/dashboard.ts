@@ -512,6 +512,40 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(raw);
 }
 
+interface CostAggregateCache {
+  data: { total_usd: number; by_model: { model: string; cost_usd: number }[] };
+  expiresAt: number;
+}
+
+const DEFAULT_COST_POLL_INTERVAL_MINUTES = 5;
+
+function isOpencodeCli(): boolean {
+  const result = spawnSync('opencode', ['--version'], { encoding: 'utf8', timeout: 5000 });
+  return result.status === 0;
+}
+
+function runOpencodeDb(query: string): { ok: true; output: string } | { ok: false; error: string } {
+  const result = spawnSync('opencode', ['db', '--query', query], {
+    encoding: 'utf8',
+    timeout: 15000,
+  });
+  if (result.error || result.status !== 0) {
+    return { ok: false, error: result.error?.message ?? result.stderr?.trim() ?? 'opencode db failed' };
+  }
+  return { ok: true, output: result.stdout };
+}
+
+function runOpencodeExport(sessionId: string): { ok: true; output: string } | { ok: false; error: string } {
+  const result = spawnSync('opencode', ['export', '--session', sessionId, '--format', 'json'], {
+    encoding: 'utf8',
+    timeout: 15000,
+  });
+  if (result.error || result.status !== 0) {
+    return { ok: false, error: result.error?.message ?? result.stderr?.trim() ?? 'opencode export failed' };
+  }
+  return { ok: true, output: result.stdout };
+}
+
 function buildSteeringDocument(instruction: string, affectsCompletedWork: 'yes' | 'no' | 'unknown', commit: string): string {
   const timestamp = new Date().toISOString();
   return [
@@ -561,6 +595,7 @@ export async function startDashboardServer(
   const defaultContext: SessionContext = { sessionDir, workdir };
   const clients = new Map<ServerResponse, SessionContext>();
   const watchers = new Map<string, FSWatcher>();
+  let costAggregateCache: CostAggregateCache | null = null;
 
   const loadState = async (): Promise<DashboardState> => {
     return loadStateForContext(defaultContext, runtimeDir);
@@ -1027,6 +1062,83 @@ export async function startDashboardServer(
           'Cache-Control': 'no-cache',
         });
         response.end(content);
+        return;
+      }
+
+      // ── Cost aggregate endpoint ──
+      if (requestUrl.pathname === '/api/cost/aggregate' && request.method === 'GET') {
+        if (!isOpencodeCli()) {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+          return;
+        }
+
+        // Read poll interval from meta
+        const meta = await readJsonFile(path.join(sessionDir, 'meta.json'));
+        const pollMinutes = isRecord(meta) && typeof meta.cost_poll_interval_minutes === 'number'
+          ? meta.cost_poll_interval_minutes
+          : DEFAULT_COST_POLL_INTERVAL_MINUTES;
+
+        // Return cached if still valid
+        if (costAggregateCache && Date.now() < costAggregateCache.expiresAt) {
+          writeJson(response, 200, costAggregateCache.data);
+          return;
+        }
+
+        const result = runOpencodeDb('SELECT model, SUM(cost_usd) as cost_usd FROM usage GROUP BY model');
+        if (!result.ok) {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+          return;
+        }
+
+        try {
+          const rows: { model: string; cost_usd: number }[] = JSON.parse(result.output);
+          const totalUsd = rows.reduce((sum, row) => sum + (row.cost_usd ?? 0), 0);
+          const data = { total_usd: totalUsd, by_model: rows };
+          costAggregateCache = {
+            data,
+            expiresAt: Date.now() + pollMinutes * 60 * 1000,
+          };
+          writeJson(response, 200, data);
+        } catch {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+        }
+        return;
+      }
+
+      // ── Cost per-session endpoint ──
+      const costSessionMatch = requestUrl.pathname.match(/^\/api\/cost\/session\/(.+)$/);
+      if (costSessionMatch && request.method === 'GET') {
+        const targetSessionId = costSessionMatch[1];
+        if (!isOpencodeCli()) {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+          return;
+        }
+
+        const result = runOpencodeExport(targetSessionId);
+        if (!result.ok) {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+          return;
+        }
+
+        try {
+          const exported = JSON.parse(result.output);
+          const entries = Array.isArray(exported) ? exported : (Array.isArray(exported.entries) ? exported.entries : []);
+          let totalUsd = 0;
+          const byModel: Record<string, number> = {};
+          for (const entry of entries) {
+            if (isRecord(entry) && typeof entry.cost_usd === 'number') {
+              totalUsd += entry.cost_usd;
+              const model = typeof entry.model === 'string' ? entry.model : 'unknown';
+              byModel[model] = (byModel[model] ?? 0) + entry.cost_usd;
+            }
+          }
+          writeJson(response, 200, {
+            total_usd: totalUsd,
+            by_model: Object.entries(byModel).map(([model, cost_usd]) => ({ model, cost_usd })),
+          });
+        } catch {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+        }
         return;
       }
 
