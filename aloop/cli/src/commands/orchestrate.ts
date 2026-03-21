@@ -2967,7 +2967,7 @@ export async function launchChildLoop(
       '-WorkDir', worktreePath,
       '-Mode', 'plan-build-review',
       '-Provider', 'round-robin',
-      '-MaxIterations', '20',
+      '-MaxIterations', '100',
       '-MaxStuck', '3',
       '-LaunchMode', 'start',
     ];
@@ -2980,7 +2980,7 @@ export async function launchChildLoop(
       '--work-dir', worktreePath,
       '--mode', 'plan-build-review',
       '--provider', 'round-robin',
-      '--max-iterations', '20',
+      '--max-iterations', '100',
       '--max-stuck', '3',
       '--launch-mode', 'start',
     ];
@@ -4237,17 +4237,27 @@ export async function monitorChildSessions(
         });
       }
     } else if (childStatus.state === 'stopped') {
-      // Child stopped (limit reached, interrupted, or error) — mark failed
+      // Child stopped (limit reached, interrupted) — mark for redispatch, not permanent failure
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
-        stateIssue.state = 'failed';
-        stateIssue.status = 'Blocked';
-        await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-          execGh: deps.execGh,
-          appendLog: deps.appendLog,
-          now: deps.now,
-          sessionDir,
-        });
+        const stopCount = ((stateIssue as any).stop_count ?? 0) + 1;
+        (stateIssue as any).stop_count = stopCount;
+        if (stopCount >= 3) {
+          // Stopped 3+ times — permanent failure, escalate
+          stateIssue.state = 'failed';
+          stateIssue.status = 'Blocked';
+          await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
+            execGh: deps.execGh,
+            appendLog: deps.appendLog,
+            now: deps.now,
+            sessionDir,
+          });
+        } else {
+          // Retry — mark as Ready so it gets re-dispatched
+          stateIssue.state = 'pending';
+          stateIssue.status = 'Ready';
+          stateIssue.child_session = null;
+        }
       }
       result.failed++;
       entry.action = 'failed';
