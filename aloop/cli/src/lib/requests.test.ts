@@ -687,14 +687,14 @@ test('processAgentRequests - merge_pr', async () => {
       tempFileContents = await fs.readFile(reqPath, 'utf8');
       return { exitCode: 0, output: 'merged' };
     };
-    // gh pr view returns OPEN state — should proceed to merge
-    const spawnSync = ((_cmd: string, _args: string[]) => ({
-      status: 0,
-      stdout: JSON.stringify({ state: 'OPEN' }),
-      stderr: ''
-    })) as any;
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'pr' && args[1] === 'view') {
+        return { status: 0, stdout: JSON.stringify({ number: 202, state: 'OPEN', mergedAt: null }), stderr: '' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
 
-    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: ghRunner });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
     assert.strictEqual(ghOp, 'pr-merge');
     const parsed = JSON.parse(tempFileContents);
     assert.strictEqual(parsed.strategy, 'squash', 'strategy must be passed through to temp request file');
@@ -736,6 +736,52 @@ test('processAgentRequests - merge_pr skips already merged', async () => {
 
     const logContent = await fs.readFile(env.logPath, 'utf8');
     assert.ok(logContent.includes('gh_request_skipped_already_merged'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - merge_pr idempotent skip when already merged', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = {
+      id: 'req-merge-dup',
+      type: 'merge_pr',
+      payload: { number: 202, strategy: 'squash' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-merge-dup.json'), JSON.stringify(req));
+
+    let mergeCalls = 0;
+    const ghRunner = async () => {
+      mergeCalls += 1;
+      return { exitCode: 0, output: 'merged' };
+    };
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'pr' && args[1] === 'view') {
+        return {
+          status: 0,
+          stdout: JSON.stringify({
+            number: 202,
+            state: 'MERGED',
+            mergedAt: '2026-01-01T00:00:00Z',
+            url: 'http://gh/pr/202',
+            title: 'Already merged'
+          }),
+          stderr: ''
+        };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
+
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+
+    assert.strictEqual(mergeCalls, 0);
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    assert.strictEqual(queueFiles.length, 1);
+    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(content.includes('"skipped": true'));
+    assert.ok(content.includes('"idempotent": true'));
+    assert.ok(content.includes('"reason": "already_merged"'));
   } finally {
     await env.cleanup();
   }

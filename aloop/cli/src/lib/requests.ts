@@ -699,30 +699,18 @@ function normalizeBranchName(value: string): string {
 
 
 async function handleMergePr(request: MergePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  // Check if PR is already merged before attempting merge
-  const spawn = options.spawnSync || spawnSync;
-  const viewResult = spawn(
-    'gh',
-    ['pr', 'view', String(request.payload.number), '--json', 'state'],
-    { encoding: 'utf8' }
-  );
-  if (viewResult.status === 0) {
-    try {
-      const prData = JSON.parse(viewResult.stdout) as { state?: string };
-      if (prData.state === 'MERGED') {
-        await writeSessionLogEntry(options.logPath, 'gh_request_skipped_already_merged', {
-          type: request.type,
-          id: request.id,
-          pr_number: request.payload.number,
-        });
-        await writeSuccessToQueue(request, {
-          status: 'skipped',
-          reason: 'already_merged',
-          pr_number: request.payload.number,
-        }, options, fileName);
-        return;
-      }
-    } catch { /* parse failure — proceed with merge attempt */ }
+  const mergeState = await findPrMergeState(request.payload.number, options);
+  if (mergeState.merged) {
+    await writeSuccessToQueue(request, {
+      status: 'merged',
+      skipped: true,
+      idempotent: true,
+      reason: 'already_merged',
+      number: mergeState.number,
+      url: mergeState.url,
+      title: mergeState.title,
+    }, options, fileName);
+    return;
   }
 
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
@@ -735,6 +723,38 @@ async function handleMergePr(request: MergePrRequest, fileName: string, options:
   await fs.unlink(tempRequestPath);
   if (result.exitCode !== 0) throw new Error(result.output);
   await writeSuccessToQueue(request, { status: 'merged' }, options, fileName);
+}
+
+async function findPrMergeState(
+  number: number,
+  options: RequestProcessorOptions
+): Promise<{ merged: boolean; number?: number; url?: string; title?: string }> {
+  const spawn = options.spawnSync || spawnSync;
+  const args = ['pr', 'view', String(number), '--json', 'number,url,title,state,mergedAt'];
+  const result = spawn('gh', args, { encoding: 'utf8' });
+  if (result.status !== 0) {
+    throw new Error(`pr-view failed while checking idempotency for PR #${number}: ${result.stderr || result.stdout}`);
+  }
+
+  let record: unknown;
+  try {
+    record = JSON.parse(result.stdout || '{}');
+  } catch (error) {
+    throw new Error(`pr-view returned invalid JSON while checking idempotency for PR #${number}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (record === null || typeof record !== 'object') {
+    return { merged: false };
+  }
+
+  const pr = record as Record<string, unknown>;
+  const state = typeof pr.state === 'string' ? pr.state.toUpperCase() : '';
+  const mergedAt = typeof pr.mergedAt === 'string' ? pr.mergedAt.trim() : '';
+  return {
+    merged: state === 'MERGED' || mergedAt.length > 0,
+    number: typeof pr.number === 'number' ? pr.number : undefined,
+    url: typeof pr.url === 'string' ? pr.url : undefined,
+    title: typeof pr.title === 'string' ? pr.title : undefined,
+  };
 }
 
 async function handleDispatchChild(request: DispatchChildRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
