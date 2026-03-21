@@ -536,13 +536,24 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${prompt}\n${outputInstr}${commentHistory}\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
           }
         }
-        // Track pending cycles — escalate after too many
+        // Track pending cycles — retry → troubleshoot → escalate
         const stateIssue2 = state.issues.find((i: any) => i.pr_number === prNumber);
         if (stateIssue2) {
           const pendingCount = ((stateIssue2 as any).review_pending_count ?? 0) + 1;
           (stateIssue2 as any).review_pending_count = pendingCount;
-          if (pendingCount > 5) {
-            return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Review stuck pending after ${pendingCount} attempts — needs manual review.` };
+
+          // 1-3: retry (move to back of queue — other PRs get a chance)
+          // 4-5: troubleshoot agent investigates
+          // 6+: escalate to human
+          if (pendingCount === 4) {
+            const troubleshootFile = path.join(sessionDir, 'queue', `000-troubleshoot-review-${prNumber}.md`);
+            if (!existsSync(troubleshootFile)) {
+              await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
+              await writeFile(troubleshootFile, `---\nagent: troubleshoot\nreasoning: high\n---\n\n# Troubleshoot: PR #${prNumber} Review Stuck\n\nThe review for PR #${prNumber} has returned "pending" ${pendingCount} times. The verdict extraction is failing.\n\n## Investigate\n1. Check if review-result-${prNumber}.json exists anywhere in the session\n2. Check recent agent output for verdict text mentioning PR #${prNumber}\n3. If verdict exists but wasn't parsed, write it to the correct location\n4. If no verdict was produced, determine why the review agent didn't generate one\n`, 'utf8');
+            }
+          }
+          if (pendingCount > 6) {
+            return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Review stuck pending after ${pendingCount} attempts (troubleshoot agent also failed) — needs manual review.` };
           }
         }
         return { pr_number: prNumber, verdict: 'pending', summary: 'Review queued.' };
