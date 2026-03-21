@@ -1,3 +1,5 @@
+![CI](https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg)
+
 # Aloop — Autonomous AI Development System
 
 Aloop runs autonomous AI coding agents in two modes: a **single-session loop** for focused tasks, and a **multi-session orchestrator** that decomposes specs into GitHub issues and dispatches parallel loops. Built on Geoffrey Huntley's autonomous coding methodology with plan-build-review cycles, multi-provider round-robin, backpressure validation, and a real-time dashboard.
