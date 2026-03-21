@@ -408,15 +408,58 @@ test('processAgentRequests - merge_pr', async () => {
       payload: { number: 202, strategy: 'squash' }
     };
     await fs.writeFile(path.join(env.requestsDir, 'req-merge-1.json'), JSON.stringify(req));
-    
+
     let ghOp = '';
     const ghRunner = async (op: string) => {
       ghOp = op;
       return { exitCode: 0, output: 'merged' };
     };
-    
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+    // gh pr view returns OPEN state — should proceed to merge
+    const spawnSync = ((_cmd: string, _args: string[]) => ({
+      status: 0,
+      stdout: JSON.stringify({ state: 'OPEN' }),
+      stderr: ''
+    })) as any;
+
+    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: ghRunner });
     assert.strictEqual(ghOp, 'pr-merge');
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - merge_pr skips already merged', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = {
+      id: 'req-merge-already',
+      type: 'merge_pr',
+      payload: { number: 303, strategy: 'squash' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-merge-already.json'), JSON.stringify(req));
+
+    let ghCalled = false;
+    const ghRunner = async () => {
+      ghCalled = true;
+      return { exitCode: 0, output: 'merged' };
+    };
+    // gh pr view returns MERGED state — should skip
+    const spawnSync = ((_cmd: string, _args: string[]) => ({
+      status: 0,
+      stdout: JSON.stringify({ state: 'MERGED' }),
+      stderr: ''
+    })) as any;
+
+    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: ghRunner });
+
+    assert.strictEqual(ghCalled, false, 'already-merged PR should skip pr-merge operation');
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    assert.strictEqual(queueFiles.length, 1);
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('already_merged'));
+
+    const logContent = await fs.readFile(env.logPath, 'utf8');
+    assert.ok(logContent.includes('gh_request_skipped_already_merged'));
   } finally {
     await env.cleanup();
   }

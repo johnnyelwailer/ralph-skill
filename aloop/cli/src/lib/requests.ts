@@ -607,6 +607,32 @@ function findExistingPrForHeadBase(
 }
 
 async function handleMergePr(request: MergePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
+  // Check if PR is already merged before attempting merge
+  const spawn = options.spawnSync || spawnSync;
+  const viewResult = spawn(
+    'gh',
+    ['pr', 'view', String(request.payload.number), '--json', 'state'],
+    { encoding: 'utf8' }
+  );
+  if (viewResult.status === 0) {
+    try {
+      const prData = JSON.parse(viewResult.stdout) as { state?: string };
+      if (prData.state === 'MERGED') {
+        await writeSessionLogEntry(options.logPath, 'gh_request_skipped_already_merged', {
+          type: request.type,
+          id: request.id,
+          pr_number: request.payload.number,
+        });
+        await writeSuccessToQueue(request, {
+          status: 'skipped',
+          reason: 'already_merged',
+          pr_number: request.payload.number,
+        }, options, fileName);
+        return;
+      }
+    } catch { /* parse failure — proceed with merge attempt */ }
+  }
+
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'pr-merge',
