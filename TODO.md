@@ -4,6 +4,10 @@
 
 ### In Progress
 
+- [ ] [review] Gate 4: PR review de-duplication guard dropped during `(as any)` cleanup — `orchestrate.ts:5355` removed `&& !(i as any).needs_redispatch` filter but did not replace with `&& !i.needs_redispatch`. Without this, issues with `needs_redispatch: true` get re-reviewed AND re-dispatched in the same scan pass. Also restore `last_reviewed_sha` as a typed field on `OrchestratorIssueState` and re-add the SHA-based skip check (previously at orchestrate.ts:5358-5367 and process-requests.ts:387-396). (priority: high)
+
+- [ ] [review] Gate 3: `parseArtifactRemovalTargets` (orchestrate.ts:3213-3261) has no direct unit tests — add tests for: (a) empty/undefined feedback returns null, (b) removal intent with no known artifact files returns null, (c) generic "working artifact" without specific files returns full list, (d) mixed feedback with non-artifact content returns null, (e) exact file mentions return only those files. (priority: medium)
+
 - [x] **Unified start dispatch: accept `mode: orchestrate` in config** — Change `resolveConfiguredStartMode()` in `start.ts` (line 357) to no longer throw on `'orchestrate'`; instead, detect it and dispatch to orchestrator logic. Add a new `'orchestrate'` value to the mode resolution path so `startCommandWithDeps` can branch on it.
 
 ### Up Next
