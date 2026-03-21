@@ -241,7 +241,8 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   await etagCache.load();
 
   const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
-    const r = spawnSync(process.env.ALOOP_BIN ?? 'aloop', ['gh', ...args], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    // Call gh CLI directly (not aloop gh which is the request protocol handler)
+    const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
 
