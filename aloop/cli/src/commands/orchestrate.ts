@@ -3522,6 +3522,13 @@ export async function processPrLifecycle(
     return { pr_number: prNumber, action: 'gates_pending', detail: 'CI checks still running', gates: gatesResult };
   }
 
+  // Step 2b: Handle API errors — treat as transient, retry next pass (don't fail or rebase)
+  const apiErrorGates = gatesResult.gates.filter((g) => g.status === 'api_error');
+  if (apiErrorGates.length > 0) {
+    const errorDetail = apiErrorGates.map((g) => `${g.gate}: ${g.detail}`).join('; ');
+    return { pr_number: prNumber, action: 'gates_pending', detail: `API error on gate checks, will retry: ${errorDetail}`, gates: gatesResult };
+  }
+
   // Step 3: Handle merge conflicts (only if gate check didn't error)
   const mergeGate = gatesResult.gates.find((g) => g.gate === 'merge_conflicts');
   const mergeCheckErrored = mergeGate && mergeGate.detail?.startsWith('Failed to check');
