@@ -1,17 +1,49 @@
-# Sub-Spec: Issue #166 — Review agent must read PR comment history and only re-review on new commits
+# Sub-Spec: Issue #183 — Configure Storybook 8 with react-vite and Tailwind decorators
 
-## Problem
+Part of #29: Epic: Dashboard Core — Component Refactor & Real-Time UI
 
-The review agent re-reviews the same PR every scan pass, posting duplicate comments (11 comments on PR #149). It has no awareness of previous reviews or whether anything changed.
+Set up Storybook 8 infrastructure in the dashboard project so that subsequent component extraction sub-issues can add stories alongside components.
 
-## Required fixes
+## Deliverables
 
-1. **Track reviewed commit SHA** — store the HEAD commit SHA when a PR is reviewed. Only re-review if the head ref has new commits since last review. This is the spam prevention gate.
+### Storybook Configuration
+- Install Storybook 8 with `@storybook/react-vite` framework adapter
+- Create `.storybook/` directory in `aloop/cli/dashboard/`
+- Configure `main.ts` to find `*.stories.tsx` files colocated with components
+- Configure `preview.ts` with global decorators
 
-2. **Include PR comment history in review prompt** — when building the review queue prompt, fetch existing PR comments and include them. The agent sees:
-   - Previous review feedback (what was requested)
-   - Child loop's responses (what was fixed/explained)
-   - Avoids repeating the same feedback
-   - Can acknowledge fixed issues and focus on remaining ones
+### Global Decorators
+- Tailwind CSS context decorator (imports `index.css`)
+- Dark mode toggle decorator using `@storybook/addon-themes` or custom decorator that toggles `.dark` class on root
+- Tooltip provider wrapper (Radix UI `TooltipProvider`)
 
-3. **Conversation-aware verdict** — if previous review said "fix X, Y, Z" and the child pushed commits fixing X and Y, the next review should say "X and Y are fixed, Z still needs work" — not repeat all three.
+### Package.json Scripts
+- Add `storybook` script: `storybook dev -p 6006`
+- Add `build-storybook` script: `storybook build`
+- Install required devDependencies: `@storybook/react-vite`, `@storybook/react`, `@storybook/addon-essentials`, `@storybook/addon-themes`, `storybook`
+
+### Verification Story
+- Create a simple `Button.stories.tsx` for the existing `ui/button.tsx` component to verify the setup works
+- Story should render in both light and dark mode
+
+## Inputs
+- `aloop/cli/dashboard/package.json` (existing deps)
+- `aloop/cli/dashboard/tailwind.config.ts` (theme config)
+- `aloop/cli/dashboard/src/index.css` (CSS custom properties)
+
+## Outputs
+- `aloop/cli/dashboard/.storybook/main.ts`
+- `aloop/cli/dashboard/.storybook/preview.ts`
+- `aloop/cli/dashboard/src/components/ui/button.stories.tsx`
+- Updated `aloop/cli/dashboard/package.json` with Storybook deps and scripts
+
+## Acceptance Criteria
+- [ ] `npm run storybook` launches Storybook on port 6006
+- [ ] `npx storybook build` produces static build without errors
+- [ ] Button story renders correctly in both light and dark mode
+- [ ] Global decorator applies Tailwind styles matching dashboard appearance
+- [ ] Storybook uses same `tailwind.config.ts` as dashboard
+- [ ] No changes to existing source code or tests
+
+## Labels
+`aloop/sub-issue`, `aloop/needs-refine`
