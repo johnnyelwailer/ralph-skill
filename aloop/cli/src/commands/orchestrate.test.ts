@@ -4577,6 +4577,96 @@ describe('runOrchestratorScanPass', () => {
     );
   });
 
+  it('self-fixes artifact-only review feedback without redispatch', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 57,
+          wave: 1,
+          state: 'pr_open',
+          child_session: 'session-redisp-self-fix',
+          pr_number: 333,
+          needs_redispatch: true,
+          review_feedback: 'Please remove TODO.md and STEERING.md from this PR.',
+          redispatch_count: 1,
+        }),
+      ],
+    });
+
+    const deps = createMockScanDeps({ aloopRoot: '/home/.aloop' });
+    const gitCalls: string[][] = [];
+    const dispatchDeps = createMockDispatchDeps({
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'git') gitCalls.push(args);
+        if (command === 'git' && args.includes('diff') && args.includes('--cached') && args.includes('--name-only')) {
+          return { status: 0, stdout: 'TODO.md\nSTEERING.md\n', stderr: '' };
+        }
+        return { status: 0, stdout: '', stderr: '' };
+      },
+    });
+    deps.dispatchDeps = dispatchDeps;
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/home/.aloop/bin/loop.sh'] = '#!/usr/bin/env bash';
+    deps.files['/home/.aloop/sessions/session-redisp-self-fix/worktree'] = '';
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 2, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']) as OrchestratorState;
+    const issue = writtenState.issues[0];
+    assert.equal(issue.state, 'pr_open');
+    assert.equal(issue.needs_redispatch, false);
+    assert.equal(issue.review_feedback, undefined);
+    assert.equal(issue.redispatch_count, 1);
+
+    assert.equal(dispatchDeps._spawnCalls.length, 0);
+    assert.ok(gitCalls.some((args) => args.includes('commit')));
+    assert.ok(gitCalls.some((args) => args.includes('push')));
+    assert.ok(deps.logEntries.some((entry) => entry.event === 'child_self_fixed_artifact_cleanup'));
+  });
+
+  it('falls back to redispatch when review feedback is not artifact-only', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 58,
+          wave: 1,
+          state: 'pr_open',
+          child_session: 'session-redisp-fallback',
+          pr_number: 334,
+          needs_redispatch: true,
+          review_feedback: 'Remove TODO.md and also add missing tests.',
+          redispatch_count: 0,
+        }),
+      ],
+    });
+
+    const deps = createMockScanDeps({ aloopRoot: '/home/.aloop' });
+    const dispatchDeps = createMockDispatchDeps();
+    deps.dispatchDeps = dispatchDeps;
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/home/.aloop/bin/loop.sh'] = '#!/usr/bin/env bash';
+    deps.files['/home/.aloop/sessions/session-redisp-fallback/worktree'] = '';
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 2, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']) as OrchestratorState;
+    const issue = writtenState.issues[0];
+    assert.equal(issue.state, 'in_progress');
+    assert.equal(issue.needs_redispatch, false);
+    assert.equal(issue.redispatch_count, 1);
+
+    assert.equal(dispatchDeps._spawnCalls.length, 1);
+    assert.ok(
+      deps.files['/home/.aloop/sessions/session-redisp-fallback/queue/000-review-fixes.md'].includes('add missing tests'),
+    );
+  });
+
   it('flags issue for human when redispatch_count reaches retry limit', async () => {
     const ghCalls: string[][] = [];
     const state = makeScanState({

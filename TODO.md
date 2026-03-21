@@ -6,7 +6,7 @@
 
 ### Up Next
 - [x] Add test: duplicate review comment prevention — verify `last_review_comment` prevents posting same comment twice in `processPrLifecycle` (two tests at orchestrate.test.ts: skip when same, post when different)
-- [ ] Implement trivial self-fix for artifact removal — when review feedback is only about removing working artifacts (TODO.md, STEERING.md, etc.), the orchestrator should `git rm` + push directly instead of re-dispatching a full child loop
+- [x] Implement trivial self-fix for artifact removal — when review feedback is only about removing working artifacts (TODO.md, STEERING.md, etc.), the orchestrator should `git rm` + push directly instead of re-dispatching a full child loop
 
 ### Completed
 - [x] Add `needs_redispatch`, `review_feedback`, and `redispatch_count` to `OrchestratorIssue` interface (remove `as any` casts) — commit dfe0c07

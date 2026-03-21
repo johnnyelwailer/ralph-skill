@@ -3130,6 +3130,57 @@ export interface PrLifecycleDeps {
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 const ORCHESTRATOR_REDISPATCH_LIMIT = 3;
+const WORKING_ARTIFACT_FILES = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'] as const;
+
+function parseArtifactRemovalTargets(feedback: string | undefined): string[] | null {
+  if (!feedback) return null;
+
+  const normalized = feedback.toLowerCase();
+  const mentionsGenericArtifacts = normalized.includes('working artifact');
+  const mentionedFiles = WORKING_ARTIFACT_FILES.filter((file) => normalized.includes(file.toLowerCase()));
+  const hasRemovalIntent =
+    /\b(remove|delete|drop|exclude|clean(?:\s*up)?|rm)\b/i.test(normalized)
+    || /do\s+not\s+(add|include|commit)/i.test(normalized)
+    || /should\s+not\s+(add|include|commit)/i.test(normalized);
+
+  if (!hasRemovalIntent || (mentionedFiles.length === 0 && !mentionsGenericArtifacts)) {
+    return null;
+  }
+
+  let stripped = normalized;
+  for (const file of WORKING_ARTIFACT_FILES) {
+    stripped = stripped.replaceAll(file.toLowerCase(), ' ');
+  }
+  stripped = stripped
+    .replaceAll('working artifacts', ' ')
+    .replaceAll('working artifact', ' ')
+    .replaceAll('artifact files', ' ')
+    .replaceAll('artifact', ' ')
+    .replaceAll('pull request', ' ')
+    .replaceAll('pr', ' ')
+    .replaceAll('commit', ' ')
+    .replaceAll('branch', ' ')
+    .replaceAll('please', ' ');
+
+  const allowedTokens = new Set([
+    'remove', 'delete', 'drop', 'exclude', 'clean', 'cleanup', 'rm', 'cache', 'cached',
+    'do', 'not', 'should', 'add', 'include', 'from', 'in', 'on', 'to', 'the', 'a', 'an',
+    'and', 'or', 'these', 'this', 'files', 'file', 'only', 'just', 'all', 'any', 'no',
+  ]);
+  const residualTokens = stripped
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length > 0)
+    .filter((token) => !allowedTokens.has(token));
+  if (residualTokens.length > 0) {
+    return null;
+  }
+
+  if (mentionedFiles.length > 0) {
+    return [...mentionedFiles];
+  }
+  return [...WORKING_ARTIFACT_FILES];
+}
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
@@ -5298,6 +5349,56 @@ export async function runOrchestratorScanPass(
 
       if (deps.existsSync(childWorktree) && deps.existsSync(loopScript)) {
         try {
+          const artifactTargets = parseArtifactRemovalTargets(issue.review_feedback);
+          if (artifactTargets && deps.dispatchDeps) {
+            for (const artifact of artifactTargets) {
+              deps.dispatchDeps.spawnSync(
+                'git',
+                ['-C', childWorktree, 'rm', '--cached', '--ignore-unmatch', artifact],
+                { encoding: 'utf8' },
+              );
+            }
+
+            const stagedResult = deps.dispatchDeps.spawnSync(
+              'git',
+              ['-C', childWorktree, 'diff', '--cached', '--name-only'],
+              { encoding: 'utf8' },
+            );
+            const stagedFiles = stagedResult.stdout
+              .split('\n')
+              .map((line) => line.trim())
+              .filter(Boolean);
+            const onlyExpectedFiles = stagedFiles.length > 0 && stagedFiles.every((file) => artifactTargets.includes(file));
+
+            if (stagedResult.status === 0 && onlyExpectedFiles) {
+              const commitResult = deps.dispatchDeps.spawnSync(
+                'git',
+                ['-C', childWorktree, 'commit', '-m', 'chore: remove working artifacts from PR'],
+                { encoding: 'utf8' },
+              );
+              if (commitResult.status === 0) {
+                const pushResult = deps.dispatchDeps.spawnSync(
+                  'git',
+                  ['-C', childWorktree, 'push', 'origin', 'HEAD'],
+                  { encoding: 'utf8' },
+                );
+                if (pushResult.status === 0) {
+                  issue.needs_redispatch = false;
+                  issue.review_feedback = undefined;
+                  deps.appendLog(sessionDir, {
+                    timestamp: deps.now().toISOString(),
+                    event: 'child_self_fixed_artifact_cleanup',
+                    iteration,
+                    issue_number: issue.number,
+                    pr_number: issue.pr_number,
+                    files: artifactTargets,
+                  });
+                  continue;
+                }
+              }
+            }
+          }
+
           // Write review feedback as steering prompt
           await deps.writeFile(
             path.join(childQueueDir, '000-review-fixes.md'),
