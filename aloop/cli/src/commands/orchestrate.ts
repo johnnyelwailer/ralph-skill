@@ -2849,8 +2849,10 @@ export async function launchChildLoop(
     await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
   }
 
-  // Create git worktree with branch (or reuse existing branch)
-  let worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName], { encoding: 'utf8' });
+  // Create git worktree branching from agent/trunk (not local HEAD)
+  // Fetch latest trunk first
+  deps.spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'agent/trunk'], { encoding: 'utf8' });
+  let worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName, 'origin/agent/trunk'], { encoding: 'utf8' });
   if (worktreeResult.status !== 0) {
     // Branch may already exist — try without -b
     worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, branchName], { encoding: 'utf8' });
