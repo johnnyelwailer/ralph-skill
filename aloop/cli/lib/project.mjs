@@ -987,6 +987,16 @@ export async function scaffoldWorkspace(options = {}) {
     }
   }
 
+  if (enabled.includes('opencode') && dataPrivacy === 'private') {
+    const opencodeConfigPath = path.join(discovery.project.root, 'opencode.json');
+    const opencodeConfig = {
+      provider: {
+        zdr: true,
+      },
+    };
+    await writeFile(opencodeConfigPath, `${JSON.stringify(opencodeConfig, null, 2)}\n`, 'utf8');
+  }
+
   return {
     config_path: discovery.setup.config_path,
     prompts_dir: promptsDir,

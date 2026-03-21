@@ -3,7 +3,7 @@
 ## Current Phase: Implementation
 
 ### Up Next
-- [ ] Generate `opencode.json` with `provider.zdr: true` when provider includes opencode AND `data_privacy: private`. In `scaffoldWorkspace()` (project.mjs), after copying opencode agent files (~line 988), write an `opencode.json` at project root with `{ "provider": { "zdr": true } }` when ZDR conditions are met. Spec: "Generate `opencode.json` with `provider.zdr: true` when OpenCode + OpenRouter + ZDR."
+- [x] Generate `opencode.json` with `provider.zdr: true` when provider includes opencode AND `data_privacy: private`. In `scaffoldWorkspace()` (project.mjs), after copying opencode agent files (~line 988), write an `opencode.json` at project root with `{ "provider": { "zdr": true } }` when ZDR conditions are met. Spec: "Generate `opencode.json` with `provider.zdr: true` when OpenCode + OpenRouter + ZDR."
 - [ ] Add ZDR and devcontainer auth-strategy schema documentation to `aloop/config.yml`. Add commented-out example sections showing `privacy_policy` (with `data_classification`, `zdr_enabled`, `require_data_retention_safe`) and `devcontainer_auth_strategy` fields. Spec lists this file explicitly.
 - [x] [review] Gate 3: `getMissingNonInteractiveFlags` — add tests for single-missing-flag branches: (1) `{ provider: 'claude' }` without mode, (2) `{ mode: 'loop' }` without provider. Currently only both-missing is tested (setup.test.ts:664-700). (priority: medium)
 - [ ] Add tests for opencode.json ZDR generation: verify `opencode.json` is written when opencode provider + private data, and NOT written when public data or non-opencode provider.

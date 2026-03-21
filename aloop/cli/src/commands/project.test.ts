@@ -1057,6 +1057,33 @@ test('scaffoldWorkspace copies opencode agent files when opencode is enabled', a
   assert.ok(result.config_path);
 });
 
+test('scaffoldWorkspace writes opencode.json with ZDR when opencode is enabled and data privacy is private', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-opencode-zdr-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  await mkdir(homeRoot, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  const bundledTemplatesDir = path.join(tempRoot, 'templates');
+  await mkdir(bundledTemplatesDir, { recursive: true });
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  for (const tmpl of requiredTemplates) {
+    await writeFile(path.join(bundledTemplatesDir, tmpl), `Template ${tmpl}`, 'utf8');
+  }
+
+  await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    enabledProviders: ['opencode'],
+    dataPrivacy: 'private',
+    templatesDir: bundledTemplatesDir,
+  });
+
+  const opencodeConfigPath = path.join(tempRoot, 'opencode.json');
+  assert.ok(existsSync(opencodeConfigPath), 'opencode.json should be generated for private opencode setup');
+  const opencodeConfig = JSON.parse(await readFile(opencodeConfigPath, 'utf8'));
+  assert.deepEqual(opencodeConfig, { provider: { zdr: true } });
+});
+
 test('scaffoldWorkspace does not copy opencode agent files when opencode is not enabled', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-no-agents-'));
   const homeRoot = path.join(tempRoot, 'home');
