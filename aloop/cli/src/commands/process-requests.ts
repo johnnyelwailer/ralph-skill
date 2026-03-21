@@ -153,10 +153,13 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   // ── Phase 2b: Forward-merge master → agent/trunk (pick up human changes) ──
   const trunkBranch = state.trunk_branch ?? 'agent/trunk';
   try {
-    spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'master', trunkBranch], { encoding: 'utf8' });
-    const mergeBase = spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8' });
-    const masterHead = spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8' });
-    if (mergeBase.stdout?.trim() !== masterHead.stdout?.trim()) {
+    const fetchR = spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'master', trunkBranch], { encoding: 'utf8', timeout: 30000 });
+    if (fetchR.status !== 0) throw new Error('fetch failed');
+    const mergeBase = spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const masterHead = spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8', timeout: 10000 });
+    const mbSha = mergeBase.stdout?.trim();
+    const mhSha = masterHead.stdout?.trim();
+    if (mbSha && mhSha && mbSha.length >= 7 && mhSha.length >= 7 && mbSha !== mhSha) {
       // master has commits that trunk doesn't — forward merge
       const mergeResult = spawnSync('git', ['-C', projectRoot, 'push', 'origin', `origin/master:refs/heads/${trunkBranch}`], { encoding: 'utf8' });
       if (mergeResult.status !== 0) {
@@ -187,12 +190,15 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     if (!existsSync(childWorktree)) continue;
 
     // Fetch and check if diverged
-    const fetchResult = spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8' });
+    const fetchResult = spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8', timeout: 30000 });
     if (fetchResult.status !== 0) continue;
 
-    const mergeBase = spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8' });
-    const remoteHead = spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8' });
-    if (mergeBase.stdout?.trim() === remoteHead.stdout?.trim()) continue; // Up to date
+    const mergeBase = spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const remoteHead = spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const mbSha = mergeBase.stdout?.trim();
+    const rhSha = remoteHead.stdout?.trim();
+    if (!mbSha || !rhSha || mbSha.length < 7 || rhSha.length < 7) continue; // Invalid output, skip
+    if (mbSha === rhSha) continue; // Up to date
 
     // Commit any dirty files and remove working artifacts before rebase
     const statusResult = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
@@ -264,8 +270,9 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
               if (prResult.status === 0 && prResult.stdout) {
                 const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
-                if (urlMatch) {
-                  issue.pr_number = parseInt(urlMatch[1], 10);
+                const prNum = urlMatch ? parseInt(urlMatch[1], 10) : 0;
+                if (prNum > 0) {
+                  issue.pr_number = prNum;
                   issue.state = 'pr_open';
                   issue.status = 'In review';
                   stateChanged = true;
@@ -396,8 +403,9 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   await etagCache.load();
 
   const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
-    // Call gh CLI directly (not aloop gh which is the request protocol handler)
-    const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    // Call gh CLI directly with timeout (not aloop gh which is the request protocol handler)
+    const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
+    if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
 
@@ -526,6 +534,15 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             }
 
             await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${prompt}\n${outputInstr}${commentHistory}\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
+          }
+        }
+        // Track pending cycles — escalate after too many
+        const stateIssue2 = state.issues.find((i: any) => i.pr_number === prNumber);
+        if (stateIssue2) {
+          const pendingCount = ((stateIssue2 as any).review_pending_count ?? 0) + 1;
+          (stateIssue2 as any).review_pending_count = pendingCount;
+          if (pendingCount > 5) {
+            return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Review stuck pending after ${pendingCount} attempts — needs manual review.` };
           }
         }
         return { pr_number: prNumber, verdict: 'pending', summary: 'Review queued.' };
