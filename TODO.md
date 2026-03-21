@@ -23,6 +23,10 @@ The endpoint (`GET /api/qa-coverage`) and widget (`QACoverageBadge`) already exi
 - [x] Update server-side tests: use pipe-delimited table fixtures instead of `Coverage: XX%` text; test all response fields
 - [ ] Update `QACoverageData` TypeScript interface in `AppView.tsx` to match new response shape
 
+### QA Bugs
+
+- [ ] [qa/P1] QA badge hidden when QA_COVERAGE.md missing: Removed QA_COVERAGE.md from worktree → QA badge completely disappears from dashboard top bar → Spec says should show "0% or No QA data". Tested at iter 1. (priority: high)
+
 ### Up Next
 
 - [ ] Add graceful fallback: if `QA_COVERAGE.md` exists but has no parseable table, return `{ coverage_percent: 0, error: "parse_error", ... }` with empty features array
