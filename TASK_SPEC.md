@@ -36,8 +36,8 @@ Update the Claude Code command files and GitHub Copilot prompt files so that `/a
 ## Acceptance Criteria
 
 - [x] `/aloop:start` skill works identically for both modes
-- [ ] `/aloop:setup` skill documents mode recommendation and ZDR
-- [ ] Copilot prompts match Claude command files
+- [x] `/aloop:setup` skill documents mode recommendation and ZDR
+- [x] Copilot prompts match Claude command files
 - [ ] No stale references to "use `aloop orchestrate` directly"
 
 ## Files

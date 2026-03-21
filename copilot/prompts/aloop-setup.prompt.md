@@ -6,6 +6,76 @@ agent: agent
 
 Set up Aloop for the current project. This is the most critical step — the loop is fully autonomous once it starts, so a weak spec leads to wasted iterations.
 
+## Step 1: Translate Arguments
+
+Map any user-provided arguments after `/aloop:setup` to `aloop setup` flags.
+
+### Common flags
+- `--non-interactive` -> `--non-interactive`
+- `--spec <path>` -> `--spec <path>`
+- `--provider <name>` -> `--provider <name>`
+- `--providers <list>` -> `--providers <list>` (comma-separated)
+- `--mode <loop|orchestrate|single>` -> `--mode <...>`
+- `--autonomy-level <cautious|balanced|autonomous>` -> `--autonomy-level <...>`
+- `--data-privacy <private|public>` -> `--data-privacy <...>`
+- `--devcontainer-auth-strategy <mount-first|env-first|env-only>` -> `--devcontainer-auth-strategy <...>`
+
+## Step 2: Run `aloop setup`
+
+```bash
+aloop setup [flags...]
+```
+
+Fallback if `aloop` is not on PATH:
+
+```bash
+node ~/.aloop/cli/aloop.mjs setup [flags...]
+```
+
+## Step 3: Explain the dual-mode setup flow
+
+When setup runs, the CLI discovers project context and prepares defaults for both modes:
+
+- It computes a **mode recommendation** from scope analysis (`loop` vs `orchestrate`) and shows reasoning.
+- The user can accept the recommendation or override mode explicitly.
+- The selected mode is written to project config and later used by `/aloop:start` unless overridden.
+
+### ZDR configuration flow
+
+- Setup asks for **Data Privacy** (`private` or `public`).
+- If `private`, setup enables ZDR metadata in config and prints provider-specific ZDR warnings:
+  - `claude`: org agreement required
+  - `gemini`: project-level approval required
+  - `codex`: org agreement required (images excluded)
+  - `copilot`: Business/Enterprise plan required
+- `opencode` has no additional warning in this step and remains selectable.
+
+### OpenCode scaffolding
+
+- If `opencode` is enabled in selected providers, setup scaffolds OpenCode agent files into `.opencode/agents/`.
+- Setup also includes OpenCode provider/model settings in generated project config.
+
+### Devcontainer auth recommendations
+
+- If a devcontainer is detected, setup asks for auth strategy (`mount-first`, `env-first`, `env-only`).
+- Setup prints proposed per-provider auth method based on the selected strategy.
+
+## Step 4: Report Result
+
+Show the CLI output to the user. If the command fails, relay the exact error.
+
+On success, summarize:
+- configured mode (and whether recommendation was overridden)
+- data privacy and ZDR status
+- enabled providers (including OpenCode if selected)
+- where config was written
+
+---
+
+## Reference: interactive setup interview
+
+The following phases describe the interview/scaffolding behavior driven by `aloop setup`.
+
 ## Phase 1: Parallel Discovery (4 independent tasks — run simultaneously)
 
 Before asking the user anything, gather all information. Run these 4 tasks **in parallel**:
@@ -107,7 +177,7 @@ Present: SPEC.md (full), VERSIONS.md, convention doc list, decision summary.
 
 Ask: "Ready to start the loop? Any changes needed?"
 
-User signs off → done. Remind them: `/aloop-start` to launch.
+User signs off → done. Remind them: `/aloop:start` to launch.
 
 ---
 
