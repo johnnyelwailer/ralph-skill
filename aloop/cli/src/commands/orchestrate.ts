@@ -94,6 +94,10 @@ export interface OrchestratorIssue {
   is_change_request?: boolean;
   cr_spec_updated?: boolean;
   needs_rebase?: boolean;
+  needs_redispatch?: boolean;
+  review_feedback?: string;
+  pending_review_comments?: PendingReviewComment[];
+  last_review_comment?: string;
 }
 
 export interface OrchestratorState {
@@ -3398,6 +3402,10 @@ export interface InlineReviewComment {
   suggestion?: string;
 }
 
+export interface PendingReviewComment extends InlineReviewComment {
+  id?: number;
+}
+
 export interface AgentReviewResult {
   pr_number: number;
   verdict: AgentReviewVerdict;
@@ -3845,10 +3853,13 @@ export async function processPrLifecycle(
   if (reviewResult.verdict === 'request-changes') {
     // Post review feedback as a proper GH review with inline comments (only if not already posted)
     const stateIssue = state.issues.find((i) => i.number === issue.number);
-    const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
+    const alreadyCommented = stateIssue?.last_review_comment === reviewResult.summary;
+    const reviewComments: PendingReviewComment[] = (reviewResult.comments ?? []).map((comment) => ({
+      ...comment,
+    }));
     if (!alreadyCommented) {
       try {
-        const inlineComments = (reviewResult.comments ?? []).map((c) => {
+        const inlineComments = reviewComments.map((c) => {
           let commentBody = c.body;
           if (c.suggestion) {
             commentBody += `\n\n\`\`\`suggestion\n${c.suggestion}\n\`\`\``;
@@ -3874,11 +3885,76 @@ export async function processPrLifecycle(
         if (inlineComments.length > 0) {
           ghArgs.push('-F', `comments=${JSON.stringify(inlineComments)}`);
         }
-        await deps.execGh(ghArgs);
+        const reviewResponse = await deps.execGh(ghArgs);
+        let postedReviewId: number | undefined;
+        try {
+          const parsed: unknown = JSON.parse(reviewResponse.stdout);
+          if (typeof parsed === 'object' && parsed !== null && typeof (parsed as { id?: unknown }).id === 'number') {
+            postedReviewId = (parsed as { id: number }).id;
+          }
+          const parsedComments = (
+            typeof parsed === 'object' &&
+            parsed !== null &&
+            Array.isArray((parsed as { comments?: unknown }).comments)
+          )
+            ? (parsed as { comments: Array<{ id?: unknown; path?: unknown; line?: unknown }> }).comments
+            : [];
+          if (parsedComments.length > 0) {
+            const commentsWithIds = parsedComments.filter((comment) => typeof comment.id === 'number');
+            for (let index = 0; index < reviewComments.length; index += 1) {
+              const match = commentsWithIds.find((comment) =>
+                comment.path === reviewComments[index].path &&
+                Number(comment.line) === reviewComments[index].line &&
+                typeof comment.id === 'number'
+              );
+              if (match && typeof match.id === 'number') {
+                reviewComments[index].id = match.id;
+              }
+            }
+          }
+        } catch {
+          // ignore malformed response from gh
+        }
+
+        if (postedReviewId && reviewComments.some((comment) => comment.id === undefined)) {
+          try {
+            const listResponse = await deps.execGh([
+              'api',
+              `repos/${repo}/pulls/${prNumber}/comments?per_page=100`,
+              '--method',
+              'GET',
+            ]);
+            const comments = JSON.parse(listResponse.stdout);
+            if (Array.isArray(comments)) {
+              const postedComments = comments.filter((comment) =>
+                Number(comment?.pull_request_review_id) === postedReviewId &&
+                typeof comment?.id === 'number'
+              );
+              for (let index = 0; index < reviewComments.length; index += 1) {
+                if (reviewComments[index].id !== undefined) continue;
+                let expectedBody = reviewComments[index].body;
+                if (reviewComments[index].suggestion) {
+                  expectedBody += `\n\n\`\`\`suggestion\n${reviewComments[index].suggestion}\n\`\`\``;
+                }
+                const match = postedComments.find((comment) =>
+                  comment.path === reviewComments[index].path &&
+                  Number(comment.line) === reviewComments[index].line &&
+                  typeof comment.body === 'string' &&
+                  comment.body.trim() === expectedBody.trim()
+                );
+                if (match && typeof match.id === 'number') {
+                  reviewComments[index].id = match.id;
+                }
+              }
+            }
+          } catch {
+            // best-effort enrichment only
+          }
+        }
       } catch {
         // Best-effort
       }
-      if (stateIssue) (stateIssue as any).last_review_comment = reviewResult.summary;
+      if (stateIssue) stateIssue.last_review_comment = reviewResult.summary;
     }
 
     // Track failures and either re-dispatch or escalate to human
@@ -3908,8 +3984,9 @@ export async function processPrLifecycle(
           redispatch_failures: failures,
         });
       } else {
-        (stateIssue as any).needs_redispatch = true;
-        (stateIssue as any).review_feedback = reviewResult.summary;
+        stateIssue.needs_redispatch = true;
+        stateIssue.review_feedback = reviewResult.summary;
+        stateIssue.pending_review_comments = reviewComments;
       }
     }
 
@@ -5647,23 +5724,44 @@ export async function runOrchestratorScanPass(
             );
             issue.needs_rebase = false;
           } else {
-            // Write review feedback as steering prompt
-            const feedback = (issue as any).review_feedback ?? '';
-            if (feedback) {
-              await deps.writeFile(
-                path.join(childQueueDir, '000-review-fixes.md'),
-                `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
-                'utf8',
-              );
-            }
+            // Write review feedback as steering prompt with inline comments
+            const reviewComments = issue.pending_review_comments ?? [];
+            const renderedComments = reviewComments.length > 0
+              ? reviewComments.map((comment, index) => {
+                const range = comment.end_line && comment.end_line !== comment.line
+                  ? `${comment.line}-${comment.end_line}`
+                  : `${comment.line}`;
+                const lines: string[] = [
+                  `${index + 1}. ${comment.id !== undefined ? `Comment ID: ${comment.id}` : 'Comment ID: (missing)'}`,
+                  `   - Location: \`${comment.path}:${range}\``,
+                  `   - Feedback:`,
+                  ...comment.body.trim().split('\n').map((line) => `     ${line}`),
+                ];
+                if (comment.suggestion) {
+                  lines.push('   - Suggested replacement:');
+                  lines.push('```suggestion');
+                  lines.push(comment.suggestion);
+                  lines.push('```');
+                }
+                return lines.join('\n');
+              }).join('\n\n')
+              : 'No inline comments were captured. Use the summary and inspect PR review threads directly.';
+            const feedback = (issue as any).review_feedback ?? 'Review requested changes.';
+            await deps.writeFile(
+              path.join(childQueueDir, '000-review-fixes.md'),
+              `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Summary\n\n${feedback}\n\n## Inline Comments (Resolve Individually)\n\n${renderedComments}\n\n## Instructions\n\n1. Address each inline comment individually.\n2. After fixing a comment, resolve the corresponding review thread using its comment ID.\n3. Commit with messages like: \`fix: address review comment on file.ts:42\`.\n4. Push updates to the same branch.\n\nDo NOT add TODO.md, STEERING.md, or other working artifacts to the commit.\n`,
+              'utf8',
+            );
           }
           (issue as any).needs_redispatch = false;
           (issue as any).review_feedback = undefined;
+          (issue as any).pending_review_comments = undefined;
           deps.appendLog(sessionDir, {
             timestamp: deps.now().toISOString(),
             event: 'child_redispatched_for_review',
             iteration,
             issue_number: launch.issue_number,
+            pr_number: issue.pr_number,
             child_session: launch.session_id,
             pid: launch.pid,
           });
