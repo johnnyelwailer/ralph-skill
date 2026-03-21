@@ -1,17 +1,15 @@
-# Issue #100: Agent YAML definitions for QA, spec-gap, and docs agents
+# Issue #86: Proof Artifact Display — Inline rendering in activity log
 
-## Current Phase: Implementation
-
-### In Progress
-
-### Up Next
+## Current Phase: Spec-Gap Analysis
 
 ### Completed
-- [x] Create `.aloop/agents/qa.yml` — agent: qa, prompt: PROMPT_qa.md, reasoning effort: medium
-- [x] Create `.aloop/agents/spec-gap.yml` — agent: spec-gap, prompt: PROMPT_spec-gap.md, reasoning effort: high
-- [x] Create `.aloop/agents/docs.yml` — agent: docs, prompt: PROMPT_docs.md, reasoning effort: medium
-- [x] Verify `compile-loop-plan.ts` `getAgentConfig` resolves all three new YAMLs correctly — all 33 tests pass
-- [x] Verify `pipeline.yml` references match: qa in cycle (line 7), spec-gap and docs in finalizer (lines 16-17)
+- [x] `ArtifactViewer` / inline artifact rendering in `ActivityPanel` — `aloop/cli/dashboard/src/AppView.tsx:1376-1431`
+- [x] Image thumbnails: clickable, 150px max, lazy loading — `AppView.tsx:1378-1394`
+- [x] `ImageLightbox` component: full-size overlay, Escape to close, click-outside dismiss — `AppView.tsx:1499-1511`
+- [x] `ArtifactComparisonDialog`: side-by-side, slider, diff-overlay modes with history scrubbing — `AppView.tsx:1525+`
+- [x] Diff percentage badge: green (<5%), yellow (5-20%), red (>20%) — `AppView.tsx:1423-1427`
+- [x] Error fallback: `onError` hides broken `<img>`, inserts "Failed to load" text — `AppView.tsx:1385-1392`
+- [x] `/api/artifacts/{iteration}/{filename}` endpoint with path-traversal protection — `dashboard.ts:984-1011`
 
 ### Spec-Gap Analysis
-- [x] [spec-gap] spec-gap analysis: no discrepancies found — spec fully fulfilled. All 5 deliverables verified, all 3 acceptance criteria met, no regressions in existing agents (2026-03-21)
+- [ ] [spec-gap] **P2**: Non-image artifacts not rendered as syntax-highlighted code blocks. SPEC.md says `.ts`, `.json`, `.md` etc. should render as "syntax-highlighted code blocks" (acceptance criterion 4). Code (`AppView.tsx:1395-1404`) only shows a file icon + truncated filename — artifact content is never fetched or displayed inline. **Suggested fix:** Fetch artifact content via `/api/artifacts/` endpoint and render in a `<pre><code>` block (SPEC technical notes suggest `highlight.js` or CSS-only approach).
