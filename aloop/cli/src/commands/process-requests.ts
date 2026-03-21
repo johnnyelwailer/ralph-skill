@@ -297,7 +297,33 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Parse error: ${e}` };
           }
         }
-        // Prefix with 000- so reviews sort before estimates/sub-decompose
+        // Fallback: scan per-iteration output artifacts for verdict text
+        // The agent may have produced the verdict as text but not written the JSON file
+        const artifactsDir = path.join(sessionDir, 'artifacts');
+        if (existsSync(artifactsDir)) {
+          try {
+            const iterDirs = await readdir(artifactsDir);
+            // Check most recent iteration outputs (last 3)
+            const sorted = iterDirs.filter(d => d.startsWith('iter-')).sort().reverse().slice(0, 3);
+            for (const iterDir of sorted) {
+              const outputFile = path.join(artifactsDir, iterDir, 'output.txt');
+              if (!existsSync(outputFile)) continue;
+              const output = await readFile(outputFile, 'utf8');
+              // Only match if this output mentions this PR number
+              if (!output.includes(String(prNumber)) && !output.includes(`PR #${prNumber}`)) continue;
+              const verdictMatch = output.match(/\*\*[Vv]erdict:\s*(approve|request-changes|flag-for-human)\*\*/i)
+                ?? output.match(/["']verdict["']\s*:\s*["'](approve|request-changes|flag-for-human)["']/i);
+              if (verdictMatch) {
+                const verdict = verdictMatch[1].toLowerCase();
+                const summaryMatch = output.match(/(?:summary|reason|feedback|issues?)[:\s]+([^\n]{10,300})/i);
+                const summary = summaryMatch ? summaryMatch[1].trim() : `Agent verdict: ${verdict}`;
+                return { pr_number: prNumber, verdict, summary };
+              }
+            }
+          } catch { /* ignore */ }
+        }
+
+        // Queue review prompt if not already queued
         const queueFile = path.join(sessionDir, 'queue', `000-review-${prNumber}.md`);
         const legacyQueueFile = path.join(sessionDir, 'queue', `review-${prNumber}.md`);
         if (!existsSync(queueFile) && !existsSync(legacyQueueFile)) {
