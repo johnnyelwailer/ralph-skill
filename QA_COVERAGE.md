@@ -1,13 +1,17 @@
-# QA Coverage — Issue #114: Responsive layout, touch targets & accessibility
+# QA Coverage
 
 | Feature | Last Tested | Commit | Result | Notes |
 |---------|-------------|--------|--------|-------|
-| Tap target sizing (44x44px) | 2026-03-22 | 6e6c819 | PASS (partial) | Regression fixes verified. 13/14 visible elements pass at 390px. Steer textarea 266x32px still FAIL (P1 bug). Also tested at 320px: same textarea FAIL, all others PASS. |
-| Tooltip tap behavior | 2026-03-22 | fb3696a | PASS | Tooltips open on tap on mobile viewport (390x844, touch). Session name, status dot ("Running"), SSE indicator, GitHub link all show tooltips. |
-| HoverCard tap equivalents | 2026-03-22 | 2eebe45 | PASS | Provider badge HoverCard opens on click/tap, shows provider details (status, cooldown, etc.) |
-| Long-press context menu | 2026-03-22 | fb3696a | N/A | Not yet implemented per TODO.md. Confirmed no context menu appears on long-press. |
-| No hover-only interactions | 2026-03-22 | 6e6c819 | PASS | No `group-hover` elements without click parents found. No visible hover-only content-revealing elements. Overflow tabs menu not visible (fewer than threshold). |
-| ARIA labels & roles | 2026-03-22 | 6e6c819 | FAIL | Buttons all have accessible labels. Hamburger has aria-label="Toggle sidebar" PASS. GitHub repo link (44x44px icon-only `<a>` with SVG) still missing aria-label — P1 bug still open. |
-| Focus management (mobile) | 2026-03-22 | 6e6c819 | FAIL | 3 bugs filed: (1) Escape doesn't close mobile sidebar, (2) focus stays on hamburger after sidebar open instead of moving into sidebar, (3) Ctrl+K command palette opens but focus lands on BODY instead of search input. Tab order is logical (9 visible focusable elements in correct sequence). Overlay click closes sidebar correctly. Escape closes command palette correctly. |
-| 320px viewport layout | 2026-03-22 | 6e6c819 | PASS | No horizontal scroll at 320px. document.scrollWidth === window.innerWidth (320px). |
-| Lighthouse audit >= 90 | never | — | — | Not yet tested — blocked on focus/aria fixes |
+| Dashboard renders after component extraction | 2026-03-21 | b94cbc8 | PASS | Page loads, all panels visible, no console errors |
+| SessionCard (sidebar session entries) | 2026-03-21 | b94cbc8 | PASS | Cards show session name, status dot, elapsed time, iteration count, phase name |
+| SessionList (sidebar session grouping) | 2026-03-21 | b94cbc8 | PASS | Sessions grouped by project (RALPH-SKILL) and orchestrator parent, with RECENT section |
+| Sidebar toggle (Ctrl+B) | 2026-03-21 | b94cbc8 | PASS | Collapses to narrow icon-only bar with colored status dots, expands back |
+| Session switching (click card) | 2026-03-21 | b94cbc8 | PASS | Header, activity log, and documents update when clicking different session |
+| URL session parameter | 2026-03-21 | b94cbc8 | PASS | ?session=<id> updates in URL bar after switching sessions |
+| Dashboard layout (1920x1080) | 2026-03-21 | b94cbc8 | PASS | Two-column layout: sidebar (256px) + main (1664px), header + docs + activity + footer |
+| Header bar elements | 2026-03-21 | b94cbc8 | PASS | Session name, iter counter, progress bar, phase badge, provider, status, connection indicator, Ctrl+K hint all present |
+| Footer (steer + stop) | 2026-03-21 | b94cbc8 | PASS | Steer textarea with Send button, Stop button present |
+| Session card branch name | 2026-03-21 | b94cbc8 | FAIL | Branch name not shown in session cards; spec requires it as a field |
+| Session grouping labels | 2026-03-21 | b94cbc8 | FAIL | Groups show "RECENT" instead of spec's "Active"/"Older (N)" terminology |
+| Force stop button | 2026-03-21 | b94cbc8 | FAIL | Only "Stop" button visible; spec requires separate "Force (SIGKILL)" button |
+| Helpers (StatusDot, PhaseBadge, relativeTime) | 2026-03-21 | b94cbc8 | PASS | Status dots colored correctly (green for active, gray for inactive), phase names displayed, relative times shown |

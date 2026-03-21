@@ -21,3 +21,9 @@
 ### Completed
 
 - [x] Status formatting tests verify correct output for all 3 states — already covered in `aloop/cli/src/commands/status.test.ts` with tests for cooldown (failure count + resume time), degraded (auth hint), and healthy (last success) (AC6)
+
+### QA Bugs (from dashboard component extraction testing, 2026-03-21)
+
+- [ ] [qa/P1] Session card missing branch name: Session cards in sidebar show session name, status dot, elapsed time, iteration count, and phase — but NOT the branch name. Spec (SPEC.md:1092) requires "branch name" as a session card field. Tested at iter 16. (priority: high)
+- [ ] [qa/P1] Session grouping labels don't match spec: Sidebar groups sessions under "RECENT" label, but spec (SPEC.md:1085) requires "Active" and "Older (N)" collapsible groups. The "Older" group should auto-collapse sessions with no activity >24h. Tested at iter 16. (priority: high)
+- [ ] [qa/P1] Force stop (SIGKILL) button missing: Footer only has a "Stop" button. Spec (SPEC.md:1197-1198) requires both "Stop (SIGTERM)" and "Force (SIGKILL)" buttons. No dropdown or separate Force button exists. Tested at iter 16. (priority: high)
