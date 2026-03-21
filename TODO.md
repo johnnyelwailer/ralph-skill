@@ -6,7 +6,7 @@
 
 - [x] Extend `AgentReviewResult` to include structured inline comments array (`{path, line, end_line?, body, suggestion?}`) in `orchestrate.ts:3104-3108`. The current type only has `summary: string` — no way to represent per-file, per-line feedback. (priority: critical, foundational)
 
-- [ ] Update review prompt `PROMPT_orch_review.md` to instruct the agent to return structured inline comments with file paths, line ranges, and suggestion blocks using GH suggestion syntax (` ```suggestion\nfixed code\n``` `). Currently the prompt only asks for a flat verdict JSON. (priority: critical, foundational)
+- [x] Update review prompt `PROMPT_orch_review.md` to instruct the agent to return structured inline comments with file paths, line ranges, and suggestion blocks using GH suggestion syntax (` ```suggestion\nfixed code\n``` `). Currently the prompt only asks for a flat verdict JSON. (priority: critical, foundational)
 
 - [ ] Update `invokeAgentReview` in `process-requests.ts:285-340` to parse the new inline comments from the review result JSON. The current parser only reads `{pr_number, verdict, summary}`. Must also handle the fallback verdict parser (lines 300-324) gracefully when inline comments aren't present. (priority: critical)
 
