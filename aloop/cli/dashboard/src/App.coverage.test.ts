@@ -453,6 +453,27 @@ describe('App.tsx AppView integration coverage', () => {
     vi.restoreAllMocks();
   });
 
+  it('uses yellow QA badge styling for 50-79% coverage', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/state')) {
+        return new Response(JSON.stringify(baseState), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.startsWith('/api/qa-coverage')) {
+        return new Response(JSON.stringify({ percentage: 55, raw: '| Feature | Status |\\n| --- | --- |\\n| Login | PASS |', available: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(createElement(App));
+    const badge = await screen.findByRole('button', { name: /qa 55%/i });
+    expect(badge.className).toContain('border-yellow-500/40');
+  });
+
   it('renders app and supports steer + stop + command stop', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

@@ -944,7 +944,7 @@ export function QACoverageBadge({ sessionId, refreshKey }: { sessionId: string |
     ? 'border-border bg-muted/40 text-muted-foreground'
     : percentage >= 80
       ? 'border-green-500/40 bg-green-500/15 text-green-700 dark:text-green-400'
-      : percentage >= 60
+      : percentage >= 50
         ? 'border-yellow-500/40 bg-yellow-500/15 text-yellow-700 dark:text-yellow-400'
         : 'border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-400';
 
