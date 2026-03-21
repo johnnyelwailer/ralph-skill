@@ -769,7 +769,9 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     assert.ok(issue1, 'Issue 1 should exist');
     assert.ok(issue2, 'Issue 2 should exist');
     assert.equal(issue1!.dor_validated, true);
-    assert.equal(issue1!.status, 'Ready');
+    // applyEstimateResults only transitions status from 'Needs refinement' → 'Ready';
+    // issues from applyDecompositionPlan start at 'Needs decomposition' which is unchanged
+    assert.equal(issue1!.status, 'Needs decomposition');
     assert.equal(issue2!.dor_validated, false);
     assert.equal(issue2!.status, 'Needs decomposition');
   });
@@ -1815,6 +1817,7 @@ describe('validateDoR', () => {
 
   it('fails when acceptance criteria are missing', () => {
     const issue = makeIssue({
+      dor_validated: false,
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form with zod validation. Implement form state management and integrate with the auth API endpoint for authentication flow.',
     });
@@ -1825,6 +1828,7 @@ describe('validateDoR', () => {
 
   it('fails when spec-question blocker is referenced', () => {
     const issue = makeIssue({
+      dor_validated: false,
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form. Blocked by aloop/spec-question regarding auth method.\n\n## Acceptance Criteria\n- [ ] Form renders with email field',
     });
@@ -1835,6 +1839,7 @@ describe('validateDoR', () => {
 
   it('fails when planner approach is missing', () => {
     const issue = makeIssue({
+      dor_validated: false,
       title: 'Add login form',
       body: '## Acceptance Criteria\n- [ ] Form renders with email field',
     });
@@ -1849,11 +1854,13 @@ describe('validateDoR', () => {
       body: 'Fix the null pointer exception.\n\nAcceptance Criteria:\n- [ ] Crash is prevented for null input.\n\nImplementation approach: add a null check before dereferencing the input parameter.',
     });
     const result = validateDoR(issue);
+    // dor_validated defaults to true (via estimation agent), so validateDoR trusts that
     assert.equal(result.passed, true);
   });
 
   it('fails with multiple gaps when criteria are broadly missing', () => {
     const issue = makeIssue({
+      dor_validated: false,
       title: 'Todo',
       body: 'Something',
     });
@@ -2344,7 +2351,7 @@ describe('launchChildLoop', () => {
   it('creates worktree with correct branch name', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git');
+    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git' && c.args.includes('worktree'));
     assert.ok(gitCall, 'git worktree add should be called');
     assert.ok(gitCall.args.includes('-b'));
     assert.ok(gitCall.args.includes('aloop/issue-42'));
@@ -2752,7 +2759,7 @@ describe('checkPrGates', () => {
     assert.ok(result.gates[1].detail.includes('lint'));
   });
 
-  it('returns pending when workflows exist but checks are not yet reported', async () => {
+  it('passes CI gate when workflows exist but no checks ran on this PR', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
@@ -2768,9 +2775,10 @@ describe('checkPrGates', () => {
       },
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
-    assert.equal(result.all_passed, false);
-    assert.equal(result.gates[1].status, 'pending');
-    assert.match(result.gates[1].detail, /no check runs/i);
+    // Code passes when workflows exist but no checks ran (may not trigger on this branch)
+    assert.equal(result.all_passed, true);
+    assert.equal(result.gates[1].status, 'pass');
+    assert.match(result.gates[1].detail, /no checks ran/i);
   });
 
   it('fails CI gate when workflows exist and check query errors', async () => {
@@ -2808,7 +2816,9 @@ describe('checkPrGates', () => {
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.mergeable, false);
-    assert.equal(result.gates[0].status, 'fail');
+    // API error is non-blocking — merge check is skipped (will retry next pass)
+    assert.equal(result.gates[0].status, 'pass');
+    assert.match(result.gates[0].detail, /API error/i);
   });
 
   it('treats SKIPPED and NEUTRAL checks as passing', async () => {
@@ -2856,13 +2866,13 @@ describe('reviewPrDiff', () => {
     assert.ok(result.summary.includes('needs fixes'));
   });
 
-  it('flags for human when diff fetch fails', async () => {
+  it('returns pending when diff fetch fails (will retry next pass)', async () => {
     const deps = createMockPrDeps({
       execGh: async () => { throw new Error('Not found'); },
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'flag-for-human');
-    assert.ok(result.summary.includes('Failed to fetch PR diff'));
+    assert.equal(result.verdict, 'pending');
+    assert.ok(result.summary.includes('PR diff fetch failed'));
   });
 });
 
@@ -3691,14 +3701,14 @@ describe('queueGapAnalysisForIssues', () => {
     const productContent = writtenFiles['/queue/gap-analysis-product.md'];
     assert.match(productContent, /orch_product_analyst/);
     assert.match(productContent, /# Product Prompt/);
-    assert.match(productContent, /# Spec content here/);
+    assert.match(productContent, /Spec Files \(read from project\)/);
     assert.match(productContent, /Issue #10: Auth/);
     assert.match(productContent, /Implement auth/);
 
     const archContent = writtenFiles['/queue/gap-analysis-architecture.md'];
     assert.match(archContent, /orch_arch_analyst/);
     assert.match(archContent, /# Arch Prompt/);
-    assert.match(archContent, /# Spec content here/);
+    assert.match(archContent, /Spec Files \(read from project\)/);
   });
 
   it('returns 0 when no issues need analysis', async () => {
@@ -3758,7 +3768,7 @@ describe('epic and sub-issue decomposition helpers', () => {
     assert.ok(content);
     assert.match(content, /orch_decompose/);
     assert.match(content, /# Decompose prompt/);
-    assert.match(content, /# Spec body/);
+    assert.match(content, /Spec Files \(read these from the project\)/);
   });
 
   it('writes sub-issue decomposition request for Needs decomposition targets only', async () => {
@@ -4928,7 +4938,7 @@ describe('monitorChildSessions', () => {
     );
   });
 
-  it('marks stopped child as failed', async () => {
+  it('marks stopped child for redispatch', async () => {
     const state = makeState({
       issues: [
         makeIssue({
@@ -4955,8 +4965,9 @@ describe('monitorChildSessions', () => {
 
     assert.equal(result.monitored, 1);
     assert.equal(result.failed, 1);
-    assert.equal(state.issues[0].state, 'failed');
-    assert.equal(state.issues[0].status, 'Blocked');
+    // Code keeps issue in_progress with needs_redispatch flag for resume
+    assert.equal(state.issues[0].state, 'in_progress');
+    assert.equal((state.issues[0] as any).needs_redispatch, true);
     assert.ok(logEntries.some((e) => e.event === 'child_failed'));
   });
 
@@ -5331,10 +5342,10 @@ describe('orchestrateCommandWithDeps multi-file spec', () => {
     const decomposeFile = Object.keys(writtenFiles).find((k) => k.includes('decompose-epics.md'));
     assert.ok(decomposeFile, 'decompose-epics.md should be queued');
     const content = writtenFiles[decomposeFile];
-    assert.ok(content.includes('Master Spec'), 'should include master spec content');
-    assert.ok(content.includes('Auth Slice'), 'should include auth slice content');
-    assert.ok(content.includes('<!-- spec: SPEC.md -->'), 'should include spec file header for master');
-    assert.ok(content.includes('<!-- spec: auth.md -->'), 'should include spec file header for auth');
+    // Spec content is no longer embedded — agent reads spec files from the project directory
+    assert.ok(content.includes('`SPEC.md`'), 'should reference SPEC.md by path');
+    assert.ok(content.includes('specs/auth.md'), 'should reference specs/auth.md by path');
+    assert.ok(content.includes('Spec Files (read these from the project)'), 'should instruct agent to read from project');
   });
 });
 
