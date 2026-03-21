@@ -2866,6 +2866,16 @@ export async function launchChildLoop(
     await deps.writeFile(path.join(worktreePath, 'SPEC.md'), `# Sub-Spec: Issue #${issue.number} — ${issue.title}\n\n${issue.body}\n`, 'utf8');
   }
 
+  // Copy pipeline.yml so child gets finalizer config (not tracked in git)
+  const projectPipelineYml = path.join(projectRoot, '.aloop', 'pipeline.yml');
+  const childPipelineDir = path.join(worktreePath, '.aloop');
+  const childPipelineYml = path.join(childPipelineDir, 'pipeline.yml');
+  if (deps.existsSync(projectPipelineYml) && !deps.existsSync(childPipelineYml)) {
+    await deps.mkdir(childPipelineDir, { recursive: true });
+    const content = await deps.readFile(projectPipelineYml, 'utf8');
+    await deps.writeFile(childPipelineYml, content, 'utf8');
+  }
+
   // Compile child's loop-plan.json with implementation cycle
   await compileLoopPlan(
     {
