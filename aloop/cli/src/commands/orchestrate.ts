@@ -2049,6 +2049,11 @@ const SPEC_QUESTION_BLOCKER = /aloop\/spec-question/i;
  *  5. Interface contracts are explicit (body length sufficient to contain them)
  */
 export function validateDoR(issue: OrchestratorIssue): DoRValidationResult {
+  // If estimation agent already validated DoR, trust it
+  if (issue.dor_validated) {
+    return { passed: true, gaps: [] };
+  }
+
   const gaps: string[] = [];
   const body = `${issue.title}\n${issue.body ?? ''}`;
 
@@ -2076,7 +2081,7 @@ export function validateDoR(issue: OrchestratorIssue): DoRValidationResult {
   }
 
   // Criterion 5: Estimation complete
-  if (issue.dor_validated !== true) {
+  if (!issue.dor_validated) {
     gaps.push('Estimation/DoR validation not completed');
   }
 
@@ -5023,8 +5028,8 @@ export async function runOrchestratorScanPass(
     }
   }
 
-  // 1. Triage monitoring cycle
-  if (repo && deps.execGh) {
+  // 1. Triage monitoring cycle (every 5th iteration to conserve API rate limit)
+  if (repo && deps.execGh && iteration % 5 === 0) {
     result.triage = await runTriageMonitorCycle(
       state,
       path.basename(sessionDir),
