@@ -3577,11 +3577,11 @@ export async function processPrLifecycle(
   }
 
   if (reviewResult.verdict === 'request-changes') {
-    // Post review feedback on the issue
+    // Post review feedback on the PR
     try {
       await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo,
-        '--body', `Agent review of PR #${prNumber} requested changes:\\n\\n${reviewResult.summary}`,
+        'pr', 'comment', String(prNumber), '--repo', repo,
+        '--body', `Agent review requested changes:\n\n${reviewResult.summary}`,
       ]);
     } catch {
       // Best-effort

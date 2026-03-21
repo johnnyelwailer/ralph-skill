@@ -179,7 +179,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
               const prResult = spawnSync('gh', [
                 'pr', 'create',
                 '--repo', repo,
-                '--title', `${issue.title}`,
+                '--title', `#${issue.number}: ${issue.title}`,
                 '--body', `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
                 '--head', branch,
                 '--base', trunkBranch,
