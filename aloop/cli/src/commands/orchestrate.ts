@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
+import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from 'node:child_process';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
 import { getProjectHash, resolveProjectRoot } from './project.js';
@@ -251,6 +252,36 @@ export interface DispatchResult {
   state: OrchestratorState;
 }
 
+export interface LaunchOrchestratorOptions {
+  sessionDir: string;
+  promptsDir: string;
+  projectRoot: string;
+  aloopRoot: string;
+  provider?: string;
+  roundRobinProviders?: string;
+  maxScans?: number;
+  launchMode?: 'start' | 'resume';
+}
+
+export interface LaunchOrchestratorResult {
+  pid: number;
+  work_dir: string;
+  worktree: boolean;
+  worktree_path: string | null;
+  started_at: string;
+  warnings: string[];
+}
+
+export interface LaunchOrchestratorDeps {
+  existsSync: (path: string) => boolean;
+  readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
+  writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
+  now: () => Date;
+  spawnSync: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
+  spawn: (command: string, args: string[], options?: Record<string, unknown>) => ChildProcess;
+  env: Record<string, string | undefined>;
+}
+
 const defaultDeps: OrchestrateDeps = {
   existsSync,
   readFile,
@@ -259,6 +290,23 @@ const defaultDeps: OrchestrateDeps = {
   unlink,
   readdirSync,
   now: () => new Date(),
+};
+
+const defaultLaunchOrchestratorDeps: LaunchOrchestratorDeps = {
+  existsSync,
+  readFile,
+  writeFile,
+  now: () => new Date(),
+  spawnSync: (command, args, options) => {
+    const result = nodeSpawnSync(command, args, { ...(options ?? {}), encoding: 'utf8' });
+    return {
+      status: result.status,
+      stdout: String(result.stdout ?? ''),
+      stderr: String(result.stderr ?? ''),
+    };
+  },
+  spawn: (command, args, options) => nodeSpawn(command, args, options),
+  env: { ...process.env },
 };
 
 function normalizeTaskSandbox(sandbox: string | undefined): 'container' | 'none' {
@@ -1507,95 +1555,16 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   // Spawn loop.sh as a detached background process (unless plan-only)
   let loopPid: number | null = null;
   if (!planOnly) {
-    const { spawn: nodeSpawn, spawnSync: nodeSpawnSync } = await import('node:child_process');
-    const loopBinDir = path.join(result.aloopRoot, 'bin');
-    const loopScript = path.join(loopBinDir, 'loop.sh');
-
-    if (!existsSync(loopScript)) {
-      throw new Error(`Loop script not found: ${loopScript}`);
-    }
-
-    // Create a git worktree inside the session dir (same as aloop start).
-    // The agent works in the worktree (full project access to SPEC.md, source),
-    // while requests/, queue/, orchestrator.json are siblings at ../
-    let workDir = result.projectRoot;
-    const worktreePath = path.join(result.session_dir, 'worktree');
-    const worktreeBranch = `aloop/${path.basename(result.session_dir)}`;
-    const worktreeResult = nodeSpawnSync('git', ['-C', result.projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
-    if (worktreeResult.status === 0) {
-      workDir = worktreePath;
-    } else {
-      // Worktree failed — fall back to project root
-      console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
-    }
-
-    const args = [
-      '--prompts-dir', result.prompts_dir,
-      '--session-dir', result.session_dir,
-      '--work-dir', workDir,
-      '--mode', 'plan',
-      '--provider', 'claude',
-      '--round-robin', 'claude',
-      '--max-iterations', '999999',
-      '--launch-mode', 'start',
-      '--dangerously-skip-container',
-      '--no-task-exit',
-    ];
-
-    const child = nodeSpawn(loopScript, args, {
-      cwd: workDir,
-      detached: true,
-      stdio: 'ignore',
-      env: { ...process.env },
-      windowsHide: true,
+    const launch = await launchOrchestrator({
+      sessionDir: result.session_dir,
+      promptsDir: result.prompts_dir,
+      projectRoot: result.projectRoot,
+      aloopRoot: result.aloopRoot,
     });
-    child.unref();
-    loopPid = child.pid ?? null;
-
-    if (!loopPid) {
-      throw new Error('Failed to launch orchestrator loop process.');
+    loopPid = launch.pid;
+    for (const warning of launch.warnings) {
+      console.error(`Warning: ${warning}`);
     }
-
-    // Write meta.json
-    const metaPath = path.join(result.session_dir, 'meta.json');
-    const startedAt = new Date().toISOString();
-    const meta = {
-      session_id: path.basename(result.session_dir),
-      project_root: result.projectRoot,
-      provider: 'claude',
-      mode: 'orchestrate',
-      work_dir: result.projectRoot,
-      pid: loopPid,
-      started_at: startedAt,
-    };
-    await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
-
-    // Register in active.json
-    const activePath = path.join(result.aloopRoot, 'active.json');
-    let active: Record<string, unknown> = {};
-    try {
-      if (existsSync(activePath)) {
-        const content = await readFile(activePath, 'utf8');
-        const parsed = JSON.parse(content);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          active = parsed as Record<string, unknown>;
-        }
-      }
-    } catch {
-      // Start fresh
-    }
-    const sessionId = path.basename(result.session_dir);
-    active[sessionId] = {
-      session_id: sessionId,
-      session_dir: result.session_dir,
-      project_root: result.projectRoot,
-      pid: loopPid,
-      work_dir: result.projectRoot,
-      started_at: startedAt,
-      provider: 'claude',
-      mode: 'orchestrate',
-    };
-    await writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
   }
 
   if (outputMode === 'json') {
@@ -1636,6 +1605,111 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   if (result.state.budget_cap !== null) {
     console.log(`  Budget cap:   $${result.state.budget_cap.toFixed(2)}`);
   }
+}
+
+export async function launchOrchestrator(
+  options: LaunchOrchestratorOptions,
+  deps: LaunchOrchestratorDeps = defaultLaunchOrchestratorDeps,
+): Promise<LaunchOrchestratorResult> {
+  const loopBinDir = path.join(options.aloopRoot, 'bin');
+  const loopScript = path.join(loopBinDir, 'loop.sh');
+
+  if (!deps.existsSync(loopScript)) {
+    throw new Error(`Loop script not found: ${loopScript}`);
+  }
+
+  const warnings: string[] = [];
+  let workDir = options.projectRoot;
+  let worktreePath: string | null = null;
+
+  // Create a git worktree inside the session dir (same as aloop start).
+  // The agent works in the worktree (full project access to SPEC.md, source),
+  // while requests/, queue/, orchestrator.json are siblings at ../
+  const candidateWorktreePath = path.join(options.sessionDir, 'worktree');
+  const worktreeBranch = `aloop/${path.basename(options.sessionDir)}`;
+  const worktreeResult = deps.spawnSync('git', ['-C', options.projectRoot, 'worktree', 'add', candidateWorktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
+  if (worktreeResult.status === 0) {
+    worktreePath = candidateWorktreePath;
+    workDir = candidateWorktreePath;
+  } else {
+    warnings.push(`Failed to create worktree: ${(worktreeResult.stderr || worktreeResult.stdout || '').trim()}`);
+  }
+
+  const child = deps.spawn(loopScript, [
+    '--prompts-dir', options.promptsDir,
+    '--session-dir', options.sessionDir,
+    '--work-dir', workDir,
+    '--mode', 'plan',
+    '--provider', options.provider ?? 'claude',
+    '--round-robin', options.roundRobinProviders ?? 'claude',
+    '--max-iterations', String(options.maxScans ?? 999999),
+    '--launch-mode', options.launchMode ?? 'start',
+    '--dangerously-skip-container',
+  ], {
+    cwd: workDir,
+    detached: true,
+    stdio: 'ignore',
+    env: { ...deps.env },
+    windowsHide: true,
+  });
+  child.unref();
+
+  const pid = child.pid ?? null;
+  if (!pid) {
+    throw new Error('Failed to launch orchestrator loop process.');
+  }
+
+  const startedAt = deps.now().toISOString();
+  const sessionId = path.basename(options.sessionDir);
+
+  // Preserve existing work_dir behavior for compatibility.
+  const metaWorkDir = options.projectRoot;
+  const metaPath = path.join(options.sessionDir, 'meta.json');
+  const meta = {
+    session_id: sessionId,
+    project_root: options.projectRoot,
+    provider: options.provider ?? 'claude',
+    mode: 'orchestrate',
+    work_dir: metaWorkDir,
+    pid,
+    started_at: startedAt,
+  };
+  await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
+  const activePath = path.join(options.aloopRoot, 'active.json');
+  let active: Record<string, unknown> = {};
+  try {
+    if (deps.existsSync(activePath)) {
+      const content = await deps.readFile(activePath, 'utf8');
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        active = parsed as Record<string, unknown>;
+      }
+    }
+  } catch {
+    // Start fresh
+  }
+
+  active[sessionId] = {
+    session_id: sessionId,
+    session_dir: options.sessionDir,
+    project_root: options.projectRoot,
+    pid,
+    work_dir: metaWorkDir,
+    started_at: startedAt,
+    provider: options.provider ?? 'claude',
+    mode: 'orchestrate',
+  };
+  await deps.writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+
+  return {
+    pid,
+    work_dir: workDir,
+    worktree: Boolean(worktreePath),
+    worktree_path: worktreePath,
+    started_at: startedAt,
+    warnings,
+  };
 }
 
 export function applyTriageConfidenceFloor(

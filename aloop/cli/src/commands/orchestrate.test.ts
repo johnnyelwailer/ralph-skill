@@ -58,6 +58,7 @@ import {
   monitorChildSessions,
   isHousekeepingCommit,
   detectSpecChanges,
+  launchOrchestrator,
   resolveSpecFiles,
   loadMergedSpecContent,
   queueReplanForSpecChange,
@@ -71,6 +72,7 @@ import {
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
+  type LaunchOrchestratorDeps,
   type DispatchDeps,
   type DecompositionPlanIssue,
   type DecompositionPlan,
@@ -445,6 +447,119 @@ describe('orchestrateCommand', () => {
 
     const allOutput = logs.join('\n');
     assert.ok(!allOutput.includes('Repo:'));
+  });
+});
+
+describe('launchOrchestrator', () => {
+  it('creates worktree, launches loop, and writes session registration files', async () => {
+    const writes: Record<string, string> = {};
+    const spawnSyncCalls: Array<{ command: string; args: string[] }> = [];
+    const spawnCalls: Array<{ command: string; args: string[]; options?: Record<string, unknown> }> = [];
+    let unrefCalled = false;
+    const deps: LaunchOrchestratorDeps = {
+      existsSync: (p: string) => p === '/home/.aloop/bin/loop.sh',
+      readFile: async () => '',
+      writeFile: async (p: string, data: string) => {
+        writes[p] = data;
+      },
+      now: () => new Date('2026-03-10T11:12:13.000Z'),
+      spawnSync: (command: string, args: string[]) => {
+        spawnSyncCalls.push({ command, args });
+        return { status: 0, stdout: '', stderr: '' };
+      },
+      spawn: (command: string, args: string[], options?: Record<string, unknown>) => {
+        spawnCalls.push({ command, args, options });
+        return {
+          pid: 4242,
+          unref: () => {
+            unrefCalled = true;
+          },
+        };
+      },
+      env: { PATH: '/usr/bin' },
+    };
+
+    const result = await launchOrchestrator({
+      sessionDir: '/sessions/orchestrator-20260310-111213',
+      promptsDir: '/sessions/orchestrator-20260310-111213/prompts',
+      projectRoot: '/project',
+      aloopRoot: '/home/.aloop',
+      maxScans: 321,
+    }, deps);
+
+    assert.equal(result.pid, 4242);
+    assert.equal(result.work_dir, '/sessions/orchestrator-20260310-111213/worktree');
+    assert.equal(result.worktree, true);
+    assert.equal(result.worktree_path, '/sessions/orchestrator-20260310-111213/worktree');
+    assert.equal(result.warnings.length, 0);
+    assert.equal(unrefCalled, true);
+
+    assert.equal(spawnSyncCalls.length, 1);
+    assert.deepStrictEqual(spawnSyncCalls[0], {
+      command: 'git',
+      args: ['-C', '/project', 'worktree', 'add', '/sessions/orchestrator-20260310-111213/worktree', '-b', 'aloop/orchestrator-20260310-111213'],
+    });
+
+    assert.equal(spawnCalls.length, 1);
+    assert.equal(spawnCalls[0].command, '/home/.aloop/bin/loop.sh');
+    assert.deepStrictEqual(spawnCalls[0].args, [
+      '--prompts-dir', '/sessions/orchestrator-20260310-111213/prompts',
+      '--session-dir', '/sessions/orchestrator-20260310-111213',
+      '--work-dir', '/sessions/orchestrator-20260310-111213/worktree',
+      '--mode', 'plan',
+      '--provider', 'claude',
+      '--round-robin', 'claude',
+      '--max-iterations', '321',
+      '--launch-mode', 'start',
+      '--dangerously-skip-container',
+    ]);
+
+    const meta = JSON.parse(writes['/sessions/orchestrator-20260310-111213/meta.json']);
+    assert.equal(meta.session_id, 'orchestrator-20260310-111213');
+    assert.equal(meta.mode, 'orchestrate');
+    assert.equal(meta.pid, 4242);
+
+    const active = JSON.parse(writes['/home/.aloop/active.json']);
+    const activeEntry = active['orchestrator-20260310-111213'];
+    assert.equal(activeEntry.mode, 'orchestrate');
+    assert.equal(activeEntry.pid, 4242);
+  });
+
+  it('falls back to project root when worktree creation fails', async () => {
+    const spawnCalls: Array<{ options?: Record<string, unknown>; args: string[] }> = [];
+    const deps: LaunchOrchestratorDeps = {
+      existsSync: () => true,
+      readFile: async () => '',
+      writeFile: async () => {},
+      now: () => new Date('2026-03-10T11:12:13.000Z'),
+      spawnSync: () => ({ status: 1, stdout: '', stderr: 'git worktree add failed' }),
+      spawn: (_command: string, args: string[], options?: Record<string, unknown>) => {
+        spawnCalls.push({ options, args });
+        return { pid: 5151, unref: () => {} };
+      },
+      env: {},
+    };
+
+    const result = await launchOrchestrator({
+      sessionDir: '/sessions/orchestrator-20260310-111213',
+      promptsDir: '/sessions/orchestrator-20260310-111213/prompts',
+      projectRoot: '/project',
+      aloopRoot: '/home/.aloop',
+    }, deps);
+
+    assert.equal(result.worktree, false);
+    assert.equal(result.work_dir, '/project');
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0], /Failed to create worktree/);
+    assert.deepStrictEqual(spawnCalls[0].args.slice(0, 6), [
+      '--prompts-dir',
+      '/sessions/orchestrator-20260310-111213/prompts',
+      '--session-dir',
+      '/sessions/orchestrator-20260310-111213',
+      '--work-dir',
+      '/project',
+    ]);
+    assert.equal(spawnCalls[0].options?.cwd, '/project');
   });
 });
 
