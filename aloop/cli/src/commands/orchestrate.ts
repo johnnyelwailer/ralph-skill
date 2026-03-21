@@ -3482,7 +3482,7 @@ const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 const ORCHESTRATOR_REDISPATCH_LIMIT = 3;
 const WORKING_ARTIFACT_FILES = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'] as const;
 
-function parseArtifactRemovalTargets(feedback: string | undefined): string[] | null {
+export function parseArtifactRemovalTargets(feedback: string | undefined): string[] | null {
   if (!feedback) return null;
 
   const normalized = feedback.toLowerCase();

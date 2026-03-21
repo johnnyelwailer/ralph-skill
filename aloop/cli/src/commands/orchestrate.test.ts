@@ -69,6 +69,7 @@ import {
   processQueuedPrompts,
   createTrunkToMainPr,
   resolveAutoMerge,
+  parseArtifactRemovalTargets,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -313,6 +314,39 @@ describe('orchestrateCommandWithDeps', () => {
       ghCalls[1],
       ['pr-comments', '--session', 'orchestrator-20260309-103000', '--since', '2026-03-09T10:30:00.000Z', '--role', 'orchestrator'],
     );
+  });
+});
+
+describe('parseArtifactRemovalTargets', () => {
+  it('returns null for empty or undefined feedback', () => {
+    assert.equal(parseArtifactRemovalTargets(undefined), null);
+    assert.equal(parseArtifactRemovalTargets(''), null);
+  });
+
+  it('returns null when removal intent exists but no known artifact files are mentioned', () => {
+    const feedback = 'Please remove NOTES.md from this PR.';
+    assert.equal(parseArtifactRemovalTargets(feedback), null);
+  });
+
+  it('returns all working artifact files for generic working artifact feedback', () => {
+    const feedback = 'Please remove working artifacts from this PR.';
+    assert.deepStrictEqual(parseArtifactRemovalTargets(feedback), [
+      'TODO.md',
+      'STEERING.md',
+      'QA_COVERAGE.md',
+      'QA_LOG.md',
+      'REVIEW_LOG.md',
+    ]);
+  });
+
+  it('returns null when feedback mixes artifact removal with unrelated requests', () => {
+    const feedback = 'Remove working artifacts and add missing tests.';
+    assert.equal(parseArtifactRemovalTargets(feedback), null);
+  });
+
+  it('returns only exact artifact files mentioned in feedback', () => {
+    const feedback = 'Please do not commit TODO.md or QA_LOG.md.';
+    assert.deepStrictEqual(parseArtifactRemovalTargets(feedback), ['TODO.md', 'QA_LOG.md']);
   });
 });
 

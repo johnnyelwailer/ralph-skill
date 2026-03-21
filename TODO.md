@@ -8,7 +8,7 @@
 
 - [ ] **Add `--concurrency` option to `start` command definition** — The `start` command in `index.ts:74-88` has no `--concurrency` option. Add `.option('--concurrency <number>', 'Max concurrent child loops (orchestrate mode)')` so users can pass it directly. The `--max` → `--max-scans` mapping already works in `start.ts:747+` but `--concurrency` must also be exposed on the CLI surface. (priority: high)
 
-- [ ] [review] Gate 3: `parseArtifactRemovalTargets` (orchestrate.ts:3213-3261) has no direct unit tests — add tests for: (a) empty/undefined feedback returns null, (b) removal intent with no known artifact files returns null, (c) generic "working artifact" without specific files returns full list, (d) mixed feedback with non-artifact content returns null, (e) exact file mentions return only those files. (priority: medium)
+- [x] [review] Gate 3: `parseArtifactRemovalTargets` (orchestrate.ts:3213-3261) has no direct unit tests — add tests for: (a) empty/undefined feedback returns null, (b) removal intent with no known artifact files returns null, (c) generic "working artifact" without specific files returns full list, (d) mixed feedback with non-artifact content returns null, (e) exact file mentions return only those files. (priority: medium)
 
 ### Up Next
 
@@ -19,6 +19,8 @@
 - [ ] **Update `/aloop:start` skill for dual-mode** — Update `claude/commands/aloop/start.md` to document `--mode orchestrate` and `--mode loop` flags, that mode defaults to project config, and add `--concurrency` to the flag mapping list. Currently the skill has no mention of orchestrate mode.
 
 - [ ] **Update tests for mode dispatch** — The test at `start.test.ts:1683` already verifies orchestrate mode dispatches correctly. Still needed: (a) test that `--mode loop` overrides orchestrate config, (b) test that `--mode orchestrate` overrides loop config, (c) test for resume detecting orchestrator sessions.
+
+- [ ] **Stabilize baseline CLI test suite failures discovered in this loop** — `npm test` currently fails in unrelated areas (e.g., `dashboard.test.ts` packaged-assets assertion, `orchestrate.test.ts` triage scan assertion, and multi-file spec merge assertion). Triage and fix or quarantine flaky/environment-dependent cases so backpressure can pass cleanly. (priority: high)
 
 ### Completed
 
