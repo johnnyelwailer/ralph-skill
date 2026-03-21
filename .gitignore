@@ -31,3 +31,10 @@ aloop/cli/dashboard/test-results/
 *-proof.json
 *-verification.txt
 *.tgz
+
+# Aloop working artifacts (not for PR)
+TODO.md
+STEERING.md
+QA_COVERAGE.md
+QA_LOG.md
+REVIEW_LOG.md
