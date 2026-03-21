@@ -1014,7 +1014,23 @@ ${recent.slice(-4000)}
           } catch { /* ignore */ }
         }
 
-        // 3. Queue review prompt with PR comments history
+        // 3. Check if PR head commit has already been reviewed (prevent spam)
+        const stateIssue = state.issues.find((i: any) => i.pr_number === prNumber);
+        if (stateIssue && repo) {
+          try {
+            const headResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'headRefOid'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+            if (headResult.status === 0) {
+              const headSha = JSON.parse(headResult.stdout).headRefOid;
+              if (headSha && (stateIssue as any).last_reviewed_sha === headSha) {
+                return { pr_number: prNumber, verdict: 'pending', summary: 'Already reviewed this commit, waiting for new push.' };
+              }
+              // Store SHA — will be saved after verdict
+              (stateIssue as any).last_reviewed_sha = headSha;
+            }
+          } catch { /* ignore */ }
+        }
+
+        // 4. Queue review prompt with PR comments history
         const queueFile = path.join(sessionDir, 'queue', `000-review-${prNumber}.md`);
         const legacyQueueFile = path.join(sessionDir, 'queue', `review-${prNumber}.md`);
         if (!existsSync(queueFile) && !existsSync(legacyQueueFile)) {
