@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
 import { marked } from 'marked';
 import { toast } from 'sonner';
 import {
@@ -1811,6 +1811,9 @@ function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
 // ── Main App ──
 
 export function App() {
+  const SWIPE_EDGE_THRESHOLD_PX = 30;
+  const SWIPE_OPEN_DISTANCE_PX = 60;
+  const SWIPE_MAX_VERTICAL_DRIFT_PX = 40;
   const [state, setState] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1825,6 +1828,9 @@ export function App() {
   const [activePanel, setActivePanel] = useState<'docs' | 'activity'>('docs');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const prevPhaseRef = useRef<string>('');
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const swipeLastRef = useRef<{ x: number; y: number } | null>(null);
+  const swipeTrackingRef = useRef(false);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1995,6 +2001,51 @@ export function App() {
     finally { setResumeSubmitting(false); }
   }, [resumeSubmitting]);
 
+  const openSidebarFromSwipe = useCallback(() => {
+    setSidebarCollapsed(false);
+    setMobileMenuOpen(true);
+  }, []);
+
+  const handleTouchStart = useCallback((e: TouchEvent<HTMLDivElement>) => {
+    if (mobileMenuOpen || e.touches.length !== 1) {
+      swipeTrackingRef.current = false;
+      return;
+    }
+    const touch = e.touches[0];
+    if (touch.clientX > SWIPE_EDGE_THRESHOLD_PX) {
+      swipeTrackingRef.current = false;
+      return;
+    }
+    swipeTrackingRef.current = true;
+    swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+    swipeLastRef.current = { x: touch.clientX, y: touch.clientY };
+  }, [mobileMenuOpen]);
+
+  const handleTouchMove = useCallback((e: TouchEvent<HTMLDivElement>) => {
+    if (!swipeTrackingRef.current || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    swipeLastRef.current = { x: touch.clientX, y: touch.clientY };
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!swipeTrackingRef.current || !swipeStartRef.current || !swipeLastRef.current) {
+      swipeTrackingRef.current = false;
+      swipeStartRef.current = null;
+      swipeLastRef.current = null;
+      return;
+    }
+
+    const deltaX = swipeLastRef.current.x - swipeStartRef.current.x;
+    const deltaY = Math.abs(swipeLastRef.current.y - swipeStartRef.current.y);
+    if (deltaX >= SWIPE_OPEN_DISTANCE_PX && deltaY <= SWIPE_MAX_VERTICAL_DRIFT_PX) {
+      openSidebarFromSwipe();
+    }
+
+    swipeTrackingRef.current = false;
+    swipeStartRef.current = null;
+    swipeLastRef.current = null;
+  }, [openSidebarFromSwipe]);
+
   const docsPanel = (
     <Card className={`flex flex-col min-h-0 min-w-0 overflow-hidden flex-1 ${activePanel !== 'docs' ? 'hidden lg:flex' : ''}`}>
       <CardHeader className="py-2 px-3 shrink-0">
@@ -2039,7 +2090,13 @@ export function App() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
+      <div
+        className="h-screen flex flex-col bg-background text-foreground overflow-hidden touch-pan-y"
+        data-testid="app-shell"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
         <div className="flex flex-1 min-h-0">
           {/* Desktop sidebar */}
           <div className="hidden md:flex">

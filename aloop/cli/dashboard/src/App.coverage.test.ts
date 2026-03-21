@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   App,
   ArtifactComparisonDialog,
@@ -575,6 +575,29 @@ describe('App.tsx AppView integration coverage', () => {
     });
   });
 
+  it('opens mobile sidebar drawer on left-edge right swipe', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/state')) {
+        return new Response(JSON.stringify(baseState), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = render(createElement(App));
+    await screen.findByRole('button', { name: /stop/i });
+
+    const appShell = screen.getByTestId('app-shell');
+    fireEvent.touchStart(appShell, { touches: [{ clientX: 10, clientY: 100 }] });
+    fireEvent.touchMove(appShell, { touches: [{ clientX: 95, clientY: 110 }] });
+    fireEvent.touchEnd(appShell);
+
+    await waitFor(() => {
+      expect(container.querySelector('.fixed.inset-0.z-40')).not.toBeNull();
+    });
+  });
+
   it('covers older-session grouping and docs overflow branches', async () => {
     const state = {
       ...baseState,
@@ -633,7 +656,7 @@ describe('App.tsx AppView integration coverage', () => {
     ];
     const onSelect = vi.fn();
     const onToggle = vi.fn();
-    const { container } = render(createElement(TooltipProvider, {}, createElement(Sidebar, {
+    const { container } = render(createElement(TooltipProvider, null, createElement(Sidebar, {
       sessions: sessions as any[],
       selectedSessionId: 's1',
       onSelectSession: onSelect,
@@ -671,7 +694,7 @@ describe('App.tsx AppView integration coverage', () => {
       },
     }];
     vi.stubGlobal('fetch', vi.fn(async () => new Response('build output', { status: 200 })));
-    render(createElement(TooltipProvider, {}, createElement(ActivityPanel, {
+    render(createElement(TooltipProvider, null, createElement(ActivityPanel, {
       log,
       artifacts: artifacts as any[],
       currentIteration: 2,
@@ -692,7 +715,7 @@ describe('App.tsx AppView integration coverage', () => {
     render(createElement(DocContent, { content: '', name: 'Empty.md' }));
     expect(screen.getByText(/No content/i)).toBeInTheDocument();
     const providers = [{ name: 'p1', status: 'cooldown', lastEvent: 't', cooldownUntil: new Date(Date.now() + 100000).toISOString() }];
-    render(createElement(TooltipProvider, {}, createElement(HealthPanel, { providers: providers as any[] })));
+    render(createElement(TooltipProvider, null, createElement(HealthPanel, { providers: providers as any[] })));
     expect(screen.getByText('p1')).toBeInTheDocument();
   });
 });
