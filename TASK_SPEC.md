@@ -1,51 +1,50 @@
-# Sub-Spec: Issue #183 — Configure Storybook 8 with react-vite and Tailwind decorators
-
-Part of #29: Epic: Dashboard Core — Component Refactor & Real-Time UI
+# Sub-Spec: Issue #154 — Extract session and sidebar components from AppView.tsx
 
 ## Problem
 
-Set up Storybook 8 infrastructure in the dashboard project so that subsequent component extraction sub-issues can add stories alongside components.
+Extract the session sidebar UI from `AppView.tsx` into dedicated components under `src/components/session/` and `src/components/layout/`.
 
 ## Scope
 
-### Storybook Configuration
-- Install Storybook 8 with `@storybook/react-vite` framework adapter
-- Create `.storybook/` directory in `aloop/cli/dashboard/`
-- Configure `main.ts` to find `*.stories.tsx` files colocated with components
-- Configure `preview.ts` with global decorators
+### Create `src/components/session/SessionCard.tsx`
+- Single session entry showing: session name, status dot, elapsed time, iteration count
+- Click handler for selection
+- Active state styling
 
-### Global Decorators
-- Tailwind CSS context decorator (imports `index.css`)
-- Dark mode toggle decorator using `@storybook/addon-themes` or custom decorator that toggles `.dark` class on root
-- Tooltip provider wrapper (Radix UI `TooltipProvider`)
+### Create `src/components/session/SessionList.tsx`
+- Scrollable list of SessionCard components
+- Grouped by project (tree view)
+- Active/Older sections with collapsible headers
+- Search/filter input
 
-### Package.json Scripts
-- Add `storybook` script: `storybook dev -p 6006`
-- Add `build-storybook` script: `storybook build`
-- Install required devDependencies: `@storybook/react-vite`, `@storybook/react`, `@storybook/addon-essentials`, `@storybook/addon-themes`, `storybook`
+### Create `src/components/session/SessionDetail.tsx`
+- Selected session detail view (used in main panel header area)
+- Session name, iteration counter, progress bar, phase badge
 
-### Verification Story
-- Create a simple `Button.stories.tsx` for the existing `ui/button.tsx` component to verify the setup works
-- Story should render in both light and dark mode
+### Create `src/components/layout/Sidebar.tsx`
+- Complete sidebar component wrapping SessionList
+- Toggle visibility (`Ctrl+B` keyboard shortcut)
+- Resizable panel integration
 
-## Inputs
-- `aloop/cli/dashboard/package.json` (existing deps)
-- `aloop/cli/dashboard/tailwind.config.ts` (theme config)
-- `aloop/cli/dashboard/src/index.css` (CSS custom properties)
-
-## Outputs
-- `aloop/cli/dashboard/.storybook/main.ts`
-- `aloop/cli/dashboard/.storybook/preview.ts`
-- `aloop/cli/dashboard/src/components/ui/button.stories.tsx`
-- Updated `aloop/cli/dashboard/package.json` with Storybook deps and scripts
+### Update `AppView.tsx`
+- Replace inline `Sidebar()` function and session rendering with imports
 
 ## Acceptance Criteria
-- [ ] `npm run storybook` launches Storybook on port 6006
-- [ ] `npx storybook build` produces static build without errors
-- [ ] Button story renders correctly in both light and dark mode
-- [ ] Global decorator applies Tailwind styles matching dashboard appearance
-- [ ] Storybook uses same `tailwind.config.ts` as dashboard
-- [ ] No changes to existing source code or tests
+- [ ] Each component file is <150 LOC
+- [ ] Session cards show status dots with correct colors
+- [ ] Tree view groups sessions by project
+- [ ] Active/Older section headers are collapsible
+- [ ] `Ctrl+B` toggles sidebar visibility
+- [ ] All existing tests pass
+- [ ] `npm run type-check` passes
 
-## Labels
-`aloop/sub-issue`, `aloop/needs-refine`
+## Files
+- `aloop/cli/dashboard/src/AppView.tsx` (modify)
+- `aloop/cli/dashboard/src/components/session/SessionCard.tsx` (create)
+- `aloop/cli/dashboard/src/components/session/SessionList.tsx` (create)
+- `aloop/cli/dashboard/src/components/session/SessionDetail.tsx` (create)
+- `aloop/cli/dashboard/src/components/layout/Sidebar.tsx` (create)
+
+## Aloop Metadata
+- Parent Epic: #29
+- Labels: `aloop/sub-issue`, `aloop/needs-refine`
