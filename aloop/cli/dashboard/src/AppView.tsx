@@ -19,6 +19,8 @@ import { Toaster } from '@/components/ui/sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { CostDisplay } from '@/components/progress/CostDisplay';
+import { useCost } from '@/hooks/useCost';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 
 // ── ANSI + Markdown rendering ──
@@ -250,6 +252,11 @@ interface QACoverageViewData {
   percentage: number | null;
   available: boolean;
   features: QACoverageFeature[];
+}
+
+interface CostSessionResponse {
+  total_usd?: number | string;
+  error?: string;
 }
 
 // ── Helpers ──
@@ -745,6 +752,46 @@ export function Sidebar({
   }, [sessions]);
 
   const [olderOpen, setOlderOpen] = useState(false);
+  const [sessionCosts, setSessionCosts] = useState<Record<string, number | null>>({});
+  const [costUnavailable, setCostUnavailable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const targets = sessions
+      .map((s) => s.id)
+      .filter((id) => id && id !== 'current')
+      .slice(0, 20);
+    if (targets.length === 0) return;
+
+    const loadSessionCosts = async () => {
+      const entries = await Promise.all(targets.map(async (id) => {
+        try {
+          const response = await fetch(`/api/cost/session/${encodeURIComponent(id)}`);
+          if (!response.ok) return [id, null] as const;
+          const payload = await response.json() as CostSessionResponse;
+          if (payload.error === 'opencode_unavailable') {
+            if (!cancelled) setCostUnavailable(true);
+            return [id, null] as const;
+          }
+          const value = typeof payload.total_usd === 'number'
+            ? payload.total_usd
+            : typeof payload.total_usd === 'string'
+              ? Number.parseFloat(payload.total_usd)
+              : NaN;
+          return [id, Number.isFinite(value) ? value : null] as const;
+        } catch {
+          return [id, null] as const;
+        }
+      }));
+
+      if (!cancelled) {
+        setSessionCosts((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+      }
+    };
+
+    void loadSessionCosts();
+    return () => { cancelled = true; };
+  }, [sessions]);
 
   if (collapsed) {
     return (
@@ -795,6 +842,8 @@ export function Sidebar({
             {s.phase && <span className="shrink-0">·</span>}
             {s.phase && <PhaseBadge phase={s.phase} small />}
             {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
+            {s.elapsed && s.elapsed !== '--' && <span className="shrink-0">· {s.elapsed}</span>}
+            {typeof sessionCosts[s.id] === 'number' && <span className="shrink-0">· ${sessionCosts[s.id]!.toFixed(4)}</span>}
           </div>
         </button>
       </TooltipTrigger>
@@ -805,6 +854,10 @@ export function Sidebar({
           <p>Status: {s.status}</p>
           {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
           <p>Provider: {s.provider}</p>
+          <p>Iterations: {s.iterations}</p>
+          {s.elapsed && s.elapsed !== '--' && <p>Duration: {s.elapsed}</p>}
+          {costUnavailable && typeof sessionCosts[s.id] !== 'number' && <p>Cost: unavailable</p>}
+          {typeof sessionCosts[s.id] === 'number' && <p>Cost: ${sessionCosts[s.id]!.toFixed(4)}</p>}
           {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
           {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
           {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
@@ -869,6 +922,8 @@ function Header({
   updatedAt, loading, loadError, connectionStatus, onOpenCommand, onOpenSwitcher,
   stuckCount, startedAt, avgDuration, maxIterations, onToggleMobileMenu,
   selectedSessionId, qaCoverageRefreshKey,
+  sessionCost, totalCost, budgetCap, budgetUsedPercent,
+  costError, costLoading, budgetWarnings, budgetPauseThreshold,
 }: {
   sessionName: string; isRunning: boolean; currentState: string; currentPhase: string;
   currentIteration: string; providerName: string; modelName: string;
@@ -879,6 +934,14 @@ function Header({
   onToggleMobileMenu: () => void;
   selectedSessionId: string | null;
   qaCoverageRefreshKey: string;
+  sessionCost: number;
+  totalCost: number | null;
+  budgetCap: number | null;
+  budgetUsedPercent: number | null;
+  costError: string | null;
+  costLoading: boolean;
+  budgetWarnings: number[];
+  budgetPauseThreshold: number | null;
 }) {
   const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
   return (
@@ -915,6 +978,7 @@ function Header({
               <p><span className="text-muted-foreground">Stuck:</span> <span className={stuckCount > 0 ? 'text-red-500 font-medium' : ''}>{stuckCount}</span></p>
               {startedAt && <p><span className="text-muted-foreground">Elapsed:</span> <ElapsedTimer since={startedAt} /></p>}
               {avgDuration && <p><span className="text-muted-foreground">Avg iter:</span> {avgDuration}</p>}
+              <p><span className="text-muted-foreground">Session cost:</span> ${sessionCost.toFixed(4)}</p>
             </div>
           </HoverCardContent>
         </HoverCard>
@@ -925,9 +989,24 @@ function Header({
             <ElapsedTimer since={startedAt} />
           </span>
         )}
-        {avgDuration && (
-          <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap hidden lg:inline">~{avgDuration}/iter</span>
+        {(avgDuration || sessionCost > 0) && (
+          <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap hidden lg:inline">
+            {avgDuration ? `~${avgDuration}/iter` : ''}{avgDuration && sessionCost > 0 ? ' · ' : ''}{sessionCost > 0 ? `$${sessionCost.toFixed(4)} session` : ''}
+          </span>
         )}
+
+        <div className="hidden xl:block">
+          <CostDisplay
+            totalCost={totalCost}
+            budgetCap={budgetCap}
+            budgetUsedPercent={budgetUsedPercent}
+            error={costError}
+            isLoading={costLoading}
+            budgetWarnings={budgetWarnings}
+            budgetPauseThreshold={budgetPauseThreshold}
+            className="min-w-[220px]"
+          />
+        </div>
 
         {/* Progress bar — hidden on mobile */}
         <div className="hidden sm:flex items-center gap-2 min-w-0 flex-1 max-w-xs" data-testid="header-progress">
@@ -2110,6 +2189,34 @@ export function App() {
   const metaRecord = isRecord(state?.meta) ? state.meta : null;
   const maxIterations = metaRecord && typeof metaRecord.max_iterations === 'number' ? metaRecord.max_iterations : null;
   const avgDuration = useMemo(() => computeAvgDuration(state?.log ?? ''), [state?.log]);
+  const {
+    sessionCost,
+    totalCost,
+    budgetCap,
+    budgetUsedPercent,
+    isLoading: costLoading,
+    error: costError,
+  } = useCost({ log: state?.log ?? '', meta: metaRecord });
+
+  const budgetWarnings = useMemo(() => {
+    if (!metaRecord) return [] as number[];
+    const raw = metaRecord.budget_warnings;
+    if (!Array.isArray(raw)) return [] as number[];
+    return raw
+      .map((value) => (typeof value === 'number' ? value : (typeof value === 'string' ? Number.parseFloat(value) : NaN)))
+      .filter((value): value is number => Number.isFinite(value) && value > 0);
+  }, [metaRecord]);
+
+  const budgetPauseThreshold = useMemo(() => {
+    if (!metaRecord) return null;
+    const raw = metaRecord.budget_pause_threshold;
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
+    if (typeof raw === 'string' && raw.trim()) {
+      const parsed = Number.parseFloat(raw);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    return null;
+  }, [metaRecord]);
 
   useEffect(() => {
     if (currentPhase && prevPhaseRef.current && currentPhase !== prevPhaseRef.current) {
@@ -2228,7 +2335,7 @@ export function App() {
             </div>
           )}
           <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} />
+            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
             {/* Mobile panel toggle */}
             <div className="lg:hidden flex border-b border-border shrink-0">
               <button
