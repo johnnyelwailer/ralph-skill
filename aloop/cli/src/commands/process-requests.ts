@@ -292,7 +292,44 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // ── Phase 2d: Cleanup worktrees + V8 cache for fully completed children ──
+  // ── Phase 2d: Detect dead children — reset to Ready if PID is gone ──
+  for (const issue of state.issues) {
+    if (issue.state !== 'in_progress') continue;
+    if (!issue.child_session) {
+      // No child session but in_progress — stale preloaded state
+      issue.state = 'pending';
+      issue.status = 'Ready';
+      stateChanged = true;
+      continue;
+    }
+    const childPid = (issue as any).child_pid;
+    if (childPid && !existsSync(`/proc/${childPid}`)) {
+      // PID dead — check child status.json for completion
+      const childStatusFile = path.join(aloopRoot, 'sessions', issue.child_session, 'status.json');
+      if (existsSync(childStatusFile)) {
+        try {
+          const cs = JSON.parse(await readFile(childStatusFile, 'utf8'));
+          if (cs.state === 'completed') continue; // Will be handled by PR creation
+          if (cs.state === 'stopped') {
+            // Stopped — re-queue via needs_redispatch
+            (issue as any).needs_redispatch = true;
+            (issue as any).review_feedback = `Child stopped after ${cs.iteration ?? '?'} iterations. Resume and continue.`;
+            stateChanged = true;
+            continue;
+          }
+        } catch { /* fall through */ }
+      }
+      // Dead with no clear status — reset to Ready for fresh dispatch
+      issue.state = 'pending';
+      issue.status = 'Ready';
+      issue.child_session = null;
+      (issue as any).child_pid = null;
+      stateChanged = true;
+      console.log(`[process-requests] Dead child detected for #${issue.number} — reset to Ready`);
+    }
+  }
+
+  // ── Phase 2e: Cleanup worktrees + V8 cache for fully completed children ──
   try {
     for (const issue of state.issues) {
       if ((issue.state === 'merged' || issue.state === 'failed') && issue.child_session) {
