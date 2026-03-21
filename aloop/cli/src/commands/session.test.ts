@@ -379,3 +379,53 @@ test('stopSession returns failure when process kill fails and leaves state uncha
   const historyPath = path.join(aloopDir, 'history.json');
   assert.equal(existsSync(historyPath), false);
 });
+
+test('stopSession cascades orchestrator child sessions before stopping parent', async () => {
+  const { homeDir } = await makeHomeDir('aloop-session-stop-orchestrator-cascade-');
+  const aloopDir = path.join(homeDir, '.aloop');
+  const parentId = 'orchestrator-session';
+  const childId = 'child-session-1';
+  const parentDir = path.join(aloopDir, 'sessions', parentId);
+  const childDir = path.join(aloopDir, 'sessions', childId);
+
+  await mkdir(parentDir, { recursive: true });
+  await mkdir(childDir, { recursive: true });
+
+  await writeFile(path.join(aloopDir, 'active.json'), JSON.stringify({
+    [parentId]: {
+      session_dir: parentDir,
+      mode: 'orchestrate',
+      started_at: '2026-01-01T00:00:00.000Z',
+    },
+    [childId]: {
+      session_dir: childDir,
+      mode: 'build',
+      started_at: '2026-01-01T00:05:00.000Z',
+    },
+  }), 'utf8');
+
+  await writeFile(path.join(parentDir, 'orchestrator.json'), JSON.stringify({
+    issues: [
+      { number: 1, state: 'in_progress', child_session: childId },
+      { number: 2, state: 'pending', child_session: null },
+    ],
+  }), 'utf8');
+
+  await writeFile(path.join(parentDir, 'status.json'), JSON.stringify({ state: 'running', iteration: 2 }), 'utf8');
+  await writeFile(path.join(childDir, 'status.json'), JSON.stringify({ state: 'running', iteration: 4 }), 'utf8');
+
+  const result = await stopSession(homeDir, parentId);
+  assert.equal(result.success, true);
+
+  const active = JSON.parse(await readFile(path.join(aloopDir, 'active.json'), 'utf8'));
+  assert.deepEqual(active, {});
+
+  const parentStatus = JSON.parse(await readFile(path.join(parentDir, 'status.json'), 'utf8'));
+  const childStatus = JSON.parse(await readFile(path.join(childDir, 'status.json'), 'utf8'));
+  assert.equal(parentStatus.state, 'stopped');
+  assert.equal(childStatus.state, 'stopped');
+
+  const history = JSON.parse(await readFile(path.join(aloopDir, 'history.json'), 'utf8'));
+  assert.equal(history.length, 2);
+  assert.deepEqual(history.map((entry: any) => entry.session_id).sort(), [childId, parentId].sort());
+});

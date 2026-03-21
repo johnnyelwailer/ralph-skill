@@ -125,12 +125,39 @@ function killProcess(pid) {
   }
 }
 
+async function readOrchestratorChildSessions(sessionDir) {
+  const orchestratorPath = path.join(sessionDir, 'orchestrator.json');
+  const state = await readJsonFile(orchestratorPath);
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return [];
+
+  const issues = Array.isArray(state.issues) ? state.issues : [];
+  const childSessions = new Set();
+
+  for (const issue of issues) {
+    if (!issue || typeof issue !== 'object') continue;
+    if (typeof issue.child_session === 'string' && issue.child_session.length > 0) {
+      childSessions.add(issue.child_session);
+    }
+  }
+
+  return Array.from(childSessions);
+}
+
 /**
  * @param {string} homeDir
  * @param {string} sessionId
  * @returns {Promise<{success: boolean, reason?: string}>}
  */
 export async function stopSession(homeDir, sessionId) {
+  return stopSessionInternal(homeDir, sessionId, new Set());
+}
+
+async function stopSessionInternal(homeDir, sessionId, stopping) {
+  if (stopping.has(sessionId)) {
+    return { success: true };
+  }
+  stopping.add(sessionId);
+
   const active = await readActiveSessions(homeDir);
   const entry = active[sessionId];
 
@@ -140,6 +167,23 @@ export async function stopSession(homeDir, sessionId) {
 
   const sessionDir = entry.session_dir ?? path.join(homeDir, '.aloop', 'sessions', sessionId);
   const pid = entry.pid ?? null;
+
+  if (entry.mode === 'orchestrate') {
+    const childSessions = await readOrchestratorChildSessions(sessionDir);
+    for (const childSessionId of childSessions) {
+      if (childSessionId === sessionId) continue;
+      const latestActive = await readActiveSessions(homeDir);
+      if (!latestActive[childSessionId]) continue;
+
+      const childResult = await stopSessionInternal(homeDir, childSessionId, stopping);
+      if (!childResult.success) {
+        return {
+          success: false,
+          reason: `Failed to stop child session ${childSessionId}: ${childResult.reason ?? 'unknown error'}`,
+        };
+      }
+    }
+  }
 
   // Kill process if alive
   if (pid && isProcessAlive(pid)) {

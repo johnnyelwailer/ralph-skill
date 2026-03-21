@@ -1,44 +1,35 @@
-# Sub-Spec: Issue #174 — Add provider health integration tests for concurrent access and state transitions
+# Sub-Spec: Issue #144 — Autonomous daemon lifecycle: spawn, register, signal handling, shutdown
 
-Part of #24: Epic: Provider Health & Rate-Limit Resilience
+Make `aloop orchestrate` spawn a background daemon that runs indefinitely, following the same lifecycle pattern as `aloop start`.
 
-## Objective
-
-Create automated integration tests validating the provider health system's state machine, concurrency safety, and CLI display.
-
-## Context
-
-The provider health system is critical infrastructure shared across all loop sessions. Bugs in state transitions or concurrent access could cause providers to be incorrectly skipped or health files to be corrupted. Integration tests ensure correctness under realistic conditions.
+- `aloop orchestrate` spawns a detached background process and returns immediately (like `start.ts` does)
+- Orchestrator registers in `~/.aloop/active.json` with PID, session_dir, work_dir, mode=orchestrator
+- Scan loop runs indefinitely with no iteration cap (per spec: orchestrate mode defaults to no max iterations)
+- Runtime coordinator (Node.js) watches `requests/` directory and processes side effects between scan iterations
+- Register SIGTERM and SIGINT handlers for graceful shutdown:
+  - Stop all running child loops
+  - Persist final `orchestrator.json` state
+  - Deregister from `active.json`
+  - Exit cleanly
+- `aloop stop <session-id>` sends SIGTERM to orchestrator process, triggering graceful shutdown
+- Write `status.json` with mode=orchestrator, update state transitions (starting → running → stopped/completed)
+- Support both Unix (bash) and note Windows (PS1) in daemon spawning
 
 ## Inputs
-- Provider health functions in `loop.sh` and `loop.ps1`
-- `readProviderHealth()` in `aloop/cli/lib/session.mjs`
-- Health display formatting in `aloop/cli/src/commands/status.ts`
-- Existing test file: `aloop/bin/loop_provider_health.tests.sh`
+- `start.ts` daemon spawning pattern (detached process, stdio redirect)
+- `session.mjs` active session management functions
+- `stop.ts` existing stop command
 
-## Deliverables
-- **State transition tests**: healthy → cooldown → healthy, healthy → degraded (no auto-recover), cooldown escalation through all backoff tiers (2m → 5m → 15m → 30m → 60m cap)
-- **Concurrent write safety**: 2+ parallel processes writing to same health file, verify no corruption
-- **Lock failure graceful degradation**: simulate lock contention, verify skip-and-continue behavior
-- **TypeScript read tests**: `readProviderHealth()` correctly parses health files, handles missing/malformed files
-- **Status display tests**: `aloop status` formats health table correctly (healthy/cooldown/degraded with correct metadata)
-- **Cross-session reset**: verify that a success from session B resets cooldown set by session A
+## Outputs
+- Updated `orchestrate.ts` with daemon lifecycle
+- Updated `stop.ts` to handle orchestrator sessions
+- Signal handler registration and graceful shutdown logic
 
 ## Acceptance Criteria
-- [ ] State transition tests cover healthy→cooldown→healthy and healthy→degraded paths
-- [ ] Backoff escalation verified through all 5 tiers to 60-min cap
-- [ ] Concurrent write test with 2+ parallel writers produces valid JSON
-- [ ] Lock failure test verifies graceful degradation (no crash, warning logged)
-- [ ] TypeScript `readProviderHealth()` tests pass
-- [ ] Status formatting tests verify correct output for all 3 states
-- [ ] Cross-session health reset verified
-
-## Files
-- New test files (e.g., `aloop/bin/loop_provider_health_integration.tests.sh`, `aloop/cli/src/__tests__/provider-health.test.ts`)
-- Read-only: `aloop/cli/lib/session.mjs`, `aloop/cli/src/commands/status.ts`
-
-## Existing Issue
-#43
-
-## Labels
-`aloop/sub-issue`, `aloop/needs-refine`
+- [ ] `aloop orchestrate` spawns background daemon and returns immediately
+- [ ] Orchestrator registers in `active.json` with correct metadata
+- [ ] Scan loop runs indefinitely until all issues resolved or user stops
+- [ ] `aloop stop <id>` gracefully shuts down orchestrator
+- [ ] Orchestrator deregisters from `active.json` on exit
+- [ ] Child loops are stopped during shutdown
+- [ ] `status.json` reflects orchestrator state transitions
