@@ -1355,6 +1355,10 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
     }
 
+    // Write a TODO.md that prevents loop.sh from triggering allTasksMarkedDone
+    // The orchestrator loop should never "complete" — it runs until explicitly stopped
+    await writeFile(path.join(workDir, 'TODO.md'), '# Orchestrator\n\n- [ ] Orchestrator scan loop (never completes — managed by process-requests)\n', 'utf8');
+
     const args = [
       '--prompts-dir', result.prompts_dir,
       '--session-dir', result.session_dir,
