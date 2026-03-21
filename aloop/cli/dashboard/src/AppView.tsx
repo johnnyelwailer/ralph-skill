@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from 'react';
 import { marked } from 'marked';
 import { toast } from 'sonner';
 import {
@@ -19,6 +19,8 @@ import { Toaster } from '@/components/ui/sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 
 // ── ANSI + Markdown rendering ──
@@ -234,6 +236,28 @@ interface ProviderHealth {
   reason?: string;
   consecutiveFailures?: number;
   cooldownUntil?: string;
+}
+
+function copyToClipboard(value: string, successMessage: string) {
+  void navigator.clipboard.writeText(value)
+    .then(() => toast.success(successMessage))
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Clipboard copy failed';
+      toast.error(message);
+    });
+}
+
+function openLongPressContextMenu(point: { clientX: number; clientY: number }, target: HTMLElement) {
+  const PointerDownEvent = typeof window.PointerEvent === 'function' ? window.PointerEvent : MouseEvent;
+  target.dispatchEvent(new PointerDownEvent('pointerdown', {
+    bubbles: true,
+    cancelable: true,
+    clientX: point.clientX,
+    clientY: point.clientY,
+    button: 0,
+    buttons: 1,
+    ...(PointerDownEvent === window.PointerEvent ? { pointerType: 'touch' } : {}),
+  }));
 }
 
 // ── Helpers ──
@@ -710,40 +734,42 @@ export function Sidebar({
     selectedSessionId === null ? sessions.indexOf(s) === 0 : s.id === selectedSessionId;
 
   const renderCard = (s: SessionSummary) => (
-    <Tooltip key={s.id}>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className={`w-full overflow-hidden rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent min-h-11 md:min-h-0 ${isSelected(s) ? 'bg-accent' : ''}`}
-          onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
-        >
-          <div className="flex items-center gap-1.5 overflow-hidden">
-            <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
-            <span className="truncate font-medium flex-1">{s.name}</span>
-            <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
+    <SessionContextMenu key={s.id} session={s}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={`w-full overflow-hidden rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent min-h-11 md:min-h-0 ${isSelected(s) ? 'bg-accent' : ''}`}
+            onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
+          >
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
+              <span className="truncate font-medium flex-1">{s.name}</span>
+              <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
+            </div>
+            <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
+              {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
+              {s.branch && <span className="truncate">{s.branch}</span>}
+              {s.phase && <span className="shrink-0">·</span>}
+              {s.phase && <PhaseBadge phase={s.phase} small />}
+              {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
+            </div>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-lg">
+          <div className="space-y-0.5 text-xs">
+            <p className="font-medium">{s.id}</p>
+            {s.pid && <p>PID: {s.pid}</p>}
+            <p>Status: {s.status}</p>
+            {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
+            <p>Provider: {s.provider}</p>
+            {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
+            {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
+            {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
           </div>
-          <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
-            {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
-            {s.branch && <span className="truncate">{s.branch}</span>}
-            {s.phase && <span className="shrink-0">·</span>}
-            {s.phase && <PhaseBadge phase={s.phase} small />}
-            {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
-          </div>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="right" className="max-w-lg">
-        <div className="space-y-0.5 text-xs">
-          <p className="font-medium">{s.id}</p>
-          {s.pid && <p>PID: {s.pid}</p>}
-          <p>Status: {s.status}</p>
-          {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
-          <p>Provider: {s.provider}</p>
-          {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
-          {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
-          {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
-        </div>
-      </TooltipContent>
-    </Tooltip>
+        </TooltipContent>
+      </Tooltip>
+    </SessionContextMenu>
   );
 
   return (
@@ -1220,108 +1246,110 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
 
   return (
     <>
-      <div
-        className={`flex items-center gap-1.5 py-1 px-1.5 text-[11px] font-mono rounded transition-colors min-w-0 ${
-          hasExpandable ? 'cursor-pointer hover:bg-accent/30' : 'hover:bg-accent/20'
-        } ${expanded ? 'bg-accent/20' : ''}`}
-        onClick={() => hasExpandable && setExpanded(!expanded)}
-      >
-        {/* Timestamp */}
-        <span className="text-muted-foreground/60 shrink-0 w-11 text-right">{entry.timestamp ? formatTimeShort(entry.timestamp) : ''}</span>
+      <LogEntryContextMenu entry={entry}>
+        <div
+          className={`flex items-center gap-1.5 py-1 px-1.5 text-[11px] font-mono rounded transition-colors min-w-0 ${
+            hasExpandable ? 'cursor-pointer hover:bg-accent/30' : 'hover:bg-accent/20'
+          } ${expanded ? 'bg-accent/20' : ''}`}
+          onClick={() => hasExpandable && setExpanded(!expanded)}
+        >
+          {/* Timestamp */}
+          <span className="text-muted-foreground/60 shrink-0 w-11 text-right">{entry.timestamp ? formatTimeShort(entry.timestamp) : ''}</span>
 
-        {/* Phase dot — centered with items-center on parent */}
-        {isRunningEntry ? (
-          <span className="relative flex h-2.5 w-2.5 shrink-0">
-            <span className={`absolute inline-flex h-full w-full animate-pulse-dot rounded-full ${phaseColor === 'text-muted-foreground' ? 'bg-green-400' : ''}`} style={phaseColor !== 'text-muted-foreground' ? { backgroundColor: 'currentColor' } : undefined} />
-            <Circle className={`relative h-2.5 w-2.5 fill-current ${phaseColor}`} />
-          </span>
-        ) : (
-          <Circle className={`h-2.5 w-2.5 shrink-0 fill-current ${phaseColor}`} />
-        )}
+          {/* Phase dot — centered with items-center on parent */}
+          {isRunningEntry ? (
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className={`absolute inline-flex h-full w-full animate-pulse-dot rounded-full ${phaseColor === 'text-muted-foreground' ? 'bg-green-400' : ''}`} style={phaseColor !== 'text-muted-foreground' ? { backgroundColor: 'currentColor' } : undefined} />
+              <Circle className={`relative h-2.5 w-2.5 fill-current ${phaseColor}`} />
+            </span>
+          ) : (
+            <Circle className={`h-2.5 w-2.5 shrink-0 fill-current ${phaseColor}`} />
+          )}
 
-        {/* Phase label */}
-        {entry.phase && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-muted-foreground shrink-0 w-12 truncate">{entry.phase}</span>
-            </TooltipTrigger>
-            <TooltipContent><p>{entry.phase}</p></TooltipContent>
-          </Tooltip>
-        )}
-
-        {/* Provider·model */}
-        {entry.provider && (() => {
-          const model = entry.model && entry.model !== 'opencode-default'
-            ? entry.model
-            : extractModelFromOutput(artifacts?.outputHeader);
-          const label = model ? `${entry.provider}\u00b7${model}` : entry.provider;
-          return (
+          {/* Phase label */}
+          {entry.phase && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="text-muted-foreground/70 shrink-0 max-w-[140px] truncate">{label}</span>
+                <span className="text-muted-foreground shrink-0 w-12 truncate">{entry.phase}</span>
               </TooltipTrigger>
-              <TooltipContent><p>{label}</p></TooltipContent>
+              <TooltipContent><p>{entry.phase}</p></TooltipContent>
             </Tooltip>
-          );
-        })()}
+          )}
 
-        {/* Result icon */}
-        {entry.isSuccess && (
-          <Tooltip>
-            <TooltipTrigger asChild><CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" /></TooltipTrigger>
-            <TooltipContent><p>Success</p></TooltipContent>
-          </Tooltip>
-        )}
-        {entry.isError && (
-          <Tooltip>
-            <TooltipTrigger asChild><XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" /></TooltipTrigger>
-            <TooltipContent><p>{entry.resultDetail || 'Error'}</p></TooltipContent>
-          </Tooltip>
-        )}
+          {/* Provider·model */}
+          {entry.provider && (() => {
+            const model = entry.model && entry.model !== 'opencode-default'
+              ? entry.model
+              : extractModelFromOutput(artifacts?.outputHeader);
+            const label = model ? `${entry.provider}\u00b7${model}` : entry.provider;
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-muted-foreground/70 shrink-0 max-w-[140px] truncate">{label}</span>
+                </TooltipTrigger>
+                <TooltipContent><p>{label}</p></TooltipContent>
+              </Tooltip>
+            );
+          })()}
 
-        {/* Result detail */}
-        {entry.resultDetail && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className={`min-w-0 truncate ${entry.commitHash ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-muted-foreground/70'}`}>
-                {entry.resultDetail}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-lg"><p className="break-all">{entry.resultDetail}</p></TooltipContent>
-          </Tooltip>
-        )}
+          {/* Result icon */}
+          {entry.isSuccess && (
+            <Tooltip>
+              <TooltipTrigger asChild><CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" /></TooltipTrigger>
+              <TooltipContent><p>Success</p></TooltipContent>
+            </Tooltip>
+          )}
+          {entry.isError && (
+            <Tooltip>
+              <TooltipTrigger asChild><XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" /></TooltipTrigger>
+              <TooltipContent><p>{entry.resultDetail || 'Error'}</p></TooltipContent>
+            </Tooltip>
+          )}
 
-        {/* Message for non-iteration events (skip for running entry — timer is enough) */}
-        {!isRunningEntry && !entry.resultDetail && entry.message && entry.message !== entry.event && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-foreground/70 min-w-0 truncate flex-1">{entry.message}</span>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-lg"><p className="break-words">{entry.message}</p></TooltipContent>
-          </Tooltip>
-        )}
+          {/* Result detail */}
+          {entry.resultDetail && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={`min-w-0 truncate ${entry.commitHash ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-muted-foreground/70'}`}>
+                  {entry.resultDetail}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-lg"><p className="break-all">{entry.resultDetail}</p></TooltipContent>
+            </Tooltip>
+          )}
 
-        <span className="flex-1 min-w-0" />
+          {/* Message for non-iteration events (skip for running entry — timer is enough) */}
+          {!isRunningEntry && !entry.resultDetail && entry.message && entry.message !== entry.event && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-foreground/70 min-w-0 truncate flex-1">{entry.message}</span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-lg"><p className="break-words">{entry.message}</p></TooltipContent>
+            </Tooltip>
+          )}
 
-        {/* Duration — right-aligned */}
-        {entry.duration && (
-          <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap flex items-center gap-0.5">
-            <Timer className="h-3 w-3" />{formatDuration(entry.duration)}
-          </span>
-        )}
-        {/* Elapsed timer for running entry — right-aligned */}
-        {isRunningEntry && (
-          <span className="text-green-600 dark:text-green-400 shrink-0 whitespace-nowrap flex items-center gap-0.5 font-medium">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <ElapsedTimer since={entry.timestamp} />
-          </span>
-        )}
+          <span className="flex-1 min-w-0" />
 
-        {/* Expand chevron */}
-        {hasExpandable && (
-          expanded ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/40" /> : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
-        )}
-      </div>
+          {/* Duration — right-aligned */}
+          {entry.duration && (
+            <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap flex items-center gap-0.5">
+              <Timer className="h-3 w-3" />{formatDuration(entry.duration)}
+            </span>
+          )}
+          {/* Elapsed timer for running entry — right-aligned */}
+          {isRunningEntry && (
+            <span className="text-green-600 dark:text-green-400 shrink-0 whitespace-nowrap flex items-center gap-0.5 font-medium">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <ElapsedTimer since={entry.timestamp} />
+            </span>
+          )}
+
+          {/* Expand chevron */}
+          {hasExpandable && (
+            expanded ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/40" /> : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
+          )}
+        </div>
+      </LogEntryContextMenu>
 
       {/* Expanded details */}
       {expanded && (
@@ -1462,6 +1490,55 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
         />
       )}
     </>
+  );
+}
+
+function SessionContextMenu({ session, children }: { session: SessionSummary; children: ReactNode }) {
+  const longPressHandlers = useLongPress<HTMLDivElement>({
+    onLongPress: (point, target) => openLongPressContextMenu(point, target),
+    delayMs: 500,
+  });
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div {...longPressHandlers}>{children}</div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onSelect={() => copyToClipboard(session.id, 'Session ID copied')}>
+          Copy session ID
+        </ContextMenuItem>
+        {session.workDir && (
+          <ContextMenuItem onSelect={() => copyToClipboard(session.workDir, 'Session path copied')}>
+            Copy session path
+          </ContextMenuItem>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
+function LogEntryContextMenu({ entry, children }: { entry: LogEntry; children: ReactNode }) {
+  const rawPayload = entry.rawObj ? JSON.stringify(entry.rawObj, null, 2) : '';
+  const longPressHandlers = useLongPress<HTMLDivElement>({
+    onLongPress: (point, target) => openLongPressContextMenu(point, target),
+    delayMs: 500,
+  });
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div {...longPressHandlers}>{children}</div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onSelect={() => copyToClipboard(entry.raw, 'Log line copied')}>
+          Copy raw log line
+        </ContextMenuItem>
+        {rawPayload && (
+          <ContextMenuItem onSelect={() => copyToClipboard(rawPayload, 'Structured log payload copied')}>
+            Copy JSON payload
+          </ContextMenuItem>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 

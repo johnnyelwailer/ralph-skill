@@ -47,6 +47,7 @@ Major version mismatches are a gate failure; minor/patch differences are accepta
 | @radix-ui/react-collapsible    | 1.x     |
 | @radix-ui/react-progress       | 1.x     |
 | @radix-ui/react-scroll-area    | 1.x     |
+| @radix-ui/react-context-menu   | 2.x     |
 | class-variance-authority       | 0.7.x   |
 | clsx                           | 2.x     |
 | cmdk                           | 1.1.1   |
