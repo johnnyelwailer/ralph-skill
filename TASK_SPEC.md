@@ -32,4 +32,7 @@ Make `aloop orchestrate` spawn a background daemon that runs indefinitely, follo
 - [ ] `aloop stop <id>` gracefully shuts down orchestrator
 - [ ] Orchestrator deregisters from `active.json` on exit
 - [ ] Child loops are stopped during shutdown
-- [ ] `status.json` reflects orchestrator state transitions
+- [x] `status.json` reflects orchestrator state transitions
+
+## Labels
+`aloop/sub-issue`, `aloop/needs-refine`
