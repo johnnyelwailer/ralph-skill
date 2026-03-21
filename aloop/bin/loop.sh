@@ -1942,6 +1942,9 @@ setup_provenance_hook
 # Initialize session
 write_log_entry "session_start" "mode" "$MODE" "provider" "$PROVIDER" "work_dir" "$WORK_DIR" "launch_mode" "$LAUNCH_MODE" "runtime_commit" "$RUNTIME_COMMIT" "runtime_installed_at" "$RUNTIME_INSTALLED_AT" "devcontainer" "$DEVCONTAINER_ACTIVE"
 
+# Create artifacts baselines directory for proof agent diffing
+mkdir -p "$ARTIFACTS_DIR/baselines"
+
 # Log container bypass if devcontainer exists but was skipped
 if [ "$DANGEROUSLY_SKIP_CONTAINER" = "true" ] && [ -f "$DEVCONTAINER_JSON_PATH" ]; then
     write_log_entry "container_bypass" "reason" "dangerously_skip_container_flag"
@@ -2219,6 +2222,10 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         sleep 2
         continue
     fi
+
+    # Create per-iteration artifacts directory before provider invocation
+    # (proof agent writes artifacts here; output capture also uses it after)
+    mkdir -p "$ARTIFACTS_DIR/iter-$ITERATION"
 
     # Invoke provider
     prompt_content=$(cat "$iter_prompt_file")
