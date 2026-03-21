@@ -3114,9 +3114,11 @@ describe('processPrLifecycle', () => {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
         if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify([
-            { name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ]), stderr: '' };
+          return { stdout: JSON.stringify({
+            statusCheckRollup: [
+              { name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' },
+            ],
+          }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3148,7 +3150,9 @@ describe('processPrLifecycle', () => {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
         if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'build', status: 'COMPLETED', conclusion: 'FAILURE' }] }), stderr: '' };
+          return { stdout: JSON.stringify({
+            statusCheckRollup: [{ name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' }],
+          }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
