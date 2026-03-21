@@ -29,7 +29,7 @@ aloop start --provider claude
 aloop start --provider round-robin
 
 # Resume a stopped session
-aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
+aloop start --launch resume <session-id>
 ```
 
 ### Orchestrator Mode (`aloop orchestrate`)
