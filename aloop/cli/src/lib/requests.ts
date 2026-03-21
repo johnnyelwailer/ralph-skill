@@ -588,10 +588,15 @@ function findExistingPrForHeadBase(
     { encoding: 'utf8' }
   );
   if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || 'Failed to query existing PRs');
+    return null;
   }
 
-  const parsed = JSON.parse(result.stdout) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    return null;
+  }
   if (!Array.isArray(parsed) || parsed.length === 0) {
     return null;
   }
