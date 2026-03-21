@@ -1,54 +1,48 @@
-# Sub-Spec: Issue #181 — Self-healing: auto-create missing labels and derive missing config
-
-Part of #26: Epic: Orchestrator Core — Autonomous Lifecycle & Request Processing
+# Sub-Spec: Issue #81 — Skill file parity — `/aloop:start` and `/aloop:setup` for dual mode
 
 ## Objective
 
-Implement self-healing behaviors so the orchestrator recovers from common configuration issues without human intervention.
+Update the Claude Code command files and GitHub Copilot prompt files so that `/aloop:start` and `/aloop:setup` correctly describe and invoke dual-mode behavior (loop and orchestrate).
 
-## Context
+## Current State
 
-The orchestrator expects certain GitHub labels (e.g., `aloop/auto`, `aloop/epic`, `aloop/sub-issue`, `aloop/needs-refine`) and config values (repo, trunk branch, project number) to exist. When they're missing, operations silently fail or produce confusing errors.
+`claude/commands/aloop/start.md` and `copilot/prompts/aloop-start.prompt.md` exist but may not document that `aloop start` can now dispatch to orchestrate mode based on config. Similarly, `setup.md` may not fully describe the dual-mode recommendation flow.
 
-## Deliverables
+## Requirements
 
-### Label self-healing
-- At orchestrator startup (in `orchestrateCommandWithDeps`), check if required labels exist:
-  - `aloop/auto`, `aloop/epic`, `aloop/sub-issue`, `aloop/needs-refine`, `aloop/needs-review`, `aloop/in-progress`, `aloop/done`
-- If any are missing, create them via `gh label create` with appropriate colors
-- Run this check once at startup and cache the result in session state
-- If label creation fails (permissions), log warning but don't block orchestration
+- Update `claude/commands/aloop/start.md`:
+  - Document that `aloop start` reads mode from config
+  - `--mode loop` or `--mode orchestrate` overrides config
+  - When orchestrate: flags like `--plan`, `--build`, `--review` are ignored
+  - Resume works for both modes
+- Update `copilot/prompts/aloop-start.prompt.md` with equivalent information
+- Update `claude/commands/aloop/setup.md`:
+  - Document mode recommendation based on scope analysis
+  - ZDR configuration flow
+  - OpenCode agent scaffolding when opencode enabled
+- Update `copilot/prompts/aloop-setup.prompt.md` similarly
+- Verify `/aloop:dashboard` command file exists and is current (already exists)
 
-### Config derivation from meta.json
-- If `state.filter_repo` is null but meta.json has `repo` or `project_root`, derive repo from `gh repo view --json nameWithOwner`
-- If `state.trunk_branch` is default but repo has a different default branch, detect and use it
-- If `gh_project_number` is not set, attempt dynamic discovery (already partially implemented — verify it works)
+## Inputs
 
-### Missing config recovery
-- If `meta.json` is missing critical fields, attempt to reconstruct from:
-  - Git remote URL → repo slug
-  - `orchestrator.json` state → spec file, trunk branch
-  - Environment variables → `GH_HOST`, `GITHUB_REPOSITORY`
-- Log all derivations so the user can verify correctness
+- `claude/commands/aloop/start.md`, `setup.md`
+- `copilot/prompts/aloop-start.prompt.md`, `aloop-setup.prompt.md`
 
-### Startup health check
-- Before entering scan loop, run a quick health check:
-  - `gh auth status` → verify authenticated
-  - `gh repo view` → verify repo access
-  - `git status` → verify clean worktree
-  - Write results to `session-health.json`
-- If critical checks fail, write `ALERT.md` and exit with clear error
+## Outputs
+
+- Skill files accurately describe dual-mode start and setup behavior
+- Users invoking `/aloop:start` get correct guidance for both modes
 
 ## Acceptance Criteria
 
-- [ ] Missing labels auto-created at startup
-- [ ] Missing repo config derived from git remote / meta.json
-- [ ] Missing trunk branch derived from repo default branch
-- [ ] Startup health check verifies gh auth, repo access, git state
-- [ ] `session-health.json` written with check results
-- [ ] All derivations logged for transparency
-- [ ] Graceful degradation: missing optional config doesn't block operation
+- [x] `/aloop:start` skill works identically for both modes
+- [ ] `/aloop:setup` skill documents mode recommendation and ZDR
+- [ ] Copilot prompts match Claude command files
+- [ ] No stale references to "use `aloop orchestrate` directly"
 
-## File Scope
-- `aloop/cli/src/commands/orchestrate.ts` (modify — startup sequence)
-- `aloop/cli/src/commands/orchestrate.test.ts` (add tests)
+## Files
+
+- `claude/commands/aloop/start.md`
+- `claude/commands/aloop/setup.md`
+- `copilot/prompts/aloop-start.prompt.md`
+- `copilot/prompts/aloop-setup.prompt.md`
