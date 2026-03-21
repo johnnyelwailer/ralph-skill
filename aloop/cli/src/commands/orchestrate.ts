@@ -88,6 +88,10 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
+  needs_redispatch?: boolean;
+  review_feedback?: string;
+  pending_review_comments?: PendingReviewComment[];
+  last_review_comment?: string;
 }
 
 export interface OrchestratorState {
@@ -3109,6 +3113,10 @@ export interface InlineReviewComment {
   suggestion?: string;
 }
 
+export interface PendingReviewComment extends InlineReviewComment {
+  id?: number;
+}
+
 export interface AgentReviewResult {
   pr_number: number;
   verdict: AgentReviewVerdict;
@@ -3588,10 +3596,13 @@ export async function processPrLifecycle(
   if (reviewResult.verdict === 'request-changes') {
     // Post review feedback as a proper GH review with inline comments (only if not already posted)
     const stateIssue = state.issues.find((i) => i.number === issue.number);
-    const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
+    const alreadyCommented = stateIssue?.last_review_comment === reviewResult.summary;
+    const reviewComments: PendingReviewComment[] = (reviewResult.comments ?? []).map((comment) => ({
+      ...comment,
+    }));
     if (!alreadyCommented) {
       try {
-        const inlineComments = (reviewResult.comments ?? []).map((c) => {
+        const inlineComments = reviewComments.map((c) => {
           let commentBody = c.body;
           if (c.suggestion) {
             commentBody += `\n\n\`\`\`suggestion\n${c.suggestion}\n\`\`\``;
@@ -3617,17 +3628,83 @@ export async function processPrLifecycle(
         if (inlineComments.length > 0) {
           ghArgs.push('-F', `comments=${JSON.stringify(inlineComments)}`);
         }
-        await deps.execGh(ghArgs);
+        const reviewResponse = await deps.execGh(ghArgs);
+        let postedReviewId: number | undefined;
+        try {
+          const parsed: unknown = JSON.parse(reviewResponse.stdout);
+          if (typeof parsed === 'object' && parsed !== null && typeof (parsed as { id?: unknown }).id === 'number') {
+            postedReviewId = (parsed as { id: number }).id;
+          }
+          const parsedComments = (
+            typeof parsed === 'object' &&
+            parsed !== null &&
+            Array.isArray((parsed as { comments?: unknown }).comments)
+          )
+            ? (parsed as { comments: Array<{ id?: unknown; path?: unknown; line?: unknown }> }).comments
+            : [];
+          if (parsedComments.length > 0) {
+            const commentsWithIds = parsedComments.filter((comment) => typeof comment.id === 'number');
+            for (let index = 0; index < reviewComments.length; index += 1) {
+              const match = commentsWithIds.find((comment) =>
+                comment.path === reviewComments[index].path &&
+                Number(comment.line) === reviewComments[index].line &&
+                typeof comment.id === 'number'
+              );
+              if (match && typeof match.id === 'number') {
+                reviewComments[index].id = match.id;
+              }
+            }
+          }
+        } catch {
+          // ignore malformed response from gh
+        }
+
+        if (postedReviewId && reviewComments.some((comment) => comment.id === undefined)) {
+          try {
+            const listResponse = await deps.execGh([
+              'api',
+              `repos/${repo}/pulls/${prNumber}/comments?per_page=100`,
+              '--method',
+              'GET',
+            ]);
+            const comments = JSON.parse(listResponse.stdout);
+            if (Array.isArray(comments)) {
+              const postedComments = comments.filter((comment) =>
+                Number(comment?.pull_request_review_id) === postedReviewId &&
+                typeof comment?.id === 'number'
+              );
+              for (let index = 0; index < reviewComments.length; index += 1) {
+                if (reviewComments[index].id !== undefined) continue;
+                let expectedBody = reviewComments[index].body;
+                if (reviewComments[index].suggestion) {
+                  expectedBody += `\n\n\`\`\`suggestion\n${reviewComments[index].suggestion}\n\`\`\``;
+                }
+                const match = postedComments.find((comment) =>
+                  comment.path === reviewComments[index].path &&
+                  Number(comment.line) === reviewComments[index].line &&
+                  typeof comment.body === 'string' &&
+                  comment.body.trim() === expectedBody.trim()
+                );
+                if (match && typeof match.id === 'number') {
+                  reviewComments[index].id = match.id;
+                }
+              }
+            }
+          } catch {
+            // best-effort enrichment only
+          }
+        }
       } catch {
         // Best-effort
       }
-      if (stateIssue) (stateIssue as any).last_review_comment = reviewResult.summary;
+      if (stateIssue) stateIssue.last_review_comment = reviewResult.summary;
     }
 
     // Mark for re-dispatch by the scan pass (which has dispatchDeps)
     if (stateIssue) {
-      (stateIssue as any).needs_redispatch = true;
-      (stateIssue as any).review_feedback = reviewResult.summary;
+      stateIssue.needs_redispatch = true;
+      stateIssue.review_feedback = reviewResult.summary;
+      stateIssue.pending_review_comments = reviewComments;
     }
 
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
@@ -5280,7 +5357,7 @@ export async function runOrchestratorScanPass(
 
   // 3.5. Re-dispatch children that need review fixes
   if (deps.dispatchDeps && deps.aloopRoot) {
-    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch && i.child_session);
+    const needsRedispatch = state.issues.filter((i) => i.needs_redispatch && i.child_session);
     for (const issue of needsRedispatch) {
       const childDir = path.join(deps.aloopRoot, 'sessions', issue.child_session!);
       const childWorktree = path.join(childDir, 'worktree');
@@ -5290,10 +5367,32 @@ export async function runOrchestratorScanPass(
 
       if (deps.existsSync(childWorktree) && deps.existsSync(loopScript)) {
         try {
+          const reviewComments = issue.pending_review_comments ?? [];
+          const renderedComments = reviewComments.length > 0
+            ? reviewComments.map((comment, index) => {
+              const range = comment.end_line && comment.end_line !== comment.line
+                ? `${comment.line}-${comment.end_line}`
+                : `${comment.line}`;
+              const lines: string[] = [
+                `${index + 1}. ${comment.id !== undefined ? `Comment ID: ${comment.id}` : 'Comment ID: (missing)'}`,
+                `   - Location: \`${comment.path}:${range}\``,
+                `   - Feedback:`,
+                ...comment.body.trim().split('\n').map((line) => `     ${line}`),
+              ];
+              if (comment.suggestion) {
+                lines.push('   - Suggested replacement:');
+                lines.push('```suggestion');
+                lines.push(comment.suggestion);
+                lines.push('```');
+              }
+              return lines.join('\n');
+            }).join('\n\n')
+            : 'No inline comments were captured. Use the summary and inspect PR review threads directly.';
+
           // Write review feedback as steering prompt
           await deps.writeFile(
             path.join(childQueueDir, '000-review-fixes.md'),
-            `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, or other working artifacts to the commit.\n`,
+            `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Summary\n\n${issue.review_feedback ?? 'Review requested changes.'}\n\n## Inline Comments (Resolve Individually)\n\n${renderedComments}\n\n## Instructions\n\n1. Address each inline comment individually.\n2. After fixing a comment, resolve the corresponding review thread using its comment ID.\n3. Commit with messages like: \`fix: address review comment on file.ts:42\`.\n4. Push updates to the same branch.\n\nDo NOT add TODO.md, STEERING.md, or other working artifacts to the commit.\n`,
             'utf8',
           );
 
@@ -5314,8 +5413,9 @@ export async function runOrchestratorScanPass(
           issue.state = 'in_progress';
           issue.status = 'In progress';
           (issue as any).child_pid = child.pid;
-          (issue as any).needs_redispatch = false;
-          (issue as any).review_feedback = undefined;
+          issue.needs_redispatch = false;
+          issue.review_feedback = undefined;
+          issue.pending_review_comments = undefined;
 
           deps.appendLog(sessionDir, {
             timestamp: deps.now().toISOString(),

@@ -3031,6 +3031,67 @@ describe('processPrLifecycle', () => {
     assert.equal(result.review?.verdict, 'request-changes');
   });
 
+  it('stores individual review comments with IDs for builder redispatch', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff', stderr: '' };
+        }
+        if (args[0] === 'api' && args[1] === 'repos/owner/repo/pulls/100/reviews') {
+          return { stdout: JSON.stringify({ id: 777 }), stderr: '' };
+        }
+        if (args[0] === 'api' && args[1] === 'repos/owner/repo/pulls/100/comments?per_page=100') {
+          return {
+            stdout: JSON.stringify([
+              {
+                id: 9001,
+                pull_request_review_id: 777,
+                path: 'src/example.ts',
+                line: 42,
+                body: 'Use a guard clause',
+              },
+            ]),
+            stderr: '',
+          };
+        }
+        return { stdout: '', stderr: '' };
+      },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'request-changes' as const,
+        summary: 'Please fix inline comments',
+        comments: [
+          {
+            path: 'src/example.ts',
+            line: 42,
+            body: 'Use a guard clause',
+          },
+        ],
+      }),
+    });
+
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+
+    assert.equal(result.action, 'rejected');
+    assert.equal(state.issues[0].needs_redispatch, true);
+    assert.equal(state.issues[0].review_feedback, 'Please fix inline comments');
+    assert.deepStrictEqual(state.issues[0].pending_review_comments, [
+      {
+        id: 9001,
+        path: 'src/example.ts',
+        line: 42,
+        body: 'Use a guard clause',
+      },
+    ]);
+  });
+
   it('flags for human when agent review flags', async () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
     const deps = createMockPrDeps({
@@ -4333,6 +4394,65 @@ describe('runOrchestratorScanPass', () => {
     );
 
     assert.equal(result.waveAdvanced, true);
+  });
+
+  it('redispatches child with individual review comments and IDs', async () => {
+    const state = makeScanState({
+      issues: [
+        {
+          number: 42,
+          title: 'Issue 42',
+          wave: 1,
+          state: 'pr_open',
+          status: 'In review',
+          child_session: 'session-42',
+          pr_number: 100,
+          depends_on: [],
+          needs_redispatch: true,
+          review_feedback: 'Two fixes needed',
+          pending_review_comments: [
+            {
+              id: 1234,
+              path: 'src/example.ts',
+              line: 10,
+              body: 'Rename this variable',
+            },
+          ],
+        },
+      ],
+    });
+    const deps = createMockScanDeps({
+      aloopRoot: '/home/.aloop',
+      dispatchDeps: {
+        existsSync: () => true,
+        readFile: async () => '',
+        writeFile: async () => undefined,
+        mkdir: async () => undefined,
+        cp: async () => undefined,
+        now: () => new Date('2026-03-15T12:00:00Z'),
+        spawnSync: () => ({ status: 0, stdout: '', stderr: '' }),
+        spawn: () => ({ pid: 999, unref: () => undefined }),
+        platform: 'linux',
+        env: {},
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/home/.aloop/sessions/session-42/worktree'] = '';
+    deps.files['/home/.aloop/bin/loop.sh'] = '';
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    const steeringPath = '/home/.aloop/sessions/session-42/queue/000-review-fixes.md';
+    assert.ok(deps.files[steeringPath], 'should write redispatch steering file');
+    assert.match(deps.files[steeringPath], /Comment ID: 1234/);
+    assert.match(deps.files[steeringPath], /src\/example\.ts:10/);
+
+    const persisted = JSON.parse(deps.files['/state.json']) as OrchestratorState;
+    assert.equal(persisted.issues[0].needs_redispatch, false);
+    assert.equal(persisted.issues[0].pending_review_comments, undefined);
   });
 
   it('persists state after scan pass', async () => {
