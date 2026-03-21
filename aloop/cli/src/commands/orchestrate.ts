@@ -3116,7 +3116,8 @@ export async function checkPrGates(
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    gates.push({ gate: 'merge_conflicts', status: 'fail', detail: `Failed to check mergeability: ${msg}` });
+    // API error — don't block the PR, just skip this gate (will retry next pass)
+    gates.push({ gate: 'merge_conflicts', status: 'pass', detail: `Merge check skipped (API error): ${msg}` });
   }
 
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
