@@ -9,6 +9,8 @@
 - [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
 
 ### Completed
+- [x] Add Gate 10 (QA Coverage & Bug Fix Rate) section to `aloop/templates/instructions/review.md` after Gate 9 — includes: parse QA_COVERAGE.md for coverage %, scan TODO.md for stale [qa/P1] bugs, fail criteria (coverage < 30%, stale P1 > 3 iterations), graceful skip when QA_COVERAGE.md absent
+- [x] Update all references to "9 gates" in review.md to "10 gates" — affects: process step 2 ("9 gates"), approval flow ("gates 1-9 pass" x2), objective line
 
 - [x] **Fix `deriveFilterRepo` env var fallback** — Removed `&& ghHost` guard so `GITHUB_REPOSITORY` is used unconditionally. Added test with only `GITHUB_REPOSITORY` set (no `GH_HOST`). (priority: high) [qa/P1 + review Gate 1 + review Gate 2]
 
