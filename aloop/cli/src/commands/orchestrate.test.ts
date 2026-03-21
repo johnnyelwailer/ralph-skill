@@ -2521,6 +2521,28 @@ describe('launchChildLoop', () => {
     assert.equal(copiedPlanPrompt[1], 'Read SPEC.md before implementation');
   });
 
+  it('keeps a single frontmatter block when compiled prompt already has frontmatter', async () => {
+    const deps = createMockDispatchDeps({
+      existsSync: (p: string) => (
+        (p.includes('/home/.aloop/projects/') && p.endsWith('/prompts'))
+        || p.endsWith('/prompts/PROMPT_plan.md')
+      ),
+      readFile: async (p: string) => {
+        if (p.endsWith('/prompts/PROMPT_plan.md')) {
+          return '---\nagent: plan\nprovider: codex\nreasoning: low\n---\n\n# Planning Mode\n\nCompiled content\n';
+        }
+        return '';
+      },
+    });
+
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const copiedPlanPrompt = Object.entries(deps._writtenFiles).find(([p]) => p.endsWith('/prompts/PROMPT_plan.md'));
+    assert.ok(copiedPlanPrompt, 'compiled PROMPT_plan.md should be copied');
+    const frontmatterCount = (copiedPlanPrompt[1].match(/^---$/gm) || []).length;
+    assert.equal(frontmatterCount, 2, 'should have exactly one frontmatter block after compileLoopPlan');
+    assert.ok(!copiedPlanPrompt[1].includes('provider: codex'), 'old frontmatter should be replaced');
+  });
+
   it('compiles loop-plan.json for child session', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
