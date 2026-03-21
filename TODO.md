@@ -20,6 +20,10 @@
 ### In Progress
 
 ### Up Next
+- [ ] [review] Gate 1 FAIL — `processAgentRequests` is dead code: `process-requests.ts` never imports or calls `processAgentRequests` from `requests.ts`. The entire validation/idempotency/dedup pipeline (`validateRequest`, `loadProcessedRequestIds`, `saveProcessedRequestIds`, title dedup, head/base dedup, merge_pr idempotency, post_comment marker) is unreachable from the CLI. Wire `processAgentRequests` into `processRequestsCommand` or refactor `process-requests.ts` to use it. (priority: critical)
+- [ ] [review] Gate 1 FAIL — `post_comment` dedup is write-only: The spec requires dedup *detection* — checking existing comments for `<!-- aloop-request-id: {id} -->` before posting. Current code only *embeds* the marker (`requests.ts:737-740`) but never reads comments to detect duplicates. Add a `gh api` call to list existing comments, search for the marker, and skip if found. (priority: high)
+- [ ] [review] Gate 2 FAIL — `post_comment` test at `requests.test.ts:325-352` only verifies the marker is *embedded* in the outgoing body. It does not test dedup *detection* (skipping when marker already exists in prior comments). Add a test that seeds existing comments containing the request ID marker and asserts the handler skips posting. (priority: high)
+- [ ] [review] Gate 3 FAIL — `handlePostComment` (`requests.ts:735-751`) has 0% branch coverage for dedup detection because the detection path doesn't exist yet. Once implemented, add tests for: (a) no prior comments, (b) prior comment with different request ID, (c) prior comment with same request ID → skip. (priority: high)
 - [x] Add unit tests for `validateRequest()` function — test each request type's required fields, edge cases (missing fields, wrong types, empty strings, negative numbers) (priority: medium)
   - TASK_SPEC acceptance criteria: "Unit tests for validation and idempotency"
   - Currently `validateRequest` is only tested indirectly via `processAgentRequests` integration tests
