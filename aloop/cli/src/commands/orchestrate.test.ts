@@ -2623,6 +2623,26 @@ describe('dispatchChildLoops', () => {
     assert.equal(result.launched[0].issue_number, 2);
     assert.ok(result.skipped.includes(1));
   });
+
+  it('pauses dispatch when /tmp free space is below threshold', async () => {
+    const issues = [
+      makeIssue({ number: 1, wave: 1, state: 'pending' }),
+      makeIssue({ number: 2, wave: 1, state: 'pending' }),
+    ];
+    const state = stateWithIssues(issues);
+    const deps = createMockDispatchDeps({
+      readFile: async () => JSON.stringify(state),
+      statfs: async () => ({
+        bavail: 100,
+        bsize: 1024 * 1024,
+      }),
+    });
+
+    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
+    assert.equal(result.launched.length, 0);
+    assert.ok(result.skipped.includes(1));
+    assert.ok(result.skipped.includes(2));
+  });
 });
 
 // --- PR lifecycle gates tests ---
@@ -4254,6 +4274,33 @@ describe('runOrchestratorScanPass', () => {
     );
 
     assert.equal(result.dispatched, 1);
+  });
+
+  it('pauses dispatch and logs warning when /tmp free space is low', async () => {
+    const state = makeScanState({
+      current_wave: 1,
+      issues: [
+        makeIssue({ number: 10, wave: 1, state: 'pending' }),
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.dispatchDeps = createMockDispatchDeps({
+      statfs: async () => ({
+        bavail: 100,
+        bsize: 1024 * 1024,
+      }),
+    });
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.dispatched, 0);
+    const pauseLog = deps.logEntries.find((entry) => entry.event === 'scan_dispatch_paused_tmp_low_space');
+    assert.ok(pauseLog);
+    assert.equal(pauseLog?.path, '/tmp');
   });
 
   it('does not dispatch when plan_only is true', async () => {

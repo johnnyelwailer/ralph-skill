@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile, readdir, unlink, writeFile, mkdir, cp } from 'node:fs/promises';
+import { readFile, readdir, statfs, unlink, writeFile, mkdir, cp } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
@@ -652,6 +652,7 @@ ${recent.slice(-4000)}
       writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
       mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined),
       cp: (src: string, dest: string, o?: { recursive?: boolean }) => cp(src, dest, o),
+      statfs: (p: string) => statfs(p),
       now: () => new Date(),
       spawnSync: (cmd: string, a: string[], o?: Record<string, unknown>) => {
         const r = spawnSync(cmd, a, o as any);
