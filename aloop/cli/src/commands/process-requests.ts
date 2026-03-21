@@ -285,16 +285,20 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // ── Phase 2d: Cleanup worktrees for fully completed children ──
+  // ── Phase 2d: Cleanup worktrees + V8 cache for fully completed children ──
   try {
     for (const issue of state.issues) {
       if ((issue.state === 'merged' || issue.state === 'failed') && issue.child_session) {
         const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
         const childWorktree = path.join(childDir, 'worktree');
+        const childV8Cache = path.join(childDir, '.v8-cache');
         if (existsSync(childWorktree)) {
           spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', childWorktree], { encoding: 'utf8' });
           spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
           console.log(`[process-requests] Cleaned worktree for completed #${issue.number}`);
+        }
+        if (existsSync(childV8Cache)) {
+          spawnSync('rm', ['-rf', childV8Cache], { encoding: 'utf8' });
         }
       }
     }

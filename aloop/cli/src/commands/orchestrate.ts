@@ -2994,7 +2994,7 @@ export async function launchChildLoop(
       ...deps.env,
       ALOOP_TASK_SANDBOX: sandbox,
       ALOOP_TASK_REQUIRES: requires.join(','),
-      NODE_COMPILE_CACHE: '', // Disable V8 code cache to prevent /tmp disk exhaustion
+      NODE_COMPILE_CACHE: path.join(sessionDir, '.v8-cache'), // Per-session cache, cleaned up with session
     },
     windowsHide: true,
   });
