@@ -1,46 +1,51 @@
-# Sub-Spec: Issue #114 — Responsive layout: touch targets, tap equivalents & accessibility audit
+# Sub-Spec: Issue #183 — Configure Storybook 8 with react-vite and Tailwind decorators
+
+Part of #29: Epic: Dashboard Core — Component Refactor & Real-Time UI
 
 ## Objective
 
-Ensure all interactive elements meet mobile accessibility requirements: minimum tap target sizes, tap equivalents for hover interactions, long-press context menus, and Lighthouse mobile accessibility score >= 90.
-
-## Context
-
-WCAG 2.5.8 requires minimum 44x44px tap targets. The current dashboard uses hover-cards, tooltips, and small icon buttons that need tap equivalents. See SPEC-ADDENDUM.md § Touch Considerations.
+Set up Storybook 8 infrastructure in the dashboard project so that subsequent component extraction sub-issues can add stories alongside components.
 
 ## Scope
 
-### Tap targets
-- Audit all buttons, links, and interactive elements — ensure minimum 44x44px on mobile
-- Apply `min-h-[44px] min-w-[44px]` on mobile breakpoint where needed
-- Session cards, log entries, tab triggers, dropdown items must all meet the target
+### Storybook Configuration
+- Install Storybook 8 with `@storybook/react-vite` framework adapter
+- Create `.storybook/` directory in `aloop/cli/dashboard/`
+- Configure `main.ts` to find `*.stories.tsx` files colocated with components
+- Configure `preview.ts` with global decorators
 
-### Hover → Tap equivalents
-- All `HoverCard` components must also work on tap/click (HoverCard already supports this via Radix, verify)
-- All `Tooltip` components must have tap-to-show behavior on mobile
-- No interaction should be hover-only — verify every hover interaction has a touch alternative
+### Global Decorators
+- Tailwind CSS context decorator (imports `index.css`)
+- Dark mode toggle decorator using `@storybook/addon-themes` or custom decorator that toggles `.dark` class on root
+- Tooltip provider wrapper (Radix UI `TooltipProvider`)
 
-### Long-press context menu
-- Long-press (500ms) on session card opens context menu (stop, force-stop, copy session ID)
-- Implement via `onTouchStart`/`onTouchEnd` timer with haptic feedback if available
+### Package.json Scripts
+- Add `storybook` script: `storybook dev -p 6006`
+- Add `build-storybook` script: `storybook build`
+- Install required devDependencies: `@storybook/react-vite`, `@storybook/react`, `@storybook/addon-essentials`, `@storybook/addon-themes`, `storybook`
 
-### Lighthouse audit
-- Run Lighthouse mobile accessibility audit
-- Target score >= 90
-- Fix any flagged issues (color contrast, ARIA labels, focus management)
+### Verification Story
+- Create a simple `Button.stories.tsx` for the existing `ui/button.tsx` component to verify the setup works
+- Story should render in both light and dark mode
+
+## Inputs
+- `aloop/cli/dashboard/package.json` (existing deps)
+- `aloop/cli/dashboard/tailwind.config.ts` (theme config)
+- `aloop/cli/dashboard/src/index.css` (CSS custom properties)
+
+## Outputs
+- `aloop/cli/dashboard/.storybook/main.ts`
+- `aloop/cli/dashboard/.storybook/preview.ts`
+- `aloop/cli/dashboard/src/components/ui/button.stories.tsx`
+- Updated `aloop/cli/dashboard/package.json` with Storybook deps and scripts
 
 ## Acceptance Criteria
-
-- [ ] All tap targets at least 44x44px on mobile viewports
-- [ ] No hover-only interactions — all have tap/click equivalents
-- [ ] Long-press on session card opens context menu
-- [ ] Lighthouse mobile accessibility score >= 90
-- [ ] Focus management works correctly on mobile (no focus traps, logical tab order)
-
-## Files
-- `aloop/cli/dashboard/src/AppView.tsx` — tap target sizing, long-press handler
-- Various component files with HoverCard/Tooltip usage
-- CSS/Tailwind adjustments for mobile sizing
+- [ ] `npm run storybook` launches Storybook on port 6006
+- [ ] `npx storybook build` produces static build without errors
+- [ ] Button story renders correctly in both light and dark mode
+- [ ] Global decorator applies Tailwind styles matching dashboard appearance
+- [ ] Storybook uses same `tailwind.config.ts` as dashboard
+- [ ] No changes to existing source code or tests
 
 ## Labels
 `aloop/sub-issue`, `aloop/needs-refine`
