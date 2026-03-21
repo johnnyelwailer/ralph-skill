@@ -602,6 +602,27 @@ parse_duration_to_seconds() {
     echo ""
 }
 
+validate_proof_manifest() {
+    local manifest_path="$1"
+    if [ ! -f "$manifest_path" ]; then
+        VALIDATE_PROOF_MANIFEST_ERROR="missing_file"
+        return 1
+    fi
+    if ! python3 - "$manifest_path" <<'PY' >/dev/null 2>&1
+import json
+import sys
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    json.load(f)
+PY
+    then
+        VALIDATE_PROOF_MANIFEST_ERROR="invalid_json"
+        return 1
+    fi
+    VALIDATE_PROOF_MANIFEST_ERROR=""
+    return 0
+}
+
 # Resolve effective execution controls from frontmatter with precedence:
 #   frontmatter -> session/env -> default
 # Sets: EFFECTIVE_TIMEOUT, EFFECTIVE_MAX_RETRIES, EFFECTIVE_RETRY_BACKOFF
@@ -2237,63 +2258,90 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     _raw_offset_before=$(wc -c < "$LOG_FILE.raw" 2>/dev/null || echo 0)
     if invoke_provider "$iter_provider" "$prompt_content" "$FRONTMATTER_MODEL"; then
         _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
+        post_validation_error=""
         update_provider_health_on_success "$iter_provider"
-        if [ "$FINALIZER_MODE" = "true" ]; then
-            # Don't advance cycle position during finalizer mode
-            PHASE_RETRY_PHASE=""
-            PHASE_RETRY_CONSECUTIVE=0
-            PHASE_RETRY_FAILURE_REASONS=()
-            # Advance finalizer position
-            FINALIZER_POSITION=$((FINALIZER_POSITION + 1))
-            # Re-check TODO.md — if new incomplete tasks appeared, abort finalizer
-            if ! check_all_tasks_complete; then
-                FINALIZER_MODE=false
-                FINALIZER_POSITION=0
-                ALL_TASKS_MARKED_DONE=false
-                write_log_entry "finalizer_aborted" "iteration" "$ITERATION" "reason" "new_incomplete_tasks"
-                echo "[Finalizer aborted — new incomplete tasks found in TODO.md]"
+        if [ "$iter_mode" = "proof" ]; then
+            LAST_PROOF_ITERATION="$ITERATION"
+            proof_manifest_path="$ARTIFACTS_DIR/iter-$ITERATION/proof-manifest.json"
+            if validate_proof_manifest "$proof_manifest_path"; then
+                write_log_entry "proof_manifest_validated" \
+                    "iteration" "$ITERATION" \
+                    "status" "valid" \
+                    "path" "$proof_manifest_path" \
+                    "last_proof_iteration" "$LAST_PROOF_ITERATION"
+            else
+                post_validation_error="proof_manifest_${VALIDATE_PROOF_MANIFEST_ERROR:-validation_failed}"
+                write_log_entry "proof_manifest_validated" \
+                    "iteration" "$ITERATION" \
+                    "status" "invalid" \
+                    "path" "$proof_manifest_path" \
+                    "error" "${VALIDATE_PROOF_MANIFEST_ERROR:-validation_failed}" \
+                    "last_proof_iteration" "$LAST_PROOF_ITERATION"
             fi
+        fi
+        if [ -n "$post_validation_error" ]; then
+            register_iteration_failure "$iter_mode" "$post_validation_error"
+            persist_loop_plan_state
+            echo "Warning: Iteration $ITERATION failed"
+            write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "duration" "$_iter_duration" "error" "$post_validation_error"
         else
-            register_iteration_success "$iter_mode" false
-        fi
-        if [ "$iter_mode" = "plan" ]; then
-            LAST_PLAN_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
-        fi
-        persist_loop_plan_state
-        STUCK_COUNT=0
-        LAST_TASK=""
-
-        # Check for finalizer entry at cycle boundary
-        if [ "$FINALIZER_MODE" = "false" ] && [ "$ALL_TASKS_MARKED_DONE" = "true" ] \
-           && [ "$FINALIZER_LENGTH" -gt 0 ] && [ "$CYCLE_POSITION" -eq 0 ]; then
-            FINALIZER_MODE=true
-            FINALIZER_POSITION=0
-            write_log_entry "finalizer_entered" "iteration" "$ITERATION"
-            echo "[All tasks marked done — entering finalizer sequence]"
-        fi
-
-        # Capture all commits made during this iteration (any agent may commit)
-        ITERATION_COMMITS=""
-        ITERATION_COMMIT_COUNT="0"
-        print_iteration_summary "$ITERATION_START"
-
-        # Extract token/cost usage for opencode provider (best-effort, non-blocking)
-        local _usage_json=""
-        if [ "$iter_provider" = "opencode" ]; then
-            if extract_opencode_usage; then
-                _usage_json="\"tokens_input\":${_OC_TOKENS_INPUT:-0},\"tokens_output\":${_OC_TOKENS_OUTPUT:-0},\"tokens_cache_read\":${_OC_TOKENS_CACHE_READ:-0},\"cost_usd\":${_OC_COST_USD:-0}"
+            if [ "$FINALIZER_MODE" = "true" ]; then
+                # Don't advance cycle position during finalizer mode
+                PHASE_RETRY_PHASE=""
+                PHASE_RETRY_CONSECUTIVE=0
+                PHASE_RETRY_FAILURE_REASONS=()
+                # Advance finalizer position
+                FINALIZER_POSITION=$((FINALIZER_POSITION + 1))
+                # Re-check TODO.md — if new incomplete tasks appeared, abort finalizer
+                if ! check_all_tasks_complete; then
+                    FINALIZER_MODE=false
+                    FINALIZER_POSITION=0
+                    ALL_TASKS_MARKED_DONE=false
+                    write_log_entry "finalizer_aborted" "iteration" "$ITERATION" "reason" "new_incomplete_tasks"
+                    echo "[Finalizer aborted — new incomplete tasks found in TODO.md]"
+                fi
+            else
+                register_iteration_success "$iter_mode" false
             fi
-        fi
+            if [ "$iter_mode" = "plan" ]; then
+                LAST_PLAN_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
+            fi
+            persist_loop_plan_state
+            STUCK_COUNT=0
+            LAST_TASK=""
 
-        # Write iteration_complete with usage data when available (numeric fields)
-        local _ic_json="\"iteration\":\"$ITERATION\",\"mode\":\"$iter_mode\",\"provider\":\"$iter_provider\",\"model\":\"$LAST_PROVIDER_MODEL\",\"duration\":\"$_iter_duration\",\"commits\":\"$ITERATION_COMMIT_COUNT\",\"commit_log\":\"$ITERATION_COMMITS\""
-        if [ -n "$_usage_json" ]; then
-            _ic_json="$_ic_json,$_usage_json"
-        fi
-        write_log_entry_mixed "iteration_complete" "$_ic_json"
+            # Check for finalizer entry at cycle boundary
+            if [ "$FINALIZER_MODE" = "false" ] && [ "$ALL_TASKS_MARKED_DONE" = "true" ] \
+               && [ "$FINALIZER_LENGTH" -gt 0 ] && [ "$CYCLE_POSITION" -eq 0 ]; then
+                FINALIZER_MODE=true
+                FINALIZER_POSITION=0
+                write_log_entry "finalizer_entered" "iteration" "$ITERATION"
+                echo "[All tasks marked done — entering finalizer sequence]"
+            fi
 
-        echo ""
-        echo "[Iteration $ITERATION complete - $iter_mode]"
+            # Capture all commits made during this iteration (any agent may commit)
+            ITERATION_COMMITS=""
+            ITERATION_COMMIT_COUNT="0"
+            print_iteration_summary "$ITERATION_START"
+
+            # Extract token/cost usage for opencode provider (best-effort, non-blocking)
+            _usage_json=""
+            if [ "$iter_provider" = "opencode" ]; then
+                if extract_opencode_usage; then
+                    _usage_json="\"tokens_input\":${_OC_TOKENS_INPUT:-0},\"tokens_output\":${_OC_TOKENS_OUTPUT:-0},\"tokens_cache_read\":${_OC_TOKENS_CACHE_READ:-0},\"cost_usd\":${_OC_COST_USD:-0}"
+                fi
+            fi
+
+            # Write iteration_complete with usage data when available (numeric fields)
+            _ic_json="\"iteration\":\"$ITERATION\",\"mode\":\"$iter_mode\",\"provider\":\"$iter_provider\",\"model\":\"$LAST_PROVIDER_MODEL\",\"duration\":\"$_iter_duration\",\"commits\":\"$ITERATION_COMMIT_COUNT\",\"commit_log\":\"$ITERATION_COMMITS\""
+            if [ -n "$_usage_json" ]; then
+                _ic_json="$_ic_json,$_usage_json"
+            fi
+            write_log_entry_mixed "iteration_complete" "$_ic_json"
+
+            echo ""
+            echo "[Iteration $ITERATION complete - $iter_mode]"
+        fi
     else
         _iter_duration="$(( $(date +%s) - ITERATION_START ))s"
         update_provider_health_on_failure "$iter_provider" "${LAST_PROVIDER_ERROR:-provider_failed}"
