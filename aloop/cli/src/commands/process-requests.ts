@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile, readdir, statfs, unlink, writeFile, mkdir, cp } from 'node:fs/promises';
+import { readFile, readdir, stat, statfs, unlink, writeFile, mkdir, cp } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
@@ -12,6 +12,67 @@ import {
 } from './orchestrate.js';
 import { EtagCache } from '../lib/github-monitor.js';
 import { processAgentRequests } from '../lib/requests.js';
+
+const V8_CACHE_PRUNE_THRESHOLD_BYTES = 50 * 1024 * 1024;
+
+export interface V8CachePruneResult {
+  sizeBytes: number;
+  pruned: boolean;
+}
+
+export async function getDirectorySizeBytes(dirPath: string): Promise<number> {
+  let total = 0;
+  const queue: string[] = [dirPath];
+
+  while (queue.length > 0) {
+    const current = queue.pop();
+    if (!current) continue;
+
+    let entries: string[] = [];
+    try {
+      entries = await readdir(current);
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry);
+      let fileStat: Awaited<ReturnType<typeof stat>> | null = null;
+      try {
+        fileStat = await stat(fullPath);
+      } catch {
+        continue;
+      }
+
+      if (fileStat.isDirectory()) {
+        queue.push(fullPath);
+      } else if (fileStat.isFile()) {
+        total += fileStat.size;
+      }
+    }
+  }
+
+  return total;
+}
+
+export async function pruneLargeV8CacheDir(
+  cacheDir: string,
+  thresholdBytes: number = V8_CACHE_PRUNE_THRESHOLD_BYTES,
+): Promise<V8CachePruneResult> {
+  if (!existsSync(cacheDir)) return { sizeBytes: 0, pruned: false };
+
+  const sizeBytes = await getDirectorySizeBytes(cacheDir);
+  if (sizeBytes <= thresholdBytes) {
+    return { sizeBytes, pruned: false };
+  }
+
+  const rmResult = spawnSync('rm', ['-rf', cacheDir], { encoding: 'utf8' });
+  if (rmResult.status !== 0) {
+    throw new Error(`Failed to prune V8 cache at ${cacheDir}: ${rmResult.stderr?.trim() ?? 'unknown error'}`);
+  }
+
+  return { sizeBytes, pruned: true };
+}
 
 export interface ProcessRequestsOptions {
   sessionDir: string;
@@ -324,21 +385,30 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // ── Phase 2d: Cleanup worktrees + V8 cache for fully completed children ──
+  // ── Phase 2d: Cleanup completed children and prune oversized V8 caches ──
   try {
     for (const issue of state.issues) {
-      if ((issue.state === 'merged' || issue.state === 'failed') && issue.child_session) {
-        const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
-        const childWorktree = path.join(childDir, 'worktree');
-        const childV8Cache = path.join(childDir, '.v8-cache');
+      if (!issue.child_session) continue;
+
+      const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+      const childWorktree = path.join(childDir, 'worktree');
+      const childV8Cache = path.join(childDir, '.v8-cache');
+
+      if (issue.state === 'in_progress' && existsSync(childV8Cache)) {
+        const pruneResult = await pruneLargeV8CacheDir(childV8Cache);
+        if (pruneResult.pruned) {
+          const sizeMb = (pruneResult.sizeBytes / (1024 * 1024)).toFixed(1);
+          console.log(`[process-requests] Pruned oversized V8 cache for in-progress #${issue.number} (${sizeMb}MB)`);
+        }
+      }
+
+      if (issue.state === 'merged' || issue.state === 'failed') {
         if (existsSync(childWorktree)) {
           spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', childWorktree], { encoding: 'utf8' });
           spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
           console.log(`[process-requests] Cleaned worktree for completed #${issue.number}`);
         }
-        if (existsSync(childV8Cache)) {
-          spawnSync('rm', ['-rf', childV8Cache], { encoding: 'utf8' });
-        }
+        if (existsSync(childV8Cache)) await pruneLargeV8CacheDir(childV8Cache, 0);
       }
     }
   } catch { /* cleanup is best-effort */ }
