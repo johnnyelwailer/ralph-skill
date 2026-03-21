@@ -3005,7 +3005,7 @@ describe('processPrLifecycle', () => {
     assert.ok(deps.logs.some((l) => l.event === 'pr_flagged_for_human'));
   });
 
-  it('rejects PR when agent review requests changes', async () => {
+  it('sets needs_redispatch when agent review requests changes', async () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
     const deps = createMockPrDeps({
       execGh: async (args) => {
@@ -3029,6 +3029,8 @@ describe('processPrLifecycle', () => {
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'rejected');
     assert.equal(result.review?.verdict, 'request-changes');
+    assert.equal(state.issues[0].needs_redispatch, true);
+    assert.equal(state.issues[0].review_feedback, 'Missing test coverage');
   });
 
   it('flags for human when agent review flags', async () => {
