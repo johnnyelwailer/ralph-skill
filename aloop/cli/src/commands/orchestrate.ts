@@ -5284,82 +5284,51 @@ export async function runOrchestratorScanPass(
   if (deps.dispatchDeps && deps.aloopRoot) {
     const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch && i.child_session);
     for (const issue of needsRedispatch) {
-      const childDir = path.join(deps.aloopRoot, 'sessions', issue.child_session!);
-      const childWorktree = path.join(childDir, 'worktree');
-      const childPromptsDir = path.join(childDir, 'prompts');
-      const childQueueDir = path.join(childDir, 'queue');
-      const loopScript = path.join(deps.aloopRoot, 'bin', 'loop.sh');
+      try {
+        // Re-use launchChildLoop — it handles worktree creation, prompts, branch reuse
+        const launchResult = await launchChildLoop(
+          issue,
+          sessionDir,
+          projectRoot,
+          projectName,
+          promptsSourceDir,
+          deps.aloopRoot,
+          deps.dispatchDeps,
+        );
 
-      if (deps.existsSync(loopScript)) {
-        try {
-          // Recreate worktree if missing (may have been cleaned up)
-          if (!deps.existsSync(childWorktree)) {
-            const branchName = `aloop/issue-${issue.number}`;
-            // Try checkout existing remote branch
-            let wtResult = deps.dispatchDeps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', childWorktree, branchName], { encoding: 'utf8' });
-            if (wtResult.status !== 0) {
-              // Try fetching from origin first
-              deps.dispatchDeps.spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', branchName], { encoding: 'utf8' });
-              wtResult = deps.dispatchDeps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', childWorktree, `origin/${branchName}`], { encoding: 'utf8' });
-            }
-            if (wtResult.status !== 0) {
-              deps.appendLog(sessionDir, { timestamp: deps.now().toISOString(), event: 'redispatch_worktree_failed', issue_number: issue.number, error: wtResult.stderr });
-              continue;
-            }
-            // Recreate prompts dir
-            await deps.dispatchDeps.mkdir(childPromptsDir, { recursive: true });
-            const templateDir = path.join(deps.aloopRoot, 'templates');
-            for (const tmpl of ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_qa.md', 'PROMPT_review.md', 'PROMPT_proof.md', 'PROMPT_steer.md', 'PROMPT_merge.md']) {
-              const src = path.join(templateDir, tmpl);
-              if (deps.existsSync(src)) await deps.writeFile(path.join(childPromptsDir, tmpl), await deps.readFile(src, 'utf8'), 'utf8');
-            }
-          }
+        // Write review feedback as steering prompt into the NEW child session
+        const childQueueDir = path.join(deps.aloopRoot, 'sessions', launchResult.session_id, 'queue');
+        await deps.writeFile(
+          path.join(childQueueDir, '000-review-fixes.md'),
+          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+          'utf8',
+        );
 
-          // Write review feedback as steering prompt
-          await deps.writeFile(
-            path.join(childQueueDir, '000-review-fixes.md'),
-            `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, or other working artifacts to the commit.\n`,
-            'utf8',
-          );
+        issue.state = 'in_progress';
+        issue.status = 'In progress';
+        issue.child_session = launchResult.session_id;
+        (issue as any).child_pid = launchResult.pid;
+        (issue as any).needs_redispatch = false;
+        (issue as any).review_feedback = undefined;
+        (issue as any).last_reviewed_sha = undefined;
 
-          // Re-launch child loop
-          const child = deps.dispatchDeps.spawn(loopScript, [
-            '--prompts-dir', childPromptsDir,
-            '--session-dir', childDir,
-            '--work-dir', childWorktree,
-            '--mode', 'plan-build-review',
-            '--provider', 'round-robin',
-            '--max-iterations', '5',
-            '--max-stuck', '3',
-            '--launch-mode', 'resume',
-            '--dangerously-skip-container',
-          ], { cwd: childWorktree, detached: true, stdio: 'ignore', windowsHide: true });
-          child.unref();
-
-          issue.state = 'in_progress';
-          issue.status = 'In progress';
-          (issue as any).child_pid = child.pid;
-          (issue as any).needs_redispatch = false;
-          (issue as any).review_feedback = undefined;
-
-          deps.appendLog(sessionDir, {
-            timestamp: deps.now().toISOString(),
-            event: 'child_redispatched_for_review',
-            iteration,
-            issue_number: issue.number,
-            pr_number: issue.pr_number,
-            child_session: issue.child_session,
-            pid: child.pid,
-          });
-        } catch (e) {
-          deps.appendLog(sessionDir, {
-            timestamp: deps.now().toISOString(),
-            event: 'child_redispatch_failed',
-            iteration,
-            issue_number: issue.number,
-            error: e instanceof Error ? e.message : String(e),
-          });
-        }
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_redispatched_for_review',
+          iteration,
+          issue_number: issue.number,
+          pr_number: issue.pr_number,
+          child_session: launchResult.session_id,
+          pid: launchResult.pid,
+        });
+      } catch (e) {
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_redispatch_failed',
+          iteration,
+          issue_number: issue.number,
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
     }
   }
