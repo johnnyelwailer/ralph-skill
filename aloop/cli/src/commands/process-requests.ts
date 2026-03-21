@@ -451,13 +451,34 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
               if (!existsSync(outputFile)) continue;
               const output = await readFile(outputFile, 'utf8');
               if (!output.includes(String(prNumber)) && !output.includes(`PR #${prNumber}`)) continue;
-              const verdictMatch = output.match(/\*\*[Vv]erdict:\s*(approve|request-changes|flag-for-human)\*\*/i)
-                ?? output.match(/["']verdict["']\s*:\s*["'](approve|request-changes|flag-for-human)["']/i);
+              const verdictMatch = output.match(/\*\*(?:Review\s+)?[Vv]erdict[:\s]+(approve|request-changes|flag-for-human)\*\*/i)
+                ?? output.match(/(?:review\s+)?verdict[:\s]+"?(approve|request-changes|flag-for-human)"?/i)
+                ?? (output.match(new RegExp(`PR\\s*#?${prNumber}.*review\\s+approved`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null)
+                ?? (output.match(new RegExp(`merge-pr-${prNumber}`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null);
               if (verdictMatch) {
                 const verdict = verdictMatch[1].toLowerCase();
                 const summaryMatch = output.match(/(?:summary|reason|feedback|issues?)[:\s]+([^\n]{10,300})/i);
                 const summary = summaryMatch ? summaryMatch[1].trim() : `Agent verdict: ${verdict}`;
                 return { pr_number: prNumber, verdict, summary };
+              }
+            }
+          } catch { /* ignore */ }
+        }
+
+        // 2b. Also check raw log (last 10KB) — scan agent may produce verdict inline
+        const rawLogFile = path.join(sessionDir, 'log.jsonl.raw');
+        if (existsSync(rawLogFile)) {
+          try {
+            const rawLog = await readFile(rawLogFile, 'utf8');
+            const recent = rawLog.slice(-10000);
+            if (recent.includes(String(prNumber)) || recent.includes(`PR #${prNumber}`)) {
+              const verdictMatch = recent.match(new RegExp(`PR\\s*#?${prNumber}[^\\n]*(?:review\\s+)?verdict[:\\s]+(approve|request-changes|flag-for-human)`, 'i'))
+                ?? recent.match(new RegExp(`\\*\\*(?:Review\\s+)?[Vv]erdict[:\\s]+(approve|request-changes|flag-for-human)\\*\\*[^\\n]*PR\\s*#?${prNumber}`, 'i'))
+                ?? recent.match(new RegExp(`\\*\\*(?:Review\\s+)?[Vv]erdict[:\\s]+(approve|request-changes|flag-for-human)\\*\\*.*?${prNumber}`, 'is'))
+                ?? (recent.match(new RegExp(`PR\\s*#?${prNumber}.*review\\s+approved`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null);
+              if (verdictMatch && verdictMatch[1]) {
+                const verdict = verdictMatch[1].toLowerCase();
+                return { pr_number: prNumber, verdict, summary: `Verdict from scan agent output` };
               }
             }
           } catch { /* ignore */ }
