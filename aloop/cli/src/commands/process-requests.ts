@@ -255,6 +255,21 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
+  // ── Phase 2d: Cleanup worktrees for fully completed children ──
+  try {
+    for (const issue of state.issues) {
+      if ((issue.state === 'merged' || issue.state === 'failed') && issue.child_session) {
+        const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+        const childWorktree = path.join(childDir, 'worktree');
+        if (existsSync(childWorktree)) {
+          spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', childWorktree], { encoding: 'utf8' });
+          spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+          console.log(`[process-requests] Cleaned worktree for completed #${issue.number}`);
+        }
+      }
+    }
+  } catch { /* cleanup is best-effort */ }
+
   // ── Phase 3: Persist state + clean active.json ──
   if (stateChanged) {
     await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
