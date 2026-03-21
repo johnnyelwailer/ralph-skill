@@ -69,6 +69,50 @@ test('processAgentRequests - create_issues', async () => {
     const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
     assert.ok(content.includes('status": "success"'));
     assert.ok(content.includes('"number": 101'));
+    assert.ok(content.includes('"skipped_titles": []'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - create_issues dedups existing orchestrator state titles', async () => {
+  const env = await setupTestEnv();
+  try {
+    await fs.writeFile(path.join(env.workdir, 'body-existing.md'), 'Existing body');
+    await fs.writeFile(path.join(env.workdir, 'body-new.md'), 'New body');
+    await fs.writeFile(path.join(env.sessionDir, 'orchestrator.json'), JSON.stringify({
+      issues: [{ number: 1, title: 'Existing Issue' }]
+    }));
+
+    const req = {
+      id: 'req-create-dedup',
+      type: 'create_issues',
+      payload: {
+        issues: [
+          { title: '  Existing Issue  ', body_file: 'body-existing.md' },
+          { title: 'Brand New Issue', body_file: 'body-new.md' }
+        ]
+      }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-create-dedup.json'), JSON.stringify(req));
+
+    const createdTitles: string[] = [];
+    const ghRunner = async (_op: string, _sid: string, requestPath: string) => {
+      const payload = JSON.parse(await fs.readFile(requestPath, 'utf8'));
+      createdTitles.push(payload.title);
+      return { exitCode: 0, output: JSON.stringify({ number: 102, url: 'http://gh/102' }) };
+    };
+
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+
+    assert.deepStrictEqual(createdTitles, ['Brand New Issue']);
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('"skipped_titles": ['));
+    assert.ok(queueContent.includes('"  Existing Issue  "'));
+
+    const logContent = await fs.readFile(env.logPath, 'utf8');
+    assert.ok(logContent.includes('gh_request_skipped_existing_issue_title'));
   } finally {
     await env.cleanup();
   }

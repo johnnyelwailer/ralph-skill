@@ -432,11 +432,25 @@ async function handleRequest(request: AgentRequest, fileName: string, options: R
 }
 
 async function handleCreateIssues(request: CreateIssuesRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
+  const existingIssueTitles = await loadOrchestratorIssueTitles(options.sessionDir);
   // Map to gh.ts 'issue-create'
   // Since 'create_issues' can have multiple issues, we might need to loop or use a specialized subcommand
   // For now, let's assume one by one if not supported as batch
   const results = [];
+  const skippedTitles: string[] = [];
   for (const issueReq of request.payload.issues) {
+    const normalizedTitle = normalizeIssueTitle(issueReq.title);
+    if (existingIssueTitles.has(normalizedTitle)) {
+      skippedTitles.push(issueReq.title);
+      await writeSessionLogEntry(options.logPath, 'gh_request_skipped_existing_issue_title', {
+        type: request.type,
+        id: request.id,
+        issue_title: issueReq.title,
+        reason: 'duplicate_issue_title_in_orchestrator_state',
+      });
+      continue;
+    }
+
     // We need to pass the body content, but gh.ts issue-create expects a request file
     // So we create temporary request files for each issue if needed, 
     // or we modify gh.ts to handle 'create_issues' payload directly.
@@ -456,9 +470,34 @@ async function handleCreateIssues(request: CreateIssuesRequest, fileName: string
       throw new Error(`issue-create failed: ${result.output}`);
     }
     results.push(JSON.parse(result.output));
+    existingIssueTitles.add(normalizedTitle);
   }
 
-  await writeSuccessToQueue(request, { issues: results }, options, fileName);
+  await writeSuccessToQueue(request, { issues: results, skipped_titles: skippedTitles }, options, fileName);
+}
+
+function normalizeIssueTitle(title: string): string {
+  return title.trim().toLowerCase();
+}
+
+async function loadOrchestratorIssueTitles(sessionDir: string): Promise<Set<string>> {
+  const statePath = path.join(sessionDir, 'orchestrator.json');
+  if (!existsSync(statePath)) return new Set();
+
+  const raw = await fs.readFile(statePath, 'utf8');
+  const parsed = JSON.parse(raw) as { issues?: Array<{ title?: unknown }> };
+  if (!Array.isArray(parsed.issues)) {
+    throw new Error(`Invalid orchestrator state: expected "issues" array in ${statePath}`);
+  }
+
+  const titles = new Set<string>();
+  for (const issue of parsed.issues) {
+    if (typeof issue?.title !== 'string') continue;
+    const normalized = normalizeIssueTitle(issue.title);
+    if (normalized.length === 0) continue;
+    titles.add(normalized);
+  }
+  return titles;
 }
 
 async function handleUpdateIssue(request: UpdateIssueRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {

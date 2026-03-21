@@ -1,51 +1,58 @@
-# Sub-Spec: Issue #183 — Configure Storybook 8 with react-vite and Tailwind decorators
+# Sub-Spec: Issue #179 — Request payload validation and idempotency guards
 
-Part of #29: Epic: Dashboard Core — Component Refactor & Real-Time UI
+Part of #26: Epic: Orchestrator Core — Autonomous Lifecycle & Request Processing
 
 ## Objective
 
-Set up Storybook 8 infrastructure in the dashboard project so that subsequent component extraction sub-issues can add stories alongside components.
+Add schema validation for all request payloads and idempotency guards to prevent duplicate side effects.
 
-## Scope
+## Context
 
-### Storybook Configuration
-- Install Storybook 8 with `@storybook/react-vite` framework adapter
-- Create `.storybook/` directory in `aloop/cli/dashboard/`
-- Configure `main.ts` to find `*.stories.tsx` files colocated with components
-- Configure `preview.ts` with global decorators
+`aloop/cli/src/lib/requests.ts` processes agent-produced request files. Currently:
+- JSON parse errors move files to `requests/failed/` ✓
+- But there's no schema validation — a request with `type: 'create_issues'` but missing `payload.issues` will throw at runtime
+- No idempotency: re-processing a `create_issues` request creates duplicate issues
+- No dedup: if an agent writes the same request twice, both are processed
 
-### Global Decorators
-- Tailwind CSS context decorator (imports `index.css`)
-- Dark mode toggle decorator using `@storybook/addon-themes` or custom decorator that toggles `.dark` class on root
-- Tooltip provider wrapper (Radix UI `TooltipProvider`)
+## Deliverables
 
-### Package.json Scripts
-- Add `storybook` script: `storybook dev -p 6006`
-- Add `build-storybook` script: `storybook build`
-- Install required devDependencies: `@storybook/react-vite`, `@storybook/react`, `@storybook/addon-essentials`, `@storybook/addon-themes`, `storybook`
+### Payload validation (`aloop/cli/src/lib/requests.ts`)
+- Add `validateRequest(request: unknown): AgentRequest` function
+- Validate required fields per request type:
+  - `create_issues`: `payload.issues` array, each with `title` and `body_file`
+  - `update_issue`: `payload.number` (positive integer)
+  - `close_issue`: `payload.number`, `payload.reason`
+  - `create_pr`: `payload.head`, `payload.base`, `payload.title`, `payload.body_file`, `payload.issue_number`
+  - `merge_pr`: `payload.number`, `payload.strategy` in ['squash', 'merge', 'rebase']
+  - `dispatch_child`: `payload.issue_number`, `payload.branch`, `payload.pipeline`, `payload.sub_spec_file`
+  - `steer_child`: `payload.issue_number`, `payload.prompt_file`
+  - `stop_child`: `payload.issue_number`, `payload.reason`
+  - `post_comment`: `payload.issue_number`, `payload.body_file`
+  - `query_issues`: (all fields optional)
+  - `spec_backfill`: `payload.file`, `payload.section`, `payload.content_file`
+- Invalid payloads → `requests/failed/` with error description in log
 
-### Verification Story
-- Create a simple `Button.stories.tsx` for the existing `ui/button.tsx` component to verify the setup works
-- Story should render in both light and dark mode
+### Idempotency guards
+- Track processed request IDs in `requests/processed-ids.json` (set of request.id strings)
+- Before processing any request, check if `request.id` already processed → skip with log entry
+- For `create_issues`: check if issue with same title already exists in orchestrator state → skip
+- For `merge_pr`: check if PR already merged via `gh pr view` status → skip
+- For `create_pr`: check if PR already exists for that head/base → skip
+- For `post_comment`: include request.id in comment body as HTML comment for dedup detection
 
-## Inputs
-- `aloop/cli/dashboard/package.json` (existing deps)
-- `aloop/cli/dashboard/tailwind.config.ts` (theme config)
-- `aloop/cli/dashboard/src/index.css` (CSS custom properties)
-
-## Outputs
-- `aloop/cli/dashboard/.storybook/main.ts`
-- `aloop/cli/dashboard/.storybook/preview.ts`
-- `aloop/cli/dashboard/src/components/ui/button.stories.tsx`
-- Updated `aloop/cli/dashboard/package.json` with Storybook deps and scripts
+### ETag cache persistence
+- Verify `EtagCache` in `github-monitor.ts` persists to `github-etag-cache.json` ✓ (already implemented)
+- Ensure cache loaded at startup and saved after each scan pass
 
 ## Acceptance Criteria
-- [ ] `npm run storybook` launches Storybook on port 6006
-- [ ] `npx storybook build` produces static build without errors
-- [ ] Button story renders correctly in both light and dark mode
-- [ ] Global decorator applies Tailwind styles matching dashboard appearance
-- [ ] Storybook uses same `tailwind.config.ts` as dashboard
-- [ ] No changes to existing source code or tests
 
-## Labels
-`aloop/sub-issue`, `aloop/needs-refine`
+- [ ] All request types validated before processing
+- [ ] Malformed requests moved to `requests/failed/` with error details
+- [ ] Request IDs tracked for idempotency
+- [ ] Duplicate `create_issues` / `create_pr` / `merge_pr` / `post_comment` are skipped
+- [ ] ETag cache persisted across restarts
+- [ ] Unit tests for validation and idempotency
+
+## File Scope
+- `aloop/cli/src/lib/requests.ts` (modify)
+- `aloop/cli/src/lib/requests.test.ts` (add tests)

@@ -4097,12 +4097,142 @@ async function writeSpecBackfill(opts) {
 }
 
 // src/lib/requests.ts
+var ValidationError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ValidationError";
+  }
+};
+var VALID_REQUEST_TYPES = /* @__PURE__ */ new Set([
+  "create_issues",
+  "update_issue",
+  "close_issue",
+  "create_pr",
+  "merge_pr",
+  "dispatch_child",
+  "steer_child",
+  "stop_child",
+  "post_comment",
+  "query_issues",
+  "spec_backfill"
+]);
+var VALID_MERGE_STRATEGIES = /* @__PURE__ */ new Set(["squash", "merge", "rebase"]);
+function validateRequest(raw) {
+  if (typeof raw !== "object" || raw === null) {
+    throw new ValidationError("Request must be a non-null object");
+  }
+  const obj = raw;
+  if (typeof obj.id !== "string" || obj.id.length === 0) {
+    throw new ValidationError('Request must have a non-empty string "id"');
+  }
+  if (typeof obj.type !== "string" || !VALID_REQUEST_TYPES.has(obj.type)) {
+    throw new ValidationError(`Invalid request type: ${JSON.stringify(obj.type)}`);
+  }
+  if (typeof obj.payload !== "object" || obj.payload === null) {
+    throw new ValidationError('Request must have a non-null "payload" object');
+  }
+  const p = obj.payload;
+  switch (obj.type) {
+    case "create_issues": {
+      if (!Array.isArray(p.issues) || p.issues.length === 0) {
+        throw new ValidationError("create_issues: payload.issues must be a non-empty array");
+      }
+      for (let i = 0; i < p.issues.length; i++) {
+        const issue = p.issues[i];
+        if (typeof issue.title !== "string" || issue.title.length === 0)
+          throw new ValidationError(`create_issues: issues[${i}].title must be a non-empty string`);
+        if (typeof issue.body_file !== "string" || issue.body_file.length === 0)
+          throw new ValidationError(`create_issues: issues[${i}].body_file must be a non-empty string`);
+      }
+      break;
+    }
+    case "update_issue": {
+      if (typeof p.number !== "number" || !Number.isInteger(p.number) || p.number <= 0)
+        throw new ValidationError("update_issue: payload.number must be a positive integer");
+      break;
+    }
+    case "close_issue": {
+      if (typeof p.number !== "number" || !Number.isInteger(p.number) || p.number <= 0)
+        throw new ValidationError("close_issue: payload.number must be a positive integer");
+      if (typeof p.reason !== "string" || p.reason.length === 0)
+        throw new ValidationError("close_issue: payload.reason must be a non-empty string");
+      break;
+    }
+    case "create_pr": {
+      if (typeof p.head !== "string" || p.head.length === 0)
+        throw new ValidationError("create_pr: payload.head must be a non-empty string");
+      if (typeof p.base !== "string" || p.base.length === 0)
+        throw new ValidationError("create_pr: payload.base must be a non-empty string");
+      if (typeof p.title !== "string" || p.title.length === 0)
+        throw new ValidationError("create_pr: payload.title must be a non-empty string");
+      if (typeof p.body_file !== "string" || p.body_file.length === 0)
+        throw new ValidationError("create_pr: payload.body_file must be a non-empty string");
+      if (typeof p.issue_number !== "number" || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError("create_pr: payload.issue_number must be a positive integer");
+      break;
+    }
+    case "merge_pr": {
+      if (typeof p.number !== "number" || !Number.isInteger(p.number) || p.number <= 0)
+        throw new ValidationError("merge_pr: payload.number must be a positive integer");
+      if (typeof p.strategy !== "string" || !VALID_MERGE_STRATEGIES.has(p.strategy))
+        throw new ValidationError("merge_pr: payload.strategy must be one of: squash, merge, rebase");
+      break;
+    }
+    case "dispatch_child": {
+      if (typeof p.issue_number !== "number" || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError("dispatch_child: payload.issue_number must be a positive integer");
+      if (typeof p.branch !== "string" || p.branch.length === 0)
+        throw new ValidationError("dispatch_child: payload.branch must be a non-empty string");
+      if (typeof p.pipeline !== "string" || p.pipeline.length === 0)
+        throw new ValidationError("dispatch_child: payload.pipeline must be a non-empty string");
+      if (typeof p.sub_spec_file !== "string" || p.sub_spec_file.length === 0)
+        throw new ValidationError("dispatch_child: payload.sub_spec_file must be a non-empty string");
+      break;
+    }
+    case "steer_child": {
+      if (typeof p.issue_number !== "number" || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError("steer_child: payload.issue_number must be a positive integer");
+      if (typeof p.prompt_file !== "string" || p.prompt_file.length === 0)
+        throw new ValidationError("steer_child: payload.prompt_file must be a non-empty string");
+      break;
+    }
+    case "stop_child": {
+      if (typeof p.issue_number !== "number" || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError("stop_child: payload.issue_number must be a positive integer");
+      if (typeof p.reason !== "string" || p.reason.length === 0)
+        throw new ValidationError("stop_child: payload.reason must be a non-empty string");
+      break;
+    }
+    case "post_comment": {
+      if (typeof p.issue_number !== "number" || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError("post_comment: payload.issue_number must be a positive integer");
+      if (typeof p.body_file !== "string" || p.body_file.length === 0)
+        throw new ValidationError("post_comment: payload.body_file must be a non-empty string");
+      break;
+    }
+    case "query_issues": {
+      break;
+    }
+    case "spec_backfill": {
+      if (typeof p.file !== "string" || p.file.length === 0)
+        throw new ValidationError("spec_backfill: payload.file must be a non-empty string");
+      if (typeof p.section !== "string" || p.section.length === 0)
+        throw new ValidationError("spec_backfill: payload.section must be a non-empty string");
+      if (typeof p.content_file !== "string" || p.content_file.length === 0)
+        throw new ValidationError("spec_backfill: payload.content_file must be a non-empty string");
+      break;
+    }
+  }
+  return raw;
+}
 async function processAgentRequests(options) {
   const requestsDir = path4.join(options.aloopDir, "requests");
   if (!existsSync3(requestsDir))
     return;
+  const processedIdsPath = path4.join(requestsDir, "processed-ids.json");
+  const processedIds = await loadProcessedRequestIds(processedIdsPath);
   const entries = await fs2.readdir(requestsDir, { withFileTypes: true });
-  const requestFiles = entries.filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".json")).map((e) => e.name).sort();
+  const requestFiles = entries.filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".json") && e.name.toLowerCase() !== "processed-ids.json").map((e) => e.name).sort();
   if (requestFiles.length === 0)
     return;
   const processedDir = path4.join(requestsDir, "processed");
@@ -4116,20 +4246,34 @@ async function processAgentRequests(options) {
     let request;
     try {
       const content = await fs2.readFile(requestPath, "utf8");
-      request = JSON.parse(content);
+      const parsed = JSON.parse(content);
+      request = validateRequest(parsed);
     } catch (e) {
+      const isValidation = e instanceof ValidationError;
       const archivePath = getArchivePath(failedDir, fileName, /* @__PURE__ */ new Set());
       await fs2.rename(requestPath, archivePath);
       await writeSessionLogEntry(options.logPath, "gh_request_failed", {
         type: "unknown",
         id: "unknown",
         request_file: fileName,
-        error: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`
+        error: isValidation ? `Validation failed: ${e.message}` : `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`
+      });
+      continue;
+    }
+    if (processedIds.has(request.id)) {
+      const archivePath = getArchivePath(processedDir, fileName, reservedArchivePaths);
+      await fs2.rename(requestPath, archivePath);
+      await writeSessionLogEntry(options.logPath, "gh_request_skipped_duplicate", {
+        type: request.type,
+        id: request.id,
+        request_file: fileName
       });
       continue;
     }
     try {
       await handleRequest(request, fileName, options);
+      processedIds.add(request.id);
+      await saveProcessedRequestIds(processedIdsPath, processedIds);
       const archivePath = getArchivePath(processedDir, fileName, reservedArchivePaths);
       await fs2.rename(requestPath, archivePath);
       await writeSessionLogEntry(options.logPath, "gh_request_processed", {
@@ -4150,6 +4294,22 @@ async function processAgentRequests(options) {
       });
     }
   }
+}
+async function loadProcessedRequestIds(filePath) {
+  if (!existsSync3(filePath))
+    return /* @__PURE__ */ new Set();
+  try {
+    const raw = await fs2.readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed))
+      return /* @__PURE__ */ new Set();
+    return new Set(parsed.filter((id) => typeof id === "string" && id.length > 0));
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+}
+async function saveProcessedRequestIds(filePath, ids) {
+  await fs2.writeFile(filePath, JSON.stringify([...ids].sort(), null, 2), "utf8");
 }
 function getArchivePath(processedDir, fileName, existingFiles) {
   let destination = path4.join(processedDir, fileName);
@@ -5605,25 +5765,6 @@ async function startDashboardServer(options, runtimeOptions = {}) {
         });
         child.unref();
         writeJson(response, 202, { resumed: true, pid: child.pid });
-        return;
-      }
-      if (requestUrl.pathname === "/api/qa-coverage" && request.method === "GET") {
-        const targetSessionId = requestUrl.searchParams.get("session");
-        let coverageWorkdir = workdir;
-        if (targetSessionId) {
-          const ctx = await resolveSessionContext(runtimeDir, targetSessionId);
-          if (ctx)
-            coverageWorkdir = ctx.workdir;
-        }
-        const coveragePath = path6.join(coverageWorkdir, "QA_COVERAGE.md");
-        const raw = await readTextFile(coveragePath);
-        if (!raw) {
-          writeJson(response, 200, { percentage: null, raw: "", available: false });
-          return;
-        }
-        const match = raw.match(/Coverage:\s*(\d+)%/i);
-        const percentage = match ? parseInt(match[1], 10) : null;
-        writeJson(response, 200, { percentage, raw, available: true });
         return;
       }
       const artifactMatch = requestUrl.pathname.match(/^\/api\/artifacts\/(\d+)\/(.+)$/);
@@ -12719,14 +12860,19 @@ async function checkPrGates(prNumber, repo, deps) {
   try {
     const checksResult = await deps.execGh([
       "pr",
-      "checks",
+      "view",
       String(prNumber),
       "--repo",
       repo,
       "--json",
-      "name,state,conclusion"
+      "statusCheckRollup"
     ]);
-    const checks = JSON.parse(checksResult.stdout);
+    const parsed = JSON.parse(checksResult.stdout);
+    const checks = (parsed.statusCheckRollup ?? []).map((c) => ({
+      name: c.name ?? c.context ?? "unknown",
+      state: c.status ?? c.state ?? "COMPLETED",
+      conclusion: c.conclusion ?? (c.state === "SUCCESS" ? "SUCCESS" : "PENDING")
+    }));
     const allCompleted = checks.every((c) => c.state === "COMPLETED" || c.state === "completed");
     const allPassed2 = checks.every(
       (c) => (c.state === "COMPLETED" || c.state === "completed") && (c.conclusion === "SUCCESS" || c.conclusion === "success" || c.conclusion === "NEUTRAL" || c.conclusion === "neutral" || c.conclusion === "SKIPPED" || c.conclusion === "skipped")
@@ -14065,16 +14211,6 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
   if (repo && deps.prLifecycleDeps) {
     const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === "pr_open" && !i.needs_redispatch);
     for (const issue of prIssues) {
-      if (deps.execGh && issue.last_reviewed_sha) {
-        try {
-          const headResult = await deps.execGh(["pr", "view", String(issue.pr_number), "--repo", repo, "--json", "headRefOid"]);
-          const headSha = JSON.parse(headResult.stdout).headRefOid;
-          if (headSha === issue.last_reviewed_sha) {
-            continue;
-          }
-        } catch {
-        }
-      }
       try {
         const lifecycleResult = await processPrLifecycle(
           issue,
@@ -14085,14 +14221,6 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
           deps.prLifecycleDeps
         );
         result.prLifecycles.push(lifecycleResult);
-        const action = lifecycleResult?.action;
-        if (action && action !== "review_pending" && action !== "gates_pending" && deps.execGh) {
-          try {
-            const headResult = await deps.execGh(["pr", "view", String(issue.pr_number), "--repo", repo, "--json", "headRefOid"]);
-            issue.last_reviewed_sha = JSON.parse(headResult.stdout).headRefOid;
-          } catch {
-          }
-        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         deps.appendLog(sessionDir, {
@@ -14148,7 +14276,6 @@ Do NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the
         issue.child_pid = launchResult.pid;
         issue.needs_redispatch = false;
         issue.review_feedback = void 0;
-        issue.last_reviewed_sha = void 0;
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
           event: "child_redispatched_for_review",
@@ -14429,10 +14556,14 @@ ${sub.body ?? ""}`;
   }
   const trunkBranch = state.trunk_branch ?? "agent/trunk";
   try {
-    spawnSync7("git", ["-C", projectRoot, "fetch", "origin", "master", trunkBranch], { encoding: "utf8" });
-    const mergeBase = spawnSync7("git", ["-C", projectRoot, "merge-base", `origin/master`, `origin/${trunkBranch}`], { encoding: "utf8" });
-    const masterHead = spawnSync7("git", ["-C", projectRoot, "rev-parse", "origin/master"], { encoding: "utf8" });
-    if (mergeBase.stdout?.trim() !== masterHead.stdout?.trim()) {
+    const fetchR = spawnSync7("git", ["-C", projectRoot, "fetch", "origin", "master", trunkBranch], { encoding: "utf8", timeout: 3e4 });
+    if (fetchR.status !== 0)
+      throw new Error("fetch failed");
+    const mergeBase = spawnSync7("git", ["-C", projectRoot, "merge-base", `origin/master`, `origin/${trunkBranch}`], { encoding: "utf8", timeout: 1e4 });
+    const masterHead = spawnSync7("git", ["-C", projectRoot, "rev-parse", "origin/master"], { encoding: "utf8", timeout: 1e4 });
+    const mbSha = mergeBase.stdout?.trim();
+    const mhSha = masterHead.stdout?.trim();
+    if (mbSha && mhSha && mbSha.length >= 7 && mhSha.length >= 7 && mbSha !== mhSha) {
       const mergeResult = spawnSync7("git", ["-C", projectRoot, "push", "origin", `origin/master:refs/heads/${trunkBranch}`], { encoding: "utf8" });
       if (mergeResult.status !== 0) {
         const tmpMerge = path16.join(aloopRoot, "tmp-trunk-merge");
@@ -14461,12 +14592,16 @@ ${sub.body ?? ""}`;
     const childWorktree = path16.join(childDir, "worktree");
     if (!existsSync13(childWorktree))
       continue;
-    const fetchResult = spawnSync7("git", ["-C", childWorktree, "fetch", "origin", trunkBranch], { encoding: "utf8" });
+    const fetchResult = spawnSync7("git", ["-C", childWorktree, "fetch", "origin", trunkBranch], { encoding: "utf8", timeout: 3e4 });
     if (fetchResult.status !== 0)
       continue;
-    const mergeBase = spawnSync7("git", ["-C", childWorktree, "merge-base", "HEAD", `origin/${trunkBranch}`], { encoding: "utf8" });
-    const remoteHead = spawnSync7("git", ["-C", childWorktree, "rev-parse", `origin/${trunkBranch}`], { encoding: "utf8" });
-    if (mergeBase.stdout?.trim() === remoteHead.stdout?.trim())
+    const mergeBase = spawnSync7("git", ["-C", childWorktree, "merge-base", "HEAD", `origin/${trunkBranch}`], { encoding: "utf8", timeout: 1e4 });
+    const remoteHead = spawnSync7("git", ["-C", childWorktree, "rev-parse", `origin/${trunkBranch}`], { encoding: "utf8", timeout: 1e4 });
+    const mbSha = mergeBase.stdout?.trim();
+    const rhSha = remoteHead.stdout?.trim();
+    if (!mbSha || !rhSha || mbSha.length < 7 || rhSha.length < 7)
+      continue;
+    if (mbSha === rhSha)
       continue;
     const statusResult = spawnSync7("git", ["-C", childWorktree, "status", "--porcelain"], { encoding: "utf8" });
     if (statusResult.stdout?.trim()) {
@@ -14546,8 +14681,9 @@ Automated PR from child loop session \`${issue.child_session}\`.`,
               ], { encoding: "utf8" });
               if (prResult.status === 0 && prResult.stdout) {
                 const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
-                if (urlMatch) {
-                  issue.pr_number = parseInt(urlMatch[1], 10);
+                const prNum = urlMatch ? parseInt(urlMatch[1], 10) : 0;
+                if (prNum > 0) {
+                  issue.pr_number = prNum;
                   issue.state = "pr_open";
                   issue.status = "In review";
                   stateChanged = true;
@@ -14671,7 +14807,9 @@ Automated PR from child loop session \`${issue.child_session}\`.`,
   const etagCache = new EtagCache(path16.join(aloopRoot, ".cache"));
   await etagCache.load();
   const execGh = async (args) => {
-    const r = spawnSync7("gh", args, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    const r = spawnSync7("gh", args, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true, timeout: 3e4 });
+    if (r.status === null && r.signal)
+      throw new Error(`gh timed out (${r.signal})`);
     return { stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
   };
   const execGit = async (args, cwd) => {
@@ -14785,20 +14923,6 @@ ${recent.slice(-4e3)}
           } catch {
           }
         }
-        const stateIssue = state.issues.find((i) => i.pr_number === prNumber);
-        if (stateIssue && repo) {
-          try {
-            const headResult = spawnSync7("gh", ["pr", "view", String(prNumber), "--repo", repo, "--json", "headRefOid"], { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
-            if (headResult.status === 0) {
-              const headSha = JSON.parse(headResult.stdout).headRefOid;
-              if (headSha && stateIssue.last_reviewed_sha === headSha) {
-                return { pr_number: prNumber, verdict: "pending", summary: "Already reviewed this commit, waiting for new push." };
-              }
-              stateIssue.last_reviewed_sha = headSha;
-            }
-          } catch {
-          }
-        }
         const queueFile = path16.join(sessionDir, "queue", `000-review-${prNumber}.md`);
         const legacyQueueFile = path16.join(sessionDir, "queue", `review-${prNumber}.md`);
         if (!existsSync13(queueFile) && !existsSync13(legacyQueueFile)) {
@@ -14845,6 +14969,35 @@ ${outputInstr}${commentHistory}
 ${diff}
 \`\`\`
 `, "utf8");
+          }
+        }
+        const stateIssue2 = state.issues.find((i) => i.pr_number === prNumber);
+        if (stateIssue2) {
+          const pendingCount = (stateIssue2.review_pending_count ?? 0) + 1;
+          stateIssue2.review_pending_count = pendingCount;
+          if (pendingCount === 4) {
+            const troubleshootFile = path16.join(sessionDir, "queue", `000-troubleshoot-review-${prNumber}.md`);
+            if (!existsSync13(troubleshootFile)) {
+              await mkdir8(path16.join(sessionDir, "queue"), { recursive: true });
+              await writeFile12(troubleshootFile, `---
+agent: troubleshoot
+reasoning: high
+---
+
+# Troubleshoot: PR #${prNumber} Review Stuck
+
+The review for PR #${prNumber} has returned "pending" ${pendingCount} times. The verdict extraction is failing.
+
+## Investigate
+1. Check if review-result-${prNumber}.json exists anywhere in the session
+2. Check recent agent output for verdict text mentioning PR #${prNumber}
+3. If verdict exists but wasn't parsed, write it to the correct location
+4. If no verdict was produced, determine why the review agent didn't generate one
+`, "utf8");
+            }
+          }
+          if (pendingCount > 6) {
+            return { pr_number: prNumber, verdict: "flag-for-human", summary: `Review stuck pending after ${pendingCount} attempts (troubleshoot agent also failed) \u2014 needs manual review.` };
           }
         }
         return { pr_number: prNumber, verdict: "pending", summary: "Review queued." };
