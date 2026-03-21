@@ -96,6 +96,7 @@ export interface OrchestratorIssue {
   review_feedback?: string;
   redispatch_count?: number;
   last_review_comment?: string;
+  last_reviewed_sha?: string;
   child_pid?: number;
 }
 
@@ -3942,7 +3943,27 @@ export async function processPrLifecycle(
     return { pr_number: prNumber, action: 'gates_failed', detail: failDetail, gates: gatesResult };
   }
 
-  // Step 5: Agent review
+  // Step 5: Agent review — skip if head SHA hasn't changed since last review
+  let headSha: string | undefined;
+  try {
+    const prView = await deps.execGh(['pr', 'view', String(prNumber), '--repo', repo, '--json', 'headRefOid', '-q', '.headRefOid']);
+    headSha = prView.stdout.trim();
+  } catch {
+    // Best-effort SHA fetch — proceed with review if it fails
+  }
+
+  const stateIssueForSha = state.issues.find((i) => i.number === issue.number);
+  if (headSha && stateIssueForSha?.last_reviewed_sha === headSha) {
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: 'pr_review_skipped_same_sha',
+      pr_number: prNumber,
+      issue_number: issue.number,
+      head_sha: headSha,
+    });
+    return { pr_number: prNumber, action: 'review_pending', detail: `No new commits since last review (${headSha.slice(0, 8)})`, gates: gatesResult };
+  }
+
   const reviewResult = await reviewPrDiff(prNumber, repo, deps);
   deps.appendLog(sessionDir, {
     timestamp: deps.now().toISOString(),
@@ -3952,6 +3973,11 @@ export async function processPrLifecycle(
     verdict: reviewResult.verdict,
     summary: reviewResult.summary,
   });
+
+  // Record the reviewed SHA so we skip re-reviewing the same commit
+  if (headSha && stateIssueForSha) {
+    stateIssueForSha.last_reviewed_sha = headSha;
+  }
 
   if (reviewResult.verdict === 'pending') {
     return { pr_number: prNumber, action: 'review_pending', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
@@ -5621,7 +5647,7 @@ export async function runOrchestratorScanPass(
 
   // 3. Process PR lifecycles for issues with open PRs
   if (repo && deps.prLifecycleDeps) {
-    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
+    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !i.needs_redispatch);
     for (const issue of prIssues) {
       try {
         const lifecycleResult = await processPrLifecycle(
