@@ -3384,8 +3384,10 @@ export async function processPrLifecycle(
     return { pr_number: prNumber, action: 'gates_pending', detail: 'CI checks still running', gates: gatesResult };
   }
 
-  // Step 3: Handle merge conflicts
-  if (!gatesResult.mergeable) {
+  // Step 3: Handle merge conflicts (only if gate check didn't error)
+  const mergeGate = gatesResult.gates.find((g) => g.gate === 'merge_conflicts');
+  const mergeCheckErrored = mergeGate && mergeGate.detail?.startsWith('Failed to check');
+  if (!gatesResult.mergeable && !mergeCheckErrored) {
     const stateIssue = state.issues.find((i) => i.number === issue.number);
     const rebaseAttempts = stateIssue?.rebase_attempts ?? 0;
 
