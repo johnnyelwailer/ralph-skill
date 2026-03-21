@@ -108,6 +108,7 @@ export interface OrchestratorState {
   budget_cap: number | null;
   auto_merge_to_main?: boolean;
   trunk_pr_number?: number | null;
+  gh_project_number?: number;
   created_at: string;
   updated_at: string;
 }
@@ -1111,7 +1112,19 @@ export async function orchestrateCommandWithDeps(
         const projectStatusMap = new Map<number, string>();
         try {
           const owner = filterRepo.split('/')[0];
-          const gqlQuery = `{ user(login: "${owner}") { projectV2(number: 2) { items(first: 100) { nodes { content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`;
+          // Find aloop project number dynamically
+          let projNumber = 0;
+          const projListResult = nodeSpawnSync('gh', ['project', 'list', '--owner', owner, '--format', 'json'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+          if (projListResult.status === 0) {
+            try {
+              const projects = JSON.parse(projListResult.stdout ?? '{}').projects ?? [];
+              const aloopProj = projects.find((p: any) => p.title?.toLowerCase().includes('aloop'));
+              if (aloopProj) projNumber = aloopProj.number;
+            } catch { /* ignore */ }
+          }
+          if (projNumber === 0) throw new Error('No aloop project found');
+          state.gh_project_number = projNumber;
+          const gqlQuery = `{ user(login: "${owner}") { projectV2(number: ${projNumber}) { items(first: 100) { nodes { content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`;
           const projResult = nodeSpawnSync('gh', ['api', 'graphql', '-f', `query=${gqlQuery}`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
           if (projResult.status !== 0) {
             console.error(`[orchestrate] Project status query failed (exit ${projResult.status}): ${projResult.stderr?.substring(0, 200)}`);

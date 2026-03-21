@@ -42,6 +42,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const meta = existsSync(metaFile) ? JSON.parse(await readFile(metaFile, 'utf8')) : {};
   const projectRoot = meta.project_root ?? process.cwd();
   const sessionId = path.basename(sessionDir);
+  const ghProjectNumber = (state as any).gh_project_number ?? meta.gh_project_number ?? null;
   const promptsDir = path.join(sessionDir, 'prompts');
   const requestsDir = path.join(sessionDir, 'requests');
   const repo = state.filter_repo ?? null;
@@ -273,10 +274,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   } catch { /* cleanup is best-effort */ }
 
   // ── Phase 2e: Sync issue statuses to GH project ──
-  if (repo && stateChanged) {
+  if (repo && stateChanged && ghProjectNumber) {
     try {
       // Get project items and their current statuses
-      const projResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: 2) { id items(first: 100) { nodes { id content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+      const projResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: ${ghProjectNumber}) { id items(first: 100) { nodes { id content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
       if (projResult.status === 0) {
         const projData = JSON.parse(projResult.stdout);
         const projV2 = projData?.data?.user?.projectV2 ?? {};
@@ -289,7 +290,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         }
 
         // Fetch status field options dynamically (never hardcode IDs)
-        const fieldResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: 2) { field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } } } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+        const fieldResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: ${ghProjectNumber}) { field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } } } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
         if (fieldResult.status !== 0) throw new Error('field query failed');
         const fieldData = JSON.parse(fieldResult.stdout);
         const statusField = fieldData?.data?.user?.projectV2?.field ?? {};
