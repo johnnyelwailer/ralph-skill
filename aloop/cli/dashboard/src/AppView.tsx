@@ -969,9 +969,10 @@ export function QACoverageBadge({ sessionId, refreshKey }: { sessionId: string |
     };
   }, [sessionId, refreshKey]);
 
-  if (!coverage?.available) return null;
+  // Still loading — hide until first fetch completes
+  if (coverage === null) return null;
 
-  const percentage = coverage.percentage;
+  const percentage = coverage.available ? coverage.percentage : null;
   const tone = percentage === null
     ? 'border-border bg-muted/40 text-muted-foreground'
     : percentage >= 80

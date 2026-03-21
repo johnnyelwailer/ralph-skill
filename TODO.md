@@ -15,33 +15,25 @@ The endpoint (`GET /api/qa-coverage`) and widget (`QACoverageBadge`) already exi
 
 ### In Progress
 
+- [x] [review+qa/P1] Fix badge hidden when QA_COVERAGE.md missing: changed early return from `!coverage?.available` to `coverage === null` (loading-only). When `available` is false, badge now renders with grey/muted "QA: N/A" style instead of being hidden. (priority: high)
+- [ ] [review] Fix refresh trigger: `AppView.tsx:2189` — `qaCoverageRefreshKey={state?.updatedAt ?? ''}` refreshes on every state change. Only bump `qaCoverageRefreshKey` on `iteration_complete` SSE events where phase is `qa`. (priority: high)
+- [ ] [review] Fix TypeScript compilation error: `orchestrate.ts:3526` — `PrGateStatus` type union missing `"api_error"`. Add it to the type definition at `orchestrate.ts:3167`. (priority: high)
+- [ ] Update `QACoverageData` TypeScript interface in `AppView.tsx` to match new response shape (currently uses `percentage` instead of `coverage_percent`, missing `total_features`, `tested_features`, `passed`, `failed`, `untested` fields). (priority: medium)
+
+### Up Next
+
+- [ ] [review] Triage 23 test failures in `orchestrate.test.ts` — verify which are regressions introduced by this branch vs pre-existing on master, and fix any regressions. (priority: medium)
+- [ ] Add graceful fallback: if `QA_COVERAGE.md` exists but has no parseable table, return `{ coverage_percent: 0, error: "parse_error", ... }` with empty features array
+- [ ] Investigate baseline backpressure failures in unrelated suites (`src/commands/dashboard.test.ts` packaged-assets case and `src/commands/orchestrate.test.ts` assertions) that currently block full `aloop/cli` validation
+
+### Deferred
+
+- [~] [review] Gate 6: Proof artifacts (`iter-16/output.txt`) contain only text output, not screenshots. Not a code issue — proof agent limitation. Deferred until screenshot capture is implemented in the proof agent.
+
+### Completed
+
 - [x] Rewrite server-side parser to parse pipe-delimited markdown table (Feature|Component|Last Tested|Commit|Status|Criteria Met|Notes columns) — returns structured JSON with `coverage_percent`, `total_features`, `tested_features`, `passed`, `failed`, `untested`, and `features[]` array
 - [x] Update API response shape from `{ percentage, raw, available }` to match spec: `{ coverage_percent, total_features, tested_features, passed, failed, untested, features: [...] }` — keep `available` and `error` fields for missing-file case
 - [x] Fix color threshold in `QACoverageBadge`: change yellow from `>= 60%` to `>= 50%` to match spec (green >= 80%, yellow 50-79%, red < 50%)
 - [x] Replace raw-markdown rendering in expanded view with structured per-feature list showing PASS/FAIL/UNTESTED status for each feature row
-- [ ] Update refresh trigger: only bump `qaCoverageRefreshKey` on `iteration_complete` SSE events where phase is `qa`, not on every state change
 - [x] Update server-side tests: use pipe-delimited table fixtures instead of `Coverage: XX%` text; test all response fields
-- [ ] Update `QACoverageData` TypeScript interface in `AppView.tsx` to match new response shape
-
-### QA Bugs
-
-- [ ] [qa/P1] QA badge hidden when QA_COVERAGE.md missing: Removed QA_COVERAGE.md from worktree → QA badge completely disappears from dashboard top bar → Spec says should show "0% or No QA data". Tested at iter 1. (priority: high)
-
-### Review Findings
-
-- [ ] [review] Gate 1: `AppView.tsx:972` — `if (!coverage?.available) return null` hides badge entirely when QA_COVERAGE.md missing. Spec requires showing "0%" or "No QA data". Change to render a grey/muted badge with "QA: N/A" or "QA: 0%" instead of returning null. (priority: high)
-- [ ] [review] Gate 1: `AppView.tsx:2189` — `qaCoverageRefreshKey={state?.updatedAt ?? ''}` refreshes QA badge on every state change. Spec requires refresh only on `iteration_complete` SSE events where phase is `qa`. Wire up SSE event filtering to only bump the refresh key on QA-phase iteration completions. (priority: high)
-- [ ] [review] Gate 5: `orchestrate.ts:3526` — TypeScript compilation error: `PrGateStatus` and `"api_error"` have no overlap. The `api_error` status was added (commit 2149734) but not added to the `PrGateStatus` type union. Fix the type definition. (priority: high)
-- [ ] [review] Gate 5: 23 test failures in `orchestrate.test.ts` and related suites. Verify which are regressions introduced by this branch vs pre-existing on master, and fix any regressions. (priority: medium)
-- [ ] [review] Gate 6: Proof artifacts (`iter-16/output.txt`) contain only text output, not screenshots. For a UI widget change (QACoverageBadge), proof should include a screenshot of the badge in green/yellow/red states. If screenshot capture is not feasible, proof agent should skip rather than produce text filler. (priority: medium)
-
-### Up Next
-
-- [ ] Add graceful fallback: if `QA_COVERAGE.md` exists but has no parseable table, return `{ coverage_percent: 0, error: "parse_error", ... }` with empty features array
-- [ ] Investigate baseline backpressure failures in unrelated suites (`src/commands/dashboard.test.ts` packaged-assets case and `src/commands/orchestrate.test.ts` assertions) that currently block full `aloop/cli` validation
-
-### Completed
-
-- [x] Rewrite server-side parser to parse pipe-delimited markdown table
-- [x] Update API response shape to match spec
-- [x] Update server-side tests with pipe-delimited table fixtures
