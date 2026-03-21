@@ -2503,6 +2503,7 @@ cleanup() {
 }
 
 trap 'cleanup "interrupted" "stopped"; exit 130' INT
+trap 'cleanup "terminated" "stopped"; exit 143' TERM
 # NOTE: No ERR trap — the main loop must survive transient errors.
 # Provider failures and helper errors are handled via explicit if/|| guards.
 trap 'kill_active_provider; remove_session_lock' EXIT
