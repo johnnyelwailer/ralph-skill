@@ -5751,6 +5751,9 @@ export async function runOrchestratorScanPass(
   if (repo && deps.prLifecycleDeps) {
     const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
     for (const issue of prIssues) {
+      // SHA dedup is handled inside invokeAgentReview (process-requests.ts),
+      // which reads result files first, then checks SHA. Do NOT skip here —
+      // skipping at the scan-loop level prevents picking up completed review results.
       try {
         const lifecycleResult = await processPrLifecycle(
           issue,
