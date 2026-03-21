@@ -394,8 +394,8 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       now: () => new Date(),
       appendLog: (dir: string, entry: Record<string, unknown>) => { appendLog(dir, entry); },
       invokeAgentReview: async (prNumber: number, _repo: string, diff: string) => {
+        // 1. Check for result files (agent wrote verdict)
         const resultFile = path.join(requestsDir, `review-result-${prNumber}.json`);
-        // Also check worktree/requests/ (agent may write relative to its cwd)
         const worktreeResultFile = path.join(sessionDir, 'worktree', 'requests', `review-result-${prNumber}.json`);
         const actualResultFile = existsSync(resultFile) ? resultFile : existsSync(worktreeResultFile) ? worktreeResultFile : null;
         if (actualResultFile) {
@@ -408,19 +408,17 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Parse error: ${e}` };
           }
         }
-        // Fallback: scan per-iteration output artifacts for verdict text
-        // The agent may have produced the verdict as text but not written the JSON file
+
+        // 2. Fallback: scan per-iteration output for verdict text
         const artifactsDir = path.join(sessionDir, 'artifacts');
         if (existsSync(artifactsDir)) {
           try {
             const iterDirs = await readdir(artifactsDir);
-            // Check most recent iteration outputs (last 3)
             const sorted = iterDirs.filter(d => d.startsWith('iter-')).sort().reverse().slice(0, 3);
             for (const iterDir of sorted) {
               const outputFile = path.join(artifactsDir, iterDir, 'output.txt');
               if (!existsSync(outputFile)) continue;
               const output = await readFile(outputFile, 'utf8');
-              // Only match if this output mentions this PR number
               if (!output.includes(String(prNumber)) && !output.includes(`PR #${prNumber}`)) continue;
               const verdictMatch = output.match(/\*\*[Vv]erdict:\s*(approve|request-changes|flag-for-human)\*\*/i)
                 ?? output.match(/["']verdict["']\s*:\s*["'](approve|request-changes|flag-for-human)["']/i);
@@ -434,7 +432,23 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
           } catch { /* ignore */ }
         }
 
-        // Queue review prompt if not already queued
+        // 3. Check if PR head commit has already been reviewed (prevent spam)
+        const stateIssue = state.issues.find((i: any) => i.pr_number === prNumber);
+        if (stateIssue && repo) {
+          try {
+            const headResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'headRefOid'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+            if (headResult.status === 0) {
+              const headSha = JSON.parse(headResult.stdout).headRefOid;
+              if (headSha && (stateIssue as any).last_reviewed_sha === headSha) {
+                return { pr_number: prNumber, verdict: 'pending', summary: 'Already reviewed this commit, waiting for new push.' };
+              }
+              // Store SHA — will be saved after verdict
+              (stateIssue as any).last_reviewed_sha = headSha;
+            }
+          } catch { /* ignore */ }
+        }
+
+        // 4. Queue review prompt with PR comments history
         const queueFile = path.join(sessionDir, 'queue', `000-review-${prNumber}.md`);
         const legacyQueueFile = path.join(sessionDir, 'queue', `review-${prNumber}.md`);
         if (!existsSync(queueFile) && !existsSync(legacyQueueFile)) {
@@ -443,8 +457,20 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             const prompt = await readFile(reviewPath, 'utf8');
             await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
             const resultPath = path.join(requestsDir, `review-result-${prNumber}.json`);
-            const outputInstr = `\n\n## Output\n\nWrite your verdict to \`${resultPath}\` as JSON: \`{"pr_number": ${prNumber}, "verdict": "approve"|"request-changes"|"flag-for-human", "summary": "..."}\`\n\nIMPORTANT: Use the EXACT absolute path above. Do NOT write to a relative \`requests/\` path.\n`;
-            await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${prompt}\n${outputInstr}\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
+            const outputInstr = `\n\n## Output\n\nWrite your verdict to \`${resultPath}\` as JSON: \`{"pr_number": ${prNumber}, "verdict": "approve"|"request-changes"|"flag-for-human", "summary": "..."}\`\n\nIMPORTANT: Use the EXACT absolute path above.\n`;
+
+            // Fetch existing PR comments for context
+            let commentHistory = '';
+            if (repo) {
+              try {
+                const commentsResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'comments', '--jq', '.comments[].body'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+                if (commentsResult.status === 0 && commentsResult.stdout?.trim()) {
+                  commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${commentsResult.stdout.trim()}\n`;
+                }
+              } catch { /* ignore */ }
+            }
+
+            await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${prompt}\n${outputInstr}${commentHistory}\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
           }
         }
         return { pr_number: prNumber, verdict: 'pending', summary: 'Review queued.' };

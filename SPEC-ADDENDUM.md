@@ -1203,3 +1203,39 @@ The following features are described in `SPEC.md` but are not yet implemented. I
 - **Spec section**: UX: Dashboard, Start Flow, Auto-Monitoring
 - **What's missing**: The `/aloop:dashboard` Claude Code command file does not exist in `claude/commands/aloop/`. The `aloop-dashboard.prompt.md` file does not exist in `copilot/prompts/`. Agents cannot launch or interact with the dashboard via commands.
 - **Spec requirement**: "`/aloop:dashboard` command file exists in `claude/commands/aloop/`" and "`aloop-dashboard.prompt.md` exists in `copilot/prompts/`" in the acceptance criteria.
+
+---
+
+## Orchestrator PR Review: Commit-Aware, Context-Preserving
+
+### Problem Solved
+
+The review agent was re-reviewing PRs every scan pass, posting 11+ duplicate comments. Reviews had no context of previous feedback.
+
+### Required Behavior
+
+1. **Commit SHA tracking** — store the HEAD commit SHA when a PR is reviewed. Only re-review if new commits were pushed since. Prevents review spam.
+
+2. **Comment history in review prompt** — fetch existing PR comments and include them in the review prompt with instruction: "Do NOT repeat feedback already given. Only comment on NEW issues or acknowledge fixes."
+
+3. **Conversation-aware review** — the agent sees the full review thread and can:
+   - Acknowledge issues that were fixed since last review
+   - Focus only on remaining/new issues
+   - Provide a final "all clear" when everything is addressed
+
+### Implementation
+
+- `invokeAgentReview` checks `last_reviewed_sha` on the issue — skips if HEAD hasn't changed
+- When queuing review prompt, fetches `gh pr view --json comments` and appends to prompt
+- Review verdict parsed from agent output (fallback) or result file (preferred)
+
+### Sub-Spec Handling
+
+Child loops receive their task specification as `TASK_SPEC.md` (NOT `SPEC.md`). The project's `SPEC.md` must never be overwritten by a child loop. `TASK_SPEC.md` is gitignored and excluded from PRs.
+
+### Acceptance Criteria
+
+- [ ] PRs are not re-reviewed if HEAD commit hasn't changed since last review
+- [ ] Review prompt includes previous PR comments with "do not repeat" instruction
+- [ ] Sub-spec written to `TASK_SPEC.md`, not `SPEC.md`
+- [ ] `TASK_SPEC.md` excluded from PR diffs
