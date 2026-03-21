@@ -147,7 +147,44 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // ── Phase 2b: Create PRs for completed children ──
+  // ── Phase 2b: Sync child branches with base branch ──
+  const trunkBranch = state.trunk_branch ?? 'agent/trunk';
+  for (const issue of state.issues) {
+    if (!issue.child_session) continue;
+    if (issue.state !== 'in_progress' && issue.state !== 'pr_open') continue;
+    const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+    const childWorktree = path.join(childDir, 'worktree');
+    if (!existsSync(childWorktree)) continue;
+
+    // Fetch and check if diverged
+    const fetchResult = spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8' });
+    if (fetchResult.status !== 0) continue;
+
+    const mergeBase = spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8' });
+    const remoteHead = spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8' });
+    if (mergeBase.stdout?.trim() === remoteHead.stdout?.trim()) continue; // Up to date
+
+    // Try rebase
+    const rebaseResult = spawnSync('git', ['-C', childWorktree, 'rebase', `origin/${trunkBranch}`], { encoding: 'utf8' });
+    if (rebaseResult.status === 0) {
+      // Push rebased branch
+      spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD', '--force-with-lease'], { encoding: 'utf8' });
+      console.log(`[process-requests] Synced #${issue.number} with ${trunkBranch}`);
+    } else {
+      // Conflict — abort rebase, queue merge agent
+      spawnSync('git', ['-C', childWorktree, 'rebase', '--abort'], { encoding: 'utf8' });
+      const mergeQueueFile = path.join(childDir, 'queue', '000-merge-conflict.md');
+      if (!existsSync(mergeQueueFile)) {
+        const mergePromptPath = path.join(childDir, 'prompts', 'PROMPT_merge.md');
+        const mergePrompt = existsSync(mergePromptPath) ? await readFile(mergePromptPath, 'utf8') : '# Merge Conflict Resolution';
+        await mkdir(path.join(childDir, 'queue'), { recursive: true });
+        await writeFile(mergeQueueFile, `---\nagent: merge\nreasoning: high\n---\n\n${mergePrompt}\n\n## Conflict\n\nRebase onto \`origin/${trunkBranch}\` failed.\nRun \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, resolve conflicts, then \`git rebase --continue && git push origin HEAD --force-with-lease\`.\n`, 'utf8');
+        console.log(`[process-requests] Merge conflict on #${issue.number} — queued merge agent`);
+      }
+    }
+  }
+
+  // ── Phase 2c: Create PRs for completed children ──
   if (repo) {
     for (const issue of state.issues) {
       if (!issue.child_session) continue;
