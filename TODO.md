@@ -24,3 +24,5 @@
   - TASK_SPEC acceptance criteria: "Unit tests for validation and idempotency"
   - Currently `validateRequest` is only tested indirectly via `processAgentRequests` integration tests
 - [ ] Add tests for `post_comment` HTML comment dedup embedding (priority: medium)
+- [ ] [qa/P1] `process-requests` does NOT call `processAgentRequests`: Request files in `requests/` are completely ignored by the `process-requests` CLI command. Invalid payloads are never validated, `processed-ids.json` is never created, `requests/failed/` is never used. All issue #179 features (validation, idempotency, dedup guards) exist in code but are unreachable via the CLI. Evidence: 68 unprocessed request files accumulating in real orchestrator session, zero `processed-ids.json` across all sessions. Tested at iter 33. (priority: high)
+- [ ] [qa/P1] `process-requests` silently succeeds with nonexistent `--session-dir`: Running `aloop process-requests --session-dir /tmp/totally-nonexistent-path` exits 0 with no output or error. Should exit non-zero with an error message. Tested at iter 33. (priority: high)
