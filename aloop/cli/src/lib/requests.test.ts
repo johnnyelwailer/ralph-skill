@@ -341,11 +341,50 @@ test('processAgentRequests - post_comment', async () => {
       sentBody = typeof requestPayload.body === 'string' ? requestPayload.body : '';
       return { exitCode: 0, output: 'posted' };
     };
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      assert.deepStrictEqual(args, ['api', 'repos/{owner}/{repo}/issues/101/comments?per_page=100']);
+      return { status: 0, stdout: '[]', stderr: '' };
+    }) as unknown as typeof child_process.spawnSync;
     
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
     assert.strictEqual(ghOp, 'issue-comment');
     assert.ok(sentBody.includes('Nice work'));
     assert.ok(sentBody.includes('<!-- aloop-request-id: req-3 -->'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - post_comment skips when request marker already exists', async () => {
+  const env = await setupTestEnv();
+  try {
+    await fs.writeFile(path.join(env.workdir, 'comment.md'), 'Nice work');
+    const req = {
+      id: 'req-3-dedup',
+      type: 'post_comment',
+      payload: { issue_number: 101, body_file: 'comment.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-3-dedup.json'), JSON.stringify(req));
+
+    let ghRunnerCalls = 0;
+    const ghRunner = async () => {
+      ghRunnerCalls += 1;
+      return { exitCode: 0, output: 'posted' };
+    };
+    const spawnSync = ((_cmd: string, _args: string[]) => ({
+      status: 0,
+      stdout: JSON.stringify([{ body: 'prior\n\n<!-- aloop-request-id: req-3-dedup -->' }]),
+      stderr: '',
+    })) as unknown as typeof child_process.spawnSync;
+
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+
+    assert.strictEqual(ghRunnerCalls, 0);
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    assert.strictEqual(queueFiles.length, 1);
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('"status": "skipped"'));
+    assert.ok(queueContent.includes('"reason": "duplicate_comment_marker"'));
   } finally {
     await env.cleanup();
   }

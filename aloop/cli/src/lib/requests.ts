@@ -733,8 +733,24 @@ async function handleStopChild(request: StopChildRequest, fileName: string, opti
 }
 
 async function handlePostComment(request: PostCommentRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  const body = await fs.readFile(path.join(options.workdir, request.payload.body_file), 'utf8');
   const requestIdMarker = `<!-- aloop-request-id: ${request.id} -->`;
+  const existingCommentBodies = getIssueCommentBodies(request.payload.issue_number, options);
+  if (existingCommentBodies.some((commentBody) => commentBody.includes(requestIdMarker))) {
+    await writeSessionLogEntry(options.logPath, 'gh_request_skipped_duplicate_comment', {
+      type: request.type,
+      id: request.id,
+      issue_number: request.payload.issue_number,
+      reason: 'duplicate_request_id_marker_found',
+    });
+    await writeSuccessToQueue(request, {
+      status: 'skipped',
+      reason: 'duplicate_comment_marker',
+      issue_number: request.payload.issue_number,
+    }, options, fileName);
+    return;
+  }
+
+  const body = await fs.readFile(path.join(options.workdir, request.payload.body_file), 'utf8');
   const bodyWithRequestId = body.includes(requestIdMarker)
     ? body
     : `${body.replace(/\s*$/, '')}\n\n${requestIdMarker}`;
@@ -748,6 +764,39 @@ async function handlePostComment(request: PostCommentRequest, fileName: string, 
   await fs.unlink(tempRequestPath);
   if (result.exitCode !== 0) throw new Error(result.output);
   await writeSuccessToQueue(request, { status: 'posted' }, options, fileName);
+}
+
+function getIssueCommentBodies(issueNumber: number, options: RequestProcessorOptions): string[] {
+  const spawn = options.spawnSync || spawnSync;
+  const result = spawn(
+    'gh',
+    ['api', `repos/{owner}/{repo}/issues/${issueNumber}/comments?per_page=100`],
+    { encoding: 'utf8' }
+  );
+  if (result.status !== 0) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(result.stdout) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const commentBodies: string[] = [];
+    for (const comment of parsed) {
+      if (typeof comment !== 'object' || comment === null) {
+        continue;
+      }
+      const body = (comment as { body?: unknown }).body;
+      if (typeof body === 'string') {
+        commentBodies.push(body);
+      }
+    }
+    return commentBodies;
+  } catch {
+    return [];
+  }
 }
 
 async function handleQueryIssues(request: QueryIssuesRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {

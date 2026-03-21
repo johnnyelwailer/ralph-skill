@@ -4644,8 +4644,23 @@ async function handleStopChild(request, fileName, options) {
   await writeSuccessToQueue(request, { status: "stopped" }, options, fileName);
 }
 async function handlePostComment(request, fileName, options) {
-  const body = await fs2.readFile(path4.join(options.workdir, request.payload.body_file), "utf8");
   const requestIdMarker = `<!-- aloop-request-id: ${request.id} -->`;
+  const existingCommentBodies = getIssueCommentBodies(request.payload.issue_number, options);
+  if (existingCommentBodies.some((commentBody) => commentBody.includes(requestIdMarker))) {
+    await writeSessionLogEntry(options.logPath, "gh_request_skipped_duplicate_comment", {
+      type: request.type,
+      id: request.id,
+      issue_number: request.payload.issue_number,
+      reason: "duplicate_request_id_marker_found"
+    });
+    await writeSuccessToQueue(request, {
+      status: "skipped",
+      reason: "duplicate_comment_marker",
+      issue_number: request.payload.issue_number
+    }, options, fileName);
+    return;
+  }
+  const body = await fs2.readFile(path4.join(options.workdir, request.payload.body_file), "utf8");
   const bodyWithRequestId = body.includes(requestIdMarker) ? body : `${body.replace(/\s*$/, "")}
 
 ${requestIdMarker}`;
@@ -4660,6 +4675,32 @@ ${requestIdMarker}`;
   if (result.exitCode !== 0)
     throw new Error(result.output);
   await writeSuccessToQueue(request, { status: "posted" }, options, fileName);
+}
+function getIssueCommentBodies(issueNumber, options) {
+  const spawn4 = options.spawnSync || spawnSync2;
+  const result = spawn4(
+    "gh",
+    ["api", `repos/{owner}/{repo}/issues/${issueNumber}/comments?per_page=100`],
+    { encoding: "utf8" }
+  );
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || "Failed to query existing issue comments");
+  }
+  const parsed = JSON.parse(result.stdout);
+  if (!Array.isArray(parsed)) {
+    throw new Error("Invalid response from issue comments API: expected array");
+  }
+  const commentBodies = [];
+  for (const comment of parsed) {
+    if (typeof comment !== "object" || comment === null) {
+      continue;
+    }
+    const body = comment.body;
+    if (typeof body === "string") {
+      commentBodies.push(body);
+    }
+  }
+  return commentBodies;
 }
 async function handleQueryIssues(request, fileName, options) {
   const args = ["issue", "list", "--json", "number,title,state,labels", "--limit", "100"];
