@@ -4509,9 +4509,14 @@ function findExistingPrForHeadBase(head, base, options) {
     { encoding: "utf8" }
   );
   if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || "Failed to query existing PRs");
+    return null;
   }
-  const parsed = JSON.parse(result.stdout);
+  let parsed;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    return null;
+  }
   if (!Array.isArray(parsed) || parsed.length === 0) {
     return null;
   }
@@ -4553,7 +4558,8 @@ async function handleMergePr(request, fileName, options) {
   const tempRequestPath = path4.join(options.aloopDir, "requests", `_tmp_${request.id}.json`);
   await fs2.writeFile(tempRequestPath, JSON.stringify({
     type: "pr-merge",
-    pr_number: request.payload.number
+    pr_number: request.payload.number,
+    strategy: request.payload.strategy
   }));
   const result = await options.ghCommandRunner("pr-merge", options.sessionId, tempRequestPath);
   await fs2.unlink(tempRequestPath);
@@ -4684,23 +4690,27 @@ function getIssueCommentBodies(issueNumber, options) {
     { encoding: "utf8" }
   );
   if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || "Failed to query existing issue comments");
+    return [];
   }
-  const parsed = JSON.parse(result.stdout);
-  if (!Array.isArray(parsed)) {
-    throw new Error("Invalid response from issue comments API: expected array");
-  }
-  const commentBodies = [];
-  for (const comment of parsed) {
-    if (typeof comment !== "object" || comment === null) {
-      continue;
+  try {
+    const parsed = JSON.parse(result.stdout);
+    if (!Array.isArray(parsed)) {
+      return [];
     }
-    const body = comment.body;
-    if (typeof body === "string") {
-      commentBodies.push(body);
+    const commentBodies = [];
+    for (const comment of parsed) {
+      if (typeof comment !== "object" || comment === null) {
+        continue;
+      }
+      const body = comment.body;
+      if (typeof body === "string") {
+        commentBodies.push(body);
+      }
     }
+    return commentBodies;
+  } catch {
+    return [];
   }
-  return commentBodies;
 }
 async function handleQueryIssues(request, fileName, options) {
   const args = ["issue", "list", "--json", "number,title,state,labels", "--limit", "100"];
@@ -5912,6 +5922,25 @@ async function startDashboardServer(options, runtimeOptions = {}) {
         });
         child.unref();
         writeJson(response, 202, { resumed: true, pid: child.pid });
+        return;
+      }
+      if (requestUrl.pathname === "/api/qa-coverage" && request.method === "GET") {
+        const targetSessionId = requestUrl.searchParams.get("session");
+        let coverageWorkdir = workdir;
+        if (targetSessionId) {
+          const ctx = await resolveSessionContext(runtimeDir, targetSessionId);
+          if (ctx)
+            coverageWorkdir = ctx.workdir;
+        }
+        const coveragePath = path6.join(coverageWorkdir, "QA_COVERAGE.md");
+        const raw = await readTextFile(coveragePath);
+        if (!raw) {
+          writeJson(response, 200, { percentage: null, raw: "", available: false });
+          return;
+        }
+        const match = raw.match(/Coverage:\s*(\d+)%/i);
+        const percentage = match ? parseInt(match[1], 10) : null;
+        writeJson(response, 200, { percentage, raw, available: true });
         return;
       }
       const artifactMatch = requestUrl.pathname.match(/^\/api\/artifacts\/(\d+)\/(.+)$/);
@@ -9024,7 +9053,8 @@ function buildGhArgs(operation, payload, enforced) {
     }
     case "pr-merge": {
       const prNum = payload.pr_number;
-      return ["pr", "merge", String(prNum), "--repo", repo, "--squash"];
+      const method = enforced.merge_method ?? payload.strategy ?? "squash";
+      return ["pr", "merge", String(prNum), "--repo", repo, `--${method}`];
     }
     case "issue-comments": {
       return ["api", `repos/${repo}/issues/comments`, "--method", "GET", "-f", `since=${String(enforced.since)}`];
@@ -10203,8 +10233,8 @@ async function copyTree(src, dest, deps) {
   const written = [];
   if (!deps.existsSync(src))
     return written;
-  const stat2 = fs6.statSync(src);
-  if (!stat2.isDirectory()) {
+  const stat3 = fs6.statSync(src);
+  if (!stat3.isDirectory()) {
     await deps.mkdir(path12.dirname(dest), { recursive: true });
     await deps.copyFile(src, dest);
     written.push(dest);
@@ -10702,6 +10732,37 @@ function detectIssueChanges(current, lastKnown) {
 
 // src/commands/orchestrate.ts
 var HOUSEKEEPING_AGENTS = /* @__PURE__ */ new Set(["spec-consistency", "spec-backfill", "guard", "loop-health-supervisor"]);
+var TMP_DISPATCH_CHECK_PATH = "/tmp";
+var TMP_DISPATCH_MIN_FREE_BYTES = 500 * 1024 * 1024;
+function toBigIntOrNull(value) {
+  if (typeof value === "bigint")
+    return value;
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0)
+    return BigInt(Math.trunc(value));
+  return null;
+}
+function computeFreeBytesFromStatfs(stats) {
+  const availableBlocks = toBigIntOrNull(stats.bavail);
+  const blockSize = toBigIntOrNull(stats.frsize ?? stats.bsize);
+  if (availableBlocks === null || blockSize === null)
+    return null;
+  const freeBytes = availableBlocks * blockSize;
+  if (freeBytes <= 0n)
+    return null;
+  if (freeBytes > BigInt(Number.MAX_SAFE_INTEGER))
+    return Number.MAX_SAFE_INTEGER;
+  return Number(freeBytes);
+}
+async function getTmpFreeBytes(deps) {
+  if (!deps.statfs)
+    return null;
+  try {
+    const stats = await deps.statfs(TMP_DISPATCH_CHECK_PATH);
+    return computeFreeBytesFromStatfs(stats);
+  } catch {
+    return null;
+  }
+}
 var defaultDeps4 = {
   existsSync: existsSync11,
   readFile: readFile10,
@@ -13944,7 +14005,10 @@ async function processQueuedPrompts(sessionDir, projectRoot, aloopRoot, iteratio
         cwd: agentWorkDir,
         detached: true,
         stdio: "ignore",
-        env: { ...deps.dispatchDeps.env },
+        env: {
+          ...deps.dispatchDeps.env,
+          NODE_COMPILE_CACHE: path14.join(sessionDir, ".v8-cache")
+        },
         windowsHide: true
       });
       child.unref();
@@ -14267,7 +14331,21 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
     const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
     const eligible = filterByFileOwnership(capabilityResult.eligible, state);
     const slots = availableSlots(state);
-    const toDispatch = eligible.slice(0, slots);
+    let toDispatch = eligible.slice(0, slots);
+    if (toDispatch.length > 0) {
+      const freeBytes = await getTmpFreeBytes(deps.dispatchDeps);
+      if (freeBytes !== null && freeBytes < TMP_DISPATCH_MIN_FREE_BYTES) {
+        toDispatch = [];
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "scan_dispatch_paused_tmp_low_space",
+          iteration,
+          free_bytes: freeBytes,
+          threshold_bytes: TMP_DISPATCH_MIN_FREE_BYTES,
+          path: TMP_DISPATCH_CHECK_PATH
+        });
+      }
+    }
     for (const blocked of capabilityResult.blocked) {
       deps.appendLog(sessionDir, {
         timestamp: deps.now().toISOString(),
@@ -14572,9 +14650,53 @@ async function steerCommand(instruction, options = {}) {
 
 // src/commands/process-requests.ts
 import { existsSync as existsSync13 } from "node:fs";
-import { readFile as readFile12, readdir as readdir6, unlink as unlink3, writeFile as writeFile12, mkdir as mkdir8, cp as cp2 } from "node:fs/promises";
+import { readFile as readFile12, readdir as readdir6, stat as stat2, statfs as statfs2, unlink as unlink3, writeFile as writeFile12, mkdir as mkdir8, cp as cp2 } from "node:fs/promises";
 import { spawn as spawn3, spawnSync as spawnSync7 } from "node:child_process";
 import path16 from "node:path";
+var V8_CACHE_PRUNE_THRESHOLD_BYTES = 50 * 1024 * 1024;
+async function getDirectorySizeBytes(dirPath) {
+  let total = 0;
+  const queue = [dirPath];
+  while (queue.length > 0) {
+    const current = queue.pop();
+    if (!current)
+      continue;
+    let entries = [];
+    try {
+      entries = await readdir6(current);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path16.join(current, entry);
+      let fileStat = null;
+      try {
+        fileStat = await stat2(fullPath);
+      } catch {
+        continue;
+      }
+      if (fileStat.isDirectory()) {
+        queue.push(fullPath);
+      } else if (fileStat.isFile()) {
+        total += fileStat.size;
+      }
+    }
+  }
+  return total;
+}
+async function pruneLargeV8CacheDir(cacheDir, thresholdBytes = V8_CACHE_PRUNE_THRESHOLD_BYTES) {
+  if (!existsSync13(cacheDir))
+    return { sizeBytes: 0, pruned: false };
+  const sizeBytes = await getDirectorySizeBytes(cacheDir);
+  if (sizeBytes <= thresholdBytes) {
+    return { sizeBytes, pruned: false };
+  }
+  const rmResult = spawnSync7("rm", ["-rf", cacheDir], { encoding: "utf8" });
+  if (rmResult.status !== 0) {
+    throw new Error(`Failed to prune V8 cache at ${cacheDir}: ${rmResult.stderr?.trim() ?? "unknown error"}`);
+  }
+  return { sizeBytes, pruned: true };
+}
 async function processRequestsCommand(options) {
   const sessionDir = path16.resolve(options.sessionDir);
   const homeDir = resolveHomeDir2(options.homeDir);
@@ -14872,18 +14994,26 @@ Automated PR from child loop session \`${issue.child_session}\`.`,
   }
   try {
     for (const issue of state.issues) {
-      if ((issue.state === "merged" || issue.state === "failed") && issue.child_session) {
-        const childDir = path16.join(aloopRoot, "sessions", issue.child_session);
-        const childWorktree = path16.join(childDir, "worktree");
-        const childV8Cache = path16.join(childDir, ".v8-cache");
+      if (!issue.child_session)
+        continue;
+      const childDir = path16.join(aloopRoot, "sessions", issue.child_session);
+      const childWorktree = path16.join(childDir, "worktree");
+      const childV8Cache = path16.join(childDir, ".v8-cache");
+      if (issue.state === "in_progress" && existsSync13(childV8Cache)) {
+        const pruneResult = await pruneLargeV8CacheDir(childV8Cache);
+        if (pruneResult.pruned) {
+          const sizeMb = (pruneResult.sizeBytes / (1024 * 1024)).toFixed(1);
+          console.log(`[process-requests] Pruned oversized V8 cache for in-progress #${issue.number} (${sizeMb}MB)`);
+        }
+      }
+      if (issue.state === "merged" || issue.state === "failed") {
         if (existsSync13(childWorktree)) {
           spawnSync7("git", ["-C", projectRoot, "worktree", "remove", "--force", childWorktree], { encoding: "utf8" });
           spawnSync7("git", ["-C", projectRoot, "worktree", "prune"], { encoding: "utf8" });
           console.log(`[process-requests] Cleaned worktree for completed #${issue.number}`);
         }
-        if (existsSync13(childV8Cache)) {
-          spawnSync7("rm", ["-rf", childV8Cache], { encoding: "utf8" });
-        }
+        if (existsSync13(childV8Cache))
+          await pruneLargeV8CacheDir(childV8Cache, 0);
       }
     }
   } catch {
@@ -15223,6 +15353,7 @@ The review for PR #${prNumber} has returned "pending" ${pendingCount} times. The
       writeFile: (p, data, enc) => writeFile12(p, data, enc),
       mkdir: (p, o) => mkdir8(p, o).then(() => void 0),
       cp: (src, dest, o) => cp2(src, dest, o),
+      statfs: (p) => statfs2(p),
       now: () => /* @__PURE__ */ new Date(),
       spawnSync: (cmd, a, o) => {
         const r = spawnSync7(cmd, a, o);
