@@ -3,7 +3,7 @@ import { marked } from 'marked';
 import { toast } from 'sonner';
 import {
   Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock,
-  GitBranch, GitCommit, Image, FileText, Menu, MoreHorizontal, PanelLeftClose,
+  GitCommit, Image, FileText, Menu, MoreHorizontal, PanelLeftClose,
   PanelLeftOpen, Play, Search, Send, Square, Terminal, Timer, XCircle, Zap, Loader2,
   Heart, AlertTriangle, Pause, ExternalLink,
 } from 'lucide-react';
@@ -19,10 +19,9 @@ import { Toaster } from '@/components/ui/sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CostDisplay } from '@/components/progress/CostDisplay';
-import { useCost } from '@/hooks/useCost';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 import { relativeTime, phaseColors, phaseBarColors, phaseDotColors, statusColors, PhaseBadge, STATUS_DOT_CONFIG, StatusDot } from '@/components/session/helpers';
+import { SessionCard } from '@/components/session/SessionCard';
 export { relativeTime } from '@/components/session/helpers';
 
 // ── ANSI + Markdown rendering ──
@@ -238,27 +237,6 @@ interface ProviderHealth {
   reason?: string;
   consecutiveFailures?: number;
   cooldownUntil?: string;
-}
-
-interface QACoverageFeature {
-  feature: string;
-  component: string;
-  last_tested: string;
-  commit: string;
-  status: 'PASS' | 'FAIL' | 'UNTESTED';
-  criteria_met: string;
-  notes: string;
-}
-
-interface QACoverageViewData {
-  percentage: number | null;
-  available: boolean;
-  features: QACoverageFeature[];
-}
-
-interface CostSessionResponse {
-  total_usd?: number | string;
-  error?: string;
 }
 
 // ── Helpers ──
@@ -517,33 +495,6 @@ export function parseDurationSeconds(raw: string): number | null {
   return null;
 }
 
-function parseQACoveragePayload(payload: unknown): QACoverageViewData {
-  if (!isRecord(payload)) return { percentage: null, available: false, features: [] };
-  const available = typeof payload.available === 'boolean' ? payload.available : true;
-  const percentValue = typeof payload.coverage_percent === 'number'
-    ? payload.coverage_percent
-    : (typeof payload.percentage === 'number' ? payload.percentage : null);
-  const features = Array.isArray(payload.features)
-    ? payload.features
-      .filter((f): f is Record<string, unknown> => isRecord(f))
-      .map((f): QACoverageFeature => {
-        const rawStatus = typeof f.status === 'string' ? f.status.toUpperCase() : 'UNTESTED';
-        const status: QACoverageFeature['status'] = rawStatus === 'PASS' || rawStatus === 'FAIL' ? rawStatus : 'UNTESTED';
-        return {
-          feature: typeof f.feature === 'string' ? f.feature : '',
-          component: typeof f.component === 'string' ? f.component : '',
-          last_tested: typeof f.last_tested === 'string' ? f.last_tested : '',
-          commit: typeof f.commit === 'string' ? f.commit : '',
-          status,
-          criteria_met: typeof f.criteria_met === 'string' ? f.criteria_met : '',
-          notes: typeof f.notes === 'string' ? f.notes : '',
-        };
-      })
-    : [];
-
-  return { percentage: percentValue, available, features };
-}
-
 export function computeAvgDuration(log: string): string {
   if (!log) return '';
   let totalSec = 0;
@@ -566,30 +517,6 @@ export function computeAvgDuration(log: string): string {
   }
   if (count === 0) return '';
   return formatSecs(totalSec / count);
-}
-
-function latestQaCoverageRefreshSignal(log: string): string | null {
-  if (!log) return null;
-  const lines = log.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i]?.trim();
-    if (!line) continue;
-    try {
-      const entry = JSON.parse(line);
-      if (!isRecord(entry)) continue;
-      const event = str(entry, ['event', 'type']);
-      const phase = str(entry, ['phase', 'mode']).toLowerCase();
-      if (event !== 'iteration_complete' || phase !== 'qa') continue;
-      const timestamp = str(entry, ['timestamp', 'ts', 'time', 'created_at']);
-      const iterationRaw = entry.iteration;
-      const iteration = typeof iterationRaw === 'number' ? String(iterationRaw)
-        : typeof iterationRaw === 'string' ? iterationRaw : '';
-      return `${timestamp}|${iteration}|${line}`;
-    } catch {
-      // Skip non-JSON lines in log stream.
-    }
-  }
-  return null;
 }
 
 // ── Provider health derived from log ──
@@ -645,14 +572,13 @@ export function deriveProviderHealth(log: string, configuredProviders?: string[]
 // ── Sidebar ──
 
 export function Sidebar({
-  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost,
+  sessions, selectedSessionId, onSelectSession, collapsed, onToggle,
 }: {
   sessions: SessionSummary[];
   selectedSessionId: string | null;
   onSelectSession: (id: string | null) => void;
   collapsed: boolean;
   onToggle: () => void;
-  sessionCost: number;
 }) {
   // Group by project
   const { projectGroups, olderSessions } = useMemo(() => {
@@ -681,53 +607,13 @@ export function Sidebar({
   }, [sessions]);
 
   const [olderOpen, setOlderOpen] = useState(false);
-  const [sessionCosts, setSessionCosts] = useState<Record<string, number | null>>({});
-  const [costUnavailable, setCostUnavailable] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const targets = sessions
-      .map((s) => s.id)
-      .filter((id) => id && id !== 'current')
-      .slice(0, 20);
-    if (targets.length === 0) return;
-
-    const loadSessionCosts = async () => {
-      const entries = await Promise.all(targets.map(async (id) => {
-        try {
-          const response = await fetch(`/api/cost/session/${encodeURIComponent(id)}`);
-          if (!response.ok) return [id, null] as const;
-          const payload = await response.json() as CostSessionResponse;
-          if (payload.error === 'opencode_unavailable') {
-            if (!cancelled) setCostUnavailable(true);
-            return [id, null] as const;
-          }
-          const value = typeof payload.total_usd === 'number'
-            ? payload.total_usd
-            : typeof payload.total_usd === 'string'
-              ? Number.parseFloat(payload.total_usd)
-              : NaN;
-          return [id, Number.isFinite(value) ? value : null] as const;
-        } catch {
-          return [id, null] as const;
-        }
-      }));
-
-      if (!cancelled) {
-        setSessionCosts((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
-      }
-    };
-
-    void loadSessionCosts();
-    return () => { cancelled = true; };
-  }, [sessions]);
 
   if (collapsed) {
     return (
       <aside className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
+            <button type="button" className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggle}>
               <PanelLeftOpen className="h-4 w-4" />
             </button>
           </TooltipTrigger>
@@ -737,7 +623,7 @@ export function Sidebar({
           {sessions.slice(0, 8).map((s) => (
             <Tooltip key={s.id}>
               <TooltipTrigger asChild>
-                <button type="button" className="block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}>
+                <button type="button" className="block" onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}>
                   <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
                 </button>
               </TooltipTrigger>
@@ -752,62 +638,13 @@ export function Sidebar({
   const isSelected = (s: SessionSummary) =>
     selectedSessionId === null ? sessions.indexOf(s) === 0 : s.id === selectedSessionId;
 
-  const displaySessionCost = (s: SessionSummary): number | null =>
-    s.isActive ? sessionCost : (sessionCosts[s.id] ?? null);
-
-  const renderCard = (s: SessionSummary) => {
-    const cardCost = displaySessionCost(s);
-    return (
-      <Tooltip key={s.id}>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className={`w-full overflow-hidden rounded-md px-2 py-1.5 min-h-[44px] md:min-h-0 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
-            onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
-          >
-            <div className="flex items-center gap-1.5 overflow-hidden">
-              <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
-              <span className="truncate font-medium flex-1">{s.name}</span>
-              <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
-            </div>
-            <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
-              {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
-              {s.branch && <span className="truncate">{s.branch}</span>}
-              {s.phase && <span className="shrink-0">·</span>}
-              {s.phase && <PhaseBadge phase={s.phase} small />}
-              {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
-              {s.elapsed && s.elapsed !== '--' && <span className="shrink-0">· {s.elapsed}</span>}
-              {typeof cardCost === 'number' && <span className="shrink-0">· ${cardCost.toFixed(4)}</span>}
-            </div>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" className="max-w-lg">
-          <div className="space-y-0.5 text-xs">
-            <p className="font-medium">{s.id}</p>
-            {s.pid && <p>PID: {s.pid}</p>}
-            <p>Status: {s.status}</p>
-            {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
-            <p>Provider: {s.provider}</p>
-            <p>Iterations: {s.iterations}</p>
-            {s.elapsed && s.elapsed !== '--' && <p>Duration: {s.elapsed}</p>}
-            {costUnavailable && typeof cardCost !== 'number' && <p>Cost: unavailable</p>}
-            {typeof cardCost === 'number' && <p>Cost: ${cardCost.toFixed(4)}</p>}
-            {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
-            {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
-            {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    );
-  };
-
   return (
     <aside className="flex flex-col border-r border-border bg-sidebar w-64 shrink-0 animate-slide-in-left">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
+            <button type="button" className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggle}>
               <PanelLeftClose className="h-4 w-4" />
             </button>
           </TooltipTrigger>
@@ -818,26 +655,44 @@ export function Sidebar({
         <div className="p-2 overflow-hidden">
           {Array.from(projectGroups.entries()).map(([project, items]) => (
             <Collapsible key={project} defaultOpen>
-              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 min-h-[44px] md:min-h-0 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider hover:text-muted-foreground">
+              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider hover:text-muted-foreground">
                 <ChevronDown className="h-3 w-3 transition-transform group-data-[state=closed]:rotate-[-90deg]" />
                 {project}
                 <span className="ml-auto text-muted-foreground/40">{items.length}</span>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <div className="space-y-0.5 mb-2">{items.map(renderCard)}</div>
+                <div className="space-y-0.5 mb-2">
+                  {items.map((session) => (
+                    <SessionCard
+                      key={session.id}
+                      session={session}
+                      selected={isSelected(session)}
+                      onSelectSession={onSelectSession}
+                    />
+                  ))}
+                </div>
               </CollapsibleContent>
             </Collapsible>
           ))}
 
           {olderSessions.length > 0 && (
             <Collapsible open={olderOpen} onOpenChange={setOlderOpen}>
-              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 min-h-[44px] md:min-h-0 text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-wider hover:text-muted-foreground">
+              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-wider hover:text-muted-foreground">
                 {olderOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                 Older
                 <span className="ml-auto">{olderSessions.length}</span>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <div className="space-y-0.5 mb-2">{olderSessions.map(renderCard)}</div>
+                <div className="space-y-0.5 mb-2">
+                  {olderSessions.map((session) => (
+                    <SessionCard
+                      key={session.id}
+                      session={session}
+                      selected={isSelected(session)}
+                      onSelectSession={onSelectSession}
+                    />
+                  ))}
+                </div>
               </CollapsibleContent>
             </Collapsible>
           )}
@@ -856,9 +711,6 @@ function Header({
   providerName, modelName, tasksCompleted, tasksTotal, progressPercent,
   updatedAt, loading, loadError, connectionStatus, onOpenCommand, onOpenSwitcher,
   stuckCount, startedAt, avgDuration, maxIterations, onToggleMobileMenu,
-  selectedSessionId, qaCoverageRefreshKey,
-  sessionCost, totalCost, budgetCap, budgetUsedPercent,
-  costError, costLoading, budgetWarnings, budgetPauseThreshold,
 }: {
   sessionName: string; isRunning: boolean; currentState: string; currentPhase: string;
   currentIteration: string; providerName: string; modelName: string;
@@ -867,28 +719,18 @@ function Header({
   connectionStatus: ConnectionStatus; onOpenCommand: () => void; onOpenSwitcher: () => void;
   stuckCount: number; startedAt: string; avgDuration: string; maxIterations: number | null;
   onToggleMobileMenu: () => void;
-  selectedSessionId: string | null;
-  qaCoverageRefreshKey: string;
-  sessionCost: number;
-  totalCost: number | null;
-  budgetCap: number | null;
-  budgetUsedPercent: number | null;
-  costError: string | null;
-  costLoading: boolean;
-  budgetWarnings: number[];
-  budgetPauseThreshold: number | null;
 }) {
   const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
   return (
     <header className="border-b border-border px-3 py-2 md:px-4 md:py-2.5 shrink-0">
       <h1 className="sr-only">Aloop Dashboard</h1>
       <div className="flex items-center gap-2 sm:gap-4" data-testid="session-header-grid">
-        <button type="button" aria-label="Toggle sidebar" className="inline-flex items-center justify-center md:hidden p-1 min-h-[44px] min-w-[44px] rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
+        <button type="button" className="md:hidden p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
           <Menu className="h-5 w-5" />
         </button>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="flex items-center gap-2 min-w-0 min-h-[44px] md:min-h-0 hover:text-primary transition-colors" onClick={onOpenSwitcher}>
+            <button type="button" className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors" onClick={onOpenSwitcher}>
               <StatusDot status={isRunning ? 'running' : currentState} />
               <span className="text-sm font-semibold truncate max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">{sessionName}</span>
             </button>
@@ -913,7 +755,6 @@ function Header({
               <p><span className="text-muted-foreground">Stuck:</span> <span className={stuckCount > 0 ? 'text-red-500 font-medium' : ''}>{stuckCount}</span></p>
               {startedAt && <p><span className="text-muted-foreground">Elapsed:</span> <ElapsedTimer since={startedAt} /></p>}
               {avgDuration && <p><span className="text-muted-foreground">Avg iter:</span> {avgDuration}</p>}
-              <p><span className="text-muted-foreground">Session cost:</span> ${sessionCost.toFixed(4)}</p>
             </div>
           </HoverCardContent>
         </HoverCard>
@@ -924,25 +765,9 @@ function Header({
             <ElapsedTimer since={startedAt} />
           </span>
         )}
-        {(avgDuration || sessionCost > 0) && (
-          <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap hidden lg:inline">
-            {avgDuration ? `~${avgDuration}/iter` : ''}{avgDuration && sessionCost > 0 ? ' · ' : ''}{sessionCost > 0 ? `$${sessionCost.toFixed(4)} session` : ''}
-          </span>
+        {avgDuration && (
+          <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap hidden lg:inline">~{avgDuration}/iter</span>
         )}
-
-        <div className="hidden xl:block">
-          <CostDisplay
-            totalCost={totalCost}
-            budgetCap={budgetCap}
-            budgetUsedPercent={budgetUsedPercent}
-            error={costError}
-            isLoading={costLoading}
-            budgetWarnings={budgetWarnings}
-            budgetPauseThreshold={budgetPauseThreshold}
-            sessionCost={sessionCost}
-            className="min-w-[220px]"
-          />
-        </div>
 
         {/* Progress bar — hidden on mobile */}
         <div className="hidden sm:flex items-center gap-2 min-w-0 flex-1 max-w-xs" data-testid="header-progress">
@@ -951,7 +776,6 @@ function Header({
         </div>
 
         <PhaseBadge phase={currentPhase} />
-        <QACoverageBadge sessionId={selectedSessionId} refreshKey={qaCoverageRefreshKey} />
         {providerName && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -981,94 +805,6 @@ function Header({
   );
 }
 
-export function QACoverageBadge({ sessionId, refreshKey }: { sessionId: string | null; refreshKey: string }) {
-  const [coverage, setCoverage] = useState<QACoverageViewData | null>(null);
-  const [expanded, setExpanded] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const controller = new AbortController();
-
-    async function loadCoverage() {
-      try {
-        const sp = sessionId ? `?session=${encodeURIComponent(sessionId)}` : '';
-        const response = await fetch(`/api/qa-coverage${sp}`, { signal: controller.signal });
-        if (!response.ok) return;
-        const payload = await response.json();
-        if (!cancelled) setCoverage(parseQACoveragePayload(payload));
-      } catch {
-        if (!cancelled) setCoverage({ percentage: null, available: false, features: [] });
-      }
-    }
-
-    loadCoverage().catch(() => undefined);
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [sessionId, refreshKey]);
-
-  // Still loading — hide until first fetch completes
-  if (coverage === null) return null;
-
-  const percentage = coverage.available ? coverage.percentage : null;
-  const tone = percentage === null
-    ? 'border-border bg-muted/40 text-muted-foreground'
-    : percentage >= 80
-      ? 'border-green-500/40 bg-green-500/15 text-green-700 dark:text-green-400'
-      : percentage >= 50
-        ? 'border-yellow-500/40 bg-yellow-500/15 text-yellow-700 dark:text-yellow-400'
-        : 'border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-400';
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setExpanded((prev) => !prev)}
-        className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 min-h-[44px] md:min-h-0 text-[11px] font-medium transition-colors hover:opacity-90 ${tone}`}
-      >
-        <CheckCircle2 className="h-3 w-3" />
-        <span>QA {percentage === null ? 'N/A' : `${percentage}%`}</span>
-        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-      </button>
-      {expanded && (
-        <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-[min(560px,92vw)] rounded-md border border-border bg-popover shadow-lg">
-          <ScrollArea className="max-h-80">
-            <div className="p-3 text-xs space-y-2">
-              {coverage.features.length === 0 ? (
-                <p className="text-muted-foreground">No feature rows found in QA coverage table.</p>
-              ) : (
-                coverage.features.map((feature, index) => {
-                  const statusTone = feature.status === 'PASS'
-                    ? 'border-green-500/40 bg-green-500/15 text-green-700 dark:text-green-400'
-                    : feature.status === 'FAIL'
-                      ? 'border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-400'
-                      : 'border-border bg-muted/40 text-muted-foreground';
-                  const StatusIcon = feature.status === 'PASS' ? CheckCircle2 : feature.status === 'FAIL' ? XCircle : Circle;
-                  return (
-                    <div key={`${feature.feature}-${feature.component}-${index}`} className="rounded-md border border-border/70 p-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground truncate">{feature.feature || 'Unnamed feature'}</p>
-                          {feature.component && <p className="text-[11px] text-muted-foreground truncate">{feature.component}</p>}
-                        </div>
-                        <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${statusTone}`}>
-                          <StatusIcon className="h-3 w-3" />
-                          {feature.status}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </ScrollArea>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Docs Panel ──
 
 function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs: Record<string, string>; providerHealth: ProviderHealth[]; activityCollapsed?: boolean; repoUrl?: string | null }) {
@@ -1089,18 +825,18 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
   return (
     <Tabs defaultValue={defaultTab} className="flex flex-col h-full">
       <div className="flex items-center shrink-0">
-        <TabsList className="h-auto md:h-8 bg-muted/50 flex-nowrap sm:flex-wrap justify-start flex-1 overflow-x-auto whitespace-nowrap">
+        <TabsList className="h-8 bg-muted/50 flex-nowrap sm:flex-wrap justify-start flex-1 overflow-x-auto whitespace-nowrap">
           {visibleTabs.map((n) => (
-            <TabsTrigger key={n} value={n} className="text-[10px] sm:text-[11px] px-2 py-1 md:h-6 data-[state=active]:bg-background">
+            <TabsTrigger key={n} value={n} className="text-[10px] sm:text-[11px] px-2 py-1 h-6 data-[state=active]:bg-background">
               {tabLabels[n] ?? n.replace(/\.md$/i, '')}
             </TabsTrigger>
           ))}
-          <TabsTrigger value="_health" className="text-[10px] sm:text-[11px] px-2 py-1 md:h-6 data-[state=active]:bg-background">
+          <TabsTrigger value="_health" className="text-[10px] sm:text-[11px] px-2 py-1 h-6 data-[state=active]:bg-background">
             <Heart className="h-3 w-3 mr-1" /> Health
           </TabsTrigger>
           {overflowTabs.length > 0 && (
             <div className="relative group">
-              <button type="button" className="px-2 py-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 text-[11px] text-muted-foreground hover:text-foreground">
+              <button type="button" className="px-2 py-1 h-6 text-[11px] text-muted-foreground hover:text-foreground">
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </button>
               <div className="absolute right-0 top-full z-20 hidden group-hover:block bg-popover border rounded-md shadow-md py-1 min-w-[120px]">
@@ -1115,7 +851,7 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
           {repoUrl && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <a href={repoUrl} target="_blank" rel="noopener noreferrer" aria-label="Open repo on GitHub" className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 md:w-6 rounded-sm text-muted-foreground hover:text-foreground hover:bg-background transition-colors ml-auto">
+                <a href={repoUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center h-6 w-6 rounded-sm text-muted-foreground hover:text-foreground hover:bg-background transition-colors ml-auto">
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </TooltipTrigger>
@@ -1894,7 +1630,7 @@ function Footer({
     <footer className="border-t border-border px-3 py-2 md:px-4 shrink-0">
       <div className="flex items-center gap-1.5 sm:gap-3">
         <Textarea
-          className="min-h-[44px] md:min-h-[32px] h-auto md:h-8 resize-none text-xs flex-1 min-w-0"
+          className="min-h-[32px] h-8 resize-none text-xs flex-1 min-w-0"
           placeholder="Steer..."
           value={steerInstruction}
           onChange={(e) => setSteerInstruction(e.target.value)}
@@ -1998,9 +1734,7 @@ export function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<'docs' | 'activity'>('docs');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
-  const [qaCoverageRefreshKey, setQaCoverageRefreshKey] = useState('');
   const prevPhaseRef = useRef<string>('');
-  const latestQaSignalRef = useRef<string | null>(null);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -2015,8 +1749,6 @@ export function App() {
     setSelectedSessionId(id);
     setLoading(true);
     setLoadError(null);
-    latestQaSignalRef.current = null;
-    setQaCoverageRefreshKey('');
     const url = new URL(window.location.href);
     if (id) url.searchParams.set('session', id); else url.searchParams.delete('session');
     window.history.replaceState(null, '', url.toString());
@@ -2039,11 +1771,7 @@ export function App() {
       try {
         const r = await fetch(`/api/state${sp}`, { signal: controller.signal });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        if (!cancelled) {
-          const payload = await r.json() as DashboardState;
-          setState(payload);
-          latestQaSignalRef.current = latestQaCoverageRefreshSignal(payload.log);
-        }
+        if (!cancelled) setState(await r.json() as DashboardState);
       } catch (e) { if (!cancelled) setLoadError((e as Error).message); }
       finally { if (!cancelled) setLoading(false); }
     }
@@ -2068,13 +1796,7 @@ export function App() {
       eventSource = new EventSource(`/events${sp}`);
       stateListener = (evt: Event) => {
         try {
-          const payload = JSON.parse((evt as MessageEvent<string>).data) as DashboardState;
-          setState(payload);
-          const nextQaSignal = latestQaCoverageRefreshSignal(payload.log);
-          if (nextQaSignal && nextQaSignal !== latestQaSignalRef.current) {
-            latestQaSignalRef.current = nextQaSignal;
-            setQaCoverageRefreshKey(nextQaSignal);
-          }
+          setState(JSON.parse((evt as MessageEvent<string>).data) as DashboardState);
           setLoadError(null); setConnectionStatus('connected'); reconnectDelay = 1000;
         } catch (e) { setLoadError((e as Error).message); }
       };
@@ -2125,34 +1847,6 @@ export function App() {
   const metaRecord = isRecord(state?.meta) ? state.meta : null;
   const maxIterations = metaRecord && typeof metaRecord.max_iterations === 'number' ? metaRecord.max_iterations : null;
   const avgDuration = useMemo(() => computeAvgDuration(state?.log ?? ''), [state?.log]);
-  const {
-    sessionCost,
-    totalCost,
-    budgetCap,
-    budgetUsedPercent,
-    isLoading: costLoading,
-    error: costError,
-  } = useCost({ log: state?.log ?? '', meta: metaRecord });
-
-  const budgetWarnings = useMemo(() => {
-    if (!metaRecord) return [] as number[];
-    const raw = metaRecord.budget_warnings;
-    if (!Array.isArray(raw)) return [] as number[];
-    return raw
-      .map((value) => (typeof value === 'number' ? value : (typeof value === 'string' ? Number.parseFloat(value) : NaN)))
-      .filter((value): value is number => Number.isFinite(value) && value > 0);
-  }, [metaRecord]);
-
-  const budgetPauseThreshold = useMemo(() => {
-    if (!metaRecord) return null;
-    const raw = metaRecord.budget_pause_threshold;
-    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
-    if (typeof raw === 'string' && raw.trim()) {
-      const parsed = Number.parseFloat(raw);
-      if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    }
-    return null;
-  }, [metaRecord]);
 
   useEffect(() => {
     if (currentPhase && prevPhaseRef.current && currentPhase !== prevPhaseRef.current) {
@@ -2225,7 +1919,7 @@ export function App() {
   const activityPanel = activityCollapsed ? (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button type="button" className={`shrink-0 flex-col items-center gap-1 px-1 py-2 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 text-muted-foreground hover:text-foreground transition-colors hidden lg:flex ${activePanel !== 'activity' ? 'hidden lg:flex' : 'flex'}`} onClick={() => setActivityCollapsed(false)}>
+        <button type="button" className={`shrink-0 flex-col items-center gap-1 px-1 py-2 text-muted-foreground hover:text-foreground transition-colors hidden lg:flex ${activePanel !== 'activity' ? 'hidden lg:flex' : 'flex'}`} onClick={() => setActivityCollapsed(false)}>
           <PanelLeftOpen className="h-4 w-4" />
           <span className="text-[9px] uppercase tracking-wider font-medium [writing-mode:vertical-lr]">Activity</span>
         </button>
@@ -2239,7 +1933,7 @@ export function App() {
           <span className="flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" className="text-muted-foreground/50 hover:text-foreground transition-colors hidden lg:block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => setActivityCollapsed(true)}>
+              <button type="button" className="text-muted-foreground/50 hover:text-foreground transition-colors hidden lg:block" onClick={() => setActivityCollapsed(true)}>
                 <PanelLeftClose className="h-3.5 w-3.5" />
               </button>
             </TooltipTrigger>
@@ -2259,31 +1953,31 @@ export function App() {
         <div className="flex flex-1 min-h-0">
           {/* Desktop sidebar */}
           <div className="hidden md:flex">
-            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} />
+            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
           </div>
           {/* Mobile sidebar drawer */}
           {mobileMenuOpen && (
             <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
               <div className="absolute inset-0 bg-black/50" />
               <div className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
-                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} />
+                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} />
               </div>
             </div>
           )}
           <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
+            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} />
             {/* Mobile panel toggle */}
             <div className="lg:hidden flex border-b border-border shrink-0">
               <button
                 type="button"
-                className={`flex-1 py-1.5 min-h-[44px] text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                 onClick={() => setActivePanel('docs')}
               >
                 <FileText className="h-3.5 w-3.5 inline mr-1" />Documents
               </button>
               <button
                 type="button"
-                className={`flex-1 py-1.5 min-h-[44px] text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                 onClick={() => setActivePanel('activity')}
               >
                 <Activity className="h-3.5 w-3.5 inline mr-1" />Activity
