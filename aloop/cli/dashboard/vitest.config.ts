@@ -17,7 +17,7 @@ export default defineConfig({
     coverage: {
       provider: 'istanbul',
       reportsDirectory: './coverage',
-      include: ['src/App.tsx', 'src/AppView.tsx'],
+      include: ['src/App.tsx', 'src/AppView.tsx', 'src/components/ArtifactViewer.tsx'],
       reporter: ['text', 'json-summary'],
     },
   },

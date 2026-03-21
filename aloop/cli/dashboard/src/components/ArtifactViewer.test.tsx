@@ -61,6 +61,20 @@ describe('ArtifactViewer', () => {
     expect(onClick).toHaveBeenCalledWith('/api/artifacts/2/screenshot.png');
   });
 
+  it('handles image load and click without callback', () => {
+    const artifact: ArtifactEntry = { type: 'file', path: 'screenshot.png', description: '' };
+    const { container } = render(<ArtifactViewer artifact={artifact} iteration={2} />);
+    const img = screen.getByRole('img');
+
+    expect(img).toHaveAttribute('alt', 'screenshot.png');
+    expect(container.querySelector('svg.animate-spin')).toBeInTheDocument();
+
+    fireEvent.click(img);
+    fireEvent.load(img);
+
+    expect(container.querySelector('svg.animate-spin')).not.toBeInTheDocument();
+  });
+
   it('shows error state when image fails to load', async () => {
     const artifact: ArtifactEntry = { type: 'file', path: 'broken.png', description: '' };
     render(<ArtifactViewer artifact={artifact} iteration={1} />);
@@ -82,6 +96,21 @@ describe('ArtifactViewer', () => {
     await waitFor(() => {
       expect(screen.getByText('const x = 1;')).toBeInTheDocument();
     });
+  });
+
+  it('uses plaintext language class when file has no extension', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('plain text', { status: 200 })
+    );
+    const artifact: ArtifactEntry = { type: 'file', path: 'README', description: '' };
+    render(<ArtifactViewer artifact={artifact} iteration={4} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('plain text')).toBeInTheDocument();
+    });
+
+    const codeEl = screen.getByText('plain text').closest('code');
+    expect(codeEl).toHaveClass('language-plaintext');
   });
 
   it('shows error state when code fetch fails', async () => {

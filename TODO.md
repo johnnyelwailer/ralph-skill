@@ -5,7 +5,7 @@
 ### In Progress
 - [ ] [qa/P1] Fix thumbnail click event propagation: `ArtifactViewer.tsx:107` `onClick={handleClick}` does not call `e.stopPropagation()`, and `handleClick` (line 80-82) doesn't receive the event object. Click bubbles up to the parent `LogEntryRow` div (AppView.tsx:1228) which toggles `expanded`, causing the entry to collapse. Fix: pass event to `handleClick`, call `e.stopPropagation()` before invoking `onClick`. (priority: high)
 - [x] [review] Gate 4: Consolidate duplicated `isImageArtifact`, `artifactUrl`, and `ArtifactEntry` — defined in `ArtifactViewer.tsx` (canonical), `AppView.tsx:216,521,525`, and `App.tsx:33,36`. Remove definitions from AppView.tsx and App.tsx, import from `ArtifactViewer.tsx`. (priority: high)
-- [ ] [review] Gate 3: Add `src/components/ArtifactViewer.tsx` to vitest coverage config (`dashboard/vitest.config.ts:20` `include` array only covers `App.tsx` and `AppView.tsx`). Verify ≥90% branch coverage. (priority: medium)
+- [x] [review] Gate 3: Add `src/components/ArtifactViewer.tsx` to vitest coverage config (`dashboard/vitest.config.ts:20` `include` array only covers `App.tsx` and `AppView.tsx`). Verify ≥90% branch coverage. (priority: medium)
 - [ ] [review] Gate 2: Add `langClass` output assertion to `ArtifactViewer.test.tsx` — the code block test (line 82-84) asserts content text but never checks the `<code>` element has the correct CSS class. Add: `expect(codeEl).toHaveClass('language-typescript')`. (priority: medium)
 
 ### Up Next
