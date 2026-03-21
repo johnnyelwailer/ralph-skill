@@ -38,6 +38,7 @@ COPILOT_RETRY_MODEL="${ALOOP_COPILOT_RETRY_MODEL:-claude-sonnet-4.6}"
 MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-50}"
 MAX_STUCK="${ALOOP_MAX_STUCK:-3}"
 BACKUP_ENABLED="${ALOOP_BACKUP:-false}"
+NO_TASK_EXIT=false
 DRY_RUN=false
 DANGEROUSLY_SKIP_CONTAINER=false
 LAUNCH_MODE="start"
@@ -84,6 +85,7 @@ while [[ $# -gt 0 ]]; do
         --backup)       BACKUP_ENABLED="true"; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --dangerously-skip-container) DANGEROUSLY_SKIP_CONTAINER=true; shift ;;
+        --no-task-exit) NO_TASK_EXIT=true; shift ;;
         --claude-model) CLAUDE_MODEL="$2"; shift 2 ;;
         --codex-model)  CODEX_MODEL="$2"; shift 2 ;;
         --gemini-model) GEMINI_MODEL="$2"; shift 2 ;;
@@ -1503,6 +1505,7 @@ invoke_provider() {
 # ============================================================================
 
 check_all_tasks_complete() {
+    if [ "$NO_TASK_EXIT" = "true" ]; then return 1; fi
     if [ ! -f "$PLAN_FILE" ]; then return 1; fi
     # grep -c exits 1 (no matches) outputting "0"; split declaration from assignment
     # so || fallback doesn't capture the grep stdout twice
