@@ -18,6 +18,14 @@ _(none — ready for next task)_
 
 - [ ] **Add tests for review dedup and conversation-aware behavior** — Cover: (1) SHA gating — review skipped when head hasn't changed, (2) SHA not stored on pending verdict, (3) result file still read even when SHA matches, (4) comment history included in queued prompt with author attribution, (5) re-dispatch clears `last_reviewed_sha`. (priority: medium)
 
+### Spec-Gap Analysis
+
+[spec-gap] **P1: Double SHA storage causes review spam AND review blocking** — `process-requests.ts:477` stores `last_reviewed_sha` when queuing (before verdict), AND `orchestrate.ts:5261` stores it again unconditionally after `processPrLifecycle` returns (even on 'pending' verdict). This means: (a) a queued-but-unfinished review blocks future reviews, (b) a pending verdict still updates SHA, preventing re-review on next scan. Both files involved. Fix: remove SHA storage from `process-requests.ts:477`, and make `orchestrate.ts:5261` conditional on non-pending verdict.
+
+[spec-gap] **P2: Comment history lacks attribution (TASK_SPEC req #2 incomplete)** — TASK_SPEC requires "fetch existing PR comments and include them" so the agent "can distinguish its own prior feedback from the child loop's responses." Current code (`process-requests.ts:497`) fetches `.comments[].body` only — no author login or timestamp. Without attribution, requirement #3 (conversation-aware verdicts) cannot be satisfied. Fix: fetch `{author, createdAt, body}` and format with attribution headers.
+
+[spec-gap] **P2: Review prompt missing conversation-aware instructions (TASK_SPEC req #3 not implemented)** — TASK_SPEC requires "if previous review said 'fix X, Y, Z' and the child pushed commits fixing X and Y, the next review should say 'X and Y are fixed, Z still needs work'." `PROMPT_orch_review.md` has no such instructions — it only has generic review guidance. Fix: add delta-review instructions to the prompt template.
+
 ### Up Next
 
 - [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
