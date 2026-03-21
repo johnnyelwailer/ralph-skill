@@ -1,4 +1,6 @@
 import * as view from './AppView';
+import { isImageArtifact, artifactUrl } from './components/ArtifactViewer';
+export type { ArtifactEntry } from './components/ArtifactViewer';
 
 export const App = view.App;
 export const Sidebar = view.Sidebar;
@@ -6,7 +8,7 @@ export const ActivityPanel = view.ActivityPanel;
 export const DocContent = view.DocContent;
 export const HealthPanel = view.HealthPanel;
 export const SIGNIFICANT_EVENTS = view.SIGNIFICANT_EVENTS;
-export const IMAGE_EXT = view.IMAGE_EXT;
+export { isImageArtifact, artifactUrl };
 
 export function stripAnsi(text: string): string { return view.stripAnsi(text); }
 export function rgbStr(r: number, g: number, b: number): string { return view.rgbStr(r, g, b); }
@@ -30,10 +32,6 @@ export function formatDateKey(ts: string): string { return view.formatDateKey(ts
 export function relativeTime(ts: string): string { return view.relativeTime(ts); }
 
 export function parseLogLine(line: string) { return view.parseLogLine(line); }
-export function isImageArtifact(a: { type: string; path: string; description: string; metadata?: { baseline?: string; diff_percentage?: number } }) {
-  return view.isImageArtifact(a);
-}
-export function artifactUrl(iter: number, file: string) { return view.artifactUrl(iter, file); }
 export function parseManifest(am: { iteration: number; manifest: unknown; outputHeader?: string }) {
   return view.parseManifest(am);
 }

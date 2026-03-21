@@ -21,6 +21,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 import { ArtifactViewer } from './components/ArtifactViewer';
+export { isImageArtifact, artifactUrl } from './components/ArtifactViewer';
+export type { ArtifactEntry } from './components/ArtifactViewer';
+import { isImageArtifact, artifactUrl } from './components/ArtifactViewer';
+import type { ArtifactEntry } from './components/ArtifactViewer';
 
 // ── ANSI + Markdown rendering ──
 // Strip ANSI escape codes from text (for compact log entries)
@@ -213,12 +217,6 @@ interface FileChange {
   deletions: number;
 }
 
-interface ArtifactEntry {
-  type: string;
-  path: string;
-  description: string;
-  metadata?: { baseline?: string; diff_percentage?: number };
-}
 
 interface ManifestPayload {
   iteration: number;
@@ -515,14 +513,7 @@ export function formatTokenCount(n: number): string {
   return String(n);
 }
 
-// ── Artifact helpers ──
-
-export const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
-export function isImageArtifact(a: ArtifactEntry) {
-  const ext = a.path.includes('.') ? a.path.slice(a.path.lastIndexOf('.')).toLowerCase() : '';
-  return IMAGE_EXT.has(ext) || a.type === 'screenshot' || a.type === 'visual_diff';
-}
-export function artifactUrl(iter: number, file: string) { return `/api/artifacts/${iter}/${encodeURIComponent(file)}`; }
+// ── Artifact helpers (canonical definitions in ./components/ArtifactViewer) ──
 
 export function parseManifest(am: ArtifactManifest): ManifestPayload | null {
   const m = am.manifest;
