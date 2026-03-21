@@ -1,3 +1,3 @@
 # Fixture TODO Heading
 
-- [ ] Example task
+- [x] Example task
