@@ -641,7 +641,8 @@ async function handleMergePr(request: MergePrRequest, fileName: string, options:
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'pr-merge',
-    pr_number: request.payload.number
+    pr_number: request.payload.number,
+    strategy: request.payload.strategy
   }));
   const result = await options.ghCommandRunner('pr-merge', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);

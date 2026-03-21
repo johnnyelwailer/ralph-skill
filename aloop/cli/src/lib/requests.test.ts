@@ -609,8 +609,10 @@ test('processAgentRequests - merge_pr', async () => {
     await fs.writeFile(path.join(env.requestsDir, 'req-merge-1.json'), JSON.stringify(req));
 
     let ghOp = '';
-    const ghRunner = async (op: string) => {
+    let tempFileContents = '';
+    const ghRunner = async (op: string, _sid: string, reqPath: string) => {
       ghOp = op;
+      tempFileContents = await fs.readFile(reqPath, 'utf8');
       return { exitCode: 0, output: 'merged' };
     };
     // gh pr view returns OPEN state — should proceed to merge
@@ -622,6 +624,9 @@ test('processAgentRequests - merge_pr', async () => {
 
     await processAgentRequests({ ...env, spawnSync, ghCommandRunner: ghRunner });
     assert.strictEqual(ghOp, 'pr-merge');
+    const parsed = JSON.parse(tempFileContents);
+    assert.strictEqual(parsed.strategy, 'squash', 'strategy must be passed through to temp request file');
+    assert.strictEqual(parsed.pr_number, 202);
   } finally {
     await env.cleanup();
   }
