@@ -10573,6 +10573,52 @@ async function deriveFilterRepo(filterRepo, projectRoot, deps) {
   }
   return null;
 }
+async function deriveTrunkBranch(trunkBranch, trunkProvided, filterRepo, projectRoot, deps) {
+  if (trunkBranch !== "agent/trunk" || trunkProvided) {
+    return trunkBranch;
+  }
+  const ghHost = process.env.GH_HOST?.trim() || null;
+  const ghHostArgs = ghHost ? ["--hostname", ghHost] : [];
+  const repoArgs = filterRepo ? ["--repo", filterRepo] : [];
+  const runGh = async (args) => {
+    if (deps.execGh) {
+      try {
+        return await deps.execGh(args);
+      } catch (error) {
+        console.warn(`[orchestrate] trunk_branch derive via gh ${args.join(" ")} failed: ${error}`);
+        return null;
+      }
+    }
+    try {
+      const { spawnSync: nodeSpawnSync } = await import("node:child_process");
+      const runner = deps.spawnSync ?? ((command, runArgs, options) => toSpawnSyncResult(nodeSpawnSync(command, runArgs, options)));
+      const result = runner("gh", args, { encoding: "utf8", cwd: projectRoot });
+      if (result.status !== 0) {
+        console.warn(`[orchestrate] trunk_branch derive via gh ${args.join(" ")} failed: ${result.stderr?.substring(0, 200)}`);
+        return null;
+      }
+      return { stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+    } catch (error) {
+      console.warn(`[orchestrate] trunk_branch derive via gh ${args.join(" ")} failed: ${error}`);
+      return null;
+    }
+  };
+  const ghRepoView = await runGh(["repo", "view", "--json", "defaultBranchRef", ...repoArgs, ...ghHostArgs]);
+  if (!ghRepoView) {
+    return trunkBranch;
+  }
+  try {
+    const parsed = JSON.parse(ghRepoView.stdout);
+    const derivedBranch = typeof parsed?.defaultBranchRef?.name === "string" ? parsed.defaultBranchRef.name.trim() : "";
+    if (derivedBranch) {
+      console.log(`[orchestrate] Derived trunk_branch from gh repo default branch: ${derivedBranch}`);
+      return derivedBranch;
+    }
+  } catch (error) {
+    console.warn(`[orchestrate] trunk_branch derive: invalid gh repo view JSON: ${error}`);
+  }
+  return trunkBranch;
+}
 async function resolveIssueProjectStatusContext(repo, issueNumber, deps) {
   const cacheKey = `${repo}#${issueNumber}`;
   if (projectStatusContextCache.has(cacheKey)) {
@@ -11144,7 +11190,8 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
     throw new Error(`No spec files found matching: ${specInput}`);
   }
   const specFile = path14.relative(projectRoot, existingSpecFiles[0]) || existingSpecFiles[0];
-  const trunkBranch = options.trunk ?? "agent/trunk";
+  const trunkProvided = options.trunkProvided ?? false;
+  let trunkBranch = options.trunk ?? "agent/trunk";
   const concurrencyCap = parseConcurrency(options.concurrency);
   const filterIssues = parseIssueNumbers(options.issues);
   const filterLabel = options.label ?? null;
@@ -11168,6 +11215,7 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
   await deps.mkdir(queueDir, { recursive: true });
   await deps.mkdir(requestsDir, { recursive: true });
   filterRepo = await deriveFilterRepo(filterRepo, projectRoot, deps);
+  trunkBranch = await deriveTrunkBranch(trunkBranch, trunkProvided, filterRepo, projectRoot, deps);
   let labelsResult = null;
   if (filterRepo) {
     try {
@@ -11467,9 +11515,15 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
 }
 async function orchestrateCommand(options = {}, depsOrCommand) {
   const outputMode = options.output ?? "text";
+  let trunkProvided = options.trunkProvided ?? false;
+  if (!trunkProvided && depsOrCommand && typeof depsOrCommand === "object" && "getOptionValueSource" in depsOrCommand && typeof depsOrCommand.getOptionValueSource === "function") {
+    const trunkSource = depsOrCommand.getOptionValueSource("trunk");
+    trunkProvided = trunkSource !== void 0 && trunkSource !== "default";
+  }
+  const resolvedOptions = { ...options, trunkProvided };
   const deps = depsOrCommand && typeof depsOrCommand === "object" && "existsSync" in depsOrCommand ? depsOrCommand : void 0;
-  const result = await orchestrateCommandWithDeps(options, deps);
-  const planOnly = options.planOnly ?? false;
+  const result = await orchestrateCommandWithDeps(resolvedOptions, deps);
+  const planOnly = resolvedOptions.planOnly ?? false;
   let loopPid = null;
   if (!planOnly) {
     const { spawn: nodeSpawn, spawnSync: nodeSpawnSync } = await import("node:child_process");
@@ -11487,6 +11541,7 @@ async function orchestrateCommand(options = {}, depsOrCommand) {
     } else {
       console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
     }
+    await writeFile10(path14.join(workDir, "TODO.md"), "# Orchestrator\n\n- [ ] Orchestrator scan loop (never completes \u2014 managed by process-requests)\n", "utf8");
     const args = [
       "--prompts-dir",
       result.prompts_dir,
@@ -12774,7 +12829,7 @@ ${issue.body}
       "-Provider",
       "round-robin",
       "-MaxIterations",
-      "20",
+      "100",
       "-MaxStuck",
       "3",
       "-LaunchMode",
@@ -12795,7 +12850,7 @@ ${issue.body}
       "--provider",
       "round-robin",
       "--max-iterations",
-      "20",
+      "100",
       "--max-stuck",
       "3",
       "--launch-mode",
@@ -13510,14 +13565,8 @@ async function monitorChildSessions(state, sessionDir, repo, deps) {
     } else if (childStatus.state === "stopped") {
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
-        stateIssue.state = "failed";
-        stateIssue.status = "Blocked";
-        await syncIssueProjectStatus(issue.number, repo, "Blocked", {
-          execGh: deps.execGh,
-          appendLog: deps.appendLog,
-          now: deps.now,
-          sessionDir
-        });
+        stateIssue.needs_redispatch = true;
+        stateIssue.review_feedback = `Child loop stopped after ${childStatus.iteration ?? "?"} iterations (limit reached). Resume and continue working.`;
       }
       result.failed++;
       entry.action = "failed";
