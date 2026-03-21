@@ -215,7 +215,12 @@ describe('orchestrateCommandWithDeps', () => {
     const deps = createMockDeps({
       execGh: async (args) => {
         if (args[0] === 'repo' && args[1] === 'view') {
-          return { stdout: JSON.stringify({ nameWithOwner: 'derived/from-gh' }), stderr: '' };
+          if (args.includes('nameWithOwner')) {
+            return { stdout: JSON.stringify({ nameWithOwner: 'derived/from-gh' }), stderr: '' };
+          }
+          if (args.includes('defaultBranchRef')) {
+            return { stdout: JSON.stringify({ defaultBranchRef: { name: 'main' } }), stderr: '' };
+          }
         }
         return { stdout: '', stderr: '' };
       },
@@ -223,6 +228,7 @@ describe('orchestrateCommandWithDeps', () => {
 
     const result = await orchestrateCommandWithDeps({}, deps);
     assert.equal(result.state.filter_repo, 'derived/from-gh');
+    assert.equal(result.state.trunk_branch, 'main');
   });
 
   it('falls back to git remote origin when gh repo view derivation fails', async () => {
@@ -240,6 +246,57 @@ describe('orchestrateCommandWithDeps', () => {
 
     const result = await orchestrateCommandWithDeps({}, deps);
     assert.equal(result.state.filter_repo, 'derived/from-git');
+  });
+
+  it('derives trunk_branch from repo default branch when using default trunk', async () => {
+    const deps = createMockDeps({
+      execGh: async (args) => {
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) {
+          return { stdout: JSON.stringify({ nameWithOwner: 'derived/from-gh' }), stderr: '' };
+        }
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('defaultBranchRef')) {
+          return { stdout: JSON.stringify({ defaultBranchRef: { name: 'trunk-main' } }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps({}, deps);
+    assert.equal(result.state.trunk_branch, 'trunk-main');
+  });
+
+  it('does not derive trunk_branch when --trunk is explicitly provided', async () => {
+    const deps = createMockDeps({
+      execGh: async (args) => {
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) {
+          return { stdout: JSON.stringify({ nameWithOwner: 'derived/from-gh' }), stderr: '' };
+        }
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('defaultBranchRef')) {
+          return { stdout: JSON.stringify({ defaultBranchRef: { name: 'main' } }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps({ trunk: 'agent/trunk', trunkProvided: true }, deps);
+    assert.equal(result.state.trunk_branch, 'agent/trunk');
+  });
+
+  it('does not derive trunk_branch when explicit non-default trunk is provided', async () => {
+    const deps = createMockDeps({
+      execGh: async (args) => {
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) {
+          return { stdout: JSON.stringify({ nameWithOwner: 'derived/from-gh' }), stderr: '' };
+        }
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('defaultBranchRef')) {
+          return { stdout: JSON.stringify({ defaultBranchRef: { name: 'main' } }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps({ trunk: 'release-trunk', trunkProvided: true }, deps);
+    assert.equal(result.state.trunk_branch, 'release-trunk');
   });
 
   it('derives filter_repo from meta.json repo field when gh/git derivation fails', async () => {
@@ -376,7 +433,7 @@ describe('orchestrateCommandWithDeps', () => {
       },
     });
 
-    const result = await orchestrateCommandWithDeps({ plan: 'plan.json', repo: 'owner/repo' }, deps);
+    const result = await orchestrateCommandWithDeps({ plan: 'plan.json', repo: 'owner/repo', trunkProvided: true }, deps);
 
     assert.equal(result.state.issues.length, 1);
     assert.deepStrictEqual(result.state.issues[0].processed_comment_ids, [201]);
@@ -388,13 +445,14 @@ describe('orchestrateCommandWithDeps', () => {
       [201],
     );
     assert.equal(result.state.issues[0].last_comment_check, '2026-03-09T10:30:00.000Z');
-    assert.equal(ghCalls.length, 2);
+    const triageCalls = ghCalls.filter((args) => args[0] === 'issue-comments' || args[0] === 'pr-comments');
+    assert.equal(triageCalls.length, 2);
     assert.deepStrictEqual(
-      ghCalls[0],
+      triageCalls[0],
       ['issue-comments', '--session', 'orchestrator-20260309-103000', '--since', '2026-03-09T10:30:00.000Z', '--role', 'orchestrator'],
     );
     assert.deepStrictEqual(
-      ghCalls[1],
+      triageCalls[1],
       ['pr-comments', '--session', 'orchestrator-20260309-103000', '--since', '2026-03-09T10:30:00.000Z', '--role', 'orchestrator'],
     );
   });

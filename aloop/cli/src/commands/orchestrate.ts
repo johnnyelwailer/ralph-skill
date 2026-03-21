@@ -19,6 +19,7 @@ export interface OrchestrateCommandOptions {
   spec?: string;
   concurrency?: string;
   trunk?: string;
+  trunkProvided?: boolean;
   issues?: string;
   label?: string;
   repo?: string;
@@ -499,6 +500,67 @@ async function deriveFilterRepo(
     console.log(`[orchestrate] GH_HOST set to ${ghHost}, but filter_repo could not be derived`);
   }
   return null;
+}
+
+async function deriveTrunkBranch(
+  trunkBranch: string,
+  trunkProvided: boolean,
+  filterRepo: string | null,
+  projectRoot: string,
+  deps: OrchestrateDeps,
+): Promise<string> {
+  if (trunkBranch !== 'agent/trunk' || trunkProvided) {
+    return trunkBranch;
+  }
+
+  const ghHost = process.env.GH_HOST?.trim() || null;
+  const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
+  const repoArgs = filterRepo ? ['--repo', filterRepo] : [];
+
+  const runGh = async (args: string[]): Promise<{ stdout: string; stderr: string } | null> => {
+    if (deps.execGh) {
+      try {
+        return await deps.execGh(args);
+      } catch (error) {
+        console.warn(`[orchestrate] trunk_branch derive via gh ${args.join(' ')} failed: ${error}`);
+        return null;
+      }
+    }
+    try {
+      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+      const runner = deps.spawnSync ?? ((command: string, runArgs: string[], options?: Record<string, unknown>) =>
+        toSpawnSyncResult(nodeSpawnSync(command, runArgs, options as any)));
+      const result = runner('gh', args, { encoding: 'utf8', cwd: projectRoot });
+      if (result.status !== 0) {
+        console.warn(`[orchestrate] trunk_branch derive via gh ${args.join(' ')} failed: ${result.stderr?.substring(0, 200)}`);
+        return null;
+      }
+      return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+    } catch (error) {
+      console.warn(`[orchestrate] trunk_branch derive via gh ${args.join(' ')} failed: ${error}`);
+      return null;
+    }
+  };
+
+  const ghRepoView = await runGh(['repo', 'view', '--json', 'defaultBranchRef', ...repoArgs, ...ghHostArgs]);
+  if (!ghRepoView) {
+    return trunkBranch;
+  }
+
+  try {
+    const parsed = JSON.parse(ghRepoView.stdout);
+    const derivedBranch = typeof parsed?.defaultBranchRef?.name === 'string'
+      ? parsed.defaultBranchRef.name.trim()
+      : '';
+    if (derivedBranch) {
+      console.log(`[orchestrate] Derived trunk_branch from gh repo default branch: ${derivedBranch}`);
+      return derivedBranch;
+    }
+  } catch (error) {
+    console.warn(`[orchestrate] trunk_branch derive: invalid gh repo view JSON: ${error}`);
+  }
+
+  return trunkBranch;
 }
 
 async function resolveIssueProjectStatusContext(
@@ -1233,7 +1295,8 @@ export async function orchestrateCommandWithDeps(
   }
   // Primary spec file for backward compatibility (first resolved file)
   const specFile = path.relative(projectRoot, existingSpecFiles[0]) || existingSpecFiles[0];
-  const trunkBranch = options.trunk ?? 'agent/trunk';
+  const trunkProvided = options.trunkProvided ?? false;
+  let trunkBranch = options.trunk ?? 'agent/trunk';
   const concurrencyCap = parseConcurrency(options.concurrency);
   const filterIssues = parseIssueNumbers(options.issues);
   const filterLabel = options.label ?? null;
@@ -1260,6 +1323,7 @@ export async function orchestrateCommandWithDeps(
   await deps.mkdir(requestsDir, { recursive: true });
 
   filterRepo = await deriveFilterRepo(filterRepo, projectRoot, deps);
+  trunkBranch = await deriveTrunkBranch(trunkBranch, trunkProvided, filterRepo, projectRoot, deps);
 
   // Label self-healing: ensure required labels exist before preloading issues
   let labelsResult: EnsureLabelsResult | null = null;
@@ -1616,12 +1680,18 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   const outputMode = options.output ?? 'text';
   // Commander passes the Command object as the second argument if not explicitly provided.
   // We check if the provided argument looks like our OrchestrateDeps.
+  let trunkProvided = options.trunkProvided ?? false;
+  if (!trunkProvided && depsOrCommand && typeof depsOrCommand === 'object' && 'getOptionValueSource' in depsOrCommand && typeof depsOrCommand.getOptionValueSource === 'function') {
+    const trunkSource = depsOrCommand.getOptionValueSource('trunk');
+    trunkProvided = trunkSource !== undefined && trunkSource !== 'default';
+  }
+  const resolvedOptions = { ...options, trunkProvided };
   const deps = (depsOrCommand && typeof depsOrCommand === 'object' && 'existsSync' in depsOrCommand)
     ? (depsOrCommand as OrchestrateDeps)
     : undefined;
-  const result = await orchestrateCommandWithDeps(options, deps);
+  const result = await orchestrateCommandWithDeps(resolvedOptions, deps);
 
-  const planOnly = options.planOnly ?? false;
+  const planOnly = resolvedOptions.planOnly ?? false;
 
   // Spawn loop.sh as a detached background process (unless plan-only)
   let loopPid: number | null = null;
