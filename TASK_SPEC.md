@@ -1,51 +1,54 @@
-# Sub-Spec: Issue #183 — Configure Storybook 8 with react-vite and Tailwind decorators
+# Sub-Spec: Issue #181 — Self-healing: auto-create missing labels and derive missing config
 
-Part of #29: Epic: Dashboard Core — Component Refactor & Real-Time UI
+Part of #26: Epic: Orchestrator Core — Autonomous Lifecycle & Request Processing
 
 ## Objective
 
-Set up Storybook 8 infrastructure in the dashboard project so that subsequent component extraction sub-issues can add stories alongside components.
+Implement self-healing behaviors so the orchestrator recovers from common configuration issues without human intervention.
 
-## Scope
+## Context
 
-### Storybook Configuration
-- Install Storybook 8 with `@storybook/react-vite` framework adapter
-- Create `.storybook/` directory in `aloop/cli/dashboard/`
-- Configure `main.ts` to find `*.stories.tsx` files colocated with components
-- Configure `preview.ts` with global decorators
+The orchestrator expects certain GitHub labels (e.g., `aloop/auto`, `aloop/epic`, `aloop/sub-issue`, `aloop/needs-refine`) and config values (repo, trunk branch, project number) to exist. When they're missing, operations silently fail or produce confusing errors.
 
-### Global Decorators
-- Tailwind CSS context decorator (imports `index.css`)
-- Dark mode toggle decorator using `@storybook/addon-themes` or custom decorator that toggles `.dark` class on root
-- Tooltip provider wrapper (Radix UI `TooltipProvider`)
+## Deliverables
 
-### Package.json Scripts
-- Add `storybook` script: `storybook dev -p 6006`
-- Add `build-storybook` script: `storybook build`
-- Install required devDependencies: `@storybook/react-vite`, `@storybook/react`, `@storybook/addon-essentials`, `@storybook/addon-themes`, `storybook`
+### Label self-healing
+- At orchestrator startup (in `orchestrateCommandWithDeps`), check if required labels exist:
+  - `aloop/auto`, `aloop/epic`, `aloop/sub-issue`, `aloop/needs-refine`, `aloop/needs-review`, `aloop/in-progress`, `aloop/done`
+- If any are missing, create them via `gh label create` with appropriate colors
+- Run this check once at startup and cache the result in session state
+- If label creation fails (permissions), log warning but don't block orchestration
 
-### Verification Story
-- Create a simple `Button.stories.tsx` for the existing `ui/button.tsx` component to verify the setup works
-- Story should render in both light and dark mode
+### Config derivation from meta.json
+- If `state.filter_repo` is null but meta.json has `repo` or `project_root`, derive repo from `gh repo view --json nameWithOwner`
+- If `state.trunk_branch` is default but repo has a different default branch, detect and use it
+- If `gh_project_number` is not set, attempt dynamic discovery (already partially implemented — verify it works)
 
-## Inputs
-- `aloop/cli/dashboard/package.json` (existing deps)
-- `aloop/cli/dashboard/tailwind.config.ts` (theme config)
-- `aloop/cli/dashboard/src/index.css` (CSS custom properties)
+### Missing config recovery
+- If `meta.json` is missing critical fields, attempt to reconstruct from:
+  - Git remote URL → repo slug
+  - `orchestrator.json` state → spec file, trunk branch
+  - Environment variables → `GH_HOST`, `GITHUB_REPOSITORY`
+- Log all derivations so the user can verify correctness
 
-## Outputs
-- `aloop/cli/dashboard/.storybook/main.ts`
-- `aloop/cli/dashboard/.storybook/preview.ts`
-- `aloop/cli/dashboard/src/components/ui/button.stories.tsx`
-- Updated `aloop/cli/dashboard/package.json` with Storybook deps and scripts
+### Startup health check
+- Before entering scan loop, run a quick health check:
+  - `gh auth status` → verify authenticated
+  - `gh repo view` → verify repo access
+  - `git status` → verify clean worktree
+  - Write results to `session-health.json`
+- If critical checks fail, write `ALERT.md` and exit with clear error
 
 ## Acceptance Criteria
-- [ ] `npm run storybook` launches Storybook on port 6006
-- [ ] `npx storybook build` produces static build without errors
-- [ ] Button story renders correctly in both light and dark mode
-- [ ] Global decorator applies Tailwind styles matching dashboard appearance
-- [ ] Storybook uses same `tailwind.config.ts` as dashboard
-- [ ] No changes to existing source code or tests
 
-## Labels
-`aloop/sub-issue`, `aloop/needs-refine`
+- [ ] Missing labels auto-created at startup
+- [ ] Missing repo config derived from git remote / meta.json
+- [ ] Missing trunk branch derived from repo default branch
+- [ ] Startup health check verifies gh auth, repo access, git state
+- [ ] `session-health.json` written with check results
+- [ ] All derivations logged for transparency
+- [ ] Graceful degradation: missing optional config doesn't block operation
+
+## File Scope
+- `aloop/cli/src/commands/orchestrate.ts` (modify — startup sequence)
+- `aloop/cli/src/commands/orchestrate.test.ts` (add tests)
