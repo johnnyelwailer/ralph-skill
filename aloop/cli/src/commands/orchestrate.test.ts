@@ -2268,7 +2268,8 @@ describe('applyEstimateResults', () => {
     assert.ok(
       ghCalls.some((call) =>
         call[0] === 'issue' && call[1] === 'comment' && call.includes('1') &&
-        call.some((segment) => segment.includes('Blocking reason:')),
+        call.some((segment) => segment.includes('Blocking reason:')) &&
+        call.some((segment) => segment.includes('Refinement budget exceeded')),
       ),
     );
   });
@@ -3298,7 +3299,8 @@ describe('processPrLifecycle', () => {
     assert.ok(
       ghCalls.some((call) =>
         call[0] === 'issue' && call[1] === 'comment' && call.includes('42') &&
-        call.some((segment) => segment.includes('Blocking reason:')),
+        call.some((segment) => segment.includes('Blocking reason:')) &&
+        call.some((segment) => segment.includes('Merge conflicts persisted')),
       ),
     );
   });
@@ -3448,7 +3450,8 @@ describe('processPrLifecycle', () => {
     assert.ok(
       ghCalls.some((call) =>
         call[0] === 'issue' && call[1] === 'comment' && call.includes('42') &&
-        call.some((segment) => segment.includes('Blocking reason:')),
+        call.some((segment) => segment.includes('Blocking reason:')) &&
+        call.some((segment) => segment.includes('Persistent CI failure')),
       ),
     );
   });
@@ -5311,7 +5314,8 @@ describe('monitorChildSessions', () => {
     assert.ok(
       ghCalls.some((call) =>
         call[0] === 'issue' && call[1] === 'comment' && call.includes('2') &&
-        call.some((segment) => segment.includes('Blocking reason:')),
+        call.some((segment) => segment.includes('Blocking reason:')) &&
+        call.some((segment) => segment.includes('Child session')),
       ),
     );
   });
