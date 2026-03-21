@@ -164,10 +164,21 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     const remoteHead = spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8' });
     if (mergeBase.stdout?.trim() === remoteHead.stdout?.trim()) continue; // Up to date
 
+    // Commit any dirty files and remove working artifacts before rebase
+    const statusResult = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
+    if (statusResult.stdout?.trim()) {
+      // Remove working artifacts that would conflict
+      for (const art of ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md']) {
+        spawnSync('git', ['-C', childWorktree, 'rm', '-f', '--cached', art], { encoding: 'utf8' });
+        try { await unlink(path.join(childWorktree, art)); } catch { /* ok */ }
+      }
+      spawnSync('git', ['-C', childWorktree, 'add', '-A'], { encoding: 'utf8' });
+      spawnSync('git', ['-C', childWorktree, 'commit', '--allow-empty', '-m', 'chore: save work-in-progress before rebase'], { encoding: 'utf8' });
+    }
+
     // Try rebase
     const rebaseResult = spawnSync('git', ['-C', childWorktree, 'rebase', `origin/${trunkBranch}`], { encoding: 'utf8' });
     if (rebaseResult.status === 0) {
-      // Push rebased branch
       spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD', '--force-with-lease'], { encoding: 'utf8' });
       console.log(`[process-requests] Synced #${issue.number} with ${trunkBranch}`);
     } else {
