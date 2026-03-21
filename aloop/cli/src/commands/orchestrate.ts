@@ -942,6 +942,8 @@ Run one lightweight monitoring pass:
 - Write any required side effects into \`${sessionDir}/requests/*.json\`.
 - You can read project files (SPEC.md, source code) from your working directory.
 - Keep this step reactive and minimal; avoid large speculative planning.
+
+**IMPORTANT:** Do NOT create, modify, or check off items in TODO.md. You are the orchestrator — task tracking is in orchestrator.json and GitHub issues, not TODO.md.
 `;
 }
 
@@ -1355,9 +1357,8 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
     }
 
-    // Write a TODO.md that prevents loop.sh from triggering allTasksMarkedDone
-    // The orchestrator loop should never "complete" — it runs until explicitly stopped
-    await writeFile(path.join(workDir, 'TODO.md'), '# Orchestrator\n\n- [ ] Orchestrator scan loop (never completes — managed by process-requests)\n', 'utf8');
+    // No TODO.md for orchestrator — loop.sh treats missing TODO as "not complete"
+    // (check_all_tasks_complete returns 1 when file doesn't exist)
 
     const args = [
       '--prompts-dir', result.prompts_dir,
