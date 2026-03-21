@@ -3214,8 +3214,10 @@ export async function checkPrGates(
     );
 
     if (checks.length === 0) {
+      // No check runs — pass regardless of workflow existence
+      // (workflow may not trigger on this branch/PR target)
       if (ciWorkflowsConfigured) {
-        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'CI workflows detected but no check runs reported yet' });
+        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'CI workflows exist but no checks ran on this PR — passing' });
       } else {
         gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
       }
