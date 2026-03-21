@@ -3390,10 +3390,19 @@ export interface PrGatesResult {
 
 export type AgentReviewVerdict = 'approve' | 'request-changes' | 'flag-for-human' | 'pending';
 
+export interface InlineReviewComment {
+  path: string;
+  line: number;
+  end_line?: number;
+  body: string;
+  suggestion?: string;
+}
+
 export interface AgentReviewResult {
   pr_number: number;
   verdict: AgentReviewVerdict;
   summary: string;
+  comments?: InlineReviewComment[];
 }
 
 export interface PrMergeResult {
