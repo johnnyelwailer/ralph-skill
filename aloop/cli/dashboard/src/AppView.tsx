@@ -236,6 +236,12 @@ interface ProviderHealth {
   cooldownUntil?: string;
 }
 
+interface QACoverageData {
+  percentage: number | null;
+  raw: string;
+  available: boolean;
+}
+
 // ── Helpers ──
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
@@ -801,6 +807,7 @@ function Header({
   providerName, modelName, tasksCompleted, tasksTotal, progressPercent,
   updatedAt, loading, loadError, connectionStatus, onOpenCommand, onOpenSwitcher,
   stuckCount, startedAt, avgDuration, maxIterations, onToggleMobileMenu,
+  selectedSessionId, qaCoverageRefreshKey,
 }: {
   sessionName: string; isRunning: boolean; currentState: string; currentPhase: string;
   currentIteration: string; providerName: string; modelName: string;
@@ -809,6 +816,8 @@ function Header({
   connectionStatus: ConnectionStatus; onOpenCommand: () => void; onOpenSwitcher: () => void;
   stuckCount: number; startedAt: string; avgDuration: string; maxIterations: number | null;
   onToggleMobileMenu: () => void;
+  selectedSessionId: string | null;
+  qaCoverageRefreshKey: string;
 }) {
   const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
   return (
@@ -866,6 +875,7 @@ function Header({
         </div>
 
         <PhaseBadge phase={currentPhase} />
+        <QACoverageBadge sessionId={selectedSessionId} refreshKey={qaCoverageRefreshKey} />
         {providerName && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -892,6 +902,71 @@ function Header({
         </span>
       </div>
     </header>
+  );
+}
+
+export function QACoverageBadge({ sessionId, refreshKey }: { sessionId: string | null; refreshKey: string }) {
+  const [coverage, setCoverage] = useState<QACoverageData | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function loadCoverage() {
+      try {
+        const sp = sessionId ? `?session=${encodeURIComponent(sessionId)}` : '';
+        const response = await fetch(`/api/qa-coverage${sp}`, { signal: controller.signal });
+        if (!response.ok) return;
+        const payload = await response.json() as QACoverageData;
+        if (!cancelled) setCoverage(payload);
+      } catch {
+        if (!cancelled) setCoverage({ percentage: null, raw: '', available: false });
+      }
+    }
+
+    loadCoverage().catch(() => undefined);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [sessionId, refreshKey]);
+
+  const rendered = useMemo(() => {
+    if (!coverage?.raw) return '';
+    return marked.parse(coverage.raw, { gfm: true, breaks: true }) as string;
+  }, [coverage?.raw]);
+
+  if (!coverage?.available) return null;
+
+  const percentage = coverage.percentage;
+  const tone = percentage === null
+    ? 'border-border bg-muted/40 text-muted-foreground'
+    : percentage >= 80
+      ? 'border-green-500/40 bg-green-500/15 text-green-700 dark:text-green-400'
+      : percentage >= 60
+        ? 'border-yellow-500/40 bg-yellow-500/15 text-yellow-700 dark:text-yellow-400'
+        : 'border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-400';
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors hover:opacity-90 ${tone}`}
+      >
+        <CheckCircle2 className="h-3 w-3" />
+        <span>QA {percentage === null ? 'N/A' : `${percentage}%`}</span>
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      </button>
+      {expanded && (
+        <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-[min(560px,92vw)] rounded-md border border-border bg-popover shadow-lg">
+          <ScrollArea className="max-h-80">
+            <div className="prose-dashboard p-3 text-xs" dangerouslySetInnerHTML={{ __html: rendered }} />
+          </ScrollArea>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2055,7 +2130,7 @@ export function App() {
             </div>
           )}
           <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} />
+            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={state?.updatedAt ?? ''} />
             {/* Mobile panel toggle */}
             <div className="lg:hidden flex border-b border-border shrink-0">
               <button
