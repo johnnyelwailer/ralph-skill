@@ -176,6 +176,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
                 const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
                 if (urlMatch) {
                   issue.pr_number = parseInt(urlMatch[1], 10);
+                  issue.state = 'pr_open';
                   issue.status = 'In review';
                   stateChanged = true;
                   console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
