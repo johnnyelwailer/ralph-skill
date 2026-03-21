@@ -460,7 +460,19 @@ describe('App.tsx AppView integration coverage', () => {
         return new Response(JSON.stringify(baseState), { status: 200, headers: { 'content-type': 'application/json' } });
       }
       if (url.startsWith('/api/qa-coverage')) {
-        return new Response(JSON.stringify({ percentage: 55, raw: '| Feature | Status |\\n| --- | --- |\\n| Login | PASS |', available: true }), {
+        return new Response(JSON.stringify({
+          coverage_percent: 55,
+          total_features: 2,
+          tested_features: 1,
+          passed: 1,
+          failed: 0,
+          untested: 1,
+          available: true,
+          features: [
+            { feature: 'Login', component: 'auth', last_tested: '2026-03-20', commit: 'abc1234', status: 'PASS', criteria_met: '2/2', notes: '' },
+            { feature: 'Export', component: 'reporting', last_tested: '', commit: '', status: 'UNTESTED', criteria_met: '', notes: 'pending' },
+          ],
+        }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
@@ -472,6 +484,44 @@ describe('App.tsx AppView integration coverage', () => {
     render(createElement(App));
     const badge = await screen.findByRole('button', { name: /qa 55%/i });
     expect(badge.className).toContain('border-yellow-500/40');
+  });
+
+  it('renders structured QA feature statuses in expanded badge view', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/state')) {
+        return new Response(JSON.stringify(baseState), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.startsWith('/api/qa-coverage')) {
+        return new Response(JSON.stringify({
+          coverage_percent: 67,
+          total_features: 3,
+          tested_features: 2,
+          passed: 1,
+          failed: 1,
+          untested: 1,
+          available: true,
+          features: [
+            { feature: 'Login', component: 'auth', last_tested: '2026-03-20', commit: 'abc1234', status: 'PASS', criteria_met: '2/2', notes: '' },
+            { feature: 'Dashboard health', component: 'dashboard', last_tested: '2026-03-20', commit: 'def5678', status: 'FAIL', criteria_met: '1/2', notes: 'missing empty state' },
+            { feature: 'Export', component: 'reporting', last_tested: '', commit: '', status: 'UNTESTED', criteria_met: '', notes: 'pending' },
+          ],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(createElement(App));
+    const badge = await screen.findByRole('button', { name: /qa 67%/i });
+    fireEvent.click(badge);
+
+    expect(await screen.findByText('Login')).toBeInTheDocument();
+    expect(screen.getByText('Dashboard health')).toBeInTheDocument();
+    expect(screen.getByText('Export')).toBeInTheDocument();
+    expect(screen.getAllByText('PASS').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('FAIL').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('UNTESTED').length).toBeGreaterThan(0);
   });
 
   it('renders app and supports steer + stop + command stop', async () => {
