@@ -3113,7 +3113,7 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([
             { name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' },
           ]), stderr: '' };
@@ -3159,6 +3159,38 @@ describe('processPrLifecycle', () => {
     assert.equal(state.issues[0].status, 'Ready');
     assert.equal(state.issues[0].ci_failure_retries, 0);
     assert.ok(deps.logs.some((l) => l.event === 'pr_closed_ci_failure'));
+  });
+
+  it('treats CI API errors as pending and does not increment CI failure retries', async () => {
+    const state = makeOrchestratorState([
+      {
+        number: 42,
+        pr_number: 100,
+        state: 'pr_open',
+        ci_failure_signature: 'failed checks: build',
+        ci_failure_retries: 2,
+      },
+    ]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          throw new Error('API rate limit exceeded');
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'gates_pending');
+    assert.match(result.detail, /api error/i);
+    assert.equal(state.issues[0].ci_failure_retries, 2);
+    assert.equal(state.issues[0].state, 'pr_open');
+    assert.equal(deps.logs.some((l) => l.event === 'pr_ci_failure_persistent'), false);
   });
 
   it('handles merge failure after approval', async () => {
