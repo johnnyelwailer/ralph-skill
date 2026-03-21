@@ -176,6 +176,56 @@ test_healthy_to_degraded_on_auth_failure() {
     fi
 }
 
+test_backoff_escalation_through_all_tiers() {
+    setup
+    local ok=true
+    local expected_cooldowns=(0 120 300 900 1800 3600 3600)
+    local i
+
+    for i in "${!expected_cooldowns[@]}"; do
+        local failures=$((i + 1))
+        local expected="${expected_cooldowns[$i]}"
+        local actual
+        actual=$(get_provider_cooldown_seconds "$failures")
+        if [ "$actual" != "$expected" ]; then
+            echo "  FAIL: get_provider_cooldown_seconds($failures) expected $expected, got $actual"
+            ok=false
+        fi
+
+        update_provider_health_on_failure "tierprov" "connection timeout"
+        assert_health_field "tierprov" "consecutive_failures" "$failures" "failure count after attempt $failures" || ok=false
+
+        get_provider_health_state "tierprov"
+        if [ "$expected" -eq 0 ]; then
+            if [ "$HEALTH_STATUS" != "healthy" ]; then
+                echo "  FAIL: status should remain healthy at failure $failures, got $HEALTH_STATUS"
+                ok=false
+            fi
+            if [ -n "$HEALTH_COOLDOWN_UNTIL" ]; then
+                echo "  FAIL: cooldown_until should be empty at failure $failures"
+                ok=false
+            fi
+        else
+            if [ "$HEALTH_STATUS" != "cooldown" ]; then
+                echo "  FAIL: status should be cooldown at failure $failures, got $HEALTH_STATUS"
+                ok=false
+            fi
+            if [ -z "$HEALTH_COOLDOWN_UNTIL" ]; then
+                echo "  FAIL: cooldown_until should be set at failure $failures"
+                ok=false
+            fi
+        fi
+    done
+
+    teardown
+    if $ok; then
+        echo "PASS: backoff escalation through all cooldown tiers"
+    else
+        echo "FAIL: backoff escalation through all cooldown tiers"
+        failed=1
+    fi
+}
+
 test_health_file_is_valid_json() {
     setup
     local ok=true
@@ -249,6 +299,7 @@ test_success_preserves_last_failure_info() {
 echo "=== Provider Health Integration Tests (AC1) ==="
 test_healthy_to_cooldown_to_healthy
 test_healthy_to_degraded_on_auth_failure
+test_backoff_escalation_through_all_tiers
 test_health_file_is_valid_json
 test_success_preserves_last_failure_info
 
