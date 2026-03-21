@@ -488,6 +488,23 @@ function parseConfigScalar(content: string, key: string): string | null {
   return raw;
 }
 
+function parseConfigList(content: string, key: string): string[] {
+  const lines = content.split(/\r?\n/);
+  const startIndex = lines.findIndex((line) => new RegExp(`^\\s*${key}:\\s*$`).test(line));
+  if (startIndex < 0) return [];
+
+  const values: string[] = [];
+  for (let i = startIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i] ?? '';
+    if (!/^\s+/.test(line)) break;
+    const itemMatch = line.match(/^\s*-\s+(.+?)\s*$/);
+    if (!itemMatch) continue;
+    const parsed = parseConfigScalar(`${key}: ${itemMatch[1]}`, key);
+    if (parsed) values.push(parsed);
+  }
+  return values;
+}
+
 export async function resolveOrchestratorAutonomyLevel(
   options: OrchestrateCommandOptions,
   homeDir: string,
@@ -2816,8 +2833,19 @@ export async function launchChildLoop(
   // fall back to raw templates if compiled prompts don't exist (project not set up yet)
   const projectHash = getProjectHash(projectRoot);
   const compiledPromptsDir = path.join(aloopRoot, 'projects', projectHash, 'prompts');
+  const projectConfigPath = path.join(aloopRoot, 'projects', projectHash, 'config.yml');
   const rawTemplatesDir = path.join(aloopRoot, 'templates');
   const promptSourceDir = deps.existsSync(compiledPromptsDir) ? compiledPromptsDir : rawTemplatesDir;
+  let parentSpecFilesList = '';
+  if (promptSourceDir === compiledPromptsDir && deps.existsSync(projectConfigPath)) {
+    try {
+      const configContent = await deps.readFile(projectConfigPath, 'utf8');
+      const specFiles = parseConfigList(configContent, 'spec_files');
+      parentSpecFilesList = specFiles.join(', ');
+    } catch {
+      parentSpecFilesList = '';
+    }
+  }
   if (deps.existsSync(promptSourceDir)) {
     await deps.mkdir(promptsDir, { recursive: true });
     // Copy standard loop prompt templates
@@ -2827,7 +2855,10 @@ export async function launchChildLoop(
     for (const tmpl of templateFiles) {
       const src = path.join(promptSourceDir, tmpl);
       if (deps.existsSync(src)) {
-        const content = await deps.readFile(src, 'utf8');
+        let content = await deps.readFile(src, 'utf8');
+        if (parentSpecFilesList) {
+          content = content.replaceAll(parentSpecFilesList, 'SPEC.md');
+        }
         await deps.writeFile(path.join(promptsDir, tmpl), content, 'utf8');
       }
     }

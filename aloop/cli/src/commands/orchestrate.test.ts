@@ -2463,6 +2463,64 @@ describe('launchChildLoop', () => {
     assert.equal(specFile, undefined, 'SPEC.md should not be written when issue body is empty');
   });
 
+  it('prefers compiled project prompts when available', async () => {
+    const deps = createMockDispatchDeps({
+      existsSync: (p: string) => (
+        (p.includes('/home/.aloop/projects/') && p.endsWith('/prompts'))
+        || p.includes('/home/.aloop/projects/') && p.endsWith('/prompts/PROMPT_plan.md')
+      ),
+      readFile: async (p: string) => {
+        if (p.endsWith('/prompts/PROMPT_plan.md')) return 'compiled prompt content';
+        return '';
+      },
+    });
+
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const copiedPlanPrompt = Object.entries(deps._writtenFiles).find(([p]) => p.endsWith('/prompts/PROMPT_plan.md'));
+    assert.ok(copiedPlanPrompt, 'compiled PROMPT_plan.md should be copied into child session');
+    assert.equal(copiedPlanPrompt[1], 'compiled prompt content');
+  });
+
+  it('falls back to raw templates when compiled prompts are missing', async () => {
+    const deps = createMockDispatchDeps({
+      existsSync: (p: string) => p === '/home/.aloop/templates' || p === '/home/.aloop/templates/PROMPT_plan.md',
+      readFile: async (p: string) => {
+        if (p === '/home/.aloop/templates/PROMPT_plan.md') return 'raw template prompt content';
+        return '';
+      },
+    });
+
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const copiedPlanPrompt = Object.entries(deps._writtenFiles).find(([p]) => p.endsWith('/prompts/PROMPT_plan.md'));
+    assert.ok(copiedPlanPrompt, 'raw template PROMPT_plan.md should be copied into child session');
+    assert.equal(copiedPlanPrompt[1], 'raw template prompt content');
+  });
+
+  it('overrides parent spec list with SPEC.md when copying compiled prompts', async () => {
+    const parentSpecList = 'SPEC.md, SPEC-ADDENDUM.md';
+    const deps = createMockDispatchDeps({
+      existsSync: (p: string) => (
+        (p.includes('/home/.aloop/projects/') && p.endsWith('/prompts'))
+        || (p.includes('/home/.aloop/projects/') && p.endsWith('/prompts/PROMPT_plan.md'))
+        || (p.includes('/home/.aloop/projects/') && p.endsWith('/config.yml'))
+      ),
+      readFile: async (p: string) => {
+        if (p.endsWith('/config.yml')) {
+          return "spec_files:\n  - 'SPEC.md'\n  - 'SPEC-ADDENDUM.md'\n";
+        }
+        if (p.endsWith('/prompts/PROMPT_plan.md')) {
+          return `Read ${parentSpecList} before implementation`;
+        }
+        return '';
+      },
+    });
+
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const copiedPlanPrompt = Object.entries(deps._writtenFiles).find(([p]) => p.endsWith('/prompts/PROMPT_plan.md'));
+    assert.ok(copiedPlanPrompt, 'compiled PROMPT_plan.md should be copied');
+    assert.equal(copiedPlanPrompt[1], 'Read SPEC.md before implementation');
+  });
+
   it('compiles loop-plan.json for child session', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
