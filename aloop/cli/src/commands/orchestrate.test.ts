@@ -2267,7 +2267,8 @@ describe('applyEstimateResults', () => {
     assert.ok(logs.some((l) => l.event === 'refinement_budget_exceeded'));
     assert.ok(
       ghCalls.some((call) =>
-        call[0] === 'issue' && call[1] === 'comment' && call.includes('1') && call.includes('Blocking reason:'),
+        call[0] === 'issue' && call[1] === 'comment' && call.includes('1') &&
+        call.some((segment) => segment.includes('Blocking reason:')),
       ),
     );
   });
@@ -3296,7 +3297,8 @@ describe('processPrLifecycle', () => {
     assert.ok(deps.logs.some((l) => l.event === 'pr_flagged_for_human'));
     assert.ok(
       ghCalls.some((call) =>
-        call[0] === 'issue' && call[1] === 'comment' && call.includes('42') && call.includes('Blocking reason:'),
+        call[0] === 'issue' && call[1] === 'comment' && call.includes('42') &&
+        call.some((segment) => segment.includes('Blocking reason:')),
       ),
     );
   });
@@ -3445,7 +3447,8 @@ describe('processPrLifecycle', () => {
     assert.ok(deps.logs.some((l) => l.event === 'pr_ci_failure_persistent'));
     assert.ok(
       ghCalls.some((call) =>
-        call[0] === 'issue' && call[1] === 'comment' && call.includes('42') && call.includes('Blocking reason:'),
+        call[0] === 'issue' && call[1] === 'comment' && call.includes('42') &&
+        call.some((segment) => segment.includes('Blocking reason:')),
       ),
     );
   });
@@ -5307,7 +5310,8 @@ describe('monitorChildSessions', () => {
     assert.ok(logEntries.some((e) => e.event === 'child_failed'));
     assert.ok(
       ghCalls.some((call) =>
-        call[0] === 'issue' && call[1] === 'comment' && call.includes('2') && call.includes('Blocking reason:'),
+        call[0] === 'issue' && call[1] === 'comment' && call.includes('2') &&
+        call.some((segment) => segment.includes('Blocking reason:')),
       ),
     );
   });
