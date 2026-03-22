@@ -19,24 +19,25 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 ### In Progress
 
-- [ ] [review] Gate 4: `useIsTouchLikePointer.ts` is dead code — exported but never imported by any component (only its test file references it). It duplicates `useIsTouchDevice.ts` with a slightly different media query (`pointer: coarse` vs `(hover: none), (pointer: coarse)`). Either delete both files and replace with a single `useMatchMedia(query)` hook, or delete `useIsTouchLikePointer.ts` + its test if the existing `useIsTouchDevice` already covers the needed behavior. (priority: high)
-- [ ] [review] Gate 3: `useIsTouchLikePointer.ts` is not listed in `vitest.config.ts` coverage `include` — branch coverage is unmeasured. If the file is kept (see Gate 4 above), add it to the coverage include list. (priority: high)
-
 ### Up Next
 
-- [x] **Audit & fix hover-only interactions** — Fixed overflow tabs menu in `DocsPanel`: replaced `group-hover:block` with state-based click/tap toggle (`overflowMenuOpen`), added outside-click and Escape close behavior, and close-on-selection for overflow tab items. Added test coverage in `App.coverage.test.ts` for open, select-to-close, and outside-click close. No other `onMouseEnter`/`onMouseOver` content-reveal interactions found. (priority: medium)
-
-- [ ] **Add ARIA labels to collapse/expand buttons** — Three buttons lack `aria-label`: (1) sidebar expand button (line 802) — add `aria-label="Expand sidebar"`, (2) sidebar collapse button (line 882) — add `aria-label="Collapse sidebar"`, (3) activity panel collapse button (line 2314) — add `aria-label="Collapse activity panel"`. These all have adjacent TooltipContent text that can be reused. Stop/force-stop dropdown: Radix already provides `aria-haspopup="menu"` on triggers — no fix needed. (priority: medium)
+- [ ] **Add ARIA labels to collapse/expand buttons** — Three buttons lack `aria-label`: (1) sidebar expand button (~line 802) — add `aria-label="Expand sidebar"`, (2) sidebar collapse button (~line 882) — add `aria-label="Collapse sidebar"`, (3) activity panel collapse button (~line 2377) — add `aria-label="Collapse activity panel"`. These all have adjacent TooltipContent text that can be reused. (priority: medium)
 
 - [ ] **Implement long-press context menu on session cards** — Create a `useLongPress` hook with 500ms threshold using `onTouchStart`/`onTouchEnd`/`onTouchMove` (cancel on move). On trigger, show a context menu (reuse DropdownMenu component) with: Stop session, Force-stop session, Copy session ID. Add haptic feedback via `navigator.vibrate(50)` if available. Apply to session card elements in the sidebar (~line 835-838 of AppView.tsx). (priority: medium)
 
-- [x] **Runtime layout verification** — [review Gate 7] Added Playwright coverage in `e2e/smoke.spec.ts` that runs at 390x844 and asserts 44x44px minimum bounding boxes for hamburger button, session cards, tab triggers, dropdown items, and steer textarea. (priority: medium)
+### Deferred
 
 - [ ] **Run Lighthouse mobile accessibility audit & fix flagged issues** — Run Lighthouse in mobile mode targeting accessibility category. Fix any issues flagged: color contrast ratios, missing alt text, focus indicators, ARIA violations. Target score >= 90. Document final score. (priority: low)
 
-- [ ] **Capture proof artifacts** — [review Gate 6] Capture Playwright screenshots or recordings at mobile viewport showing (a) tap targets at 44px minimum, (b) tooltip opening on tap, (c) hover-card opening on tap. If proof agent cannot produce these, skip with empty artifacts array. (priority: low)
+- [ ] **Capture proof artifacts** — [review Gate 6] Capture Playwright screenshots or recordings at mobile viewport showing (a) tap targets at 44px minimum, (b) tooltip opening on tap, (c) hover-card opening on tap. `proof-manifest.json` already exists with `{"artifacts": []}` — approved in prior review as sufficient. (priority: low)
 
 ### Completed
+
+- [x] [review] Gate 4+3: Deleted `useIsTouchLikePointer.ts` and its test — dead code that duplicated `useIsTouchDevice.ts`. Also resolves Gate 3 (coverage gap). (priority: high)
+
+- [x] **Audit & fix hover-only interactions** — Fixed overflow tabs menu in `DocsPanel`: replaced `group-hover:block` with state-based click/tap toggle (`overflowMenuOpen`), added outside-click and Escape close behavior, and close-on-selection for overflow tab items. Added test coverage in `App.coverage.test.ts` for open, select-to-close, and outside-click close. No other `onMouseEnter`/`onMouseOver` content-reveal interactions found. (priority: medium)
+
+- [x] **Runtime layout verification** — [review Gate 7] Added Playwright coverage in `e2e/smoke.spec.ts` that runs at 390x844 and asserts 44x44px minimum bounding boxes for hamburger button, session cards, tab triggers, dropdown items, and steer textarea. (priority: medium)
 
 - [x] **Fix focus management for mobile overlays** — Addresses QA bugs #3, #4, #5. Three fixes in AppView.tsx: (1) Escape key closes mobile sidebar drawer. (2) Focus moves into sidebar on open, returns to hamburger on close. (3) Command palette auto-focuses input on open. (priority: high)
 
