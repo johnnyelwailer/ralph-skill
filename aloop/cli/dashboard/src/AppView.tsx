@@ -1029,7 +1029,7 @@ function Header({
   sessionName, isRunning, currentState, currentPhase, currentIteration,
   providerName, modelName, tasksCompleted, tasksTotal, progressPercent,
   updatedAt, loading, loadError, connectionStatus, onOpenCommand, onOpenSwitcher,
-  stuckCount, startedAt, avgDuration, maxIterations, onToggleMobileMenu,
+  stuckCount, startedAt, avgDuration, maxIterations, onToggleMobileMenu, mobileMenuButtonRef,
   selectedSessionId, qaCoverageRefreshKey,
   sessionCost, totalCost, budgetCap, budgetUsedPercent,
   costError, costLoading, budgetWarnings, budgetPauseThreshold,
@@ -1041,6 +1041,7 @@ function Header({
   connectionStatus: ConnectionStatus; onOpenCommand: () => void; onOpenSwitcher: () => void;
   stuckCount: number; startedAt: string; avgDuration: string; maxIterations: number | null;
   onToggleMobileMenu: () => void;
+  mobileMenuButtonRef: { current: HTMLButtonElement | null };
   selectedSessionId: string | null;
   qaCoverageRefreshKey: string;
   sessionCost: number;
@@ -1057,7 +1058,7 @@ function Header({
     <header className="border-b border-border px-3 py-2 md:px-4 md:py-2.5 shrink-0">
       <h1 className="sr-only">Aloop Dashboard</h1>
       <div className="flex items-center gap-2 sm:gap-4" data-testid="session-header-grid">
-        <button type="button" aria-label="Toggle sidebar" className="inline-flex items-center justify-center sm:hidden p-1 min-h-[44px] min-w-[44px] rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
+        <button ref={mobileMenuButtonRef} type="button" aria-label="Toggle sidebar" className="inline-flex items-center justify-center md:hidden p-1 min-h-[44px] min-w-[44px] rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
           <Menu className="h-5 w-5" />
         </button>
         <Tooltip>
@@ -2110,12 +2111,20 @@ function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
   open: boolean; onClose: () => void; sessions: SessionSummary[];
   onSelectSession: (id: string | null) => void; onStop: (force: boolean) => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const rafId = window.requestAnimationFrame(() => inputRef.current?.focus());
+    return () => window.cancelAnimationFrame(rafId);
+  }, [open]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 animate-fade-in" onClick={onClose} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } }}>
       <div className="w-full max-w-md rounded-lg border bg-popover shadow-lg" onClick={(e) => e.stopPropagation()}>
         <Command>
-          <CommandInput autoFocus placeholder="Type a command..." />
+          <CommandInput ref={inputRef} autoFocus placeholder="Type a command..." />
           <CommandList>
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup heading="Actions">
@@ -2184,6 +2193,10 @@ function AppInner() {
     }
   }, [isMobile, openSidebar]);
 
+  const mobileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mobileSidebarRef = useRef<HTMLDivElement | null>(null);
+  const previousMobileMenuOpenRef = useRef(false);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'b' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (!isMobile) toggleSidebar(); }
@@ -2202,6 +2215,21 @@ function AppInner() {
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [sidebarOpen, closeSidebar]);
+
+  useEffect(() => {
+    if (sidebarOpen) {
+      previousMobileMenuOpenRef.current = true;
+      const firstFocusable = mobileSidebarRef.current?.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      firstFocusable?.focus();
+      return;
+    }
+    if (previousMobileMenuOpenRef.current) {
+      previousMobileMenuOpenRef.current = false;
+      mobileMenuButtonRef.current?.focus();
+    }
+  }, [sidebarOpen]);
 
   const selectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
@@ -2479,7 +2507,7 @@ function AppInner() {
         {!isDesktop && sidebarOpen && (
           <div className="fixed inset-0 z-40 animate-fade-in" onClick={closeSidebar}>
             <div className="absolute inset-0 bg-black/50" />
-            <div className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
+            <div ref={mobileSidebarRef} className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
               <Sidebar
                 sessions={sessions}
                 selectedSessionId={selectedSessionId}
@@ -2492,19 +2520,19 @@ function AppInner() {
           </div>
         )}
         <div className="flex flex-col flex-1 min-w-0">
-          <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={openSidebar} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={toggleSidebar} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
+          <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={openSidebar} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={toggleSidebar} mobileMenuButtonRef={mobileMenuButtonRef} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
           {/* Mobile panel toggle */}
           <div className="lg:hidden flex border-b border-border shrink-0">
             <button
               type="button"
-              className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`flex-1 py-1.5 min-h-[44px] text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
               onClick={() => setActivePanel('docs')}
             >
               <FileText className="h-3.5 w-3.5 inline mr-1" />Documents
             </button>
             <button
               type="button"
-              className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`flex-1 py-1.5 min-h-[44px] text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
               onClick={() => setActivePanel('activity')}
             >
               <Activity className="h-3.5 w-3.5 inline mr-1" />Activity
