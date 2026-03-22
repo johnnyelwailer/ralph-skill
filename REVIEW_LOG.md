@@ -15,6 +15,21 @@
 
 ---
 
+## Review — 2026-03-22 10:45 — commit c1fbb83..7912b2a
+
+**Verdict: PASS** (3 observations)
+**Scope:** orchestrate.ts, orchestrate.test.ts, process-requests.ts, process-requests.test.ts
+
+Prior review findings (Gate 2: no SHA dedup tests, Gate 3: zero coverage on SHA dedup paths) are resolved:
+- 9 new tests added across 2 describe blocks (`processPrLifecycle SHA dedup`: 4 tests, `runOrchestratorScanPass SHA storage`: 5 tests)
+- All tests assert exact values (SHA strings, `undefined`, action strings) — no shallow checks
+- `formatReviewCommentHistory` tested with 2 cases including edge cases (null author, empty body)
+- Gate 2: `orchestrate.test.ts:6131` asserts `result.action === 'review_pending'` and verifies `reviewCalled === false` — thorough behavioral check
+- Gate 4: Duplicate `headRefOid` fetch (once in processPrLifecycle:3663 for dedup, again in scanPass:5371 for storage) — minor efficiency issue, not blocking
+- Gate 5: All 349 tests pass (343 orchestrate + 6 process-requests), `tsc --noEmit` clean
+
+---
+
 ## Review — 2026-03-22 12:30 — commit 6c3ca5d..fb3696a
 
 **Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
