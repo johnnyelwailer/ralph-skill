@@ -5471,6 +5471,39 @@ function writeJson(response, statusCode, payload) {
   });
   response.end(JSON.stringify(payload));
 }
+function parseQaCoverageTable(raw) {
+  const lines = raw.split("\n");
+  const features = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|"))
+      continue;
+    if (/^\|[\s-]+\|/.test(trimmed) && !trimmed.match(/[a-zA-Z0-9]/))
+      continue;
+    if (/\bFeature\b/i.test(trimmed) && /\bStatus\b/i.test(trimmed))
+      continue;
+    const cells = trimmed.split("|").map((c) => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length - 1);
+    if (cells.length < 5)
+      continue;
+    const status = (cells[4] || "").toUpperCase();
+    features.push({
+      feature: cells[0] || "",
+      component: cells[1] || "",
+      last_tested: cells[2] || "",
+      commit: cells[3] || "",
+      status: status === "PASS" || status === "FAIL" ? status : "UNTESTED",
+      criteria_met: cells[5] || "",
+      notes: cells[6] || ""
+    });
+  }
+  const total_features = features.length;
+  const passed = features.filter((f) => f.status === "PASS").length;
+  const failed = features.filter((f) => f.status === "FAIL").length;
+  const untested = features.filter((f) => f.status === "UNTESTED").length;
+  const tested_features = passed + failed;
+  const coverage_percent = total_features > 0 ? Math.round(tested_features / total_features * 100) : 0;
+  return { coverage_percent, total_features, tested_features, passed, failed, untested, features };
+}
 function extractPid(meta) {
   if (!isRecord(meta)) {
     return null;
@@ -5512,6 +5545,31 @@ async function readJsonBody(request) {
     return {};
   }
   return JSON.parse(raw);
+}
+var DEFAULT_COST_POLL_INTERVAL_MINUTES = 5;
+function isOpencodeCli() {
+  const result = spawnSync3("opencode", ["--version"], { encoding: "utf8", timeout: 5e3 });
+  return result.status === 0;
+}
+function runOpencodeDb(query) {
+  const result = spawnSync3("opencode", ["db", "--query", query], {
+    encoding: "utf8",
+    timeout: 15e3
+  });
+  if (result.error || result.status !== 0) {
+    return { ok: false, error: result.error?.message ?? result.stderr?.trim() ?? "opencode db failed" };
+  }
+  return { ok: true, output: result.stdout };
+}
+function runOpencodeExport(sessionId) {
+  const result = spawnSync3("opencode", ["export", "--session", sessionId, "--format", "json"], {
+    encoding: "utf8",
+    timeout: 15e3
+  });
+  if (result.error || result.status !== 0) {
+    return { ok: false, error: result.error?.message ?? result.stderr?.trim() ?? "opencode export failed" };
+  }
+  return { ok: true, output: result.stdout };
 }
 function buildSteeringDocument(instruction, affectsCompletedWork, commit) {
   const timestamp = (/* @__PURE__ */ new Date()).toISOString();
@@ -5556,6 +5614,7 @@ async function startDashboardServer(options, runtimeOptions = {}) {
   const defaultContext = { sessionDir, workdir };
   const clients = /* @__PURE__ */ new Map();
   const watchers = /* @__PURE__ */ new Map();
+  let costAggregateCache = null;
   const loadState = async () => {
     return loadStateForContext(defaultContext, runtimeDir);
   };
@@ -5935,12 +5994,11 @@ async function startDashboardServer(options, runtimeOptions = {}) {
         const coveragePath = path6.join(coverageWorkdir, "QA_COVERAGE.md");
         const raw = await readTextFile(coveragePath);
         if (!raw) {
-          writeJson(response, 200, { percentage: null, raw: "", available: false });
+          writeJson(response, 200, { coverage_percent: 0, total_features: 0, tested_features: 0, passed: 0, failed: 0, untested: 0, features: [], available: false, error: "not_found" });
           return;
         }
-        const match = raw.match(/Coverage:\s*(\d+)%/i);
-        const percentage = match ? parseInt(match[1], 10) : null;
-        writeJson(response, 200, { percentage, raw, available: true });
+        const parsed = parseQaCoverageTable(raw);
+        writeJson(response, 200, { ...parsed, available: true });
         return;
       }
       const artifactMatch = requestUrl.pathname.match(/^\/api\/artifacts\/(\d+)\/(.+)$/);
@@ -5968,6 +6026,69 @@ async function startDashboardServer(options, runtimeOptions = {}) {
           "Cache-Control": "no-cache"
         });
         response.end(content);
+        return;
+      }
+      if (requestUrl.pathname === "/api/cost/aggregate" && request.method === "GET") {
+        if (!isOpencodeCli()) {
+          writeJson(response, 200, { error: "opencode_unavailable" });
+          return;
+        }
+        const meta = await readJsonFile(path6.join(sessionDir, "meta.json"));
+        const pollMinutes = isRecord(meta) && typeof meta.cost_poll_interval_minutes === "number" ? meta.cost_poll_interval_minutes : DEFAULT_COST_POLL_INTERVAL_MINUTES;
+        if (costAggregateCache && Date.now() < costAggregateCache.expiresAt) {
+          writeJson(response, 200, costAggregateCache.data);
+          return;
+        }
+        const result = runOpencodeDb("SELECT json_extract(data,'$.modelID') as model, SUM(CAST(json_extract(data,'$.cost') AS REAL)) as cost_usd FROM message WHERE json_extract(data,'$.role')='assistant' GROUP BY model");
+        if (!result.ok) {
+          writeJson(response, 200, { error: "opencode_unavailable" });
+          return;
+        }
+        try {
+          const rows = JSON.parse(result.output);
+          const totalUsd = rows.reduce((sum, row) => sum + (row.cost_usd ?? 0), 0);
+          const data = { total_usd: totalUsd, by_model: rows };
+          costAggregateCache = {
+            data,
+            expiresAt: Date.now() + pollMinutes * 60 * 1e3
+          };
+          writeJson(response, 200, data);
+        } catch {
+          writeJson(response, 200, { error: "opencode_unavailable" });
+        }
+        return;
+      }
+      const costSessionMatch = requestUrl.pathname.match(/^\/api\/cost\/session\/(.+)$/);
+      if (costSessionMatch && request.method === "GET") {
+        const targetSessionId = costSessionMatch[1];
+        if (!isOpencodeCli()) {
+          writeJson(response, 200, { error: "opencode_unavailable" });
+          return;
+        }
+        const result = runOpencodeExport(targetSessionId);
+        if (!result.ok) {
+          writeJson(response, 200, { error: "opencode_unavailable" });
+          return;
+        }
+        try {
+          const exported = JSON.parse(result.output);
+          const entries = Array.isArray(exported) ? exported : Array.isArray(exported.entries) ? exported.entries : [];
+          let totalUsd = 0;
+          const byModel = {};
+          for (const entry of entries) {
+            if (isRecord(entry) && typeof entry.cost_usd === "number") {
+              totalUsd += entry.cost_usd;
+              const model = typeof entry.model === "string" ? entry.model : "unknown";
+              byModel[model] = (byModel[model] ?? 0) + entry.cost_usd;
+            }
+          }
+          writeJson(response, 200, {
+            total_usd: totalUsd,
+            by_model: Object.entries(byModel).map(([model, cost_usd]) => ({ model, cost_usd }))
+          });
+        } catch {
+          writeJson(response, 200, { error: "opencode_unavailable" });
+        }
         return;
       }
       if (requestUrl.pathname.startsWith("/api/")) {
@@ -13077,7 +13198,8 @@ async function checkPrGates(prNumber, repo, deps) {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    gates.push({ gate: "merge_conflicts", status: "pass", detail: `Merge check skipped (API error): ${msg}` });
+    mergeable = false;
+    gates.push({ gate: "merge_conflicts", status: "api_error", detail: `Merge check failed (API error): ${msg}` });
   }
   try {
     const checksResult = await deps.execGh([
@@ -13119,7 +13241,7 @@ async function checkPrGates(prNumber, repo, deps) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (ciWorkflowsConfigured) {
-      gates.push({ gate: "ci_checks", status: "fail", detail: `Failed to query CI checks: ${msg}` });
+      gates.push({ gate: "ci_checks", status: "api_error", detail: `Failed to query CI checks: ${msg}` });
     } else {
       gates.push({ gate: "ci_checks", status: "pass", detail: `No GitHub Actions workflows detected; CI check query skipped (${msg})` });
     }
@@ -13218,6 +13340,11 @@ async function processPrLifecycle(issue, state, stateFile, sessionDir, repo, dep
   });
   if (gatesResult.gates.some((g) => g.status === "pending")) {
     return { pr_number: prNumber, action: "gates_pending", detail: "CI checks still running", gates: gatesResult };
+  }
+  const apiErrorGates = gatesResult.gates.filter((g) => g.status === "api_error");
+  if (apiErrorGates.length > 0) {
+    const errorDetail = apiErrorGates.map((g) => `${g.gate}: ${g.detail}`).join("; ");
+    return { pr_number: prNumber, action: "gates_pending", detail: `API error on gate checks, will retry: ${errorDetail}`, gates: gatesResult };
   }
   const mergeGate = gatesResult.gates.find((g) => g.gate === "merge_conflicts");
   const mergeCheckErrored = mergeGate && mergeGate.detail?.startsWith("Failed to check");

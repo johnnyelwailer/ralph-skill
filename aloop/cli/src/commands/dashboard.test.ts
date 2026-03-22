@@ -122,6 +122,57 @@ async function runBashCommand(command: string, envOverrides: NodeJS.ProcessEnv =
   });
 }
 
+async function createFakeOpencodeBinary(
+  fakeBinDir: string,
+  dbCounterPath: string,
+  exportCounterPath: string,
+): Promise<void> {
+  const scriptPath = path.join(fakeBinDir, 'opencode');
+  const script = `#!/usr/bin/env node
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+const dbCounter = ${JSON.stringify(dbCounterPath)};
+const exportCounter = ${JSON.stringify(exportCounterPath)};
+const bump = (target) => {
+  const current = fs.existsSync(target) ? Number(fs.readFileSync(target, 'utf8')) || 0 : 0;
+  fs.writeFileSync(target, String(current + 1), 'utf8');
+};
+
+if (args[0] === '--version') {
+  process.stdout.write('opencode 1.0.0\\n');
+  process.exit(0);
+}
+
+if (args[0] === 'db') {
+  bump(dbCounter);
+  process.stdout.write(JSON.stringify([
+    { model: 'gpt-4', cost_usd: 1.25 },
+    { model: 'gpt-5', cost_usd: 2.75 },
+  ]));
+  process.exit(0);
+}
+
+if (args[0] === 'export') {
+  bump(exportCounter);
+  const sessionIndex = args.indexOf('--session');
+  const sessionId = sessionIndex >= 0 ? args[sessionIndex + 1] : 'unknown';
+  process.stdout.write(JSON.stringify({
+    entries: [
+      { model: sessionId, cost_usd: 0.5 },
+      { model: 'fallback', cost_usd: 1.5 },
+    ],
+  }));
+  process.exit(0);
+}
+
+process.stderr.write('unsupported opencode args: ' + args.join(' '));
+process.exit(1);
+`;
+
+  await writeFile(scriptPath, script, 'utf8');
+  await chmod(scriptPath, 0o755);
+}
+
 test('GET /api/state includes active and recent sessions from runtime state files', async () => {
   const fixture = await createServerFixture();
 
@@ -1783,6 +1834,107 @@ test('watch logic triggers request processing', async () => {
   } finally {
     await handle.close();
     await rm(root, { recursive: true });
+  }
+});
+
+test('GET /api/cost routes return success and cache aggregate by cost_poll_interval_minutes', async () => {
+  const fixture = await createServerFixture();
+  const fakeBinDir = path.join(fixture.root, 'fake-bin');
+  const dbCounterPath = path.join(fixture.root, 'opencode-db-count.txt');
+  const exportCounterPath = path.join(fixture.root, 'opencode-export-count.txt');
+  const originalPath = process.env.PATH;
+  try {
+    await mkdir(fakeBinDir, { recursive: true });
+    await createFakeOpencodeBinary(fakeBinDir, dbCounterPath, exportCounterPath);
+    await writeFile(
+      path.join(fixture.sessionDir, 'meta.json'),
+      JSON.stringify({ cost_poll_interval_minutes: 10 }),
+      'utf8',
+    );
+
+    process.env.PATH = `${fakeBinDir}${path.delimiter}${originalPath ?? ''}`;
+
+    const aggregateFirst = await fetch(`${fixture.handle.url}/api/cost/aggregate`);
+    assert.equal(aggregateFirst.status, 200);
+    const aggregateFirstPayload = (await aggregateFirst.json()) as { total_usd: number; by_model: { model: string; cost_usd: number }[] };
+    assert.equal(aggregateFirstPayload.total_usd, 4);
+    assert.deepEqual(aggregateFirstPayload.by_model, [
+      { model: 'gpt-4', cost_usd: 1.25 },
+      { model: 'gpt-5', cost_usd: 2.75 },
+    ]);
+
+    const aggregateSecond = await fetch(`${fixture.handle.url}/api/cost/aggregate`);
+    assert.equal(aggregateSecond.status, 200);
+    const aggregateSecondPayload = (await aggregateSecond.json()) as { total_usd: number; by_model: { model: string; cost_usd: number }[] };
+    assert.deepEqual(aggregateSecondPayload, aggregateFirstPayload);
+
+    const dbCount = await readFile(dbCounterPath, 'utf8');
+    assert.equal(dbCount.trim(), '1', 'expected cached aggregate response to skip second opencode db call');
+
+    const sessionResponse = await fetch(`${fixture.handle.url}/api/cost/session/session-abc`);
+    assert.equal(sessionResponse.status, 200);
+    const sessionPayload = (await sessionResponse.json()) as { total_usd: number; by_model: { model: string; cost_usd: number }[] };
+    assert.equal(sessionPayload.total_usd, 2);
+    assert.deepEqual(sessionPayload.by_model, [
+      { model: 'session-abc', cost_usd: 0.5 },
+      { model: 'fallback', cost_usd: 1.5 },
+    ]);
+
+    const exportCount = await readFile(exportCounterPath, 'utf8');
+    assert.equal(exportCount.trim(), '1');
+  } finally {
+    process.env.PATH = originalPath;
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/cost routes degrade gracefully when opencode CLI is unavailable', async () => {
+  const fixture = await createServerFixture();
+  const originalPath = process.env.PATH;
+  try {
+    process.env.PATH = '';
+
+    const aggregateResponse = await fetch(`${fixture.handle.url}/api/cost/aggregate`);
+    assert.equal(aggregateResponse.status, 200);
+    const aggregatePayload = (await aggregateResponse.json()) as { error?: string };
+    assert.equal(aggregatePayload.error, 'opencode_unavailable');
+
+    const sessionResponse = await fetch(`${fixture.handle.url}/api/cost/session/session-xyz`);
+    assert.equal(sessionResponse.status, 200);
+    const sessionPayload = (await sessionResponse.json()) as { error?: string };
+    assert.equal(sessionPayload.error, 'opencode_unavailable');
+  } finally {
+    process.env.PATH = originalPath;
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/cost/aggregate does not reuse cache when cost_poll_interval_minutes is zero', async () => {
+  const fixture = await createServerFixture();
+  const fakeBinDir = path.join(fixture.root, 'fake-bin');
+  const dbCounterPath = path.join(fixture.root, 'opencode-db-count.txt');
+  const exportCounterPath = path.join(fixture.root, 'opencode-export-count.txt');
+  const originalPath = process.env.PATH;
+  try {
+    await mkdir(fakeBinDir, { recursive: true });
+    await createFakeOpencodeBinary(fakeBinDir, dbCounterPath, exportCounterPath);
+    await writeFile(
+      path.join(fixture.sessionDir, 'meta.json'),
+      JSON.stringify({ cost_poll_interval_minutes: 0 }),
+      'utf8',
+    );
+    process.env.PATH = `${fakeBinDir}${path.delimiter}${originalPath ?? ''}`;
+
+    const first = await fetch(`${fixture.handle.url}/api/cost/aggregate`);
+    assert.equal(first.status, 200);
+    const second = await fetch(`${fixture.handle.url}/api/cost/aggregate`);
+    assert.equal(second.status, 200);
+
+    const dbCount = await readFile(dbCounterPath, 'utf8');
+    assert.equal(dbCount.trim(), '2');
+  } finally {
+    process.env.PATH = originalPath;
+    await fixture.handle.close();
   }
 });
 
