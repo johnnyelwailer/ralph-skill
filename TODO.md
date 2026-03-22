@@ -4,7 +4,7 @@
 
 ### In Progress
 
-(none)
+- [ ] [review] Gate 4: `useIsTouchLikePointer.ts` + `useIsTouchLikePointer.test.ts` (103 lines) are dead code — zero components import `useIsTouchLikePointer`. Delete both files or consolidate with `useIsTouchDevice`. This is the SECOND review flagging this exact issue (first: Review 4, 2026-03-22 17:30). (priority: high)
 
 
 ### Up Next
