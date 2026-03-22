@@ -69,6 +69,7 @@ usage() {
     echo "  --backup                Enable remote git backup"
     echo "  --dry-run               Print commands without executing"
     echo "  --dangerously-skip-container  Skip devcontainer routing (agents run on host)"
+    echo "  --no-task-exit              Keep running after all tasks complete (used by orchestrator)"
     exit 1
 }
 
