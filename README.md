@@ -28,8 +28,8 @@ aloop start --provider claude
 # Round-robin across providers
 aloop start --provider round-robin
 
-# Resume a stopped session
-aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
+# Resume a stopped loop session
+aloop start <session-id> --launch resume
 ```
 
 ### Orchestrator Mode (`aloop orchestrate`)
@@ -50,6 +50,9 @@ aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
 
 # Dispatch specific issues
 aloop orchestrate --issues 42,43,44 --concurrency 2
+
+# Resume an existing orchestrator session
+aloop orchestrate --resume <session-id>
 ```
 
 The orchestrator enforces role-based GitHub policies — child loops can create PRs and comment, but only the orchestrator can merge PRs and close issues.
