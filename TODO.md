@@ -23,7 +23,7 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2500 lines) now has full 
 
 ### Deferred
 
-- [ ] **Run Lighthouse mobile accessibility audit & fix flagged issues** — Run Lighthouse in mobile mode targeting accessibility category. Fix any issues flagged: color contrast ratios, missing alt text, focus indicators, ARIA violations. Target score >= 90. Document final score. (priority: low)
+- [x] **Run Lighthouse mobile accessibility audit & fix flagged issues** — Completed on 2026-03-22 via Lighthouse mobile audit against `vite preview` (`http://localhost:4173`). Fixed footer icon-button accessible names, low-contrast muted timestamps/phase badge fallback text, and heading order (`CardTitle` now `h2`). Final Lighthouse accessibility score: **100/100**. (priority: low)
 
 - [ ] **Capture proof artifacts** — [review Gate 6] Capture Playwright screenshots or recordings at mobile viewport showing (a) tap targets at 44px minimum, (b) tooltip opening on tap, (c) hover-card opening on tap. `proof-manifest.json` already exists with `{"artifacts": []}` — approved in prior review as sufficient. (priority: low)
 

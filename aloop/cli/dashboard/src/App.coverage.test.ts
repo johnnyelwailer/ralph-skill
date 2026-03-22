@@ -874,7 +874,7 @@ describe('App.tsx AppView integration coverage', () => {
       sessionName: 'Demo Session',
       isRunning: true,
       state: {
-        currentState: 'build',
+        currentState: 'running',
         currentPhase: 'build',
         currentIteration: '1',
         providerName: 'codex',
@@ -898,6 +898,40 @@ describe('App.tsx AppView integration coverage', () => {
 
     render(createElement(App));
     expect(await screen.findByRole('button', { name: 'Collapse activity panel' })).toBeInTheDocument();
+  });
+
+  it('covers footer control accessible names on mobile', async () => {
+    let currentResponse = {
+      ...baseState,
+      status: {
+        ...baseState.status,
+        state: 'running',
+      },
+      activeSessions: [{ session_id: 'sess-1', project_name: 'proj', state: 'running', phase: 'build', iteration: 3 }],
+    };
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/api/state')) return new Response(JSON.stringify(currentResponse), { status: 200 });
+      if (url.includes('/api/docs/')) return new Response('', { status: 200 });
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { unmount } = render(createElement(App));
+    expect(await screen.findByRole('button', { name: 'Send steering instruction' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stop loop options' })).toBeInTheDocument();
+    unmount();
+
+    currentResponse = {
+      ...baseState,
+      status: {
+        ...baseState.status,
+        state: 'stopped',
+      },
+      activeSessions: [{ session_id: 'sess-1', project_name: 'proj', state: 'stopped', phase: 'build', iteration: 3 }],
+    };
+    render(createElement(App));
+    expect(await screen.findByRole('button', { name: 'Resume loop' })).toBeInTheDocument();
   });
 
   it('covers ActivityPanel and LogEntryRow exhaustive', async () => {

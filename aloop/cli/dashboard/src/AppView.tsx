@@ -437,7 +437,7 @@ const statusColors: Record<string, string> = {
 
 function PhaseBadge({ phase, small }: { phase: string; small?: boolean }) {
   if (!phase) return null;
-  const colors = phaseColors[phase.toLowerCase()] ?? 'bg-muted text-muted-foreground border-border';
+  const colors = phaseColors[phase.toLowerCase()] ?? 'bg-muted text-foreground border-border';
   const size = small ? 'px-1 py-0 text-[10px]' : 'px-1.5 py-0.5 text-xs';
   return <span className={`inline-block rounded border font-medium ${colors} ${size}`}>{phase}</span>;
 }
@@ -769,7 +769,7 @@ function SessionSidebarCard({
             <div className="flex items-center gap-1.5 overflow-hidden">
               <StatusDot status={session.isActive && session.status === 'running' ? 'running' : session.status} />
               <span className="truncate font-medium flex-1">{session.name}</span>
-              <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(session.endedAt || session.startedAt)}</span>
+              <span className="text-muted-foreground text-[10px] shrink-0">{relativeTime(session.endedAt || session.startedAt)}</span>
             </div>
             <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
               {session.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
@@ -1419,7 +1419,7 @@ export function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
                     return `cooldown for ${h > 0 ? `${h}h ` : ''}${m}min`;
                   })() : p.status === 'unknown' ? 'no activity' : p.status}
                 </span>
-                <span className="text-muted-foreground/50 text-[10px]">{relativeTime(p.lastEvent)}</span>
+                <span className="text-muted-foreground text-[10px]">{relativeTime(p.lastEvent)}</span>
               </div>
             </TooltipTrigger>
             <TooltipContent>
@@ -2091,7 +2091,7 @@ function Footer({
         />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={steerSubmitting || !steerInstruction.trim()} onClick={onSteer}>
+            <Button aria-label="Send steering instruction" size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={steerSubmitting || !steerInstruction.trim()} onClick={onSteer}>
               <Send className="h-3.5 w-3.5" /><span className="hidden sm:inline ml-1">{steerSubmitting ? '...' : 'Send'}</span>
             </Button>
           </TooltipTrigger>
@@ -2100,7 +2100,7 @@ function Footer({
         {isRunning ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="destructive" size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={stopSubmitting}>
+              <Button aria-label="Stop loop options" variant="destructive" size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={stopSubmitting}>
                 <Square className="h-3 w-3" /><span className="hidden sm:inline ml-1">{stopSubmitting ? '...' : 'Stop'}</span>
                 <ChevronDown className="h-3 w-3 ml-0.5" />
               </Button>
@@ -2119,7 +2119,7 @@ function Footer({
         ) : (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="default" size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={resumeSubmitting} onClick={onResume}>
+              <Button aria-label="Resume loop" variant="default" size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={resumeSubmitting} onClick={onResume}>
                 <Play className="h-3 w-3" /><span className="hidden sm:inline ml-1">{resumeSubmitting ? '...' : 'Resume'}</span>
               </Button>
             </TooltipTrigger>
