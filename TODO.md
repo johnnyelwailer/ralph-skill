@@ -15,7 +15,9 @@
 #### QA Bugs (priority: high)
 
 - [x] [qa/P2] `--output json` error path outputs plain text — `withErrorHandling` wrapper (`error-handling.ts`) always emits `console.error("Error: ...")` regardless of `--output` mode; also `console.error` warning on worktree failure (orchestrate.ts:1843) pollutes JSON output. The happy path JSON output works (lines 1929-1932), but any error/warning before that point bypasses JSON formatting. (priority: high)
-- [ ] [qa/P2] `aloop discover --project-root /nonexistent` returns exit 0 with empty results — `discover` succeeds against a nonexistent path instead of failing with an error; `is_git_repo: false` and empty arrays are returned, misleading the user into thinking the path is a valid project. Should validate path exists before proceeding. Tested at iter 36. (priority: high)
+- [ ] [qa/P2] `aloop discover --project-root /nonexistent` returns exit 0 with empty results — `discover` succeeds against a nonexistent path instead of failing with an error; `is_git_repo: false` and empty arrays are returned, misleading the user into thinking the path is a valid project. Should validate path exists before proceeding. Tested at iter 36, re-tested iter 69 — still failing. (priority: high)
+- [ ] [qa/P2] `aloop setup` crashes with exit 13 in non-TTY environments — interactive mode hits "unsettled top-level await" when stdin is not a terminal. Should detect non-TTY and either fall back to `--non-interactive` defaults or print a helpful error suggesting `--non-interactive`. Tested at iter 69. (priority: high)
+- [ ] [qa/P2] `aloop setup` missing `--output json` option — all other commands support `--output json` but setup returns "unknown option". Should support JSON output for scripting/automation. Tested at iter 69. (priority: high)
 
 #### QA & Coverage (priority: high)
 

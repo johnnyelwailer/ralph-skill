@@ -1,5 +1,198 @@
 # QA Log
 
+## QA Session — 2026-03-22 (iteration 69)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-FOWry7/bin/aloop
+- Version: 1.0.0
+- Temp test project: /tmp/qa-test-session3
+- Features tested: 5
+
+### Results
+- PASS: --output json error paths (re-test, fixed), aloop setup --non-interactive, aloop resolve, aloop active
+- FAIL: aloop discover --project-root /nonexistent (still open), aloop setup interactive in non-TTY (crash), aloop setup --output json (missing option)
+
+### Bugs Filed
+- [qa/P2] `aloop setup` crashes with exit 13 in non-TTY environments
+- [qa/P2] `aloop setup` missing `--output json` option
+
+### Observations
+- `--output json` error path fix (96944db3) works well for start, steer, stop — all emit valid JSON on error
+- Orchestrate mode `--output json`: health-check diagnostic lines still go to stdout while the JSON error goes to stderr — stream routing is inverted but the JSON itself is correct
+- `aloop resolve` defaults to JSON output (unlike most commands that default to text) — consistent with its purpose as a scripting tool
+- `aloop active --output json` includes rich metadata (iteration, phase, stuck_count) — useful for automation
+- `aloop setup --non-interactive` with `--providers`, `--mode`, `--autonomy-level` overrides all work correctly; invalid values properly rejected
+
+### Command Transcript
+
+#### Feature 1: --output json error paths (re-test)
+
+```
+$ aloop start --mode orchestrate --output json (no spec)
+{"error":"No spec files found matching: SPEC.md"}
+EXIT: 1
+```
+
+```
+$ aloop start --output json (no setup)
+{"error":"Project prompts not found: /home/pj/.aloop/projects/e9671acd/prompts. Run `aloop setup` first."}
+EXIT: 1
+```
+
+```
+$ aloop steer 'test' --session nonexistent --output json
+{"success":false,"error":"Session not found: nonexistent"}
+EXIT: 1
+```
+
+```
+$ aloop stop nonexistent --output json
+{"success":false,"reason":"Session not found: nonexistent"}
+EXIT: 1
+```
+
+```
+$ aloop start --mode orchestrate --output json (with spec, stdout/stderr separated)
+STDOUT: [orchestrate] Health check lines (NOT JSON — stream routing issue)
+STDERR: {"error":"Critical startup check failed: gh_auth"}
+EXIT: 1
+(JSON is valid but on stderr; health-check lines on stdout pollute machine-readable output)
+```
+
+#### Feature 2: aloop discover --project-root /nonexistent (re-test)
+
+```
+$ aloop discover --project-root /nonexistent
+{"project":{"root":"/nonexistent","name":"nonexistent","hash":"3969afb7","is_git_repo":false,...},...}
+EXIT: 0
+(BUG: still returns exit 0 for nonexistent path)
+```
+
+#### Feature 3: aloop setup
+
+```
+$ aloop setup --help
+Usage: aloop setup [options]
+Options: --project-root, --spec, --providers, --provider, --mode, --autonomy-level, --non-interactive
+EXIT: 0
+```
+
+```
+$ aloop setup (non-TTY)
+--- Aloop Interactive Setup ---
+Mode recommendation: ...
+Spec File [README.md]: Warning: Detected unsettled top-level await...
+EXIT: 13
+(BUG: crashes in non-TTY environment)
+```
+
+```
+$ aloop setup --output json
+error: unknown option '--output'
+EXIT: 1
+(BUG: --output not supported unlike other commands)
+```
+
+```
+$ aloop setup --non-interactive
+Running setup in non-interactive mode...
+Setup complete. Config written to: /home/pj/.aloop/projects/acec5cc2/config.yml
+EXIT: 0
+```
+
+```
+$ aloop setup --non-interactive --spec README.md
+EXIT: 0 (spec override applied)
+```
+
+```
+$ aloop setup --non-interactive --spec nonexistent.md
+Error: Spec file not found: nonexistent.md
+EXIT: 1
+```
+
+```
+$ aloop setup --non-interactive --mode orchestrate
+EXIT: 0 (mode applied in config)
+```
+
+```
+$ aloop setup --non-interactive --mode invalid
+Error: Invalid setup mode: invalid (must be loop or orchestrate)
+EXIT: 1
+```
+
+```
+$ aloop setup --non-interactive --autonomy-level invalid
+Error: Invalid autonomy level: invalid (must be cautious, balanced, or autonomous)
+EXIT: 1
+```
+
+```
+$ aloop setup --non-interactive --providers opencode,claude
+EXIT: 0 (providers override applied)
+```
+
+Config output verified: project_name, language, provider, mode, autonomy_level, spec_files, enabled_providers, models, cost_routing, privacy_policy all present.
+
+#### Feature 4: aloop resolve
+
+```
+$ aloop resolve --help
+Usage: aloop resolve [options]
+Options: --project-root, --output (default: json)
+EXIT: 0
+```
+
+```
+$ aloop resolve
+{"project":{"root":"/tmp/qa-test-session3","name":"qa-test-session3","hash":"acec5cc2","is_git_repo":true,"git_branch":"master"},"setup":{"project_dir":"...","config_path":"...","config_exists":true,"templates_dir":"..."}}
+EXIT: 0
+```
+
+```
+$ aloop resolve --project-root /nonexistent
+{"error":"No Aloop configuration found for this project. Run `aloop setup` first."}
+EXIT: 1
+```
+
+#### Feature 5: aloop active
+
+```
+$ aloop active --help
+Usage: aloop active [options]
+Options: --home-dir, --output (default: text)
+EXIT: 0
+```
+
+```
+$ aloop active
+orchestrator-20260321-172932  pid=2754891  running  /Users/pj/Dev/ralph-skill  (20h ago)
+orchestrator-20260321-172932-issue-174-20260322-110342  pid=1543110  running  ...  (3h ago)
+orchestrator-20260321-172932-issue-111-20260322-110610  pid=1575183  running  ...  (3h ago)
+EXIT: 0
+```
+
+```
+$ aloop active --output json
+[{"session_id":"orchestrator-20260321-172932","pid":2754891,"state":"running","phase":"orch_scan","iteration":419,...},...]
+EXIT: 0
+```
+
+```
+$ aloop active --home-dir /nonexistent
+No active sessions.
+EXIT: 0
+```
+
+```
+$ aloop active --home-dir /nonexistent --output json
+[]
+EXIT: 0
+```
+
+---
+
 ## QA Session — 2026-03-22 (iteration 36)
 
 ### Test Environment

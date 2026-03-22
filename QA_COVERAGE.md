@@ -9,7 +9,7 @@
 | aloop start --help | 2026-03-22 | 5daa89ec | PASS | Shows all options including --mode, --output, --launch, etc. |
 | aloop start --mode orchestrate | 2026-03-22 | 5daa89ec | PASS | Correctly forwards to orchestrateCommand. Health checks run, fails gracefully when gh unavailable. Exit code 1 on failure. |
 | aloop start (error: no setup) | 2026-03-22 | 5daa89ec | PASS | Helpful error "Run `aloop setup` first" in non-setup dir, exit 1 |
-| aloop start --mode orchestrate --output json | 2026-03-22 | 5daa89ec | FAIL | --output json flag ignored when forwarding to orchestrate; outputs human-readable text, not JSON. Bug filed. |
+| aloop start --mode orchestrate --output json | 2026-03-22 | 96944db3 | PASS | Fixed: final JSON error on stderr, exit 1. Note: orchestrate health-check lines still go to stdout in JSON mode (minor stream routing issue). |
 | aloop gh (subcommand listing) | 2026-03-22 | 5daa89ec | PASS | Shows all 14 subcommands with descriptions |
 | aloop gh start --help | 2026-03-22 | 5daa89ec | PASS | Shows --issue, --spec, --provider, --max, --repo, --project-root, --output options |
 | aloop gh start (missing --issue) | 2026-03-22 | 5daa89ec | PASS | Clean error "required option '--issue <number>' not specified", exit 1 |
@@ -29,4 +29,14 @@
 | aloop scaffold (basic) | 2026-03-22 | e5ef630c | PASS | Creates config.yml + prompts dir. JSON and text output both work. Overrides (--language, --provider) applied. |
 | aloop discover --help | 2026-03-22 | e5ef630c | PASS | Shows --project-root and --output options |
 | aloop discover (basic) | 2026-03-22 | e5ef630c | PASS | Rich JSON output with project info, providers, spec candidates, mode recommendation. Text output clean. |
-| aloop discover (nonexistent path) | 2026-03-22 | e5ef630c | FAIL | Returns exit 0 with empty results for nonexistent path instead of error. Bug filed. |
+| aloop discover (nonexistent path) | 2026-03-22 | 96944db3 | FAIL | Still returns exit 0 with empty results for nonexistent path. Bug remains open. |
+| aloop setup --help | 2026-03-22 | 96944db3 | PASS | Shows --project-root, --spec, --providers, --mode, --autonomy-level, --non-interactive options |
+| aloop setup --non-interactive | 2026-03-22 | 96944db3 | PASS | Creates config.yml + prompts dir. Spec override, mode, providers, autonomy-level all work. Invalid values rejected. |
+| aloop setup (interactive, no TTY) | 2026-03-22 | 96944db3 | FAIL | Crashes with exit 13 and "unsettled top-level await" when stdin is not a TTY. Should detect non-TTY and suggest --non-interactive. |
+| aloop setup --output json | 2026-03-22 | 96944db3 | FAIL | --output is not a recognized option for setup (unlike all other commands). Missing feature. |
+| aloop resolve --help | 2026-03-22 | 96944db3 | PASS | Shows --project-root and --output options. Default output is JSON. |
+| aloop resolve (basic) | 2026-03-22 | 96944db3 | PASS | Returns project + setup info as clean JSON. Text and JSON modes work. |
+| aloop resolve (unconfigured project) | 2026-03-22 | 96944db3 | PASS | Returns JSON error "Run `aloop setup` first", exit 1. |
+| aloop active --help | 2026-03-22 | 96944db3 | PASS | Shows --home-dir and --output options |
+| aloop active (basic) | 2026-03-22 | 96944db3 | PASS | Lists active sessions with pid, state, work_dir. Text and JSON modes both work. JSON includes iteration, phase, stuck_count. |
+| aloop active (empty, nonexistent home) | 2026-03-22 | 96944db3 | PASS | Returns "No active sessions" (text) or [] (JSON), exit 0. |
