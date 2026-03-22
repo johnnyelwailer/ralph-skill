@@ -46,6 +46,7 @@ param(
     [string]$LaunchMode = 'start',
 
     [switch]$BackupEnabled,
+    [switch]$NoTaskExit,
     [switch]$DryRun,
     [switch]$DangerouslySkipContainer
 )
@@ -841,6 +842,7 @@ function Get-PlanLines {
 }
 
 function Check-AllTasksComplete {
+    if ($NoTaskExit) { return $false }
     $lines = Get-PlanLines
     if ($lines.Count -eq 0) { return $false }
     $incomplete = ($lines | Where-Object { $_ -match '^\s*-\s+\[ \]' }).Count
