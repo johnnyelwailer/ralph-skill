@@ -94,6 +94,8 @@ export interface OrchestratorIssue {
   is_change_request?: boolean;
   cr_spec_updated?: boolean;
   needs_rebase?: boolean;
+  api_error_count?: number;
+  api_error_summary?: string;
 }
 
 export interface OrchestratorState {
@@ -3414,6 +3416,7 @@ export interface PrLifecycleDeps {
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 const ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT = 3;
+const ORCHESTRATOR_API_ERROR_PERSISTENCE_LIMIT = 10;
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
@@ -3699,6 +3702,21 @@ export async function processPrLifecycle(
     return { pr_number: 0, action: 'gates_failed', detail: 'No PR number on issue' };
   }
   const prNumber = issue.pr_number;
+  const stateIssue = state.issues.find((i) => i.number === issue.number);
+
+  const resetApiErrorTracking = async (): Promise<void> => {
+    if (!stateIssue || !stateIssue.api_error_count) return;
+    stateIssue.api_error_count = 0;
+    stateIssue.api_error_summary = undefined;
+    state.updated_at = deps.now().toISOString();
+    await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: 'pr_api_error_reset',
+      pr_number: prNumber,
+      issue_number: issue.number,
+    });
+  };
 
   // Step 1: Check gates
   const gatesResult = await checkPrGates(prNumber, repo, deps);
@@ -3713,6 +3731,7 @@ export async function processPrLifecycle(
 
   // Step 2: Handle pending CI
   if (gatesResult.gates.some((g) => g.status === 'pending')) {
+    await resetApiErrorTracking();
     return { pr_number: prNumber, action: 'gates_pending', detail: 'CI checks still running', gates: gatesResult };
   }
 
@@ -3720,12 +3739,69 @@ export async function processPrLifecycle(
   const apiErrorGates = gatesResult.gates.filter((g) => g.status === 'api_error');
   if (apiErrorGates.length > 0) {
     const errorDetail = apiErrorGates.map((g) => `${g.gate}: ${g.detail}`).join('; ');
-    return { pr_number: prNumber, action: 'gates_pending', detail: `API error on gate checks, will retry: ${errorDetail}`, gates: gatesResult };
+    const apiErrorCount = (stateIssue?.api_error_count ?? 0) + 1;
+    if (stateIssue) {
+      stateIssue.api_error_count = apiErrorCount;
+      stateIssue.api_error_summary = errorDetail;
+      state.updated_at = deps.now().toISOString();
+      await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    }
+
+    if (apiErrorCount >= ORCHESTRATOR_API_ERROR_PERSISTENCE_LIMIT) {
+      await flagForHuman(
+        issue,
+        repo,
+        `GitHub API unreachable for PR #${prNumber} after ${apiErrorCount} consecutive checks: ${errorDetail}`,
+        deps,
+      );
+      if (stateIssue) {
+        stateIssue.state = 'failed';
+        stateIssue.status = 'Blocked';
+      }
+      await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
+        execGh: deps.execGh,
+        appendLog: deps.appendLog,
+        now: deps.now,
+        sessionDir,
+      });
+      state.updated_at = deps.now().toISOString();
+      await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'pr_api_error_persistent',
+        pr_number: prNumber,
+        issue_number: issue.number,
+        api_error_count: apiErrorCount,
+        api_error_summary: errorDetail,
+      });
+      return {
+        pr_number: prNumber,
+        action: 'flagged_for_human',
+        detail: `GitHub API unreachable after ${apiErrorCount} consecutive gate checks`,
+        gates: gatesResult,
+      };
+    }
+
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: 'pr_api_error_retrying',
+      pr_number: prNumber,
+      issue_number: issue.number,
+      api_error_count: apiErrorCount,
+      api_error_summary: errorDetail,
+    });
+    return {
+      pr_number: prNumber,
+      action: 'gates_pending',
+      detail: `API error on gate checks, will retry (${apiErrorCount}/${ORCHESTRATOR_API_ERROR_PERSISTENCE_LIMIT}): ${errorDetail}`,
+      gates: gatesResult,
+    };
   }
+
+  await resetApiErrorTracking();
 
   // Step 3: Handle merge conflicts (API errors already handled in Step 2b)
   if (!gatesResult.mergeable) {
-    const stateIssue = state.issues.find((i) => i.number === issue.number);
     const rebaseAttempts = stateIssue?.rebase_attempts ?? 0;
 
     // Dispatch a child loop to resolve the merge conflict via rebase
@@ -3754,7 +3830,6 @@ export async function processPrLifecycle(
     const failedGates = gatesResult.gates.filter((g) => g.status === 'fail');
     const failDetail = failedGates.map((g) => `${g.gate}: ${g.detail}`).join('; ');
     const ciFailure = failedGates.find((g) => g.gate === 'ci_checks');
-    const stateIssue = state.issues.find((i) => i.number === issue.number);
     if (ciFailure && stateIssue) {
       const signature = normalizeCiDetailForSignature(ciFailure.detail);
       const retries = stateIssue.ci_failure_signature === signature

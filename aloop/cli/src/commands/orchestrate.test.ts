@@ -3193,8 +3193,108 @@ describe('processPrLifecycle', () => {
     assert.equal(result.action, 'gates_pending');
     assert.match(result.detail, /api error/i);
     assert.equal(state.issues[0].ci_failure_retries, 2);
+    assert.equal(state.issues[0].api_error_count, 1);
     assert.equal(state.issues[0].state, 'pr_open');
     assert.equal(deps.logs.some((l) => l.event === 'pr_ci_failure_persistent'), false);
+    assert.ok(deps.logs.some((l) => l.event === 'pr_api_error_retrying'));
+  });
+
+  it('does not increment rebase attempts when mergeability gate has API error', async () => {
+    const state = makeOrchestratorState([
+      {
+        number: 42,
+        pr_number: 100,
+        state: 'pr_open',
+        rebase_attempts: 1,
+      },
+    ]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '0', stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          throw new Error('GitHub API unavailable');
+        }
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'gates_pending');
+    assert.equal(state.issues[0].rebase_attempts, 1);
+    assert.equal(state.issues[0].api_error_count, 1);
+    assert.equal(state.issues[0].state, 'pr_open');
+  });
+
+  it('flags for human after repeated API errors hit persistence threshold', async () => {
+    const state = makeOrchestratorState([
+      {
+        number: 42,
+        pr_number: 100,
+        state: 'pr_open',
+        api_error_count: 9,
+      },
+    ]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          throw new Error('API rate limit exceeded');
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'flagged_for_human');
+    assert.equal(state.issues[0].api_error_count, 10);
+    assert.equal(state.issues[0].state, 'failed');
+    assert.equal(state.issues[0].status, 'Blocked');
+    assert.ok(deps.logs.some((l) => l.event === 'pr_api_error_persistent'));
+  });
+
+  it('resets API error counter after successful gate check', async () => {
+    const state = makeOrchestratorState([
+      {
+        number: 42,
+        pr_number: 100,
+        state: 'pr_open',
+        api_error_count: 2,
+      },
+    ]);
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return {
+            stdout: JSON.stringify({
+              statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }],
+            }),
+            stderr: '',
+          };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'merged');
+    assert.equal(state.issues[0].api_error_count, 0);
+    assert.ok(deps.logs.some((l) => l.event === 'pr_api_error_reset'));
   });
 
   it('handles merge failure after approval', async () => {
