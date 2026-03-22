@@ -6,7 +6,7 @@
 
 - [x] **P1: loop.ps1 — proof manifest validation function** — Add `Validate-ProofManifest` function equivalent to loop.sh's `validate_proof_manifest()`. Must check file existence and JSON validity. (loop.sh has this at lines 603-622; loop.ps1 has nothing)
 
-- [ ] **P1: loop.ps1 — baselines directory creation** — Add `New-Item -ItemType Directory -Force` for `$artifactsDir/baselines` at session init, matching loop.sh line 1964
+- [x] **P1: loop.ps1 — baselines directory creation** — Add `New-Item -ItemType Directory -Force` for `$artifactsDir/baselines` at session init, matching loop.sh line 1964
 
 - [ ] **P1: loop.ps1 — per-iteration artifacts directory creation** — Create `$artifactsDir/iter-$iteration` before provider invocation, matching loop.sh line 2246
 
