@@ -431,6 +431,51 @@ Collect proof iter-<N>.
     }
 }
 
+Describe 'loop.ps1 — Validate-ProofManifest' -Tag 'proof-manifest-validation' {
+
+    BeforeAll {
+        $loopSource = Get-Content (Join-Path $PSScriptRoot 'loop.ps1') -Raw
+        $validateMatch = [regex]::Match($loopSource, '(?ms)function Validate-ProofManifest \{.*?^\}')
+        if (-not $validateMatch.Success) {
+            throw 'Failed to locate Validate-ProofManifest in loop.ps1'
+        }
+
+        . ([scriptblock]::Create($validateMatch.Value))
+    }
+
+    It 'returns false with invalid_json when manifest file is empty' {
+        $testDir = Join-Path ([IO.Path]::GetTempPath()) ("aloop-proof-manifest-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $testDir -Force | Out-Null
+        $manifestPath = Join-Path $testDir 'proof-manifest.json'
+
+        try {
+            Set-Content -Path $manifestPath -NoNewline -Value ''
+            $script:validateProofManifestError = ''
+
+            (Validate-ProofManifest -ManifestPath $manifestPath) | Should -Be $false
+            $script:validateProofManifestError | Should -Be 'invalid_json'
+        } finally {
+            if (Test-Path $testDir) { Remove-Item -Path $testDir -Recurse -Force }
+        }
+    }
+
+    It 'returns false with invalid_json when manifest file is whitespace only' {
+        $testDir = Join-Path ([IO.Path]::GetTempPath()) ("aloop-proof-manifest-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $testDir -Force | Out-Null
+        $manifestPath = Join-Path $testDir 'proof-manifest.json'
+
+        try {
+            Set-Content -Path $manifestPath -NoNewline -Value " `t`r`n "
+            $script:validateProofManifestError = ''
+
+            (Validate-ProofManifest -ManifestPath $manifestPath) | Should -Be $false
+            $script:validateProofManifestError | Should -Be 'invalid_json'
+        } finally {
+            if (Test-Path $testDir) { Remove-Item -Path $testDir -Recurse -Force }
+        }
+    }
+}
+
 
 # ============================================================================
 # 3. loop.sh — retry-same-phase behavioral
