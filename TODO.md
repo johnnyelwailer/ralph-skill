@@ -7,21 +7,27 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 ### QA Bugs
 
-- [ ] [qa/P1] Steer textarea 32px height on mobile: Steer input (`<textarea placeholder="Steer...">`) renders at 266x32px on mobile viewport (390x844). WCAG 2.5.8 requires 44px minimum tap target. Has `min-h-[32px] h-8` in AppView.tsx:1969 but no mobile override to 44px. Fix: change to `min-h-[44px] md:min-h-[32px] h-auto md:h-8`. (priority: high)
+- [ ] [qa/P1] Steer textarea 32px height on mobile: Steer input (`<textarea placeholder="Steer...">`) renders at 266x32px on mobile viewport (390x844). WCAG 2.5.8 requires 44px minimum tap target. Has `min-h-[32px] h-8` in AppView.tsx:1969 but no mobile override to 44px. Fix: change to `min-h-[44px] md:min-h-[32px] h-auto md:h-8`. Still failing at iter 3 — confirmed 266x32px, computed min-height: 32px. (priority: high)
 
-- [ ] [qa/P1] GitHub repo link missing aria-label: The GitHub icon link (`<a href="...github...">` at AppView.tsx:1190) contains only an SVG icon with no `aria-label`, `title`, or visible text. Screen readers cannot identify its purpose. Fix: add `aria-label="Open repo on GitHub"`. (priority: high)
+- [ ] [qa/P1] GitHub repo link missing aria-label: The GitHub icon link (`<a href="...github...">` at AppView.tsx:1190) contains only an SVG icon with no `aria-label`, `title`, or visible text. Screen readers cannot identify its purpose. Fix: add `aria-label="Open repo on GitHub"`. Still failing at iter 3 — link renders 44x44px (tap target fixed) but aria-label/title still null. (priority: high)
+
+- [ ] [qa/P1] Escape key does not close mobile sidebar drawer: On mobile viewport (390x844), after opening the sidebar via hamburger button, pressing Escape does not close the sidebar. The sidebar overlay (`div.fixed.inset-0.z-40`) remains visible and the sidebar stays at width=256px. Clicking the overlay does close the sidebar correctly. Spec says "Escape key should close overlays and return focus." Fix: add keydown listener for Escape that closes the mobile sidebar drawer. Tested at iter 3. (priority: high)
+
+- [ ] [qa/P1] Focus not moved into sidebar on mobile open: After tapping the hamburger button to open the mobile sidebar drawer, focus remains on the hamburger button instead of moving into the sidebar content. Spec says "When mobile sidebar drawer opens, focus should move to the drawer appropriately." Fix: after sidebar opens on mobile, programmatically focus the first focusable element inside the sidebar. Tested at iter 3. (priority: high)
+
+- [ ] [qa/P1] Command palette focus not trapped on open: After pressing Ctrl+K to open command palette on mobile, `document.activeElement` is `BODY` instead of the search input inside the dialog. The palette renders correctly and Escape closes it, but keyboard focus is not in the input field. Fix: auto-focus the command input on open. Tested at iter 3. (priority: high)
 
 ### In Progress
 
-- [x] [review] Gate 3: Add `useIsTouchDevice.test.ts` covering: (a) SSR guard returns false when `window` is undefined, (b) `matchMedia` undefined guard, (c) initial `matches=true` state, (d) `change` event listener updates state, (e) effect cleanup calls `removeEventListener`. Also add `hooks/useIsTouchDevice.ts`, `components/ui/tooltip.tsx`, `components/ui/hover-card.tsx` to the vitest coverage `include` array in `dashboard/vitest.config.ts` (currently only includes `src/App.tsx` and `src/AppView.tsx`). Target >=90% branch coverage on the hook. (priority: high)
+_(none — ready for next task)_
 
 ### Up Next
 
-- [x] [review] Gate 6: Create `proof-manifest.json`. QA session 2 provides equivalent Playwright evidence, so skip with `{"artifacts": []}`. Process gap, not a confidence gap. (priority: medium)
+- [ ] **Fix QA P1 bugs — steer textarea + GitHub aria-label** — Two remaining P1 bugs: (1) Steer textarea at AppView.tsx:1969 has `min-h-[32px] h-8` — change to `min-h-[44px] md:min-h-[32px] h-auto md:h-8` for mobile tap target compliance. (2) GitHub repo link at AppView.tsx:1190 needs `aria-label="Open repo on GitHub"`. Both are single-line fixes. (priority: high)
 
 - [ ] **Audit & fix hover-only interactions** — Confirmed gap: overflow tabs menu (AppView.tsx:1174-1186) uses `group-hover:block` with no click/tap equivalent. The `<div>` is purely hover-revealed with no `onClick` handler. Fix: add click toggle state to the overflow button so the dropdown also opens/closes on tap. No other `onMouseEnter`/`onMouseOver` interactions found that reveal content — all other hover effects are purely cosmetic (Tailwind `hover:` for color/bg changes). (priority: medium)
 
-- [ ] **Add ARIA labels and roles for missing elements** — QA session 2 confirmed: all buttons pass, but GitHub repo link needs `aria-label` (covered in QA Bugs above). Additionally review panel collapse buttons and stop/force-stop buttons for `aria-label`. Radix handles `aria-haspopup`/`aria-expanded` on DropdownMenu triggers (verified: Stop button has `aria-haspopup="menu"`). (priority: medium)
+- [ ] **Add ARIA labels and roles for missing elements** — GitHub repo link `aria-label` is covered by the P1 bug above. Additionally: (1) sidebar expand button (~line 803) — no `aria-label`, (2) sidebar collapse button (~line 883) — no `aria-label`, (3) activity panel collapse button (~line 2315) — no `aria-label`, (4) stop/force-stop dropdown items — verify Radix provides sufficient ARIA (it provides `aria-haspopup="menu"` on triggers). Add `aria-label` to collapse/expand buttons. (priority: medium)
 
 - [ ] **Implement long-press context menu on session cards** — Create a `useLongPress` hook with 500ms threshold using `onTouchStart`/`onTouchEnd`/`onTouchMove` (cancel on move). On trigger, show a context menu (reuse DropdownMenu component) with: Stop session, Force-stop session, Copy session ID. Add haptic feedback via `navigator.vibrate(50)` if available. Apply to session card elements in the sidebar (~line 835-838 of AppView.tsx). (priority: medium)
 
@@ -34,6 +40,10 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 - [ ] **Capture proof artifacts** — [review Gate 6] Capture Playwright screenshots or recordings at mobile viewport showing (a) tap targets at 44px minimum, (b) tooltip opening on tap, (c) hover-card opening on tap. If proof agent cannot produce these, skip with empty artifacts array. (priority: low)
 
 ### Completed
+
+- [x] [review] Gate 6: Create `proof-manifest.json`. QA session 2 provides equivalent Playwright evidence, so skip with `{"artifacts": []}`. Process gap, not a confidence gap.
+
+- [x] [review] Gate 3: Add `useIsTouchDevice.test.ts` with full branch coverage. Added hook + tooltip + hover-card to vitest coverage include array. >=90% branch coverage achieved.
 
 - [x] **Extract `useIsTouchDevice` hook** — [review Gate 4] Extracted from tooltip.tsx and hover-card.tsx into `hooks/useIsTouchDevice.ts`. Both components now import from the shared hook.
 
