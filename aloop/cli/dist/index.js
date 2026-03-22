@@ -5407,6 +5407,7 @@ async function resolveDefaultAssetsDir() {
   const moduleFilePath = fileURLToPath2(import.meta.url);
   const moduleDir = path6.dirname(moduleFilePath);
   const runtimeScriptPath = process.argv[1] ? path6.resolve(process.argv[1]) : null;
+  const npmPackageJson = typeof process.env.npm_package_json === "string" ? path6.resolve(process.env.npm_package_json) : null;
   const candidates = /* @__PURE__ */ new Set();
   if (runtimeScriptPath) {
     candidates.add(path6.join(path6.dirname(runtimeScriptPath), "dashboard"));
@@ -5414,6 +5415,13 @@ async function resolveDefaultAssetsDir() {
   candidates.add(path6.join(moduleDir, "dashboard"));
   candidates.add(path6.resolve(moduleDir, "..", "dashboard"));
   candidates.add(path6.resolve(moduleDir, "..", "..", "dashboard", "dist"));
+  candidates.add(path6.resolve(moduleDir, "..", "..", "..", "dist", "dashboard"));
+  candidates.add(path6.resolve(moduleDir, "..", "..", "..", "dashboard", "dist"));
+  if (npmPackageJson) {
+    const packageDir = path6.dirname(npmPackageJson);
+    candidates.add(path6.join(packageDir, "dist", "dashboard"));
+    candidates.add(path6.join(packageDir, "dashboard", "dist"));
+  }
   candidates.add(devAssetsDir);
   for (const candidateDir of candidates) {
     if (await fileExists2(path6.join(candidateDir, "index.html"))) {
@@ -6797,14 +6805,15 @@ async function compileLoopPlan(options, deps = defaultCompileDeps) {
 
 // src/commands/start.ts
 var LAUNCH_MODE_SET = /* @__PURE__ */ new Set(["start", "restart", "resume"]);
-var PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot", "round-robin"]);
-var MODEL_PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot"]);
+var PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot", "opencode", "round-robin"]);
+var MODEL_PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot", "opencode"]);
 var LOOP_MODE_SET = /* @__PURE__ */ new Set(["plan", "build", "review", "plan-build", "plan-build-review", "single"]);
 var DEFAULT_MODELS = {
   claude: "opus",
   codex: "gpt-5.3-codex",
   gemini: "gemini-3.1-pro-preview",
-  copilot: "gpt-5.3-codex"
+  copilot: "gpt-5.3-codex",
+  opencode: "opencode-default"
 };
 var defaultDeps = {
   discoverWorkspace: discoverWorkspace2,
@@ -7017,6 +7026,13 @@ function normalizeProviderList(values) {
     }
   }
   return normalized;
+}
+function isValidOpenRouterModelPath(model) {
+  if (!model.startsWith("openrouter/")) {
+    return true;
+  }
+  const parts = model.split("/");
+  return parts.length === 3 && parts.every((part) => part.length > 0);
 }
 function sanitizeSessionToken(value) {
   const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -7352,6 +7368,13 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
       Object.entries(projectConfig.models).filter(([provider]) => MODEL_PROVIDER_SET.has(provider))
     )
   };
+  for (const [providerName, modelName] of Object.entries(mergedModels)) {
+    if (!isValidOpenRouterModelPath(modelName)) {
+      throw new Error(
+        `Invalid OpenRouter model path for ${providerName}: ${modelName}. Expected format openrouter/<provider>/<model>.`
+      );
+    }
+  }
   const copilotRetryModel = String(selectValue(projectConfig.retry_models.copilot, globalConfig.retry_models.copilot, "claude-sonnet-4.6") ?? "claude-sonnet-4.6");
   const startedAt = deps.now().toISOString();
   let sessionId;

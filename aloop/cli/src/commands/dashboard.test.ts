@@ -892,6 +892,45 @@ test('dashboard resolves packaged assets when cwd has no dashboard/dist', async 
   }
 });
 
+test('dashboard resolves packaged assets from dist sibling of script path', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-assets-dist-fallback-'));
+  const emptyProjectDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-dashboard-cwd-'));
+  const sessionDir = path.join(root, 'session');
+  const workdir = path.join(root, 'workdir');
+  const fakeDistDir = path.join(root, 'pkg', 'dist');
+  const fakeDistAssetsDir = path.join(fakeDistDir, 'dashboard');
+  await mkdir(sessionDir, { recursive: true });
+  await mkdir(workdir, { recursive: true });
+  await mkdir(fakeDistAssetsDir, { recursive: true });
+  await writeFile(path.join(fakeDistAssetsDir, 'index.html'), '<!doctype html><title>Aloop Dashboard</title>', 'utf8');
+
+  const originalCwd = process.cwd();
+  const originalArgv1 = process.argv[1];
+  let handle: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
+  try {
+    process.chdir(emptyProjectDir);
+    process.argv[1] = path.join(fakeDistDir, 'index.js');
+
+    const port = await reservePort();
+    handle = await startDashboardServer(
+      { port: String(port), sessionDir, workdir },
+      { registerSignalHandlers: false },
+    );
+
+    const response = await fetch(`${handle.url}/`);
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.match(text, /<title>Aloop Dashboard<\/title>/);
+    assert.doesNotMatch(text, /Dashboard assets not found/);
+  } finally {
+    process.chdir(originalCwd);
+    process.argv[1] = originalArgv1;
+    if (handle) {
+      await handle.close();
+    }
+  }
+});
+
 test('POST /api/stop refuses to stop dashboard itself', async () => {
   const fixture = await createServerFixture();
 

@@ -8,21 +8,22 @@ import { resolveHomeDir } from './session.js';
 import type { OutputMode } from './status.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
 
-type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot';
+type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode';
 type LoopProvider = ProviderName | 'round-robin';
 type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review' | 'single';
 type LaunchMode = 'start' | 'restart' | 'resume';
 type StartMonitorMode = 'dashboard' | 'terminal' | 'none';
 
 const LAUNCH_MODE_SET = new Set<LaunchMode>(['start', 'restart', 'resume']);
-const PROVIDER_SET = new Set<LoopProvider>(['claude', 'codex', 'gemini', 'copilot', 'round-robin']);
-const MODEL_PROVIDER_SET = new Set<ProviderName>(['claude', 'codex', 'gemini', 'copilot']);
+const PROVIDER_SET = new Set<LoopProvider>(['claude', 'codex', 'gemini', 'copilot', 'opencode', 'round-robin']);
+const MODEL_PROVIDER_SET = new Set<ProviderName>(['claude', 'codex', 'gemini', 'copilot', 'opencode']);
 const LOOP_MODE_SET = new Set<LoopMode>(['plan', 'build', 'review', 'plan-build', 'plan-build-review', 'single']);
 const DEFAULT_MODELS: Record<ProviderName, string> = {
   claude: 'opus',
   codex: 'gpt-5.3-codex',
   gemini: 'gemini-3.1-pro-preview',
   copilot: 'gpt-5.3-codex',
+  opencode: 'opencode-default',
 };
 
 interface ParsedAloopConfig {
@@ -31,6 +32,8 @@ interface ParsedAloopConfig {
   round_robin_order: string[];
   models: Record<string, string>;
   retry_models: Record<string, string | null>;
+  openrouter_models: string[];
+  cost_routing: Record<string, string>;
   on_start: {
     monitor?: string;
     auto_open?: boolean;
@@ -173,11 +176,13 @@ function parseAloopConfig(content: string): ParsedAloopConfig {
     round_robin_order: [],
     models: {},
     retry_models: {},
+    openrouter_models: [],
+    cost_routing: {},
     on_start: {},
   };
 
-  const listSections = new Set(['enabled_providers', 'round_robin_order']);
-  const mapSections = new Set(['models', 'retry_models', 'on_start']);
+  const listSections = new Set(['enabled_providers', 'round_robin_order', 'openrouter_models']);
+  const mapSections = new Set(['models', 'retry_models', 'cost_routing', 'on_start']);
 
   let activeSection: string | null = null;
   let inBlockScalar = false;
@@ -235,6 +240,8 @@ function parseAloopConfig(content: string): ParsedAloopConfig {
           parsed.enabled_providers.push(value);
         } else if (activeSection === 'round_robin_order') {
           parsed.round_robin_order.push(value);
+        } else if (activeSection === 'openrouter_models') {
+          parsed.openrouter_models.push(value);
         }
       }
       continue;
@@ -257,6 +264,10 @@ function parseAloopConfig(content: string): ParsedAloopConfig {
         } else if (typeof mapValue === 'string' && mapValue.length > 0) {
           parsed.retry_models[mapKey] = mapValue;
         }
+      } else if (activeSection === 'cost_routing') {
+        if ((mapValue === 'prefer_cheap' || mapValue === 'prefer_capable') && mapKey.length > 0) {
+          parsed.cost_routing[mapKey] = mapValue;
+        }
       } else if (activeSection === 'on_start') {
         if (mapKey === 'monitor' && typeof mapValue === 'string' && mapValue.length > 0) {
           parsed.on_start.monitor = mapValue;
@@ -277,6 +288,8 @@ function emptyParsedConfig(): ParsedAloopConfig {
     round_robin_order: [],
     models: {},
     retry_models: {},
+    openrouter_models: [],
+    cost_routing: {},
     on_start: {},
   };
 }
@@ -296,6 +309,10 @@ function toPositiveInt(value: unknown): number | null {
     return parsed > 0 ? parsed : null;
   }
   return null;
+}
+
+function hasConfiguredValue(value: unknown): boolean {
+  return value !== undefined && value !== null;
 }
 
 function toBoolean(value: unknown, fallback: boolean): boolean {
@@ -320,6 +337,14 @@ function normalizeProviderList(values: string[]): ProviderName[] {
     }
   }
   return normalized;
+}
+
+function isValidOpenRouterModelPath(model: string): boolean {
+  if (!model.startsWith('openrouter/')) {
+    return true;
+  }
+  const parts = model.split('/');
+  return parts.length === 3 && parts.every((part) => part.length > 0);
 }
 
 function sanitizeSessionToken(value: string): string {
@@ -712,7 +737,12 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     roundRobinOrder = [...enabledProviders];
   }
 
-  const maxIterations = toPositiveInt(selectValue(options.maxIterations, projectConfig.values.max_iterations, globalConfig.values.max_iterations)) ?? 50;
+  const maxIterationsValue = selectValue(options.maxIterations, projectConfig.values.max_iterations, globalConfig.values.max_iterations);
+  const parsedMaxIterations = toPositiveInt(maxIterationsValue);
+  if (hasConfiguredValue(maxIterationsValue) && parsedMaxIterations === null) {
+    throw new Error(`Invalid --max-iterations value: ${String(maxIterationsValue)} (must be a positive integer)`);
+  }
+  const maxIterations = parsedMaxIterations ?? 50;
   const maxStuck = toPositiveInt(selectValue(projectConfig.values.max_stuck, globalConfig.values.max_stuck)) ?? 3;
   const backupEnabled = toBoolean(selectValue(projectConfig.values.backup_enabled, globalConfig.values.backup_enabled), false);
   const worktreeDefault = toBoolean(selectValue(projectConfig.values.worktree_default, globalConfig.values.worktree_default), true);
@@ -727,6 +757,20 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
       Object.entries(projectConfig.models).filter(([provider]) => MODEL_PROVIDER_SET.has(provider as ProviderName)),
     ) as Record<ProviderName, string>,
   };
+  const openRouterModels = (projectConfig.openrouter_models.length > 0
+    ? projectConfig.openrouter_models
+    : globalConfig.openrouter_models).filter((model) => model.length > 0);
+  const mergedCostRouting = {
+    ...globalConfig.cost_routing,
+    ...projectConfig.cost_routing,
+  };
+  for (const [providerName, modelName] of Object.entries(mergedModels)) {
+    if (!isValidOpenRouterModelPath(modelName)) {
+      throw new Error(
+        `Invalid OpenRouter model path for ${providerName}: ${modelName}. Expected format openrouter/<provider>/<model>.`,
+      );
+    }
+  }
   const copilotRetryModel = String(selectValue(projectConfig.retry_models.copilot, globalConfig.retry_models.copilot, 'claude-sonnet-4.6') ?? 'claude-sonnet-4.6');
 
   const startedAt = deps.now().toISOString();
@@ -825,6 +869,8 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     enabledProviders,
     roundRobinOrder,
     models: mergedModels,
+    openRouterModels,
+    costRouting: mergedCostRouting,
     projectRoot: discovery.project.root,
   }, {
     readFile: (p, enc) => deps.readFile(p, enc),

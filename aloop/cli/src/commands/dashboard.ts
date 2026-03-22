@@ -394,6 +394,9 @@ async function resolveDefaultAssetsDir(): Promise<string> {
   const moduleFilePath = fileURLToPath(import.meta.url);
   const moduleDir = path.dirname(moduleFilePath);
   const runtimeScriptPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
+  const npmPackageJson = typeof process.env.npm_package_json === 'string'
+    ? path.resolve(process.env.npm_package_json)
+    : null;
   const candidates = new Set<string>();
 
   if (runtimeScriptPath) {
@@ -403,6 +406,13 @@ async function resolveDefaultAssetsDir(): Promise<string> {
   candidates.add(path.join(moduleDir, 'dashboard'));
   candidates.add(path.resolve(moduleDir, '..', 'dashboard'));
   candidates.add(path.resolve(moduleDir, '..', '..', 'dashboard', 'dist'));
+  candidates.add(path.resolve(moduleDir, '..', '..', '..', 'dist', 'dashboard'));
+  candidates.add(path.resolve(moduleDir, '..', '..', '..', 'dashboard', 'dist'));
+  if (npmPackageJson) {
+    const packageDir = path.dirname(npmPackageJson);
+    candidates.add(path.join(packageDir, 'dist', 'dashboard'));
+    candidates.add(path.join(packageDir, 'dashboard', 'dist'));
+  }
   candidates.add(devAssetsDir);
 
   for (const candidateDir of candidates) {

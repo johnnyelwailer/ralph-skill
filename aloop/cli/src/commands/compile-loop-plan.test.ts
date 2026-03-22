@@ -791,3 +791,55 @@ test('compileLoopPlan — omits execution controls when not configured', async (
   assert.ok(!content.includes('max_retries:'), 'should not include max_retries when not configured');
   assert.ok(!content.includes('retry_backoff:'), 'should not include retry_backoff when not configured');
 });
+
+test('compileLoopPlan — opencode uses cost routing defaults with openrouter model list', async () => {
+  const { promptsDir, sessionDir } = await setupDirs('clp-opencode-cost-defaults-');
+
+  await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'opencode',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['opencode'],
+    roundRobinOrder: ['opencode'],
+    models: { opencode: 'opencode-default' },
+    openRouterModels: ['xiaomi/mimo-v2-pro', 'anthropic/claude-opus-4.6'],
+  });
+
+  const planPrompt = await readFile(path.join(promptsDir, 'PROMPT_plan.md'), 'utf8');
+  const buildPrompt = await readFile(path.join(promptsDir, 'PROMPT_build.md'), 'utf8');
+  const reviewPrompt = await readFile(path.join(promptsDir, 'PROMPT_review.md'), 'utf8');
+
+  assert.ok(planPrompt.includes('provider: opencode'));
+  assert.ok(planPrompt.includes('model: openrouter/anthropic/claude-opus-4.6'));
+  assert.ok(buildPrompt.includes('model: openrouter/xiaomi/mimo-v2-pro'));
+  assert.ok(reviewPrompt.includes('model: openrouter/anthropic/claude-opus-4.6'));
+});
+
+test('compileLoopPlan — opencode respects explicit cost_routing overrides', async () => {
+  const { promptsDir, sessionDir } = await setupDirs('clp-opencode-cost-override-');
+
+  await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'opencode',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['opencode'],
+    roundRobinOrder: ['opencode'],
+    models: { opencode: 'opencode-default' },
+    openRouterModels: ['xiaomi/mimo-v2-pro', 'anthropic/claude-opus-4.6'],
+    costRouting: {
+      plan: 'prefer_cheap',
+      build: 'prefer_capable',
+    },
+  });
+
+  const planPrompt = await readFile(path.join(promptsDir, 'PROMPT_plan.md'), 'utf8');
+  const buildPrompt = await readFile(path.join(promptsDir, 'PROMPT_build.md'), 'utf8');
+  const reviewPrompt = await readFile(path.join(promptsDir, 'PROMPT_review.md'), 'utf8');
+
+  assert.ok(planPrompt.includes('model: openrouter/xiaomi/mimo-v2-pro'));
+  assert.ok(buildPrompt.includes('model: openrouter/anthropic/claude-opus-4.6'));
+  // Review remains default prefer_capable because override only touched plan/build
+  assert.ok(reviewPrompt.includes('model: openrouter/anthropic/claude-opus-4.6'));
+});
