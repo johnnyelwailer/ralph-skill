@@ -1001,6 +1001,15 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     );
   });
 
+  it('does not require spec files when --issues is provided', async () => {
+    const deps = createMockDeps({ existsSync: () => false });
+    const result = await orchestrateCommandWithDeps({ issues: '99999' }, deps);
+
+    assert.deepStrictEqual(result.state.filter_issues, [99999]);
+    assert.deepStrictEqual(result.state.spec_files, []);
+    assert.equal(result.state.spec_file, 'SPEC.md');
+  });
+
   it('throws when plan file does not exist', async () => {
     const deps = createMockDeps({ existsSync: (p: string) => p.includes('SPEC.md') });
     await assert.rejects(
@@ -4226,7 +4235,7 @@ describe('autonomy level resolution', () => {
 
   it('reads autonomy level from project config when option missing', async () => {
     const level = await resolveOrchestratorAutonomyLevel(
-      { projectRoot: '/project' },
+      { projectRoot: process.cwd() },
       '/home/test',
       {
         existsSync: () => true,
@@ -4238,7 +4247,7 @@ describe('autonomy level resolution', () => {
 
   it('falls back to balanced for invalid config autonomy', async () => {
     const level = await resolveOrchestratorAutonomyLevel(
-      { projectRoot: '/project' },
+      { projectRoot: process.cwd() },
       '/home/test',
       {
         existsSync: () => true,

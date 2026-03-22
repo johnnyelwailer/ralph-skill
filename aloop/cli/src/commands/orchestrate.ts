@@ -1355,19 +1355,20 @@ export async function orchestrateCommandWithDeps(
   const aloopRoot = path.join(homeDir, '.aloop');
   const sessionsRoot = path.join(aloopRoot, 'sessions');
 
+  const filterIssues = parseIssueNumbers(options.issues);
   const specInput = options.spec ?? 'SPEC.md';
   const projectRoot = options.projectRoot ? path.resolve(options.projectRoot) : process.cwd();
   const specFiles = resolveSpecFiles(specInput, projectRoot, deps);
   const existingSpecFiles = specFiles.filter((f) => deps.existsSync(f));
-  if (existingSpecFiles.length === 0) {
+  if (filterIssues === null && existingSpecFiles.length === 0) {
     throw new Error(`No spec files found matching: ${specInput}`);
   }
-  // Primary spec file for backward compatibility (first resolved file)
-  const specFile = path.relative(projectRoot, existingSpecFiles[0]) || existingSpecFiles[0];
+  // Primary spec file for backward compatibility (first resolved file when present).
+  const primarySpecPath = existingSpecFiles[0] ?? specFiles[0] ?? specInput;
+  const specFile = path.relative(projectRoot, primarySpecPath) || primarySpecPath;
   const trunkProvided = options.trunkProvided ?? false;
   let trunkBranch = options.trunk ?? 'agent/trunk';
   const concurrencyCap = parseConcurrency(options.concurrency);
-  const filterIssues = parseIssueNumbers(options.issues);
   const filterLabel = options.label ?? null;
   let filterRepo = options.repo ?? null;
   const planOnly = options.planOnly ?? false;
@@ -1608,7 +1609,7 @@ export async function orchestrateCommandWithDeps(
   }
 
   // If no decomposition has been applied yet, queue epic decomposition from spec.
-  if (!options.plan && state.issues.length === 0) {
+  if (!options.plan && filterIssues === null && state.issues.length === 0) {
     const specLabel = existingSpecFiles.length > 1
       ? existingSpecFiles.map((f) => path.relative(projectRoot, f) || f).join(', ')
       : specFile;
@@ -1642,7 +1643,9 @@ export async function orchestrateCommandWithDeps(
   }
 
   // Global spec gap analysis — queue product + architecture analyst agents for issues needing analysis
-  const gapAnalysisTargets = state.issues.filter((issue) => issue.status === 'Needs analysis');
+  const gapAnalysisTargets = filterIssues === null
+    ? state.issues.filter((issue) => issue.status === 'Needs analysis')
+    : [];
   if (gapAnalysisTargets.length > 0) {
     await createGapAnalysisRequests(state.issues, requestsDir, deps);
 
