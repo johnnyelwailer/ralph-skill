@@ -3852,6 +3852,11 @@ async function scaffoldWorkspace(options = {}) {
     "  gemini: 'gemini-3.1-pro-preview'",
     "  copilot: 'gpt-5.3-codex'",
     "",
+    "cost_routing:",
+    "  plan: 'prefer_capable'",
+    "  build: 'prefer_cheap'",
+    "  review: 'prefer_capable'",
+    "",
     "round_robin_order:",
     ...roundRobin.map((value) => `  - ${toYamlQuoted(value)}`),
     "",
@@ -3963,6 +3968,15 @@ async function scaffoldCommand(options = {}) {
   if (options.output === "text") {
     console.log(`Wrote config: ${result.config_path}`);
     console.log(`Wrote prompts: ${result.prompts_dir}`);
+    if (options.enabledProviders?.includes("opencode")) {
+      console.log("");
+      console.log("Shipped OpenCode agents installed to .opencode/agents/:");
+      console.log("  code-critic       \u2014 Deep code review for subtle bugs and security issues");
+      console.log("  error-analyst     \u2014 Parses error logs and stack traces to suggest fixes");
+      console.log("  vision-reviewer   \u2014 Analyzes screenshots for layout and visual issues");
+      console.log("");
+      console.log("Run them with: opencode run --agent <name>");
+    }
     return;
   }
   console.log(JSON.stringify(result, null, 2));
@@ -6510,6 +6524,11 @@ import path9 from "node:path";
 import { readFile as readFile6, writeFile as writeFile6 } from "node:fs/promises";
 import { existsSync as existsSync6 } from "node:fs";
 import path8 from "node:path";
+var DEFAULT_COST_ROUTING = {
+  plan: "prefer_capable",
+  build: "prefer_cheap",
+  review: "prefer_capable"
+};
 var defaultCompileDeps = {
   readFile: readFile6,
   writeFile: writeFile6,
@@ -6740,8 +6759,40 @@ ${afterFrontmatter}`;
 
 ${content}`;
 }
+function isCostRoutingPreference(value) {
+  return value === "prefer_cheap" || value === "prefer_capable";
+}
+function resolveCostRoutingPreference(agent, costRouting) {
+  const configured = costRouting[agent];
+  if (configured && isCostRoutingPreference(configured)) {
+    return configured;
+  }
+  return DEFAULT_COST_ROUTING[agent] ?? "prefer_capable";
+}
+function toOpenRouterModelPath(model) {
+  return model.startsWith("openrouter/") ? model : `openrouter/${model}`;
+}
+function selectOpencodeModelForPhase(agent, fallbackModel, openRouterModels, costRouting) {
+  if (openRouterModels.length === 0) {
+    return fallbackModel;
+  }
+  const preference = resolveCostRoutingPreference(agent, costRouting);
+  const selected = preference === "prefer_cheap" ? openRouterModels[0] : openRouterModels[openRouterModels.length - 1];
+  return toOpenRouterModelPath(selected);
+}
 async function compileLoopPlan(options, deps = defaultCompileDeps) {
-  const { mode, provider, promptsDir, sessionDir, enabledProviders, roundRobinOrder, models, projectRoot } = options;
+  const {
+    mode,
+    provider,
+    promptsDir,
+    sessionDir,
+    enabledProviders,
+    roundRobinOrder,
+    models,
+    openRouterModels = [],
+    costRouting = {},
+    projectRoot
+  } = options;
   const isRoundRobin = provider === "round-robin";
   let cycleEntries;
   if (isRoundRobin) {
@@ -6767,6 +6818,9 @@ async function compileLoopPlan(options, deps = defaultCompileDeps) {
     } else {
       promptProvider = isRoundRobin ? roundRobinOrder[0] ?? "claude" : provider;
       promptModel = models[promptProvider] ?? "";
+    }
+    if (promptProvider === "opencode") {
+      promptModel = selectOpencodeModelForPhase(agent, promptModel, openRouterModels, costRouting);
     }
     const agentConfig = await getAgentConfig(agent, projectRoot, deps);
     const reasoning = agentConfig.reasoning;
@@ -6889,10 +6943,12 @@ function parseAloopConfig(content) {
     round_robin_order: [],
     models: {},
     retry_models: {},
+    openrouter_models: [],
+    cost_routing: {},
     on_start: {}
   };
-  const listSections = /* @__PURE__ */ new Set(["enabled_providers", "round_robin_order"]);
-  const mapSections = /* @__PURE__ */ new Set(["models", "retry_models", "on_start"]);
+  const listSections = /* @__PURE__ */ new Set(["enabled_providers", "round_robin_order", "openrouter_models"]);
+  const mapSections = /* @__PURE__ */ new Set(["models", "retry_models", "cost_routing", "on_start"]);
   let activeSection = null;
   let inBlockScalar = false;
   const lines = content.split(/\r?\n/);
@@ -6944,6 +7000,8 @@ function parseAloopConfig(content) {
           parsed.enabled_providers.push(value);
         } else if (activeSection === "round_robin_order") {
           parsed.round_robin_order.push(value);
+        } else if (activeSection === "openrouter_models") {
+          parsed.openrouter_models.push(value);
         }
       }
       continue;
@@ -6965,6 +7023,10 @@ function parseAloopConfig(content) {
         } else if (typeof mapValue === "string" && mapValue.length > 0) {
           parsed.retry_models[mapKey] = mapValue;
         }
+      } else if (activeSection === "cost_routing") {
+        if ((mapValue === "prefer_cheap" || mapValue === "prefer_capable") && mapKey.length > 0) {
+          parsed.cost_routing[mapKey] = mapValue;
+        }
       } else if (activeSection === "on_start") {
         if (mapKey === "monitor" && typeof mapValue === "string" && mapValue.length > 0) {
           parsed.on_start.monitor = mapValue;
@@ -6983,6 +7045,8 @@ function emptyParsedConfig() {
     round_robin_order: [],
     models: {},
     retry_models: {},
+    openrouter_models: [],
+    cost_routing: {},
     on_start: {}
   };
 }
@@ -7001,6 +7065,9 @@ function toPositiveInt(value) {
     return parsed > 0 ? parsed : null;
   }
   return null;
+}
+function hasConfiguredValue(value) {
+  return value !== void 0 && value !== null;
 }
 function toBoolean(value, fallback) {
   if (typeof value === "boolean")
@@ -7354,7 +7421,12 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
   if (roundRobinOrder.length === 0) {
     roundRobinOrder = [...enabledProviders];
   }
-  const maxIterations = toPositiveInt(selectValue(options.maxIterations, projectConfig.values.max_iterations, globalConfig.values.max_iterations)) ?? 50;
+  const maxIterationsValue = selectValue(options.maxIterations, projectConfig.values.max_iterations, globalConfig.values.max_iterations);
+  const parsedMaxIterations = toPositiveInt(maxIterationsValue);
+  if (hasConfiguredValue(maxIterationsValue) && parsedMaxIterations === null) {
+    throw new Error(`Invalid --max-iterations value: ${String(maxIterationsValue)} (must be a positive integer)`);
+  }
+  const maxIterations = parsedMaxIterations ?? 50;
   const maxStuck = toPositiveInt(selectValue(projectConfig.values.max_stuck, globalConfig.values.max_stuck)) ?? 3;
   const backupEnabled = toBoolean(selectValue(projectConfig.values.backup_enabled, globalConfig.values.backup_enabled), false);
   const worktreeDefault = toBoolean(selectValue(projectConfig.values.worktree_default, globalConfig.values.worktree_default), true);
@@ -7367,6 +7439,11 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     ...Object.fromEntries(
       Object.entries(projectConfig.models).filter(([provider]) => MODEL_PROVIDER_SET.has(provider))
     )
+  };
+  const openRouterModels = (projectConfig.openrouter_models.length > 0 ? projectConfig.openrouter_models : globalConfig.openrouter_models).filter((model) => model.length > 0);
+  const mergedCostRouting = {
+    ...globalConfig.cost_routing,
+    ...projectConfig.cost_routing
   };
   for (const [providerName, modelName] of Object.entries(mergedModels)) {
     if (!isValidOpenRouterModelPath(modelName)) {
@@ -7457,6 +7534,8 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
     enabledProviders,
     roundRobinOrder,
     models: mergedModels,
+    openRouterModels,
+    costRouting: mergedCostRouting,
     projectRoot: discovery.project.root
   }, {
     readFile: (p, enc) => deps.readFile(p, enc),
@@ -8833,7 +8912,7 @@ function sanitizeBranchSlug(value) {
   return slug.slice(0, 40).replace(/-+$/g, "");
 }
 function extractRepoFromIssueUrl(url) {
-  const match = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/issues\/\d+/i);
+  const match = url.match(/^https?:\/\/[^\/]+\/([^\/]+)\/([^\/]+)\/issues\/\d+/i);
   if (!match) {
     return null;
   }
@@ -10332,6 +10411,15 @@ async function setupCommandWithDeps(options, deps) {
     safetyRules
   });
   console.log(`Setup complete. Config written to: ${result.config_path}`);
+  if (enabledProviders.includes("opencode")) {
+    console.log("");
+    console.log("Shipped OpenCode agents installed to .opencode/agents/:");
+    console.log("  code-critic       \u2014 Deep code review for subtle bugs and security issues");
+    console.log("  error-analyst     \u2014 Parses error logs and stack traces to suggest fixes");
+    console.log("  vision-reviewer   \u2014 Analyzes screenshots for layout and visual issues");
+    console.log("");
+    console.log("Run them with: opencode run --agent <name>");
+  }
 }
 async function setupCommand(options = {}) {
   let rl = null;
