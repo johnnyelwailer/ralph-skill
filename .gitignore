@@ -28,6 +28,7 @@ STEERING.md
 TASK_SPEC.md
 QA_LOG.md
 QA_COVERAGE.md
+RESEARCH.md
 
 # Misc
 .env
@@ -40,13 +41,6 @@ aloop/cli/dashboard/test-results/
 *-verification.txt
 *.tgz
 .mcp.json
-
-# Aloop working artifacts (not for PR)
-TODO.md
-STEERING.md
-QA_COVERAGE.md
-QA_LOG.md
-REVIEW_LOG.md
 
 # Proof screenshots (ephemeral test artifacts)
 proof-artifacts/

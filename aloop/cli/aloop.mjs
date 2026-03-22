@@ -5,6 +5,9 @@
  * Other tasks (dashboard, gh, etc.) are delegated to the bundled TypeScript CLI.
  */
 
+// CLAUDECODE sanitization as per SPEC
+delete process.env.CLAUDECODE;
+
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -236,9 +239,6 @@ async function run() {
         // Delegate to bundled CLI for non-core tasks
         const bundlePath = join(__dirname, 'dist', 'index.js');
         if (existsSync(bundlePath)) {
-          // CLAUDECODE sanitization as per SPEC
-          delete process.env.CLAUDECODE;
-          
           await import('./dist/index.js');
         } else {
           console.error(`Error: unknown command "${command}" and aloop CLI bundle not found.`);
