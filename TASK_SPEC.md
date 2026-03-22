@@ -29,7 +29,7 @@ The provider health system is critical infrastructure shared across all loop ses
 - [ ] Backoff escalation verified through all 5 tiers to 60-min cap
 - [ ] Concurrent write test with 2+ parallel writers produces valid JSON
 - [ ] Lock failure test verifies graceful degradation (no crash, warning logged)
-- [x] TypeScript `readProviderHealth()` tests pass
+- [ ] TypeScript `readProviderHealth()` tests pass
 - [ ] Status formatting tests verify correct output for all 3 states
 - [ ] Cross-session health reset verified
 
