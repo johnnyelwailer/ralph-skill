@@ -16,7 +16,7 @@
 
 #### QA & Coverage (priority: high)
 
-- [ ] QA coverage tracking enforcement — QA prompt (qa.md) has basic priority ordering ("never → completed → failed") but lacks full SPEC algorithm (UNTESTED > FAIL > incomplete > stale); review Gate 10 for QA coverage not defined (only Gates 1-9 exist in review.md). Pipe-delimited format IS in the prompt. (SPEC-ADDENDUM §QA Agent: Coverage-Aware Testing)
+- [x] QA coverage tracking enforcement — qa.md updated with full SPEC priority algorithm (UNTESTED > FAIL > incomplete > stale), structured 7-column coverage format, acceptance criteria extraction step, and target selection reasoning in QA_LOG.md; review.md updated with Gate 10 (QA Coverage & Bug Fix Rate); all "9 gates" references updated to "10 gates" (SPEC-ADDENDUM §QA Agent: Coverage-Aware Testing)
 - [ ] Finalizer QA coverage gate — finalizer (loop.sh:2440-2451) exits unconditionally without checking QA_COVERAGE.md; spec requires abort if >30% UNTESTED or any FAIL features remain (SPEC-ADDENDUM §QA Coverage Enforcement at Loop Exit)
 
 #### Dashboard (priority: medium)
