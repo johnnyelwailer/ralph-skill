@@ -440,11 +440,44 @@ async function handleSteerChild(request: SteerChildRequest, fileName: string, op
   await writeSuccessToQueue(request, { status: 'steered', session_id: childSessionId }, options, fileName);
 }
 
+async function findSessionByIssue(aloopDir: string, issueNumber: number): Promise<string | null> {
+  const activePath = path.join(aloopDir, 'active.json');
+  if (!existsSync(activePath)) return null;
+  const active: Record<string, any> = JSON.parse(await fs.readFile(activePath, 'utf8'));
+  for (const [sessionId, entry] of Object.entries(active)) {
+    const metaPath = path.join(aloopDir, 'sessions', sessionId, 'meta.json');
+    if (!existsSync(metaPath)) continue;
+    try {
+      const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+      if (meta.issue_number === issueNumber) return sessionId;
+    } catch { /* skip unreadable meta */ }
+  }
+  return null;
+}
+
 async function handleStopChild(request: StopChildRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
+  const issueNumber = request.payload.issue_number;
+  const homeDir = path.dirname(options.aloopDir);
+
+  // First try to find via active.json + meta.json (works for orchestrator-spawned children)
+  const sessionId = await findSessionByIssue(options.aloopDir, issueNumber);
+  if (sessionId) {
+    // Import stopSession dynamically to avoid circular dependency issues
+    // @ts-expect-error: Untyped .mjs core module
+    const { stopSession } = await import('../../lib/session.mjs');
+    const result = await stopSession(homeDir, sessionId);
+    if (!result.success) {
+      throw new Error(`Failed to stop child session ${sessionId}: ${result.reason}`);
+    }
+    await writeSuccessToQueue(request, { status: 'stopped', session_id: sessionId }, options, fileName);
+    return;
+  }
+
+  // Fall back to gh stop for watch.json-tracked sessions
   const args = [
     'gh', 'stop',
-    '--issue', String(request.payload.issue_number),
-    '--home-dir', path.dirname(options.aloopDir),
+    '--issue', String(issueNumber),
+    '--home-dir', homeDir,
     '--output', 'json'
   ];
   const spawn = options.spawnSync || spawnSync;
