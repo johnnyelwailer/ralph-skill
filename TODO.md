@@ -12,7 +12,7 @@
 
 - [x] [qa/P2] `aloop discover --project-root /nonexistent` returns exit 0 with empty results — fixed: `resolveProjectRoot()` now validates path exists via `existsSync()` before proceeding; throws clear error that propagates through `withErrorHandling` to exit non-zero
 - [x] [qa/P2] `aloop setup` crashes with exit 13 in non-TTY environments — fixed: `setupCommand()` now guards interactive mode behind `stdin/stdout` TTY checks and throws a clear `--non-interactive` guidance error instead of invoking `readline` without a terminal.
-- [ ] [qa/P2] `aloop setup` missing `--output json` option — CLI registration in index.ts (lines 43-53) lacks `--output` option unlike other commands (e.g., scaffold at line 70). Should add `.option('--output <mode>')` to setup command. (priority: high)
+- [x] [qa/P2] `aloop setup` missing `--output json` option — fixed: added `.option('--output <mode>', 'Output format: json or text', 'text')` to setup command registration in `aloop/cli/src/index.ts` and added integration coverage in `aloop/cli/src/index.test.ts` asserting JSON-formatted setup errors under non-TTY when `--output json` is set.
 
 #### QA & Coverage (priority: high)
 

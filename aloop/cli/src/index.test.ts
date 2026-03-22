@@ -93,6 +93,25 @@ test('index CLI setup prints helpful error when interactive mode runs without a 
   assert.match(result.stderr, /--non-interactive/);
 });
 
+test('index CLI setup emits JSON-formatted errors when --output json is requested', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-setup-json-notty-'));
+  const tempHome = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-setup-json-home-'));
+
+  const result = await runCli([
+    'setup',
+    '--project-root',
+    tempRoot,
+    '--home-dir',
+    tempHome,
+    '--output',
+    'json',
+  ]);
+
+  assert.equal(result.code, 1);
+  const payload = JSON.parse(result.stderr.trim());
+  assert.equal(payload.error, 'Interactive setup requires a TTY. Re-run with --non-interactive to use defaults.');
+});
+
 test('index CLI returns non-zero for unknown command', async () => {
   const result = await runCli(['unknown-command']);
   assert.notEqual(result.code, 0);

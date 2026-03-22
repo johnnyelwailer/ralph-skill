@@ -50,6 +50,7 @@ program
   .option('--mode <mode>', 'Setup mode: loop or orchestrate')
   .option('--autonomy-level <level>', 'Autonomy level: cautious, balanced, or autonomous')
   .option('--non-interactive', 'Skip interactive prompts and use defaults')
+  .option('--output <mode>', 'Output format: json or text', 'text')
   .action(withErrorHandling(setupCommand));
 
 program
