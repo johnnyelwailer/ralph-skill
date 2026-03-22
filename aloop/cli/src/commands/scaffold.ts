@@ -37,6 +37,15 @@ export async function scaffoldCommand(options: ScaffoldCommandOptions = {}) {
   if (options.output === 'text') {
     console.log(`Wrote config: ${result.config_path}`);
     console.log(`Wrote prompts: ${result.prompts_dir}`);
+    if (options.enabledProviders?.includes('opencode')) {
+      console.log('');
+      console.log('Shipped OpenCode agents installed to .opencode/agents/:');
+      console.log('  code-critic       — Deep code review for subtle bugs and security issues');
+      console.log('  error-analyst     — Parses error logs and stack traces to suggest fixes');
+      console.log('  vision-reviewer   — Analyzes screenshots for layout and visual issues');
+      console.log('');
+      console.log('Run them with: opencode run --agent <name>');
+    }
     return;
   }
 
