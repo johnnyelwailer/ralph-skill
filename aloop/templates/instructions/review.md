@@ -21,7 +21,7 @@ RESEARCH.md
 6. Commit the updated files (TODO.md, REVIEW_LOG.md)
 7. Exit
 
-## The 9 Gates
+## The 10 Gates
 
 ### Gate 1: Spec Compliance
 
