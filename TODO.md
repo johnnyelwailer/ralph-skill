@@ -4,8 +4,8 @@
 
 ### Review Findings (highest priority)
 
-- [x] [review] Gate 4: `loop.sh:2352` — `mkdir -p "$SESSION_DIR/artifacts/iter-$ITERATION"` is now redundant with `loop.sh:2246` `mkdir -p "$ARTIFACTS_DIR/iter-$ITERATION"` (same path via `ARTIFACTS_DIR="$SESSION_DIR/artifacts"`). Remove the duplicate at line 2352. (priority: high)
-- [x] [review] Gate 9: `aloop/templates/instructions/review.md:24` — section heading still reads `## The 9 Gates` but there are now 10 gates. Update to `## The 10 Gates`. (priority: high)
+- [x] [review] Gate 4: `loop.sh:2352` — `mkdir -p "$SESSION_DIR/artifacts/iter-$ITERATION"` is now redundant with `loop.sh:2246` `mkdir -p "$ARTIFACTS_DIR/iter-$ITERATION"` (same path via `ARTIFACTS_DIR="$SESSION_DIR/artifacts"`). Remove the duplicate at line 2352. (priority: high) [reviewed: resolved in edd0ff4]
+- [x] [review] Gate 9: `aloop/templates/instructions/review.md:24` — section heading still reads `## The 9 Gates` but there are now 10 gates. Update to `## The 10 Gates`. (priority: high) [reviewed: resolved in edd0ff4, gates 1-10 pass]
 
 ### In Progress
 
