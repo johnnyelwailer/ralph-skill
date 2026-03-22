@@ -2862,6 +2862,14 @@ export async function launchChildLoop(
     }
   }
 
+  // CRITICAL: Set upstream to the correct remote branch, not agent/trunk.
+  // git worktree add -b <branch> origin/agent/trunk sets tracking to origin/agent/trunk,
+  // which causes `git push -u origin HEAD` to push directly to agent/trunk.
+  deps.spawnSync('git', ['-C', worktreePath, 'branch', '--set-upstream-to', `origin/${branchName}`], { encoding: 'utf8' });
+  // If the remote branch doesn't exist yet, unset upstream entirely — push -u will create it correctly
+  deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.merge`], { encoding: 'utf8' });
+  deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.remote`], { encoding: 'utf8' });
+
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
   await deps.writeFile(path.join(worktreePath, 'TODO.md'), todoContent, 'utf8');

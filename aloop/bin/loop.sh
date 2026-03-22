@@ -2304,9 +2304,13 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     fi
 
     # Auto-push to remote after commits (orchestrator child loops)
+    # Use explicit branch name to avoid pushing to wrong upstream (e.g., agent/trunk)
     if [ "$ITERATION_COMMIT_COUNT" -gt 0 ] 2>/dev/null; then
         if git remote get-url origin &>/dev/null; then
-            git push -u origin HEAD 2>&1 | tail -1 || true
+            CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+            if [ -n "$CURRENT_BRANCH" ] && [ "$CURRENT_BRANCH" != "agent/trunk" ] && [ "$CURRENT_BRANCH" != "master" ] && [ "$CURRENT_BRANCH" != "main" ]; then
+                git push -u origin "$CURRENT_BRANCH" 2>&1 | tail -1 || true
+            fi
         fi
     fi
 
