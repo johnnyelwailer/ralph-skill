@@ -63,6 +63,23 @@ All gates pass. Integration suite: 125 dashboard tests + 8 CLI tests pass, type-
 
 ---
 
+## Review — 2026-03-22 18:00 — commit 1eb6a16..d227524
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** AppView.tsx, orchestrate.ts, smoke.spec.ts
+
+- Gate 4: Commit 3999c88 adds 5 review fields to `OrchestratorIssue` interface but does NOT remove the `(issue as any)` casts at orchestrate.ts:3665, 5377, 5396, 5414, 5421-5424. The types are declared but never used — every access still goes through `as any`, defeating the purpose of the change.
+- Gate 1: PASS — focus management fixes (Escape close, auto-focus sidebar/command palette) correctly address 3 QA P1 bugs.
+- Gate 2: PASS — `smoke.spec.ts:154-167` asserts concrete 44px thresholds with descriptive messages; focus changes verified by QA session 5.
+- Gate 3: PASS — `orchestrate.ts` change is 5 lines of interface declarations (no branches); `AppView.tsx` adds 20 lines to a 2400-line component.
+- Gate 5: PASS — 1020 CLI tests pass, 125 dashboard tests pass, `tsc --noEmit` clean.
+- Gate 6: PASS — `proof-manifest.json` has `{"artifacts": []}`, correct for internal changes.
+- Gate 7: PASS — new Playwright E2E test verifies 6 mobile controls at 390x844 viewport meet 44x44 minimum.
+- Gate 8: PASS — no dependency changes.
+- Gate 9: PASS — no docs changes needed.
+
+---
+
 ## Review — 2026-03-22 16:00 — commit 0341dbc..1eb6a16
 
 **Verdict: PASS** (3 observations)
