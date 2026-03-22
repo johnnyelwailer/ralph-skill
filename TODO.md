@@ -14,8 +14,8 @@
 
 - [ ] [qa/P1] Re-verify baselines directory creation: QA says `artifacts/baselines/` not created, but loop.sh:1967 and loop.ps1:1917 both run `mkdir -p "$ARTIFACTS_DIR/baselines"` unconditionally at session init. The QA test 2 had iterations run with `artifacts/iter-N/` created (same parent), so baselines should also exist. Needs re-test to confirm — the original QA may have checked the wrong path. (priority: medium)
 
-- [ ] [review] Gate 10: QA coverage is 28.6% (2 PASS / 7 features) — below 30% threshold. Root cause: proof phase never runs in QA because finalizer array is empty in loop-plan.json. After implementing proof skip protocol above, re-run QA covering proof manifest validation, proof skip protocol, and subagent hints. This should move BLOCKED features to PASS/FAIL and push coverage above 30%. (priority: high)
+- [x] [review] Gate 10: QA coverage is 28.6% (2 PASS / 7 features) — below 30% threshold. Root cause: proof phase never runs in QA because finalizer array is empty in loop-plan.json. After implementing proof skip protocol above, re-run QA covering proof manifest validation, proof skip protocol, and subagent hints. This should move BLOCKED features to PASS/FAIL and push coverage above 30%. (priority: high)
 
 ### Completed
 
-(none yet)
+- [x] [review] Gate 10 QA re-verification executed. Updated QA_COVERAGE.md and QA_LOG.md with runtime re-tests showing: template placeholder substitution PASS at runtime, baselines directory creation PASS, proof manifest validation PASS, proof skip protocol PASS (proof_skipped event logged with reason). Remaining partial item is subagent-hints expansion task.
