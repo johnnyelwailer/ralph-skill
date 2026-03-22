@@ -17,7 +17,7 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 ### Up Next
 
-- [ ] [review] Gate 6: Create `proof-manifest.json`. QA session 2 provides equivalent Playwright evidence, so skip with `{"artifacts": []}`. Process gap, not a confidence gap. (priority: medium)
+- [x] [review] Gate 6: Create `proof-manifest.json`. QA session 2 provides equivalent Playwright evidence, so skip with `{"artifacts": []}`. Process gap, not a confidence gap. (priority: medium)
 
 - [ ] **Audit & fix hover-only interactions** — Confirmed gap: overflow tabs menu (AppView.tsx:1174-1186) uses `group-hover:block` with no click/tap equivalent. The `<div>` is purely hover-revealed with no `onClick` handler. Fix: add click toggle state to the overflow button so the dropdown also opens/closes on tap. No other `onMouseEnter`/`onMouseOver` interactions found that reveal content — all other hover effects are purely cosmetic (Tailwind `hover:` for color/bg changes). (priority: medium)
 
