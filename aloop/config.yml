@@ -12,6 +12,10 @@ max_stuck: 3
 # Remote backup: push to GitHub after each commit
 backup_enabled: false
 
+on_start:
+  monitor: dashboard      # dashboard | terminal | none
+  auto_open: true         # open browser/terminal automatically
+
 # Default models per provider
 # KEEP CURRENT: Update these when new model versions release.
 # This file is the single source of truth for default model IDs.
