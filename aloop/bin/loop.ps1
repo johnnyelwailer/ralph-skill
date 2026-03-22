@@ -853,6 +853,88 @@ function Check-AllTasksComplete {
     return $false
 }
 
+function Append-PlanTaskIfMissing {
+    param([string]$TaskText)
+    if ([string]::IsNullOrWhiteSpace($TaskText) -or -not (Test-Path $planFile)) { return }
+    $content = Get-Content -Path $planFile -Raw -ErrorAction SilentlyContinue
+    if ($content -and $content.Contains($TaskText)) { return }
+    Add-Content -Path $planFile -Value "`n- [ ] $TaskText" -Encoding utf8
+}
+
+function Check-FinalizerQaCoverageGate {
+    $script:finalizerQaGateReason = ""
+    $script:finalizerQaGateMessage = ""
+    $script:finalizerQaTotal = 0
+    $script:finalizerQaUntested = 0
+    $script:finalizerQaFail = 0
+
+    $coverageFile = Join-Path $WorkDir "QA_COVERAGE.md"
+    if (-not (Test-Path $coverageFile)) {
+        $script:finalizerQaGateReason = "qa_coverage_missing"
+        $script:finalizerQaGateMessage = "QA_COVERAGE.md is missing"
+        Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Create QA_COVERAGE.md baseline and run QA coverage pass before loop exit"
+        return $false
+    }
+
+    $lines = Get-Content -Path $coverageFile -ErrorAction SilentlyContinue
+    $total = 0
+    $untested = 0
+    $fail = 0
+    $failFeatures = @()
+
+    foreach ($line in $lines) {
+        if ($line -notmatch '^\|') { continue }
+        $cols = $line -split '\|'
+        if ($cols.Count -lt 6) { continue }
+        $feature = $cols[1].Trim()
+        $status = $cols[5].Trim().ToUpper()
+        if ([string]::IsNullOrWhiteSpace($feature) -or $feature -eq 'Feature') { continue }
+        if ($status -notin @('PASS', 'FAIL', 'UNTESTED')) { continue }
+        $total++
+        if ($status -eq 'UNTESTED') { $untested++ }
+        if ($status -eq 'FAIL') {
+            $fail++
+            $failFeatures += $feature
+        }
+    }
+
+    $script:finalizerQaTotal = $total
+    $script:finalizerQaUntested = $untested
+    $script:finalizerQaFail = $fail
+
+    if ($total -le 0) {
+        $script:finalizerQaGateReason = "qa_coverage_unparseable"
+        $script:finalizerQaGateMessage = "QA_COVERAGE.md did not contain parseable PASS/FAIL/UNTESTED rows"
+        Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Fix QA_COVERAGE.md table format so finalizer can enforce coverage"
+        return $false
+    }
+
+    $untestedPct = [int]($untested * 100 / $total)
+    $blocked = $false
+
+    if ($fail -gt 0) {
+        $blocked = $true
+        foreach ($f in $failFeatures) {
+            Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Resolve FAIL coverage item: $f"
+        }
+    }
+
+    if ($untestedPct -gt 30) {
+        $blocked = $true
+        Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=30% (currently $untested/$total, $untestedPct%)"
+    }
+
+    if ($blocked) {
+        $script:finalizerQaGateReason = "qa_coverage_blocked"
+        $script:finalizerQaGateMessage = "QA coverage gate blocked exit (UNTESTED=$untested/$total, FAIL=$fail)"
+        return $false
+    }
+
+    $script:finalizerQaGateReason = "qa_coverage_pass"
+    $script:finalizerQaGateMessage = "QA coverage gate passed (UNTESTED=$untested/$total, FAIL=$fail)"
+    return $true
+}
+
 function Get-CurrentTask {
     $lines = Get-PlanLines
     $line = $lines | Where-Object { $_ -match '^\s*-\s+\[ \]' } | Select-Object -First 1
