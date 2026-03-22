@@ -4,22 +4,13 @@
 
 ### In Progress
 
-- [x] Use `SessionDetail` component in `Header` — extended SessionDetail with `extraHoverContent` prop, imported and used in Header to replace duplicated code (status dot, session name, iteration hover card, progress bar, phase badge, status label). Header-only items (mobile menu, elapsed timer, provider label, connection indicator, command palette) remain as siblings. [reviewed: gates 1-9 pass]
+- [x] [blocker] Resolve TASK_SPEC.md merge conflicts — resolved by keeping only #154 content, removing #134 markers
 
-- [x] Fix branch data pipeline — `SessionCard.tsx:44-45` renders `session.branch` but it's always empty at runtime. The server-side `loadStateForContext()` in `dashboard.ts` enriches sessions from `status.json` but does not merge `meta.json` data (which contains the `branch` field). SPEC line 1076: "Includes `branch` from `meta.json` in session data." Fixed enrichment in `dashboard.ts` to read `meta.json` and merge `branch` into active/recent session objects, with regression coverage in `dashboard.test.ts`. (priority: high) [reviewed: gates 1-9 pass]
+- [ ] [blocker] Stabilize existing dashboard asset-resolution test in this environment — `aloop/cli/src/commands/dashboard.test.ts` currently has a pre-existing failing case (`dashboard resolves packaged assets when cwd has no dashboard/dist`) expecting `<title>Aloop Dashboard</title>` while runtime serves fallback HTML without a `<title>` tag. This is unrelated to branch pipeline logic but prevents full `npm --prefix aloop/cli test` from passing. (priority: medium)
 
 ### Up Next
 
-- [x] Add unit tests for extracted session components — `SessionCard.tsx`, `SessionList.tsx`, and `helpers.tsx` have zero dedicated test files. Only exercised indirectly through `App.coverage.test.ts:629` Sidebar test. Need tests covering: empty branch/phase/iterations in SessionCard, all StatusDot status variants (7 statuses), PhaseBadge with unknown phase, relativeTime with invalid date, empty sessions array in SessionList, isSelected when selectedSessionId is null, active/older split logic with 24h cutoff. (priority: medium) [reviewed: gates 1-9 pass]
-- [ ] [blocker] Stabilize existing dashboard asset-resolution test in this environment — `aloop/cli/src/commands/dashboard.test.ts` currently has a pre-existing failing case (`dashboard resolves packaged assets when cwd has no dashboard/dist`) expecting `<title>Aloop Dashboard</title>` while runtime serves fallback HTML without a `<title>` tag. This is unrelated to branch pipeline logic but prevents full `npm --prefix aloop/cli test` from passing. (priority: medium)
-
-### QA Bugs
-
-- [ ] [qa/P1] Branch name missing from session cards: Tested dashboard at http://localhost:43591 with Playwright → session cards show name, phase, iteration, relative time but NO branch name. API `/api/state` `activeSessions` objects have no `branch` key. SPEC line 1092 requires "branch name" in card fields. The `dashboard.ts` enrichment fix (commit c6b6678) may not be loading `meta.json` correctly at runtime. Tested at iter 16. (priority: high)
-
-### Deferred
-
-- [ ] [qa/P1→deferred] Session grouping label style mismatch — QA re-confirmed at iter 16: sidebar uses "recent" label (not "Older" as SPEC line 1085 requires). Project grouping by name works correctly. Not stale — the label genuinely differs from spec. (priority: low)
+- [ ] [qa/P1] Branch name missing from session cards — The code fix (commit c6b6678) is architecturally correct: `enrichSessionEntriesWithStatusAndMeta()` reads `meta.json`, extracts `branch`, merges into session objects, and `toSession()` maps it to the frontend. However QA at iter 16 found branch still absent at runtime via `/api/state`. Likely cause: test sessions don't have `meta.json` files with `branch` populated, OR the enrichment runs against session dirs that lack `meta.json`. Need runtime verification — if sessions genuinely lack meta.json, the code is working correctly (branch is optional). Downgrade if confirmed as data issue, not code bug. (priority: high)
 
 ### Completed
 
@@ -34,7 +25,11 @@
 - [x] Ctrl+B toggles sidebar visibility
 - [x] Active/Older section headers are collapsible
 - [x] Session cards show status dots with correct colors
+- [x] Use `SessionDetail` component in `Header` — extended SessionDetail with `extraHoverContent` prop, imported and used in Header to replace duplicated code (status dot, session name, iteration hover card, progress bar, phase badge, status label). Header-only items (mobile menu, elapsed timer, provider label, connection indicator, command palette) remain as siblings. [reviewed: gates 1-9 pass]
+- [x] Fix branch data pipeline — server-side `loadStateForContext()` in `dashboard.ts` now enriches sessions from both `status.json` and `meta.json`, merging `branch` into active/recent session objects, with regression coverage in `dashboard.test.ts`. [reviewed: gates 1-9 pass]
+- [x] Add unit tests for extracted session components — `SessionCard.test.tsx`, `SessionList.test.tsx`, `helpers.test.tsx` cover empty state, status variants, phase badge, relativeTime, 24h cutoff, selection logic. [reviewed: gates 1-9 pass]
 
 ### Cancelled
 
 - [~] [qa/P1] Force stop (SIGKILL) button missing — Footer actually has a dropdown menu (AppView.tsx:1514-1531) with both "Stop after iteration (SIGTERM)" and "Kill immediately (SIGKILL)" options. QA finding was incorrect; tested at an earlier iteration before dropdown was added.
+- [~] [qa/P1→deferred] Session grouping label style mismatch — QA claimed sidebar uses "recent" label instead of "Older". Verified code: `SessionList.tsx:69` renders "Older" which matches SPEC line 1085. QA finding was incorrect.
