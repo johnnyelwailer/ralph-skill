@@ -89,3 +89,41 @@ RESULT: PASS — all SPEC line 1124-1130 fields present
 - `artifacts/qa-sidebar-toggled.png` — Sidebar after first Ctrl+B toggle (collapsed to 40px)
 - `artifacts/qa-sidebar-collapsed.png` — Collapsed sidebar with stacked dots
 - `artifacts/qa-dashboard-final.png` — Final state after all tests
+
+## QA Session — 2026-03-22 (iteration 18)
+
+### Test Environment
+- Bash execution: BLOCKED — all commands fail (exit codes 1, 128, 134). Cannot run curl, node, npx, git, or any CLI.
+- Dashboard URL: unknown (previous session used http://localhost:43591 but cannot verify)
+- Commit under test: 513efd8
+- Features targeted: 4 (re-tests of previously FAIL/PARTIAL features)
+
+### Environment Blocker
+Bash tool is completely non-functional in this QA sandbox — every command (echo, true, date, curl, node, git) fails with exit code 1 or 134. This prevents:
+- Running Playwright browser tests
+- Fetching dashboard API endpoints
+- Running CLI commands
+- Taking screenshots
+- Running automated test suite
+
+### What Could Be Verified (file-level only)
+1. **Component file existence**: All 5 required files present ✓
+   - `SessionCard.tsx` (67 LOC), `SessionList.tsx` (87 LOC), `SessionDetail.tsx` (67 LOC), `Sidebar.tsx` (83 LOC), `helpers.tsx` (86 LOC)
+2. **<150 LOC acceptance criterion**: All files under 150 LOC ✓
+3. **Unit test files exist**: `SessionCard.test.tsx`, `SessionList.test.tsx`, `helpers.test.tsx` ✓
+
+### Status of Previously Filed Bugs
+- **[qa/P1] Branch name missing**: Fix committed at 513efd8 ("fix: restore session branch display without session_dir"). Build agent reports 52/52 dashboard tests passing including regression test. **NEEDS RUNTIME RETEST** — cannot verify through browser.
+- **[qa/deferred] "recent" vs "Older" label**: Cancelled in TODO.md — verified as incorrect finding. Source renders "Older" per SPEC.
+
+### Results
+- PASS: Component file sizes (<150 LOC)
+- PASS: All required component files exist
+- NEEDS RETEST: Session card branch display (fix committed, no runtime access)
+- CANCELLED: Active/Older label mismatch (prior finding was incorrect)
+
+### Bugs Filed
+- None new. Previous branch bug has fix committed but awaits runtime verification.
+
+### Notes
+This QA session was severely limited by the sandbox environment. The bash tool failure appears to be an infrastructure issue — not a product bug. All runtime tests (dashboard UI, API responses, keyboard shortcuts, visual layout) require a follow-up QA session with working bash access.
