@@ -141,3 +141,109 @@ $ Invoke-Pester -Path ./aloop/bin/loop.tests.ps1 -FullNameFilter \
 - Previous QA FAIL for baselines directory creation is not reproducible in runtime re-test.
 - Proof-phase features are now testable through finalizer-triggered proof iteration; skip protocol logs correctly and does not fail iteration.
 - Subagent hints expansion is still outstanding and remains the only unresolved proof-related feature in QA coverage.
+
+## QA Session — 2026-03-22 (CLI integration testing, iteration 37)
+
+### Binary Under Test
+- Binary: `/tmp/aloop-test-install-hnGNQd/bin/aloop` (npm pack install)
+- Version: 1.0.0
+
+### Test Environment
+- Temp dir 1: `/tmp/qa-test-1774182881` (scaffold test)
+- Temp dir 2: `/tmp/qa-test-start-1774182905` (start: all tasks done)
+- Temp dir 3: `/tmp/qa-test-start2-1774183011` (start: tasks pending)
+- Features tested: 4 (4 PASS, 0 FAIL)
+
+### Results
+- PASS: CLI --version and --help
+- PASS: aloop scaffold
+- PASS: aloop start --max-iterations
+- PASS: aloop status
+
+### Command Transcript
+
+#### Test 1: --version and --help
+```
+$ aloop --version
+1.0.0
+exit: 0
+
+$ aloop --help
+Usage: aloop [options] [command]
+Aloop CLI for dashboard and project orchestration
+[14 subcommands listed]
+exit: 0
+
+$ aloop scaffold --help  # exit 0 — options listed
+$ aloop start --help     # exit 0 — options listed
+$ aloop status --help    # exit 0 — options listed
+
+$ aloop foobar
+error: unknown command 'foobar'
+exit: 1
+```
+
+#### Test 2: aloop scaffold
+```
+$ mkdir /tmp/qa-test-1774182881 && cd /tmp/qa-test-1774182881
+$ git init && echo "# Test Project" > README.md && echo "# SPEC" > SPEC.md
+$ git add -A && git commit -m "init"
+$ aloop scaffold --provider claude --output json
+{
+  "config_path": "/home/pj/.aloop/projects/d5ab972a/config.yml",
+  "prompts_dir": "/home/pj/.aloop/projects/d5ab972a/prompts",
+  "project_dir": "/home/pj/.aloop/projects/d5ab972a",
+  "project_hash": "d5ab972a"
+}
+exit: 0
+```
+- config.yml: correct project_name, project_root, provider=claude, mode=plan-build-review
+- prompts/: 6 files (PROMPT_plan.md, PROMPT_build.md, PROMPT_proof.md, PROMPT_qa.md, PROMPT_review.md, PROMPT_steer.md)
+- Non-git dir also scaffolds successfully (exit 0, different project hash)
+
+#### Test 3: aloop start — all tasks done
+```
+$ cd /tmp/qa-test-start-1774182905
+$ git init && create TODO.md with all [x] tasks
+$ aloop scaffold --provider claude && aloop start --provider claude --max-iterations 1 --in-place
+```
+- status.json: `{"iteration":1,"phase":"plan","state":"completed"}`
+- log.jsonl: `session_start`, `frontmatter_applied` (plan detected, all tasks done, exited completed)
+- loop-plan.json: `allTasksMarkedDone: true`, `finalizer: []`
+- No artifacts dir (no provider invocation needed)
+
+#### Test 4: aloop start — tasks pending
+```
+$ cd /tmp/qa-test-start2-1774183011
+$ git init && create TODO.md with [ ] pending task
+$ aloop scaffold --provider claude && aloop start --provider claude --max-iterations 2 --in-place
+```
+- status.json: `{"iteration":2,"phase":"build","state":"stopped"}`
+- log.jsonl: `session_start`, 2× (`frontmatter_applied` + `iteration_complete`), `limit_reached`
+- artifacts/iter-1/output.txt: 469 bytes (plan output)
+- artifacts/iter-2/output.txt: 95 bytes (build output)
+
+#### Test 5: aloop status
+```
+$ aloop status --output text
+Active Sessions:
+  orchestrator-20260321-172932  pid=2754891  running  iter 385, orch_scan  (19h ago)
+  [5 more child sessions listed]
+Provider Health:
+  claude     healthy      (last success: 14s ago)
+  codex      healthy      (last success: 2m ago)
+  copilot    healthy      (last success: 5m ago)
+  gemini     cooldown     (917 failures, resumes in 59m)
+  opencode   healthy      (last success: 5m ago)
+exit: 0
+
+$ aloop status --output json
+[JSON with sessions array + health object, all fields present]
+exit: 0
+```
+
+### Cleanup
+- All temp dirs removed
+- All test sessions removed from ~/.aloop/sessions/
+- All test project configs removed from ~/.aloop/projects/
+- npm test-install prefix removed
