@@ -2923,8 +2923,10 @@ test('ghExecutor.exec rethrows when PATH hardening blocks gh and no fallback bin
   fs.chmodSync(blockedGhPath, 0o755);
 
   const origPath = process.env.PATH;
+  const origOriginalPath = process.env.ALOOP_ORIGINAL_PATH;
   try {
     process.env.PATH = blockedDir;
+    process.env.ALOOP_ORIGINAL_PATH = '';
     await assert.rejects(
       () => ghExecutor.exec(['version']),
       /blocked by aloop PATH hardening/i,
@@ -2932,6 +2934,8 @@ test('ghExecutor.exec rethrows when PATH hardening blocks gh and no fallback bin
   } finally {
     if (origPath !== undefined) process.env.PATH = origPath;
     else delete process.env.PATH;
+    if (origOriginalPath !== undefined) process.env.ALOOP_ORIGINAL_PATH = origOriginalPath;
+    else delete process.env.ALOOP_ORIGINAL_PATH;
     fs.rmSync(root, { recursive: true, force: true });
   }
 });

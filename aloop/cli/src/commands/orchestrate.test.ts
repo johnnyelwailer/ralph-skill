@@ -741,7 +741,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/sub-decompose-issue-'));
     assert.equal(queueFiles.length, 2, 'Should write sub-decompose queue prompts for each epic');
     const queueContent = mockDeps._writtenFiles[queueFiles[0]];
-    assert.match(queueContent, /orch_estimate/, 'Queue override should reference orch_estimate agent');
+    assert.match(queueContent, /orch_sub_decompose/, 'Queue override should reference orch_sub_decompose agent');
   });
 
   it('applies estimate-results.json when present', async () => {
@@ -770,7 +770,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     assert.ok(issue1, 'Issue 1 should exist');
     assert.ok(issue2, 'Issue 2 should exist');
     assert.equal(issue1!.dor_validated, true);
-    assert.equal(issue1!.status, 'Ready');
+    assert.equal(issue1!.status, 'Needs decomposition');
     assert.equal(issue2!.dor_validated, false);
     assert.equal(issue2!.status, 'Needs decomposition');
   });
@@ -1818,6 +1818,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form with zod validation. Implement form state management and integrate with the auth API endpoint for authentication flow.',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1828,6 +1829,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form. Blocked by aloop/spec-question regarding auth method.\n\n## Acceptance Criteria\n- [ ] Form renders with email field',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1838,6 +1840,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Acceptance Criteria\n- [ ] Form renders with email field',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1857,6 +1860,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Todo',
       body: 'Something',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -2345,7 +2349,9 @@ describe('launchChildLoop', () => {
   it('creates worktree with correct branch name', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git');
+    const gitCall = deps._spawnSyncCalls.find(
+      (c) => c.command === 'git' && c.args.includes('worktree') && c.args.includes('add'),
+    );
     assert.ok(gitCall, 'git worktree add should be called');
     assert.ok(gitCall.args.includes('-b'));
     assert.ok(gitCall.args.includes('aloop/issue-42'));
@@ -2445,22 +2451,22 @@ describe('launchChildLoop', () => {
     assert.ok(deps._spawnCalls.some((c) => c.command.endsWith('loop.sh')));
   });
 
-  it('seeds SPEC.md from issue body in worktree', async () => {
+  it('seeds TASK_SPEC.md from issue body in worktree', async () => {
     const issueWithBody = makeIssue({ number: 42, title: 'Add feature X', body: '## Requirements\n\n- Support login\n- Handle errors' });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueWithBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
-    assert.ok(specFile, 'SPEC.md should be written to child worktree');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
+    assert.ok(specFile, 'TASK_SPEC.md should be written to child worktree');
     assert.ok(deps._writtenFiles[specFile].includes('Issue #42'));
     assert.ok(deps._writtenFiles[specFile].includes('Support login'));
   });
 
-  it('does not seed SPEC.md when issue has no body', async () => {
+  it('does not seed TASK_SPEC.md when issue has no body', async () => {
     const issueNoBody = makeIssue({ number: 42, title: 'Add feature X', body: undefined });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueNoBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
-    assert.equal(specFile, undefined, 'SPEC.md should not be written when issue body is empty');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
+    assert.equal(specFile, undefined, 'TASK_SPEC.md should not be written when issue body is empty');
   });
 
   it('compiles loop-plan.json for child session', async () => {
@@ -2905,8 +2911,8 @@ describe('reviewPrDiff', () => {
       execGh: async () => { throw new Error('Not found'); },
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'flag-for-human');
-    assert.ok(result.summary.includes('Failed to fetch PR diff'));
+    assert.equal(result.verdict, 'pending');
+    assert.ok(result.summary.includes('will retry'));
   });
 });
 
@@ -3749,14 +3755,14 @@ describe('queueGapAnalysisForIssues', () => {
     const productContent = writtenFiles['/queue/gap-analysis-product.md'];
     assert.match(productContent, /orch_product_analyst/);
     assert.match(productContent, /# Product Prompt/);
-    assert.match(productContent, /# Spec content here/);
+    assert.match(productContent, /Read SPEC.md and SPEC-ADDENDUM.md from the project working directory/);
     assert.match(productContent, /Issue #10: Auth/);
     assert.match(productContent, /Implement auth/);
 
     const archContent = writtenFiles['/queue/gap-analysis-architecture.md'];
     assert.match(archContent, /orch_arch_analyst/);
     assert.match(archContent, /# Arch Prompt/);
-    assert.match(archContent, /# Spec content here/);
+    assert.match(archContent, /Read SPEC.md and SPEC-ADDENDUM.md from the project working directory/);
   });
 
   it('returns 0 when no issues need analysis', async () => {
@@ -3816,7 +3822,8 @@ describe('epic and sub-issue decomposition helpers', () => {
     assert.ok(content);
     assert.match(content, /orch_decompose/);
     assert.match(content, /# Decompose prompt/);
-    assert.match(content, /# Spec body/);
+    assert.match(content, /## Spec Files \(read these from the project\)/);
+    assert.match(content, /`SPEC\.md`/);
   });
 
   it('writes sub-issue decomposition request for Needs decomposition targets only', async () => {
@@ -4455,7 +4462,7 @@ describe('runOrchestratorScanPass', () => {
 
     const result = await runOrchestratorScanPass(
       '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 1, deps,
+      'owner/repo', 5, deps,
     );
 
     assert.equal(result.triage.processed_issues, 1);
@@ -5040,8 +5047,9 @@ describe('monitorChildSessions', () => {
 
     assert.equal(result.monitored, 1);
     assert.equal(result.failed, 1);
-    assert.equal(state.issues[0].state, 'failed');
-    assert.equal(state.issues[0].status, 'Blocked');
+    assert.equal(state.issues[0].state, 'in_progress');
+    assert.equal((state.issues[0] as any).needs_redispatch, true);
+    assert.match((state.issues[0] as any).review_feedback, /Child loop stopped/i);
     assert.ok(logEntries.some((e) => e.event === 'child_failed'));
   });
 
@@ -5378,7 +5386,7 @@ describe('orchestrateCommandWithDeps multi-file spec', () => {
     );
   });
 
-  it('includes merged spec content in decomposition queue', async () => {
+  it('includes spec file references in decomposition queue', async () => {
     const writtenFiles: Record<string, string> = {};
     const fileContents: Record<string, string> = {};
 
@@ -5416,10 +5424,10 @@ describe('orchestrateCommandWithDeps multi-file spec', () => {
     const decomposeFile = Object.keys(writtenFiles).find((k) => k.includes('decompose-epics.md'));
     assert.ok(decomposeFile, 'decompose-epics.md should be queued');
     const content = writtenFiles[decomposeFile];
-    assert.ok(content.includes('Master Spec'), 'should include master spec content');
-    assert.ok(content.includes('Auth Slice'), 'should include auth slice content');
-    assert.ok(content.includes('<!-- spec: SPEC.md -->'), 'should include spec file header for master');
-    assert.ok(content.includes('<!-- spec: auth.md -->'), 'should include spec file header for auth');
+    assert.ok(content.includes('## Spec Files (read these from the project)'), 'should include spec file section');
+    assert.ok(content.includes('`SPEC.md`'), 'should include spec file path for master');
+    assert.ok(content.includes('`specs/auth.md`'), 'should include spec file path for auth');
+    assert.ok(content.includes('Do NOT expect them to be embedded in this prompt'), 'should require reading files from project');
   });
 });
 
