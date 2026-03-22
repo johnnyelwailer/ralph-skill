@@ -5785,11 +5785,10 @@ export async function runOrchestratorScanPass(
           deps.prLifecycleDeps,
         );
         result.prLifecycles.push(lifecycleResult);
-        // Store reviewed commit SHA to prevent re-review spam, but only after
-        // a non-pending review action. Pending means the review agent has not
-        // produced a verdict yet, so storing SHA would block future review.
-        const action = lifecycleResult?.action;
-        if (action && action !== 'review_pending' && action !== 'gates_pending' && deps.execGh) {
+        // Store reviewed commit SHA only after a non-pending review verdict.
+        // Do not store for gate-only/rebase paths where no review verdict exists.
+        const reviewVerdict = lifecycleResult?.review?.verdict;
+        if (reviewVerdict && reviewVerdict !== 'pending' && deps.execGh) {
           try {
             const headResult = await deps.execGh(['pr', 'view', String(issue.pr_number), '--repo', repo, '--json', 'headRefOid']);
             (issue as any).last_reviewed_sha = JSON.parse(headResult.stdout).headRefOid;

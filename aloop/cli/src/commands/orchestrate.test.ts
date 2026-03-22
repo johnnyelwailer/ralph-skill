@@ -6768,6 +6768,43 @@ describe('runOrchestratorScanPass SHA storage', () => {
     assert.equal(writtenState.issues[0].last_reviewed_sha, headSha);
   });
 
+  it('does NOT store last_reviewed_sha on gates_failed without review verdict', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const deps = createMockScanDeps({
+      execGh: async (args) => {
+        if (args.includes('headRefOid')) {
+          return { stdout: JSON.stringify({ headRefOid: 'should_not_be_stored' }), stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return {
+            stdout: JSON.stringify({
+              statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'FAILURE' }],
+            }),
+            stderr: '',
+          };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.prLifecycleDeps = createMockPrDeps({
+      execGh: deps.execGh!,
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].last_reviewed_sha, undefined);
+  });
+
   it('does NOT store last_reviewed_sha on review_pending verdict', async () => {
     const state = makeScanState({
       issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],

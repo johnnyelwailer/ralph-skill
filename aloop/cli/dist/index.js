@@ -13211,6 +13211,24 @@ async function processPrLifecycle(issue, state, stateFile, sessionDir, repo, dep
     });
     return { pr_number: prNumber, action: "gates_failed", detail: failDetail, gates: gatesResult };
   }
+  const lastReviewedSha = issue.last_reviewed_sha;
+  if (lastReviewedSha) {
+    try {
+      const headResult = await deps.execGh(["pr", "view", String(prNumber), "--repo", repo, "--json", "headRefOid"]);
+      const currentHead = JSON.parse(headResult.stdout).headRefOid;
+      if (currentHead === lastReviewedSha) {
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "pr_review_skipped_sha_dedup",
+          pr_number: prNumber,
+          issue_number: issue.number,
+          sha: currentHead
+        });
+        return { pr_number: prNumber, action: "review_pending", detail: `Skipped review \u2014 HEAD ${currentHead.slice(0, 7)} unchanged since last review`, gates: gatesResult };
+      }
+    } catch {
+    }
+  }
   const reviewResult = await reviewPrDiff(prNumber, repo, deps);
   deps.appendLog(sessionDir, {
     timestamp: deps.now().toISOString(),
@@ -14313,8 +14331,8 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
           deps.prLifecycleDeps
         );
         result.prLifecycles.push(lifecycleResult);
-        const action = lifecycleResult?.action;
-        if (action && action !== "review_pending" && action !== "gates_pending" && deps.execGh) {
+        const reviewVerdict = lifecycleResult?.review?.verdict;
+        if (reviewVerdict && reviewVerdict !== "pending" && deps.execGh) {
           try {
             const headResult = await deps.execGh(["pr", "view", String(issue.pr_number), "--repo", repo, "--json", "headRefOid"]);
             issue.last_reviewed_sha = JSON.parse(headResult.stdout).headRefOid;
@@ -14376,6 +14394,7 @@ Do NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the
         issue.child_pid = launchResult.pid;
         issue.needs_redispatch = false;
         issue.review_feedback = void 0;
+        issue.last_reviewed_sha = void 0;
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
           event: "child_redispatched_for_review",
