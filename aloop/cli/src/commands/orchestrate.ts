@@ -4078,7 +4078,28 @@ export async function processPrLifecycle(
     return { pr_number: prNumber, action: 'gates_failed', detail: failDetail, gates: gatesResult };
   }
 
-  // Step 5: Agent review
+  // Step 5: SHA dedup — skip review if HEAD hasn't changed since last review
+  const lastReviewedSha = (issue as any).last_reviewed_sha as string | undefined;
+  if (lastReviewedSha) {
+    try {
+      const headResult = await deps.execGh(['pr', 'view', String(prNumber), '--repo', repo, '--json', 'headRefOid']);
+      const currentHead = JSON.parse(headResult.stdout).headRefOid;
+      if (currentHead === lastReviewedSha) {
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'pr_review_skipped_sha_dedup',
+          pr_number: prNumber,
+          issue_number: issue.number,
+          sha: currentHead,
+        });
+        return { pr_number: prNumber, action: 'review_pending', detail: `Skipped review — HEAD ${currentHead.slice(0, 7)} unchanged since last review`, gates: gatesResult };
+      }
+    } catch {
+      // If we can't fetch HEAD, proceed with review anyway
+    }
+  }
+
+  // Step 6: Agent review
   const reviewResult = await reviewPrDiff(prNumber, repo, deps);
   deps.appendLog(sessionDir, {
     timestamp: deps.now().toISOString(),
@@ -5818,6 +5839,7 @@ export async function runOrchestratorScanPass(
         (issue as any).child_pid = launchResult.pid;
         (issue as any).needs_redispatch = false;
         (issue as any).review_feedback = undefined;
+        (issue as any).last_reviewed_sha = undefined;
 
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
