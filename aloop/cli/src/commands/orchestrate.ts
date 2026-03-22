@@ -1329,16 +1329,16 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     ? (depsOrCommand as OrchestrateDeps)
     : undefined;
 
-  if (resolvedOptions.runScanLoop) {
-    if (!resolvedOptions.sessionDir) {
+  if (options.runScanLoop) {
+    if (!options.sessionDir) {
       throw new Error('--run-scan-loop requires --session-dir');
     }
-    const homeDir = resolveHomeDir(resolvedOptions.homeDir);
+    const homeDir = resolveHomeDir(options.homeDir);
     await runOrchestratorDaemonLoop(
-      path.resolve(resolvedOptions.sessionDir),
+      path.resolve(options.sessionDir),
       homeDir,
-      parseInterval(resolvedOptions.interval),
-      resolveDaemonMaxIterations(resolvedOptions.maxIterations),
+      parseInterval(options.interval),
+      resolveDaemonMaxIterations(options.maxIterations),
     );
     return;
   }
@@ -1490,12 +1490,12 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
 
   let daemonPid: number | null = null;
   if (!planOnly) {
-    const homeDir = resolveHomeDir(resolvedOptions.homeDir);
+    const homeDir = resolveHomeDir(options.homeDir);
     daemonPid = await spawnOrchestratorDaemon(
       result.session_dir,
       homeDir,
-      parseInterval(resolvedOptions.interval),
-      resolveDaemonMaxIterations(resolvedOptions.maxIterations),
+      parseInterval(options.interval),
+      resolveDaemonMaxIterations(options.maxIterations),
     );
 
     // Write meta.json
