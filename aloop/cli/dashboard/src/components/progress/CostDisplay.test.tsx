@@ -76,4 +76,56 @@ describe('CostDisplay', () => {
     );
     expect(screen.getByText('Warnings: 50% / 75% / 90% · Pause: 95%')).toBeInTheDocument();
   });
+
+  it('renders session spend without progress bar when opencode unavailable with sessionCost but no budgetCap', () => {
+    render(
+      <CostDisplay
+        totalCost={null}
+        budgetCap={null}
+        budgetUsedPercent={null}
+        error="opencode_unavailable"
+        sessionCost={3.5}
+      />,
+    );
+    expect(screen.getByText('Session Spend')).toBeInTheDocument();
+    expect(screen.getByText('$3.50')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('shows loading text when isLoading with no budgetCap', () => {
+    render(
+      <CostDisplay
+        totalCost={null}
+        budgetCap={null}
+        budgetUsedPercent={null}
+        isLoading
+      />,
+    );
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('renders warnings without pause threshold', () => {
+    render(
+      <CostDisplay
+        totalCost={3}
+        budgetCap={10}
+        budgetUsedPercent={30}
+        budgetWarnings={[50, 75]}
+      />,
+    );
+    expect(screen.getByText('Warnings: 50% / 75%')).toBeInTheDocument();
+  });
+
+  it('renders pause threshold without warnings', () => {
+    render(
+      <CostDisplay
+        totalCost={3}
+        budgetCap={10}
+        budgetUsedPercent={30}
+        budgetPauseThreshold={95}
+      />,
+    );
+    expect(screen.getByText('Pause: 95%')).toBeInTheDocument();
+  });
 });
