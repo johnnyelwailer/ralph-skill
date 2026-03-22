@@ -406,6 +406,7 @@ async function resolveDefaultAssetsDir(): Promise<string> {
   candidates.add(path.join(moduleDir, 'dashboard'));
   candidates.add(path.resolve(moduleDir, '..', 'dashboard'));
   candidates.add(path.resolve(moduleDir, '..', '..', 'dashboard', 'dist'));
+  candidates.add(path.resolve(moduleDir, '..', '..', 'dist', 'dashboard'));
   candidates.add(path.resolve(moduleDir, '..', '..', '..', 'dist', 'dashboard'));
   candidates.add(path.resolve(moduleDir, '..', '..', '..', 'dashboard', 'dist'));
   if (npmPackageJson) {
