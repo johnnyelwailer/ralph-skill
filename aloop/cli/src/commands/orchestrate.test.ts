@@ -92,13 +92,47 @@ import {
   type SpecChangeDetection,
   ensureLabels,
   REQUIRED_LABELS,
+  runStartupHealthChecks,
   type EnsureLabelsDeps,
   type EnsureLabelsResult,
+  type HealthCheckResult,
+  type StartupHealth,
 } from './orchestrate.js';
+
+/** Returns true if this is a startup health check command (gh auth, gh repo view, git status --porcelain). */
+function isHealthCheckCmd(command: string, args: string[]): boolean {
+  if (command === 'gh' && args[0] === 'auth') return true;
+  if (command === 'gh' && args[0] === 'repo' && args[1] === 'view') return true;
+  if (command === 'git' && args[0] === 'status' && args[1] === '--porcelain') return true;
+  return false;
+}
+
+/** Default success responses for health check commands. */
+function healthCheckDefault(command: string, args: string[]): { status: number; stdout: string; stderr: string } {
+  if (command === 'gh' && args[0] === 'auth') return { status: 0, stdout: 'Logged in', stderr: '' };
+  if (command === 'gh' && args[0] === 'repo' && args[1] === 'view') return { status: 0, stdout: '{}', stderr: '' };
+  return { status: 0, stdout: '', stderr: '' }; // git status
+}
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
   const writtenFiles: Record<string, string> = {};
   const createdDirs: string[] = [];
+
+  const userSpawnSync = overrides.spawnSync;
+  const failHealthChecks = (overrides as any)._failHealthChecks === true;
+  // Wrap spawnSync: health check commands always succeed by default.
+  // Tests that need health checks to fail must set _failHealthChecks: true.
+  const wrappedSpawnSync = (command: string, args: string[], options?: Record<string, unknown>) => {
+    if (!failHealthChecks && isHealthCheckCmd(command, args)) {
+      return healthCheckDefault(command, args);
+    }
+    if (userSpawnSync) {
+      return userSpawnSync(command, args, options);
+    }
+    return { status: 1, stdout: '', stderr: 'mocked' };
+  };
+
+  const { spawnSync: _ignored, _failHealthChecks: _ignored2, ...otherOverrides } = overrides as any;
 
   return {
     existsSync: (p: string) => p.includes('SPEC.md'),
@@ -110,9 +144,9 @@ function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDe
       createdDirs.push(path);
       return undefined;
     },
-    spawnSync: () => ({ status: 1, stdout: '', stderr: 'mocked' }),
+    spawnSync: wrappedSpawnSync,
     now: () => new Date('2026-03-09T10:30:00Z'),
-    ...overrides,
+    ...otherOverrides,
     // expose for assertions
     get _writtenFiles() { return writtenFiles; },
     get _createdDirs() { return createdDirs; },
@@ -521,8 +555,10 @@ describe('orchestrateCommand', () => {
       console.log = origLog;
     }
 
-    assert.equal(logs.length, 1);
-    const parsed = JSON.parse(logs[0]);
+    // Find the JSON output line (health check logs may also be present)
+    const jsonLine = logs.find((l) => l.startsWith('{'));
+    assert.ok(jsonLine, 'expected at least one JSON output line');
+    const parsed = JSON.parse(jsonLine);
     assert.ok('session_dir' in parsed);
     assert.ok('prompts_dir' in parsed);
     assert.ok('queue_dir' in parsed);
@@ -6347,5 +6383,206 @@ describe('ensureLabels', () => {
     assert.equal(result.already_existed.length, REQUIRED_LABELS.length);
     assert.equal(result.created.length, 0);
     assert.equal(result.failed.length, 0);
+  });
+});
+
+// --- runStartupHealthChecks tests ---
+
+describe('runStartupHealthChecks', () => {
+  it('returns passing results when all commands succeed', async () => {
+    const deps = createMockDeps({
+      _failHealthChecks: true,
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 0, stdout: 'Logged in to github.com', stderr: '' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          return { status: 0, stdout: '{"nameWithOwner":"owner/repo"}', stderr: '' };
+        }
+        if (command === 'git' && args[0] === 'status') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: 'unknown command' };
+      },
+    } as any);
+
+    const results = await runStartupHealthChecks('/tmp/project', deps);
+
+    assert.equal(results.length, 3);
+    const auth = results.find((r) => r.check === 'gh_auth');
+    const repo = results.find((r) => r.check === 'gh_repo');
+    const git = results.find((r) => r.check === 'git_status');
+    assert.ok(auth?.ok);
+    assert.ok(repo?.ok);
+    assert.ok(git?.ok);
+    assert.match(git!.detail, /clean worktree/);
+  });
+
+  it('reports dirty worktree when git status has output', async () => {
+    const deps = createMockDeps({
+      _failHealthChecks: true,
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh') return { status: 0, stdout: '{}', stderr: '' };
+        if (command === 'git' && args[0] === 'status') {
+          return { status: 0, stdout: ' M src/file.ts\n', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: '' };
+      },
+    } as any);
+
+    const results = await runStartupHealthChecks('/tmp/project', deps);
+    const git = results.find((r) => r.check === 'git_status');
+    assert.ok(git?.ok);
+    assert.match(git!.detail, /dirty worktree/);
+  });
+
+  it('reports failures when gh auth fails', async () => {
+    const deps = createMockDeps({
+      _failHealthChecks: true,
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 1, stdout: '', stderr: 'not logged in' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          return { status: 0, stdout: '{"nameWithOwner":"o/r"}', stderr: '' };
+        }
+        if (command === 'git') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: '' };
+      },
+    } as any);
+
+    const results = await runStartupHealthChecks('/tmp/project', deps);
+    const auth = results.find((r) => r.check === 'gh_auth');
+    assert.equal(auth?.ok, false);
+    assert.match(auth!.detail, /not logged in/);
+  });
+
+  it('reports failure when gh repo view fails', async () => {
+    const deps = createMockDeps({
+      _failHealthChecks: true,
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 0, stdout: 'ok', stderr: '' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          return { status: 1, stdout: '', stderr: 'no repo found' };
+        }
+        if (command === 'git') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: '' };
+      },
+    } as any);
+
+    const results = await runStartupHealthChecks('/tmp/project', deps);
+    const repo = results.find((r) => r.check === 'gh_repo');
+    assert.equal(repo?.ok, false);
+    assert.match(repo!.detail, /no repo found/);
+  });
+});
+
+// --- session-health.json integration tests ---
+
+describe('orchestrateCommandWithDeps health checks', () => {
+  it('writes session-health.json with checks array including gh_auth, gh_repo, git_status', async () => {
+    const deps = createMockDeps({
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 0, stdout: 'Logged in', stderr: '' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          return { status: 0, stdout: '{"nameWithOwner":"owner/repo"}', stderr: '' };
+        }
+        if (command === 'git' && args[0] === 'status') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        // label list — return empty array so labels get created
+        if (command === 'gh' && args[0] === 'label') {
+          if (args[1] === 'list') return { status: 0, stdout: '[]', stderr: '' };
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: 'mocked' };
+      },
+    });
+    const mockDeps = deps as OrchestrateDeps & { _writtenFiles: Record<string, string> };
+
+    await orchestrateCommandWithDeps({ repo: 'owner/repo' }, deps);
+
+    const healthPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/session-health.json'));
+    assert.ok(healthPath, 'session-health.json should be written');
+    const health: StartupHealth = JSON.parse(mockDeps._writtenFiles[healthPath!]);
+    assert.ok(health.labels, 'labels should be present');
+    assert.ok(Array.isArray(health.checks), 'checks should be an array');
+    assert.equal(health.checks.length, 3);
+    const checkNames = health.checks.map((c) => c.check);
+    assert.ok(checkNames.includes('gh_auth'));
+    assert.ok(checkNames.includes('gh_repo'));
+    assert.ok(checkNames.includes('git_status'));
+    assert.ok(health.checked_at);
+  });
+
+  it('writes ALERT.md and throws when gh auth fails', async () => {
+    const deps = createMockDeps({
+      _failHealthChecks: true,
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 1, stdout: '', stderr: 'auth failed' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          return { status: 1, stdout: '', stderr: 'no repo' };
+        }
+        if (command === 'git') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: 'mocked' };
+      },
+    } as any);
+    const mockDeps = deps as OrchestrateDeps & { _writtenFiles: Record<string, string> };
+
+    await assert.rejects(
+      () => orchestrateCommandWithDeps({}, deps),
+      (err: Error) => {
+        assert.match(err.message, /Critical startup check failed/);
+        return true;
+      },
+    );
+
+    const alertPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/ALERT.md'));
+    assert.ok(alertPath, 'ALERT.md should be written');
+    const alertContent = mockDeps._writtenFiles[alertPath!];
+    assert.match(alertContent, /Critical startup checks failed/);
+    assert.match(alertContent, /gh_auth/);
+  });
+
+  it('writes session-health.json with labels null when no repo can be derived', async () => {
+    const deps = createMockDeps({
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 0, stdout: 'ok', stderr: '' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          // repo view succeeds for health check but returns invalid slug so deriveFilterRepo doesn't use it
+          return { status: 0, stdout: '{}', stderr: '' };
+        }
+        if (command === 'git' && args[0] === 'status') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        if (command === 'git' && args[0] === 'remote') {
+          return { status: 1, stdout: '', stderr: 'no remote' };
+        }
+        return { status: 1, stdout: '', stderr: 'mocked' };
+      },
+    });
+    const mockDeps = deps as OrchestrateDeps & { _writtenFiles: Record<string, string> };
+
+    await orchestrateCommandWithDeps({}, deps);
+
+    const healthPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/session-health.json'));
+    assert.ok(healthPath, 'session-health.json should be written even without repo');
+    const health: StartupHealth = JSON.parse(mockDeps._writtenFiles[healthPath!]);
+    assert.equal(health.labels, null);
+    assert.equal(health.checks.length, 3);
   });
 });

@@ -1280,6 +1280,83 @@ export function ensureLabels(
   return result;
 }
 
+export interface HealthCheckResult {
+  check: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface StartupHealth {
+  labels: EnsureLabelsResult | null;
+  checks: HealthCheckResult[];
+  checked_at: string;
+}
+
+export async function runStartupHealthChecks(
+  projectRoot: string,
+  deps: OrchestrateDeps,
+): Promise<HealthCheckResult[]> {
+  const results: HealthCheckResult[] = [];
+
+  const runSpawn = async (
+    command: string,
+    args: string[],
+    label: string,
+  ): Promise<{ ok: boolean; stdout: string; stderr: string }> => {
+    if (deps.spawnSync) {
+      const r = deps.spawnSync(command, args, { encoding: 'utf8', cwd: projectRoot });
+      return { ok: r.status === 0, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    }
+    try {
+      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+      const r = toSpawnSyncResult(nodeSpawnSync(command, args, { encoding: 'utf8', cwd: projectRoot } as any));
+      return { ok: r.status === 0, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    } catch (error) {
+      return { ok: false, stdout: '', stderr: String(error) };
+    }
+  };
+
+  // 1. gh auth status
+  const auth = await runSpawn('gh', ['auth', 'status'], 'gh_auth');
+  results.push({
+    check: 'gh_auth',
+    ok: auth.ok,
+    detail: auth.ok
+      ? (auth.stdout || auth.stderr).substring(0, 500).trim()
+      : `gh auth status failed: ${(auth.stderr || auth.stdout).substring(0, 500).trim()}`,
+  });
+
+  // 2. gh repo view
+  const ghHost = process.env.GH_HOST?.trim() || null;
+  const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
+  const repoView = await runSpawn('gh', ['repo', 'view', '--json', 'nameWithOwner', ...ghHostArgs], 'gh_repo');
+  results.push({
+    check: 'gh_repo',
+    ok: repoView.ok,
+    detail: repoView.ok
+      ? repoView.stdout.substring(0, 500).trim()
+      : `gh repo view failed: ${(repoView.stderr || repoView.stdout).substring(0, 500).trim()}`,
+  });
+
+  // 3. git status
+  const gitSt = await runSpawn('git', ['status', '--porcelain'], 'git_status');
+  const isClean = gitSt.ok && gitSt.stdout.trim() === '';
+  results.push({
+    check: 'git_status',
+    ok: gitSt.ok,
+    detail: gitSt.ok
+      ? (isClean ? 'clean worktree' : `dirty worktree: ${gitSt.stdout.substring(0, 500).trim()}`)
+      : `git status failed: ${(gitSt.stderr || gitSt.stdout).substring(0, 500).trim()}`,
+  });
+
+  for (const r of results) {
+    const icon = r.ok ? '✓' : '✗';
+    console.log(`[orchestrate] Health check ${icon} ${r.check}: ${r.detail.substring(0, 120)}`);
+  }
+
+  return results;
+}
+
 export async function orchestrateCommandWithDeps(
   options: OrchestrateCommandOptions = {},
   deps: OrchestrateDeps = defaultDeps,
@@ -1658,11 +1735,36 @@ export async function orchestrateCommandWithDeps(
   const stateFile = path.join(sessionDir, 'orchestrator.json');
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
-  // Write label self-healing results to session for diagnostics
-  if (labelsResult) {
-    const healthFile = path.join(sessionDir, 'session-health.json');
-    const health = { labels: labelsResult, checked_at: deps.now().toISOString() };
-    await deps.writeFile(healthFile, `${JSON.stringify(health, null, 2)}\n`, 'utf8');
+  // Startup health checks: gh auth, gh repo view, git status
+  const healthChecks = await runStartupHealthChecks(projectRoot, deps);
+
+  // Write all health results (labels + startup checks) to session-health.json
+  const healthFile = path.join(sessionDir, 'session-health.json');
+  const health: StartupHealth = {
+    labels: labelsResult,
+    checks: healthChecks,
+    checked_at: deps.now().toISOString(),
+  };
+  await deps.writeFile(healthFile, `${JSON.stringify(health, null, 2)}\n`, 'utf8');
+
+  // If critical checks fail (gh auth), write ALERT.md and throw
+  // gh_repo failure is non-critical since repo may not be configured yet
+  const criticalFailures = healthChecks.filter(
+    (c) => c.check === 'gh_auth' && !c.ok,
+  );
+  if (criticalFailures.length > 0) {
+    const alertLines = [
+      '# ALERT — Critical startup checks failed',
+      '',
+      'The orchestrator cannot proceed because critical checks failed:',
+      '',
+      ...criticalFailures.map((c) => `- **${c.check}**: ${c.detail}`),
+      '',
+      `Checked at: ${deps.now().toISOString()}`,
+    ];
+    const alertPath = path.join(sessionDir, 'ALERT.md');
+    await deps.writeFile(alertPath, `${alertLines.join('\n')}\n`, 'utf8');
+    throw new Error(`Critical startup check failed: ${criticalFailures.map((c) => c.check).join(', ')}`);
   }
 
   return {
