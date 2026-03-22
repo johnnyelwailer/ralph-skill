@@ -2884,13 +2884,13 @@ describe('reviewPrDiff', () => {
     assert.ok(result.summary.includes('needs fixes'));
   });
 
-  it('flags for human when diff fetch fails', async () => {
+  it('returns pending when diff fetch fails', async () => {
     const deps = createMockPrDeps({
       execGh: async () => { throw new Error('Not found'); },
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'flag-for-human');
-    assert.ok(result.summary.includes('Failed to fetch PR diff'));
+    assert.equal(result.verdict, 'pending');
+    assert.ok(result.summary.includes('PR diff fetch failed (will retry): Not found'));
   });
 });
 
