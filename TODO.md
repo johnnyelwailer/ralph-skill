@@ -7,9 +7,9 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 ### QA Bugs
 
-- [ ] [qa/P1] Steer textarea 32px height on mobile: Steer input (`<textarea placeholder="Steer...">`) renders at 266x32px on mobile viewport (390x844). WCAG 2.5.8 requires 44px minimum tap target. Has `min-h-[32px] h-8` in AppView.tsx:1969 but no mobile override to 44px. Fix: change to `min-h-[44px] md:min-h-[32px] h-auto md:h-8`. Still failing at iter 3 — confirmed 266x32px, computed min-height: 32px. (priority: high)
+- [x] [qa/P1] Steer textarea 32px height on mobile: Fixed — changed to `min-h-[44px] md:min-h-[32px] h-auto md:h-8` for WCAG 2.5.8 compliance. (priority: high)
 
-- [ ] [qa/P1] GitHub repo link missing aria-label: The GitHub icon link (`<a href="...github...">` at AppView.tsx:1190) contains only an SVG icon with no `aria-label`, `title`, or visible text. Screen readers cannot identify its purpose. Fix: add `aria-label="Open repo on GitHub"`. Still failing at iter 3 — link renders 44x44px (tap target fixed) but aria-label/title still null. (priority: high)
+- [x] [qa/P1] GitHub repo link missing aria-label: Fixed — added `aria-label="Open repo on GitHub"` to the link. (priority: high)
 
 - [ ] [qa/P1] Escape key does not close mobile sidebar drawer: On mobile viewport (390x844), after opening the sidebar via hamburger button, pressing Escape does not close the sidebar. The sidebar overlay (`div.fixed.inset-0.z-40`) remains visible and the sidebar stays at width=256px. Clicking the overlay does close the sidebar correctly. Spec says "Escape key should close overlays and return focus." Fix: add keydown listener for Escape that closes the mobile sidebar drawer. Tested at iter 3. (priority: high)
 
@@ -23,17 +23,17 @@ _(none — ready for next task)_
 
 ### Up Next
 
-- [ ] **Fix QA P1 bugs — steer textarea + GitHub aria-label** — Two remaining P1 bugs: (1) Steer textarea at AppView.tsx:1969 has `min-h-[32px] h-8` — change to `min-h-[44px] md:min-h-[32px] h-auto md:h-8` for mobile tap target compliance. (2) GitHub repo link at AppView.tsx:1190 needs `aria-label="Open repo on GitHub"`. Both are single-line fixes. (priority: high)
+- [x] **Fix QA P1 bugs — steer textarea + GitHub aria-label** — (1) Steer textarea changed to `min-h-[44px] md:min-h-[32px] h-auto md:h-8` for mobile tap target compliance. (2) GitHub repo link gets `aria-label="Open repo on GitHub"`. (priority: high)
 
-- [ ] **Audit & fix hover-only interactions** — Confirmed gap: overflow tabs menu (AppView.tsx:1174-1186) uses `group-hover:block` with no click/tap equivalent. The `<div>` is purely hover-revealed with no `onClick` handler. Fix: add click toggle state to the overflow button so the dropdown also opens/closes on tap. No other `onMouseEnter`/`onMouseOver` interactions found that reveal content — all other hover effects are purely cosmetic (Tailwind `hover:` for color/bg changes). (priority: medium)
+- [ ] **Fix focus management for mobile overlays** — Addresses QA bugs #3, #4, #5. Three fixes in AppView.tsx: (1) Mobile sidebar drawer (line 2337-2344): add `useEffect` with keydown listener for Escape → `setMobileMenuOpen(false)`, scoped to `mobileMenuOpen === true`. (2) Mobile sidebar focus: add `useEffect` that runs when `mobileMenuOpen` becomes true, focusing the first focusable element inside the sidebar `div.relative` container (use `ref` + `querySelectorAll`). On close, return focus to the hamburger button. (3) Command palette (line 2027-2028): `CommandInput` from cmdk should auto-focus but doesn't in this custom overlay wrapper — add `autoFocus` prop to `CommandInput`, or add a `useEffect` in `CommandPalette` that focuses the input when `open` becomes true. (priority: high)
 
-- [ ] **Add ARIA labels and roles for missing elements** — GitHub repo link `aria-label` is covered by the P1 bug above. Additionally: (1) sidebar expand button (~line 803) — no `aria-label`, (2) sidebar collapse button (~line 883) — no `aria-label`, (3) activity panel collapse button (~line 2315) — no `aria-label`, (4) stop/force-stop dropdown items — verify Radix provides sufficient ARIA (it provides `aria-haspopup="menu"` on triggers). Add `aria-label` to collapse/expand buttons. (priority: medium)
+- [ ] **Audit & fix hover-only interactions** — Confirmed gap: overflow tabs menu (AppView.tsx:1174-1186) uses `group-hover:block` with no click/tap equivalent. The `<div>` is purely hover-revealed with no `onClick` handler on the button (line 1175). Fix: add `useState` toggle + `onClick` on the overflow button, change dropdown visibility from `group-hover:block` to conditional rendering or state-based class. No other `onMouseEnter`/`onMouseOver` interactions reveal content — all other hover effects are purely cosmetic (Tailwind `hover:` for color/bg). (priority: medium)
+
+- [ ] **Add ARIA labels to collapse/expand buttons** — Three buttons lack `aria-label`: (1) sidebar expand button (line 802) — add `aria-label="Expand sidebar"`, (2) sidebar collapse button (line 882) — add `aria-label="Collapse sidebar"`, (3) activity panel collapse button (line 2314) — add `aria-label="Collapse activity panel"`. These all have adjacent TooltipContent text that can be reused. Stop/force-stop dropdown: Radix already provides `aria-haspopup="menu"` on triggers — no fix needed. (priority: medium)
 
 - [ ] **Implement long-press context menu on session cards** — Create a `useLongPress` hook with 500ms threshold using `onTouchStart`/`onTouchEnd`/`onTouchMove` (cancel on move). On trigger, show a context menu (reuse DropdownMenu component) with: Stop session, Force-stop session, Copy session ID. Add haptic feedback via `navigator.vibrate(50)` if available. Apply to session card elements in the sidebar (~line 835-838 of AppView.tsx). (priority: medium)
 
-- [ ] **Fix focus management for mobile** — Ensure logical tab order across the responsive layout. When mobile sidebar drawer opens/closes, focus should move to/from the drawer appropriately. Escape key should close overlays and return focus. No focus traps in unexpected places. Verify command palette focus trap works correctly. (priority: medium)
-
-- [ ] **Runtime layout verification** — [review Gate 7] Run Playwright at 390x844 viewport and verify bounding boxes of key elements (hamburger button, session cards, tab triggers, dropdown items) meet 44x44px minimum. This validates the P1 bug fixes are effective. (priority: medium)
+- [ ] **Runtime layout verification** — [review Gate 7] Run Playwright at 390x844 viewport and verify bounding boxes of key elements (hamburger button, session cards, tab triggers, dropdown items, steer textarea) meet 44x44px minimum. This validates the P1 bug fixes are effective. (priority: medium)
 
 - [ ] **Run Lighthouse mobile accessibility audit & fix flagged issues** — Run Lighthouse in mobile mode targeting accessibility category. Fix any issues flagged: color contrast ratios, missing alt text, focus indicators, ARIA violations. Target score >= 90. Document final score. (priority: low)
 

@@ -1187,7 +1187,7 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
           {repoUrl && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <a href={repoUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 md:w-6 rounded-sm text-muted-foreground hover:text-foreground hover:bg-background transition-colors ml-auto">
+                <a href={repoUrl} target="_blank" rel="noopener noreferrer" aria-label="Open repo on GitHub" className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 md:w-6 rounded-sm text-muted-foreground hover:text-foreground hover:bg-background transition-colors ml-auto">
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </TooltipTrigger>
@@ -1966,7 +1966,7 @@ function Footer({
     <footer className="border-t border-border px-3 py-2 md:px-4 shrink-0">
       <div className="flex items-center gap-1.5 sm:gap-3">
         <Textarea
-          className="min-h-[32px] h-8 resize-none text-xs flex-1 min-w-0"
+          className="min-h-[44px] md:min-h-[32px] h-auto md:h-8 resize-none text-xs flex-1 min-w-0"
           placeholder="Steer..."
           value={steerInstruction}
           onChange={(e) => setSteerInstruction(e.target.value)}
