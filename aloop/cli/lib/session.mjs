@@ -125,6 +125,20 @@ function killProcess(pid) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForSessionDeregistration(homeDir, sessionId, timeoutMs = 5000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const active = await readActiveSessions(homeDir);
+    if (!active[sessionId]) return true;
+    await sleep(200);
+  }
+  return false;
+}
+
 async function readOrchestratorChildSessions(sessionDir) {
   const orchestratorPath = path.join(sessionDir, 'orchestrator.json');
   const state = await readJsonFile(orchestratorPath);
@@ -167,6 +181,19 @@ async function stopSessionInternal(homeDir, sessionId, stopping) {
 
   const sessionDir = entry.session_dir ?? path.join(homeDir, '.aloop', 'sessions', sessionId);
   const pid = entry.pid ?? null;
+
+  if (entry.mode === 'orchestrator') {
+    if (pid && isProcessAlive(pid)) {
+      if (!killProcess(pid)) {
+        return { success: false, reason: `Failed to stop session process: ${pid}` };
+      }
+      const deregistered = await waitForSessionDeregistration(homeDir, sessionId);
+      if (deregistered) {
+        return { success: true };
+      }
+    }
+    // Fallback to legacy cleanup if daemon did not deregister itself in time.
+  }
 
   if (entry.mode === 'orchestrate') {
     const childSessions = await readOrchestratorChildSessions(sessionDir);

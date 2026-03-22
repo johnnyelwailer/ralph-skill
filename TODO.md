@@ -10,7 +10,7 @@
 
 - [x] [review] Gate 9: README.md line 32 documents `--launch-mode resume --session-dir` but actual CLI uses `--launch resume <session-id>`. Fix resume example on line 32 to: `aloop start --launch resume <session-id>`. Dashboard `--session-dir` on line 63 is correct — no change needed there. (priority: high)
 - [x] `aloop start` must dispatch to orchestrate when project config has `mode: orchestrate`. Currently rejects with "Invalid mode: orchestrate". See SPEC-ADDENDUM §`aloop start` as Unified Entry Point. (priority: high)
-- [ ] Orchestrator must spawn as background daemon and register in `active.json` — currently runs synchronously and exits. See SPEC-ADDENDUM §Orchestrator Must Be Fully Autonomous. (priority: high)
+- [x] Orchestrator must spawn as background daemon and register in `active.json` — currently runs synchronously and exits. See SPEC-ADDENDUM §Orchestrator Must Be Fully Autonomous. (priority: high)
 - [ ] `aloop orchestrate --resume <session-id>` — resume from existing session. Reads `orchestrator.json`, skips re-decomposition, detects alive/dead children. See SPEC-ADDENDUM §Orchestrator Session Resumability. (priority: high)
 - [ ] `process-requests` must handle all standard request types from `lib/requests.ts` (create_issues, update_issue, close_issue, dispatch_child, merge_pr, post_comment, steer_child). Currently only handles decomposition/estimate result files. See SPEC-ADDENDUM §Scan Agent Self-Healing. (priority: high)
 - [ ] Branch sync: loop.sh/loop.ps1 must run `git fetch origin <base_branch>` + `git merge` before each iteration. Missing entirely. See SPEC §Branch Sync & Auto-Merge. (priority: high)
