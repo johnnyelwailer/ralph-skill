@@ -2853,9 +2853,24 @@ export async function launchChildLoop(
   // Create git worktree branching from agent/trunk (not local HEAD)
   // Fetch latest trunk first
   deps.spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'agent/trunk'], { encoding: 'utf8' });
+
+  // Clean up stale worktree locks for this branch before creating
+  deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+
   let worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName, 'origin/agent/trunk'], { encoding: 'utf8' });
   if (worktreeResult.status !== 0) {
-    // Branch may already exist — try without -b
+    // Branch may already exist — remove stale worktree lock if present, then retry
+    const existingWt = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'list', '--porcelain'], { encoding: 'utf8' });
+    const lines = (existingWt.stdout ?? '').split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('worktree ') && lines[i + 1]?.includes(branchName)) {
+        const stalePath = lines[i].replace('worktree ', '');
+        deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', stalePath], { encoding: 'utf8' });
+      }
+    }
+    deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+
+    // Retry — branch exists, check it out
     worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, branchName], { encoding: 'utf8' });
     if (worktreeResult.status !== 0) {
       throw new Error(`Failed to create worktree for issue #${issue.number}: ${worktreeResult.stderr || worktreeResult.stdout}`);
