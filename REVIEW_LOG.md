@@ -66,3 +66,20 @@ All gates pass. Integration suite: 125 dashboard tests + 8 CLI tests pass, type-
 - Gate 9 (docs freshness): README accurately reflects both modes, CLI commands, slash commands. Skill files are the primary deliverable and are current.
 
 ---
+
+## Review — 2026-03-22 18:30 — commit 3dc8ad76..0d32e2c0
+
+**Verdict: PASS** (2 observations)
+**Scope:** AppView.tsx (aria labels), App.coverage.test.ts (aria label tests), useIsTouchLikePointer.ts (deleted), useIsTouchLikePointer.test.ts (deleted), SPEC.md (startup validation acceptance criteria)
+
+**Prior findings resolution:**
+- Gate 4 (useIsTouchLikePointer dead code): RESOLVED — `useIsTouchLikePointer.ts` and its test file deleted in commit 3099d585. No imports remain anywhere in the codebase.
+- Gate 3 (useIsTouchLikePointer coverage gap): RESOLVED — file deleted, coverage config unchanged (correctly no longer lists it).
+
+**Observations:**
+- Gate 2: `App.coverage.test.ts:794,812,900` — aria label tests use `getByRole('button', { name: 'Collapse sidebar' })`, `getByRole('button', { name: 'Expand sidebar' })`, and `findByRole('button', { name: 'Collapse activity panel' })` — exact accessible name assertions, not DOM selectors. All three label states (collapsed sidebar, expanded sidebar, activity panel) covered.
+- Gate 1: `SPEC.md` updated with 7-line startup validation acceptance criteria block covering health checks, `session-health.json`, `ALERT.md`, and label bootstrap — matches implemented behavior in `orchestrate.ts`.
+
+All gates pass. Integration suite: 127 dashboard tests + 8 CLI tests pass, type-check clean.
+
+---

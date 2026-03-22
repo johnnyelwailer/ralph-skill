@@ -21,7 +21,7 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 ### Up Next
 
-- [x] **Add ARIA labels to collapse/expand buttons** — Added labels to all three targets in `AppView.tsx`: `Expand sidebar`, `Collapse sidebar`, and `Collapse activity panel`. Added regression coverage in `App.coverage.test.ts`. (priority: medium)
+- [x] **Add ARIA labels to collapse/expand buttons** — Added labels to all three targets in `AppView.tsx`: `Expand sidebar`, `Collapse sidebar`, and `Collapse activity panel`. Added regression coverage in `App.coverage.test.ts`. (priority: medium) [reviewed: gates 1-9 pass]
 
 - [x] **Implement long-press context menu on session cards** — Added `useLongPress` hook (`src/hooks/useLongPress.ts`) with 500ms threshold, touch-move cancel, and cleanup. Session cards in `AppView.tsx` now open a long-press context menu with `Stop session`, `Force-stop session`, and `Copy session ID`, plus `navigator.vibrate(50)` haptic feedback when available. Also wired targeted stop requests through `/api/stop` via `session` field so actions operate on the chosen session. Added regression coverage in `App.coverage.test.ts` and `src/commands/dashboard.test.ts`. (priority: medium)
 
