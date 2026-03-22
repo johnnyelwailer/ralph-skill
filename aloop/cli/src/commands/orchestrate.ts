@@ -33,6 +33,7 @@ export interface OrchestrateCommandOptions {
   maxIterations?: string;
   runScanLoop?: boolean;
   autoMerge?: boolean;
+  resume?: string;
 }
 
 export interface DecompositionPlanIssue {
@@ -1326,6 +1327,148 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   const deps = (depsOrCommand && typeof depsOrCommand === 'object' && 'existsSync' in depsOrCommand)
     ? (depsOrCommand as OrchestrateDeps)
     : undefined;
+
+  // --- Resume path: reuse an existing session ---
+  if (options.resume) {
+    const homeDir = options.homeDir ?? resolveHomeDir();
+    const aloopRoot = path.join(homeDir, '.aloop');
+    const sessionsRoot = path.join(aloopRoot, 'sessions');
+    const sessionDir = path.join(sessionsRoot, options.resume);
+    const stateFile = path.join(sessionDir, 'orchestrator.json');
+
+    if (!existsSync(stateFile)) {
+      throw new Error(`Session not found or missing orchestrator.json: ${sessionDir}`);
+    }
+
+    const state: OrchestratorState = JSON.parse(await readFile(stateFile, 'utf8'));
+    const projectRoot = options.projectRoot ?? process.cwd();
+    const promptsDir = path.join(sessionDir, 'prompts');
+    const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
+
+    // Refresh prompts from templates
+    const orchScanPromptFile = path.join(promptsDir, ORCH_SCAN_PROMPT_FILENAME);
+    await writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(sessionDir), 'utf8');
+
+    // Recreate worktree if missing
+    const { spawn: nodeSpawn, spawnSync: nodeSpawnSync } = await import('node:child_process');
+    const worktreePath = path.join(sessionDir, 'worktree');
+    const worktreeBranch = `aloop/${path.basename(sessionDir)}`;
+    let workDir = projectRoot;
+
+    if (!existsSync(path.join(worktreePath, '.git'))) {
+      // Clean up stale worktree refs
+      nodeSpawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+
+      // Try to reuse existing remote branch, or create new
+      const hasRemote = nodeSpawnSync('git', ['-C', projectRoot, 'ls-remote', '--heads', 'origin', worktreeBranch], { encoding: 'utf8' });
+      let wtResult;
+      if (hasRemote.stdout?.includes(worktreeBranch)) {
+        // Delete stale local branch ref if it exists
+        nodeSpawnSync('git', ['-C', projectRoot, 'branch', '-D', worktreeBranch], { encoding: 'utf8' });
+        wtResult = nodeSpawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch, `origin/${worktreeBranch}`], { encoding: 'utf8' });
+      } else {
+        wtResult = nodeSpawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
+      }
+      if (wtResult.status === 0) {
+        workDir = worktreePath;
+      } else {
+        console.error(`Warning: Failed to recreate worktree: ${wtResult.stderr?.trim()}`);
+      }
+    } else {
+      workDir = worktreePath;
+    }
+
+    // Reset loop-plan iteration counter to continue from current state
+    const loopPlan = JSON.parse(await readFile(loopPlanFile, 'utf8'));
+    loopPlan.cyclePosition = 0;
+    await writeFile(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}\n`, 'utf8');
+
+    // Launch loop.sh
+    const loopBinDir = path.join(aloopRoot, 'bin');
+    const loopScript = path.join(loopBinDir, 'loop.sh');
+    if (!existsSync(loopScript)) {
+      throw new Error(`Loop script not found: ${loopScript}`);
+    }
+
+    const args = [
+      '--prompts-dir', promptsDir,
+      '--session-dir', sessionDir,
+      '--work-dir', workDir,
+      '--mode', 'plan',
+      '--provider', 'claude',
+      '--round-robin', 'claude',
+      '--max-iterations', '999999',
+      '--launch-mode', 'start',
+      '--dangerously-skip-container',
+      '--no-task-exit',
+    ];
+
+    const child = nodeSpawn(loopScript, args, {
+      cwd: workDir,
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env },
+      windowsHide: true,
+    });
+    child.unref();
+    const loopPid = child.pid ?? null;
+    if (!loopPid) {
+      throw new Error('Failed to launch orchestrator loop process.');
+    }
+
+    // Update meta.json with new PID
+    const metaPath = path.join(sessionDir, 'meta.json');
+    const startedAt = new Date().toISOString();
+    let meta: Record<string, unknown> = {};
+    try { meta = JSON.parse(await readFile(metaPath, 'utf8')); } catch { /* fresh */ }
+    meta.pid = loopPid;
+    meta.resumed_at = startedAt;
+    await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
+    // Update active.json
+    const activePath = path.join(aloopRoot, 'active.json');
+    let active: Record<string, unknown> = {};
+    try {
+      if (existsSync(activePath)) {
+        const content = await readFile(activePath, 'utf8');
+        const parsed = JSON.parse(content);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          active = parsed as Record<string, unknown>;
+        }
+      }
+    } catch { /* fresh */ }
+    const sessionId = path.basename(sessionDir);
+    active[sessionId] = {
+      session_id: sessionId,
+      session_dir: sessionDir,
+      project_root: projectRoot,
+      pid: loopPid,
+      work_dir: workDir,
+      started_at: startedAt,
+      provider: 'claude',
+      mode: 'orchestrate',
+    };
+    await writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+
+    const issuesByState: Record<string, number> = {};
+    for (const i of state.issues) { issuesByState[i.state] = (issuesByState[i.state] ?? 0) + 1; }
+
+    if (outputMode === 'json') {
+      console.log(JSON.stringify({ session_dir: sessionDir, pid: loopPid, issues: issuesByState }, null, 2));
+      return;
+    }
+
+    console.log(`Resumed orchestrator session: ${sessionId}`);
+    console.log('');
+    console.log(`  Session dir:  ${sessionDir}`);
+    console.log(`  Work dir:     ${workDir}`);
+    console.log(`  Loop PID:     ${loopPid}`);
+    console.log(`  Issues:       ${state.issues.length} (${Object.entries(issuesByState).map(([s, n]) => `${n} ${s}`).join(', ')})`);
+    console.log(`  Iteration:    ${loopPlan.iteration}`);
+    return;
+  }
+
+  // --- New session path ---
   const result = await orchestrateCommandWithDeps(options, deps);
 
   const planOnly = options.planOnly ?? false;
