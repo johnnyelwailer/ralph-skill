@@ -1,1 +1,26 @@
-{"artifacts": []}
+{
+  "phase": "proof",
+  "summary": "Captured mobile evidence for Gate 6: 44px minimum tap targets at 390x844, tooltip open on tap, and hover-card open on tap.",
+  "artifacts": [
+    {
+      "type": "screenshot",
+      "path": "artifacts/proof/mobile-tap-targets-44px.png",
+      "description": "Mobile viewport screenshot (390x844) with UI controls measured for 44px minimum tap targets."
+    },
+    {
+      "type": "data",
+      "path": "artifacts/proof/mobile-tap-targets-measurements.json",
+      "description": "Bounding-box measurements proving target controls meet 44x44 minimum size."
+    },
+    {
+      "type": "screenshot",
+      "path": "artifacts/proof/mobile-tooltip-on-tap.png",
+      "description": "Tooltip visible after tap interaction on touch/mobile viewport."
+    },
+    {
+      "type": "screenshot",
+      "path": "artifacts/proof/mobile-hover-card-on-tap.png",
+      "description": "Hover-card content visible after tap interaction on touch/mobile viewport."
+    }
+  ]
+}

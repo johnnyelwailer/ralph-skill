@@ -25,7 +25,7 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2500 lines) now has full 
 
 - [x] **Run Lighthouse mobile accessibility audit & fix flagged issues** — Completed on 2026-03-22 via Lighthouse mobile audit against `vite preview` (`http://localhost:4173`). Fixed footer icon-button accessible names, low-contrast muted timestamps/phase badge fallback text, and heading order (`CardTitle` now `h2`). Final Lighthouse accessibility score: **100/100**. (priority: low)
 
-- [ ] **Capture proof artifacts** — [review Gate 6] Capture Playwright screenshots or recordings at mobile viewport showing (a) tap targets at 44px minimum, (b) tooltip opening on tap, (c) hover-card opening on tap. `proof-manifest.json` already exists with `{"artifacts": []}` — approved in prior review as sufficient. (priority: low)
+- [x] **Capture proof artifacts** — [review Gate 6] Captured Playwright artifacts under `artifacts/proof/`: `mobile-tap-targets-44px.png`, `mobile-tap-targets-measurements.json` (all measured controls pass >=44x44), `mobile-tooltip-on-tap.png`, and `mobile-hover-card-on-tap.png`. Updated `proof-manifest.json` with structured artifact metadata and descriptions. (priority: low)
 
 - [x] **Implement swipe-to-open sidebar gesture** — Added `useSwipeEdge` hook (`src/hooks/useSwipeEdge.ts`) with configurable edge zone (30px), swipe distance threshold (60px), and horizontal-dominant check. Wired into `AppView.tsx` to open mobile sidebar on left-edge rightward swipe (disabled when sidebar already open). Added 5 regression tests in `App.coverage.test.ts`. (priority: low)
 

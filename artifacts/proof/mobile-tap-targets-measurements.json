@@ -1,0 +1,84 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "minimumTapTarget": {
+    "width": 44,
+    "height": 44
+  },
+  "checks": [
+    {
+      "label": "Hamburger button",
+      "width": 44,
+      "height": 44,
+      "minWidth": 44,
+      "minHeight": 44,
+      "pass": true
+    },
+    {
+      "label": "Session card button",
+      "width": 239,
+      "height": 46,
+      "minWidth": 44,
+      "minHeight": 44,
+      "pass": true
+    },
+    {
+      "label": "Tab trigger 1",
+      "width": 45.56,
+      "height": 44,
+      "minWidth": 44,
+      "minHeight": 44,
+      "pass": true
+    },
+    {
+      "label": "Tab trigger 2",
+      "width": 66.23,
+      "height": 44,
+      "minWidth": 44,
+      "minHeight": 44,
+      "pass": true
+    },
+    {
+      "label": "Tab trigger 3",
+      "width": 64.84,
+      "height": 44,
+      "minWidth": 44,
+      "minHeight": 44,
+      "pass": true
+    },
+    {
+      "label": "Stop menu trigger",
+      "width": 44,
+      "height": 44,
+      "minWidth": 44,
+      "minHeight": 44,
+      "pass": true
+    },
+    {
+      "label": "Dropdown item 1",
+      "width": 233.7,
+      "height": 44,
+      "minWidth": 44,
+      "minHeight": 44,
+      "pass": true
+    },
+    {
+      "label": "Dropdown item 2",
+      "width": 233.7,
+      "height": 44,
+      "minWidth": 44,
+      "minHeight": 44,
+      "pass": true
+    },
+    {
+      "label": "Steer textarea",
+      "width": 266,
+      "height": 50,
+      "minWidth": 44,
+      "minHeight": 44,
+      "pass": true
+    }
+  ]
+}
