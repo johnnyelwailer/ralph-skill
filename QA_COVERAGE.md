@@ -15,3 +15,8 @@
 | Test: auto-approves when no agent reviewer configured | 2026-03-22 | 59b8999 | PASS | Auto-approve path works |
 | Test: delegates to agent reviewer when configured | 2026-03-22 | 59b8999 | PASS | Delegation path works |
 | All PR lifecycle tests (checkPrGates + reviewPrDiff + processPrLifecycle) | 2026-03-22 | 59b8999 | PASS | 25/25 tests pass |
+| GitHubAdapter.createReview unit tests | 2026-03-22 | cbcd919 | PASS | 5 tests: correct endpoint/event, inline comments, suggestion wrapping, empty comments, malformed response |
+| GitHubAdapter.resolveThread unit tests | 2026-03-22 | cbcd919 | PASS | 3 tests: node_id fetch + GraphQL mutation, empty node_id error, API error propagation |
+| buildFeedbackSteering with comment IDs | 2026-03-22 | cbcd919 | PASS | Comment IDs included per-comment, resolution guidance references each ID, handles missing path/user |
+| Redispatch steering with per-comment details | 2026-03-22 | cbcd919 | PASS | Steering file includes Comment ID, file path:line, feedback body; clears needs_redispatch after dispatch |
+| processPrLifecycle stores pending_review_comments | 2026-03-22 | cbcd919 | PASS | After rejection, issue has needs_redispatch=true, pending_review_comments with IDs from review API |

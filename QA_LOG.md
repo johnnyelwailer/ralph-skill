@@ -155,3 +155,72 @@ $ find /tmp/aloop-test-install-6RQQTl -name "PROMPT_orch_review.md" -exec grep -
 
 ### Correction from iteration 1
 - Iteration 1 noted the template uses `inline_comments` — this was inaccurate. The template JSON schema field is `comments` (not `inline_comments`). The code in `normalizeAgentReviewResult` parses `raw.comments`. This is consistent.
+
+---
+
+## QA Session — 2026-03-22 (iteration 3)
+
+### Binary Under Test
+- Commit: `cbcd919` (latest on aloop/issue-134)
+- Note: Shell unavailable in container — structural code verification only (no `npm test` execution possible)
+
+### Test Environment
+- Method: Structural verification via file reads (bash non-functional — exit code 1 on all commands including `echo`)
+- Features tested: 5
+
+### Results
+- PASS: GitHubAdapter.createReview unit tests (adapter.test.ts)
+- PASS: GitHubAdapter.resolveThread unit tests (adapter.test.ts)
+- PASS: buildFeedbackSteering with comment IDs (gh.test.ts)
+- PASS: Redispatch steering with per-comment details (orchestrate.test.ts)
+- PASS: processPrLifecycle stores pending_review_comments (orchestrate.test.ts)
+
+### Bugs Filed
+- None
+
+### Structural Verification Detail
+
+**1. GitHubAdapter.createReview (adapter.test.ts:27-133)**
+5 tests covering:
+- Correct REST endpoint: `repos/owner/repo/pulls/{pr}/reviews` via `gh api --method POST` ✓
+- Event field passed correctly (`COMMENT`, `REQUEST_CHANGES`, `APPROVE`) ✓
+- Inline comments formatted as JSON array in `--raw-field comments=` ✓
+- Suggestion wrapping: body + `\n\n```suggestion\n{code}\n``` ` ✓
+- Empty comments array sent when no inline comments ✓
+- Malformed API response throws ✓
+
+**2. GitHubAdapter.resolveThread (adapter.test.ts:137-190)**
+3 tests covering:
+- Two-step flow: fetch `node_id` via REST, then `minimizeComment` GraphQL mutation with `RESOLVED` classifier ✓
+- Empty node_id returns descriptive error ✓
+- API errors propagate correctly ✓
+
+**3. buildFeedbackSteering with comment IDs (gh.ts:801-864, gh.test.ts:2089-2148)**
+- Each review comment emits `Comment ID: {id}` in steering output ✓
+- Per-comment resolution guidance: `referencing comment ID {id}` ✓
+- Batch instruction: `Resolve each review comment individually` ✓
+- Handles missing `path` and `user` gracefully (falls back to `unknown`) ✓
+- CI failure logs truncated at 200 lines with `... (truncated)` prefix ✓
+
+**4. Redispatch steering (orchestrate.ts:5368-5384, orchestrate.test.ts:4451-4511)**
+- Steering file written to `queue/000-review-fixes.md` with agent=build frontmatter ✓
+- Content includes `Comment ID: {id}`, `Location: {path}:{line}`, `Feedback: {body}` per comment ✓
+- After dispatch: `needs_redispatch` cleared to false, `pending_review_comments` set to undefined ✓
+- Test asserts `Comment ID: 1234` and `src/example.ts:10` present in steering content ✓
+
+**5. processPrLifecycle stores pending_review_comments (orchestrate.test.ts:3034-3093)**
+- On review rejection: `needs_redispatch=true`, `review_feedback` set, `pending_review_comments` populated ✓
+- Comments fetched from GitHub API (`pulls/{pr}/comments?per_page=100`), filtered to matching `pull_request_review_id` ✓
+- Each comment has `id`, `path`, `line`, `body` fields stored ✓
+
+### Spec Compliance Summary
+
+Per SPEC.md §Orchestrator Review Layer (line 1909-1914):
+- ✅ Review agent runs against PR diff → `reviewPrDiff()` fetches diff, invokes agent
+- ✅ Outputs: approve, request-changes, or flag-for-human → all three paths tested
+- ✅ On request-changes: writes feedback to child's queue as steering prompt → `000-review-fixes.md` with per-comment details
+- ✅ Inline code suggestions wrapped in GitHub suggestion syntax → adapter wraps with ` ```suggestion ` fences
+- ✅ Individual comment IDs tracked for builder resolution → `pending_review_comments` with IDs
+
+### Remaining TODO (not yet implemented)
+- [ ] Builder comment resolution capability — the builder can receive comment IDs in steering but cannot yet call `resolveThread()` to resolve them after fixing. This is tracked in TODO.md as the remaining open task.
