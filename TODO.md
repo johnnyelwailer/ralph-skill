@@ -4,7 +4,7 @@
 
 ### In Progress
 
-- [ ] [review] Gate 4: `useIsTouchLikePointer.ts` + `useIsTouchLikePointer.test.ts` (103 lines) are dead code — zero components import `useIsTouchLikePointer`. Delete both files or consolidate with `useIsTouchDevice`. This is the SECOND review flagging this exact issue (first: Review 4, 2026-03-22 17:30). (priority: high)
+- [x] [review] Gate 4: `useIsTouchLikePointer.ts` + `useIsTouchLikePointer.test.ts` (103 lines) are dead code — zero components import `useIsTouchLikePointer`. Delete both files or consolidate with `useIsTouchDevice`. This is the SECOND review flagging this exact issue (first: Review 4, 2026-03-22 17:30). (priority: high)
 
 
 ### Up Next
@@ -13,18 +13,18 @@
 
 - [x] Integrate `OrchestratorAdapter` into `orchestrate.ts` — adapter interface and `GitHubAdapter` exist in `adapter.ts` but orchestrate.ts still uses raw `execGh`/`github-monitor` imports directly; spec requires all GH operations go through adapter (SPEC-ADDENDUM §Orchestrator Adapter Pattern)
 - [x] Branch sync before each iteration — `loop.sh` has no `git fetch`/`git merge` of base branch before iterations; worktree branches drift causing merge conflicts at PR time (SPEC §Branch Sync & Auto-Merge, SPEC-ADDENDUM §Known Gap #1)
-- [ ] `PROMPT_merge.md` template missing — merge conflict resolution agent prompt does not exist in `aloop/templates/`; referenced by orchestrate.ts and process-requests.ts but no template file (SPEC §Branch Sync & Auto-Merge > Merge Agent)
-- [ ] Orchestrator must spawn background daemon and return immediately — current `aloop orchestrate` runs synchronously, does not register in `active.json`, not visible in dashboard (SPEC-ADDENDUM §Orchestrator Must Be Fully Autonomous)
+- [x] `PROMPT_merge.md` template — exists at `aloop/templates/PROMPT_merge.md` (53 lines); used by orchestrate.ts (template registration line 3413) and process-requests.ts (merge conflict queue injection lines 315-320)
+- [x] Orchestrator spawns background daemon — `orchestrateCommand` spawns `loop.sh` detached with `child.unref()`, registers in `active.json`, writes `meta.json` + `status.json` for dashboard visibility
 
 #### Loop Engine (priority: high)
 
 - [ ] Spec-gap periodic scheduling (every 2nd cycle) not wired in loop.sh — spec-gap agent exists as finalizer element but the in-cycle periodic scheduling is missing (SPEC §Spec-Gap Analysis Agent: "runs before every 2nd plan phase")
 - [ ] Loop health supervisor agent missing — no `PROMPT_loop_health.md` template; no circuit breaker or pattern detection for repetitive cycling/stuck cascades (SPEC §Configurable Agent Pipeline > Loop health supervisor)
-- [ ] `{{SUBAGENT_HINTS}}` template variable not resolved — loop.sh/loop.ps1 do not expand this variable; per-phase hint files don't exist; opencode subagent delegation instructions not injected (SPEC §Configurable Agent Pipeline > Subagent Integration)
+- [ ] `{{SUBAGENT_HINTS}}` template variable not resolved — loop.sh `substitute_prompt_placeholders()` (lines 285-294) only expands `SESSION_DIR`, `ITERATION`, `ARTIFACTS_DIR`; subagent hint files exist (`subagent-hints-build.md`, `subagent-hints-proof.md`, `subagent-hints-review.md`) but are never loaded or injected; need provider-conditional expansion (SPEC §Configurable Agent Pipeline > Subagent Integration)
 
 #### QA Bugs (priority: high)
 
-- [ ] [qa/P2] `--output json` flag ignored when `aloop start --mode orchestrate` forwards to orchestrateCommand: ran `aloop start --mode orchestrate --output json` → got human-readable text with `[orchestrate]` prefix and `Error:` string → spec says `--output json` should produce machine-parseable JSON. Tested at iter 35. (priority: high)
+- [ ] [qa/P2] `--output json` error path outputs plain text — `withErrorHandling` wrapper (`error-handling.ts`) always emits `console.error("Error: ...")` regardless of `--output` mode; also `console.error` warning on worktree failure (orchestrate.ts:1843) pollutes JSON output. The happy path JSON output works (lines 1929-1932), but any error/warning before that point bypasses JSON formatting. (priority: high)
 
 #### QA & Coverage (priority: high)
 
@@ -92,3 +92,5 @@
 - [x] useIsTouchDevice and useIsTouchLikePointer hooks with tests
 - [x] Self-healing: auto-create missing labels and derive missing config (#227)
 - [x] `aloop start` forwards `mode: orchestrate` to orchestrator instead of rejecting it — `startCommand` dispatches to `orchestrateCommand` when config or `--mode` resolves to orchestrate
+- [x] `PROMPT_merge.md` template exists at `aloop/templates/PROMPT_merge.md` — used by orchestrate.ts and process-requests.ts for merge conflict resolution
+- [x] Orchestrator spawns background daemon and returns immediately — detached `loop.sh` spawn, `active.json` registration, `meta.json` + `status.json` for dashboard
