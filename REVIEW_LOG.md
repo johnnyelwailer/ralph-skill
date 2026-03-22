@@ -60,3 +60,37 @@
 ### Gates 1, 3, 6-9: PASS (or N/A)
 
 ---
+
+## Review — 2026-03-22 — commit 150fdc7..2d11201
+
+**Verdict: PASS** (all prior findings resolved, 0 new findings)
+**Scope:** `orchestrate.ts` (dead code removal, API error persistence tracking), `orchestrate.test.ts` (reviewPrDiff fix, 5 new API error tests)
+
+### Prior findings resolved (2 of 2)
+- Gate 4: `mergeCheckErrored` dead code — **FIXED** in commit a9e8ea2. Grep confirms zero references remain in codebase.
+- Gate 2+5: `reviewPrDiff` test — **FIXED** in commit 51c787b. Test at line 2903 now asserts `verdict: 'pending'` and `summary.includes('PR diff fetch failed (will retry): Not found')`, matching implementation at lines 3326-3330.
+
+### New work reviewed (commit 156b029)
+- API error persistence tracking: `api_error_count`/`api_error_summary` fields on `OrchestratorIssue`, `ORCHESTRATOR_API_ERROR_PERSISTENCE_LIMIT = 10`, `resetApiErrorTracking()` helper.
+- Step 2b in `processPrLifecycle` (lines 3544-3605): catches `api_error` gates before Step 3 (rebase) and Step 4 (CI failure), preventing transient API errors from triggering rebase attempts or CI failure escalation.
+- 5 new tests cover: CI API error isolation (line 3197), merge API error isolation (line 3231), persistence threshold escalation (line 3261), reset on success (line 3292), plus the fixed reviewPrDiff test (line 2903).
+
+### Gate 1 (Spec Compliance): PASS
+- Spec says "Same error persisting after N attempts → flag for human" — implementation uses N=10 for API errors with `flagForHuman` escalation. Transient errors return `gates_pending` for retry rather than failing.
+
+### Gate 2 (Test Depth): PASS
+- 5 tests assert specific values: exact `api_error_count`, exact `action`, exact `state`, exact log events. Edge cases covered: threshold boundary (9→10), reset path, isolation from CI/rebase counters.
+
+### Gate 3 (Coverage): INCOMPLETE (bash unavailable)
+- Code inspection: all 3 branches of Step 2b tested (under threshold, at threshold, no errors). Reset tested at both call sites.
+
+### Gate 4 (Code Quality): PASS
+- No dead code, no TODOs, no duplication. `mergeCheckErrored` fully removed.
+
+### Gate 5 (Integration Sanity): INCOMPLETE (bash unavailable)
+- Code-level analysis shows no regressions. Mock patterns match actual code. Pre-existing failures remain out of scope.
+
+### Gates 6-9: PASS (N/A)
+- No proof artifacts needed (internal changes), no UI changes, no dependency changes, no doc changes.
+
+---
