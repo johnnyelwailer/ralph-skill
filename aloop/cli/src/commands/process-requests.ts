@@ -734,6 +734,8 @@ ${recent.slice(-4000)}
       },
       platform: process.platform,
       env: process.env as Record<string, string | undefined>,
+      repo: repo ?? undefined,
+      execGh,
     },
   };
 

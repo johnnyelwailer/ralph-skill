@@ -250,6 +250,8 @@ export interface DispatchDeps {
   spawn: (command: string, args: string[], options?: Record<string, unknown>) => ChildProcess;
   platform: string;
   env: Record<string, string | undefined>;
+  repo?: string;
+  execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
 }
 
 export interface ChildLaunchResult {
@@ -3507,6 +3509,50 @@ function formatChildSessionId(projectName: string, issueNumber: number, now: Dat
   return `${sanitized}-issue-${issueNumber}-${timestamp}`;
 }
 
+async function linkIssueDevelopmentBranch(
+  repo: string,
+  issueNumber: number,
+  branchName: string,
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>,
+): Promise<void> {
+  const endpoint = `repos/${repo}/issues/${issueNumber}/branches`;
+  const attempts: string[][] = [
+    ['api', '--method', 'POST', endpoint, '-f', `name=${branchName}`],
+    ['api', '--method', 'POST', endpoint, '-f', `branch_name=${branchName}`],
+    ['api', '--method', 'POST', endpoint, '-f', `name=${branchName}`, '-f', 'from_branch=agent/trunk'],
+  ];
+  const errors: string[] = [];
+
+  for (const args of attempts) {
+    try {
+      await execGh(args);
+      return;
+    } catch (e: unknown) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  const slug = parseRepoSlug(repo);
+  if (slug) {
+    try {
+      await execGh([
+        'issue',
+        'develop',
+        String(issueNumber),
+        '--repo',
+        repo,
+        '--name',
+        branchName,
+      ]);
+      return;
+    } catch (e: unknown) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  throw new Error(`Failed to link development branch ${branchName} to issue #${issueNumber}: ${errors.join(' | ')}`);
+}
+
 /**
  * Launches a single child loop for the given issue.
  * Creates branch, worktree, seeds TODO.md, launches loop process.
@@ -3570,6 +3616,10 @@ export async function launchChildLoop(
   const pushResult = deps.spawnSync('git', ['-C', worktreePath, 'push', '-u', 'origin', branchName], { encoding: 'utf8' });
   if (pushResult.status !== 0) {
     throw new Error(`Failed to push branch ${branchName} for issue #${issue.number}: ${pushResult.stderr || pushResult.stdout}`);
+  }
+
+  if (deps.execGh && deps.repo) {
+    await linkIssueDevelopmentBranch(deps.repo, issue.number, branchName, deps.execGh);
   }
 
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)

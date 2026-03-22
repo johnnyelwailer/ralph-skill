@@ -3187,6 +3187,71 @@ describe('launchChildLoop', () => {
     assert.ok(pushCall.args.includes('aloop/issue-42'));
   });
 
+  it('links development branch to issue when repo and execGh are provided', async () => {
+    const ghCalls: string[][] = [];
+    const deps = createMockDispatchDeps({
+      repo: 'acme/widgets',
+      execGh: async (args: string[]) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+
+    assert.ok(
+      ghCalls.some((args) =>
+        args[0] === 'api'
+        && args[1] === '--method'
+        && args[2] === 'POST'
+        && args[3] === 'repos/acme/widgets/issues/42/branches'
+        && args.includes('name=aloop/issue-42'),
+      ),
+      'should call gh api to link development branch',
+    );
+  });
+
+  it('falls back to gh issue develop when API linking attempts fail', async () => {
+    const ghCalls: string[][] = [];
+    const deps = createMockDispatchDeps({
+      repo: 'acme/widgets',
+      execGh: async (args: string[]) => {
+        ghCalls.push(args);
+        if (args[0] === 'api') throw new Error('api failed');
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+
+    assert.ok(
+      ghCalls.some((args) =>
+        args[0] === 'issue'
+        && args[1] === 'develop'
+        && args[2] === '42'
+        && args.includes('--repo')
+        && args.includes('acme/widgets')
+        && args.includes('--name')
+        && args.includes('aloop/issue-42'),
+      ),
+      'should call gh issue develop fallback',
+    );
+  });
+
+  it('throws when branch link cannot be created with API or fallback', async () => {
+    const deps = createMockDispatchDeps({
+      repo: 'acme/widgets',
+      execGh: async () => {
+        throw new Error('unavailable');
+      },
+    });
+
+    await assert.rejects(
+      () => launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps),
+      /Failed to link development branch aloop\/issue-42 to issue #42/,
+    );
+  });
+
   it('seeds TODO.md in worktree', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
