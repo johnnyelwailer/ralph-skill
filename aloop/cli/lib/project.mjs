@@ -48,6 +48,9 @@ export function getHomeDir(explicit) {
 
 export function resolveProjectRoot(projectRoot) {
   const start = path.resolve(projectRoot ?? process.cwd());
+  if (!existsSync(start)) {
+    throw new Error(`Project root does not exist: ${start}`);
+  }
   const gitRoot = spawnSync('git', ['-C', start, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
   if (gitRoot.status === 0) {
     const value = gitRoot.stdout.trim();

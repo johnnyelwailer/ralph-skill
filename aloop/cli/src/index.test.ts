@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 
 // Isolate tests from the repository's git root to ensure pure temporary-fixture discovery
@@ -76,6 +76,42 @@ test('index CLI accepts setup --provider alias in non-interactive mode', async (
   assert.match(result.stdout, /Setup complete\./);
 });
 
+test('index CLI setup prints helpful error when interactive mode runs without a TTY', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-setup-notty-'));
+  const tempHome = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-home-notty-'));
+
+  const result = await runCli([
+    'setup',
+    '--project-root',
+    tempRoot,
+    '--home-dir',
+    tempHome,
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /Interactive setup requires a TTY/);
+  assert.match(result.stderr, /--non-interactive/);
+});
+
+test('index CLI setup emits JSON-formatted errors when --output json is requested', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-setup-json-notty-'));
+  const tempHome = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-setup-json-home-'));
+
+  const result = await runCli([
+    'setup',
+    '--project-root',
+    tempRoot,
+    '--home-dir',
+    tempHome,
+    '--output',
+    'json',
+  ]);
+
+  assert.equal(result.code, 1);
+  const payload = JSON.parse(result.stderr.trim());
+  assert.equal(payload.error, 'Interactive setup requires a TTY. Re-run with --non-interactive to use defaults.');
+});
+
 test('index CLI returns non-zero for unknown command', async () => {
   const result = await runCli(['unknown-command']);
   assert.notEqual(result.code, 0);
@@ -93,4 +129,42 @@ test('index CLI catches errors and prints clean messages without stack traces', 
   assert.match(result.stderr, /^Error: Invalid autonomy level: invalid/);
   assert.ok(!result.stderr.includes('at '));
   assert.ok(!result.stderr.includes('node:internal'));
+});
+
+test('index CLI emits JSON-formatted errors when --output json is requested', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-json-error-'));
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+
+  const result = await runCli(['orchestrate', '--autonomy-level', 'invalid', '--output', 'json'], tempRoot);
+  assert.equal(result.code, 1);
+
+  const payload = JSON.parse(result.stderr.trim());
+  assert.equal(payload.error, 'Invalid autonomy level: invalid');
+});
+
+test('index CLI keeps orchestrate warnings JSON-safe when --output json is requested', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-json-warning-'));
+  const tempHome = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-json-warning-home-'));
+
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  await mkdir(path.join(tempRoot, '.git'));
+  await mkdir(path.join(tempHome, '.aloop', 'bin'), { recursive: true });
+  await writeFile(path.join(tempHome, '.aloop', 'bin', 'loop.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+  await chmod(path.join(tempHome, '.aloop', 'bin', 'loop.sh'), 0o755);
+
+  const result = await runCli(
+    ['orchestrate', '--output', 'json', '--home-dir', tempHome, '--project-root', tempRoot],
+    tempRoot,
+  );
+  assert.equal(result.code, 0);
+  const stderr = result.stderr.trim();
+  if (stderr.length > 0) {
+    const lines = stderr.split('\n').filter((line) => line.trim().length > 0);
+    for (const line of lines) {
+      const parsed = JSON.parse(line);
+      assert.equal(typeof parsed, 'object');
+      assert.ok(parsed !== null);
+      assert.ok('warning' in parsed || 'error' in parsed);
+    }
+  }
 });

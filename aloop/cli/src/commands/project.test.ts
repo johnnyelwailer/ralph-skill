@@ -619,6 +619,16 @@ test('resolveProjectRoot correctly identifies git root', async () => {
   assert.ok(result.project.is_git_repo);
 });
 
+test('resolveProjectRoot throws for non-existent path', async () => {
+  await assert.rejects(
+    () => discoverWorkspace({ projectRoot: '/tmp/nonexistent-path-xyz-aloop-test' }),
+    (err: Error) => {
+      assert.ok(err.message.includes('Project root does not exist'));
+      return true;
+    }
+  );
+});
+
 test('discoverReferenceCandidates deduplicates against spec candidates', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-ref-dedupe-'));
   await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');

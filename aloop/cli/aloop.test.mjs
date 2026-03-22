@@ -290,25 +290,33 @@ test('aloop entrypoint exercises status formatting edge cases and short help', a
   assert.match(shortHelp.stdout, /Usage:\s+aloop <command>/i);
 });
 
-test('aloop entrypoint delegates unknown commands when dist bundle exists', async () => {
-  const delegated = await runAloop(['unknown-delegated-command']);
-  assert.notEqual(delegated.code, 0);
-  assert.match(delegated.stderr, /unknown command/i);
-  assert.doesNotMatch(delegated.stderr, /bundle not found/i);
-});
+test('aloop entrypoint bundle fallback behavior', async (t) => {
+  await t.test('delegates unknown commands when dist bundle exists', async (t) => {
+    const bundlePath = path.join(cliRoot, 'dist', 'index.js');
+    const bundleContents = await readFile(bundlePath, 'utf8').catch(() => null);
+    if (bundleContents === null) {
+      t.skip('dist/index.js is not present in this workspace');
+      return;
+    }
+    const delegated = await runAloop(['unknown-delegated-command']);
+    assert.notEqual(delegated.code, 0);
+    assert.match(delegated.stderr, /unknown command/i);
+    assert.doesNotMatch(delegated.stderr, /bundle not found/i);
+  });
 
-test('aloop entrypoint returns bundle-not-found error when dist is absent', async () => {
-  const distDir = path.join(cliRoot, 'dist');
-  const hiddenDistDir = path.join(cliRoot, `.dist-test-hide-${process.pid}`);
-  await rename(distDir, hiddenDistDir);
-  try {
-    const result = await runAloop(['unknown-command'], {
-      cwd: cliRoot,
-      env: process.env,
-    });
-    assert.notEqual(result.code, 0);
-    assert.match(result.stderr, /bundle not found/i);
-  } finally {
-    await rename(hiddenDistDir, distDir);
-  }
+  await t.test('returns bundle-not-found error when dist is absent', async () => {
+    const distDir = path.join(cliRoot, 'dist');
+    const hiddenDistDir = path.join(cliRoot, `.dist-test-hide-${process.pid}`);
+    await rename(distDir, hiddenDistDir);
+    try {
+      const result = await runAloop(['unknown-command'], {
+        cwd: cliRoot,
+        env: process.env,
+      });
+      assert.notEqual(result.code, 0);
+      assert.match(result.stderr, /bundle not found/i);
+    } finally {
+      await rename(hiddenDistDir, distDir);
+    }
+  });
 });

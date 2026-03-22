@@ -7,6 +7,7 @@ import { discoverWorkspace, type DiscoveryResult } from './project.js';
 import { resolveHomeDir } from './session.js';
 import type { OutputMode } from './status.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
+import { orchestrateCommand, type OrchestrateCommandOptions } from './orchestrate.js';
 
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode';
 type LoopProvider = ProviderName | 'round-robin';
@@ -379,7 +380,9 @@ function assertLoopMode(value: string): LoopMode {
   return normalized;
 }
 
-function resolveConfiguredStartMode(value: string): LoopMode {
+type StartMode = LoopMode | 'orchestrate';
+
+function resolveConfiguredStartMode(value: string): StartMode {
   const normalized = value.trim().toLowerCase();
   if (normalized === 'loop') {
     return 'plan-build-review';
@@ -388,9 +391,33 @@ function resolveConfiguredStartMode(value: string): LoopMode {
     return 'single';
   }
   if (normalized === 'orchestrate') {
-    throw new Error('Invalid mode: orchestrate (use `aloop orchestrate` for orchestrator sessions).');
+    return 'orchestrate';
   }
   return assertLoopMode(value);
+}
+
+/**
+ * Determine whether `aloop start` should dispatch to orchestrate or loop mode.
+ * Reads project/global config when no explicit --mode flag is given.
+ */
+async function resolveEffectiveStartMode(options: StartCommandOptions, deps: StartDeps): Promise<StartMode> {
+  // Explicit loop-mode shortcut flags always mean loop
+  if (options.plan || options.build || options.review) return 'plan-build-review';
+
+  // Explicit --mode flag
+  if (options.mode) {
+    return resolveConfiguredStartMode(options.mode);
+  }
+
+  // Fall back to project/global config
+  const homeDir = resolveHomeDir(options.homeDir);
+  const discovery = await deps.discoverWorkspace({ projectRoot: options.projectRoot, homeDir: options.homeDir });
+  const aloopRoot = path.join(homeDir, '.aloop');
+  const projectConfig = (await readOptionalConfig(discovery.setup.config_path, deps)) ?? emptyParsedConfig();
+  const globalConfig = (await readOptionalConfig(path.join(aloopRoot, 'config.yml'), deps)) ?? emptyParsedConfig();
+
+  const modeValue = String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, 'plan-build-review'));
+  return resolveConfiguredStartMode(modeValue);
 }
 
 function assertLaunchMode(value: string): LaunchMode {
@@ -713,9 +740,16 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   }
 
   const forcedMode = resolveModeFromFlags(options);
-  const resolvedMode = forcedMode
+  const resolvedStartMode = forcedMode
     ?? (options.mode ? resolveConfiguredStartMode(options.mode) : null)
     ?? resolveConfiguredStartMode(String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, 'plan-build-review')));
+
+  if (resolvedStartMode === 'orchestrate') {
+    throw new Error(
+      'Orchestrate mode detected in startCommandWithDeps. Use startCommand() which dispatches to orchestrateCommand automatically.',
+    );
+  }
+  const resolvedMode: LoopMode = resolvedStartMode;
 
   const launchMode: LaunchMode = options.launch ? assertLaunchMode(options.launch) : 'start';
 
@@ -1123,6 +1157,21 @@ export async function startCommand(sessionIdArg: string | undefined, options: St
   if (sessionIdArg) {
     options.sessionId = sessionIdArg;
   }
+
+  // Check if mode resolves to 'orchestrate' — if so, delegate to orchestrateCommand
+  const effectiveMode = await resolveEffectiveStartMode(options, deps);
+  if (effectiveMode === 'orchestrate') {
+    const orchOptions: OrchestrateCommandOptions = {
+      homeDir: options.homeDir,
+      projectRoot: options.projectRoot,
+      output: options.output,
+    };
+    if (options.maxIterations !== undefined) {
+      orchOptions.maxIterations = String(options.maxIterations);
+    }
+    return orchestrateCommand(orchOptions);
+  }
+
   const outputMode = options.output ?? 'text';
   const result = await startCommandWithDeps(options, deps);
 
