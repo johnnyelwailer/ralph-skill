@@ -27,7 +27,7 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2500 lines) now has full 
 
 - [ ] **Capture proof artifacts** — [review Gate 6] Capture Playwright screenshots or recordings at mobile viewport showing (a) tap targets at 44px minimum, (b) tooltip opening on tap, (c) hover-card opening on tap. `proof-manifest.json` already exists with `{"artifacts": []}` — approved in prior review as sufficient. (priority: low)
 
-- [ ] **Implement swipe-to-open sidebar gesture** — SPEC-ADDENDUM §Touch Considerations: "Swipe right from left edge opens sidebar on mobile." Requires a touch gesture handler (touchstart near left edge + touchmove rightward > threshold → setMobileMenuOpen(true)). Not yet implemented. (priority: low)
+- [x] **Implement swipe-to-open sidebar gesture** — Added `useSwipeEdge` hook (`src/hooks/useSwipeEdge.ts`) with configurable edge zone (30px), swipe distance threshold (60px), and horizontal-dominant check. Wired into `AppView.tsx` to open mobile sidebar on left-edge rightward swipe (disabled when sidebar already open). Added 5 regression tests in `App.coverage.test.ts`. (priority: low)
 
 ### Completed
 

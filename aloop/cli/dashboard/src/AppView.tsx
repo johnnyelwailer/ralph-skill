@@ -22,6 +22,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CostDisplay } from '@/components/progress/CostDisplay';
 import { useCost } from '@/hooks/useCost';
 import { useLongPress } from '@/hooks/useLongPress';
+import { useSwipeEdge } from '@/hooks/useSwipeEdge';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 
 // ── ANSI + Markdown rendering ──
@@ -2225,6 +2226,13 @@ export function App() {
       hamburger?.focus();
     }
   }, [mobileMenuOpen]);
+
+  // Swipe right from left edge opens sidebar on mobile
+  useSwipeEdge({
+    edge: 'left',
+    onSwipe: () => setMobileMenuOpen(true),
+    enabled: !mobileMenuOpen,
+  });
 
   const selectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);

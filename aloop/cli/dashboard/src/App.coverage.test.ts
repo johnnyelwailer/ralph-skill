@@ -946,3 +946,95 @@ describe('App.tsx AppView integration coverage', () => {
     expect(screen.getByText('p1')).toBeInTheDocument();
   });
 });
+
+describe('useSwipeEdge', () => {
+  let listeners: Record<string, EventListener>;
+  let addSpy: ReturnType<typeof vi.spyOn>;
+  let removeSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    listeners = {};
+    addSpy = vi.spyOn(document, 'addEventListener').mockImplementation((type: string, handler: any) => {
+      listeners[type] = handler;
+    });
+    removeSpy = vi.spyOn(document, 'removeEventListener').mockImplementation((type: string) => {
+      delete listeners[type];
+    });
+  });
+
+  afterEach(() => {
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
+  });
+
+  async function loadHook() {
+    return import('./hooks/useSwipeEdge');
+  }
+
+  it('triggers onSwipe for left-edge rightward swipe', async () => {
+    const { useSwipeEdge } = await loadHook();
+    const onSwipe = vi.fn();
+    const { renderHook } = await import('@testing-library/react');
+    const { unmount } = renderHook(() => useSwipeEdge({ edge: 'left', onSwipe, edgeThresholdPx: 30, swipeDistancePx: 60 }));
+
+    // Simulate touch from left edge (x=10) swiped right to x=80
+    listeners['touchstart']?.({ touches: [{ clientX: 10, clientY: 100 }] } as any);
+    listeners['touchend']?.({ changedTouches: [{ clientX: 80, clientY: 105 }] } as any);
+    expect(onSwipe).toHaveBeenCalledTimes(1);
+
+    unmount();
+  });
+
+  it('does not trigger for touch not starting at edge', async () => {
+    const { useSwipeEdge } = await loadHook();
+    const onSwipe = vi.fn();
+    const { renderHook } = await import('@testing-library/react');
+    const { unmount } = renderHook(() => useSwipeEdge({ edge: 'left', onSwipe, edgeThresholdPx: 30, swipeDistancePx: 60 }));
+
+    // Touch starts at x=100 (not near edge)
+    listeners['touchstart']?.({ touches: [{ clientX: 100, clientY: 100 }] } as any);
+    listeners['touchend']?.({ changedTouches: [{ clientX: 200, clientY: 105 }] } as any);
+    expect(onSwipe).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it('does not trigger for vertical-dominant swipe', async () => {
+    const { useSwipeEdge } = await loadHook();
+    const onSwipe = vi.fn();
+    const { renderHook } = await import('@testing-library/react');
+    const { unmount } = renderHook(() => useSwipeEdge({ edge: 'left', onSwipe, edgeThresholdPx: 30, swipeDistancePx: 60 }));
+
+    // Touch starts at edge but moves mostly vertically
+    listeners['touchstart']?.({ touches: [{ clientX: 10, clientY: 100 }] } as any);
+    listeners['touchend']?.({ changedTouches: [{ clientX: 40, clientY: 300 }] } as any);
+    expect(onSwipe).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it('does not trigger when disabled', async () => {
+    const { useSwipeEdge } = await loadHook();
+    const onSwipe = vi.fn();
+    const { renderHook } = await import('@testing-library/react');
+    const { unmount } = renderHook(() => useSwipeEdge({ edge: 'left', onSwipe, enabled: false }));
+
+    expect(listeners['touchstart']).toBeUndefined();
+
+    unmount();
+  });
+
+  it('cleans up on touchcancel', async () => {
+    const { useSwipeEdge } = await loadHook();
+    const onSwipe = vi.fn();
+    const { renderHook } = await import('@testing-library/react');
+    const { unmount } = renderHook(() => useSwipeEdge({ edge: 'left', onSwipe, edgeThresholdPx: 30, swipeDistancePx: 60 }));
+
+    listeners['touchstart']?.({ touches: [{ clientX: 10, clientY: 100 }] } as any);
+    listeners['touchcancel']?.({} as any);
+    listeners['touchend']?.({ changedTouches: [{ clientX: 80, clientY: 105 }] } as any);
+    expect(onSwipe).not.toHaveBeenCalled();
+
+    unmount();
+  });
+});
