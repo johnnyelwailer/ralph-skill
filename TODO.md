@@ -8,44 +8,34 @@
 
 ### Up Next
 
-#### Loop Engine (priority: high)
-
-- [x] `{{SUBAGENT_HINTS}}` template variable not resolved — loop.sh `substitute_prompt_placeholders()` (lines 285-294) only expands `SESSION_DIR`, `ITERATION`, `ARTIFACTS_DIR`; subagent hint files exist (`subagent-hints-build.md`, `subagent-hints-proof.md`, `subagent-hints-review.md`) but are never loaded or injected; need provider-conditional expansion (SPEC §Configurable Agent Pipeline > Subagent Integration)
-
 #### QA Bugs (priority: high)
 
-- [x] [qa/P2] `--output json` error path outputs plain text — `withErrorHandling` wrapper (`error-handling.ts`) always emits `console.error("Error: ...")` regardless of `--output` mode; also `console.error` warning on worktree failure (orchestrate.ts:1843) pollutes JSON output. The happy path JSON output works (lines 1929-1932), but any error/warning before that point bypasses JSON formatting. (priority: high) [reviewed: gates 1-9 pass]
-- [ ] [qa/P2] `aloop discover --project-root /nonexistent` returns exit 0 with empty results — `discover` succeeds against a nonexistent path instead of failing with an error; `is_git_repo: false` and empty arrays are returned, misleading the user into thinking the path is a valid project. Should validate path exists before proceeding. Tested at iter 36, re-tested iter 69 — still failing. (priority: high)
-- [ ] [qa/P2] `aloop setup` crashes with exit 13 in non-TTY environments — interactive mode hits "unsettled top-level await" when stdin is not a terminal. Should detect non-TTY and either fall back to `--non-interactive` defaults or print a helpful error suggesting `--non-interactive`. Tested at iter 69. (priority: high)
-- [ ] [qa/P2] `aloop setup` missing `--output json` option — all other commands support `--output json` but setup returns "unknown option". Should support JSON output for scripting/automation. Tested at iter 69. (priority: high)
+- [x] [qa/P2] `aloop discover --project-root /nonexistent` returns exit 0 with empty results — fixed: `resolveProjectRoot()` now validates path exists via `existsSync()` before proceeding; throws clear error that propagates through `withErrorHandling` to exit non-zero
+- [ ] [qa/P2] `aloop setup` crashes with exit 13 in non-TTY environments — `readline.createInterface()` (setup.ts:289) called without checking `process.stdin.isTTY`. Should detect non-TTY and fall back to `--non-interactive` defaults or print a helpful error. (priority: high)
+- [ ] [qa/P2] `aloop setup` missing `--output json` option — CLI registration in index.ts (lines 43-53) lacks `--output` option unlike other commands (e.g., scaffold at line 70). Should add `.option('--output <mode>')` to setup command. (priority: high)
 
 #### QA & Coverage (priority: high)
 
-- [ ] QA coverage tracking enforcement — QA agent does not reliably produce structured `QA_COVERAGE.md` with parseable pipe-delimited format; priority selection algorithm (UNTESTED > FAIL > incomplete > stale) not in prompt; review Gate 10 missing (SPEC-ADDENDUM §QA Agent: Coverage-Aware Testing)
-- [ ] Finalizer QA coverage gate — finalizer does not check QA_COVERAGE.md before allowing loop exit; spec requires abort if >30% UNTESTED or any FAIL features remain (SPEC-ADDENDUM §QA Coverage Enforcement at Loop Exit)
+- [ ] QA coverage tracking enforcement — QA prompt (qa.md) has basic priority ordering ("never → completed → failed") but lacks full SPEC algorithm (UNTESTED > FAIL > incomplete > stale); review Gate 10 for QA coverage not defined (only Gates 1-9 exist in review.md). Pipe-delimited format IS in the prompt. (SPEC-ADDENDUM §QA Agent: Coverage-Aware Testing)
+- [ ] Finalizer QA coverage gate — finalizer (loop.sh:2440-2451) exits unconditionally without checking QA_COVERAGE.md; spec requires abort if >30% UNTESTED or any FAIL features remain (SPEC-ADDENDUM §QA Coverage Enforcement at Loop Exit)
 
 #### Dashboard (priority: medium)
 
-- [ ] Dashboard component decomposition — AppView.tsx is 2378 lines; sub-components exist inline but not extracted to separate files; spec requires <200 LOC per file, each with test + story (SPEC-ADDENDUM §Dashboard Component Architecture)
-- [ ] Storybook 8 not configured — no `.storybook/` directory exists; spec requires `@storybook/react-vite` setup with colocated stories and theme decorator (SPEC-ADDENDUM §Storybook Integration)
-- [ ] Dashboard responsiveness — minimal mobile support; spec requires hamburger sidebar below 640px, fixed steer input on mobile, 44x44px tap targets, 320px viewport support (SPEC-ADDENDUM §Dashboard Responsiveness)
-- [x] `aloop status --watch` terminal monitoring — status command has no `--watch` mode for auto-refreshing terminal display (SPEC §UX: Dashboard > acceptance criteria) — QA verified working at iter 35: auto-refreshes every 2s with ANSI clear
+- [ ] Dashboard component decomposition — AppView.tsx is 2378 lines with ~12 inline component functions (Sidebar, Header, HealthPanel, etc.); spec requires <200 LOC per file, each with test + story. UI primitives (14 files in src/components/ui/) are already extracted. (SPEC-ADDENDUM §Dashboard Component Architecture)
+- [ ] Storybook 8 configuration — devDependencies installed and npm scripts defined, but no `.storybook/` config directory or `.stories.tsx` files exist; need `storybook init` equivalent setup with main.ts, preview.ts, theme decorator, and colocated stories (SPEC-ADDENDUM §Storybook Integration)
 
 #### OpenCode / Cost (priority: medium)
 
-- [ ] OpenRouter cost monitoring dashboard widgets — cost summary widget, per-session cost aggregation, cost-by-model breakdown, and budget warning toasts not implemented (SPEC-ADDENDUM §OpenRouter Cost Monitoring)
-- [ ] OpenCode agent definitions not scaffolded by `aloop setup` — `.opencode/agents/` directory with vision-reviewer, error-analyst, code-critic agents not created during setup (SPEC-ADDENDUM §OpenCode First-Class Parity)
-- [ ] Cost-aware provider routing — `cost_aware_routing` and `model_cost_preferences` config not implemented; round-robin does not consider cost (SPEC-ADDENDUM §OpenCode First-Class Parity)
+- [ ] Cost-aware provider routing — budget tracking and CostDisplay widget exist, but `cost_aware_routing` and `model_cost_preferences` config not implemented; round-robin does not dynamically switch providers based on cost (SPEC-ADDENDUM §OpenCode First-Class Parity)
 
 #### Orchestrator Refinement (priority: medium)
 
 - [ ] UI variant exploration — decompose agent does not create 2-3 variant sub-issues for UI features; feature flag convention not generated; `aloop setup` does not estimate `ui_variant_exploration` (SPEC §Parallel Orchestrator Mode > UI Variant Exploration, SPEC-ADDENDUM §Known Gap #4)
-- [ ] Scan agent self-healing diagnostics — no `diagnostics.json` written for persistent blockers; no `ALERT.md`; stuck detection escalation missing; dashboard doesn't display blocker banners (SPEC-ADDENDUM §Scan Agent Self-Healing)
-- [ ] Sandbox policy enforcement — `sandbox` field is stored in metadata but no actual container vs host enforcement logic; dispatch doesn't validate `requires` labels against host capabilities beyond basic platform check (SPEC §Per-Task Environment Requirements)
+- [ ] Scan agent self-healing diagnostics — ALERT.md is written on startup failures (orchestrate.ts:1771-1786) but no `diagnostics.json` for persistent blockers; stuck detection escalation missing; dashboard doesn't display blocker banners (SPEC-ADDENDUM §Scan Agent Self-Healing)
 
 #### CLI (priority: low)
 
-- [ ] CLI help simplification — default `aloop --help` shows all 15 commands; spec requires only 6 user-facing commands visible by default, with `--help --all` for full list (SPEC-ADDENDUM §CLI Simplification)
+- [ ] CLI help simplification — default `aloop --help` shows all 14 commands (6 core + 8 extended in aloop.mjs); spec requires only 6 user-facing commands visible by default, with `--help --all` for full list (SPEC-ADDENDUM §CLI Simplification)
 - [ ] Domain skill discovery (tessl integration) — P2 feature; no integration with tessl for discovering domain-specific agent skills during setup (SPEC §Domain Skill Discovery)
 
 ### Deferred
@@ -91,3 +81,10 @@
 - [x] [review] Gate 4: dead `useIsTouchLikePointer` hook deleted (d34983a5)
 - [x] Provider health integration tests (bash): state transitions, backoff escalation, concurrent writes, lock failure, cross-session reset — all 8 tests in `loop_provider_health_integration.tests.sh`
 - [x] Provider health status display tests (TS): `status.test.ts` covers formatHealthLine for healthy/cooldown/degraded + renderStatus + CLI integration
+- [x] `{{SUBAGENT_HINTS}}` template variable resolved — loop.sh `substitute_prompt_placeholders()` expanded to load subagent hint files
+- [x] `--output json` error path fixed — `withErrorHandling` wrapper respects `--output` mode on error paths [reviewed: gates 1-9 pass]
+- [x] `aloop status --watch` terminal monitoring — auto-refreshes every 2s with ANSI clear (QA verified iter 35)
+- [x] Dashboard responsiveness — hamburger sidebar (md:hidden), 44x44px touch targets (min-h-[44px]), responsive Tailwind breakpoints, mobile overlay menu with test coverage
+- [x] OpenCode agent definitions scaffolded by `aloop setup` — vision-reviewer, error-analyst, code-critic in `.opencode/agents/`
+- [x] Sandbox policy enforcement — container/host sandbox field enforced in dispatch; `filterByHostCapabilities()` validates `requires` labels; `ALOOP_TASK_SANDBOX` env var passed to child loops
+- [x] OpenRouter cost monitoring dashboard widget — CostDisplay component with budget cap visualization, color-coded thresholds (green/yellow/red), real-time cost tracking, budget warning/pause thresholds
