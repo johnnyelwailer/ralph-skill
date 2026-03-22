@@ -89,6 +89,7 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
+  blocked_reason?: string;
 }
 
 export interface OrchestratorState {
@@ -2735,11 +2736,13 @@ export async function applyEstimateResults(
           continue;
         } else {
           issue.status = 'Blocked';
+          const blockedReason = `Refinement budget exceeded (${issue.refinement_count}/${REFINEMENT_BUDGET_CAP}); gap risk: ${gapRisk}.`;
+          issue.blocked_reason = blockedReason;
           if (deps?.execGh && deps.repo) {
             await postBlockedReasonComment(
               result.issue_number,
               deps.repo,
-              `Refinement budget exceeded (${issue.refinement_count}/${REFINEMENT_BUDGET_CAP}); gap risk: ${gapRisk}.`,
+              blockedReason,
               {
                 execGh: deps.execGh,
                 appendLog: deps.appendLog,
@@ -3670,12 +3673,14 @@ export async function recoverFailedIssues(
 
       // Only recover if all gates pass — no pending, no fail
       if (gates.all_passed) {
+        const previousBlockedReason = issue.blocked_reason;
         issue.state = 'pr_open';
         issue.status = 'In review';
         issue.ci_failure_signature = undefined;
         issue.ci_failure_retries = undefined;
         issue.ci_failure_summary = undefined;
         issue.rebase_attempts = undefined;
+        issue.blocked_reason = undefined;
 
         result.recovered++;
         result.details.push({
@@ -3690,6 +3695,7 @@ export async function recoverFailedIssues(
           event: 'failed_issue_recovered',
           issue_number: issue.number,
           pr_number: prNumber,
+          previous_blocked_reason: previousBlockedReason ?? null,
           gates: gates.gates,
         });
       } else {
@@ -4096,12 +4102,14 @@ export async function processPrLifecycle(
       await flagForHuman(issue, repo, `Merge conflicts persist after 2 rebase attempts on PR #${prNumber}`, deps);
       // Update issue state to failed
       if (stateIssue) {
+        const blockedReason = `Merge conflicts persisted after ${rebaseAttempts} rebase attempts for PR #${prNumber}.`;
         stateIssue.state = 'failed';
         stateIssue.status = 'Blocked';
+        stateIssue.blocked_reason = blockedReason;
         await postBlockedReasonComment(
           issue.number,
           repo,
-          `Merge conflicts persisted after ${rebaseAttempts} rebase attempts for PR #${prNumber}.`,
+          blockedReason,
           deps,
           sessionDir,
         );
@@ -4166,12 +4174,14 @@ export async function processPrLifecycle(
           `Persistent CI failure unchanged after ${retries} attempts: ${ciFailure.detail}`,
           deps,
         );
+        const blockedReason = `Persistent CI failure after ${retries} attempts: ${ciFailure.detail}`;
         stateIssue.state = 'failed';
         stateIssue.status = 'Blocked';
+        stateIssue.blocked_reason = blockedReason;
         await postBlockedReasonComment(
           issue.number,
           repo,
-          `Persistent CI failure after ${retries} attempts: ${ciFailure.detail}`,
+          blockedReason,
           deps,
           sessionDir,
         );
@@ -4879,12 +4889,14 @@ export async function monitorChildSessions(
       // Child stopped (limit reached, interrupted) — re-queue to continue where it left off
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
+        const blockedReason = `Child session ${childSession} stopped (stuck_count=${childStatus.stuck_count ?? 0}, phase=${childStatus.phase ?? 'unknown'}).`;
         stateIssue.state = 'failed';
         stateIssue.status = 'Blocked';
+        stateIssue.blocked_reason = blockedReason;
         await postBlockedReasonComment(
           issue.number,
           repo,
-          `Child session ${childSession} stopped (stuck_count=${childStatus.stuck_count ?? 0}, phase=${childStatus.phase ?? 'unknown'}).`,
+          blockedReason,
           deps,
           sessionDir,
         );

@@ -2263,6 +2263,7 @@ describe('applyEstimateResults', () => {
     assert.equal(state.issues[0].refinement_count, 5);
     assert.equal(state.issues[0].refinement_budget_exceeded, true);
     assert.equal(state.issues[0].status, 'Blocked');
+    assert.match(state.issues[0].blocked_reason ?? '', /Refinement budget exceeded/);
     assert.equal(state.issues[0].dor_validated, false);
     assert.deepStrictEqual(outcome.budgetExceeded, [1]);
     assert.deepStrictEqual(outcome.blocked, [1]);
@@ -3297,6 +3298,7 @@ describe('processPrLifecycle', () => {
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'flagged_for_human');
     assert.equal(state.issues[0].state, 'failed');
+    assert.match(state.issues[0].blocked_reason ?? '', /Merge conflicts persisted/);
     assert.ok(deps.logs.some((l) => l.event === 'pr_flagged_for_human'));
     assert.ok(
       ghCalls.some((call) =>
@@ -3448,6 +3450,7 @@ describe('processPrLifecycle', () => {
     assert.equal(state.issues[0].state, 'failed');
     assert.equal(state.issues[0].status, 'Blocked');
     assert.equal(state.issues[0].ci_failure_retries, 3);
+    assert.match(state.issues[0].blocked_reason ?? '', /Persistent CI failure/);
     assert.ok(deps.logs.some((l) => l.event === 'pr_ci_failure_persistent'));
     assert.ok(
       ghCalls.some((call) =>
@@ -5309,9 +5312,9 @@ describe('monitorChildSessions', () => {
 
     assert.equal(result.monitored, 1);
     assert.equal(result.failed, 1);
-    assert.equal(state.issues[0].state, 'in_progress');
-    assert.equal((state.issues[0] as any).needs_redispatch, true);
-    assert.match((state.issues[0] as any).review_feedback, /Child loop stopped/i);
+    assert.equal(state.issues[0].state, 'failed');
+    assert.equal(state.issues[0].status, 'Blocked');
+    assert.match(state.issues[0].blocked_reason ?? '', /Child session session-def stopped/);
     assert.ok(logEntries.some((e) => e.event === 'child_failed'));
     assert.ok(
       ghCalls.some((call) =>
@@ -6658,6 +6661,7 @@ describe('recoverFailedIssues', () => {
         ci_failure_retries: 3,
         ci_failure_summary: 'Failed checks: build',
         rebase_attempts: 1,
+        blocked_reason: 'Persistent CI failure after 3 attempts: Failed checks: build',
       },
     ]);
     const deps = createMockPrDeps({
@@ -6687,11 +6691,13 @@ describe('recoverFailedIssues', () => {
     assert.equal(state.issues[0].ci_failure_retries, undefined);
     assert.equal(state.issues[0].ci_failure_summary, undefined);
     assert.equal(state.issues[0].rebase_attempts, undefined);
+    assert.equal(state.issues[0].blocked_reason, undefined);
 
     const recoveryLog = deps.logs.find((e) => e.event === 'failed_issue_recovered');
     assert.ok(recoveryLog, 'should log failed_issue_recovered');
     assert.equal(recoveryLog.issue_number, 42);
     assert.equal(recoveryLog.pr_number, 100);
+    assert.equal(recoveryLog.previous_blocked_reason, 'Persistent CI failure after 3 attempts: Failed checks: build');
   });
 
   it('does not recover when CI is still failing', async () => {
