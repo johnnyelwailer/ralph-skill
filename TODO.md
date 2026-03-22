@@ -4,9 +4,9 @@
 
 ### In Progress
 
-- [x] [review] Gate 1: `reviewPrDiff` (orchestrate.ts:3273) returns `verdict: 'pending'` on diff fetch error — change to `'flag-for-human'` and update summary prefix to `'Failed to fetch PR diff: ...'` to match test at orchestrate.test.ts:2860. One-line fix in catch block. (priority: high)
-- [x] [review] Gate 1: `checkPrGates` (orchestrate.ts:3204) catch block sets `status: 'pass'` on mergeability API error — change to `status: 'fail'` and set `mergeable: false` so gate fails safe. Test at orchestrate.test.ts:2798 expects `fail`. One-line fix. (priority: high)
-- [x] [review] Gate 1/4: `processPrLifecycle` (orchestrate.ts:3623) hardcodes `new GitHubAdapter(...)` instead of accepting adapter through `PrLifecycleDeps` — add an `adapter` field to `PrLifecycleDeps` interface so callers can inject a test double. Currently prevents unit testing review creation in isolation. (priority: high)
+- [x] [review] Gate 1: `reviewPrDiff` returns `'flag-for-human'` on diff fetch error [reviewed: fix verified in commit 02bd951]
+- [x] [review] Gate 1: `checkPrGates` catch block fails safe on mergeability API error [reviewed: fix verified in commit 5f29e01]
+- [x] [review] Gate 1/4: `processPrLifecycle` uses injected adapter via `deps.adapter` [reviewed: fix verified in commit 59b8999, new test at orchestrate.test.ts:3103]
 - [ ] [review] Gate 3: Create `adapter.test.ts` with direct unit tests for `GitHubAdapter.createReview()` and `GitHubAdapter.resolveThread()` — test API call structure (POST to correct endpoint), suggestion body formatting (`\`\`\`suggestion` wrapping), empty comments array, and error cases. No adapter test file exists currently. (priority: high)
 - [ ] [review] Gate 4: Redispatch steering (orchestrate.ts:~5371) omits per-comment details from `pending_review_comments` — include comment IDs, file paths, and line numbers so the builder knows exactly which threads to address. Test at orchestrate.test.ts:4458 expects `Comment ID: 1234`. (priority: high)
 
