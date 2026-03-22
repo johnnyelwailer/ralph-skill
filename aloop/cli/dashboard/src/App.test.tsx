@@ -497,7 +497,7 @@ describe('stripAnsi', () => {
 
 describe('isImageArtifact', () => {
   it('detects PNG files', () => {
-    expect(isImageArtifact({ path: 'screenshot.png', type: 'file' })).toBe(true);
+    expect(isImageArtifact({ path: 'screenshot.png', type: 'file', description: '' })).toBe(true);
   });
 });
 

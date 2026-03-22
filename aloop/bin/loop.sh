@@ -28,9 +28,9 @@ SESSION_DIR=""
 WORK_DIR=""
 MODE="plan-build-review"
 PROVIDER="claude"
-ROUND_ROBIN_PROVIDERS="claude,opencode,codex,gemini,copilot"
+ROUND_ROBIN_PROVIDERS="claude,gemini,opencode"
 # Model defaults — keep in sync with ~/.aloop/config.yml (source of truth)
-CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-opus}"
+CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-sonnet}"
 CODEX_MODEL="${ALOOP_CODEX_MODEL:-gpt-5.3-codex}"
 GEMINI_MODEL="${ALOOP_GEMINI_MODEL:-gemini-3.1-pro-preview}"
 COPILOT_MODEL="${ALOOP_COPILOT_MODEL:-gpt-5.3-codex}"
@@ -38,6 +38,7 @@ COPILOT_RETRY_MODEL="${ALOOP_COPILOT_RETRY_MODEL:-claude-sonnet-4.6}"
 MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-50}"
 MAX_STUCK="${ALOOP_MAX_STUCK:-3}"
 BACKUP_ENABLED="${ALOOP_BACKUP:-false}"
+NO_TASK_EXIT=false
 DRY_RUN=false
 DANGEROUSLY_SKIP_CONTAINER=false
 LAUNCH_MODE="start"
@@ -84,6 +85,7 @@ while [[ $# -gt 0 ]]; do
         --backup)       BACKUP_ENABLED="true"; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --dangerously-skip-container) DANGEROUSLY_SKIP_CONTAINER=true; shift ;;
+        --no-task-exit) NO_TASK_EXIT=true; shift ;;
         --claude-model) CLAUDE_MODEL="$2"; shift 2 ;;
         --codex-model)  CODEX_MODEL="$2"; shift 2 ;;
         --gemini-model) GEMINI_MODEL="$2"; shift 2 ;;
@@ -693,7 +695,7 @@ register_iteration_failure() {
     if ! { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; }; then
         return
     fi
-    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "qa" ] || [ "$iteration_mode" = "review" ]; }; then
+    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "qa" ] || [ "$iteration_mode" = "review" ] || [ "$iteration_mode" = "spec-gap" ] || [ "$iteration_mode" = "docs" ]; }; then
         return
     fi
 
@@ -1503,6 +1505,7 @@ invoke_provider() {
 # ============================================================================
 
 check_all_tasks_complete() {
+    if [ "$NO_TASK_EXIT" = "true" ]; then return 1; fi
     if [ ! -f "$PLAN_FILE" ]; then return 1; fi
     # grep -c exits 1 (no matches) outputting "0"; split declaration from assignment
     # so || fallback doesn't capture the grep stdout twice
@@ -2301,9 +2304,13 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     fi
 
     # Auto-push to remote after commits (orchestrator child loops)
+    # Use explicit branch name to avoid pushing to wrong upstream (e.g., agent/trunk)
     if [ "$ITERATION_COMMIT_COUNT" -gt 0 ] 2>/dev/null; then
         if git remote get-url origin &>/dev/null; then
-            git push -u origin HEAD 2>&1 | tail -1 || true
+            CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+            if [ -n "$CURRENT_BRANCH" ] && [ "$CURRENT_BRANCH" != "agent/trunk" ] && [ "$CURRENT_BRANCH" != "master" ] && [ "$CURRENT_BRANCH" != "main" ]; then
+                git push -u origin "$CURRENT_BRANCH" 2>&1 | tail -1 || true
+            fi
         fi
     fi
 

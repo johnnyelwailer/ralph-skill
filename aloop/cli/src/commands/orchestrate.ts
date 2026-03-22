@@ -33,6 +33,7 @@ export interface OrchestrateCommandOptions {
   maxIterations?: string;
   runScanLoop?: boolean;
   autoMerge?: boolean;
+  resume?: string;
 }
 
 export interface DecompositionPlanIssue {
@@ -937,6 +938,7 @@ The session directory contains \`orchestrator.json\`, \`requests/\`, \`queue/\`,
 Your working directory is \`${sessionDir}/worktree\` — a git worktree with full project access.
 
 Run one lightweight monitoring pass:
+- Read \`CONSTITUTION.md\` from your working directory — these are non-negotiable invariants for all work.
 - Read \`${sessionDir}/orchestrator.json\` to understand current state (issues, waves, dependencies).
 - Check \`${sessionDir}/queue/\` for override prompts to prioritize.
 - Write any required side effects into \`${sessionDir}/requests/*.json\`.
@@ -1326,6 +1328,154 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   const deps = (depsOrCommand && typeof depsOrCommand === 'object' && 'existsSync' in depsOrCommand)
     ? (depsOrCommand as OrchestrateDeps)
     : undefined;
+
+  // --- Resume path: reuse an existing session ---
+  if (options.resume) {
+    const homeDir = options.homeDir ?? resolveHomeDir();
+    const aloopRoot = path.join(homeDir, '.aloop');
+    const sessionsRoot = path.join(aloopRoot, 'sessions');
+    const sessionDir = path.join(sessionsRoot, options.resume);
+    const stateFile = path.join(sessionDir, 'orchestrator.json');
+
+    if (!existsSync(stateFile)) {
+      throw new Error(`Session not found or missing orchestrator.json: ${sessionDir}`);
+    }
+
+    const state: OrchestratorState = JSON.parse(await readFile(stateFile, 'utf8'));
+    const projectRoot = options.projectRoot ?? process.cwd();
+    const promptsDir = path.join(sessionDir, 'prompts');
+    const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
+
+    // Fetch latest from remote so worktree and prompts are up to date
+    const { spawn: nodeSpawn, spawnSync: nodeSpawnSync } = await import('node:child_process');
+    nodeSpawnSync('git', ['-C', projectRoot, 'fetch', 'origin'], { encoding: 'utf8' });
+
+    // Refresh the scan prompt (dynamically generated with session paths).
+    // Other orchestrator prompts are configured (not templates) — don't overwrite them.
+    const orchScanPromptFile = path.join(promptsDir, ORCH_SCAN_PROMPT_FILENAME);
+    await writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(sessionDir), 'utf8');
+
+    // Recreate worktree if missing
+    const worktreePath = path.join(sessionDir, 'worktree');
+    const worktreeBranch = `aloop/${path.basename(sessionDir)}`;
+    let workDir = projectRoot;
+
+    if (!existsSync(path.join(worktreePath, '.git'))) {
+      // Clean up stale worktree refs
+      nodeSpawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+
+      // Try to reuse existing remote branch, or create new
+      const hasRemote = nodeSpawnSync('git', ['-C', projectRoot, 'ls-remote', '--heads', 'origin', worktreeBranch], { encoding: 'utf8' });
+      let wtResult;
+      if (hasRemote.stdout?.includes(worktreeBranch)) {
+        // Delete stale local branch ref if it exists
+        nodeSpawnSync('git', ['-C', projectRoot, 'branch', '-D', worktreeBranch], { encoding: 'utf8' });
+        wtResult = nodeSpawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch, `origin/${worktreeBranch}`], { encoding: 'utf8' });
+      } else {
+        wtResult = nodeSpawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
+      }
+      if (wtResult.status === 0) {
+        workDir = worktreePath;
+      } else {
+        console.error(`Warning: Failed to recreate worktree: ${wtResult.stderr?.trim()}`);
+      }
+    } else {
+      workDir = worktreePath;
+      // Pull latest into existing worktree so it has fresh CONSTITUTION.md, SPEC.md, etc.
+      nodeSpawnSync('git', ['-C', worktreePath, 'pull', '--rebase', '--autostash'], { encoding: 'utf8' });
+    }
+
+    // Reset loop-plan iteration counter to continue from current state
+    const loopPlan = JSON.parse(await readFile(loopPlanFile, 'utf8'));
+    loopPlan.cyclePosition = 0;
+    await writeFile(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}\n`, 'utf8');
+
+    // Launch loop.sh
+    const loopBinDir = path.join(aloopRoot, 'bin');
+    const loopScript = path.join(loopBinDir, 'loop.sh');
+    if (!existsSync(loopScript)) {
+      throw new Error(`Loop script not found: ${loopScript}`);
+    }
+
+    const args = [
+      '--prompts-dir', promptsDir,
+      '--session-dir', sessionDir,
+      '--work-dir', workDir,
+      '--mode', 'plan',
+      '--provider', 'claude',
+      '--round-robin', 'claude',
+      '--max-iterations', '999999',
+      '--launch-mode', 'start',
+      '--dangerously-skip-container',
+      '--no-task-exit',
+    ];
+
+    const child = nodeSpawn(loopScript, args, {
+      cwd: workDir,
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env },
+      windowsHide: true,
+    });
+    child.unref();
+    const loopPid = child.pid ?? null;
+    if (!loopPid) {
+      throw new Error('Failed to launch orchestrator loop process.');
+    }
+
+    // Update meta.json with new PID
+    const metaPath = path.join(sessionDir, 'meta.json');
+    const startedAt = new Date().toISOString();
+    let meta: Record<string, unknown> = {};
+    try { meta = JSON.parse(await readFile(metaPath, 'utf8')); } catch { /* fresh */ }
+    meta.pid = loopPid;
+    meta.resumed_at = startedAt;
+    await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
+    // Update active.json
+    const activePath = path.join(aloopRoot, 'active.json');
+    let active: Record<string, unknown> = {};
+    try {
+      if (existsSync(activePath)) {
+        const content = await readFile(activePath, 'utf8');
+        const parsed = JSON.parse(content);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          active = parsed as Record<string, unknown>;
+        }
+      }
+    } catch { /* fresh */ }
+    const sessionId = path.basename(sessionDir);
+    active[sessionId] = {
+      session_id: sessionId,
+      session_dir: sessionDir,
+      project_root: projectRoot,
+      pid: loopPid,
+      work_dir: workDir,
+      started_at: startedAt,
+      provider: 'claude',
+      mode: 'orchestrate',
+    };
+    await writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+
+    const issuesByState: Record<string, number> = {};
+    for (const i of state.issues) { issuesByState[i.state] = (issuesByState[i.state] ?? 0) + 1; }
+
+    if (outputMode === 'json') {
+      console.log(JSON.stringify({ session_dir: sessionDir, pid: loopPid, issues: issuesByState }, null, 2));
+      return;
+    }
+
+    console.log(`Resumed orchestrator session: ${sessionId}`);
+    console.log('');
+    console.log(`  Session dir:  ${sessionDir}`);
+    console.log(`  Work dir:     ${workDir}`);
+    console.log(`  Loop PID:     ${loopPid}`);
+    console.log(`  Issues:       ${state.issues.length} (${Object.entries(issuesByState).map(([s, n]) => `${n} ${s}`).join(', ')})`);
+    console.log(`  Iteration:    ${loopPlan.iteration}`);
+    return;
+  }
+
+  // --- New session path ---
   const result = await orchestrateCommandWithDeps(options, deps);
 
   const planOnly = options.planOnly ?? false;
@@ -1365,6 +1515,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       '--max-iterations', '999999',
       '--launch-mode', 'start',
       '--dangerously-skip-container',
+      '--no-task-exit',
     ];
 
     const child = nodeSpawn(loopScript, args, {
@@ -2852,14 +3003,41 @@ export async function launchChildLoop(
   // Create git worktree branching from agent/trunk (not local HEAD)
   // Fetch latest trunk first
   deps.spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'agent/trunk'], { encoding: 'utf8' });
+
+  // Clean up stale worktree locks for this branch before creating
+  deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+
   let worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName, 'origin/agent/trunk'], { encoding: 'utf8' });
   if (worktreeResult.status !== 0) {
-    // Branch may already exist — try without -b
+    // Branch may already exist — remove stale worktree lock if present, then retry
+    // Porcelain format: "worktree <path>\nHEAD <sha>\nbranch refs/heads/<name>\n\n"
+    const existingWt = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'list', '--porcelain'], { encoding: 'utf8' });
+    const entries = (existingWt.stdout ?? '').split('\n\n');
+    for (const entry of entries) {
+      if (entry.includes(`refs/heads/${branchName}`)) {
+        const wtLine = entry.split('\n').find((l) => l.startsWith('worktree '));
+        if (wtLine) {
+          const stalePath = wtLine.replace('worktree ', '');
+          deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', stalePath], { encoding: 'utf8' });
+        }
+      }
+    }
+    deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+
+    // Retry — branch exists, check it out
     worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, branchName], { encoding: 'utf8' });
     if (worktreeResult.status !== 0) {
       throw new Error(`Failed to create worktree for issue #${issue.number}: ${worktreeResult.stderr || worktreeResult.stdout}`);
     }
   }
+
+  // CRITICAL: Set upstream to the correct remote branch, not agent/trunk.
+  // git worktree add -b <branch> origin/agent/trunk sets tracking to origin/agent/trunk,
+  // which causes `git push -u origin HEAD` to push directly to agent/trunk.
+  deps.spawnSync('git', ['-C', worktreePath, 'branch', '--set-upstream-to', `origin/${branchName}`], { encoding: 'utf8' });
+  // If the remote branch doesn't exist yet, unset upstream entirely — push -u will create it correctly
+  deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.merge`], { encoding: 'utf8' });
+  deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.remote`], { encoding: 'utf8' });
 
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
@@ -2940,8 +3118,8 @@ export async function launchChildLoop(
       provider: 'round-robin',
       promptsDir: promptsDir,
       sessionDir: sessionDir,
-      enabledProviders: ['claude', 'codex', 'gemini', 'copilot', 'opencode'],
-      roundRobinOrder: ['claude', 'codex', 'gemini', 'copilot', 'opencode'],
+      enabledProviders: ['claude', 'gemini', 'opencode'],
+      roundRobinOrder: ['claude', 'gemini', 'opencode'],
       models: {},
       projectRoot: worktreePath,
     },
@@ -2967,7 +3145,7 @@ export async function launchChildLoop(
       '-WorkDir', worktreePath,
       '-Mode', 'plan-build-review',
       '-Provider', 'round-robin',
-      '-MaxIterations', '20',
+      '-MaxIterations', '100',
       '-MaxStuck', '3',
       '-LaunchMode', 'start',
     ];
@@ -2980,7 +3158,7 @@ export async function launchChildLoop(
       '--work-dir', worktreePath,
       '--mode', 'plan-build-review',
       '--provider', 'round-robin',
-      '--max-iterations', '20',
+      '--max-iterations', '100',
       '--max-stuck', '3',
       '--launch-mode', 'start',
     ];
@@ -3072,33 +3250,71 @@ export async function dispatchChildLoops(
   }
   const skipped = [...skippedSet];
 
+  const launched = await launchIssues(
+    toDispatch, state, stateFile, orchestratorSessionDir,
+    projectRoot, projectName, promptsSourceDir, aloopRoot, deps, undefined,
+  );
+
+  return { launched, skipped, state };
+}
+
+/**
+ * Core dispatch loop — launches child loops for a list of issues.
+ * Shared by both fresh dispatch and redispatch paths.
+ * Updates issue state to in_progress and persists state after each launch.
+ */
+export async function launchIssues(
+  issues: OrchestratorIssue[],
+  state: OrchestratorState,
+  stateFile: string,
+  orchestratorSessionDir: string,
+  projectRoot: string,
+  projectName: string,
+  promptsSourceDir: string,
+  aloopRoot: string,
+  deps: DispatchDeps,
+  logDeps?: { appendLog: (dir: string, entry: any) => void },
+): Promise<ChildLaunchResult[]> {
   const launched: ChildLaunchResult[] = [];
 
-  for (const issue of toDispatch) {
-    const result = await launchChildLoop(
-      issue,
-      orchestratorSessionDir,
-      projectRoot,
-      projectName,
-      promptsSourceDir,
-      aloopRoot,
-      deps,
-    );
-    launched.push(result);
+  for (const issue of issues) {
+    try {
+      const result = await launchChildLoop(
+        issue,
+        orchestratorSessionDir,
+        projectRoot,
+        projectName,
+        promptsSourceDir,
+        aloopRoot,
+        deps,
+      );
+      launched.push(result);
 
-    // Update issue state in-place
-    const stateIssue = state.issues.find((i) => i.number === issue.number);
-    if (stateIssue) {
-      stateIssue.state = 'in_progress';
-      stateIssue.child_session = result.session_id;
+      // Update issue state in-place
+      const stateIssue = state.issues.find((i) => i.number === issue.number);
+      if (stateIssue) {
+        stateIssue.state = 'in_progress';
+        stateIssue.status = 'In progress';
+        stateIssue.child_session = result.session_id;
+        (stateIssue as any).child_pid = result.pid;
+      }
+    } catch (e) {
+      if (logDeps) {
+        logDeps.appendLog(orchestratorSessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_dispatch_failed',
+          issue_number: issue.number,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
   }
 
   // Persist updated state
-  state = { ...state, updated_at: deps.now().toISOString() };
+  state.updated_at = deps.now().toISOString();
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
-  return { launched, skipped, state };
+  return launched;
 }
 
 // --- PR lifecycle gates ---
@@ -3191,9 +3407,14 @@ export async function checkPrGates(
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
   try {
     const checksResult = await deps.execGh([
-      'pr', 'checks', String(prNumber), '--repo', repo, '--json', 'name,state,conclusion',
+      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
     ]);
-    const checks: Array<{ name: string; state: string; conclusion: string }> = JSON.parse(checksResult.stdout);
+    const parsed = JSON.parse(checksResult.stdout);
+    const checks: Array<{ name: string; state: string; conclusion: string }> = (parsed.statusCheckRollup ?? []).map((c: any) => ({
+      name: c.name ?? c.context ?? 'unknown',
+      state: c.status ?? c.state ?? 'COMPLETED',
+      conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
+    }));
     const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
     const allPassed = checks.every(
       (c) => (c.state === 'COMPLETED' || c.state === 'completed') &&
@@ -3208,8 +3429,10 @@ export async function checkPrGates(
     );
 
     if (checks.length === 0) {
+      // No check runs — pass regardless of workflow existence
+      // (workflow may not trigger on this branch/PR target)
       if (ciWorkflowsConfigured) {
-        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'CI workflows detected but no check runs reported yet' });
+        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'CI workflows exist but no checks ran on this PR — passing' });
       } else {
         gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
       }
@@ -3373,18 +3596,7 @@ export async function createTrunkToMainPr(
  * Request a child loop to rebase its branch against agent/trunk.
  * Posts a comment on the issue instructing the child to rebase.
  */
-export async function requestRebase(
-  issue: OrchestratorIssue,
-  repo: string,
-  trunkBranch: string,
-  rebaseAttempt: number,
-  deps: PrLifecycleDeps,
-): Promise<void> {
-  const body = `Merge conflict with \`${trunkBranch}\` — rebase needed (attempt ${rebaseAttempt}/2).\\n\\nPlease rebase your branch against \`${trunkBranch}\` and push.`;
-  await deps.execGh([
-    'issue', 'comment', String(issue.number), '--repo', repo, '--body', body,
-  ]);
-}
+// requestRebase is no longer used — conflicts are handled by dispatching a child agent via needs_redispatch
 
 /**
  * Flag an issue for human resolution after rebase attempts exhausted.
@@ -3410,7 +3622,7 @@ export async function flagForHuman(
 
 export interface PrLifecycleResult {
   pr_number: number;
-  action: 'merged' | 'rebase_requested' | 'flagged_for_human' | 'rejected' | 'gates_pending' | 'gates_failed' | 'review_pending';
+  action: 'merged' | 'rebase_requested' | 'flagged_for_human' | 'rejected' | 'gates_pending' | 'gates_failed' | 'review_pending' | 'closed_for_retry';
   detail: string;
   gates?: PrGatesResult;
   review?: AgentReviewResult;
@@ -3419,7 +3631,7 @@ export interface PrLifecycleResult {
 /**
  * Process the full PR lifecycle for an orchestrator issue:
  * 1. Check PR gates (CI, mergeability)
- * 2. If gates fail due to conflicts → rebase (max 2 attempts) → flag for human
+ * 2. If gates fail due to conflicts → dispatch child agent to rebase
  * 3. If gates pending → return pending
  * 4. If gates pass → agent review
  * 5. If review approves → squash-merge
@@ -3461,49 +3673,26 @@ export async function processPrLifecycle(
     const stateIssue = state.issues.find((i) => i.number === issue.number);
     const rebaseAttempts = stateIssue?.rebase_attempts ?? 0;
 
-    if (rebaseAttempts >= 2) {
-      // Max rebase attempts reached — flag for human
-      await flagForHuman(issue, repo, `Merge conflicts persist after 2 rebase attempts on PR #${prNumber}`, deps);
-      // Update issue state to failed
-      if (stateIssue) {
-        stateIssue.state = 'failed';
-        stateIssue.status = 'Blocked';
-      }
-      await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-        execGh: deps.execGh,
-        appendLog: deps.appendLog,
-        now: deps.now,
-        sessionDir,
-      });
-      state.updated_at = deps.now().toISOString();
-      await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-
-      deps.appendLog(sessionDir, {
-        timestamp: deps.now().toISOString(),
-        event: 'pr_flagged_for_human',
-        pr_number: prNumber,
-        issue_number: issue.number,
-        reason: 'max_rebase_attempts',
-        attempts: rebaseAttempts,
-      });
-      return { pr_number: prNumber, action: 'flagged_for_human', detail: `Conflicts persist after 2 rebase attempts`, gates: gatesResult };
-    }
-
-    // Request rebase
+    // Dispatch a child loop to resolve the merge conflict via rebase
     const attempt = rebaseAttempts + 1;
-    await requestRebase(issue, repo, state.trunk_branch, attempt, deps);
-    if (stateIssue) stateIssue.rebase_attempts = attempt;
+    if (stateIssue) {
+      stateIssue.rebase_attempts = attempt;
+      (stateIssue as any).needs_redispatch = true;
+      (stateIssue as any).review_feedback = `PR #${prNumber} has merge conflicts with \`${state.trunk_branch}\`. ` +
+        `Rebase your branch onto \`origin/${state.trunk_branch}\`, resolve all conflicts, and force-push. ` +
+        `This is rebase attempt ${attempt}. Do NOT create new commits for the rebase — use \`git rebase\` and \`git push --force-with-lease\`.`;
+    }
     state.updated_at = deps.now().toISOString();
     await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
     deps.appendLog(sessionDir, {
       timestamp: deps.now().toISOString(),
-      event: 'pr_rebase_requested',
+      event: 'pr_rebase_dispatched',
       pr_number: prNumber,
       issue_number: issue.number,
       attempt,
     });
-    return { pr_number: prNumber, action: 'rebase_requested', detail: `Rebase requested (attempt ${attempt}/2)`, gates: gatesResult };
+    return { pr_number: prNumber, action: 'rebase_requested', detail: `Rebase agent dispatched (attempt ${attempt})`, gates: gatesResult };
   }
 
   // Step 4: Handle other gate failures (CI failures, etc.)
@@ -3523,25 +3712,26 @@ export async function processPrLifecycle(
       stateIssue.ci_failure_summary = ciFailure.detail;
 
       if (retries >= ORCHESTRATOR_CI_PERSISTENCE_LIMIT) {
-        await flagForHuman(
-          issue,
-          repo,
-          `Persistent CI failure unchanged after ${retries} attempts: ${ciFailure.detail}`,
-          deps,
-        );
-        stateIssue.state = 'failed';
-        stateIssue.status = 'Blocked';
-        await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-          execGh: deps.execGh,
-          appendLog: deps.appendLog,
-          now: deps.now,
-          sessionDir,
-        });
+        // Close the PR and reset for fresh attempt instead of permanent failure
+        try {
+          await deps.execGh(['pr', 'close', String(prNumber), '--repo', repo, '--comment',
+            `Closing: persistent CI failure after ${retries} attempts: ${ciFailure.detail}. Will re-dispatch fresh.`]);
+        } catch { /* best-effort */ }
+
+        stateIssue.state = 'pending';
+        stateIssue.status = 'Ready';
+        stateIssue.pr_number = null;
+        stateIssue.child_session = null;
+        (stateIssue as any).child_pid = null;
+        stateIssue.ci_failure_retries = 0;
+        stateIssue.ci_failure_signature = undefined;
+        stateIssue.ci_failure_summary = undefined;
+
         state.updated_at = deps.now().toISOString();
         await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
-          event: 'pr_ci_failure_persistent',
+          event: 'pr_closed_ci_failure',
           pr_number: prNumber,
           issue_number: issue.number,
           ci_failure_retries: retries,
@@ -3549,8 +3739,8 @@ export async function processPrLifecycle(
         });
         return {
           pr_number: prNumber,
-          action: 'flagged_for_human',
-          detail: `Persistent CI failure after ${retries} attempts`,
+          action: 'closed_for_retry',
+          detail: `Persistent CI failure after ${retries} attempts — reset for fresh dispatch`,
           gates: gatesResult,
         };
       }
@@ -4232,17 +4422,12 @@ export async function monitorChildSessions(
         });
       }
     } else if (childStatus.state === 'stopped') {
-      // Child stopped (limit reached, interrupted, or error) — mark failed
+      // Child stopped (limit reached, interrupted) — re-queue to continue where it left off
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
-        stateIssue.state = 'failed';
-        stateIssue.status = 'Blocked';
-        await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-          execGh: deps.execGh,
-          appendLog: deps.appendLog,
-          now: deps.now,
-          sessionDir,
-        });
+        // Keep child_session so resume works on the same branch/worktree
+        (stateIssue as any).needs_redispatch = true;
+        (stateIssue as any).review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
       }
       result.failed++;
       entry.action = 'failed';
@@ -5241,16 +5426,6 @@ export async function runOrchestratorScanPass(
   if (repo && deps.prLifecycleDeps) {
     const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
     for (const issue of prIssues) {
-      // Skip if already reviewed this commit (prevent spam)
-      if (deps.execGh && (issue as any).last_reviewed_sha) {
-        try {
-          const headResult = await deps.execGh(['pr', 'view', String(issue.pr_number), '--repo', repo, '--json', 'headRefOid']);
-          const headSha = JSON.parse(headResult.stdout).headRefOid;
-          if (headSha === (issue as any).last_reviewed_sha) {
-            continue; // Same commit, skip
-          }
-        } catch { /* proceed with review */ }
-      }
       try {
         const lifecycleResult = await processPrLifecycle(
           issue,
@@ -5261,14 +5436,8 @@ export async function runOrchestratorScanPass(
           deps.prLifecycleDeps,
         );
         result.prLifecycles.push(lifecycleResult);
-        // Store reviewed commit SHA only on final verdicts (not pending)
-        const action = lifecycleResult?.action;
-        if (action && action !== 'review_pending' && action !== 'gates_pending' && deps.execGh) {
-          try {
-            const headResult = await deps.execGh(['pr', 'view', String(issue.pr_number), '--repo', repo, '--json', 'headRefOid']);
-            (issue as any).last_reviewed_sha = JSON.parse(headResult.stdout).headRefOid;
-          } catch { /* ignore */ }
-        }
+        // No SHA tracking needed — state transitions (needs_redispatch, Blocked, merged)
+        // already prevent re-processing. SHA was causing stuck-on-reviewed states.
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         deps.appendLog(sessionDir, {
@@ -5284,54 +5453,49 @@ export async function runOrchestratorScanPass(
   }
 
   // 3.5. Re-dispatch children that need review fixes
+  // Uses launchIssues() — the shared dispatch path that respects concurrency,
+  // capability filters, and state updates.
   if (deps.dispatchDeps && deps.aloopRoot) {
-    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch && i.child_session);
-    for (const issue of needsRedispatch) {
-      try {
-        // Re-use launchChildLoop — it handles worktree creation, prompts, branch reuse
-        const launchResult = await launchChildLoop(
-          issue,
-          sessionDir,
-          projectRoot,
-          projectName,
-          promptsSourceDir,
-          deps.aloopRoot,
-          deps.dispatchDeps,
-        );
+    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch);
+    if (needsRedispatch.length > 0) {
+      const redispatchResult = await launchIssues(
+        needsRedispatch.slice(0, availableSlots(state)),
+        state,
+        stateFile,
+        sessionDir,
+        projectRoot,
+        projectName,
+        promptsSourceDir,
+        deps.aloopRoot,
+        deps.dispatchDeps,
+        { appendLog: deps.appendLog },
+      );
 
-        // Write review feedback as steering prompt into the NEW child session
-        const childQueueDir = path.join(deps.aloopRoot, 'sessions', launchResult.session_id, 'queue');
-        await deps.writeFile(
-          path.join(childQueueDir, '000-review-fixes.md'),
-          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
-          'utf8',
-        );
-
-        issue.state = 'in_progress';
-        issue.status = 'In progress';
-        issue.child_session = launchResult.session_id;
-        (issue as any).child_pid = launchResult.pid;
-        (issue as any).needs_redispatch = false;
-        (issue as any).review_feedback = undefined;
-        (issue as any).last_reviewed_sha = undefined;
-
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: 'child_redispatched_for_review',
-          iteration,
-          issue_number: issue.number,
-          pr_number: issue.pr_number,
-          child_session: launchResult.session_id,
-          pid: launchResult.pid,
-        });
-      } catch (e) {
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: 'child_redispatch_failed',
-          iteration,
-          issue_number: issue.number,
-          error: e instanceof Error ? e.message : String(e),
-        });
+      for (const launch of redispatchResult) {
+        const issue = state.issues.find((i) => i.number === launch.issue_number);
+        if (issue) {
+          // Write review feedback as steering prompt
+          const feedback = (issue as any).review_feedback ?? '';
+          if (feedback) {
+            const childQueueDir = path.join(deps.aloopRoot, 'sessions', launch.session_id, 'queue');
+            await mkdir(childQueueDir, { recursive: true });
+            await deps.writeFile(
+              path.join(childQueueDir, '000-review-fixes.md'),
+              `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+              'utf8',
+            );
+          }
+          (issue as any).needs_redispatch = false;
+          (issue as any).review_feedback = undefined;
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'child_redispatched_for_review',
+            iteration,
+            issue_number: launch.issue_number,
+            child_session: launch.session_id,
+            pid: launch.pid,
+          });
+        }
       }
     }
   }

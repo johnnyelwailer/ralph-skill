@@ -137,6 +137,134 @@ export type AgentRequest =
   | QueryIssuesRequest
   | SpecBackfillRequest;
 
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+
+const VALID_REQUEST_TYPES = new Set<string>([
+  'create_issues', 'update_issue', 'close_issue', 'create_pr', 'merge_pr',
+  'dispatch_child', 'steer_child', 'stop_child', 'post_comment', 'query_issues', 'spec_backfill',
+]);
+
+const VALID_MERGE_STRATEGIES = new Set(['squash', 'merge', 'rebase']);
+
+export function validateRequest(raw: unknown): AgentRequest {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new ValidationError('Request must be a non-null object');
+  }
+  const obj = raw as Record<string, unknown>;
+
+  if (typeof obj.id !== 'string' || obj.id.length === 0) {
+    throw new ValidationError('Request must have a non-empty string "id"');
+  }
+  if (typeof obj.type !== 'string' || !VALID_REQUEST_TYPES.has(obj.type)) {
+    throw new ValidationError(`Invalid request type: ${JSON.stringify(obj.type)}`);
+  }
+  if (typeof obj.payload !== 'object' || obj.payload === null) {
+    throw new ValidationError('Request must have a non-null "payload" object');
+  }
+
+  const p = obj.payload as Record<string, unknown>;
+
+  switch (obj.type) {
+    case 'create_issues': {
+      if (!Array.isArray(p.issues) || p.issues.length === 0) {
+        throw new ValidationError('create_issues: payload.issues must be a non-empty array');
+      }
+      for (let i = 0; i < p.issues.length; i++) {
+        const issue = p.issues[i] as Record<string, unknown>;
+        if (typeof issue.title !== 'string' || issue.title.length === 0)
+          throw new ValidationError(`create_issues: issues[${i}].title must be a non-empty string`);
+        if (typeof issue.body_file !== 'string' || issue.body_file.length === 0)
+          throw new ValidationError(`create_issues: issues[${i}].body_file must be a non-empty string`);
+      }
+      break;
+    }
+    case 'update_issue': {
+      if (typeof p.number !== 'number' || !Number.isInteger(p.number) || p.number <= 0)
+        throw new ValidationError('update_issue: payload.number must be a positive integer');
+      break;
+    }
+    case 'close_issue': {
+      if (typeof p.number !== 'number' || !Number.isInteger(p.number) || p.number <= 0)
+        throw new ValidationError('close_issue: payload.number must be a positive integer');
+      if (typeof p.reason !== 'string' || p.reason.length === 0)
+        throw new ValidationError('close_issue: payload.reason must be a non-empty string');
+      break;
+    }
+    case 'create_pr': {
+      if (typeof p.head !== 'string' || p.head.length === 0)
+        throw new ValidationError('create_pr: payload.head must be a non-empty string');
+      if (typeof p.base !== 'string' || p.base.length === 0)
+        throw new ValidationError('create_pr: payload.base must be a non-empty string');
+      if (typeof p.title !== 'string' || p.title.length === 0)
+        throw new ValidationError('create_pr: payload.title must be a non-empty string');
+      if (typeof p.body_file !== 'string' || p.body_file.length === 0)
+        throw new ValidationError('create_pr: payload.body_file must be a non-empty string');
+      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError('create_pr: payload.issue_number must be a positive integer');
+      break;
+    }
+    case 'merge_pr': {
+      if (typeof p.number !== 'number' || !Number.isInteger(p.number) || p.number <= 0)
+        throw new ValidationError('merge_pr: payload.number must be a positive integer');
+      if (typeof p.strategy !== 'string' || !VALID_MERGE_STRATEGIES.has(p.strategy))
+        throw new ValidationError('merge_pr: payload.strategy must be one of: squash, merge, rebase');
+      break;
+    }
+    case 'dispatch_child': {
+      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError('dispatch_child: payload.issue_number must be a positive integer');
+      if (typeof p.branch !== 'string' || p.branch.length === 0)
+        throw new ValidationError('dispatch_child: payload.branch must be a non-empty string');
+      if (typeof p.pipeline !== 'string' || p.pipeline.length === 0)
+        throw new ValidationError('dispatch_child: payload.pipeline must be a non-empty string');
+      if (typeof p.sub_spec_file !== 'string' || p.sub_spec_file.length === 0)
+        throw new ValidationError('dispatch_child: payload.sub_spec_file must be a non-empty string');
+      break;
+    }
+    case 'steer_child': {
+      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError('steer_child: payload.issue_number must be a positive integer');
+      if (typeof p.prompt_file !== 'string' || p.prompt_file.length === 0)
+        throw new ValidationError('steer_child: payload.prompt_file must be a non-empty string');
+      break;
+    }
+    case 'stop_child': {
+      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError('stop_child: payload.issue_number must be a positive integer');
+      if (typeof p.reason !== 'string' || p.reason.length === 0)
+        throw new ValidationError('stop_child: payload.reason must be a non-empty string');
+      break;
+    }
+    case 'post_comment': {
+      if (typeof p.issue_number !== 'number' || !Number.isInteger(p.issue_number) || p.issue_number <= 0)
+        throw new ValidationError('post_comment: payload.issue_number must be a positive integer');
+      if (typeof p.body_file !== 'string' || p.body_file.length === 0)
+        throw new ValidationError('post_comment: payload.body_file must be a non-empty string');
+      break;
+    }
+    case 'query_issues': {
+      // All fields optional — no required field validation
+      break;
+    }
+    case 'spec_backfill': {
+      if (typeof p.file !== 'string' || p.file.length === 0)
+        throw new ValidationError('spec_backfill: payload.file must be a non-empty string');
+      if (typeof p.section !== 'string' || p.section.length === 0)
+        throw new ValidationError('spec_backfill: payload.section must be a non-empty string');
+      if (typeof p.content_file !== 'string' || p.content_file.length === 0)
+        throw new ValidationError('spec_backfill: payload.content_file must be a non-empty string');
+      break;
+    }
+  }
+
+  return raw as AgentRequest;
+}
+
 export interface RequestProcessorOptions {
   workdir: string;
   sessionId: string;
@@ -150,10 +278,12 @@ export interface RequestProcessorOptions {
 export async function processAgentRequests(options: RequestProcessorOptions): Promise<void> {
   const requestsDir = path.join(options.aloopDir, 'requests');
   if (!existsSync(requestsDir)) return;
+  const processedIdsPath = path.join(requestsDir, 'processed-ids.json');
+  const processedIds = await loadProcessedRequestIds(processedIdsPath);
 
   const entries = await fs.readdir(requestsDir, { withFileTypes: true });
   const requestFiles = entries
-    .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.json'))
+    .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.json') && e.name.toLowerCase() !== 'processed-ids.json')
     .map((e) => e.name)
     .sort();
 
@@ -172,21 +302,38 @@ export async function processAgentRequests(options: RequestProcessorOptions): Pr
     let request: AgentRequest;
     try {
       const content = await fs.readFile(requestPath, 'utf8');
-      request = JSON.parse(content) as AgentRequest;
+      const parsed = JSON.parse(content);
+      request = validateRequest(parsed);
     } catch (e) {
+      const isValidation = e instanceof ValidationError;
       const archivePath = getArchivePath(failedDir, fileName, new Set());
       await fs.rename(requestPath, archivePath);
       await writeSessionLogEntry(options.logPath, 'gh_request_failed', {
         type: 'unknown',
         id: 'unknown',
         request_file: fileName,
-        error: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`
+        error: isValidation
+          ? `Validation failed: ${e.message}`
+          : `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`
+      });
+      continue;
+    }
+
+    if (processedIds.has(request.id)) {
+      const archivePath = getArchivePath(processedDir, fileName, reservedArchivePaths);
+      await fs.rename(requestPath, archivePath);
+      await writeSessionLogEntry(options.logPath, 'gh_request_skipped_duplicate', {
+        type: request.type,
+        id: request.id,
+        request_file: fileName,
       });
       continue;
     }
 
     try {
       await handleRequest(request, fileName, options);
+      processedIds.add(request.id);
+      await saveProcessedRequestIds(processedIdsPath, processedIds);
       const archivePath = getArchivePath(processedDir, fileName, reservedArchivePaths);
       await fs.rename(requestPath, archivePath);
       await writeSessionLogEntry(options.logPath, 'gh_request_processed', {
@@ -207,6 +354,23 @@ export async function processAgentRequests(options: RequestProcessorOptions): Pr
       });
     }
   }
+}
+
+async function loadProcessedRequestIds(filePath: string): Promise<Set<string>> {
+  if (!existsSync(filePath)) return new Set();
+
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((id): id is string => typeof id === 'string' && id.length > 0));
+  } catch {
+    return new Set();
+  }
+}
+
+async function saveProcessedRequestIds(filePath: string, ids: Set<string>): Promise<void> {
+  await fs.writeFile(filePath, JSON.stringify([...ids].sort(), null, 2), 'utf8');
 }
 
 function getArchivePath(processedDir: string, fileName: string, existingFiles: Set<string>): string {
@@ -268,11 +432,25 @@ async function handleRequest(request: AgentRequest, fileName: string, options: R
 }
 
 async function handleCreateIssues(request: CreateIssuesRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
+  const existingIssueTitles = await loadOrchestratorIssueTitles(options.sessionDir);
   // Map to gh.ts 'issue-create'
   // Since 'create_issues' can have multiple issues, we might need to loop or use a specialized subcommand
   // For now, let's assume one by one if not supported as batch
   const results = [];
+  const skippedTitles: string[] = [];
   for (const issueReq of request.payload.issues) {
+    const normalizedTitle = normalizeIssueTitle(issueReq.title);
+    if (existingIssueTitles.has(normalizedTitle)) {
+      skippedTitles.push(issueReq.title);
+      await writeSessionLogEntry(options.logPath, 'gh_request_skipped_existing_issue_title', {
+        type: request.type,
+        id: request.id,
+        issue_title: issueReq.title,
+        reason: 'duplicate_issue_title_in_orchestrator_state',
+      });
+      continue;
+    }
+
     // We need to pass the body content, but gh.ts issue-create expects a request file
     // So we create temporary request files for each issue if needed, 
     // or we modify gh.ts to handle 'create_issues' payload directly.
@@ -292,9 +470,34 @@ async function handleCreateIssues(request: CreateIssuesRequest, fileName: string
       throw new Error(`issue-create failed: ${result.output}`);
     }
     results.push(JSON.parse(result.output));
+    existingIssueTitles.add(normalizedTitle);
   }
 
-  await writeSuccessToQueue(request, { issues: results }, options, fileName);
+  await writeSuccessToQueue(request, { issues: results, skipped_titles: skippedTitles }, options, fileName);
+}
+
+function normalizeIssueTitle(title: string): string {
+  return title.trim().toLowerCase();
+}
+
+async function loadOrchestratorIssueTitles(sessionDir: string): Promise<Set<string>> {
+  const statePath = path.join(sessionDir, 'orchestrator.json');
+  if (!existsSync(statePath)) return new Set();
+
+  const raw = await fs.readFile(statePath, 'utf8');
+  const parsed = JSON.parse(raw) as { issues?: Array<{ title?: unknown }> };
+  if (!Array.isArray(parsed.issues)) {
+    throw new Error(`Invalid orchestrator state: expected "issues" array in ${statePath}`);
+  }
+
+  const titles = new Set<string>();
+  for (const issue of parsed.issues) {
+    if (typeof issue?.title !== 'string') continue;
+    const normalized = normalizeIssueTitle(issue.title);
+    if (normalized.length === 0) continue;
+    titles.add(normalized);
+  }
+  return titles;
 }
 
 async function handleUpdateIssue(request: UpdateIssueRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -341,6 +544,24 @@ async function handleCloseIssue(request: CloseIssueRequest, fileName: string, op
 }
 
 async function handleCreatePr(request: CreatePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
+  const existingPr = findExistingPrForHeadBase(request.payload.head, request.payload.base, options);
+  if (existingPr) {
+    await writeSessionLogEntry(options.logPath, 'gh_request_skipped_existing_pr', {
+      type: request.type,
+      id: request.id,
+      head: request.payload.head,
+      base: request.payload.base,
+      existing_pr_number: existingPr.number,
+      existing_pr_url: existingPr.url,
+    });
+    await writeSuccessToQueue(request, {
+      status: 'skipped',
+      reason: 'duplicate_pr_head_base',
+      existing_pr: existingPr,
+    }, options, fileName);
+    return;
+  }
+
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'pr-create',
@@ -355,11 +576,73 @@ async function handleCreatePr(request: CreatePrRequest, fileName: string, option
   await writeSuccessToQueue(request, JSON.parse(result.output), options, fileName);
 }
 
+function findExistingPrForHeadBase(
+  head: string,
+  base: string,
+  options: RequestProcessorOptions
+): { number: number; url?: string } | null {
+  const spawn = options.spawnSync || spawnSync;
+  const result = spawn(
+    'gh',
+    ['pr', 'list', '--head', head, '--base', base, '--state', 'all', '--json', 'number,url', '--limit', '100'],
+    { encoding: 'utf8' }
+  );
+  if (result.status !== 0) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return null;
+  }
+
+  const [first] = parsed as Array<{ number?: unknown; url?: unknown }>;
+  if (typeof first.number !== 'number' || !Number.isInteger(first.number) || first.number <= 0) {
+    return null;
+  }
+  return {
+    number: first.number,
+    url: typeof first.url === 'string' ? first.url : undefined,
+  };
+}
+
 async function handleMergePr(request: MergePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
+  // Check if PR is already merged before attempting merge
+  const spawn = options.spawnSync || spawnSync;
+  const viewResult = spawn(
+    'gh',
+    ['pr', 'view', String(request.payload.number), '--json', 'state'],
+    { encoding: 'utf8' }
+  );
+  if (viewResult.status === 0) {
+    try {
+      const prData = JSON.parse(viewResult.stdout) as { state?: string };
+      if (prData.state === 'MERGED') {
+        await writeSessionLogEntry(options.logPath, 'gh_request_skipped_already_merged', {
+          type: request.type,
+          id: request.id,
+          pr_number: request.payload.number,
+        });
+        await writeSuccessToQueue(request, {
+          status: 'skipped',
+          reason: 'already_merged',
+          pr_number: request.payload.number,
+        }, options, fileName);
+        return;
+      }
+    } catch { /* parse failure — proceed with merge attempt */ }
+  }
+
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'pr-merge',
-    pr_number: request.payload.number
+    pr_number: request.payload.number,
+    strategy: request.payload.strategy
   }));
   const result = await options.ghCommandRunner('pr-merge', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);
@@ -489,17 +772,70 @@ async function handleStopChild(request: StopChildRequest, fileName: string, opti
 }
 
 async function handlePostComment(request: PostCommentRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
+  const requestIdMarker = `<!-- aloop-request-id: ${request.id} -->`;
+  const existingCommentBodies = getIssueCommentBodies(request.payload.issue_number, options);
+  if (existingCommentBodies.some((commentBody) => commentBody.includes(requestIdMarker))) {
+    await writeSessionLogEntry(options.logPath, 'gh_request_skipped_duplicate_comment', {
+      type: request.type,
+      id: request.id,
+      issue_number: request.payload.issue_number,
+      reason: 'duplicate_request_id_marker_found',
+    });
+    await writeSuccessToQueue(request, {
+      status: 'skipped',
+      reason: 'duplicate_comment_marker',
+      issue_number: request.payload.issue_number,
+    }, options, fileName);
+    return;
+  }
+
   const body = await fs.readFile(path.join(options.workdir, request.payload.body_file), 'utf8');
+  const bodyWithRequestId = body.includes(requestIdMarker)
+    ? body
+    : `${body.replace(/\s*$/, '')}\n\n${requestIdMarker}`;
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'issue-comment',
     issue_number: request.payload.issue_number,
-    body
+    body: bodyWithRequestId
   }));
   const result = await options.ghCommandRunner('issue-comment', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);
   if (result.exitCode !== 0) throw new Error(result.output);
   await writeSuccessToQueue(request, { status: 'posted' }, options, fileName);
+}
+
+function getIssueCommentBodies(issueNumber: number, options: RequestProcessorOptions): string[] {
+  const spawn = options.spawnSync || spawnSync;
+  const result = spawn(
+    'gh',
+    ['api', `repos/{owner}/{repo}/issues/${issueNumber}/comments?per_page=100`],
+    { encoding: 'utf8' }
+  );
+  if (result.status !== 0) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(result.stdout) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const commentBodies: string[] = [];
+    for (const comment of parsed) {
+      if (typeof comment !== 'object' || comment === null) {
+        continue;
+      }
+      const body = (comment as { body?: unknown }).body;
+      if (typeof body === 'string') {
+        commentBodies.push(body);
+      }
+    }
+    return commentBodies;
+  } catch {
+    return [];
+  }
 }
 
 async function handleQueryIssues(request: QueryIssuesRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {

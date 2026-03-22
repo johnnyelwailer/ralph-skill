@@ -1239,3 +1239,81 @@ Child loops receive their task specification as `TASK_SPEC.md` (NOT `SPEC.md`). 
 - [ ] Review prompt includes previous PR comments with "do not repeat" instruction
 - [ ] Sub-spec written to `TASK_SPEC.md`, not `SPEC.md`
 - [ ] `TASK_SPEC.md` excluded from PR diffs
+
+---
+
+## Orchestrator Self-Healing: Failed Issue Recovery & Conflict Resolution
+
+### Problem
+
+`failed` was a terminal state with no recovery path. Issues that hit merge conflicts, CI failures, or transient errors were permanently stuck, consuming issue slots and requiring human intervention.
+
+### Recovery Rules (process-requests Phase 2d.2)
+
+Every `process-requests` pass scans `failed` issues and recovers them automatically:
+
+| Condition | Recovery |
+|-----------|----------|
+| `needs_redispatch` + has open PR | → `pr_open` (lifecycle re-evaluates, dispatches child) |
+| `needs_redispatch` + no PR | → `pending` (fresh dispatch) |
+| Has open PR (any) | → `pr_open` (clear dead child session, reset rebase counter) |
+| No PR + dead/no child | → `pending` (fresh dispatch) |
+| `status === 'Done'` (scan-agent closed) | No recovery — intentionally closed |
+
+### Merge Conflict Resolution
+
+When a PR has merge conflicts, the orchestrator dispatches a child agent to rebase — it does NOT just post a comment. The child receives explicit instructions to `git rebase` onto the trunk branch and force-push.
+
+- Each conflict triggers a `needs_redispatch` with rebase-specific instructions
+- No hard cap on rebase attempts — each attempt dispatches a real agent
+- The `rebase_attempts` counter tracks attempts for diagnostics only
+
+### Persistent CI Failure
+
+When the same CI failure signature persists across `ORCHESTRATOR_CI_PERSISTENCE_LIMIT` (3) attempts:
+
+1. Close the failing PR with an explanatory comment
+2. Reset the issue to `pending` with clean state (no failure counters)
+3. Fresh dispatch builds from scratch on a new branch
+
+This avoids the "failed forever" trap while preventing infinite loops on the same broken approach.
+
+### V8 Code Cache Cleanup
+
+Provider CLIs (claude, opencode) create V8 code cache `.so` files in `/tmp` that can fill the tmpfs (13GB+ observed).
+
+- **Per-session** (good): child loops get `NODE_COMPILE_CACHE=<sessionDir>/.v8-cache`, cleaned on completion
+- **Global** (stopgap hack): `process-requests` periodically deletes `.da*.so` files in `/tmp` older than 60 minutes — this is a blunt workaround that may delete files belonging to other processes
+
+**Needs research** (see #164):
+- Can `NODE_COMPILE_CACHE` be set for provider CLIs? They may ignore the env var or use a different caching mechanism.
+- Is there a provider-specific config to disable or redirect their cache?
+- Should the orchestrator use a dedicated tmpdir mount with size limits?
+- Can we identify which `.so` files belong to our processes vs unrelated ones?
+
+### Acceptance Criteria
+
+- [ ] No issue remains in `failed` state permanently unless intentionally closed by scan agent
+- [ ] Merge conflicts trigger child agent dispatch, not passive comments
+- [ ] Persistent CI failures close PR and reset for fresh attempt
+- [ ] `/tmp` V8 cache files are periodically cleaned
+- [ ] Dead child sessions are cleared from recovered issues
+
+---
+
+## Loop Flag: `--no-task-exit`
+
+The orchestrator scan loop must never auto-complete based on TODO.md task status. The `--no-task-exit` flag on `loop.sh`/`loop.ps1` disables the `check_all_tasks_complete` check entirely.
+
+- **Child loops**: do NOT use this flag — they complete when all tasks are done (normal behavior)
+- **Orchestrator loop**: ALWAYS uses this flag — completion is managed by `process-requests` (all issues merged/failed)
+
+### Implementation
+- `loop.sh`: `NO_TASK_EXIT=false` default, `--no-task-exit` sets it to true
+- `check_all_tasks_complete()`: returns 1 immediately if `NO_TASK_EXIT=true`
+- `orchestrate.ts`: passes `--no-task-exit` in loop.sh args
+
+### Acceptance Criteria
+- [ ] `--no-task-exit` flag accepted by loop.sh and loop.ps1
+- [ ] Orchestrator loop runs indefinitely regardless of TODO.md state
+- [ ] Child loops still complete normally when all tasks are done

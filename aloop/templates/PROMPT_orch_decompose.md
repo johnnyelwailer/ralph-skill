@@ -8,12 +8,13 @@ Convert the spec into top-level vertical slices (epics) that can be scheduled an
 
 ## Process
 
-1. Read spec inputs and current codebase state.
-2. Produce independently shippable vertical slices (end-to-end behavior).
-3. Define high-level acceptance criteria for each epic.
-4. Include dependency hints between epics.
-5. If no CI exists, include an early "Set up GitHub Actions CI" foundation task.
-6. Write create-issue requests for epics and mark them `aloop/epic` + `aloop/needs-refine`.
+1. Read `CONSTITUTION.md` first — these are non-negotiable architectural invariants. Every epic you create must respect them.
+2. Read spec inputs and current codebase state.
+3. Produce independently shippable vertical slices (end-to-end behavior).
+4. Define high-level acceptance criteria for each epic.
+5. Include dependency hints between epics.
+6. If no CI exists, include an early "Set up GitHub Actions CI" foundation task.
+7. Write create-issue requests for epics and mark them `aloop/epic` + `aloop/needs-refine`.
 
 ## UI Variant Exploration
 
@@ -33,4 +34,6 @@ Skip this if: `ui_variant_exploration` is false/unset, or the feature is backend
 - Keep scope clear enough for downstream refinement.
 - Prefer fewer coherent epics over many fragmented placeholders.
 - When planning UI variants, keep the variant count proportional to available parallelism budget.
+- Every epic body must include an **Architectural Context** section explaining where this work fits in the system and which layers/components it touches.
+- If a constitution rule is relevant to the epic, cite it explicitly in the body.
 

@@ -153,10 +153,13 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   // ── Phase 2b: Forward-merge master → agent/trunk (pick up human changes) ──
   const trunkBranch = state.trunk_branch ?? 'agent/trunk';
   try {
-    spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'master', trunkBranch], { encoding: 'utf8' });
-    const mergeBase = spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8' });
-    const masterHead = spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8' });
-    if (mergeBase.stdout?.trim() !== masterHead.stdout?.trim()) {
+    const fetchR = spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'master', trunkBranch], { encoding: 'utf8', timeout: 30000 });
+    if (fetchR.status !== 0) throw new Error('fetch failed');
+    const mergeBase = spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const masterHead = spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8', timeout: 10000 });
+    const mbSha = mergeBase.stdout?.trim();
+    const mhSha = masterHead.stdout?.trim();
+    if (mbSha && mhSha && mbSha.length >= 7 && mhSha.length >= 7 && mbSha !== mhSha) {
       // master has commits that trunk doesn't — forward merge
       const mergeResult = spawnSync('git', ['-C', projectRoot, 'push', 'origin', `origin/master:refs/heads/${trunkBranch}`], { encoding: 'utf8' });
       if (mergeResult.status !== 0) {
@@ -187,12 +190,15 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     if (!existsSync(childWorktree)) continue;
 
     // Fetch and check if diverged
-    const fetchResult = spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8' });
+    const fetchResult = spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8', timeout: 30000 });
     if (fetchResult.status !== 0) continue;
 
-    const mergeBase = spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8' });
-    const remoteHead = spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8' });
-    if (mergeBase.stdout?.trim() === remoteHead.stdout?.trim()) continue; // Up to date
+    const mergeBase = spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const remoteHead = spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const mbSha = mergeBase.stdout?.trim();
+    const rhSha = remoteHead.stdout?.trim();
+    if (!mbSha || !rhSha || mbSha.length < 7 || rhSha.length < 7) continue; // Invalid output, skip
+    if (mbSha === rhSha) continue; // Up to date
 
     // Commit any dirty files and remove working artifacts before rebase
     const statusResult = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
@@ -264,8 +270,9 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
               if (prResult.status === 0 && prResult.stdout) {
                 const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
-                if (urlMatch) {
-                  issue.pr_number = parseInt(urlMatch[1], 10);
+                const prNum = urlMatch ? parseInt(urlMatch[1], 10) : 0;
+                if (prNum > 0) {
+                  issue.pr_number = prNum;
                   issue.state = 'pr_open';
                   issue.status = 'In review';
                   stateChanged = true;
@@ -285,7 +292,101 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // ── Phase 2d: Cleanup worktrees + V8 cache for fully completed children ──
+  // ── Phase 2d: Detect dead children — reset to Ready if PID is gone ──
+  for (const issue of state.issues) {
+    if (issue.state !== 'in_progress') continue;
+    if (!issue.child_session) {
+      // No child session but in_progress — stale preloaded state
+      issue.state = 'pending';
+      issue.status = 'Ready';
+      stateChanged = true;
+      continue;
+    }
+    const childPid = (issue as any).child_pid;
+    if (childPid && !existsSync(`/proc/${childPid}`)) {
+      // PID dead — check child status.json for completion
+      const childStatusFile = path.join(aloopRoot, 'sessions', issue.child_session, 'status.json');
+      if (existsSync(childStatusFile)) {
+        try {
+          const cs = JSON.parse(await readFile(childStatusFile, 'utf8'));
+          if (cs.state === 'completed') continue; // Will be handled by PR creation
+          if (cs.state === 'stopped') {
+            // Stopped — re-queue via needs_redispatch
+            (issue as any).needs_redispatch = true;
+            (issue as any).review_feedback = `Child stopped after ${cs.iteration ?? '?'} iterations. Resume and continue.`;
+            stateChanged = true;
+            continue;
+          }
+        } catch { /* fall through */ }
+      }
+      // Dead with no clear status — reset to Ready for fresh dispatch
+      issue.state = 'pending';
+      issue.status = 'Ready';
+      issue.child_session = null;
+      (issue as any).child_pid = null;
+      stateChanged = true;
+      console.log(`[process-requests] Dead child detected for #${issue.number} — reset to Ready`);
+    }
+  }
+
+  // ── Phase 2d.2: Recover failed issues that have a viable path forward ──
+  for (const issue of state.issues) {
+    if (issue.state !== 'failed') continue;
+    // Don't recover issues deliberately closed by scan agent
+    if (issue.status === 'Done') continue;
+    const hasOpenPr = issue.pr_number != null;
+    const wantsRedispatch = (issue as any).needs_redispatch === true;
+
+    if (wantsRedispatch) {
+      // Has review feedback — move to pr_open so lifecycle picks it up for redispatch
+      if (hasOpenPr) {
+        issue.state = 'pr_open';
+        issue.status = 'In review';
+      } else {
+        // No PR but wants redispatch — reset to pending for fresh dispatch
+        issue.state = 'pending';
+        issue.status = 'Ready';
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+        (issue as any).needs_redispatch = false;
+      }
+      stateChanged = true;
+      console.log(`[process-requests] Recovered failed #${issue.number} (needs_redispatch) → ${issue.state}`);
+    } else if (hasOpenPr) {
+      // Has open PR — move back to pr_open so the PR lifecycle can re-evaluate
+      // Clear stale child session if the child is dead
+      if (issue.child_session) {
+        const childPid = (issue as any).child_pid;
+        if (!childPid || !existsSync(`/proc/${childPid}`)) {
+          issue.child_session = null;
+          (issue as any).child_pid = null;
+        }
+      }
+      issue.state = 'pr_open';
+      issue.status = 'In review';
+      (issue as any).rebase_attempts = 0;
+      stateChanged = true;
+      console.log(`[process-requests] Recovered failed #${issue.number} (has open PR #${issue.pr_number}) → pr_open`);
+    } else {
+      // No PR (may or may not have child session) — reset to pending for fresh attempt.
+      // Clear dead child session if present.
+      const childPid = (issue as any).child_pid;
+      if (issue.child_session && (!childPid || !existsSync(`/proc/${childPid}`))) {
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+      }
+      if (!issue.child_session) {
+        issue.state = 'pending';
+        issue.status = 'Ready';
+        (issue as any).rebase_attempts = 0;
+        (issue as any).ci_failure_retries = 0;
+        stateChanged = true;
+        console.log(`[process-requests] Recovered failed #${issue.number} (no PR) → pending`);
+      }
+    }
+  }
+
+  // ── Phase 2e: Cleanup worktrees + V8 cache for fully completed children ──
   try {
     for (const issue of state.issues) {
       if ((issue.state === 'merged' || issue.state === 'failed') && issue.child_session) {
@@ -304,7 +405,25 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   } catch { /* cleanup is best-effort */ }
 
-  // ── Phase 2e: Sync issue statuses to GH project ──
+  // HACK: Periodic /tmp V8 cache cleanup — provider CLIs (claude, opencode) create
+  // V8 code cache .so files in /tmp that can fill the tmpfs (13GB+ observed).
+  // This is a blunt workaround. Needs research into:
+  //   - Can we set NODE_COMPILE_CACHE for provider CLIs too? (they ignore env vars?)
+  //   - Is there a provider-specific config to disable/redirect their cache?
+  //   - Should we use a dedicated tmpdir mount with size limits instead?
+  // See: https://github.com/johnnyelwailer/ralph-skill/issues/164
+  if (Math.random() < 0.1) {
+    try {
+      const findResult = spawnSync('find', ['/tmp', '-maxdepth', '2', '-name', '.da*.so', '-mmin', '+60', '-delete'], {
+        encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000,
+      });
+      if (findResult.status === 0) {
+        console.log('[process-requests] Cleaned stale V8 cache files from /tmp (HACK — see #164)');
+      }
+    } catch { /* best-effort */ }
+  }
+
+  // ── Phase 2f: Sync issue statuses to GH project ──
   if (repo && stateChanged && ghProjectNumber) {
     try {
       // Get project items and their current statuses
@@ -334,9 +453,26 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
         if (statusFieldId && projectId) {
           let synced = 0;
+          let added = 0;
           for (const issue of state.issues) {
-            const item = itemMap.get(issue.number);
-            if (!item) continue;
+            if (!issue.number) continue;
+            let item = itemMap.get(issue.number);
+
+            // Add missing issues to the project (max 10 per pass to avoid API rate limits)
+            if (!item) {
+              if (added >= 10) continue;
+              const repoNodeResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ repository(owner: "${repo.split('/')[0]}", name: "${repo.split('/')[1]}") { issue(number: ${issue.number}) { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+              if (repoNodeResult.status !== 0) continue;
+              const issueNodeId = JSON.parse(repoNodeResult.stdout)?.data?.repository?.issue?.id;
+              if (!issueNodeId) continue;
+              const addResult = spawnSync('gh', ['api', 'graphql', '-f', `query=mutation { addProjectV2ItemById(input: { projectId: "${projectId}" contentId: "${issueNodeId}" }) { item { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+              if (addResult.status !== 0) continue;
+              const newItemId = JSON.parse(addResult.stdout)?.data?.addProjectV2ItemById?.item?.id;
+              if (!newItemId) continue;
+              item = { id: newItemId, status: '' };
+              added++;
+            }
+
             const targetStatus = (issue.status ?? '').toLowerCase();
             if (item.status.toLowerCase() === targetStatus) continue;
             const optionId = optionIds.get(targetStatus);
@@ -344,6 +480,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             spawnSync('gh', ['api', 'graphql', '-f', `query=mutation { updateProjectV2ItemFieldValue(input: { projectId: "${projectId}" itemId: "${item.id}" fieldId: "${statusFieldId}" value: { singleSelectOptionId: "${optionId}" } }) { projectV2Item { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
             synced++;
           }
+          if (added > 0) console.log(`[process-requests] Added ${added} issues to GH project`);
           if (synced > 0) console.log(`[process-requests] Synced ${synced} issue statuses to GH project`);
         }
       }
@@ -396,8 +533,9 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   await etagCache.load();
 
   const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
-    // Call gh CLI directly (not aloop gh which is the request protocol handler)
-    const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    // Call gh CLI directly with timeout (not aloop gh which is the request protocol handler)
+    const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
+    if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
 
@@ -451,8 +589,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
               if (!existsSync(outputFile)) continue;
               const output = await readFile(outputFile, 'utf8');
               if (!output.includes(String(prNumber)) && !output.includes(`PR #${prNumber}`)) continue;
-              const verdictMatch = output.match(/\*\*[Vv]erdict:\s*(approve|request-changes|flag-for-human)\*\*/i)
-                ?? output.match(/["']verdict["']\s*:\s*["'](approve|request-changes|flag-for-human)["']/i);
+              const verdictMatch = output.match(/\*\*(?:Review\s+)?[Vv]erdict[:\s]+(approve|request-changes|flag-for-human)\*\*/i)
+                ?? output.match(/(?:review\s+)?verdict[:\s]+"?(approve|request-changes|flag-for-human)"?/i)
+                ?? (output.match(new RegExp(`PR\\s*#?${prNumber}.*review\\s+approved`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null)
+                ?? (output.match(new RegExp(`merge-pr-${prNumber}`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null);
               if (verdictMatch) {
                 const verdict = verdictMatch[1].toLowerCase();
                 const summaryMatch = output.match(/(?:summary|reason|feedback|issues?)[:\s]+([^\n]{10,300})/i);
@@ -463,23 +603,87 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
           } catch { /* ignore */ }
         }
 
-        // 3. Check if PR head commit has already been reviewed (prevent spam)
-        const stateIssue = state.issues.find((i: any) => i.pr_number === prNumber);
-        if (stateIssue && repo) {
+        // 2b. Also check raw log (last 10KB) — scan agent may produce verdict inline
+        const rawLogFile = path.join(sessionDir, 'log.jsonl.raw');
+        if (existsSync(rawLogFile)) {
           try {
-            const headResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'headRefOid'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-            if (headResult.status === 0) {
-              const headSha = JSON.parse(headResult.stdout).headRefOid;
-              if (headSha && (stateIssue as any).last_reviewed_sha === headSha) {
-                return { pr_number: prNumber, verdict: 'pending', summary: 'Already reviewed this commit, waiting for new push.' };
+            const rawLog = await readFile(rawLogFile, 'utf8');
+            const recent = rawLog.slice(-10000);
+            if (recent.includes(String(prNumber)) || recent.includes(`PR #${prNumber}`)) {
+              const verdictMatch = recent.match(new RegExp(`PR\\s*#?${prNumber}[^\\n]*(?:review\\s+)?verdict[:\\s]+(approve|request-changes|flag-for-human)`, 'i'))
+                ?? recent.match(new RegExp(`\\*\\*(?:Review\\s+)?[Vv]erdict[:\\s]+(approve|request-changes|flag-for-human)\\*\\*[^\\n]*PR\\s*#?${prNumber}`, 'i'))
+                ?? recent.match(new RegExp(`\\*\\*(?:Review\\s+)?[Vv]erdict[:\\s]+(approve|request-changes|flag-for-human)\\*\\*.*?${prNumber}`, 'is'))
+                ?? (recent.match(new RegExp(`PR\\s*#?${prNumber}.*review\\s+approved`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null);
+              if (verdictMatch && verdictMatch[1]) {
+                const verdict = verdictMatch[1].toLowerCase();
+                return { pr_number: prNumber, verdict, summary: `Verdict from scan agent output` };
               }
-              // Store SHA — will be saved after verdict
-              (stateIssue as any).last_reviewed_sha = headSha;
             }
           } catch { /* ignore */ }
         }
 
-        // 4. Queue review prompt with PR comments history
+        // 2c. Last resort: queue a verdict extraction prompt for the agent
+        // The scan agent produced review text but we couldn't parse the verdict — ask an agent to extract it
+        const rawLogFile2 = path.join(sessionDir, 'log.jsonl.raw');
+        if (existsSync(rawLogFile2)) {
+          try {
+            const rawLog = await readFile(rawLogFile2, 'utf8');
+            const recent = rawLog.slice(-8000);
+            // Only if the raw log mentions this PR
+            if (recent.includes(String(prNumber)) || recent.includes(`PR #${prNumber}`)) {
+              const extractQueueFile = path.join(sessionDir, 'queue', `000-extract-verdict-${prNumber}.md`);
+              if (!existsSync(extractQueueFile)) {
+                const relResultPath = `requests/review-result-${prNumber}.json`;
+                await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
+                await writeFile(extractQueueFile, `---
+agent: verdict_extract
+reasoning: low
+---
+
+# Extract Review Verdict for PR #${prNumber}
+
+## How the Aloop orchestrator works
+
+The orchestrator review agent produces a verdict for each PR. The verdict must be written as a JSON file so the orchestrator runtime can read it and proceed (merge on approve, redispatch on request-changes).
+
+**Without this file, the PR review is stuck and the pipeline cannot continue.**
+
+## Your task
+
+1. Read the agent output below
+2. Find the review verdict for PR #${prNumber} (look for "verdict", "approve", "request-changes", or similar)
+3. Write the JSON file using the Write tool to:
+
+**Path:** \`${relResultPath}\`
+
+(This is relative to your working directory. Create the \`requests/\` directory if needed.)
+
+File content must be valid JSON:
+\`\`\`json
+{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}
+\`\`\`
+
+Valid verdicts: "approve", "request-changes", "flag-for-human"
+
+4. If you cannot find a clear verdict for PR #${prNumber}, write:
+\`\`\`json
+{"pr_number": ${prNumber}, "verdict": "approve", "summary": "No explicit verdict found — auto-approving"}
+\`\`\`
+
+**You MUST use the Write tool to create the file. Do NOT just print the JSON as text.**
+
+## Recent Agent Output
+
+\`\`\`
+${recent.slice(-4000)}
+\`\`\`
+`, 'utf8');
+              }
+            }
+          } catch { /* ignore */ }
+        }
+
+        // 3. Queue review prompt with PR comments history
         const queueFile = path.join(sessionDir, 'queue', `000-review-${prNumber}.md`);
         const legacyQueueFile = path.join(sessionDir, 'queue', `review-${prNumber}.md`);
         if (!existsSync(queueFile) && !existsSync(legacyQueueFile)) {
@@ -487,8 +691,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
           if (existsSync(reviewPath)) {
             const prompt = await readFile(reviewPath, 'utf8');
             await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
-            const resultPath = path.join(requestsDir, `review-result-${prNumber}.json`);
-            const outputInstr = `\n\n## Output\n\nWrite your verdict to \`${resultPath}\` as JSON: \`{"pr_number": ${prNumber}, "verdict": "approve"|"request-changes"|"flag-for-human", "summary": "..."}\`\n\nIMPORTANT: Use the EXACT absolute path above.\n`;
+            // Write to requests/ inside the worktree (agent's working dir) — process-requests checks both locations
+            const worktreeRequestsDir = path.join(sessionDir, 'worktree', 'requests');
+            const resultPath = path.join(worktreeRequestsDir, `review-result-${prNumber}.json`);
+            const outputInstr = `\n\n## Output — CRITICAL\n\nYou MUST use the Write tool to create this file:\n\n**Path:** \`requests/review-result-${prNumber}.json\`\n\n(This is relative to your working directory. Full path: \`${resultPath}\`)\n\n**Content (valid JSON):**\n\`\`\`json\n{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}\n\`\`\`\n\nValid verdicts: \`approve\`, \`request-changes\`, \`flag-for-human\`\n\n**Without this file, the pipeline is stuck. Do NOT just print the verdict — WRITE THE FILE.**\n`;
 
             // Fetch existing PR comments for context
             let commentHistory = '';
@@ -502,6 +708,26 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             }
 
             await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${prompt}\n${outputInstr}${commentHistory}\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
+          }
+        }
+        // Track pending cycles — retry → troubleshoot → escalate
+        const stateIssue2 = state.issues.find((i: any) => i.pr_number === prNumber);
+        if (stateIssue2) {
+          const pendingCount = ((stateIssue2 as any).review_pending_count ?? 0) + 1;
+          (stateIssue2 as any).review_pending_count = pendingCount;
+
+          // 1-3: retry (move to back of queue — other PRs get a chance)
+          // 4-5: troubleshoot agent investigates
+          // 6+: escalate to human
+          if (pendingCount === 4) {
+            const troubleshootFile = path.join(sessionDir, 'queue', `000-troubleshoot-review-${prNumber}.md`);
+            if (!existsSync(troubleshootFile)) {
+              await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
+              await writeFile(troubleshootFile, `---\nagent: troubleshoot\nreasoning: high\n---\n\n# Troubleshoot: PR #${prNumber} Review Stuck\n\nThe review for PR #${prNumber} has returned "pending" ${pendingCount} times. The verdict extraction is failing.\n\n## Investigate\n1. Check if review-result-${prNumber}.json exists anywhere in the session\n2. Check recent agent output for verdict text mentioning PR #${prNumber}\n3. If verdict exists but wasn't parsed, write it to the correct location\n4. If no verdict was produced, determine why the review agent didn't generate one\n`, 'utf8');
+            }
+          }
+          if (pendingCount > 10) {
+            return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Review stuck pending after ${pendingCount} attempts (troubleshoot agent failed) — needs manual review.` };
           }
         }
         return { pr_number: prNumber, verdict: 'pending', summary: 'Review queued.' };

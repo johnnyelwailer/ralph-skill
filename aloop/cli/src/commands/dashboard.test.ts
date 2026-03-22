@@ -122,6 +122,57 @@ async function runBashCommand(command: string, envOverrides: NodeJS.ProcessEnv =
   });
 }
 
+async function createFakeOpencodeBinary(
+  fakeBinDir: string,
+  dbCounterPath: string,
+  exportCounterPath: string,
+): Promise<void> {
+  const scriptPath = path.join(fakeBinDir, 'opencode');
+  const script = `#!/usr/bin/env node
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+const dbCounter = ${JSON.stringify(dbCounterPath)};
+const exportCounter = ${JSON.stringify(exportCounterPath)};
+const bump = (target) => {
+  const current = fs.existsSync(target) ? Number(fs.readFileSync(target, 'utf8')) || 0 : 0;
+  fs.writeFileSync(target, String(current + 1), 'utf8');
+};
+
+if (args[0] === '--version') {
+  process.stdout.write('opencode 1.0.0\\n');
+  process.exit(0);
+}
+
+if (args[0] === 'db') {
+  bump(dbCounter);
+  process.stdout.write(JSON.stringify([
+    { model: 'gpt-4', cost_usd: 1.25 },
+    { model: 'gpt-5', cost_usd: 2.75 },
+  ]));
+  process.exit(0);
+}
+
+if (args[0] === 'export') {
+  bump(exportCounter);
+  const sessionIndex = args.indexOf('--session');
+  const sessionId = sessionIndex >= 0 ? args[sessionIndex + 1] : 'unknown';
+  process.stdout.write(JSON.stringify({
+    entries: [
+      { model: sessionId, cost_usd: 0.5 },
+      { model: 'fallback', cost_usd: 1.5 },
+    ],
+  }));
+  process.exit(0);
+}
+
+process.stderr.write('unsupported opencode args: ' + args.join(' '));
+process.exit(1);
+`;
+
+  await writeFile(scriptPath, script, 'utf8');
+  await chmod(scriptPath, 0o755);
+}
+
 test('GET /api/state includes active and recent sessions from runtime state files', async () => {
   const fixture = await createServerFixture();
 
@@ -300,7 +351,7 @@ test('GH request processor writes error response for unsupported request type', 
 
   try {
     await mkdir(requestsDir, { recursive: true });
-    await writeFile(path.join(requestsDir, '001-unknown.json'), '{"id":"req-unsupp","type":"repo-delete","target":"foo"}', 'utf8');
+    await writeFile(path.join(requestsDir, '001-unknown.json'), '{"id":"req-unsupp","type":"repo-delete","payload":{"target":"foo"}}', 'utf8');
 
     await waitFor(async () => {
       try {
@@ -312,19 +363,18 @@ test('GH request processor writes error response for unsupported request type', 
     });
 
     assert.deepEqual(calls, []);
-    const queueFiles = (await readdir(queueDir)).filter(f => f.endsWith('.md')).sort();
-    assert.equal(queueFiles.length, 1);
-    const response = await readFile(path.join(queueDir, queueFiles[0]), 'utf8');
-    assert.match(response, /"status": "error"/);
-    assert.match(response, /"request_type": "repo-delete"/);
-    assert.match(response, /Unsupported request type/);
+    if (await exists(queueDir)) {
+      const queueFiles = (await readdir(queueDir)).filter(f => f.endsWith('.md')).sort();
+      assert.equal(queueFiles.length, 0);
+    }
 
     const logs = (await readFile(path.join(fixture.sessionDir, 'log.jsonl'), 'utf8'))
       .trim()
       .split('\n')
       .filter(Boolean)
-      .map((line) => JSON.parse(line) as { event?: string });
+      .map((line) => JSON.parse(line) as { event?: string; error?: string });
     assert.equal(logs.filter((entry) => entry.event === 'gh_request_failed').length, 1);
+    assert.match((logs.find((entry) => entry.event === 'gh_request_failed')?.error ?? ''), /Validation failed: Invalid request type/);
   } finally {
     await fixture.handle.close();
   }
@@ -821,6 +871,45 @@ test('dashboard resolves packaged assets when cwd has no dashboard/dist', async 
   try {
     process.chdir(emptyProjectDir);
     process.argv[1] = path.join(emptyProjectDir, 'aloop.mjs');
+
+    const port = await reservePort();
+    handle = await startDashboardServer(
+      { port: String(port), sessionDir, workdir },
+      { registerSignalHandlers: false },
+    );
+
+    const response = await fetch(`${handle.url}/`);
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.match(text, /<title>Aloop Dashboard<\/title>/);
+    assert.doesNotMatch(text, /Dashboard assets not found/);
+  } finally {
+    process.chdir(originalCwd);
+    process.argv[1] = originalArgv1;
+    if (handle) {
+      await handle.close();
+    }
+  }
+});
+
+test('dashboard resolves packaged assets from dist sibling of script path', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-assets-dist-fallback-'));
+  const emptyProjectDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-dashboard-cwd-'));
+  const sessionDir = path.join(root, 'session');
+  const workdir = path.join(root, 'workdir');
+  const fakeDistDir = path.join(root, 'pkg', 'dist');
+  const fakeDistAssetsDir = path.join(fakeDistDir, 'dashboard');
+  await mkdir(sessionDir, { recursive: true });
+  await mkdir(workdir, { recursive: true });
+  await mkdir(fakeDistAssetsDir, { recursive: true });
+  await writeFile(path.join(fakeDistAssetsDir, 'index.html'), '<!doctype html><title>Aloop Dashboard</title>', 'utf8');
+
+  const originalCwd = process.cwd();
+  const originalArgv1 = process.argv[1];
+  let handle: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
+  try {
+    process.chdir(emptyProjectDir);
+    process.argv[1] = path.join(fakeDistDir, 'index.js');
 
     const port = await reservePort();
     handle = await startDashboardServer(
@@ -1781,6 +1870,188 @@ test('watch logic triggers request processing', async () => {
     await writeFile(path.join(requestsDir, 'new-request.json'), '{}');
     await sleep(200);
     // Should not crash
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('GET /api/cost routes return success and cache aggregate by cost_poll_interval_minutes', async () => {
+  const fixture = await createServerFixture();
+  const fakeBinDir = path.join(fixture.root, 'fake-bin');
+  const dbCounterPath = path.join(fixture.root, 'opencode-db-count.txt');
+  const exportCounterPath = path.join(fixture.root, 'opencode-export-count.txt');
+  const originalPath = process.env.PATH;
+  try {
+    await mkdir(fakeBinDir, { recursive: true });
+    await createFakeOpencodeBinary(fakeBinDir, dbCounterPath, exportCounterPath);
+    await writeFile(
+      path.join(fixture.sessionDir, 'meta.json'),
+      JSON.stringify({ cost_poll_interval_minutes: 10 }),
+      'utf8',
+    );
+
+    process.env.PATH = `${fakeBinDir}${path.delimiter}${originalPath ?? ''}`;
+
+    const aggregateFirst = await fetch(`${fixture.handle.url}/api/cost/aggregate`);
+    assert.equal(aggregateFirst.status, 200);
+    const aggregateFirstPayload = (await aggregateFirst.json()) as { total_usd: number; by_model: { model: string; cost_usd: number }[] };
+    assert.equal(aggregateFirstPayload.total_usd, 4);
+    assert.deepEqual(aggregateFirstPayload.by_model, [
+      { model: 'gpt-4', cost_usd: 1.25 },
+      { model: 'gpt-5', cost_usd: 2.75 },
+    ]);
+
+    const aggregateSecond = await fetch(`${fixture.handle.url}/api/cost/aggregate`);
+    assert.equal(aggregateSecond.status, 200);
+    const aggregateSecondPayload = (await aggregateSecond.json()) as { total_usd: number; by_model: { model: string; cost_usd: number }[] };
+    assert.deepEqual(aggregateSecondPayload, aggregateFirstPayload);
+
+    const dbCount = await readFile(dbCounterPath, 'utf8');
+    assert.equal(dbCount.trim(), '1', 'expected cached aggregate response to skip second opencode db call');
+
+    const sessionResponse = await fetch(`${fixture.handle.url}/api/cost/session/session-abc`);
+    assert.equal(sessionResponse.status, 200);
+    const sessionPayload = (await sessionResponse.json()) as { total_usd: number; by_model: { model: string; cost_usd: number }[] };
+    assert.equal(sessionPayload.total_usd, 2);
+    assert.deepEqual(sessionPayload.by_model, [
+      { model: 'session-abc', cost_usd: 0.5 },
+      { model: 'fallback', cost_usd: 1.5 },
+    ]);
+
+    const exportCount = await readFile(exportCounterPath, 'utf8');
+    assert.equal(exportCount.trim(), '1');
+  } finally {
+    process.env.PATH = originalPath;
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/cost routes degrade gracefully when opencode CLI is unavailable', async () => {
+  const fixture = await createServerFixture();
+  const originalPath = process.env.PATH;
+  try {
+    process.env.PATH = '';
+
+    const aggregateResponse = await fetch(`${fixture.handle.url}/api/cost/aggregate`);
+    assert.equal(aggregateResponse.status, 200);
+    const aggregatePayload = (await aggregateResponse.json()) as { error?: string };
+    assert.equal(aggregatePayload.error, 'opencode_unavailable');
+
+    const sessionResponse = await fetch(`${fixture.handle.url}/api/cost/session/session-xyz`);
+    assert.equal(sessionResponse.status, 200);
+    const sessionPayload = (await sessionResponse.json()) as { error?: string };
+    assert.equal(sessionPayload.error, 'opencode_unavailable');
+  } finally {
+    process.env.PATH = originalPath;
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/cost/aggregate does not reuse cache when cost_poll_interval_minutes is zero', async () => {
+  const fixture = await createServerFixture();
+  const fakeBinDir = path.join(fixture.root, 'fake-bin');
+  const dbCounterPath = path.join(fixture.root, 'opencode-db-count.txt');
+  const exportCounterPath = path.join(fixture.root, 'opencode-export-count.txt');
+  const originalPath = process.env.PATH;
+  try {
+    await mkdir(fakeBinDir, { recursive: true });
+    await createFakeOpencodeBinary(fakeBinDir, dbCounterPath, exportCounterPath);
+    await writeFile(
+      path.join(fixture.sessionDir, 'meta.json'),
+      JSON.stringify({ cost_poll_interval_minutes: 0 }),
+      'utf8',
+    );
+    process.env.PATH = `${fakeBinDir}${path.delimiter}${originalPath ?? ''}`;
+
+    const first = await fetch(`${fixture.handle.url}/api/cost/aggregate`);
+    assert.equal(first.status, 200);
+    const second = await fetch(`${fixture.handle.url}/api/cost/aggregate`);
+    assert.equal(second.status, 200);
+
+    const dbCount = await readFile(dbCounterPath, 'utf8');
+    assert.equal(dbCount.trim(), '2');
+  } finally {
+    process.env.PATH = originalPath;
+    await fixture.handle.close();
+  }
+});
+
+// ── QA Coverage endpoint tests ──
+
+test('GET /api/qa-coverage returns available:false when file is missing', async () => {
+  const { handle, root } = await createServerFixture();
+  try {
+    const response = await fetch(`${handle.url}/api/qa-coverage`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.available, false);
+    assert.equal(body.error, 'not_found');
+    assert.equal(body.coverage_percent, 0);
+    assert.equal(body.total_features, 0);
+    assert.equal(body.tested_features, 0);
+    assert.equal(body.passed, 0);
+    assert.equal(body.failed, 0);
+    assert.equal(body.untested, 0);
+    assert.deepStrictEqual(body.features, []);
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('GET /api/qa-coverage parses pipe-delimited table from QA_COVERAGE.md', async () => {
+  const { handle, root, workdir } = await createServerFixture();
+  try {
+    const tableContent = [
+      '# QA Coverage Matrix',
+      '',
+      '| Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |',
+      '|---------|-----------|-------------|--------|--------|--------------|-------|',
+      '| aloop start | CLI/start.ts | 2026-03-20 | a1b2c3d | PASS | 4/5 | signal handling untested |',
+      '| dashboard health | UI/HealthPanel | 2026-03-19 | f4e5d6a | FAIL | 2/4 | codex missing |',
+      '| aloop gh watch | CLI/gh.ts | never | - | UNTESTED | 0/3 | - |',
+    ].join('\n');
+    await writeFile(path.join(workdir, 'QA_COVERAGE.md'), tableContent, 'utf8');
+    const response = await fetch(`${handle.url}/api/qa-coverage`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.available, true);
+    assert.equal(body.coverage_percent, 67); // 2 tested out of 3
+    assert.equal(body.total_features, 3);
+    assert.equal(body.tested_features, 2);
+    assert.equal(body.passed, 1);
+    assert.equal(body.failed, 1);
+    assert.equal(body.untested, 1);
+    const features = body.features as Array<Record<string, string>>;
+    assert.equal(features.length, 3);
+    assert.equal(features[0].feature, 'aloop start');
+    assert.equal(features[0].status, 'PASS');
+    assert.equal(features[1].feature, 'dashboard health');
+    assert.equal(features[1].status, 'FAIL');
+    assert.equal(features[2].feature, 'aloop gh watch');
+    assert.equal(features[2].status, 'UNTESTED');
+  } finally {
+    await handle.close();
+    await rm(root, { recursive: true });
+  }
+});
+
+test('GET /api/qa-coverage returns 0% when file has no parseable table', async () => {
+  const { handle, root, workdir } = await createServerFixture();
+  try {
+    await writeFile(
+      path.join(workdir, 'QA_COVERAGE.md'),
+      '# QA Report\n\nNo coverage table here.',
+      'utf8',
+    );
+    const response = await fetch(`${handle.url}/api/qa-coverage`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.available, true);
+    assert.equal(body.coverage_percent, 0);
+    assert.equal(body.total_features, 0);
+    assert.deepStrictEqual(body.features, []);
   } finally {
     await handle.close();
     await rm(root, { recursive: true });
