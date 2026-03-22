@@ -3109,6 +3109,7 @@ export async function launchChildLoop(
   // Create .aloop/output/ for agent result file bridge
   await deps.mkdir(path.join(worktreePath, '.aloop', 'output'), { recursive: true });
 
+
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
   await deps.writeFile(path.join(worktreePath, 'TODO.md'), todoContent, 'utf8');

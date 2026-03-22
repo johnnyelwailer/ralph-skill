@@ -23,8 +23,6 @@ interface CompileLoopPlanOptions {
   enabledProviders: string[];
   roundRobinOrder: string[];
   models: Record<string, string>;
-  openRouterModels?: string[];
-  costRouting?: Record<string, string>;
   projectRoot?: string;
 }
 
@@ -38,14 +36,6 @@ interface CycleEntry {
   filename: string;
   agent: string;
 }
-
-type CostRoutingPreference = 'prefer_cheap' | 'prefer_capable';
-
-const DEFAULT_COST_ROUTING: Record<string, CostRoutingPreference> = {
-  plan: 'prefer_capable',
-  build: 'prefer_cheap',
-  review: 'prefer_capable',
-};
 
 const defaultCompileDeps: CompileLoopPlanDeps = {
   readFile,
@@ -333,56 +323,11 @@ function prependFrontmatter(content: string, frontmatter: string): string {
   return `${frontmatter}\n\n${content}`;
 }
 
-function isCostRoutingPreference(value: string): value is CostRoutingPreference {
-  return value === 'prefer_cheap' || value === 'prefer_capable';
-}
-
-function resolveCostRoutingPreference(agent: string, costRouting: Record<string, string>): CostRoutingPreference {
-  const configured = costRouting[agent];
-  if (configured && isCostRoutingPreference(configured)) {
-    return configured;
-  }
-  return DEFAULT_COST_ROUTING[agent] ?? 'prefer_capable';
-}
-
-function toOpenRouterModelPath(model: string): string {
-  return model.startsWith('openrouter/') ? model : `openrouter/${model}`;
-}
-
-function selectOpencodeModelForPhase(
-  agent: string,
-  fallbackModel: string,
-  openRouterModels: string[],
-  costRouting: Record<string, string>,
-): string {
-  if (openRouterModels.length === 0) {
-    return fallbackModel;
-  }
-
-  const preference = resolveCostRoutingPreference(agent, costRouting);
-  const selected = preference === 'prefer_cheap'
-    ? openRouterModels[0]
-    : openRouterModels[openRouterModels.length - 1];
-
-  return toOpenRouterModelPath(selected);
-}
-
 export async function compileLoopPlan(
   options: CompileLoopPlanOptions,
   deps: CompileLoopPlanDeps = defaultCompileDeps,
 ): Promise<LoopPlan> {
-  const {
-    mode,
-    provider,
-    promptsDir,
-    sessionDir,
-    enabledProviders,
-    roundRobinOrder,
-    models,
-    openRouterModels = [],
-    costRouting = {},
-    projectRoot,
-  } = options;
+  const { mode, provider, promptsDir, sessionDir, enabledProviders, roundRobinOrder, models, projectRoot } = options;
 
   const isRoundRobin = provider === 'round-robin';
 
@@ -414,10 +359,6 @@ export async function compileLoopPlan(
     } else {
       promptProvider = isRoundRobin ? (roundRobinOrder[0] ?? 'claude') : provider;
       promptModel = models[promptProvider] ?? '';
-    }
-
-    if (promptProvider === 'opencode') {
-      promptModel = selectOpencodeModelForPhase(agent, promptModel, openRouterModels, costRouting);
     }
 
     const agentConfig = await getAgentConfig(agent, projectRoot, deps);

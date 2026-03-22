@@ -138,149 +138,6 @@ export type AgentRequest =
   | QueryIssuesRequest
   | SpecBackfillRequest;
 
-export class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ValidationError';
-  }
-}
-
-const VALID_REQUEST_TYPES = new Set<string>([
-  'create_issues', 'update_issue', 'close_issue', 'create_pr', 'merge_pr',
-  'dispatch_child', 'steer_child', 'stop_child', 'post_comment', 'query_issues', 'spec_backfill',
-]);
-
-export function validateRequest(raw: unknown): { valid: true; request: AgentRequest } | { valid: false; error: string } {
-  if (raw === null || typeof raw !== 'object') {
-    return { valid: false, error: 'Request must be a JSON object' };
-  }
-  const obj = raw as Record<string, unknown>;
-
-  // Base fields
-  if (typeof obj.id !== 'string' || obj.id.length === 0) {
-    return { valid: false, error: 'Missing or empty required field: id (string)' };
-  }
-  if (typeof obj.type !== 'string' || !VALID_REQUEST_TYPES.has(obj.type)) {
-    return { valid: false, error: `Invalid or missing request type: ${JSON.stringify(obj.type)}. Must be one of: ${[...VALID_REQUEST_TYPES].join(', ')}` };
-  }
-  if (obj.payload === null || typeof obj.payload !== 'object') {
-    return { valid: false, error: 'Missing or invalid required field: payload (object)' };
-  }
-
-  const payload = obj.payload as Record<string, unknown>;
-  const type = obj.type as RequestType;
-
-  const err = validatePayload(type, payload);
-  if (err) return { valid: false, error: err };
-
-  return { valid: true, request: raw as AgentRequest };
-}
-
-function requireString(payload: Record<string, unknown>, field: string): string | null {
-  if (typeof payload[field] !== 'string' || (payload[field] as string).length === 0) {
-    return `payload.${field} must be a non-empty string`;
-  }
-  return null;
-}
-
-function requirePositiveInt(payload: Record<string, unknown>, field: string): string | null {
-  if (typeof payload[field] !== 'number' || !Number.isInteger(payload[field]) || (payload[field] as number) <= 0) {
-    return `payload.${field} must be a positive integer`;
-  }
-  return null;
-}
-
-function requireOneOf(payload: Record<string, unknown>, field: string, values: readonly string[]): string | null {
-  if (typeof payload[field] !== 'string' || !values.includes(payload[field] as string)) {
-    return `payload.${field} must be one of: ${values.join(', ')}`;
-  }
-  return null;
-}
-
-function optionalStringArray(payload: Record<string, unknown>, field: string): string | null {
-  if (payload[field] === undefined) return null;
-  if (!Array.isArray(payload[field])) return `payload.${field} must be an array of strings`;
-  if (!(payload[field] as unknown[]).every((v) => typeof v === 'string')) return `payload.${field} must contain only strings`;
-  return null;
-}
-
-function validatePayload(type: RequestType, payload: Record<string, unknown>): string | null {
-  switch (type) {
-    case 'create_issues': {
-      if (!Array.isArray(payload.issues) || payload.issues.length === 0) {
-        return 'payload.issues must be a non-empty array';
-      }
-      for (let i = 0; i < payload.issues.length; i++) {
-        const issue = payload.issues[i];
-        if (issue === null || typeof issue !== 'object') return `payload.issues[${i}] must be an object`;
-        const iss = issue as Record<string, unknown>;
-        const titleErr = requireString(iss, 'title');
-        if (titleErr) return `payload.issues[${i}].title must be a non-empty string`;
-        const bodyErr = requireString(iss, 'body_file');
-        if (bodyErr) return `payload.issues[${i}].body_file must be a non-empty string`;
-        const labelsErr = optionalStringArray(iss, 'labels');
-        if (labelsErr) return `payload.issues[${i}].${labelsErr.replace('payload.', '')}`;
-        if (iss.parent !== undefined) {
-          if (typeof iss.parent !== 'number' || !Number.isInteger(iss.parent) || (iss.parent as number) <= 0) {
-            return `payload.issues[${i}].parent must be a positive integer`;
-          }
-        }
-      }
-      return null;
-    }
-    case 'update_issue': {
-      return requirePositiveInt(payload, 'number');
-    }
-    case 'close_issue': {
-      return requirePositiveInt(payload, 'number') || requireString(payload, 'reason');
-    }
-    case 'create_pr': {
-      return requireString(payload, 'head')
-        || requireString(payload, 'base')
-        || requireString(payload, 'title')
-        || requireString(payload, 'body_file')
-        || requirePositiveInt(payload, 'issue_number');
-    }
-    case 'merge_pr': {
-      return requirePositiveInt(payload, 'number')
-        || requireOneOf(payload, 'strategy', ['squash', 'merge', 'rebase']);
-    }
-    case 'dispatch_child': {
-      return requirePositiveInt(payload, 'issue_number')
-        || requireString(payload, 'branch')
-        || requireString(payload, 'pipeline')
-        || requireString(payload, 'sub_spec_file');
-    }
-    case 'steer_child': {
-      return requirePositiveInt(payload, 'issue_number')
-        || requireString(payload, 'prompt_file');
-    }
-    case 'stop_child': {
-      return requirePositiveInt(payload, 'issue_number')
-        || requireString(payload, 'reason');
-    }
-    case 'post_comment': {
-      return requirePositiveInt(payload, 'issue_number')
-        || requireString(payload, 'body_file');
-    }
-    case 'query_issues': {
-      const labelsErr = optionalStringArray(payload, 'labels');
-      if (labelsErr) return labelsErr;
-      if (payload.state !== undefined) {
-        return requireOneOf(payload, 'state', ['open', 'closed', 'all']);
-      }
-      return null;
-    }
-    case 'spec_backfill': {
-      return requireString(payload, 'file')
-        || requireString(payload, 'section')
-        || requireString(payload, 'content_file');
-    }
-    default:
-      return `Unknown request type: ${type}`;
-  }
-}
-
 export interface RequestProcessorOptions {
   workdir: string;
   sessionId: string;
@@ -294,12 +151,10 @@ export interface RequestProcessorOptions {
 export async function processAgentRequests(options: RequestProcessorOptions): Promise<void> {
   const requestsDir = path.join(options.aloopDir, 'requests');
   if (!existsSync(requestsDir)) return;
-  const processedIdsPath = path.join(requestsDir, 'processed-ids.json');
-  const processedIds = await loadProcessedRequestIds(processedIdsPath);
 
   const entries = await fs.readdir(requestsDir, { withFileTypes: true });
   const requestFiles = entries
-    .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.json') && e.name.toLowerCase() !== 'processed-ids.json')
+    .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.json'))
     .map((e) => e.name)
     .sort();
 
@@ -318,50 +173,21 @@ export async function processAgentRequests(options: RequestProcessorOptions): Pr
     let request: AgentRequest;
     try {
       const content = await fs.readFile(requestPath, 'utf8');
-      const parsed = JSON.parse(content);
-      const validation = validateRequest(parsed);
-      if (!validation.valid) {
-        const archivePath = getArchivePath(failedDir, fileName, new Set());
-        await fs.rename(requestPath, archivePath);
-        await writeSessionLogEntry(options.logPath, 'gh_request_failed', {
-          type: (parsed as any)?.type ?? 'unknown',
-          id: (parsed as any)?.id ?? 'unknown',
-          request_file: fileName,
-          error: `Validation failed: ${validation.error}`
-        });
-        continue;
-      }
-      request = validation.request;
+      request = JSON.parse(content) as AgentRequest;
     } catch (e) {
-      const isValidation = e instanceof ValidationError;
       const archivePath = getArchivePath(failedDir, fileName, new Set());
       await fs.rename(requestPath, archivePath);
       await writeSessionLogEntry(options.logPath, 'gh_request_failed', {
         type: 'unknown',
         id: 'unknown',
         request_file: fileName,
-        error: isValidation
-          ? `Validation failed: ${e.message}`
-          : `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`
-      });
-      continue;
-    }
-
-    if (processedIds.has(request.id)) {
-      const archivePath = getArchivePath(processedDir, fileName, reservedArchivePaths);
-      await fs.rename(requestPath, archivePath);
-      await writeSessionLogEntry(options.logPath, 'gh_request_skipped_duplicate', {
-        type: request.type,
-        id: request.id,
-        request_file: fileName,
+        error: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`
       });
       continue;
     }
 
     try {
       await handleRequest(request, fileName, options);
-      processedIds.add(request.id);
-      await saveProcessedRequestIds(processedIdsPath, processedIds);
       const archivePath = getArchivePath(processedDir, fileName, reservedArchivePaths);
       await fs.rename(requestPath, archivePath);
       await writeSessionLogEntry(options.logPath, 'gh_request_processed', {
@@ -382,23 +208,6 @@ export async function processAgentRequests(options: RequestProcessorOptions): Pr
       });
     }
   }
-}
-
-async function loadProcessedRequestIds(filePath: string): Promise<Set<string>> {
-  if (!existsSync(filePath)) return new Set();
-
-  try {
-    const raw = await fs.readFile(filePath, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((id): id is string => typeof id === 'string' && id.length > 0));
-  } catch {
-    return new Set();
-  }
-}
-
-async function saveProcessedRequestIds(filePath: string, ids: Set<string>): Promise<void> {
-  await fs.writeFile(filePath, JSON.stringify([...ids].sort(), null, 2), 'utf8');
 }
 
 function getArchivePath(processedDir: string, fileName: string, existingFiles: Set<string>): string {
@@ -460,45 +269,16 @@ async function handleRequest(request: AgentRequest, fileName: string, options: R
 }
 
 async function handleCreateIssues(request: CreateIssuesRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  // Load known titles from orchestrator state for fast local deduplication
-  let orchestratorTitles: Set<string>;
-  try {
-    orchestratorTitles = await loadOrchestratorIssueTitles(options.sessionDir);
-  } catch {
-    orchestratorTitles = new Set();
-  }
-
+  // Map to gh.ts 'issue-create'
+  // Since 'create_issues' can have multiple issues, we might need to loop or use a specialized subcommand
+  // For now, let's assume one by one if not supported as batch
   const results = [];
-  const skippedTitles: string[] = [];
-
-  for (const [issueIndex, issueReq] of request.payload.issues.entries()) {
-    // Fast local check: skip if title already tracked in orchestrator state
-    if (orchestratorTitles.has(normalizeIssueTitle(issueReq.title))) {
-      skippedTitles.push(issueReq.title);
-      await writeSessionLogEntry(options.logPath, 'gh_request_skipped_existing_issue_title', {
-        type: request.type,
-        id: request.id,
-        title: issueReq.title,
-      });
-      continue;
-    }
-
-    // Remote check: skip if issue with same title exists on GitHub
-    const existingIssue = await findExistingIssueByTitle(issueReq.title, options);
-    if (existingIssue) {
-      results.push({
-        number: existingIssue.number,
-        url: existingIssue.url,
-        title: existingIssue.title,
-        state: existingIssue.state,
-        skipped: true,
-        idempotent: true,
-        reason: 'existing_issue_title_match'
-      });
-      continue;
-    }
-
-    const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}_${issueIndex}.json`);
+  for (const issueReq of request.payload.issues) {
+    // We need to pass the body content, but gh.ts issue-create expects a request file
+    // So we create temporary request files for each issue if needed,
+    // or we modify gh.ts to handle 'create_issues' payload directly.
+    // For simplicity, let's just use the current ghCommandRunner with a temporary file if needed.
+    const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}_${results.length}.json`);
     await fs.writeFile(tempRequestPath, JSON.stringify({
       type: 'issue-create',
       title: issueReq.title,
@@ -515,31 +295,7 @@ async function handleCreateIssues(request: CreateIssuesRequest, fileName: string
     results.push(JSON.parse(result.output));
   }
 
-  await writeSuccessToQueue(request, { issues: results, skipped_titles: skippedTitles }, options, fileName);
-}
-
-function normalizeIssueTitle(title: string): string {
-  return title.trim().toLowerCase();
-}
-
-async function loadOrchestratorIssueTitles(sessionDir: string): Promise<Set<string>> {
-  const statePath = path.join(sessionDir, 'orchestrator.json');
-  if (!existsSync(statePath)) return new Set();
-
-  const raw = await fs.readFile(statePath, 'utf8');
-  const parsed = JSON.parse(raw) as { issues?: Array<{ title?: unknown }> };
-  if (!Array.isArray(parsed.issues)) {
-    throw new Error(`Invalid orchestrator state: expected "issues" array in ${statePath}`);
-  }
-
-  const titles = new Set<string>();
-  for (const issue of parsed.issues) {
-    if (typeof issue?.title !== 'string') continue;
-    const normalized = normalizeIssueTitle(issue.title);
-    if (normalized.length === 0) continue;
-    titles.add(normalized);
-  }
-  return titles;
+  await writeSuccessToQueue(request, { issues: results }, options, fileName);
 }
 
 async function findExistingIssueByTitle(
@@ -682,22 +438,6 @@ async function findIssueState(
 }
 
 async function handleCreatePr(request: CreatePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  const existingPr = await findExistingPrByHead(request.payload.head, options);
-  if (existingPr) {
-    await writeSuccessToQueue(request, {
-      number: existingPr.number,
-      url: existingPr.url,
-      title: existingPr.title,
-      state: existingPr.state,
-      head: existingPr.headRefName,
-      base: existingPr.baseRefName,
-      skipped: true,
-      idempotent: true,
-      reason: 'existing_pr_head_match'
-    }, options, fileName);
-    return;
-  }
-
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'pr-create',
@@ -712,85 +452,11 @@ async function handleCreatePr(request: CreatePrRequest, fileName: string, option
   await writeSuccessToQueue(request, JSON.parse(result.output), options, fileName);
 }
 
-async function findExistingPrByHead(
-  head: string,
-  options: RequestProcessorOptions
-): Promise<{ number?: number; url?: string; title?: string; state?: string; headRefName?: string; baseRefName?: string } | null> {
-  const normalizedHead = normalizeBranchName(head);
-  const spawn = options.spawnSync || spawnSync;
-  const args = [
-    'pr', 'list',
-    '--state', 'all',
-    '--head', normalizedHead,
-    '--json', 'number,url,title,state,headRefName,baseRefName',
-    '--limit', '100'
-  ];
-  const result = spawn('gh', args, { encoding: 'utf8' });
-  if (result.status !== 0) {
-    throw new Error(`pr-list failed while checking idempotency for head "${head}": ${result.stderr || result.stdout}`);
-  }
-
-  let prs: unknown[] = [];
-  try {
-    prs = JSON.parse(result.stdout || '[]');
-  } catch (error) {
-    throw new Error(`pr-list returned invalid JSON while checking idempotency for head "${head}": ${error instanceof Error ? error.message : String(error)}`);
-  }
-  if (!Array.isArray(prs)) return null;
-
-  const existing = prs.find((pr) => {
-    if (pr === null || typeof pr !== 'object') return false;
-    const prHead = (pr as Record<string, unknown>).headRefName;
-    return typeof prHead === 'string' && normalizeBranchName(prHead) === normalizedHead;
-  });
-  if (!existing || existing === null || typeof existing !== 'object') {
-    return null;
-  }
-
-  const record = existing as Record<string, unknown>;
-  return {
-    number: typeof record.number === 'number' ? record.number : undefined,
-    url: typeof record.url === 'string' ? record.url : undefined,
-    title: typeof record.title === 'string' ? record.title : undefined,
-    state: typeof record.state === 'string' ? record.state : undefined,
-    headRefName: typeof record.headRefName === 'string' ? record.headRefName : undefined,
-    baseRefName: typeof record.baseRefName === 'string' ? record.baseRefName : undefined,
-  };
-}
-
-function normalizeBranchName(value: string): string {
-  const trimmed = value.trim();
-  const colonIndex = trimmed.lastIndexOf(':');
-  if (colonIndex === -1) return trimmed;
-  return trimmed.slice(colonIndex + 1);
-}
-
-
 async function handleMergePr(request: MergePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  const mergeState = await findPrMergeState(request.payload.number, options);
-  if (mergeState.merged) {
-    await writeSessionLogEntry(options.logPath, 'gh_request_skipped_already_merged', {
-      type: request.type,
-      id: request.id,
-      pr_number: request.payload.number,
-    });
-    await writeSuccessToQueue(request, {
-      status: 'merged',
-      skipped: true,
-      idempotent: true,
-      reason: 'already_merged',
-      number: mergeState.number,
-      url: mergeState.url,
-      title: mergeState.title,
-    }, options, fileName);
-    return;
-  }
-
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'pr-merge',
-    pr_number: request.payload.number,
-    strategy: request.payload.strategy
+    pr_number: request.payload.number
   }));
   const result = await options.ghCommandRunner('pr-merge', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);
@@ -969,119 +635,17 @@ async function handleStopChild(request: StopChildRequest, fileName: string, opti
 }
 
 async function handlePostComment(request: PostCommentRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  const requestIdMarker = `<!-- aloop-request-id: ${request.id} -->`;
-  const existingCommentBodies = getIssueCommentBodies(request.payload.issue_number, options);
-  if (existingCommentBodies.some((commentBody) => commentBody.includes(requestIdMarker))) {
-    await writeSessionLogEntry(options.logPath, 'gh_request_skipped_duplicate_comment', {
-      type: request.type,
-      id: request.id,
-      issue_number: request.payload.issue_number,
-      reason: 'duplicate_request_id_marker_found',
-    });
-    await writeSuccessToQueue(request, {
-      status: 'skipped',
-      reason: 'duplicate_comment_marker',
-      issue_number: request.payload.issue_number,
-    }, options, fileName);
-    return;
-  }
-
   const body = await fs.readFile(path.join(options.workdir, request.payload.body_file), 'utf8');
-  const duplicateComment = await findMatchingIssueComment(request.payload.issue_number, body, options);
-  if (duplicateComment) {
-    await writeSuccessToQueue(request, {
-      status: 'posted',
-      skipped: true,
-      idempotent: true,
-      reason: 'duplicate_comment_body',
-      issue_number: request.payload.issue_number,
-    }, options, fileName);
-    return;
-  }
-
-  const bodyWithRequestId = body.includes(requestIdMarker)
-    ? body
-    : `${body.replace(/\s*$/, '')}\n\n${requestIdMarker}`;
-
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'issue-comment',
     issue_number: request.payload.issue_number,
-    body: bodyWithRequestId
+    body
   }));
   const result = await options.ghCommandRunner('issue-comment', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);
   if (result.exitCode !== 0) throw new Error(result.output);
   await writeSuccessToQueue(request, { status: 'posted' }, options, fileName);
-}
-
-function getIssueCommentBodies(issueNumber: number, options: RequestProcessorOptions): string[] {
-  const spawn = options.spawnSync || spawnSync;
-  const result = spawn(
-    'gh',
-    ['api', `repos/{owner}/{repo}/issues/${issueNumber}/comments?per_page=100`],
-    { encoding: 'utf8' }
-  );
-  if (result.status !== 0) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(result.stdout) as unknown;
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    const commentBodies: string[] = [];
-    for (const comment of parsed) {
-      if (typeof comment !== 'object' || comment === null) {
-        continue;
-      }
-      const body = (comment as { body?: unknown }).body;
-      if (typeof body === 'string') {
-        commentBodies.push(body);
-      }
-    }
-    return commentBodies;
-  } catch {
-    return [];
-  }
-}
-
-async function findMatchingIssueComment(
-  issueNumber: number,
-  body: string,
-  options: RequestProcessorOptions
-): Promise<boolean> {
-  const spawn = options.spawnSync || spawnSync;
-  const args = ['issue', 'view', String(issueNumber), '--json', 'comments'];
-  const result = spawn('gh', args, { encoding: 'utf8' });
-  if (result.status !== 0) {
-    throw new Error(`issue-view failed while checking comment idempotency for issue #${issueNumber}: ${result.stderr || result.stdout}`);
-  }
-
-  let record: unknown;
-  try {
-    record = JSON.parse(result.stdout || '{}');
-  } catch (error) {
-    throw new Error(`issue-view returned invalid JSON while checking comment idempotency for issue #${issueNumber}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  if (!record || typeof record !== 'object') return false;
-
-  const comments = (record as Record<string, unknown>).comments;
-  if (!Array.isArray(comments) || comments.length === 0) return false;
-
-  const requestedHash = hashCommentBody(body);
-  return comments.some((comment) => {
-    if (!comment || typeof comment !== 'object') return false;
-    const commentBody = (comment as Record<string, unknown>).body;
-    if (typeof commentBody !== 'string') return false;
-    return hashCommentBody(commentBody) === requestedHash;
-  });
-}
-
-function hashCommentBody(body: string): string {
-  return createHash('sha256').update(body).digest('hex');
 }
 
 async function handleQueryIssues(request: QueryIssuesRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {

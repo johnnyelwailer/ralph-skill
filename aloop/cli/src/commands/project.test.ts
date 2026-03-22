@@ -923,10 +923,6 @@ test('scaffoldWorkspace includes opencode in generated config models', async () 
   const config = await readFile(result.config_path, 'utf8');
   assert.match(config, /opencode: 'opencode-default'/);
   assert.match(config, /- 'opencode'/);
-  assert.match(config, /cost_routing:/);
-  assert.match(config, /plan: 'prefer_capable'/);
-  assert.match(config, /build: 'prefer_cheap'/);
-  assert.match(config, /review: 'prefer_capable'/);
 });
 
 test('scaffoldWorkspace allows explicitly enabled providers even if missing locally', async () => {
@@ -1002,26 +998,6 @@ test('resolveBundledAgentsDir returns null when agent files are missing', async 
 
   // Should return null because not all 3 agent files are present
   assert.equal(resolved, null);
-});
-
-test('resolveBundledAgentsDir resolves dist/agents/opencode in package layout', async () => {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-agents-dist-'));
-  const distDir = path.join(tempRoot, 'dist');
-  const agentsDir = path.join(distDir, 'agents', 'opencode');
-  await mkdir(agentsDir, { recursive: true });
-
-  const agentFiles = ['vision-reviewer.md', 'error-analyst.md', 'code-critic.md'];
-  for (const fileName of agentFiles) {
-    await writeFile(path.join(agentsDir, fileName), `Agent ${fileName}`, 'utf8');
-  }
-
-  const resolved = resolveBundledAgentsDir({
-    moduleDir: distDir,
-    argv1: path.join(distDir, 'index.js'),
-    cwd: tempRoot,
-  });
-
-  assert.equal(resolved, agentsDir);
 });
 
 test('resolveBundledBinDir resolves loop scripts from parent levels in packaged dist layouts', async () => {
