@@ -2,11 +2,19 @@
 
 ## Current Phase: Spec Update
 
-### In Progress
-(none)
+### Spec-Gap Analysis Result
+spec-gap analysis: no discrepancies found — spec fully fulfilled for issue #172 (flock locking).
 
-### Up Next
-(none)
+All implementation details match SPEC.md §Concurrency / File Locking exactly:
+- `flock -s`/`-x` on `.flock` sidecar (FD 9) ✓
+- 5-attempt retry with 50–250ms progressive backoff ✓
+- Non-blocking `flock -n` ✓
+- Graceful degradation with `health_lock_failed` log ✓
+- Stale `.lock` directory cleanup ✓
+- Atomic write via tmp+mv ✓
+- SPEC.md documents both bash and PowerShell approaches ✓
+
+Note (out of scope, pre-existing): `loop.sh:1875` provider validation case is missing `opencode` — not related to this issue.
 
 ### Completed (Spec Update)
 - [x] [spec-gap] **P2** Update SPEC.md §Concurrency / File Locking to document both platform approaches: POSIX `flock -s`/`-x` for bash alongside the existing PowerShell `[System.IO.File]::Open()` / `FileShare` description.
