@@ -1,35 +1,15 @@
-# TODO — Issue #181: Self-healing
+# TODO
 
-## Current Phase: Bug fixes (QA + Review consolidated)
+## Current Phase: Bug fixes (QA findings from iter 4)
 
 ### In Progress
 
-### Up Next
+- [x] [qa/P1] `gh start` and `gh stop` ignore `--output json` for error messages: `withErrorHandling()` in `error-handling.ts` always uses `console.error()` with plain text — it has no access to the `options.output` flag. Fix: make `withErrorHandling` output-mode-aware, or use the same pattern as `gh watch` (which extracts `outputMode` before try/catch and calls `failGhWatch` with it). Commands affected: `gh start` (line 1481), `gh stop` (line 1547), `gh status` (line 1536), `gh stop-watch` (line 1556). (priority: high)
+- [x] [qa/P2] `gh start --spec nonexistent.md` doesn't fail fast: In `ghStartCommandWithDeps` (gh.ts:1745), the GitHub API call (`deps.execGh` at line 1757) runs before spec file validation (line 1767-1773). Move the `--spec` file existence check before the `gh issue view` API call so it fails fast without making network requests. (priority: medium)
 
-- [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
+### Spec-Gap Findings
+
+- [ ] [spec-gap/P2] `loop.sh` provider validation rejects `opencode` as standalone provider: Line 1859 validates `claude|codex|gemini|copilot|round-robin` but omits `opencode`. Loop.ps1 line 28 correctly includes `opencode` in ValidateSet. The invoke_provider function in loop.sh (line 1367) supports `opencode`. Help text at lines 64-65 also omits `opencode`. Config.yml and round-robin default both list opencode. Files: `aloop/bin/loop.sh:1859`, `aloop/bin/loop.sh:64-65`. Suggested fix: add `opencode` to the validation case and help text in loop.sh. (Cross-runtime parity issue — loop.ps1 is correct)
+- [ ] [spec-gap/P2] SPEC.md internal inconsistency: proof phase described as both cycle and finalizer-only. Acceptance criteria at SPEC.md:717 say "plan → build × 5 → proof → qa → review (9-step)" and SPEC.md:775 says the same. But SPEC.md:404-409 and SPEC.md:420-425 explicitly state proof does NOT run in the cycle — it's expensive and only runs in the finalizer. The loop-plan.json structure at SPEC.md:454-473 also shows proof only in finalizer[]. Suggested fix: update the stale acceptance criteria at lines 717 and 775 to reflect the current design (proof in finalizer only, cycle is 8-step: plan → build × 5 → qa → review).
 
 ### Completed
-
-- [x] **Fix `deriveFilterRepo` env var fallback** — Removed `&& ghHost` guard so `GITHUB_REPOSITORY` is used unconditionally. Added test with only `GITHUB_REPOSITORY` set (no `GH_HOST`). (priority: high) [qa/P1 + review Gate 1 + review Gate 2]
-
-- [x] **Implement startup health checks in `session-health.json`** — Added `runStartupHealthChecks` function that runs `gh auth status`, `gh repo view`, and `git status --porcelain` checks. All results (labels + startup checks) now written to `session-health.json`. (priority: high) [qa/P1 + review Gate 1]
-
-- [x] **Implement `ALERT.md` on critical startup failures** — When `gh auth status` fails (critical check), writes `ALERT.md` with error details and throws with non-zero exit. `gh repo view` failure is non-critical since repo may not be configured yet. (priority: high) [qa/P1 + review Gate 1]
-
----
-
-## Spec-Gap Analysis (2026-03-22)
-
-### Findings
-
-- [ ] **[spec-gap] SPEC.md missing orchestrator startup self-healing behaviors** — The code implements three self-healing features not documented in SPEC.md acceptance criteria: (1) `session-health.json` startup health checks (`gh auth status`, `gh repo view`, `git status --porcelain`) at `orchestrate.ts:1284-1347`, (2) `ALERT.md` creation on critical failures at `orchestrate.ts:1739-1757`, (3) `ensureLabels` label self-healing at `orchestrate.ts:1213-1260`. SPEC.md's orchestrator acceptance criteria (lines 2183-2229) don't mention startup validation or label bootstrapping. **Suggested fix:** Add acceptance criteria to SPEC.md under the orchestrator section covering startup health checks, ALERT.md on critical failure, and label self-healing. (priority: P2 — correctness drift, code ahead of spec)
-
-### No Issues Found
-
-- Config completeness: all 5 providers + round-robin consistent across `config.yml`, `start.ts`, loop scripts
-- Model IDs current (last updated 2026-03-19), `start.ts` DEFAULT_MODELS match `config.yml`
-- Template frontmatter: all loop templates use `provider: claude`; orchestrator templates correctly omit provider (runtime-provided)
-- No orphan templates; all referenced templates exist
-- Provider validation sets consistent across `start.ts` PROVIDER_SET and loop scripts
-- TODO hygiene: all 4 items marked done, no stale or hallucinated items
-- No previously filed `[spec-gap]` items to resolve

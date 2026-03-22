@@ -131,6 +131,11 @@ interface GhStopCommandOptions {
   output?: GhOutputMode;
 }
 
+interface GhStopWatchCommandOptions {
+  homeDir?: string;
+  output?: GhOutputMode;
+}
+
 interface GhWatchCommandOptions {
   label?: string[];
   assignee?: string;
@@ -144,13 +149,18 @@ interface GhWatchCommandOptions {
   max?: string | number;
   output?: GhOutputMode;
   once?: boolean;
+  reTriggerOn?: string;
+  reTrigger?: boolean;
 }
 
 type GhWatchIssue = {
   number: number;
   title: string;
   url: string;
+  comment_count: number;
 };
+
+type GhWatchReTriggerEvent = 'reopen' | 'comment';
 
 export type GhWatchIssueStatus = 'running' | 'queued' | 'completed' | 'stopped';
 
@@ -174,6 +184,8 @@ export interface GhWatchIssueEntry {
   last_ci_failure_signature?: string | null;
   last_ci_failure_summary?: string | null;
   same_ci_failure_count?: number;
+  last_seen_open?: boolean;
+  last_seen_comment_count?: number;
 }
 
 interface GhWatchState {
@@ -206,7 +218,7 @@ export interface GhStartResult {
     worktree: boolean;
     pid: number;
   };
-  base_branch: 'agent/main' | 'main';
+  base_branch: 'agent/trunk' | 'main';
   pr: { number: number | null; url: string | null } | null;
   issue_comment_posted: boolean;
   completion_state: string | null;
@@ -320,6 +332,10 @@ function normalizeWatchIssueEntry(value: unknown): GhWatchIssueEntry | null {
     same_ci_failure_count: typeof candidate.same_ci_failure_count === 'number' && Number.isInteger(candidate.same_ci_failure_count) && candidate.same_ci_failure_count >= 0
       ? candidate.same_ci_failure_count
       : 0,
+    last_seen_open: typeof candidate.last_seen_open === 'boolean' ? candidate.last_seen_open : true,
+    last_seen_comment_count: typeof candidate.last_seen_comment_count === 'number' && Number.isInteger(candidate.last_seen_comment_count) && candidate.last_seen_comment_count >= 0
+      ? candidate.last_seen_comment_count
+      : 0,
   };
 }
 
@@ -417,6 +433,8 @@ function watchEntryFromStartResult(result: GhStartResult): GhWatchIssueEntry {
     last_ci_failure_signature: null,
     last_ci_failure_summary: null,
     same_ci_failure_count: 0,
+    last_seen_open: true,
+    last_seen_comment_count: 0,
   };
 }
 
@@ -429,22 +447,22 @@ function setWatchEntry(state: GhWatchState, entry: GhWatchIssueEntry): void {
   state.queue = state.queue.filter((issueNumber) => issueNumber !== entry.issue_number);
 }
 
-function enqueueIssue(state: GhWatchState, issue: GhWatchIssue): void {
+function enqueueIssue(state: GhWatchState, issue: GhWatchIssue, forceRequeueCompleted = false): void {
   const now = ghLoopRuntime.now();
   const existing = state.issues[String(issue.number)];
-  if (existing && (existing.status === 'running' || existing.status === 'completed')) {
+  if (existing && (existing.status === 'running' || (existing.status === 'completed' && !forceRequeueCompleted))) {
     return;
   }
   state.issues[String(issue.number)] = {
-    issue_number: issue.number,
-    session_id: existing?.session_id ?? null,
+    issue_number: existing?.issue_number ?? issue.number,
+    session_id: forceRequeueCompleted ? null : (existing?.session_id ?? null),
     branch: existing?.branch ?? null,
     repo: existing?.repo ?? extractRepoFromIssueUrl(issue.url),
     pr_number: existing?.pr_number ?? null,
     pr_url: existing?.pr_url ?? null,
     status: 'queued',
-    completion_state: existing?.completion_state ?? null,
-    completion_finalized: existing?.completion_finalized ?? false,
+    completion_state: forceRequeueCompleted ? null : (existing?.completion_state ?? null),
+    completion_finalized: forceRequeueCompleted ? false : (existing?.completion_finalized ?? false),
     created_at: existing?.created_at ?? now,
     updated_at: now,
     feedback_iteration: existing?.feedback_iteration ?? 0,
@@ -455,6 +473,8 @@ function enqueueIssue(state: GhWatchState, issue: GhWatchIssue): void {
     last_ci_failure_signature: existing?.last_ci_failure_signature ?? null,
     last_ci_failure_summary: existing?.last_ci_failure_summary ?? null,
     same_ci_failure_count: existing?.same_ci_failure_count ?? 0,
+    last_seen_open: true,
+    last_seen_comment_count: issue.comment_count,
   };
   if (!state.queue.includes(issue.number)) {
     state.queue.push(issue.number);
@@ -531,17 +551,18 @@ function parseGhIssueList(raw: string): GhWatchIssue[] {
     const number = parsePositiveInteger(record.number);
     const title = typeof record.title === 'string' ? record.title.trim() : '';
     const url = typeof record.url === 'string' ? record.url.trim() : '';
+    const commentCount = parsePositiveInteger(record.comments) ?? 0;
     if (!number || !title || !url) {
       continue;
     }
-    issues.push({ number, title, url });
+    issues.push({ number, title, url, comment_count: commentCount });
   }
   return issues;
 }
 
 async function fetchMatchingIssues(options: GhWatchCommandOptions): Promise<GhWatchIssue[]> {
   const labels = Array.isArray(options.label) && options.label.length > 0 ? options.label : [GH_WATCH_DEFAULT_LABEL];
-  const args = ['issue', 'list', '--state', 'open', '--json', 'number,title,url', '--limit', '100'];
+  const args = ['issue', 'list', '--state', 'open', '--json', 'number,title,url,comments', '--limit', '100'];
   for (const label of labels) {
     if (label.trim()) {
       args.push('--label', label.trim());
@@ -565,7 +586,38 @@ async function fetchMatchingIssues(options: GhWatchCommandOptions): Promise<GhWa
   }
 }
 
+function parseReTriggerEvents(options: GhWatchCommandOptions): Set<GhWatchReTriggerEvent> {
+  const events = new Set<GhWatchReTriggerEvent>();
+  if (options.reTrigger === false) {
+    return events;
+  }
+
+  const raw = typeof options.reTriggerOn === 'string' ? options.reTriggerOn.trim() : '';
+  if (!raw) {
+    events.add('reopen');
+    events.add('comment');
+    return events;
+  }
+
+  for (const part of raw.split(',')) {
+    const normalized = part.trim().toLowerCase();
+    if (normalized === '') {
+      continue;
+    }
+    if (normalized !== 'reopen' && normalized !== 'comment') {
+      throw new Error(`--re-trigger-on must be a comma-separated list of: reopen,comment (received "${normalized}")`);
+    }
+    events.add(normalized);
+  }
+
+  if (events.size === 0) {
+    throw new Error('--re-trigger-on must include at least one event: reopen,comment');
+  }
+  return events;
+}
+
 async function launchTrackedIssue(issueNumber: number, options: GhWatchCommandOptions, state: GhWatchState): Promise<GhWatchIssueEntry> {
+  const existing = state.issues[String(issueNumber)];
   const result = await ghLoopRuntime.startIssue({
     issue: issueNumber,
     repo: options.repo,
@@ -576,6 +628,8 @@ async function launchTrackedIssue(issueNumber: number, options: GhWatchCommandOp
     output: 'json',
   });
   const entry = watchEntryFromStartResult(result);
+  entry.last_seen_open = existing?.last_seen_open ?? true;
+  entry.last_seen_comment_count = existing?.last_seen_comment_count ?? 0;
   setWatchEntry(state, entry);
   return entry;
 }
@@ -1027,6 +1081,7 @@ export {
   ghStopCommand,
   buildCiFailureSignature,
   buildCiFailureSummary,
+  parseReTriggerEvents,
 };
 
 export type { PrReviewComment, PrCheckRun, PrFeedback };
@@ -1064,14 +1119,14 @@ async function finalizeWatchEntry(
     // ignore
   }
 
-  let baseBranch: 'agent/main' | 'main' = 'main';
+  let baseBranch: 'agent/trunk' | 'main' = 'main';
   try {
-    await execFileAsync('git', ['-C', projectRoot, 'rev-parse', '--verify', 'agent/main']);
-    baseBranch = 'agent/main';
+    await execFileAsync('git', ['-C', projectRoot, 'rev-parse', '--verify', 'agent/trunk']);
+    baseBranch = 'agent/trunk';
   } catch {
     try {
-      await execFileAsync('git', ['-C', projectRoot, 'branch', 'agent/main', 'main']);
-      baseBranch = 'agent/main';
+      await execFileAsync('git', ['-C', projectRoot, 'branch', 'agent/trunk', 'main']);
+      baseBranch = 'agent/trunk';
     } catch {
       baseBranch = 'main';
     }
@@ -1149,10 +1204,32 @@ async function finalizeWatchEntry(
 
 async function runGhWatchCycle(options: GhWatchCommandOptions): Promise<GhWatchCycleSummary> {
   const maxConcurrent = parsePositiveIntegerOption(options.maxConcurrent, GH_WATCH_DEFAULT_MAX_CONCURRENT, '--max-concurrent');
+  const reTriggerEvents = parseReTriggerEvents(options);
   const state = loadWatchState(options.homeDir);
   await refreshWatchState(options.homeDir, state);
 
   const matchedIssues = await fetchMatchingIssues(options);
+  const matchedByIssue = new Map<number, GhWatchIssue>(matchedIssues.map((issue) => [issue.number, issue]));
+  for (const entry of Object.values(state.issues)) {
+    const matched = matchedByIssue.get(entry.issue_number);
+    const wasOpen = entry.last_seen_open ?? true;
+    const isOpen = Boolean(matched);
+    const previousCommentCount = entry.last_seen_comment_count ?? 0;
+    const nextCommentCount = matched?.comment_count ?? previousCommentCount;
+
+    if (entry.status === 'completed' && matched) {
+      const reopened = !wasOpen && isOpen;
+      const newCommentAdded = matched.comment_count > previousCommentCount;
+      const shouldReTrigger = (reopened && reTriggerEvents.has('reopen')) || (newCommentAdded && reTriggerEvents.has('comment'));
+      if (shouldReTrigger) {
+        enqueueIssue(state, matched, true);
+      }
+    }
+
+    entry.last_seen_open = isOpen;
+    entry.last_seen_comment_count = nextCommentCount;
+  }
+
   for (const issue of matchedIssues) {
     if (!state.issues[String(issue.number)]) {
       enqueueIssue(state, issue);
@@ -1354,6 +1431,14 @@ async function ghStopCommand(options: GhStopCommandOptions): Promise<void> {
   }
 }
 
+async function ghStopWatchCommand(options: GhStopWatchCommandOptions): Promise<void> {
+  await ghStopCommand({
+    all: true,
+    homeDir: options.homeDir,
+    output: options.output,
+  });
+}
+
 // Common options for gh subcommands
 function addGhRequestSubcommand(name: string, description: string) {
   return ghCommand
@@ -1430,6 +1515,8 @@ ghCommand
   .option('--max <number>', 'Max iteration override for spawned loops')
   .option('--project-root <path>', 'Project root override for spawned loops')
   .option('--home-dir <path>', 'Home directory override')
+  .option('--re-trigger-on <events>', 'Re-trigger finished issues on events: reopen,comment (comma-separated)')
+  .option('--no-re-trigger', 'Disable re-triggering finished issues on reopen/comment changes')
   .option('--once', 'Run a single poll cycle and exit')
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(async (options: GhWatchCommandOptions) => {
@@ -1459,6 +1546,15 @@ ghCommand
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(withErrorHandling(async (options: GhStopCommandOptions) => {
     await ghStopCommand(options);
+  }));
+
+ghCommand
+  .command('stop-watch')
+  .description('Stop all GH-linked loops tracked by gh watch')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(withErrorHandling(async (options: GhStopWatchCommandOptions) => {
+    await ghStopWatchCommand(options);
   }));
 
 // Register subcommands
@@ -1652,6 +1748,15 @@ export async function ghStartCommandWithDeps(options: GhStartCommandOptions, dep
     throw new Error('gh start requires --issue <number>.');
   }
 
+  let specContent: string | null = null;
+  if (typeof options.spec === 'string' && options.spec.trim()) {
+    const specPath = path.isAbsolute(options.spec) ? options.spec : path.join(deps.cwd(), options.spec);
+    if (!deps.existsSync(specPath)) {
+      throw new Error(`--spec file not found: ${specPath}`);
+    }
+    specContent = deps.readFile(specPath, 'utf8');
+  }
+
   const warnings: string[] = [];
   const issueViewArgs = ['issue', 'view', String(issueNumber), '--json', 'number,title,body,url,labels,comments'];
   const requestedRepo = typeof options.repo === 'string' && options.repo.trim() ? options.repo.trim() : null;
@@ -1665,15 +1770,6 @@ export async function ghStartCommandWithDeps(options: GhStartCommandOptions, dep
   const issueRepo = requestedRepo ?? extractRepoFromIssueUrl(issue.url);
   if (!issueRepo) {
     warnings.push('Could not infer repository from issue URL; PR creation/link-back will require --repo.');
-  }
-
-  let specContent: string | null = null;
-  if (typeof options.spec === 'string' && options.spec.trim()) {
-    const specPath = path.isAbsolute(options.spec) ? options.spec : path.join(deps.cwd(), options.spec);
-    if (!deps.existsSync(specPath)) {
-      throw new Error(`--spec file not found: ${specPath}`);
-    }
-    specContent = deps.readFile(specPath, 'utf8');
   }
 
   const started = await deps.startSession({
@@ -1722,17 +1818,17 @@ export async function ghStartCommandWithDeps(options: GhStartCommandOptions, dep
   config.issue_url = issue.url;
   deps.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
 
-  let baseBranch: 'agent/main' | 'main' = 'main';
+  let baseBranch: 'agent/trunk' | 'main' = 'main';
   const projectRoot = typeof meta.project_root === 'string' && meta.project_root.trim() ? meta.project_root : (options.projectRoot ?? deps.cwd());
   try {
-    await deps.execGit(['-C', projectRoot, 'rev-parse', '--verify', 'agent/main']);
-    baseBranch = 'agent/main';
+    await deps.execGit(['-C', projectRoot, 'rev-parse', '--verify', 'agent/trunk']);
+    baseBranch = 'agent/trunk';
   } catch {
     try {
-      await deps.execGit(['-C', projectRoot, 'branch', 'agent/main', 'main']);
-      baseBranch = 'agent/main';
+      await deps.execGit(['-C', projectRoot, 'branch', 'agent/trunk', 'main']);
+      baseBranch = 'agent/trunk';
     } catch {
-      warnings.push('Unable to create agent/main from main; PR base will remain main.');
+      warnings.push('Unable to create agent/trunk from main; PR base will remain main.');
       baseBranch = 'main';
     }
   }

@@ -15,6 +15,7 @@ import {
   buildCiFailureSignature,
   fetchPrCheckRuns,
   GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+  parseReTriggerEvents,
   normalizeWatchIssueEntry,
   normalizeWatchState,
   loadWatchState,
@@ -112,7 +113,7 @@ function buildStartResult(issueNumber: number, sessionId: string, status: 'runni
       worktree: true,
       pid: 1234,
     },
-    base_branch: 'agent/main' as const,
+    base_branch: 'agent/trunk' as const,
     pr: null,
     issue_comment_posted: false,
     completion_state: status === 'completed' ? 'exited' : null,
@@ -1581,7 +1582,7 @@ test('ghStartCommandWithDeps injects issue/spec context and prepares branch/sess
     assert.equal(result.issue.number, 42);
     assert.equal(result.issue.repo, 'test/repo');
     assert.equal(result.pending_completion, true);
-    assert.equal(result.base_branch, 'agent/main');
+    assert.equal(result.base_branch, 'agent/trunk');
     assert.equal(startOptions.provider, 'codex');
     assert.equal(startOptions.maxIterations, '30');
 
@@ -1758,6 +1759,38 @@ test('ghStartCommandWithDeps persists issue/session mapping in watch.json', asyn
   }
 });
 
+test('ghStartCommandWithDeps fails fast on missing --spec before calling gh issue view', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-start-missing-spec-fastfail-'));
+  let ghCalled = false;
+
+  try {
+    await assert.rejects(
+      () => ghStartCommandWithDeps(
+        { issue: '42', spec: 'does-not-exist.md' },
+        {
+          startSession: async () => {
+            throw new Error('startSession should not be called');
+          },
+          execGh: async () => {
+            ghCalled = true;
+            return { stdout: '', stderr: '' };
+          },
+          execGit: async () => ({ stdout: '', stderr: '' }),
+          readFile: () => '',
+          writeFile: () => {},
+          existsSync: () => false,
+          cwd: () => tmpRoot,
+        } as any,
+      ),
+      /--spec file not found/i,
+    );
+
+    assert.equal(ghCalled, false);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
 test('gh status outputs tracked issue/session mappings from watch.json', async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-status-watch-'));
   const output: string[] = [];
@@ -1878,6 +1911,91 @@ test('gh stop --issue stops running mapped session and removes watch entry', asy
   }
 });
 
+test('gh stop-watch stops all tracked GH-linked sessions and clears watch state', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-stop-watch-'));
+  const sessionDirA = path.join(tmpHome, '.aloop', 'sessions', 'sess-42');
+  const sessionDirB = path.join(tmpHome, '.aloop', 'sessions', 'sess-43');
+  fs.mkdirSync(sessionDirA, { recursive: true });
+  fs.mkdirSync(sessionDirB, { recursive: true });
+  fs.writeFileSync(path.join(sessionDirA, 'status.json'), JSON.stringify({ state: 'running' }), 'utf8');
+  fs.writeFileSync(path.join(sessionDirB, 'status.json'), JSON.stringify({ state: 'running' }), 'utf8');
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => ([
+    {
+      session_id: 'sess-42',
+      pid: 123,
+      work_dir: '/tmp/sess-42',
+      started_at: '2026-03-14T12:00:00.000Z',
+      provider: 'claude',
+      mode: 'plan-build-review',
+      state: 'running',
+      phase: 'build',
+      iteration: 3,
+      stuck_count: 0,
+      updated_at: '2026-03-14T12:02:00.000Z',
+    },
+    {
+      session_id: 'sess-43',
+      pid: 124,
+      work_dir: '/tmp/sess-43',
+      started_at: '2026-03-14T12:00:00.000Z',
+      provider: 'codex',
+      mode: 'plan-build-review',
+      state: 'running',
+      phase: 'build',
+      iteration: 4,
+      stuck_count: 0,
+      updated_at: '2026-03-14T12:02:00.000Z',
+    },
+  ]));
+  const stoppedSessionIds: string[] = [];
+  t.mock.method(ghLoopRuntime, 'stopSession', async (_homeDir: string, sessionId: string) => {
+    stoppedSessionIds.push(sessionId);
+    return { success: true };
+  });
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    queue: [44],
+    issues: {
+      '42': {
+        issue_number: 42,
+        session_id: 'sess-42',
+        branch: 'agent/issue-42',
+        repo: 'test/repo',
+        pr_number: null,
+        pr_url: null,
+        status: 'running',
+        completion_state: null,
+        created_at: '2026-03-14T12:00:00.000Z',
+        updated_at: '2026-03-14T12:00:00.000Z',
+      },
+      '43': {
+        issue_number: 43,
+        session_id: 'sess-43',
+        branch: 'agent/issue-43',
+        repo: 'test/repo',
+        pr_number: null,
+        pr_url: null,
+        status: 'running',
+        completion_state: null,
+        created_at: '2026-03-14T12:00:00.000Z',
+        updated_at: '2026-03-14T12:00:00.000Z',
+      },
+    },
+  });
+
+  try {
+    await ghCommand.parseAsync(['stop-watch', '--home-dir', tmpHome], { from: 'user' });
+    assert.deepStrictEqual(stoppedSessionIds.sort(), ['sess-42', 'sess-43']);
+    const watchState = readWatchState(tmpHome) as { issues?: Record<string, unknown>; queue?: number[] };
+    assert.deepStrictEqual(watchState.issues, {});
+    assert.deepStrictEqual(watchState.queue, []);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test('gh watch --once starts up to max-concurrent and queues remaining issues', async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-watch-once-'));
   const output: string[] = [];
@@ -1886,8 +2004,8 @@ test('gh watch --once starts up to max-concurrent and queues remaining issues', 
   });
   t.mock.method(ghExecutor, 'exec', async () => ({
     stdout: JSON.stringify([
-      { number: 41, title: 'Issue 41', url: 'https://github.com/test/repo/issues/41' },
-      { number: 42, title: 'Issue 42', url: 'https://github.com/test/repo/issues/42' },
+      { number: 41, title: 'Issue 41', url: 'https://github.com/test/repo/issues/41', comments: 0 },
+      { number: 42, title: 'Issue 42', url: 'https://github.com/test/repo/issues/42', comments: 0 },
     ]),
     stderr: '',
   }));
@@ -1908,6 +2026,105 @@ test('gh watch --once starts up to max-concurrent and queues remaining issues', 
     assert.deepStrictEqual(state.queue, [42]);
     assert.equal(state.issues?.['41']?.status, 'running');
     assert.equal(state.issues?.['42']?.status, 'queued');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('parseReTriggerEvents enforces defaults, explicit values, and disable flag', () => {
+  assert.deepStrictEqual(Array.from(parseReTriggerEvents({})).sort(), ['comment', 'reopen']);
+  assert.deepStrictEqual(Array.from(parseReTriggerEvents({ reTriggerOn: 'comment' })).sort(), ['comment']);
+  assert.deepStrictEqual(Array.from(parseReTriggerEvents({ reTriggerOn: 'reopen,comment' })).sort(), ['comment', 'reopen']);
+  assert.deepStrictEqual(Array.from(parseReTriggerEvents({ reTrigger: false })), []);
+  assert.throws(() => parseReTriggerEvents({ reTriggerOn: 'invalid' }), /--re-trigger-on must be a comma-separated list/i);
+});
+
+test('gh watch --once re-queues completed issue when comments increase and comment retrigger is enabled', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-watch-retrigger-comment-'));
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => output.push(String(line ?? '')));
+  t.mock.method(ghExecutor, 'exec', async () => ({
+    stdout: JSON.stringify([{ number: 42, title: 'Issue 42', url: 'https://github.com/test/repo/issues/42', comments: 3 }]),
+    stderr: '',
+  }));
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+  t.mock.method(ghLoopRuntime, 'startIssue', async (options: { issue: string | number }) => buildStartResult(Number(options.issue), 'sess-42-rerun', 'running'));
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': buildWatchEntry({
+        status: 'completed',
+        completion_state: 'exited',
+        completion_finalized: true,
+        last_seen_comment_count: 1,
+        last_seen_open: true,
+      }),
+    },
+    queue: [],
+  });
+
+  try {
+    await ghCommand.parseAsync([
+      'watch',
+      '--once',
+      '--re-trigger-on', 'comment',
+      '--max-concurrent', '1',
+      '--home-dir', tmpHome,
+      '--output', 'json',
+    ], { from: 'user' });
+
+    const state = readWatchState(tmpHome) as { queue?: number[]; issues?: Record<string, { status?: string; last_seen_comment_count?: number }> };
+    assert.deepStrictEqual(state.queue, []);
+    assert.equal(state.issues?.['42']?.status, 'running');
+    assert.equal(state.issues?.['42']?.last_seen_comment_count, 3);
+    const summary = JSON.parse(output[0]) as { started: number[] };
+    assert.deepStrictEqual(summary.started, [42]);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('gh watch --once does not re-queue completed issue when --no-re-trigger is set', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-watch-no-retrigger-'));
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => output.push(String(line ?? '')));
+  t.mock.method(ghExecutor, 'exec', async () => ({
+    stdout: JSON.stringify([{ number: 42, title: 'Issue 42', url: 'https://github.com/test/repo/issues/42', comments: 5 }]),
+    stderr: '',
+  }));
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': buildWatchEntry({
+        status: 'completed',
+        completion_state: 'exited',
+        completion_finalized: true,
+        last_seen_comment_count: 1,
+        last_seen_open: true,
+      }),
+    },
+    queue: [],
+  });
+
+  try {
+    await ghCommand.parseAsync([
+      'watch',
+      '--once',
+      '--no-re-trigger',
+      '--max-concurrent', '1',
+      '--home-dir', tmpHome,
+      '--output', 'json',
+    ], { from: 'user' });
+
+    const state = readWatchState(tmpHome) as { queue?: number[]; issues?: Record<string, { status?: string; last_seen_comment_count?: number }> };
+    assert.deepStrictEqual(state.queue, []);
+    assert.equal(state.issues?.['42']?.status, 'completed');
+    assert.equal(state.issues?.['42']?.last_seen_comment_count, 5);
+    const summary = JSON.parse(output[0]) as { started: number[] };
+    assert.deepStrictEqual(summary.started, []);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
@@ -1964,6 +2181,8 @@ function buildWatchEntry(overrides: Partial<{
   last_ci_failure_signature: string | null;
   last_ci_failure_summary: string | null;
   same_ci_failure_count: number;
+  last_seen_open: boolean;
+  last_seen_comment_count: number;
 }> = {}): GhWatchIssueEntry {
   return {
     issue_number: overrides.issue_number ?? 42,
@@ -1985,6 +2204,8 @@ function buildWatchEntry(overrides: Partial<{
     last_ci_failure_signature: overrides.last_ci_failure_signature ?? null,
     last_ci_failure_summary: overrides.last_ci_failure_summary ?? null,
     same_ci_failure_count: overrides.same_ci_failure_count ?? 0,
+    last_seen_open: overrides.last_seen_open ?? true,
+    last_seen_comment_count: overrides.last_seen_comment_count ?? 0,
   };
 }
 
@@ -2567,13 +2788,13 @@ test('parsePositiveIntegerOption validates values and honors fallback', () => {
 
 test('enqueueIssue does not requeue running/completed entries and infers repo from URL', () => {
   const state = normalizeWatchState({ issues: {}, queue: [] });
-  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10' });
-  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10' });
+  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10', comment_count: 0 });
+  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10', comment_count: 0 });
   assert.deepEqual(state.queue, [10]);
   assert.equal(state.issues['10'].repo, 'test/repo');
 
   state.issues['10'].status = 'running';
-  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10' });
+  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10', comment_count: 0 });
   assert.deepEqual(state.queue, [10]);
 });
 
@@ -3183,7 +3404,7 @@ test('ghStartCommandWithDeps throws when planner prompt is missing', async () =>
   }
 });
 
-test('ghStartCommandWithDeps keeps base branch main and warns when creating agent/main fails', async () => {
+test('ghStartCommandWithDeps keeps base branch main and warns when creating agent/trunk fails', async () => {
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-start-main-warning-'));
   const planPrompt = path.join(tmpRoot, 'sessions', 'sess-43', 'prompts', 'PROMPT_plan.md');
   const files = new Map<string, string>([
@@ -3225,7 +3446,7 @@ test('ghStartCommandWithDeps keeps base branch main and warns when creating agen
         },
         execGit: async (args: string[]) => {
           const joined = args.join(' ');
-          if (joined.includes('rev-parse --verify agent/main') || joined.includes('branch agent/main main')) {
+          if (joined.includes('rev-parse --verify agent/trunk') || joined.includes('branch agent/trunk main')) {
             throw new Error('git failed');
           }
           return { stdout: '', stderr: '' };
