@@ -41,7 +41,7 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [ ] **Implement long-press context menu on session cards** — `useLongPress` hook with 500ms threshold, context menu with Stop/Force-stop/Copy ID, haptic feedback. (priority: medium)
 
-- [ ] **Capture proof artifacts** — [review Gate 6] Capture Playwright screenshots at mobile viewport. (priority: low)
+- [x] **Capture proof artifacts** — [review Gate 6] Captured Playwright screenshot at mobile viewport (390x844) and updated `proof-manifest.json` with structured metadata. (priority: low)
 
 ### Completed (issue #166 — review agent)
 
