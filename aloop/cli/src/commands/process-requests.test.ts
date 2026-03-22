@@ -151,3 +151,5 @@ test('processRequestsCommand marks completed when all issues are done', async ()
   assert.equal(status.state, 'completed');
   assert.equal(status.iteration, 7);
 });
+
+});

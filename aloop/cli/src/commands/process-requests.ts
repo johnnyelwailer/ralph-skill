@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile, readdir, unlink, writeFile, mkdir, cp } from 'node:fs/promises';
+import { readFile, readdir, unlink, writeFile, mkdir, cp, rm, stat } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
@@ -16,6 +16,51 @@ export interface ProcessRequestsOptions {
   sessionDir: string;
   homeDir?: string;
   output?: string;
+}
+
+interface ReviewCommentLike {
+  author?: { login?: string | null } | null;
+  createdAt?: string | null;
+  body?: string | null;
+}
+
+export function formatReviewCommentHistory(comments: ReviewCommentLike[]): string {
+  const blocks: string[] = [];
+  for (const comment of comments) {
+    const body = (comment.body ?? '').trim();
+    if (!body) continue;
+    const author = comment.author?.login ?? 'unknown';
+    const createdAt = comment.createdAt ?? '';
+    const heading = createdAt ? `### @${author} at ${createdAt}` : `### @${author}`;
+    blocks.push(`${heading}\n\n${body}`);
+  }
+  if (blocks.length === 0) return '';
+  return `${blocks.join('\n\n---\n\n')}\n`;
+}
+
+export async function getDirectorySizeBytes(dir: string): Promise<number> {
+  if (!existsSync(dir)) return 0;
+  let total = 0;
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      total += await getDirectorySizeBytes(fullPath);
+      continue;
+    }
+    if (entry.isFile()) {
+      total += (await stat(fullPath)).size;
+    }
+  }
+  return total;
+}
+
+export async function pruneLargeV8CacheDir(dir: string, maxBytes: number): Promise<{ sizeBytes: number; pruned: boolean }> {
+  if (!existsSync(dir)) return { sizeBytes: 0, pruned: false };
+  const sizeBytes = await getDirectorySizeBytes(dir);
+  if (sizeBytes <= maxBytes) return { sizeBytes, pruned: false };
+  await rm(dir, { recursive: true, force: true });
+  return { sizeBytes, pruned: true };
 }
 
 /**
