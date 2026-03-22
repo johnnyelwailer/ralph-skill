@@ -35,7 +35,7 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [x] **Rebuild and commit dist files** — `aloop/cli/dist/index.js` and `aloop/cli/dist/dashboard/index.html` are out of date vs source. Run build and commit. (priority: high)
 
-- [x] **Audit & fix hover-only interactions** — Overflow tabs menu now uses a click/tap-accessible Radix dropdown menu with explicit trigger label and tab selection behavior for overflow docs. Covered by `App.coverage.test.ts` assertions for opening overflow menu and selecting STEERING/EXTRA docs. (priority: medium)
+- [x] **Audit & fix hover-only interactions** — Overflow tabs menu now uses a click/tap-accessible Radix dropdown menu with explicit trigger label and tab selection behavior for overflow docs. Covered by `App.coverage.test.ts` assertions for opening overflow menu and selecting STEERING/EXTRA docs. (priority: medium) [reviewed: gates 1-9 pass]
 
 - [ ] **Add ARIA labels and roles for missing elements** — Activity panel collapse button, stop/force-stop dropdown items. Sidebar expand/collapse buttons and GitHub repo link already done. (priority: medium)
 

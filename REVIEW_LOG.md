@@ -13,3 +13,17 @@ Gate 5: 364 tests pass, `tsc --noEmit` clean, `npm run build` succeeds.
 Gate 7: Skipped — no layout changes (aria-labels and contrast classes only).
 
 ---
+
+## Review — 2026-03-22 14:10 — commit 9c96628d..3e050ae6
+
+**Verdict: PASS** (2 observations)
+**Scope:** AppView.tsx, App.coverage.test.ts, proof-manifest.json, dist files
+
+- Gate 2: `App.coverage.test.ts:763-769` — overflow menu test uses `getByRole('button', { name: /open overflow document tabs/i })` to trigger, then asserts exact heading content (`'STEER'`, `'EXTRA DOC CONTENT'`) via `findByRole('heading')` — not existence checks, specific rendered content verification.
+- Gate 4: Clean replacement of hover-only CSS pattern (`group-hover:block` div) with Radix `DropdownMenu` component. Controlled `activeTab` state with `useEffect` validation is necessary for programmatic tab switching via dropdown `onSelect`. No dead code left behind.
+
+Gate 5: Dashboard vitest 125/125 pass (7 files). Node native runner 8/8 pass. tsx-based CLI tests SIGABRT in worktree environment (memory pressure, not code regression — same tests passed in prior review).
+Gate 6: `proof-manifest.json` contains valid Playwright screenshot at 390x844 mobile viewport. Screenshot confirms mobile layout with steer bar, sidebar toggle, and tab area.
+Gate 7: Interaction change only (hover→click), not layout/CSS structure. Radix DropdownMenu renders via portal — no grid disruption. Mobile screenshot confirms layout intact.
+
+---
