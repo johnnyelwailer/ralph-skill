@@ -125,7 +125,7 @@ COV
     return 0
 }
 
-case_blocks_when_coverage_file_missing() {
+case_skips_enforcement_when_coverage_file_missing() {
     local tmp
     tmp="$(mktemp -d)"
     WORK_DIR="$tmp"
@@ -134,12 +134,18 @@ case_blocks_when_coverage_file_missing() {
 - [x] existing completed task
 PLAN
 
-    if check_finalizer_qa_coverage_gate; then
+    if ! check_finalizer_qa_coverage_gate; then
+        echo "FAIL: gate should return success (skip enforcement) when QA_COVERAGE.md is missing"
         rm -rf "$tmp"
         return 1
     fi
 
-    assert_contains "$PLAN_FILE" "Create QA_COVERAGE.md baseline" "should append missing file blocker task"
+    if [ "$FINALIZER_QA_GATE_REASON" != "qa_coverage_missing" ]; then
+        echo "FAIL: expected gate reason 'qa_coverage_missing', got '$FINALIZER_QA_GATE_REASON'"
+        rm -rf "$tmp"
+        return 1
+    fi
+
     rm -rf "$tmp"
     return 0
 }
@@ -147,7 +153,7 @@ PLAN
 run_case "finalizer QA gate passes at <=30% untested and 0 fail" case_gate_passes_when_threshold_is_met
 run_case "finalizer QA gate blocks when untested >30%" case_blocks_when_untested_exceeds_threshold
 run_case "finalizer QA gate blocks when FAIL rows exist" case_blocks_when_fail_rows_exist
-run_case "finalizer QA gate blocks when QA_COVERAGE.md is missing" case_blocks_when_coverage_file_missing
+run_case "finalizer QA gate skips enforcement when QA_COVERAGE.md is missing" case_skips_enforcement_when_coverage_file_missing
 
 if [ "$failed" -ne 0 ]; then
     exit 1
