@@ -1197,6 +1197,59 @@ test('scaffoldWorkspace does not copy opencode agent files when opencode is not 
   assert.ok(!existsSync(opencodeAgentsDir), '.opencode/agents/ should not exist when opencode is not enabled');
 });
 
+test('scaffoldWorkspace generates default pipeline.yml with finalizer chain', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-pipeline-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  for (const tmpl of ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md']) {
+    await writeFile(path.join(templatesDir, tmpl), `Template ${tmpl}`, 'utf8');
+  }
+
+  await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    specFiles: ['SPEC.md'],
+  });
+
+  const pipelinePath = path.join(tempRoot, '.aloop', 'pipeline.yml');
+  assert.ok(existsSync(pipelinePath), 'pipeline.yml should be created during scaffold');
+  const content = await readFile(pipelinePath, 'utf8');
+  assert.match(content, /finalizer:/, 'pipeline.yml should contain finalizer section');
+  assert.match(content, /PROMPT_spec-gap\.md/, 'finalizer should include spec-gap');
+  assert.match(content, /PROMPT_proof\.md/, 'finalizer should include proof');
+});
+
+test('scaffoldWorkspace does not overwrite existing pipeline.yml', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-pipeline-existing-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  for (const tmpl of ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md']) {
+    await writeFile(path.join(templatesDir, tmpl), `Template ${tmpl}`, 'utf8');
+  }
+
+  // Pre-create a custom pipeline.yml
+  const aloopDir = path.join(tempRoot, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), 'custom: true\n', 'utf8');
+
+  await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    specFiles: ['SPEC.md'],
+  });
+
+  const content = await readFile(path.join(aloopDir, 'pipeline.yml'), 'utf8');
+  assert.equal(content, 'custom: true\n', 'existing pipeline.yml should not be overwritten');
+});
+
 test('discoverWorkspace includes spec complexity analysis', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-complexity-'));
   const specContent = `# Project Spec
