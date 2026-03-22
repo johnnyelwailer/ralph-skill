@@ -1909,7 +1909,7 @@ test('Branch Coverage: orchestrate mode throws', async () => {
           now: () => new Date(),
         }
       ),
-    /Invalid mode: orchestrate/
+    /Orchestrate mode detected in startCommandWithDeps/
   );
 });
 
@@ -2364,4 +2364,131 @@ test('resolveStartDeps falls back to defaultDeps for null', () => {
 test('resolveStartDeps falls back to defaultDeps for non-object', () => {
   const result = resolveStartDeps('not-an-object');
   assert.ok(typeof result.discoverWorkspace === 'function');
+});
+
+// --- Orchestrate mode dispatch tests ---
+
+test('startCommandWithDeps throws when mode is orchestrate (dispatch must happen in startCommand)', async () => {
+  const fixture = await setupWorkspace('aloop-start-orch-reject-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'claude'",
+      "mode: 'orchestrate'",
+      'enabled_providers:',
+      "  - 'claude'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync,
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date('2026-03-01T12:34:56.000Z'),
+        },
+      ),
+    /Orchestrate mode detected in startCommandWithDeps/i,
+  );
+});
+
+test('startCommandWithDeps throws when --mode orchestrate is passed explicitly', async () => {
+  const fixture = await setupWorkspace('aloop-start-orch-flag-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'claude'",
+      "mode: 'plan-build-review'",
+      'enabled_providers:',
+      "  - 'claude'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, mode: 'orchestrate' },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync,
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date('2026-03-01T12:34:56.000Z'),
+        },
+      ),
+    /Orchestrate mode detected in startCommandWithDeps/i,
+  );
+});
+
+test('startCommandWithDeps still works for --mode loop (alias for plan-build-review)', async () => {
+  const fixture = await setupWorkspace('aloop-start-loop-alias-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'claude'",
+      "mode: 'plan-build-review'",
+      'enabled_providers:',
+      "  - 'claude'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, mode: 'loop', inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src: string, dest: string) => {
+        await mkdir(dest, { recursive: true });
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        return { pid: 9999, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.strictEqual(result.mode, 'plan-build-review', '--mode loop should resolve to plan-build-review');
 });
