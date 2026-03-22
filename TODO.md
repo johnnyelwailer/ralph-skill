@@ -6,7 +6,7 @@
 
 ### Up Next
 
-- [ ] **Extract shared `runGh` helper** — The `runGh` closure is copy-pasted nearly identically in `deriveFilterRepo` (lines 373-396) and `deriveTrunkBranch` (lines 486-509). Extract to a shared helper function to eliminate duplication. (priority: medium) [review Gate 4]
+- [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
 
 ### Completed
 

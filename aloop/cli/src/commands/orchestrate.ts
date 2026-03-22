@@ -393,6 +393,37 @@ function parseRepoFromRemoteUrl(remoteUrl: string): string | null {
   return null;
 }
 
+async function runGhWithFallback(
+  args: string[],
+  projectRoot: string,
+  deps: OrchestrateDeps,
+  failureContext: string,
+): Promise<{ stdout: string; stderr: string } | null> {
+  if (deps.execGh) {
+    try {
+      return await deps.execGh(args);
+    } catch (error) {
+      console.warn(`[orchestrate] ${failureContext} via gh ${args.join(' ')} failed: ${error}`);
+      return null;
+    }
+  }
+
+  try {
+    const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+    const runner = deps.spawnSync ?? ((command: string, runArgs: string[], options?: Record<string, unknown>) =>
+      toSpawnSyncResult(nodeSpawnSync(command, runArgs, options as any)));
+    const result = runner('gh', args, { encoding: 'utf8', cwd: projectRoot });
+    if (result.status !== 0) {
+      console.warn(`[orchestrate] ${failureContext} via gh ${args.join(' ')} failed: ${result.stderr?.substring(0, 200)}`);
+      return null;
+    }
+    return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+  } catch (error) {
+    console.warn(`[orchestrate] ${failureContext} via gh ${args.join(' ')} failed: ${error}`);
+    return null;
+  }
+}
+
 async function deriveFilterRepo(
   filterRepo: string | null,
   projectRoot: string,
@@ -403,33 +434,12 @@ async function deriveFilterRepo(
   const envRepo = process.env.GITHUB_REPOSITORY?.trim() || null;
   const ghHost = process.env.GH_HOST?.trim() || null;
   const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
-
-  const runGh = async (args: string[]): Promise<{ stdout: string; stderr: string } | null> => {
-    if (deps.execGh) {
-      try {
-        return await deps.execGh(args);
-      } catch (error) {
-        console.warn(`[orchestrate] filter_repo derive via gh ${args.join(' ')} failed: ${error}`);
-        return null;
-      }
-    }
-    try {
-      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
-      const runner = deps.spawnSync ?? ((command: string, runArgs: string[], options?: Record<string, unknown>) =>
-        toSpawnSyncResult(nodeSpawnSync(command, runArgs, options as any)));
-      const result = runner('gh', args, { encoding: 'utf8', cwd: projectRoot });
-      if (result.status !== 0) {
-        console.warn(`[orchestrate] filter_repo derive via gh ${args.join(' ')} failed: ${result.stderr?.substring(0, 200)}`);
-        return null;
-      }
-      return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
-    } catch (error) {
-      console.warn(`[orchestrate] filter_repo derive via gh ${args.join(' ')} failed: ${error}`);
-      return null;
-    }
-  };
-
-  const ghRepoView = await runGh(['repo', 'view', '--json', 'nameWithOwner', ...ghHostArgs]);
+  const ghRepoView = await runGhWithFallback(
+    ['repo', 'view', '--json', 'nameWithOwner', ...ghHostArgs],
+    projectRoot,
+    deps,
+    'filter_repo derive',
+  );
   if (ghRepoView) {
     try {
       const parsed = JSON.parse(ghRepoView.stdout);
@@ -518,33 +528,12 @@ async function deriveTrunkBranch(
   const ghHost = process.env.GH_HOST?.trim() || null;
   const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
   const repoArgs = filterRepo ? ['--repo', filterRepo] : [];
-
-  const runGh = async (args: string[]): Promise<{ stdout: string; stderr: string } | null> => {
-    if (deps.execGh) {
-      try {
-        return await deps.execGh(args);
-      } catch (error) {
-        console.warn(`[orchestrate] trunk_branch derive via gh ${args.join(' ')} failed: ${error}`);
-        return null;
-      }
-    }
-    try {
-      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
-      const runner = deps.spawnSync ?? ((command: string, runArgs: string[], options?: Record<string, unknown>) =>
-        toSpawnSyncResult(nodeSpawnSync(command, runArgs, options as any)));
-      const result = runner('gh', args, { encoding: 'utf8', cwd: projectRoot });
-      if (result.status !== 0) {
-        console.warn(`[orchestrate] trunk_branch derive via gh ${args.join(' ')} failed: ${result.stderr?.substring(0, 200)}`);
-        return null;
-      }
-      return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
-    } catch (error) {
-      console.warn(`[orchestrate] trunk_branch derive via gh ${args.join(' ')} failed: ${error}`);
-      return null;
-    }
-  };
-
-  const ghRepoView = await runGh(['repo', 'view', '--json', 'defaultBranchRef', ...repoArgs, ...ghHostArgs]);
+  const ghRepoView = await runGhWithFallback(
+    ['repo', 'view', '--json', 'defaultBranchRef', ...repoArgs, ...ghHostArgs],
+    projectRoot,
+    deps,
+    'trunk_branch derive',
+  );
   if (!ghRepoView) {
     return trunkBranch;
   }
