@@ -10,7 +10,7 @@
 
 #### Loop Engine (priority: high)
 
-- [ ] `{{SUBAGENT_HINTS}}` template variable not resolved — loop.sh `substitute_prompt_placeholders()` (lines 285-294) only expands `SESSION_DIR`, `ITERATION`, `ARTIFACTS_DIR`; subagent hint files exist (`subagent-hints-build.md`, `subagent-hints-proof.md`, `subagent-hints-review.md`) but are never loaded or injected; need provider-conditional expansion (SPEC §Configurable Agent Pipeline > Subagent Integration)
+- [x] `{{SUBAGENT_HINTS}}` template variable not resolved — loop.sh `substitute_prompt_placeholders()` (lines 285-294) only expands `SESSION_DIR`, `ITERATION`, `ARTIFACTS_DIR`; subagent hint files exist (`subagent-hints-build.md`, `subagent-hints-proof.md`, `subagent-hints-review.md`) but are never loaded or injected; need provider-conditional expansion (SPEC §Configurable Agent Pipeline > Subagent Integration)
 
 #### QA Bugs (priority: high)
 

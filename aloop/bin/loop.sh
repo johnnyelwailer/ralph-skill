@@ -283,12 +283,48 @@ DASHBOARD_URL=""
 
 # Parse round-robin providers into array
 IFS=',' read -ra RR_PROVIDERS <<< "$ROUND_ROBIN_PROVIDERS"
+SUBAGENT_HINTS=""
+
+resolve_subagent_hints() {
+    local provider_name="$1"
+    local phase_name="$2"
+
+    # Delegation hints are currently supported only for opencode.
+    if [ "$provider_name" != "opencode" ]; then
+        printf ''
+        return 0
+    fi
+
+    case "$phase_name" in
+        build|proof|review) ;;
+        *)
+            printf ''
+            return 0
+            ;;
+    esac
+
+    local hints_file="subagent-hints-${phase_name}.md"
+    local -a candidates=(
+        "${PROMPTS_DIR:-}/$hints_file"
+        "${ALOOP_RUNTIME_DIR:-$HOME/.aloop}/templates/$hints_file"
+        "$WORK_DIR/aloop/templates/$hints_file"
+    )
+    local current_file
+    for current_file in "${candidates[@]}"; do
+        if [ -n "$current_file" ] && [ -f "$current_file" ]; then
+            cat "$current_file"
+            return 0
+        fi
+    done
+    printf ''
+}
 
 substitute_prompt_placeholders() {
     local prompt_text="$1"
     prompt_text="${prompt_text//\{\{SESSION_DIR\}\}/$SESSION_DIR}"
     prompt_text="${prompt_text//\{\{ITERATION\}\}/$ITERATION}"
     prompt_text="${prompt_text//\{\{ARTIFACTS_DIR\}\}/$ARTIFACTS_DIR}"
+    prompt_text="${prompt_text//\{\{SUBAGENT_HINTS\}\}/$SUBAGENT_HINTS}"
     # Backward compatibility for existing custom prompts.
     prompt_text="${prompt_text//<session-dir>/$SESSION_DIR}"
     prompt_text="${prompt_text//iter-<N>/iter-$ITERATION}"
@@ -2516,7 +2552,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
 
     # Invoke provider
     prompt_content=$(cat "$iter_prompt_file")
-
+    SUBAGENT_HINTS="$(resolve_subagent_hints "$iter_provider" "$iter_mode")"
     prompt_content="$(substitute_prompt_placeholders "$prompt_content")"
 
     cd "$WORK_DIR"
