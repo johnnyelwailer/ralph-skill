@@ -14887,6 +14887,10 @@ function fail(outputMode, msg) {
 }
 async function steerCommand(instruction, options = {}) {
   const outputMode = options.output || "text";
+  const trimmedInstruction = instruction.trim();
+  if (trimmedInstruction.length === 0) {
+    return fail(outputMode, "Instruction must be a non-empty string.");
+  }
   const homeDir = resolveHomeDir2(options.homeDir);
   const active = await readActiveSessions2(homeDir);
   const sessionIds = Object.keys(active);
@@ -14911,7 +14915,7 @@ async function steerCommand(instruction, options = {}) {
     return fail(outputMode, "A steering instruction is already queued. Use --overwrite to replace it.");
   }
   const affectsCompletedWork = options.affectsCompletedWork ?? "unknown";
-  const steeringDoc = buildSteeringDocument2(instruction.trim(), affectsCompletedWork, "cli");
+  const steeringDoc = buildSteeringDocument2(trimmedInstruction, affectsCompletedWork, "cli");
   await writeFile11(steeringPath, steeringDoc, "utf8");
   const promptsDir = path15.join(sessionDir, "prompts");
   const queuePath = await queueSteeringPrompt(
