@@ -953,7 +953,7 @@ function Register-IterationFailure {
         [string]$ErrorText
     )
     if (-not ($Mode -in @('plan-build', 'plan-build-review'))) { return }
-    if (-not ($IterationMode -in @('plan', 'build', 'qa', 'review'))) { return }
+    if (-not ($IterationMode -in @('plan', 'build', 'qa', 'proof', 'review'))) { return }
 
     # Use per-prompt max_retries (from frontmatter) when set, else global default
     $effectiveRetries = if ($script:effectiveMaxRetries) { $script:effectiveMaxRetries } else { $script:maxPhaseRetries }
@@ -2205,66 +2205,108 @@ try {
 
             Show-AgentSummary -ProviderName $iterationProvider -ProviderOutput $providerOutput
 
+            # Save provider output to per-iteration artifacts for dashboard parsing
+            $outputFilePath = Join-Path $artifactsDir "iter-$iteration/output.txt"
+            if ($providerOutput) {
+                ($providerOutput -join "`n") | Set-Content -Path $outputFilePath -Encoding UTF8 -NoNewline
+            } elseif ($script:lastProviderOutputText) {
+                $script:lastProviderOutputText | Set-Content -Path $outputFilePath -Encoding UTF8 -NoNewline
+            }
+
+            $postValidationError = ""
             Update-ProviderHealthOnSuccess -ProviderName $iterationProvider
-            if ($script:finalizerMode) {
-                # Don't advance cycle position during finalizer mode
-                $script:phaseRetryState.phase = ''
-                $script:phaseRetryState.consecutive = 0
-                $script:phaseRetryState.failureReasons = @()
-                # Advance finalizer position
-                $script:finalizerPosition++
-                # Re-check TODO.md — if new incomplete tasks appeared, abort finalizer
-                if (-not (Check-AllTasksComplete)) {
-                    $script:finalizerMode = $false
-                    $script:finalizerPosition = 0
-                    $script:allTasksMarkedDone = $false
-                    Write-LogEntry -Event "finalizer_aborted" -Data @{
+            if ($iterationMode -eq 'proof') {
+                $script:lastProofIteration = $iteration
+                $proofManifestPath = Join-Path $artifactsDir "iter-$iteration/proof-manifest.json"
+                if (Validate-ProofManifest -ManifestPath $proofManifestPath) {
+                    Write-LogEntry -Event "proof_manifest_validated" -Data @{
                         iteration = $iteration
-                        reason = 'new_incomplete_tasks'
+                        status = 'valid'
+                        path = $proofManifestPath
+                        last_proof_iteration = $script:lastProofIteration
                     }
-                    Write-Host "[Finalizer aborted — new incomplete tasks found in TODO.md]" -ForegroundColor Yellow
+                } else {
+                    $postValidationError = "proof_manifest_$(if ([string]::IsNullOrWhiteSpace($script:validateProofManifestError)) { 'validation_failed' } else { $script:validateProofManifestError })"
+                    Write-LogEntry -Event "proof_manifest_validated" -Data @{
+                        iteration = $iteration
+                        status = 'invalid'
+                        path = $proofManifestPath
+                        error = $(if ([string]::IsNullOrWhiteSpace($script:validateProofManifestError)) { 'validation_failed' } else { $script:validateProofManifestError })
+                        last_proof_iteration = $script:lastProofIteration
+                    }
+                }
+            }
+            if (-not [string]::IsNullOrWhiteSpace($postValidationError)) {
+                Register-IterationFailure -IterationMode $iterationMode -ErrorText $postValidationError
+                Persist-LoopPlanState -Iteration $iteration
+                Write-Warning "Iteration $iteration failed"
+                Write-LogEntry -Event "iteration_error" -Data @{
+                    iteration = $iteration
+                    mode = $iterationMode
+                    provider = $iterationProvider
+                    error = $postValidationError
                 }
             } else {
-                Register-IterationSuccess -IterationMode $iterationMode -WasForced $false
-            }
-            if ($iterationMode -eq 'plan') {
-                try {
-                    $script:lastPlanCommit = (git rev-parse HEAD | Out-String).Trim()
-                } catch { }
-            }
-            Persist-LoopPlanState -Iteration $iteration
-            $stuckState.StuckCount = 0
-            $stuckState.LastTask = ""
-
-            # Check for finalizer entry at cycle boundary
-            if (-not $script:finalizerMode -and $script:allTasksMarkedDone `
-                -and $script:finalizerLength -gt 0 -and $script:cyclePosition -eq 0) {
-                $script:finalizerMode = $true
-                $script:finalizerPosition = 0
-                Write-LogEntry -Event "finalizer_entered" -Data @{ iteration = $iteration }
-                Write-Host "[All tasks marked done — entering finalizer sequence]" -ForegroundColor Yellow
-            }
-
-            Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
-
-            # Extract token/cost usage for opencode provider (best-effort)
-            $usageData = @{
-                iteration = $iteration
-                mode = $iterationMode
-                provider = $iterationProvider
-            }
-            if ($iterationProvider -eq 'opencode') {
-                $ocUsage = Extract-OpenCodeUsage
-                if ($ocUsage) {
-                    $usageData['tokens_input'] = $ocUsage.tokens_input
-                    $usageData['tokens_output'] = $ocUsage.tokens_output
-                    $usageData['tokens_cache_read'] = $ocUsage.tokens_cache_read
-                    $usageData['cost_usd'] = $ocUsage.cost_usd
+                if ($script:finalizerMode) {
+                    # Don't advance cycle position during finalizer mode
+                    $script:phaseRetryState.phase = ''
+                    $script:phaseRetryState.consecutive = 0
+                    $script:phaseRetryState.failureReasons = @()
+                    # Advance finalizer position
+                    $script:finalizerPosition++
+                    # Re-check TODO.md — if new incomplete tasks appeared, abort finalizer
+                    if (-not (Check-AllTasksComplete)) {
+                        $script:finalizerMode = $false
+                        $script:finalizerPosition = 0
+                        $script:allTasksMarkedDone = $false
+                        Write-LogEntry -Event "finalizer_aborted" -Data @{
+                            iteration = $iteration
+                            reason = 'new_incomplete_tasks'
+                        }
+                        Write-Host "[Finalizer aborted — new incomplete tasks found in TODO.md]" -ForegroundColor Yellow
+                    }
+                } else {
+                    Register-IterationSuccess -IterationMode $iterationMode -WasForced $false
                 }
-            }
-            Write-LogEntry -Event "iteration_complete" -Data $usageData
+                if ($iterationMode -eq 'plan') {
+                    try {
+                        $script:lastPlanCommit = (git rev-parse HEAD | Out-String).Trim()
+                    } catch { }
+                }
+                Persist-LoopPlanState -Iteration $iteration
+                $stuckState.StuckCount = 0
+                $stuckState.LastTask = ""
 
-            Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
+                # Check for finalizer entry at cycle boundary
+                if (-not $script:finalizerMode -and $script:allTasksMarkedDone `
+                    -and $script:finalizerLength -gt 0 -and $script:cyclePosition -eq 0) {
+                    $script:finalizerMode = $true
+                    $script:finalizerPosition = 0
+                    Write-LogEntry -Event "finalizer_entered" -Data @{ iteration = $iteration }
+                    Write-Host "[All tasks marked done — entering finalizer sequence]" -ForegroundColor Yellow
+                }
+
+                Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
+
+                # Extract token/cost usage for opencode provider (best-effort)
+                $usageData = @{
+                    iteration = $iteration
+                    mode = $iterationMode
+                    provider = $iterationProvider
+                }
+                if ($iterationProvider -eq 'opencode') {
+                    $ocUsage = Extract-OpenCodeUsage
+                    if ($ocUsage) {
+                        $usageData['tokens_input'] = $ocUsage.tokens_input
+                        $usageData['tokens_output'] = $ocUsage.tokens_output
+                        $usageData['tokens_cache_read'] = $ocUsage.tokens_cache_read
+                        $usageData['cost_usd'] = $ocUsage.cost_usd
+                    }
+                }
+                Write-LogEntry -Event "iteration_complete" -Data $usageData
+
+                Write-Host "`n[Iteration $iteration complete - $iterationMode]" -ForegroundColor Green
+            }
         }
         catch {
             $errorContext = "$_ $script:lastProviderOutputText"

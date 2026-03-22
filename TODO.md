@@ -15,7 +15,7 @@
 
 - [x] **P1: loop.ps1 — proof phase post-invocation handling** — After provider returns successfully for proof mode: validate manifest at `$artifactsDir/iter-$iteration/proof-manifest.json`, log `proof_manifest_validated` event, track `$script:lastProofIteration`, call `Register-IterationFailure` on validation failure. Mirror loop.sh lines 2260-2278. (`loop.ps1` post-provider section ~line 2202+) Note: `Register-IterationFailure` at line 952 currently excludes 'proof' mode — must add 'proof' to the allowed modes list. (priority: high)
 
-- [ ] **P1: loop.ps1 — output capture to artifacts** — Record raw log offset before provider invocation, then extract delta to `$artifactsDir/iter-$iteration/output.txt` after. Mirror loop.sh lines 2351-2356 approach (offset-based extraction from raw log). (`loop.ps1` ~line 2188+) (priority: high)
+- [x] **P1: loop.ps1 — output capture to artifacts** — Save provider output to `$artifactsDir/iter-$iteration/output.txt` after successful invocation. loop.sh uses offset-based extraction from `$LOG_FILE.raw` (lines 2355-2357), but loop.ps1 captures provider output in `$providerOutput` variable (line 2200) — write that directly to output.txt. Also capture `$script:lastProviderOutputText` as fallback. Place after provider invocation, before proof validation block (~line 2208). (priority: high) [implemented: loop.ps1:2208-2214]
 
 ### Spec-Gap Findings
 
@@ -51,3 +51,6 @@
 - [x] loop.ps1 — Validate-ProofManifest function (lines 881-898, has empty-file bug)
 - [x] loop.ps1 — baselines directory creation at session init
 - [x] loop.ps1 — per-iteration artifacts directory creation (line 2188)
+- [x] loop.ps1 — proof phase post-invocation handling: manifest validation, `proof_manifest_validated` event, `lastProofIteration` tracking, `Register-IterationFailure` on failure (lines 2210-2230, uncommitted)
+- [x] loop.ps1 — added 'proof' to `Register-IterationFailure` allowed modes (line 953, uncommitted)
+- [x] loop.ps1 — Validate-ProofManifest empty content guard (lines 881-902, committed in 792969a)
