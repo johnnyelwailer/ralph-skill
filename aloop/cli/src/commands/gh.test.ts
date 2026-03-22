@@ -1759,6 +1759,38 @@ test('ghStartCommandWithDeps persists issue/session mapping in watch.json', asyn
   }
 });
 
+test('ghStartCommandWithDeps fails fast on missing --spec before calling gh issue view', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-start-missing-spec-fastfail-'));
+  let ghCalled = false;
+
+  try {
+    await assert.rejects(
+      () => ghStartCommandWithDeps(
+        { issue: '42', spec: 'does-not-exist.md' },
+        {
+          startSession: async () => {
+            throw new Error('startSession should not be called');
+          },
+          execGh: async () => {
+            ghCalled = true;
+            return { stdout: '', stderr: '' };
+          },
+          execGit: async () => ({ stdout: '', stderr: '' }),
+          readFile: () => '',
+          writeFile: () => {},
+          existsSync: () => false,
+          cwd: () => tmpRoot,
+        } as any,
+      ),
+      /--spec file not found/i,
+    );
+
+    assert.equal(ghCalled, false);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
 test('gh status outputs tracked issue/session mappings from watch.json', async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-status-watch-'));
   const output: string[] = [];

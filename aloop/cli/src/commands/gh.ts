@@ -1748,6 +1748,15 @@ export async function ghStartCommandWithDeps(options: GhStartCommandOptions, dep
     throw new Error('gh start requires --issue <number>.');
   }
 
+  let specContent: string | null = null;
+  if (typeof options.spec === 'string' && options.spec.trim()) {
+    const specPath = path.isAbsolute(options.spec) ? options.spec : path.join(deps.cwd(), options.spec);
+    if (!deps.existsSync(specPath)) {
+      throw new Error(`--spec file not found: ${specPath}`);
+    }
+    specContent = deps.readFile(specPath, 'utf8');
+  }
+
   const warnings: string[] = [];
   const issueViewArgs = ['issue', 'view', String(issueNumber), '--json', 'number,title,body,url,labels,comments'];
   const requestedRepo = typeof options.repo === 'string' && options.repo.trim() ? options.repo.trim() : null;
@@ -1761,15 +1770,6 @@ export async function ghStartCommandWithDeps(options: GhStartCommandOptions, dep
   const issueRepo = requestedRepo ?? extractRepoFromIssueUrl(issue.url);
   if (!issueRepo) {
     warnings.push('Could not infer repository from issue URL; PR creation/link-back will require --repo.');
-  }
-
-  let specContent: string | null = null;
-  if (typeof options.spec === 'string' && options.spec.trim()) {
-    const specPath = path.isAbsolute(options.spec) ? options.spec : path.join(deps.cwd(), options.spec);
-    if (!deps.existsSync(specPath)) {
-      throw new Error(`--spec file not found: ${specPath}`);
-    }
-    specContent = deps.readFile(specPath, 'utf8');
   }
 
   const started = await deps.startSession({
