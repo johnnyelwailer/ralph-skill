@@ -753,6 +753,17 @@ describe('App.tsx AppView integration coverage', () => {
     await waitFor(() => {
       expect(window.history.replaceState).toHaveBeenCalled();
     });
+
+    const moreTabsButton = screen.getByRole('button', { name: /more tabs/i });
+    fireEvent.click(moreTabsButton);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'EXTRA' }));
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+
+    fireEvent.click(moreTabsButton);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
   it('covers Sidebar exhaustive', () => {

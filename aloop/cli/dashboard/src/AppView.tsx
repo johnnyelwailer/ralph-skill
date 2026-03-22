@@ -1146,6 +1146,8 @@ export function QACoverageBadge({ sessionId, refreshKey }: { sessionId: string |
 function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs: Record<string, string>; providerHealth: ProviderHealth[]; activityCollapsed?: boolean; repoUrl?: string | null }) {
   const docOrder = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
   const tabLabels: Record<string, string> = { 'TODO.md': 'TODO', 'SPEC.md': 'SPEC', 'RESEARCH.md': 'RESEARCH', 'REVIEW_LOG.md': 'REVIEW LOG', 'STEERING.md': 'STEERING' };
+  const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
 
   const availableDocs = docOrder.filter((n) => docs[n] != null && docs[n] !== '');
   const extraDocs = Object.keys(docs).filter((n) => !docOrder.includes(n) && docs[n] != null && docs[n] !== '');
@@ -1157,6 +1159,26 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
 
   // Always add Health as a special tab
   const defaultTab = allDocs.includes('TODO.md') ? 'TODO.md' : allDocs[0] ?? '_health';
+
+  useEffect(() => {
+    if (!overflowMenuOpen) return;
+    const onPointerDownOutside = (event: MouseEvent | TouchEvent) => {
+      if (!overflowMenuRef.current?.contains(event.target as Node)) {
+        setOverflowMenuOpen(false);
+      }
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOverflowMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDownOutside);
+    document.addEventListener('touchstart', onPointerDownOutside);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDownOutside);
+      document.removeEventListener('touchstart', onPointerDownOutside);
+      document.removeEventListener('keydown', onEscape);
+    };
+  }, [overflowMenuOpen]);
 
   return (
     <Tabs defaultValue={defaultTab} className="flex flex-col h-full">
@@ -1171,17 +1193,31 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
             <Heart className="h-3 w-3 mr-1" /> Health
           </TabsTrigger>
           {overflowTabs.length > 0 && (
-            <div className="relative group">
-              <button type="button" className="px-2 py-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 text-[11px] text-muted-foreground hover:text-foreground">
+            <div ref={overflowMenuRef} className="relative">
+              <button
+                type="button"
+                aria-label="More tabs"
+                aria-haspopup="menu"
+                aria-expanded={overflowMenuOpen}
+                onClick={() => setOverflowMenuOpen((open) => !open)}
+                className="px-2 py-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 text-[11px] text-muted-foreground hover:text-foreground"
+              >
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </button>
-              <div className="absolute right-0 top-full z-20 hidden group-hover:block bg-popover border rounded-md shadow-md py-1 min-w-[120px]">
+              {overflowMenuOpen && (
+                <div role="menu" className="absolute right-0 top-full z-20 bg-popover border rounded-md shadow-md py-1 min-w-[120px]">
                 {overflowTabs.map((n) => (
-                  <TabsTrigger key={n} value={n} className="w-full text-left text-[11px] px-3 py-1.5 hover:bg-accent data-[state=active]:bg-accent">
+                  <TabsTrigger
+                    key={n}
+                    value={n}
+                    className="w-full text-left text-[11px] px-3 py-1.5 hover:bg-accent data-[state=active]:bg-accent"
+                    onClick={() => setOverflowMenuOpen(false)}
+                  >
                     {tabLabels[n] ?? n.replace(/\.md$/i, '')}
                   </TabsTrigger>
                 ))}
-              </div>
+                </div>
+              )}
             </div>
           )}
           {repoUrl && (
