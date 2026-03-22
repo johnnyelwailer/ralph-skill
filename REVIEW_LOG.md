@@ -94,3 +94,34 @@
 - No proof artifacts needed (internal changes), no UI changes, no dependency changes, no doc changes.
 
 ---
+
+## Review — 2026-03-22 — commit 2d11201..b5f4da6
+
+**Verdict: PASS** (0 findings, 2 concrete observations)
+**Scope:** `orchestrate.ts` (rate limit check, bulk PR data plumbing in checkPrGates/processPrLifecycle/runOrchestratorScanPass), `orchestrate.test.ts` (9 new tests)
+
+### Gate 1 (Spec Compliance): PASS
+- Rate limit awareness: `checkGitHubRateLimit()` queries `gh api rate_limit`, threshold at 200 remaining. Scan pass skips PR lifecycle when below threshold, logs `scan_pr_lifecycle_rate_limited`. Fails open on error (null → proceeds). Aligns with spec's rate-limit resilience philosophy and Issue #126's requirements.
+- Bulk PR data: `checkPrGates` accepts optional `bulkPrData` from `fetchAndApplyBulkIssueState`, eliminating per-PR `gh pr view` calls for mergeability and CI checks. Aligns with spec's single-GraphQL-query approach (spec lines 1515-1534). `reviewPrDiff` remains per-PR by design (needs full diff, not metadata).
+
+### Gate 2 (Test Depth): PASS
+- `checkGitHubRateLimit`: 3 tests with specific value assertions — exact parsed `{ remaining: 4500, limit: 5000, reset: 1700000000 }`, null on error, null on invalid JSON.
+- Rate limit scan pass: 3 integration tests — below threshold asserts `prLifecycles.length === 0` + exact log event + `remaining: 50`; above threshold asserts `prLifecycles.length === 1`; fail-open asserts `prLifecycles.length === 1` when check throws.
+- Bulk PR: `checkPrGates` unit test (line 2879) asserts `all_passed === true`, `mergeable === true`, specific gate statuses, and throws on `pr view` calls. Full scan-pass integration test (line 4764) verifies end-to-end: GraphQL → bulk map → `checkPrGates` → merge, asserting `action === 'merged'` and throwing on any `pr view` call.
+- No anti-patterns: all assertions use `assert.equal`/`assert.deepEqual` with concrete values.
+
+### Gate 3 (Coverage): INCOMPLETE (bash unavailable)
+- Code inspection: rate limit has 3 branches tested (below/above/null). Bulk path has 2 branches tested (present/absent). `checkPrGates` Gate 1 bulk path (line 3258-3265) and Gate 2 bulk path (line 3289-3294) both covered by the unit test at line 2879.
+
+### Gate 4 (Code Quality): PASS
+- No dead code — all new constants (`RATE_LIMIT_MINIMUM_REMAINING`), interfaces (`CheckPrGatesOptions`), and functions (`checkGitHubRateLimit`) are referenced.
+- No TODOs/FIXMEs. No duplication — bulk and REST paths in `checkPrGates` have distinct logic for different data shapes.
+- `execGhForRateLimit` fallback (line 5449) is appropriate — scan deps may have their own `execGh` separate from PR lifecycle deps.
+
+### Gate 5 (Integration Sanity): INCOMPLETE (bash unavailable)
+- Code-level analysis: new `options` parameter in `checkPrGates`/`processPrLifecycle` defaults to `{}`, so all existing callers are unaffected. New `BulkFetchResult.prByIssueNumber` field is optional. No regressions expected.
+
+### Gates 6-9: PASS (N/A)
+- No proof artifacts needed (internal API plumbing), no UI changes, no dependency changes, no doc changes.
+
+---
