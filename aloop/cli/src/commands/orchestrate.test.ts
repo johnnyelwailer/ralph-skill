@@ -4635,7 +4635,7 @@ describe('runOrchestratorScanPass', () => {
 
     const result = await runOrchestratorScanPass(
       '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 1, deps,
+      'owner/repo', 5, deps,
     );
 
     assert.equal(result.triage.processed_issues, 1);
@@ -5080,7 +5080,12 @@ describe('runOrchestratorScanPass rate limit', () => {
     });
     const deps = createMockScanDeps({
       prLifecycleDeps: prDeps,
-      execGh: async () => { throw new Error('rate limit check failed'); },
+      execGh: async (args: string[]) => {
+        if (args.includes('rate_limit')) { throw new Error('rate limit check failed'); }
+        if (args[0] === 'issue-comments') return { stdout: JSON.stringify({ comments: [] }), stderr: '' };
+        if (args[0] === 'pr-comments') return { stdout: JSON.stringify({ comments: [] }), stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
     });
     deps.files['/state.json'] = JSON.stringify(state);
 
