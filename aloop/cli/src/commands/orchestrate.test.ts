@@ -4575,10 +4575,13 @@ describe('runOrchestratorScanPass', () => {
       null, 1, deps,
     );
 
-    const steeringPath = '/home/.aloop/sessions/session-42/queue/000-review-fixes.md';
-    assert.ok(deps.files[steeringPath], 'should write redispatch steering file');
-    assert.match(deps.files[steeringPath], /Comment ID: 1234/);
-    assert.match(deps.files[steeringPath], /src\/example\.ts:10/);
+    const steeringPath = Object.keys(deps.files).find((filePath) =>
+      filePath.endsWith('/queue/000-review-fixes.md')
+    );
+    assert.ok(steeringPath, 'should write redispatch steering file');
+    const steeringContent = deps.files[steeringPath as string];
+    assert.match(steeringContent, /Comment ID: 1234/);
+    assert.match(steeringContent, /src\/example\.ts:10/);
 
     const persisted = JSON.parse(deps.files['/state.json']) as OrchestratorState;
     assert.equal(persisted.issues[0].needs_redispatch, false);

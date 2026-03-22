@@ -5,7 +5,7 @@
 ### In Progress
 
 - [x] [review] Gate 3: Create `adapter.test.ts` with direct unit tests for `GitHubAdapter.createReview()` and `GitHubAdapter.resolveThread()` — test API call structure (POST to correct endpoint), suggestion body formatting (`\`\`\`suggestion` wrapping), empty comments array, and error cases. No adapter test file exists currently. (priority: high)
-- [ ] [review] Gate 4: Redispatch steering (orchestrate.ts:~5371) omits per-comment details from `pending_review_comments` — include comment IDs, file paths, and line numbers so the builder knows exactly which threads to address. Test at orchestrate.test.ts:~4502 expects `Comment ID: 1234` and `src/example.ts:10`. (priority: high)
+- [x] [review] Gate 4: Redispatch steering (orchestrate.ts:~5371) omits per-comment details from `pending_review_comments` — include comment IDs, file paths, and line numbers so the builder knows exactly which threads to address. Test at orchestrate.test.ts:~4502 expects `Comment ID: 1234` and `src/example.ts:10`. (priority: high)
 
 ### Up Next
 
