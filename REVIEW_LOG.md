@@ -120,3 +120,25 @@ All gates pass. Integration suite: 125 dashboard tests + 8 CLI tests pass, type-
 3. Gate 1 (informational): The 17-step cycle omits `docs` from cycle 2 — spec shows `Cycle 2: spec-gap → plan → build×5 → qa → docs → review`. This is a separate unimplemented requirement (docs periodic scheduling), not a regression from this build.
 
 ---
+
+## Review — 2026-03-22 — commit 6fb27999..fa560585
+
+**Verdict: PASS** (2 observations)
+**Scope:** loop.sh (+37), loop_subagent_hints.tests.sh (new, 81 lines), orchestrate.ts (+6/-1), index.test.ts (+39/-1), index.ts (+6/-4), error-handling.ts (+66/-7)
+
+**Gate-by-gate:**
+- Gate 1 (Spec Compliance): PASS — `resolve_subagent_hints()` loads phase-specific hint files for opencode provider (build/proof/review), with 3-location fallback chain. `{{SUBAGENT_HINTS}}` now expanded in `substitute_prompt_placeholders()`. JSON error fix covers `withErrorHandling`, `unhandledRejection`, and orchestrate worktree warning.
+- Gate 2 (Test Depth): PASS — Subagent hints: 4 exact-value assertions. JSON error: `assert.equal(payload.error, 'Invalid autonomy level: invalid')`. JSON warning: `JSON.parse` is the critical assertion (would throw on plain text).
+- Gate 3 (Coverage): PASS — `error-handling.ts` (75 lines, essentially new) lacks dedicated unit tests but is exercised via 3 integration tests in `index.test.ts` covering JSON error, text error, and JSON warning paths. Minor untested branches: `--output=value` form, `formatErrorMessage` stderr extraction, direct `output in arg` resolution. Shell tests: 4/4 cover all resolution paths.
+- Gate 4 (Code Quality): PASS — Clean separation between `resolveOutputModeFromActionArgs` (action wrappers) and `resolveOutputModeFromArgv` (process-level handler). No dead code, no duplication.
+- Gate 5 (Integration Sanity): PASS — 9/9 CLI tests, tsc clean, build ok, 4/4 shell tests.
+- Gate 6 (Proof): PASS — Internal changes only. Empty proof manifest correct.
+- Gate 7 (Runtime Layout): SKIP — No CSS/layout changes.
+- Gate 8 (Version Compliance): SKIP — No dependency changes.
+- Gate 9 (Documentation Freshness): PASS — No user-facing behavior changes.
+
+**Observations:**
+1. Gate 2: `index.test.ts:98-107` — JSON error test asserts exact error message through the full CLI → Commander → withErrorHandling → resolveOutputModeFromActionArgs → emitError pipeline. Good end-to-end coverage of the bug fix.
+2. Gate 3 (informational): `error-handling.ts` would benefit from a dedicated unit test file covering `--output=value` form, `formatErrorMessage` stderr extraction, and `resolveOutputModeFromActionArgs` direct-property path. Current integration coverage is sufficient but leaves ~30% of branches untested. Not blocking since untested paths are low-risk utility edges.
+
+---
