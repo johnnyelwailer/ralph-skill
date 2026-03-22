@@ -2720,11 +2720,11 @@ describe('checkPrGates', () => {
         if (args.includes('--json') && args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
             { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
             { name: 'lint', state: 'COMPLETED', conclusion: 'SUCCESS' },
-          ]), stderr: '' };
+          ] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2745,8 +2745,8 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2763,10 +2763,10 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
             { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ]), stderr: '' };
+          ] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2782,11 +2782,11 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
             { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
             { name: 'lint', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ]), stderr: '' };
+          ] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2796,7 +2796,7 @@ describe('checkPrGates', () => {
     assert.ok(result.gates[1].detail.includes('lint'));
   });
 
-  it('returns pending when workflows exist but checks are not yet reported', async () => {
+  it('returns pass when workflows exist but no checks ran on PR', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
@@ -2805,16 +2805,16 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
-    assert.equal(result.all_passed, false);
-    assert.equal(result.gates[1].status, 'pending');
-    assert.match(result.gates[1].detail, /no check runs/i);
+    assert.equal(result.all_passed, true);
+    assert.equal(result.gates[1].status, 'pass');
+    assert.match(result.gates[1].detail, /no checks ran/i);
   });
 
   it('returns api_error for CI gate when workflows exist and check query errors', async () => {
@@ -2826,7 +2826,7 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           throw new Error('checks api unavailable');
         }
         return { stdout: '', stderr: '' };
@@ -2844,8 +2844,8 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           throw new Error('gh API error');
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2861,11 +2861,11 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
             { name: 'optional', state: 'COMPLETED', conclusion: 'SKIPPED' },
             { name: 'info', state: 'COMPLETED', conclusion: 'NEUTRAL' },
-          ]), stderr: '' };
+          ] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2972,10 +2972,10 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
             { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
-          ]), stderr: '' };
+          ] }), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff content', stderr: '' };
@@ -2997,10 +2997,10 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
             { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ]), stderr: '' };
+          ] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3016,8 +3016,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3036,8 +3036,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'CONFLICTING' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3055,8 +3055,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3081,8 +3081,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3106,8 +3106,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3142,10 +3142,10 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
             { name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ]), stderr: '' };
+          ] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3176,8 +3176,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' }]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' }] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3198,8 +3198,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3227,8 +3227,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };

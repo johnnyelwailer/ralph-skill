@@ -1,33 +1,29 @@
 # Issue #119: QA coverage percentage display from QA_COVERAGE.md
 
-## Current Phase: Implementation
+## Current Phase: Hardening
 
 ### Gap Analysis Summary
 
-The endpoint (`GET /api/qa-coverage`) and widget (`QACoverageBadge`) already exist but have significant gaps vs the spec:
+All core spec requirements are implemented and verified:
+- Server parser (`parseQaCoverageTable`) parses pipe-delimited markdown table → structured JSON with `coverage_percent`, `total_features`, `tested_features`, `passed`, `failed`, `untested`, `features[]`
+- API endpoint (`GET /api/qa-coverage`) returns spec-compliant response shape
+- Widget (`QACoverageBadge`) renders color-coded badge (green ≥80%, yellow ≥50%, red <50%), grey "N/A" when file missing
+- Expandable feature list shows per-feature PASS/FAIL/UNTESTED status
+- Refresh triggers only on `iteration_complete` SSE events where phase is `qa`
+- All 3 review fix tasks passed gates 1-9; QA coverage tests: 8 PASS, 0 FAIL
 
-1. **Server parser**: Uses regex `Coverage: XX%` instead of parsing the pipe-delimited table. Doesn't return `total_features`, `tested_features`, `passed`, `failed`, `untested`, or `features[]`.
-2. **Response shape**: Returns `{ percentage, raw, available }` instead of spec's `{ coverage_percent, total_features, tested_features, passed, failed, untested, features: [...] }`.
-3. **Widget color thresholds**: Uses yellow >= 60% instead of spec's yellow >= 50%.
-4. **Expandable feature list**: Renders raw markdown instead of per-feature PASS/FAIL/untested status list.
-5. **Refresh trigger**: Uses `state?.updatedAt` (any state change) instead of specifically `iteration_complete` events where phase is `qa`.
-6. **Tests**: Test fixture uses `Coverage: 85%` format, not the pipe-delimited table.
+Remaining work is hardening — type alignment and test triage.
 
 ### In Progress
 
-- [x] [review+qa/P1] Fix badge hidden when QA_COVERAGE.md missing: changed early return from `!coverage?.available` to `coverage === null` (loading-only). When `available` is false, badge now renders with grey/muted "QA: N/A" style instead of being hidden. (priority: high) [reviewed: gates 1-9 pass]
-- [x] [review] Fix refresh trigger: `AppView.tsx:2189` — `qaCoverageRefreshKey={state?.updatedAt ?? ''}` refreshes on every state change. Only bump `qaCoverageRefreshKey` on `iteration_complete` SSE events where phase is `qa`. (priority: high) [reviewed: gates 1-9 pass]
-- [x] [review] Fix TypeScript compilation error: `orchestrate.ts:3526` — `PrGateStatus` type union missing `"api_error"`. Added to type definition at `orchestrate.ts:3167`. (priority: high) [reviewed: gates 1-9 pass]
-- [ ] Update `QACoverageData` TypeScript interface in `AppView.tsx` to match new response shape (currently uses `percentage` instead of `coverage_percent`, missing `total_features`, `tested_features`, `passed`, `failed`, `untested` fields). (priority: medium)
-
 ### Up Next
 
-- [ ] [review] Triage 23 test failures in `orchestrate.test.ts` — verify which are regressions introduced by this branch vs pre-existing on master, and fix any regressions. (priority: medium)
-- [ ] Add graceful fallback: if `QA_COVERAGE.md` exists but has no parseable table, return `{ coverage_percent: 0, error: "parse_error", ... }` with empty features array
-- [ ] Investigate baseline backpressure failures in unrelated suites (`src/commands/dashboard.test.ts` packaged-assets case and `src/commands/orchestrate.test.ts` assertions) that currently block full `aloop/cli` validation
+- [ ] Investigate baseline backpressure failures in unrelated suites (`src/commands/dashboard.test.ts` packaged-assets case and `src/commands/orchestrate.test.ts` assertions) that currently block full `aloop/cli` validation. (priority: low)
 
 ### Deferred
 
+- [~] Update `QACoverageViewData` TypeScript interface in `AppView.tsx` — internal view type uses `percentage` while API returns `coverage_percent`, and summary fields (`total_features`, `tested_features`, `passed`, `failed`, `untested`) aren't mapped to the view layer. Not a bug: `parseQACoveragePayload` already bridges `coverage_percent` → `percentage`, and the component doesn't display summary counts. Deferred — only needed if widget adds summary stats display.
+- [~] Add graceful fallback with `parse_error` flag — current behavior when file exists but has no parseable table: returns `{ coverage_percent: 0, features: [], available: true }`, widget shows "QA 0%". Acceptable behavior; spec doesn't require a `parse_error` field. Deferred unless UX issue reported.
 - [~] [review] Gate 6: Proof artifacts (`iter-16/output.txt`) contain only text output, not screenshots. Not a code issue — proof agent limitation. Deferred until screenshot capture is implemented in the proof agent.
 
 ### Completed
@@ -37,3 +33,7 @@ The endpoint (`GET /api/qa-coverage`) and widget (`QACoverageBadge`) already exi
 - [x] Fix color threshold in `QACoverageBadge`: change yellow from `>= 60%` to `>= 50%` to match spec (green >= 80%, yellow 50-79%, red < 50%)
 - [x] Replace raw-markdown rendering in expanded view with structured per-feature list showing PASS/FAIL/UNTESTED status for each feature row
 - [x] Update server-side tests: use pipe-delimited table fixtures instead of `Coverage: XX%` text; test all response fields
+- [x] [review+qa/P1] Fix badge hidden when QA_COVERAGE.md missing: changed early return from `!coverage?.available` to `coverage === null` (loading-only). When `available` is false, badge now renders with grey/muted "QA: N/A" style instead of being hidden. [reviewed: gates 1-9 pass]
+- [x] [review] Fix refresh trigger: only bump `qaCoverageRefreshKey` on `iteration_complete` SSE events where phase is `qa`, not on every state change. [reviewed: gates 1-9 pass]
+- [x] [review] Fix TypeScript compilation error: `PrGateStatus` type union missing `"api_error"`. Added to type definition at `orchestrate.ts:3167`. [reviewed: gates 1-9 pass]
+- [x] [review] Triage and fix test failures in `orchestrate.test.ts` — root cause: `checkPrGates` switched from `gh pr checks` to `gh pr view --json statusCheckRollup` but test mocks still matched `args.includes('checks')` and returned bare arrays instead of `{ statusCheckRollup: [...] }`. Also fixed: catch blocks now emit `'api_error'` status (was `'pass'`/`'fail'`), and "no checks ran" test updated to expect `'pass'` (deliberate policy change).

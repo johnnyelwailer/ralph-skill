@@ -3245,8 +3245,9 @@ export async function checkPrGates(
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    // API error — don't block the PR, just skip this gate (will retry next pass)
-    gates.push({ gate: 'merge_conflicts', status: 'pass', detail: `Merge check skipped (API error): ${msg}` });
+    // API error — report as api_error so processPrLifecycle retries next pass
+    mergeable = false;
+    gates.push({ gate: 'merge_conflicts', status: 'api_error', detail: `Merge check failed (API error): ${msg}` });
   }
 
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
@@ -3292,7 +3293,7 @@ export async function checkPrGates(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (ciWorkflowsConfigured) {
-      gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed to query CI checks: ${msg}` });
+      gates.push({ gate: 'ci_checks', status: 'api_error', detail: `Failed to query CI checks: ${msg}` });
     } else {
       gates.push({ gate: 'ci_checks', status: 'pass', detail: `No GitHub Actions workflows detected; CI check query skipped (${msg})` });
     }
