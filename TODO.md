@@ -11,7 +11,7 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 - [x] **Extract `useIsTouchDevice` hook** — [review Gate 4] `useIsTouchDevice()` and `TOUCH_MEDIA_QUERY` are copy-pasted identically in `tooltip.tsx:18-40` and `hover-card.tsx:15-37`. Extract into `hooks/useIsTouchDevice.ts` and import from both components. Simple mechanical refactor. (priority: high)
 
-- [ ] **Expand tooltip & hover-card test coverage** — [review Gate 2/3] Tests now execute (vitest alias resolved), but only 1 scenario each. Add edge-case tests: (a) second tap closes tooltip, (b) desktop mode does NOT toggle on click, (c) controlled `open` prop passthrough, (d) `defaultOpen=true`. Target >=90% branch coverage on tooltip.tsx and hover-card.tsx. (priority: high)
+- [x] **Expand tooltip & hover-card test coverage** — [review Gate 2/3] Tests now execute (vitest alias resolved), but only 1 scenario each. Add edge-case tests: (a) second tap closes tooltip, (b) desktop mode does NOT toggle on click, (c) controlled `open` prop passthrough, (d) `defaultOpen=true`. Target >=90% branch coverage on tooltip.tsx and hover-card.tsx. (priority: high)
 
 - [ ] **Implement long-press context menu on session cards** — Create a `useLongPress` hook with 500ms threshold using `onTouchStart`/`onTouchEnd`/`onTouchMove` (cancel on move). On trigger, show a context menu (reuse DropdownMenu component) with: Stop session, Force-stop session, Copy session ID. Add haptic feedback via `navigator.vibrate(50)` if available. Apply to session card elements in the sidebar (~line 830-874 of AppView.tsx). (priority: medium)
 
