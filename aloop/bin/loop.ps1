@@ -1848,6 +1848,9 @@ Write-LogEntry -Event "session_start" -Data @{
     devcontainer = $script:useDevcontainer
 }
 
+# Create artifacts baselines directory for proof agent diffing
+New-Item -ItemType Directory -Path (Join-Path $artifactsDir "baselines") -Force | Out-Null
+
 # Log container bypass if devcontainer exists but was skipped
 if ($DangerouslySkipContainer -and (Test-Path $devcontainerJsonPath)) {
     Write-LogEntry -Event "container_bypass" -Data @{
