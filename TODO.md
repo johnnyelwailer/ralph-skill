@@ -32,8 +32,8 @@ _(none — ready for next task)_
 
 ### Review Findings
 
-- [ ] [review] Gate 2: No tests for SHA dedup mechanism — add tests to orchestrate.test.ts covering: (a) `invokeAgentReview` in process-requests.ts:466-478 returns early with `verdict: 'pending'` when `last_reviewed_sha` matches HEAD, (b) `invokeAgentReview` proceeds when `last_reviewed_sha` differs from HEAD or is undefined, (c) orchestrate.ts:5261-5265 stores `last_reviewed_sha` only on non-pending verdicts (`merged`, `rejected`, `flagged_for_human`), does NOT store on `review_pending` or `gates_pending`. Assert exact values, not just toBeDefined(). (priority: high)
-- [ ] [review] Gate 3: Zero branch coverage on SHA dedup paths — the test from the Gate 2 task above should cover: the early-return path in process-requests.ts:473-474, the SHA storage conditional in orchestrate.ts:5261, and the SHA clear on redispatch in orchestrate.ts:5311. Target >=80% branch coverage for these code paths. (priority: high)
+- [x] [review] Gate 2: No tests for SHA dedup mechanism — add tests to orchestrate.test.ts covering: (a) `processPrLifecycle` returns early with `verdict: 'pending'` when `last_reviewed_sha` matches HEAD, (b) `processPrLifecycle` proceeds when `last_reviewed_sha` differs from HEAD or is undefined, (c) orchestrate.ts stores `last_reviewed_sha` only on non-pending verdicts (`merged`, `rejected`, `flagged_for_human`), does NOT store on `review_pending` or `gates_pending`. Assert exact values, not just toBeDefined(). (priority: high)
+- [x] [review] Gate 3: Zero branch coverage on SHA dedup paths — the test from the Gate 2 task above should cover: the early-return path in processPrLifecycle SHA dedup check, the SHA storage conditional in orchestrate.ts scan pass, and the SHA clear on redispatch. Target >=80% branch coverage for these code paths. (priority: high)
 
 ### Up Next
 
