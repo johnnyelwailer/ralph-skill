@@ -17,7 +17,7 @@
 #### QA & Coverage (priority: high)
 
 - [x] QA coverage tracking enforcement — qa.md updated with full SPEC priority algorithm (UNTESTED > FAIL > incomplete > stale), structured 7-column coverage format, acceptance criteria extraction step, and target selection reasoning in QA_LOG.md; review.md updated with Gate 10 (QA Coverage & Bug Fix Rate); all "9 gates" references updated to "10 gates" (SPEC-ADDENDUM §QA Agent: Coverage-Aware Testing)
-- [ ] Finalizer QA coverage gate — finalizer (loop.sh:2440-2451) exits unconditionally without checking QA_COVERAGE.md; spec requires abort if >30% UNTESTED or any FAIL features remain (SPEC-ADDENDUM §QA Coverage Enforcement at Loop Exit)
+- [x] Finalizer QA coverage gate — finalizer now enforces QA_COVERAGE.md exit checks before completion: aborts and files `[qa/P1] [finalizer-qa-gate]` TODO tasks when UNTESTED >30%, any FAIL rows exist, file is missing, or table is unparseable; only exits when gate passes. Implemented in `check_finalizer_qa_coverage_gate()` and finalizer completion branch in `aloop/bin/loop.sh`, with dedicated shell tests in `aloop/bin/loop_finalizer_qa_coverage.tests.sh` (SPEC-ADDENDUM §QA Coverage Enforcement at Loop Exit).
 
 #### Dashboard (priority: medium)
 
