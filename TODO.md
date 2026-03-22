@@ -14,7 +14,7 @@
 
 ### Up Next
 
-- [ ] **Add tests for useCost hook** (priority: high)
+- [x] **Add tests for useCost hook** (priority: high)
   New test file for `useCost.ts`. Cover: (a) sessionCost aggregation from log lines with `iteration_complete` events; (b) mock fetch for `/api/cost/aggregate` success response; (c) `opencode_unavailable` error sets totalCost=null and error correctly; (d) HTTP error handling; (e) budget cap and percent calculation from meta; (f) polling interval from meta. Target >=90% branch coverage.
 
 - [ ] **Add tests for CostDisplay component** (priority: high)
