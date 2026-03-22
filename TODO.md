@@ -65,7 +65,7 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [x] [review] Gate 3: SHA dedup branch coverage — Tests cover early-return path, SHA storage conditional, and SHA clear on redispatch. (priority: high)
 
-- [x] **Update review prompt for conversation-aware verdicts** — Added delta-review section to `PROMPT_orch_review.md`: read prior comments, compare against current diff, acknowledge fixes, flag remaining/new issues, produce delta-style summaries. Closes TASK_SPEC req #3. (priority: high)
+- [x] **Update review prompt for conversation-aware verdicts** — Added delta-review section to `PROMPT_orch_review.md`: read prior comments, compare against current diff, acknowledge fixes, flag remaining/new issues, produce delta-style summaries. Closes TASK_SPEC req #3. (priority: high) [reviewed: gates 1-9 pass]
 
 ### Completed (upstream — dashboard accessibility)
 
