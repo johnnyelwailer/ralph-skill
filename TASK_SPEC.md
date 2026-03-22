@@ -1,6 +1,10 @@
 # Sub-Spec: Issue #144 — Autonomous daemon lifecycle: spawn, register, signal handling, shutdown
 
+## Objective
+
 Make `aloop orchestrate` spawn a background daemon that runs indefinitely, following the same lifecycle pattern as `aloop start`.
+
+## Scope
 
 - `aloop orchestrate` spawns a detached background process and returns immediately (like `start.ts` does)
 - Orchestrator registers in `~/.aloop/active.json` with PID, session_dir, work_dir, mode=orchestrator
