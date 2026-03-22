@@ -137,6 +137,51 @@ test('layout at 375x667 (mobile) shows only one panel and mobile menu', async ({
   await expect(page.getByRole('heading', { name: 'Documents' })).not.toBeVisible();
 });
 
+test('layout at 390x844 keeps core mobile tap targets at least 44x44', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  const expectMinimumTapSize = async (label: string, locator: ReturnType<typeof page.locator>) => {
+    await expect(locator).toBeVisible();
+    const bounds = await locator.boundingBox();
+
+    expect(bounds, `${label} should have a measurable bounding box`).not.toBeNull();
+    expect(bounds!.height, `${label} should be at least 44px tall`).toBeGreaterThanOrEqual(44);
+    expect(bounds!.width, `${label} should be at least 44px wide`).toBeGreaterThanOrEqual(44);
+  };
+
+  const hamburger = page.getByRole('button', { name: 'Toggle sidebar' });
+  await expectMinimumTapSize('Hamburger button', hamburger);
+
+  await hamburger.click();
+  const firstSessionCard = page.locator('aside:visible button').filter({ hasText: 'active-session' }).first();
+  await expectMinimumTapSize('Session card button', firstSessionCard);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('aside')).not.toBeVisible();
+
+  const tabTriggers = page.locator('[role="tab"]');
+  const tabTriggerCount = await tabTriggers.count();
+  expect(tabTriggerCount).toBeGreaterThan(0);
+  for (let i = 0; i < tabTriggerCount; i++) {
+    await expectMinimumTapSize(`Tab trigger ${i + 1}`, tabTriggers.nth(i));
+  }
+
+  const stopMenuTrigger = page.locator('footer button[aria-haspopup="menu"]').first();
+  await expectMinimumTapSize('Stop menu trigger', stopMenuTrigger);
+  await stopMenuTrigger.click();
+
+  const dropdownItems = page.locator('[role="menuitem"]');
+  const dropdownItemCount = await dropdownItems.count();
+  expect(dropdownItemCount).toBeGreaterThan(0);
+  for (let i = 0; i < dropdownItemCount; i++) {
+    await expectMinimumTapSize(`Dropdown item ${i + 1}`, dropdownItems.nth(i));
+  }
+
+  await page.keyboard.press('Escape');
+  const steerTextarea = page.getByPlaceholder('Steer...');
+  await expectMinimumTapSize('Steer textarea', steerTextarea);
+});
+
 test('writes steering instruction', async ({ page }) => {
   await page.goto('/');
 
