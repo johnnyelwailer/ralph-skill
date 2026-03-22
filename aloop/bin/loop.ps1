@@ -2320,14 +2320,6 @@ try {
 
             Show-AgentSummary -ProviderName $iterationProvider -ProviderOutput $providerOutput
 
-            # Save provider output to per-iteration artifacts for dashboard parsing
-            $outputFilePath = Join-Path $artifactsDir "iter-$iteration/output.txt"
-            if ($providerOutput) {
-                ($providerOutput -join "`n") | Set-Content -Path $outputFilePath -Encoding UTF8 -NoNewline
-            } elseif ($script:lastProviderOutputText) {
-                $script:lastProviderOutputText | Set-Content -Path $outputFilePath -Encoding UTF8 -NoNewline
-            }
-
             $postValidationError = ""
             Update-ProviderHealthOnSuccess -ProviderName $iterationProvider
             if ($iterationMode -eq 'proof') {

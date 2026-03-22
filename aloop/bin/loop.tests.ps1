@@ -476,6 +476,41 @@ Describe 'loop.ps1 — Validate-ProofManifest' -Tag 'proof-manifest-validation' 
     }
 }
 
+Describe 'loop.ps1 — Register-IterationFailure proof mode' -Tag 'proof-manifest-validation' {
+
+    BeforeAll {
+        $loopSource = Get-Content (Join-Path $PSScriptRoot 'loop.ps1') -Raw
+        $registerMatch = [regex]::Match($loopSource, '(?ms)function Register-IterationFailure \{.*?^\}')
+        if (-not $registerMatch.Success) {
+            throw 'Failed to locate Register-IterationFailure in loop.ps1'
+        }
+        . ([scriptblock]::Create($registerMatch.Value))
+    }
+
+    It 'accepts proof mode and records failure state' {
+        $Mode = 'plan-build-review'
+        $script:effectiveMaxRetries = 2
+        $script:maxPhaseRetries = 2
+        $script:effectiveRetryBackoff = 'none'
+        $script:phaseRetryState = @{
+            phase = ''
+            consecutive = 0
+            failureReasons = @()
+        }
+
+        function Write-LogEntry { param([string]$Event, [hashtable]$Data) }
+        function Advance-CyclePosition { }
+        Register-IterationFailure -IterationMode 'proof' -ErrorText 'proof_manifest_invalid_json'
+
+        $script:phaseRetryState.phase | Should -Be 'proof'
+        $script:phaseRetryState.consecutive | Should -Be 1
+        $script:phaseRetryState.failureReasons[0] | Should -Be 'proof_manifest_invalid_json'
+
+        Remove-Item Function:\Write-LogEntry -ErrorAction SilentlyContinue
+        Remove-Item Function:\Advance-CyclePosition -ErrorAction SilentlyContinue
+    }
+}
+
 
 # ============================================================================
 # 3. loop.sh — retry-same-phase behavioral
@@ -751,8 +786,14 @@ if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
         $iterNum = $matches[1]
         $artifactDir = Join-Path $PWD "..\session\artifacts\iter-$iterNum"
         if (-not (Test-Path $artifactDir)) { New-Item -ItemType Directory -Force $artifactDir | Out-Null }
-        "[]" | Set-Content (Join-Path $artifactDir 'proof-manifest.json')
         "dummy artifact" | Set-Content (Join-Path $artifactDir 'dummy.txt')
+        if ($state.scenario -eq 'proof-missing-manifest') {
+            # intentionally omit manifest file
+        } elseif ($state.scenario -eq 'proof-invalid-manifest') {
+            '{"artifacts": [' | Set-Content (Join-Path $artifactDir 'proof-manifest.json')
+        } else {
+            "[]" | Set-Content (Join-Path $artifactDir 'proof-manifest.json')
+        }
     }
 }
 
@@ -987,6 +1028,49 @@ exit 0
         $proofIdx | Should -BeLessThan $appIdx
         $events | Should -Contain 'final_review_approved'
         $events | Should -Not -Contain 'final_review_rejected'
+    }
+
+    It 'proof manifest validation logs valid event details in proof mode' {
+        $e = New-LoopEnv -Scenario 'approve'
+@"
+---
+agent: proof
+---
+# Proof Mode
+Collect proof iter-<N>.
+"@ | Set-Content -Path (Join-Path $e.PromptsDir 'PROMPT_build.md')
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 8
+        $entries = Get-LogEntries -LogFile $e.LogFile
+
+        $result.ExitCode | Should -Be 0
+        $validation = $entries |
+            Where-Object { $_.event -eq 'proof_manifest_validated' -and $_.status -eq 'valid' } |
+            Select-Object -Last 1
+        $validation | Should -Not -BeNullOrEmpty
+        [int]$validation.iteration | Should -BeGreaterThan 0
+        [int]$validation.last_proof_iteration | Should -Be ([int]$validation.iteration)
+    }
+
+    It 'invalid proof manifest logs invalid event and marks proof iteration as error' {
+        $e = New-LoopEnv -Scenario 'proof-invalid-manifest'
+@"
+---
+agent: proof
+---
+# Proof Mode
+Collect proof iter-<N>.
+"@ | Set-Content -Path (Join-Path $e.PromptsDir 'PROMPT_build.md')
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 8
+        $entries = Get-LogEntries -LogFile $e.LogFile
+
+        $result.ExitCode | Should -Be 0
+        $invalidValidation = $entries |
+            Where-Object { $_.event -eq 'proof_manifest_validated' -and $_.status -eq 'invalid' -and $_.error -eq 'invalid_json' } |
+            Select-Object -First 1
+        $invalidValidation | Should -Not -BeNullOrEmpty
+        $proofIteration = [int]$invalidValidation.iteration
+        ($entries | Where-Object { $_.event -eq 'iteration_error' -and $_.mode -eq 'proof' -and $_.error -eq 'proof_manifest_invalid_json' }).Count | Should -BeGreaterThan 0
+        ($entries | Where-Object { $_.event -eq 'iteration_complete' -and $_.mode -eq 'proof' -and [int]$_.iteration -eq $proofIteration }).Count | Should -Be 0
     }
 
     It 'iteration limit writes stopped session state' {
