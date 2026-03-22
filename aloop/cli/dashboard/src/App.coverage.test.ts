@@ -732,7 +732,7 @@ describe('App.tsx AppView integration coverage', () => {
         'RESEARCH.md': '# RESEARCH',
         'REVIEW_LOG.md': '# REVIEW',
         'STEERING.md': '# STEER',
-        'EXTRA.md': '# EXTRA',
+        'EXTRA.md': '# EXTRA DOC CONTENT',
       },
       repoUrl: 'https://example.com/repo',
     };
@@ -759,6 +759,14 @@ describe('App.tsx AppView integration coverage', () => {
     await waitFor(() => {
       expect(window.history.replaceState).toHaveBeenCalled();
     });
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /open overflow document tabs/i }));
+    fireEvent.click(await screen.findByText('STEERING'));
+    await screen.findByRole('heading', { name: 'STEER' });
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /open overflow document tabs/i }));
+    fireEvent.click(await screen.findByText('EXTRA'));
+    await screen.findByRole('heading', { name: 'EXTRA DOC CONTENT' });
   });
 
   it('covers Sidebar exhaustive', () => {

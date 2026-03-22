@@ -1157,9 +1157,17 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
 
   // Always add Health as a special tab
   const defaultTab = allDocs.includes('TODO.md') ? 'TODO.md' : allDocs[0] ?? '_health';
+  const [activeTab, setActiveTab] = useState(defaultTab);
+
+  useEffect(() => {
+    const validTabs = [...allDocs, '_health'];
+    if (!validTabs.includes(activeTab)) {
+      setActiveTab(defaultTab);
+    }
+  }, [activeTab, allDocs, defaultTab]);
 
   return (
-    <Tabs defaultValue={defaultTab} className="flex flex-col h-full">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
       <div className="flex items-center shrink-0">
         <TabsList className="h-auto md:h-8 bg-muted/50 flex-nowrap sm:flex-wrap justify-start flex-1 overflow-x-auto whitespace-nowrap">
           {visibleTabs.map((n) => (
@@ -1171,18 +1179,28 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
             <Heart className="h-3 w-3 mr-1" /> Health
           </TabsTrigger>
           {overflowTabs.length > 0 && (
-            <div className="relative group">
-              <button type="button" className="px-2 py-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 text-[11px] text-muted-foreground hover:text-foreground">
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-              <div className="absolute right-0 top-full z-20 hidden group-hover:block bg-popover border rounded-md shadow-md py-1 min-w-[120px]">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="px-2 py-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 text-[11px] text-muted-foreground hover:text-foreground"
+                  aria-label="Open overflow document tabs"
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[120px] p-1">
                 {overflowTabs.map((n) => (
-                  <TabsTrigger key={n} value={n} className="w-full text-left text-[11px] px-3 py-1.5 hover:bg-accent data-[state=active]:bg-accent">
+                  <DropdownMenuItem
+                    key={n}
+                    onSelect={() => setActiveTab(n)}
+                    className="w-full cursor-pointer text-left text-[11px] px-3 py-1.5"
+                  >
                     {tabLabels[n] ?? n.replace(/\.md$/i, '')}
-                  </TabsTrigger>
+                  </DropdownMenuItem>
                 ))}
-              </div>
-            </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </TabsList>
         {repoUrl && (
