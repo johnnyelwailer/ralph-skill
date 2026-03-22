@@ -3390,6 +3390,11 @@ export interface PrGatesResult {
   gates: PrGateResult[];
 }
 
+export interface CheckPrGatesOptions {
+  bulkPrData?: BulkIssueState['pr'] | null;
+  ciWorkflowsConfigured?: boolean;
+}
+
 export type AgentReviewVerdict = 'approve' | 'request-changes' | 'flag-for-human' | 'pending';
 
 export interface AgentReviewResult {
@@ -3452,67 +3457,88 @@ export async function checkPrGates(
   prNumber: number,
   repo: string,
   deps: PrLifecycleDeps,
+  options: CheckPrGatesOptions = {},
 ): Promise<PrGatesResult> {
   const gates: PrGateResult[] = [];
-  const ciWorkflowsConfigured = await hasGithubActionsWorkflows(repo, deps);
+  const ciWorkflowsConfigured = options.ciWorkflowsConfigured ?? await hasGithubActionsWorkflows(repo, deps);
+  const bulkPrData = options.bulkPrData;
 
   // Gate 1: Mergeability (conflict check)
   let mergeable = false;
-  try {
-    const viewResult = await deps.execGh([
-      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus',
-    ]);
-    const prData = JSON.parse(viewResult.stdout);
-    mergeable = prData.mergeable === 'MERGEABLE';
-    const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
-    const mergeUnknown = prData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
+  if (bulkPrData) {
+    mergeable = bulkPrData.mergeable === 'MERGEABLE';
+    const mergeState = bulkPrData.mergeStateStatus ?? 'UNKNOWN';
+    const mergeUnknown = bulkPrData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
     gates.push({
       gate: 'merge_conflicts',
       status: mergeable ? 'pass' : mergeUnknown ? 'pending' : 'fail',
       detail: mergeable ? 'No merge conflicts' : mergeUnknown ? 'Mergeability not yet computed' : `Merge state: ${mergeState}`,
     });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    // API error — don't block the PR, just skip this gate (will retry next pass)
-    gates.push({ gate: 'merge_conflicts', status: 'api_error', detail: `Failed to check merge conflicts: ${msg}` });
+  } else {
+    try {
+      const viewResult = await deps.execGh([
+        'pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus',
+      ]);
+      const prData = JSON.parse(viewResult.stdout);
+      mergeable = prData.mergeable === 'MERGEABLE';
+      const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
+      gates.push({
+        gate: 'merge_conflicts',
+        status: mergeable ? 'pass' : 'fail',
+        detail: mergeable ? 'No merge conflicts' : `Merge state: ${mergeState}`,
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // API error — don't block the PR, just skip this gate (will retry next pass)
+      gates.push({ gate: 'merge_conflicts', status: 'api_error', detail: `Failed to check merge conflicts: ${msg}` });
+    }
   }
 
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
   try {
-    const checksResult = await deps.execGh([
-      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
-    ]);
-    const parsed = JSON.parse(checksResult.stdout);
-    const checks: Array<{ name: string; state: string; conclusion: string }> = (parsed.statusCheckRollup ?? []).map((c: any) => ({
-      name: c.name ?? c.context ?? 'unknown',
-      state: c.status ?? c.state ?? 'COMPLETED',
-      conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
-    }));
-    const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
-    const allPassed = checks.every(
+    let resolvedChecks: Array<{ name: string; state: string; conclusion: string }>;
+    if (bulkPrData) {
+      resolvedChecks = (bulkPrData.checkRuns ?? []).map((c) => ({
+        name: c.name || 'unknown',
+        state: c.status || 'COMPLETED',
+        conclusion: c.conclusion ?? (c.status?.toUpperCase() === 'COMPLETED' ? 'SUCCESS' : 'PENDING'),
+      }));
+    } else {
+      const checksResult = await deps.execGh([
+        'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
+      ]);
+      const parsed = JSON.parse(checksResult.stdout) as { statusCheckRollup?: Array<Record<string, string>> };
+      resolvedChecks = (parsed.statusCheckRollup ?? []).map((c) => ({
+        name: c.name ?? c.context ?? 'unknown',
+        state: c.status ?? c.state ?? 'COMPLETED',
+        conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
+      }));
+    }
+    const allCompleted = resolvedChecks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
+    const allPassed = resolvedChecks.every(
       (c) => (c.state === 'COMPLETED' || c.state === 'completed') &&
         (c.conclusion === 'SUCCESS' || c.conclusion === 'success' ||
          c.conclusion === 'NEUTRAL' || c.conclusion === 'neutral' ||
          c.conclusion === 'SKIPPED' || c.conclusion === 'skipped'),
     );
-    const failedChecks = checks.filter(
+    const failedChecks = resolvedChecks.filter(
       (c) => c.conclusion === 'FAILURE' || c.conclusion === 'failure' ||
         c.conclusion === 'CANCELLED' || c.conclusion === 'cancelled' ||
         c.conclusion === 'TIMED_OUT' || c.conclusion === 'timed_out',
     );
 
-    if (checks.length === 0) {
+    if (resolvedChecks.length === 0) {
       // No check runs — pass regardless of workflow existence
       // (workflow may not trigger on this branch/PR target)
       if (ciWorkflowsConfigured) {
-        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'CI workflows exist but no checks ran on this PR — passing' });
+        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'CI workflows exist but no check runs reported on this PR yet' });
       } else {
         gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
       }
     } else if (!allCompleted) {
       gates.push({ gate: 'ci_checks', status: 'pending', detail: 'Some CI checks still running' });
     } else if (allPassed) {
-      gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${checks.length} checks passed` });
+      gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${resolvedChecks.length} checks passed` });
     } else {
       const failNames = failedChecks.map((c) => c.name).join(', ');
       gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed checks: ${failNames}` });
@@ -3711,6 +3737,7 @@ export async function processPrLifecycle(
   sessionDir: string,
   repo: string,
   deps: PrLifecycleDeps,
+  options: CheckPrGatesOptions = {},
 ): Promise<PrLifecycleResult> {
   if (!issue.pr_number) {
     return { pr_number: 0, action: 'gates_failed', detail: 'No PR number on issue' };
@@ -3733,7 +3760,7 @@ export async function processPrLifecycle(
   };
 
   // Step 1: Check gates
-  const gatesResult = await checkPrGates(prNumber, repo, deps);
+  const gatesResult = await checkPrGates(prNumber, repo, deps, options);
   deps.appendLog(sessionDir, {
     timestamp: deps.now().toISOString(),
     event: 'pr_gates_checked',
@@ -4682,6 +4709,7 @@ export interface BulkFetchResult {
   issuesChanged: number;
   fromCache: boolean;
   durationMs: number;
+  prByIssueNumber?: Record<number, NonNullable<BulkIssueState['pr']>>;
 }
 
 export interface ScanLoopResult {
@@ -5287,6 +5315,7 @@ async function fetchAndApplyBulkIssueState(
     issuesChanged: 0,
     fromCache: false,
     durationMs: 0,
+    prByIssueNumber: {},
   };
 
   if (!deps.execGh) return result;
@@ -5312,6 +5341,9 @@ async function fetchAndApplyBulkIssueState(
     const fetchedMap = new Map<number, BulkIssueState>();
     for (const issue of bulkResult.issues) {
       fetchedMap.set(issue.number, issue);
+      if (issue.pr) {
+        result.prByIssueNumber![issue.number] = issue.pr;
+      }
     }
 
     // Apply changes to orchestrator state
@@ -5631,8 +5663,10 @@ export async function runOrchestratorScanPass(
       });
     } else {
     const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
+    const ciWorkflowsConfigured = await hasGithubActionsWorkflows(repo, deps.prLifecycleDeps);
     for (const issue of prIssues) {
       try {
+        const bulkPrData = result.bulkFetch?.prByIssueNumber?.[issue.number] ?? null;
         const lifecycleResult = await processPrLifecycle(
           issue,
           state,
@@ -5640,6 +5674,7 @@ export async function runOrchestratorScanPass(
           sessionDir,
           repo,
           deps.prLifecycleDeps,
+          { bulkPrData, ciWorkflowsConfigured },
         );
         result.prLifecycles.push(lifecycleResult);
         // No SHA tracking needed — state transitions (needs_redispatch, Blocked, merged)

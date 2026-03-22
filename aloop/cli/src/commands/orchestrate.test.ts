@@ -2859,6 +2859,41 @@ describe('checkPrGates', () => {
     assert.equal(result.all_passed, true);
     assert.equal(result.gates[1].status, 'pass');
   });
+
+  it('uses pre-fetched bulk PR data without per-PR view calls', async () => {
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args[0] === 'pr' && args[1] === 'view') {
+          throw new Error('should not call pr view when bulkPrData is provided');
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await checkPrGates(
+      100,
+      'owner/repo',
+      deps,
+      {
+        ciWorkflowsConfigured: true,
+        bulkPrData: {
+          number: 100,
+          state: 'OPEN',
+          merged: false,
+          mergeable: 'MERGEABLE',
+          headSha: 'abc123',
+          checkRuns: [
+            { name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' },
+            { name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' },
+          ],
+        },
+      },
+    );
+
+    assert.equal(result.all_passed, true);
+    assert.equal(result.mergeable, true);
+    assert.equal(result.gates[0].status, 'pass');
+    assert.equal(result.gates[1].status, 'pass');
+  });
 });
 
 describe('reviewPrDiff', () => {
@@ -4848,6 +4883,92 @@ describe('runOrchestratorScanPass', () => {
     const writtenState = JSON.parse(deps.files['/state.json']);
     assert.equal(writtenState.issues[0].state, 'merged');
   });
+
+  it('reuses bulk GraphQL PR data for lifecycle gates', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const prDeps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
+        if (args[0] === 'pr' && args[1] === 'view') {
+          throw new Error('should not call per-PR view for lifecycle gates');
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff content', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const deps = createMockScanDeps({
+      prLifecycleDeps: prDeps,
+      execGh: async (args) => {
+        if (args.includes('rate_limit')) {
+          return { stdout: JSON.stringify({ remaining: 4500, limit: 5000, reset: 1700000000 }), stderr: '' };
+        }
+        if (args[0] === 'api' && args[1] === 'graphql') {
+          return {
+            stdout: JSON.stringify({
+              data: {
+                repository: {
+                  issues: {
+                    nodes: [{
+                      number: 42,
+                      title: 'Issue 42',
+                      state: 'OPEN',
+                      updatedAt: '2026-03-15T11:00:00Z',
+                      labels: { nodes: [] },
+                      assignees: { nodes: [] },
+                      comments: { nodes: [] },
+                      projectItems: { nodes: [] },
+                      timelineItems: {
+                        nodes: [{
+                          source: {
+                            number: 100,
+                            state: 'OPEN',
+                            merged: false,
+                            mergeable: 'MERGEABLE',
+                            headRefOid: 'abc123',
+                            commits: {
+                              nodes: [{
+                                commit: {
+                                  checkSuites: {
+                                    nodes: [{
+                                      checkRuns: {
+                                        nodes: [
+                                          { name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' },
+                                        ],
+                                      },
+                                    }],
+                                  },
+                                },
+                              }],
+                            },
+                          },
+                        }],
+                      },
+                    }],
+                  },
+                },
+              },
+            }),
+            stderr: '',
+          };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 5, deps,
+    );
+
+    assert.equal(result.prLifecycles.length, 1);
+    assert.equal(result.prLifecycles[0].action, 'merged');
   });
 });
 
