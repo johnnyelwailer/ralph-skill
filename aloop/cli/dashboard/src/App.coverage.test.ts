@@ -602,6 +602,12 @@ describe('App.tsx AppView integration coverage', () => {
     render(createElement(App));
     await screen.findByRole('button', { name: /stop/i });
 
+    const steerInput = screen.getByPlaceholderText('Steer...');
+    expect(steerInput).toHaveClass('min-h-[44px]');
+    expect(steerInput).toHaveClass('md:min-h-[32px]');
+    expect(steerInput).toHaveClass('h-auto');
+    expect(steerInput).toHaveClass('md:h-8');
+
     fireEvent.change(screen.getByPlaceholderText('Steer...'), { target: { value: 'Adjust scope' } });
     fireEvent.click(screen.getByRole('button', { name: /send/i }));
     await waitFor(() => {
@@ -680,8 +686,8 @@ describe('App.tsx AppView integration coverage', () => {
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
 
-    fireEvent.click(screen.getByRole('button', { name: /activity/i }));
-    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^activity$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^documents$/i }));
 
     const collapseBtn = container.querySelector('button .lucide-panel-left-close')?.closest('button') as HTMLButtonElement | null;
     expect(collapseBtn).not.toBeNull();
@@ -726,7 +732,7 @@ describe('App.tsx AppView integration coverage', () => {
         'RESEARCH.md': '# RESEARCH',
         'REVIEW_LOG.md': '# REVIEW',
         'STEERING.md': '# STEER',
-        'EXTRA.md': '# EXTRA',
+        'EXTRA.md': '# EXTRA DOC CONTENT',
       },
       repoUrl: 'https://example.com/repo',
     };
@@ -743,7 +749,7 @@ describe('App.tsx AppView integration coverage', () => {
     await screen.findByText('Older');
     fireEvent.click(screen.getByText('Older'));
 
-    const repoLink = container.querySelector('a[href=\"https://example.com/repo\"]');
+    const repoLink = screen.getByRole('link', { name: /open repo on github/i });
     expect(repoLink).not.toBeNull();
 
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
@@ -753,6 +759,14 @@ describe('App.tsx AppView integration coverage', () => {
     await waitFor(() => {
       expect(window.history.replaceState).toHaveBeenCalled();
     });
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /open overflow document tabs/i }));
+    fireEvent.click(await screen.findByText('STEERING'));
+    await screen.findByRole('heading', { name: 'STEER' });
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /open overflow document tabs/i }));
+    fireEvent.click(await screen.findByText('EXTRA'));
+    await screen.findByRole('heading', { name: 'EXTRA DOC CONTENT' });
   });
 
   it('covers Sidebar exhaustive', () => {
@@ -773,11 +787,67 @@ describe('App.tsx AppView integration coverage', () => {
     expect(screen.getByText('p1')).toBeInTheDocument();
     fireEvent.click(screen.getByText('s1'));
     expect(onSelect).toHaveBeenCalled();
-    const toggleBtn = container.querySelector('button .lucide-panel-left-close')?.closest('button');
-    if (toggleBtn) fireEvent.click(toggleBtn);
+    fireEvent.click(screen.getByRole('button', { name: /collapse sidebar/i }));
     expect(onToggle).toHaveBeenCalled();
     fireEvent.click(screen.getByText(/Older/i));
     expect(screen.getByText('s2')).toBeInTheDocument();
+  });
+
+  it('runs session context-menu actions', async () => {
+    Object.defineProperty(globalThis.navigator, 'vibrate', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
+
+    const sessions = [
+      {
+        id: 'sess-long-1',
+        name: 'sess-long-1',
+        projectName: 'proj',
+        status: 'running',
+        phase: 'build',
+        iteration: '1',
+        isActive: true,
+        branch: 'main',
+        startedAt: new Date().toISOString(),
+        endedAt: '',
+        pid: '11',
+        provider: 'codex',
+        workDir: '/tmp/work',
+        stuckCount: 0,
+      },
+    ];
+    const onSelect = vi.fn();
+    const onToggle = vi.fn();
+    const onStopSession = vi.fn();
+    const onCopySessionId = vi.fn();
+
+    render(createElement(TooltipProvider as any, {}, createElement(Sidebar, {
+      sessions: sessions as any[],
+      selectedSessionId: 'sess-long-1',
+      onSelectSession: onSelect,
+      collapsed: false,
+      onToggle: onToggle,
+      sessionCost: 0.25,
+      onStopSession: onStopSession,
+      onCopySessionId: onCopySessionId,
+    })));
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /sess-long-1/i }), { clientX: 50, clientY: 75 });
+    expect(await screen.findByText('Copy session ID')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Stop after iteration'));
+    expect(onSelect).toHaveBeenCalledWith('sess-long-1');
+    expect(onStopSession).toHaveBeenCalledWith('sess-long-1', false);
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /sess-long-1/i }), { clientX: 50, clientY: 75 });
+    fireEvent.click(await screen.findByText('Kill immediately'));
+    expect(onStopSession).toHaveBeenCalledWith('sess-long-1', true);
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /sess-long-1/i }), { clientX: 50, clientY: 75 });
+    fireEvent.click(await screen.findByText('Copy session ID'));
+    expect(onCopySessionId).toHaveBeenCalledWith('sess-long-1');
   });
 
   it('covers ActivityPanel and LogEntryRow exhaustive', async () => {

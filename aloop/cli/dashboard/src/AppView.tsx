@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CostDisplay } from '@/components/progress/CostDisplay';
 import { useCost } from '@/hooks/useCost';
+import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 
 // ── ANSI + Markdown rendering ──
@@ -717,7 +718,7 @@ export function deriveProviderHealth(log: string, configuredProviders?: string[]
 // ── Sidebar ──
 
 export function Sidebar({
-  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost,
+  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost, onStopSession, onCopySessionId,
 }: {
   sessions: SessionSummary[];
   selectedSessionId: string | null;
@@ -725,6 +726,8 @@ export function Sidebar({
   collapsed: boolean;
   onToggle: () => void;
   sessionCost: number;
+  onStopSession?: (id: string | null, force: boolean) => void;
+  onCopySessionId?: (id: string) => void;
 }) {
   // Group by project
   const { projectGroups, olderSessions } = useMemo(() => {
@@ -755,6 +758,9 @@ export function Sidebar({
   const [olderOpen, setOlderOpen] = useState(false);
   const [sessionCosts, setSessionCosts] = useState<Record<string, number | null>>({});
   const [costUnavailable, setCostUnavailable] = useState(false);
+  const [contextMenuSessionId, setContextMenuSessionId] = useState<string | null>(null);
+  const [suppressClickSessionId, setSuppressClickSessionId] = useState<string | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   useEffect(() => {
     let cancelled = false;
@@ -794,14 +800,28 @@ export function Sidebar({
     return () => { cancelled = true; };
   }, [sessions]);
 
+  useEffect(() => {
+    if (!contextMenuSessionId) return;
+    const close = () => setContextMenuSessionId(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close();
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextMenuSessionId]);
+
   if (collapsed) {
     return (
       <aside className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
+              <button type="button" aria-label="Expand sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
+                <PanelLeftOpen className="h-4 w-4" />
+              </button>
           </TooltipTrigger>
           <TooltipContent side="right"><p>Expand sidebar (Ctrl+B)</p></TooltipContent>
         </Tooltip>
@@ -827,50 +847,84 @@ export function Sidebar({
   const displaySessionCost = (s: SessionSummary): number | null =>
     s.isActive ? sessionCost : (sessionCosts[s.id] ?? null);
 
-  const renderCard = (s: SessionSummary) => {
-    const cardCost = displaySessionCost(s);
+  function SessionCard({ session, cardCost }: { session: SessionSummary; cardCost: number | null }) {
+    const selectId = session.id === 'current' ? null : session.id;
+    const openMenu = (x: number, y: number) => {
+      setSuppressClickSessionId(session.id);
+      setContextMenuPos({ x, y });
+      setContextMenuSessionId(session.id);
+    };
+    const longPressBind = useLongPress({
+      threshold: 500,
+      onLongPress: (event) => {
+        event.preventDefault();
+        const rect = event.currentTarget.getBoundingClientRect();
+        openMenu(rect.left + 24, rect.top + 24);
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+          navigator.vibrate(10);
+        }
+      },
+    });
+
     return (
-      <Tooltip key={s.id}>
+      <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
-            className={`w-full overflow-hidden rounded-md px-2 py-1.5 min-h-[44px] md:min-h-0 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
-            onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
+            className={`w-full overflow-hidden rounded-md px-2 py-1.5 min-h-[44px] md:min-h-0 text-left text-xs transition-colors hover:bg-accent ${isSelected(session) ? 'bg-accent' : ''}`}
+            onClick={(event) => {
+              if (suppressClickSessionId === session.id) {
+                event.preventDefault();
+                setSuppressClickSessionId(null);
+                return;
+              }
+              onSelectSession(selectId);
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              openMenu(event.clientX, event.clientY);
+            }}
+            {...longPressBind}
           >
             <div className="flex items-center gap-1.5 overflow-hidden">
-              <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
-              <span className="truncate font-medium flex-1">{s.name}</span>
-              <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
+              <StatusDot status={session.isActive && session.status === 'running' ? 'running' : session.status} />
+              <span className="truncate font-medium flex-1">{session.name}</span>
+              <span className="text-muted-foreground text-[10px] shrink-0">{relativeTime(session.endedAt || session.startedAt)}</span>
             </div>
             <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
-              {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
-              {s.branch && <span className="truncate">{s.branch}</span>}
-              {s.phase && <span className="shrink-0">·</span>}
-              {s.phase && <PhaseBadge phase={s.phase} small />}
-              {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
-              {s.elapsed && s.elapsed !== '--' && <span className="shrink-0">· {s.elapsed}</span>}
+              {session.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
+              {session.branch && <span className="truncate">{session.branch}</span>}
+              {session.phase && <span className="shrink-0">·</span>}
+              {session.phase && <PhaseBadge phase={session.phase} small />}
+              {session.iterations && session.iterations !== '--' && <span className="shrink-0">iter {session.iterations}</span>}
+              {session.elapsed && session.elapsed !== '--' && <span className="shrink-0">· {session.elapsed}</span>}
               {typeof cardCost === 'number' && <span className="shrink-0">· ${cardCost.toFixed(4)}</span>}
             </div>
           </button>
         </TooltipTrigger>
         <TooltipContent side="right" className="max-w-lg">
           <div className="space-y-0.5 text-xs">
-            <p className="font-medium">{s.id}</p>
-            {s.pid && <p>PID: {s.pid}</p>}
-            <p>Status: {s.status}</p>
-            {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
-            <p>Provider: {s.provider}</p>
-            <p>Iterations: {s.iterations}</p>
-            {s.elapsed && s.elapsed !== '--' && <p>Duration: {s.elapsed}</p>}
+            <p className="font-medium">{session.id}</p>
+            {session.pid && <p>PID: {session.pid}</p>}
+            <p>Status: {session.status}</p>
+            {session.stuckCount > 0 && <p className="text-red-500">Stuck: {session.stuckCount}</p>}
+            <p>Provider: {session.provider}</p>
+            <p>Iterations: {session.iterations}</p>
+            {session.elapsed && session.elapsed !== '--' && <p>Duration: {session.elapsed}</p>}
             {costUnavailable && typeof cardCost !== 'number' && <p>Cost: unavailable</p>}
             {typeof cardCost === 'number' && <p>Cost: ${cardCost.toFixed(4)}</p>}
-            {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
-            {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
-            {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
+            {session.startedAt && <p>Started: {new Date(session.startedAt).toLocaleString()}</p>}
+            {session.endedAt && <p>Ended: {new Date(session.endedAt).toLocaleString()}</p>}
+            {session.workDir && <p className="break-all">Dir: {session.workDir}</p>}
           </div>
         </TooltipContent>
       </Tooltip>
     );
+  }
+
+  const renderCard = (s: SessionSummary) => {
+    const cardCost = displaySessionCost(s);
+    return <SessionCard key={s.id} session={s} cardCost={cardCost} />;
   };
 
   return (
@@ -879,7 +933,7 @@ export function Sidebar({
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
+            <button type="button" aria-label="Collapse sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
               <PanelLeftClose className="h-4 w-4" />
             </button>
           </TooltipTrigger>
@@ -917,6 +971,49 @@ export function Sidebar({
           {sessions.length === 0 && <p className="text-xs text-muted-foreground p-2">No sessions.</p>}
         </div>
       </ScrollArea>
+      {contextMenuSessionId && (
+        <div
+          role="menu"
+          className="fixed z-50 min-w-[170px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left hover:bg-accent"
+            onClick={() => {
+              const selectId = contextMenuSessionId === 'current' ? null : contextMenuSessionId;
+              onSelectSession(selectId);
+              onStopSession?.(selectId, false);
+              setContextMenuSessionId(null);
+            }}
+          >
+            <Square className="h-3.5 w-3.5" /> Stop after iteration
+          </button>
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left text-destructive hover:bg-accent"
+            onClick={() => {
+              const selectId = contextMenuSessionId === 'current' ? null : contextMenuSessionId;
+              onSelectSession(selectId);
+              onStopSession?.(selectId, true);
+              setContextMenuSessionId(null);
+            }}
+          >
+            <Zap className="h-3.5 w-3.5" /> Kill immediately
+          </button>
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left hover:bg-accent"
+            onClick={() => {
+              onCopySessionId?.(contextMenuSessionId);
+              setContextMenuSessionId(null);
+            }}
+          >
+            <GitCommit className="h-3.5 w-3.5" /> Copy session ID
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
@@ -1157,9 +1254,17 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
 
   // Always add Health as a special tab
   const defaultTab = allDocs.includes('TODO.md') ? 'TODO.md' : allDocs[0] ?? '_health';
+  const [activeTab, setActiveTab] = useState(defaultTab);
+
+  useEffect(() => {
+    const validTabs = [...allDocs, '_health'];
+    if (!validTabs.includes(activeTab)) {
+      setActiveTab(defaultTab);
+    }
+  }, [activeTab, allDocs, defaultTab]);
 
   return (
-    <Tabs defaultValue={defaultTab} className="flex flex-col h-full">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
       <div className="flex items-center shrink-0">
         <TabsList className="h-auto md:h-8 bg-muted/50 flex-nowrap sm:flex-wrap justify-start flex-1 overflow-x-auto whitespace-nowrap">
           {visibleTabs.map((n) => (
@@ -1171,30 +1276,40 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
             <Heart className="h-3 w-3 mr-1" /> Health
           </TabsTrigger>
           {overflowTabs.length > 0 && (
-            <div className="relative group">
-              <button type="button" className="px-2 py-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 text-[11px] text-muted-foreground hover:text-foreground">
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-              <div className="absolute right-0 top-full z-20 hidden group-hover:block bg-popover border rounded-md shadow-md py-1 min-w-[120px]">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="px-2 py-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 text-[11px] text-muted-foreground hover:text-foreground"
+                  aria-label="Open overflow document tabs"
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[120px] p-1">
                 {overflowTabs.map((n) => (
-                  <TabsTrigger key={n} value={n} className="w-full text-left text-[11px] px-3 py-1.5 hover:bg-accent data-[state=active]:bg-accent">
+                  <DropdownMenuItem
+                    key={n}
+                    onSelect={() => setActiveTab(n)}
+                    className="w-full cursor-pointer text-left text-[11px] px-3 py-1.5"
+                  >
                     {tabLabels[n] ?? n.replace(/\.md$/i, '')}
-                  </TabsTrigger>
+                  </DropdownMenuItem>
                 ))}
-              </div>
-            </div>
-          )}
-          {repoUrl && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <a href={repoUrl} target="_blank" rel="noopener noreferrer" aria-label="Open repo on GitHub" className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 md:w-6 rounded-sm text-muted-foreground hover:text-foreground hover:bg-background transition-colors ml-auto">
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </TooltipTrigger>
-              <TooltipContent><p>Open repo on GitHub</p></TooltipContent>
-            </Tooltip>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </TabsList>
+        {repoUrl && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a href={repoUrl} target="_blank" rel="noopener noreferrer" aria-label="Open repo on GitHub" className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 md:w-6 rounded-sm text-muted-foreground hover:text-foreground hover:bg-background transition-colors ml-1 shrink-0">
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </TooltipTrigger>
+            <TooltipContent><p>Open repo on GitHub</p></TooltipContent>
+          </Tooltip>
+        )}
       </div>
       {allDocs.map((n) => (
         <TabsContent key={n} value={n} className="flex-1 min-h-0 mt-0">
@@ -1302,7 +1417,7 @@ export function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
                     return `cooldown for ${h > 0 ? `${h}h ` : ''}${m}min`;
                   })() : p.status === 'unknown' ? 'no activity' : p.status}
                 </span>
-                <span className="text-muted-foreground/50 text-[10px]">{relativeTime(p.lastEvent)}</span>
+                <span className="text-muted-foreground text-[10px]">{relativeTime(p.lastEvent)}</span>
               </div>
             </TooltipTrigger>
             <TooltipContent>
@@ -1551,7 +1666,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
 
         {/* Duration — right-aligned */}
         {entry.duration && (
-          <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap flex items-center gap-0.5">
+          <span className="text-muted-foreground shrink-0 whitespace-nowrap flex items-center gap-0.5">
             <Timer className="h-3 w-3" />{formatDuration(entry.duration)}
           </span>
         )}
@@ -1667,13 +1782,13 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
           {/* Provider output — rendered inline */}
           {hasOutput && (
             outputLoading ? (
-              <div className="ml-2 text-muted-foreground/50 py-1 flex items-center gap-1 text-[11px]"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
+              <div className="ml-2 text-muted-foreground py-1 flex items-center gap-1 text-[11px]"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
             ) : outputText ? (
               <div ref={outputRef} className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1 overflow-auto max-h-48 sm:max-h-64 lg:max-h-[300px] bg-accent/30 rounded-md p-2">
                 <div className="prose-dashboard text-[10px] font-mono" dangerouslySetInnerHTML={{ __html: renderAnsiToHtml(outputText) }} />
               </div>
             ) : outputText === '' ? (
-              <div className="text-muted-foreground/50 py-1 italic text-[11px] ml-2">No output available</div>
+              <div className="text-muted-foreground py-1 italic text-[11px] ml-2">No output available</div>
             ) : null
           )}
 
@@ -1684,7 +1799,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
                 .filter(([k]) => !['timestamp', 'ts', 'run_id', 'event', 'type'].includes(k))
                 .map(([k, v]) => (
                   <div key={k} className="flex items-baseline gap-2 font-mono">
-                    <span className="text-muted-foreground/50 shrink-0">{k}:</span>
+                    <span className="text-muted-foreground shrink-0">{k}:</span>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className="text-foreground/70 truncate">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
@@ -1974,7 +2089,7 @@ function Footer({
         />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={steerSubmitting || !steerInstruction.trim()} onClick={onSteer}>
+            <Button size="sm" className="h-8 shrink-0 px-2 sm:px-3" aria-label="Send steering instruction" disabled={steerSubmitting || !steerInstruction.trim()} onClick={onSteer}>
               <Send className="h-3.5 w-3.5" /><span className="hidden sm:inline ml-1">{steerSubmitting ? '...' : 'Send'}</span>
             </Button>
           </TooltipTrigger>
@@ -1983,17 +2098,17 @@ function Footer({
         {isRunning ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="destructive" size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={stopSubmitting}>
+              <Button variant="destructive" size="sm" className="h-8 shrink-0 px-2 sm:px-3" aria-label="Stop loop options" disabled={stopSubmitting}>
                 <Square className="h-3 w-3" /><span className="hidden sm:inline ml-1">{stopSubmitting ? '...' : 'Stop'}</span>
                 <ChevronDown className="h-3 w-3 ml-0.5" />
               </Button>
             </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onStop(false)}>
+                <DropdownMenuItem onClick={() => onStop(false)} aria-label="Stop after current iteration (SIGTERM)">
                   <Square className="h-3.5 w-3.5 mr-2" /> Stop after iteration
                   <span className="ml-auto text-[10px] text-muted-foreground">SIGTERM</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onStop(true)}>
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onStop(true)} aria-label="Kill immediately without cleanup (SIGKILL)">
                   <Zap className="h-3.5 w-3.5 mr-2" /> Kill immediately
                   <span className="ml-auto text-[10px] text-muted-foreground">SIGKILL</span>
                 </DropdownMenuItem>
@@ -2022,10 +2137,10 @@ function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 animate-fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 animate-fade-in" onClick={onClose} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } }}>
       <div className="w-full max-w-md rounded-lg border bg-popover shadow-lg" onClick={(e) => e.stopPropagation()}>
         <Command>
-          <CommandInput placeholder="Type a command..." />
+          <CommandInput autoFocus placeholder="Type a command..." />
           <CommandList>
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup heading="Actions">
@@ -2068,6 +2183,7 @@ export function App() {
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileSidebarRef = useRef<HTMLDivElement>(null);
   const [activePanel, setActivePanel] = useState<'docs' | 'activity'>('docs');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [qaCoverageRefreshKey, setQaCoverageRefreshKey] = useState('');
@@ -2082,6 +2198,22 @@ export function App() {
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  // Mobile sidebar: Escape key closes drawer, focus moves into sidebar on open
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    // Focus first focusable element inside sidebar
+    const container = mobileSidebarRef.current;
+    if (container) {
+      const focusable = container.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      focusable?.focus();
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); setMobileMenuOpen(false); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [mobileMenuOpen]);
 
   const selectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
@@ -2270,6 +2402,21 @@ export function App() {
     finally { setStopSubmitting(false); }
   }, [stopSubmitting]);
 
+  const handleStopSession = useCallback((id: string | null, force: boolean) => {
+    selectSession(id);
+    void handleStop(force);
+  }, [handleStop, selectSession]);
+
+  const handleCopySessionId = useCallback(async (id: string) => {
+    try {
+      if (!navigator?.clipboard?.writeText) throw new Error('Clipboard is unavailable in this browser.');
+      await navigator.clipboard.writeText(id);
+      toast.success(`Copied session ID: ${id}`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }, []);
+
   const [resumeSubmitting, setResumeSubmitting] = useState(false);
   const handleResume = useCallback(async () => {
     if (resumeSubmitting) return;
@@ -2311,7 +2458,7 @@ export function App() {
           <span className="flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" className="text-muted-foreground/50 hover:text-foreground transition-colors hidden lg:block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => setActivityCollapsed(true)}>
+              <button type="button" aria-label="Collapse activity panel" className="text-muted-foreground hover:text-foreground transition-colors hidden lg:block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => setActivityCollapsed(true)}>
                 <PanelLeftClose className="h-3.5 w-3.5" />
               </button>
             </TooltipTrigger>
@@ -2331,14 +2478,14 @@ export function App() {
         <div className="flex flex-1 min-h-0">
           {/* Desktop sidebar */}
           <div className="hidden md:flex">
-            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} />
+            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
           </div>
           {/* Mobile sidebar drawer */}
           {mobileMenuOpen && (
             <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
               <div className="absolute inset-0 bg-black/50" />
-              <div className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
-                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} />
+              <div ref={mobileSidebarRef} className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
+                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
               </div>
             </div>
           )}

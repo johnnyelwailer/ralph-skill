@@ -1,35 +1,33 @@
-# TODO — Issue #181: Self-healing
+# Issue #166: Review agent must read PR comment history and only re-review on new commits
 
-## Current Phase: Bug fixes (QA + Review consolidated)
+## Current Phase: Verification
 
 ### In Progress
-
-### Up Next
-
-- [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
+- [x] Add `TASK_SPEC.md` to `.gitignore` — acceptance criterion says sub-spec must be excluded from PR diffs, but it's missing from `.gitignore` (the review template rejects it as an artifact, but gitignore is the proper prevention)
 
 ### Completed
+- [x] Track reviewed commit SHA — `last_reviewed_sha` stored on issue, SHA dedup check skips review when HEAD unchanged, SHA recorded after non-pending verdict, reset on redispatch (orchestrate.ts:4087-5847)
+- [x] Include PR comment history in review prompt — `formatReviewCommentHistory()` formats comments with author/timestamp, fetched via `gh pr view --json comments`, appended with "do not repeat" instruction (process-requests.ts:89-704)
+- [x] Conversation-aware delta verdicts — PROMPT_orch_review.md instructs agent to acknowledge fixes, flag remaining/new issues, use "fixed → remaining → new" summary format
+- [x] Duplicate comment prevention — `last_review_comment` field prevents posting identical review feedback twice (orchestrate.ts:4126-4136)
+- [x] Redispatch on request-changes — `needs_redispatch` flag triggers child loop re-launch with review feedback as steering prompt (orchestrate.ts:5817-5846)
+- [x] TASK_SPEC.md seeded (not SPEC.md) — child loops receive `TASK_SPEC.md` from issue body, project `SPEC.md` preserved (orchestrate.ts:3398-3400)
+- [x] Tests for SHA dedup — skip/proceed/store/no-store scenarios and redispatch SHA reset covered (orchestrate.test.ts)
+- [x] Tests for formatReviewCommentHistory — empty/populated comment formatting (process-requests.test.ts:64+)
+- [x] Tests for TASK_SPEC.md seeding — written/not-written scenarios (orchestrate.test.ts:2662-2677)
 
-- [x] **Fix `deriveFilterRepo` env var fallback** — Removed `&& ghHost` guard so `GITHUB_REPOSITORY` is used unconditionally. Added test with only `GITHUB_REPOSITORY` set (no `GH_HOST`). (priority: high) [qa/P1 + review Gate 1 + review Gate 2]
+### Spec-Gap Analysis (2026-03-22)
 
-- [x] **Implement startup health checks in `session-health.json`** — Added `runStartupHealthChecks` function that runs `gh auth status`, `gh repo view`, and `git status --porcelain` checks. All results (labels + startup checks) now written to `session-health.json`. (priority: high) [qa/P1 + review Gate 1]
+spec-gap analysis: no discrepancies found — spec fully fulfilled
 
-- [x] **Implement `ALERT.md` on critical startup failures** — When `gh auth status` fails (critical check), writes `ALERT.md` with error details and throws with non-zero exit. `gh repo view` failure is non-critical since repo may not be configured yet. (priority: high) [qa/P1 + review Gate 1]
+**Details:** Cross-referenced SPEC.md acceptance criteria against the issue #166 implementation. All P1/P2 requirements are met:
 
----
+- **Orchestrator review** (SPEC.md:2215): `approve`, `request-changes`, `flag-for-human` verdicts — implemented in `PROMPT_orch_review.md` and `process-requests.ts`
+- **Rejected PRs → feedback to child** (SPEC.md:2217): `needs_redispatch` + `review_feedback` → child re-launched with steering — implemented in `orchestrate.ts:5817-5846`
+- **PR feedback loop** (SPEC.md:2375): comment history fetched via `gh pr view --json comments`, formatted by `formatReviewCommentHistory()`, injected into review prompt — implemented in `process-requests.ts:89-704`
+- **Sub-spec seeding** (SPEC.md:1301,1577): child reads sub-spec from issue body seeded as `TASK_SPEC.md` — implemented in `orchestrate.ts:3398-3400`, excluded via `.gitignore`
+- **Config consistency**: `config.yml` providers/models match `loop.sh` and `loop.ps1` defaults; round-robin order consistent across all three files
+- **Template consistency**: all prompt frontmatter `provider:` values reference valid providers; no orphan or missing templates
+- **TODO hygiene**: all items marked `[x]`, none reference removed code or hallucinated features
 
-## Spec-Gap Analysis (2026-03-22)
-
-### Findings
-
-- [ ] **[spec-gap] SPEC.md missing orchestrator startup self-healing behaviors** — The code implements three self-healing features not documented in SPEC.md acceptance criteria: (1) `session-health.json` startup health checks (`gh auth status`, `gh repo view`, `git status --porcelain`) at `orchestrate.ts:1284-1347`, (2) `ALERT.md` creation on critical failures at `orchestrate.ts:1739-1757`, (3) `ensureLabels` label self-healing at `orchestrate.ts:1213-1260`. SPEC.md's orchestrator acceptance criteria (lines 2183-2229) don't mention startup validation or label bootstrapping. **Suggested fix:** Add acceptance criteria to SPEC.md under the orchestrator section covering startup health checks, ALERT.md on critical failure, and label self-healing. (priority: P2 — correctness drift, code ahead of spec)
-
-### No Issues Found
-
-- Config completeness: all 5 providers + round-robin consistent across `config.yml`, `start.ts`, loop scripts
-- Model IDs current (last updated 2026-03-19), `start.ts` DEFAULT_MODELS match `config.yml`
-- Template frontmatter: all loop templates use `provider: claude`; orchestrator templates correctly omit provider (runtime-provided)
-- No orphan templates; all referenced templates exist
-- Provider validation sets consistent across `start.ts` PROVIDER_SET and loop scripts
-- TODO hygiene: all 4 items marked done, no stale or hallucinated items
-- No previously filed `[spec-gap]` items to resolve
+P3 notes (cosmetic, not blocking): SPEC.md could document the `TASK_SPEC.md` filename convention and SHA-based review dedup optimization, but these are implementation details consistent with the spec's intent.

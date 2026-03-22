@@ -80,6 +80,26 @@ export interface ProcessRequestsOptions {
   output?: string;
 }
 
+interface PullRequestCommentRecord {
+  author?: { login?: string | null } | null;
+  createdAt?: string | null;
+  body?: string | null;
+}
+
+export function formatReviewCommentHistory(comments: PullRequestCommentRecord[]): string {
+  if (!Array.isArray(comments) || comments.length === 0) return '';
+  const formatted = comments
+    .filter((comment) => Boolean(comment?.body?.trim()))
+    .map((comment) => {
+      const author = comment.author?.login?.trim() || 'unknown';
+      const createdAtRaw = comment.createdAt?.trim();
+      const createdAt = createdAtRaw ? ` at ${createdAtRaw}` : '';
+      return `### @${author}${createdAt}\n\n${comment.body?.trim() ?? ''}`;
+    })
+    .join('\n\n---\n\n');
+  return formatted ? `${formatted}\n` : '';
+}
+
 /**
  * One-shot command called by loop.sh between iterations for orchestrator sessions.
  *
@@ -671,9 +691,14 @@ ${recent.slice(-4000)}
             let commentHistory = '';
             if (repo) {
               try {
-                const commentsResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'comments', '--jq', '.comments[].body'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+                const commentsResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'comments'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
                 if (commentsResult.status === 0 && commentsResult.stdout?.trim()) {
-                  commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${commentsResult.stdout.trim()}\n`;
+                  const parsedComments = JSON.parse(commentsResult.stdout);
+                  const comments = Array.isArray(parsedComments?.comments) ? parsedComments.comments : [];
+                  const formattedHistory = formatReviewCommentHistory(comments);
+                  if (formattedHistory) {
+                    commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${formattedHistory}`;
+                  }
                 }
               } catch { /* ignore */ }
             }

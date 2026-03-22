@@ -4747,6 +4747,47 @@ describe('runOrchestratorScanPass', () => {
 
     assert.equal(result.childMonitoring, null);
   });
+
+  it('clears last_reviewed_sha when child is redispatched for review fixes', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 12,
+          wave: 1,
+          pr_number: 77,
+          state: 'pr_open',
+          child_session: 'old-child-session',
+          needs_redispatch: true,
+          review_feedback: 'Please add missing tests.',
+          last_reviewed_sha: 'sha-before-redispatch',
+        }),
+      ],
+    });
+    const deps = createMockScanDeps({
+      aloopRoot: '/home/.aloop',
+      dispatchDeps: createMockDispatchDeps(),
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].needs_redispatch, false);
+    assert.equal(writtenState.issues[0].review_feedback, undefined);
+    assert.equal(writtenState.issues[0].last_reviewed_sha, undefined);
+    assert.equal(writtenState.issues[0].state, 'in_progress');
+    assert.notEqual(writtenState.issues[0].child_session, 'old-child-session');
+    assert.ok(deps.logEntries.some((entry) => entry.event === 'child_redispatched_for_review'));
+
+    const reviewPromptPath = Object.keys(deps.files).find((p) => p.endsWith('/queue/000-review-fixes.md'));
+    assert.ok(reviewPromptPath, 'review feedback queue prompt should be written');
+    const reviewPrompt = deps.files[reviewPromptPath!];
+    assert.ok(reviewPrompt.includes('PR #77'));
+    assert.ok(reviewPrompt.includes('Please add missing tests.'));
+  });
 });
 
 describe('runOrchestratorScanLoop', () => {
@@ -6584,5 +6625,293 @@ describe('orchestrateCommandWithDeps health checks', () => {
     const health: StartupHealth = JSON.parse(mockDeps._writtenFiles[healthPath!]);
     assert.equal(health.labels, null);
     assert.equal(health.checks.length, 3);
+  });
+});
+
+// --- SHA dedup mechanism tests ---
+
+describe('processPrLifecycle SHA dedup', () => {
+  function allGatesPassExecGh(headSha: string) {
+    return async (args: string[]) => {
+      if (args.includes('mergeable,mergeStateStatus')) {
+        return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+      }
+      if (args.includes('statusCheckRollup')) {
+        return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
+      }
+      if (args.includes('headRefOid')) {
+        return { stdout: JSON.stringify({ headRefOid: headSha }), stderr: '' };
+      }
+      if (args.includes('diff')) {
+        return { stdout: 'diff content', stderr: '' };
+      }
+      return { stdout: '', stderr: '' };
+    };
+  }
+
+  it('skips review when last_reviewed_sha matches HEAD (returns review_pending)', async () => {
+    const sha = 'abc123def456';
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    (state.issues[0] as any).last_reviewed_sha = sha;
+    let reviewCalled = false;
+    const deps = createMockPrDeps({
+      execGh: allGatesPassExecGh(sha),
+      invokeAgentReview: async () => {
+        reviewCalled = true;
+        return { pr_number: 100, verdict: 'approve' as const, summary: 'LGTM' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(result.action, 'review_pending');
+    assert.ok(result.detail.includes('unchanged since last review'));
+    assert.equal(reviewCalled, false, 'invokeAgentReview should NOT be called when SHA matches');
+    assert.ok(deps.logs.some((l) => l.event === 'pr_review_skipped_sha_dedup'));
+  });
+
+  it('proceeds to review when last_reviewed_sha differs from HEAD', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    (state.issues[0] as any).last_reviewed_sha = 'old_sha_111';
+    let reviewCalled = false;
+    const deps = createMockPrDeps({
+      execGh: allGatesPassExecGh('new_sha_222'),
+      invokeAgentReview: async (prNum) => {
+        reviewCalled = true;
+        return { pr_number: prNum, verdict: 'approve' as const, summary: 'LGTM' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(reviewCalled, true, 'invokeAgentReview should be called when SHA differs');
+    assert.equal(result.action, 'merged');
+  });
+
+  it('proceeds to review when last_reviewed_sha is undefined', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    // No last_reviewed_sha set
+    let reviewCalled = false;
+    const deps = createMockPrDeps({
+      execGh: allGatesPassExecGh('any_sha_333'),
+      invokeAgentReview: async (prNum) => {
+        reviewCalled = true;
+        return { pr_number: prNum, verdict: 'approve' as const, summary: 'LGTM' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(reviewCalled, true, 'invokeAgentReview should be called when last_reviewed_sha is undefined');
+    assert.equal(result.action, 'merged');
+  });
+
+  it('proceeds to review when HEAD fetch fails', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    (state.issues[0] as any).last_reviewed_sha = 'some_sha';
+    let reviewCalled = false;
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
+        }
+        if (args.includes('headRefOid')) {
+          throw new Error('API rate limited');
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff content', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+      invokeAgentReview: async (prNum) => {
+        reviewCalled = true;
+        return { pr_number: prNum, verdict: 'approve' as const, summary: 'LGTM' };
+      },
+    });
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+    assert.equal(reviewCalled, true, 'invokeAgentReview should be called when HEAD fetch fails');
+    assert.equal(result.action, 'merged');
+  });
+});
+
+describe('runOrchestratorScanPass SHA storage', () => {
+  it('stores last_reviewed_sha on non-pending verdict (merged)', async () => {
+    const headSha = 'abc123merged';
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const deps = createMockScanDeps({
+      execGh: async (args) => {
+        if (args.includes('headRefOid')) {
+          return { stdout: JSON.stringify({ headRefOid: headSha }), stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff content', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.prLifecycleDeps = createMockPrDeps({
+      execGh: deps.execGh!,
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].last_reviewed_sha, headSha);
+  });
+
+  it('stores last_reviewed_sha on rejected verdict', async () => {
+    const headSha = 'abc123rejected';
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const deps = createMockScanDeps({
+      execGh: async (args) => {
+        if (args.includes('headRefOid')) {
+          return { stdout: JSON.stringify({ headRefOid: headSha }), stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff content', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.prLifecycleDeps = createMockPrDeps({
+      execGh: deps.execGh!,
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'request-changes' as const,
+        summary: 'Missing tests',
+      }),
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].last_reviewed_sha, headSha);
+  });
+
+  it('does NOT store last_reviewed_sha on gates_failed without review verdict', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const deps = createMockScanDeps({
+      execGh: async (args) => {
+        if (args.includes('headRefOid')) {
+          return { stdout: JSON.stringify({ headRefOid: 'should_not_be_stored' }), stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return {
+            stdout: JSON.stringify({
+              statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'FAILURE' }],
+            }),
+            stderr: '',
+          };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.prLifecycleDeps = createMockPrDeps({
+      execGh: deps.execGh!,
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].last_reviewed_sha, undefined);
+  });
+
+  it('does NOT store last_reviewed_sha on review_pending verdict', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const deps = createMockScanDeps({
+      execGh: async (args) => {
+        if (args.includes('headRefOid')) {
+          return { stdout: JSON.stringify({ headRefOid: 'should_not_be_stored' }), stderr: '' };
+        }
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff content', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.prLifecycleDeps = createMockPrDeps({
+      execGh: deps.execGh!,
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'pending' as const,
+        summary: 'Review queued',
+      }),
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].last_reviewed_sha, undefined);
+  });
+
+  it('does NOT store last_reviewed_sha on gates_pending verdict', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const deps = createMockScanDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'IN_PROGRESS', conclusion: '' }] }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.prLifecycleDeps = createMockPrDeps({
+      execGh: deps.execGh!,
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].last_reviewed_sha, undefined);
   });
 });
