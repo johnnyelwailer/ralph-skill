@@ -415,6 +415,54 @@ test_lock_failure_graceful_degradation() {
     fi
 }
 
+test_cross_session_success_resets_cooldown() {
+    setup
+    local ok=true
+    local provider="crosssession"
+
+    # Session A: trigger cooldown on shared provider health file.
+    (
+        update_provider_health_on_failure "$provider" "connection timeout from session-a"
+        update_provider_health_on_failure "$provider" "connection timeout from session-a"
+    )
+
+    get_provider_health_state "$provider"
+    if [ "$HEALTH_STATUS" != "cooldown" ]; then
+        echo "  FAIL: session A should place provider into cooldown before reset"
+        ok=false
+    fi
+    if [ -z "$HEALTH_COOLDOWN_UNTIL" ]; then
+        echo "  FAIL: cooldown_until should be set by session A failures"
+        ok=false
+    fi
+
+    # Session B: success should reset shared provider state to healthy.
+    (
+        update_provider_health_on_success "$provider"
+    )
+
+    assert_health_field "$provider" "status" "healthy" "status reset by session B success" || ok=false
+    assert_health_field "$provider" "consecutive_failures" "0" "failures reset by session B success" || ok=false
+
+    get_provider_health_state "$provider"
+    if [ -n "$HEALTH_COOLDOWN_UNTIL" ]; then
+        echo "  FAIL: cooldown_until should be cleared after session B success"
+        ok=false
+    fi
+    if ! contains_log "provider_recovered|provider=${provider}|previous_status=cooldown"; then
+        echo "  FAIL: expected provider_recovered log entry showing cooldown reset"
+        ok=false
+    fi
+
+    teardown
+    if $ok; then
+        echo "PASS: cross-session success resets cooldown"
+    else
+        echo "FAIL: cross-session success resets cooldown"
+        failed=1
+    fi
+}
+
 # --- Run tests ---
 
 echo "=== Provider Health Integration Tests ==="
@@ -425,6 +473,7 @@ test_health_file_is_valid_json
 test_success_preserves_last_failure_info
 test_concurrent_write_safety
 test_lock_failure_graceful_degradation
+test_cross_session_success_resets_cooldown
 
 if [ $failed -eq 0 ]; then
     echo "All integration tests passed!"
