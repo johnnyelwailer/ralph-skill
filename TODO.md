@@ -8,9 +8,10 @@
   `CostDisplay.tsx:35-41` returns "Cost data unavailable" when `error === 'opencode_unavailable'`, hiding all dollar amounts. Fix: add `sessionCost` prop to `CostDisplayProps`; when `opencode_unavailable` AND `sessionCost > 0`, display `$X.XX` (session spend) with the progress bar using session cost against budget cap as fallback. When sessionCost is also 0, keep current "Cost data unavailable" text. Update AppView.tsx to pass `sessionCost` to the component.
   Consolidates: review finding #1, QA P1 #1 ("Per-session cost not displayed when opencode unavailable"), QA P1 #3 ("Cost progress bar never renders" — progress bar should render using sessionCost when aggregate unavailable).
 
-- [x] **Sidebar: show current session's log-based cost** (priority: high)
+- [ ] [qa/P1] **Sidebar: show current session's log-based cost** (priority: high)
   `AppView.tsx:701` filters out `id === 'current'` from the `/api/cost/session/:id` fetch, so the current session never gets a cost value in the sidebar. Fix: for the current session card, use the `sessionCost` value from `useCost` (already available in AppView scope) instead of the API-fetched `sessionCosts` record. Pass `sessionCost` into the sidebar component or merge it into the `sessionCosts` state for the current session entry.
   Consolidates: review finding #2, QA P1 #2 ("No per-session cost or duration in sidebar session cards/tooltips").
+  QA re-test at 444992c: cost IS shown in header toolbar (`$0.0432 session`) but sidebar card tooltips still show only PID/Status/Provider/Iterations/Started/Dir — no cost or duration. Still failing.
 
 ### Up Next
 
