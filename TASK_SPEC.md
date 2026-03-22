@@ -1,46 +1,54 @@
-# Sub-Spec: Issue #114 — Responsive layout: touch targets, tap equivalents & accessibility audit
+# Sub-Spec: Issue #181 — Self-healing: auto-create missing labels and derive missing config
+
+Part of #26: Epic: Orchestrator Core — Autonomous Lifecycle & Request Processing
 
 ## Objective
 
-Ensure all interactive elements meet mobile accessibility requirements: minimum tap target sizes, tap equivalents for hover interactions, long-press context menus, and Lighthouse mobile accessibility score >= 90.
+Implement self-healing behaviors so the orchestrator recovers from common configuration issues without human intervention.
 
 ## Context
 
-WCAG 2.5.8 requires minimum 44x44px tap targets. The current dashboard uses hover-cards, tooltips, and small icon buttons that need tap equivalents. See SPEC-ADDENDUM.md § Touch Considerations.
+The orchestrator expects certain GitHub labels (e.g., `aloop/auto`, `aloop/epic`, `aloop/sub-issue`, `aloop/needs-refine`) and config values (repo, trunk branch, project number) to exist. When they're missing, operations silently fail or produce confusing errors.
 
-## Scope
+## Deliverables
 
-### Tap targets
-- Audit all buttons, links, and interactive elements — ensure minimum 44x44px on mobile
-- Apply `min-h-[44px] min-w-[44px]` on mobile breakpoint where needed
-- Session cards, log entries, tab triggers, dropdown items must all meet the target
+### Label self-healing
+- At orchestrator startup (in `orchestrateCommandWithDeps`), check if required labels exist:
+  - `aloop/auto`, `aloop/epic`, `aloop/sub-issue`, `aloop/needs-refine`, `aloop/needs-review`, `aloop/in-progress`, `aloop/done`
+- If any are missing, create them via `gh label create` with appropriate colors
+- Run this check once at startup and cache the result in session state
+- If label creation fails (permissions), log warning but don't block orchestration
 
-### Hover → Tap equivalents
-- All `HoverCard` components must also work on tap/click (HoverCard already supports this via Radix, verify)
-- All `Tooltip` components must have tap-to-show behavior on mobile
-- No interaction should be hover-only — verify every hover interaction has a touch alternative
+### Config derivation from meta.json
+- If `state.filter_repo` is null but meta.json has `repo` or `project_root`, derive repo from `gh repo view --json nameWithOwner`
+- If `state.trunk_branch` is default but repo has a different default branch, detect and use it
+- If `gh_project_number` is not set, attempt dynamic discovery (already partially implemented — verify it works)
 
-### Long-press context menu
-- Long-press (500ms) on session card opens context menu (stop, force-stop, copy session ID)
-- Implement via `onTouchStart`/`onTouchEnd` timer with haptic feedback if available
+### Missing config recovery
+- If `meta.json` is missing critical fields, attempt to reconstruct from:
+  - Git remote URL → repo slug
+  - `orchestrator.json` state → spec file, trunk branch
+  - Environment variables → `GH_HOST`, `GITHUB_REPOSITORY`
+- Log all derivations so the user can verify correctness
 
-### Lighthouse audit
-- Run Lighthouse mobile accessibility audit
-- Target score >= 90
-- Fix any flagged issues (color contrast, ARIA labels, focus management)
+### Startup health check
+- Before entering scan loop, run a quick health check:
+  - `gh auth status` → verify authenticated
+  - `gh repo view` → verify repo access
+  - `git status` → verify clean worktree
+  - Write results to `session-health.json`
+- If critical checks fail, write `ALERT.md` and exit with clear error
 
 ## Acceptance Criteria
 
-- [ ] All tap targets at least 44x44px on mobile viewports
-- [ ] No hover-only interactions — all have tap/click equivalents
-- [ ] Long-press on session card opens context menu
-- [ ] Lighthouse mobile accessibility score >= 90
-- [ ] Focus management works correctly on mobile (no focus traps, logical tab order)
+- [ ] Missing labels auto-created at startup
+- [ ] Missing repo config derived from git remote / meta.json
+- [ ] Missing trunk branch derived from repo default branch
+- [ ] Startup health check verifies gh auth, repo access, git state
+- [ ] `session-health.json` written with check results
+- [ ] All derivations logged for transparency
+- [ ] Graceful degradation: missing optional config doesn't block operation
 
-## Files
-- `aloop/cli/dashboard/src/AppView.tsx` — tap target sizing, long-press handler
-- Various component files with HoverCard/Tooltip usage
-- CSS/Tailwind adjustments for mobile sizing
-
-## Labels
-`aloop/sub-issue`, `aloop/needs-refine`
+## File Scope
+- `aloop/cli/src/commands/orchestrate.ts` (modify — startup sequence)
+- `aloop/cli/src/commands/orchestrate.test.ts` (add tests)

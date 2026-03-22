@@ -19,6 +19,7 @@ export interface OrchestrateCommandOptions {
   spec?: string;
   concurrency?: string;
   trunk?: string;
+  trunkProvided?: boolean;
   issues?: string;
   label?: string;
   repo?: string;
@@ -202,12 +203,31 @@ export interface OrchestrateDeps {
   now: () => Date;
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  spawnSync?: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
 }
 
 export interface SpawnSyncResult {
   status: number | null;
   stdout: string;
   stderr: string;
+}
+
+function toSpawnSyncResult(result: { status: number | null; stdout?: unknown; stderr?: unknown }): SpawnSyncResult {
+  const stdout = typeof result.stdout === 'string'
+    ? result.stdout
+    : Buffer.isBuffer(result.stdout)
+      ? result.stdout.toString('utf8')
+      : '';
+  const stderr = typeof result.stderr === 'string'
+    ? result.stderr
+    : Buffer.isBuffer(result.stderr)
+      ? result.stderr.toString('utf8')
+      : '';
+  return {
+    status: result.status,
+    stdout,
+    stderr,
+  };
 }
 
 export interface ChildProcess {
@@ -349,6 +369,189 @@ function parseRepoSlug(repo: string): { owner: string; name: string } | null {
   const [owner, name, ...rest] = repo.split('/');
   if (!owner || !name || rest.length > 0) return null;
   return { owner, name };
+}
+
+function parseRepoFromRemoteUrl(remoteUrl: string): string | null {
+  const trimmed = remoteUrl.trim();
+  if (!trimmed) return null;
+
+  const scpMatch = trimmed.match(/^[^@\s]+@[^:\s]+:([^/\s]+)\/([^/\s]+?)(?:\.git)?$/);
+  if (scpMatch) {
+    return `${scpMatch[1]}/${scpMatch[2]}`;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const parts = parsed.pathname.replace(/^\/+/, '').replace(/\.git$/, '').split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0]}/${parts[1]}`;
+    }
+  } catch {
+    // Not a URL; fall through.
+  }
+
+  return null;
+}
+
+async function runGhWithFallback(
+  args: string[],
+  projectRoot: string,
+  deps: OrchestrateDeps,
+  failureContext: string,
+): Promise<{ stdout: string; stderr: string } | null> {
+  if (deps.execGh) {
+    try {
+      return await deps.execGh(args);
+    } catch (error) {
+      console.warn(`[orchestrate] ${failureContext} via gh ${args.join(' ')} failed: ${error}`);
+      return null;
+    }
+  }
+
+  try {
+    const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+    const runner = deps.spawnSync ?? ((command: string, runArgs: string[], options?: Record<string, unknown>) =>
+      toSpawnSyncResult(nodeSpawnSync(command, runArgs, options as any)));
+    const result = runner('gh', args, { encoding: 'utf8', cwd: projectRoot });
+    if (result.status !== 0) {
+      console.warn(`[orchestrate] ${failureContext} via gh ${args.join(' ')} failed: ${result.stderr?.substring(0, 200)}`);
+      return null;
+    }
+    return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+  } catch (error) {
+    console.warn(`[orchestrate] ${failureContext} via gh ${args.join(' ')} failed: ${error}`);
+    return null;
+  }
+}
+
+async function deriveFilterRepo(
+  filterRepo: string | null,
+  projectRoot: string,
+  deps: OrchestrateDeps,
+): Promise<string | null> {
+  if (filterRepo) return filterRepo;
+
+  const envRepo = process.env.GITHUB_REPOSITORY?.trim() || null;
+  const ghHost = process.env.GH_HOST?.trim() || null;
+  const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
+  const ghRepoView = await runGhWithFallback(
+    ['repo', 'view', '--json', 'nameWithOwner', ...ghHostArgs],
+    projectRoot,
+    deps,
+    'filter_repo derive',
+  );
+  if (ghRepoView) {
+    try {
+      const parsed = JSON.parse(ghRepoView.stdout);
+      const value = typeof parsed?.nameWithOwner === 'string' ? parsed.nameWithOwner.trim() : '';
+      if (parseRepoSlug(value)) {
+        console.log(`[orchestrate] Derived filter_repo from gh repo view: ${value}`);
+        return value;
+      }
+    } catch (error) {
+      console.warn(`[orchestrate] filter_repo derive: invalid gh repo view JSON: ${error}`);
+    }
+  }
+
+  const runGitRemote = async (cwd: string): Promise<string | null> => {
+    try {
+      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+      const runner = deps.spawnSync ?? ((command: string, args: string[], options?: Record<string, unknown>) =>
+        toSpawnSyncResult(nodeSpawnSync(command, args, options as any)));
+      const remoteResult = runner('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8', cwd });
+      if (remoteResult.status !== 0) {
+        return null;
+      }
+      return parseRepoFromRemoteUrl(remoteResult.stdout ?? '');
+    } catch {
+      return null;
+    }
+  };
+
+  const remoteRepo = await runGitRemote(projectRoot);
+  if (remoteRepo && parseRepoSlug(remoteRepo)) {
+    console.log(`[orchestrate] Derived filter_repo from git remote origin: ${remoteRepo}`);
+    return remoteRepo;
+  }
+
+  const metaCandidates = [
+    path.join(projectRoot, 'meta.json'),
+    path.join(path.dirname(projectRoot), 'meta.json'),
+  ];
+  for (const metaPath of metaCandidates) {
+    if (!deps.existsSync(metaPath)) continue;
+    try {
+      const metaRaw = await deps.readFile(metaPath, 'utf8');
+      const meta = JSON.parse(metaRaw) as { repo?: unknown; project_root?: unknown };
+      if (typeof meta.repo === 'string' && parseRepoSlug(meta.repo.trim())) {
+        const repoFromMeta = meta.repo.trim();
+        console.log(`[orchestrate] Derived filter_repo from ${metaPath} repo field: ${repoFromMeta}`);
+        return repoFromMeta;
+      }
+      if (typeof meta.project_root === 'string' && meta.project_root.trim()) {
+        const fromProjectRoot = await runGitRemote(meta.project_root.trim());
+        if (fromProjectRoot && parseRepoSlug(fromProjectRoot)) {
+          console.log(`[orchestrate] Derived filter_repo from ${metaPath} project_root git remote: ${fromProjectRoot}`);
+          return fromProjectRoot;
+        }
+      }
+    } catch (error) {
+      console.warn(`[orchestrate] filter_repo derive: failed reading ${metaPath}: ${error}`);
+    }
+  }
+
+  if (envRepo && parseRepoSlug(envRepo)) {
+    console.log(`[orchestrate] Derived filter_repo from GITHUB_REPOSITORY: ${envRepo}`);
+    if (ghHost) {
+      console.log(`[orchestrate] GH_HOST detected during filter_repo derivation: ${ghHost}`);
+    }
+    return envRepo;
+  }
+
+  if (ghHost) {
+    console.log(`[orchestrate] GH_HOST set to ${ghHost}, but filter_repo could not be derived`);
+  }
+  return null;
+}
+
+async function deriveTrunkBranch(
+  trunkBranch: string,
+  trunkProvided: boolean,
+  filterRepo: string | null,
+  projectRoot: string,
+  deps: OrchestrateDeps,
+): Promise<string> {
+  if (trunkBranch !== 'agent/trunk' || trunkProvided) {
+    return trunkBranch;
+  }
+
+  const ghHost = process.env.GH_HOST?.trim() || null;
+  const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
+  const repoArgs = filterRepo ? ['--repo', filterRepo] : [];
+  const ghRepoView = await runGhWithFallback(
+    ['repo', 'view', '--json', 'defaultBranchRef', ...repoArgs, ...ghHostArgs],
+    projectRoot,
+    deps,
+    'trunk_branch derive',
+  );
+  if (!ghRepoView) {
+    return trunkBranch;
+  }
+
+  try {
+    const parsed = JSON.parse(ghRepoView.stdout);
+    const derivedBranch = typeof parsed?.defaultBranchRef?.name === 'string'
+      ? parsed.defaultBranchRef.name.trim()
+      : '';
+    if (derivedBranch) {
+      console.log(`[orchestrate] Derived trunk_branch from gh repo default branch: ${derivedBranch}`);
+      return derivedBranch;
+    }
+  } catch (error) {
+    console.warn(`[orchestrate] trunk_branch derive: invalid gh repo view JSON: ${error}`);
+  }
+
+  return trunkBranch;
 }
 
 async function resolveIssueProjectStatusContext(
@@ -979,6 +1182,170 @@ Run one lightweight monitoring pass:
 `;
 }
 
+// --- Label self-healing ---
+
+export interface RequiredLabel {
+  name: string;
+  color: string;
+  description: string;
+}
+
+export const REQUIRED_LABELS: RequiredLabel[] = [
+  { name: 'aloop/auto', color: '6f42c1', description: 'Managed by aloop orchestrator' },
+  { name: 'aloop/epic', color: '0075ca', description: 'Epic issue tracked by aloop' },
+  { name: 'aloop/sub-issue', color: '0e8a16', description: 'Sub-issue of an aloop epic' },
+  { name: 'aloop/needs-refine', color: 'fbca04', description: 'Needs refinement before work begins' },
+  { name: 'aloop/needs-review', color: 'e4e669', description: 'PR ready for review' },
+  { name: 'aloop/in-progress', color: '1d76db', description: 'Work in progress' },
+  { name: 'aloop/done', color: '0e8a16', description: 'Completed' },
+];
+
+export interface EnsureLabelsResult {
+  created: string[];
+  already_existed: string[];
+  failed: string[];
+}
+
+export interface EnsureLabelsDeps {
+  spawnSync: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
+}
+
+export function ensureLabels(
+  repo: string,
+  deps: EnsureLabelsDeps,
+): EnsureLabelsResult {
+  const result: EnsureLabelsResult = { created: [], already_existed: [], failed: [] };
+
+  // Fetch existing labels
+  let existingNames: Set<string>;
+  try {
+    const listResult = deps.spawnSync(
+      'gh',
+      ['label', 'list', '--repo', repo, '--limit', '200', '--json', 'name'],
+      { encoding: 'utf8' },
+    );
+    if (listResult.status !== 0) {
+      console.warn(`[orchestrate] Failed to list labels: ${listResult.stderr?.substring(0, 200)}`);
+      // Can't determine existing labels — mark all as failed and return
+      for (const label of REQUIRED_LABELS) result.failed.push(label.name);
+      return result;
+    }
+    const labels = JSON.parse(listResult.stdout ?? '[]') as Array<{ name: string }>;
+    existingNames = new Set(labels.map((l) => l.name));
+  } catch (e) {
+    console.warn(`[orchestrate] Failed to parse label list: ${e}`);
+    for (const label of REQUIRED_LABELS) result.failed.push(label.name);
+    return result;
+  }
+
+  for (const label of REQUIRED_LABELS) {
+    if (existingNames.has(label.name)) {
+      result.already_existed.push(label.name);
+      continue;
+    }
+    try {
+      const createResult = deps.spawnSync(
+        'gh',
+        ['label', 'create', label.name, '--repo', repo, '--color', label.color, '--description', label.description],
+        { encoding: 'utf8' },
+      );
+      if (createResult.status === 0) {
+        result.created.push(label.name);
+        console.log(`[orchestrate] Created label: ${label.name}`);
+      } else {
+        result.failed.push(label.name);
+        console.warn(`[orchestrate] Failed to create label ${label.name}: ${createResult.stderr?.substring(0, 200)}`);
+      }
+    } catch (e) {
+      result.failed.push(label.name);
+      console.warn(`[orchestrate] Failed to create label ${label.name}: ${e}`);
+    }
+  }
+
+  if (result.created.length > 0) {
+    console.log(`[orchestrate] Label self-healing: created ${result.created.length}, existed ${result.already_existed.length}, failed ${result.failed.length}`);
+  }
+
+  return result;
+}
+
+export interface HealthCheckResult {
+  check: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface StartupHealth {
+  labels: EnsureLabelsResult | null;
+  checks: HealthCheckResult[];
+  checked_at: string;
+}
+
+export async function runStartupHealthChecks(
+  projectRoot: string,
+  deps: OrchestrateDeps,
+): Promise<HealthCheckResult[]> {
+  const results: HealthCheckResult[] = [];
+
+  const runSpawn = async (
+    command: string,
+    args: string[],
+    label: string,
+  ): Promise<{ ok: boolean; stdout: string; stderr: string }> => {
+    if (deps.spawnSync) {
+      const r = deps.spawnSync(command, args, { encoding: 'utf8', cwd: projectRoot });
+      return { ok: r.status === 0, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    }
+    try {
+      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+      const r = toSpawnSyncResult(nodeSpawnSync(command, args, { encoding: 'utf8', cwd: projectRoot } as any));
+      return { ok: r.status === 0, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    } catch (error) {
+      return { ok: false, stdout: '', stderr: String(error) };
+    }
+  };
+
+  // 1. gh auth status
+  const auth = await runSpawn('gh', ['auth', 'status'], 'gh_auth');
+  results.push({
+    check: 'gh_auth',
+    ok: auth.ok,
+    detail: auth.ok
+      ? (auth.stdout || auth.stderr).substring(0, 500).trim()
+      : `gh auth status failed: ${(auth.stderr || auth.stdout).substring(0, 500).trim()}`,
+  });
+
+  // 2. gh repo view
+  const ghHost = process.env.GH_HOST?.trim() || null;
+  const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
+  const repoView = await runSpawn('gh', ['repo', 'view', '--json', 'nameWithOwner', ...ghHostArgs], 'gh_repo');
+  results.push({
+    check: 'gh_repo',
+    ok: repoView.ok,
+    detail: repoView.ok
+      ? repoView.stdout.substring(0, 500).trim()
+      : `gh repo view failed: ${(repoView.stderr || repoView.stdout).substring(0, 500).trim()}`,
+  });
+
+  // 3. git status
+  const gitSt = await runSpawn('git', ['status', '--porcelain'], 'git_status');
+  const isClean = gitSt.ok && gitSt.stdout.trim() === '';
+  results.push({
+    check: 'git_status',
+    ok: gitSt.ok,
+    detail: gitSt.ok
+      ? (isClean ? 'clean worktree' : `dirty worktree: ${gitSt.stdout.substring(0, 500).trim()}`)
+      : `git status failed: ${(gitSt.stderr || gitSt.stdout).substring(0, 500).trim()}`,
+  });
+
+  for (const r of results) {
+    const icon = r.ok ? '✓' : '✗';
+    console.log(`[orchestrate] Health check ${icon} ${r.check}: ${r.detail.substring(0, 120)}`);
+  }
+
+  return results;
+}
+
 export async function orchestrateCommandWithDeps(
   options: OrchestrateCommandOptions = {},
   deps: OrchestrateDeps = defaultDeps,
@@ -996,11 +1363,12 @@ export async function orchestrateCommandWithDeps(
   }
   // Primary spec file for backward compatibility (first resolved file)
   const specFile = path.relative(projectRoot, existingSpecFiles[0]) || existingSpecFiles[0];
-  const trunkBranch = options.trunk ?? 'agent/trunk';
+  const trunkProvided = options.trunkProvided ?? false;
+  let trunkBranch = options.trunk ?? 'agent/trunk';
   const concurrencyCap = parseConcurrency(options.concurrency);
   const filterIssues = parseIssueNumbers(options.issues);
   const filterLabel = options.label ?? null;
-  const filterRepo = options.repo ?? null;
+  let filterRepo = options.repo ?? null;
   const planOnly = options.planOnly ?? false;
   const budgetCap = parseBudget(options.budget);
   const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
@@ -1021,6 +1389,22 @@ export async function orchestrateCommandWithDeps(
   await deps.mkdir(promptsDir, { recursive: true });
   await deps.mkdir(queueDir, { recursive: true });
   await deps.mkdir(requestsDir, { recursive: true });
+
+  filterRepo = await deriveFilterRepo(filterRepo, projectRoot, deps);
+  trunkBranch = await deriveTrunkBranch(trunkBranch, trunkProvided, filterRepo, projectRoot, deps);
+
+  // Label self-healing: ensure required labels exist before preloading issues
+  let labelsResult: EnsureLabelsResult | null = null;
+  if (filterRepo) {
+    try {
+      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+      labelsResult = ensureLabels(filterRepo, {
+        spawnSync: (command, args, options) => toSpawnSyncResult(nodeSpawnSync(command, args, options as any)),
+      });
+    } catch (e) {
+      console.warn(`[orchestrate] Label self-healing failed: ${e}`);
+    }
+  }
 
   const loopPlan: LoopPlan = {
     cycle: [ORCH_SCAN_PROMPT_FILENAME],
@@ -1340,6 +1724,38 @@ export async function orchestrateCommandWithDeps(
   const stateFile = path.join(sessionDir, 'orchestrator.json');
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
+  // Startup health checks: gh auth, gh repo view, git status
+  const healthChecks = await runStartupHealthChecks(projectRoot, deps);
+
+  // Write all health results (labels + startup checks) to session-health.json
+  const healthFile = path.join(sessionDir, 'session-health.json');
+  const health: StartupHealth = {
+    labels: labelsResult,
+    checks: healthChecks,
+    checked_at: deps.now().toISOString(),
+  };
+  await deps.writeFile(healthFile, `${JSON.stringify(health, null, 2)}\n`, 'utf8');
+
+  // If critical checks fail (gh auth), write ALERT.md and throw
+  // gh_repo failure is non-critical since repo may not be configured yet
+  const criticalFailures = healthChecks.filter(
+    (c) => c.check === 'gh_auth' && !c.ok,
+  );
+  if (criticalFailures.length > 0) {
+    const alertLines = [
+      '# ALERT — Critical startup checks failed',
+      '',
+      'The orchestrator cannot proceed because critical checks failed:',
+      '',
+      ...criticalFailures.map((c) => `- **${c.check}**: ${c.detail}`),
+      '',
+      `Checked at: ${deps.now().toISOString()}`,
+    ];
+    const alertPath = path.join(sessionDir, 'ALERT.md');
+    await deps.writeFile(alertPath, `${alertLines.join('\n')}\n`, 'utf8');
+    throw new Error(`Critical startup check failed: ${criticalFailures.map((c) => c.check).join(', ')}`);
+  }
+
   return {
     session_dir: sessionDir,
     prompts_dir: promptsDir,
@@ -1357,12 +1773,18 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   const outputMode = options.output ?? 'text';
   // Commander passes the Command object as the second argument if not explicitly provided.
   // We check if the provided argument looks like our OrchestrateDeps.
+  let trunkProvided = options.trunkProvided ?? false;
+  if (!trunkProvided && depsOrCommand && typeof depsOrCommand === 'object' && 'getOptionValueSource' in depsOrCommand && typeof depsOrCommand.getOptionValueSource === 'function') {
+    const trunkSource = depsOrCommand.getOptionValueSource('trunk');
+    trunkProvided = trunkSource !== undefined && trunkSource !== 'default';
+  }
+  const resolvedOptions = { ...options, trunkProvided };
   const deps = (depsOrCommand && typeof depsOrCommand === 'object' && 'existsSync' in depsOrCommand)
     ? (depsOrCommand as OrchestrateDeps)
     : undefined;
-  const result = await orchestrateCommandWithDeps(options, deps);
+  const result = await orchestrateCommandWithDeps(resolvedOptions, deps);
 
-  const planOnly = options.planOnly ?? false;
+  const planOnly = resolvedOptions.planOnly ?? false;
 
   // Spawn loop.sh as a detached background process (unless plan-only)
   let loopPid: number | null = null;

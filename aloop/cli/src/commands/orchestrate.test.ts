@@ -90,11 +90,49 @@ import {
   type ReplanAction,
   type ReplanResult,
   type SpecChangeDetection,
+  ensureLabels,
+  REQUIRED_LABELS,
+  runStartupHealthChecks,
+  type EnsureLabelsDeps,
+  type EnsureLabelsResult,
+  type HealthCheckResult,
+  type StartupHealth,
 } from './orchestrate.js';
+
+/** Returns true if this is a startup health check command (gh auth, gh repo view, git status --porcelain). */
+function isHealthCheckCmd(command: string, args: string[]): boolean {
+  if (command === 'gh' && args[0] === 'auth') return true;
+  if (command === 'gh' && args[0] === 'repo' && args[1] === 'view') return true;
+  if (command === 'git' && args[0] === 'status' && args[1] === '--porcelain') return true;
+  return false;
+}
+
+/** Default success responses for health check commands. */
+function healthCheckDefault(command: string, args: string[]): { status: number; stdout: string; stderr: string } {
+  if (command === 'gh' && args[0] === 'auth') return { status: 0, stdout: 'Logged in', stderr: '' };
+  if (command === 'gh' && args[0] === 'repo' && args[1] === 'view') return { status: 0, stdout: '{}', stderr: '' };
+  return { status: 0, stdout: '', stderr: '' }; // git status
+}
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
   const writtenFiles: Record<string, string> = {};
   const createdDirs: string[] = [];
+
+  const userSpawnSync = overrides.spawnSync;
+  const failHealthChecks = (overrides as any)._failHealthChecks === true;
+  // Wrap spawnSync: health check commands always succeed by default.
+  // Tests that need health checks to fail must set _failHealthChecks: true.
+  const wrappedSpawnSync = (command: string, args: string[], options?: Record<string, unknown>) => {
+    if (!failHealthChecks && isHealthCheckCmd(command, args)) {
+      return healthCheckDefault(command, args);
+    }
+    if (userSpawnSync) {
+      return userSpawnSync(command, args, options);
+    }
+    return { status: 1, stdout: '', stderr: 'mocked' };
+  };
+
+  const { spawnSync: _ignored, _failHealthChecks: _ignored2, ...otherOverrides } = overrides as any;
 
   return {
     existsSync: (p: string) => p.includes('SPEC.md'),
@@ -106,8 +144,9 @@ function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDe
       createdDirs.push(path);
       return undefined;
     },
+    spawnSync: wrappedSpawnSync,
     now: () => new Date('2026-03-09T10:30:00Z'),
-    ...overrides,
+    ...otherOverrides,
     // expose for assertions
     get _writtenFiles() { return writtenFiles; },
     get _createdDirs() { return createdDirs; },
@@ -206,6 +245,172 @@ describe('orchestrateCommandWithDeps', () => {
     assert.equal(result.state.filter_repo, 'owner/repo');
   });
 
+  it('derives filter_repo from gh repo view when --repo is unset', async () => {
+    const deps = createMockDeps({
+      execGh: async (args) => {
+        if (args[0] === 'repo' && args[1] === 'view') {
+          if (args.includes('nameWithOwner')) {
+            return { stdout: JSON.stringify({ nameWithOwner: 'derived/from-gh' }), stderr: '' };
+          }
+          if (args.includes('defaultBranchRef')) {
+            return { stdout: JSON.stringify({ defaultBranchRef: { name: 'main' } }), stderr: '' };
+          }
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps({}, deps);
+    assert.equal(result.state.filter_repo, 'derived/from-gh');
+    assert.equal(result.state.trunk_branch, 'main');
+  });
+
+  it('falls back to git remote origin when gh repo view derivation fails', async () => {
+    const deps = createMockDeps({
+      execGh: async () => {
+        throw new Error('gh unavailable');
+      },
+      spawnSync: (command, args) => {
+        if (command === 'git' && args[0] === 'remote' && args[1] === 'get-url') {
+          return { status: 0, stdout: 'git@github.com:derived/from-git.git\n', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: 'fail' };
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps({}, deps);
+    assert.equal(result.state.filter_repo, 'derived/from-git');
+  });
+
+  it('derives trunk_branch from repo default branch when using default trunk', async () => {
+    const deps = createMockDeps({
+      execGh: async (args) => {
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) {
+          return { stdout: JSON.stringify({ nameWithOwner: 'derived/from-gh' }), stderr: '' };
+        }
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('defaultBranchRef')) {
+          return { stdout: JSON.stringify({ defaultBranchRef: { name: 'trunk-main' } }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps({}, deps);
+    assert.equal(result.state.trunk_branch, 'trunk-main');
+  });
+
+  it('does not derive trunk_branch when --trunk is explicitly provided', async () => {
+    const deps = createMockDeps({
+      execGh: async (args) => {
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) {
+          return { stdout: JSON.stringify({ nameWithOwner: 'derived/from-gh' }), stderr: '' };
+        }
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('defaultBranchRef')) {
+          return { stdout: JSON.stringify({ defaultBranchRef: { name: 'main' } }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps({ trunk: 'agent/trunk', trunkProvided: true }, deps);
+    assert.equal(result.state.trunk_branch, 'agent/trunk');
+  });
+
+  it('does not derive trunk_branch when explicit non-default trunk is provided', async () => {
+    const deps = createMockDeps({
+      execGh: async (args) => {
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) {
+          return { stdout: JSON.stringify({ nameWithOwner: 'derived/from-gh' }), stderr: '' };
+        }
+        if (args[0] === 'repo' && args[1] === 'view' && args.includes('defaultBranchRef')) {
+          return { stdout: JSON.stringify({ defaultBranchRef: { name: 'main' } }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await orchestrateCommandWithDeps({ trunk: 'release-trunk', trunkProvided: true }, deps);
+    assert.equal(result.state.trunk_branch, 'release-trunk');
+  });
+
+  it('derives filter_repo from meta.json repo field when gh/git derivation fails', async () => {
+    const projectRoot = process.cwd();
+    const deps = createMockDeps({
+      execGh: async () => {
+        throw new Error('gh unavailable');
+      },
+      existsSync: (p: string) => p.includes('SPEC.md') || p === path.join(projectRoot, 'meta.json'),
+      readFile: async (p: string) => {
+        if (p === path.join(projectRoot, 'meta.json')) {
+          return JSON.stringify({ repo: 'derived/from-meta' });
+        }
+        return '';
+      },
+      spawnSync: () => ({ status: 1, stdout: '', stderr: 'no git' }),
+    });
+
+    const result = await orchestrateCommandWithDeps({}, deps);
+    assert.equal(result.state.filter_repo, 'derived/from-meta');
+  });
+
+  it('derives filter_repo from GITHUB_REPOSITORY when other derivations fail', async () => {
+    const previous = process.env.GITHUB_REPOSITORY;
+    const previousHost = process.env.GH_HOST;
+    process.env.GITHUB_REPOSITORY = 'derived/from-env';
+    process.env.GH_HOST = 'github.com';
+    try {
+      const deps = createMockDeps({
+        execGh: async () => {
+          throw new Error('gh unavailable');
+        },
+        spawnSync: () => ({ status: 1, stdout: '', stderr: 'no git' }),
+      });
+
+      const result = await orchestrateCommandWithDeps({}, deps);
+      assert.equal(result.state.filter_repo, 'derived/from-env');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.GITHUB_REPOSITORY;
+      } else {
+        process.env.GITHUB_REPOSITORY = previous;
+      }
+      if (previousHost === undefined) {
+        delete process.env.GH_HOST;
+      } else {
+        process.env.GH_HOST = previousHost;
+      }
+    }
+  });
+
+  it('derives filter_repo from GITHUB_REPOSITORY without GH_HOST', async () => {
+    const previous = process.env.GITHUB_REPOSITORY;
+    const previousHost = process.env.GH_HOST;
+    process.env.GITHUB_REPOSITORY = 'derived/from-env-only';
+    delete process.env.GH_HOST;
+    try {
+      const deps = createMockDeps({
+        execGh: async () => {
+          throw new Error('gh unavailable');
+        },
+        spawnSync: () => ({ status: 1, stdout: '', stderr: 'no git' }),
+      });
+
+      const result = await orchestrateCommandWithDeps({}, deps);
+      assert.equal(result.state.filter_repo, 'derived/from-env-only');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.GITHUB_REPOSITORY;
+      } else {
+        process.env.GITHUB_REPOSITORY = previous;
+      }
+      if (previousHost === undefined) {
+        delete process.env.GH_HOST;
+      } else {
+        process.env.GH_HOST = previousHost;
+      }
+    }
+  });
+
   it('throws on invalid concurrency value', async () => {
     const deps = createMockDeps();
     await assert.rejects(
@@ -291,7 +496,7 @@ describe('orchestrateCommandWithDeps', () => {
       },
     });
 
-    const result = await orchestrateCommandWithDeps({ plan: 'plan.json', repo: 'owner/repo' }, deps);
+    const result = await orchestrateCommandWithDeps({ plan: 'plan.json', repo: 'owner/repo', trunkProvided: true }, deps);
 
     assert.equal(result.state.issues.length, 1);
     assert.deepStrictEqual(result.state.issues[0].processed_comment_ids, [201]);
@@ -303,13 +508,14 @@ describe('orchestrateCommandWithDeps', () => {
       [201],
     );
     assert.equal(result.state.issues[0].last_comment_check, '2026-03-09T10:30:00.000Z');
-    assert.equal(ghCalls.length, 2);
+    const triageCalls = ghCalls.filter((args) => args[0] === 'issue-comments' || args[0] === 'pr-comments');
+    assert.equal(triageCalls.length, 2);
     assert.deepStrictEqual(
-      ghCalls[0],
+      triageCalls[0],
       ['issue-comments', '--session', 'orchestrator-20260309-103000', '--since', '2026-03-09T10:30:00.000Z', '--role', 'orchestrator'],
     );
     assert.deepStrictEqual(
-      ghCalls[1],
+      triageCalls[1],
       ['pr-comments', '--session', 'orchestrator-20260309-103000', '--since', '2026-03-09T10:30:00.000Z', '--role', 'orchestrator'],
     );
   });
@@ -349,8 +555,10 @@ describe('orchestrateCommand', () => {
       console.log = origLog;
     }
 
-    assert.equal(logs.length, 1);
-    const parsed = JSON.parse(logs[0]);
+    // Find the JSON output line (health check logs may also be present)
+    const jsonLine = logs.find((l) => l.startsWith('{'));
+    assert.ok(jsonLine, 'expected at least one JSON output line');
+    const parsed = JSON.parse(jsonLine);
     assert.ok('session_dir' in parsed);
     assert.ok('prompts_dir' in parsed);
     assert.ok('queue_dir' in parsed);
@@ -6091,5 +6299,290 @@ describe('runOrchestratorScanPass with replan', () => {
     );
 
     assert.equal(result.replan, null);
+  });
+});
+
+// --- ensureLabels tests ---
+
+describe('ensureLabels', () => {
+  function createLabelDeps(
+    existingLabels: string[] = [],
+    failCreate: string[] = [],
+    listFails = false,
+  ): EnsureLabelsDeps {
+    return {
+      spawnSync: (cmd: string, args: string[]) => {
+        if (args[0] === 'label' && args[1] === 'list') {
+          if (listFails) return { status: 1, stdout: '', stderr: 'permission denied' };
+          const labels = existingLabels.map((name) => ({ name }));
+          return { status: 0, stdout: JSON.stringify(labels), stderr: '' };
+        }
+        if (args[0] === 'label' && args[1] === 'create') {
+          const labelName = args[2];
+          if (failCreate.includes(labelName)) {
+            return { status: 1, stdout: '', stderr: `failed to create ${labelName}` };
+          }
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: 'unknown command' };
+      },
+    };
+  }
+
+  it('creates all labels when none exist', () => {
+    const deps = createLabelDeps([]);
+    const result = ensureLabels('owner/repo', deps);
+
+    assert.equal(result.created.length, REQUIRED_LABELS.length);
+    assert.equal(result.already_existed.length, 0);
+    assert.equal(result.failed.length, 0);
+    for (const label of REQUIRED_LABELS) {
+      assert.ok(result.created.includes(label.name), `Expected ${label.name} to be created`);
+    }
+  });
+
+  it('skips labels that already exist', () => {
+    const existing = ['aloop/auto', 'aloop/epic', 'aloop/done'];
+    const deps = createLabelDeps(existing);
+    const result = ensureLabels('owner/repo', deps);
+
+    assert.equal(result.already_existed.length, 3);
+    assert.equal(result.created.length, REQUIRED_LABELS.length - 3);
+    assert.equal(result.failed.length, 0);
+    for (const name of existing) {
+      assert.ok(result.already_existed.includes(name));
+      assert.ok(!result.created.includes(name));
+    }
+  });
+
+  it('reports all as failed when label list fails', () => {
+    const deps = createLabelDeps([], [], true);
+    const result = ensureLabels('owner/repo', deps);
+
+    assert.equal(result.failed.length, REQUIRED_LABELS.length);
+    assert.equal(result.created.length, 0);
+    assert.equal(result.already_existed.length, 0);
+  });
+
+  it('handles partial creation failure', () => {
+    const deps = createLabelDeps([], ['aloop/epic', 'aloop/done']);
+    const result = ensureLabels('owner/repo', deps);
+
+    assert.equal(result.failed.length, 2);
+    assert.ok(result.failed.includes('aloop/epic'));
+    assert.ok(result.failed.includes('aloop/done'));
+    assert.equal(result.created.length, REQUIRED_LABELS.length - 2);
+    assert.equal(result.already_existed.length, 0);
+  });
+
+  it('does not fail when all labels already exist', () => {
+    const allNames = REQUIRED_LABELS.map((l) => l.name);
+    const deps = createLabelDeps(allNames);
+    const result = ensureLabels('owner/repo', deps);
+
+    assert.equal(result.already_existed.length, REQUIRED_LABELS.length);
+    assert.equal(result.created.length, 0);
+    assert.equal(result.failed.length, 0);
+  });
+});
+
+// --- runStartupHealthChecks tests ---
+
+describe('runStartupHealthChecks', () => {
+  it('returns passing results when all commands succeed', async () => {
+    const deps = createMockDeps({
+      _failHealthChecks: true,
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 0, stdout: 'Logged in to github.com', stderr: '' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          return { status: 0, stdout: '{"nameWithOwner":"owner/repo"}', stderr: '' };
+        }
+        if (command === 'git' && args[0] === 'status') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: 'unknown command' };
+      },
+    } as any);
+
+    const results = await runStartupHealthChecks('/tmp/project', deps);
+
+    assert.equal(results.length, 3);
+    const auth = results.find((r) => r.check === 'gh_auth');
+    const repo = results.find((r) => r.check === 'gh_repo');
+    const git = results.find((r) => r.check === 'git_status');
+    assert.ok(auth?.ok);
+    assert.ok(repo?.ok);
+    assert.ok(git?.ok);
+    assert.match(git!.detail, /clean worktree/);
+  });
+
+  it('reports dirty worktree when git status has output', async () => {
+    const deps = createMockDeps({
+      _failHealthChecks: true,
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh') return { status: 0, stdout: '{}', stderr: '' };
+        if (command === 'git' && args[0] === 'status') {
+          return { status: 0, stdout: ' M src/file.ts\n', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: '' };
+      },
+    } as any);
+
+    const results = await runStartupHealthChecks('/tmp/project', deps);
+    const git = results.find((r) => r.check === 'git_status');
+    assert.ok(git?.ok);
+    assert.match(git!.detail, /dirty worktree/);
+  });
+
+  it('reports failures when gh auth fails', async () => {
+    const deps = createMockDeps({
+      _failHealthChecks: true,
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 1, stdout: '', stderr: 'not logged in' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          return { status: 0, stdout: '{"nameWithOwner":"o/r"}', stderr: '' };
+        }
+        if (command === 'git') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: '' };
+      },
+    } as any);
+
+    const results = await runStartupHealthChecks('/tmp/project', deps);
+    const auth = results.find((r) => r.check === 'gh_auth');
+    assert.equal(auth?.ok, false);
+    assert.match(auth!.detail, /not logged in/);
+  });
+
+  it('reports failure when gh repo view fails', async () => {
+    const deps = createMockDeps({
+      _failHealthChecks: true,
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 0, stdout: 'ok', stderr: '' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          return { status: 1, stdout: '', stderr: 'no repo found' };
+        }
+        if (command === 'git') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: '' };
+      },
+    } as any);
+
+    const results = await runStartupHealthChecks('/tmp/project', deps);
+    const repo = results.find((r) => r.check === 'gh_repo');
+    assert.equal(repo?.ok, false);
+    assert.match(repo!.detail, /no repo found/);
+  });
+});
+
+// --- session-health.json integration tests ---
+
+describe('orchestrateCommandWithDeps health checks', () => {
+  it('writes session-health.json with checks array including gh_auth, gh_repo, git_status', async () => {
+    const deps = createMockDeps({
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 0, stdout: 'Logged in', stderr: '' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          return { status: 0, stdout: '{"nameWithOwner":"owner/repo"}', stderr: '' };
+        }
+        if (command === 'git' && args[0] === 'status') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        // label list — return empty array so labels get created
+        if (command === 'gh' && args[0] === 'label') {
+          if (args[1] === 'list') return { status: 0, stdout: '[]', stderr: '' };
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: 'mocked' };
+      },
+    });
+    const mockDeps = deps as OrchestrateDeps & { _writtenFiles: Record<string, string> };
+
+    await orchestrateCommandWithDeps({ repo: 'owner/repo' }, deps);
+
+    const healthPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/session-health.json'));
+    assert.ok(healthPath, 'session-health.json should be written');
+    const health: StartupHealth = JSON.parse(mockDeps._writtenFiles[healthPath!]);
+    assert.ok(health.labels, 'labels should be present');
+    assert.ok(Array.isArray(health.checks), 'checks should be an array');
+    assert.equal(health.checks.length, 3);
+    const checkNames = health.checks.map((c) => c.check);
+    assert.ok(checkNames.includes('gh_auth'));
+    assert.ok(checkNames.includes('gh_repo'));
+    assert.ok(checkNames.includes('git_status'));
+    assert.ok(health.checked_at);
+  });
+
+  it('writes ALERT.md and throws when gh auth fails', async () => {
+    const deps = createMockDeps({
+      _failHealthChecks: true,
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 1, stdout: '', stderr: 'auth failed' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          return { status: 1, stdout: '', stderr: 'no repo' };
+        }
+        if (command === 'git') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 1, stdout: '', stderr: 'mocked' };
+      },
+    } as any);
+    const mockDeps = deps as OrchestrateDeps & { _writtenFiles: Record<string, string> };
+
+    await assert.rejects(
+      () => orchestrateCommandWithDeps({}, deps),
+      (err: Error) => {
+        assert.match(err.message, /Critical startup check failed/);
+        return true;
+      },
+    );
+
+    const alertPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/ALERT.md'));
+    assert.ok(alertPath, 'ALERT.md should be written');
+    const alertContent = mockDeps._writtenFiles[alertPath!];
+    assert.match(alertContent, /Critical startup checks failed/);
+    assert.match(alertContent, /gh_auth/);
+  });
+
+  it('writes session-health.json with labels null when no repo can be derived', async () => {
+    const deps = createMockDeps({
+      spawnSync: (command: string, args: string[]) => {
+        if (command === 'gh' && args[0] === 'auth') {
+          return { status: 0, stdout: 'ok', stderr: '' };
+        }
+        if (command === 'gh' && args[0] === 'repo') {
+          // repo view succeeds for health check but returns invalid slug so deriveFilterRepo doesn't use it
+          return { status: 0, stdout: '{}', stderr: '' };
+        }
+        if (command === 'git' && args[0] === 'status') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        if (command === 'git' && args[0] === 'remote') {
+          return { status: 1, stdout: '', stderr: 'no remote' };
+        }
+        return { status: 1, stdout: '', stderr: 'mocked' };
+      },
+    });
+    const mockDeps = deps as OrchestrateDeps & { _writtenFiles: Record<string, string> };
+
+    await orchestrateCommandWithDeps({}, deps);
+
+    const healthPath = Object.keys(mockDeps._writtenFiles).find((p) => p.endsWith('/session-health.json'));
+    assert.ok(healthPath, 'session-health.json should be written even without repo');
+    const health: StartupHealth = JSON.parse(mockDeps._writtenFiles[healthPath!]);
+    assert.equal(health.labels, null);
+    assert.equal(health.checks.length, 3);
   });
 });
