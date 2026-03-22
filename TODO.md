@@ -22,6 +22,10 @@
 - [ ] Loop health supervisor agent missing — no `PROMPT_loop_health.md` template; no circuit breaker or pattern detection for repetitive cycling/stuck cascades (SPEC §Configurable Agent Pipeline > Loop health supervisor)
 - [ ] `{{SUBAGENT_HINTS}}` template variable not resolved — loop.sh/loop.ps1 do not expand this variable; per-phase hint files don't exist; opencode subagent delegation instructions not injected (SPEC §Configurable Agent Pipeline > Subagent Integration)
 
+#### QA Bugs (priority: high)
+
+- [ ] [qa/P2] `--output json` flag ignored when `aloop start --mode orchestrate` forwards to orchestrateCommand: ran `aloop start --mode orchestrate --output json` → got human-readable text with `[orchestrate]` prefix and `Error:` string → spec says `--output json` should produce machine-parseable JSON. Tested at iter 35. (priority: high)
+
 #### QA & Coverage (priority: high)
 
 - [ ] QA coverage tracking enforcement — QA agent does not reliably produce structured `QA_COVERAGE.md` with parseable pipe-delimited format; priority selection algorithm (UNTESTED > FAIL > incomplete > stale) not in prompt; review Gate 10 missing (SPEC-ADDENDUM §QA Agent: Coverage-Aware Testing)
@@ -32,7 +36,7 @@
 - [ ] Dashboard component decomposition — AppView.tsx is 2378 lines; sub-components exist inline but not extracted to separate files; spec requires <200 LOC per file, each with test + story (SPEC-ADDENDUM §Dashboard Component Architecture)
 - [ ] Storybook 8 not configured — no `.storybook/` directory exists; spec requires `@storybook/react-vite` setup with colocated stories and theme decorator (SPEC-ADDENDUM §Storybook Integration)
 - [ ] Dashboard responsiveness — minimal mobile support; spec requires hamburger sidebar below 640px, fixed steer input on mobile, 44x44px tap targets, 320px viewport support (SPEC-ADDENDUM §Dashboard Responsiveness)
-- [ ] `aloop status --watch` terminal monitoring — status command has no `--watch` mode for auto-refreshing terminal display (SPEC §UX: Dashboard > acceptance criteria)
+- [x] `aloop status --watch` terminal monitoring — status command has no `--watch` mode for auto-refreshing terminal display (SPEC §UX: Dashboard > acceptance criteria) — QA verified working at iter 35: auto-refreshes every 2s with ANSI clear
 
 #### OpenCode / Cost (priority: medium)
 
