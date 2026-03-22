@@ -12,6 +12,10 @@ const statusPath = path.join(sessionDir, 'status.json');
 const logPath = path.join(sessionDir, 'log.jsonl');
 const metaPath = path.join(sessionDir, 'meta.json');
 const todoPath = path.join(workdir, 'TODO.md');
+const specPath = path.join(workdir, 'SPEC.md');
+const researchPath = path.join(workdir, 'RESEARCH.md');
+const reviewLogPath = path.join(workdir, 'REVIEW_LOG.md');
+const extraDocPath = path.join(workdir, 'EXTRA.md');
 const steeringPath = path.join(workdir, 'STEERING.md');
 const activePath = path.join(runtimeDir, 'active.json');
 const historyPath = path.join(runtimeDir, 'history.json');
@@ -44,6 +48,10 @@ async function resetFixtures() {
   );
   await writeFile(logPath, `{"level":"info","message":"fixture log line", "event": "session_start", "timestamp": "${now}"}\n`, 'utf8');
   await writeFile(todoPath, '# Fixture TODO Heading\n\n- [ ] Example task\n', 'utf8');
+  await writeFile(specPath, '# Fixture SPEC Heading\n', 'utf8');
+  await writeFile(researchPath, '# Fixture RESEARCH Heading\n', 'utf8');
+  await writeFile(reviewLogPath, '# Fixture REVIEW LOG Heading\n', 'utf8');
+  await writeFile(extraDocPath, '# Fixture EXTRA Heading\n', 'utf8');
   await writeFile(
     activePath,
     JSON.stringify([
@@ -160,10 +168,18 @@ test('layout at 390x844 (mobile) keeps key controls at minimum 44x44 tap size', 
   await assertMinTapTarget(page.getByRole('button', { name: 'Activity' }), 'Activity panel toggle');
   await assertMinTapTarget(page.getByPlaceholder('Steer...'), 'Steer textarea');
 
+  await page.getByRole('button', { name: 'Toggle sidebar' }).click();
+  const mobileSidebar = page.locator('aside').filter({ hasText: 'Sessions' });
+  await assertMinTapTarget(mobileSidebar.getByRole('button', { name: /active-session/ }).first(), 'session card');
+  await page.keyboard.press('Escape');
+
   const footerButtons = page.locator('footer button');
   await expect(footerButtons).toHaveCount(2);
   await assertMinTapTarget(footerButtons.nth(0), 'Send button');
   await assertMinTapTarget(footerButtons.nth(1), 'Stop menu button');
+  await footerButtons.last().click();
+  await assertMinTapTarget(page.getByRole('menuitem', { name: /Stop after iteration/i }), 'stop-after-iteration dropdown item');
+  await page.keyboard.press('Escape');
 });
 
 test('writes steering instruction', async ({ page }) => {
