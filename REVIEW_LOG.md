@@ -83,3 +83,35 @@ All gates pass. Integration suite: 125 dashboard tests + 8 CLI tests pass, type-
 - `orchestrate.test.ts`: 336 tests with concrete value assertions (`assert.equal`, `assert.deepEqual`) in the majority of cases
 
 ---
+
+## Review — 2026-03-22 02:00 — commit a430d1d..2e24cf1
+
+**Verdict: PASS** (all 3 prior findings resolved)
+**Scope:** `dashboard.ts`, `process-requests.test.ts`, `requests.test.ts`
+
+### Gate Results
+
+| Gate | Result | Notes |
+|------|--------|-------|
+| 1: Spec Compliance | PASS | Changes are fix/test-only — address prior review findings, align with spec intent |
+| 2: Test Depth | PASS | `requests.test.ts`: 12 shallow JSON `.includes()` assertions replaced with `parseQueueFrontmatter()` + `strictEqual`/`deepStrictEqual` on parsed structure |
+| 3: Coverage | PASS | `process-requests.test.ts`: 4 new error-path tests (malformed JSON, missing dirs, permission failures, concurrency). Source change is 1-line `dashboard.ts` covered by passing test |
+| 4: Code Quality | PASS | No dead code, no duplication, minimal focused changes |
+| 5: Integration Sanity | PASS | process-requests 8/8, requests 40/40, dashboard 56/56. Type-check clean. Build clean. |
+| 6: Proof Verification | PASS (skip) | Internal plumbing — test fixes and 1-line fallback path. No observable output. |
+| 7: Runtime Layout | PASS (skip) | No UI/CSS changes |
+| 8: Version Compliance | PASS (skip) | No dependency changes |
+| 9: Documentation Freshness | PASS (skip) | No behavior changes requiring docs updates |
+
+### Prior findings resolution
+
+1. **Gate 5 (dashboard test):** RESOLVED — `dashboard.ts:406` adds `dist/dashboard` to asset resolution fallback chain. Test "packaged assets when cwd has no dashboard/dist" now passes.
+2. **Gate 3 (process-requests coverage):** RESOLVED — 4 new tests: `ignores malformed estimate result files` (asserts `dor_validated` stays false), `tolerates cleanup when child session directories are missing`, `swallows cleanup prune errors` (verifies dir survives failed rm), `handles concurrent invocations` (verifies both settle fulfilled + archive created).
+3. **Gate 2 (shallow assertions):** RESOLVED — `parseQueueFrontmatter()` helper extracts JSON from queue frontmatter; all 12 queue-content assertions now use `strictEqual`/`deepStrictEqual` on parsed objects instead of substring matching.
+
+### Observations
+
+- Gate 2: `parseQueueFrontmatter` helper (`requests.test.ts:10-14`) is well-designed — extracts JSON frontmatter via regex, asserts match exists, then parses. Assertions like `deepStrictEqual(frontmatter.payload, { issues: [...], skipped_titles: [] })` are thorough and would fail on structural regressions.
+- Gate 3: `process-requests.test.ts:209-233` concurrent invocation test uses `Promise.allSettled` + verifies both invocations fulfill and the archive file exists — good idempotency check.
+
+---
