@@ -139,6 +139,12 @@ register_branch "phase_prereq.build.todo_has_unchecked" "check_phase_prerequisit
 register_branch "phase_prereq.plan_passthrough" "check_phase_prerequisites passes through plan phase unchanged"
 register_branch "phase_prereq.review.no_builds" "check_phase_prerequisites forces build when no commits since last plan"
 register_branch "phase_prereq.review.has_builds" "check_phase_prerequisites allows review when commits exist"
+register_branch "branchsync.config_refresh" "refresh_branch_sync_config reads base branch and auto_merge from meta.json"
+register_branch "branchsync.fetch_fail" "pre_iteration_base_sync logs fetch failures without crashing"
+register_branch "branchsync.up_to_date" "pre_iteration_base_sync logs already-up-to-date merges"
+register_branch "branchsync.merge_success" "pre_iteration_base_sync logs successful base merges"
+register_branch "branchsync.merge_conflict" "pre_iteration_base_sync emits merge_conflict event and queues merge prompt"
+register_branch "branchsync.merge_prompt_missing" "pre_iteration_base_sync logs missing merge prompt on conflict"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -157,13 +163,17 @@ WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
 RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
 RESOLVE_MODE_FUNC="$(extract_function resolve_iteration_mode)"
 DERIVE_MODE_FUNC="$(extract_function derive_mode_from_prompt_name)"
+REFRESH_BRANCH_SYNC_FUNC="$(extract_function refresh_branch_sync_config)"
+QUEUE_MERGE_PROMPT_FUNC="$(extract_function queue_merge_prompt_if_available)"
+WRITE_MERGE_EVENT_FUNC="$(extract_function write_merge_conflict_event)"
+PRE_ITER_SYNC_FUNC="$(extract_function pre_iteration_base_sync)"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
     exit 1
 fi
 
-if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ]; then
+if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ] || [ -z "$REFRESH_BRANCH_SYNC_FUNC" ] || [ -z "$QUEUE_MERGE_PROMPT_FUNC" ] || [ -z "$WRITE_MERGE_EVENT_FUNC" ] || [ -z "$PRE_ITER_SYNC_FUNC" ]; then
     echo "FAIL: could not extract cycle/frontmatter/duration/exec-controls/advance/requests/queue functions from $LOOP_SH"
     exit 1
 fi
@@ -185,6 +195,10 @@ eval "$WAIT_FOR_REQUESTS_FUNC"
 eval "$RUN_QUEUE_FUNC"
 eval "$RESOLVE_MODE_FUNC"
 eval "$DERIVE_MODE_FUNC"
+eval "$REFRESH_BRANCH_SYNC_FUNC"
+eval "$QUEUE_MERGE_PROMPT_FUNC"
+eval "$WRITE_MERGE_EVENT_FUNC"
+eval "$PRE_ITER_SYNC_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
@@ -1033,6 +1047,133 @@ else
 fi
 
 rm -rf "$QUEUE_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# branch sync branches (refresh_branch_sync_config/pre_iteration_base_sync)
+# ---------------------------------------------------------------------------
+
+SYNC_TMPDIR="$(mktemp -d)"
+SESSION_DIR="$SYNC_TMPDIR/session"
+WORK_DIR="$SYNC_TMPDIR/work"
+PROMPTS_DIR="$SYNC_TMPDIR/prompts"
+mkdir -p "$SESSION_DIR" "$WORK_DIR" "$PROMPTS_DIR"
+BASE_BRANCH="main"
+AUTO_MERGE="true"
+ALOOP_SKIP_BRANCH_SYNC=""
+export ALOOP_SKIP_BRANCH_SYNC
+
+# branchsync.config_refresh
+cat > "$SESSION_DIR/meta.json" << 'JSON'
+{"base_branch":"develop","auto_merge":false}
+JSON
+refresh_branch_sync_config
+if [ "$BASE_BRANCH" = "develop" ] && [ "$AUTO_MERGE" = "false" ]; then
+    cover_branch "branchsync.config_refresh"
+    pass_case "refresh_branch_sync_config applies base_branch and auto_merge"
+else
+    fail_case "refresh_branch_sync_config failed (base=$BASE_BRANCH auto=$AUTO_MERGE)"
+fi
+
+# Prepare git repo + remote for sync tests
+git init -q "$WORK_DIR"
+git -C "$WORK_DIR" config user.name "Test"
+git -C "$WORK_DIR" config user.email "test@example.com"
+echo "base" > "$WORK_DIR/base.txt"
+git -C "$WORK_DIR" add base.txt
+git -C "$WORK_DIR" commit -m "base" -q
+git init -q --bare "$SYNC_TMPDIR/remote.git"
+git -C "$WORK_DIR" remote add origin "$SYNC_TMPDIR/remote.git"
+git -C "$WORK_DIR" branch -M main
+git -C "$WORK_DIR" push -u origin main -q
+git --git-dir="$SYNC_TMPDIR/remote.git" symbolic-ref HEAD refs/heads/main >/dev/null 2>&1
+
+# branchsync.fetch_fail
+BASE_BRANCH="missing-branch"
+AUTO_MERGE="true"
+pre_iteration_base_sync
+if contains_log "base_sync_fetch_failed|base_branch=missing-branch"; then
+    cover_branch "branchsync.fetch_fail"
+    pass_case "pre_iteration_base_sync logs fetch failure"
+else
+    fail_case "pre_iteration_base_sync did not log fetch failure"
+fi
+
+# branchsync.up_to_date
+BASE_BRANCH="main"
+pre_iteration_base_sync
+if contains_log "base_sync_up_to_date|base_branch=main"; then
+    cover_branch "branchsync.up_to_date"
+    pass_case "pre_iteration_base_sync logs up-to-date state"
+else
+    fail_case "pre_iteration_base_sync did not log up-to-date state"
+fi
+
+# branchsync.merge_success
+CLONE_FOR_MAIN="$SYNC_TMPDIR/clone-main"
+git clone -q "$SYNC_TMPDIR/remote.git" "$CLONE_FOR_MAIN"
+git -C "$CLONE_FOR_MAIN" config user.name "Test"
+git -C "$CLONE_FOR_MAIN" config user.email "test@example.com"
+git -C "$CLONE_FOR_MAIN" checkout -q main
+echo "remote change" > "$CLONE_FOR_MAIN/remote.txt"
+git -C "$CLONE_FOR_MAIN" add remote.txt
+git -C "$CLONE_FOR_MAIN" commit -m "remote main change" -q
+git -C "$CLONE_FOR_MAIN" push -q origin main
+pre_iteration_base_sync
+if contains_log "base_sync_merged|base_branch=main"; then
+    cover_branch "branchsync.merge_success"
+    pass_case "pre_iteration_base_sync logs successful merge"
+else
+    fail_case "pre_iteration_base_sync did not log successful merge"
+fi
+
+# branchsync.merge_conflict
+echo "ours" > "$WORK_DIR/conflict.txt"
+git -C "$WORK_DIR" add conflict.txt
+git -C "$WORK_DIR" commit -m "local conflict change" -q
+echo "template merge prompt" > "$PROMPTS_DIR/PROMPT_merge.md"
+
+CLONE_FOR_CONFLICT="$SYNC_TMPDIR/clone-conflict"
+git clone -q "$SYNC_TMPDIR/remote.git" "$CLONE_FOR_CONFLICT"
+git -C "$CLONE_FOR_CONFLICT" config user.name "Test"
+git -C "$CLONE_FOR_CONFLICT" config user.email "test@example.com"
+git -C "$CLONE_FOR_CONFLICT" checkout -q main
+echo "theirs" > "$CLONE_FOR_CONFLICT/conflict.txt"
+git -C "$CLONE_FOR_CONFLICT" add conflict.txt
+git -C "$CLONE_FOR_CONFLICT" commit -m "remote conflict change" -q
+git -C "$CLONE_FOR_CONFLICT" push -q origin main
+
+pre_iteration_base_sync
+if contains_log "merge_conflict|base_branch=main" \
+    && [ -f "$SESSION_DIR/events/merge_conflict" ] \
+    && [ -f "$SESSION_DIR/queue/000-merge-conflict-PROMPT_merge.md" ]; then
+    cover_branch "branchsync.merge_conflict"
+    pass_case "pre_iteration_base_sync emits merge conflict event and queues prompt"
+else
+    fail_case "pre_iteration_base_sync merge conflict handling failed"
+fi
+# abort unresolved conflict for cleanup
+git -C "$WORK_DIR" merge --abort >/dev/null 2>&1 || true
+
+# branchsync.merge_prompt_missing
+rm -f "$PROMPTS_DIR/PROMPT_merge.md" "$SESSION_DIR/queue/000-merge-conflict-PROMPT_merge.md"
+echo "ours2" > "$WORK_DIR/conflict2.txt"
+git -C "$WORK_DIR" add conflict2.txt
+git -C "$WORK_DIR" commit -m "local conflict2 change" -q
+echo "theirs2" > "$CLONE_FOR_CONFLICT/conflict2.txt"
+git -C "$CLONE_FOR_CONFLICT" add conflict2.txt
+git -C "$CLONE_FOR_CONFLICT" commit -m "remote conflict2 change" -q
+git -C "$CLONE_FOR_CONFLICT" push -q origin main
+
+pre_iteration_base_sync
+if contains_log "merge_conflict_prompt_missing|prompt_file=$PROMPTS_DIR/PROMPT_merge.md"; then
+    cover_branch "branchsync.merge_prompt_missing"
+    pass_case "pre_iteration_base_sync logs missing merge prompt"
+else
+    fail_case "pre_iteration_base_sync missing prompt log not emitted"
+fi
+git -C "$WORK_DIR" merge --abort >/dev/null 2>&1 || true
+
+rm -rf "$SYNC_TMPDIR"
 
 # ---------------------------------------------------------------------------
 # Final summary

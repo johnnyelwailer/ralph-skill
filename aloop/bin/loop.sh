@@ -46,6 +46,8 @@ PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-10800}"
 PROVIDER_HEALTH_DIR="${ALOOP_HEALTH_DIR:-$HOME/.aloop/health}"
 HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
 SESSION_ID=""
+BASE_BRANCH="main"
+AUTO_MERGE="true"
 
 # ============================================================================
 # ARGUMENT PARSING
@@ -331,6 +333,143 @@ except Exception:
             fi
         fi
     fi
+}
+
+refresh_branch_sync_config() {
+    local meta_file="$SESSION_DIR/meta.json"
+    if [ ! -f "$meta_file" ] || ! command -v python3 >/dev/null 2>&1; then
+        return
+    fi
+
+    local parsed
+    parsed=$(python3 -c "
+import json, sys
+try:
+    with open('$meta_file') as f:
+        m = json.load(f)
+except Exception:
+    sys.exit(1)
+base = m.get('base_branch') or 'main'
+auto = m.get('auto_merge')
+if auto is None:
+    auto = True
+print(str(base).strip() or 'main')
+print('true' if bool(auto) else 'false')
+" 2>/dev/null) || return
+
+    local new_base new_auto
+    new_base=$(printf '%s\n' "$parsed" | sed -n '1p')
+    new_auto=$(printf '%s\n' "$parsed" | sed -n '2p')
+    [ -n "$new_base" ] || new_base="main"
+    [ "$new_auto" = "false" ] || new_auto="true"
+
+    if [ "$new_base" != "$BASE_BRANCH" ] || [ "$new_auto" != "$AUTO_MERGE" ]; then
+        write_log_entry "base_sync_config_refreshed" \
+            "base_branch" "$new_base" \
+            "auto_merge" "$new_auto"
+    fi
+
+    BASE_BRANCH="$new_base"
+    AUTO_MERGE="$new_auto"
+}
+
+queue_merge_prompt_if_available() {
+    local merge_prompt="$PROMPTS_DIR/PROMPT_merge.md"
+    local queue_dir="$SESSION_DIR/queue"
+    local queue_item="$queue_dir/000-merge-conflict-PROMPT_merge.md"
+    mkdir -p "$queue_dir"
+
+    if [ ! -f "$merge_prompt" ]; then
+        write_log_entry "merge_conflict_prompt_missing" \
+            "prompt_file" "$merge_prompt"
+        echo "Warning: Merge conflict detected, but merge prompt missing: $merge_prompt" >&2
+        return 1
+    fi
+
+    if [ ! -f "$queue_item" ]; then
+        cp "$merge_prompt" "$queue_item" || return 1
+    fi
+    return 0
+}
+
+write_merge_conflict_event() {
+    local base_branch="$1"
+    local conflict_list="$2"
+    local events_dir="$SESSION_DIR/events"
+    local event_file="$events_dir/merge_conflict"
+    mkdir -p "$events_dir"
+    local now_utc
+    now_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    local conflicts_json=""
+    local first=1
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        if [ "$first" -eq 1 ]; then
+            first=0
+        else
+            conflicts_json="${conflicts_json},"
+        fi
+        conflicts_json="${conflicts_json}\"$(json_escape "$line")\""
+    done <<< "$conflict_list"
+cat > "$event_file" <<EOF
+{
+  "event": "merge_conflict",
+  "timestamp": "$now_utc",
+  "base_branch": "$(json_escape "$base_branch")",
+  "conflicts": [${conflicts_json}]
+  }
+EOF
+}
+
+pre_iteration_base_sync() {
+    if [ "${ALOOP_SKIP_BRANCH_SYNC:-}" = "true" ]; then
+        return 0
+    fi
+    if [ "$AUTO_MERGE" != "true" ]; then
+        return 0
+    fi
+    if [ ! -d "$WORK_DIR/.git" ] || ! command -v git >/dev/null 2>&1; then
+        return 0
+    fi
+
+    cd "$WORK_DIR" || return 0
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! git fetch origin "$BASE_BRANCH" --quiet >/dev/null 2>&1; then
+        write_log_entry "base_sync_fetch_failed" "base_branch" "$BASE_BRANCH"
+        echo "Warning: Base sync fetch failed for origin/$BASE_BRANCH" >&2
+        return 0
+    fi
+
+    local merge_output
+    merge_output=$(git merge "origin/$BASE_BRANCH" --no-edit 2>&1)
+    local merge_rc=$?
+    if [ "$merge_rc" -eq 0 ]; then
+        if printf '%s' "$merge_output" | grep -qi "Already up to date"; then
+            write_log_entry "base_sync_up_to_date" "base_branch" "$BASE_BRANCH"
+        else
+            write_log_entry "base_sync_merged" "base_branch" "$BASE_BRANCH"
+        fi
+        return 0
+    fi
+
+    local conflicted_files
+    conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
+    if [ -n "$conflicted_files" ]; then
+        local conflict_count
+        conflict_count=$(printf '%s\n' "$conflicted_files" | sed '/^[[:space:]]*$/d' | wc -l | tr -d '[:space:]')
+        write_merge_conflict_event "$BASE_BRANCH" "$conflicted_files"
+        queue_merge_prompt_if_available || true
+        write_log_entry "merge_conflict" "base_branch" "$BASE_BRANCH" "conflict_count" "$conflict_count"
+        echo "Warning: Merge conflict while syncing origin/$BASE_BRANCH. Queued merge prompt." >&2
+        return 0
+    fi
+
+    write_log_entry "base_sync_merge_failed" "base_branch" "$BASE_BRANCH"
+    echo "Warning: Base sync merge failed for origin/$BASE_BRANCH" >&2
+    return 0
 }
 
 resolve_iteration_provider() {
@@ -2118,10 +2257,12 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
     ITERATION_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    refresh_branch_sync_config
     # Hot-reload provider list from meta.json (supports runtime changes)
     if [ "$PROVIDER" = "round-robin" ]; then
         refresh_providers_from_meta
     fi
+    pre_iteration_base_sync
     iter_provider=$(resolve_iteration_provider $ITERATION)
 
     if run_queue_if_present "$iter_provider"; then

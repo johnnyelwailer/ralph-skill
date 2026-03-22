@@ -76,6 +76,8 @@ $PromptsDir = ConvertTo-NativePath $PromptsDir
 $SessionDir = ConvertTo-NativePath $SessionDir
 $WorkDir    = ConvertTo-NativePath $WorkDir
 $sessionId  = Split-Path -Leaf $SessionDir
+$script:baseBranch = 'main'
+$script:autoMerge = $true
 
 # ============================================================================
 # VALIDATION
@@ -1858,6 +1860,121 @@ function Refresh-ProvidersFromMeta {
     }
 }
 
+function Refresh-BranchSyncConfig {
+    $metaFile = Join-Path $SessionDir "meta.json"
+    if (-not (Test-Path $metaFile)) { return }
+    try {
+        $meta = Get-Content $metaFile -Raw | ConvertFrom-Json
+        $newBaseBranch = if ([string]::IsNullOrWhiteSpace([string]$meta.base_branch)) { 'main' } else { [string]$meta.base_branch }
+        $autoMergeValue = $meta.auto_merge
+        $newAutoMerge = $true
+        if ($null -ne $autoMergeValue) {
+            $newAutoMerge = [bool]$autoMergeValue
+        }
+
+        if ($script:baseBranch -ne $newBaseBranch -or $script:autoMerge -ne $newAutoMerge) {
+            Write-LogEntry -Event "base_sync_config_refreshed" -Data @{
+                base_branch = $newBaseBranch
+                auto_merge = "$newAutoMerge".ToLowerInvariant()
+            }
+        }
+
+        $script:baseBranch = $newBaseBranch
+        $script:autoMerge = $newAutoMerge
+    } catch {
+        # Keep defaults/current values if meta parsing fails.
+    }
+}
+
+function Queue-MergePromptIfAvailable {
+    $mergePrompt = Join-Path $PromptsDir 'PROMPT_merge.md'
+    $queueDir = Join-Path $SessionDir 'queue'
+    $queueItem = Join-Path $queueDir '000-merge-conflict-PROMPT_merge.md'
+    New-Item -ItemType Directory -Path $queueDir -Force | Out-Null
+
+    if (-not (Test-Path $mergePrompt)) {
+        Write-LogEntry -Event "merge_conflict_prompt_missing" -Data @{
+            prompt_file = $mergePrompt
+        }
+        Write-Warning "Merge conflict detected, but merge prompt missing: $mergePrompt"
+        return $false
+    }
+
+    if (-not (Test-Path $queueItem)) {
+        Copy-Item -Path $mergePrompt -Destination $queueItem -Force
+    }
+    return $true
+}
+
+function Write-MergeConflictEvent {
+    param(
+        [string]$BaseBranch,
+        [string[]]$Conflicts
+    )
+    $eventsDir = Join-Path $SessionDir 'events'
+    $eventFile = Join-Path $eventsDir 'merge_conflict'
+    New-Item -ItemType Directory -Path $eventsDir -Force | Out-Null
+    $payload = @{
+        event = 'merge_conflict'
+        timestamp = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+        base_branch = $BaseBranch
+        conflicts = @($Conflicts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    ($payload | ConvertTo-Json -Depth 5) | Set-Content -Encoding utf8 $eventFile
+}
+
+function Invoke-PreIterationBaseSync {
+    if ($env:ALOOP_SKIP_BRANCH_SYNC -eq 'true') { return }
+    if (-not $script:autoMerge) { return }
+    if (-not (Test-Path (Join-Path $WorkDir '.git'))) { return }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return }
+
+    Push-Location $WorkDir
+    try {
+        & git rev-parse --is-inside-work-tree *> $null
+        if ($LASTEXITCODE -ne 0) { return }
+
+        & git fetch origin $script:baseBranch --quiet *> $null
+        if ($LASTEXITCODE -ne 0) {
+            Write-LogEntry -Event "base_sync_fetch_failed" -Data @{
+                base_branch = $script:baseBranch
+            }
+            Write-Warning "Base sync fetch failed for origin/$($script:baseBranch)"
+            return
+        }
+
+        $mergeOutput = (& git merge "origin/$($script:baseBranch)" --no-edit 2>&1 | Out-String)
+        $mergeExitCode = $LASTEXITCODE
+        if ($mergeExitCode -eq 0) {
+            if ($mergeOutput -match 'Already up to date') {
+                Write-LogEntry -Event "base_sync_up_to_date" -Data @{ base_branch = $script:baseBranch }
+            } else {
+                Write-LogEntry -Event "base_sync_merged" -Data @{ base_branch = $script:baseBranch }
+            }
+            return
+        }
+
+        $conflictedFiles = @((& git diff --name-only --diff-filter=U 2>$null) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($conflictedFiles.Count -gt 0) {
+            Write-MergeConflictEvent -BaseBranch $script:baseBranch -Conflicts $conflictedFiles
+            [void](Queue-MergePromptIfAvailable)
+            Write-LogEntry -Event "merge_conflict" -Data @{
+                base_branch = $script:baseBranch
+                conflict_count = $conflictedFiles.Count
+            }
+            Write-Warning "Merge conflict while syncing origin/$($script:baseBranch). Queued merge prompt."
+            return
+        }
+
+        Write-LogEntry -Event "base_sync_merge_failed" -Data @{
+            base_branch = $script:baseBranch
+        }
+        Write-Warning "Base sync merge failed for origin/$($script:baseBranch)"
+    } finally {
+        Pop-Location
+    }
+}
+
 $iteration = 0
 
 # ============================================================================
@@ -2040,10 +2157,12 @@ try {
         $iteration++
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $iterationStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
+        Refresh-BranchSyncConfig
         # Hot-reload provider list from meta.json (supports runtime changes)
         if ($Provider -eq 'round-robin') {
             Refresh-ProvidersFromMeta
         }
+        Invoke-PreIterationBaseSync
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
 
         if (Run-QueueIfPresent -IterationProvider $iterationProvider) {
