@@ -1232,7 +1232,7 @@ I want to make sure we implement exactly what you intended. Could you clarify th
       ['issue', 'edit', '43', '--repo', 'owner/repo', '--remove-label', 'aloop/blocked-on-human'],
     );
 
-    const expectedPath = path.join(aloopRoot, 'sessions/proj-issue-43-20260314-120000/worktree/STEERING.md');
+    const expectedPath = path.join(aloopRoot, 'sessions/proj-issue-43-20260314-120000/worktree/.aloop/STEERING.md');
     assert.ok(writtenFiles[expectedPath], 'unblock_and_steering should also write STEERING.md');
     assert.ok(writtenFiles[expectedPath].includes('WebSockets'), 'steering content includes comment body');
   });
@@ -1403,7 +1403,7 @@ Based on the current issue context, this requires human clarification before imp
     assert.deepStrictEqual(issue.processed_comment_ids, [31]);
     assert.equal(ghCalls.length, 0, 'steering_injected should not call GH when not blocked');
 
-    const expectedPath = path.join(aloopRoot, 'sessions/proj-issue-48-20260314-120000/worktree/STEERING.md');
+    const expectedPath = path.join(aloopRoot, 'sessions/proj-issue-48-20260314-120000/worktree/.aloop/STEERING.md');
     assert.ok(writtenFiles[expectedPath], 'should write STEERING.md to child worktree');
     assert.ok(writtenFiles[expectedPath].includes('Please implement pagination'), 'steering content includes comment body');
     assert.ok(writtenFiles[expectedPath].includes('#48'), 'steering content references issue number');
@@ -1479,7 +1479,7 @@ Based on the current issue context, this requires human clarification before imp
 
     assert.deepStrictEqual(entries, []);
     assert.deepStrictEqual(issue.pending_steering_comments, []);
-    const expectedPath = path.join(aloopRoot, 'sessions/proj-issue-59-20260314-120000/worktree/STEERING.md');
+    const expectedPath = path.join(aloopRoot, 'sessions/proj-issue-59-20260314-120000/worktree/.aloop/STEERING.md');
     assert.ok(writtenFiles[expectedPath], 'should write deferred steering once child_session exists');
     assert.ok(writtenFiles[expectedPath].includes('configurable'), 'deferred steering content should be preserved');
   });

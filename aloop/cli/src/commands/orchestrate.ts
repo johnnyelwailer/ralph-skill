@@ -2095,7 +2095,9 @@ async function injectSteeringToChildLoop(
   const steeringDoc = formatSteeringContent(comments, issue);
   
   // For backward compatibility and visibility in child worktree
-  const steeringPath = path.join(childSessionDir, 'worktree', 'STEERING.md');
+  const aloopArtifactsDir = path.join(childSessionDir, 'worktree', '.aloop');
+  await mkdir(aloopArtifactsDir, { recursive: true }).catch(() => {});
+  const steeringPath = path.join(aloopArtifactsDir, 'STEERING.md');
   await deps.writeFile(steeringPath, steeringDoc, 'utf8');
 
   // Task: write queue entries for one-shot overrides (steering)
@@ -3348,20 +3350,20 @@ export async function launchChildLoop(
     }
   }
 
-  // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
+  // Seed TODO.md in worktree .aloop/ subfolder (gitignored — working artifact only)
+  const aloopDir = path.join(worktreePath, '.aloop');
+  await deps.mkdir(aloopDir, { recursive: true });
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
-  await deps.writeFile(path.join(worktreePath, 'TODO.md'), todoContent, 'utf8');
+  await deps.writeFile(path.join(aloopDir, 'TODO.md'), todoContent, 'utf8');
 
-  // Ensure TODO.md and other working artifacts don't pollute PRs
+  // Ensure .aloop/ working artifacts don't pollute PRs
   const gitignorePath = path.join(worktreePath, '.gitignore');
   let gitignoreContent = '';
   if (deps.existsSync(gitignorePath)) {
     gitignoreContent = await deps.readFile(gitignorePath, 'utf8');
   }
-  const ignoreEntries = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'];
-  const missing = ignoreEntries.filter(e => !gitignoreContent.includes(e));
-  if (missing.length > 0) {
-    gitignoreContent += `\n# Aloop working artifacts (not for PR)\n${missing.join('\n')}\n`;
+  if (!gitignoreContent.includes('.aloop/')) {
+    gitignoreContent += `\n# Aloop working artifacts (not for PR)\n.aloop/\n`;
     await deps.writeFile(gitignorePath, gitignoreContent, 'utf8');
   }
 
@@ -6001,7 +6003,7 @@ export async function runOrchestratorScanPass(
         const childQueueDir = path.join(deps.aloopRoot, 'sessions', launchResult.session_id, 'queue');
         await deps.writeFile(
           path.join(childQueueDir, '000-review-fixes.md'),
-          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add .aloop/ artifacts (TODO.md, STEERING.md, etc.) or TASK_SPEC.md to the commit.\n`,
           'utf8',
         );
 

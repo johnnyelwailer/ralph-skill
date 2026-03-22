@@ -297,6 +297,8 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     const statusResult = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
     if (statusResult.stdout?.trim()) {
       // Untrack working artifacts from git (keep on disk — child still needs them)
+      spawnSync('git', ['-C', childWorktree, 'rm', '-rf', '--cached', '.aloop'], { encoding: 'utf8' });
+      // Legacy: also remove root-level artifacts if present from older sessions
       for (const art of ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md']) {
         spawnSync('git', ['-C', childWorktree, 'rm', '-f', '--cached', art], { encoding: 'utf8' });
       }
@@ -341,8 +343,9 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
               const childWorktree = path.join(childDir, 'worktree');
 
               // Clean working artifacts from branch before PR
-              const artifacts = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'];
-              for (const art of artifacts) {
+              spawnSync('git', ['-C', childWorktree, 'rm', '-rf', '--cached', '--ignore-unmatch', '.aloop'], { encoding: 'utf8' });
+              // Legacy: also remove root-level artifacts if present from older sessions
+              for (const art of ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md']) {
                 spawnSync('git', ['-C', childWorktree, 'rm', '--cached', '--ignore-unmatch', art], { encoding: 'utf8' });
               }
               const rmStatus = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });

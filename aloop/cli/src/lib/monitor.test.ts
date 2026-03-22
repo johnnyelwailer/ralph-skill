@@ -15,10 +15,11 @@ test('monitorSessionState transitions', async (t) => {
 
   await fs.mkdir(sessionDir, { recursive: true });
   await fs.mkdir(workdir, { recursive: true });
+  await fs.mkdir(path.join(workdir, '.aloop'), { recursive: true });
   await fs.mkdir(promptsDir, { recursive: true });
 
   const statusPath = path.join(sessionDir, 'status.json');
-  const todoPath = path.join(workdir, 'TODO.md');
+  const todoPath = path.join(workdir, '.aloop', 'TODO.md');
   const specReviewTemplatePath = path.join(promptsDir, 'PROMPT_spec-review.md');
   const finalReviewTemplatePath = path.join(promptsDir, 'PROMPT_final-review.md');
   const finalQaTemplatePath = path.join(promptsDir, 'PROMPT_final-qa.md');
@@ -79,7 +80,7 @@ test('monitorSessionState transitions', async (t) => {
   });
 
   await t.test('queues steer then plan when STEERING.md is detected', async () => {
-    const steeringFile = path.join(workdir, 'STEERING.md');
+    const steeringFile = path.join(workdir, '.aloop', 'STEERING.md');
     try {
       await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build', iteration: 3 }));
       await fs.writeFile(todoPath, '# TODO\n- [ ] task 1\n');
@@ -376,7 +377,7 @@ test('monitorSessionState transitions', async (t) => {
     });
 
     await t.test('warns when STEERING.md exists but PROMPT_steer.md is missing', async () => {
-      const steeringPath = path.join(workdir, 'STEERING.md');
+      const steeringPath = path.join(workdir, '.aloop', 'STEERING.md');
       await fs.writeFile(steeringPath, 'steering content');
       const steerTemplatePath = path.join(promptsDir, 'PROMPT_steer.md');
       const backupPath = steerTemplatePath + '.bak';
@@ -414,7 +415,7 @@ test('monitorSessionState transitions', async (t) => {
     await t.test('skips steer queue when steer already queued', async () => {
       await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build', iteration: 30 }));
       await fs.writeFile(todoPath, '- [ ] task 1');
-      await fs.writeFile(path.join(workdir, 'STEERING.md'), 'steer me');
+      await fs.writeFile(path.join(workdir, '.aloop', 'STEERING.md'), 'steer me');
       const queueDir = path.join(sessionDir, 'queue');
       await fs.mkdir(queueDir, { recursive: true });
       await fs.writeFile(path.join(queueDir, 'existing-PROMPT_steer.md'), 'already queued');
@@ -424,13 +425,13 @@ test('monitorSessionState transitions', async (t) => {
       const content = await fs.readFile(path.join(queueDir, 'existing-PROMPT_steer.md'), 'utf8');
       assert.strictEqual(content, 'already queued');
       await fs.rm(queueDir, { recursive: true, force: true });
-      await fs.rm(path.join(workdir, 'STEERING.md'), { force: true });
+      await fs.rm(path.join(workdir, '.aloop', 'STEERING.md'), { force: true });
     });
 
     await t.test('steering skips plan queue when plan already queued', async () => {
       await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build', iteration: 31 }));
       await fs.writeFile(todoPath, '- [ ] task 1');
-      await fs.writeFile(path.join(workdir, 'STEERING.md'), 'steer me');
+      await fs.writeFile(path.join(workdir, '.aloop', 'STEERING.md'), 'steer me');
       await fs.writeFile(path.join(promptsDir, 'PROMPT_steer.md'), 'steer template');
       const queueDir = path.join(sessionDir, 'queue');
       await fs.mkdir(queueDir, { recursive: true });
@@ -445,7 +446,7 @@ test('monitorSessionState transitions', async (t) => {
       assert.strictEqual(planFiles.length, 1, 'Should not duplicate plan queue entry');
       assert.ok(files.some(f => f.includes('PROMPT_steer')));
       await fs.rm(queueDir, { recursive: true, force: true });
-      await fs.rm(path.join(workdir, 'STEERING.md'), { force: true });
+      await fs.rm(path.join(workdir, '.aloop', 'STEERING.md'), { force: true });
     });
 
     await t.test('monitors in starting state', async () => {
@@ -481,7 +482,7 @@ test('monitorSessionState transitions', async (t) => {
       await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'build' }));
       await fs.writeFile(todoPath, '- [ ] task 1');
 
-      const steeringPath = path.join(workdir, 'STEERING.md');
+      const steeringPath = path.join(workdir, '.aloop', 'STEERING.md');
       await fs.writeFile(steeringPath, 'steering content');
 
       // Make prompts directory empty for this test to avoid queueing anything
@@ -501,7 +502,7 @@ test('monitorSessionState transitions', async (t) => {
     await t.test('checkAllTasksComplete handles readFile error', async () => {
       const mockWorkDir = path.join(tmpDir, 'mockWorkdir-readfail');
       await fs.mkdir(mockWorkDir, { recursive: true });
-      await fs.mkdir(path.join(mockWorkDir, 'TODO.md'), { recursive: true });
+      await fs.mkdir(path.join(mockWorkDir, '.aloop', 'TODO.md'), { recursive: true });
 
       await monitorSessionState({ sessionDir, workdir: mockWorkDir, promptsDir });
       // Should not crash
