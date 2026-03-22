@@ -8,7 +8,7 @@ import { writeQueueOverride } from '../lib/plan.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
 import { writeSpecBackfill } from '../lib/specBackfill.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
-import { GitHubAdapter } from '../lib/adapter.js';
+import { GitHubAdapter, type OrchestratorAdapter } from '../lib/adapter.js';
 import {
   EtagCache,
   fetchBulkIssueState,
@@ -3426,6 +3426,8 @@ export interface PrLifecycleDeps {
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   now: () => Date;
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
+  /** Optional adapter override for PR review operations (test injection seam). */
+  adapter?: Pick<OrchestratorAdapter, 'createReview'>;
   /** Run an agent review against a PR diff. Returns the verdict and summary. */
   invokeAgentReview?: (prNumber: number, repo: string, diff: string) => Promise<AgentReviewResult>;
 }
@@ -3860,7 +3862,7 @@ export async function processPrLifecycle(
     }));
     if (!alreadyCommented) {
       try {
-        const adapter = new GitHubAdapter({ type: 'github', repo }, deps.execGh);
+        const adapter = deps.adapter ?? new GitHubAdapter({ type: 'github', repo }, deps.execGh);
         const reviewEvent = reviewResult.verdict === 'request-changes' ? 'REQUEST_CHANGES' : 'COMMENT';
         const reviewBody = `Agent review requested changes:\n\n${reviewResult.summary}`;
         const reviewResponse = await adapter.createReview(prNumber, {

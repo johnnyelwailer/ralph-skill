@@ -3114,6 +3114,50 @@ describe('processPrLifecycle', () => {
     assert.equal(legacyPrCommentCall, undefined, 'Should not use gh pr comment for review feedback');
   });
 
+  it('uses injected adapter when posting request-changes review', async () => {
+    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const createdReviews: Array<{ prNumber: number; opts: { body: string; event: string; comments: unknown[] } }> = [];
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff', stderr: '' };
+        }
+        if (args[0] === 'api' && args[1] === 'repos/owner/repo/pulls/100/comments?per_page=100') {
+          return { stdout: JSON.stringify([]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'request-changes' as const,
+        summary: 'Address inline feedback',
+        comments: [
+          { path: 'src/example.ts', line: 5, body: 'Use explicit type' },
+        ],
+      }),
+      adapter: {
+        createReview: async (prNum, opts) => {
+          createdReviews.push({ prNumber: prNum, opts: { ...opts } });
+          return { review_id: 123 };
+        },
+      },
+    });
+
+    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+
+    assert.equal(result.action, 'rejected');
+    assert.equal(createdReviews.length, 1);
+    assert.equal(createdReviews[0].prNumber, 100);
+    assert.equal(createdReviews[0].opts.event, 'REQUEST_CHANGES');
+    assert.match(createdReviews[0].opts.body, /Address inline feedback/);
+  });
+
   it('flags for human when agent review flags', async () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
     const deps = createMockPrDeps({
