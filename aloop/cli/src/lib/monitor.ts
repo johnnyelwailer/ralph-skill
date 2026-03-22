@@ -19,7 +19,7 @@ interface TriggeredPromptTemplate {
  * Reads TODO.md task counts.
  */
 async function getTodoTaskCounts(workdir: string): Promise<{ incomplete: number; completed: number } | null> {
-  const planPath = path.join(workdir, 'TODO.md');
+  const planPath = path.join(workdir, '.aloop', 'TODO.md');
   if (!existsSync(planPath)) return null;
   try {
     const content = await fs.readFile(planPath, 'utf8');
@@ -147,7 +147,7 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
 
   // Case 0: Runtime-driven steering detection.
   // If a live steering doc appears, queue steer first, then plan.
-  const steeringPath = path.join(options.workdir, 'STEERING.md');
+  const steeringPath = path.join(options.workdir, '.aloop', 'STEERING.md');
   if (existsSync(steeringPath)) {
     const queueEntries = await fs.readdir(queueDir).catch(() => []);
     const steerAlreadyQueued = queueEntries.some(

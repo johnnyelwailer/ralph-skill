@@ -1,35 +1,22 @@
-# TODO — Issue #181: Self-healing
+# TODO
 
-## Current Phase: Bug fixes (QA + Review consolidated)
+## Current Phase: Bug fixes (stale QA/P1 items from review gate 10)
 
 ### In Progress
+- [x] [qa/P1] `aloop discover` exits 0 on non-existent path: fixed `resolveProjectRoot()` to throw when path doesn't exist; `scaffoldWorkspace` inherits the fix since it calls `discoverWorkspace` → `resolveProjectRoot`. Added test.
+- [x] [qa/P1] `aloop orchestrate --issues` requires spec files: In `orchestrate.ts:1358-1363`, spec file resolution and validation happens unconditionally before `filterIssues` is checked. When `--issues 99999` is passed without a SPEC.md present, it throws "No spec files found matching: SPEC.md". Fixed by making spec validation optional in issue-dispatch mode and bypassing spec decomposition/gap-analysis queueing when `filterIssues` is set. Added regression test.
+- [x] [review] Gate 10: stale P1 bugs — both `[qa/P1]` bugs above have persisted across ~6 build iterations (filed at iter 20, now ~iter 26). Fix in next build iteration: (1) `aloop discover` must exit non-zero for non-existent paths, (2) `aloop orchestrate --issues` must skip spec decomposition when dispatching specific issues. (priority: high)
 
-### Up Next
+### Spec-Gap Analysis
 
-- [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
+spec-gap analysis: no P1/P2 discrepancies found — spec functionally fulfilled for issue #124 scope.
+
+One P3 (cosmetic) finding documented below — does NOT block completion.
+
+- [ ] [spec-gap/P3] SPEC.md internal inconsistency: default pipeline description contradicts acceptance criteria. Lines 404-409 correctly state the cycle is `plan → build × 5 → qa → review` (8-step) with proof in the finalizer only. But the Proof acceptance criteria (SPEC.md:717) and QA acceptance criteria (SPEC.md:775) both say `plan → build × 5 → proof → qa → review (9-step)`, placing proof in the cycle. Code correctly implements the finalizer-only approach. **Suggested fix: update SPEC.md acceptance criteria at lines 717 and 775 to match the behavioral spec.** Files: `SPEC.md`.
 
 ### Completed
-
-- [x] **Fix `deriveFilterRepo` env var fallback** — Removed `&& ghHost` guard so `GITHUB_REPOSITORY` is used unconditionally. Added test with only `GITHUB_REPOSITORY` set (no `GH_HOST`). (priority: high) [qa/P1 + review Gate 1 + review Gate 2]
-
-- [x] **Implement startup health checks in `session-health.json`** — Added `runStartupHealthChecks` function that runs `gh auth status`, `gh repo view`, and `git status --porcelain` checks. All results (labels + startup checks) now written to `session-health.json`. (priority: high) [qa/P1 + review Gate 1]
-
-- [x] **Implement `ALERT.md` on critical startup failures** — When `gh auth status` fails (critical check), writes `ALERT.md` with error details and throws with non-zero exit. `gh repo view` failure is non-critical since repo may not be configured yet. (priority: high) [qa/P1 + review Gate 1]
-
----
-
-## Spec-Gap Analysis (2026-03-22)
-
-### Findings
-
-- [ ] **[spec-gap] SPEC.md missing orchestrator startup self-healing behaviors** — The code implements three self-healing features not documented in SPEC.md acceptance criteria: (1) `session-health.json` startup health checks (`gh auth status`, `gh repo view`, `git status --porcelain`) at `orchestrate.ts:1284-1347`, (2) `ALERT.md` creation on critical failures at `orchestrate.ts:1739-1757`, (3) `ensureLabels` label self-healing at `orchestrate.ts:1213-1260`. SPEC.md's orchestrator acceptance criteria (lines 2183-2229) don't mention startup validation or label bootstrapping. **Suggested fix:** Add acceptance criteria to SPEC.md under the orchestrator section covering startup health checks, ALERT.md on critical failure, and label self-healing. (priority: P2 — correctness drift, code ahead of spec)
-
-### No Issues Found
-
-- Config completeness: all 5 providers + round-robin consistent across `config.yml`, `start.ts`, loop scripts
-- Model IDs current (last updated 2026-03-19), `start.ts` DEFAULT_MODELS match `config.yml`
-- Template frontmatter: all loop templates use `provider: claude`; orchestrator templates correctly omit provider (runtime-provided)
-- No orphan templates; all referenced templates exist
-- Provider validation sets consistent across `start.ts` PROVIDER_SET and loop scripts
-- TODO hygiene: all 4 items marked done, no stale or hallucinated items
-- No previously filed `[spec-gap]` items to resolve
+- [x] API errors should not change issue state — `checkPrGates()` returns `pending` on API errors; `prLifecycleForIssue()` returns `gates_pending` instead of transitioning to `failed` state
+- [x] Blocked issues must have a reason — `postBlockedReasonComment()` posts a comment on the PR explaining the blocked reason
+- [x] Recovery mechanism — `recoverFailedIssues()` scans failed issues with open PRs, re-checks gates, and transitions back to `pr_open` if all gates pass; transient API errors are distinguished from genuine failures
+- [x] Artifacts in `.aloop/` folder — TODO.md, STEERING.md, QA_COVERAGE.md seeded into worktree `.aloop/` subfolder; `.gitignore` updated to exclude `.aloop/`; child loop prompts instruct agents not to commit `.aloop/` artifacts

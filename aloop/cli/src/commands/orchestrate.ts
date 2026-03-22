@@ -89,6 +89,7 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
+  blocked_reason?: string;
 }
 
 export interface OrchestratorState {
@@ -1354,19 +1355,20 @@ export async function orchestrateCommandWithDeps(
   const aloopRoot = path.join(homeDir, '.aloop');
   const sessionsRoot = path.join(aloopRoot, 'sessions');
 
+  const filterIssues = parseIssueNumbers(options.issues);
   const specInput = options.spec ?? 'SPEC.md';
   const projectRoot = options.projectRoot ? path.resolve(options.projectRoot) : process.cwd();
   const specFiles = resolveSpecFiles(specInput, projectRoot, deps);
   const existingSpecFiles = specFiles.filter((f) => deps.existsSync(f));
-  if (existingSpecFiles.length === 0) {
+  if (filterIssues === null && existingSpecFiles.length === 0) {
     throw new Error(`No spec files found matching: ${specInput}`);
   }
-  // Primary spec file for backward compatibility (first resolved file)
-  const specFile = path.relative(projectRoot, existingSpecFiles[0]) || existingSpecFiles[0];
+  // Primary spec file for backward compatibility (first resolved file when present).
+  const primarySpecPath = existingSpecFiles[0] ?? specFiles[0] ?? specInput;
+  const specFile = path.relative(projectRoot, primarySpecPath) || primarySpecPath;
   const trunkProvided = options.trunkProvided ?? false;
   let trunkBranch = options.trunk ?? 'agent/trunk';
   const concurrencyCap = parseConcurrency(options.concurrency);
-  const filterIssues = parseIssueNumbers(options.issues);
   const filterLabel = options.label ?? null;
   let filterRepo = options.repo ?? null;
   const planOnly = options.planOnly ?? false;
@@ -1607,7 +1609,7 @@ export async function orchestrateCommandWithDeps(
   }
 
   // If no decomposition has been applied yet, queue epic decomposition from spec.
-  if (!options.plan && state.issues.length === 0) {
+  if (!options.plan && filterIssues === null && state.issues.length === 0) {
     const specLabel = existingSpecFiles.length > 1
       ? existingSpecFiles.map((f) => path.relative(projectRoot, f) || f).join(', ')
       : specFile;
@@ -1641,7 +1643,9 @@ export async function orchestrateCommandWithDeps(
   }
 
   // Global spec gap analysis — queue product + architecture analyst agents for issues needing analysis
-  const gapAnalysisTargets = state.issues.filter((issue) => issue.status === 'Needs analysis');
+  const gapAnalysisTargets = filterIssues === null
+    ? state.issues.filter((issue) => issue.status === 'Needs analysis')
+    : [];
   if (gapAnalysisTargets.length > 0) {
     await createGapAnalysisRequests(state.issues, requestsDir, deps);
 
@@ -2094,7 +2098,9 @@ async function injectSteeringToChildLoop(
   const steeringDoc = formatSteeringContent(comments, issue);
   
   // For backward compatibility and visibility in child worktree
-  const steeringPath = path.join(childSessionDir, 'worktree', 'STEERING.md');
+  const aloopArtifactsDir = path.join(childSessionDir, 'worktree', '.aloop');
+  await mkdir(aloopArtifactsDir, { recursive: true }).catch(() => {});
+  const steeringPath = path.join(aloopArtifactsDir, 'STEERING.md');
   await deps.writeFile(steeringPath, steeringDoc, 'utf8');
 
   // Task: write queue entries for one-shot overrides (steering)
@@ -2735,6 +2741,21 @@ export async function applyEstimateResults(
           continue;
         } else {
           issue.status = 'Blocked';
+          const blockedReason = `Refinement budget exceeded (${issue.refinement_count}/${REFINEMENT_BUDGET_CAP}); gap risk: ${gapRisk}.`;
+          issue.blocked_reason = blockedReason;
+          if (deps?.execGh && deps.repo) {
+            await postBlockedReasonComment(
+              result.issue_number,
+              deps.repo,
+              blockedReason,
+              {
+                execGh: deps.execGh,
+                appendLog: deps.appendLog,
+                now: deps.now,
+              },
+              deps.sessionDir,
+            );
+          }
           deps?.appendLog?.(deps.sessionDir ?? '', {
             timestamp: (deps?.now?.() ?? new Date()).toISOString(),
             event: 'refinement_budget_exceeded',
@@ -3332,20 +3353,20 @@ export async function launchChildLoop(
     }
   }
 
-  // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
+  // Seed TODO.md in worktree .aloop/ subfolder (gitignored — working artifact only)
+  const aloopDir = path.join(worktreePath, '.aloop');
+  await deps.mkdir(aloopDir, { recursive: true });
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
-  await deps.writeFile(path.join(worktreePath, 'TODO.md'), todoContent, 'utf8');
+  await deps.writeFile(path.join(aloopDir, 'TODO.md'), todoContent, 'utf8');
 
-  // Ensure TODO.md and other working artifacts don't pollute PRs
+  // Ensure .aloop/ working artifacts don't pollute PRs
   const gitignorePath = path.join(worktreePath, '.gitignore');
   let gitignoreContent = '';
   if (deps.existsSync(gitignorePath)) {
     gitignoreContent = await deps.readFile(gitignorePath, 'utf8');
   }
-  const ignoreEntries = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'];
-  const missing = ignoreEntries.filter(e => !gitignoreContent.includes(e));
-  if (missing.length > 0) {
-    gitignoreContent += `\n# Aloop working artifacts (not for PR)\n${missing.join('\n')}\n`;
+  if (!gitignoreContent.includes('.aloop/')) {
+    gitignoreContent += `\n# Aloop working artifacts (not for PR)\n.aloop/\n`;
     await deps.writeFile(gitignorePath, gitignoreContent, 'utf8');
   }
 
@@ -3627,6 +3648,147 @@ export interface PrLifecycleDeps {
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 
+export interface RecoverFailedResult {
+  recovered: number;
+  checked: number;
+  details: Array<{ issue_number: number; pr_number: number; action: 'recovered' | 'still_failed' | 'error'; detail: string }>;
+}
+
+/**
+ * Scan failed issues that have an open PR. Re-check PR gates and if the PR
+ * is now mergeable with CI passing, reset the issue state from 'failed' back
+ * to 'pr_open' so the normal PR lifecycle resumes.
+ */
+export async function recoverFailedIssues(
+  state: OrchestratorState,
+  repo: string,
+  sessionDir: string,
+  deps: PrLifecycleDeps,
+): Promise<RecoverFailedResult> {
+  const candidates = state.issues.filter(
+    (i) => i.state === 'failed' && i.pr_number !== null,
+  );
+
+  const result: RecoverFailedResult = { recovered: 0, checked: candidates.length, details: [] };
+
+  for (const issue of candidates) {
+    const prNumber = issue.pr_number!;
+    try {
+      const gates = await checkPrGates(prNumber, repo, deps);
+
+      // Only recover if all gates pass — no pending, no fail
+      if (gates.all_passed) {
+        const previousBlockedReason = issue.blocked_reason;
+        issue.state = 'pr_open';
+        issue.status = 'In review';
+        issue.ci_failure_signature = undefined;
+        issue.ci_failure_retries = undefined;
+        issue.ci_failure_summary = undefined;
+        issue.rebase_attempts = undefined;
+        issue.blocked_reason = undefined;
+
+        result.recovered++;
+        result.details.push({
+          issue_number: issue.number,
+          pr_number: prNumber,
+          action: 'recovered',
+          detail: gates.gates.map((g) => `${g.gate}: ${g.detail}`).join('; '),
+        });
+
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'failed_issue_recovered',
+          issue_number: issue.number,
+          pr_number: prNumber,
+          previous_blocked_reason: previousBlockedReason ?? null,
+          gates: gates.gates,
+        });
+      } else {
+        const failedOrPending = gates.gates.filter((g) => g.status !== 'pass');
+        const summary = failedOrPending.map((g) => `${g.gate}: ${g.detail}`).join('; ');
+        const transientApiError = failedOrPending.length > 0 && failedOrPending.every(
+          (g) => g.status === 'api_error' || (g.status === 'pending' && /will retry/i.test(g.detail)),
+        );
+
+        if (transientApiError) {
+          result.details.push({
+            issue_number: issue.number,
+            pr_number: prNumber,
+            action: 'error',
+            detail: summary || 'Transient GitHub API error while checking failed issue recovery',
+          });
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'failed_issue_recovery_skipped_api_error',
+            issue_number: issue.number,
+            pr_number: prNumber,
+            gates: gates.gates,
+          });
+        } else {
+          result.details.push({
+            issue_number: issue.number,
+            pr_number: prNumber,
+            action: 'still_failed',
+            detail: summary,
+          });
+        }
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      result.details.push({
+        issue_number: issue.number,
+        pr_number: prNumber,
+        action: 'error',
+        detail: msg,
+      });
+    }
+  }
+
+  return result;
+}
+
+interface BlockedStatusDeps {
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  appendLog?: (sessionDir: string, entry: Record<string, unknown>) => void;
+  now?: () => Date;
+}
+
+async function postBlockedReasonComment(
+  issueNumber: number,
+  repo: string,
+  reason: string,
+  deps: BlockedStatusDeps,
+  sessionDir?: string,
+): Promise<boolean> {
+  try {
+    await deps.execGh([
+      'issue',
+      'comment',
+      String(issueNumber),
+      '--repo',
+      repo,
+      '--body',
+      `Blocking reason: ${reason}`,
+    ]);
+    deps.appendLog?.(sessionDir ?? '', {
+      timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
+      event: 'blocked_reason_comment_posted',
+      issue_number: issueNumber,
+      reason,
+    });
+    return true;
+  } catch (error: unknown) {
+    deps.appendLog?.(sessionDir ?? '', {
+      timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
+      event: 'blocked_reason_comment_failed',
+      issue_number: issueNumber,
+      reason,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
     const response = await deps.execGh([
@@ -3667,9 +3829,8 @@ export async function checkPrGates(
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    // API error — report as api_error so processPrLifecycle retries next pass
-    mergeable = false;
-    gates.push({ gate: 'merge_conflicts', status: 'api_error', detail: `Merge check failed (API error): ${msg}` });
+    // API error — do not transition issue state; retry this gate on the next pass.
+    gates.push({ gate: 'merge_conflicts', status: 'pending', detail: `Merge check failed (will retry): ${msg}` });
   }
 
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
@@ -3715,7 +3876,7 @@ export async function checkPrGates(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (ciWorkflowsConfigured) {
-      gates.push({ gate: 'ci_checks', status: 'api_error', detail: `Failed to query CI checks: ${msg}` });
+      gates.push({ gate: 'ci_checks', status: 'pending', detail: `CI check query failed (will retry): ${msg}` });
     } else {
       gates.push({ gate: 'ci_checks', status: 'pass', detail: `No GitHub Actions workflows detected; CI check query skipped (${msg})` });
     }
@@ -3964,8 +4125,17 @@ export async function processPrLifecycle(
       await flagForHuman(issue, repo, `Merge conflicts persist after 2 rebase attempts on PR #${prNumber}`, deps);
       // Update issue state to failed
       if (stateIssue) {
+        const blockedReason = `Merge conflicts persisted after ${rebaseAttempts} rebase attempts for PR #${prNumber}.`;
         stateIssue.state = 'failed';
         stateIssue.status = 'Blocked';
+        stateIssue.blocked_reason = blockedReason;
+        await postBlockedReasonComment(
+          issue.number,
+          repo,
+          blockedReason,
+          deps,
+          sessionDir,
+        );
       }
       await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
         execGh: deps.execGh,
@@ -4027,8 +4197,17 @@ export async function processPrLifecycle(
           `Persistent CI failure unchanged after ${retries} attempts: ${ciFailure.detail}`,
           deps,
         );
+        const blockedReason = `Persistent CI failure after ${retries} attempts: ${ciFailure.detail}`;
         stateIssue.state = 'failed';
         stateIssue.status = 'Blocked';
+        stateIssue.blocked_reason = blockedReason;
+        await postBlockedReasonComment(
+          issue.number,
+          repo,
+          blockedReason,
+          deps,
+          sessionDir,
+        );
         await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
           execGh: deps.execGh,
           appendLog: deps.appendLog,
@@ -4733,9 +4912,23 @@ export async function monitorChildSessions(
       // Child stopped (limit reached, interrupted) — re-queue to continue where it left off
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
-        // Keep child_session so resume works on the same branch/worktree
-        (stateIssue as any).needs_redispatch = true;
-        (stateIssue as any).review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
+        const blockedReason = `Child session ${childSession} stopped (stuck_count=${childStatus.stuck_count ?? 0}, phase=${childStatus.phase ?? 'unknown'}).`;
+        stateIssue.state = 'failed';
+        stateIssue.status = 'Blocked';
+        stateIssue.blocked_reason = blockedReason;
+        await postBlockedReasonComment(
+          issue.number,
+          repo,
+          blockedReason,
+          deps,
+          sessionDir,
+        );
+        await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
+          execGh: deps.execGh,
+          appendLog: deps.appendLog,
+          now: deps.now,
+          sessionDir,
+        });
       }
       result.failed++;
       entry.action = 'failed';
@@ -4809,6 +5002,7 @@ export interface ScanPassResult {
   specConsistencyProcessed: boolean;
   childMonitoring: MonitorChildResult | null;
   prLifecycles: PrLifecycleResult[];
+  recoveredIssues: RecoverFailedResult | null;
   waveAdvanced: boolean;
   budgetExceeded: boolean;
   allDone: boolean;
@@ -5546,6 +5740,7 @@ export async function runOrchestratorScanPass(
     specConsistencyProcessed: false,
     childMonitoring: null,
     prLifecycles: [],
+    recoveredIssues: null,
     waveAdvanced: false,
     budgetExceeded: false,
     allDone: false,
@@ -5747,6 +5942,38 @@ export async function runOrchestratorScanPass(
     }
   }
 
+  // 2.7. Recover failed issues whose PRs are now passing
+  if (repo && deps.prLifecycleDeps) {
+    const failedWithPr = state.issues.some((i) => i.state === 'failed' && i.pr_number !== null);
+    if (failedWithPr) {
+      try {
+        result.recoveredIssues = await recoverFailedIssues(
+          state,
+          repo,
+          sessionDir,
+          deps.prLifecycleDeps,
+        );
+        if (result.recoveredIssues.recovered > 0) {
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'recovery_pass_complete',
+            iteration,
+            checked: result.recoveredIssues.checked,
+            recovered: result.recoveredIssues.recovered,
+          });
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'recovery_pass_error',
+          iteration,
+          error: msg,
+        });
+      }
+    }
+  }
+
   // 3. Process PR lifecycles for issues with open PRs
   if (repo && deps.prLifecycleDeps) {
     const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
@@ -5797,7 +6024,7 @@ export async function runOrchestratorScanPass(
         const childQueueDir = path.join(deps.aloopRoot, 'sessions', launchResult.session_id, 'queue');
         await deps.writeFile(
           path.join(childQueueDir, '000-review-fixes.md'),
-          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add .aloop/ artifacts (TODO.md, STEERING.md, etc.) or TASK_SPEC.md to the commit.\n`,
           'utf8',
         );
 
@@ -5865,7 +6092,11 @@ export async function runOrchestratorScanPass(
   }
 
   // 6. Check if all issues are done
-  const allMerged = state.issues.length > 0 && state.issues.every((i) => i.state === 'merged' || i.state === 'failed');
+  const allMerged = state.issues.length > 0 && state.issues.every((i) => {
+    if (i.state === 'merged') return true;
+    // Failed issues with an open PR are recoverable and should keep scan loop alive.
+    return i.state === 'failed' && i.pr_number === null;
+  });
   result.allDone = allMerged;
 
   // 7. Check external stop signal
@@ -5899,6 +6130,8 @@ export async function runOrchestratorScanPass(
     bulk_fetch_changed: result.bulkFetch?.issuesChanged ?? 0,
     bulk_fetch_cached: result.bulkFetch?.fromCache ?? false,
     bulk_fetch_duration_ms: result.bulkFetch?.durationMs ?? 0,
+    recovery_checked: result.recoveredIssues?.checked ?? 0,
+    recovery_recovered: result.recoveredIssues?.recovered ?? 0,
   });
 
   return result;

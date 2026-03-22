@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { resolveHomeDir, readActiveSessions } from './session.js';
@@ -62,7 +62,7 @@ export async function steerCommand(instruction: string, options: SteerCommandOpt
   const entry = active[sessionId];
   const sessionDir = entry.session_dir ?? path.join(homeDir, '.aloop', 'sessions', sessionId);
   const workdir = entry.work_dir ?? path.join(sessionDir, 'worktree');
-  const steeringPath = path.join(workdir, 'STEERING.md');
+  const steeringPath = path.join(workdir, '.aloop', 'STEERING.md');
 
   // Check for existing steering if overwrite not set
   if (existsSync(steeringPath) && !options.overwrite) {
@@ -72,7 +72,8 @@ export async function steerCommand(instruction: string, options: SteerCommandOpt
   const affectsCompletedWork = (options.affectsCompletedWork as 'yes' | 'no' | 'unknown') ?? 'unknown';
   const steeringDoc = buildSteeringDocument(instruction.trim(), affectsCompletedWork, 'cli');
 
-  // Write STEERING.md to workdir
+  // Write STEERING.md to workdir .aloop/ subfolder
+  await mkdir(path.join(workdir, '.aloop'), { recursive: true });
   await writeFile(steeringPath, steeringDoc, 'utf8');
 
   // Write queue override

@@ -57,7 +57,7 @@ interface DashboardRuntimeOptions {
   ghCommandRunner?: GhCommandRunner;
 }
 
-const DOC_FILES = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
+const DOC_FILES = ['.aloop/TODO.md', 'SPEC.md', '.aloop/RESEARCH.md', '.aloop/REVIEW_LOG.md', '.aloop/STEERING.md'];
 const MAX_LOG_BYTES = 1024 * 1024;
 const MAX_BODY_BYTES = 64 * 1024;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
@@ -639,7 +639,7 @@ export async function startDashboardServer(
   const metaPath = path.join(sessionDir, 'meta.json');
   const activeSessionsPath = path.join(runtimeDir, 'active.json');
   const recentSessionsPath = path.join(runtimeDir, 'history.json');
-  const steeringPath = path.join(workdir, 'STEERING.md');
+  const steeringPath = path.join(workdir, '.aloop', 'STEERING.md');
   const requestsDir = path.join(workdir, '.aloop', 'requests');
   const normalizedRequestsDir = path.normalize(requestsDir).toLowerCase();
   const docPaths = DOC_FILES.map((name) => path.join(workdir, name));
@@ -898,6 +898,7 @@ export async function startDashboardServer(
         );
 
         // For backward compatibility and so the steer agent can read it
+        await fs.mkdir(path.dirname(steeringPath), { recursive: true });
         await fs.writeFile(steeringPath, steeringDoc, 'utf8');
 
         const promptsDir = path.join(sessionDir, 'prompts');
@@ -1081,7 +1082,7 @@ export async function startDashboardServer(
           const ctx = await resolveSessionContext(runtimeDir, targetSessionId);
           if (ctx) coverageWorkdir = ctx.workdir;
         }
-        const coveragePath = path.join(coverageWorkdir, 'QA_COVERAGE.md');
+        const coveragePath = path.join(coverageWorkdir, '.aloop', 'QA_COVERAGE.md');
         const raw = await readTextFile(coveragePath);
         if (!raw) {
           writeJson(response, 200, { coverage_percent: 0, total_features: 0, tested_features: 0, passed: 0, failed: 0, untested: 0, features: [], available: false, error: 'not_found' });

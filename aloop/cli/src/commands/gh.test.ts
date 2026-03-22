@@ -2299,7 +2299,7 @@ test('gh watch --once triggers feedback re-iteration for completed entry with PR
     ], { from: 'user' });
 
     // Verify STEERING.md was written
-    const steeringPath = path.join(worktreeDir, 'STEERING.md');
+    const steeringPath = path.join(worktreeDir, '.aloop', 'STEERING.md');
     assert.ok(fs.existsSync(steeringPath), 'STEERING.md should be written to worktree');
     const steeringContent = fs.readFileSync(steeringPath, 'utf8');
     assert.match(steeringContent, /null check/);

@@ -963,10 +963,10 @@ async function checkAndApplyPrFeedback(
     return false;
   }
 
-  // Write STEERING.md to the session worktree
+  // Write STEERING.md to worktree .aloop/ subfolder (gitignored working artifact)
   const sessionDir = getSessionDir(options.homeDir, entry.session_id);
   const worktreePath = path.join(sessionDir, 'worktree');
-  const steeringPath = path.join(worktreePath, 'STEERING.md');
+  const steeringPath = path.join(worktreePath, '.aloop', 'STEERING.md');
   const steeringContent = buildFeedbackSteering(feedback, entry.pr_number);
 
   fs.mkdirSync(path.dirname(steeringPath), { recursive: true });

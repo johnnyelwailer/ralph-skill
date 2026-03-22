@@ -539,7 +539,10 @@ test('host monitor processes requests while loop.sh runtime path executes', asyn
     await mkdir(fakeBinDir, { recursive: true });
     await mkdir(runtimeStub, { recursive: true });
 
+    await mkdir(path.join(fixture.workdir, '.aloop'), { recursive: true });
+    // loop.sh reads TODO.md from workdir root; monitor reads from .aloop/
     await writeFile(path.join(fixture.workdir, 'TODO.md'), '- [ ] Build something\n', 'utf8');
+    await writeFile(path.join(fixture.workdir, '.aloop', 'TODO.md'), '- [ ] Build something\n', 'utf8');
     await writeFile(path.join(promptsDir, 'PROMPT_build.md'), '# Building Mode\nBuild the task.\n', 'utf8');
     await writeFile(path.join(fixture.workdir, 'body.md'), 'test content', 'utf8');
 
@@ -667,7 +670,7 @@ test('POST /api/steer validates input and writes STEERING.md', async () => {
     });
     assert.equal(validResponse.status, 201);
 
-    const steeringDoc = await readFile(path.join(fixture.workdir, 'STEERING.md'), 'utf8');
+    const steeringDoc = await readFile(path.join(fixture.workdir, '.aloop', 'STEERING.md'), 'utf8');
     assert.match(steeringDoc, /# Steering Instruction/);
     assert.match(steeringDoc, /Shift to implement API controls first\./);
     assert.match(steeringDoc, /\*\*Affects completed work:\*\* no/);
@@ -779,7 +782,8 @@ test('POST /api/steer supports overwrite: true', async () => {
   const fixture = await createServerFixture();
 
   try {
-    await writeFile(path.join(fixture.workdir, 'STEERING.md'), 'existing', 'utf8');
+    await mkdir(path.join(fixture.workdir, '.aloop'), { recursive: true });
+    await writeFile(path.join(fixture.workdir, '.aloop', 'STEERING.md'), 'existing', 'utf8');
 
     const response = await fetch(`${fixture.handle.url}/api/steer`, {
       method: 'POST',
@@ -788,7 +792,7 @@ test('POST /api/steer supports overwrite: true', async () => {
     });
 
     assert.equal(response.status, 201);
-    const content = await readFile(path.join(fixture.workdir, 'STEERING.md'), 'utf8');
+    const content = await readFile(path.join(fixture.workdir, '.aloop', 'STEERING.md'), 'utf8');
     assert.match(content, /New instruction/);
   } finally {
     await fixture.handle.close();
@@ -1023,7 +1027,8 @@ test('GET /api/state?session=<id> returns state for a different session', async 
       JSON.stringify({ state: 'running', phase: 'build', iteration: 3 }),
       'utf8',
     );
-    await writeFile(path.join(otherWorkdir, 'TODO.md'), '# Other Project TODO\n', 'utf8');
+    await mkdir(path.join(otherWorkdir, '.aloop'), { recursive: true });
+    await writeFile(path.join(otherWorkdir, '.aloop', 'TODO.md'), '# Other Project TODO\n', 'utf8');
 
     // Register the session in active.json (object format keyed by session ID)
     const activeSessions: Record<string, unknown> = {
@@ -1049,7 +1054,7 @@ test('GET /api/state?session=<id> returns state for a different session', async 
     assert.equal(payload.status.state, 'running');
     assert.equal(payload.status.phase, 'build');
     assert.equal(payload.status.iteration, 3);
-    assert.match(payload.docs['TODO.md'], /Other Project TODO/);
+    assert.match(payload.docs['.aloop/TODO.md'], /Other Project TODO/);
   } finally {
     await fixture.handle.close();
   }
@@ -1512,7 +1517,8 @@ test('watch-triggered publish failures are guarded and do not crash the server',
     const response = await fetch(`${fixture.handle.url}/events`);
     assert.equal(response.status, 200);
 
-    await writeFile(path.join(fixture.workdir, 'TODO.md'), '# changed', 'utf8');
+    await mkdir(path.join(fixture.workdir, '.aloop'), { recursive: true });
+    await writeFile(path.join(fixture.workdir, '.aloop', 'TODO.md'), '# changed', 'utf8');
     await sleep(250);
 
     stringifyMock.mock.restore();
@@ -2012,7 +2018,8 @@ test('GET /api/qa-coverage parses pipe-delimited table from QA_COVERAGE.md', asy
       '| dashboard health | UI/HealthPanel | 2026-03-19 | f4e5d6a | FAIL | 2/4 | codex missing |',
       '| aloop gh watch | CLI/gh.ts | never | - | UNTESTED | 0/3 | - |',
     ].join('\n');
-    await writeFile(path.join(workdir, 'QA_COVERAGE.md'), tableContent, 'utf8');
+    await mkdir(path.join(workdir, '.aloop'), { recursive: true });
+    await writeFile(path.join(workdir, '.aloop', 'QA_COVERAGE.md'), tableContent, 'utf8');
     const response = await fetch(`${handle.url}/api/qa-coverage`);
     assert.equal(response.status, 200);
     const body = (await response.json()) as Record<string, unknown>;
@@ -2040,8 +2047,9 @@ test('GET /api/qa-coverage parses pipe-delimited table from QA_COVERAGE.md', asy
 test('GET /api/qa-coverage returns 0% when file has no parseable table', async () => {
   const { handle, root, workdir } = await createServerFixture();
   try {
+    await mkdir(path.join(workdir, '.aloop'), { recursive: true });
     await writeFile(
-      path.join(workdir, 'QA_COVERAGE.md'),
+      path.join(workdir, '.aloop', 'QA_COVERAGE.md'),
       '# QA Report\n\nNo coverage table here.',
       'utf8',
     );

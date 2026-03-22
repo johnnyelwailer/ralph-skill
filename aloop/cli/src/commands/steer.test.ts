@@ -15,6 +15,7 @@ async function setupHome(prefix: string): Promise<{ homeDir: string; sessionDir:
   const promptsDir = path.join(sessionDir, 'prompts');
 
   await mkdir(workdir, { recursive: true });
+  await mkdir(path.join(workdir, '.aloop'), { recursive: true });
   await mkdir(promptsDir, { recursive: true });
 
   // Write active.json with one session
@@ -51,7 +52,7 @@ test('steer writes STEERING.md and queue file for single active session', async 
   }
 
   // Check STEERING.md was written
-  const steeringPath = path.join(workdir, 'STEERING.md');
+  const steeringPath = path.join(workdir, '.aloop', 'STEERING.md');
   assert.ok(existsSync(steeringPath), 'STEERING.md should exist');
   const steeringContent = await readFile(steeringPath, 'utf8');
   assert.match(steeringContent, /# Steering Instruction/);
@@ -102,7 +103,7 @@ test('steer uses PROMPT_steer.md template when available', async () => {
   assert.match(queueContent, /change direction/);
 
   // STEERING.md should still have the instruction
-  const steeringContent = await readFile(path.join(workdir, 'STEERING.md'), 'utf8');
+  const steeringContent = await readFile(path.join(workdir, '.aloop', 'STEERING.md'), 'utf8');
   assert.match(steeringContent, /change direction/);
 });
 
@@ -182,7 +183,7 @@ test('steer rejects when STEERING.md exists without --overwrite', async () => {
   const { homeDir, workdir } = await setupHome('steer-conflict-');
 
   // Pre-create STEERING.md
-  await writeFile(path.join(workdir, 'STEERING.md'), '# Existing steering', 'utf8');
+  await writeFile(path.join(workdir, '.aloop', 'STEERING.md'), '# Existing steering', 'utf8');
 
   const logs: string[] = [];
   const origLog = console.log;
@@ -209,7 +210,7 @@ test('steer succeeds with --overwrite when STEERING.md exists', async () => {
   const { homeDir, workdir } = await setupHome('steer-overwrite-');
 
   // Pre-create STEERING.md
-  await writeFile(path.join(workdir, 'STEERING.md'), '# Old steering', 'utf8');
+  await writeFile(path.join(workdir, '.aloop', 'STEERING.md'), '# Old steering', 'utf8');
 
   const logs: string[] = [];
   const origLog = console.log;
@@ -224,7 +225,7 @@ test('steer succeeds with --overwrite when STEERING.md exists', async () => {
   const output = JSON.parse(logs[0]);
   assert.equal(output.success, true);
 
-  const content = await readFile(path.join(workdir, 'STEERING.md'), 'utf8');
+  const content = await readFile(path.join(workdir, '.aloop', 'STEERING.md'), 'utf8');
   assert.match(content, /updated instruction/);
 });
 
@@ -241,7 +242,7 @@ test('steer with affects-completed-work flag', async () => {
     console.log = origLog;
   }
 
-  const content = await readFile(path.join(workdir, 'STEERING.md'), 'utf8');
+  const content = await readFile(path.join(workdir, '.aloop', 'STEERING.md'), 'utf8');
   assert.match(content, /\*\*Affects completed work:\*\* yes/);
 });
 
@@ -365,7 +366,7 @@ test('steer uses fallback paths when session_dir and work_dir are omitted from a
   }
 
   // Check STEERING.md was written to the default fallback path
-  const steeringPath = path.join(workdir, 'STEERING.md');
+  const steeringPath = path.join(workdir, '.aloop', 'STEERING.md');
   assert.ok(existsSync(steeringPath), 'STEERING.md should exist at fallback path');
   const steeringContent = await readFile(steeringPath, 'utf8');
   assert.match(steeringContent, /fallback instruction/);
