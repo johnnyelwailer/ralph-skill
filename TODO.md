@@ -33,7 +33,9 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [x] [qa/P1] aloop steer accepts empty instruction: `aloop steer "" --session <id>` succeeds with exit 0. Expected: reject with error and non-zero exit. (priority: high)
 
-- [x] [qa/P1] Dashboard /api/artifacts endpoint returns 404: Endpoint implemented at dashboard.ts:1095-1122 with path traversal protection and proper Content-Type headers. (priority: high)
+- [ ] [qa/P1] Dashboard /api/artifacts endpoint still returns 404: Re-tested at iter 5 via installed binary (`/tmp/aloop-test-install-XIG8ZU/bin/aloop`). `curl http://localhost:4398/api/artifacts/QA_COVERAGE.md` → 404. Tried query param variant too. Endpoint not reachable through packaged CLI. (priority: high)
+
+- [ ] [qa/P2] Lighthouse accessibility 84% (target >= 90): Four failures: (1) tablist contains non-tab child `a[aria-label]`, (2) two buttons in footer lack accessible names (Send disabled + Stop dropdown trigger), (3) `text-muted-foreground/50` contrast ratio 1.96:1 (needs 4.5:1), (4) heading order skips h2 → h3. Tested at iter 5. (priority: medium)
 
 ### Up Next
 
@@ -49,7 +51,7 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [x] **Runtime layout verification** — [review Gate 7] Run Playwright at 390x844 viewport and verify bounding boxes of key elements meet 44x44px minimum. Added Playwright test in `aloop/cli/dashboard/e2e/smoke.spec.ts` validating 44x44 min bounding boxes for key mobile controls. (priority: medium)
 
-- [ ] **Run Lighthouse mobile accessibility audit** — Run Lighthouse in mobile mode targeting accessibility category. Target score >= 90. (priority: low)
+- [x] **Run Lighthouse mobile accessibility audit** — Ran at iter 5. Score: 84% (below 90% target). 4 failures filed as [qa/P2] bug. (priority: low)
 
 - [ ] **Capture proof artifacts** — [review Gate 6] Capture Playwright screenshots at mobile viewport. (priority: low)
 

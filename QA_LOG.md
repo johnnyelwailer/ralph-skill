@@ -602,3 +602,163 @@ PASS: All subcommands have correct help, error messages, and exit codes. Policy-
 - Test session stopped: qa-test-start-1774175677-20260322-103450
 - Test project: /tmp/qa-test-start-1774175677 (to be cleaned)
 - Test install: /tmp/aloop-test-install-QPec4C (to be cleaned)
+
+## QA Session — 2026-03-22 (iteration 5)
+
+### Binary Under Test
+- Path: `/tmp/aloop-test-install-XIG8ZU/bin/aloop`
+- Version: 1.0.0
+
+### Test Environment
+- Dashboard URL: http://localhost:4398
+- Session dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-166-20260322-090309
+- Browser: Playwright Chromium (headless)
+- Mobile viewport: 390x844 (iPhone 12-like, hasTouch=true, isMobile=true)
+- Lighthouse: v13.0.3 with Playwright Chromium
+- Features tested: 5 (focus management re-test, ARIA re-test, /api/artifacts re-test, Lighthouse audit, dashboard API)
+
+### Results
+- PASS (re-test): Focus management — Escape closes sidebar, focus moves into sidebar, command palette auto-focuses input
+- PASS (re-test): ARIA labels — GitHub repo link has `aria-label="Open repo on GitHub"`
+- FAIL (re-test): /api/artifacts — still 404 via installed binary
+- FAIL: Lighthouse mobile accessibility — 84% (target >= 90%), 4 failing audits
+
+### Bugs Filed (2 new)
+- [qa/P1] Dashboard /api/artifacts endpoint still returns 404 (re-opened — not working through packaged CLI)
+- [qa/P2] Lighthouse accessibility 84% — tablist children, button names, contrast ratio, heading order
+
+### Re-test Verifications (3 previously FAIL → now PASS)
+- Focus management: Escape sidebar, focus into sidebar, command palette focus — all fixed
+- ARIA labels: GitHub repo link — fixed with `aria-label="Open repo on GitHub"`
+
+### Detailed Results
+
+#### Feature 1: Focus Management Re-test (3 P1 bugs)
+
+**Mobile viewport (390x844, touch, isMobile):**
+
+```
+=== Test 1: Escape key closes mobile sidebar ===
+  Sidebar overlay visible after open: true
+  Sidebar aside width: 256px
+  Sidebar is open: true
+  Overlay visible after Escape: false
+  Sidebar open after Escape: false
+  RESULT: PASS — Escape closes mobile sidebar
+
+=== Test 2: Focus moves into sidebar on open ===
+  Active element after sidebar open: BUTTON aria-label="null" text=""
+  (Focus is NOT on hamburger button)
+  RESULT: PASS — Focus moved away from hamburger into sidebar
+
+=== Test 3: Command palette auto-focus on open ===
+  Active element: INPUT type=text placeholder="Type a command..." role=combobox
+  RESULT: PASS — Command palette input is focused
+```
+
+#### Feature 2: ARIA Labels Re-test (GitHub Link)
+
+```
+  GitHub links found: 1
+    href: https://github.com/johnnyelwailer/ralph-skill
+    aria-label: Open repo on GitHub
+    hasAccessibleName: true
+  RESULT: PASS — All GitHub links have accessible names
+```
+
+#### Feature 3: /api/artifacts Endpoint Re-test
+
+```
+$ curl -s -w "\nHTTP %{http_code}" http://localhost:4398/api/artifacts/QA_COVERAGE.md
+{"error":"Not found"}
+HTTP 404
+
+$ curl -s -w "\nHTTP %{http_code}" "http://localhost:4398/api/artifacts?path=QA_COVERAGE.md"
+{"error":"Not found"}
+HTTP 404
+
+$ curl -s -w "\nHTTP %{http_code}" http://localhost:4398/api/state
+(200 OK — 587400 bytes, confirms dashboard is serving)
+```
+
+FAIL: Endpoint returns 404 despite TODO marking it as fixed. /api/state works, confirming dashboard is operational.
+
+#### Feature 4: Lighthouse Mobile Accessibility Audit
+
+```
+Score: 84% (target: >= 90%)
+Passing audits: 20
+Failing audits: 4
+N/A audits: 49
+
+--- Failing Audits ---
+1. aria-required-children: tablist contains a[aria-label] child (not tab role)
+   Selector: div.p-6 > div.flex > div.flex > div.inline-flex
+
+2. button-name: 2 buttons without accessible names
+   Selector: div.flex > footer.border-t > div.flex > button.inline-flex (Send, disabled)
+   Selector: div.flex > footer.border-t > div.flex > button#radix-:r89: (Stop dropdown trigger)
+
+3. color-contrast: text-muted-foreground/50 at 1.96:1 (needs 4.5:1)
+   Multiple spans with class text-muted-foreground/50 text-[10px]
+   Also: bg-muted text-muted-foreground at 4.39:1 (needs 4.5:1)
+
+4. heading-order: h3 without preceding h2
+   Selector: div.flex > div.rounded-lg > div.flex > h3.text-xs
+```
+
+#### Feature 5: Dashboard API Endpoints (re-check)
+
+```
+/api/state:        HTTP 200 — PASS
+/api/qa-coverage:  HTTP 200 — PASS
+/events (SSE):     HTTP 200 — PASS
+/api/artifacts:    HTTP 404 — FAIL (re-confirmed)
+/api/cost:         HTTP 404 — (not filed, may be unimplemented)
+```
+
+### Command Transcript
+
+```bash
+# Install from source
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# Output: /tmp/aloop-test-install-XIG8ZU/bin/aloop
+
+$ALOOP_BIN --version
+# Output: 1.0.0
+
+# Start dashboard
+$ALOOP_BIN dashboard --port 4398 --session-dir $SESSION_DIR --workdir $WORKDIR &
+# Output: Launching real-time progress dashboard on port 4398...
+
+curl -s -o /dev/null -w "HTTP %{http_code}" http://localhost:4398
+# Output: HTTP 200
+
+# Install Playwright
+npx playwright install chromium
+cd /tmp && npm install playwright
+
+# Run focus + ARIA re-tests
+node /tmp/qa-session5-focus.mjs
+# Exit code: 0, all PASS
+
+# Run Lighthouse
+CHROME_PATH=~/.cache/ms-playwright/chromium-1208/chrome-linux/chrome \
+npx lighthouse http://localhost:4398 --only-categories=accessibility \
+  --form-factor=mobile --chrome-flags="--headless --no-sandbox" \
+  --output=json --output-path=/tmp/qa-lighthouse-mobile.json --quiet
+# Score: 84%
+
+# API endpoint checks
+curl -s -w "\nHTTP %{http_code}" http://localhost:4398/api/artifacts/QA_COVERAGE.md
+# HTTP 404
+
+curl -s -w "\nHTTP %{http_code}" http://localhost:4398/api/cost
+# HTTP 404
+```
+
+### Cleanup
+- Test install: /tmp/aloop-test-install-XIG8ZU (to be cleaned)
+- Test project: /tmp/qa-test-session5-1633249 (to be cleaned)
+- Lighthouse report: /tmp/qa-lighthouse-mobile.json
+- Screenshot: /tmp/qa-session5-mobile.png

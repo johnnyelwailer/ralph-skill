@@ -7,10 +7,10 @@
 | HoverCard tap equivalents | 2026-03-22 | 2eebe45 | PASS | Provider badge HoverCard opens on click/tap, shows provider details (status, cooldown, etc.) |
 | Long-press context menu | 2026-03-22 | fb3696a | N/A | Not yet implemented per TODO.md. Confirmed no context menu appears on long-press. |
 | No hover-only interactions | 2026-03-22 | 6e6c819 | PASS | No `group-hover` elements without click parents found. No visible hover-only content-revealing elements. Overflow tabs menu not visible (fewer than threshold). |
-| ARIA labels & roles | 2026-03-22 | 6e6c819 | FAIL | Buttons all have accessible labels. Hamburger has aria-label="Toggle sidebar" PASS. GitHub repo link (44x44px icon-only `<a>` with SVG) still missing aria-label — P1 bug still open. |
-| Focus management (mobile) | 2026-03-22 | 6e6c819 | FAIL | 3 bugs filed: (1) Escape doesn't close mobile sidebar, (2) focus stays on hamburger after sidebar open instead of moving into sidebar, (3) Ctrl+K command palette opens but focus lands on BODY instead of search input. Tab order is logical (9 visible focusable elements in correct sequence). Overlay click closes sidebar correctly. Escape closes command palette correctly. |
+| ARIA labels & roles | 2026-03-22 | b75312a | PASS | Fix verified: GitHub repo link now has `aria-label="Open repo on GitHub"`. All buttons have accessible labels. Lighthouse still flags 2 unnamed buttons in footer (Send/Stop dropdown). |
+| Focus management (mobile) | 2026-03-22 | b75312a | PASS | All 3 P1 bugs fixed: (1) Escape closes mobile sidebar, (2) focus moves into sidebar on open, (3) Ctrl+K auto-focuses search input (INPUT type=text role=combobox). |
 | 320px viewport layout | 2026-03-22 | 6e6c819 | PASS | No horizontal scroll at 320px. document.scrollWidth === window.innerWidth (320px). |
-| Lighthouse audit >= 90 | never | — | — | Not yet tested — blocked on focus/aria fixes |
+| Lighthouse audit >= 90 | 2026-03-22 | b75312a | FAIL | Score: 84%. Failures: (1) tablist has non-tab children (a[aria-label]), (2) 2 buttons without accessible names in footer, (3) color contrast ratio 1.96:1 on text-muted-foreground/50, (4) heading order skips levels (h3 without h2). |
 | aloop --version | 2026-03-21 | 9062093 | PASS | Reports 1.0.0 correctly |
 | aloop --help | 2026-03-21 | 9062093 | PASS | Lists all commands, exit code 0 |
 | aloop status | 2026-03-21 | 9062093 | PASS | Shows active sessions + provider health table |
@@ -26,5 +26,5 @@
 | aloop (unknown command) | 2026-03-21 | 9062093 | PASS | Proper error: unknown command |
 | npm pack + install path | 2026-03-21 | 9062093 | PASS | test-install script works, binary runs from /tmp |
 | aloop start / stop / resume | 2026-03-22 | d784b59 | PASS | Start creates session, status shows it, stop removes it, resume resumes. All exit codes correct. |
-| Dashboard SSE live updates | 2026-03-22 | d784b59 | PASS (partial) | /api/state OK, /events SSE OK (text/event-stream, sends connected + state), /api/qa-coverage OK. /api/artifacts 404 (bug filed). /api/cost 404. |
+| Dashboard SSE live updates | 2026-03-22 | b75312a | PASS (partial) | /api/state OK, /events SSE OK, /api/qa-coverage OK. /api/artifacts still 404 via installed binary (bug re-confirmed). /api/cost 404. |
 | aloop gh subcommands | 2026-03-22 | d784b59 | PASS | gh --help lists 14 subcommands. gh start/watch/stop/status/pr-create/pr-merge all have proper help text and error handling. gh status shows tracked issues. Policy commands require --session. |
