@@ -245,6 +245,36 @@ After interview is complete, generate all artifacts. Launch these subagents **in
 - Configure trigger defaults
 - **Output:** `.aloop/agents/*.yml` files
 
+### Subagent I: CONSTITUTION.md Generation
+- Scan the generated SPEC.md for architectural invariants — look for:
+  - "must NOT", "must NEVER", "critical design rule", "principle", "boundary"
+  - Layer separation rules (what runs where, what can call what)
+  - Trust boundaries (who has access to what)
+  - Protocol contracts (how components communicate)
+  - File ownership rules (which files belong to which layer)
+- Distill into **short, actionable rules** (one sentence each, imperative mood)
+- Each rule should be independently enforceable in a code review
+- Group rules by category: Architecture, Security, Protocol, Ownership
+- Target: 10-30 rules, ~50-100 lines total
+- **Output:** `CONSTITUTION.md`
+
+Example format:
+```markdown
+# Constitution — Non-Negotiable Invariants
+
+## Architecture
+- loop.sh/loop.ps1 are dumb runners: iterate phases, invoke providers, write status/logs. No business logic.
+- The aloop CLI is the single trust boundary. Agents never call GH APIs or network endpoints directly.
+
+## Protocol
+- All agent side effects flow through request files (requests/*.json → runtime processing → queue/*.md).
+- Convention files (TODO.md, STEERING.md, REVIEW_LOG.md) are the only communication channel between agents and the loop.
+
+## Ownership
+- loop.sh/loop.ps1: only modify for phase iteration, provider invocation, or status logging.
+- orchestrate.ts/process-requests.ts: all GH API calls, PR lifecycle, issue management.
+```
+
 **Wait for all subagents to complete.**
 
 ---
@@ -262,10 +292,16 @@ Present generated artifacts to user for review:
    - Screenshot baselines setup (viewports, pages, baseline directory)
    - Layout assertions (what's checked, how)
    - Validation commands (the exact command sequence)
-5. **Summary of all decisions:**
+5. **CONSTITUTION.md** — show the full constitution. Explain: "These are the non-negotiable rules every agent will follow. Every prompt in the pipeline — build, review, QA, decomposition, refinement — will include these. If an agent violates any rule, the PR gets rejected."
+   - Walk through each rule with the user
+   - Ask if any rules are missing, too strict, or unclear
+   - User can add project-specific rules (e.g., "never modify the database schema without a migration")
+   - User can soften or remove rules that don't apply
+6. **Summary of all decisions:**
    - Active agents and their triggers
    - Convention bindings per agent
    - Verification layers and test data paths
+   - Constitution rules count
 
 Ask: **"Ready to start the loop? Any changes needed?"**
 
@@ -291,7 +327,7 @@ Phase 2: present findings  ← sequential, user confirms
               ↓
 Phase 3: interview         ← sequential, one topic at a time
               ↓
-Phase 4: [E] [F] [G] [H]  ← parallel, no user interaction
+Phase 4: [E] [F] [G] [H] [I]  ← parallel, no user interaction
               ↓
 Phase 5: review & confirm  ← sequential, user signs off
 ```
