@@ -825,7 +825,7 @@ export function Sidebar({
     selectedSessionId === null ? sessions.indexOf(s) === 0 : s.id === selectedSessionId;
 
   const displaySessionCost = (s: SessionSummary): number | null =>
-    s.id === 'current' ? sessionCost : (sessionCosts[s.id] ?? null);
+    s.isActive ? sessionCost : (sessionCosts[s.id] ?? null);
 
   const renderCard = (s: SessionSummary) => {
     const cardCost = displaySessionCost(s);
