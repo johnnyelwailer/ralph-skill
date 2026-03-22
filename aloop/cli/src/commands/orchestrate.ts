@@ -1350,23 +1350,10 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     const { spawn: nodeSpawn, spawnSync: nodeSpawnSync } = await import('node:child_process');
     nodeSpawnSync('git', ['-C', projectRoot, 'fetch', 'origin'], { encoding: 'utf8' });
 
-    // Refresh ALL orchestrator prompts from templates (not just scan)
+    // Refresh the scan prompt (dynamically generated with session paths).
+    // Other orchestrator prompts are configured (not templates) — don't overwrite them.
     const orchScanPromptFile = path.join(promptsDir, ORCH_SCAN_PROMPT_FILENAME);
     await writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(sessionDir), 'utf8');
-
-    const templateNames = [
-      ORCH_ESTIMATE_PROMPT_FILENAME, ORCH_PRODUCT_ANALYST_PROMPT_FILENAME,
-      ORCH_ARCH_ANALYST_PROMPT_FILENAME, ORCH_DECOMPOSE_PROMPT_FILENAME,
-      ORCH_SUB_DECOMPOSE_PROMPT_FILENAME, ORCH_REVIEW_PROMPT_FILENAME,
-      ORCH_REPLAN_PROMPT_FILENAME, ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME,
-    ];
-    for (const tmpl of templateNames) {
-      const templatePath = path.join(projectRoot, 'aloop', 'templates', tmpl);
-      if (existsSync(templatePath)) {
-        const content = await readFile(templatePath, 'utf8');
-        await writeFile(path.join(promptsDir, tmpl), content, 'utf8');
-      }
-    }
 
     // Recreate worktree if missing
     const worktreePath = path.join(sessionDir, 'worktree');
