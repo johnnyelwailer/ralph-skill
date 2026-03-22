@@ -80,4 +80,52 @@ describe('SessionList', () => {
     fireEvent.click(screen.getByText('Older'));
     expect(screen.getByText('Old Session')).toBeInTheDocument();
   });
+
+  it('filters sessions by name', () => {
+    const sessions = [
+      mkSession({ id: 's1', name: 'Alpha Session', isActive: true, status: 'running', endedAt: '' }),
+      mkSession({ id: 's2', name: 'Beta Session', isActive: true, status: 'running', endedAt: '' }),
+    ];
+
+    render(<SessionList sessions={sessions} selectedSessionId={null} onSelectSession={vi.fn()} />, {
+      wrapper: TooltipProvider,
+    });
+
+    const input = screen.getByPlaceholderText('Filter sessions…');
+    expect(screen.getByText('Alpha Session')).toBeInTheDocument();
+    expect(screen.getByText('Beta Session')).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: 'alpha' } });
+    expect(screen.getByText('Alpha Session')).toBeInTheDocument();
+    expect(screen.queryByText('Beta Session')).not.toBeInTheDocument();
+  });
+
+  it('shows empty filter message when no sessions match', () => {
+    const sessions = [
+      mkSession({ id: 's1', name: 'Alpha Session', isActive: true, status: 'running', endedAt: '' }),
+    ];
+
+    render(<SessionList sessions={sessions} selectedSessionId={null} onSelectSession={vi.fn()} />, {
+      wrapper: TooltipProvider,
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Filter sessions…'), { target: { value: 'zzz' } });
+    expect(screen.getByText('No matching sessions.')).toBeInTheDocument();
+    expect(screen.queryByText('Alpha Session')).not.toBeInTheDocument();
+  });
+
+  it('filters by branch name', () => {
+    const sessions = [
+      mkSession({ id: 's1', name: 'Session A', branch: 'feat/login', isActive: true, status: 'running', endedAt: '' }),
+      mkSession({ id: 's2', name: 'Session B', branch: 'fix/crash', isActive: true, status: 'running', endedAt: '' }),
+    ];
+
+    render(<SessionList sessions={sessions} selectedSessionId={null} onSelectSession={vi.fn()} />, {
+      wrapper: TooltipProvider,
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Filter sessions…'), { target: { value: 'login' } });
+    expect(screen.getByText('Session A')).toBeInTheDocument();
+    expect(screen.queryByText('Session B')).not.toBeInTheDocument();
+  });
 });
