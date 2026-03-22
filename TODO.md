@@ -25,6 +25,18 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 - [ ] **Run Lighthouse mobile accessibility audit & fix flagged issues** — Run Lighthouse in mobile mode targeting accessibility category. Fix any issues flagged: color contrast ratios, missing alt text, focus indicators, ARIA violations. Target score >= 90. Document final score.
 
+### QA Bugs
+
+- [ ] [qa/P1] GitHub repo link icon undersized on mobile: Tapped the external link icon (GitHub repo URL) on mobile viewport (390x844) → measured 24x24px → spec requires minimum 44x44px tap target (WCAG 2.5.8). The `<a>` has explicit `h-6 w-6` classes with no mobile override. Tested at commit 2eebe45. (priority: high)
+
+- [ ] [qa/P1] QA badge button undersized on mobile: Tapped the "QA N/A" badge in the header bar on mobile viewport → measured 87x39px (height 39px < 44px minimum) → spec requires all interactive elements at minimum 44x44px. The badge button lacks `min-h-[44px]` class. Tested at commit 2eebe45. (priority: high)
+
+- [ ] [qa/P1] Hamburger menu button renders at 0x0px on mobile: Inspected hamburger/sidebar toggle button on mobile viewport → bounding box is 0x0px despite having `min-h-[44px] min-w-[44px]` CSS classes → button is invisible but still responds to tap at origin coordinates. The button works functionally but has zero rendered dimensions which fails WCAG 2.5.8 and makes it visually untappable. Tested at commit 2eebe45. (priority: high)
+
+- [ ] [qa/P1] SPEC tab trigger slightly undersized on mobile: Tapped SPEC tab on mobile viewport → measured 42x44px (width 42px < 44px minimum) → spec requires all interactive elements at minimum 44x44px. Other tabs (TODO=46px, RESEARCH=70px, Health=65px) pass. Tested at commit 2eebe45. (priority: high)
+
+- [ ] [qa/P1] Hamburger button missing aria-label: The sidebar toggle (hamburger) button has no `aria-label` attribute → screen readers cannot identify its purpose. This is also listed under the ARIA labels task but found during QA testing. Tested at commit 2eebe45. (priority: high)
+
 ### Completed
 
 ### Deferred
