@@ -227,6 +227,8 @@ When the product has GitHub integration features (`aloop gh start`, `aloop gh wa
    ```bash
    gh repo delete "$TESTREPO" --yes
    rm -rf /tmp/$TESTREPO
+   # Also clean up any aloop sessions created during the test
+   rm -rf ~/.aloop/sessions/aloop-qa-test-*
    ```
 
 **If `gh` CLI is not authenticated or unavailable**, skip GH integration tests and note it in QA_LOG.md. Do not attempt to test GH features without real GitHub access.

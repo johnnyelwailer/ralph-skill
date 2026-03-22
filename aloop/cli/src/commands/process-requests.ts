@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile, readdir, stat, statfs, unlink, writeFile, mkdir, cp } from 'node:fs/promises';
+import { readFile, readdir, unlink, writeFile, mkdir, cp } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
@@ -11,93 +11,11 @@ import {
   type DecompositionPlan,
 } from './orchestrate.js';
 import { EtagCache } from '../lib/github-monitor.js';
-import { processAgentRequests } from '../lib/requests.js';
-
-const V8_CACHE_PRUNE_THRESHOLD_BYTES = 50 * 1024 * 1024;
-
-export interface V8CachePruneResult {
-  sizeBytes: number;
-  pruned: boolean;
-}
-
-export async function getDirectorySizeBytes(dirPath: string): Promise<number> {
-  let total = 0;
-  const queue: string[] = [dirPath];
-
-  while (queue.length > 0) {
-    const current = queue.pop();
-    if (!current) continue;
-
-    let entries: string[] = [];
-    try {
-      entries = await readdir(current);
-    } catch {
-      continue;
-    }
-
-    for (const entry of entries) {
-      const fullPath = path.join(current, entry);
-      let fileStat: Awaited<ReturnType<typeof stat>> | null = null;
-      try {
-        fileStat = await stat(fullPath);
-      } catch {
-        continue;
-      }
-
-      if (fileStat.isDirectory()) {
-        queue.push(fullPath);
-      } else if (fileStat.isFile()) {
-        total += fileStat.size;
-      }
-    }
-  }
-
-  return total;
-}
-
-export async function pruneLargeV8CacheDir(
-  cacheDir: string,
-  thresholdBytes: number = V8_CACHE_PRUNE_THRESHOLD_BYTES,
-): Promise<V8CachePruneResult> {
-  if (!existsSync(cacheDir)) return { sizeBytes: 0, pruned: false };
-
-  const sizeBytes = await getDirectorySizeBytes(cacheDir);
-  if (sizeBytes <= thresholdBytes) {
-    return { sizeBytes, pruned: false };
-  }
-
-  const rmResult = spawnSync('rm', ['-rf', cacheDir], { encoding: 'utf8' });
-  if (rmResult.status !== 0) {
-    throw new Error(`Failed to prune V8 cache at ${cacheDir}: ${rmResult.stderr?.trim() ?? 'unknown error'}`);
-  }
-
-  return { sizeBytes, pruned: true };
-}
 
 export interface ProcessRequestsOptions {
   sessionDir: string;
   homeDir?: string;
   output?: string;
-}
-
-interface PullRequestCommentRecord {
-  author?: { login?: string | null } | null;
-  createdAt?: string | null;
-  body?: string | null;
-}
-
-export function formatReviewCommentHistory(comments: PullRequestCommentRecord[]): string {
-  if (!Array.isArray(comments) || comments.length === 0) return '';
-  const formatted = comments
-    .filter((comment) => Boolean(comment?.body?.trim()))
-    .map((comment) => {
-      const author = comment.author?.login?.trim() || 'unknown';
-      const createdAtRaw = comment.createdAt?.trim();
-      const createdAt = createdAtRaw ? ` at ${createdAtRaw}` : '';
-      return `### @${author}${createdAt}\n\n${comment.body?.trim() ?? ''}`;
-    })
-    .join('\n\n---\n\n');
-  return formatted ? `${formatted}\n` : '';
 }
 
 /**
@@ -216,37 +134,6 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       }
       await archiveRequestFile(requestsDir, filePath);
     } catch { /* skip malformed */ }
-  }
-
-  // ── Phase 1d: Process agent convention requests (create_issues, post_comment, etc.) ──
-  // This runs the validation/idempotency/dedup pipeline from requests.ts so that
-  // convention requests placed in the session's requests dir are processed during
-  // the main orchestrator loop — not only when the dashboard polls.
-  const logFile = path.join(sessionDir, 'log.jsonl');
-  try {
-    await processAgentRequests({
-      workdir: projectRoot,
-      sessionId,
-      aloopDir: sessionDir,
-      sessionDir,
-      logPath: logFile,
-      ghCommandRunner: async (operation: string, _sessionId: string, requestPath: string) => {
-        try {
-          const result = spawnSync('aloop', ['gh', operation, '--session', sessionId, '--request', requestPath], {
-            encoding: 'utf8',
-            timeout: 30000,
-          });
-          return {
-            exitCode: result.status ?? 1,
-            output: [result.stdout ?? '', result.stderr ?? ''].map(s => s.trim()).filter(s => s.length > 0).join('\n').trim(),
-          };
-        } catch (error) {
-          return { exitCode: 1, output: (error as Error).message };
-        }
-      },
-    });
-  } catch (e) {
-    console.error(`[process-requests] Convention request processing failed: ${e}`);
   }
 
   // ── Phase 2: Create GH issues for state entries with number=0 ──
@@ -405,35 +292,138 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // ── Phase 2d: Cleanup completed children and prune oversized V8 caches ──
-  try {
-    for (const issue of state.issues) {
-      if (!issue.child_session) continue;
+  // ── Phase 2d: Detect dead children — reset to Ready if PID is gone ──
+  for (const issue of state.issues) {
+    if (issue.state !== 'in_progress') continue;
+    if (!issue.child_session) {
+      // No child session but in_progress — stale preloaded state
+      issue.state = 'pending';
+      issue.status = 'Ready';
+      stateChanged = true;
+      continue;
+    }
+    const childPid = (issue as any).child_pid;
+    if (childPid && !existsSync(`/proc/${childPid}`)) {
+      // PID dead — check child status.json for completion
+      const childStatusFile = path.join(aloopRoot, 'sessions', issue.child_session, 'status.json');
+      if (existsSync(childStatusFile)) {
+        try {
+          const cs = JSON.parse(await readFile(childStatusFile, 'utf8'));
+          if (cs.state === 'completed') continue; // Will be handled by PR creation
+          if (cs.state === 'stopped') {
+            // Stopped — re-queue via needs_redispatch
+            (issue as any).needs_redispatch = true;
+            (issue as any).review_feedback = `Child stopped after ${cs.iteration ?? '?'} iterations. Resume and continue.`;
+            stateChanged = true;
+            continue;
+          }
+        } catch { /* fall through */ }
+      }
+      // Dead with no clear status — reset to Ready for fresh dispatch
+      issue.state = 'pending';
+      issue.status = 'Ready';
+      issue.child_session = null;
+      (issue as any).child_pid = null;
+      stateChanged = true;
+      console.log(`[process-requests] Dead child detected for #${issue.number} — reset to Ready`);
+    }
+  }
 
-      const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
-      const childWorktree = path.join(childDir, 'worktree');
-      const childV8Cache = path.join(childDir, '.v8-cache');
+  // ── Phase 2d.2: Recover failed issues that have a viable path forward ──
+  for (const issue of state.issues) {
+    if (issue.state !== 'failed') continue;
+    // Don't recover issues deliberately closed by scan agent
+    if (issue.status === 'Done') continue;
+    const hasOpenPr = issue.pr_number != null;
+    const wantsRedispatch = (issue as any).needs_redispatch === true;
 
-      if (issue.state === 'in_progress' && existsSync(childV8Cache)) {
-        const pruneResult = await pruneLargeV8CacheDir(childV8Cache);
-        if (pruneResult.pruned) {
-          const sizeMb = (pruneResult.sizeBytes / (1024 * 1024)).toFixed(1);
-          console.log(`[process-requests] Pruned oversized V8 cache for in-progress #${issue.number} (${sizeMb}MB)`);
+    if (wantsRedispatch) {
+      // Has review feedback — move to pr_open so lifecycle picks it up for redispatch
+      if (hasOpenPr) {
+        issue.state = 'pr_open';
+        issue.status = 'In review';
+      } else {
+        // No PR but wants redispatch — reset to pending for fresh dispatch
+        issue.state = 'pending';
+        issue.status = 'Ready';
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+        (issue as any).needs_redispatch = false;
+      }
+      stateChanged = true;
+      console.log(`[process-requests] Recovered failed #${issue.number} (needs_redispatch) → ${issue.state}`);
+    } else if (hasOpenPr) {
+      // Has open PR — move back to pr_open so the PR lifecycle can re-evaluate
+      // Clear stale child session if the child is dead
+      if (issue.child_session) {
+        const childPid = (issue as any).child_pid;
+        if (!childPid || !existsSync(`/proc/${childPid}`)) {
+          issue.child_session = null;
+          (issue as any).child_pid = null;
         }
       }
+      issue.state = 'pr_open';
+      issue.status = 'In review';
+      (issue as any).rebase_attempts = 0;
+      stateChanged = true;
+      console.log(`[process-requests] Recovered failed #${issue.number} (has open PR #${issue.pr_number}) → pr_open`);
+    } else {
+      // No PR (may or may not have child session) — reset to pending for fresh attempt.
+      // Clear dead child session if present.
+      const childPid = (issue as any).child_pid;
+      if (issue.child_session && (!childPid || !existsSync(`/proc/${childPid}`))) {
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+      }
+      if (!issue.child_session) {
+        issue.state = 'pending';
+        issue.status = 'Ready';
+        (issue as any).rebase_attempts = 0;
+        (issue as any).ci_failure_retries = 0;
+        stateChanged = true;
+        console.log(`[process-requests] Recovered failed #${issue.number} (no PR) → pending`);
+      }
+    }
+  }
 
-      if (issue.state === 'merged' || issue.state === 'failed') {
+  // ── Phase 2e: Cleanup worktrees + V8 cache for fully completed children ──
+  try {
+    for (const issue of state.issues) {
+      if ((issue.state === 'merged' || issue.state === 'failed') && issue.child_session) {
+        const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+        const childWorktree = path.join(childDir, 'worktree');
+        const childV8Cache = path.join(childDir, '.v8-cache');
         if (existsSync(childWorktree)) {
           spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', childWorktree], { encoding: 'utf8' });
           spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
           console.log(`[process-requests] Cleaned worktree for completed #${issue.number}`);
         }
-        if (existsSync(childV8Cache)) await pruneLargeV8CacheDir(childV8Cache, 0);
+        if (existsSync(childV8Cache)) {
+          spawnSync('rm', ['-rf', childV8Cache], { encoding: 'utf8' });
+        }
       }
     }
   } catch { /* cleanup is best-effort */ }
 
-  // ── Phase 2e: Sync issue statuses to GH project ──
+  // HACK: Periodic /tmp V8 cache cleanup — provider CLIs (claude, opencode) create
+  // V8 code cache .so files in /tmp that can fill the tmpfs (13GB+ observed).
+  // This is a blunt workaround. Needs research into:
+  //   - Can we set NODE_COMPILE_CACHE for provider CLIs too? (they ignore env vars?)
+  //   - Is there a provider-specific config to disable/redirect their cache?
+  //   - Should we use a dedicated tmpdir mount with size limits instead?
+  // See: https://github.com/johnnyelwailer/ralph-skill/issues/164
+  if (Math.random() < 0.1) {
+    try {
+      const findResult = spawnSync('find', ['/tmp', '-maxdepth', '2', '-name', '.da*.so', '-mmin', '+60', '-delete'], {
+        encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000,
+      });
+      if (findResult.status === 0) {
+        console.log('[process-requests] Cleaned stale V8 cache files from /tmp (HACK — see #164)');
+      }
+    } catch { /* best-effort */ }
+  }
+
+  // ── Phase 2f: Sync issue statuses to GH project ──
   if (repo && stateChanged && ghProjectNumber) {
     try {
       // Get project items and their current statuses
@@ -463,9 +453,26 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
         if (statusFieldId && projectId) {
           let synced = 0;
+          let added = 0;
           for (const issue of state.issues) {
-            const item = itemMap.get(issue.number);
-            if (!item) continue;
+            if (!issue.number) continue;
+            let item = itemMap.get(issue.number);
+
+            // Add missing issues to the project (max 10 per pass to avoid API rate limits)
+            if (!item) {
+              if (added >= 10) continue;
+              const repoNodeResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ repository(owner: "${repo.split('/')[0]}", name: "${repo.split('/')[1]}") { issue(number: ${issue.number}) { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+              if (repoNodeResult.status !== 0) continue;
+              const issueNodeId = JSON.parse(repoNodeResult.stdout)?.data?.repository?.issue?.id;
+              if (!issueNodeId) continue;
+              const addResult = spawnSync('gh', ['api', 'graphql', '-f', `query=mutation { addProjectV2ItemById(input: { projectId: "${projectId}" contentId: "${issueNodeId}" }) { item { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+              if (addResult.status !== 0) continue;
+              const newItemId = JSON.parse(addResult.stdout)?.data?.addProjectV2ItemById?.item?.id;
+              if (!newItemId) continue;
+              item = { id: newItemId, status: '' };
+              added++;
+            }
+
             const targetStatus = (issue.status ?? '').toLowerCase();
             if (item.status.toLowerCase() === targetStatus) continue;
             const optionId = optionIds.get(targetStatus);
@@ -473,6 +480,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             spawnSync('gh', ['api', 'graphql', '-f', `query=mutation { updateProjectV2ItemFieldValue(input: { projectId: "${projectId}" itemId: "${item.id}" fieldId: "${statusFieldId}" value: { singleSelectOptionId: "${optionId}" } }) { projectV2Item { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
             synced++;
           }
+          if (added > 0) console.log(`[process-requests] Added ${added} issues to GH project`);
           if (synced > 0) console.log(`[process-requests] Synced ${synced} issue statuses to GH project`);
         }
       }
@@ -515,6 +523,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   } catch { /* ignore */ }
 
+  const logFile = path.join(sessionDir, 'log.jsonl');
   const appendLog = async (_dir: string, entry: Record<string, unknown>) => {
     const existing = existsSync(logFile) ? await readFile(logFile, 'utf8').catch(() => '') : '';
     await writeFile(logFile, `${existing}${JSON.stringify(entry)}\n`, 'utf8');
@@ -691,14 +700,9 @@ ${recent.slice(-4000)}
             let commentHistory = '';
             if (repo) {
               try {
-                const commentsResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'comments'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+                const commentsResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'comments', '--jq', '.comments[].body'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
                 if (commentsResult.status === 0 && commentsResult.stdout?.trim()) {
-                  const parsedComments = JSON.parse(commentsResult.stdout);
-                  const comments = Array.isArray(parsedComments?.comments) ? parsedComments.comments : [];
-                  const formattedHistory = formatReviewCommentHistory(comments);
-                  if (formattedHistory) {
-                    commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${formattedHistory}`;
-                  }
+                  commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${commentsResult.stdout.trim()}\n`;
                 }
               } catch { /* ignore */ }
             }
@@ -722,20 +726,8 @@ ${recent.slice(-4000)}
               await writeFile(troubleshootFile, `---\nagent: troubleshoot\nreasoning: high\n---\n\n# Troubleshoot: PR #${prNumber} Review Stuck\n\nThe review for PR #${prNumber} has returned "pending" ${pendingCount} times. The verdict extraction is failing.\n\n## Investigate\n1. Check if review-result-${prNumber}.json exists anywhere in the session\n2. Check recent agent output for verdict text mentioning PR #${prNumber}\n3. If verdict exists but wasn't parsed, write it to the correct location\n4. If no verdict was produced, determine why the review agent didn't generate one\n`, 'utf8');
             }
           }
-          if (pendingCount >= 5 && repo) {
-            // Auto-approve if PR has 0 comments and is mergeable (review agent can't produce verdict)
-            try {
-              const prCheck = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'comments,mergeable'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000 });
-              if (prCheck.status === 0) {
-                const prData = JSON.parse(prCheck.stdout);
-                if ((prData.comments?.length ?? 0) === 0 && prData.mergeable === 'MERGEABLE') {
-                  return { pr_number: prNumber, verdict: 'approve', summary: `Auto-approved: ${pendingCount} review attempts failed but PR is clean (0 comments, mergeable).` };
-                }
-              }
-            } catch { /* fall through */ }
-          }
-          if (pendingCount > 8) {
-            return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Review stuck pending after ${pendingCount} attempts — needs manual review.` };
+          if (pendingCount > 10) {
+            return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Review stuck pending after ${pendingCount} attempts (troubleshoot agent failed) — needs manual review.` };
           }
         }
         return { pr_number: prNumber, verdict: 'pending', summary: 'Review queued.' };
@@ -747,7 +739,6 @@ ${recent.slice(-4000)}
       writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
       mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined),
       cp: (src: string, dest: string, o?: { recursive?: boolean }) => cp(src, dest, o),
-      statfs: (p: string) => statfs(p),
       now: () => new Date(),
       spawnSync: (cmd: string, a: string[], o?: Record<string, unknown>) => {
         const r = spawnSync(cmd, a, o as any);

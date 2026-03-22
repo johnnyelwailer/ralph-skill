@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, statfs, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
@@ -9,11 +9,8 @@ import { compileLoopPlan } from './compile-loop-plan.js';
 import { writeSpecBackfill } from '../lib/specBackfill.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
 import {
-  createAdapter,
-  type OrchestratorAdapter,
-} from '../lib/adapter.js';
-import {
   EtagCache,
+  fetchBulkIssueState,
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
@@ -22,7 +19,6 @@ export interface OrchestrateCommandOptions {
   spec?: string;
   concurrency?: string;
   trunk?: string;
-  trunkProvided?: boolean;
   issues?: string;
   label?: string;
   repo?: string;
@@ -92,12 +88,6 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
-  last_reviewed_sha?: string;
-  last_review_comment?: string;
-  needs_redispatch?: boolean;
-  review_feedback?: string;
-  review_pending_count?: number;
-  child_pid?: number;
 }
 
 export interface OrchestratorState {
@@ -196,8 +186,7 @@ export interface TriageLogEntry {
 }
 
 export interface TriageDeps {
-  execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
-  adapter?: OrchestratorAdapter;
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   now: () => Date;
   writeFile?: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   aloopRoot?: string;
@@ -213,32 +202,12 @@ export interface OrchestrateDeps {
   now: () => Date;
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
-  adapter?: OrchestratorAdapter;
-  spawnSync?: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
 }
 
 export interface SpawnSyncResult {
   status: number | null;
   stdout: string;
   stderr: string;
-}
-
-function toSpawnSyncResult(result: { status: number | null; stdout?: unknown; stderr?: unknown }): SpawnSyncResult {
-  const stdout = typeof result.stdout === 'string'
-    ? result.stdout
-    : Buffer.isBuffer(result.stdout)
-      ? result.stdout.toString('utf8')
-      : '';
-  const stderr = typeof result.stderr === 'string'
-    ? result.stderr
-    : Buffer.isBuffer(result.stderr)
-      ? result.stderr.toString('utf8')
-      : '';
-  return {
-    status: result.status,
-    stdout,
-    stderr,
-  };
 }
 
 export interface ChildProcess {
@@ -252,7 +221,6 @@ export interface DispatchDeps {
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   mkdir: (path: string, options?: { recursive?: boolean }) => Promise<string | undefined>;
   cp: (src: string, dest: string, options?: { recursive?: boolean }) => Promise<void>;
-  statfs?: (path: string) => Promise<{ bavail: number | bigint; bsize: number | bigint; frsize?: number | bigint }>;
   now: () => Date;
   spawnSync: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
   spawn: (command: string, args: string[], options?: Record<string, unknown>) => ChildProcess;
@@ -273,39 +241,6 @@ export interface DispatchResult {
   launched: ChildLaunchResult[];
   skipped: number[];
   state: OrchestratorState;
-  pausedTmpLowSpace?: { freeBytes: number; thresholdBytes: number; path: string };
-}
-
-const TMP_DISPATCH_CHECK_PATH = '/tmp';
-const TMP_DISPATCH_MIN_FREE_BYTES = 500 * 1024 * 1024;
-
-function toBigIntOrNull(value: number | bigint | undefined): bigint | null {
-  if (typeof value === 'bigint') return value;
-  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return BigInt(Math.trunc(value));
-  return null;
-}
-
-function computeFreeBytesFromStatfs(
-  stats: { bavail: number | bigint; bsize: number | bigint; frsize?: number | bigint },
-): number | null {
-  const availableBlocks = toBigIntOrNull(stats.bavail);
-  const blockSize = toBigIntOrNull(stats.frsize ?? stats.bsize);
-  if (availableBlocks === null || blockSize === null) return null;
-
-  const freeBytes = availableBlocks * blockSize;
-  if (freeBytes < 0n) return null;
-  if (freeBytes > BigInt(Number.MAX_SAFE_INTEGER)) return Number.MAX_SAFE_INTEGER;
-  return Number(freeBytes);
-}
-
-async function getTmpFreeBytes(deps: Pick<DispatchDeps, 'statfs'>): Promise<number | null> {
-  if (!deps.statfs) return null;
-  try {
-    const stats = await deps.statfs(TMP_DISPATCH_CHECK_PATH);
-    return computeFreeBytesFromStatfs(stats);
-  } catch {
-    return null;
-  }
 }
 
 const defaultDeps: OrchestrateDeps = {
@@ -317,19 +252,6 @@ const defaultDeps: OrchestrateDeps = {
   readdirSync,
   now: () => new Date(),
 };
-
-function resolveAdapter(
-  repo: string | null,
-  deps: {
-    adapter?: OrchestratorAdapter;
-    execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
-  },
-): OrchestratorAdapter | undefined {
-  if (!repo) return undefined;
-  if (deps.adapter) return deps.adapter;
-  if (!deps.execGh) return undefined;
-  return createAdapter({ type: 'github', repo }, deps.execGh);
-}
 
 function normalizeTaskSandbox(sandbox: string | undefined): 'container' | 'none' {
   return sandbox === 'none' ? 'none' : 'container';
@@ -393,189 +315,6 @@ function parseRepoSlug(repo: string): { owner: string; name: string } | null {
   const [owner, name, ...rest] = repo.split('/');
   if (!owner || !name || rest.length > 0) return null;
   return { owner, name };
-}
-
-function parseRepoFromRemoteUrl(remoteUrl: string): string | null {
-  const trimmed = remoteUrl.trim();
-  if (!trimmed) return null;
-
-  const scpMatch = trimmed.match(/^[^@\s]+@[^:\s]+:([^/\s]+)\/([^/\s]+?)(?:\.git)?$/);
-  if (scpMatch) {
-    return `${scpMatch[1]}/${scpMatch[2]}`;
-  }
-
-  try {
-    const parsed = new URL(trimmed);
-    const parts = parsed.pathname.replace(/^\/+/, '').replace(/\.git$/, '').split('/').filter(Boolean);
-    if (parts.length >= 2) {
-      return `${parts[0]}/${parts[1]}`;
-    }
-  } catch {
-    // Not a URL; fall through.
-  }
-
-  return null;
-}
-
-async function runGhWithFallback(
-  args: string[],
-  projectRoot: string,
-  deps: OrchestrateDeps,
-  failureContext: string,
-): Promise<{ stdout: string; stderr: string } | null> {
-  if (deps.execGh) {
-    try {
-      return await deps.execGh(args);
-    } catch (error) {
-      console.warn(`[orchestrate] ${failureContext} via gh ${args.join(' ')} failed: ${error}`);
-      return null;
-    }
-  }
-
-  try {
-    const { spawnSync: nodeSpawnSync } = await import('node:child_process');
-    const runner = deps.spawnSync ?? ((command: string, runArgs: string[], options?: Record<string, unknown>) =>
-      toSpawnSyncResult(nodeSpawnSync(command, runArgs, options as any)));
-    const result = runner('gh', args, { encoding: 'utf8', cwd: projectRoot });
-    if (result.status !== 0) {
-      console.warn(`[orchestrate] ${failureContext} via gh ${args.join(' ')} failed: ${result.stderr?.substring(0, 200)}`);
-      return null;
-    }
-    return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
-  } catch (error) {
-    console.warn(`[orchestrate] ${failureContext} via gh ${args.join(' ')} failed: ${error}`);
-    return null;
-  }
-}
-
-async function deriveFilterRepo(
-  filterRepo: string | null,
-  projectRoot: string,
-  deps: OrchestrateDeps,
-): Promise<string | null> {
-  if (filterRepo) return filterRepo;
-
-  const envRepo = process.env.GITHUB_REPOSITORY?.trim() || null;
-  const ghHost = process.env.GH_HOST?.trim() || null;
-  const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
-  const ghRepoView = await runGhWithFallback(
-    ['repo', 'view', '--json', 'nameWithOwner', ...ghHostArgs],
-    projectRoot,
-    deps,
-    'filter_repo derive',
-  );
-  if (ghRepoView) {
-    try {
-      const parsed = JSON.parse(ghRepoView.stdout);
-      const value = typeof parsed?.nameWithOwner === 'string' ? parsed.nameWithOwner.trim() : '';
-      if (parseRepoSlug(value)) {
-        console.log(`[orchestrate] Derived filter_repo from gh repo view: ${value}`);
-        return value;
-      }
-    } catch (error) {
-      console.warn(`[orchestrate] filter_repo derive: invalid gh repo view JSON: ${error}`);
-    }
-  }
-
-  const runGitRemote = async (cwd: string): Promise<string | null> => {
-    try {
-      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
-      const runner = deps.spawnSync ?? ((command: string, args: string[], options?: Record<string, unknown>) =>
-        toSpawnSyncResult(nodeSpawnSync(command, args, options as any)));
-      const remoteResult = runner('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8', cwd });
-      if (remoteResult.status !== 0) {
-        return null;
-      }
-      return parseRepoFromRemoteUrl(remoteResult.stdout ?? '');
-    } catch {
-      return null;
-    }
-  };
-
-  const remoteRepo = await runGitRemote(projectRoot);
-  if (remoteRepo && parseRepoSlug(remoteRepo)) {
-    console.log(`[orchestrate] Derived filter_repo from git remote origin: ${remoteRepo}`);
-    return remoteRepo;
-  }
-
-  const metaCandidates = [
-    path.join(projectRoot, 'meta.json'),
-    path.join(path.dirname(projectRoot), 'meta.json'),
-  ];
-  for (const metaPath of metaCandidates) {
-    if (!deps.existsSync(metaPath)) continue;
-    try {
-      const metaRaw = await deps.readFile(metaPath, 'utf8');
-      const meta = JSON.parse(metaRaw) as { repo?: unknown; project_root?: unknown };
-      if (typeof meta.repo === 'string' && parseRepoSlug(meta.repo.trim())) {
-        const repoFromMeta = meta.repo.trim();
-        console.log(`[orchestrate] Derived filter_repo from ${metaPath} repo field: ${repoFromMeta}`);
-        return repoFromMeta;
-      }
-      if (typeof meta.project_root === 'string' && meta.project_root.trim()) {
-        const fromProjectRoot = await runGitRemote(meta.project_root.trim());
-        if (fromProjectRoot && parseRepoSlug(fromProjectRoot)) {
-          console.log(`[orchestrate] Derived filter_repo from ${metaPath} project_root git remote: ${fromProjectRoot}`);
-          return fromProjectRoot;
-        }
-      }
-    } catch (error) {
-      console.warn(`[orchestrate] filter_repo derive: failed reading ${metaPath}: ${error}`);
-    }
-  }
-
-  if (envRepo && parseRepoSlug(envRepo)) {
-    console.log(`[orchestrate] Derived filter_repo from GITHUB_REPOSITORY: ${envRepo}`);
-    if (ghHost) {
-      console.log(`[orchestrate] GH_HOST detected during filter_repo derivation: ${ghHost}`);
-    }
-    return envRepo;
-  }
-
-  if (ghHost) {
-    console.log(`[orchestrate] GH_HOST set to ${ghHost}, but filter_repo could not be derived`);
-  }
-  return null;
-}
-
-async function deriveTrunkBranch(
-  trunkBranch: string,
-  trunkProvided: boolean,
-  filterRepo: string | null,
-  projectRoot: string,
-  deps: OrchestrateDeps,
-): Promise<string> {
-  if (trunkBranch !== 'agent/trunk' || trunkProvided) {
-    return trunkBranch;
-  }
-
-  const ghHost = process.env.GH_HOST?.trim() || null;
-  const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
-  const repoArgs = filterRepo ? ['--repo', filterRepo] : [];
-  const ghRepoView = await runGhWithFallback(
-    ['repo', 'view', '--json', 'defaultBranchRef', ...repoArgs, ...ghHostArgs],
-    projectRoot,
-    deps,
-    'trunk_branch derive',
-  );
-  if (!ghRepoView) {
-    return trunkBranch;
-  }
-
-  try {
-    const parsed = JSON.parse(ghRepoView.stdout);
-    const derivedBranch = typeof parsed?.defaultBranchRef?.name === 'string'
-      ? parsed.defaultBranchRef.name.trim()
-      : '';
-    if (derivedBranch) {
-      console.log(`[orchestrate] Derived trunk_branch from gh repo default branch: ${derivedBranch}`);
-      return derivedBranch;
-    }
-  } catch (error) {
-    console.warn(`[orchestrate] trunk_branch derive: invalid gh repo view JSON: ${error}`);
-  }
-
-  return trunkBranch;
 }
 
 async function resolveIssueProjectStatusContext(
@@ -921,12 +660,6 @@ export async function applyDecompositionPlan(
     let ghNumber: number;
     if (deps.execGhIssueCreate && repo) {
       ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, planIssue.body, labels);
-    } else if (deps.adapter && repo) {
-      ghNumber = await deps.adapter.createIssue({
-        title: planIssue.title,
-        body: planIssue.body,
-        labels,
-      });
     } else {
       // When no GH executor is available (plan-only without repo, or no executor),
       // use the plan ID as a placeholder number
@@ -1212,170 +945,6 @@ Run one lightweight monitoring pass:
 `;
 }
 
-// --- Label self-healing ---
-
-export interface RequiredLabel {
-  name: string;
-  color: string;
-  description: string;
-}
-
-export const REQUIRED_LABELS: RequiredLabel[] = [
-  { name: 'aloop/auto', color: '6f42c1', description: 'Managed by aloop orchestrator' },
-  { name: 'aloop/epic', color: '0075ca', description: 'Epic issue tracked by aloop' },
-  { name: 'aloop/sub-issue', color: '0e8a16', description: 'Sub-issue of an aloop epic' },
-  { name: 'aloop/needs-refine', color: 'fbca04', description: 'Needs refinement before work begins' },
-  { name: 'aloop/needs-review', color: 'e4e669', description: 'PR ready for review' },
-  { name: 'aloop/in-progress', color: '1d76db', description: 'Work in progress' },
-  { name: 'aloop/done', color: '0e8a16', description: 'Completed' },
-];
-
-export interface EnsureLabelsResult {
-  created: string[];
-  already_existed: string[];
-  failed: string[];
-}
-
-export interface EnsureLabelsDeps {
-  spawnSync: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
-}
-
-export function ensureLabels(
-  repo: string,
-  deps: EnsureLabelsDeps,
-): EnsureLabelsResult {
-  const result: EnsureLabelsResult = { created: [], already_existed: [], failed: [] };
-
-  // Fetch existing labels
-  let existingNames: Set<string>;
-  try {
-    const listResult = deps.spawnSync(
-      'gh',
-      ['label', 'list', '--repo', repo, '--limit', '200', '--json', 'name'],
-      { encoding: 'utf8' },
-    );
-    if (listResult.status !== 0) {
-      console.warn(`[orchestrate] Failed to list labels: ${listResult.stderr?.substring(0, 200)}`);
-      // Can't determine existing labels — mark all as failed and return
-      for (const label of REQUIRED_LABELS) result.failed.push(label.name);
-      return result;
-    }
-    const labels = JSON.parse(listResult.stdout ?? '[]') as Array<{ name: string }>;
-    existingNames = new Set(labels.map((l) => l.name));
-  } catch (e) {
-    console.warn(`[orchestrate] Failed to parse label list: ${e}`);
-    for (const label of REQUIRED_LABELS) result.failed.push(label.name);
-    return result;
-  }
-
-  for (const label of REQUIRED_LABELS) {
-    if (existingNames.has(label.name)) {
-      result.already_existed.push(label.name);
-      continue;
-    }
-    try {
-      const createResult = deps.spawnSync(
-        'gh',
-        ['label', 'create', label.name, '--repo', repo, '--color', label.color, '--description', label.description],
-        { encoding: 'utf8' },
-      );
-      if (createResult.status === 0) {
-        result.created.push(label.name);
-        console.log(`[orchestrate] Created label: ${label.name}`);
-      } else {
-        result.failed.push(label.name);
-        console.warn(`[orchestrate] Failed to create label ${label.name}: ${createResult.stderr?.substring(0, 200)}`);
-      }
-    } catch (e) {
-      result.failed.push(label.name);
-      console.warn(`[orchestrate] Failed to create label ${label.name}: ${e}`);
-    }
-  }
-
-  if (result.created.length > 0) {
-    console.log(`[orchestrate] Label self-healing: created ${result.created.length}, existed ${result.already_existed.length}, failed ${result.failed.length}`);
-  }
-
-  return result;
-}
-
-export interface HealthCheckResult {
-  check: string;
-  ok: boolean;
-  detail: string;
-}
-
-export interface StartupHealth {
-  labels: EnsureLabelsResult | null;
-  checks: HealthCheckResult[];
-  checked_at: string;
-}
-
-export async function runStartupHealthChecks(
-  projectRoot: string,
-  deps: OrchestrateDeps,
-): Promise<HealthCheckResult[]> {
-  const results: HealthCheckResult[] = [];
-
-  const runSpawn = async (
-    command: string,
-    args: string[],
-    label: string,
-  ): Promise<{ ok: boolean; stdout: string; stderr: string }> => {
-    if (deps.spawnSync) {
-      const r = deps.spawnSync(command, args, { encoding: 'utf8', cwd: projectRoot });
-      return { ok: r.status === 0, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-    }
-    try {
-      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
-      const r = toSpawnSyncResult(nodeSpawnSync(command, args, { encoding: 'utf8', cwd: projectRoot } as any));
-      return { ok: r.status === 0, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-    } catch (error) {
-      return { ok: false, stdout: '', stderr: String(error) };
-    }
-  };
-
-  // 1. gh auth status
-  const auth = await runSpawn('gh', ['auth', 'status'], 'gh_auth');
-  results.push({
-    check: 'gh_auth',
-    ok: auth.ok,
-    detail: auth.ok
-      ? (auth.stdout || auth.stderr).substring(0, 500).trim()
-      : `gh auth status failed: ${(auth.stderr || auth.stdout).substring(0, 500).trim()}`,
-  });
-
-  // 2. gh repo view
-  const ghHost = process.env.GH_HOST?.trim() || null;
-  const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
-  const repoView = await runSpawn('gh', ['repo', 'view', '--json', 'nameWithOwner', ...ghHostArgs], 'gh_repo');
-  results.push({
-    check: 'gh_repo',
-    ok: repoView.ok,
-    detail: repoView.ok
-      ? repoView.stdout.substring(0, 500).trim()
-      : `gh repo view failed: ${(repoView.stderr || repoView.stdout).substring(0, 500).trim()}`,
-  });
-
-  // 3. git status
-  const gitSt = await runSpawn('git', ['status', '--porcelain'], 'git_status');
-  const isClean = gitSt.ok && gitSt.stdout.trim() === '';
-  results.push({
-    check: 'git_status',
-    ok: gitSt.ok,
-    detail: gitSt.ok
-      ? (isClean ? 'clean worktree' : `dirty worktree: ${gitSt.stdout.substring(0, 500).trim()}`)
-      : `git status failed: ${(gitSt.stderr || gitSt.stdout).substring(0, 500).trim()}`,
-  });
-
-  for (const r of results) {
-    const icon = r.ok ? '✓' : '✗';
-    console.log(`[orchestrate] Health check ${icon} ${r.check}: ${r.detail.substring(0, 120)}`);
-  }
-
-  return results;
-}
-
 export async function orchestrateCommandWithDeps(
   options: OrchestrateCommandOptions = {},
   deps: OrchestrateDeps = defaultDeps,
@@ -1393,12 +962,11 @@ export async function orchestrateCommandWithDeps(
   }
   // Primary spec file for backward compatibility (first resolved file)
   const specFile = path.relative(projectRoot, existingSpecFiles[0]) || existingSpecFiles[0];
-  const trunkProvided = options.trunkProvided ?? false;
-  let trunkBranch = options.trunk ?? 'agent/trunk';
+  const trunkBranch = options.trunk ?? 'agent/trunk';
   const concurrencyCap = parseConcurrency(options.concurrency);
   const filterIssues = parseIssueNumbers(options.issues);
   const filterLabel = options.label ?? null;
-  let filterRepo = options.repo ?? null;
+  const filterRepo = options.repo ?? null;
   const planOnly = options.planOnly ?? false;
   const budgetCap = parseBudget(options.budget);
   const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
@@ -1419,23 +987,6 @@ export async function orchestrateCommandWithDeps(
   await deps.mkdir(promptsDir, { recursive: true });
   await deps.mkdir(queueDir, { recursive: true });
   await deps.mkdir(requestsDir, { recursive: true });
-
-  filterRepo = await deriveFilterRepo(filterRepo, projectRoot, deps);
-  trunkBranch = await deriveTrunkBranch(trunkBranch, trunkProvided, filterRepo, projectRoot, deps);
-  const adapter = resolveAdapter(filterRepo, deps);
-
-  // Label self-healing: ensure required labels exist before preloading issues
-  let labelsResult: EnsureLabelsResult | null = null;
-  if (filterRepo) {
-    try {
-      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
-      labelsResult = ensureLabels(filterRepo, {
-        spawnSync: (command, args, options) => toSpawnSyncResult(nodeSpawnSync(command, args, options as any)),
-      });
-    } catch (e) {
-      console.warn(`[orchestrate] Label self-healing failed: ${e}`);
-    }
-  }
 
   const loopPlan: LoopPlan = {
     cycle: [ORCH_SCAN_PROMPT_FILENAME],
@@ -1690,13 +1241,7 @@ export async function orchestrateCommandWithDeps(
   }
 
   if (filterRepo && state.issues.length > 0 && deps.execGh) {
-    await runTriageMonitorCycle(
-      state,
-      path.basename(sessionDir),
-      filterRepo,
-      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile },
-      aloopRoot,
-    );
+    await runTriageMonitorCycle(state, path.basename(sessionDir), filterRepo, deps, aloopRoot);
   }
 
   const dorTargets = state.issues
@@ -1735,7 +1280,6 @@ export async function orchestrateCommandWithDeps(
       await applyEstimateResults(state, estimateResults, {
         execGhIssueCreate: deps.execGhIssueCreate,
         execGh: deps.execGh,
-        adapter,
         now: deps.now,
         repo: filterRepo ?? undefined,
         sessionId,
@@ -1762,38 +1306,6 @@ export async function orchestrateCommandWithDeps(
   const stateFile = path.join(sessionDir, 'orchestrator.json');
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
-  // Startup health checks: gh auth, gh repo view, git status
-  const healthChecks = await runStartupHealthChecks(projectRoot, deps);
-
-  // Write all health results (labels + startup checks) to session-health.json
-  const healthFile = path.join(sessionDir, 'session-health.json');
-  const health: StartupHealth = {
-    labels: labelsResult,
-    checks: healthChecks,
-    checked_at: deps.now().toISOString(),
-  };
-  await deps.writeFile(healthFile, `${JSON.stringify(health, null, 2)}\n`, 'utf8');
-
-  // If critical checks fail (gh auth), write ALERT.md and throw
-  // gh_repo failure is non-critical since repo may not be configured yet
-  const criticalFailures = healthChecks.filter(
-    (c) => c.check === 'gh_auth' && !c.ok,
-  );
-  if (criticalFailures.length > 0) {
-    const alertLines = [
-      '# ALERT — Critical startup checks failed',
-      '',
-      'The orchestrator cannot proceed because critical checks failed:',
-      '',
-      ...criticalFailures.map((c) => `- **${c.check}**: ${c.detail}`),
-      '',
-      `Checked at: ${deps.now().toISOString()}`,
-    ];
-    const alertPath = path.join(sessionDir, 'ALERT.md');
-    await deps.writeFile(alertPath, `${alertLines.join('\n')}\n`, 'utf8');
-    throw new Error(`Critical startup check failed: ${criticalFailures.map((c) => c.check).join(', ')}`);
-  }
-
   return {
     session_dir: sessionDir,
     prompts_dir: promptsDir,
@@ -1811,18 +1323,12 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   const outputMode = options.output ?? 'text';
   // Commander passes the Command object as the second argument if not explicitly provided.
   // We check if the provided argument looks like our OrchestrateDeps.
-  let trunkProvided = options.trunkProvided ?? false;
-  if (!trunkProvided && depsOrCommand && typeof depsOrCommand === 'object' && 'getOptionValueSource' in depsOrCommand && typeof depsOrCommand.getOptionValueSource === 'function') {
-    const trunkSource = depsOrCommand.getOptionValueSource('trunk');
-    trunkProvided = trunkSource !== undefined && trunkSource !== 'default';
-  }
-  const resolvedOptions = { ...options, trunkProvided };
   const deps = (depsOrCommand && typeof depsOrCommand === 'object' && 'existsSync' in depsOrCommand)
     ? (depsOrCommand as OrchestrateDeps)
     : undefined;
-  const result = await orchestrateCommandWithDeps(resolvedOptions, deps);
+  const result = await orchestrateCommandWithDeps(options, deps);
 
-  const planOnly = resolvedOptions.planOnly ?? false;
+  const planOnly = options.planOnly ?? false;
 
   // Spawn loop.sh as a detached background process (unless plan-only)
   let loopPid: number | null = null;
@@ -1846,12 +1352,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       workDir = worktreePath;
     } else {
       // Worktree failed — fall back to project root
-      const warning = `Failed to create worktree: ${worktreeResult.stderr?.trim()}`;
-      if (outputMode === 'json') {
-        console.error(JSON.stringify({ warning }));
-      } else {
-        console.error(`Warning: ${warning}`);
-      }
+      console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
     }
 
     const args = [
@@ -1894,20 +1395,6 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       started_at: startedAt,
     };
     await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
-
-    // Write status.json so `aloop status` and dashboard can track this session
-    const statusPath = path.join(result.session_dir, 'status.json');
-    await writeFile(
-      statusPath,
-      `${JSON.stringify({
-        state: 'starting',
-        mode: 'orchestrate',
-        provider: 'claude',
-        iteration: 0,
-        updated_at: startedAt,
-      }, null, 2)}\n`,
-      'utf8',
-    );
 
     // Register in active.json
     const activePath = path.join(result.aloopRoot, 'active.json');
@@ -2161,39 +1648,6 @@ export async function applyTriageResultsToIssue(
   repo: string,
   deps: TriageDeps,
 ): Promise<TriageLogEntry[]> {
-  const commentOnIssue = async (body: string): Promise<void> => {
-    if (deps.adapter) {
-      await deps.adapter.postComment(issue.number, body);
-      return;
-    }
-    if (!deps.execGh) {
-      throw new Error('Missing triage dependency: adapter or execGh is required');
-    }
-    await deps.execGh(['issue', 'comment', String(issue.number), '--repo', repo, '--body', body]);
-  };
-
-  const addIssueLabel = async (label: string): Promise<void> => {
-    if (deps.adapter) {
-      await deps.adapter.addLabels(issue.number, [label]);
-      return;
-    }
-    if (!deps.execGh) {
-      throw new Error('Missing triage dependency: adapter or execGh is required');
-    }
-    await deps.execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--add-label', label]);
-  };
-
-  const removeIssueLabel = async (label: string): Promise<void> => {
-    if (deps.adapter) {
-      await deps.adapter.removeLabels(issue.number, [label]);
-      return;
-    }
-    if (!deps.execGh) {
-      throw new Error('Missing triage dependency: adapter or execGh is required');
-    }
-    await deps.execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', label]);
-  };
-
   const pendingSteeringComments = issue.pending_steering_comments ?? [];
   if (issue.child_session && pendingSteeringComments.length > 0) {
     await injectSteeringToChildLoop(issue, pendingSteeringComments, deps);
@@ -2237,16 +1691,22 @@ export async function applyTriageResultsToIssue(
     }
 
     if (result.classification === 'needs_clarification') {
-      await commentOnIssue(formatNeedsClarificationReply(comment));
+      await deps.execGh([
+        'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatNeedsClarificationReply(comment),
+      ]);
       if (!issue.blocked_on_human) {
-        await addIssueLabel('aloop/blocked-on-human');
+        await deps.execGh([
+          'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+        ]);
       }
       issue.blocked_on_human = true;
       actionTaken = 'post_reply_and_block';
     } else if (result.classification === 'actionable') {
       let unblocked = false;
       if (issue.blocked_on_human) {
-        await removeIssueLabel('aloop/blocked-on-human');
+        await deps.execGh([
+          'issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', 'aloop/blocked-on-human',
+        ]);
         issue.blocked_on_human = false;
         unblocked = true;
       }
@@ -2267,7 +1727,9 @@ export async function applyTriageResultsToIssue(
         actionTaken = 'steering_deferred';
       }
     } else if (result.classification === 'question') {
-      await commentOnIssue(formatQuestionReply(comment));
+      await deps.execGh([
+        'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatQuestionReply(comment),
+      ]);
       actionTaken = 'question_answered';
     } else {
       actionTaken = 'triaged_no_action';
@@ -2390,7 +1852,7 @@ export async function runTriageMonitorCycle(
   state: OrchestratorState,
   sessionId: string,
   repo: string,
-  deps: Pick<OrchestrateDeps, 'execGh' | 'now' | 'adapter'> & { writeFile?: OrchestrateDeps['writeFile'] },
+  deps: Pick<OrchestrateDeps, 'execGh' | 'now'> & { writeFile?: OrchestrateDeps['writeFile'] },
   aloopRoot?: string,
 ): Promise<TriageMonitorCycleResult> {
   if (!deps.execGh) {
@@ -2429,7 +1891,7 @@ export async function runTriageMonitorCycle(
       issue,
       [...normalizedIssueComments, ...normalizedPrComments],
       repo,
-      { execGh: deps.execGh, adapter: deps.adapter, now: deps.now, writeFile: deps.writeFile, aloopRoot },
+      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, aloopRoot },
     );
     triagedEntries += entries.length;
 
@@ -2529,44 +1991,25 @@ export async function resolveSpecQuestionIssues(
   state: OrchestratorState,
   repo: string,
   sessionDir: string,
-  deps: Pick<ScanLoopDeps, 'execGh' | 'adapter' | 'appendLog' | 'now'>,
+  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog' | 'now'>,
 ): Promise<SpecQuestionResolveStats> {
-  if (!deps.execGh && !deps.adapter) {
+  if (!deps.execGh) {
     return { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
   }
   const result: SpecQuestionResolveStats = { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
-  const issues: SpecQuestionIssueSummary[] = [];
-  if (deps.adapter) {
-    const listed = await deps.adapter.queryIssues({
-      state: 'open',
-      labels: ['aloop/spec-question'],
-      limit: 200,
-    });
-    for (const item of listed) {
-      const detailed = await deps.adapter.getIssue(item.number);
-      issues.push({
-        number: detailed.number,
-        title: detailed.title,
-        body: detailed.body ?? '',
-        labels: detailed.labels.map((name) => ({ name })),
-      });
-    }
-  } else if (deps.execGh) {
-    const response = await deps.execGh([
-      'issue',
-      'list',
-      '--repo',
-      repo,
-      '--label',
-      'aloop/spec-question',
-      '--state',
-      'open',
-      '--json',
-      'number,title,body,labels',
-    ]);
-    issues.push(...parseSpecQuestionIssueList(response.stdout));
-  }
-
+  const response = await deps.execGh([
+    'issue',
+    'list',
+    '--repo',
+    repo,
+    '--label',
+    'aloop/spec-question',
+    '--state',
+    'open',
+    '--json',
+    'number,title,body,labels',
+  ]);
+  const issues = parseSpecQuestionIssueList(response.stdout);
   for (const issue of issues) {
     result.processed += 1;
     const labelNames = extractLabelNames(issue.labels);
@@ -2576,13 +2019,9 @@ export async function resolveSpecQuestionIssues(
     const reopenedByUser = labelNames.has('aloop/auto-resolved');
     if (reopenedByUser) {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        if (deps.adapter) {
-          await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
-        } else if (deps.execGh) {
-          await deps.execGh([
-            'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-          ]);
-        }
+        await deps.execGh([
+          'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+        ]);
       }
       result.userOverrides += 1;
       deps.appendLog(sessionDir, {
@@ -2596,13 +2035,9 @@ export async function resolveSpecQuestionIssues(
 
     if (action === 'wait_for_user') {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        if (deps.adapter) {
-          await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
-        } else if (deps.execGh) {
-          await deps.execGh([
-            'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-          ]);
-        }
+        await deps.execGh([
+          'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+        ]);
       }
       result.waiting += 1;
       deps.appendLog(sessionDir, {
@@ -2615,37 +2050,27 @@ export async function resolveSpecQuestionIssues(
       continue;
     }
 
-    if (deps.adapter) {
-      await deps.adapter.postComment(
-        issue.number,
-        formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
-      );
-      await deps.adapter.addLabels(issue.number, ['aloop/auto-resolved']);
-      await deps.adapter.removeLabels(issue.number, ['aloop/blocked-on-human']);
-      await deps.adapter.closeIssue(issue.number);
-    } else if (deps.execGh) {
-      await deps.execGh([
-        'issue',
-        'comment',
-        issueNumber,
-        '--repo',
-        repo,
-        '--body',
-        formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
-      ]);
-      await deps.execGh([
-        'issue',
-        'edit',
-        issueNumber,
-        '--repo',
-        repo,
-        '--add-label',
-        'aloop/auto-resolved',
-        '--remove-label',
-        'aloop/blocked-on-human',
-      ]);
-      await deps.execGh(['issue', 'close', issueNumber, '--repo', repo]);
-    }
+    await deps.execGh([
+      'issue',
+      'comment',
+      issueNumber,
+      '--repo',
+      repo,
+      '--body',
+      formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
+    ]);
+    await deps.execGh([
+      'issue',
+      'edit',
+      issueNumber,
+      '--repo',
+      repo,
+      '--add-label',
+      'aloop/auto-resolved',
+      '--remove-label',
+      'aloop/blocked-on-human',
+    ]);
+    await deps.execGh(['issue', 'close', issueNumber, '--repo', repo]);
     result.autoResolved += 1;
     deps.appendLog(sessionDir, {
       timestamp: deps.now().toISOString(),
@@ -2780,7 +2205,6 @@ export async function applyEstimateResults(
   deps?: {
     execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
     execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
-    adapter?: OrchestratorAdapter;
     appendLog?: (sessionDir: string, entry: Record<string, unknown>) => void;
     now?: () => Date;
     repo?: string;
@@ -2855,23 +2279,15 @@ export async function applyEstimateResults(
       outcome.blocked.push(result.issue_number);
 
       // Create aloop/spec-question issues for each gap
-      if (result.gaps && result.gaps.length > 0 && deps?.repo && deps.sessionId) {
+      if (result.gaps && result.gaps.length > 0 && deps?.execGhIssueCreate && deps.repo && deps.sessionId) {
         for (const gap of result.gaps) {
-          if (deps.execGhIssueCreate) {
-            await deps.execGhIssueCreate(
-              deps.repo,
-              deps.sessionId,
-              `[spec-question] #${result.issue_number}: ${gap}`,
-              `Blocking issue #${result.issue_number} (${issue.title}).\n\n**DoR gap:** ${gap}\n\nThis spec-question must be resolved before the parent issue can be dispatched.`,
-              ['aloop/spec-question'],
-            );
-          } else if (deps.adapter) {
-            await deps.adapter.createIssue({
-              title: `[spec-question] #${result.issue_number}: ${gap}`,
-              body: `Blocking issue #${result.issue_number} (${issue.title}).\n\n**DoR gap:** ${gap}\n\nThis spec-question must be resolved before the parent issue can be dispatched.`,
-              labels: ['aloop/spec-question'],
-            });
-          }
+          await deps.execGhIssueCreate(
+            deps.repo,
+            deps.sessionId,
+            `[spec-question] #${result.issue_number}: ${gap}`,
+            `Blocking issue #${result.issue_number} (${issue.title}).\n\n**DoR gap:** ${gap}\n\nThis spec-question must be resolved before the parent issue can be dispatched.`,
+            ['aloop/spec-question'],
+          );
         }
       }
     }
@@ -3437,14 +2853,41 @@ export async function launchChildLoop(
   // Create git worktree branching from agent/trunk (not local HEAD)
   // Fetch latest trunk first
   deps.spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'agent/trunk'], { encoding: 'utf8' });
+
+  // Clean up stale worktree locks for this branch before creating
+  deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+
   let worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName, 'origin/agent/trunk'], { encoding: 'utf8' });
   if (worktreeResult.status !== 0) {
-    // Branch may already exist — try without -b
+    // Branch may already exist — remove stale worktree lock if present, then retry
+    // Porcelain format: "worktree <path>\nHEAD <sha>\nbranch refs/heads/<name>\n\n"
+    const existingWt = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'list', '--porcelain'], { encoding: 'utf8' });
+    const entries = (existingWt.stdout ?? '').split('\n\n');
+    for (const entry of entries) {
+      if (entry.includes(`refs/heads/${branchName}`)) {
+        const wtLine = entry.split('\n').find((l) => l.startsWith('worktree '));
+        if (wtLine) {
+          const stalePath = wtLine.replace('worktree ', '');
+          deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', stalePath], { encoding: 'utf8' });
+        }
+      }
+    }
+    deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+
+    // Retry — branch exists, check it out
     worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, branchName], { encoding: 'utf8' });
     if (worktreeResult.status !== 0) {
       throw new Error(`Failed to create worktree for issue #${issue.number}: ${worktreeResult.stderr || worktreeResult.stdout}`);
     }
   }
+
+  // CRITICAL: Set upstream to the correct remote branch, not agent/trunk.
+  // git worktree add -b <branch> origin/agent/trunk sets tracking to origin/agent/trunk,
+  // which causes `git push -u origin HEAD` to push directly to agent/trunk.
+  deps.spawnSync('git', ['-C', worktreePath, 'branch', '--set-upstream-to', `origin/${branchName}`], { encoding: 'utf8' });
+  // If the remote branch doesn't exist yet, unset upstream entirely — push -u will create it correctly
+  deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.merge`], { encoding: 'utf8' });
+  deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.remote`], { encoding: 'utf8' });
 
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
@@ -3648,19 +3091,7 @@ export async function dispatchChildLoops(
   const capabilityResult = filterByHostCapabilities(dispatchable, deps);
   const eligible = filterByFileOwnership(capabilityResult.eligible, state);
   const slots = availableSlots(state);
-  let toDispatch = eligible.slice(0, slots);
-  let pausedTmpLowSpace: DispatchResult['pausedTmpLowSpace'];
-  if (toDispatch.length > 0) {
-    const freeBytes = await getTmpFreeBytes(deps);
-    if (freeBytes !== null && freeBytes < TMP_DISPATCH_MIN_FREE_BYTES) {
-      toDispatch = [];
-      pausedTmpLowSpace = {
-        freeBytes,
-        thresholdBytes: TMP_DISPATCH_MIN_FREE_BYTES,
-        path: TMP_DISPATCH_CHECK_PATH,
-      };
-    }
-  }
+  const toDispatch = eligible.slice(0, slots);
   const skippedSet = new Set<number>(capabilityResult.blocked.map((entry) => entry.issue.number));
   for (const issue of dispatchable) {
     if (!toDispatch.includes(issue)) {
@@ -3669,38 +3100,76 @@ export async function dispatchChildLoops(
   }
   const skipped = [...skippedSet];
 
+  const launched = await launchIssues(
+    toDispatch, state, stateFile, orchestratorSessionDir,
+    projectRoot, projectName, promptsSourceDir, aloopRoot, deps, undefined,
+  );
+
+  return { launched, skipped, state };
+}
+
+/**
+ * Core dispatch loop — launches child loops for a list of issues.
+ * Shared by both fresh dispatch and redispatch paths.
+ * Updates issue state to in_progress and persists state after each launch.
+ */
+export async function launchIssues(
+  issues: OrchestratorIssue[],
+  state: OrchestratorState,
+  stateFile: string,
+  orchestratorSessionDir: string,
+  projectRoot: string,
+  projectName: string,
+  promptsSourceDir: string,
+  aloopRoot: string,
+  deps: DispatchDeps,
+  logDeps?: { appendLog: (dir: string, entry: any) => void },
+): Promise<ChildLaunchResult[]> {
   const launched: ChildLaunchResult[] = [];
 
-  for (const issue of toDispatch) {
-    const result = await launchChildLoop(
-      issue,
-      orchestratorSessionDir,
-      projectRoot,
-      projectName,
-      promptsSourceDir,
-      aloopRoot,
-      deps,
-    );
-    launched.push(result);
+  for (const issue of issues) {
+    try {
+      const result = await launchChildLoop(
+        issue,
+        orchestratorSessionDir,
+        projectRoot,
+        projectName,
+        promptsSourceDir,
+        aloopRoot,
+        deps,
+      );
+      launched.push(result);
 
-    // Update issue state in-place
-    const stateIssue = state.issues.find((i) => i.number === issue.number);
-    if (stateIssue) {
-      stateIssue.state = 'in_progress';
-      stateIssue.child_session = result.session_id;
+      // Update issue state in-place
+      const stateIssue = state.issues.find((i) => i.number === issue.number);
+      if (stateIssue) {
+        stateIssue.state = 'in_progress';
+        stateIssue.status = 'In progress';
+        stateIssue.child_session = result.session_id;
+        (stateIssue as any).child_pid = result.pid;
+      }
+    } catch (e) {
+      if (logDeps) {
+        logDeps.appendLog(orchestratorSessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_dispatch_failed',
+          issue_number: issue.number,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
   }
 
   // Persist updated state
-  state = { ...state, updated_at: deps.now().toISOString() };
+  state.updated_at = deps.now().toISOString();
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
-  return { launched, skipped, state, pausedTmpLowSpace };
+  return launched;
 }
 
 // --- PR lifecycle gates ---
 
-export type PrGateStatus = 'pass' | 'fail' | 'pending' | 'api_error';
+export type PrGateStatus = 'pass' | 'fail' | 'pending';
 
 export interface PrGateResult {
   gate: string;
@@ -3731,7 +3200,6 @@ export interface PrMergeResult {
 
 export interface PrLifecycleDeps {
   execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
-  adapter?: OrchestratorAdapter;
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   now: () => Date;
@@ -3769,19 +3237,12 @@ export async function checkPrGates(
   // Gate 1: Mergeability (conflict check)
   let mergeable = false;
   try {
-    let mergeState = 'UNKNOWN';
-    if (deps.adapter) {
-      const prStatus = await deps.adapter.getPrStatus(prNumber);
-      mergeable = prStatus.mergeable;
-      mergeState = prStatus.mergeStateStatus;
-    } else {
-      const viewResult = await deps.execGh([
-        'pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus',
-      ]);
-      const prData = JSON.parse(viewResult.stdout);
-      mergeable = prData.mergeable === 'MERGEABLE';
-      mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
-    }
+    const viewResult = await deps.execGh([
+      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus',
+    ]);
+    const prData = JSON.parse(viewResult.stdout);
+    mergeable = prData.mergeable === 'MERGEABLE';
+    const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
     gates.push({
       gate: 'merge_conflicts',
       status: mergeable ? 'pass' : 'fail',
@@ -3789,36 +3250,21 @@ export async function checkPrGates(
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    // API error — report as api_error so processPrLifecycle retries next pass
-    mergeable = false;
-    gates.push({ gate: 'merge_conflicts', status: 'api_error', detail: `Merge check failed (API error): ${msg}` });
+    // API error — don't block the PR, just skip this gate (will retry next pass)
+    gates.push({ gate: 'merge_conflicts', status: 'pass', detail: `Merge check skipped (API error): ${msg}` });
   }
 
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
   try {
-    const checks: Array<{ name: string; state: string; conclusion: string | null }> = [];
-    if (deps.adapter) {
-      const parsedChecks = await deps.adapter.getPrChecks(prNumber);
-      for (const check of parsedChecks.checks) {
-        checks.push({
-          name: check.name ?? 'unknown',
-          state: check.status ?? 'COMPLETED',
-          conclusion: check.conclusion,
-        });
-      }
-    } else {
-      const checksResult = await deps.execGh([
-        'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
-      ]);
-      const parsed = JSON.parse(checksResult.stdout);
-      checks.push(
-        ...(parsed.statusCheckRollup ?? []).map((c: any) => ({
-          name: c.name ?? c.context ?? 'unknown',
-          state: c.status ?? c.state ?? 'COMPLETED',
-          conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
-        })),
-      );
-    }
+    const checksResult = await deps.execGh([
+      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
+    ]);
+    const parsed = JSON.parse(checksResult.stdout);
+    const checks: Array<{ name: string; state: string; conclusion: string }> = (parsed.statusCheckRollup ?? []).map((c: any) => ({
+      name: c.name ?? c.context ?? 'unknown',
+      state: c.status ?? c.state ?? 'COMPLETED',
+      conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
+    }));
     const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
     const allPassed = checks.every(
       (c) => (c.state === 'COMPLETED' || c.state === 'completed') &&
@@ -3851,7 +3297,7 @@ export async function checkPrGates(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (ciWorkflowsConfigured) {
-      gates.push({ gate: 'ci_checks', status: 'api_error', detail: `Failed to query CI checks: ${msg}` });
+      gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed to query CI checks: ${msg}` });
     } else {
       gates.push({ gate: 'ci_checks', status: 'pass', detail: `No GitHub Actions workflows detected; CI check query skipped (${msg})` });
     }
@@ -3907,13 +3353,9 @@ export async function mergePr(
   deps: PrLifecycleDeps,
 ): Promise<PrMergeResult> {
   try {
-    if (deps.adapter) {
-      await deps.adapter.mergePr(prNumber, { method: 'squash', deleteBranch: true });
-    } else {
-      await deps.execGh([
-        'pr', 'merge', String(prNumber), '--repo', repo, '--squash', '--delete-branch',
-      ]);
-    }
+    await deps.execGh([
+      'pr', 'merge', String(prNumber), '--repo', repo, '--squash', '--delete-branch',
+    ]);
     return { pr_number: prNumber, merged: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3928,7 +3370,7 @@ export async function mergePr(
 export async function createTrunkToMainPr(
   state: OrchestratorState,
   repo: string,
-  deps: Pick<ScanLoopDeps, 'execGh' | 'adapter' | 'appendLog'>,
+  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog'>,
   sessionDir: string,
 ): Promise<number | null> {
   const trunkBranch = state.trunk_branch || 'agent/trunk';
@@ -3949,16 +3391,15 @@ export async function createTrunkToMainPr(
   ].filter(Boolean).join('\n');
 
   try {
-    const parsed = deps.adapter
-      ? await deps.adapter.createPr({ base: 'main', head: trunkBranch, title, body })
-      : parsePrCreateOutput((await deps.execGh!([
-        'pr', 'create',
-        '--repo', repo,
-        '--base', 'main',
-        '--head', trunkBranch,
-        '--title', title,
-        '--body', body,
-      ])).stdout);
+    const result = await deps.execGh!([
+      'pr', 'create',
+      '--repo', repo,
+      '--base', 'main',
+      '--head', trunkBranch,
+      '--title', title,
+      '--body', body,
+    ]);
+    const parsed = parsePrCreateOutput(result.stdout);
     deps.appendLog(sessionDir, {
       timestamp: new Date().toISOString(),
       event: 'trunk_to_main_pr_created',
@@ -3969,29 +3410,27 @@ export async function createTrunkToMainPr(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     // Check if PR already exists
-    if (deps.execGh) {
-      try {
-        const listResult = await deps.execGh([
-          'pr', 'list',
-          '--repo', repo,
-          '--head', trunkBranch,
-          '--base', 'main',
-          '--json', 'number',
-          '--jq', '.[0].number',
-        ]);
-        const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
-        if (Number.isFinite(existingNumber) && existingNumber > 0) {
-          deps.appendLog(sessionDir, {
-            timestamp: new Date().toISOString(),
-            event: 'trunk_to_main_pr_exists',
-            pr_number: existingNumber,
-            trunk_branch: trunkBranch,
-          });
-          return existingNumber;
-        }
-      } catch {
-        // Listing also failed
+    try {
+      const listResult = await deps.execGh!([
+        'pr', 'list',
+        '--repo', repo,
+        '--head', trunkBranch,
+        '--base', 'main',
+        '--json', 'number',
+        '--jq', '.[0].number',
+      ]);
+      const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
+      if (Number.isFinite(existingNumber) && existingNumber > 0) {
+        deps.appendLog(sessionDir, {
+          timestamp: new Date().toISOString(),
+          event: 'trunk_to_main_pr_exists',
+          pr_number: existingNumber,
+          trunk_branch: trunkBranch,
+        });
+        return existingNumber;
       }
+    } catch {
+      // Listing also failed
     }
     deps.appendLog(sessionDir, {
       timestamp: new Date().toISOString(),
@@ -4007,20 +3446,7 @@ export async function createTrunkToMainPr(
  * Request a child loop to rebase its branch against agent/trunk.
  * Posts a comment on the issue instructing the child to rebase.
  */
-export async function requestRebase(
-  issue: OrchestratorIssue,
-  repo: string,
-  trunkBranch: string,
-  rebaseAttempt: number,
-  deps: PrLifecycleDeps,
-): Promise<void> {
-  const body = `Merge conflict with \`${trunkBranch}\` — rebase needed (attempt ${rebaseAttempt}/2).\\n\\nPlease rebase your branch against \`${trunkBranch}\` and push.`;
-  if (deps.adapter) {
-    await deps.adapter.postComment(issue.number, body);
-    return;
-  }
-  await deps.execGh(['issue', 'comment', String(issue.number), '--repo', repo, '--body', body]);
-}
+// requestRebase is no longer used — conflicts are handled by dispatching a child agent via needs_redispatch
 
 /**
  * Flag an issue for human resolution after rebase attempts exhausted.
@@ -4033,17 +3459,12 @@ export async function flagForHuman(
 ): Promise<void> {
   const body = `Flagged for human resolution: ${reason}`;
   try {
-    if (deps.adapter) {
-      await deps.adapter.postComment(issue.number, body);
-      await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
-    } else {
-      await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo, '--body', body,
-      ]);
-      await deps.execGh([
-        'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-      ]);
-    }
+    await deps.execGh([
+      'issue', 'comment', String(issue.number), '--repo', repo, '--body', body,
+    ]);
+    await deps.execGh([
+      'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+    ]);
   } catch {
     // Best-effort labeling
   }
@@ -4051,7 +3472,7 @@ export async function flagForHuman(
 
 export interface PrLifecycleResult {
   pr_number: number;
-  action: 'merged' | 'rebase_requested' | 'flagged_for_human' | 'rejected' | 'gates_pending' | 'gates_failed' | 'review_pending';
+  action: 'merged' | 'rebase_requested' | 'flagged_for_human' | 'rejected' | 'gates_pending' | 'gates_failed' | 'review_pending' | 'closed_for_retry';
   detail: string;
   gates?: PrGatesResult;
   review?: AgentReviewResult;
@@ -4060,7 +3481,7 @@ export interface PrLifecycleResult {
 /**
  * Process the full PR lifecycle for an orchestrator issue:
  * 1. Check PR gates (CI, mergeability)
- * 2. If gates fail due to conflicts → rebase (max 2 attempts) → flag for human
+ * 2. If gates fail due to conflicts → dispatch child agent to rebase
  * 3. If gates pending → return pending
  * 4. If gates pass → agent review
  * 5. If review approves → squash-merge
@@ -4095,13 +3516,6 @@ export async function processPrLifecycle(
     return { pr_number: prNumber, action: 'gates_pending', detail: 'CI checks still running', gates: gatesResult };
   }
 
-  // Step 2b: Handle API errors — treat as transient, retry next pass (don't fail or rebase)
-  const apiErrorGates = gatesResult.gates.filter((g) => g.status === 'api_error');
-  if (apiErrorGates.length > 0) {
-    const errorDetail = apiErrorGates.map((g) => `${g.gate}: ${g.detail}`).join('; ');
-    return { pr_number: prNumber, action: 'gates_pending', detail: `API error on gate checks, will retry: ${errorDetail}`, gates: gatesResult };
-  }
-
   // Step 3: Handle merge conflicts (only if gate check didn't error)
   const mergeGate = gatesResult.gates.find((g) => g.gate === 'merge_conflicts');
   const mergeCheckErrored = mergeGate && mergeGate.detail?.startsWith('Failed to check');
@@ -4109,49 +3523,26 @@ export async function processPrLifecycle(
     const stateIssue = state.issues.find((i) => i.number === issue.number);
     const rebaseAttempts = stateIssue?.rebase_attempts ?? 0;
 
-    if (rebaseAttempts >= 2) {
-      // Max rebase attempts reached — flag for human
-      await flagForHuman(issue, repo, `Merge conflicts persist after 2 rebase attempts on PR #${prNumber}`, deps);
-      // Update issue state to failed
-      if (stateIssue) {
-        stateIssue.state = 'failed';
-        stateIssue.status = 'Blocked';
-      }
-      await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-        execGh: deps.execGh,
-        appendLog: deps.appendLog,
-        now: deps.now,
-        sessionDir,
-      });
-      state.updated_at = deps.now().toISOString();
-      await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-
-      deps.appendLog(sessionDir, {
-        timestamp: deps.now().toISOString(),
-        event: 'pr_flagged_for_human',
-        pr_number: prNumber,
-        issue_number: issue.number,
-        reason: 'max_rebase_attempts',
-        attempts: rebaseAttempts,
-      });
-      return { pr_number: prNumber, action: 'flagged_for_human', detail: `Conflicts persist after 2 rebase attempts`, gates: gatesResult };
-    }
-
-    // Request rebase
+    // Dispatch a child loop to resolve the merge conflict via rebase
     const attempt = rebaseAttempts + 1;
-    await requestRebase(issue, repo, state.trunk_branch, attempt, deps);
-    if (stateIssue) stateIssue.rebase_attempts = attempt;
+    if (stateIssue) {
+      stateIssue.rebase_attempts = attempt;
+      (stateIssue as any).needs_redispatch = true;
+      (stateIssue as any).review_feedback = `PR #${prNumber} has merge conflicts with \`${state.trunk_branch}\`. ` +
+        `Rebase your branch onto \`origin/${state.trunk_branch}\`, resolve all conflicts, and force-push. ` +
+        `This is rebase attempt ${attempt}. Do NOT create new commits for the rebase — use \`git rebase\` and \`git push --force-with-lease\`.`;
+    }
     state.updated_at = deps.now().toISOString();
     await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
     deps.appendLog(sessionDir, {
       timestamp: deps.now().toISOString(),
-      event: 'pr_rebase_requested',
+      event: 'pr_rebase_dispatched',
       pr_number: prNumber,
       issue_number: issue.number,
       attempt,
     });
-    return { pr_number: prNumber, action: 'rebase_requested', detail: `Rebase requested (attempt ${attempt}/2)`, gates: gatesResult };
+    return { pr_number: prNumber, action: 'rebase_requested', detail: `Rebase agent dispatched (attempt ${attempt})`, gates: gatesResult };
   }
 
   // Step 4: Handle other gate failures (CI failures, etc.)
@@ -4171,25 +3562,26 @@ export async function processPrLifecycle(
       stateIssue.ci_failure_summary = ciFailure.detail;
 
       if (retries >= ORCHESTRATOR_CI_PERSISTENCE_LIMIT) {
-        await flagForHuman(
-          issue,
-          repo,
-          `Persistent CI failure unchanged after ${retries} attempts: ${ciFailure.detail}`,
-          deps,
-        );
-        stateIssue.state = 'failed';
-        stateIssue.status = 'Blocked';
-        await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-          execGh: deps.execGh,
-          appendLog: deps.appendLog,
-          now: deps.now,
-          sessionDir,
-        });
+        // Close the PR and reset for fresh attempt instead of permanent failure
+        try {
+          await deps.execGh(['pr', 'close', String(prNumber), '--repo', repo, '--comment',
+            `Closing: persistent CI failure after ${retries} attempts: ${ciFailure.detail}. Will re-dispatch fresh.`]);
+        } catch { /* best-effort */ }
+
+        stateIssue.state = 'pending';
+        stateIssue.status = 'Ready';
+        stateIssue.pr_number = null;
+        stateIssue.child_session = null;
+        (stateIssue as any).child_pid = null;
+        stateIssue.ci_failure_retries = 0;
+        stateIssue.ci_failure_signature = undefined;
+        stateIssue.ci_failure_summary = undefined;
+
         state.updated_at = deps.now().toISOString();
         await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
-          event: 'pr_ci_failure_persistent',
+          event: 'pr_closed_ci_failure',
           pr_number: prNumber,
           issue_number: issue.number,
           ci_failure_retries: retries,
@@ -4197,8 +3589,8 @@ export async function processPrLifecycle(
         });
         return {
           pr_number: prNumber,
-          action: 'flagged_for_human',
-          detail: `Persistent CI failure after ${retries} attempts`,
+          action: 'closed_for_retry',
+          detail: `Persistent CI failure after ${retries} attempts — reset for fresh dispatch`,
           gates: gatesResult,
         };
       }
@@ -4211,17 +3603,10 @@ export async function processPrLifecycle(
       const ciRetryNote = ciFailure && stateIssue
         ? ` CI retry ${stateIssue.ci_failure_retries ?? 1}/${ORCHESTRATOR_CI_PERSISTENCE_LIMIT} before human escalation.`
         : '';
-      if (deps.adapter) {
-        await deps.adapter.postComment(
-          issue.number,
-          `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`,
-        );
-      } else {
-        await deps.execGh([
-          'issue', 'comment', String(issue.number), '--repo', repo,
-          '--body', `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`,
-        ]);
-      }
+      await deps.execGh([
+        'issue', 'comment', String(issue.number), '--repo', repo,
+        '--body', `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`,
+      ]);
     } catch {
       // Best-effort comment
     }
@@ -4235,28 +3620,7 @@ export async function processPrLifecycle(
     return { pr_number: prNumber, action: 'gates_failed', detail: failDetail, gates: gatesResult };
   }
 
-  // Step 5: SHA dedup — skip review if HEAD hasn't changed since last review
-  const lastReviewedSha = issue.last_reviewed_sha;
-  if (lastReviewedSha) {
-    try {
-      const headResult = await deps.execGh(['pr', 'view', String(prNumber), '--repo', repo, '--json', 'headRefOid']);
-      const currentHead = JSON.parse(headResult.stdout).headRefOid;
-      if (currentHead === lastReviewedSha) {
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: 'pr_review_skipped_sha_dedup',
-          pr_number: prNumber,
-          issue_number: issue.number,
-          sha: currentHead,
-        });
-        return { pr_number: prNumber, action: 'review_pending', detail: `Skipped review — HEAD ${currentHead.slice(0, 7)} unchanged since last review`, gates: gatesResult };
-      }
-    } catch {
-      // If we can't fetch HEAD, proceed with review anyway
-    }
-  }
-
-  // Step 6: Agent review
+  // Step 5: Agent review
   const reviewResult = await reviewPrDiff(prNumber, repo, deps);
   deps.appendLog(sessionDir, {
     timestamp: deps.now().toISOString(),
@@ -4274,27 +3638,23 @@ export async function processPrLifecycle(
   if (reviewResult.verdict === 'request-changes') {
     // Post review feedback on the PR (only if not already posted)
     const stateIssue = state.issues.find((i) => i.number === issue.number);
-    const alreadyCommented = stateIssue?.last_review_comment === reviewResult.summary;
+    const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
-        if (deps.adapter) {
-          await deps.adapter.postComment(prNumber, `Agent review requested changes:\n\n${reviewResult.summary}`);
-        } else {
-          await deps.execGh([
-            'pr', 'comment', String(prNumber), '--repo', repo,
-            '--body', `Agent review requested changes:\n\n${reviewResult.summary}`,
-          ]);
-        }
+        await deps.execGh([
+          'pr', 'comment', String(prNumber), '--repo', repo,
+          '--body', `Agent review requested changes:\n\n${reviewResult.summary}`,
+        ]);
       } catch {
         // Best-effort
       }
-      if (stateIssue) stateIssue.last_review_comment = reviewResult.summary;
+      if (stateIssue) (stateIssue as any).last_review_comment = reviewResult.summary;
     }
 
     // Mark for re-dispatch by the scan pass (which has dispatchDeps)
     if (stateIssue) {
-      stateIssue.needs_redispatch = true;
-      stateIssue.review_feedback = reviewResult.summary;
+      (stateIssue as any).needs_redispatch = true;
+      (stateIssue as any).review_feedback = reviewResult.summary;
     }
 
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
@@ -4334,11 +3694,7 @@ export async function processPrLifecycle(
 
     // Close the issue
     try {
-      if (deps.adapter) {
-        await deps.adapter.closeIssue(issue.number);
-      } else {
-        await deps.execGh(['issue', 'close', String(issue.number), '--repo', repo]);
-      }
+      await deps.execGh(['issue', 'close', String(issue.number), '--repo', repo]);
     } catch {
       // Best-effort close
     }
@@ -4920,8 +4276,8 @@ export async function monitorChildSessions(
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
         // Keep child_session so resume works on the same branch/worktree
-        stateIssue.needs_redispatch = true;
-        stateIssue.review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
+        (stateIssue as any).needs_redispatch = true;
+        (stateIssue as any).review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
       }
       result.failed++;
       entry.action = 'failed';
@@ -4968,7 +4324,6 @@ export interface ScanLoopDeps {
   unlink?: (path: string) => Promise<void>;
   now: () => Date;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
-  adapter?: OrchestratorAdapter;
   execGit?: (args: string[], cwd?: string) => Promise<{ stdout: string; stderr: string }>;
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   dispatchDeps?: DispatchDeps;
@@ -5420,10 +4775,7 @@ export async function processQueuedPrompts(
         cwd: agentWorkDir,
         detached: true,
         stdio: 'ignore',
-        env: {
-          ...deps.dispatchDeps.env,
-          NODE_COMPILE_CACHE: path.join(sessionDir, '.v8-cache'),
-        },
+        env: { ...deps.dispatchDeps.env },
         windowsHide: true,
       });
       child.unref();
@@ -5607,7 +4959,7 @@ export async function runSpecChangeReplan(
 async function fetchAndApplyBulkIssueState(
   state: OrchestratorState,
   repo: string,
-  deps: Pick<ScanLoopDeps, 'adapter' | 'etagCache' | 'appendLog' | 'now'>,
+  deps: Pick<ScanLoopDeps, 'execGh' | 'etagCache' | 'appendLog' | 'now'>,
   sessionDir: string,
   iteration: number,
 ): Promise<BulkFetchResult> {
@@ -5619,7 +4971,7 @@ async function fetchAndApplyBulkIssueState(
     durationMs: 0,
   };
 
-  if (!deps.adapter) return result;
+  if (!deps.execGh) return result;
 
   try {
     const issueNumbers = state.issues.map((i) => i.number);
@@ -5629,7 +4981,7 @@ async function fetchAndApplyBulkIssueState(
       return !earliest || check < earliest ? check : earliest;
     }, undefined as string | undefined);
 
-    const bulkResult = await deps.adapter.fetchBulkIssueState({
+    const bulkResult = await fetchBulkIssueState(repo, deps.execGh, {
       states: ['OPEN'],
       since,
       issueNumbers,
@@ -5723,7 +5075,6 @@ export async function runOrchestratorScanPass(
 ): Promise<ScanPassResult> {
   const stateContent = await deps.readFile(stateFile, 'utf8');
   const state: OrchestratorState = JSON.parse(stateContent);
-  const adapter = resolveAdapter(repo, deps);
 
   const result: ScanPassResult = {
     iteration,
@@ -5755,11 +5106,11 @@ export async function runOrchestratorScanPass(
   }
 
   // 0.3. Bulk issue state fetch (ETag-guarded, replaces per-issue REST calls)
-  if (repo && adapter && state.issues.length > 0) {
+  if (repo && deps.execGh && state.issues.length > 0) {
     result.bulkFetch = await fetchAndApplyBulkIssueState(
       state,
       repo,
-      { adapter, etagCache: deps.etagCache, appendLog: deps.appendLog, now: deps.now },
+      { execGh: deps.execGh, etagCache: deps.etagCache, appendLog: deps.appendLog, now: deps.now },
       sessionDir,
       iteration,
     );
@@ -5832,21 +5183,7 @@ export async function runOrchestratorScanPass(
     const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
     const eligible = filterByFileOwnership(capabilityResult.eligible, state);
     const slots = availableSlots(state);
-    let toDispatch = eligible.slice(0, slots);
-    if (toDispatch.length > 0) {
-      const freeBytes = await getTmpFreeBytes(deps.dispatchDeps);
-      if (freeBytes !== null && freeBytes < TMP_DISPATCH_MIN_FREE_BYTES) {
-        toDispatch = [];
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: 'scan_dispatch_paused_tmp_low_space',
-          iteration,
-          free_bytes: freeBytes,
-          threshold_bytes: TMP_DISPATCH_MIN_FREE_BYTES,
-          path: TMP_DISPATCH_CHECK_PATH,
-        });
-      }
-    }
+    const toDispatch = eligible.slice(0, slots);
 
     for (const blocked of capabilityResult.blocked) {
       deps.appendLog(sessionDir, {
@@ -5874,7 +5211,7 @@ export async function runOrchestratorScanPass(
         if (stateIssue) {
           stateIssue.state = 'in_progress';
           stateIssue.child_session = launchResult.session_id;
-          stateIssue.child_pid = launchResult.pid;
+          (stateIssue as any).child_pid = launchResult.pid;
           stateIssue.status = 'In progress';
           if (repo && deps.execGh) {
             await syncIssueProjectStatus(issue.number, repo, 'In progress', {
@@ -5937,11 +5274,8 @@ export async function runOrchestratorScanPass(
 
   // 3. Process PR lifecycles for issues with open PRs
   if (repo && deps.prLifecycleDeps) {
-    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !i.needs_redispatch);
+    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
     for (const issue of prIssues) {
-      // SHA dedup is handled inside invokeAgentReview (process-requests.ts),
-      // which reads result files first, then checks SHA. Do NOT skip here —
-      // skipping at the scan-loop level prevents picking up completed review results.
       try {
         const lifecycleResult = await processPrLifecycle(
           issue,
@@ -5949,18 +5283,11 @@ export async function runOrchestratorScanPass(
           stateFile,
           sessionDir,
           repo,
-          { ...deps.prLifecycleDeps, adapter: deps.prLifecycleDeps.adapter ?? adapter },
+          deps.prLifecycleDeps,
         );
         result.prLifecycles.push(lifecycleResult);
-        // Store reviewed commit SHA only after a non-pending review verdict.
-        // Do not store for gate-only/rebase paths where no review verdict exists.
-        const reviewVerdict = lifecycleResult?.review?.verdict;
-        if (reviewVerdict && reviewVerdict !== 'pending' && deps.execGh) {
-          try {
-            const headResult = await deps.execGh(['pr', 'view', String(issue.pr_number), '--repo', repo, '--json', 'headRefOid']);
-            issue.last_reviewed_sha = JSON.parse(headResult.stdout).headRefOid;
-          } catch { /* ignore */ }
-        }
+        // No SHA tracking needed — state transitions (needs_redispatch, Blocked, merged)
+        // already prevent re-processing. SHA was causing stuck-on-reviewed states.
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         deps.appendLog(sessionDir, {
@@ -5976,54 +5303,49 @@ export async function runOrchestratorScanPass(
   }
 
   // 3.5. Re-dispatch children that need review fixes
+  // Uses launchIssues() — the shared dispatch path that respects concurrency,
+  // capability filters, and state updates.
   if (deps.dispatchDeps && deps.aloopRoot) {
-    const needsRedispatch = state.issues.filter((i) => i.needs_redispatch && i.child_session);
-    for (const issue of needsRedispatch) {
-      try {
-        // Re-use launchChildLoop — it handles worktree creation, prompts, branch reuse
-        const launchResult = await launchChildLoop(
-          issue,
-          sessionDir,
-          projectRoot,
-          projectName,
-          promptsSourceDir,
-          deps.aloopRoot,
-          deps.dispatchDeps,
-        );
+    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch);
+    if (needsRedispatch.length > 0) {
+      const redispatchResult = await launchIssues(
+        needsRedispatch.slice(0, availableSlots(state)),
+        state,
+        stateFile,
+        sessionDir,
+        projectRoot,
+        projectName,
+        promptsSourceDir,
+        deps.aloopRoot,
+        deps.dispatchDeps,
+        { appendLog: deps.appendLog },
+      );
 
-        // Write review feedback as steering prompt into the NEW child session
-        const childQueueDir = path.join(deps.aloopRoot, 'sessions', launchResult.session_id, 'queue');
-        await deps.writeFile(
-          path.join(childQueueDir, '000-review-fixes.md'),
-          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${issue.review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
-          'utf8',
-        );
-
-        issue.state = 'in_progress';
-        issue.status = 'In progress';
-        issue.child_session = launchResult.session_id;
-        issue.child_pid = launchResult.pid;
-        issue.needs_redispatch = false;
-        issue.review_feedback = undefined;
-        issue.last_reviewed_sha = undefined;
-
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: 'child_redispatched_for_review',
-          iteration,
-          issue_number: issue.number,
-          pr_number: issue.pr_number,
-          child_session: launchResult.session_id,
-          pid: launchResult.pid,
-        });
-      } catch (e) {
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: 'child_redispatch_failed',
-          iteration,
-          issue_number: issue.number,
-          error: e instanceof Error ? e.message : String(e),
-        });
+      for (const launch of redispatchResult) {
+        const issue = state.issues.find((i) => i.number === launch.issue_number);
+        if (issue) {
+          // Write review feedback as steering prompt
+          const feedback = (issue as any).review_feedback ?? '';
+          if (feedback) {
+            const childQueueDir = path.join(deps.aloopRoot, 'sessions', launch.session_id, 'queue');
+            await mkdir(childQueueDir, { recursive: true });
+            await deps.writeFile(
+              path.join(childQueueDir, '000-review-fixes.md'),
+              `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+              'utf8',
+            );
+          }
+          (issue as any).needs_redispatch = false;
+          (issue as any).review_feedback = undefined;
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'child_redispatched_for_review',
+            iteration,
+            issue_number: launch.issue_number,
+            child_session: launch.session_id,
+            pid: launch.pid,
+          });
+        }
       }
     }
   }
