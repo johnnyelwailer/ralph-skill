@@ -17,11 +17,10 @@
 
 ### Up Next
 
-- [ ] Rebuild dashboard dist after bug fixes — `aloop/cli/dist/dashboard/index.html` and `aloop/cli/dist/index.js` are already modified (shown in git status), ensure they reflect the source fixes
-
 ### Completed
 
 - [x] [qa/P1] Fix `/api/cost/aggregate` SQL query — changed from nonexistent `usage` table to correct `message` table with `json_extract` per SPEC-ADDENDUM
+- [x] Rebuild dashboard dist after bug fixes — rebuilt with `npm run build`; updated `aloop/cli/dist/dashboard/index.html` asset references to current dashboard bundle
 
 ### Notes
 
