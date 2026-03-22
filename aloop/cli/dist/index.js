@@ -5097,6 +5097,14 @@ async function resolveDefaultAssetsDir() {
   candidates.add(path6.join(moduleDir, "dashboard"));
   candidates.add(path6.resolve(moduleDir, "..", "dashboard"));
   candidates.add(path6.resolve(moduleDir, "..", "..", "dashboard", "dist"));
+  candidates.add(path6.resolve(moduleDir, "..", "..", "dist", "dashboard"));
+  candidates.add(path6.resolve(moduleDir, "..", "..", "..", "dist", "dashboard"));
+  candidates.add(path6.resolve(moduleDir, "..", "..", "..", "dashboard", "dist"));
+  if (npmPackageJson) {
+    const packageDir = path6.dirname(npmPackageJson);
+    candidates.add(path6.join(packageDir, "dist", "dashboard"));
+    candidates.add(path6.join(packageDir, "dashboard", "dist"));
+  }
   candidates.add(devAssetsDir);
   for (const candidateDir of candidates) {
     if (await fileExists2(path6.join(candidateDir, "index.html"))) {
@@ -12720,6 +12728,10 @@ async function launchChildLoop(issue, orchestratorSessionDir, projectRoot, proje
       throw new Error(`Failed to create worktree for issue #${issue.number}: ${worktreeResult.stderr || worktreeResult.stdout}`);
     }
   }
+  const pushResult = deps.spawnSync("git", ["-C", worktreePath, "push", "-u", "origin", branchName], { encoding: "utf8" });
+  if (pushResult.status !== 0) {
+    throw new Error(`Failed to push branch ${branchName} for issue #${issue.number}: ${pushResult.stderr || pushResult.stdout}`);
+  }
   const todoContent = `# Issue #${issue.number}: ${issue.title}
 
 ## Tasks
@@ -13524,7 +13536,7 @@ async function monitorChildSessions(state, sessionDir, repo, deps) {
       stuck_count: childStatus.stuck_count ?? 0,
       action: "still_running"
     };
-    if (childStatus.state === "exited") {
+    if (childStatus.state === "exited" || childStatus.state === "completed") {
       const prResult = await createPrForChild(issue, childSession, childDir, state, repo, deps);
       if (prResult.pr_number !== null) {
         const stateIssue = state.issues.find((i) => i.number === issue.number);
