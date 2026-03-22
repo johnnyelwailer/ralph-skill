@@ -20,7 +20,6 @@ import {
   checkPrGates,
   reviewPrDiff,
   mergePr,
-  requestRebase,
   flagForHuman,
   processPrLifecycle,
   applyTriageConfidenceFloor,
@@ -2887,21 +2886,6 @@ describe('mergePr', () => {
   });
 });
 
-describe('requestRebase', () => {
-  it('posts comment on the issue', async () => {
-    const calls: string[][] = [];
-    const deps = createMockPrDeps({
-      execGh: async (args) => { calls.push(args); return { stdout: '', stderr: '' }; },
-    });
-    const issue: OrchestratorIssue = { number: 42, title: 'Test', wave: 1, state: 'pr_open', child_session: 's1', pr_number: 100, depends_on: [] };
-    await requestRebase(issue, 'owner/repo', 'agent/trunk', 1, deps);
-    assert.equal(calls.length, 1);
-    assert.ok(calls[0].includes('issue'));
-    assert.ok(calls[0].includes('comment'));
-    assert.ok(calls[0].includes('42'));
-  });
-});
-
 describe('flagForHuman', () => {
   it('comments and labels the issue', async () => {
     const calls: string[][] = [];
@@ -2981,12 +2965,13 @@ describe('processPrLifecycle', () => {
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'rebase_requested');
-    assert.ok(result.detail.includes('attempt 1/2'));
+    assert.ok(result.detail.includes('attempt 1'));
     assert.equal(state.issues[0].rebase_attempts, 1);
-    assert.ok(deps.logs.some((l) => l.event === 'pr_rebase_requested'));
+    assert.ok((state.issues[0] as any).needs_redispatch === true);
+    assert.ok(deps.logs.some((l) => l.event === 'pr_rebase_dispatched'));
   });
 
-  it('flags for human after 2 rebase attempts', async () => {
+  it('still dispatches rebase agent after multiple attempts', async () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open', rebase_attempts: 2 }]);
     const deps = createMockPrDeps({
       execGh: async (args) => {
@@ -3000,9 +2985,9 @@ describe('processPrLifecycle', () => {
       },
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'flagged_for_human');
-    assert.equal(state.issues[0].state, 'failed');
-    assert.ok(deps.logs.some((l) => l.event === 'pr_flagged_for_human'));
+    assert.equal(result.action, 'rebase_requested');
+    assert.equal(state.issues[0].rebase_attempts, 3);
+    assert.ok((state.issues[0] as any).needs_redispatch === true);
   });
 
   it('rejects PR when agent review requests changes', async () => {
@@ -3115,7 +3100,7 @@ describe('processPrLifecycle', () => {
     assert.ok(deps.logs.some((l) => l.event === 'pr_gates_failed'));
   });
 
-  it('flags for human when same CI failure persists across attempts', async () => {
+  it('closes PR and resets issue when same CI failure persists across attempts', async () => {
     const state = makeOrchestratorState([
       {
         number: 42,
@@ -3133,18 +3118,18 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' }]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'build', status: 'COMPLETED', conclusion: 'FAILURE' }] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'flagged_for_human');
-    assert.equal(state.issues[0].state, 'failed');
-    assert.equal(state.issues[0].status, 'Blocked');
-    assert.equal(state.issues[0].ci_failure_retries, 3);
-    assert.ok(deps.logs.some((l) => l.event === 'pr_ci_failure_persistent'));
+    assert.equal(result.action, 'closed_for_retry');
+    assert.equal(state.issues[0].state, 'pending');
+    assert.equal(state.issues[0].status, 'Ready');
+    assert.equal(state.issues[0].ci_failure_retries, 0);
+    assert.ok(deps.logs.some((l) => l.event === 'pr_closed_ci_failure'));
   });
 
   it('handles merge failure after approval', async () => {

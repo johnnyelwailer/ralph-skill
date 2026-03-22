@@ -329,6 +329,63 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
+  // ── Phase 2d.2: Recover failed issues that have a viable path forward ──
+  for (const issue of state.issues) {
+    if (issue.state !== 'failed') continue;
+    // Don't recover issues deliberately closed by scan agent
+    if (issue.status === 'Done') continue;
+    const hasOpenPr = issue.pr_number != null;
+    const wantsRedispatch = (issue as any).needs_redispatch === true;
+
+    if (wantsRedispatch) {
+      // Has review feedback — move to pr_open so lifecycle picks it up for redispatch
+      if (hasOpenPr) {
+        issue.state = 'pr_open';
+        issue.status = 'In review';
+      } else {
+        // No PR but wants redispatch — reset to pending for fresh dispatch
+        issue.state = 'pending';
+        issue.status = 'Ready';
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+        (issue as any).needs_redispatch = false;
+      }
+      stateChanged = true;
+      console.log(`[process-requests] Recovered failed #${issue.number} (needs_redispatch) → ${issue.state}`);
+    } else if (hasOpenPr) {
+      // Has open PR — move back to pr_open so the PR lifecycle can re-evaluate
+      // Clear stale child session if the child is dead
+      if (issue.child_session) {
+        const childPid = (issue as any).child_pid;
+        if (!childPid || !existsSync(`/proc/${childPid}`)) {
+          issue.child_session = null;
+          (issue as any).child_pid = null;
+        }
+      }
+      issue.state = 'pr_open';
+      issue.status = 'In review';
+      (issue as any).rebase_attempts = 0;
+      stateChanged = true;
+      console.log(`[process-requests] Recovered failed #${issue.number} (has open PR #${issue.pr_number}) → pr_open`);
+    } else {
+      // No PR (may or may not have child session) — reset to pending for fresh attempt.
+      // Clear dead child session if present.
+      const childPid = (issue as any).child_pid;
+      if (issue.child_session && (!childPid || !existsSync(`/proc/${childPid}`))) {
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+      }
+      if (!issue.child_session) {
+        issue.state = 'pending';
+        issue.status = 'Ready';
+        (issue as any).rebase_attempts = 0;
+        (issue as any).ci_failure_retries = 0;
+        stateChanged = true;
+        console.log(`[process-requests] Recovered failed #${issue.number} (no PR) → pending`);
+      }
+    }
+  }
+
   // ── Phase 2e: Cleanup worktrees + V8 cache for fully completed children ──
   try {
     for (const issue of state.issues) {
@@ -348,7 +405,20 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   } catch { /* cleanup is best-effort */ }
 
-  // ── Phase 2e: Sync issue statuses to GH project ──
+  // Periodic /tmp V8 cache cleanup (provider CLIs like claude/opencode pollute /tmp)
+  // Only run occasionally — every ~10th pass — to avoid hammering find
+  if (Math.random() < 0.1) {
+    try {
+      const findResult = spawnSync('find', ['/tmp', '-maxdepth', '2', '-name', '.da*.so', '-mmin', '+60', '-delete'], {
+        encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000,
+      });
+      if (findResult.status === 0) {
+        console.log('[process-requests] Cleaned stale V8 cache files from /tmp');
+      }
+    } catch { /* best-effort */ }
+  }
+
+  // ── Phase 2f: Sync issue statuses to GH project ──
   if (repo && stateChanged && ghProjectNumber) {
     try {
       // Get project items and their current statuses

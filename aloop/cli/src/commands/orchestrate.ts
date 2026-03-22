@@ -3381,18 +3381,7 @@ export async function createTrunkToMainPr(
  * Request a child loop to rebase its branch against agent/trunk.
  * Posts a comment on the issue instructing the child to rebase.
  */
-export async function requestRebase(
-  issue: OrchestratorIssue,
-  repo: string,
-  trunkBranch: string,
-  rebaseAttempt: number,
-  deps: PrLifecycleDeps,
-): Promise<void> {
-  const body = `Merge conflict with \`${trunkBranch}\` — rebase needed (attempt ${rebaseAttempt}/2).\\n\\nPlease rebase your branch against \`${trunkBranch}\` and push.`;
-  await deps.execGh([
-    'issue', 'comment', String(issue.number), '--repo', repo, '--body', body,
-  ]);
-}
+// requestRebase is no longer used — conflicts are handled by dispatching a child agent via needs_redispatch
 
 /**
  * Flag an issue for human resolution after rebase attempts exhausted.
@@ -3418,7 +3407,7 @@ export async function flagForHuman(
 
 export interface PrLifecycleResult {
   pr_number: number;
-  action: 'merged' | 'rebase_requested' | 'flagged_for_human' | 'rejected' | 'gates_pending' | 'gates_failed' | 'review_pending';
+  action: 'merged' | 'rebase_requested' | 'flagged_for_human' | 'rejected' | 'gates_pending' | 'gates_failed' | 'review_pending' | 'closed_for_retry';
   detail: string;
   gates?: PrGatesResult;
   review?: AgentReviewResult;
@@ -3427,7 +3416,7 @@ export interface PrLifecycleResult {
 /**
  * Process the full PR lifecycle for an orchestrator issue:
  * 1. Check PR gates (CI, mergeability)
- * 2. If gates fail due to conflicts → rebase (max 2 attempts) → flag for human
+ * 2. If gates fail due to conflicts → dispatch child agent to rebase
  * 3. If gates pending → return pending
  * 4. If gates pass → agent review
  * 5. If review approves → squash-merge
@@ -3469,49 +3458,26 @@ export async function processPrLifecycle(
     const stateIssue = state.issues.find((i) => i.number === issue.number);
     const rebaseAttempts = stateIssue?.rebase_attempts ?? 0;
 
-    if (rebaseAttempts >= 2) {
-      // Max rebase attempts reached — flag for human
-      await flagForHuman(issue, repo, `Merge conflicts persist after 2 rebase attempts on PR #${prNumber}`, deps);
-      // Update issue state to failed
-      if (stateIssue) {
-        stateIssue.state = 'failed';
-        stateIssue.status = 'Blocked';
-      }
-      await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-        execGh: deps.execGh,
-        appendLog: deps.appendLog,
-        now: deps.now,
-        sessionDir,
-      });
-      state.updated_at = deps.now().toISOString();
-      await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-
-      deps.appendLog(sessionDir, {
-        timestamp: deps.now().toISOString(),
-        event: 'pr_flagged_for_human',
-        pr_number: prNumber,
-        issue_number: issue.number,
-        reason: 'max_rebase_attempts',
-        attempts: rebaseAttempts,
-      });
-      return { pr_number: prNumber, action: 'flagged_for_human', detail: `Conflicts persist after 2 rebase attempts`, gates: gatesResult };
-    }
-
-    // Request rebase
+    // Dispatch a child loop to resolve the merge conflict via rebase
     const attempt = rebaseAttempts + 1;
-    await requestRebase(issue, repo, state.trunk_branch, attempt, deps);
-    if (stateIssue) stateIssue.rebase_attempts = attempt;
+    if (stateIssue) {
+      stateIssue.rebase_attempts = attempt;
+      (stateIssue as any).needs_redispatch = true;
+      (stateIssue as any).review_feedback = `PR #${prNumber} has merge conflicts with \`${state.trunk_branch}\`. ` +
+        `Rebase your branch onto \`origin/${state.trunk_branch}\`, resolve all conflicts, and force-push. ` +
+        `This is rebase attempt ${attempt}. Do NOT create new commits for the rebase — use \`git rebase\` and \`git push --force-with-lease\`.`;
+    }
     state.updated_at = deps.now().toISOString();
     await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
     deps.appendLog(sessionDir, {
       timestamp: deps.now().toISOString(),
-      event: 'pr_rebase_requested',
+      event: 'pr_rebase_dispatched',
       pr_number: prNumber,
       issue_number: issue.number,
       attempt,
     });
-    return { pr_number: prNumber, action: 'rebase_requested', detail: `Rebase requested (attempt ${attempt}/2)`, gates: gatesResult };
+    return { pr_number: prNumber, action: 'rebase_requested', detail: `Rebase agent dispatched (attempt ${attempt})`, gates: gatesResult };
   }
 
   // Step 4: Handle other gate failures (CI failures, etc.)
@@ -3531,25 +3497,26 @@ export async function processPrLifecycle(
       stateIssue.ci_failure_summary = ciFailure.detail;
 
       if (retries >= ORCHESTRATOR_CI_PERSISTENCE_LIMIT) {
-        await flagForHuman(
-          issue,
-          repo,
-          `Persistent CI failure unchanged after ${retries} attempts: ${ciFailure.detail}`,
-          deps,
-        );
-        stateIssue.state = 'failed';
-        stateIssue.status = 'Blocked';
-        await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-          execGh: deps.execGh,
-          appendLog: deps.appendLog,
-          now: deps.now,
-          sessionDir,
-        });
+        // Close the PR and reset for fresh attempt instead of permanent failure
+        try {
+          await deps.execGh(['pr', 'close', String(prNumber), '--repo', repo, '--comment',
+            `Closing: persistent CI failure after ${retries} attempts: ${ciFailure.detail}. Will re-dispatch fresh.`]);
+        } catch { /* best-effort */ }
+
+        stateIssue.state = 'pending';
+        stateIssue.status = 'Ready';
+        stateIssue.pr_number = null;
+        stateIssue.child_session = null;
+        (stateIssue as any).child_pid = null;
+        stateIssue.ci_failure_retries = 0;
+        stateIssue.ci_failure_signature = undefined;
+        stateIssue.ci_failure_summary = undefined;
+
         state.updated_at = deps.now().toISOString();
         await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
-          event: 'pr_ci_failure_persistent',
+          event: 'pr_closed_ci_failure',
           pr_number: prNumber,
           issue_number: issue.number,
           ci_failure_retries: retries,
@@ -3557,8 +3524,8 @@ export async function processPrLifecycle(
         });
         return {
           pr_number: prNumber,
-          action: 'flagged_for_human',
-          detail: `Persistent CI failure after ${retries} attempts`,
+          action: 'closed_for_retry',
+          detail: `Persistent CI failure after ${retries} attempts — reset for fresh dispatch`,
           gates: gatesResult,
         };
       }
@@ -5272,7 +5239,7 @@ export async function runOrchestratorScanPass(
 
   // 3.5. Re-dispatch children that need review fixes
   if (deps.dispatchDeps && deps.aloopRoot) {
-    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch && i.child_session);
+    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch);
     for (const issue of needsRedispatch) {
       try {
         // Re-use launchChildLoop — it handles worktree creation, prompts, branch reuse
