@@ -16,6 +16,7 @@ import {
 } from '../lib/github-monitor.js';
 
 export interface OrchestrateCommandOptions {
+  resume?: string;
   spec?: string;
   concurrency?: string;
   trunk?: string;
@@ -200,6 +201,7 @@ export interface OrchestrateDeps {
   mkdir: (path: string, options?: { recursive?: boolean }) => Promise<string | undefined>;
   unlink?: (path: string) => Promise<void>;
   readdirSync?: (path: string) => string[];
+  isProcessAlive?: (pid: number) => boolean;
   now: () => Date;
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
@@ -304,6 +306,15 @@ const defaultDeps: OrchestrateDeps = {
   mkdir,
   unlink,
   readdirSync,
+  isProcessAlive: (pid: number) => {
+    if (!Number.isFinite(pid) || pid <= 0) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  },
   now: () => new Date(),
 };
 
@@ -1346,6 +1357,148 @@ export async function runStartupHealthChecks(
   return results;
 }
 
+async function readJsonIfExists<T>(
+  filePath: string,
+  deps: Pick<OrchestrateDeps, 'existsSync' | 'readFile'>,
+): Promise<T | null> {
+  if (!deps.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(await deps.readFile(filePath, 'utf8')) as T;
+  } catch {
+    return null;
+  }
+}
+
+function isTerminalChildState(value: string | undefined): boolean {
+  return value === 'completed' || value === 'exited' || value === 'stopped';
+}
+
+async function reconcileResumedChildren(
+  state: OrchestratorState,
+  aloopRoot: string,
+  deps: Pick<OrchestrateDeps, 'existsSync' | 'readFile' | 'isProcessAlive'>,
+): Promise<boolean> {
+  let changed = false;
+  const isAlive = deps.isProcessAlive ?? ((pid: number) => {
+    if (!Number.isFinite(pid) || pid <= 0) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  for (const issue of state.issues) {
+    if (issue.state !== 'in_progress' || !issue.child_session) continue;
+
+    const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+    const childMeta = await readJsonIfExists<{ pid?: number | string }>(
+      path.join(childDir, 'meta.json'),
+      deps,
+    );
+    const childStatus = await readJsonIfExists<{ state?: string }>(
+      path.join(childDir, 'status.json'),
+      deps,
+    );
+
+    const pidRaw = childMeta?.pid;
+    const pid = typeof pidRaw === 'string' ? Number.parseInt(pidRaw, 10) : pidRaw;
+    const childTerminal = isTerminalChildState(childStatus?.state);
+    if (typeof pid === 'number' && isAlive(pid)) {
+      continue;
+    }
+    if (childTerminal) {
+      continue;
+    }
+
+    issue.state = 'pending';
+    issue.status = 'Ready';
+    issue.child_session = null;
+    (issue as unknown as { child_pid?: number | null }).child_pid = null;
+    changed = true;
+  }
+
+  return changed;
+}
+
+async function syncResumedStateFromGithub(
+  state: OrchestratorState,
+  deps: Pick<OrchestrateDeps, 'now'>,
+): Promise<boolean> {
+  const repo = state.filter_repo;
+  if (!repo) return false;
+
+  try {
+    const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+    const listResult = nodeSpawnSync(
+      'gh',
+      ['issue', 'list', '--repo', repo, '--label', 'aloop/auto', '--state', 'open', '--limit', '200', '--json', 'number,title,body,labels'],
+      { encoding: 'utf8' },
+    );
+    if (listResult.status !== 0) {
+      return false;
+    }
+
+    const ghIssues = JSON.parse(listResult.stdout ?? '[]') as Array<{
+      number: number;
+      title?: string;
+      body?: string;
+      labels?: Array<{ name?: string } | string>;
+    }>;
+    if (!Array.isArray(ghIssues)) return false;
+
+    const byNumber = new Map<number, OrchestratorIssue>();
+    for (const issue of state.issues) {
+      byNumber.set(issue.number, issue);
+    }
+
+    let changed = false;
+    for (const ghIssue of ghIssues) {
+      const existing = byNumber.get(ghIssue.number);
+      if (existing) {
+        if (typeof ghIssue.title === 'string' && ghIssue.title.length > 0 && existing.title !== ghIssue.title) {
+          existing.title = ghIssue.title;
+          changed = true;
+        }
+        if (typeof ghIssue.body === 'string' && existing.body !== ghIssue.body) {
+          existing.body = ghIssue.body;
+          changed = true;
+        }
+        continue;
+      }
+
+      state.issues.push({
+        number: ghIssue.number,
+        title: ghIssue.title ?? `Issue #${ghIssue.number}`,
+        body: ghIssue.body ?? '',
+        file_hints: [],
+        sandbox: 'container',
+        requires: [],
+        wave: 1,
+        state: 'pending',
+        status: 'Needs refinement',
+        child_session: null,
+        pr_number: null,
+        depends_on: [],
+        blocked_on_human: false,
+        processed_comment_ids: [],
+        triage_log: [],
+        dor_validated: false,
+      });
+      changed = true;
+    }
+
+    if (changed) {
+      state.updated_at = deps.now().toISOString();
+    }
+
+    return changed;
+  } catch {
+    return false;
+  }
+}
+
 export async function orchestrateCommandWithDeps(
   options: OrchestrateCommandOptions = {},
   deps: OrchestrateDeps = defaultDeps,
@@ -1353,6 +1506,57 @@ export async function orchestrateCommandWithDeps(
   const homeDir = resolveHomeDir(options.homeDir);
   const aloopRoot = path.join(homeDir, '.aloop');
   const sessionsRoot = path.join(aloopRoot, 'sessions');
+
+  if (options.resume) {
+    const sessionId = path.basename(options.resume);
+    const sessionDir = path.join(sessionsRoot, sessionId);
+    const promptsDir = path.join(sessionDir, 'prompts');
+    const queueDir = path.join(sessionDir, 'queue');
+    const requestsDir = path.join(sessionDir, 'requests');
+    const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
+    const stateFile = path.join(sessionDir, 'orchestrator.json');
+    const metaFile = path.join(sessionDir, 'meta.json');
+
+    if (!deps.existsSync(sessionDir)) {
+      throw new Error(`Orchestrator session not found: ${sessionId}`);
+    }
+    if (!deps.existsSync(stateFile)) {
+      throw new Error(`Missing orchestrator state file: ${stateFile}`);
+    }
+
+    await deps.mkdir(promptsDir, { recursive: true });
+    await deps.mkdir(queueDir, { recursive: true });
+    await deps.mkdir(requestsDir, { recursive: true });
+
+    const state = await readJsonIfExists<OrchestratorState>(stateFile, deps);
+    if (!state) {
+      throw new Error(`Invalid orchestrator state JSON: ${stateFile}`);
+    }
+
+    const meta = await readJsonIfExists<{ project_root?: string }>(metaFile, deps);
+    const projectRoot = options.projectRoot
+      ? path.resolve(options.projectRoot)
+      : path.resolve(meta?.project_root ?? process.cwd());
+
+    const syncedFromGh = await syncResumedStateFromGithub(state, deps);
+    const reconciledChildren = await reconcileResumedChildren(state, aloopRoot, deps);
+    if (syncedFromGh || reconciledChildren) {
+      state.updated_at = deps.now().toISOString();
+      await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    }
+
+    return {
+      session_dir: sessionDir,
+      prompts_dir: promptsDir,
+      queue_dir: queueDir,
+      requests_dir: requestsDir,
+      loop_plan_file: loopPlanFile,
+      state_file: stateFile,
+      state,
+      aloopRoot,
+      projectRoot,
+    };
+  }
 
   const specInput = options.spec ?? 'SPEC.md';
   const projectRoot = options.projectRoot ? path.resolve(options.projectRoot) : process.cwd();
@@ -1771,6 +1975,8 @@ export async function orchestrateCommandWithDeps(
 
 export async function orchestrateCommand(options: OrchestrateCommandOptions = {}, depsOrCommand?: any) {
   const outputMode = options.output ?? 'text';
+  const resumeSessionId = options.resume ? path.basename(options.resume) : null;
+  const isResume = resumeSessionId !== null;
   // Commander passes the Command object as the second argument if not explicitly provided.
   // We check if the provided argument looks like our OrchestrateDeps.
   let trunkProvided = options.trunkProvided ?? false;
@@ -1797,56 +2003,81 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       throw new Error(`Loop script not found: ${loopScript}`);
     }
 
-    // Create a git worktree inside the session dir (same as aloop start).
-    // The agent works in the worktree (full project access to SPEC.md, source),
-    // while requests/, queue/, orchestrator.json are siblings at ../
+    // Create a git worktree inside the session dir for fresh sessions.
+    // Resume reuses the existing worktree when present.
     let workDir = result.projectRoot;
     const worktreePath = path.join(result.session_dir, 'worktree');
     const worktreeBranch = `aloop/${path.basename(result.session_dir)}`;
-    const worktreeResult = nodeSpawnSync('git', ['-C', result.projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
-    if (worktreeResult.status === 0) {
-      workDir = worktreePath;
+    if (isResume) {
+      if (existsSync(worktreePath)) {
+        workDir = worktreePath;
+      }
     } else {
-      // Worktree failed — fall back to project root
-      console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
+      const worktreeResult = nodeSpawnSync('git', ['-C', result.projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
+      if (worktreeResult.status === 0) {
+        workDir = worktreePath;
+      } else {
+        // Worktree failed — fall back to project root
+        console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
+      }
     }
 
-    const args = [
-      '--prompts-dir', result.prompts_dir,
-      '--session-dir', result.session_dir,
-      '--work-dir', workDir,
-      '--mode', 'plan',
-      '--provider', 'claude',
-      '--round-robin', 'claude',
-      '--max-iterations', '999999',
-      '--launch-mode', 'start',
-      '--dangerously-skip-container',
-      '--no-task-exit',
-    ];
+    // If resume points to a live daemon, do not start a second orchestrator loop.
+    const metaPath = path.join(result.session_dir, 'meta.json');
+    if (isResume && existsSync(metaPath)) {
+      try {
+        const existingMeta = JSON.parse(await readFile(metaPath, 'utf8')) as { pid?: number };
+        if (typeof existingMeta.pid === 'number' && existingMeta.pid > 0) {
+          try {
+            process.kill(existingMeta.pid, 0);
+            loopPid = existingMeta.pid;
+          } catch {
+            // stale pid, spawn a new daemon below
+          }
+        }
+      } catch {
+        // ignore invalid meta, spawn new daemon below
+      }
+    }
 
-    const child = nodeSpawn(loopScript, args, {
-      cwd: workDir,
-      detached: true,
-      stdio: 'ignore',
-      env: { ...process.env },
-      windowsHide: true,
-    });
-    child.unref();
-    loopPid = child.pid ?? null;
+    if (!loopPid) {
+      const args = [
+        '--prompts-dir', result.prompts_dir,
+        '--session-dir', result.session_dir,
+        '--work-dir', workDir,
+        '--mode', 'plan',
+        '--provider', 'claude',
+        '--round-robin', 'claude',
+        '--max-iterations', '999999',
+        '--launch-mode', isResume ? 'resume' : 'start',
+        '--dangerously-skip-container',
+        '--no-task-exit',
+      ];
+
+      const child = nodeSpawn(loopScript, args, {
+        cwd: workDir,
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env },
+        windowsHide: true,
+      });
+      child.unref();
+      loopPid = child.pid ?? null;
+    }
 
     if (!loopPid) {
       throw new Error('Failed to launch orchestrator loop process.');
     }
 
     // Write meta.json
-    const metaPath = path.join(result.session_dir, 'meta.json');
     const startedAt = new Date().toISOString();
     const meta = {
       session_id: path.basename(result.session_dir),
       project_root: result.projectRoot,
       provider: 'claude',
       mode: 'orchestrate',
-      work_dir: result.projectRoot,
+      launch_mode: isResume ? 'resume' : 'start',
+      work_dir: workDir,
       pid: loopPid,
       started_at: startedAt,
     };
@@ -1854,17 +2085,19 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
 
     // Write status.json so `aloop status` and dashboard can track this session
     const statusPath = path.join(result.session_dir, 'status.json');
-    await writeFile(
-      statusPath,
-      `${JSON.stringify({
-        state: 'starting',
-        mode: 'orchestrate',
-        provider: 'claude',
-        iteration: 0,
-        updated_at: startedAt,
-      }, null, 2)}\n`,
-      'utf8',
-    );
+    if (!isResume || !existsSync(statusPath)) {
+      await writeFile(
+        statusPath,
+        `${JSON.stringify({
+          state: 'starting',
+          mode: 'orchestrate',
+          provider: 'claude',
+          iteration: 0,
+          updated_at: startedAt,
+        }, null, 2)}\n`,
+        'utf8',
+      );
+    }
 
     // Register in active.json
     const activePath = path.join(result.aloopRoot, 'active.json');
@@ -1886,7 +2119,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       session_dir: result.session_dir,
       project_root: result.projectRoot,
       pid: loopPid,
-      work_dir: result.projectRoot,
+      work_dir: workDir,
       started_at: startedAt,
       provider: 'claude',
       mode: 'orchestrate',
