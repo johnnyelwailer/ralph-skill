@@ -1,15 +1,9 @@
 # Issue #166: Review agent must read PR comment history and only re-review on new commits
 
-## Current Phase: Implementation
+## Current Phase: Complete
 
 ### Context
-TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, (2) include PR comment history with attribution in review prompts, (3) conversation-aware delta verdicts. All three are implemented and reviewed. Remaining work: type safety cleanup and test coverage.
-
-### In Progress
-
-- [x] [review] Gate 4: Remove `(issue as any)` casts for typed review fields — Added `child_pid` to `OrchestratorIssue` interface. Replaced all 14 `(issue as any)` / `(stateIssue as any)` / `(i as any)` casts with direct property access. tsc clean, 343 tests pass. (priority: high) [reviewed: gates 1-9 pass]
-
-- [x] **Add remaining test coverage for review dedup** — Added `runOrchestratorScanPass` regression test in `orchestrate.test.ts` that exercises redispatch flow and asserts `needs_redispatch` reset, `review_feedback` clear, and `last_reviewed_sha` clear, plus review-fixes prompt generation. (priority: medium) [reviewed: gates 1-9 pass]
+TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, (2) include PR comment history with attribution in review prompts, (3) conversation-aware delta verdicts. All three are implemented, tested, and reviewed (PASS — gates 1-9). Type safety cleanup and test coverage also done.
 
 ### Spec-Gap Analysis
 
@@ -39,9 +33,11 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 ### Up Next
 
+- [x] **Rebuild and commit dist files** — `aloop/cli/dist/index.js` and `aloop/cli/dist/dashboard/index.html` are out of date vs source. Run build and commit. (priority: high)
+
 - [ ] **Audit & fix hover-only interactions** — Overflow tabs menu (AppView.tsx:1178) uses `group-hover:block` with no click/tap equivalent. Fix: add click toggle state. (priority: medium)
 
-- [ ] **Add ARIA labels and roles for missing elements** — Sidebar expand/collapse buttons, activity panel collapse button, stop/force-stop dropdown items. GitHub repo link already done. (priority: medium)
+- [ ] **Add ARIA labels and roles for missing elements** — Activity panel collapse button, stop/force-stop dropdown items. Sidebar expand/collapse buttons and GitHub repo link already done. (priority: medium)
 
 - [ ] **Implement long-press context menu on session cards** — `useLongPress` hook with 500ms threshold, context menu with Stop/Force-stop/Copy ID, haptic feedback. (priority: medium)
 
@@ -62,6 +58,10 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 - [x] **Update review prompt for conversation-aware verdicts** — Added delta-review section to `PROMPT_orch_review.md`: read prior comments, compare against current diff, acknowledge fixes, flag remaining/new issues, produce delta-style summaries. Closes TASK_SPEC req #3. (priority: high) [reviewed: gates 1-9 pass]
 
 - [x] **Add review fields to OrchestratorIssue interface** — `last_reviewed_sha`, `last_review_comment`, `needs_redispatch`, `review_feedback`, `review_pending_count` added to interface at orchestrate.ts:91-95. (priority: medium)
+
+- [x] [review] Gate 4: Remove `(issue as any)` casts for typed review fields — Added `child_pid` to `OrchestratorIssue` interface. Replaced all 14 casts with direct property access. tsc clean, 343 tests pass. (priority: high) [reviewed: gates 1-9 pass]
+
+- [x] **Add remaining test coverage for review dedup** — `runOrchestratorScanPass` regression test in `orchestrate.test.ts` covers redispatch flow: `needs_redispatch` reset, `review_feedback` clear, `last_reviewed_sha` clear, plus review-fixes prompt generation. (priority: medium) [reviewed: gates 1-9 pass]
 
 ### Completed (upstream — dashboard accessibility)
 
