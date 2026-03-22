@@ -3858,9 +3858,7 @@ export async function processPrLifecycle(
     // Post review feedback as a proper GH review with inline comments (only if not already posted)
     const stateIssue = state.issues.find((i) => i.number === issue.number);
     const alreadyCommented = stateIssue?.last_review_comment === reviewResult.summary;
-    const reviewComments: PendingReviewComment[] = (reviewResult.comments ?? []).map((comment) => ({
-      ...comment,
-    }));
+    const reviewComments: PendingReviewComment[] = reviewResult.comments ?? [];
     if (!alreadyCommented) {
       try {
         const adapter = deps.adapter ?? new GitHubAdapter({ type: 'github', repo }, deps.execGh);

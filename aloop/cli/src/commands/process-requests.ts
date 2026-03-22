@@ -946,8 +946,11 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
                 ?? recent.match(new RegExp(`\\*\\*(?:Review\\s+)?[Vv]erdict[:\\s]+(approve|request-changes|flag-for-human)\\*\\*.*?${prNumber}`, 'is'))
                 ?? (recent.match(new RegExp(`PR\\s*#?${prNumber}.*review\\s+approved`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null);
               if (verdictMatch && verdictMatch[1]) {
-                const verdict = verdictMatch[1].toLowerCase();
-                return { pr_number: prNumber, verdict, summary: `Verdict from scan agent output` };
+                const verdictCandidate = verdictMatch[1].toLowerCase();
+                if (AGENT_REVIEW_VERDICTS.has(verdictCandidate as AgentReviewVerdict)) {
+                  const verdict = verdictCandidate as AgentReviewVerdict;
+                  return { pr_number: prNumber, verdict, summary: 'Verdict from scan agent output' };
+                }
               }
             }
           } catch { /* ignore */ }
