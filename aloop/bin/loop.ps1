@@ -1031,9 +1031,15 @@ function Skip-StuckTask {
 
 $statusFile = Join-Path $SessionDir "status.json"
 $logFile = Join-Path $SessionDir "log.jsonl"
+$rawLogFile = "$logFile.raw"
 $reportFile = Join-Path $SessionDir "report.md"
 $startTime = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
 $runId = [guid]::NewGuid().ToString()
+
+# Ensure raw output log exists before offset reads (avoids missing-file warnings).
+if (-not (Test-Path $rawLogFile)) {
+    New-Item -ItemType File -Path $rawLogFile -Force | Out-Null
+}
 
 # Runtime version: read version.json written by install.ps1
 $runtimeVersionDir = if ($env:ALOOP_RUNTIME_DIR) { $env:ALOOP_RUNTIME_DIR } else { Join-Path $HOME '.aloop' }
@@ -1137,6 +1143,61 @@ function Write-LogEntry {
         run_id = $runId
     } + $Data
     ($entry | ConvertTo-Json -Compress) | Add-Content -Encoding utf8 $logFile
+}
+
+function Get-FileLengthSafe {
+    param([string]$Path)
+
+    if (-not (Test-Path $Path)) {
+        return 0L
+    }
+
+    try {
+        return [int64](Get-Item -LiteralPath $Path -ErrorAction Stop).Length
+    } catch {
+        return 0L
+    }
+}
+
+function Write-IterationRawOutput {
+    param(
+        [int]$IterationNumber,
+        [int64]$OffsetBefore,
+        [int64]$OffsetAfter
+    )
+
+    if ($OffsetAfter -le $OffsetBefore) {
+        return
+    }
+
+    $iterArtifactsDir = Join-Path $artifactsDir "iter-$IterationNumber"
+    New-Item -ItemType Directory -Path $iterArtifactsDir -Force | Out-Null
+    $outputPath = Join-Path $iterArtifactsDir 'output.txt'
+
+    try {
+        $source = [System.IO.File]::Open($rawLogFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        try {
+            $source.Seek($OffsetBefore, [System.IO.SeekOrigin]::Begin) | Out-Null
+            $bytesToCopy = $OffsetAfter - $OffsetBefore
+            $buffer = New-Object byte[] 8192
+            $target = [System.IO.File]::Open($outputPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
+            try {
+                while ($bytesToCopy -gt 0) {
+                    $chunkSize = [Math]::Min($buffer.Length, [int]$bytesToCopy)
+                    $read = $source.Read($buffer, 0, $chunkSize)
+                    if ($read -le 0) { break }
+                    $target.Write($buffer, 0, $read)
+                    $bytesToCopy -= $read
+                }
+            } finally {
+                $target.Dispose()
+            }
+        } finally {
+            $source.Dispose()
+        }
+    } catch {
+        # Best effort: output capture should never fail the iteration.
+    }
 }
 
 # Extract token/cost usage from the latest opencode session.
@@ -2196,12 +2257,15 @@ try {
             $promptContent = Resolve-PromptPlaceholders -PromptContent $promptContent -IterationNumber $iteration
 
             Push-Location $WorkDir
+            $rawOffsetBefore = Get-FileLengthSafe -Path $rawLogFile
             try {
                 $providerOutput = Invoke-Provider -ProviderName $iterationProvider -PromptContent $promptContent -ModelOverride ([string]$script:frontmatter.model)
             }
             finally {
                 Pop-Location
             }
+            $rawOffsetAfter = Get-FileLengthSafe -Path $rawLogFile
+            Write-IterationRawOutput -IterationNumber $iteration -OffsetBefore $rawOffsetBefore -OffsetAfter $rawOffsetAfter
 
             Show-AgentSummary -ProviderName $iterationProvider -ProviderOutput $providerOutput
 

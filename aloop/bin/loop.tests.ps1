@@ -995,6 +995,17 @@ exit 0
         $events | Should -Not -Contain 'final_review_rejected'
     }
 
+    It 'captures per-iteration provider output to artifacts output.txt' {
+        $e = New-LoopEnv -Scenario 'approve'
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 2
+
+        $result.ExitCode | Should -Be 0
+        $outputPath = Join-Path $e.SessionDir 'artifacts/iter-1/output.txt'
+        Test-Path $outputPath | Should -Be $true
+        $captured = Get-Content -Path $outputPath -Raw
+        $captured | Should -Match 'Fake provider: call=1'
+    }
+
     It 'proof manifest validation logs valid event details in proof mode' {
         $e = New-LoopEnv -Scenario 'approve'
 @"
