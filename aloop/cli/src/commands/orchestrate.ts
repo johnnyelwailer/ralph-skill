@@ -1,7 +1,7 @@
-import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, readdir, statfs, unlink, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { resolveHomeDir } from './session.js';
+import { resolveHomeDir, stopSession } from './session.js';
 import { getProjectHash, resolveProjectRoot } from './project.js';
 import type { OutputMode } from './status.js';
 import { writeQueueOverride } from '../lib/plan.js';
@@ -32,6 +32,7 @@ export interface OrchestrateCommandOptions {
   interval?: string;
   maxIterations?: string;
   runScanLoop?: boolean;
+  sessionDir?: string;
   autoMerge?: boolean;
   resume?: string;
 }
@@ -1328,6 +1329,20 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     ? (depsOrCommand as OrchestrateDeps)
     : undefined;
 
+  if (options.runScanLoop) {
+    if (!options.sessionDir) {
+      throw new Error('--run-scan-loop requires --session-dir');
+    }
+    const homeDir = resolveHomeDir(options.homeDir);
+    await runOrchestratorDaemonLoop(
+      path.resolve(options.sessionDir),
+      homeDir,
+      parseInterval(options.interval),
+      resolveDaemonMaxIterations(options.maxIterations),
+    );
+    return;
+  }
+
   // --- Resume path: reuse an existing session ---
   if (options.resume) {
     const homeDir = options.homeDir ?? resolveHomeDir();
@@ -1473,57 +1488,15 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
 
   const planOnly = options.planOnly ?? false;
 
-  // Spawn loop.sh as a detached background process (unless plan-only)
-  let loopPid: number | null = null;
+  let daemonPid: number | null = null;
   if (!planOnly) {
-    const { spawn: nodeSpawn, spawnSync: nodeSpawnSync } = await import('node:child_process');
-    const loopBinDir = path.join(result.aloopRoot, 'bin');
-    const loopScript = path.join(loopBinDir, 'loop.sh');
-
-    if (!existsSync(loopScript)) {
-      throw new Error(`Loop script not found: ${loopScript}`);
-    }
-
-    // Create a git worktree inside the session dir (same as aloop start).
-    // The agent works in the worktree (full project access to SPEC.md, source),
-    // while requests/, queue/, orchestrator.json are siblings at ../
-    let workDir = result.projectRoot;
-    const worktreePath = path.join(result.session_dir, 'worktree');
-    const worktreeBranch = `aloop/${path.basename(result.session_dir)}`;
-    const worktreeResult = nodeSpawnSync('git', ['-C', result.projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
-    if (worktreeResult.status === 0) {
-      workDir = worktreePath;
-    } else {
-      // Worktree failed — fall back to project root
-      console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
-    }
-
-    const args = [
-      '--prompts-dir', result.prompts_dir,
-      '--session-dir', result.session_dir,
-      '--work-dir', workDir,
-      '--mode', 'plan',
-      '--provider', 'claude',
-      '--round-robin', 'claude',
-      '--max-iterations', '999999',
-      '--launch-mode', 'start',
-      '--dangerously-skip-container',
-      '--no-task-exit',
-    ];
-
-    const child = nodeSpawn(loopScript, args, {
-      cwd: workDir,
-      detached: true,
-      stdio: 'ignore',
-      env: { ...process.env },
-      windowsHide: true,
-    });
-    child.unref();
-    loopPid = child.pid ?? null;
-
-    if (!loopPid) {
-      throw new Error('Failed to launch orchestrator loop process.');
-    }
+    const homeDir = resolveHomeDir(options.homeDir);
+    daemonPid = await spawnOrchestratorDaemon(
+      result.session_dir,
+      homeDir,
+      parseInterval(options.interval),
+      resolveDaemonMaxIterations(options.maxIterations),
+    );
 
     // Write meta.json
     const metaPath = path.join(result.session_dir, 'meta.json');
@@ -1531,44 +1504,31 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     const meta = {
       session_id: path.basename(result.session_dir),
       project_root: result.projectRoot,
-      provider: 'claude',
-      mode: 'orchestrate',
+      provider: 'orchestrator',
+      mode: 'orchestrator',
       work_dir: result.projectRoot,
-      pid: loopPid,
+      pid: daemonPid,
       started_at: startedAt,
     };
     await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
 
-    // Register in active.json
-    const activePath = path.join(result.aloopRoot, 'active.json');
-    let active: Record<string, unknown> = {};
-    try {
-      if (existsSync(activePath)) {
-        const content = await readFile(activePath, 'utf8');
-        const parsed = JSON.parse(content);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          active = parsed as Record<string, unknown>;
-        }
-      }
-    } catch {
-      // Start fresh
-    }
+    await writeOrchestratorStatus(result.session_dir, 'starting');
+
     const sessionId = path.basename(result.session_dir);
-    active[sessionId] = {
+    await registerOrchestratorSession(result.aloopRoot, sessionId, {
       session_id: sessionId,
       session_dir: result.session_dir,
       project_root: result.projectRoot,
-      pid: loopPid,
+      pid: daemonPid,
       work_dir: result.projectRoot,
       started_at: startedAt,
-      provider: 'claude',
-      mode: 'orchestrate',
-    };
-    await writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+      provider: 'orchestrator',
+      mode: 'orchestrator',
+    });
   }
 
   if (outputMode === 'json') {
-    console.log(JSON.stringify({ ...result, pid: loopPid }, null, 2));
+    console.log(JSON.stringify({ ...result, pid: daemonPid }, null, 2));
     return;
   }
 
@@ -1585,8 +1545,8 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   console.log(`  Autonomy:     ${result.state.autonomy_level ?? 'balanced'}`);
   console.log(`  Concurrency:  ${result.state.concurrency_cap}`);
   console.log(`  Plan only:    ${result.state.plan_only}`);
-  if (loopPid) {
-    console.log(`  Loop PID:     ${loopPid}`);
+  if (daemonPid) {
+    console.log(`  Loop PID:     ${daemonPid}`);
   }
 
   if (result.state.issues.length > 0) {
@@ -5690,4 +5650,227 @@ function parseMaxIterations(value: string | undefined): number {
     throw new Error(`Invalid max-iterations value: ${value} (must be a positive integer)`);
   }
   return parsed;
+}
+
+function resolveDaemonMaxIterations(value: string | undefined): number {
+  if (!value) return Number.MAX_SAFE_INTEGER;
+  return parseMaxIterations(value);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readObjectFile(filePath: string): Promise<Record<string, any>> {
+  if (!existsSync(filePath)) return {};
+  try {
+    const raw = await readFile(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeObjectFile(filePath: string, value: Record<string, unknown>): Promise<void> {
+  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+async function appendOrchestratorLog(sessionDir: string, entry: Record<string, unknown>): Promise<void> {
+  const logPath = path.join(sessionDir, 'log.jsonl');
+  await appendFile(logPath, `${JSON.stringify(entry)}\n`, 'utf8');
+}
+
+async function registerOrchestratorSession(
+  aloopRoot: string,
+  sessionId: string,
+  entry: Record<string, unknown>,
+): Promise<void> {
+  const activePath = path.join(aloopRoot, 'active.json');
+  const active = await readObjectFile(activePath);
+  active[sessionId] = entry;
+  await writeObjectFile(activePath, active);
+}
+
+async function deregisterOrchestratorSession(aloopRoot: string, sessionId: string): Promise<void> {
+  const activePath = path.join(aloopRoot, 'active.json');
+  const active = await readObjectFile(activePath);
+  delete active[sessionId];
+  await writeObjectFile(activePath, active);
+}
+
+async function writeOrchestratorStatus(
+  sessionDir: string,
+  state: 'starting' | 'running' | 'stopped' | 'completed',
+): Promise<void> {
+  const statusPath = path.join(sessionDir, 'status.json');
+  const existing = await readObjectFile(statusPath);
+  const next = {
+    ...existing,
+    state,
+    mode: 'orchestrator',
+    provider: existing.provider ?? 'orchestrator',
+    iteration: typeof existing.iteration === 'number' ? existing.iteration : 0,
+    updated_at: new Date().toISOString(),
+  };
+  await writeObjectFile(statusPath, next);
+}
+
+async function spawnOrchestratorDaemon(
+  sessionDir: string,
+  homeDir: string,
+  intervalMs: number,
+  maxIterations: number,
+): Promise<number> {
+  const { spawn } = await import('node:child_process');
+  const cliScript = path.resolve(process.argv[1]);
+  const args = [
+    cliScript,
+    'orchestrate',
+    '--run-scan-loop',
+    '--session-dir',
+    sessionDir,
+    '--home-dir',
+    homeDir,
+    '--interval',
+    String(intervalMs),
+    '--max-iterations',
+    String(maxIterations),
+    '--output',
+    'text',
+  ];
+  const child = spawn(process.execPath, args, {
+    cwd: sessionDir,
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env },
+    windowsHide: true,
+  });
+  child.unref();
+  const pid = child.pid;
+  if (!pid) {
+    throw new Error('Failed to spawn orchestrator daemon.');
+  }
+  return pid;
+}
+
+async function stopOrchestratorChildren(sessionDir: string, homeDir: string): Promise<void> {
+  const statePath = path.join(sessionDir, 'orchestrator.json');
+  if (!existsSync(statePath)) return;
+  const stateRaw = await readFile(statePath, 'utf8');
+  const state = JSON.parse(stateRaw) as OrchestratorState;
+  const childSessions = new Set<string>();
+  for (const issue of state.issues ?? []) {
+    if (issue?.child_session) {
+      childSessions.add(issue.child_session);
+    }
+  }
+
+  for (const childSession of childSessions) {
+    const result = await stopSession(homeDir, childSession);
+    if (!result.success) {
+      await appendOrchestratorLog(sessionDir, {
+        timestamp: new Date().toISOString(),
+        event: 'orchestrator_child_stop_failed',
+        child_session: childSession,
+        reason: result.reason ?? 'unknown',
+      });
+    }
+  }
+}
+
+async function runOrchestratorDaemonLoop(
+  sessionDir: string,
+  homeDir: string,
+  intervalMs: number,
+  maxIterations: number,
+): Promise<void> {
+  const sessionId = path.basename(sessionDir);
+  const aloopRoot = path.join(homeDir, '.aloop');
+  const statusPath = path.join(sessionDir, 'status.json');
+  let stopRequested = false;
+
+  const signalHandler = () => {
+    stopRequested = true;
+  };
+  process.on('SIGTERM', signalHandler);
+  process.on('SIGINT', signalHandler);
+
+  try {
+    await writeOrchestratorStatus(sessionDir, 'running');
+    await appendOrchestratorLog(sessionDir, {
+      timestamp: new Date().toISOString(),
+      event: 'orchestrator_daemon_started',
+      session_id: sessionId,
+      interval_ms: intervalMs,
+      max_iterations: maxIterations === Number.MAX_SAFE_INTEGER ? null : maxIterations,
+    });
+
+    const { spawnSync } = await import('node:child_process');
+    const cliScript = path.resolve(process.argv[1]);
+
+    for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+      if (stopRequested) break;
+
+      const result = spawnSync(
+        process.execPath,
+        [
+          cliScript,
+          'process-requests',
+          '--session-dir',
+          sessionDir,
+          '--home-dir',
+          homeDir,
+          '--output',
+          'text',
+        ],
+        { cwd: sessionDir, encoding: 'utf8', windowsHide: true },
+      );
+
+      if (result.status !== 0) {
+        await appendOrchestratorLog(sessionDir, {
+          timestamp: new Date().toISOString(),
+          event: 'orchestrator_daemon_iteration_failed',
+          iteration,
+          status: result.status,
+          stderr: (result.stderr ?? '').toString().slice(0, 400),
+        });
+      }
+
+      const status = await readObjectFile(statusPath);
+      const state = typeof status.state === 'string' ? status.state : 'running';
+      if (state === 'completed') {
+        break;
+      }
+
+      if (!stopRequested) {
+        await sleep(intervalMs);
+      }
+    }
+  } finally {
+    process.off('SIGTERM', signalHandler);
+    process.off('SIGINT', signalHandler);
+
+    if (stopRequested) {
+      await stopOrchestratorChildren(sessionDir, homeDir);
+      const statePath = path.join(sessionDir, 'orchestrator.json');
+      if (existsSync(statePath)) {
+        const state = JSON.parse(await readFile(statePath, 'utf8')) as OrchestratorState;
+        state.updated_at = new Date().toISOString();
+        await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+      }
+      await writeOrchestratorStatus(sessionDir, 'stopped');
+      await appendOrchestratorLog(sessionDir, {
+        timestamp: new Date().toISOString(),
+        event: 'orchestrator_daemon_stopped',
+        reason: 'signal',
+      });
+    }
+
+    const finalStatus = await readObjectFile(path.join(sessionDir, 'status.json'));
+    if (finalStatus.state === 'running') {
+      await writeOrchestratorStatus(sessionDir, 'completed');
+    }
+    await deregisterOrchestratorSession(aloopRoot, sessionId);
+  }
 }

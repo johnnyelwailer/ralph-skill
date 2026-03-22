@@ -125,12 +125,53 @@ function killProcess(pid) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForSessionDeregistration(homeDir, sessionId, timeoutMs = 5000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const active = await readActiveSessions(homeDir);
+    if (!active[sessionId]) return true;
+    await sleep(200);
+  }
+  return false;
+}
+
+async function readOrchestratorChildSessions(sessionDir) {
+  const orchestratorPath = path.join(sessionDir, 'orchestrator.json');
+  const state = await readJsonFile(orchestratorPath);
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return [];
+
+  const issues = Array.isArray(state.issues) ? state.issues : [];
+  const childSessions = new Set();
+
+  for (const issue of issues) {
+    if (!issue || typeof issue !== 'object') continue;
+    if (typeof issue.child_session === 'string' && issue.child_session.length > 0) {
+      childSessions.add(issue.child_session);
+    }
+  }
+
+  return Array.from(childSessions);
+}
+
 /**
  * @param {string} homeDir
  * @param {string} sessionId
  * @returns {Promise<{success: boolean, reason?: string}>}
  */
 export async function stopSession(homeDir, sessionId) {
+  return stopSessionInternal(homeDir, sessionId, new Set());
+}
+
+async function stopSessionInternal(homeDir, sessionId, stopping) {
+  if (stopping.has(sessionId)) {
+    return { success: true };
+  }
+  stopping.add(sessionId);
+
   const active = await readActiveSessions(homeDir);
   const entry = active[sessionId];
 
@@ -140,6 +181,36 @@ export async function stopSession(homeDir, sessionId) {
 
   const sessionDir = entry.session_dir ?? path.join(homeDir, '.aloop', 'sessions', sessionId);
   const pid = entry.pid ?? null;
+
+  if (entry.mode === 'orchestrator') {
+    if (pid && isProcessAlive(pid)) {
+      if (!killProcess(pid)) {
+        return { success: false, reason: `Failed to stop session process: ${pid}` };
+      }
+      const deregistered = await waitForSessionDeregistration(homeDir, sessionId);
+      if (deregistered) {
+        return { success: true };
+      }
+    }
+    // Fallback to legacy cleanup if daemon did not deregister itself in time.
+  }
+
+  if (entry.mode === 'orchestrate') {
+    const childSessions = await readOrchestratorChildSessions(sessionDir);
+    for (const childSessionId of childSessions) {
+      if (childSessionId === sessionId) continue;
+      const latestActive = await readActiveSessions(homeDir);
+      if (!latestActive[childSessionId]) continue;
+
+      const childResult = await stopSessionInternal(homeDir, childSessionId, stopping);
+      if (!childResult.success) {
+        return {
+          success: false,
+          reason: `Failed to stop child session ${childSessionId}: ${childResult.reason ?? 'unknown error'}`,
+        };
+      }
+    }
+  }
 
   // Kill process if alive
   if (pid && isProcessAlive(pid)) {
@@ -157,10 +228,12 @@ export async function stopSession(homeDir, sessionId) {
     await writeJsonFile(statusPath, status);
   }
 
-  // Remove from active.json
-  delete active[sessionId];
+  // Remove from active.json using a fresh read to avoid resurrecting children
+  // that may have been stopped recursively earlier in this call.
+  const latestActive = await readActiveSessions(homeDir);
+  delete latestActive[sessionId];
   const activePath = path.join(homeDir, '.aloop', 'active.json');
-  await writeJsonFile(activePath, active);
+  await writeJsonFile(activePath, latestActive);
 
   // Append to history.json
   const historyPath = path.join(homeDir, '.aloop', 'history.json');

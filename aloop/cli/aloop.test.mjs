@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
@@ -307,7 +308,10 @@ test('aloop entrypoint bundle fallback behavior', async (t) => {
   await t.test('returns bundle-not-found error when dist is absent', async () => {
     const distDir = path.join(cliRoot, 'dist');
     const hiddenDistDir = path.join(cliRoot, `.dist-test-hide-${process.pid}`);
-    await rename(distDir, hiddenDistDir);
+    const hadDistDir = existsSync(distDir);
+    if (hadDistDir) {
+      await rename(distDir, hiddenDistDir);
+    }
     try {
       const result = await runAloop(['unknown-command'], {
         cwd: cliRoot,
@@ -316,7 +320,9 @@ test('aloop entrypoint bundle fallback behavior', async (t) => {
       assert.notEqual(result.code, 0);
       assert.match(result.stderr, /bundle not found/i);
     } finally {
-      await rename(hiddenDistDir, distDir);
+      if (hadDistDir) {
+        await rename(hiddenDistDir, distDir);
+      }
     }
   });
 });

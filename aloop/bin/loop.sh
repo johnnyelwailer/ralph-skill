@@ -2488,11 +2488,88 @@ run_queue_if_present() {
     return 1
 }
 
+# Orchestrator cleanup: stop child loops and deregister from active.json
+cleanup_orchestrator() {
+    local orch_state="$SESSION_DIR/orchestrator.json"
+    [ -f "$orch_state" ] || return 0
+
+    local aloop_home="${HOME}/.aloop"
+    local active_path="$aloop_home/active.json"
+    local session_id
+    session_id=$(basename "$SESSION_DIR")
+
+    # Use python3 if available to parse JSON reliably
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c "
+import json, os, signal
+
+orch_file = '$orch_state'
+active_file = '$active_path'
+my_session = '$session_id'
+
+# 1. Read child sessions from orchestrator.json
+child_sessions = set()
+try:
+    with open(orch_file) as f:
+        state = json.load(f)
+    for issue in state.get('issues', []):
+        cs = issue.get('child_session')
+        if cs and isinstance(cs, str) and cs != my_session:
+            child_sessions.add(cs)
+except Exception:
+    pass
+
+# 2. Stop child loops: read active.json, kill each child PID, remove entries
+if os.path.isfile(active_file):
+    try:
+        with open(active_file) as f:
+            active = json.load(f)
+    except Exception:
+        active = {}
+
+    for cs in child_sessions:
+        entry = active.get(cs, {})
+        pid = entry.get('pid')
+        if pid:
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+            except (OSError, ValueError):
+                pass
+        active.pop(cs, None)
+
+    # 3. Deregister this orchestrator session
+    active.pop(my_session, None)
+
+    try:
+        with open(active_file, 'w') as f:
+            json.dump(active, f, indent=2)
+    except Exception:
+        pass
+" 2>/dev/null || true
+    else
+        # Fallback: just deregister self from active.json using node if available
+        if command -v node >/dev/null 2>&1; then
+            node -e "
+const fs = require('fs');
+const path = require('path');
+const ap = '$active_path';
+const sid = '$session_id';
+try {
+  const a = JSON.parse(fs.readFileSync(ap, 'utf8'));
+  delete a[sid];
+  fs.writeFileSync(ap, JSON.stringify(a, null, 2) + '\n');
+} catch {}
+" 2>/dev/null || true
+        fi
+    fi
+}
+
 # Cleanup on exit
 cleanup() {
     local reason="${1:-interrupted}"
     local state="${2:-$reason}"
     kill_active_provider
+    cleanup_orchestrator
     remove_session_lock
     stop_dashboard
     cleanup_gh_block
@@ -2503,12 +2580,14 @@ cleanup() {
 }
 
 trap 'cleanup "interrupted" "stopped"; exit 130' INT
+trap 'cleanup "terminated" "stopped"; exit 143' TERM
 # NOTE: No ERR trap — the main loop must survive transient errors.
 # Provider failures and helper errors are handled via explicit if/|| guards.
 trap 'kill_active_provider; remove_session_lock' EXIT
 
 ITERATION=0
-while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
+# MAX_ITERATIONS=0 means unlimited (used by orchestrate mode)
+while [ "$MAX_ITERATIONS" -eq 0 ] || [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
     ITERATION_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -2634,7 +2713,11 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     else
         color="\033[37m"  # default white
     fi
-    echo -e "${color}--- Iteration $ITERATION / $MAX_ITERATIONS [$(date '+%Y-%m-%d %H:%M:%S')] [$iter_provider] [$iter_mode] ---\033[0m"
+    if [ "$MAX_ITERATIONS" -eq 0 ]; then
+        echo -e "${color}--- Iteration $ITERATION [$(date '+%Y-%m-%d %H:%M:%S')] [$iter_provider] [$iter_mode] ---\033[0m"
+    else
+        echo -e "${color}--- Iteration $ITERATION / $MAX_ITERATIONS [$(date '+%Y-%m-%d %H:%M:%S')] [$iter_provider] [$iter_mode] ---\033[0m"
+    fi
 
     # Build mode: stuck detection and task display
     if [ "$iter_mode" = "build" ]; then
