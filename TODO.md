@@ -1,0 +1,4 @@
+# TODO
+
+- [ ] [qa/P1] Template variables unresolved in PROMPT_proof.md: `{{ARTIFACTS_DIR}}` and `{{ITERATION}}` remain as raw template strings in the compiled prompt file (lines 59, 61, 75). Expected: resolved to actual session artifact path and current iteration number before proof agent runs. SPEC says "Template variable resolution: `{{ARTIFACTS_DIR}}` → session artifacts path, `{{ITERATION}}` → current iteration number". Tested at commit 4664d26c. (priority: high)
+- [ ] [qa/P1] No baselines directory created per-session: `artifacts/baselines/` is never created at session init. TASK_SPEC says "Baseline management: `artifacts/baselines/` directory created per-session; after review approval, latest artifacts become new baselines." Ran `aloop start` twice — neither session had a baselines dir. Tested at commit 4664d26c. (priority: high)
