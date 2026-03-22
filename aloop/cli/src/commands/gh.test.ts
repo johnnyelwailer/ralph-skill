@@ -15,6 +15,7 @@ import {
   buildCiFailureSignature,
   fetchPrCheckRuns,
   GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+  parseReTriggerEvents,
   normalizeWatchIssueEntry,
   normalizeWatchState,
   loadWatchState,
@@ -1971,8 +1972,8 @@ test('gh watch --once starts up to max-concurrent and queues remaining issues', 
   });
   t.mock.method(ghExecutor, 'exec', async () => ({
     stdout: JSON.stringify([
-      { number: 41, title: 'Issue 41', url: 'https://github.com/test/repo/issues/41' },
-      { number: 42, title: 'Issue 42', url: 'https://github.com/test/repo/issues/42' },
+      { number: 41, title: 'Issue 41', url: 'https://github.com/test/repo/issues/41', comments: 0 },
+      { number: 42, title: 'Issue 42', url: 'https://github.com/test/repo/issues/42', comments: 0 },
     ]),
     stderr: '',
   }));
@@ -1993,6 +1994,105 @@ test('gh watch --once starts up to max-concurrent and queues remaining issues', 
     assert.deepStrictEqual(state.queue, [42]);
     assert.equal(state.issues?.['41']?.status, 'running');
     assert.equal(state.issues?.['42']?.status, 'queued');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('parseReTriggerEvents enforces defaults, explicit values, and disable flag', () => {
+  assert.deepStrictEqual(Array.from(parseReTriggerEvents({})).sort(), ['comment', 'reopen']);
+  assert.deepStrictEqual(Array.from(parseReTriggerEvents({ reTriggerOn: 'comment' })).sort(), ['comment']);
+  assert.deepStrictEqual(Array.from(parseReTriggerEvents({ reTriggerOn: 'reopen,comment' })).sort(), ['comment', 'reopen']);
+  assert.deepStrictEqual(Array.from(parseReTriggerEvents({ reTrigger: false })), []);
+  assert.throws(() => parseReTriggerEvents({ reTriggerOn: 'invalid' }), /--re-trigger-on must be a comma-separated list/i);
+});
+
+test('gh watch --once re-queues completed issue when comments increase and comment retrigger is enabled', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-watch-retrigger-comment-'));
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => output.push(String(line ?? '')));
+  t.mock.method(ghExecutor, 'exec', async () => ({
+    stdout: JSON.stringify([{ number: 42, title: 'Issue 42', url: 'https://github.com/test/repo/issues/42', comments: 3 }]),
+    stderr: '',
+  }));
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+  t.mock.method(ghLoopRuntime, 'startIssue', async (options: { issue: string | number }) => buildStartResult(Number(options.issue), 'sess-42-rerun', 'running'));
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': buildWatchEntry({
+        status: 'completed',
+        completion_state: 'exited',
+        completion_finalized: true,
+        last_seen_comment_count: 1,
+        last_seen_open: true,
+      }),
+    },
+    queue: [],
+  });
+
+  try {
+    await ghCommand.parseAsync([
+      'watch',
+      '--once',
+      '--re-trigger-on', 'comment',
+      '--max-concurrent', '1',
+      '--home-dir', tmpHome,
+      '--output', 'json',
+    ], { from: 'user' });
+
+    const state = readWatchState(tmpHome) as { queue?: number[]; issues?: Record<string, { status?: string; last_seen_comment_count?: number }> };
+    assert.deepStrictEqual(state.queue, []);
+    assert.equal(state.issues?.['42']?.status, 'running');
+    assert.equal(state.issues?.['42']?.last_seen_comment_count, 3);
+    const summary = JSON.parse(output[0]) as { started: number[] };
+    assert.deepStrictEqual(summary.started, [42]);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('gh watch --once does not re-queue completed issue when --no-re-trigger is set', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-watch-no-retrigger-'));
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => output.push(String(line ?? '')));
+  t.mock.method(ghExecutor, 'exec', async () => ({
+    stdout: JSON.stringify([{ number: 42, title: 'Issue 42', url: 'https://github.com/test/repo/issues/42', comments: 5 }]),
+    stderr: '',
+  }));
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': buildWatchEntry({
+        status: 'completed',
+        completion_state: 'exited',
+        completion_finalized: true,
+        last_seen_comment_count: 1,
+        last_seen_open: true,
+      }),
+    },
+    queue: [],
+  });
+
+  try {
+    await ghCommand.parseAsync([
+      'watch',
+      '--once',
+      '--no-re-trigger',
+      '--max-concurrent', '1',
+      '--home-dir', tmpHome,
+      '--output', 'json',
+    ], { from: 'user' });
+
+    const state = readWatchState(tmpHome) as { queue?: number[]; issues?: Record<string, { status?: string; last_seen_comment_count?: number }> };
+    assert.deepStrictEqual(state.queue, []);
+    assert.equal(state.issues?.['42']?.status, 'completed');
+    assert.equal(state.issues?.['42']?.last_seen_comment_count, 5);
+    const summary = JSON.parse(output[0]) as { started: number[] };
+    assert.deepStrictEqual(summary.started, []);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
@@ -2049,6 +2149,8 @@ function buildWatchEntry(overrides: Partial<{
   last_ci_failure_signature: string | null;
   last_ci_failure_summary: string | null;
   same_ci_failure_count: number;
+  last_seen_open: boolean;
+  last_seen_comment_count: number;
 }> = {}): GhWatchIssueEntry {
   return {
     issue_number: overrides.issue_number ?? 42,
@@ -2070,6 +2172,8 @@ function buildWatchEntry(overrides: Partial<{
     last_ci_failure_signature: overrides.last_ci_failure_signature ?? null,
     last_ci_failure_summary: overrides.last_ci_failure_summary ?? null,
     same_ci_failure_count: overrides.same_ci_failure_count ?? 0,
+    last_seen_open: overrides.last_seen_open ?? true,
+    last_seen_comment_count: overrides.last_seen_comment_count ?? 0,
   };
 }
 
@@ -2652,13 +2756,13 @@ test('parsePositiveIntegerOption validates values and honors fallback', () => {
 
 test('enqueueIssue does not requeue running/completed entries and infers repo from URL', () => {
   const state = normalizeWatchState({ issues: {}, queue: [] });
-  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10' });
-  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10' });
+  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10', comment_count: 0 });
+  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10', comment_count: 0 });
   assert.deepEqual(state.queue, [10]);
   assert.equal(state.issues['10'].repo, 'test/repo');
 
   state.issues['10'].status = 'running';
-  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10' });
+  enqueueIssue(state, { number: 10, title: 'A', url: 'https://github.com/test/repo/issues/10', comment_count: 0 });
   assert.deepEqual(state.queue, [10]);
 });
 
