@@ -48,6 +48,8 @@ HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
 SESSION_ID=""
 BASE_BRANCH="main"
 AUTO_MERGE="true"
+LOOP_HEALTH_ENABLED="true"
+LOOP_HEALTH_INTERVAL="${ALOOP_LOOP_HEALTH_INTERVAL:-5}"
 
 # ============================================================================
 # ARGUMENT PARSING
@@ -371,6 +373,111 @@ print('true' if bool(auto) else 'false')
 
     BASE_BRANCH="$new_base"
     AUTO_MERGE="$new_auto"
+}
+
+refresh_loop_health_config() {
+    local meta_file="$SESSION_DIR/meta.json"
+    if [ ! -f "$meta_file" ] || ! command -v python3 >/dev/null 2>&1; then
+        return
+    fi
+
+    local parsed
+    parsed=$(python3 -c "
+import json, sys
+try:
+    with open('$meta_file') as f:
+        m = json.load(f)
+except Exception:
+    sys.exit(1)
+enabled = m.get('loop_health_enabled')
+if enabled is None:
+    enabled = True
+interval = m.get('loop_health_interval', 5)
+try:
+    interval = int(interval)
+except Exception:
+    interval = 5
+if interval < 1:
+    interval = 1
+print('true' if bool(enabled) else 'false')
+print(interval)
+" 2>/dev/null) || return
+
+    local new_enabled new_interval
+    new_enabled=$(printf '%s\n' "$parsed" | sed -n '1p')
+    new_interval=$(printf '%s\n' "$parsed" | sed -n '2p')
+    [ "$new_enabled" = "false" ] || new_enabled="true"
+    if ! [[ "${new_interval:-}" =~ ^[0-9]+$ ]] || [ "$new_interval" -lt 1 ]; then
+        new_interval=5
+    fi
+
+    if [ "$new_enabled" != "$LOOP_HEALTH_ENABLED" ] || [ "$new_interval" != "$LOOP_HEALTH_INTERVAL" ]; then
+        write_log_entry "loop_health_config_refreshed" \
+            "enabled" "$new_enabled" \
+            "interval" "$new_interval"
+    fi
+
+    LOOP_HEALTH_ENABLED="$new_enabled"
+    LOOP_HEALTH_INTERVAL="$new_interval"
+}
+
+load_circuit_breakers() {
+    CIRCUIT_BREAKER_BLOCKED_AGENTS=()
+    local cb_file="$SESSION_DIR/circuit-breakers.json"
+    if [ ! -f "$cb_file" ] || ! command -v python3 >/dev/null 2>&1; then
+        return
+    fi
+    local parsed
+    parsed=$(python3 -c "
+import json, sys
+try:
+    with open('$cb_file') as f:
+        payload = json.load(f)
+except Exception:
+    sys.exit(1)
+blocked = []
+if isinstance(payload, dict):
+    value = payload.get('blocked_agents')
+    if value is None:
+        value = payload.get('blockedAgents')
+    if isinstance(value, list):
+        blocked = [str(v).strip() for v in value if str(v).strip()]
+print('\n'.join(blocked))
+" 2>/dev/null) || return
+    if [ -n "$parsed" ]; then
+        mapfile -t CIRCUIT_BREAKER_BLOCKED_AGENTS <<< "$parsed"
+    fi
+}
+
+is_agent_blocked() {
+    local agent="$1"
+    local blocked
+    for blocked in "${CIRCUIT_BREAKER_BLOCKED_AGENTS[@]}"; do
+        if [ "$blocked" = "$agent" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+should_run_loop_health_supervisor() {
+    local iteration="$1"
+    if [ "$LOOP_HEALTH_ENABLED" != "true" ]; then
+        return 1
+    fi
+    if [ "$LOOP_HEALTH_INTERVAL" -lt 1 ] 2>/dev/null; then
+        return 1
+    fi
+    if [ "$MODE" != "plan-build-review" ]; then
+        return 1
+    fi
+    if [ "$FINALIZER_MODE" = "true" ]; then
+        return 1
+    fi
+    if [ $((iteration % LOOP_HEALTH_INTERVAL)) -ne 0 ]; then
+        return 1
+    fi
+    return 0
 }
 
 queue_merge_prompt_if_available() {
@@ -1703,6 +1810,7 @@ FRONTMATTER_AGENT=""
 FRONTMATTER_REASONING=""
 FRONTMATTER_COLOR=""
 FRONTMATTER_TRIGGER=""
+CIRCUIT_BREAKER_BLOCKED_AGENTS=()
 
 color_name_to_ansi() {
     local name="${1:-}"
@@ -2215,6 +2323,19 @@ run_queue_if_present() {
         write_status "$ITERATION" "$queue_iter_mode" "$queue_iter_provider" 0
         write_log_entry "queue_override_start" "iteration" "$ITERATION" "queue_file" "$QUEUE_BASENAME" "agent" "$queue_iter_mode" "provider" "$queue_iter_provider"
 
+        load_circuit_breakers
+        if is_agent_blocked "$queue_iter_mode"; then
+            rm -f "$QUEUE_ITEM"
+            write_log_entry "queue_override_blocked" \
+                "iteration" "$ITERATION" \
+                "queue_file" "$QUEUE_BASENAME" \
+                "agent" "$queue_iter_mode"
+            echo "Warning: Queue override blocked by circuit breaker for agent '$queue_iter_mode'"
+            wait_for_requests
+            sleep 3
+            return 0
+        fi
+
         local queue_prompt_content
         queue_prompt_content=$(cat "$QUEUE_ITEM")
         cd "$WORK_DIR"
@@ -2266,6 +2387,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION_START=$(date +%s)
     ITERATION_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     refresh_branch_sync_config
+    refresh_loop_health_config
     # Hot-reload provider list from meta.json (supports runtime changes)
     if [ "$PROVIDER" = "round-robin" ]; then
         refresh_providers_from_meta
@@ -2276,6 +2398,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     if run_queue_if_present "$iter_provider"; then
         continue
     fi
+
+    LOOP_HEALTH_OVERRIDE=false
 
     # Finalizer mode: run finalizer prompts instead of normal cycle
     if [ "$FINALIZER_MODE" = "true" ]; then
@@ -2294,8 +2418,15 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         LAST_ITER_MODE="$iter_mode"
     else
         # Call directly (not via subshell) so flag-clearing affects the main shell
-        resolve_iteration_mode "$ITERATION" > /dev/null
-        iter_mode="$RESOLVED_MODE"
+        if should_run_loop_health_supervisor "$ITERATION"; then
+            iter_mode="loop_health"
+            RESOLVED_MODE="$iter_mode"
+            RESOLVED_PROMPT_NAME="PROMPT_loop_health.md"
+            LOOP_HEALTH_OVERRIDE=true
+        else
+            resolve_iteration_mode "$ITERATION" > /dev/null
+            iter_mode="$RESOLVED_MODE"
+        fi
         LAST_ITER_MODE="$iter_mode"
     fi
 
@@ -2325,6 +2456,20 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 "fallback_provider" "$iter_provider" \
                 "prompt_file" "$iter_prompt_file"
         fi
+    fi
+    load_circuit_breakers
+    if is_agent_blocked "$iter_mode"; then
+        write_log_entry "circuit_breaker_phase_blocked" "iteration" "$ITERATION" "mode" "$iter_mode"
+        echo "Warning: Phase '$iter_mode' blocked by circuit breaker"
+        if [ "$LOOP_HEALTH_OVERRIDE" = true ]; then
+            persist_loop_plan_state
+        else
+            register_iteration_success "$iter_mode" false
+            persist_loop_plan_state
+        fi
+        wait_for_requests
+        sleep 3
+        continue
     fi
     resolve_execution_controls
     write_log_entry "frontmatter_applied" \
@@ -2396,7 +2541,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 echo "[Finalizer aborted — new incomplete tasks found in TODO.md]"
             fi
         else
-            register_iteration_success "$iter_mode" false
+            register_iteration_success "$iter_mode" "$LOOP_HEALTH_OVERRIDE"
         fi
         if [ "$iter_mode" = "plan" ]; then
             LAST_PLAN_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")

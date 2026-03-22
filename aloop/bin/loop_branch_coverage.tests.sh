@@ -146,6 +146,12 @@ register_branch "branchsync.up_to_date" "pre_iteration_base_sync logs already-up
 register_branch "branchsync.merge_success" "pre_iteration_base_sync logs successful base merges"
 register_branch "branchsync.merge_conflict" "pre_iteration_base_sync emits merge_conflict event and queues merge prompt"
 register_branch "branchsync.merge_prompt_missing" "pre_iteration_base_sync logs missing merge prompt on conflict"
+register_branch "loop_health.config_refresh" "refresh_loop_health_config reads enabled/interval from meta.json"
+register_branch "loop_health.schedule_enabled" "should_run_loop_health_supervisor runs at configured iteration interval"
+register_branch "loop_health.schedule_disabled" "should_run_loop_health_supervisor skips when disabled/finalizer/unsupported mode"
+register_branch "loop_health.circuit_blocked" "is_agent_blocked returns true for blocked agent"
+register_branch "loop_health.circuit_not_blocked" "is_agent_blocked returns false for non-blocked agent"
+register_branch "loop_health.circuit_load" "load_circuit_breakers reads blocked_agents from circuit-breakers.json"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -165,6 +171,10 @@ RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
 RESOLVE_MODE_FUNC="$(extract_function resolve_iteration_mode)"
 DERIVE_MODE_FUNC="$(extract_function derive_mode_from_prompt_name)"
 REFRESH_BRANCH_SYNC_FUNC="$(extract_function refresh_branch_sync_config)"
+REFRESH_LOOP_HEALTH_FUNC="$(extract_function refresh_loop_health_config)"
+LOAD_CIRCUIT_BREAKERS_FUNC="$(extract_function load_circuit_breakers)"
+IS_AGENT_BLOCKED_FUNC="$(extract_function is_agent_blocked)"
+SHOULD_RUN_LOOP_HEALTH_FUNC="$(extract_function should_run_loop_health_supervisor)"
 QUEUE_MERGE_PROMPT_FUNC="$(extract_function queue_merge_prompt_if_available)"
 WRITE_MERGE_EVENT_FUNC="$(extract_function write_merge_conflict_event)"
 PRE_ITER_SYNC_FUNC="$(extract_function pre_iteration_base_sync)"
@@ -174,7 +184,7 @@ if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [
     exit 1
 fi
 
-if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ] || [ -z "$REFRESH_BRANCH_SYNC_FUNC" ] || [ -z "$QUEUE_MERGE_PROMPT_FUNC" ] || [ -z "$WRITE_MERGE_EVENT_FUNC" ] || [ -z "$PRE_ITER_SYNC_FUNC" ]; then
+if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ] || [ -z "$REFRESH_BRANCH_SYNC_FUNC" ] || [ -z "$REFRESH_LOOP_HEALTH_FUNC" ] || [ -z "$LOAD_CIRCUIT_BREAKERS_FUNC" ] || [ -z "$IS_AGENT_BLOCKED_FUNC" ] || [ -z "$SHOULD_RUN_LOOP_HEALTH_FUNC" ] || [ -z "$QUEUE_MERGE_PROMPT_FUNC" ] || [ -z "$WRITE_MERGE_EVENT_FUNC" ] || [ -z "$PRE_ITER_SYNC_FUNC" ]; then
     echo "FAIL: could not extract cycle/frontmatter/duration/exec-controls/advance/requests/queue functions from $LOOP_SH"
     exit 1
 fi
@@ -197,6 +207,10 @@ eval "$RUN_QUEUE_FUNC"
 eval "$RESOLVE_MODE_FUNC"
 eval "$DERIVE_MODE_FUNC"
 eval "$REFRESH_BRANCH_SYNC_FUNC"
+eval "$REFRESH_LOOP_HEALTH_FUNC"
+eval "$LOAD_CIRCUIT_BREAKERS_FUNC"
+eval "$IS_AGENT_BLOCKED_FUNC"
+eval "$SHOULD_RUN_LOOP_HEALTH_FUNC"
 eval "$QUEUE_MERGE_PROMPT_FUNC"
 eval "$WRITE_MERGE_EVENT_FUNC"
 eval "$PRE_ITER_SYNC_FUNC"
@@ -206,6 +220,12 @@ _gh_block_dir=""
 LAST_PROVIDER_ERROR=""
 ACTIVE_PROVIDER_PID=""
 PROVIDER_TIMEOUT=30
+LOOP_HEALTH_ENABLED="true"
+LOOP_HEALTH_INTERVAL=5
+CIRCUIT_BREAKER_BLOCKED_AGENTS=()
+FINALIZER_MODE=false
+MODE="plan-build-review"
+ITERATION=1
 CLAUDE_MODEL="test"
 LOG_FILE="$(mktemp)"
 COVERAGE_LOG_FILE="$(mktemp)"
@@ -1201,6 +1221,89 @@ fi
 git -C "$WORK_DIR" merge --abort >/dev/null 2>&1 || true
 
 rm -rf "$SYNC_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# loop health supervisor branches
+# ---------------------------------------------------------------------------
+
+LH_TMPDIR="$(mktemp -d)"
+SESSION_DIR="$LH_TMPDIR/session"
+mkdir -p "$SESSION_DIR"
+LOOP_HEALTH_ENABLED="true"
+LOOP_HEALTH_INTERVAL=5
+
+# loop_health.config_refresh
+cat > "$SESSION_DIR/meta.json" << 'JSON'
+{"loop_health_enabled":false,"loop_health_interval":3}
+JSON
+refresh_loop_health_config
+if [ "$LOOP_HEALTH_ENABLED" = "false" ] && [ "$LOOP_HEALTH_INTERVAL" -eq 3 ]; then
+    cover_branch "loop_health.config_refresh"
+    pass_case "refresh_loop_health_config applies enabled/interval from meta.json"
+else
+    fail_case "refresh_loop_health_config failed (enabled=$LOOP_HEALTH_ENABLED interval=$LOOP_HEALTH_INTERVAL)"
+fi
+
+# loop_health.schedule_enabled
+LOOP_HEALTH_ENABLED="true"
+LOOP_HEALTH_INTERVAL=3
+MODE="plan-build-review"
+FINALIZER_MODE=false
+if should_run_loop_health_supervisor 3 && ! should_run_loop_health_supervisor 4; then
+    cover_branch "loop_health.schedule_enabled"
+    pass_case "should_run_loop_health_supervisor honors interval schedule"
+else
+    fail_case "should_run_loop_health_supervisor interval scheduling failed"
+fi
+
+# loop_health.schedule_disabled
+LOOP_HEALTH_ENABLED="false"
+if ! should_run_loop_health_supervisor 6; then
+    LOOP_HEALTH_ENABLED="true"
+    FINALIZER_MODE=true
+    if ! should_run_loop_health_supervisor 6; then
+        FINALIZER_MODE=false
+        MODE="plan-build"
+        if ! should_run_loop_health_supervisor 6; then
+            cover_branch "loop_health.schedule_disabled"
+            pass_case "should_run_loop_health_supervisor skips disabled/finalizer/unsupported mode"
+        else
+            fail_case "should_run_loop_health_supervisor should skip in unsupported mode"
+        fi
+    else
+        fail_case "should_run_loop_health_supervisor should skip in finalizer mode"
+    fi
+else
+    fail_case "should_run_loop_health_supervisor should skip when disabled"
+fi
+
+# loop_health.circuit_load + blocked checks
+MODE="plan-build-review"
+FINALIZER_MODE=false
+cat > "$SESSION_DIR/circuit-breakers.json" << 'JSON'
+{"blocked_agents":["qa","spec-gap"],"reason":"thrash"}
+JSON
+load_circuit_breakers
+if is_agent_blocked "qa"; then
+    cover_branch "loop_health.circuit_blocked"
+    pass_case "is_agent_blocked returns true for blocked agents"
+else
+    fail_case "is_agent_blocked failed for blocked agent"
+fi
+if ! is_agent_blocked "build"; then
+    cover_branch "loop_health.circuit_not_blocked"
+    pass_case "is_agent_blocked returns false for unblocked agents"
+else
+    fail_case "is_agent_blocked incorrectly blocked build"
+fi
+if [ "${#CIRCUIT_BREAKER_BLOCKED_AGENTS[@]}" -eq 2 ] && [ "${CIRCUIT_BREAKER_BLOCKED_AGENTS[0]}" = "qa" ]; then
+    cover_branch "loop_health.circuit_load"
+    pass_case "load_circuit_breakers reads blocked agents from circuit-breakers.json"
+else
+    fail_case "load_circuit_breakers failed to parse blocked agents"
+fi
+
+rm -rf "$LH_TMPDIR"
 
 # ---------------------------------------------------------------------------
 # Final summary
