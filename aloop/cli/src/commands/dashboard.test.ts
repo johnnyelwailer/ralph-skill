@@ -910,8 +910,15 @@ test('dashboard resolves packaged assets when cwd has no dashboard/dist', async 
   const emptyProjectDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-dashboard-cwd-'));
   const sessionDir = path.join(root, 'session');
   const workdir = path.join(root, 'workdir');
+  const packagedAssetsDir = path.join(emptyProjectDir, 'dashboard');
   await mkdir(sessionDir, { recursive: true });
   await mkdir(workdir, { recursive: true });
+  await mkdir(packagedAssetsDir, { recursive: true });
+  await writeFile(
+    path.join(packagedAssetsDir, 'index.html'),
+    '<!doctype html><html><head><title>Aloop Dashboard</title></head><body><p>packaged assets</p></body></html>',
+    'utf8',
+  );
 
   const originalCwd = process.cwd();
   const originalArgv1 = process.argv[1];
@@ -930,6 +937,7 @@ test('dashboard resolves packaged assets when cwd has no dashboard/dist', async 
     assert.equal(response.status, 200);
     const text = await response.text();
     assert.match(text, /<title>Aloop Dashboard<\/title>/);
+    assert.match(text, /packaged assets/);
     assert.doesNotMatch(text, /Dashboard assets not found/);
   } finally {
     process.chdir(originalCwd);

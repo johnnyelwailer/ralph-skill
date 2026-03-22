@@ -6,11 +6,12 @@
 
 - [x] [blocker] Resolve TASK_SPEC.md merge conflicts — resolved by keeping only #154 content, removing #134 markers
 
-- [ ] [blocker] Stabilize existing dashboard asset-resolution test in this environment — `aloop/cli/src/commands/dashboard.test.ts` currently has a pre-existing failing case (`dashboard resolves packaged assets when cwd has no dashboard/dist`) expecting `<title>Aloop Dashboard</title>` while runtime serves fallback HTML without a `<title>` tag. This is unrelated to branch pipeline logic but prevents full `npm --prefix aloop/cli test` from passing. (priority: medium)
+- [x] [blocker] Stabilize existing dashboard asset-resolution test in this environment — fixed by making the test self-contained: it now creates packaged assets at `<argv1-dir>/dashboard/index.html` before launching `startDashboardServer`, so `resolveDefaultAssetsDir()` deterministically resolves packaged assets instead of environment-dependent fallback HTML. Verified with `TMPDIR=$PWD/.tmp npm --prefix aloop/cli exec -- tsx --test aloop/cli/src/commands/dashboard.test.ts` where `dashboard resolves packaged assets when cwd has no dashboard/dist` passes. (priority: medium)
 
 ### Up Next
 
 - [ ] [qa/P1] Branch name missing from session cards — The code fix (commit c6b6678) is architecturally correct: `enrichSessionEntriesWithStatusAndMeta()` reads `meta.json`, extracts `branch`, merges into session objects, and `toSession()` maps it to the frontend. However QA at iter 16 found branch still absent at runtime via `/api/state`. Likely cause: test sessions don't have `meta.json` files with `branch` populated, OR the enrichment runs against session dirs that lack `meta.json`. Need runtime verification — if sessions genuinely lack meta.json, the code is working correctly (branch is optional). Downgrade if confirmed as data issue, not code bug. (priority: high)
+- [ ] [blocker] Investigate remaining `npm --prefix aloop/cli test` failures in `orchestrate.test.ts` under this branch/environment — after the dashboard asset-resolution fix, CLI tests still report 22 failures (examples include `runOrchestratorScanPass` triage expectation mismatch, `monitorChildSessions` stopped-session state expectation mismatch, and multi-file spec prompt-content assertion mismatch). Determine whether these are pre-existing flakes, fixture drift, or regressions. (priority: medium)
 
 ### Completed
 
