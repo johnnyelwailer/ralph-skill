@@ -57,6 +57,7 @@ import {
   runOrchestratorScanPass,
   runOrchestratorScanLoop,
   monitorChildSessions,
+  recoverFailedIssues,
   isHousekeepingCommit,
   detectSpecChanges,
   resolveSpecFiles,
@@ -97,6 +98,7 @@ import {
   type EnsureLabelsResult,
   type HealthCheckResult,
   type StartupHealth,
+  type RecoverFailedResult,
 } from './orchestrate.js';
 
 /** Returns true if this is a startup health check command (gh auth, gh repo view, git status --porcelain). */
@@ -6643,5 +6645,198 @@ describe('orchestrateCommandWithDeps health checks', () => {
     const health: StartupHealth = JSON.parse(mockDeps._writtenFiles[healthPath!]);
     assert.equal(health.labels, null);
     assert.equal(health.checks.length, 3);
+  });
+});
+
+describe('recoverFailedIssues', () => {
+  it('recovers a failed issue with PR when all gates pass', async () => {
+    const state = makeOrchestratorState([
+      {
+        state: 'failed',
+        pr_number: 100,
+        ci_failure_signature: 'failed checks: build',
+        ci_failure_retries: 3,
+        ci_failure_summary: 'Failed checks: build',
+        rebase_attempts: 1,
+      },
+    ]);
+    const deps = createMockPrDeps({
+      execGh: async (args: string[]) => {
+        if (args.includes('--json') && args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        }
+        // hasGithubActionsWorkflows
+        if (args.includes('api')) {
+          return { stdout: JSON.stringify([{ name: 'ci.yml', path: '.github/workflows/ci.yml' }]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await recoverFailedIssues(state, 'owner/repo', '/session', deps);
+
+    assert.equal(result.recovered, 1);
+    assert.equal(result.checked, 1);
+    assert.equal(result.details[0].action, 'recovered');
+    assert.equal(state.issues[0].state, 'pr_open');
+    assert.equal(state.issues[0].status, 'In review');
+    assert.equal(state.issues[0].ci_failure_signature, undefined);
+    assert.equal(state.issues[0].ci_failure_retries, undefined);
+    assert.equal(state.issues[0].ci_failure_summary, undefined);
+    assert.equal(state.issues[0].rebase_attempts, undefined);
+
+    const recoveryLog = deps.logs.find((e) => e.event === 'failed_issue_recovered');
+    assert.ok(recoveryLog, 'should log failed_issue_recovered');
+    assert.equal(recoveryLog.issue_number, 42);
+    assert.equal(recoveryLog.pr_number, 100);
+  });
+
+  it('does not recover when CI is still failing', async () => {
+    const state = makeOrchestratorState([
+      {
+        state: 'failed',
+        pr_number: 100,
+        ci_failure_signature: 'failed checks: build',
+        ci_failure_retries: 3,
+      },
+    ]);
+    const deps = createMockPrDeps({
+      execGh: async (args: string[]) => {
+        if (args.includes('--json') && args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' }]), stderr: '' };
+        }
+        if (args.includes('api')) {
+          return { stdout: JSON.stringify([{ name: 'ci.yml', path: '.github/workflows/ci.yml' }]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await recoverFailedIssues(state, 'owner/repo', '/session', deps);
+
+    assert.equal(result.recovered, 0);
+    assert.equal(result.details[0].action, 'still_failed');
+    assert.equal(state.issues[0].state, 'failed');
+    assert.equal(state.issues[0].ci_failure_retries, 3);
+  });
+
+  it('skips failed issues without a PR', async () => {
+    const state = makeOrchestratorState([
+      { state: 'failed', pr_number: null },
+    ]);
+    const deps = createMockPrDeps();
+
+    const result = await recoverFailedIssues(state, 'owner/repo', '/session', deps);
+
+    assert.equal(result.checked, 0);
+    assert.equal(result.recovered, 0);
+  });
+
+  it('handles API errors gracefully without changing state', async () => {
+    const state = makeOrchestratorState([
+      { state: 'failed', pr_number: 100 },
+    ]);
+    // checkPrGates catches API errors internally and returns pending gates,
+    // so the issue stays failed (still_failed) rather than hitting the catch block
+    const deps = createMockPrDeps({
+      execGh: async () => { throw new Error('API rate limited'); },
+    });
+
+    const result = await recoverFailedIssues(state, 'owner/repo', '/session', deps);
+
+    assert.equal(result.recovered, 0);
+    assert.equal(result.details[0].action, 'still_failed');
+    assert.equal(state.issues[0].state, 'failed');
+  });
+
+  it('does not recover when PR has merge conflicts', async () => {
+    const state = makeOrchestratorState([
+      { state: 'failed', pr_number: 100 },
+    ]);
+    const deps = createMockPrDeps({
+      execGh: async (args: string[]) => {
+        if (args.includes('--json') && args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        }
+        if (args.includes('api')) {
+          return { stdout: JSON.stringify([{ name: 'ci.yml', path: '.github/workflows/ci.yml' }]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const result = await recoverFailedIssues(state, 'owner/repo', '/session', deps);
+
+    assert.equal(result.recovered, 0);
+    assert.equal(result.details[0].action, 'still_failed');
+    assert.equal(state.issues[0].state, 'failed');
+  });
+});
+
+describe('runOrchestratorScanPass recovery integration', () => {
+  it('recovers failed issues during scan pass when PR gates now pass', async () => {
+    const state = makeScanState({
+      issues: [{
+        number: 42,
+        title: 'Issue 42',
+        wave: 1,
+        state: 'failed',
+        child_session: 'session-42',
+        pr_number: 100,
+        depends_on: [],
+        ci_failure_signature: 'failed checks: build',
+        ci_failure_retries: 3,
+      }],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    deps.prLifecycleDeps = {
+      execGh: async (args: string[]) => {
+        if (args.includes('--json') && args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
+        }
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        }
+        if (args.includes('api')) {
+          return { stdout: JSON.stringify([{ name: 'ci.yml', path: '.github/workflows/ci.yml' }]), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+      readFile: deps.readFile,
+      writeFile: deps.writeFile,
+      now: deps.now,
+      appendLog: deps.appendLog,
+    };
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    assert.ok(result.recoveredIssues);
+    assert.equal(result.recoveredIssues.recovered, 1);
+
+    // Verify state was persisted — issue may have progressed past pr_open
+    // through the PR lifecycle (recovery → pr_open → merged), so check
+    // that it is no longer 'failed' and failure fields were cleared
+    const savedState: OrchestratorState = JSON.parse(deps.files['/state.json']);
+    assert.notEqual(savedState.issues[0].state, 'failed');
+    assert.equal(savedState.issues[0].ci_failure_signature, undefined);
+
+    // Verify recovery log
+    const recoveryLog = deps.logEntries.find((e) => e.event === 'recovery_pass_complete');
+    assert.ok(recoveryLog);
+    assert.equal(recoveryLog.recovered, 1);
   });
 });

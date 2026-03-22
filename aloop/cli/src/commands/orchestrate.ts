@@ -3640,6 +3640,84 @@ export interface PrLifecycleDeps {
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 
+export interface RecoverFailedResult {
+  recovered: number;
+  checked: number;
+  details: Array<{ issue_number: number; pr_number: number; action: 'recovered' | 'still_failed' | 'error'; detail: string }>;
+}
+
+/**
+ * Scan failed issues that have an open PR. Re-check PR gates and if the PR
+ * is now mergeable with CI passing, reset the issue state from 'failed' back
+ * to 'pr_open' so the normal PR lifecycle resumes.
+ */
+export async function recoverFailedIssues(
+  state: OrchestratorState,
+  repo: string,
+  sessionDir: string,
+  deps: PrLifecycleDeps,
+): Promise<RecoverFailedResult> {
+  const candidates = state.issues.filter(
+    (i) => i.state === 'failed' && i.pr_number !== null,
+  );
+
+  const result: RecoverFailedResult = { recovered: 0, checked: candidates.length, details: [] };
+
+  for (const issue of candidates) {
+    const prNumber = issue.pr_number!;
+    try {
+      const gates = await checkPrGates(prNumber, repo, deps);
+
+      // Only recover if all gates pass — no pending, no fail
+      if (gates.all_passed) {
+        issue.state = 'pr_open';
+        issue.status = 'In review';
+        issue.ci_failure_signature = undefined;
+        issue.ci_failure_retries = undefined;
+        issue.ci_failure_summary = undefined;
+        issue.rebase_attempts = undefined;
+
+        result.recovered++;
+        result.details.push({
+          issue_number: issue.number,
+          pr_number: prNumber,
+          action: 'recovered',
+          detail: gates.gates.map((g) => `${g.gate}: ${g.detail}`).join('; '),
+        });
+
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'failed_issue_recovered',
+          issue_number: issue.number,
+          pr_number: prNumber,
+          gates: gates.gates,
+        });
+      } else {
+        const summary = gates.gates
+          .filter((g) => g.status !== 'pass')
+          .map((g) => `${g.gate}: ${g.detail}`)
+          .join('; ');
+        result.details.push({
+          issue_number: issue.number,
+          pr_number: prNumber,
+          action: 'still_failed',
+          detail: summary,
+        });
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      result.details.push({
+        issue_number: issue.number,
+        pr_number: prNumber,
+        action: 'error',
+        detail: msg,
+      });
+    }
+  }
+
+  return result;
+}
+
 interface BlockedStatusDeps {
   execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   appendLog?: (sessionDir: string, entry: Record<string, unknown>) => void;
@@ -4889,6 +4967,7 @@ export interface ScanPassResult {
   specConsistencyProcessed: boolean;
   childMonitoring: MonitorChildResult | null;
   prLifecycles: PrLifecycleResult[];
+  recoveredIssues: RecoverFailedResult | null;
   waveAdvanced: boolean;
   budgetExceeded: boolean;
   allDone: boolean;
@@ -5626,6 +5705,7 @@ export async function runOrchestratorScanPass(
     specConsistencyProcessed: false,
     childMonitoring: null,
     prLifecycles: [],
+    recoveredIssues: null,
     waveAdvanced: false,
     budgetExceeded: false,
     allDone: false,
@@ -5827,6 +5907,38 @@ export async function runOrchestratorScanPass(
     }
   }
 
+  // 2.7. Recover failed issues whose PRs are now passing
+  if (repo && deps.prLifecycleDeps) {
+    const failedWithPr = state.issues.some((i) => i.state === 'failed' && i.pr_number !== null);
+    if (failedWithPr) {
+      try {
+        result.recoveredIssues = await recoverFailedIssues(
+          state,
+          repo,
+          sessionDir,
+          deps.prLifecycleDeps,
+        );
+        if (result.recoveredIssues.recovered > 0) {
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'recovery_pass_complete',
+            iteration,
+            checked: result.recoveredIssues.checked,
+            recovered: result.recoveredIssues.recovered,
+          });
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'recovery_pass_error',
+          iteration,
+          error: msg,
+        });
+      }
+    }
+  }
+
   // 3. Process PR lifecycles for issues with open PRs
   if (repo && deps.prLifecycleDeps) {
     const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
@@ -5979,6 +6091,8 @@ export async function runOrchestratorScanPass(
     bulk_fetch_changed: result.bulkFetch?.issuesChanged ?? 0,
     bulk_fetch_cached: result.bulkFetch?.fromCache ?? false,
     bulk_fetch_duration_ms: result.bulkFetch?.durationMs ?? 0,
+    recovery_checked: result.recoveredIssues?.checked ?? 0,
+    recovery_recovered: result.recoveredIssues?.recovered ?? 0,
   });
 
   return result;
