@@ -5,7 +5,17 @@
 ### Context
 The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial responsive support (mobile sidebar drawer, breakpoint-based hiding) but does not meet WCAG 2.5.8 tap target requirements, lacks long-press context menus, and has unverified tooltip/hover-card tap equivalents. Note: AppView.tsx is a monolith that SPEC-ADDENDUM says should be decomposed, but that's a separate issue — this issue focuses on accessibility within the existing structure.
 
+### QA Bugs
+
+- [ ] [qa/P1] Steer textarea 32px height on mobile: Steer input (`<textarea placeholder="Steer...">`) renders at 266x32px on mobile viewport (390x844). WCAG 2.5.8 requires 44px minimum tap target. Has `min-height: 32px` in CSS but no mobile override to 44px. Tested at iter 2, commit fb3696a. (priority: high)
+
+- [ ] [qa/P1] GitHub repo link missing aria-label: The GitHub icon link (`<a href="...github...">`) contains only an SVG icon with no `aria-label`, `title`, or visible text. Screen readers cannot identify its purpose. Has tooltip "Open repo on GitHub" but no ARIA attribute. Tested at iter 2, commit fb3696a. (priority: high)
+
 ### In Progress
+
+- [ ] [review] Gate 3: `hooks/useIsTouchDevice.ts` is a new module with no direct test file — add `useIsTouchDevice.test.ts` covering: (a) SSR guard returns false when `window` is undefined, (b) `matchMedia` undefined guard, (c) initial `matches=true` state, (d) `change` event listener updates state, (e) effect cleanup calls `removeEventListener`. Also add `hooks/useIsTouchDevice.ts`, `components/ui/tooltip.tsx`, `components/ui/hover-card.tsx` to the vitest coverage `include` array in `dashboard/vitest.config.ts`. Target >=90% branch coverage on the hook. (priority: high)
+
+- [ ] [review] Gate 6: No proof-manifest.json exists despite observable UI changes (tap target sizing, touch-tap toggling). Either run the proof agent to capture mobile viewport screenshots or explicitly skip with an empty `proof-manifest.json` (`{"artifacts": []}`). QA session 2 provides equivalent Playwright evidence, so this is a process gap not a confidence gap. (priority: medium)
 
 ### Up Next
 
