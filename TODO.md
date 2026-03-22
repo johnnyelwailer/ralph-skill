@@ -4,18 +4,24 @@
 
 ### In Progress
 
-- [x] Proof skip protocol: when proof-manifest.json has an empty `artifacts` array, log the skip reason from `skipped` entries but do NOT treat as iteration failure. Currently both loop.sh and loop.ps1 validate only file-exists + valid-JSON — they don't distinguish "empty artifacts = intentional skip" from "full proof." TASK_SPEC says "if manifest has empty artifacts array, log skip reason but don't treat as failure." Add post-validation logic after `validate_proof_manifest` in both scripts to check `artifacts` array length and log accordingly. (priority: high) [reviewed: gates 1-10 pass]
-
-- [ ] Expand `aloop/templates/subagent-hints-proof.md` with vision-model delegation examples. Currently only 4 lines listing two subagents. TASK_SPEC says "Expand with vision-model delegation examples (reference `aloop/agents/opencode/vision-reviewer.md`)." Add concrete examples showing how to delegate screenshot analysis to vision-reviewer (tool call syntax, when to use it, what to pass). (priority: medium)
+(no tasks remaining)
 
 ### Up Next
 
-- [ ] [qa/P1] Re-verify template variable resolution at runtime: QA found `{{ARTIFACTS_DIR}}` and `{{ITERATION}}` "unresolved" but the QA checked the raw template file on disk (`prompts/PROMPT_proof.md`), not the runtime-substituted content passed to the provider. Code at loop.sh:283-292 and loop.ps1:861-875 substitutes these in memory. Needs a QA re-test that actually triggers a proof iteration and verifies the resolved prompt. (priority: medium)
-
-- [ ] [qa/P1] Re-verify baselines directory creation: QA says `artifacts/baselines/` not created, but loop.sh:1967 and loop.ps1:1917 both run `mkdir -p "$ARTIFACTS_DIR/baselines"` unconditionally at session init. The QA test 2 had iterations run with `artifacts/iter-N/` created (same parent), so baselines should also exist. Needs re-test to confirm — the original QA may have checked the wrong path. (priority: medium)
-
-- [x] [review] Gate 10: QA coverage is 28.6% (2 PASS / 7 features) — below 30% threshold. Root cause: proof phase never runs in QA because finalizer array is empty in loop-plan.json. After implementing proof skip protocol above, re-run QA covering proof manifest validation, proof skip protocol, and subagent hints. This should move BLOCKED features to PASS/FAIL and push coverage above 30%. (priority: high)
+(no tasks remaining after current in-progress item)
 
 ### Completed
 
-- [x] [review] Gate 10 QA re-verification executed. Updated QA_COVERAGE.md and QA_LOG.md with runtime re-tests showing: template placeholder substitution PASS at runtime, baselines directory creation PASS, proof manifest validation PASS, proof skip protocol PASS (proof_skipped event logged with reason). Remaining partial item is subagent-hints expansion task.
+- [x] Expand `aloop/templates/subagent-hints-proof.md` with vision-model delegation examples: added when-to-delegate guidance, task tool syntax with screenshot paths and baseline comparisons, vision-reviewer output format, and accessibility-checker vs vision-reviewer usage guidance.
+
+
+
+- [x] Proof skip protocol: when proof-manifest.json has an empty `artifacts` array, log the skip reason from `skipped` entries but do NOT treat as iteration failure. Both `check_proof_skip` (loop.sh) and `Test-ProofSkip` (loop.ps1) implemented and verified via runtime QA (`event=proof_skipped` logged with reason). [reviewed: gates 1-10 pass]
+
+- [x] [review] Gate 10: QA coverage moved from 28.6% → 63.6% (7 PASS / 11 features) after proof skip protocol enabled runtime QA testing of proof-phase features.
+
+- [x] [review] Gate 10 QA re-verification executed. Updated QA_COVERAGE.md and QA_LOG.md with runtime re-tests showing: template placeholder substitution PASS at runtime, baselines directory creation PASS, proof manifest validation PASS, proof skip protocol PASS (proof_skipped event logged with reason).
+
+- [x] [qa/P1] Re-verify template variable resolution at runtime: RESOLVED — QA_COVERAGE.md shows PASS. Runtime-captured proof prompt resolved to concrete session path in both loop.ps1 and loop.sh.
+
+- [x] [qa/P1] Re-verify baselines directory creation: RESOLVED — QA_COVERAGE.md shows PASS. `artifacts/baselines/` exists in runtime QA sessions for both shell implementations.
