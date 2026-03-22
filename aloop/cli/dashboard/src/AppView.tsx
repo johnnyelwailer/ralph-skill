@@ -2022,10 +2022,10 @@ function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 animate-fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 animate-fade-in" onClick={onClose} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } }}>
       <div className="w-full max-w-md rounded-lg border bg-popover shadow-lg" onClick={(e) => e.stopPropagation()}>
         <Command>
-          <CommandInput placeholder="Type a command..." />
+          <CommandInput autoFocus placeholder="Type a command..." />
           <CommandList>
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup heading="Actions">
@@ -2068,6 +2068,7 @@ export function App() {
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileSidebarRef = useRef<HTMLDivElement>(null);
   const [activePanel, setActivePanel] = useState<'docs' | 'activity'>('docs');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [qaCoverageRefreshKey, setQaCoverageRefreshKey] = useState('');
@@ -2082,6 +2083,22 @@ export function App() {
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  // Mobile sidebar: Escape key closes drawer, focus moves into sidebar on open
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    // Focus first focusable element inside sidebar
+    const container = mobileSidebarRef.current;
+    if (container) {
+      const focusable = container.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      focusable?.focus();
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); setMobileMenuOpen(false); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [mobileMenuOpen]);
 
   const selectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
@@ -2337,7 +2354,7 @@ export function App() {
           {mobileMenuOpen && (
             <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
               <div className="absolute inset-0 bg-black/50" />
-              <div className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
+              <div ref={mobileSidebarRef} className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
                 <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} />
               </div>
             </div>

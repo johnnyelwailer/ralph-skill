@@ -23,27 +23,27 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [x] [qa/P1] Steer textarea 32px height on mobile: Steer input renders at 32px on mobile. WCAG 2.5.8 requires 44px minimum. Fix: `min-h-[44px] md:min-h-[32px] h-auto md:h-8`. (priority: high)
 
-- [ ] [qa/P1] GitHub repo link missing aria-label: SVG-only link at AppView.tsx:1190. Fix: add `aria-label="Open repo on GitHub"`. (priority: high)
+- [x] [qa/P1] GitHub repo link missing aria-label: SVG-only link at AppView.tsx:1190. Fix: add `aria-label="Open repo on GitHub"`. (priority: high)
 
-- [ ] [qa/P1] Escape key does not close mobile sidebar drawer: Pressing Escape does not close the sidebar on mobile. Overlay click works. Fix: add keydown listener for Escape. (priority: high)
+- [x] [qa/P1] Escape key does not close mobile sidebar drawer: Pressing Escape does not close the sidebar on mobile. Overlay click works. Fix: add keydown listener for Escape. (priority: high)
 
-- [ ] [qa/P1] Focus not moved into sidebar on mobile open: Focus remains on hamburger button instead of moving into sidebar content. Fix: programmatically focus first focusable element inside sidebar. (priority: high)
+- [x] [qa/P1] Focus not moved into sidebar on mobile open: Focus remains on hamburger button instead of moving into sidebar content. Fix: programmatically focus first focusable element inside sidebar. (priority: high)
 
-- [ ] [qa/P1] Command palette focus not trapped on open: `document.activeElement` is `BODY` instead of search input after Ctrl+K. Fix: auto-focus command input on open. (priority: high)
+- [x] [qa/P1] Command palette focus not trapped on open: `document.activeElement` is `BODY` instead of search input after Ctrl+K. Fix: auto-focus command input on open. (priority: high)
 
 - [x] [qa/P1] aloop steer accepts empty instruction: `aloop steer "" --session <id>` succeeds with exit 0. Expected: reject with error and non-zero exit. (priority: high)
 
-- [ ] [qa/P1] Dashboard /api/artifacts endpoint returns 404: SPEC says dashboard serves artifacts via `/api/artifacts/<iteration>/<filename>` but endpoint is not implemented. Frontend JS references it. Tested at iter 37. (priority: high)
+- [x] [qa/P1] Dashboard /api/artifacts endpoint returns 404: Endpoint implemented at dashboard.ts:1095-1122 with path traversal protection and proper Content-Type headers. (priority: high)
 
 ### Up Next
 
 - [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
 
-- [ ] **Fix focus management for mobile overlays** — Addresses QA bugs: Escape sidebar, focus into sidebar, command palette focus. Three fixes in AppView.tsx. (priority: high)
+- [x] **Fix focus management for mobile overlays** — Addresses QA bugs: Escape sidebar, focus into sidebar, command palette focus. Three fixes in AppView.tsx. (priority: high)
 
 - [ ] **Audit & fix hover-only interactions** — Overflow tabs menu (AppView.tsx:1174-1186) uses `group-hover:block` with no click/tap equivalent. Fix: add click toggle state. (priority: medium)
 
-- [ ] **Add ARIA labels and roles for missing elements** — GitHub repo link `aria-label` (covered in QA Bugs), sidebar expand/collapse buttons, activity panel collapse button, stop/force-stop dropdown items. (priority: medium)
+- [ ] **Add ARIA labels and roles for missing elements** — Sidebar expand/collapse buttons, activity panel collapse button, stop/force-stop dropdown items. GitHub repo link already done. (priority: medium)
 
 - [ ] **Implement long-press context menu on session cards** — `useLongPress` hook with 500ms threshold, context menu with Stop/Force-stop/Copy ID, haptic feedback. (priority: medium)
 
