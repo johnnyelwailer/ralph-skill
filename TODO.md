@@ -3,7 +3,7 @@
 ## In Progress
 
 - [x] [review] Gate 1: `aloop/agents/opencode/code-critic.md` has `reasoning: high` but spec line 3500 says code-critic uses "xhigh effort" — change to `reasoning: xhigh` in both `aloop/agents/opencode/code-critic.md` and `.opencode/agents/code-critic.md` (priority: high)
-- [ ] [qa/P1] `start --max-iterations 0` silently ignored: `toPositiveInt()` in `start.ts:291-297` returns null for 0, falling back to default 50. Should either accept 0 (for orchestrate mode unlimited) or emit a validation error (priority: high)
+- [x] [qa/P1] `start --max-iterations 0` silently ignored: `toPositiveInt()` in `start.ts:291-297` returns null for 0, falling back to default 50. Should either accept 0 (for orchestrate mode unlimited) or emit a validation error (priority: high)
 
 ## Up Next
 

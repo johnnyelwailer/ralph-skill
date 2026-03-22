@@ -249,6 +249,49 @@ test('startCommandWithDeps bootstraps in-place session and registers active map'
   assert.equal(active[result.session_id].work_dir, fixture.projectRoot);
 });
 
+test('startCommandWithDeps rejects --max-iterations 0 instead of silently defaulting', async () => {
+  const fixture = await setupWorkspace('aloop-start-max-iterations-zero-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'codex'",
+      "mode: 'plan-build'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true, maxIterations: '0' },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async (src, dest) => {
+            await mkdir(dest, { recursive: true });
+            const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+            await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+          },
+          existsSync,
+          spawn: (() => ({ pid: 4242, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date('2026-03-01T12:34:56.000Z'),
+        },
+      ),
+    /Invalid --max-iterations value: 0/i,
+  );
+});
+
 test('startCommandWithDeps accepts opencode provider with OpenRouter model path', async () => {
   const fixture = await setupWorkspace('aloop-start-opencode-openrouter-');
   await writeFile(

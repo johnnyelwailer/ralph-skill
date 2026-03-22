@@ -299,6 +299,10 @@ function toPositiveInt(value: unknown): number | null {
   return null;
 }
 
+function hasConfiguredValue(value: unknown): boolean {
+  return value !== undefined && value !== null;
+}
+
 function toBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'string') {
@@ -721,7 +725,12 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     roundRobinOrder = [...enabledProviders];
   }
 
-  const maxIterations = toPositiveInt(selectValue(options.maxIterations, projectConfig.values.max_iterations, globalConfig.values.max_iterations)) ?? 50;
+  const maxIterationsValue = selectValue(options.maxIterations, projectConfig.values.max_iterations, globalConfig.values.max_iterations);
+  const parsedMaxIterations = toPositiveInt(maxIterationsValue);
+  if (hasConfiguredValue(maxIterationsValue) && parsedMaxIterations === null) {
+    throw new Error(`Invalid --max-iterations value: ${String(maxIterationsValue)} (must be a positive integer)`);
+  }
+  const maxIterations = parsedMaxIterations ?? 50;
   const maxStuck = toPositiveInt(selectValue(projectConfig.values.max_stuck, globalConfig.values.max_stuck)) ?? 3;
   const backupEnabled = toBoolean(selectValue(projectConfig.values.backup_enabled, globalConfig.values.backup_enabled), false);
   const worktreeDefault = toBoolean(selectValue(projectConfig.values.worktree_default, globalConfig.values.worktree_default), true);
