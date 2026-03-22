@@ -39,7 +39,6 @@ import {
   evaluatePolicy,
   formatGhStatusRows,
   ghStopCommand,
-  extractRepoFromIssueUrl,
   type PrReviewComment,
   type PrCheckRun,
   type PrFeedback,
@@ -2924,10 +2923,8 @@ test('ghExecutor.exec rethrows when PATH hardening blocks gh and no fallback bin
   fs.chmodSync(blockedGhPath, 0o755);
 
   const origPath = process.env.PATH;
-  const origOriginalPath = process.env.ALOOP_ORIGINAL_PATH;
   try {
     process.env.PATH = blockedDir;
-    process.env.ALOOP_ORIGINAL_PATH = '';
     await assert.rejects(
       () => ghExecutor.exec(['version']),
       /blocked by aloop PATH hardening/i,
@@ -2935,8 +2932,6 @@ test('ghExecutor.exec rethrows when PATH hardening blocks gh and no fallback bin
   } finally {
     if (origPath !== undefined) process.env.PATH = origPath;
     else delete process.env.PATH;
-    if (origOriginalPath !== undefined) process.env.ALOOP_ORIGINAL_PATH = origOriginalPath;
-    else delete process.env.ALOOP_ORIGINAL_PATH;
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
@@ -3299,28 +3294,4 @@ test('executeGhOperation covers missing request, gh execution errors, and parse 
 test('buildGhArgs supports pr-comments operation', () => {
   const args = buildGhArgs('pr-comments', {}, { repo: 'test/repo', since: '2026-03-14T00:00:00Z' });
   assert.deepEqual(args, ['api', 'repos/test/repo/pulls/comments', '--method', 'GET', '-f', 'since=2026-03-14T00:00:00Z']);
-});
-
-// --- extractRepoFromIssueUrl tests ---
-
-test('extractRepoFromIssueUrl extracts repo from github.com URL', () => {
-  assert.equal(extractRepoFromIssueUrl('https://github.com/org/repo/issues/42'), 'org/repo');
-});
-
-test('extractRepoFromIssueUrl extracts repo from GitHub Enterprise URL', () => {
-  assert.equal(extractRepoFromIssueUrl('https://ghe.corp.com/org/repo/issues/42'), 'org/repo');
-  assert.equal(extractRepoFromIssueUrl('https://github.example.com/org/repo/issues/1'), 'org/repo');
-  assert.equal(extractRepoFromIssueUrl('https://git.internal.company.io/team/project/issues/99'), 'team/project');
-});
-
-test('extractRepoFromIssueUrl handles http URLs', () => {
-  assert.equal(extractRepoFromIssueUrl('http://github.com/org/repo/issues/1'), 'org/repo');
-  assert.equal(extractRepoFromIssueUrl('http://ghe.corp.com/org/repo/issues/5'), 'org/repo');
-});
-
-test('extractRepoFromIssueUrl returns null for non-issue URLs', () => {
-  assert.equal(extractRepoFromIssueUrl('https://github.com/org/repo/pull/42'), null);
-  assert.equal(extractRepoFromIssueUrl('https://github.com/org/repo'), null);
-  assert.equal(extractRepoFromIssueUrl('not-a-url'), null);
-  assert.equal(extractRepoFromIssueUrl(''), null);
 });

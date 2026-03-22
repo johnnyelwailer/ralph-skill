@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
 import { toast } from 'sonner';
 import {
-  Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock,
+  Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock, Copy,
   GitBranch, GitCommit, Image, FileText, Menu, MoreHorizontal, PanelLeftClose,
   PanelLeftOpen, Play, Search, Send, Square, Terminal, Timer, XCircle, Zap, Loader2,
   Heart, AlertTriangle, Pause, ExternalLink,
@@ -714,10 +714,154 @@ export function deriveProviderHealth(log: string, configuredProviders?: string[]
   return Array.from(providers.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// ── Session Card with long-press context menu ──
+
+const LONG_PRESS_MS = 500;
+
+function SessionCard({ session: s, selected, cardCost, costUnavailable, onSelect, onStop }: {
+  session: SessionSummary;
+  selected: boolean;
+  cardCost: number | null;
+  costUnavailable: boolean;
+  onSelect: () => void;
+  onStop: (force: boolean) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didLongPress = useRef(false);
+
+  const clearTimer = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    didLongPress.current = false;
+    const touch = e.touches[0];
+    const x = touch.clientX;
+    const y = touch.clientY;
+    longPressTimer.current = setTimeout(() => {
+      didLongPress.current = true;
+      setMenuPos({ x, y });
+      setMenuOpen(true);
+    }, LONG_PRESS_MS);
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    clearTimer();
+    if (didLongPress.current) {
+      e.preventDefault();
+    }
+  }, [clearTimer]);
+
+  const handleTouchMove = useCallback(() => {
+    clearTimer();
+  }, [clearTimer]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setMenuPos({ x: e.clientX, y: e.clientY });
+    setMenuOpen(true);
+  }, []);
+
+  const handleCopyId = useCallback(() => {
+    void navigator.clipboard.writeText(s.id);
+    toast.success('Session ID copied');
+    setMenuOpen(false);
+  }, [s.id]);
+
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={`w-full overflow-hidden rounded-md px-2 py-1.5 min-h-[44px] md:min-h-0 text-left text-xs transition-colors hover:bg-accent ${selected ? 'bg-accent' : ''}`}
+            onClick={() => { if (!didLongPress.current) onSelect(); }}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
+            onContextMenu={handleContextMenu}
+          >
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
+              <span className="truncate font-medium flex-1">{s.name}</span>
+              <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
+            </div>
+            <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
+              {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
+              {s.branch && <span className="truncate">{s.branch}</span>}
+              {s.phase && <span className="shrink-0">·</span>}
+              {s.phase && <PhaseBadge phase={s.phase} small />}
+              {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
+              {s.elapsed && s.elapsed !== '--' && <span className="shrink-0">· {s.elapsed}</span>}
+              {typeof cardCost === 'number' && <span className="shrink-0">· ${cardCost.toFixed(4)}</span>}
+            </div>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-lg">
+          <div className="space-y-0.5 text-xs">
+            <p className="font-medium">{s.id}</p>
+            {s.pid && <p>PID: {s.pid}</p>}
+            <p>Status: {s.status}</p>
+            {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
+            <p>Provider: {s.provider}</p>
+            <p>Iterations: {s.iterations}</p>
+            {s.elapsed && s.elapsed !== '--' && <p>Duration: {s.elapsed}</p>}
+            {costUnavailable && typeof cardCost !== 'number' && <p>Cost: unavailable</p>}
+            {typeof cardCost === 'number' && <p>Cost: ${cardCost.toFixed(4)}</p>}
+            {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
+            {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
+            {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+      {menuOpen && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => setMenuOpen(false)}
+          onContextMenu={(e) => { e.preventDefault(); setMenuOpen(false); }}
+        >
+          <div
+            className="absolute z-50 min-w-[160px] rounded-md border bg-popover p-1 shadow-md"
+            style={{ left: menuPos.x, top: menuPos.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-xs hover:bg-accent"
+              onClick={() => { onStop(false); setMenuOpen(false); }}
+            >
+              <Square className="h-3.5 w-3.5 mr-2" /> Stop session
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-xs text-destructive hover:bg-accent"
+              onClick={() => { onStop(true); setMenuOpen(false); }}
+            >
+              <Zap className="h-3.5 w-3.5 mr-2" /> Force stop
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-xs hover:bg-accent"
+              onClick={handleCopyId}
+            >
+              <Copy className="h-3.5 w-3.5 mr-2" /> Copy session ID
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Sidebar ──
 
 export function Sidebar({
-  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost,
+  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost, onStop,
 }: {
   sessions: SessionSummary[];
   selectedSessionId: string | null;
@@ -725,6 +869,7 @@ export function Sidebar({
   collapsed: boolean;
   onToggle: () => void;
   sessionCost: number;
+  onStop: (force: boolean) => void;
 }) {
   // Group by project
   const { projectGroups, olderSessions } = useMemo(() => {
@@ -830,46 +975,15 @@ export function Sidebar({
   const renderCard = (s: SessionSummary) => {
     const cardCost = displaySessionCost(s);
     return (
-      <Tooltip key={s.id}>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className={`w-full overflow-hidden rounded-md px-2 py-1.5 min-h-[44px] md:min-h-0 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
-            onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
-          >
-            <div className="flex items-center gap-1.5 overflow-hidden">
-              <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
-              <span className="truncate font-medium flex-1">{s.name}</span>
-              <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
-            </div>
-            <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
-              {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
-              {s.branch && <span className="truncate">{s.branch}</span>}
-              {s.phase && <span className="shrink-0">·</span>}
-              {s.phase && <PhaseBadge phase={s.phase} small />}
-              {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
-              {s.elapsed && s.elapsed !== '--' && <span className="shrink-0">· {s.elapsed}</span>}
-              {typeof cardCost === 'number' && <span className="shrink-0">· ${cardCost.toFixed(4)}</span>}
-            </div>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" className="max-w-lg">
-          <div className="space-y-0.5 text-xs">
-            <p className="font-medium">{s.id}</p>
-            {s.pid && <p>PID: {s.pid}</p>}
-            <p>Status: {s.status}</p>
-            {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
-            <p>Provider: {s.provider}</p>
-            <p>Iterations: {s.iterations}</p>
-            {s.elapsed && s.elapsed !== '--' && <p>Duration: {s.elapsed}</p>}
-            {costUnavailable && typeof cardCost !== 'number' && <p>Cost: unavailable</p>}
-            {typeof cardCost === 'number' && <p>Cost: ${cardCost.toFixed(4)}</p>}
-            {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
-            {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
-            {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
-          </div>
-        </TooltipContent>
-      </Tooltip>
+      <SessionCard
+        key={s.id}
+        session={s}
+        selected={isSelected(s)}
+        cardCost={cardCost}
+        costUnavailable={costUnavailable}
+        onSelect={() => onSelectSession(s.id === 'current' ? null : s.id)}
+        onStop={onStop}
+      />
     );
   };
 
@@ -2383,14 +2497,14 @@ export function App() {
         <div className="flex flex-1 min-h-0">
           {/* Desktop sidebar */}
           <div className="hidden md:flex">
-            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} />
+            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} onStop={(f) => void handleStop(f)} />
           </div>
           {/* Mobile sidebar drawer */}
           {mobileMenuOpen && (
             <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
               <div className="absolute inset-0 bg-black/50" />
               <div ref={mobileSidebarRef} className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
-                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} />
+                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} onStop={(f) => void handleStop(f)} />
               </div>
             </div>
           )}

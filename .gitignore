@@ -21,6 +21,14 @@ out/
 .DS_Store
 Thumbs.db
 
+# Agent working artifacts (should never be committed)
+TODO.md
+REVIEW_LOG.md
+STEERING.md
+TASK_SPEC.md
+QA_LOG.md
+QA_COVERAGE.md
+
 # Misc
 .env
 .env.local
@@ -31,10 +39,3 @@ aloop/cli/dashboard/test-results/
 *-proof.json
 *-verification.txt
 *.tgz
-
-# Aloop working artifacts (not for PR)
-TODO.md
-STEERING.md
-QA_COVERAGE.md
-QA_LOG.md
-REVIEW_LOG.md

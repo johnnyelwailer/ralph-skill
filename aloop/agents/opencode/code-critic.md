@@ -1,9 +1,7 @@
 ---
 description: Deep code review for subtle bugs and security issues
-model: openrouter/anthropic/claude-sonnet-4
-reasoning: xhigh
-provider: openrouter
 mode: subagent
+model: openrouter/anthropic/claude-sonnet-4
 tools:
   write: false
   edit: false

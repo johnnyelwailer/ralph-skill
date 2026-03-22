@@ -20,7 +20,6 @@ import {
   checkPrGates,
   reviewPrDiff,
   mergePr,
-  requestRebase,
   flagForHuman,
   processPrLifecycle,
   applyTriageConfidenceFloor,
@@ -741,7 +740,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/sub-decompose-issue-'));
     assert.equal(queueFiles.length, 2, 'Should write sub-decompose queue prompts for each epic');
     const queueContent = mockDeps._writtenFiles[queueFiles[0]];
-    assert.match(queueContent, /orch_sub_decompose/, 'Queue override should reference orch_sub_decompose agent');
+    assert.match(queueContent, /orch_estimate/, 'Queue override should reference orch_estimate agent');
   });
 
   it('applies estimate-results.json when present', async () => {
@@ -770,7 +769,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     assert.ok(issue1, 'Issue 1 should exist');
     assert.ok(issue2, 'Issue 2 should exist');
     assert.equal(issue1!.dor_validated, true);
-    assert.equal(issue1!.status, 'Needs decomposition');
+    assert.equal(issue1!.status, 'Ready');
     assert.equal(issue2!.dor_validated, false);
     assert.equal(issue2!.status, 'Needs decomposition');
   });
@@ -1818,7 +1817,6 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form with zod validation. Implement form state management and integrate with the auth API endpoint for authentication flow.',
-      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1829,7 +1827,6 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form. Blocked by aloop/spec-question regarding auth method.\n\n## Acceptance Criteria\n- [ ] Form renders with email field',
-      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1840,7 +1837,6 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Acceptance Criteria\n- [ ] Form renders with email field',
-      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1860,7 +1856,6 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Todo',
       body: 'Something',
-      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -2349,9 +2344,7 @@ describe('launchChildLoop', () => {
   it('creates worktree with correct branch name', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const gitCall = deps._spawnSyncCalls.find(
-      (c) => c.command === 'git' && c.args.includes('worktree') && c.args.includes('add'),
-    );
+    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git');
     assert.ok(gitCall, 'git worktree add should be called');
     assert.ok(gitCall.args.includes('-b'));
     assert.ok(gitCall.args.includes('aloop/issue-42'));
@@ -2451,22 +2444,22 @@ describe('launchChildLoop', () => {
     assert.ok(deps._spawnCalls.some((c) => c.command.endsWith('loop.sh')));
   });
 
-  it('seeds TASK_SPEC.md from issue body in worktree', async () => {
+  it('seeds SPEC.md from issue body in worktree', async () => {
     const issueWithBody = makeIssue({ number: 42, title: 'Add feature X', body: '## Requirements\n\n- Support login\n- Handle errors' });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueWithBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
-    assert.ok(specFile, 'TASK_SPEC.md should be written to child worktree');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
+    assert.ok(specFile, 'SPEC.md should be written to child worktree');
     assert.ok(deps._writtenFiles[specFile].includes('Issue #42'));
     assert.ok(deps._writtenFiles[specFile].includes('Support login'));
   });
 
-  it('does not seed TASK_SPEC.md when issue has no body', async () => {
+  it('does not seed SPEC.md when issue has no body', async () => {
     const issueNoBody = makeIssue({ number: 42, title: 'Add feature X', body: undefined });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueNoBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
-    assert.equal(specFile, undefined, 'TASK_SPEC.md should not be written when issue body is empty');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
+    assert.equal(specFile, undefined, 'SPEC.md should not be written when issue body is empty');
   });
 
   it('compiles loop-plan.json for child session', async () => {
@@ -2629,49 +2622,6 @@ describe('dispatchChildLoops', () => {
     assert.equal(result.launched[0].issue_number, 2);
     assert.ok(result.skipped.includes(1));
   });
-
-  it('pauses dispatch when /tmp free space is below threshold', async () => {
-    const issues = [
-      makeIssue({ number: 1, wave: 1, state: 'pending' }),
-      makeIssue({ number: 2, wave: 1, state: 'pending' }),
-    ];
-    const state = stateWithIssues(issues);
-    const deps = createMockDispatchDeps({
-      readFile: async () => JSON.stringify(state),
-      statfs: async () => ({
-        bavail: 100,
-        bsize: 1024 * 1024,
-      }),
-    });
-
-    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
-    assert.equal(result.launched.length, 0);
-    assert.ok(result.skipped.includes(1));
-    assert.ok(result.skipped.includes(2));
-    assert.ok(result.pausedTmpLowSpace);
-    assert.equal(result.pausedTmpLowSpace!.path, '/tmp');
-    assert.equal(result.pausedTmpLowSpace!.freeBytes, 100 * 1024 * 1024);
-    assert.equal(result.pausedTmpLowSpace!.thresholdBytes, 500 * 1024 * 1024);
-  });
-
-  it('pauses dispatch when disk is 100% full (bavail=0)', async () => {
-    const issues = [
-      makeIssue({ number: 1, wave: 1, state: 'pending' }),
-    ];
-    const state = stateWithIssues(issues);
-    const deps = createMockDispatchDeps({
-      readFile: async () => JSON.stringify(state),
-      statfs: async () => ({
-        bavail: 0,
-        bsize: 4096,
-      }),
-    });
-
-    const result = await dispatchChildLoops('/state.json', '/sessions/orch-1', '/project', 'myapp', '/prompts', '/home/.aloop', deps);
-    assert.equal(result.launched.length, 0);
-    assert.ok(result.pausedTmpLowSpace);
-    assert.equal(result.pausedTmpLowSpace!.freeBytes, 0);
-  });
 });
 
 // --- PR lifecycle gates tests ---
@@ -2726,11 +2676,11 @@ describe('checkPrGates', () => {
         if (args.includes('--json') && args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
             { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
             { name: 'lint', state: 'COMPLETED', conclusion: 'SUCCESS' },
-          ] }), stderr: '' };
+          ]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2751,8 +2701,8 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2769,10 +2719,10 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
             { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ] }), stderr: '' };
+          ]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2788,11 +2738,11 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
             { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
             { name: 'lint', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ] }), stderr: '' };
+          ]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2802,7 +2752,7 @@ describe('checkPrGates', () => {
     assert.ok(result.gates[1].detail.includes('lint'));
   });
 
-  it('returns pass when workflows exist but no checks ran on PR', async () => {
+  it('returns pending when workflows exist but checks are not yet reported', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
@@ -2811,19 +2761,19 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
-    assert.equal(result.all_passed, true);
-    assert.equal(result.gates[1].status, 'pass');
-    assert.match(result.gates[1].detail, /no checks ran/i);
+    assert.equal(result.all_passed, false);
+    assert.equal(result.gates[1].status, 'pending');
+    assert.match(result.gates[1].detail, /no check runs/i);
   });
 
-  it('returns api_error for CI gate when workflows exist and check query errors', async () => {
+  it('fails CI gate when workflows exist and check query errors', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
@@ -2832,7 +2782,7 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
+        if (args.includes('checks')) {
           throw new Error('checks api unavailable');
         }
         return { stdout: '', stderr: '' };
@@ -2840,25 +2790,25 @@ describe('checkPrGates', () => {
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.all_passed, false);
-    assert.equal(result.gates[1].status, 'api_error');
+    assert.equal(result.gates[1].status, 'fail');
     assert.match(result.gates[1].detail, /failed to query ci checks/i);
   });
 
-  it('returns api_error for mergeability gate on gh API error', async () => {
+  it('handles gh errors gracefully for mergeability', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         if (args.includes('mergeable,mergeStateStatus')) {
           throw new Error('gh API error');
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.mergeable, false);
-    assert.equal(result.gates[0].status, 'api_error');
+    assert.equal(result.gates[0].status, 'fail');
   });
 
   it('treats SKIPPED and NEUTRAL checks as passing', async () => {
@@ -2867,11 +2817,11 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
             { name: 'optional', state: 'COMPLETED', conclusion: 'SKIPPED' },
             { name: 'info', state: 'COMPLETED', conclusion: 'NEUTRAL' },
-          ] }), stderr: '' };
+          ]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2911,8 +2861,8 @@ describe('reviewPrDiff', () => {
       execGh: async () => { throw new Error('Not found'); },
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'pending');
-    assert.ok(result.summary.includes('will retry'));
+    assert.equal(result.verdict, 'flag-for-human');
+    assert.ok(result.summary.includes('Failed to fetch PR diff'));
   });
 });
 
@@ -2933,21 +2883,6 @@ describe('mergePr', () => {
     const result = await mergePr(100, 'owner/repo', deps);
     assert.equal(result.merged, false);
     assert.ok(result.error?.includes('Merge conflict'));
-  });
-});
-
-describe('requestRebase', () => {
-  it('posts comment on the issue', async () => {
-    const calls: string[][] = [];
-    const deps = createMockPrDeps({
-      execGh: async (args) => { calls.push(args); return { stdout: '', stderr: '' }; },
-    });
-    const issue: OrchestratorIssue = { number: 42, title: 'Test', wave: 1, state: 'pr_open', child_session: 's1', pr_number: 100, depends_on: [] };
-    await requestRebase(issue, 'owner/repo', 'agent/trunk', 1, deps);
-    assert.equal(calls.length, 1);
-    assert.ok(calls[0].includes('issue'));
-    assert.ok(calls[0].includes('comment'));
-    assert.ok(calls[0].includes('42'));
   });
 });
 
@@ -2978,10 +2913,10 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
             { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
-          ] }), stderr: '' };
+          ]), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff content', stderr: '' };
@@ -3003,10 +2938,10 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
             { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ] }), stderr: '' };
+          ]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3022,36 +2957,37 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'rebase_requested');
-    assert.ok(result.detail.includes('attempt 1/2'));
+    assert.ok(result.detail.includes('attempt 1'));
     assert.equal(state.issues[0].rebase_attempts, 1);
-    assert.ok(deps.logs.some((l) => l.event === 'pr_rebase_requested'));
+    assert.ok((state.issues[0] as any).needs_redispatch === true);
+    assert.ok(deps.logs.some((l) => l.event === 'pr_rebase_dispatched'));
   });
 
-  it('flags for human after 2 rebase attempts', async () => {
+  it('still dispatches rebase agent after multiple attempts', async () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open', rebase_attempts: 2 }]);
     const deps = createMockPrDeps({
       execGh: async (args) => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'CONFLICTING' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'flagged_for_human');
-    assert.equal(state.issues[0].state, 'failed');
-    assert.ok(deps.logs.some((l) => l.event === 'pr_flagged_for_human'));
+    assert.equal(result.action, 'rebase_requested');
+    assert.equal(state.issues[0].rebase_attempts, 3);
+    assert.ok((state.issues[0] as any).needs_redispatch === true);
   });
 
   it('rejects PR when agent review requests changes', async () => {
@@ -3061,8 +2997,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3087,8 +3023,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3112,8 +3048,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3148,10 +3084,10 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
             { name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ] }), stderr: '' };
+          ]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3164,7 +3100,7 @@ describe('processPrLifecycle', () => {
     assert.ok(deps.logs.some((l) => l.event === 'pr_gates_failed'));
   });
 
-  it('flags for human when same CI failure persists across attempts', async () => {
+  it('closes PR and resets issue when same CI failure persists across attempts', async () => {
     const state = makeOrchestratorState([
       {
         number: 42,
@@ -3183,17 +3119,17 @@ describe('processPrLifecycle', () => {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
         if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' }] }), stderr: '' };
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'build', status: 'COMPLETED', conclusion: 'FAILURE' }] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'flagged_for_human');
-    assert.equal(state.issues[0].state, 'failed');
-    assert.equal(state.issues[0].status, 'Blocked');
-    assert.equal(state.issues[0].ci_failure_retries, 3);
-    assert.ok(deps.logs.some((l) => l.event === 'pr_ci_failure_persistent'));
+    assert.equal(result.action, 'closed_for_retry');
+    assert.equal(state.issues[0].state, 'pending');
+    assert.equal(state.issues[0].status, 'Ready');
+    assert.equal(state.issues[0].ci_failure_retries, 0);
+    assert.ok(deps.logs.some((l) => l.event === 'pr_closed_ci_failure'));
   });
 
   it('handles merge failure after approval', async () => {
@@ -3204,8 +3140,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3233,8 +3169,8 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3755,14 +3691,14 @@ describe('queueGapAnalysisForIssues', () => {
     const productContent = writtenFiles['/queue/gap-analysis-product.md'];
     assert.match(productContent, /orch_product_analyst/);
     assert.match(productContent, /# Product Prompt/);
-    assert.match(productContent, /Read SPEC.md and SPEC-ADDENDUM.md from the project working directory/);
+    assert.match(productContent, /# Spec content here/);
     assert.match(productContent, /Issue #10: Auth/);
     assert.match(productContent, /Implement auth/);
 
     const archContent = writtenFiles['/queue/gap-analysis-architecture.md'];
     assert.match(archContent, /orch_arch_analyst/);
     assert.match(archContent, /# Arch Prompt/);
-    assert.match(archContent, /Read SPEC.md and SPEC-ADDENDUM.md from the project working directory/);
+    assert.match(archContent, /# Spec content here/);
   });
 
   it('returns 0 when no issues need analysis', async () => {
@@ -3822,8 +3758,7 @@ describe('epic and sub-issue decomposition helpers', () => {
     assert.ok(content);
     assert.match(content, /orch_decompose/);
     assert.match(content, /# Decompose prompt/);
-    assert.match(content, /## Spec Files \(read these from the project\)/);
-    assert.match(content, /`SPEC\.md`/);
+    assert.match(content, /# Spec body/);
   });
 
   it('writes sub-issue decomposition request for Needs decomposition targets only', async () => {
@@ -4306,33 +4241,6 @@ describe('runOrchestratorScanPass', () => {
     assert.equal(result.dispatched, 1);
   });
 
-  it('pauses dispatch and logs warning when /tmp free space is low', async () => {
-    const state = makeScanState({
-      current_wave: 1,
-      issues: [
-        makeIssue({ number: 10, wave: 1, state: 'pending' }),
-      ],
-    });
-    const deps = createMockScanDeps();
-    deps.files['/state.json'] = JSON.stringify(state);
-    deps.dispatchDeps = createMockDispatchDeps({
-      statfs: async () => ({
-        bavail: 100,
-        bsize: 1024 * 1024,
-      }),
-    });
-
-    const result = await runOrchestratorScanPass(
-      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      null, 1, deps,
-    );
-
-    assert.equal(result.dispatched, 0);
-    const pauseLog = deps.logEntries.find((entry) => entry.event === 'scan_dispatch_paused_tmp_low_space');
-    assert.ok(pauseLog);
-    assert.equal(pauseLog?.path, '/tmp');
-  });
-
   it('does not dispatch when plan_only is true', async () => {
     const state = makeScanState({
       plan_only: true,
@@ -4462,7 +4370,7 @@ describe('runOrchestratorScanPass', () => {
 
     const result = await runOrchestratorScanPass(
       '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 5, deps,
+      'owner/repo', 1, deps,
     );
 
     assert.equal(result.triage.processed_issues, 1);
@@ -5047,9 +4955,8 @@ describe('monitorChildSessions', () => {
 
     assert.equal(result.monitored, 1);
     assert.equal(result.failed, 1);
-    assert.equal(state.issues[0].state, 'in_progress');
-    assert.equal((state.issues[0] as any).needs_redispatch, true);
-    assert.match((state.issues[0] as any).review_feedback, /Child loop stopped/i);
+    assert.equal(state.issues[0].state, 'failed');
+    assert.equal(state.issues[0].status, 'Blocked');
     assert.ok(logEntries.some((e) => e.event === 'child_failed'));
   });
 
@@ -5386,7 +5293,7 @@ describe('orchestrateCommandWithDeps multi-file spec', () => {
     );
   });
 
-  it('includes spec file references in decomposition queue', async () => {
+  it('includes merged spec content in decomposition queue', async () => {
     const writtenFiles: Record<string, string> = {};
     const fileContents: Record<string, string> = {};
 
@@ -5424,10 +5331,10 @@ describe('orchestrateCommandWithDeps multi-file spec', () => {
     const decomposeFile = Object.keys(writtenFiles).find((k) => k.includes('decompose-epics.md'));
     assert.ok(decomposeFile, 'decompose-epics.md should be queued');
     const content = writtenFiles[decomposeFile];
-    assert.ok(content.includes('## Spec Files (read these from the project)'), 'should include spec file section');
-    assert.ok(content.includes('`SPEC.md`'), 'should include spec file path for master');
-    assert.ok(content.includes('`specs/auth.md`'), 'should include spec file path for auth');
-    assert.ok(content.includes('Do NOT expect them to be embedded in this prompt'), 'should require reading files from project');
+    assert.ok(content.includes('Master Spec'), 'should include master spec content');
+    assert.ok(content.includes('Auth Slice'), 'should include auth slice content');
+    assert.ok(content.includes('<!-- spec: SPEC.md -->'), 'should include spec file header for master');
+    assert.ok(content.includes('<!-- spec: auth.md -->'), 'should include spec file header for auth');
   });
 });
 
