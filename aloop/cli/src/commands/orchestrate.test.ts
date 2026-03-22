@@ -5228,6 +5228,81 @@ describe('monitorChildSessions', () => {
     );
   });
 
+  it('creates PR for completed child (loop.sh writes "completed" not "exited")', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({
+          number: 5,
+          state: 'in_progress',
+          child_session: 'session-completed',
+          title: 'Fix widget',
+        }),
+      ],
+    });
+
+    const files: Record<string, string> = {
+      '/home/.aloop/sessions/session-completed/status.json': JSON.stringify({
+        iteration: 3,
+        phase: 'build',
+        provider: 'claude',
+        stuck_count: 0,
+        state: 'completed',
+        updated_at: '2026-03-15T12:00:00Z',
+      }),
+      '/home/.aloop/sessions/session-completed/meta.json': JSON.stringify({
+        branch: 'aloop/issue-5',
+        project_root: '/project',
+      }),
+    };
+
+    const { deps, logEntries } = createMockMonitorDeps({
+      files,
+      ghResponses: {
+        'branches/agent/trunk': 'agent/trunk',
+        'pr create': 'https://github.com/owner/repo/pull/55',
+        'api graphql': JSON.stringify({
+          data: {
+            repository: {
+              issue: {
+                projectItems: {
+                  nodes: [
+                    {
+                      id: 'ITEM_5',
+                      project: { id: 'PVT_project_1' },
+                      fieldValues: {
+                        nodes: [
+                          {
+                            field: {
+                              id: 'PVTSSF_status_1',
+                              name: 'Status',
+                              options: [
+                                { id: 'OPT_in_review', name: 'In review' },
+                              ],
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+        'project item-edit': '',
+      },
+    });
+
+    const result = await monitorChildSessions(state, '/session', 'owner/repo', deps);
+
+    assert.equal(result.monitored, 1);
+    assert.equal(result.prs_created, 1);
+    assert.equal(result.failed, 0);
+    assert.equal(state.issues[0].state, 'pr_open');
+    assert.equal(state.issues[0].pr_number, 55);
+    assert.ok(logEntries.some((e) => e.event === 'child_pr_created'));
+  });
+
   it('marks stopped child as failed', async () => {
     const state = makeState({
       issues: [

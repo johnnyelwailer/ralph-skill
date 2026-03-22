@@ -4684,7 +4684,7 @@ export async function monitorChildSessions(
     };
 
     // Check for terminal states
-    if (childStatus.state === 'exited') {
+    if (childStatus.state === 'exited' || childStatus.state === 'completed') {
       // Child completed successfully — create PR
       const prResult = await createPrForChild(issue, childSession, childDir, state, repo, deps);
 
