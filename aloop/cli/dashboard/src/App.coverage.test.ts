@@ -768,6 +768,7 @@ describe('App.tsx AppView integration coverage', () => {
       onSelectSession: onSelect,
       collapsed: false,
       onToggle: onToggle,
+      sessionCost: 0.1234,
     })));
     expect(screen.getByText('p1')).toBeInTheDocument();
     fireEvent.click(screen.getByText('s1'));

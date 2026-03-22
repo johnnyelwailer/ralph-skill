@@ -717,13 +717,14 @@ export function deriveProviderHealth(log: string, configuredProviders?: string[]
 // ── Sidebar ──
 
 export function Sidebar({
-  sessions, selectedSessionId, onSelectSession, collapsed, onToggle,
+  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost,
 }: {
   sessions: SessionSummary[];
   selectedSessionId: string | null;
   onSelectSession: (id: string | null) => void;
   collapsed: boolean;
   onToggle: () => void;
+  sessionCost: number;
 }) {
   // Group by project
   const { projectGroups, olderSessions } = useMemo(() => {
@@ -823,48 +824,54 @@ export function Sidebar({
   const isSelected = (s: SessionSummary) =>
     selectedSessionId === null ? sessions.indexOf(s) === 0 : s.id === selectedSessionId;
 
-  const renderCard = (s: SessionSummary) => (
-    <Tooltip key={s.id}>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className={`w-full overflow-hidden rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
-          onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
-        >
-          <div className="flex items-center gap-1.5 overflow-hidden">
-            <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
-            <span className="truncate font-medium flex-1">{s.name}</span>
-            <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
+  const displaySessionCost = (s: SessionSummary): number | null =>
+    s.id === 'current' ? sessionCost : (sessionCosts[s.id] ?? null);
+
+  const renderCard = (s: SessionSummary) => {
+    const cardCost = displaySessionCost(s);
+    return (
+      <Tooltip key={s.id}>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={`w-full overflow-hidden rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
+            onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
+          >
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
+              <span className="truncate font-medium flex-1">{s.name}</span>
+              <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
+            </div>
+            <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
+              {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
+              {s.branch && <span className="truncate">{s.branch}</span>}
+              {s.phase && <span className="shrink-0">·</span>}
+              {s.phase && <PhaseBadge phase={s.phase} small />}
+              {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
+              {s.elapsed && s.elapsed !== '--' && <span className="shrink-0">· {s.elapsed}</span>}
+              {typeof cardCost === 'number' && <span className="shrink-0">· ${cardCost.toFixed(4)}</span>}
+            </div>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-lg">
+          <div className="space-y-0.5 text-xs">
+            <p className="font-medium">{s.id}</p>
+            {s.pid && <p>PID: {s.pid}</p>}
+            <p>Status: {s.status}</p>
+            {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
+            <p>Provider: {s.provider}</p>
+            <p>Iterations: {s.iterations}</p>
+            {s.elapsed && s.elapsed !== '--' && <p>Duration: {s.elapsed}</p>}
+            {costUnavailable && typeof cardCost !== 'number' && <p>Cost: unavailable</p>}
+            {typeof cardCost === 'number' && <p>Cost: ${cardCost.toFixed(4)}</p>}
+            {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
+            {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
+            {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
           </div>
-          <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
-            {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
-            {s.branch && <span className="truncate">{s.branch}</span>}
-            {s.phase && <span className="shrink-0">·</span>}
-            {s.phase && <PhaseBadge phase={s.phase} small />}
-            {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
-            {s.elapsed && s.elapsed !== '--' && <span className="shrink-0">· {s.elapsed}</span>}
-            {typeof sessionCosts[s.id] === 'number' && <span className="shrink-0">· ${sessionCosts[s.id]!.toFixed(4)}</span>}
-          </div>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="right" className="max-w-lg">
-        <div className="space-y-0.5 text-xs">
-          <p className="font-medium">{s.id}</p>
-          {s.pid && <p>PID: {s.pid}</p>}
-          <p>Status: {s.status}</p>
-          {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
-          <p>Provider: {s.provider}</p>
-          <p>Iterations: {s.iterations}</p>
-          {s.elapsed && s.elapsed !== '--' && <p>Duration: {s.elapsed}</p>}
-          {costUnavailable && typeof sessionCosts[s.id] !== 'number' && <p>Cost: unavailable</p>}
-          {typeof sessionCosts[s.id] === 'number' && <p>Cost: ${sessionCosts[s.id]!.toFixed(4)}</p>}
-          {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
-          {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
-          {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  );
+        </TooltipContent>
+      </Tooltip>
+    );
+  };
 
   return (
     <aside className="flex flex-col border-r border-border bg-sidebar w-64 shrink-0 animate-slide-in-left">
@@ -2324,14 +2331,14 @@ export function App() {
         <div className="flex flex-1 min-h-0">
           {/* Desktop sidebar */}
           <div className="hidden md:flex">
-            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
+            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} />
           </div>
           {/* Mobile sidebar drawer */}
           {mobileMenuOpen && (
             <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
               <div className="absolute inset-0 bg-black/50" />
               <div className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
-                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} />
+                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} />
               </div>
             </div>
           )}
