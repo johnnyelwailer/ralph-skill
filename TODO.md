@@ -9,7 +9,9 @@
 
 ### In Progress
 
-- [ ] [qa/P1] **Validate-ProofManifest accepts empty file** — `ConvertFrom-Json` on empty string returns `$null` without error, so empty files pass validation. Add an explicit empty/whitespace-only check before JSON parsing. Fix this BEFORE wiring up post-invocation handling. (`loop.ps1:881-898`) (priority: high)
+- [ ] [qa/P1] **Validate-ProofManifest accepts empty file** — `ConvertFrom-Json` on empty string returns `$null` without error, so empty files pass validation. Add an explicit empty/whitespace-only check before JSON parsing. Fix this BEFORE wiring up post-invocation handling. (`loop.ps1:881-898`) (priority: high) — still failing at iter 17 (empty + whitespace-only both accepted)
+
+- [ ] [qa/P1] **README says "9 gates" but review template has 10** — README.md references "9 quality gates" in 4 places (lines 13, 73, 185, 213) and the gate table (line 75) only lists 9 gates. The review template (`instructions/review.md`) correctly says 10 gates (Gate 10: QA Coverage & Bug Fix Rate). Update README to say 10 gates and add Gate 10 to the table. Tested at iter 17. (priority: high)
 
 - [ ] **P1: loop.ps1 — proof phase post-invocation handling** — After provider returns successfully for proof mode: validate manifest at `$artifactsDir/iter-$iteration/proof-manifest.json`, log `proof_manifest_validated` event, track `$script:lastProofIteration`, call `Register-IterationFailure` on validation failure. Mirror loop.sh lines 2260-2278. (`loop.ps1` post-provider section ~line 2196+) (priority: high)
 

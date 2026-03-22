@@ -2352,7 +2352,6 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     fi
 
     # Extract per-iteration output from LOG_FILE.raw for dashboard parsing
-    mkdir -p "$SESSION_DIR/artifacts/iter-$ITERATION"
     _raw_offset_after=$(wc -c < "$LOG_FILE.raw" 2>/dev/null || echo 0)
     if [ "$_raw_offset_after" -gt "$_raw_offset_before" ]; then
         tail -c +"$((_raw_offset_before + 1))" "$LOG_FILE.raw" | head -c "$((_raw_offset_after - _raw_offset_before))" > "$SESSION_DIR/artifacts/iter-$ITERATION/output.txt" 2>/dev/null
