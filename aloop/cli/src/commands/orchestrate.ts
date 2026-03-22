@@ -2860,12 +2860,16 @@ export async function launchChildLoop(
   let worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName, 'origin/agent/trunk'], { encoding: 'utf8' });
   if (worktreeResult.status !== 0) {
     // Branch may already exist — remove stale worktree lock if present, then retry
+    // Porcelain format: "worktree <path>\nHEAD <sha>\nbranch refs/heads/<name>\n\n"
     const existingWt = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'list', '--porcelain'], { encoding: 'utf8' });
-    const lines = (existingWt.stdout ?? '').split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith('worktree ') && lines[i + 1]?.includes(branchName)) {
-        const stalePath = lines[i].replace('worktree ', '');
-        deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', stalePath], { encoding: 'utf8' });
+    const entries = (existingWt.stdout ?? '').split('\n\n');
+    for (const entry of entries) {
+      if (entry.includes(`refs/heads/${branchName}`)) {
+        const wtLine = entry.split('\n').find((l) => l.startsWith('worktree '));
+        if (wtLine) {
+          const stalePath = wtLine.replace('worktree ', '');
+          deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', stalePath], { encoding: 'utf8' });
+        }
       }
     }
     deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
