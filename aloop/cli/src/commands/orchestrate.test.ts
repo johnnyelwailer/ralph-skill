@@ -4168,8 +4168,9 @@ describe('autonomy level resolution', () => {
   });
 
   it('reads autonomy level from project config when option missing', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-orch-autonomy-'));
     const level = await resolveOrchestratorAutonomyLevel(
-      { projectRoot: '/project' },
+      { projectRoot },
       '/home/test',
       {
         existsSync: () => true,
@@ -4180,8 +4181,9 @@ describe('autonomy level resolution', () => {
   });
 
   it('falls back to balanced for invalid config autonomy', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-orch-autonomy-invalid-'));
     const level = await resolveOrchestratorAutonomyLevel(
-      { projectRoot: '/project' },
+      { projectRoot },
       '/home/test',
       {
         existsSync: () => true,

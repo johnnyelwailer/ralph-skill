@@ -76,6 +76,23 @@ test('index CLI accepts setup --provider alias in non-interactive mode', async (
   assert.match(result.stdout, /Setup complete\./);
 });
 
+test('index CLI setup prints helpful error when interactive mode runs without a TTY', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-setup-notty-'));
+  const tempHome = await mkdtemp(path.join(os.tmpdir(), 'aloop-index-home-notty-'));
+
+  const result = await runCli([
+    'setup',
+    '--project-root',
+    tempRoot,
+    '--home-dir',
+    tempHome,
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /Interactive setup requires a TTY/);
+  assert.match(result.stderr, /--non-interactive/);
+});
+
 test('index CLI returns non-zero for unknown command', async () => {
   const result = await runCli(['unknown-command']);
   assert.notEqual(result.code, 0);
