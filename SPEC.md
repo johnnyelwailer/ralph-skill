@@ -2217,6 +2217,14 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 - [ ] Rejected PRs: feedback written to child's `queue/` for re-iteration
 - [ ] Merge conflicts: rebase steering to child's `queue/` (max 2 attempts)
 
+**Startup validation:**
+- [ ] On startup, orchestrator runs three health checks: `gh auth status` (critical), `gh repo view` (non-critical), and `git status --porcelain` (informational)
+- [ ] All health check results (pass/fail + detail) are written to `session-health.json` in the session directory alongside label bootstrapping results
+- [ ] If the `gh auth status` check fails, orchestrator writes `ALERT.md` to the session directory with the failure details and exits non-zero — no orchestration work proceeds
+- [ ] `gh repo view` failure is non-critical (repo may not be configured yet); the orchestrator logs a warning but continues
+- [ ] On startup, orchestrator bootstraps required GitHub labels (`aloop`, `aloop/auto-resolved`, etc.) — creates any that are missing, skips existing ones
+- [ ] Label bootstrap results (created, already existed, failed) are recorded in `session-health.json`
+
 **Infrastructure:**
 - [ ] GitHub is source of truth — local state is only session-to-issue mapping
 - [ ] Efficient monitoring: ETag-guarded REST + GraphQL on change

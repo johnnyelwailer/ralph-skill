@@ -23,7 +23,7 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 - [x] **Add ARIA labels to collapse/expand buttons** — Added labels to all three targets in `AppView.tsx`: `Expand sidebar`, `Collapse sidebar`, and `Collapse activity panel`. Added regression coverage in `App.coverage.test.ts`. (priority: medium)
 
-- [ ] **Implement long-press context menu on session cards** — Create a `useLongPress` hook with 500ms threshold using `onTouchStart`/`onTouchEnd`/`onTouchMove` (cancel on move). On trigger, show a context menu (reuse DropdownMenu component) with: Stop session, Force-stop session, Copy session ID. Add haptic feedback via `navigator.vibrate(50)` if available. Apply to session card elements in the sidebar (~line 835-838 of AppView.tsx). (priority: medium)
+- [x] **Implement long-press context menu on session cards** — Added `useLongPress` hook (`src/hooks/useLongPress.ts`) with 500ms threshold, touch-move cancel, and cleanup. Session cards in `AppView.tsx` now open a long-press context menu with `Stop session`, `Force-stop session`, and `Copy session ID`, plus `navigator.vibrate(50)` haptic feedback when available. Also wired targeted stop requests through `/api/stop` via `session` field so actions operate on the chosen session. Added regression coverage in `App.coverage.test.ts` and `src/commands/dashboard.test.ts`. (priority: medium)
 
 ### Deferred
 
@@ -55,7 +55,7 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 ### Findings
 
-- [ ] **[spec-gap] SPEC.md missing orchestrator startup self-healing behaviors** — The code implements three self-healing features not documented in SPEC.md acceptance criteria: (1) `session-health.json` startup health checks (`gh auth status`, `gh repo view`, `git status --porcelain`) at `orchestrate.ts:1284-1347`, (2) `ALERT.md` creation on critical failures at `orchestrate.ts:1739-1757`, (3) `ensureLabels` label self-healing at `orchestrate.ts:1213-1260`. SPEC.md's orchestrator acceptance criteria (lines 2183-2229) don't mention startup validation or label bootstrapping. **Suggested fix:** Add acceptance criteria to SPEC.md under the orchestrator section covering startup health checks, ALERT.md on critical failure, and label self-healing. (priority: P2 — correctness drift, code ahead of spec)
+- [x] **[spec-gap] SPEC.md missing orchestrator startup self-healing behaviors** — Added a new "Startup validation:" acceptance criteria block to SPEC.md under the orchestrator section (before "Infrastructure:") covering: (1) three startup health checks (`gh auth status`, `gh repo view`, `git status --porcelain`), (2) `session-health.json` output with label + check results, (3) `ALERT.md` on critical `gh auth` failure with non-zero exit, (4) label self-healing (`ensureLabels`) creating missing required labels. (priority: P2 — correctness drift, code ahead of spec)
 
 ### No Issues Found
 
