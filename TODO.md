@@ -35,7 +35,7 @@ _(none — ready for next task)_
 
 - [ ] **Implement long-press context menu on session cards** — Create a `useLongPress` hook with 500ms threshold using `onTouchStart`/`onTouchEnd`/`onTouchMove` (cancel on move). On trigger, show a context menu (reuse DropdownMenu component) with: Stop session, Force-stop session, Copy session ID. Add haptic feedback via `navigator.vibrate(50)` if available. Apply to session card elements in the sidebar (~line 835-838 of AppView.tsx). (priority: medium)
 
-- [ ] **Runtime layout verification** — [review Gate 7] Run Playwright at 390x844 viewport and verify bounding boxes of key elements (hamburger button, session cards, tab triggers, dropdown items, steer textarea) meet 44x44px minimum. This validates the P1 bug fixes are effective. (priority: medium)
+- [x] **Runtime layout verification** — [review Gate 7] Added Playwright coverage in `aloop/cli/dashboard/e2e/smoke.spec.ts` for 390x844 viewport bounding-box checks confirming 44x44px minimum on hamburger button, session card, tab triggers, dropdown item, and steer textarea. (priority: medium)
 
 - [ ] **Run Lighthouse mobile accessibility audit & fix flagged issues** — Run Lighthouse in mobile mode targeting accessibility category. Fix any issues flagged: color contrast ratios, missing alt text, focus indicators, ARIA violations. Target score >= 90. Document final score. (priority: low)
 

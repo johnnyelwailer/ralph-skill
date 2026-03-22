@@ -12,6 +12,10 @@ const statusPath = path.join(sessionDir, 'status.json');
 const logPath = path.join(sessionDir, 'log.jsonl');
 const metaPath = path.join(sessionDir, 'meta.json');
 const todoPath = path.join(workdir, 'TODO.md');
+const specPath = path.join(workdir, 'SPEC.md');
+const researchPath = path.join(workdir, 'RESEARCH.md');
+const reviewLogPath = path.join(workdir, 'REVIEW_LOG.md');
+const extraDocPath = path.join(workdir, 'EXTRA.md');
 const steeringPath = path.join(workdir, 'STEERING.md');
 const activePath = path.join(runtimeDir, 'active.json');
 const historyPath = path.join(runtimeDir, 'history.json');
@@ -30,6 +34,10 @@ async function resetFixtures() {
   );
   await writeFile(logPath, `{"level":"info","message":"fixture log line", "event": "session_start", "timestamp": "${now}"}\n`, 'utf8');
   await writeFile(todoPath, '# Fixture TODO Heading\n\n- [ ] Example task\n', 'utf8');
+  await writeFile(specPath, '# Fixture SPEC Heading\n', 'utf8');
+  await writeFile(researchPath, '# Fixture RESEARCH Heading\n', 'utf8');
+  await writeFile(reviewLogPath, '# Fixture REVIEW LOG Heading\n', 'utf8');
+  await writeFile(extraDocPath, '# Fixture EXTRA Heading\n', 'utf8');
   await writeFile(
     activePath,
     JSON.stringify([
@@ -135,6 +143,33 @@ test('layout at 375x667 (mobile) shows only one panel and mobile menu', async ({
   await page.getByRole('button', { name: 'Activity' }).click();
   await expect(page.getByRole('heading', { name: 'Activity' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Documents' })).not.toBeVisible();
+});
+
+test('mobile viewport keeps critical touch targets at least 44x44', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  const assertMinTarget = async (name: string, locator: ReturnType<typeof page.locator>) => {
+    await expect(locator).toBeVisible();
+    const box = await locator.boundingBox();
+    expect(box, `${name} should have a measurable bounding box`).not.toBeNull();
+    expect(box!.width, `${name} width should be >= 44px`).toBeGreaterThanOrEqual(44);
+    expect(box!.height, `${name} height should be >= 44px`).toBeGreaterThanOrEqual(44);
+  };
+
+  await assertMinTarget('hamburger button', page.getByRole('button', { name: 'Toggle sidebar' }));
+  await assertMinTarget('documents tab trigger', page.getByRole('button', { name: 'Documents' }));
+  await assertMinTarget('activity tab trigger', page.getByRole('button', { name: 'Activity' }));
+  await assertMinTarget('steer textarea', page.getByPlaceholder('Steer...'));
+
+  await page.getByRole('button', { name: 'Toggle sidebar' }).click();
+  const mobileSidebar = page.locator('aside').filter({ hasText: 'Sessions' });
+  await assertMinTarget('session card', mobileSidebar.getByRole('button', { name: /active-session/ }).first());
+  await page.keyboard.press('Escape');
+
+  await page.locator('footer button').last().click();
+  await assertMinTarget('stop-after-iteration dropdown item', page.getByRole('menuitem', { name: /Stop after iteration/i }));
+  await page.keyboard.press('Escape');
 });
 
 test('writes steering instruction', async ({ page }) => {
