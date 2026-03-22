@@ -18,3 +18,20 @@
 - [ ] Update `.gitignore` handling for `.aloop/` artifacts — change the gitignore append logic (orchestrate.ts:2882-2892) to add `.aloop/` directory pattern instead of individual root-level filenames; update e2e test fixtures (dashboard/e2e/fixtures/workdir/)
 - [ ] Add tests for `.aloop/` artifact paths — verify artifacts are created in `.aloop/` subfolder, gitignore entries are correct, monitor/dashboard read from new paths
 - [ ] [qa/P2] `aloop orchestrate --help` exits 1 with no output: ran `node dist/index.js orchestrate --help` → exit code 1, zero stdout/stderr. Spec says `orchestrate` should show help with flags like `--spec`, `--concurrency`, `--budget`. Needs re-test after disk space freed (ENOSPC may have contributed). Tested at commit b0afbfc.
+
+### Spec-Gap Analysis (2026-03-22)
+
+**Core issue #124 requirements (TASK_SPEC.md) vs implementation:**
+- ✅ Requirement 1 (API errors → no state change): Implemented and tested
+- ✅ Requirement 2 (blocked reasons): Implemented and tested
+- ✅ Requirement 3 (recovery mechanism): Implemented and tested
+- ⬜ Requirement 4 (`.aloop/` artifact paths): 4 open TODO items above — NOT YET STARTED
+
+**SPEC.md alignment (informational, P3 — spec behind code, not blocking):**
+- [spec-gap/P3] SPEC.md does not document `recoverFailedIssues()` behavior — failed issues with open PRs are auto-recovered each scan pass. Suggested fix: add to SPEC.md orchestrator scan-pass section.
+- [spec-gap/P3] SPEC.md does not document `blocked_reason` field on `OrchestratorIssue` or the `postBlockedReasonComment()` behavior. Suggested fix: add to SPEC.md orchestrator state section.
+- [spec-gap/P3] SPEC.md does not document the `allDone` recovery exception — failed issues with `pr_number` are non-terminal. Suggested fix: add to SPEC.md termination logic section.
+
+**Config/template/cross-file consistency:** No gaps found. Provider lists, model IDs, round-robin order, mode validation sets, and prompt template references are all consistent across config.yml, loop.sh, loop.ps1, and TypeScript code.
+
+**Conclusion:** No P1 or P2 spec gaps. Core issue #124 acceptance criteria 1-3 are fulfilled. Requirement 4 (`.aloop/` artifact migration) remains open with 4 tracked items. P3 spec documentation items are informational — SPEC.md should be updated to reflect the new recovery/blocked-reason features after this issue merges.
