@@ -25,9 +25,8 @@ All core acceptance criteria from SPEC.md §`aloop gh` are implemented:
 
 ### Minor spec features not yet implemented (low priority, non-blocking):
 
-1. **`aloop gh stop-watch`** — spec mentions `stop-watch` as an explicit subcommand (SPEC.md line 2284). Currently, stopping the watch is done via Ctrl+C (SIGINT) or `aloop gh stop --all`. No dedicated `stop-watch` subcommand exists.
-2. **`--re-trigger-on reopen,comment` / `--no-re-trigger`** — spec mentions configurable re-trigger behavior when an issue is reopened or new comments are added after a loop finishes (SPEC.md line 2288). Not implemented.
-3. **Auto-merge into `agent/trunk` when CI passes** — spec mentions configurable auto-merge for PRs into `agent/trunk` (SPEC.md lines 2361). Not implemented as a watch behavior.
+1. **`--re-trigger-on reopen,comment` / `--no-re-trigger`** — spec mentions configurable re-trigger behavior when an issue is reopened or new comments are added after a loop finishes (SPEC.md line 2288). Not implemented.
+2. **Auto-merge into `agent/trunk` when CI passes** — spec mentions configurable auto-merge for PRs into `agent/trunk` (SPEC.md lines 2361). Not implemented as a watch behavior.
 
 ### Test coverage assessment:
 
@@ -62,6 +61,6 @@ All acceptance criteria are met. One consistency bug remains (P2). Remaining ite
 - [x] Comprehensive test suite (70+ tests)
 
 ### Deferred (optional enhancements, not blocking acceptance)
-- [ ] `stop-watch` explicit subcommand (currently covered by Ctrl+C and `gh stop --all`)
+- [x] `stop-watch` explicit subcommand (currently covered by Ctrl+C and `gh stop --all`) — implemented as `aloop gh stop-watch` delegating to stop-all behavior, with command test coverage.
 - [ ] `--re-trigger-on reopen,comment` / `--no-re-trigger` watch options
 - [ ] Auto-merge into `agent/trunk` when CI passes (configurable)

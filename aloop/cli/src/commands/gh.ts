@@ -131,6 +131,11 @@ interface GhStopCommandOptions {
   output?: GhOutputMode;
 }
 
+interface GhStopWatchCommandOptions {
+  homeDir?: string;
+  output?: GhOutputMode;
+}
+
 interface GhWatchCommandOptions {
   label?: string[];
   assignee?: string;
@@ -1354,6 +1359,14 @@ async function ghStopCommand(options: GhStopCommandOptions): Promise<void> {
   }
 }
 
+async function ghStopWatchCommand(options: GhStopWatchCommandOptions): Promise<void> {
+  await ghStopCommand({
+    all: true,
+    homeDir: options.homeDir,
+    output: options.output,
+  });
+}
+
 // Common options for gh subcommands
 function addGhRequestSubcommand(name: string, description: string) {
   return ghCommand
@@ -1459,6 +1472,15 @@ ghCommand
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(withErrorHandling(async (options: GhStopCommandOptions) => {
     await ghStopCommand(options);
+  }));
+
+ghCommand
+  .command('stop-watch')
+  .description('Stop all GH-linked loops tracked by gh watch')
+  .option('--home-dir <path>', 'Home directory override')
+  .option('--output <mode>', 'Output format: json or text', 'text')
+  .action(withErrorHandling(async (options: GhStopWatchCommandOptions) => {
+    await ghStopWatchCommand(options);
   }));
 
 // Register subcommands

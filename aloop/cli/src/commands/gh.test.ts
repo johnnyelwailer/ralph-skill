@@ -1878,6 +1878,91 @@ test('gh stop --issue stops running mapped session and removes watch entry', asy
   }
 });
 
+test('gh stop-watch stops all tracked GH-linked sessions and clears watch state', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-stop-watch-'));
+  const sessionDirA = path.join(tmpHome, '.aloop', 'sessions', 'sess-42');
+  const sessionDirB = path.join(tmpHome, '.aloop', 'sessions', 'sess-43');
+  fs.mkdirSync(sessionDirA, { recursive: true });
+  fs.mkdirSync(sessionDirB, { recursive: true });
+  fs.writeFileSync(path.join(sessionDirA, 'status.json'), JSON.stringify({ state: 'running' }), 'utf8');
+  fs.writeFileSync(path.join(sessionDirB, 'status.json'), JSON.stringify({ state: 'running' }), 'utf8');
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => ([
+    {
+      session_id: 'sess-42',
+      pid: 123,
+      work_dir: '/tmp/sess-42',
+      started_at: '2026-03-14T12:00:00.000Z',
+      provider: 'claude',
+      mode: 'plan-build-review',
+      state: 'running',
+      phase: 'build',
+      iteration: 3,
+      stuck_count: 0,
+      updated_at: '2026-03-14T12:02:00.000Z',
+    },
+    {
+      session_id: 'sess-43',
+      pid: 124,
+      work_dir: '/tmp/sess-43',
+      started_at: '2026-03-14T12:00:00.000Z',
+      provider: 'codex',
+      mode: 'plan-build-review',
+      state: 'running',
+      phase: 'build',
+      iteration: 4,
+      stuck_count: 0,
+      updated_at: '2026-03-14T12:02:00.000Z',
+    },
+  ]));
+  const stoppedSessionIds: string[] = [];
+  t.mock.method(ghLoopRuntime, 'stopSession', async (_homeDir: string, sessionId: string) => {
+    stoppedSessionIds.push(sessionId);
+    return { success: true };
+  });
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    queue: [44],
+    issues: {
+      '42': {
+        issue_number: 42,
+        session_id: 'sess-42',
+        branch: 'agent/issue-42',
+        repo: 'test/repo',
+        pr_number: null,
+        pr_url: null,
+        status: 'running',
+        completion_state: null,
+        created_at: '2026-03-14T12:00:00.000Z',
+        updated_at: '2026-03-14T12:00:00.000Z',
+      },
+      '43': {
+        issue_number: 43,
+        session_id: 'sess-43',
+        branch: 'agent/issue-43',
+        repo: 'test/repo',
+        pr_number: null,
+        pr_url: null,
+        status: 'running',
+        completion_state: null,
+        created_at: '2026-03-14T12:00:00.000Z',
+        updated_at: '2026-03-14T12:00:00.000Z',
+      },
+    },
+  });
+
+  try {
+    await ghCommand.parseAsync(['stop-watch', '--home-dir', tmpHome], { from: 'user' });
+    assert.deepStrictEqual(stoppedSessionIds.sort(), ['sess-42', 'sess-43']);
+    const watchState = readWatchState(tmpHome) as { issues?: Record<string, unknown>; queue?: number[] };
+    assert.deepStrictEqual(watchState.issues, {});
+    assert.deepStrictEqual(watchState.queue, []);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test('gh watch --once starts up to max-concurrent and queues remaining issues', async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-watch-once-'));
   const output: string[] = [];
