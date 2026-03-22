@@ -686,8 +686,8 @@ describe('App.tsx AppView integration coverage', () => {
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
 
-    fireEvent.click(screen.getByRole('button', { name: /activity/i }));
-    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^activity$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^documents$/i }));
 
     const collapseBtn = container.querySelector('button .lucide-panel-left-close')?.closest('button') as HTMLButtonElement | null;
     expect(collapseBtn).not.toBeNull();
@@ -749,7 +749,7 @@ describe('App.tsx AppView integration coverage', () => {
     await screen.findByText('Older');
     fireEvent.click(screen.getByText('Older'));
 
-    const repoLink = container.querySelector('a[href=\"https://example.com/repo\"]');
+    const repoLink = screen.getByRole('link', { name: /open repo on github/i });
     expect(repoLink).not.toBeNull();
 
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
@@ -779,8 +779,7 @@ describe('App.tsx AppView integration coverage', () => {
     expect(screen.getByText('p1')).toBeInTheDocument();
     fireEvent.click(screen.getByText('s1'));
     expect(onSelect).toHaveBeenCalled();
-    const toggleBtn = container.querySelector('button .lucide-panel-left-close')?.closest('button');
-    if (toggleBtn) fireEvent.click(toggleBtn);
+    fireEvent.click(screen.getByRole('button', { name: /collapse sidebar/i }));
     expect(onToggle).toHaveBeenCalled();
     fireEvent.click(screen.getByText(/Older/i));
     expect(screen.getByText('s2')).toBeInTheDocument();

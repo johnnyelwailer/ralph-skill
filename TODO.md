@@ -35,7 +35,7 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [~] [qa/P1] Dashboard /api/artifacts endpoint still returns 404: **URL format mismatch, not a code bug.** QA tested `curl /api/artifacts/QA_COVERAGE.md` but the endpoint requires `/api/artifacts/<iteration>/<filename>` (e.g. `/api/artifacts/3/screenshot.png`). The route regex at dashboard.ts:1095 requires a digit for iteration. Tests at dashboard.test.ts:1394-1430 pass with correct URL format. If session-level artifact access is needed, that's a new feature, not a bug. (priority: low)
 
-- [ ] [qa/P2] Lighthouse accessibility 84% (target >= 90): Four failures: (1) tablist contains non-tab child `a[aria-label]`, (2) two buttons in footer lack accessible names (Send disabled + Stop dropdown trigger), (3) `text-muted-foreground/50` contrast ratio 1.96:1 (needs 4.5:1), (4) heading order skips h2 → h3. Tested at iter 5. (priority: medium)
+- [x] [qa/P2] Lighthouse accessibility 84% (target >= 90): Fixed all 4 failures — moved GitHub link outside tablist, added explicit aria-labels for Send + Stop trigger, replaced low-contrast `text-muted-foreground/50` usages with `text-muted-foreground` in key UI text, and changed `CardTitle` heading level to `h2` to preserve heading order. Updated coverage tests for accessible-name selectors. (priority: medium)
 
 ### Up Next
 

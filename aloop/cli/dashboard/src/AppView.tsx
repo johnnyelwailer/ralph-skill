@@ -799,9 +799,9 @@ export function Sidebar({
       <aside className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
+              <button type="button" aria-label="Expand sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
+                <PanelLeftOpen className="h-4 w-4" />
+              </button>
           </TooltipTrigger>
           <TooltipContent side="right"><p>Expand sidebar (Ctrl+B)</p></TooltipContent>
         </Tooltip>
@@ -840,7 +840,7 @@ export function Sidebar({
             <div className="flex items-center gap-1.5 overflow-hidden">
               <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
               <span className="truncate font-medium flex-1">{s.name}</span>
-              <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
+              <span className="text-muted-foreground text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
             </div>
             <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
               {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
@@ -879,7 +879,7 @@ export function Sidebar({
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
+            <button type="button" aria-label="Collapse sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
               <PanelLeftClose className="h-4 w-4" />
             </button>
           </TooltipTrigger>
@@ -1184,17 +1184,17 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
               </div>
             </div>
           )}
-          {repoUrl && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <a href={repoUrl} target="_blank" rel="noopener noreferrer" aria-label="Open repo on GitHub" className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 md:w-6 rounded-sm text-muted-foreground hover:text-foreground hover:bg-background transition-colors ml-auto">
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </TooltipTrigger>
-              <TooltipContent><p>Open repo on GitHub</p></TooltipContent>
-            </Tooltip>
-          )}
         </TabsList>
+        {repoUrl && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a href={repoUrl} target="_blank" rel="noopener noreferrer" aria-label="Open repo on GitHub" className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 md:w-6 rounded-sm text-muted-foreground hover:text-foreground hover:bg-background transition-colors ml-1 shrink-0">
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </TooltipTrigger>
+            <TooltipContent><p>Open repo on GitHub</p></TooltipContent>
+          </Tooltip>
+        )}
       </div>
       {allDocs.map((n) => (
         <TabsContent key={n} value={n} className="flex-1 min-h-0 mt-0">
@@ -1302,7 +1302,7 @@ export function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
                     return `cooldown for ${h > 0 ? `${h}h ` : ''}${m}min`;
                   })() : p.status === 'unknown' ? 'no activity' : p.status}
                 </span>
-                <span className="text-muted-foreground/50 text-[10px]">{relativeTime(p.lastEvent)}</span>
+                <span className="text-muted-foreground text-[10px]">{relativeTime(p.lastEvent)}</span>
               </div>
             </TooltipTrigger>
             <TooltipContent>
@@ -1551,7 +1551,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
 
         {/* Duration — right-aligned */}
         {entry.duration && (
-          <span className="text-muted-foreground/50 shrink-0 whitespace-nowrap flex items-center gap-0.5">
+          <span className="text-muted-foreground shrink-0 whitespace-nowrap flex items-center gap-0.5">
             <Timer className="h-3 w-3" />{formatDuration(entry.duration)}
           </span>
         )}
@@ -1667,13 +1667,13 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
           {/* Provider output — rendered inline */}
           {hasOutput && (
             outputLoading ? (
-              <div className="ml-2 text-muted-foreground/50 py-1 flex items-center gap-1 text-[11px]"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
+              <div className="ml-2 text-muted-foreground py-1 flex items-center gap-1 text-[11px]"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
             ) : outputText ? (
               <div ref={outputRef} className="border-l-2 border-blue-500/30 pl-2 py-1 mt-1 overflow-auto max-h-48 sm:max-h-64 lg:max-h-[300px] bg-accent/30 rounded-md p-2">
                 <div className="prose-dashboard text-[10px] font-mono" dangerouslySetInnerHTML={{ __html: renderAnsiToHtml(outputText) }} />
               </div>
             ) : outputText === '' ? (
-              <div className="text-muted-foreground/50 py-1 italic text-[11px] ml-2">No output available</div>
+              <div className="text-muted-foreground py-1 italic text-[11px] ml-2">No output available</div>
             ) : null
           )}
 
@@ -1684,7 +1684,7 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
                 .filter(([k]) => !['timestamp', 'ts', 'run_id', 'event', 'type'].includes(k))
                 .map(([k, v]) => (
                   <div key={k} className="flex items-baseline gap-2 font-mono">
-                    <span className="text-muted-foreground/50 shrink-0">{k}:</span>
+                    <span className="text-muted-foreground shrink-0">{k}:</span>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className="text-foreground/70 truncate">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
@@ -1974,7 +1974,7 @@ function Footer({
         />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={steerSubmitting || !steerInstruction.trim()} onClick={onSteer}>
+            <Button size="sm" className="h-8 shrink-0 px-2 sm:px-3" aria-label="Send steering instruction" disabled={steerSubmitting || !steerInstruction.trim()} onClick={onSteer}>
               <Send className="h-3.5 w-3.5" /><span className="hidden sm:inline ml-1">{steerSubmitting ? '...' : 'Send'}</span>
             </Button>
           </TooltipTrigger>
@@ -1983,7 +1983,7 @@ function Footer({
         {isRunning ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="destructive" size="sm" className="h-8 shrink-0 px-2 sm:px-3" disabled={stopSubmitting}>
+              <Button variant="destructive" size="sm" className="h-8 shrink-0 px-2 sm:px-3" aria-label="Stop loop options" disabled={stopSubmitting}>
                 <Square className="h-3 w-3" /><span className="hidden sm:inline ml-1">{stopSubmitting ? '...' : 'Stop'}</span>
                 <ChevronDown className="h-3 w-3 ml-0.5" />
               </Button>
@@ -2328,7 +2328,7 @@ export function App() {
           <span className="flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" className="text-muted-foreground/50 hover:text-foreground transition-colors hidden lg:block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => setActivityCollapsed(true)}>
+              <button type="button" aria-label="Collapse activity panel" className="text-muted-foreground hover:text-foreground transition-colors hidden lg:block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => setActivityCollapsed(true)}>
                 <PanelLeftClose className="h-3.5 w-3.5" />
               </button>
             </TooltipTrigger>
