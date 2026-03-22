@@ -99,11 +99,32 @@ async function readJsonArrayFile(filePath: string): Promise<unknown[]> {
   return [];
 }
 
-async function enrichSessionEntriesWithStatusAndMeta(entries: unknown[]): Promise<unknown[]> {
+function resolveSessionDirFromEntry(entry: Record<string, unknown>, runtimeDir: string): string | null {
+  if (typeof entry.session_dir === 'string' && entry.session_dir.trim().length > 0) {
+    return entry.session_dir;
+  }
+
+  const workDir = typeof entry.work_dir === 'string' ? entry.work_dir : null;
+  if (workDir && path.basename(workDir) === 'worktree') {
+    return path.dirname(workDir);
+  }
+
+  const sessionId =
+    typeof entry.session_id === 'string' && entry.session_id.trim().length > 0
+      ? entry.session_id
+      : (typeof entry.id === 'string' && entry.id.trim().length > 0 ? entry.id : null);
+  if (sessionId) {
+    return path.join(runtimeDir, 'sessions', sessionId);
+  }
+
+  return null;
+}
+
+async function enrichSessionEntriesWithStatusAndMeta(entries: unknown[], runtimeDir: string): Promise<unknown[]> {
   return await Promise.all(
     entries.map(async (entry) => {
       if (!isRecord(entry)) return entry;
-      const dir = typeof entry.session_dir === 'string' ? entry.session_dir : null;
+      const dir = resolveSessionDirFromEntry(entry, runtimeDir);
       if (!dir) return entry;
 
       const [sessionStatus, sessionMeta] = await Promise.all([
@@ -334,8 +355,8 @@ async function loadStateForContext(
 
   // Enrich active/recent sessions with status.json and branch from meta.json.
   const [enrichedActive, enrichedRecent] = await Promise.all([
-    enrichSessionEntriesWithStatusAndMeta(activeSessions),
-    enrichSessionEntriesWithStatusAndMeta(recentSessions),
+    enrichSessionEntriesWithStatusAndMeta(activeSessions, runtimeDir),
+    enrichSessionEntriesWithStatusAndMeta(recentSessions, runtimeDir),
   ]);
 
   return {

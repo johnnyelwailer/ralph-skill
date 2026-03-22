@@ -246,6 +246,41 @@ test('GET /api/state enriches active and recent sessions with branch from meta.j
   }
 });
 
+test('GET /api/state enriches sessions without session_dir using runtime session path fallback', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const sessionId = 'fallback-session';
+    const fallbackSessionDir = path.join(fixture.runtimeDir, 'sessions', sessionId);
+    const fallbackWorktreeDir = path.join(fallbackSessionDir, 'worktree');
+    await mkdir(fallbackWorktreeDir, { recursive: true });
+
+    await writeFile(path.join(fallbackSessionDir, 'meta.json'), JSON.stringify({ branch: 'feature/fallback-branch' }), 'utf8');
+    await writeFile(path.join(fallbackSessionDir, 'status.json'), JSON.stringify({ state: 'running', iteration: 4 }), 'utf8');
+
+    await writeFile(
+      path.join(fixture.runtimeDir, 'active.json'),
+      JSON.stringify([
+        { session_id: sessionId, project_name: 'proj-a', work_dir: fallbackWorktreeDir },
+      ]),
+      'utf8',
+    );
+    await writeFile(path.join(fixture.runtimeDir, 'history.json'), JSON.stringify([]), 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      activeSessions: Array<Record<string, unknown>>;
+    };
+
+    assert.equal(payload.activeSessions[0].branch, 'feature/fallback-branch');
+    assert.equal(payload.activeSessions[0].state, 'running');
+    assert.equal(payload.activeSessions[0].iteration, 4);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test('host monitor processes GH convention requests outside loop runtime', async () => {
   const calls: string[] = [];
   const fixture = await createServerFixture({
