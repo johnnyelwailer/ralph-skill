@@ -3332,6 +3332,12 @@ export async function launchChildLoop(
     }
   }
 
+  // Ensure the child branch exists on origin before the child loop starts.
+  const pushResult = deps.spawnSync('git', ['-C', worktreePath, 'push', '-u', 'origin', branchName], { encoding: 'utf8' });
+  if (pushResult.status !== 0) {
+    throw new Error(`Failed to push branch ${branchName} for issue #${issue.number}: ${pushResult.stderr || pushResult.stdout}`);
+  }
+
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
   await deps.writeFile(path.join(worktreePath, 'TODO.md'), todoContent, 'utf8');

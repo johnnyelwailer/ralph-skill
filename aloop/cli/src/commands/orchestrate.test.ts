@@ -2565,6 +2565,16 @@ describe('launchChildLoop', () => {
     assert.ok(gitCall.args.includes('aloop/issue-42'));
   });
 
+  it('pushes child branch to origin after worktree creation', async () => {
+    const deps = createMockDispatchDeps();
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const pushCall = deps._spawnSyncCalls.find((c) => c.command === 'git' && c.args.includes('push'));
+    assert.ok(pushCall, 'git push should be called');
+    assert.ok(pushCall.args.includes('-u'));
+    assert.ok(pushCall.args.includes('origin'));
+    assert.ok(pushCall.args.includes('aloop/issue-42'));
+  });
+
   it('seeds TODO.md in worktree', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);

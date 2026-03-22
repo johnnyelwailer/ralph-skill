@@ -1,54 +1,30 @@
-# Sub-Spec: Issue #181 — Self-healing: auto-create missing labels and derive missing config
+# Sub-Spec: Issue #111 — Child loops must auto-push to remote and link branch to GH issue
 
-Part of #26: Epic: Orchestrator Core — Autonomous Lifecycle & Request Processing
+## Problem
 
-## Objective
+Child loops work in local git worktrees on branch `aloop/issue-N` but never push to origin. The completed work is invisible on GitHub — no linked branch, no PR.
 
-Implement self-healing behaviors so the orchestrator recovers from common configuration issues without human intervention.
+## Required behavior
 
-## Context
+1. **Auto-push after each commit** — child loop.sh should push to origin after every successful iteration that commits. Use `git push -u origin aloop/issue-N`.
 
-The orchestrator expects certain GitHub labels (e.g., `aloop/auto`, `aloop/epic`, `aloop/sub-issue`, `aloop/needs-refine`) and config values (repo, trunk branch, project number) to exist. When they're missing, operations silently fail or produce confusing errors.
+2. **Link branch to GH issue** — when child is dispatched and branch is created, the orchestrator should create a "development branch" link on the GH issue via the API. This shows up in the issue sidebar as "linked branch".
 
-## Deliverables
+3. **Auto-create PR** — when child loop completes (state: completed), `process-requests` should create a PR from `aloop/issue-N` → `agent/trunk`. The PR body should reference the issue (`Closes #N`).
 
-### Label self-healing
-- At orchestrator startup (in `orchestrateCommandWithDeps`), check if required labels exist:
-  - `aloop/auto`, `aloop/epic`, `aloop/sub-issue`, `aloop/needs-refine`, `aloop/needs-review`, `aloop/in-progress`, `aloop/done`
-- If any are missing, create them via `gh label create` with appropriate colors
-- Run this check once at startup and cache the result in session state
-- If label creation fails (permissions), log warning but don't block orchestration
+4. **PR gates** — the orchestrator scan pass already has PR lifecycle handling (`prLifecycleDeps`). Once the PR exists, it should go through CI gates, agent review, then merge.
 
-### Config derivation from meta.json
-- If `state.filter_repo` is null but meta.json has `repo` or `project_root`, derive repo from `gh repo view --json nameWithOwner`
-- If `state.trunk_branch` is default but repo has a different default branch, detect and use it
-- If `gh_project_number` is not set, attempt dynamic discovery (already partially implemented — verify it works)
+## Current state
 
-### Missing config recovery
-- If `meta.json` is missing critical fields, attempt to reconstruct from:
-  - Git remote URL → repo slug
-  - `orchestrator.json` state → spec file, trunk branch
-  - Environment variables → `GH_HOST`, `GITHUB_REPOSITORY`
-- Log all derivations so the user can verify correctness
+- `launchChildLoop` creates worktree with branch but never pushes
+- `--backup` flag exists in loop.sh but creates a separate backup repo, not pushing to issue branch
+- Child completion is detected by scan pass (`monitored=3`) but no PR is created
+- All 3 completed children's work is stuck in local worktrees
 
-### Startup health check
-- Before entering scan loop, run a quick health check:
-  - `gh auth status` → verify authenticated
-  - `gh repo view` → verify repo access
-  - `git status` → verify clean worktree
-  - Write results to `session-health.json`
-- If critical checks fail, write `ALERT.md` and exit with clear error
+## Implementation
 
-## Acceptance Criteria
+Option A (simplest): Pass `--backup` to child loop.sh but modify backup logic to push to origin instead of creating a separate repo.
 
-- [ ] Missing labels auto-created at startup
-- [ ] Missing repo config derived from git remote / meta.json
-- [ ] Missing trunk branch derived from repo default branch
-- [ ] Startup health check verifies gh auth, repo access, git state
-- [ ] `session-health.json` written with check results
-- [ ] All derivations logged for transparency
-- [ ] Graceful degradation: missing optional config doesn't block operation
+Option B (cleaner): Add a post-iteration hook in loop.sh that runs `git push origin HEAD` after each commit. No backup repo needed.
 
-## File Scope
-- `aloop/cli/src/commands/orchestrate.ts` (modify — startup sequence)
-- `aloop/cli/src/commands/orchestrate.test.ts` (add tests)
+For PR creation: `process-requests` should detect completed children (child_session set, PID dead, status.json state=completed) and create PRs via `gh pr create`.
