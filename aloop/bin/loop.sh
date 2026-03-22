@@ -716,7 +716,7 @@ register_iteration_failure() {
     if ! { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; }; then
         return
     fi
-    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "qa" ] || [ "$iteration_mode" = "review" ]; }; then
+    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "qa" ] || [ "$iteration_mode" = "review" ] || [ "$iteration_mode" = "proof" ]; }; then
         return
     fi
 
