@@ -134,3 +134,117 @@ all_tasks_done → spec-gap → docs → spec-review → final-review → final-
 
 ### Cleanup
 All test directories, sessions, and processes cleaned up.
+
+---
+
+## QA Session — 2026-03-22 (iteration 9, re-test after fixes)
+
+### Binary Under Test
+```
+Binary: /tmp/aloop-test-install-XXNapK/bin/aloop
+Version: 1.0.0
+```
+
+### Target Selection
+- Finalizer entry (P0 re-verify): selected because FAIL — critical bug needs verification after code review
+- QA coverage gate missing file: selected because new fix at 87bca89c needs verification
+- QA coverage parsing + gate (loop.sh): selected because FAIL — was blocked by finalizer-skip
+- Finalizer prompt compilation: selected because PASS 2/3 — fix at 8ef27976 needs verification
+- Default scaffold pipeline.yml: selected because open bug — still FAIL
+
+### Test Environment
+- Temp dirs: /tmp/qa-test-finalizer-1774202102, /tmp/qa-test-scaffold-1774202886
+- Features tested: 5 feature areas
+- Provider: claude (for loop invocation)
+- Runtime commit: 8ef27976
+
+### Results
+- PASS: QA coverage parsing (loop.sh) — behavioral tests pass (4/4)
+- PASS: QA coverage gate missing file — returns success when file missing
+- PASS: Finalizer prompt copying — all 6 templates now in session prompts dir
+- PASS: Finalizer prompt templates — all 6 exist with correct frontmatter
+- FAIL: Finalizer entry — root cause is empty finalizer array, NOT loop logic bug
+- FAIL: pipeline.yml not compiled into loop-plan.json — finalizer array always []
+- FAIL: Scaffold pipeline.yml — still not created by scaffold
+- FAIL: Pester tests — first test fails (tasks_marked_complete event not found), 16s per test
+
+### Bugs Filed
+- [qa/P1] pipeline.yml not compiled into loop-plan.json finalizer array (NEW — this is the real root cause of the P0)
+
+### Root Cause Analysis: Finalizer Skip Bug (P0)
+The original P0 "finalizer skipped when allTasksMarkedDone=true" was misdiagnosed. Code review (in TODO.md) correctly identified that loop.sh/loop.ps1 logic is correct — the loop DOES enter the finalizer when finalizerLength>0.
+
+The actual root cause is that `aloop start` compilation never populates the `finalizer` array in loop-plan.json from pipeline.yml. Even when pipeline.yml exists at `~/.aloop/projects/<hash>/pipeline.yml`, `loop-plan.json` always has `"finalizer": []`. With finalizerLength=0, the loop correctly skips to completed state.
+
+Two bugs combine:
+1. scaffold doesn't create pipeline.yml → no finalizer config exists
+2. Even when pipeline.yml exists, it's not compiled into loop-plan.json → finalizer array empty
+
+### Command Transcript
+
+#### Test 1: Install and deploy
+```
+$ npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1
+/tmp/aloop-test-install-XXNapK/bin/aloop
+
+$ /tmp/aloop-test-install-XXNapK/bin/aloop --version
+1.0.0
+
+$ aloop update
+Updated ~/.aloop from <worktree>
+Version: 8ef27976 (2026-03-22T17:54:56Z)
+Files updated: 108
+```
+
+#### Test 2: Behavioral tests (bash)
+```
+$ bash aloop/bin/loop_finalizer_qa_coverage.tests.sh
+PASS: finalizer QA gate passes at <=30% untested and 0 fail
+PASS: finalizer QA gate blocks when untested >30%
+PASS: finalizer QA gate blocks when FAIL rows exist
+PASS: finalizer QA gate skips enforcement when QA_COVERAGE.md is missing
+All finalizer QA coverage gate tests passed.
+```
+Exit code: 0
+
+#### Test 3: Pester tests (PowerShell)
+```
+$ pwsh -Command 'Invoke-Pester -Path "./aloop/bin/loop.tests.ps1" -Output Detailed'
+[-] build completion logs tasks_marked_complete (forced review, no all_tasks_complete) 16.63s
+   Expected 'tasks_marked_complete' to be found in collection @('session_start',
+   'base_sync_fetch_failed', 'frontmatter_applied', 'iteration_complete', ...), but it was not found.
+```
+Exit code: 124 (timeout at 30s — tests take ~16s each, 119 total)
+
+#### Test 4: Finalizer prompt copying (fix verification)
+```
+$ aloop scaffold  # in test project
+$ aloop start --provider claude --max-iterations 1
+
+# Session prompts directory:
+$ ls ~/.aloop/sessions/qa-test-*/prompts/
+PROMPT_build.md    PROMPT_docs.md       PROMPT_final-qa.md     PROMPT_final-review.md
+PROMPT_plan.md     PROMPT_proof.md      PROMPT_qa.md           PROMPT_review.md
+PROMPT_spec-gap.md PROMPT_spec-review.md PROMPT_steer.md
+```
+All 6 finalizer prompts present. Fix at 8ef27976 verified.
+
+#### Test 5: loop-plan.json finalizer array
+```
+# Even with pipeline.yml at ~/.aloop/projects/<hash>/pipeline.yml:
+$ python3 -c "import json; print(json.load(open('loop-plan.json'))['finalizer'])"
+[]
+```
+Finalizer array empty despite pipeline.yml existing.
+
+#### Test 6: Scaffold pipeline.yml
+```
+$ mkdir /tmp/qa-test-scaffold-*; cd ...; git init; aloop scaffold
+$ ls ~/.aloop/projects/<hash>/
+config.yml  prompts/
+# NO pipeline.yml
+```
+Confirmed: scaffold does not create pipeline.yml.
+
+### Cleanup
+All test directories, sessions, test install prefix, and projects cleaned up.
