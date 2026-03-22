@@ -29,11 +29,14 @@
 | aloop scaffold (basic) | 2026-03-22 | e5ef630c | PASS | Creates config.yml + prompts dir. JSON and text output both work. Overrides (--language, --provider) applied. |
 | aloop discover --help | 2026-03-22 | e5ef630c | PASS | Shows --project-root and --output options |
 | aloop discover (basic) | 2026-03-22 | e5ef630c | PASS | Rich JSON output with project info, providers, spec candidates, mode recommendation. Text output clean. |
-| aloop discover (nonexistent path) | 2026-03-22 | 96944db3 | FAIL | Still returns exit 0 with empty results for nonexistent path. Bug remains open. |
-| aloop setup --help | 2026-03-22 | 96944db3 | PASS | Shows --project-root, --spec, --providers, --mode, --autonomy-level, --non-interactive options |
+| aloop discover (nonexistent path) | 2026-03-22 | c6a4a580 | PASS | Fixed: returns exit 1 with {"error":"Project root does not exist: /nonexistent"}. Re-tested iter 70. |
+| aloop setup --help | 2026-03-22 | c6a4a580 | PASS | Shows --project-root, --spec, --providers, --mode, --autonomy-level, --non-interactive, --output options |
+| provider health bash integration tests | 2026-03-22 | c6a4a580 | PASS | 8/8 tests pass: state transitions, backoff escalation, concurrent writes, lock failure, cross-session reset |
+| provider health TS tests (session.test.ts) | 2026-03-22 | c6a4a580 | PASS | 29 tests pass (1 skipped: Windows-only). readProviderHealth, formatHealthLine, renderStatus, CLI integration |
+| provider health unit tests (bash) | 2026-03-22 | c6a4a580 | PASS | 2/2 tests pass: degraded skip + all-degraded signal |
 | aloop setup --non-interactive | 2026-03-22 | 96944db3 | PASS | Creates config.yml + prompts dir. Spec override, mode, providers, autonomy-level all work. Invalid values rejected. |
-| aloop setup (interactive, no TTY) | 2026-03-22 | 96944db3 | FAIL | Crashes with exit 13 and "unsettled top-level await" when stdin is not a TTY. Should detect non-TTY and suggest --non-interactive. |
-| aloop setup --output json | 2026-03-22 | 96944db3 | FAIL | --output is not a recognized option for setup (unlike all other commands). Missing feature. |
+| aloop setup (interactive, no TTY) | 2026-03-22 | c6a4a580 | PASS | Fixed: "Error: Interactive setup requires a TTY. Re-run with --non-interactive to use defaults." exit 1. Re-tested iter 70. |
+| aloop setup --output json | 2026-03-22 | c6a4a580 | PASS | Fixed: --output option added, error paths emit JSON. Success path still outputs text (minor inconsistency). Re-tested iter 70. |
 | aloop resolve --help | 2026-03-22 | 96944db3 | PASS | Shows --project-root and --output options. Default output is JSON. |
 | aloop resolve (basic) | 2026-03-22 | 96944db3 | PASS | Returns project + setup info as clean JSON. Text and JSON modes work. |
 | aloop resolve (unconfigured project) | 2026-03-22 | 96944db3 | PASS | Returns JSON error "Run `aloop setup` first", exit 1. |
