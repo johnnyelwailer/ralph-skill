@@ -12,16 +12,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Toaster } from '@/components/ui/sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
-import { relativeTime, phaseColors, phaseBarColors, phaseDotColors, statusColors, PhaseBadge, STATUS_DOT_CONFIG, StatusDot } from '@/components/session/helpers';
+import { relativeTime, phaseColors, phaseDotColors, statusColors, PhaseBadge, STATUS_DOT_CONFIG, StatusDot } from '@/components/session/helpers';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { SessionDetail } from '@/components/session/SessionDetail';
 export { relativeTime } from '@/components/session/helpers';
 
 // ── ANSI + Markdown rendering ──
@@ -586,7 +585,6 @@ function Header({
   stuckCount: number; startedAt: string; avgDuration: string; maxIterations: number | null;
   onToggleMobileMenu: () => void;
 }) {
-  const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
   return (
     <header className="border-b border-border px-3 py-2 md:px-4 md:py-2.5 shrink-0">
       <h1 className="sr-only">Aloop Dashboard</h1>
@@ -594,36 +592,24 @@ function Header({
         <button type="button" className="md:hidden p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
           <Menu className="h-5 w-5" />
         </button>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button type="button" className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors" onClick={onOpenSwitcher}>
-              <StatusDot status={isRunning ? 'running' : currentState} />
-              <span className="text-sm font-semibold truncate max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">{sessionName}</span>
-            </button>
-          </TooltipTrigger>
-          <TooltipContent><p>{sessionName}</p></TooltipContent>
-        </Tooltip>
-
-        {/* Iteration info — hidden on mobile, tap session name for details */}
-        <HoverCard>
-          <HoverCardTrigger asChild>
-            <span className="text-xs text-muted-foreground cursor-help whitespace-nowrap hidden sm:flex items-center gap-1">
-              <Activity className="h-3 w-3" />
-              iter {currentIteration}{maxIterations ? `/${maxIterations}` : '/\u221E'}{tasksTotal > 0 ? ` \u00B7 ${tasksTotal} todos` : ''}
-            </span>
-          </HoverCardTrigger>
-          <HoverCardContent className="w-56 text-xs">
-            <div className="space-y-1">
-              <p><span className="text-muted-foreground">Phase:</span> {currentPhase || 'none'}</p>
-              <p><span className="text-muted-foreground">Status:</span> {currentState}</p>
-              <p><span className="text-muted-foreground">Provider:</span> {providerName || 'none'}</p>
-              <p><span className="text-muted-foreground">TODOs:</span> {tasksCompleted}/{tasksTotal} ({progressPercent}%)</p>
-              <p><span className="text-muted-foreground">Stuck:</span> <span className={stuckCount > 0 ? 'text-red-500 font-medium' : ''}>{stuckCount}</span></p>
-              {startedAt && <p><span className="text-muted-foreground">Elapsed:</span> <ElapsedTimer since={startedAt} /></p>}
-              {avgDuration && <p><span className="text-muted-foreground">Avg iter:</span> {avgDuration}</p>}
-            </div>
-          </HoverCardContent>
-        </HoverCard>
+        <SessionDetail
+          sessionName={sessionName}
+          isRunning={isRunning}
+          currentState={currentState}
+          currentPhase={currentPhase}
+          currentIteration={currentIteration}
+          progressPercent={progressPercent}
+          maxIterations={maxIterations}
+          tasksTotal={tasksTotal}
+          onOpenSwitcher={onOpenSwitcher}
+          extraHoverContent={<>
+            <p><span className="text-muted-foreground">Provider:</span> {providerName || 'none'}</p>
+            <p><span className="text-muted-foreground">TODOs:</span> {tasksCompleted}/{tasksTotal} ({progressPercent}%)</p>
+            <p><span className="text-muted-foreground">Stuck:</span> <span className={stuckCount > 0 ? 'text-red-500 font-medium' : ''}>{stuckCount}</span></p>
+            {startedAt && <p><span className="text-muted-foreground">Elapsed:</span> <ElapsedTimer since={startedAt} /></p>}
+            {avgDuration && <p><span className="text-muted-foreground">Avg iter:</span> {avgDuration}</p>}
+          </>}
+        />
 
         {startedAt && (
           <span className="text-xs text-muted-foreground whitespace-nowrap hidden md:flex items-center gap-1">
@@ -635,13 +621,6 @@ function Header({
           <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap hidden lg:inline">~{avgDuration}/iter</span>
         )}
 
-        {/* Progress bar — hidden on mobile */}
-        <div className="hidden sm:flex items-center gap-2 min-w-0 flex-1 max-w-xs" data-testid="header-progress">
-          <Progress value={progressPercent} className="flex-1 h-1.5" indicatorClassName={phaseBarColor} />
-          <span className="text-[10px] text-muted-foreground whitespace-nowrap">{progressPercent}%</span>
-        </div>
-
-        <PhaseBadge phase={currentPhase} />
         {providerName && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -650,8 +629,6 @@ function Header({
             <TooltipContent><p>{modelName ? `${providerName}/${modelName}` : providerName}</p></TooltipContent>
           </Tooltip>
         )}
-        {/* Status label — hidden on mobile (StatusDot already shows it) */}
-        <span className={`text-xs whitespace-nowrap font-medium hidden sm:inline ${statusColors[currentState] ?? 'text-muted-foreground'}`} data-testid="header-status">{currentState}</span>
 
         <div className="flex-1" />
         <ConnectionIndicator status={connectionStatus} />
