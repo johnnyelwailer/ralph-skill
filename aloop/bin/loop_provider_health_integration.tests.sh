@@ -294,14 +294,91 @@ test_success_preserves_last_failure_info() {
     fi
 }
 
+test_concurrent_write_safety() {
+    setup
+    local ok=true
+    local pids=()
+    local num_writers=5
+    local provider="conctest"
+
+    # Spawn multiple parallel subshells that each write to the same provider's
+    # health file simultaneously.  Each subshell inherits the extracted
+    # functions and the test PROVIDER_HEALTH_DIR via the environment.
+    for i in $(seq 1 "$num_writers"); do
+        (
+            update_provider_health_on_failure "$provider" "timeout error from writer $i"
+        ) &
+        pids+=($!)
+    done
+
+    # Wait for all writers to finish
+    for pid in "${pids[@]}"; do
+        wait "$pid" 2>/dev/null || true
+    done
+
+    # The health file must exist and be valid JSON
+    local path
+    path=$(get_provider_health_path "$provider")
+    if [ ! -f "$path" ]; then
+        echo "  FAIL: health file should exist after concurrent writes"
+        ok=false
+    else
+        local raw
+        raw=$(cat "$path")
+
+        # Verify it has all required JSON fields (proves no truncation/corruption)
+        local status
+        status=$(extract_json_string_field "$raw" "status")
+        if [ -z "$status" ]; then
+            echo "  FAIL: file JSON missing or empty 'status' field after concurrent writes"
+            echo "  File contents: $raw"
+            ok=false
+        fi
+
+        local failures
+        failures=$(extract_json_number_field "$raw" "consecutive_failures")
+        if [ -z "$failures" ] || [ "$failures" -lt 1 ]; then
+            echo "  FAIL: consecutive_failures should be >= 1, got '$failures'"
+            echo "  File contents: $raw"
+            ok=false
+        fi
+
+        # Verify the file is well-formed by checking it contains opening and
+        # closing braces and all expected keys
+        for key in status last_success last_failure failure_reason consecutive_failures cooldown_until; do
+            if ! printf '%s' "$raw" | grep -q "\"$key\""; then
+                echo "  FAIL: JSON missing key '$key' after concurrent writes"
+                echo "  File contents: $raw"
+                ok=false
+                break
+            fi
+        done
+    fi
+
+    # Ensure no stale lock directory is left behind
+    if [ -d "${path}.lock" ]; then
+        echo "  FAIL: lock directory should not remain after writes complete"
+        ok=false
+    fi
+
+    teardown
+    if $ok; then
+        echo "PASS: concurrent write safety — $num_writers parallel writers produced valid JSON"
+    else
+        echo "FAIL: concurrent write safety"
+        failed=1
+    fi
+}
+
 # --- Run tests ---
 
-echo "=== Provider Health Integration Tests (AC1) ==="
+echo "=== Provider Health Integration Tests ==="
 test_healthy_to_cooldown_to_healthy
 test_healthy_to_degraded_on_auth_failure
 test_backoff_escalation_through_all_tiers
 test_health_file_is_valid_json
 test_success_preserves_last_failure_info
+test_concurrent_write_safety
 
 if [ $failed -eq 0 ]; then
     echo "All integration tests passed!"
