@@ -10,6 +10,16 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('useCost', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -96,5 +106,85 @@ describe('useCost', () => {
     expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 120000);
 
     expect(intervalCallback).toEqual(expect.any(Function));
+  });
+
+  it('guards against concurrent fetches using inFlightRef', async () => {
+    const first = deferred<Response>();
+    const fetchMock = vi
+      .fn<() => Promise<Response>>()
+      .mockImplementationOnce(() => first.promise);
+    vi.stubGlobal('fetch', fetchMock);
+
+    let intervalCallback: (() => void) | null = null;
+    vi.spyOn(window, 'setInterval').mockImplementation((handler: TimerHandler, _timeout?: number) => {
+      intervalCallback = handler as () => void;
+      return 123 as unknown as number;
+    });
+
+    const { result } = renderHook(() => useCost({ log: '', meta: null }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    act(() => {
+      intervalCallback?.();
+      intervalCallback?.();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      first.resolve(jsonResponse({ total_usd: 1 }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.totalCost).toBe(1);
+  });
+
+  it('skips state updates when request resolves after unmount (cancelled=true path)', async () => {
+    const pending = deferred<Response>();
+    const fetchMock = vi.fn(async () => await pending.promise);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { unmount } = renderHook(() => useCost({ log: '', meta: null }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    unmount();
+
+    await act(async () => {
+      pending.resolve(jsonResponse({ error: 'opencode_unavailable' }));
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips error state updates when request rejects after unmount (cancelled=true catch path)', async () => {
+    const pending = deferred<Response>();
+    const fetchMock = vi.fn(async () => await pending.promise);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { unmount } = renderHook(() => useCost({ log: '', meta: null }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    unmount();
+
+    await act(async () => {
+      pending.reject(new Error('network down'));
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats NaN-producing numeric strings as null via toNumber', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ total_usd: 2.5 })));
+
+    const { result } = renderHook(() =>
+      useCost({
+        log: '',
+        meta: { budget_cap_usd: 'abc-not-a-number' },
+      }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.totalCost).toBe(2.5);
+    expect(result.current.budgetCap).toBeNull();
+    expect(result.current.budgetUsedPercent).toBeNull();
   });
 });
