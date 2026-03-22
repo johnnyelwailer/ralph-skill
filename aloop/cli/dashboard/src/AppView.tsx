@@ -1297,7 +1297,7 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
                   <DropdownMenuItem
                     key={n}
                     onSelect={() => setActiveTab(n)}
-                    className="w-full cursor-pointer text-left text-[11px] px-3 py-1.5"
+                    className={`w-full cursor-pointer text-left text-[11px] px-3 py-1.5${activeTab === n ? ' bg-accent' : ''}`}
                   >
                     {tabLabels[n] ?? n.replace(/\.md$/i, '')}
                   </DropdownMenuItem>
