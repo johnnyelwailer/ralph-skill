@@ -726,7 +726,7 @@ function resolveProviderHints(provider, enabledProviders = []) {
     .join('\n');
 }
 
-const LOOP_PROMPT_TEMPLATES = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+const LOOP_PROMPT_TEMPLATES = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md'];
 const SINGLE_PROMPT_TEMPLATES = ['PROMPT_single.md'];
 const ORCHESTRATOR_PROMPT_TEMPLATES = [
   'PROMPT_orch_scan.md',
