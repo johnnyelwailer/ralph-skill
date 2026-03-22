@@ -252,6 +252,41 @@ exit 0
         $status.state | Should -Be 'stopped'
     }
 
+    It 'enters finalizer at cycle boundary when allTasksMarkedDone is true at session start' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e = New-ShLoopEnv -Scenario 'approve'
+
+        Set-Content (Join-Path $e.WorkDir 'TODO.md') "- [x] Task 1`n"
+        Set-Content (Join-Path $e.PromptsDir 'PROMPT_spec-gap.md') "# Spec Gap Mode`nAnalyze uncovered gaps.`n"
+
+        [pscustomobject]@{
+            cycle = @(
+                'PROMPT_plan.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_qa.md',
+                'PROMPT_review.md'
+            )
+            cyclePosition = 7
+            finalizer = @('PROMPT_spec-gap.md')
+            finalizerPosition = 0
+            allTasksMarkedDone = $true
+            iteration = 0
+        } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $e.SessionDir 'loop-plan.json')
+
+        $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 1
+        $events = Get-ShLogEvents -LogFile $e.LogFile
+        $status = Get-Content (Join-Path $e.SessionDir 'status.json') -Raw | ConvertFrom-Json
+
+        $result.ExitCode | Should -Be 0
+        $events | Should -Contain 'finalizer_entered'
+        $events | Should -Not -Contain 'finalizer_completed'
+        $status.state | Should -Be 'stopped'
+    }
+
     It 'loop.sh source maps success and stop states to exited/stopped' {
         $loopSource = Get-Content (Join-Path $PSScriptRoot 'loop.sh') -Raw
         ($loopSource | Select-String -Pattern 'write_status "\$ITERATION" "\$iter_mode" "\$iter_provider" 0 "exited"' -AllMatches).Matches.Count | Should -Be 2
@@ -863,6 +898,40 @@ exit 0
         $result = Invoke-LoopScript -LoopEnv $e -MaxIter 1
         $status = Get-Content (Join-Path $e.SessionDir 'status.json') -Raw | ConvertFrom-Json
         $result.ExitCode | Should -Be 0
+        $status.state | Should -Be 'stopped'
+    }
+
+    It 'enters finalizer at cycle boundary when allTasksMarkedDone is true at session start' {
+        $e = New-LoopEnv -Scenario 'approve'
+
+        Set-Content (Join-Path $e.WorkDir 'TODO.md') "- [x] Task 1`n"
+        Set-Content (Join-Path $e.PromptsDir 'PROMPT_spec-gap.md') "# Spec Gap Mode`nAnalyze uncovered gaps.`n"
+
+        [pscustomobject]@{
+            cycle = @(
+                'PROMPT_plan.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_qa.md',
+                'PROMPT_review.md'
+            )
+            cyclePosition = 7
+            finalizer = @('PROMPT_spec-gap.md')
+            finalizerPosition = 0
+            allTasksMarkedDone = $true
+            iteration = 0
+        } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $e.SessionDir 'loop-plan.json')
+
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 1
+        $events = Get-LogEvents -LogFile $e.LogFile
+        $status = Get-Content (Join-Path $e.SessionDir 'status.json') -Raw | ConvertFrom-Json
+
+        $result.ExitCode | Should -Be 0
+        $events | Should -Contain 'finalizer_entered'
+        $events | Should -Not -Contain 'finalizer_completed'
         $status.state | Should -Be 'stopped'
     }
 
