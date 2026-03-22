@@ -133,12 +133,17 @@ function killProcess(pid) {
 export async function stopSession(homeDir, sessionId) {
   const active = await readActiveSessions(homeDir);
   const entry = active[sessionId];
+  const defaultSessionDir = path.join(homeDir, '.aloop', 'sessions', sessionId);
 
   if (!entry) {
+    const existingStatus = await readSessionStatus(defaultSessionDir);
+    if (existingStatus?.state === 'stopped') {
+      return { success: false, reason: `Session already stopped: ${sessionId}` };
+    }
     return { success: false, reason: `Session not found: ${sessionId}` };
   }
 
-  const sessionDir = entry.session_dir ?? path.join(homeDir, '.aloop', 'sessions', sessionId);
+  const sessionDir = entry.session_dir ?? defaultSessionDir;
   const pid = entry.pid ?? null;
 
   // Kill process if alive

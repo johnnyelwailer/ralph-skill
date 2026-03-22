@@ -140,6 +140,24 @@ test('stopSession returns failure when session id is missing from active map', a
   assert.match(result.reason || '', /Session not found/);
 });
 
+test('stopSession returns already stopped when session is stopped but not active', async () => {
+  const { homeDir } = await makeHomeDir('aloop-session-stop-already-stopped-');
+  const aloopDir = path.join(homeDir, '.aloop');
+  const sessionId = 'already-stopped';
+  const sessionDir = path.join(aloopDir, 'sessions', sessionId);
+
+  await mkdir(sessionDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'active.json'), JSON.stringify({}), 'utf8');
+  await writeFile(path.join(sessionDir, 'status.json'), JSON.stringify({
+    state: 'stopped',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  }), 'utf8');
+
+  const result = await stopSession(homeDir, sessionId);
+  assert.equal(result.success, false);
+  assert.match(result.reason || '', /Session already stopped/);
+});
+
 test('stopSession skips status write when session directory does not exist', async () => {
   const { homeDir } = await makeHomeDir('aloop-session-stop-no-dir-');
   const aloopDir = path.join(homeDir, '.aloop');
