@@ -4,6 +4,13 @@
 
 ### In Progress
 
+- [ ] [review] Gate 1: `reviewPrDiff` (orchestrate.ts:3271) returns `verdict: 'pending'` on diff fetch error — change to `'flag-for-human'` and update summary to match test expectation `'Failed to fetch PR diff: ...'` (priority: high)
+- [ ] [review] Gate 1: `checkPrGates` (orchestrate.ts:3203-3204) catch block sets `status: 'pass'` on mergeability API error — change to `status: 'fail'` so gate fails safe (priority: high)
+- [ ] [review] Gate 1/4: `processPrLifecycle` (orchestrate.ts:3623) hardcodes `new GitHubAdapter(...)` instead of accepting adapter through `PrLifecycleDeps` — add an `adapter` or `createReview` dep to preserve pluggable adapter pattern (priority: high)
+- [ ] [review] Gate 3: Create `adapter.test.ts` with direct unit tests for `GitHubAdapter.createReview()` and `GitHubAdapter.resolveThread()` — test API call structure, suggestion body formatting, empty comments array, and error cases (priority: high)
+- [ ] [review] Gate 4: Redispatch steering (orchestrate.ts:5371) omits per-comment details from `pending_review_comments` — include comment IDs, file paths, and line numbers so the builder knows exactly which threads to address. Test at orchestrate.test.ts:4458 expects `Comment ID: 1234` (priority: high)
+- [ ] [review] Gate 4: Remove no-op spread at orchestrate.ts:3618-3620 — `(reviewResult.comments ?? []).map(c => ({...c}))` adds no value since objects are not mutated downstream (priority: low)
+
 ### Up Next
 
 - [x] **Extend `AgentReviewResult` to include inline comments** — Add an `inline_comments` array to the `AgentReviewResult` interface in `orchestrate.ts`. Each entry needs `path` (file), `line` (line number), `body` (comment text), and optional `suggestion` (replacement code). This is the foundational type that everything else depends on. (priority: critical)
@@ -21,5 +28,9 @@
 - [ ] **Update `invokeAgentReview` in `process-requests.ts` to parse inline comments** — The review result parser (line ~536) currently extracts `verdict` and `summary` from the JSON file. Extend it to also parse the `inline_comments` array and pass it through to the orchestrator. Handle gracefully if the field is missing (backwards compat with old review agents). (priority: medium)
 
 - [ ] **Add tests for inline review creation and thread resolution** — Add unit tests covering: (1) `AgentReviewResult` with inline comments, (2) `GitHubAdapter.createReview()` posting formal reviews, (3) `GitHubAdapter.resolveThread()`, (4) orchestrator using `createReview` instead of `gh pr comment`, (5) builder STEERING.md including comment IDs. Extend existing tests in `gh.test.ts`, `orchestrate.test.ts`, and `adapter.test.ts`. (priority: medium)
+
+- [ ] [qa/P1] **reviewPrDiff returns `pending` instead of `flag-for-human` when diff fetch fails**: Ran `npm test` → test "flags for human when diff fetch fails" expects `flag-for-human` but gets `pending`. Spec says diff fetch errors should flag for human review, not silently remain pending. Tested at iter 1, commit b82c1e3. (priority: high)
+
+- [ ] [qa/P1] **checkPrGates "handles gh errors gracefully for mergeability" returns `pass` instead of `fail`**: Ran `npm test` → test expects `fail` when gh returns errors for mergeability check, but gets `pass`. The PR gate should fail-safe when GitHub API errors occur, not pass silently. Tested at iter 1, commit b82c1e3. (priority: high)
 
 ### Completed
