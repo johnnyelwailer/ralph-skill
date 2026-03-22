@@ -2048,6 +2048,12 @@ try {
         }
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
 
+        # Capture HEAD before iteration for auto-push detection
+        $headBefore = ""
+        Push-Location $WorkDir
+        try { $headBefore = (git rev-parse HEAD 2>$null) } catch { }
+        Pop-Location
+
         if (Run-QueueIfPresent -IterationProvider $iterationProvider) {
             continue
         }
@@ -2247,6 +2253,21 @@ try {
                 error = "$_"
             }
         }
+
+        # Auto-push to remote after commits (orchestrator child loops)
+        Push-Location $WorkDir
+        try {
+            $headAfter = ""
+            try { $headAfter = (git rev-parse HEAD 2>$null) } catch { }
+            if ($headAfter -and $headBefore -and $headAfter -ne $headBefore) {
+                $hasRemote = $false
+                try { git remote get-url origin 2>$null | Out-Null; $hasRemote = $true } catch { }
+                if ($hasRemote) {
+                    git push -u origin HEAD 2>&1 | Select-Object -Last 1
+                }
+            }
+        } catch { }
+        finally { Pop-Location }
 
         Wait-ForRequests
         Start-Sleep -Seconds 3
