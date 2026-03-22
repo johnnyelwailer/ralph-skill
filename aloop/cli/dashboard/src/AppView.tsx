@@ -17,6 +17,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 import { relativeTime, phaseColors, phaseDotColors, statusColors, PhaseBadge, STATUS_DOT_CONFIG, StatusDot } from '@/components/session/helpers';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -1794,10 +1795,47 @@ export function App() {
     <TooltipProvider delayDuration={300}>
       <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
         <div className="flex flex-1 min-h-0">
-          {/* Desktop sidebar */}
-          <div className="hidden md:flex">
-            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
-          </div>
+          <ResizablePanelGroup>
+            <ResizablePanel
+              key={sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}
+              className="hidden md:block"
+              defaultSize={sidebarCollapsed ? 6 : 22}
+              minSize={sidebarCollapsed ? 6 : 14}
+              maxSize={sidebarCollapsed ? 8 : 35}
+            >
+              <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
+            </ResizablePanel>
+            <ResizableHandle className={`hidden md:flex ${sidebarCollapsed ? 'pointer-events-none opacity-0' : ''}`} />
+            <ResizablePanel defaultSize={78} minSize={40}>
+              <div className="flex flex-col flex-1 min-w-0 h-full">
+                <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} />
+                {/* Mobile panel toggle */}
+                <div className="lg:hidden flex border-b border-border shrink-0">
+                  <button
+                    type="button"
+                    className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                    onClick={() => setActivePanel('docs')}
+                  >
+                    <FileText className="h-3.5 w-3.5 inline mr-1" />Documents
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                    onClick={() => setActivePanel('activity')}
+                  >
+                    <Activity className="h-3.5 w-3.5 inline mr-1" />Activity
+                  </button>
+                </div>
+                <main className="flex-1 min-h-0 p-2 md:p-3">
+                  <div className="flex gap-3 h-full">
+                    {docsPanel}
+                    {activityPanel}
+                  </div>
+                </main>
+                <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} onResume={() => void handleResume()} resumeSubmitting={resumeSubmitting} isRunning={isRunning} />
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
           {/* Mobile sidebar drawer */}
           {mobileMenuOpen && (
             <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
@@ -1807,33 +1845,6 @@ export function App() {
               </div>
             </div>
           )}
-          <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} />
-            {/* Mobile panel toggle */}
-            <div className="lg:hidden flex border-b border-border shrink-0">
-              <button
-                type="button"
-                className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setActivePanel('docs')}
-              >
-                <FileText className="h-3.5 w-3.5 inline mr-1" />Documents
-              </button>
-              <button
-                type="button"
-                className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setActivePanel('activity')}
-              >
-                <Activity className="h-3.5 w-3.5 inline mr-1" />Activity
-              </button>
-            </div>
-            <main className="flex-1 min-h-0 p-2 md:p-3">
-              <div className="flex gap-3 h-full">
-                {docsPanel}
-                {activityPanel}
-              </div>
-            </main>
-            <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} onResume={() => void handleResume()} resumeSubmitting={resumeSubmitting} isRunning={isRunning} />
-          </div>
         </div>
         <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} sessions={sessions} onSelectSession={selectSession} onStop={(f) => void handleStop(f)} />
         <Toaster />

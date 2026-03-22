@@ -5,7 +5,7 @@
 ### Up Next
 
 - [x] [nice-to-have] Add search/filter input to SessionList — added filter input with search icon, matches against session name, project, branch, and status. Includes "No matching sessions" empty state. Tests added. (117 LOC, under 150 limit)
-- [ ] [nice-to-have] Add resizable panel integration to Sidebar — spec target lists "Resizable panel integration" but acceptance criteria don't require it. ResizablePanel UI primitives exist in `ui/resizable.tsx` but Sidebar uses fixed width. (priority: low)
+- [x] [nice-to-have] Add resizable panel integration to Sidebar — integrated desktop layout with `ResizablePanelGroup`/`ResizablePanel`/`ResizableHandle` in `AppView.tsx`; sidebar can be drag-resized when expanded and still collapses via `Ctrl+B`/toggle button. (priority: low)
 - [~] [investigate] `orchestrate.test.ts` failures (22) — confirmed pre-existing on master, not regressions from this branch. No commits on `aloop/issue-154` modify `orchestrate.ts` or `orchestrate.test.ts`; diff comes from merge base. Not a blocker for this issue.
 
 ### Completed
