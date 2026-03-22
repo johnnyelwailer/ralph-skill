@@ -206,7 +206,7 @@ export interface GhStartResult {
     worktree: boolean;
     pid: number;
   };
-  base_branch: 'agent/main' | 'main';
+  base_branch: 'agent/trunk' | 'main';
   pr: { number: number | null; url: string | null } | null;
   issue_comment_posted: boolean;
   completion_state: string | null;
@@ -1064,14 +1064,14 @@ async function finalizeWatchEntry(
     // ignore
   }
 
-  let baseBranch: 'agent/main' | 'main' = 'main';
+  let baseBranch: 'agent/trunk' | 'main' = 'main';
   try {
-    await execFileAsync('git', ['-C', projectRoot, 'rev-parse', '--verify', 'agent/main']);
-    baseBranch = 'agent/main';
+    await execFileAsync('git', ['-C', projectRoot, 'rev-parse', '--verify', 'agent/trunk']);
+    baseBranch = 'agent/trunk';
   } catch {
     try {
-      await execFileAsync('git', ['-C', projectRoot, 'branch', 'agent/main', 'main']);
-      baseBranch = 'agent/main';
+      await execFileAsync('git', ['-C', projectRoot, 'branch', 'agent/trunk', 'main']);
+      baseBranch = 'agent/trunk';
     } catch {
       baseBranch = 'main';
     }
@@ -1722,17 +1722,17 @@ export async function ghStartCommandWithDeps(options: GhStartCommandOptions, dep
   config.issue_url = issue.url;
   deps.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
 
-  let baseBranch: 'agent/main' | 'main' = 'main';
+  let baseBranch: 'agent/trunk' | 'main' = 'main';
   const projectRoot = typeof meta.project_root === 'string' && meta.project_root.trim() ? meta.project_root : (options.projectRoot ?? deps.cwd());
   try {
-    await deps.execGit(['-C', projectRoot, 'rev-parse', '--verify', 'agent/main']);
-    baseBranch = 'agent/main';
+    await deps.execGit(['-C', projectRoot, 'rev-parse', '--verify', 'agent/trunk']);
+    baseBranch = 'agent/trunk';
   } catch {
     try {
-      await deps.execGit(['-C', projectRoot, 'branch', 'agent/main', 'main']);
-      baseBranch = 'agent/main';
+      await deps.execGit(['-C', projectRoot, 'branch', 'agent/trunk', 'main']);
+      baseBranch = 'agent/trunk';
     } catch {
-      warnings.push('Unable to create agent/main from main; PR base will remain main.');
+      warnings.push('Unable to create agent/trunk from main; PR base will remain main.');
       baseBranch = 'main';
     }
   }

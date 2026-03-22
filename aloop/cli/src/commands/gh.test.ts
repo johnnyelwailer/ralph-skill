@@ -112,7 +112,7 @@ function buildStartResult(issueNumber: number, sessionId: string, status: 'runni
       worktree: true,
       pid: 1234,
     },
-    base_branch: 'agent/main' as const,
+    base_branch: 'agent/trunk' as const,
     pr: null,
     issue_comment_posted: false,
     completion_state: status === 'completed' ? 'exited' : null,
@@ -1581,7 +1581,7 @@ test('ghStartCommandWithDeps injects issue/spec context and prepares branch/sess
     assert.equal(result.issue.number, 42);
     assert.equal(result.issue.repo, 'test/repo');
     assert.equal(result.pending_completion, true);
-    assert.equal(result.base_branch, 'agent/main');
+    assert.equal(result.base_branch, 'agent/trunk');
     assert.equal(startOptions.provider, 'codex');
     assert.equal(startOptions.maxIterations, '30');
 
@@ -3183,7 +3183,7 @@ test('ghStartCommandWithDeps throws when planner prompt is missing', async () =>
   }
 });
 
-test('ghStartCommandWithDeps keeps base branch main and warns when creating agent/main fails', async () => {
+test('ghStartCommandWithDeps keeps base branch main and warns when creating agent/trunk fails', async () => {
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-start-main-warning-'));
   const planPrompt = path.join(tmpRoot, 'sessions', 'sess-43', 'prompts', 'PROMPT_plan.md');
   const files = new Map<string, string>([
@@ -3225,7 +3225,7 @@ test('ghStartCommandWithDeps keeps base branch main and warns when creating agen
         },
         execGit: async (args: string[]) => {
           const joined = args.join(' ');
-          if (joined.includes('rev-parse --verify agent/main') || joined.includes('branch agent/main main')) {
+          if (joined.includes('rev-parse --verify agent/trunk') || joined.includes('branch agent/trunk main')) {
             throw new Error('git failed');
           }
           return { stdout: '', stderr: '' };

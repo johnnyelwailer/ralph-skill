@@ -2255,7 +2255,7 @@ aloop gh start --issue 42 --provider codex --max 30
 4. Create session + worktree (same as `aloop start`)
 5. Inject issue content into the plan prompt as the requirement
 6. Compile pipeline config into `loop-plan.json`, run loop
-7. On completion → create PR against `agent/main` (or `main` if no agent trunk exists)
+7. On completion → create PR against `agent/trunk` (or `main` if no agent trunk exists)
 8. Link PR to issue (`Closes #42`)
 9. Post a summary comment on the issue with results
 
@@ -2355,14 +2355,14 @@ When the watch daemon detects a failed CI check on a PR:
 
 ### Agent Trunk Integration
 
-PRs from `aloop gh` target `agent/main` by default (the agent trunk from the Parallel Orchestrator spec):
+PRs from `aloop gh` target `agent/trunk` by default (the agent trunk from the Parallel Orchestrator spec):
 
-- Individual issue loops create PRs against `agent/main`
-- Auto-merge into `agent/main` when CI passes (configurable — can require human approval)
-- Human promotes `agent/main` → `main` when satisfied
-- PR from `agent/main` → `main` is human-only by default (configurable)
+- Individual issue loops create PRs against `agent/trunk`
+- Auto-merge into `agent/trunk` when CI passes (configurable — can require human approval)
+- Human promotes `agent/trunk` → `main` when satisfied
+- PR from `agent/trunk` → `main` is human-only by default (configurable)
 
-If no agent trunk exists yet, the first `aloop gh start` creates it: `git checkout -b agent/main main`.
+If no agent trunk exists yet, the first `aloop gh start` creates it: `git checkout -b agent/trunk main`.
 
 ### Acceptance Criteria
 
@@ -2377,7 +2377,7 @@ If no agent trunk exists yet, the first `aloop gh start` creates it: `git checko
 - [ ] Max feedback iterations configurable with sensible default
 - [ ] `aloop gh status` shows issue→loop→PR mapping with feedback status
 - [ ] `aloop gh stop` cleanly stops GH-linked loops
-- [ ] PRs target `agent/main` by default, auto-merge configurable
+- [ ] PRs target `agent/trunk` by default, auto-merge configurable
 - [ ] All GH operations go through `gh` CLI (no direct API calls) — respects existing auth
 
 ---
