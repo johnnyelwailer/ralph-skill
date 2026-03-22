@@ -1,59 +1,69 @@
 # Issue #166: Review agent must read PR comment history and only re-review on new commits
 
-## Current Phase: Bug fixes (QA + Review consolidated)
+## Current Phase: Implementation
+
+### Context
+TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, (2) include PR comment history with attribution in review prompts, (3) conversation-aware delta verdicts. Items 1 and 2 are complete. Item 3 (prompt instructions) is now also complete.
 
 ### In Progress
 
-_(none — ready for next task)_
+- [ ] **Add review fields to OrchestratorIssue interface** — `last_reviewed_sha`, `last_review_comment`, `needs_redispatch`, `review_feedback`, `review_pending_count` are accessed via `(issue as any)` casts in `orchestrate.ts` and `process-requests.ts`. Add these to the `OrchestratorIssue` interface at `orchestrate.ts:69-91` for type safety. (priority: medium)
 
-- [x] **Fix scan loop premature skip** — Removed the scan loop SHA check that was doing `continue` and skipping the entire PR lifecycle. SHA dedup is now handled solely by `invokeAgentReview` in `process-requests.ts`, which correctly reads result files before checking SHA. (priority: critical)
-
-- [x] **Fix premature SHA storage in invokeAgentReview** — `process-requests.ts:477` stores `last_reviewed_sha` immediately when queuing a review (before the agent even runs). If the agent crashes or the queue file is lost, this SHA blocks future reviews. Fix: only store `last_reviewed_sha` after a non-pending verdict is returned (i.e., move it to the result-reading path or to the post-lifecycle code in the scan loop). (priority: critical)
-
-- [x] **Enrich PR comment history with author/timestamp** — `process-requests.ts` now fetches full `comments` JSON, formats threaded history with `@author` + `createdAt`, and includes only non-empty comment bodies so review prompts preserve attribution context. (priority: high) [reviewed: gates 1-9 pass — SHA dedup, comment attribution, and tests verified]
-
-- [ ] **Update review prompt for conversation-aware verdicts** — `PROMPT_orch_review.md` has no instructions about comparing against prior feedback or acknowledging fixes. Add instructions: (1) compare current diff against previous review feedback, (2) note which previously-requested changes are now fixed, (3) only flag remaining/new issues, (4) produce a delta-style verdict like "X and Y fixed, Z still needs work". (priority: high)
-
-- [ ] **Add review fields to OrchestratorIssue interface** — `last_reviewed_sha`, `last_review_comment`, `needs_redispatch`, `review_feedback` are all accessed via `(issue as any)` casts in `orchestrate.ts` and `process-requests.ts`. Add these to the `OrchestratorIssue` interface at `orchestrate.ts:69-91` for type safety and discoverability. (priority: medium)
-
-- [ ] **Add tests for review dedup and conversation-aware behavior** — Cover: (1) SHA gating — review skipped when head hasn't changed, (2) SHA not stored on pending verdict, (3) result file still read even when SHA matches, (4) comment history included in queued prompt with author attribution, (5) re-dispatch clears `last_reviewed_sha`. (priority: medium)
+- [ ] **Add remaining test coverage for review dedup** — SHA gating (items 1-2) and comment attribution (item 4) already have tests. Still need: (3) result file still read even when SHA matches, (5) re-dispatch clears `last_reviewed_sha`. Add these to `orchestrate.test.ts`. (priority: medium)
 
 ### Spec-Gap Analysis
 
-[spec-gap] **P1: Double SHA storage causes review spam AND review blocking** — `process-requests.ts:477` stores `last_reviewed_sha` when queuing (before verdict), AND `orchestrate.ts:5261` stores it again unconditionally after `processPrLifecycle` returns (even on 'pending' verdict). This means: (a) a queued-but-unfinished review blocks future reviews, (b) a pending verdict still updates SHA, preventing re-review on next scan. Both files involved. Fix: remove SHA storage from `process-requests.ts:477`, and make `orchestrate.ts:5261` conditional on non-pending verdict.
+[spec-gap] ~~**P1: Double SHA storage**~~ — RESOLVED. SHA storage removed from process-requests.ts queuing path; orchestrate.ts now stores only on non-pending verdict.
 
-[spec-gap] **P2: Comment history lacks attribution (TASK_SPEC req #2 incomplete)** — TASK_SPEC requires "fetch existing PR comments and include them" so the agent "can distinguish its own prior feedback from the child loop's responses." Current code (`process-requests.ts:497`) fetches `.comments[].body` only — no author login or timestamp. Without attribution, requirement #3 (conversation-aware verdicts) cannot be satisfied. Fix: fetch `{author, createdAt, body}` and format with attribution headers.
+[spec-gap] ~~**P2: Comment history lacks attribution**~~ — RESOLVED. `formatReviewCommentHistory()` in process-requests.ts now formats with `@author` + `createdAt`. Tests in process-requests.test.ts verify.
 
-[spec-gap] **P2: Review prompt missing conversation-aware instructions (TASK_SPEC req #3 not implemented)** — TASK_SPEC requires "if previous review said 'fix X, Y, Z' and the child pushed commits fixing X and Y, the next review should say 'X and Y are fixed, Z still needs work'." `PROMPT_orch_review.md` has no such instructions — it only has generic review guidance. Fix: add delta-review instructions to the prompt template.
+[spec-gap] ~~**P2: Review prompt missing conversation-aware instructions (TASK_SPEC req #3)**~~ — RESOLVED. `PROMPT_orch_review.md` now has delta-review section with instructions to acknowledge fixes and only flag remaining/new issues.
 
-### QA Bugs (review agent)
+### QA Bugs
 
-- [ ] [qa/P1] aloop steer accepts empty instruction: `aloop steer "" --session <id>` → "Steering instruction queued" with exit 0, writes an empty queue file. Expected: reject with error message and non-zero exit code. Tested at iter 19. (priority: high)
+- [ ] [qa/P1] Steer textarea 32px height on mobile: Steer input renders at 32px on mobile. WCAG 2.5.8 requires 44px minimum. Fix: `min-h-[44px] md:min-h-[32px] h-auto md:h-8`. (priority: high)
 
-### Review Findings
+- [ ] [qa/P1] GitHub repo link missing aria-label: SVG-only link at AppView.tsx:1190. Fix: add `aria-label="Open repo on GitHub"`. (priority: high)
 
-- [x] [review] Gate 2: No tests for SHA dedup mechanism — add tests to orchestrate.test.ts covering: (a) `processPrLifecycle` returns early with `verdict: 'pending'` when `last_reviewed_sha` matches HEAD, (b) `processPrLifecycle` proceeds when `last_reviewed_sha` differs from HEAD or is undefined, (c) orchestrate.ts stores `last_reviewed_sha` only on non-pending verdicts (`merged`, `rejected`, `flagged_for_human`), does NOT store on `review_pending` or `gates_pending`. Assert exact values, not just toBeDefined(). (priority: high)
-- [x] [review] Gate 3: Zero branch coverage on SHA dedup paths — the test from the Gate 2 task above should cover: the early-return path in processPrLifecycle SHA dedup check, the SHA storage conditional in orchestrate.ts scan pass, and the SHA clear on redispatch. Target >=80% branch coverage for these code paths. (priority: high)
+- [ ] [qa/P1] Escape key does not close mobile sidebar drawer: Pressing Escape does not close the sidebar on mobile. Overlay click works. Fix: add keydown listener for Escape. (priority: high)
+
+- [ ] [qa/P1] Focus not moved into sidebar on mobile open: Focus remains on hamburger button instead of moving into sidebar content. Fix: programmatically focus first focusable element inside sidebar. (priority: high)
+
+- [ ] [qa/P1] Command palette focus not trapped on open: `document.activeElement` is `BODY` instead of search input after Ctrl+K. Fix: auto-focus command input on open. (priority: high)
+
+- [ ] [qa/P1] aloop steer accepts empty instruction: `aloop steer "" --session <id>` succeeds with exit 0. Expected: reject with error and non-zero exit. (priority: high)
 
 ### Up Next
 
 - [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
 
-- [x] **Fix QA P1 bugs — steer textarea + GitHub aria-label** — (1) Steer textarea changed to `min-h-[44px] md:min-h-[32px] h-auto md:h-8` for mobile tap target compliance. (2) GitHub repo link gets `aria-label="Open repo on GitHub"`. (priority: high)
+- [ ] **Fix focus management for mobile overlays** — Addresses QA bugs: Escape sidebar, focus into sidebar, command palette focus. Three fixes in AppView.tsx. (priority: high)
 
-- [ ] **Fix focus management for mobile overlays** — Addresses QA bugs #3, #4, #5. Three fixes in AppView.tsx: (1) Mobile sidebar drawer (line 2337-2344): add `useEffect` with keydown listener for Escape → `setMobileMenuOpen(false)`, scoped to `mobileMenuOpen === true`. (2) Mobile sidebar focus: add `useEffect` that runs when `mobileMenuOpen` becomes true, focusing the first focusable element inside the sidebar `div.relative` container (use `ref` + `querySelectorAll`). On close, return focus to the hamburger button. (3) Command palette (line 2027-2028): `CommandInput` from cmdk should auto-focus but doesn't in this custom overlay wrapper — add `autoFocus` prop to `CommandInput`, or add a `useEffect` in `CommandPalette` that focuses the input when `open` becomes true. (priority: high)
+- [ ] **Audit & fix hover-only interactions** — Overflow tabs menu (AppView.tsx:1174-1186) uses `group-hover:block` with no click/tap equivalent. Fix: add click toggle state. (priority: medium)
 
-- [ ] **Audit & fix hover-only interactions** — Confirmed gap: overflow tabs menu (AppView.tsx:1174-1186) uses `group-hover:block` with no click/tap equivalent. The `<div>` is purely hover-revealed with no `onClick` handler on the button (line 1175). Fix: add `useState` toggle + `onClick` on the overflow button, change dropdown visibility from `group-hover:block` to conditional rendering or state-based class. No other `onMouseEnter`/`onMouseOver` interactions reveal content — all other hover effects are purely cosmetic (Tailwind `hover:` for color/bg). (priority: medium)
+- [ ] **Add ARIA labels and roles for missing elements** — GitHub repo link `aria-label` (covered in QA Bugs), sidebar expand/collapse buttons, activity panel collapse button, stop/force-stop dropdown items. (priority: medium)
 
-- [ ] **Add ARIA labels to collapse/expand buttons** — Three buttons lack `aria-label`: (1) sidebar expand button (line 802) — add `aria-label="Expand sidebar"`, (2) sidebar collapse button (line 882) — add `aria-label="Collapse sidebar"`, (3) activity panel collapse button (line 2314) — add `aria-label="Collapse activity panel"`. These all have adjacent TooltipContent text that can be reused. Stop/force-stop dropdown: Radix already provides `aria-haspopup="menu"` on triggers — no fix needed. (priority: medium)
-
-- [ ] **Implement long-press context menu on session cards** — Create a `useLongPress` hook with 500ms threshold using `onTouchStart`/`onTouchEnd`/`onTouchMove` (cancel on move). On trigger, show a context menu (reuse DropdownMenu component) with: Stop session, Force-stop session, Copy session ID. Add haptic feedback via `navigator.vibrate(50)` if available. Apply to session card elements in the sidebar (~line 835-838 of AppView.tsx). (priority: medium)
+- [ ] **Implement long-press context menu on session cards** — `useLongPress` hook with 500ms threshold, context menu with Stop/Force-stop/Copy ID, haptic feedback. (priority: medium)
 
 - [ ] **Runtime layout verification** — [review Gate 7] Run Playwright at 390x844 viewport and verify bounding boxes of key elements meet 44x44px minimum. (priority: medium)
 
 - [ ] **Run Lighthouse mobile accessibility audit** — Run Lighthouse in mobile mode targeting accessibility category. Target score >= 90. (priority: low)
 
 - [ ] **Capture proof artifacts** — [review Gate 6] Capture Playwright screenshots at mobile viewport. (priority: low)
+
+### Completed (issue #166 — review agent)
+
+- [x] **Fix scan loop premature skip** — Removed scan loop SHA check that skipped entire PR lifecycle. SHA dedup now handled solely by `invokeAgentReview`. (priority: critical)
+
+- [x] **Fix premature SHA storage in invokeAgentReview** — Moved `last_reviewed_sha` storage from queuing time to post-verdict. Only stored after non-pending verdict. (priority: critical)
+
+- [x] **Enrich PR comment history with author/timestamp** — `formatReviewCommentHistory()` formats threaded history with `@author` + `createdAt`, skips empty bodies. Tests verify attribution and edge cases. (priority: high) [reviewed: gates 1-9 pass]
+
+- [x] [review] Gate 2: SHA dedup tests — 8 tests in orchestrate.test.ts covering: early return on matching SHA, proceed on different/undefined SHA, SHA stored only on non-pending verdicts. (priority: high)
+
+- [x] [review] Gate 3: SHA dedup branch coverage — Tests cover early-return path, SHA storage conditional, and SHA clear on redispatch. (priority: high)
+
+- [x] **Update review prompt for conversation-aware verdicts** — Added delta-review section to `PROMPT_orch_review.md`: read prior comments, compare against current diff, acknowledge fixes, flag remaining/new issues, produce delta-style summaries. Closes TASK_SPEC req #3. (priority: high)
 
 ### Completed (upstream — dashboard accessibility)
 
@@ -62,6 +72,24 @@ _(none — ready for next task)_
 - [x] **Implement startup health checks in `session-health.json`** — Added `runStartupHealthChecks` function that runs `gh auth status`, `gh repo view`, and `git status --porcelain` checks. All results (labels + startup checks) now written to `session-health.json`. (priority: high) [qa/P1 + review Gate 1]
 
 - [x] **Implement `ALERT.md` on critical startup failures** — When `gh auth status` fails (critical check), writes `ALERT.md` with error details and throws with non-zero exit. `gh repo view` failure is non-critical since repo may not be configured yet. (priority: high) [qa/P1 + review Gate 1]
+
+- [x] [review] Gate 6: Create `proof-manifest.json`. QA session 2 provides equivalent Playwright evidence. [reviewed: gates 1-9 pass]
+
+- [x] [review] Gate 3: `useIsTouchDevice.test.ts` with >=90% branch coverage. Coverage config updated. [reviewed: gates 1-9 pass]
+
+- [x] **Extract `useIsTouchDevice` hook** — Shared hook in `hooks/useIsTouchDevice.ts`. Both tooltip.tsx and hover-card.tsx import from it.
+
+- [x] **Expand tooltip & hover-card test coverage** — tooltip.test.tsx (110 lines), hover-card.test.tsx (87 lines).
+
+- [x] **Fix QA P1 bugs — tap target sizing regressions** — Fixed all 5 P1 bugs with mobile-responsive min-h/min-w classes.
+
+- [x] **Audit & fix tap target sizes across all interactive elements** — Responsive `min-h-[44px] min-w-[44px]` with `md:` breakpoint relaxation.
+
+- [x] **Verify & fix Tooltip tap behavior on mobile** — Custom touch handling with `useIsTouchDevice()`, onClick toggle, 2000ms auto-close.
+
+- [x] **Verify & fix HoverCard tap equivalents** — Custom touch handling with onClick toggle on touch devices.
+
+- [x] **Fix QA P1 bugs — steer textarea + GitHub aria-label** — (1) Steer textarea changed to `min-h-[44px] md:min-h-[32px] h-auto md:h-8`. (2) GitHub repo link gets `aria-label="Open repo on GitHub"`. (priority: high)
 
 ---
 
