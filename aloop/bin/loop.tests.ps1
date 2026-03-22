@@ -990,6 +990,107 @@ exit 0
 }
 
 # ============================================================================
+# loop.ps1 — finalizer QA coverage gate behavioral
+# ============================================================================
+Describe 'loop.ps1 — finalizer QA coverage gate behavioral' {
+
+    BeforeAll {
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+        $scriptContent = Get-Content $loopScript -Raw
+
+        if ($scriptContent -match '(?ms)(^function Append-PlanTaskIfMissing\s*\{.*?^})') {
+            $appendTaskFunction = $Matches[1]
+        } else {
+            throw "Could not extract Append-PlanTaskIfMissing from loop.ps1"
+        }
+
+        if ($scriptContent -match '(?ms)(^function Check-FinalizerQaCoverageGate\s*\{.*?^})') {
+            $gateFunction = $Matches[1]
+        } else {
+            throw "Could not extract Check-FinalizerQaCoverageGate from loop.ps1"
+        }
+
+        Invoke-Expression "$appendTaskFunction`n$gateFunction"
+    }
+
+    BeforeEach {
+        $script:qaGateTempRoot = Join-Path ([IO.Path]::GetTempPath()) ("aloop-qa-gate-tests-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force $script:qaGateTempRoot | Out-Null
+        $script:WorkDir = $script:qaGateTempRoot
+        $script:planFile = Join-Path $script:qaGateTempRoot 'TODO.md'
+        Set-Content -Path $script:planFile -Value "- [x] existing completed task"
+    }
+
+    AfterEach {
+        if ($script:qaGateTempRoot -and (Test-Path $script:qaGateTempRoot)) {
+            Remove-Item -Recurse -Force $script:qaGateTempRoot
+        }
+    }
+
+    It 'passes when untested coverage is <=30% and there are no FAIL rows' {
+        @'
+| Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+| B | c | 2026-03-22 | abc | UNTESTED | 0/1 | pending |
+| C | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+| D | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+'@ | Set-Content -Path (Join-Path $script:WorkDir 'QA_COVERAGE.md')
+
+        $result = Check-FinalizerQaCoverageGate
+
+        $result | Should -Be $true
+        $script:finalizerQaGateReason | Should -Be 'qa_coverage_pass'
+        $script:finalizerQaGateMessage | Should -Match 'UNTESTED=1/4, FAIL=0'
+        (Get-Content -Path $script:planFile -Raw) | Should -Not -Match '\[finalizer-qa-gate\]'
+    }
+
+    It 'blocks when UNTESTED rows exceed 30 percent' {
+        @'
+| Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | c | 2026-03-22 | abc | UNTESTED | 0/1 | pending |
+| B | c | 2026-03-22 | abc | UNTESTED | 0/1 | pending |
+| C | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+'@ | Set-Content -Path (Join-Path $script:WorkDir 'QA_COVERAGE.md')
+
+        $result = Check-FinalizerQaCoverageGate
+        $todoContent = Get-Content -Path $script:planFile -Raw
+
+        $result | Should -Be $false
+        $script:finalizerQaGateReason | Should -Be 'qa_coverage_blocked'
+        $script:finalizerQaGateMessage | Should -Match 'UNTESTED=2/3, FAIL=0'
+        $todoContent | Should -Match 'Reduce UNTESTED QA coverage to <=30%'
+    }
+
+    It 'blocks when FAIL rows exist and appends a remediation task per failing feature' {
+        @'
+| Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| Login flow | c | 2026-03-22 | abc | FAIL | 0/2 | broken |
+| Other | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+'@ | Set-Content -Path (Join-Path $script:WorkDir 'QA_COVERAGE.md')
+
+        $result = Check-FinalizerQaCoverageGate
+        $todoContent = Get-Content -Path $script:planFile -Raw
+
+        $result | Should -Be $false
+        $script:finalizerQaGateReason | Should -Be 'qa_coverage_blocked'
+        $script:finalizerQaGateMessage | Should -Match 'UNTESTED=0/2, FAIL=1'
+        $todoContent | Should -Match 'Resolve FAIL coverage item: Login flow'
+    }
+
+    It 'skips enforcement when QA_COVERAGE.md is missing' {
+        $result = Check-FinalizerQaCoverageGate
+
+        $result | Should -Be $true
+        $script:finalizerQaGateReason | Should -Be 'qa_coverage_missing'
+        $script:finalizerQaGateMessage | Should -Match 'skipping enforcement'
+        (Get-Content -Path $script:planFile -Raw) | Should -Not -Match '\[finalizer-qa-gate\]'
+    }
+}
+
+# ============================================================================
 # 4. loop.ps1 — retry-same-phase behavioral
 # ============================================================================
 Describe 'loop.ps1 — retry-same-phase behavioral' {
