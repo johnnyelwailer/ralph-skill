@@ -446,6 +446,14 @@ describe('App.tsx AppView integration coverage', () => {
     if (!HTMLElement.prototype.scrollIntoView) {
       HTMLElement.prototype.scrollIntoView = () => {};
     }
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    Object.defineProperty(navigator, 'vibrate', {
+      configurable: true,
+      value: vi.fn(),
+    });
     vi.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
   });
 
@@ -777,6 +785,7 @@ describe('App.tsx AppView integration coverage', () => {
       sessions: sessions as any[],
       selectedSessionId: 's1',
       onSelectSession: onSelect,
+      onStopSession: vi.fn().mockResolvedValue(undefined),
       collapsed: false,
       onToggle: onToggle,
       sessionCost: 0.1234,
@@ -795,11 +804,69 @@ describe('App.tsx AppView integration coverage', () => {
       sessions: sessions as any[],
       selectedSessionId: 's1',
       onSelectSession: onSelect,
+      onStopSession: vi.fn().mockResolvedValue(undefined),
       collapsed: true,
       onToggle: onToggle,
       sessionCost: 0.1234,
     })));
     expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
+  });
+
+  it('opens session card context menu on long press and supports actions', async () => {
+    const sessions = [
+      {
+        id: 'sess-1',
+        name: 'sess-1',
+        projectName: 'p1',
+        status: 'running',
+        phase: 'build',
+        iteration: '1',
+        isActive: true,
+        branch: 'b1',
+        startedAt: 't',
+        endedAt: '',
+        pid: '1',
+        provider: 'c',
+        workDir: 'w',
+        stuckCount: 0,
+        elapsed: '1m',
+        iterations: '1',
+      },
+    ];
+    const onSelect = vi.fn();
+    const onStop = vi.fn().mockResolvedValue(undefined);
+    render(createElement(TooltipProvider as any, {}, createElement(Sidebar, {
+      sessions: sessions as any[],
+      selectedSessionId: 'sess-1',
+      onSelectSession: onSelect,
+      onStopSession: onStop,
+      collapsed: false,
+      onToggle: vi.fn(),
+      sessionCost: 0.1234,
+    })));
+
+    const card = screen.getByRole('button', { name: /sess-1/i });
+    fireEvent.touchStart(card, { touches: [{ clientX: 10, clientY: 10 }] });
+    await new Promise((resolve) => setTimeout(resolve, 550));
+    fireEvent.touchEnd(card);
+    fireEvent.click(card);
+
+    expect(screen.getByRole('menuitem', { name: /^Stop session$/i })).toBeInTheDocument();
+    expect((navigator.vibrate as unknown as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(50);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /copy session id/i }));
+    await waitFor(() => {
+      expect((navigator.clipboard.writeText as unknown as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('sess-1');
+    });
+
+    fireEvent.touchStart(card, { touches: [{ clientX: 10, clientY: 10 }] });
+    await new Promise((resolve) => setTimeout(resolve, 550));
+    fireEvent.touchEnd(card);
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Force-stop session$/i }));
+    await waitFor(() => {
+      expect(onStop).toHaveBeenCalledWith('sess-1', true);
+    });
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it('covers activity panel collapse aria label', async () => {

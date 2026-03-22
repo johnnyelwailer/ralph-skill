@@ -705,6 +705,13 @@ test('POST /api/stop validates payload and reports missing pid', async () => {
   const fixture = await createServerFixture();
 
   try {
+    const invalidSessionFieldResponse = await fetch(`${fixture.handle.url}/api/stop`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session: 123 }),
+    });
+    assert.equal(invalidSessionFieldResponse.status, 400);
+
     const invalidPayloadResponse = await fetch(`${fixture.handle.url}/api/stop`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -719,6 +726,52 @@ test('POST /api/stop validates payload and reports missing pid', async () => {
     });
     assert.equal(missingPidResponse.status, 409);
   } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('POST /api/stop supports stopping a selected session', async () => {
+  const fixture = await createServerFixture();
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+
+  try {
+    const targetSessionId = 'target-session';
+    const targetSessionDir = path.join(fixture.root, 'target-session-dir');
+    const targetWorkdir = path.join(fixture.root, 'target-workdir');
+    await mkdir(targetSessionDir, { recursive: true });
+    await mkdir(targetWorkdir, { recursive: true });
+
+    await writeFile(path.join(targetSessionDir, 'meta.json'), JSON.stringify({ pid: child.pid }), 'utf8');
+    await writeFile(path.join(targetSessionDir, 'status.json'), JSON.stringify({ state: 'running' }), 'utf8');
+    await writeFile(
+      path.join(fixture.runtimeDir, 'active.json'),
+      JSON.stringify({
+        [targetSessionId]: {
+          session_dir: targetSessionDir,
+          work_dir: targetWorkdir,
+          pid: child.pid,
+        },
+      }),
+      'utf8',
+    );
+
+    const response = await fetch(`${fixture.handle.url}/api/stop`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session: targetSessionId }),
+    });
+    assert.equal(response.status, 202);
+    const payload = (await response.json()) as { stopping: boolean; session: string; signal: string };
+    assert.equal(payload.stopping, true);
+    assert.equal(payload.signal, 'SIGTERM');
+    assert.equal(payload.session, path.basename(targetSessionDir));
+
+    const status = JSON.parse(await readFile(path.join(targetSessionDir, 'status.json'), 'utf8')) as { state?: string };
+    assert.equal(status.state, 'stopping');
+  } finally {
+    if (child.exitCode === null) {
+      child.kill('SIGKILL');
+    }
     await fixture.handle.close();
   }
 });

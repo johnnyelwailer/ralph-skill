@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CostDisplay } from '@/components/progress/CostDisplay';
 import { useCost } from '@/hooks/useCost';
+import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 
 // ── ANSI + Markdown rendering ──
@@ -716,12 +717,109 @@ export function deriveProviderHealth(log: string, configuredProviders?: string[]
 
 // ── Sidebar ──
 
+function SessionSidebarCard({
+  session,
+  selected,
+  cardCost,
+  costUnavailable,
+  contextOpen,
+  setContextOpen,
+  onSelectSession,
+  onStopSession,
+  onCopySessionId,
+}: {
+  session: SessionSummary;
+  selected: boolean;
+  cardCost: number | null;
+  costUnavailable: boolean;
+  contextOpen: boolean;
+  setContextOpen: (open: boolean) => void;
+  onSelectSession: (id: string | null) => void;
+  onStopSession: (sessionId: string, force: boolean) => Promise<void>;
+  onCopySessionId: (sessionId: string) => Promise<void>;
+}) {
+  const { handlers: longPressHandlers, consumeLongPress } = useLongPress<HTMLButtonElement>({
+    onLongPress: () => {
+      setContextOpen(true);
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(50);
+      }
+    },
+  });
+
+  return (
+    <DropdownMenu open={contextOpen} onOpenChange={setContextOpen}>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className="sr-only" tabIndex={-1} aria-hidden="true">
+          Open session menu
+        </button>
+      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={`w-full overflow-hidden rounded-md px-2 py-1.5 min-h-[44px] md:min-h-0 text-left text-xs transition-colors hover:bg-accent ${selected ? 'bg-accent' : ''}`}
+            onClick={() => {
+              if (consumeLongPress()) return;
+              onSelectSession(session.id === 'current' ? null : session.id);
+            }}
+            {...longPressHandlers}
+          >
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <StatusDot status={session.isActive && session.status === 'running' ? 'running' : session.status} />
+              <span className="truncate font-medium flex-1">{session.name}</span>
+              <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(session.endedAt || session.startedAt)}</span>
+            </div>
+            <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
+              {session.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
+              {session.branch && <span className="truncate">{session.branch}</span>}
+              {session.phase && <span className="shrink-0">·</span>}
+              {session.phase && <PhaseBadge phase={session.phase} small />}
+              {session.iterations && session.iterations !== '--' && <span className="shrink-0">iter {session.iterations}</span>}
+              {session.elapsed && session.elapsed !== '--' && <span className="shrink-0">· {session.elapsed}</span>}
+              {typeof cardCost === 'number' && <span className="shrink-0">· ${cardCost.toFixed(4)}</span>}
+            </div>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-lg">
+          <div className="space-y-0.5 text-xs">
+            <p className="font-medium">{session.id}</p>
+            {session.pid && <p>PID: {session.pid}</p>}
+            <p>Status: {session.status}</p>
+            {session.stuckCount > 0 && <p className="text-red-500">Stuck: {session.stuckCount}</p>}
+            <p>Provider: {session.provider}</p>
+            <p>Iterations: {session.iterations}</p>
+            {session.elapsed && session.elapsed !== '--' && <p>Duration: {session.elapsed}</p>}
+            {costUnavailable && typeof cardCost !== 'number' && <p>Cost: unavailable</p>}
+            {typeof cardCost === 'number' && <p>Cost: ${cardCost.toFixed(4)}</p>}
+            {session.startedAt && <p>Started: {new Date(session.startedAt).toLocaleString()}</p>}
+            {session.endedAt && <p>Ended: {new Date(session.endedAt).toLocaleString()}</p>}
+            {session.workDir && <p className="break-all">Dir: {session.workDir}</p>}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="start">
+        <DropdownMenuItem onClick={() => void onStopSession(session.id, false)}>
+          <Square className="h-3.5 w-3.5 mr-2" /> Stop session
+        </DropdownMenuItem>
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void onStopSession(session.id, true)}>
+          <Zap className="h-3.5 w-3.5 mr-2" /> Force-stop session
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void onCopySessionId(session.id)}>
+          <GitCommit className="h-3.5 w-3.5 mr-2" /> Copy session ID
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function Sidebar({
-  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost,
+  sessions, selectedSessionId, onSelectSession, onStopSession, collapsed, onToggle, sessionCost,
 }: {
   sessions: SessionSummary[];
   selectedSessionId: string | null;
   onSelectSession: (id: string | null) => void;
+  onStopSession: (sessionId: string, force: boolean) => Promise<void>;
   collapsed: boolean;
   onToggle: () => void;
   sessionCost: number;
@@ -755,6 +853,7 @@ export function Sidebar({
   const [olderOpen, setOlderOpen] = useState(false);
   const [sessionCosts, setSessionCosts] = useState<Record<string, number | null>>({});
   const [costUnavailable, setCostUnavailable] = useState(false);
+  const [contextSessionId, setContextSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -827,49 +926,30 @@ export function Sidebar({
   const displaySessionCost = (s: SessionSummary): number | null =>
     s.isActive ? sessionCost : (sessionCosts[s.id] ?? null);
 
+  const copySessionId = async (sessionId: string) => {
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      toast.success('Session ID copied.');
+    } catch (error) {
+      toast.error(`Failed to copy session ID: ${(error as Error).message}`);
+    }
+  };
+
   const renderCard = (s: SessionSummary) => {
     const cardCost = displaySessionCost(s);
     return (
-      <Tooltip key={s.id}>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className={`w-full overflow-hidden rounded-md px-2 py-1.5 min-h-[44px] md:min-h-0 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
-            onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
-          >
-            <div className="flex items-center gap-1.5 overflow-hidden">
-              <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
-              <span className="truncate font-medium flex-1">{s.name}</span>
-              <span className="text-muted-foreground/50 text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
-            </div>
-            <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
-              {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
-              {s.branch && <span className="truncate">{s.branch}</span>}
-              {s.phase && <span className="shrink-0">·</span>}
-              {s.phase && <PhaseBadge phase={s.phase} small />}
-              {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
-              {s.elapsed && s.elapsed !== '--' && <span className="shrink-0">· {s.elapsed}</span>}
-              {typeof cardCost === 'number' && <span className="shrink-0">· ${cardCost.toFixed(4)}</span>}
-            </div>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" className="max-w-lg">
-          <div className="space-y-0.5 text-xs">
-            <p className="font-medium">{s.id}</p>
-            {s.pid && <p>PID: {s.pid}</p>}
-            <p>Status: {s.status}</p>
-            {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
-            <p>Provider: {s.provider}</p>
-            <p>Iterations: {s.iterations}</p>
-            {s.elapsed && s.elapsed !== '--' && <p>Duration: {s.elapsed}</p>}
-            {costUnavailable && typeof cardCost !== 'number' && <p>Cost: unavailable</p>}
-            {typeof cardCost === 'number' && <p>Cost: ${cardCost.toFixed(4)}</p>}
-            {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
-            {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
-            {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
-          </div>
-        </TooltipContent>
-      </Tooltip>
+      <SessionSidebarCard
+        key={s.id}
+        session={s}
+        selected={isSelected(s)}
+        cardCost={cardCost}
+        costUnavailable={costUnavailable}
+        contextOpen={contextSessionId === s.id}
+        setContextOpen={(open) => setContextSessionId(open ? s.id : null)}
+        onSelectSession={onSelectSession}
+        onStopSession={onStopSession}
+        onCopySessionId={copySessionId}
+      />
     );
   };
 
@@ -2321,11 +2401,18 @@ export function App() {
     finally { setSteerSubmitting(false); }
   }, [steerInstruction, steerSubmitting]);
 
-  const handleStop = useCallback(async (force: boolean) => {
+  const handleStop = useCallback(async (force: boolean, sessionId?: string) => {
     if (stopSubmitting) return;
     setStopSubmitting(true);
     try {
-      const r = await fetch('/api/stop', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(force ? { force: true } : {}) });
+      const payload: Record<string, unknown> = {};
+      if (force) payload.force = true;
+      if (sessionId) payload.session = sessionId;
+      const r = await fetch('/api/stop', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       if (!r.ok) { const p = await r.json() as { error?: string }; throw new Error(p.error ?? `HTTP ${r.status}`); }
       const p = await r.json() as { signal?: string };
       toast.info(`Stop requested (${p.signal ?? 'SIGTERM'}).`);
@@ -2394,14 +2481,14 @@ export function App() {
         <div className="flex flex-1 min-h-0">
           {/* Desktop sidebar */}
           <div className="hidden md:flex">
-            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} />
+            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} onStopSession={(sessionId, force) => handleStop(force, sessionId)} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} />
           </div>
           {/* Mobile sidebar drawer */}
           {mobileMenuOpen && (
             <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
               <div className="absolute inset-0 bg-black/50" />
               <div ref={mobileSidebarRef} className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
-                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} />
+                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} onStopSession={(sessionId, force) => handleStop(force, sessionId)} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} />
               </div>
             </div>
           )}

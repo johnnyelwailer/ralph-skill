@@ -972,6 +972,26 @@ export async function startDashboardServer(
           return;
         }
 
+        const sessionField = parsedBody.session;
+        if (sessionField !== undefined && (typeof sessionField !== 'string' || sessionField.trim().length === 0)) {
+          writeJson(response, 400, { error: 'Field "session" must be a non-empty string when provided.' });
+          return;
+        }
+
+        let targetSessionDir = sessionDir;
+        let targetMetaPath = metaPath;
+        let targetStatusPath = statusPath;
+        if (typeof sessionField === 'string' && sessionField.trim().length > 0) {
+          const ctx = await resolveSessionContext(runtimeDir, sessionField.trim());
+          if (!ctx) {
+            writeJson(response, 404, { error: `Session not found: ${sessionField.trim()}` });
+            return;
+          }
+          targetSessionDir = ctx.sessionDir;
+          targetMetaPath = path.join(targetSessionDir, 'meta.json');
+          targetStatusPath = path.join(targetSessionDir, 'status.json');
+        }
+
         const force = parsedBody.force;
         if (force !== undefined && typeof force !== 'boolean') {
           writeJson(response, 400, { error: 'Field "force" must be a boolean when provided.' });
@@ -979,12 +999,12 @@ export async function startDashboardServer(
         }
 
         const signal = force === true ? 'SIGKILL' : 'SIGTERM';
-        const meta = await readJsonFile(metaPath);
+        const meta = await readJsonFile(targetMetaPath);
         const pid = extractPid(meta);
 
         if (pid === null) {
           writeJson(response, 409, {
-            error: `Cannot stop session without a valid pid in ${metaPath}.`,
+            error: `Cannot stop session without a valid pid in ${targetMetaPath}.`,
           });
           return;
         }
@@ -1009,16 +1029,17 @@ export async function startDashboardServer(
           throw error;
         }
 
-        const existingStatus = await readJsonFile(statusPath);
+        const existingStatus = await readJsonFile(targetStatusPath);
         const nextStatus = isRecord(existingStatus) ? { ...existingStatus } : {};
         nextStatus.state = 'stopping';
         nextStatus.updated_at = new Date().toISOString();
-        await fs.writeFile(statusPath, JSON.stringify(nextStatus), 'utf8');
+        await fs.writeFile(targetStatusPath, JSON.stringify(nextStatus), 'utf8');
 
         writeJson(response, 202, {
           stopping: true,
           pid,
           signal,
+          session: path.basename(targetSessionDir),
         });
         return;
       }
