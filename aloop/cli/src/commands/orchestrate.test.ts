@@ -4506,11 +4506,11 @@ describe('runOrchestratorScanPass', () => {
     assert.equal(result.allDone, true);
   });
 
-  it('marks allDone when all issues are merged or failed', async () => {
+  it('marks allDone when all issues are merged or failed without a PR', async () => {
     const state = makeScanState({
       issues: [
         makeIssue({ number: 1, wave: 1, state: 'merged' }),
-        makeIssue({ number: 2, wave: 1, state: 'failed' }),
+        makeIssue({ number: 2, wave: 1, state: 'failed', pr_number: null }),
       ],
     });
     const deps = createMockScanDeps();
@@ -4522,6 +4522,24 @@ describe('runOrchestratorScanPass', () => {
     );
 
     assert.equal(result.allDone, true);
+  });
+
+  it('keeps allDone false when failed issue still has an open PR for recovery', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, state: 'merged' }),
+        makeIssue({ number: 2, wave: 1, state: 'failed', pr_number: 100 }),
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.allDone, false);
   });
 
   it('dispatches pending issues when dispatchDeps are provided', async () => {

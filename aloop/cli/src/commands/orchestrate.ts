@@ -6069,7 +6069,11 @@ export async function runOrchestratorScanPass(
   }
 
   // 6. Check if all issues are done
-  const allMerged = state.issues.length > 0 && state.issues.every((i) => i.state === 'merged' || i.state === 'failed');
+  const allMerged = state.issues.length > 0 && state.issues.every((i) => {
+    if (i.state === 'merged') return true;
+    // Failed issues with an open PR are recoverable and should keep scan loop alive.
+    return i.state === 'failed' && i.pr_number === null;
+  });
   result.allDone = allMerged;
 
   // 7. Check external stop signal
