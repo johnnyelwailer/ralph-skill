@@ -799,7 +799,7 @@ export function Sidebar({
       <aside className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggle}>
+            <button type="button" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
               <PanelLeftOpen className="h-4 w-4" />
             </button>
           </TooltipTrigger>
@@ -809,7 +809,7 @@ export function Sidebar({
           {sessions.slice(0, 8).map((s) => (
             <Tooltip key={s.id}>
               <TooltipTrigger asChild>
-                <button type="button" className="block" onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}>
+                <button type="button" className="block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}>
                   <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
                 </button>
               </TooltipTrigger>
@@ -834,7 +834,7 @@ export function Sidebar({
         <TooltipTrigger asChild>
           <button
             type="button"
-            className={`w-full overflow-hidden rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
+            className={`w-full overflow-hidden rounded-md px-2 py-1.5 min-h-[44px] md:min-h-0 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
             onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
           >
             <div className="flex items-center gap-1.5 overflow-hidden">
@@ -879,7 +879,7 @@ export function Sidebar({
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggle}>
+            <button type="button" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
               <PanelLeftClose className="h-4 w-4" />
             </button>
           </TooltipTrigger>
@@ -890,7 +890,7 @@ export function Sidebar({
         <div className="p-2 overflow-hidden">
           {Array.from(projectGroups.entries()).map(([project, items]) => (
             <Collapsible key={project} defaultOpen>
-              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider hover:text-muted-foreground">
+              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 min-h-[44px] md:min-h-0 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider hover:text-muted-foreground">
                 <ChevronDown className="h-3 w-3 transition-transform group-data-[state=closed]:rotate-[-90deg]" />
                 {project}
                 <span className="ml-auto text-muted-foreground/40">{items.length}</span>
@@ -903,7 +903,7 @@ export function Sidebar({
 
           {olderSessions.length > 0 && (
             <Collapsible open={olderOpen} onOpenChange={setOlderOpen}>
-              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-wider hover:text-muted-foreground">
+              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 min-h-[44px] md:min-h-0 text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-wider hover:text-muted-foreground">
                 {olderOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                 Older
                 <span className="ml-auto">{olderSessions.length}</span>
@@ -955,12 +955,12 @@ function Header({
     <header className="border-b border-border px-3 py-2 md:px-4 md:py-2.5 shrink-0">
       <h1 className="sr-only">Aloop Dashboard</h1>
       <div className="flex items-center gap-2 sm:gap-4" data-testid="session-header-grid">
-        <button type="button" className="md:hidden p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
+        <button type="button" className="md:hidden p-1 min-h-[44px] min-w-[44px] rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggleMobileMenu}>
           <Menu className="h-5 w-5" />
         </button>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors" onClick={onOpenSwitcher}>
+            <button type="button" className="flex items-center gap-2 min-w-0 min-h-[44px] md:min-h-0 hover:text-primary transition-colors" onClick={onOpenSwitcher}>
               <StatusDot status={isRunning ? 'running' : currentState} />
               <span className="text-sm font-semibold truncate max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">{sessionName}</span>
             </button>
@@ -2297,7 +2297,7 @@ export function App() {
   const activityPanel = activityCollapsed ? (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button type="button" className={`shrink-0 flex-col items-center gap-1 px-1 py-2 text-muted-foreground hover:text-foreground transition-colors hidden lg:flex ${activePanel !== 'activity' ? 'hidden lg:flex' : 'flex'}`} onClick={() => setActivityCollapsed(false)}>
+        <button type="button" className={`shrink-0 flex-col items-center gap-1 px-1 py-2 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 text-muted-foreground hover:text-foreground transition-colors hidden lg:flex ${activePanel !== 'activity' ? 'hidden lg:flex' : 'flex'}`} onClick={() => setActivityCollapsed(false)}>
           <PanelLeftOpen className="h-4 w-4" />
           <span className="text-[9px] uppercase tracking-wider font-medium [writing-mode:vertical-lr]">Activity</span>
         </button>
@@ -2311,7 +2311,7 @@ export function App() {
           <span className="flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" className="text-muted-foreground/50 hover:text-foreground transition-colors hidden lg:block" onClick={() => setActivityCollapsed(true)}>
+              <button type="button" className="text-muted-foreground/50 hover:text-foreground transition-colors hidden lg:block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => setActivityCollapsed(true)}>
                 <PanelLeftClose className="h-3.5 w-3.5" />
               </button>
             </TooltipTrigger>
@@ -2348,14 +2348,14 @@ export function App() {
             <div className="lg:hidden flex border-b border-border shrink-0">
               <button
                 type="button"
-                className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`flex-1 py-1.5 min-h-[44px] text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                 onClick={() => setActivePanel('docs')}
               >
                 <FileText className="h-3.5 w-3.5 inline mr-1" />Documents
               </button>
               <button
                 type="button"
-                className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`flex-1 py-1.5 min-h-[44px] text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                 onClick={() => setActivePanel('activity')}
               >
                 <Activity className="h-3.5 w-3.5 inline mr-1" />Activity
