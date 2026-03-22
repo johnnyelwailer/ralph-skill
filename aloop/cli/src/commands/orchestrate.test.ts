@@ -634,6 +634,242 @@ describe('orchestrateCommandWithDeps', () => {
     const persisted = JSON.parse(files[path.join(sessionDir, 'orchestrator.json')]);
     assert.equal(persisted.issues[0].state, 'pending');
   });
+
+  it('resume reconciles mixed alive and dead child sessions', async () => {
+    const homeDir = '/tmp/aloop-home-resume-mixed';
+    const sessionId = 'orchestrator-20260321-030303';
+    const aliveChildSessionId = 'child-20260321-030350';
+    const deadChildSessionId = 'child-20260321-030351';
+    const sessionDir = path.join(homeDir, '.aloop', 'sessions', sessionId);
+    const aliveChildDir = path.join(homeDir, '.aloop', 'sessions', aliveChildSessionId);
+    const deadChildDir = path.join(homeDir, '.aloop', 'sessions', deadChildSessionId);
+    const files: Record<string, string> = {};
+    const dirs = new Set<string>([
+      sessionDir,
+      path.join(sessionDir, 'prompts'),
+      path.join(sessionDir, 'queue'),
+      path.join(sessionDir, 'requests'),
+      aliveChildDir,
+      deadChildDir,
+    ]);
+    files[path.join(sessionDir, 'loop-plan.json')] = JSON.stringify({ cycle: ['PROMPT_orch_scan.md'], cyclePosition: 0, iteration: 8, version: 1 });
+    files[path.join(sessionDir, 'meta.json')] = JSON.stringify({ project_root: '/tmp/project' });
+    files[path.join(aliveChildDir, 'meta.json')] = JSON.stringify({ pid: 11111 });
+    files[path.join(aliveChildDir, 'status.json')] = JSON.stringify({ state: 'running' });
+    files[path.join(deadChildDir, 'meta.json')] = JSON.stringify({ pid: 22222 });
+    files[path.join(deadChildDir, 'status.json')] = JSON.stringify({ state: 'running' });
+    files[path.join(sessionDir, 'orchestrator.json')] = `${JSON.stringify({
+        spec_file: 'SPEC.md',
+        trunk_branch: 'agent/trunk',
+        concurrency_cap: 2,
+        current_wave: 1,
+        plan_only: false,
+        issues: [
+          {
+            number: 21,
+            title: 'Issue 21',
+            wave: 1,
+            state: 'in_progress',
+            status: 'In progress',
+            child_session: aliveChildSessionId,
+            pr_number: null,
+            depends_on: [],
+          },
+          {
+            number: 22,
+            title: 'Issue 22',
+            wave: 1,
+            state: 'in_progress',
+            status: 'In progress',
+            child_session: deadChildSessionId,
+            pr_number: null,
+            depends_on: [],
+          },
+        ],
+        completed_waves: [],
+        filter_issues: null,
+        filter_label: null,
+        filter_repo: null,
+        budget_cap: null,
+        created_at: '2026-03-21T03:03:03.000Z',
+        updated_at: '2026-03-21T03:03:03.000Z',
+      }, null, 2)}\n`;
+
+    const result = await orchestrateCommandWithDeps({
+      homeDir,
+      resume: sessionId,
+    }, {
+      ...createMockDeps(),
+      existsSync: (p: string) => dirs.has(p) || p in files,
+      readFile: async (p: string) => files[p] ?? '',
+      writeFile: async (p: string, data: string) => { files[p] = data; },
+      mkdir: async (p: string) => {
+        dirs.add(p);
+        return undefined;
+      },
+      now: () => new Date('2026-03-21T03:30:00.000Z'),
+      isProcessAlive: (pid: number) => pid === 11111,
+    });
+
+    assert.equal(result.state.issues[0].state, 'in_progress');
+    assert.equal(result.state.issues[0].child_session, aliveChildSessionId);
+    assert.equal(result.state.issues[1].state, 'pending');
+    assert.equal(result.state.issues[1].status, 'Ready');
+    assert.equal(result.state.issues[1].child_session, null);
+  });
+
+  it('resume does not persist state when all in-progress children are alive', async () => {
+    const homeDir = '/tmp/aloop-home-resume-all-alive';
+    const sessionId = 'orchestrator-20260321-040404';
+    const childSessionId = 'child-20260321-040450';
+    const sessionDir = path.join(homeDir, '.aloop', 'sessions', sessionId);
+    const childDir = path.join(homeDir, '.aloop', 'sessions', childSessionId);
+    const files: Record<string, string> = {};
+    const dirs = new Set<string>([
+      sessionDir,
+      path.join(sessionDir, 'prompts'),
+      path.join(sessionDir, 'queue'),
+      path.join(sessionDir, 'requests'),
+      childDir,
+    ]);
+    files[path.join(sessionDir, 'loop-plan.json')] = JSON.stringify({ cycle: ['PROMPT_orch_scan.md'], cyclePosition: 0, iteration: 9, version: 1 });
+    files[path.join(sessionDir, 'meta.json')] = JSON.stringify({ project_root: '/tmp/project' });
+    files[path.join(childDir, 'meta.json')] = JSON.stringify({ pid: 33333 });
+    files[path.join(childDir, 'status.json')] = JSON.stringify({ state: 'running' });
+    const statePath = path.join(sessionDir, 'orchestrator.json');
+    files[statePath] = `${JSON.stringify({
+        spec_file: 'SPEC.md',
+        trunk_branch: 'agent/trunk',
+        concurrency_cap: 2,
+        current_wave: 1,
+        plan_only: false,
+        issues: [
+          {
+            number: 31,
+            title: 'Issue 31',
+            wave: 1,
+            state: 'in_progress',
+            status: 'In progress',
+            child_session: childSessionId,
+            pr_number: null,
+            depends_on: [],
+          },
+        ],
+        completed_waves: [],
+        filter_issues: null,
+        filter_label: null,
+        filter_repo: null,
+        budget_cap: null,
+        created_at: '2026-03-21T04:04:04.000Z',
+        updated_at: '2026-03-21T04:04:04.000Z',
+      }, null, 2)}\n`;
+    const originalState = files[statePath];
+    let writeCount = 0;
+
+    const result = await orchestrateCommandWithDeps({
+      homeDir,
+      resume: sessionId,
+    }, {
+      ...createMockDeps(),
+      existsSync: (p: string) => dirs.has(p) || p in files,
+      readFile: async (p: string) => files[p] ?? '',
+      writeFile: async (p: string, data: string) => {
+        writeCount += 1;
+        files[p] = data;
+      },
+      mkdir: async (p: string) => {
+        dirs.add(p);
+        return undefined;
+      },
+      isProcessAlive: () => true,
+    });
+
+    assert.equal(result.state.issues[0].state, 'in_progress');
+    assert.equal(result.state.issues[0].child_session, childSessionId);
+    assert.equal(writeCount, 0);
+    assert.equal(files[statePath], originalState);
+  });
+
+  it('resume treats NaN and missing child metadata as dead sessions', async () => {
+    const homeDir = '/tmp/aloop-home-resume-nan-missing';
+    const sessionId = 'orchestrator-20260321-050505';
+    const nanPidChildSessionId = 'child-20260321-050550';
+    const missingMetaChildSessionId = 'child-20260321-050551';
+    const sessionDir = path.join(homeDir, '.aloop', 'sessions', sessionId);
+    const nanPidChildDir = path.join(homeDir, '.aloop', 'sessions', nanPidChildSessionId);
+    const missingMetaChildDir = path.join(homeDir, '.aloop', 'sessions', missingMetaChildSessionId);
+    const files: Record<string, string> = {};
+    const dirs = new Set<string>([
+      sessionDir,
+      path.join(sessionDir, 'prompts'),
+      path.join(sessionDir, 'queue'),
+      path.join(sessionDir, 'requests'),
+      nanPidChildDir,
+      missingMetaChildDir,
+    ]);
+    files[path.join(sessionDir, 'loop-plan.json')] = JSON.stringify({ cycle: ['PROMPT_orch_scan.md'], cyclePosition: 0, iteration: 10, version: 1 });
+    files[path.join(sessionDir, 'meta.json')] = JSON.stringify({ project_root: '/tmp/project' });
+    files[path.join(nanPidChildDir, 'meta.json')] = JSON.stringify({ pid: 'not-a-number' });
+    files[path.join(nanPidChildDir, 'status.json')] = JSON.stringify({ state: 'running' });
+    files[path.join(missingMetaChildDir, 'status.json')] = JSON.stringify({ state: 'running' });
+    files[path.join(sessionDir, 'orchestrator.json')] = `${JSON.stringify({
+        spec_file: 'SPEC.md',
+        trunk_branch: 'agent/trunk',
+        concurrency_cap: 2,
+        current_wave: 1,
+        plan_only: false,
+        issues: [
+          {
+            number: 41,
+            title: 'Issue 41',
+            wave: 1,
+            state: 'in_progress',
+            status: 'In progress',
+            child_session: nanPidChildSessionId,
+            pr_number: null,
+            depends_on: [],
+          },
+          {
+            number: 42,
+            title: 'Issue 42',
+            wave: 1,
+            state: 'in_progress',
+            status: 'In progress',
+            child_session: missingMetaChildSessionId,
+            pr_number: null,
+            depends_on: [],
+          },
+        ],
+        completed_waves: [],
+        filter_issues: null,
+        filter_label: null,
+        filter_repo: null,
+        budget_cap: null,
+        created_at: '2026-03-21T05:05:05.000Z',
+        updated_at: '2026-03-21T05:05:05.000Z',
+      }, null, 2)}\n`;
+
+    const result = await orchestrateCommandWithDeps({
+      homeDir,
+      resume: sessionId,
+    }, {
+      ...createMockDeps(),
+      existsSync: (p: string) => dirs.has(p) || p in files,
+      readFile: async (p: string) => files[p] ?? '',
+      writeFile: async (p: string, data: string) => { files[p] = data; },
+      mkdir: async (p: string) => {
+        dirs.add(p);
+        return undefined;
+      },
+      now: () => new Date('2026-03-21T05:30:00.000Z'),
+      isProcessAlive: () => false,
+    });
+
+    assert.equal(result.state.issues[0].state, 'pending');
+    assert.equal(result.state.issues[0].child_session, null);
+    assert.equal(result.state.issues[1].state, 'pending');
+    assert.equal(result.state.issues[1].child_session, null);
+  });
 });
 
 describe('orchestrateCommand', () => {
