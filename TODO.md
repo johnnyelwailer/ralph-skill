@@ -31,7 +31,7 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [ ] [qa/P1] Command palette focus not trapped on open: `document.activeElement` is `BODY` instead of search input after Ctrl+K. Fix: auto-focus command input on open. (priority: high)
 
-- [ ] [qa/P1] aloop steer accepts empty instruction: `aloop steer "" --session <id>` succeeds with exit 0. Expected: reject with error and non-zero exit. (priority: high)
+- [x] [qa/P1] aloop steer accepts empty instruction: `aloop steer "" --session <id>` succeeds with exit 0. Expected: reject with error and non-zero exit. (priority: high)
 
 ### Up Next
 
