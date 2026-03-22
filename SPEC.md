@@ -440,7 +440,7 @@ Finalizer:         spec-gap → docs → spec-review → final-review → final-
 1. **spec-gap** — validates codebase against SPEC.md. Finds config drift, hallucinated features, cross-runtime parity issues. Analysis only — writes `[spec-gap]` items to TODO.md. If it finds anything, the finalizer aborts and the loop goes back to building.
 2. **docs** — syncs documentation to reality. Updates README, CLI help, completeness markers. Can modify doc files.
 3. **spec-review** — focuses solely on: "do the changes satisfy the requirements from the spec?" Verifies every acceptance criterion is met. Does NOT look at code quality — only requirement coverage.
-4. **final-review** — reuses review instructions (`{{include:instructions/review.md}}`). Same 9 gates as the cycle's review.
+4. **final-review** — reuses review instructions (`{{include:instructions/review.md}}`). Same 10 gates as the cycle's review.
 5. **final-qa** — reuses QA instructions (`{{include:instructions/qa.md}}`). Final round of user-perspective testing.
 6. **proof** — generates human-verifiable evidence: screenshots, API captures, CLI recordings, before/after comparisons. Only runs here, never in the continuous cycle. **This is the only agent whose clean completion means the loop is truly done.**
 
@@ -3706,7 +3706,7 @@ This applies to both loop mode and orchestrator child loops because both use the
 
 ### Shared Instructions via `{{include:path}}`
 
-Prompt templates support `{{include:path}}` to inline shared instruction files. This avoids duplicating instructions between cycle agents and their finalizer counterparts (e.g., `review` and `final-review` share the same 9-gate instructions).
+Prompt templates support `{{include:path}}` to inline shared instruction files. This avoids duplicating instructions between cycle agents and their finalizer counterparts (e.g., `review` and `final-review` share the same 10-gate instructions).
 
 **How it works:** During template expansion (at session start or queue injection), `{{include:path}}` is replaced with the contents of the referenced file. Paths are relative to `aloop/templates/`.
 
@@ -3714,7 +3714,7 @@ Prompt templates support `{{include:path}}` to inline shared instruction files. 
 ```
 aloop/templates/
   instructions/              # shared instruction blocks
-    review.md                # 9 gates, rejection/approval flow, rules
+    review.md                # 10 gates, rejection/approval flow, rules
     qa.md                    # test process, isolation rules, cleanup
   PROMPT_plan.md             # cycle agent
   PROMPT_build.md            # cycle agent
