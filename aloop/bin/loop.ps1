@@ -982,6 +982,40 @@ function Validate-ProofManifest {
     }
 }
 
+# Check if a valid proof manifest has an empty artifacts array (intentional skip).
+# Returns a hashtable with .IsSkipped and .Reason properties.
+$script:proofSkipReason = ""
+
+function Test-ProofSkip {
+    param(
+        [string]$ManifestPath
+    )
+    $script:proofSkipReason = ""
+    try {
+        $content = Get-Content -Path $ManifestPath -Raw
+        $data = $content | ConvertFrom-Json -ErrorAction Stop
+        $artifacts = $data.artifacts
+        if ($null -eq $artifacts -or ($artifacts -is [array] -and $artifacts.Count -gt 0)) {
+            return $false
+        }
+        # artifacts is an empty array — this is a skip
+        $reasons = @()
+        if ($null -ne $data.skipped -and $data.skipped -is [array]) {
+            foreach ($entry in $data.skipped) {
+                if ($entry -is [string]) {
+                    $reasons += $entry
+                } elseif ($null -ne $entry.reason) {
+                    $reasons += [string]$entry.reason
+                }
+            }
+        }
+        $script:proofSkipReason = if ($reasons.Count -gt 0) { $reasons -join '; ' } else { 'no reason provided' }
+        return $true
+    } catch {
+        return $false
+    }
+}
+
 # ============================================================================
 # STUCK DETECTION
 # ============================================================================
@@ -2390,11 +2424,21 @@ try {
                 $script:lastProofIteration = $iteration
                 $proofManifestPath = Join-Path $artifactsDir "iter-$iteration/proof-manifest.json"
                 if (Validate-ProofManifest -ManifestPath $proofManifestPath) {
-                    Write-LogEntry -Event "proof_manifest_validated" -Data @{
-                        iteration = $iteration
-                        status = 'valid'
-                        path = $proofManifestPath
-                        last_proof_iteration = $script:lastProofIteration
+                    if (Test-ProofSkip -ManifestPath $proofManifestPath) {
+                        Write-LogEntry -Event "proof_skipped" -Data @{
+                            iteration = $iteration
+                            reason = $script:proofSkipReason
+                            path = $proofManifestPath
+                            last_proof_iteration = $script:lastProofIteration
+                        }
+                        Write-Host "[Proof skip: $($script:proofSkipReason)]"
+                    } else {
+                        Write-LogEntry -Event "proof_manifest_validated" -Data @{
+                            iteration = $iteration
+                            status = 'valid'
+                            path = $proofManifestPath
+                            last_proof_iteration = $script:lastProofIteration
+                        }
                     }
                 } else {
                     $postValidationError = "proof_manifest_$(if ([string]::IsNullOrWhiteSpace($script:validateProofManifestError)) { 'validation_failed' } else { $script:validateProofManifestError })"
