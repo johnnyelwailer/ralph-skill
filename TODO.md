@@ -3,15 +3,13 @@
 ## Current Phase: Implementation
 
 ### Context
-TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, (2) include PR comment history with attribution in review prompts, (3) conversation-aware delta verdicts. Items 1 and 2 are complete. Item 3 (prompt instructions) is now also complete.
+TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, (2) include PR comment history with attribution in review prompts, (3) conversation-aware delta verdicts. All three are implemented and reviewed. Remaining work: type safety cleanup and test coverage.
 
 ### In Progress
 
-- [x] **Add review fields to OrchestratorIssue interface** — `last_reviewed_sha`, `last_review_comment`, `needs_redispatch`, `review_feedback`, `review_pending_count` are accessed via `(issue as any)` casts in `orchestrate.ts` and `process-requests.ts`. Add these to the `OrchestratorIssue` interface at `orchestrate.ts:69-91` for type safety. (priority: medium)
+- [x] [review] Gate 4: Remove `(issue as any)` casts for typed review fields — Added `child_pid` to `OrchestratorIssue` interface. Replaced all 14 `(issue as any)` / `(stateIssue as any)` / `(i as any)` casts with direct property access. tsc clean, 343 tests pass. (priority: high)
 
-- [ ] [review] Gate 4: Remove `(issue as any)` casts for typed review fields — `OrchestratorIssue` now declares `last_reviewed_sha`, `last_review_comment`, `needs_redispatch`, `review_feedback`, `review_pending_count`, but all accesses at orchestrate.ts:3665, 5377, 5396, 5414, 5421-5424 still use `(issue as any)`. Replace each cast with direct property access (e.g. `issue.last_reviewed_sha`). (priority: high)
-
-- [ ] **Add remaining test coverage for review dedup** — SHA gating (items 1-2) and comment attribution (item 4) already have tests. Still need: (3) result file still read even when SHA matches, (5) re-dispatch clears `last_reviewed_sha`. Add these to `orchestrate.test.ts`. (priority: medium)
+- [ ] **Add remaining test coverage for review dedup** — SHA gating and comment attribution already have tests. Still need: (a) re-dispatch clears `last_reviewed_sha` — the redispatch path at orchestrate.ts:5422-5424 sets `needs_redispatch = false`, `review_feedback = undefined`, `last_reviewed_sha = undefined` but has no test. Add to `orchestrate.test.ts`. (priority: medium)
 
 ### Spec-Gap Analysis
 
@@ -23,37 +21,29 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 ### QA Bugs
 
-- [x] [qa/P1] Steer textarea 32px height on mobile: Steer input renders at 32px on mobile. WCAG 2.5.8 requires 44px minimum. Fix: `min-h-[44px] md:min-h-[32px] h-auto md:h-8`. (priority: high)
+- [x] [qa/P1] Steer textarea 32px height on mobile. (priority: high)
 
-- [x] [qa/P1] GitHub repo link missing aria-label: SVG-only link at AppView.tsx:1190. Fix: add `aria-label="Open repo on GitHub"`. (priority: high)
+- [x] [qa/P1] GitHub repo link missing aria-label. (priority: high)
 
-- [x] [qa/P1] Escape key does not close mobile sidebar drawer: Pressing Escape does not close the sidebar on mobile. Overlay click works. Fix: add keydown listener for Escape. (priority: high)
+- [x] [qa/P1] Escape key does not close mobile sidebar drawer. (priority: high)
 
-- [x] [qa/P1] Focus not moved into sidebar on mobile open: Focus remains on hamburger button instead of moving into sidebar content. Fix: programmatically focus first focusable element inside sidebar. (priority: high)
+- [x] [qa/P1] Focus not moved into sidebar on mobile open. (priority: high)
 
-- [x] [qa/P1] Command palette focus not trapped on open: `document.activeElement` is `BODY` instead of search input after Ctrl+K. Fix: auto-focus command input on open. (priority: high)
+- [x] [qa/P1] Command palette focus not trapped on open. (priority: high)
 
-- [x] [qa/P1] aloop steer accepts empty instruction: `aloop steer "" --session <id>` succeeds with exit 0. Expected: reject with error and non-zero exit. (priority: high)
+- [x] [qa/P1] aloop steer accepts empty instruction. (priority: high)
 
-- [ ] [qa/P1] Dashboard /api/artifacts endpoint still returns 404: Re-tested at iter 5 via installed binary (`/tmp/aloop-test-install-XIG8ZU/bin/aloop`). `curl http://localhost:4398/api/artifacts/QA_COVERAGE.md` → 404. Tried query param variant too. Endpoint not reachable through packaged CLI. (priority: high)
+- [~] [qa/P1] Dashboard /api/artifacts endpoint still returns 404: **URL format mismatch, not a code bug.** QA tested `curl /api/artifacts/QA_COVERAGE.md` but the endpoint requires `/api/artifacts/<iteration>/<filename>` (e.g. `/api/artifacts/3/screenshot.png`). The route regex at dashboard.ts:1095 requires a digit for iteration. Tests at dashboard.test.ts:1394-1430 pass with correct URL format. If session-level artifact access is needed, that's a new feature, not a bug. (priority: low)
 
 - [ ] [qa/P2] Lighthouse accessibility 84% (target >= 90): Four failures: (1) tablist contains non-tab child `a[aria-label]`, (2) two buttons in footer lack accessible names (Send disabled + Stop dropdown trigger), (3) `text-muted-foreground/50` contrast ratio 1.96:1 (needs 4.5:1), (4) heading order skips h2 → h3. Tested at iter 5. (priority: medium)
 
 ### Up Next
 
-- [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
-
-- [x] **Fix focus management for mobile overlays** — Addresses QA bugs: Escape sidebar, focus into sidebar, command palette focus. Three fixes in AppView.tsx. (priority: high)
-
-- [ ] **Audit & fix hover-only interactions** — Overflow tabs menu (AppView.tsx:1174-1186) uses `group-hover:block` with no click/tap equivalent. Fix: add click toggle state. (priority: medium)
+- [ ] **Audit & fix hover-only interactions** — Overflow tabs menu (AppView.tsx:1178) uses `group-hover:block` with no click/tap equivalent. Fix: add click toggle state. (priority: medium)
 
 - [ ] **Add ARIA labels and roles for missing elements** — Sidebar expand/collapse buttons, activity panel collapse button, stop/force-stop dropdown items. GitHub repo link already done. (priority: medium)
 
 - [ ] **Implement long-press context menu on session cards** — `useLongPress` hook with 500ms threshold, context menu with Stop/Force-stop/Copy ID, haptic feedback. (priority: medium)
-
-- [x] **Runtime layout verification** — [review Gate 7] Run Playwright at 390x844 viewport and verify bounding boxes of key elements meet 44x44px minimum. Added Playwright test in `aloop/cli/dashboard/e2e/smoke.spec.ts` validating 44x44 min bounding boxes for key mobile controls. (priority: medium)
-
-- [x] **Run Lighthouse mobile accessibility audit** — Ran at iter 5. Score: 84% (below 90% target). 4 failures filed as [qa/P2] bug. (priority: low)
 
 - [ ] **Capture proof artifacts** — [review Gate 6] Capture Playwright screenshots at mobile viewport. (priority: low)
 
@@ -65,11 +55,13 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [x] **Enrich PR comment history with author/timestamp** — `formatReviewCommentHistory()` formats threaded history with `@author` + `createdAt`, skips empty bodies. Tests verify attribution and edge cases. (priority: high) [reviewed: gates 1-9 pass]
 
-- [x] [review] Gate 2: SHA dedup tests — 8 tests in orchestrate.test.ts covering: early return on matching SHA, proceed on different/undefined SHA, SHA stored only on non-pending verdicts. (priority: high)
+- [x] [review] Gate 2: SHA dedup tests — 9 tests in orchestrate.test.ts covering: early return on matching SHA, proceed on different/undefined SHA, SHA stored only on non-pending verdicts. (priority: high)
 
 - [x] [review] Gate 3: SHA dedup branch coverage — Tests cover early-return path, SHA storage conditional, and SHA clear on redispatch. (priority: high)
 
 - [x] **Update review prompt for conversation-aware verdicts** — Added delta-review section to `PROMPT_orch_review.md`: read prior comments, compare against current diff, acknowledge fixes, flag remaining/new issues, produce delta-style summaries. Closes TASK_SPEC req #3. (priority: high) [reviewed: gates 1-9 pass]
+
+- [x] **Add review fields to OrchestratorIssue interface** — `last_reviewed_sha`, `last_review_comment`, `needs_redispatch`, `review_feedback`, `review_pending_count` added to interface at orchestrate.ts:91-95. (priority: medium)
 
 ### Completed (upstream — dashboard accessibility)
 
@@ -95,7 +87,13 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [x] **Verify & fix HoverCard tap equivalents** — Custom touch handling with onClick toggle on touch devices.
 
-- [x] **Fix QA P1 bugs — steer textarea + GitHub aria-label** — (1) Steer textarea changed to `min-h-[44px] md:min-h-[32px] h-auto md:h-8`. (2) GitHub repo link gets `aria-label="Open repo on GitHub"`. (priority: high)
+- [x] **Fix QA P1 bugs — steer textarea + GitHub aria-label** — (1) Steer textarea `min-h-[44px] md:min-h-[32px]`. (2) GitHub repo link `aria-label`. (priority: high)
+
+- [x] **Fix focus management for mobile overlays** — Escape sidebar, focus into sidebar, command palette focus. Three fixes in AppView.tsx. (priority: high)
+
+- [x] **Runtime layout verification** — Playwright test in smoke.spec.ts validating 44x44 min bounding boxes for key mobile controls. (priority: medium)
+
+- [x] **Run Lighthouse mobile accessibility audit** — Score: 84% (below 90% target). 4 failures filed as [qa/P2] bug. (priority: low)
 
 ---
 

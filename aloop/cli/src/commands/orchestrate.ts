@@ -94,6 +94,7 @@ export interface OrchestratorIssue {
   needs_redispatch?: boolean;
   review_feedback?: string;
   review_pending_count?: number;
+  child_pid?: number;
 }
 
 export interface OrchestratorState {
@@ -4084,7 +4085,7 @@ export async function processPrLifecycle(
   }
 
   // Step 5: SHA dedup — skip review if HEAD hasn't changed since last review
-  const lastReviewedSha = (issue as any).last_reviewed_sha as string | undefined;
+  const lastReviewedSha = issue.last_reviewed_sha;
   if (lastReviewedSha) {
     try {
       const headResult = await deps.execGh(['pr', 'view', String(prNumber), '--repo', repo, '--json', 'headRefOid']);
@@ -4122,7 +4123,7 @@ export async function processPrLifecycle(
   if (reviewResult.verdict === 'request-changes') {
     // Post review feedback on the PR (only if not already posted)
     const stateIssue = state.issues.find((i) => i.number === issue.number);
-    const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
+    const alreadyCommented = stateIssue?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
         await deps.execGh([
@@ -4132,13 +4133,13 @@ export async function processPrLifecycle(
       } catch {
         // Best-effort
       }
-      if (stateIssue) (stateIssue as any).last_review_comment = reviewResult.summary;
+      if (stateIssue) stateIssue.last_review_comment = reviewResult.summary;
     }
 
     // Mark for re-dispatch by the scan pass (which has dispatchDeps)
     if (stateIssue) {
-      (stateIssue as any).needs_redispatch = true;
-      (stateIssue as any).review_feedback = reviewResult.summary;
+      stateIssue.needs_redispatch = true;
+      stateIssue.review_feedback = reviewResult.summary;
     }
 
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
@@ -4760,8 +4761,8 @@ export async function monitorChildSessions(
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
         // Keep child_session so resume works on the same branch/worktree
-        (stateIssue as any).needs_redispatch = true;
-        (stateIssue as any).review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
+        stateIssue.needs_redispatch = true;
+        stateIssue.review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
       }
       result.failed++;
       entry.action = 'failed';
@@ -5712,7 +5713,7 @@ export async function runOrchestratorScanPass(
         if (stateIssue) {
           stateIssue.state = 'in_progress';
           stateIssue.child_session = launchResult.session_id;
-          (stateIssue as any).child_pid = launchResult.pid;
+          stateIssue.child_pid = launchResult.pid;
           stateIssue.status = 'In progress';
           if (repo && deps.execGh) {
             await syncIssueProjectStatus(issue.number, repo, 'In progress', {
@@ -5775,7 +5776,7 @@ export async function runOrchestratorScanPass(
 
   // 3. Process PR lifecycles for issues with open PRs
   if (repo && deps.prLifecycleDeps) {
-    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
+    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !i.needs_redispatch);
     for (const issue of prIssues) {
       // SHA dedup is handled inside invokeAgentReview (process-requests.ts),
       // which reads result files first, then checks SHA. Do NOT skip here —
@@ -5796,7 +5797,7 @@ export async function runOrchestratorScanPass(
         if (reviewVerdict && reviewVerdict !== 'pending' && deps.execGh) {
           try {
             const headResult = await deps.execGh(['pr', 'view', String(issue.pr_number), '--repo', repo, '--json', 'headRefOid']);
-            (issue as any).last_reviewed_sha = JSON.parse(headResult.stdout).headRefOid;
+            issue.last_reviewed_sha = JSON.parse(headResult.stdout).headRefOid;
           } catch { /* ignore */ }
         }
       } catch (e: unknown) {
@@ -5815,7 +5816,7 @@ export async function runOrchestratorScanPass(
 
   // 3.5. Re-dispatch children that need review fixes
   if (deps.dispatchDeps && deps.aloopRoot) {
-    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch && i.child_session);
+    const needsRedispatch = state.issues.filter((i) => i.needs_redispatch && i.child_session);
     for (const issue of needsRedispatch) {
       try {
         // Re-use launchChildLoop — it handles worktree creation, prompts, branch reuse
@@ -5833,17 +5834,17 @@ export async function runOrchestratorScanPass(
         const childQueueDir = path.join(deps.aloopRoot, 'sessions', launchResult.session_id, 'queue');
         await deps.writeFile(
           path.join(childQueueDir, '000-review-fixes.md'),
-          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${issue.review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
           'utf8',
         );
 
         issue.state = 'in_progress';
         issue.status = 'In progress';
         issue.child_session = launchResult.session_id;
-        (issue as any).child_pid = launchResult.pid;
-        (issue as any).needs_redispatch = false;
-        (issue as any).review_feedback = undefined;
-        (issue as any).last_reviewed_sha = undefined;
+        issue.child_pid = launchResult.pid;
+        issue.needs_redispatch = false;
+        issue.review_feedback = undefined;
+        issue.last_reviewed_sha = undefined;
 
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
