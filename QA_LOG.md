@@ -434,3 +434,171 @@ node qa-session3.mjs
 node qa-session3d.mjs
 # Exit code: 0, results above
 ```
+
+## QA Session — 2026-03-22 (iteration 4)
+
+### Binary Under Test
+- Path: `/tmp/aloop-test-install-QPec4C/bin/aloop`
+- Version: 1.0.0
+
+### Test Environment
+- Dashboard URL: http://localhost:4399
+- Session dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-166-20260322-090309
+- Browser: Playwright Chromium (headless)
+- Features tested: 5 (steer empty string re-test, steer textarea sizing re-test, start/stop/resume lifecycle, dashboard SSE + API, aloop gh subcommands)
+
+### Results
+- PASS (re-test): aloop steer empty string — fix verified, rejects empty and whitespace-only
+- PASS (re-test): Steer textarea mobile sizing — now 50px on mobile (min-h: 44px), 32px on desktop
+- PASS: aloop start/stop/resume — full lifecycle works in isolated temp project
+- PASS (partial): Dashboard SSE/API — /api/state, /events SSE, /api/qa-coverage all work. /api/artifacts and /api/cost return 404
+- PASS: aloop gh subcommands — 14 subcommands with proper help, errors, and policy enforcement
+
+### Bugs Filed (1 new)
+- [qa/P1] Dashboard /api/artifacts endpoint returns 404 (spec says it should serve artifact images)
+
+### Re-test Verifications (2 previously FAIL → now PASS)
+- aloop steer empty string: empty and whitespace-only rejected with exit 1
+- Steer textarea mobile sizing: 50px at 390px, 50px at 320px, 32px at desktop
+
+### Detailed Results
+
+#### Feature 1: aloop steer Empty String Rejection (Re-test)
+
+```
+$ aloop steer "" --session test-nonexistent
+Instruction must be a non-empty string.
+EXIT CODE: 1
+
+$ aloop steer "   " --session test-nonexistent
+Instruction must be a non-empty string.
+EXIT CODE: 1
+
+$ aloop steer "test instruction" --session test-nonexistent
+Session not found: test-nonexistent
+EXIT CODE: 1
+```
+
+PASS: Empty and whitespace-only strings rejected. Valid string proceeds to session lookup.
+
+#### Feature 2: Steer Textarea Mobile Sizing (Re-test via Playwright)
+
+```
+=== Steer Textarea Mobile Sizing ===
+Bounding box: 266x50px
+Computed min-height: 44px
+Computed height: 50px
+Classes: ...min-h-[44px] md:min-h-[32px] h-auto md:h-8 resize-none...
+PASS: Textarea height 50px >= 44px (WCAG 2.5.8)
+
+=== At 320px viewport ===
+Bounding box: 196x50px
+PASS: Textarea height 50px >= 44px at 320px
+
+=== At desktop (1920px) ===
+Bounding box: 1444x32px
+Computed min-height: 32px
+```
+
+PASS: Mobile 44px+ minimum enforced, desktop correctly compact at 32px.
+
+#### Feature 3: aloop start / stop / resume Lifecycle
+
+```
+$ aloop setup --project-root /tmp/qa-test-start-1774175677 --non-interactive --providers claude --spec SPEC.md
+Setup complete. Config written to: /home/pj/.aloop/projects/4ee85885/config.yml
+EXIT CODE: 0
+
+$ aloop start --project-root /tmp/qa-test-start-1774175677 --max-iterations 1 --provider claude --in-place
+Aloop loop started!
+  Session:  qa-test-start-1774175677-20260322-103450
+  Mode:     plan-build-review
+  Launch:   start
+  Provider: claude
+  Work dir: /tmp/qa-test-start-1774175677
+  PID:      1305034
+  Dashboard: http://localhost:32971
+EXIT CODE: 0
+
+$ aloop status (shows new session)
+  qa-test-start-1774175677-20260322-103450  pid=1305034  running  iter 1, plan
+PASS
+
+$ aloop stop qa-test-start-1774175677-20260322-103450
+Session qa-test-start-1774175677-20260322-103450 stopped.
+EXIT CODE: 0
+
+$ aloop status (session no longer listed)
+PASS
+
+$ aloop start --launch resume qa-test-start-1774175677-20260322-103450 --max-iterations 1 --in-place
+Aloop loop started!
+  Session:  qa-test-start-1774175677-20260322-103450
+  Launch:   resume
+EXIT CODE: 0
+
+$ aloop stop qa-test-start-1774175677-20260322-103450
+Session ... stopped.
+EXIT CODE: 0
+```
+
+PASS: Full start/stop/resume lifecycle works.
+
+#### Feature 4: Dashboard SSE + API Endpoints
+
+```
+/api/state: HTTP 200, 587400 bytes — iteration=37, phase=qa, state=running — PASS
+/api/qa-coverage: HTTP 200, 3703 bytes — returns coverage table data — PASS
+/events (SSE): HTTP 200, text/event-stream — sends ": connected\n\nevent: state\ndata: ..." — PASS
+/api/cost: HTTP 404, {"error":"Not found"} — frontend references but backend missing
+/api/artifacts: HTTP 404, {"error":"Not found"} — SPEC says should serve artifacts — BUG
+```
+
+PASS (partial): Core endpoints work. /api/artifacts is a spec violation (bug filed).
+
+#### Feature 5: aloop gh Subcommands
+
+```
+$ aloop gh --help
+14 subcommands listed: start, watch, status, stop, pr-create, pr-comment,
+  issue-comment, issue-create, issue-close, issue-label, pr-merge,
+  branch-delete, issue-comments, pr-comments
+EXIT CODE: 0
+
+$ aloop gh (no subcommand)
+Shows help text
+EXIT CODE: 1
+
+$ aloop gh start --help
+Options: --issue, --spec, --provider, --max, --repo, --project-root, etc.
+EXIT CODE: 0
+
+$ aloop gh start (no args)
+error: required option '--issue <number>' not specified
+EXIT CODE: 1
+
+$ aloop gh status
+Issue  Branch                PR    Status      Iteration  Feedback
+#7     agent/issue-7-...     #99   completed   —         —
+#42    agent/issue-42-...    —     running     —         —
+EXIT CODE: 0
+
+$ aloop gh branch-delete --branch test
+error: required option '--session <id>' not specified
+EXIT CODE: 1
+
+$ aloop gh pr-merge (no args)
+error: required option '--session <id>' not specified
+EXIT CODE: 1
+
+$ aloop gh pr-create --session nonexistent
+error: required option '--request <file>' not specified
+EXIT CODE: 1
+```
+
+PASS: All subcommands have correct help, error messages, and exit codes. Policy-enforced commands require --session for role checking.
+
+### Cleanup
+- Test session stopped: qa-test-start-1774175677-20260322-103450
+- Test project: /tmp/qa-test-start-1774175677 (to be cleaned)
+- Test install: /tmp/aloop-test-install-QPec4C (to be cleaned)

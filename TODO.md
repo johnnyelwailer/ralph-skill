@@ -33,6 +33,8 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [x] [qa/P1] aloop steer accepts empty instruction: `aloop steer "" --session <id>` succeeds with exit 0. Expected: reject with error and non-zero exit. (priority: high)
 
+- [ ] [qa/P1] Dashboard /api/artifacts endpoint returns 404: SPEC says dashboard serves artifacts via `/api/artifacts/<iteration>/<filename>` but endpoint is not implemented. Frontend JS references it. Tested at iter 37. (priority: high)
+
 ### Up Next
 
 - [x] **Extract shared `runGh` helper** — The duplicated `runGh` closures in `deriveFilterRepo` and `deriveTrunkBranch` were replaced by shared `runGhWithFallback` helper to eliminate duplication while preserving behavior/logging. (priority: medium) [review Gate 4]
