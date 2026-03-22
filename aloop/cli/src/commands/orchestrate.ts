@@ -34,6 +34,9 @@ export interface OrchestrateCommandOptions {
   runScanLoop?: boolean;
   autoMerge?: boolean;
   resume?: string;
+  triageInterval?: string;
+  rateLimitBackoff?: string;
+  childMaxIterations?: string;
 }
 
 export interface DecompositionPlanIssue {
@@ -104,6 +107,10 @@ export interface OrchestratorState {
   autonomy_level?: AutonomyLevel;
   trunk_branch: string;
   concurrency_cap: number;
+  triage_interval?: number;
+  scan_pass_throttle_ms?: number;
+  rate_limit_backoff?: 'exponential' | 'linear' | 'fixed';
+  max_iterations?: number;
   current_wave: number;
   plan_only: boolean;
   issues: OrchestratorIssue[];
@@ -992,6 +999,10 @@ export async function orchestrateCommandWithDeps(
   const budgetCap = parseBudget(options.budget);
   const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
   const autoMergeToMain = await resolveAutoMerge(options, homeDir, deps);
+  const triageInterval = parseTriageInterval(options.triageInterval);
+  const rateLimitBackoff = parseRateLimitBackoff(options.rateLimitBackoff);
+  const childMaxIterations = parseChildMaxIterations(options.childMaxIterations);
+  const scanPassThrottleMs = parseInterval(options.interval);
 
   const now = deps.now();
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}${String(now.getUTCSeconds()).padStart(2, '0')}`;
@@ -1075,6 +1086,10 @@ export async function orchestrateCommandWithDeps(
     autonomy_level: autonomyLevel,
     trunk_branch: trunkBranch,
     concurrency_cap: concurrencyCap,
+    triage_interval: triageInterval,
+    scan_pass_throttle_ms: scanPassThrottleMs,
+    rate_limit_backoff: rateLimitBackoff,
+    max_iterations: childMaxIterations,
     current_wave: 0,
     plan_only: planOnly,
     issues: [],
@@ -5826,6 +5841,30 @@ function parseInterval(value: string | undefined): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed < 1000) {
     throw new Error(`Invalid interval value: ${value} (must be >= 1000ms)`);
+  }
+  return parsed;
+}
+
+function parseTriageInterval(value: string | undefined): number {
+  if (!value) return 5; // default: run triage every 5 iterations
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error(`Invalid triage-interval value: ${value} (must be a positive integer)`);
+  }
+  return parsed;
+}
+
+function parseRateLimitBackoff(value: string | undefined): 'exponential' | 'linear' | 'fixed' {
+  if (!value) return 'fixed';
+  if (value === 'exponential' || value === 'linear' || value === 'fixed') return value;
+  throw new Error(`Invalid rate-limit-backoff value: ${value} (must be exponential, linear, or fixed)`);
+}
+
+function parseChildMaxIterations(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error(`Invalid child-max-iterations value: ${value} (must be a positive integer)`);
   }
   return parsed;
 }
