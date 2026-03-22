@@ -55,6 +55,31 @@ export interface AdapterComment {
   createdAt: string;
 }
 
+export interface ReviewComment {
+  /** File path relative to repo root. */
+  path: string;
+  /** Line number in the diff (right-side / new file line). */
+  line: number;
+  /** Comment body text. */
+  body: string;
+  /** Optional replacement code using GH suggestion syntax. */
+  suggestion?: string;
+}
+
+export interface CreateReviewOpts {
+  /** Top-level review body (summary). */
+  body: string;
+  /** Review event: COMMENT, APPROVE, or REQUEST_CHANGES. */
+  event: 'COMMENT' | 'APPROVE' | 'REQUEST_CHANGES';
+  /** Inline comments on specific code locations. */
+  comments: ReviewComment[];
+}
+
+export interface CreateReviewResult {
+  /** The review ID returned by the API. */
+  review_id: number;
+}
+
 // ----- Interface -----
 
 export interface OrchestratorAdapter {
@@ -74,6 +99,10 @@ export interface OrchestratorAdapter {
   // Comments
   postComment(issueOrPrNumber: number, body: string): Promise<void>;
   listComments(issueNumber: number): Promise<AdapterComment[]>;
+
+  // Reviews
+  createReview(prNumber: number, opts: CreateReviewOpts): Promise<CreateReviewResult>;
+  resolveThread(prNumber: number, commentId: number): Promise<void>;
 
   // Labels
   addLabels(issueNumber: number, labels: string[]): Promise<void>;
@@ -253,6 +282,54 @@ export class GitHubAdapter implements OrchestratorAdapter {
       body: c.body,
       createdAt: c.createdAt,
     }));
+  }
+
+  /**
+   * Create a formal PR review with inline comments using the GH REST API.
+   * POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews
+   */
+  async createReview(prNumber: number, opts: CreateReviewOpts): Promise<CreateReviewResult> {
+    const comments = opts.comments.map((c) => {
+      const commentBody = c.suggestion
+        ? `${c.body}\n\n\`\`\`suggestion\n${c.suggestion}\n\`\`\``
+        : c.body;
+      return { path: c.path, line: c.line, body: commentBody };
+    });
+
+    // Use --raw-field for JSON body and -f for individual fields
+    const args = [
+      'api', `repos/${this.repo}/pulls/${prNumber}/reviews`,
+      '--method', 'POST',
+      '-f', `body=${opts.body}`,
+      '-f', `event=${opts.event}`,
+      '--raw-field', `comments=${JSON.stringify(comments)}`,
+    ];
+
+    const result = await this.execGh(args);
+    const data = JSON.parse(result.stdout) as { id: number };
+    return { review_id: data.id };
+  }
+
+  /**
+   * Resolve (minimize) a review comment thread using the GraphQL API.
+   * Uses the minimizeComment mutation with RESOLVED classifier.
+   */
+  async resolveThread(_prNumber: number, commentId: number): Promise<void> {
+    // First, get the node_id for the comment
+    const commentResult = await this.execGh([
+      'api', `repos/${this.repo}/pulls/comments/${commentId}`,
+      '--jq', '.node_id',
+    ]);
+    const nodeId = commentResult.stdout.trim();
+    if (!nodeId) {
+      throw new Error(`Could not get node_id for comment ${commentId}`);
+    }
+
+    // Use GraphQL to minimize the comment as resolved
+    await this.execGh([
+      'api', 'graphql',
+      '-f', `query=mutation { minimizeComment(input: { subjectId: "${nodeId}", classifier: RESOLVED }) { minimizedComment { isMinimized } } }`,
+    ]);
   }
 
   async addLabels(issueNumber: number, labels: string[]): Promise<void> {
