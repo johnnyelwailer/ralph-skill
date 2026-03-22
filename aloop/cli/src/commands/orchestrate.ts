@@ -3701,16 +3701,34 @@ export async function recoverFailedIssues(
           gates: gates.gates,
         });
       } else {
-        const summary = gates.gates
-          .filter((g) => g.status !== 'pass')
-          .map((g) => `${g.gate}: ${g.detail}`)
-          .join('; ');
-        result.details.push({
-          issue_number: issue.number,
-          pr_number: prNumber,
-          action: 'still_failed',
-          detail: summary,
-        });
+        const failedOrPending = gates.gates.filter((g) => g.status !== 'pass');
+        const summary = failedOrPending.map((g) => `${g.gate}: ${g.detail}`).join('; ');
+        const transientApiError = failedOrPending.length > 0 && failedOrPending.every(
+          (g) => g.status === 'api_error' || (g.status === 'pending' && /will retry/i.test(g.detail)),
+        );
+
+        if (transientApiError) {
+          result.details.push({
+            issue_number: issue.number,
+            pr_number: prNumber,
+            action: 'error',
+            detail: summary || 'Transient GitHub API error while checking failed issue recovery',
+          });
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'failed_issue_recovery_skipped_api_error',
+            issue_number: issue.number,
+            pr_number: prNumber,
+            gates: gates.gates,
+          });
+        } else {
+          result.details.push({
+            issue_number: issue.number,
+            pr_number: prNumber,
+            action: 'still_failed',
+            detail: summary,
+          });
+        }
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

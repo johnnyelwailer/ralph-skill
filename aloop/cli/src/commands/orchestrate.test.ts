@@ -6775,7 +6775,7 @@ describe('recoverFailedIssues', () => {
     const result = await recoverFailedIssues(state, 'owner/repo', '/session', deps);
 
     assert.equal(result.recovered, 0);
-    assert.equal(result.details[0].action, 'still_failed');
+    assert.equal(result.details[0].action, 'error');
     assert.equal(state.issues[0].state, 'failed');
   });
 
