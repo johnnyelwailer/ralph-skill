@@ -17,6 +17,22 @@
 
 ---
 
+## Review — 2026-03-22 — commit c78a992..2e082e2
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** AppView.tsx (displaySessionCost fix), CostDisplay.test.tsx (new test file)
+
+**Prior findings status:**
+- Prior #1 (Gate 1: `s.id === 'current'` never matches): **RESOLVED** — `AppView.tsx:766-767` now uses `s.isActive`. Active session cost from `useCost` log aggregation correctly displayed in sidebar card (line 791) and tooltip (line 805).
+- Prior #2 (Gate 3: CostDisplay 0% coverage): **PARTIALLY RESOLVED** — 6 tests added with concrete assertions ($2.00 / $10.00, exact color classes, exact warning strings). Estimated ~80% branch coverage — below 90% threshold for new module.
+
+**New finding:**
+- Gate 3 FAIL: `CostDisplay.test.tsx` misses 3 branch groups: (a) unavailable + sessionCost > 0 + no budgetCap, (b) isLoading in no-budget-cap path, (c) warning/pause rendered independently. Estimated 80% vs required 90%.
+
+**Gates passed:** Gate 1 (isActive fix resolves prior finding), Gate 2 (tests assert concrete values — no shallow fakes), Gate 4 (clean), Gate 5 (cannot verify — sandbox), Gate 6 (prior QA evidence covers mechanism), Gate 7 (skip), Gate 8 (no dep changes), Gate 9 (no doc changes).
+
+---
+
 ## Review — 2026-03-22 — commit bd76d3c..8ec517c
 
 **Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)

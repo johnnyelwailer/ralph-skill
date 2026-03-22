@@ -4,9 +4,8 @@
 
 ### In Progress
 
-- [x] [review] **Gate 1: Sidebar `displaySessionCost` checks `s.id === 'current'` but actual session ID is never `'current'`** (priority: high)
-  `AppView.tsx:766-767` — `displaySessionCost()` returns `sessionCost` only when `s.id === 'current'`, but when SSE state is available, active sessions get IDs from `toSession()` (e.g. `active-0` or the real session name), never literally `'current'`. The `id === 'current'` fallback only fires when `!state` (no SSE connection). Fix: change condition to `s.isActive` (the `SessionSummary.isActive` boolean is already `true` for active sessions built from `state.activeSessions`). This ensures `sessionCost` (from local log parsing in `useCost`) is displayed for the running session regardless of its ID string.
-  Consolidates: prior review finding #2, QA P1 #2 (sidebar cost still failing at 444992c).
+- [ ] [review] **Gate 3: CostDisplay.test.tsx missing branches for >=90% new-module coverage** (priority: high)
+  Estimated ~80% branch coverage. Add tests for: (a) `opencode_unavailable` + `sessionCost > 0` + `budgetCap = null` — the fallback path rendering session spend without progress bar (`CostDisplay.tsx:38-44`); (b) `isLoading=true` with `budgetCap=null` — the no-budget-cap loading branch (`CostDisplay.tsx:65`); (c) `budgetWarnings` present but `budgetPauseThreshold` absent, and vice versa — the independent warning/pause rendering paths (`CostDisplay.tsx:86-91`).
 
 ### Up Next
 
