@@ -1,8 +1,7 @@
 import * as React from 'react';
 import * as HoverCardPrimitive from '@radix-ui/react-hover-card';
+import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 import { cn } from '@/lib/utils';
-
-const TOUCH_MEDIA_QUERY = '(hover: none), (pointer: coarse)';
 
 interface HoverCardTouchContextValue {
   isTouch: boolean;
@@ -11,30 +10,6 @@ interface HoverCardTouchContextValue {
 }
 
 const HoverCardTouchContext = React.createContext<HoverCardTouchContextValue | null>(null);
-
-function useIsTouchDevice() {
-  const [isTouch, setIsTouch] = React.useState(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return false;
-    }
-    return window.matchMedia(TOUCH_MEDIA_QUERY).matches;
-  });
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return;
-    }
-
-    const mediaQuery = window.matchMedia(TOUCH_MEDIA_QUERY);
-    setIsTouch(mediaQuery.matches);
-
-    const onChange = (event: MediaQueryListEvent) => setIsTouch(event.matches);
-    mediaQuery.addEventListener('change', onChange);
-    return () => mediaQuery.removeEventListener('change', onChange);
-  }, []);
-
-  return isTouch;
-}
 
 const HoverCard = ({
   children,

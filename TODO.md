@@ -9,7 +9,7 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 ### Up Next
 
-- [ ] **Extract `useIsTouchDevice` hook** — [review Gate 4] `useIsTouchDevice()` and `TOUCH_MEDIA_QUERY` are copy-pasted identically in `tooltip.tsx:18-40` and `hover-card.tsx:15-37`. Extract into `hooks/useIsTouchDevice.ts` and import from both components. Simple mechanical refactor. (priority: high)
+- [x] **Extract `useIsTouchDevice` hook** — [review Gate 4] `useIsTouchDevice()` and `TOUCH_MEDIA_QUERY` are copy-pasted identically in `tooltip.tsx:18-40` and `hover-card.tsx:15-37`. Extract into `hooks/useIsTouchDevice.ts` and import from both components. Simple mechanical refactor. (priority: high)
 
 - [ ] **Expand tooltip & hover-card test coverage** — [review Gate 2/3] Tests now execute (vitest alias resolved), but only 1 scenario each. Add edge-case tests: (a) second tap closes tooltip, (b) desktop mode does NOT toggle on click, (c) controlled `open` prop passthrough, (d) `defaultOpen=true`. Target >=90% branch coverage on tooltip.tsx and hover-card.tsx. (priority: high)
 

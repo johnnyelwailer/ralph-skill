@@ -1,11 +1,11 @@
 import * as React from 'react';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
+import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 import { cn } from '@/lib/utils';
 
 const TooltipProvider = TooltipPrimitive.Provider;
 
 const TOUCH_TOOLTIP_AUTO_CLOSE_MS = 2000;
-const TOUCH_MEDIA_QUERY = '(hover: none), (pointer: coarse)';
 
 interface TooltipTouchContextValue {
   isTouch: boolean;
@@ -14,30 +14,6 @@ interface TooltipTouchContextValue {
 }
 
 const TooltipTouchContext = React.createContext<TooltipTouchContextValue | null>(null);
-
-function useIsTouchDevice() {
-  const [isTouch, setIsTouch] = React.useState(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return false;
-    }
-    return window.matchMedia(TOUCH_MEDIA_QUERY).matches;
-  });
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return;
-    }
-
-    const mediaQuery = window.matchMedia(TOUCH_MEDIA_QUERY);
-    setIsTouch(mediaQuery.matches);
-
-    const onChange = (event: MediaQueryListEvent) => setIsTouch(event.matches);
-    mediaQuery.addEventListener('change', onChange);
-    return () => mediaQuery.removeEventListener('change', onChange);
-  }, []);
-
-  return isTouch;
-}
 
 const Tooltip = ({
   children,
