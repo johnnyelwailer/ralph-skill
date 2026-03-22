@@ -7,7 +7,7 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 ### In Progress
 
-- [ ] **Add review fields to OrchestratorIssue interface** — `last_reviewed_sha`, `last_review_comment`, `needs_redispatch`, `review_feedback`, `review_pending_count` are accessed via `(issue as any)` casts in `orchestrate.ts` and `process-requests.ts`. Add these to the `OrchestratorIssue` interface at `orchestrate.ts:69-91` for type safety. (priority: medium)
+- [x] **Add review fields to OrchestratorIssue interface** — `last_reviewed_sha`, `last_review_comment`, `needs_redispatch`, `review_feedback`, `review_pending_count` are accessed via `(issue as any)` casts in `orchestrate.ts` and `process-requests.ts`. Add these to the `OrchestratorIssue` interface at `orchestrate.ts:69-91` for type safety. (priority: medium)
 
 - [ ] **Add remaining test coverage for review dedup** — SHA gating (items 1-2) and comment attribution (item 4) already have tests. Still need: (3) result file still read even when SHA matches, (5) re-dispatch clears `last_reviewed_sha`. Add these to `orchestrate.test.ts`. (priority: medium)
 

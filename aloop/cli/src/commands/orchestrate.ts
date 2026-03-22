@@ -89,6 +89,11 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
+  last_reviewed_sha?: string;
+  last_review_comment?: string;
+  needs_redispatch?: boolean;
+  review_feedback?: string;
+  review_pending_count?: number;
 }
 
 export interface OrchestratorState {
