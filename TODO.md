@@ -4,14 +4,12 @@
 
 ### In Progress
 
-- [x] **CostDisplay: show sessionCost fallback when aggregate unavailable** (priority: high)
-  `CostDisplay.tsx:35-41` returns "Cost data unavailable" when `error === 'opencode_unavailable'`, hiding all dollar amounts. Fix: add `sessionCost` prop to `CostDisplayProps`; when `opencode_unavailable` AND `sessionCost > 0`, display `$X.XX` (session spend) with the progress bar using session cost against budget cap as fallback. When sessionCost is also 0, keep current "Cost data unavailable" text. Update AppView.tsx to pass `sessionCost` to the component.
-  Consolidates: review finding #1, QA P1 #1 ("Per-session cost not displayed when opencode unavailable"), QA P1 #3 ("Cost progress bar never renders" — progress bar should render using sessionCost when aggregate unavailable).
+- [ ] [review] **Gate 1: Sidebar `displaySessionCost` checks `s.id === 'current'` but actual session ID is the full name** (priority: high)
+  `AppView.tsx:766-767` — `displaySessionCost()` returns `sessionCost` only when `s.id === 'current'`, but the real current session ID from `/api/sessions` is the full orchestrator name (e.g. `orchestrator-20260321-...`), never literally `'current'`. Fix: identify the current session by matching it against the first/active session or by checking `s.isActive && s.status === 'running'` instead of comparing `s.id === 'current'`. Alternatively, have the SSE `state` event include a `currentSessionId` field and match on that.
+  Consolidates: prior review finding #2, QA P1 #2 (sidebar cost still failing at 444992c).
 
-- [ ] [qa/P1] **Sidebar: show current session's log-based cost** (priority: high)
-  `AppView.tsx:701` filters out `id === 'current'` from the `/api/cost/session/:id` fetch, so the current session never gets a cost value in the sidebar. Fix: for the current session card, use the `sessionCost` value from `useCost` (already available in AppView scope) instead of the API-fetched `sessionCosts` record. Pass `sessionCost` into the sidebar component or merge it into the `sessionCosts` state for the current session entry.
-  Consolidates: review finding #2, QA P1 #2 ("No per-session cost or duration in sidebar session cards/tooltips").
-  QA re-test at 444992c: cost IS shown in header toolbar (`$0.0432 session`) but sidebar card tooltips still show only PID/Status/Provider/Iterations/Started/Dir — no cost or duration. Still failing.
+- [ ] [review] **Gate 3: CostDisplay.tsx and dashboard.ts cost routes have zero test coverage — new modules require >=90%** (priority: high)
+  `CostDisplay.tsx` (95 lines, new): no test file. `dashboard.ts` cost API routes (~77 lines added): no tests. `useCost.test.ts` exists but is missing branches: `cancelled=true` cleanup path (useCost.ts:89,104), `inFlightRef.current` guard (useCost.ts:79), `toNumber` with NaN-producing string. Write CostDisplay and dashboard cost route tests as already specified in TODO "Up Next" items, and add the missing useCost branches.
 
 ### Up Next
 

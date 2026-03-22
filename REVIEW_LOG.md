@@ -16,3 +16,21 @@
 - Gate 9 PASS: No documentation changes needed.
 
 ---
+
+## Review — 2026-03-22 — commit bd76d3c..8ec517c
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** CostDisplay.tsx, AppView.tsx (Sidebar), useCost.test.ts (new), App.coverage.test.ts
+
+**Prior findings status:**
+- Prior #1 (CostDisplay sessionCost fallback): **RESOLVED** — `CostDisplay.tsx:37-51` now renders session spend + progress bar when opencode unavailable. QA confirms at 444992c.
+- Prior #2 (Sidebar session cost): **STILL FAILING** — code was added (`displaySessionCost` at AppView.tsx:766-767, `sessionCost` prop threaded to Sidebar) but the `s.id === 'current'` check never matches because the actual session ID is the full orchestrator name. QA re-test confirms tooltip still shows no cost.
+- Prior #3 (Zero tests): **PARTIALLY RESOLVED** — `useCost.test.ts` added with 5 well-written tests (concrete values, edge cases, error paths). CostDisplay and dashboard cost route tests still missing.
+
+**New findings:**
+- Gate 1 FAIL: `AppView.tsx:766` — `s.id === 'current'` identity check is wrong; real session IDs are full names like `orchestrator-20260321-...`. Current session cost never appears in sidebar.
+- Gate 3 FAIL: CostDisplay.tsx (95 lines, new module) has 0% test coverage. dashboard.ts cost routes (~77 lines) have 0% test coverage. useCost.test.ts covers main paths but misses `cancelled`, `inFlightRef` guard, and `toNumber` edge branches (~70% estimated).
+
+**Gates passed:** Gate 2 (useCost tests are thorough — no shallow fakes), Gate 4 (clean code), Gate 5 (cannot run tests due to env memory limits, but QA confirms no regressions), Gate 6 (N/A — QA evidence sufficient), Gate 7 (skip — no layout changes), Gate 8 (no dep changes), Gate 9 (no doc changes needed).
+
+---
