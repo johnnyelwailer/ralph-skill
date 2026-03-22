@@ -1010,7 +1010,7 @@ function Register-IterationFailure {
         [string]$ErrorText
     )
     if (-not ($Mode -in @('plan-build', 'plan-build-review'))) { return }
-    if (-not ($IterationMode -in @('plan', 'build', 'qa', 'review'))) { return }
+    if (-not ($IterationMode -in @('plan', 'build', 'qa', 'review', 'spec-gap', 'docs'))) { return }
 
     # Use per-prompt max_retries (from frontmatter) when set, else global default
     $effectiveRetries = if ($script:effectiveMaxRetries) { $script:effectiveMaxRetries } else { $script:maxPhaseRetries }
