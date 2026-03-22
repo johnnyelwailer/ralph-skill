@@ -490,22 +490,25 @@ else:
 fin_pos = int(payload.get("finalizerPosition", 0))
 print(len(finalizer))
 print(fin_pos)
+print(int(payload.get("cycleCount", 0)))
 PY
 ) || return 1
     local parsed_cycle_pos parsed_cycle_len parsed_prompt_name parsed_last_plan_commit
-    local parsed_finalizer_len parsed_finalizer_pos
+    local parsed_finalizer_len parsed_finalizer_pos parsed_cycle_count
     parsed_cycle_pos=$(printf '%s\n' "$parsed" | sed -n '1p')
     parsed_cycle_len=$(printf '%s\n' "$parsed" | sed -n '2p')
     parsed_prompt_name=$(printf '%s\n' "$parsed" | sed -n '3p')
     parsed_last_plan_commit=$(printf '%s\n' "$parsed" | sed -n '4p')
     parsed_finalizer_len=$(printf '%s\n' "$parsed" | sed -n '5p')
     parsed_finalizer_pos=$(printf '%s\n' "$parsed" | sed -n '6p')
+    parsed_cycle_count=$(printf '%s\n' "$parsed" | sed -n '7p')
     CYCLE_POSITION="${parsed_cycle_pos:-$CYCLE_POSITION}"
     CYCLE_LENGTH="${parsed_cycle_len:-0}"
     RESOLVED_PROMPT_NAME="$parsed_prompt_name"
     LAST_PLAN_COMMIT="$parsed_last_plan_commit"
     FINALIZER_LENGTH="${parsed_finalizer_len:-0}"
     FINALIZER_POSITION="${parsed_finalizer_pos:-0}"
+    CYCLE_COUNT="${parsed_cycle_count:-0}"
     return 0
 }
 
@@ -546,9 +549,9 @@ persist_loop_plan_state() {
     if [ ! -f "$LOOP_PLAN_FILE" ]; then
         return
     fi
-    python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" "$ITERATION" "$ALL_TASKS_MARKED_DONE" "$LAST_PLAN_COMMIT" "$FINALIZER_POSITION" <<'PY'
+    python3 - "$LOOP_PLAN_FILE" "$CYCLE_POSITION" "$ITERATION" "$ALL_TASKS_MARKED_DONE" "$LAST_PLAN_COMMIT" "$FINALIZER_POSITION" "${CYCLE_COUNT:-0}" <<'PY'
 import json, os, sys, tempfile
-path, cycle_pos, iteration, all_done, last_commit, fin_pos = sys.argv[1:]
+path, cycle_pos, iteration, all_done, last_commit, fin_pos, cycle_count = sys.argv[1:]
 with open(path, encoding="utf-8") as f:
     payload = json.load(f)
 payload["cyclePosition"] = int(cycle_pos)
@@ -556,6 +559,7 @@ payload["iteration"] = int(iteration)
 payload["allTasksMarkedDone"] = all_done.lower() == "true"
 payload["lastPlanCommit"] = last_commit
 payload["finalizerPosition"] = int(fin_pos)
+payload["cycleCount"] = int(cycle_count)
 fd, tmp = tempfile.mkstemp(prefix=".loop-plan.", suffix=".json", dir=os.path.dirname(path))
 os.close(fd)
 with open(tmp, "w", encoding="utf-8") as f:
@@ -639,14 +643,19 @@ resolve_execution_controls() {
 }
 
 advance_cycle_position() {
+    local prev_pos="$CYCLE_POSITION"
     if [ -n "${CYCLE_LENGTH:-}" ] && [ "$CYCLE_LENGTH" -gt 0 ] 2>/dev/null; then
         CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % CYCLE_LENGTH ))
-        return
+    else
+        case "$MODE" in
+            plan-build) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 2 )) ;;
+            plan-build-review) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 8 )) ;;
+        esac
     fi
-    case "$MODE" in
-        plan-build) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 2 )) ;;
-        plan-build-review) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 8 )) ;;
-    esac
+    # Increment cycle count when position wraps to 0 (new cycle begins)
+    if [ "$CYCLE_POSITION" -eq 0 ] && [ "$prev_pos" -ne 0 ]; then
+        CYCLE_COUNT=$(( ${CYCLE_COUNT:-0} + 1 ))
+    fi
 }
 
 register_iteration_success() {
@@ -1538,6 +1547,7 @@ RESOLVED_MODE=""
 ITERATION_COMMITS=""
 ITERATION_COMMIT_COUNT="0"
 CYCLE_POSITION=0
+CYCLE_COUNT=0
 RESOLVED_PROMPT_NAME=""
 CYCLE_LENGTH=0
 FINALIZER_MODE=false

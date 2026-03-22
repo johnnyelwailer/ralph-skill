@@ -379,6 +379,7 @@ function Resolve-CyclePromptFromPlan {
             $script:finalizerLength = 0
         }
         $script:finalizerPosition = if ($null -ne $plan.finalizerPosition) { [int]$plan.finalizerPosition } else { 0 }
+        $script:cycleCount = if ($null -ne $plan.cycleCount) { [int]$plan.cycleCount } else { 0 }
         return (-not [string]::IsNullOrWhiteSpace($script:resolvedPromptName))
     } catch {
         return $false
@@ -498,6 +499,11 @@ function Persist-LoopPlanState {
         $plan.allTasksMarkedDone = [bool]$script:allTasksMarkedDone
         $plan.lastPlanCommit = [string]$script:lastPlanCommit
         $plan.finalizerPosition = [int]$script:finalizerPosition
+        if ($null -eq $plan.cycleCount) {
+            $plan | Add-Member -NotePropertyName cycleCount -NotePropertyValue ([int]$script:cycleCount) -Force
+        } else {
+            $plan.cycleCount = [int]$script:cycleCount
+        }
         $plan | ConvertTo-Json -Depth 12 | Set-Content -Encoding utf8 $loopPlanFile
     } catch { }
 }
@@ -887,6 +893,7 @@ $script:lastProviderOutputText = $null
 $script:iterationCommitCount = 0
 $script:iterationCommitLog = ""
 $script:cyclePosition = 0
+$script:cycleCount = 0
 $script:cycleLength = 0
 $script:resolvedPromptName = $null
 $script:finalizerMode = $false
@@ -901,12 +908,17 @@ $script:phaseRetryState = @{
 $script:maxPhaseRetries = if ($Provider -eq 'round-robin') { [Math]::Max(2, $RoundRobinProviders.Count * 2) } else { 2 }
 
 function Advance-CyclePosition {
+    $prevPos = $script:cyclePosition
     if ($script:cycleLength -gt 0) {
         $script:cyclePosition = ($script:cyclePosition + 1) % $script:cycleLength
     } elseif ($Mode -eq 'plan-build') {
         $script:cyclePosition = ($script:cyclePosition + 1) % 2
     } elseif ($Mode -eq 'plan-build-review') {
         $script:cyclePosition = ($script:cyclePosition + 1) % 8
+    }
+    # Increment cycle count when position wraps to 0 (new cycle begins)
+    if ($script:cyclePosition -eq 0 -and $prevPos -ne 0) {
+        $script:cycleCount++
     }
 }
 
