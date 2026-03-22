@@ -938,6 +938,7 @@ The session directory contains \`orchestrator.json\`, \`requests/\`, \`queue/\`,
 Your working directory is \`${sessionDir}/worktree\` — a git worktree with full project access.
 
 Run one lightweight monitoring pass:
+- Read \`CONSTITUTION.md\` from your working directory — these are non-negotiable invariants for all work.
 - Read \`${sessionDir}/orchestrator.json\` to understand current state (issues, waves, dependencies).
 - Check \`${sessionDir}/queue/\` for override prompts to prioritize.
 - Write any required side effects into \`${sessionDir}/requests/*.json\`.
@@ -1345,12 +1346,29 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     const promptsDir = path.join(sessionDir, 'prompts');
     const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
 
-    // Refresh prompts from templates
+    // Fetch latest from remote so worktree and prompts are up to date
+    const { spawn: nodeSpawn, spawnSync: nodeSpawnSync } = await import('node:child_process');
+    nodeSpawnSync('git', ['-C', projectRoot, 'fetch', 'origin'], { encoding: 'utf8' });
+
+    // Refresh ALL orchestrator prompts from templates (not just scan)
     const orchScanPromptFile = path.join(promptsDir, ORCH_SCAN_PROMPT_FILENAME);
     await writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(sessionDir), 'utf8');
 
+    const templateNames = [
+      ORCH_ESTIMATE_PROMPT_FILENAME, ORCH_PRODUCT_ANALYST_PROMPT_FILENAME,
+      ORCH_ARCH_ANALYST_PROMPT_FILENAME, ORCH_DECOMPOSE_PROMPT_FILENAME,
+      ORCH_SUB_DECOMPOSE_PROMPT_FILENAME, ORCH_REVIEW_PROMPT_FILENAME,
+      ORCH_REPLAN_PROMPT_FILENAME, ORCH_SPEC_CONSISTENCY_PROMPT_FILENAME,
+    ];
+    for (const tmpl of templateNames) {
+      const templatePath = path.join(projectRoot, 'aloop', 'templates', tmpl);
+      if (existsSync(templatePath)) {
+        const content = await readFile(templatePath, 'utf8');
+        await writeFile(path.join(promptsDir, tmpl), content, 'utf8');
+      }
+    }
+
     // Recreate worktree if missing
-    const { spawn: nodeSpawn, spawnSync: nodeSpawnSync } = await import('node:child_process');
     const worktreePath = path.join(sessionDir, 'worktree');
     const worktreeBranch = `aloop/${path.basename(sessionDir)}`;
     let workDir = projectRoot;
@@ -1376,6 +1394,8 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       }
     } else {
       workDir = worktreePath;
+      // Pull latest into existing worktree so it has fresh CONSTITUTION.md, SPEC.md, etc.
+      nodeSpawnSync('git', ['-C', worktreePath, 'pull', '--rebase', '--autostash'], { encoding: 'utf8' });
     }
 
     // Reset loop-plan iteration counter to continue from current state
