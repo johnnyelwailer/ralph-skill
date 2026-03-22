@@ -617,6 +617,7 @@ function parseReTriggerEvents(options: GhWatchCommandOptions): Set<GhWatchReTrig
 }
 
 async function launchTrackedIssue(issueNumber: number, options: GhWatchCommandOptions, state: GhWatchState): Promise<GhWatchIssueEntry> {
+  const existing = state.issues[String(issueNumber)];
   const result = await ghLoopRuntime.startIssue({
     issue: issueNumber,
     repo: options.repo,
@@ -627,6 +628,8 @@ async function launchTrackedIssue(issueNumber: number, options: GhWatchCommandOp
     output: 'json',
   });
   const entry = watchEntryFromStartResult(result);
+  entry.last_seen_open = existing?.last_seen_open ?? true;
+  entry.last_seen_comment_count = existing?.last_seen_comment_count ?? 0;
   setWatchEntry(state, entry);
   return entry;
 }
