@@ -39,6 +39,7 @@ import {
   evaluatePolicy,
   formatGhStatusRows,
   ghStopCommand,
+  extractRepoFromIssueUrl,
   type PrReviewComment,
   type PrCheckRun,
   type PrFeedback,
@@ -3298,4 +3299,28 @@ test('executeGhOperation covers missing request, gh execution errors, and parse 
 test('buildGhArgs supports pr-comments operation', () => {
   const args = buildGhArgs('pr-comments', {}, { repo: 'test/repo', since: '2026-03-14T00:00:00Z' });
   assert.deepEqual(args, ['api', 'repos/test/repo/pulls/comments', '--method', 'GET', '-f', 'since=2026-03-14T00:00:00Z']);
+});
+
+// --- extractRepoFromIssueUrl tests ---
+
+test('extractRepoFromIssueUrl extracts repo from github.com URL', () => {
+  assert.equal(extractRepoFromIssueUrl('https://github.com/org/repo/issues/42'), 'org/repo');
+});
+
+test('extractRepoFromIssueUrl extracts repo from GitHub Enterprise URL', () => {
+  assert.equal(extractRepoFromIssueUrl('https://ghe.corp.com/org/repo/issues/42'), 'org/repo');
+  assert.equal(extractRepoFromIssueUrl('https://github.example.com/org/repo/issues/1'), 'org/repo');
+  assert.equal(extractRepoFromIssueUrl('https://git.internal.company.io/team/project/issues/99'), 'team/project');
+});
+
+test('extractRepoFromIssueUrl handles http URLs', () => {
+  assert.equal(extractRepoFromIssueUrl('http://github.com/org/repo/issues/1'), 'org/repo');
+  assert.equal(extractRepoFromIssueUrl('http://ghe.corp.com/org/repo/issues/5'), 'org/repo');
+});
+
+test('extractRepoFromIssueUrl returns null for non-issue URLs', () => {
+  assert.equal(extractRepoFromIssueUrl('https://github.com/org/repo/pull/42'), null);
+  assert.equal(extractRepoFromIssueUrl('https://github.com/org/repo'), null);
+  assert.equal(extractRepoFromIssueUrl('not-a-url'), null);
+  assert.equal(extractRepoFromIssueUrl(''), null);
 });

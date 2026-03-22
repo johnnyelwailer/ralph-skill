@@ -1511,8 +1511,8 @@ function sanitizeBranchSlug(value: string): string {
   return slug.slice(0, 40).replace(/-+$/g, '');
 }
 
-function extractRepoFromIssueUrl(url: string): string | null {
-  const match = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/issues\/\d+/i);
+export function extractRepoFromIssueUrl(url: string): string | null {
+  const match = url.match(/^https?:\/\/[^\/]+\/([^\/]+)\/([^\/]+)\/issues\/\d+/i);
   if (!match) {
     return null;
   }
