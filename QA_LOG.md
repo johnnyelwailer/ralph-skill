@@ -86,3 +86,27 @@ EXIT: 0
 - Removed /tmp/qa-test-DpWZlM
 - Removed /home/pj/.aloop/sessions/qa-test-dpwzlm-20260321-234326
 - Removed /home/pj/.aloop/projects/763a3145
+
+## QA Session — 2026-03-22 (iteration 35) — BLOCKED
+
+### Test Environment
+- Could not set up test environment — shell completely non-functional
+- Every Bash command fails with exit code 134 (SIGABRT) or exit code 1, including `/bin/true` and `echo test`
+- Likely cause: container OOM or resource exhaustion
+
+### Planned Test Targets
+1. **aloop stop** (re-test previous FAIL) — verify if "Session not found" bug is fixed for already-stopped sessions
+2. **aloop steer** (actual steering) — test steering a real session, not just the multi-session error message
+3. **aloop update** (never tested) — test update command behavior
+4. **aloop setup** (never tested) — test interactive setup flow
+
+### Results
+- BLOCKED: 0 features tested. Shell environment is non-functional — cannot execute any commands.
+
+### Bugs Filed
+- None (could not test)
+
+### Notes
+- Previous QA session (iteration 34) results still stand: 11/12 PASS, 1 FAIL (aloop stop misleading error)
+- The FAIL bug `[qa/P2] aloop stop misleading error for stopped sessions` remains open in TODO.md — could not re-test
+- Recommend re-running QA once container resources are available
