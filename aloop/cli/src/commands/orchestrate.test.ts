@@ -6732,11 +6732,11 @@ describe('recoverFailedIssues', () => {
         if (args.includes('--json') && args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' }]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'build', status: 'COMPLETED', conclusion: 'FAILURE' }] }), stderr: '' };
         }
         if (args.includes('api')) {
-          return { stdout: JSON.stringify([{ name: 'ci.yml', path: '.github/workflows/ci.yml' }]), stderr: '' };
+          return { stdout: '1', stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
