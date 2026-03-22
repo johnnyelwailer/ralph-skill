@@ -370,6 +370,51 @@ test_concurrent_write_safety() {
     fi
 }
 
+test_lock_failure_graceful_degradation() {
+    setup
+    local ok=true
+    local provider="lockfail"
+    local path
+    path=$(get_provider_health_path "$provider")
+
+    # Seed a baseline health file, then hold the lock so updates can't proceed.
+    set_provider_health_state "$provider" "healthy" "2026-03-22T00:00:00Z" "" "" 0 ""
+    mkdir "${path}.lock"
+
+    # Health update should gracefully skip when lock cannot be acquired.
+    set +e
+    update_provider_health_on_failure "$provider" "connection timeout"
+    local rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        echo "  FAIL: update should skip on lock failure without crashing (rc=$rc)"
+        ok=false
+    fi
+
+    if ! contains_log "health_lock_failed|provider=${provider}|operation=read"; then
+        echo "  FAIL: expected health_lock_failed log entry for read operation"
+        ok=false
+    fi
+
+    local raw status failures
+    raw=$(cat "$path")
+    status=$(extract_json_string_field "$raw" "status")
+    failures=$(extract_json_number_field "$raw" "consecutive_failures")
+    if [ "$status" != "healthy" ] || [ "$failures" != "0" ]; then
+        echo "  FAIL: health file should remain unchanged when lock acquisition fails"
+        ok=false
+    fi
+
+    rmdir "${path}.lock" 2>/dev/null || true
+    teardown
+    if $ok; then
+        echo "PASS: lock failure gracefully degrades (skip-and-continue)"
+    else
+        echo "FAIL: lock failure graceful degradation"
+        failed=1
+    fi
+}
+
 # --- Run tests ---
 
 echo "=== Provider Health Integration Tests ==="
@@ -379,6 +424,7 @@ test_backoff_escalation_through_all_tiers
 test_health_file_is_valid_json
 test_success_preserves_last_failure_info
 test_concurrent_write_safety
+test_lock_failure_graceful_degradation
 
 if [ $failed -eq 0 ]; then
     echo "All integration tests passed!"
