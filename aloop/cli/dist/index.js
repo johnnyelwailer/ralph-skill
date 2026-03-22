@@ -6039,7 +6039,7 @@ async function startDashboardServer(options, runtimeOptions = {}) {
           writeJson(response, 200, costAggregateCache.data);
           return;
         }
-        const result = runOpencodeDb("SELECT model, SUM(cost_usd) as cost_usd FROM usage GROUP BY model");
+        const result = runOpencodeDb("SELECT json_extract(data,'$.modelID') as model, SUM(CAST(json_extract(data,'$.cost') AS REAL)) as cost_usd FROM message WHERE json_extract(data,'$.role')='assistant' GROUP BY model");
         if (!result.ok) {
           writeJson(response, 200, { error: "opencode_unavailable" });
           return;
@@ -13198,7 +13198,8 @@ async function checkPrGates(prNumber, repo, deps) {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    gates.push({ gate: "merge_conflicts", status: "pass", detail: `Merge check skipped (API error): ${msg}` });
+    mergeable = false;
+    gates.push({ gate: "merge_conflicts", status: "api_error", detail: `Merge check failed (API error): ${msg}` });
   }
   try {
     const checksResult = await deps.execGh([
@@ -13240,7 +13241,7 @@ async function checkPrGates(prNumber, repo, deps) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (ciWorkflowsConfigured) {
-      gates.push({ gate: "ci_checks", status: "fail", detail: `Failed to query CI checks: ${msg}` });
+      gates.push({ gate: "ci_checks", status: "api_error", detail: `Failed to query CI checks: ${msg}` });
     } else {
       gates.push({ gate: "ci_checks", status: "pass", detail: `No GitHub Actions workflows detected; CI check query skipped (${msg})` });
     }

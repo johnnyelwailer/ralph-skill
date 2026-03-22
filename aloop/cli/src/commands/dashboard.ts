@@ -1130,7 +1130,7 @@ export async function startDashboardServer(
           return;
         }
 
-        const result = runOpencodeDb('SELECT model, SUM(cost_usd) as cost_usd FROM usage GROUP BY model');
+        const result = runOpencodeDb("SELECT json_extract(data,'$.modelID') as model, SUM(CAST(json_extract(data,'$.cost') AS REAL)) as cost_usd FROM message WHERE json_extract(data,'$.role')='assistant' GROUP BY model");
         if (!result.ok) {
           writeJson(response, 200, { error: 'opencode_unavailable' });
           return;
