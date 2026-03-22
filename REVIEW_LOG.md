@@ -142,3 +142,25 @@ All gates pass. Integration suite: 125 dashboard tests + 8 CLI tests pass, type-
 2. Gate 3 (informational): `error-handling.ts` would benefit from a dedicated unit test file covering `--output=value` form, `formatErrorMessage` stderr extraction, and `resolveOutputModeFromActionArgs` direct-property path. Current integration coverage is sufficient but leaves ~30% of branches untested. Not blocking since untested paths are low-risk utility edges.
 
 ---
+
+## Review — 2026-03-22 — commit fa560585..86d344a2
+
+**Verdict: PASS** (2 observations)
+**Scope:** project.mjs (+3), setup.ts (+4), index.ts (+1), project.test.ts (+10), index.test.ts (+36), orchestrate.test.ts (+4/-2), QA_LOG.md, QA_COVERAGE.md
+
+**Gate-by-gate:**
+- Gate 1 (Spec Compliance): PASS — Three QA P2 bug fixes, all outside TASK_SPEC scope but valid maintenance work. `resolveProjectRoot()` now validates path existence before git operations. `setupCommand()` guards interactive readline behind TTY check. `--output` flag wired to setup command for JSON error formatting.
+- Gate 2 (Test Depth): PASS — `project.test.ts:622-630` asserts `rejects` with exact error substring "Project root does not exist". `index.test.ts:91-93` asserts exit code 1 and matches stderr for both the error text and `--non-interactive` guidance. `index.test.ts:111-112` parses stderr as JSON and asserts exact error message string. All three tests would fail if the guard logic were removed or changed.
+- Gate 3 (Coverage): PASS — All 3 changed source files (project.mjs:3 lines, setup.ts:4 lines, index.ts:1 line) are covered by corresponding tests. `orchestrate.test.ts` changes are test hygiene (real temp dirs instead of `/project` hardcoded paths).
+- Gate 4 (Code Quality): PASS — Minimal, clean changes. No dead code, no duplication. TTY guard is 2 lines. existsSync guard is 3 lines. No over-engineering.
+- Gate 5 (Integration Sanity): PASS — 9/9 CLI tests pass, `tsc --noEmit` clean, `npm run build` clean.
+- Gate 6 (Proof): PASS — Internal bug fixes (error handling, input validation). No observable output requiring proof. Empty proof manifest correct.
+- Gate 7 (Runtime Layout): SKIP — No CSS/layout changes.
+- Gate 8 (Version Compliance): SKIP — No dependency changes.
+- Gate 9 (Documentation Freshness): PASS — No user-facing behavior changes requiring doc updates. New `--non-interactive` and `--output` flags are CLI-discoverable via `--help`.
+
+**Observations:**
+1. Gate 2: `index.test.ts:96-113` — the `--output json` test validates the full error pipeline end-to-end: setup command throws → `withErrorHandling` catches → `resolveOutputModeFromActionArgs` reads `--output json` → stderr emits parseable JSON with exact error string. A structural assertion (JSON.parse + exact match) rather than a pattern match.
+2. Gate 4: `orchestrate.test.ts` fix replaces hardcoded `/project` paths with real `mkdtemp` dirs — this prevents false passes on systems where `/project` happens to exist. Good test hygiene.
+
+---
