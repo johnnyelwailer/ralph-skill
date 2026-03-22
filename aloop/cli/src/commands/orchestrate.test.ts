@@ -4747,6 +4747,47 @@ describe('runOrchestratorScanPass', () => {
 
     assert.equal(result.childMonitoring, null);
   });
+
+  it('clears last_reviewed_sha when child is redispatched for review fixes', async () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 12,
+          wave: 1,
+          pr_number: 77,
+          state: 'pr_open',
+          child_session: 'old-child-session',
+          needs_redispatch: true,
+          review_feedback: 'Please add missing tests.',
+          last_reviewed_sha: 'sha-before-redispatch',
+        }),
+      ],
+    });
+    const deps = createMockScanDeps({
+      aloopRoot: '/home/.aloop',
+      dispatchDeps: createMockDispatchDeps(),
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    const writtenState = JSON.parse(deps.files['/state.json']);
+    assert.equal(writtenState.issues[0].needs_redispatch, false);
+    assert.equal(writtenState.issues[0].review_feedback, undefined);
+    assert.equal(writtenState.issues[0].last_reviewed_sha, undefined);
+    assert.equal(writtenState.issues[0].state, 'in_progress');
+    assert.notEqual(writtenState.issues[0].child_session, 'old-child-session');
+    assert.ok(deps.logEntries.some((entry) => entry.event === 'child_redispatched_for_review'));
+
+    const reviewPromptPath = Object.keys(deps.files).find((p) => p.endsWith('/queue/000-review-fixes.md'));
+    assert.ok(reviewPromptPath, 'review feedback queue prompt should be written');
+    const reviewPrompt = deps.files[reviewPromptPath!];
+    assert.ok(reviewPrompt.includes('PR #77'));
+    assert.ok(reviewPrompt.includes('Please add missing tests.'));
+  });
 });
 
 describe('runOrchestratorScanLoop', () => {

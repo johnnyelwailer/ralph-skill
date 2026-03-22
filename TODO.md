@@ -9,7 +9,7 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [x] [review] Gate 4: Remove `(issue as any)` casts for typed review fields — Added `child_pid` to `OrchestratorIssue` interface. Replaced all 14 `(issue as any)` / `(stateIssue as any)` / `(i as any)` casts with direct property access. tsc clean, 343 tests pass. (priority: high)
 
-- [ ] **Add remaining test coverage for review dedup** — SHA gating and comment attribution already have tests. Still need: (a) re-dispatch clears `last_reviewed_sha` — the redispatch path at orchestrate.ts:5422-5424 sets `needs_redispatch = false`, `review_feedback = undefined`, `last_reviewed_sha = undefined` but has no test. Add to `orchestrate.test.ts`. (priority: medium)
+- [x] **Add remaining test coverage for review dedup** — Added `runOrchestratorScanPass` regression test in `orchestrate.test.ts` that exercises redispatch flow and asserts `needs_redispatch` reset, `review_feedback` clear, and `last_reviewed_sha` clear, plus review-fixes prompt generation. (priority: medium)
 
 ### Spec-Gap Analysis
 
