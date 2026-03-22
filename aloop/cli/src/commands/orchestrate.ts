@@ -100,6 +100,8 @@ export interface OrchestratorIssue {
   pending_review_comments?: PendingReviewComment[];
   resolving_comment_ids?: number[];
   last_review_comment?: string;
+  child_pid?: number;
+  last_reviewed_sha?: string;
 }
 
 export interface OrchestratorState {
@@ -5558,7 +5560,7 @@ export async function runOrchestratorScanPass(
         if (stateIssue) {
           stateIssue.state = 'in_progress';
           stateIssue.child_session = launchResult.session_id;
-          (stateIssue as any).child_pid = launchResult.pid;
+          stateIssue.child_pid = launchResult.pid;
           stateIssue.status = 'In progress';
           if (repo && deps.execGh) {
             await syncIssueProjectStatus(issue.number, repo, 'In progress', {

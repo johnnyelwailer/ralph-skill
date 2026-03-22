@@ -1024,11 +1024,11 @@ ${recent.slice(-4000)}
             const headResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'headRefOid'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
             if (headResult.status === 0) {
               const headSha = JSON.parse(headResult.stdout).headRefOid;
-              if (headSha && (stateIssue as any).last_reviewed_sha === headSha) {
+              if (headSha && stateIssue.last_reviewed_sha === headSha) {
                 return { pr_number: prNumber, verdict: 'pending', summary: 'Already reviewed this commit, waiting for new push.' };
               }
               // Store SHA — will be saved after verdict
-              (stateIssue as any).last_reviewed_sha = headSha;
+              stateIssue.last_reviewed_sha = headSha;
             }
           } catch { /* ignore */ }
         }
