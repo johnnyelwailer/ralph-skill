@@ -874,6 +874,29 @@ function Resolve-PromptPlaceholders {
     return $resolved
 }
 
+# Validate a proof-manifest.json file (existence + valid JSON)
+# Sets $script:validateProofManifestError on failure
+$script:validateProofManifestError = ""
+
+function Validate-ProofManifest {
+    param(
+        [string]$ManifestPath
+    )
+    if (-not (Test-Path $ManifestPath)) {
+        $script:validateProofManifestError = "missing_file"
+        return $false
+    }
+    try {
+        $content = Get-Content -Path $ManifestPath -Raw
+        $null = $content | ConvertFrom-Json -ErrorAction Stop
+        $script:validateProofManifestError = ""
+        return $true
+    } catch {
+        $script:validateProofManifestError = "invalid_json"
+        return $false
+    }
+}
+
 # ============================================================================
 # STUCK DETECTION
 # ============================================================================

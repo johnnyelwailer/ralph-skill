@@ -1,19 +1,39 @@
-# Issue #102: Review Gate 10: QA trend checking
+# Issue #101: Proof artifact storage, baseline management, and manifest validation
 
 ## Current Phase: Implementation
 
 ### In Progress
 
+- [x] **P1: loop.ps1 — proof manifest validation function** — Add `Validate-ProofManifest` function equivalent to loop.sh's `validate_proof_manifest()`. Must check file existence and JSON validity. (loop.sh has this at lines 603-622; loop.ps1 has nothing)
+
+- [ ] **P1: loop.ps1 — baselines directory creation** — Add `New-Item -ItemType Directory -Force` for `$artifactsDir/baselines` at session init, matching loop.sh line 1964
+
+- [ ] **P1: loop.ps1 — per-iteration artifacts directory creation** — Create `$artifactsDir/iter-$iteration` before provider invocation, matching loop.sh line 2246
+
+- [ ] **P1: loop.ps1 — proof phase post-invocation handling** — After provider returns successfully for proof mode: validate manifest, log `proof_manifest_validated` event, track `$lastProofIteration`, set error on validation failure. Mirror loop.sh lines 2260-2278
+
+- [ ] **P1: loop.ps1 — output capture to artifacts** — Capture provider output to `$artifactsDir/iter-$iteration/output.txt` after each iteration, matching loop.sh lines 2352-2355
+
+### Up Next
+
+- [ ] **P2: loop.sh — baseline update after review approval** — After a successful review iteration, copy latest proof artifacts to `artifacts/baselines/`. SPEC line 601: "After review approval: Current screenshots replace baselines (harness copies them)." Need to find most recent proof iteration's artifacts and copy image files to baselines/
+
+- [ ] **P2: loop.ps1 — baseline update after review approval** — Same baseline update logic for PowerShell, mirroring the loop.sh implementation
+
+- [ ] **P2: loop.sh — proof skip protocol** — When proof manifest has empty `artifacts` array, log the skip reason but don't treat as failure. Currently validation only checks JSON validity, not the skip case. TASK_SPEC deliverable: "if manifest has empty artifacts array, log skip reason but don't treat as failure"
+
+- [ ] **P2: loop.ps1 — proof skip protocol** — Same skip protocol for PowerShell
+
+- [ ] **P3: Expand subagent-hints-proof.md** — Current file is 5 lines listing two subagents with no examples. Needs: vision-model delegation examples, how to use `task` tool to invoke vision-reviewer, reference to `aloop/agents/opencode/vision-reviewer.md` with concrete usage patterns, accessibility-checker invocation examples
+
 ### Completed
-- [x] Add Gate 10 (QA Coverage & Bug Fix Rate) section to `aloop/templates/instructions/review.md` after Gate 9 — includes: parse QA_COVERAGE.md for coverage %, scan TODO.md for stale [qa/P1] bugs, fail criteria (coverage < 30%, stale P1 > 3 iterations), graceful skip when QA_COVERAGE.md absent
-- [x] Update all references to "9 gates" in review.md to "10 gates" — affects: process step 2 ("9 gates"), approval flow ("gates 1-9 pass" x2), objective line
 
-### Spec-Gap Analysis
-
-- [ ] [spec-gap/P2] review.md line 24 heading still says "## The 9 Gates" — should be "## The 10 Gates". All other references were updated to 10 but this heading was missed. **Files:** `aloop/templates/instructions/review.md:24`. **Fix:** update heading text.
-
-- [ ] [spec-gap/P1] loop.ps1 missing proof artifact infrastructure — loop.sh has full implementation (baselines dir creation, per-iteration `mkdir`, `validate_proof_manifest`, proof manifest validation after proof phase) but loop.ps1 has none of this. TASK_SPEC.md says "Both `loop.sh` and `loop.ps1` updated consistently". **Files:** `aloop/bin/loop.ps1` (missing), `aloop/bin/loop.sh:603-622,1963-1964,2244-2277` (reference implementation). **Fix:** port proof artifact creation, manifest validation, and baselines dir setup from loop.sh to loop.ps1.
-
-- [ ] [spec-gap/P2] Baseline update after review approval not implemented — both scripts create `artifacts/baselines/` dir but neither copies latest artifacts to baselines after review approval. TASK_SPEC says "after review approval, latest artifacts become new baselines"; SPEC.md acceptance criteria (line 721): "Baselines are stored per-session and updated after review approval". **Files:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`. **Fix:** add logic after review-pass to copy latest proof iteration artifacts into `baselines/`.
-
-- [ ] [spec-gap/P2] subagent-hints-proof.md not expanded with vision-model delegation examples — TASK_SPEC.md deliverable: "Expand `subagent-hints-proof.md` with vision-model delegation examples (reference `aloop/agents/opencode/vision-reviewer.md`)". File is still only 5 lines with no delegation examples. **Files:** `aloop/templates/subagent-hints-proof.md`. **Fix:** add concrete vision-model delegation usage examples referencing vision-reviewer.md.
+- [x] loop.sh — ARTIFACTS_DIR variable defined (line 258)
+- [x] loop.sh — Template variable resolution for `{{ARTIFACTS_DIR}}` and `{{ITERATION}}` (lines 284-285)
+- [x] loop.ps1 — Template variable resolution for `{{ARTIFACTS_DIR}}` and `{{ITERATION}}` (lines 869-870)
+- [x] loop.sh — baselines directory creation (line 1964)
+- [x] loop.sh — per-iteration artifacts directory creation before proof agent (line 2246)
+- [x] loop.sh — validate_proof_manifest function (lines 603-622)
+- [x] loop.sh — proof manifest validation after proof phase (lines 2260-2278)
+- [x] loop.sh — output capture to artifacts/iter-N/output.txt (lines 2352-2355)
+- [x] PROMPT_proof.md — complete with manifest format, skip protocol, template variables
