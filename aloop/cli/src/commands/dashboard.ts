@@ -1082,7 +1082,7 @@ export async function startDashboardServer(
           const ctx = await resolveSessionContext(runtimeDir, targetSessionId);
           if (ctx) coverageWorkdir = ctx.workdir;
         }
-        const coveragePath = path.join(coverageWorkdir, 'QA_COVERAGE.md');
+        const coveragePath = path.join(coverageWorkdir, '.aloop', 'QA_COVERAGE.md');
         const raw = await readTextFile(coveragePath);
         if (!raw) {
           writeJson(response, 200, { coverage_percent: 0, total_features: 0, tested_features: 0, passed: 0, failed: 0, untested: 0, features: [], available: false, error: 'not_found' });

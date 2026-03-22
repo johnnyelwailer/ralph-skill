@@ -2018,7 +2018,8 @@ test('GET /api/qa-coverage parses pipe-delimited table from QA_COVERAGE.md', asy
       '| dashboard health | UI/HealthPanel | 2026-03-19 | f4e5d6a | FAIL | 2/4 | codex missing |',
       '| aloop gh watch | CLI/gh.ts | never | - | UNTESTED | 0/3 | - |',
     ].join('\n');
-    await writeFile(path.join(workdir, 'QA_COVERAGE.md'), tableContent, 'utf8');
+    await mkdir(path.join(workdir, '.aloop'), { recursive: true });
+    await writeFile(path.join(workdir, '.aloop', 'QA_COVERAGE.md'), tableContent, 'utf8');
     const response = await fetch(`${handle.url}/api/qa-coverage`);
     assert.equal(response.status, 200);
     const body = (await response.json()) as Record<string, unknown>;
@@ -2046,8 +2047,9 @@ test('GET /api/qa-coverage parses pipe-delimited table from QA_COVERAGE.md', asy
 test('GET /api/qa-coverage returns 0% when file has no parseable table', async () => {
   const { handle, root, workdir } = await createServerFixture();
   try {
+    await mkdir(path.join(workdir, '.aloop'), { recursive: true });
     await writeFile(
-      path.join(workdir, 'QA_COVERAGE.md'),
+      path.join(workdir, '.aloop', 'QA_COVERAGE.md'),
       '# QA Report\n\nNo coverage table here.',
       'utf8',
     );
