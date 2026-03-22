@@ -4586,6 +4586,7 @@ describe('runOrchestratorScanPass', () => {
     const persisted = JSON.parse(deps.files['/state.json']) as OrchestratorState;
     assert.equal(persisted.issues[0].needs_redispatch, false);
     assert.equal(persisted.issues[0].pending_review_comments, undefined);
+    assert.deepStrictEqual(persisted.issues[0].resolving_comment_ids, [1234]);
   });
 
   it('persists state after scan pass', async () => {

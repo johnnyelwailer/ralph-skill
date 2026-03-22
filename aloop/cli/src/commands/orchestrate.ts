@@ -98,6 +98,7 @@ export interface OrchestratorIssue {
   needs_redispatch?: boolean;
   review_feedback?: string;
   pending_review_comments?: PendingReviewComment[];
+  resolving_comment_ids?: number[];
   last_review_comment?: string;
 }
 
@@ -5713,6 +5714,8 @@ export async function runOrchestratorScanPass(
               `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Summary\n\n${feedback}\n\n## Inline Comments (Resolve Individually)\n\n${renderedComments}\n\n## Instructions\n\n1. Address each inline comment individually.\n2. After fixing a comment, resolve the corresponding review thread using its comment ID.\n3. Commit with messages like: \`fix: address review comment on file.ts:42\`.\n4. Push updates to the same branch.\n\nDo NOT add TODO.md, STEERING.md, or other working artifacts to the commit.\n`,
               'utf8',
             );
+            const commentIds = reviewComments.map(c => c.id).filter((id): id is number => id !== undefined);
+            (issue as any).resolving_comment_ids = commentIds.length > 0 ? commentIds : undefined;
           }
           (issue as any).needs_redispatch = false;
           (issue as any).review_feedback = undefined;
