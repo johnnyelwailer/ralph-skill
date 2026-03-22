@@ -405,15 +405,20 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   } catch { /* cleanup is best-effort */ }
 
-  // Periodic /tmp V8 cache cleanup (provider CLIs like claude/opencode pollute /tmp)
-  // Only run occasionally — every ~10th pass — to avoid hammering find
+  // HACK: Periodic /tmp V8 cache cleanup — provider CLIs (claude, opencode) create
+  // V8 code cache .so files in /tmp that can fill the tmpfs (13GB+ observed).
+  // This is a blunt workaround. Needs research into:
+  //   - Can we set NODE_COMPILE_CACHE for provider CLIs too? (they ignore env vars?)
+  //   - Is there a provider-specific config to disable/redirect their cache?
+  //   - Should we use a dedicated tmpdir mount with size limits instead?
+  // See: https://github.com/johnnyelwailer/ralph-skill/issues/164
   if (Math.random() < 0.1) {
     try {
       const findResult = spawnSync('find', ['/tmp', '-maxdepth', '2', '-name', '.da*.so', '-mmin', '+60', '-delete'], {
         encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000,
       });
       if (findResult.status === 0) {
-        console.log('[process-requests] Cleaned stale V8 cache files from /tmp');
+        console.log('[process-requests] Cleaned stale V8 cache files from /tmp (HACK — see #164)');
       }
     } catch { /* best-effort */ }
   }

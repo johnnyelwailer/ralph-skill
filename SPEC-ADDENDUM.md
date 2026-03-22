@@ -1280,10 +1280,16 @@ This avoids the "failed forever" trap while preventing infinite loops on the sam
 
 ### V8 Code Cache Cleanup
 
-Provider CLIs (claude, opencode) create V8 code cache `.so` files in `/tmp` that can fill the tmpfs. Mitigation:
+Provider CLIs (claude, opencode) create V8 code cache `.so` files in `/tmp` that can fill the tmpfs (13GB+ observed).
 
-- **Per-session**: child loops get `NODE_COMPILE_CACHE=<sessionDir>/.v8-cache`, cleaned on completion
-- **Global**: `process-requests` periodically deletes `.da*.so` files in `/tmp` older than 60 minutes (runs ~10% of passes)
+- **Per-session** (good): child loops get `NODE_COMPILE_CACHE=<sessionDir>/.v8-cache`, cleaned on completion
+- **Global** (stopgap hack): `process-requests` periodically deletes `.da*.so` files in `/tmp` older than 60 minutes — this is a blunt workaround that may delete files belonging to other processes
+
+**Needs research** (see #164):
+- Can `NODE_COMPILE_CACHE` be set for provider CLIs? They may ignore the env var or use a different caching mechanism.
+- Is there a provider-specific config to disable or redirect their cache?
+- Should the orchestrator use a dedicated tmpdir mount with size limits?
+- Can we identify which `.so` files belong to our processes vs unrelated ones?
 
 ### Acceptance Criteria
 
