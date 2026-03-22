@@ -1,7 +1,9 @@
 ---
 description: Analyzes screenshots for layout and visual issues
-mode: subagent
 model: openrouter/google/gemini-3.1-flash-lite-preview
+reasoning: medium
+provider: openrouter
+mode: subagent
 tools:
   write: false
   edit: false
