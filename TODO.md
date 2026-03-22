@@ -2,21 +2,18 @@
 
 ## Current Phase: Implementation
 
+### Review Findings (highest priority)
+
+- [x] [review] Gate 4: `loop.sh:2352` — `mkdir -p "$SESSION_DIR/artifacts/iter-$ITERATION"` is now redundant with `loop.sh:2246` `mkdir -p "$ARTIFACTS_DIR/iter-$ITERATION"` (same path via `ARTIFACTS_DIR="$SESSION_DIR/artifacts"`). Remove the duplicate at line 2352. (priority: high)
+- [x] [review] Gate 9: `aloop/templates/instructions/review.md:24` — section heading still reads `## The 9 Gates` but there are now 10 gates. Update to `## The 10 Gates`. (priority: high)
+
 ### In Progress
 
-- [x] **P1: loop.ps1 — proof manifest validation function** — Add `Validate-ProofManifest` function equivalent to loop.sh's `validate_proof_manifest()`. Must check file existence and JSON validity. (loop.sh has this at lines 603-622; loop.ps1 has nothing)
+- [ ] [qa/P1] **Validate-ProofManifest accepts empty file** — `ConvertFrom-Json` on empty string returns `$null` without error, so empty files pass validation. Add an explicit empty/whitespace-only check before JSON parsing. Fix this BEFORE wiring up post-invocation handling. (`loop.ps1:881-898`) (priority: high)
 
-- [x] **P1: loop.ps1 — baselines directory creation** — Add `New-Item -ItemType Directory -Force` for `$artifactsDir/baselines` at session init, matching loop.sh line 1964
+- [ ] **P1: loop.ps1 — proof phase post-invocation handling** — After provider returns successfully for proof mode: validate manifest at `$artifactsDir/iter-$iteration/proof-manifest.json`, log `proof_manifest_validated` event, track `$script:lastProofIteration`, call `Register-IterationFailure` on validation failure. Mirror loop.sh lines 2260-2278. (`loop.ps1` post-provider section ~line 2196+) (priority: high)
 
-- [x] **P1: loop.ps1 — per-iteration artifacts directory creation** — Create `$artifactsDir/iter-$iteration` before provider invocation, matching loop.sh line 2246
-
-- [ ] **P1: loop.ps1 — proof phase post-invocation handling** — After provider returns successfully for proof mode: validate manifest, log `proof_manifest_validated` event, track `$lastProofIteration`, set error on validation failure. Mirror loop.sh lines 2260-2278
-
-- [ ] **P1: loop.ps1 — output capture to artifacts** — Capture provider output to `$artifactsDir/iter-$iteration/output.txt` after each iteration, matching loop.sh lines 2352-2355
-
-### QA Bugs
-
-- [ ] [qa/P1] Validate-ProofManifest accepts empty file: `Set-Content -Value ""` to proof-manifest.json → `Validate-ProofManifest` returns `$true` → SPEC says manifest must be valid JSON (empty string is not valid JSON). Tested at iter 16. (priority: high)
+- [ ] **P1: loop.ps1 — output capture to artifacts** — Record raw log offset before provider invocation, then extract delta to `$artifactsDir/iter-$iteration/output.txt` after. Mirror loop.sh lines 2351-2356 approach (offset-based extraction from raw log). (`loop.ps1` ~line 2188+) (priority: high)
 
 ### Up Next
 
@@ -41,3 +38,6 @@
 - [x] loop.sh — proof manifest validation after proof phase (lines 2260-2278)
 - [x] loop.sh — output capture to artifacts/iter-N/output.txt (lines 2352-2355)
 - [x] PROMPT_proof.md — complete with manifest format, skip protocol, template variables
+- [x] loop.ps1 — Validate-ProofManifest function (lines 881-898, has empty-file bug)
+- [x] loop.ps1 — baselines directory creation at session init
+- [x] loop.ps1 — per-iteration artifacts directory creation (line 2188)
