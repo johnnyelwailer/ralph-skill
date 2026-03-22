@@ -10,6 +10,17 @@
 
 (no tasks remaining after current in-progress item)
 
+### Spec-Gap Analysis (2026-03-22)
+
+**Previous spec-gap findings (all resolved):**
+- [x] [spec-gap/P2] SPEC.md referenced "9 gates" in 3 places — fixed in commit `5fcd1059`
+- [x] [spec-gap/P2] loop.sh `register_iteration_failure` excluded proof mode — fixed in commit `4664d26c`
+- [x] [spec-gap/P2] Stale gate counts in README vs SPEC — fixed in commit `4a837c92`
+
+**New findings:**
+
+- [ ] [spec-gap/P2] SPEC.md internal inconsistency: default pipeline description contradicts itself. The Proof-of-Work design section (lines 404, 407, 420) correctly states proof is **finalizer-only** with an 8-step continuous cycle (`plan → build × 5 → qa → review`). However, acceptance criteria at lines 717 and 775, plus Configurable Agent Pipeline sections at lines 1321, 3426, and 4081, incorrectly describe a 9-step cycle with proof **in** the cycle (`plan → build × 5 → proof → qa → review`). The implementation (`pipeline.yml`, `loop-plan.json` structure) matches the finalizer-only design. **Fix: update SPEC.md** — change the 5 stale references to match the authoritative design section. Files: `SPEC.md`
+
 ### Completed
 
 - [x] Expand `aloop/templates/subagent-hints-proof.md` with vision-model delegation examples: added when-to-delegate guidance, task tool syntax with screenshot paths and baseline comparisons, vision-reviewer output format, and accessibility-checker vs vision-reviewer usage guidance.
