@@ -9,7 +9,7 @@
 
 ### Up Next
 
-- [ ] **Update `buildFeedbackSteering()` in `gh.ts` to include review comment IDs** — Currently formats reviewer comments with path/line/body but omits `comment.id`. Add comment IDs alongside each feedback item and include instructions for the builder to address each individually and reference the ID when resolving. Test in gh.test.ts:~2089 should be extended to assert ID presence. (priority: high)
+- [x] **Update `buildFeedbackSteering()` in `gh.ts` to include review comment IDs** — `buildFeedbackSteering()` now includes `Comment ID: <id>` for each review item and explicit per-comment resolution guidance that references each ID. `gh.test.ts` assertions updated to verify comment ID and resolution instructions are present. (priority: high)
 
 - [ ] **Add builder comment resolution capability** — Give the builder agent the ability to resolve individual review comment threads after addressing them. Options: (a) add `resolveThread` call in `checkAndApplyPrFeedback` in `gh.ts` after builder pushes fixes, or (b) provide a queue mechanism. The builder should resolve each thread individually, not batch-resolve. Depends on steering having comment IDs. (priority: high)
 

@@ -2103,9 +2103,13 @@ test('buildFeedbackSteering formats review comments and CI failures', () => {
   assert.match(steering, /PR #51/);
   assert.match(steering, /reviewer1/);
   assert.match(steering, /src\/main\.ts:42/);
+  assert.match(steering, /Comment ID: 1/);
   assert.match(steering, /null check/);
+  assert.match(steering, /referenc(?:e|ing) comment ID 1/i);
   assert.match(steering, /reviewer2/);
+  assert.match(steering, /Comment ID: 2/);
   assert.match(steering, /error handling/);
+  assert.match(steering, /Resolve each review comment individually/);
   assert.match(steering, /build-and-test/);
   assert.match(steering, /CI Failures/);
   assert.match(steering, /\[view\]/);
@@ -2139,7 +2143,9 @@ test('buildFeedbackSteering handles comments without path or user', () => {
 
   const steering = buildFeedbackSteering(feedback, 10);
   assert.match(steering, /unknown/);
+  assert.match(steering, /Comment ID: 1/);
   assert.match(steering, /Some feedback/);
+  assert.match(steering, /referenc(?:e|ing) comment ID 1/i);
   assert.doesNotMatch(steering, /CI Failures/);
 });
 

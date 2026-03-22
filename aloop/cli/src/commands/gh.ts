@@ -813,9 +813,15 @@ function buildFeedbackSteering(feedback: PrFeedback, prNumber: number): string {
       const location = comment.path ? `${comment.path}${comment.line ? `:${comment.line}` : ''}` : '';
       parts.push(`### ${author}${location ? ` — \`${location}\`` : ''}`);
       parts.push('');
+      parts.push(`Comment ID: ${comment.id}`);
+      parts.push('');
       parts.push(comment.body.trim());
       parts.push('');
+      parts.push(`- Address this comment directly in your fix and resolve by referencing comment ID ${comment.id}.`);
+      parts.push('');
     }
+    parts.push('Resolve each review comment individually after applying the fix, and reference its Comment ID when resolving.');
+    parts.push('');
   }
 
   if (feedback.new_issue_comments.length > 0) {
