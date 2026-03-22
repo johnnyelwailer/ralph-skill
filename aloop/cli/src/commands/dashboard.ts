@@ -99,6 +99,33 @@ async function readJsonArrayFile(filePath: string): Promise<unknown[]> {
   return [];
 }
 
+async function enrichSessionEntriesWithStatusAndMeta(entries: unknown[]): Promise<unknown[]> {
+  return await Promise.all(
+    entries.map(async (entry) => {
+      if (!isRecord(entry)) return entry;
+      const dir = typeof entry.session_dir === 'string' ? entry.session_dir : null;
+      if (!dir) return entry;
+
+      const [sessionStatus, sessionMeta] = await Promise.all([
+        readJsonFile(path.join(dir, 'status.json')),
+        readJsonFile(path.join(dir, 'meta.json')),
+      ]);
+
+      const merged: Record<string, unknown> = { ...entry };
+      if (isRecord(sessionStatus)) {
+        Object.assign(merged, sessionStatus);
+      }
+
+      // Session cards require `branch`; it is sourced from each session's meta.json.
+      if (isRecord(sessionMeta) && typeof sessionMeta.branch === 'string' && sessionMeta.branch.trim().length > 0) {
+        merged.branch = sessionMeta.branch;
+      }
+
+      return merged;
+    }),
+  );
+}
+
 async function readTextFile(filePath: string): Promise<string> {
   try {
     return await fs.readFile(filePath, 'utf8');
@@ -305,33 +332,11 @@ async function loadStateForContext(
   const pid = await resolvePid(ctx, meta, runtimeDir);
   const correctedStatus = withLivenessCorrectedState(status, pid);
 
-  // Enrich active sessions with their status.json (iteration, state, etc.)
-  const enrichedActive = await Promise.all(
-    activeSessions.map(async (entry) => {
-      if (!isRecord(entry)) return entry;
-      const dir = typeof entry.session_dir === 'string' ? entry.session_dir : null;
-      if (!dir) return entry;
-      const sStatus = await readJsonFile(path.join(dir, 'status.json'));
-      if (isRecord(sStatus)) {
-        return { ...entry, ...sStatus };
-      }
-      return entry;
-    }),
-  );
-
-  // Enrich recent sessions with their status.json too (history.json hardcodes state:'stopped')
-  const enrichedRecent = await Promise.all(
-    recentSessions.map(async (entry) => {
-      if (!isRecord(entry)) return entry;
-      const dir = typeof entry.session_dir === 'string' ? entry.session_dir : null;
-      if (!dir) return entry;
-      const sStatus = await readJsonFile(path.join(dir, 'status.json'));
-      if (isRecord(sStatus)) {
-        return { ...entry, ...sStatus };
-      }
-      return entry;
-    }),
-  );
+  // Enrich active/recent sessions with status.json and branch from meta.json.
+  const [enrichedActive, enrichedRecent] = await Promise.all([
+    enrichSessionEntriesWithStatusAndMeta(activeSessions),
+    enrichSessionEntriesWithStatusAndMeta(recentSessions),
+  ]);
 
   return {
     sessionDir: ctx.sessionDir,

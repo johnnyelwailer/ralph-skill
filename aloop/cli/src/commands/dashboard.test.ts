@@ -198,6 +198,54 @@ test('GET /api/state includes active and recent sessions from runtime state file
   }
 });
 
+test('GET /api/state enriches active and recent sessions with branch from meta.json', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const activeSessionDir = path.join(fixture.root, 'active-session');
+    const recentSessionDir = path.join(fixture.root, 'recent-session');
+    await mkdir(activeSessionDir, { recursive: true });
+    await mkdir(recentSessionDir, { recursive: true });
+
+    await writeFile(path.join(activeSessionDir, 'meta.json'), JSON.stringify({ branch: 'feature/active-branch' }), 'utf8');
+    await writeFile(path.join(recentSessionDir, 'meta.json'), JSON.stringify({ branch: 'feature/recent-branch' }), 'utf8');
+
+    await writeFile(path.join(activeSessionDir, 'status.json'), JSON.stringify({ state: 'running', iteration: 3 }), 'utf8');
+    await writeFile(path.join(recentSessionDir, 'status.json'), JSON.stringify({ state: 'stopped', iteration: 9 }), 'utf8');
+
+    await writeFile(
+      path.join(fixture.runtimeDir, 'active.json'),
+      JSON.stringify([
+        { session_id: 'active-1', project_name: 'proj-a', session_dir: activeSessionDir },
+      ]),
+      'utf8',
+    );
+    await writeFile(
+      path.join(fixture.runtimeDir, 'history.json'),
+      JSON.stringify([
+        { session_id: 'recent-1', project_name: 'proj-a', session_dir: recentSessionDir },
+      ]),
+      'utf8',
+    );
+
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      activeSessions: Array<Record<string, unknown>>;
+      recentSessions: Array<Record<string, unknown>>;
+    };
+
+    assert.equal(payload.activeSessions[0].branch, 'feature/active-branch');
+    assert.equal(payload.activeSessions[0].state, 'running');
+    assert.equal(payload.activeSessions[0].iteration, 3);
+    assert.equal(payload.recentSessions[0].branch, 'feature/recent-branch');
+    assert.equal(payload.recentSessions[0].state, 'stopped');
+    assert.equal(payload.recentSessions[0].iteration, 9);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test('host monitor processes GH convention requests outside loop runtime', async () => {
   const calls: string[] = [];
   const fixture = await createServerFixture({
