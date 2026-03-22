@@ -280,10 +280,6 @@ export async function setupCommandWithDeps(
 }
 
 export async function setupCommand(options: SetupCommandOptions = {}) {
-  if (!options.nonInteractive && (!process.stdin.isTTY || !process.stdout.isTTY)) {
-    throw new Error('Interactive setup requires a TTY. Re-run with --non-interactive to use defaults.');
-  }
-
   let rl: readline.Interface | null = null;
   const deps = {
     discover: discoverWorkspace,

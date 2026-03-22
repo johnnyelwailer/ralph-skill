@@ -7,7 +7,7 @@
 #   build              - building only (implement tasks from TODO)
 #   review             - review only (audit last build against quality gates)
 #   plan-build         - alternating: plan -> build -> plan -> build -> ...
-#   plan-build-review  - plan/build/review loop with periodic spec-gap before every 2nd plan phase (DEFAULT)
+#   plan-build-review  - full cycle: plan -> build x5 -> qa -> review -> ... (DEFAULT)
 #
 # Providers:
 #   claude, codex, gemini, copilot, round-robin
@@ -46,10 +46,6 @@ PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-10800}"
 PROVIDER_HEALTH_DIR="${ALOOP_HEALTH_DIR:-$HOME/.aloop/health}"
 HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
 SESSION_ID=""
-BASE_BRANCH="main"
-AUTO_MERGE="true"
-LOOP_HEALTH_ENABLED="true"
-LOOP_HEALTH_INTERVAL="${ALOOP_LOOP_HEALTH_INTERVAL:-5}"
 
 # ============================================================================
 # ARGUMENT PARSING
@@ -283,48 +279,12 @@ DASHBOARD_URL=""
 
 # Parse round-robin providers into array
 IFS=',' read -ra RR_PROVIDERS <<< "$ROUND_ROBIN_PROVIDERS"
-SUBAGENT_HINTS=""
-
-resolve_subagent_hints() {
-    local provider_name="$1"
-    local phase_name="$2"
-
-    # Delegation hints are currently supported only for opencode.
-    if [ "$provider_name" != "opencode" ]; then
-        printf ''
-        return 0
-    fi
-
-    case "$phase_name" in
-        build|proof|review) ;;
-        *)
-            printf ''
-            return 0
-            ;;
-    esac
-
-    local hints_file="subagent-hints-${phase_name}.md"
-    local -a candidates=(
-        "${PROMPTS_DIR:-}/$hints_file"
-        "${ALOOP_RUNTIME_DIR:-$HOME/.aloop}/templates/$hints_file"
-        "$WORK_DIR/aloop/templates/$hints_file"
-    )
-    local current_file
-    for current_file in "${candidates[@]}"; do
-        if [ -n "$current_file" ] && [ -f "$current_file" ]; then
-            cat "$current_file"
-            return 0
-        fi
-    done
-    printf ''
-}
 
 substitute_prompt_placeholders() {
     local prompt_text="$1"
     prompt_text="${prompt_text//\{\{SESSION_DIR\}\}/$SESSION_DIR}"
     prompt_text="${prompt_text//\{\{ITERATION\}\}/$ITERATION}"
     prompt_text="${prompt_text//\{\{ARTIFACTS_DIR\}\}/$ARTIFACTS_DIR}"
-    prompt_text="${prompt_text//\{\{SUBAGENT_HINTS\}\}/$SUBAGENT_HINTS}"
     # Backward compatibility for existing custom prompts.
     prompt_text="${prompt_text//<session-dir>/$SESSION_DIR}"
     prompt_text="${prompt_text//iter-<N>/iter-$ITERATION}"
@@ -373,248 +333,6 @@ except Exception:
     fi
 }
 
-refresh_branch_sync_config() {
-    local meta_file="$SESSION_DIR/meta.json"
-    if [ ! -f "$meta_file" ] || ! command -v python3 >/dev/null 2>&1; then
-        return
-    fi
-
-    local parsed
-    parsed=$(python3 -c "
-import json, sys
-try:
-    with open('$meta_file') as f:
-        m = json.load(f)
-except Exception:
-    sys.exit(1)
-base = m.get('base_branch') or 'main'
-auto = m.get('auto_merge')
-if auto is None:
-    auto = True
-print(str(base).strip() or 'main')
-print('true' if bool(auto) else 'false')
-" 2>/dev/null) || return
-
-    local new_base new_auto
-    new_base=$(printf '%s\n' "$parsed" | sed -n '1p')
-    new_auto=$(printf '%s\n' "$parsed" | sed -n '2p')
-    [ -n "$new_base" ] || new_base="main"
-    [ "$new_auto" = "false" ] || new_auto="true"
-
-    if [ "$new_base" != "$BASE_BRANCH" ] || [ "$new_auto" != "$AUTO_MERGE" ]; then
-        write_log_entry "base_sync_config_refreshed" \
-            "base_branch" "$new_base" \
-            "auto_merge" "$new_auto"
-    fi
-
-    BASE_BRANCH="$new_base"
-    AUTO_MERGE="$new_auto"
-}
-
-refresh_loop_health_config() {
-    local meta_file="$SESSION_DIR/meta.json"
-    if [ ! -f "$meta_file" ] || ! command -v python3 >/dev/null 2>&1; then
-        return
-    fi
-
-    local parsed
-    parsed=$(python3 -c "
-import json, sys
-try:
-    with open('$meta_file') as f:
-        m = json.load(f)
-except Exception:
-    sys.exit(1)
-enabled = m.get('loop_health_enabled')
-if enabled is None:
-    enabled = True
-interval = m.get('loop_health_interval', 5)
-try:
-    interval = int(interval)
-except Exception:
-    interval = 5
-if interval < 1:
-    interval = 1
-print('true' if bool(enabled) else 'false')
-print(interval)
-" 2>/dev/null) || return
-
-    local new_enabled new_interval
-    new_enabled=$(printf '%s\n' "$parsed" | sed -n '1p')
-    new_interval=$(printf '%s\n' "$parsed" | sed -n '2p')
-    [ "$new_enabled" = "false" ] || new_enabled="true"
-    if ! [[ "${new_interval:-}" =~ ^[0-9]+$ ]] || [ "$new_interval" -lt 1 ]; then
-        new_interval=5
-    fi
-
-    if [ "$new_enabled" != "$LOOP_HEALTH_ENABLED" ] || [ "$new_interval" != "$LOOP_HEALTH_INTERVAL" ]; then
-        write_log_entry "loop_health_config_refreshed" \
-            "enabled" "$new_enabled" \
-            "interval" "$new_interval"
-    fi
-
-    LOOP_HEALTH_ENABLED="$new_enabled"
-    LOOP_HEALTH_INTERVAL="$new_interval"
-}
-
-load_circuit_breakers() {
-    CIRCUIT_BREAKER_BLOCKED_AGENTS=()
-    local cb_file="$SESSION_DIR/circuit-breakers.json"
-    if [ ! -f "$cb_file" ] || ! command -v python3 >/dev/null 2>&1; then
-        return
-    fi
-    local parsed
-    parsed=$(python3 -c "
-import json, sys
-try:
-    with open('$cb_file') as f:
-        payload = json.load(f)
-except Exception:
-    sys.exit(1)
-blocked = []
-if isinstance(payload, dict):
-    value = payload.get('blocked_agents')
-    if value is None:
-        value = payload.get('blockedAgents')
-    if isinstance(value, list):
-        blocked = [str(v).strip() for v in value if str(v).strip()]
-print('\n'.join(blocked))
-" 2>/dev/null) || return
-    if [ -n "$parsed" ]; then
-        mapfile -t CIRCUIT_BREAKER_BLOCKED_AGENTS <<< "$parsed"
-    fi
-}
-
-is_agent_blocked() {
-    local agent="$1"
-    local blocked
-    for blocked in "${CIRCUIT_BREAKER_BLOCKED_AGENTS[@]}"; do
-        if [ "$blocked" = "$agent" ]; then
-            return 0
-        fi
-    done
-    return 1
-}
-
-should_run_loop_health_supervisor() {
-    local iteration="$1"
-    if [ "$LOOP_HEALTH_ENABLED" != "true" ]; then
-        return 1
-    fi
-    if [ "$LOOP_HEALTH_INTERVAL" -lt 1 ] 2>/dev/null; then
-        return 1
-    fi
-    if [ "$MODE" != "plan-build-review" ]; then
-        return 1
-    fi
-    if [ "$FINALIZER_MODE" = "true" ]; then
-        return 1
-    fi
-    if [ $((iteration % LOOP_HEALTH_INTERVAL)) -ne 0 ]; then
-        return 1
-    fi
-    return 0
-}
-
-queue_merge_prompt_if_available() {
-    local merge_prompt="$PROMPTS_DIR/PROMPT_merge.md"
-    local queue_dir="$SESSION_DIR/queue"
-    local queue_item="$queue_dir/000-merge-conflict-PROMPT_merge.md"
-    mkdir -p "$queue_dir"
-
-    if [ ! -f "$merge_prompt" ]; then
-        write_log_entry "merge_conflict_prompt_missing" \
-            "prompt_file" "$merge_prompt"
-        echo "Warning: Merge conflict detected, but merge prompt missing: $merge_prompt" >&2
-        return 1
-    fi
-
-    if [ ! -f "$queue_item" ]; then
-        cp "$merge_prompt" "$queue_item" || return 1
-    fi
-    return 0
-}
-
-write_merge_conflict_event() {
-    local base_branch="$1"
-    local conflict_list="$2"
-    local events_dir="$SESSION_DIR/events"
-    local event_file="$events_dir/merge_conflict"
-    mkdir -p "$events_dir"
-    local now_utc
-    now_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    local conflicts_json=""
-    local first=1
-    while IFS= read -r line; do
-        [ -n "$line" ] || continue
-        if [ "$first" -eq 1 ]; then
-            first=0
-        else
-            conflicts_json="${conflicts_json},"
-        fi
-        conflicts_json="${conflicts_json}\"$(json_escape "$line")\""
-    done <<< "$conflict_list"
-cat > "$event_file" <<EOF
-{
-  "event": "merge_conflict",
-  "timestamp": "$now_utc",
-  "base_branch": "$(json_escape "$base_branch")",
-  "conflicts": [${conflicts_json}]
-  }
-EOF
-}
-
-pre_iteration_base_sync() {
-    if [ "${ALOOP_SKIP_BRANCH_SYNC:-}" = "true" ]; then
-        return 0
-    fi
-    if [ "$AUTO_MERGE" != "true" ]; then
-        return 0
-    fi
-    if [ ! -d "$WORK_DIR/.git" ] || ! command -v git >/dev/null 2>&1; then
-        return 0
-    fi
-
-    cd "$WORK_DIR" || return 0
-    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        return 0
-    fi
-
-    if ! git fetch origin "$BASE_BRANCH" --quiet >/dev/null 2>&1; then
-        write_log_entry "base_sync_fetch_failed" "base_branch" "$BASE_BRANCH"
-        echo "Warning: Base sync fetch failed for origin/$BASE_BRANCH" >&2
-        return 0
-    fi
-
-    local merge_output
-    merge_output=$(git merge "origin/$BASE_BRANCH" --no-edit 2>&1)
-    local merge_rc=$?
-    if [ "$merge_rc" -eq 0 ]; then
-        if printf '%s' "$merge_output" | grep -qi "Already up to date"; then
-            write_log_entry "base_sync_up_to_date" "base_branch" "$BASE_BRANCH"
-        else
-            write_log_entry "base_sync_merged" "base_branch" "$BASE_BRANCH"
-        fi
-        return 0
-    fi
-
-    local conflicted_files
-    conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
-    if [ -n "$conflicted_files" ]; then
-        local conflict_count
-        conflict_count=$(printf '%s\n' "$conflicted_files" | sed '/^[[:space:]]*$/d' | wc -l | tr -d '[:space:]')
-        write_merge_conflict_event "$BASE_BRANCH" "$conflicted_files"
-        queue_merge_prompt_if_available || true
-        write_log_entry "merge_conflict" "base_branch" "$BASE_BRANCH" "conflict_count" "$conflict_count"
-        echo "Warning: Merge conflict while syncing origin/$BASE_BRANCH. Queued merge prompt." >&2
-        return 0
-    fi
-
-    write_log_entry "base_sync_merge_failed" "base_branch" "$BASE_BRANCH"
-    echo "Warning: Base sync merge failed for origin/$BASE_BRANCH" >&2
-    return 0
-}
-
 resolve_iteration_provider() {
     local iteration=$1
     if [ "$PROVIDER" = "round-robin" ]; then
@@ -638,21 +356,13 @@ resolve_iteration_mode() {
                     if (( CYCLE_POSITION % 2 == 0 )); then RESOLVED_MODE="plan"; else RESOLVED_MODE="build"; fi
                     ;;
                 plan-build-review)
-                    # 17-step (2-cycle) pattern with periodic spec-gap:
-                    # cycle 1: plan -> build x5 -> qa -> review
-                    # cycle 2: spec-gap -> plan -> build x5 -> qa -> review
-                    # repeats so spec-gap runs before every 2nd plan phase
-                    local phase=$(( CYCLE_POSITION % 17 ))
+                    # 8-step cycle: plan -> build x5 -> qa -> review
+                    local phase=$(( CYCLE_POSITION % 8 ))
                     case $phase in
                         0) RESOLVED_MODE="plan" ;;
                         1|2|3|4|5) RESOLVED_MODE="build" ;;
                         6) RESOLVED_MODE="qa" ;;
                         7) RESOLVED_MODE="review" ;;
-                        8) RESOLVED_MODE="spec-gap" ;;
-                        9) RESOLVED_MODE="plan" ;;
-                        10|11|12|13|14) RESOLVED_MODE="build" ;;
-                        15) RESOLVED_MODE="qa" ;;
-                        16) RESOLVED_MODE="review" ;;
                     esac
                     ;;
                 single)
@@ -934,7 +644,7 @@ advance_cycle_position() {
     fi
     case "$MODE" in
         plan-build) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 2 )) ;;
-        plan-build-review) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 17 )) ;;
+        plan-build-review) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 8 )) ;;
     esac
 }
 
@@ -1809,95 +1519,6 @@ check_all_tasks_complete() {
     return 1
 }
 
-append_plan_task_if_missing() {
-    local task_text="$1"
-    if [ -z "$task_text" ] || [ ! -f "$PLAN_FILE" ]; then
-        return
-    fi
-    if grep -Fq "$task_text" "$PLAN_FILE" 2>/dev/null; then
-        return
-    fi
-    printf '\n- [ ] %s\n' "$task_text" >> "$PLAN_FILE"
-}
-
-check_finalizer_qa_coverage_gate() {
-    FINALIZER_QA_GATE_REASON=""
-    FINALIZER_QA_GATE_MESSAGE=""
-    FINALIZER_QA_TOTAL=0
-    FINALIZER_QA_UNTESTED=0
-    FINALIZER_QA_FAIL=0
-
-    local coverage_file="$WORK_DIR/QA_COVERAGE.md"
-    if [ ! -f "$coverage_file" ]; then
-        FINALIZER_QA_GATE_REASON="qa_coverage_missing"
-        FINALIZER_QA_GATE_MESSAGE="QA_COVERAGE.md is missing — skipping enforcement"
-        return 0
-    fi
-
-    local parsed
-    parsed=$(awk -F'|' '
-        function trim(s) { gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, "", s); return s }
-        /^\|/ {
-            feature = trim($2)
-            status = toupper(trim($6))
-            if (feature == "" || feature == "Feature") next
-            if (status != "PASS" && status != "FAIL" && status != "UNTESTED") next
-            total++
-            if (status == "UNTESTED") untested++
-            if (status == "FAIL") {
-                fail++
-                if (fail_features != "") fail_features = fail_features "\n"
-                fail_features = fail_features feature
-            }
-        }
-        END {
-            printf "%d|%d|%d\n", total + 0, untested + 0, fail + 0
-            if (fail_features != "") printf "%s\n", fail_features
-        }
-    ' "$coverage_file")
-
-    local counts
-    counts=$(printf '%s\n' "$parsed" | sed -n '1p')
-    FINALIZER_QA_TOTAL=$(printf '%s\n' "$counts" | cut -d'|' -f1)
-    FINALIZER_QA_UNTESTED=$(printf '%s\n' "$counts" | cut -d'|' -f2)
-    FINALIZER_QA_FAIL=$(printf '%s\n' "$counts" | cut -d'|' -f3)
-
-    if [ "${FINALIZER_QA_TOTAL:-0}" -le 0 ]; then
-        FINALIZER_QA_GATE_REASON="qa_coverage_unparseable"
-        FINALIZER_QA_GATE_MESSAGE="QA_COVERAGE.md did not contain parseable PASS/FAIL/UNTESTED rows"
-        append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Fix QA_COVERAGE.md table format so finalizer can enforce coverage"
-        return 1
-    fi
-
-    local untested_pct
-    untested_pct=$((FINALIZER_QA_UNTESTED * 100 / FINALIZER_QA_TOTAL))
-    local blocked=0
-
-    if [ "${FINALIZER_QA_FAIL:-0}" -gt 0 ]; then
-        blocked=1
-        local fail_feature
-        while IFS= read -r fail_feature; do
-            [ -z "$fail_feature" ] && continue
-            append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Resolve FAIL coverage item: $fail_feature"
-        done < <(printf '%s\n' "$parsed" | sed -n '2,$p')
-    fi
-
-    if [ "$untested_pct" -gt 30 ]; then
-        blocked=1
-        append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=30% (currently ${FINALIZER_QA_UNTESTED}/${FINALIZER_QA_TOTAL}, ${untested_pct}%)"
-    fi
-
-    if [ "$blocked" -eq 1 ]; then
-        FINALIZER_QA_GATE_REASON="qa_coverage_blocked"
-        FINALIZER_QA_GATE_MESSAGE="QA coverage gate blocked exit (UNTESTED=${FINALIZER_QA_UNTESTED}/${FINALIZER_QA_TOTAL}, FAIL=${FINALIZER_QA_FAIL})"
-        return 1
-    fi
-
-    FINALIZER_QA_GATE_REASON="qa_coverage_pass"
-    FINALIZER_QA_GATE_MESSAGE="QA coverage gate passed (UNTESTED=${FINALIZER_QA_UNTESTED}/${FINALIZER_QA_TOTAL}, FAIL=${FINALIZER_QA_FAIL})"
-    return 0
-}
-
 get_current_task() {
     if [ ! -f "$PLAN_FILE" ]; then echo ""; return; fi
     grep '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null | head -1 | sed 's/.*- \[ \] //' || echo ""
@@ -1935,7 +1556,6 @@ FRONTMATTER_AGENT=""
 FRONTMATTER_REASONING=""
 FRONTMATTER_COLOR=""
 FRONTMATTER_TRIGGER=""
-CIRCUIT_BREAKER_BLOCKED_AGENTS=()
 
 color_name_to_ansi() {
     local name="${1:-}"
@@ -2448,19 +2068,6 @@ run_queue_if_present() {
         write_status "$ITERATION" "$queue_iter_mode" "$queue_iter_provider" 0
         write_log_entry "queue_override_start" "iteration" "$ITERATION" "queue_file" "$QUEUE_BASENAME" "agent" "$queue_iter_mode" "provider" "$queue_iter_provider"
 
-        load_circuit_breakers
-        if is_agent_blocked "$queue_iter_mode"; then
-            rm -f "$QUEUE_ITEM"
-            write_log_entry "queue_override_blocked" \
-                "iteration" "$ITERATION" \
-                "queue_file" "$QUEUE_BASENAME" \
-                "agent" "$queue_iter_mode"
-            echo "Warning: Queue override blocked by circuit breaker for agent '$queue_iter_mode'"
-            wait_for_requests
-            sleep 3
-            return 0
-        fi
-
         local queue_prompt_content
         queue_prompt_content=$(cat "$QUEUE_ITEM")
         cd "$WORK_DIR"
@@ -2511,38 +2118,19 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
     ITERATION_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    refresh_branch_sync_config
-    refresh_loop_health_config
     # Hot-reload provider list from meta.json (supports runtime changes)
     if [ "$PROVIDER" = "round-robin" ]; then
         refresh_providers_from_meta
     fi
-    pre_iteration_base_sync
     iter_provider=$(resolve_iteration_provider $ITERATION)
 
     if run_queue_if_present "$iter_provider"; then
         continue
     fi
 
-    LOOP_HEALTH_OVERRIDE=false
-
     # Finalizer mode: run finalizer prompts instead of normal cycle
     if [ "$FINALIZER_MODE" = "true" ]; then
         if [ "$FINALIZER_POSITION" -ge "$FINALIZER_LENGTH" ]; then
-            if ! check_finalizer_qa_coverage_gate; then
-                FINALIZER_MODE=false
-                FINALIZER_POSITION=0
-                ALL_TASKS_MARKED_DONE=false
-                persist_loop_plan_state
-                write_log_entry "finalizer_aborted" \
-                    "iteration" "$ITERATION" \
-                    "reason" "$FINALIZER_QA_GATE_REASON" \
-                    "qa_total" "${FINALIZER_QA_TOTAL:-0}" \
-                    "qa_untested" "${FINALIZER_QA_UNTESTED:-0}" \
-                    "qa_fail" "${FINALIZER_QA_FAIL:-0}"
-                echo "[Finalizer aborted — $FINALIZER_QA_GATE_MESSAGE]"
-                continue
-            fi
             write_log_entry "finalizer_completed" "iteration" "$ITERATION"
             echo "[Finalizer sequence completed — all tasks done]"
             write_status "$ITERATION" "finalizer" "$(resolve_iteration_provider $ITERATION)" 0 "completed"
@@ -2557,15 +2145,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         LAST_ITER_MODE="$iter_mode"
     else
         # Call directly (not via subshell) so flag-clearing affects the main shell
-        if should_run_loop_health_supervisor "$ITERATION"; then
-            iter_mode="loop_health"
-            RESOLVED_MODE="$iter_mode"
-            RESOLVED_PROMPT_NAME="PROMPT_loop_health.md"
-            LOOP_HEALTH_OVERRIDE=true
-        else
-            resolve_iteration_mode "$ITERATION" > /dev/null
-            iter_mode="$RESOLVED_MODE"
-        fi
+        resolve_iteration_mode "$ITERATION" > /dev/null
+        iter_mode="$RESOLVED_MODE"
         LAST_ITER_MODE="$iter_mode"
     fi
 
@@ -2595,20 +2176,6 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 "fallback_provider" "$iter_provider" \
                 "prompt_file" "$iter_prompt_file"
         fi
-    fi
-    load_circuit_breakers
-    if is_agent_blocked "$iter_mode"; then
-        write_log_entry "circuit_breaker_phase_blocked" "iteration" "$ITERATION" "mode" "$iter_mode"
-        echo "Warning: Phase '$iter_mode' blocked by circuit breaker"
-        if [ "$LOOP_HEALTH_OVERRIDE" = true ]; then
-            persist_loop_plan_state
-        else
-            register_iteration_success "$iter_mode" false
-            persist_loop_plan_state
-        fi
-        wait_for_requests
-        sleep 3
-        continue
     fi
     resolve_execution_controls
     write_log_entry "frontmatter_applied" \
@@ -2655,7 +2222,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
 
     # Invoke provider
     prompt_content=$(cat "$iter_prompt_file")
-    SUBAGENT_HINTS="$(resolve_subagent_hints "$iter_provider" "$iter_mode")"
+
     prompt_content="$(substitute_prompt_placeholders "$prompt_content")"
 
     cd "$WORK_DIR"
@@ -2680,7 +2247,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 echo "[Finalizer aborted — new incomplete tasks found in TODO.md]"
             fi
         else
-            register_iteration_success "$iter_mode" "$LOOP_HEALTH_OVERRIDE"
+            register_iteration_success "$iter_mode" false
         fi
         if [ "$iter_mode" = "plan" ]; then
             LAST_PLAN_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")

@@ -66,12 +66,6 @@ test('readProviderHealth returns empty object when health path is not readable a
   assert.deepEqual(health, {});
 });
 
-test('readProviderHealth returns empty object when health directory is missing', async () => {
-  const { homeDir } = await makeHomeDir('aloop-session-health-missing-');
-  const health = await readProviderHealth(homeDir);
-  assert.deepEqual(health, {});
-});
-
 test('readProviderHealth ignores malformed and non-json files', async () => {
   const { homeDir } = await makeHomeDir('aloop-session-health-malformed-');
   const healthDir = path.join(homeDir, '.aloop', 'health');
@@ -84,28 +78,6 @@ test('readProviderHealth ignores malformed and non-json files', async () => {
   assert.equal(Object.prototype.hasOwnProperty.call(health, 'claude'), false);
   assert.equal(health.codex.status, 'cooldown');
   assert.equal(Object.prototype.hasOwnProperty.call(health, 'README'), false);
-});
-
-test('readProviderHealth parses multiple valid provider files', async () => {
-  const { homeDir } = await makeHomeDir('aloop-session-health-multi-provider-');
-  const healthDir = path.join(homeDir, '.aloop', 'health');
-  await mkdir(healthDir, { recursive: true });
-  await writeFile(path.join(healthDir, 'claude.json'), JSON.stringify({
-    status: 'healthy',
-    last_success: '2026-03-21T00:00:00.000Z',
-    consecutive_failures: 0,
-  }), 'utf8');
-  await writeFile(path.join(healthDir, 'gemini.json'), JSON.stringify({
-    status: 'degraded',
-    failure_reason: 'auth',
-    consecutive_failures: 3,
-  }), 'utf8');
-
-  const health = await readProviderHealth(homeDir);
-  assert.equal(health.claude.status, 'healthy');
-  assert.equal(health.claude.consecutive_failures, 0);
-  assert.equal(health.gemini.status, 'degraded');
-  assert.equal(health.gemini.failure_reason, 'auth');
 });
 
 test('listActiveSessions merges active/session data with sensible fallbacks', async () => {

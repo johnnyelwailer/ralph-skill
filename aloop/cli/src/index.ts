@@ -16,7 +16,7 @@ import { orchestrateCommand } from './commands/orchestrate.js';
 import { steerCommand } from './commands/steer.js';
 import { processRequestsCommand } from './commands/process-requests.js';
 
-import { resolveOutputModeFromArgv, withErrorHandling } from './lib/error-handling.js';
+import { withErrorHandling } from './lib/error-handling.js';
 
 const program = new Command();
 
@@ -50,7 +50,6 @@ program
   .option('--mode <mode>', 'Setup mode: loop or orchestrate')
   .option('--autonomy-level <level>', 'Autonomy level: cautious, balanced, or autonomous')
   .option('--non-interactive', 'Skip interactive prompts and use defaults')
-  .option('--output <mode>', 'Output format: json or text', 'text')
   .action(withErrorHandling(setupCommand));
 
 program
@@ -196,12 +195,10 @@ program
   }));
 
 process.on('unhandledRejection', (reason) => {
-  const outputMode = resolveOutputModeFromArgv(process.argv);
-  const errorMessage = reason instanceof Error ? reason.message : String(reason);
-  if (outputMode === 'json') {
-    console.error(JSON.stringify({ error: errorMessage }));
+  if (reason instanceof Error) {
+    console.error(`Error: ${reason.message}`);
   } else {
-    console.error(`Error: ${errorMessage}`);
+    console.error(`Error: ${String(reason)}`);
   }
   process.exit(1);
 });

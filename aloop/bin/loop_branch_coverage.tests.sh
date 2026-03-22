@@ -124,7 +124,6 @@ register_branch "exec_controls.backoff_none" "resolve_execution_controls applies
 register_branch "exec_controls.backoff_linear" "resolve_execution_controls applies linear backoff"
 register_branch "exec_controls.backoff_exponential" "resolve_execution_controls applies exponential backoff"
 register_branch "exec_controls.backoff_default" "resolve_execution_controls defaults to none backoff"
-register_branch "mode.plan_build_review.periodic_spec_gap" "resolve_iteration_mode inserts spec-gap before every second plan phase in fallback schedule"
 register_branch "advance.with_cycle_length" "advance_cycle_position uses CYCLE_LENGTH for modulo when set"
 register_branch "advance.fallback_mode" "advance_cycle_position falls back to MODE-based modulo when CYCLE_LENGTH unset"
 register_branch "requests.wait.empty" "wait_for_requests returns immediately when no requests exist"
@@ -140,18 +139,6 @@ register_branch "phase_prereq.build.todo_has_unchecked" "check_phase_prerequisit
 register_branch "phase_prereq.plan_passthrough" "check_phase_prerequisites passes through plan phase unchanged"
 register_branch "phase_prereq.review.no_builds" "check_phase_prerequisites forces build when no commits since last plan"
 register_branch "phase_prereq.review.has_builds" "check_phase_prerequisites allows review when commits exist"
-register_branch "branchsync.config_refresh" "refresh_branch_sync_config reads base branch and auto_merge from meta.json"
-register_branch "branchsync.fetch_fail" "pre_iteration_base_sync logs fetch failures without crashing"
-register_branch "branchsync.up_to_date" "pre_iteration_base_sync logs already-up-to-date merges"
-register_branch "branchsync.merge_success" "pre_iteration_base_sync logs successful base merges"
-register_branch "branchsync.merge_conflict" "pre_iteration_base_sync emits merge_conflict event and queues merge prompt"
-register_branch "branchsync.merge_prompt_missing" "pre_iteration_base_sync logs missing merge prompt on conflict"
-register_branch "loop_health.config_refresh" "refresh_loop_health_config reads enabled/interval from meta.json"
-register_branch "loop_health.schedule_enabled" "should_run_loop_health_supervisor runs at configured iteration interval"
-register_branch "loop_health.schedule_disabled" "should_run_loop_health_supervisor skips when disabled/finalizer/unsupported mode"
-register_branch "loop_health.circuit_blocked" "is_agent_blocked returns true for blocked agent"
-register_branch "loop_health.circuit_not_blocked" "is_agent_blocked returns false for non-blocked agent"
-register_branch "loop_health.circuit_load" "load_circuit_breakers reads blocked_agents from circuit-breakers.json"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -170,21 +157,13 @@ WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
 RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
 RESOLVE_MODE_FUNC="$(extract_function resolve_iteration_mode)"
 DERIVE_MODE_FUNC="$(extract_function derive_mode_from_prompt_name)"
-REFRESH_BRANCH_SYNC_FUNC="$(extract_function refresh_branch_sync_config)"
-REFRESH_LOOP_HEALTH_FUNC="$(extract_function refresh_loop_health_config)"
-LOAD_CIRCUIT_BREAKERS_FUNC="$(extract_function load_circuit_breakers)"
-IS_AGENT_BLOCKED_FUNC="$(extract_function is_agent_blocked)"
-SHOULD_RUN_LOOP_HEALTH_FUNC="$(extract_function should_run_loop_health_supervisor)"
-QUEUE_MERGE_PROMPT_FUNC="$(extract_function queue_merge_prompt_if_available)"
-WRITE_MERGE_EVENT_FUNC="$(extract_function write_merge_conflict_event)"
-PRE_ITER_SYNC_FUNC="$(extract_function pre_iteration_base_sync)"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
     exit 1
 fi
 
-if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ] || [ -z "$REFRESH_BRANCH_SYNC_FUNC" ] || [ -z "$REFRESH_LOOP_HEALTH_FUNC" ] || [ -z "$LOAD_CIRCUIT_BREAKERS_FUNC" ] || [ -z "$IS_AGENT_BLOCKED_FUNC" ] || [ -z "$SHOULD_RUN_LOOP_HEALTH_FUNC" ] || [ -z "$QUEUE_MERGE_PROMPT_FUNC" ] || [ -z "$WRITE_MERGE_EVENT_FUNC" ] || [ -z "$PRE_ITER_SYNC_FUNC" ]; then
+if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ]; then
     echo "FAIL: could not extract cycle/frontmatter/duration/exec-controls/advance/requests/queue functions from $LOOP_SH"
     exit 1
 fi
@@ -206,26 +185,12 @@ eval "$WAIT_FOR_REQUESTS_FUNC"
 eval "$RUN_QUEUE_FUNC"
 eval "$RESOLVE_MODE_FUNC"
 eval "$DERIVE_MODE_FUNC"
-eval "$REFRESH_BRANCH_SYNC_FUNC"
-eval "$REFRESH_LOOP_HEALTH_FUNC"
-eval "$LOAD_CIRCUIT_BREAKERS_FUNC"
-eval "$IS_AGENT_BLOCKED_FUNC"
-eval "$SHOULD_RUN_LOOP_HEALTH_FUNC"
-eval "$QUEUE_MERGE_PROMPT_FUNC"
-eval "$WRITE_MERGE_EVENT_FUNC"
-eval "$PRE_ITER_SYNC_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
 LAST_PROVIDER_ERROR=""
 ACTIVE_PROVIDER_PID=""
 PROVIDER_TIMEOUT=30
-LOOP_HEALTH_ENABLED="true"
-LOOP_HEALTH_INTERVAL=5
-CIRCUIT_BREAKER_BLOCKED_AGENTS=()
-FINALIZER_MODE=false
-MODE="plan-build-review"
-ITERATION=1
 CLAUDE_MODEL="test"
 LOG_FILE="$(mktemp)"
 COVERAGE_LOG_FILE="$(mktemp)"
@@ -907,32 +872,6 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# resolve_iteration_mode branches
-# ---------------------------------------------------------------------------
-
-# mode.plan_build_review.periodic_spec_gap — fallback schedule inserts spec-gap
-MODE="plan-build-review"
-ALOOP_SKIP_PHASE_GUARDS="true"
-LOOP_PLAN_FILE="$(mktemp)"
-rm -f "$LOOP_PLAN_FILE"
-RESOLVED_PROMPT_NAME=""
-
-CYCLE_POSITION=8
-resolve_iteration_mode 1 >/dev/null
-if [ "$RESOLVED_MODE" = "spec-gap" ]; then
-    CYCLE_POSITION=9
-    resolve_iteration_mode 1 >/dev/null
-    if [ "$RESOLVED_MODE" = "plan" ]; then
-        cover_branch "mode.plan_build_review.periodic_spec_gap"
-        pass_case "resolve_iteration_mode inserts spec-gap before second-cycle plan"
-    else
-        fail_case "resolve_iteration_mode expected plan at position 9, got '$RESOLVED_MODE'"
-    fi
-else
-    fail_case "resolve_iteration_mode expected spec-gap at position 8, got '$RESOLVED_MODE'"
-fi
-
-# ---------------------------------------------------------------------------
 # advance_cycle_position branches
 # ---------------------------------------------------------------------------
 
@@ -1094,216 +1033,6 @@ else
 fi
 
 rm -rf "$QUEUE_TMPDIR"
-
-# ---------------------------------------------------------------------------
-# branch sync branches (refresh_branch_sync_config/pre_iteration_base_sync)
-# ---------------------------------------------------------------------------
-
-SYNC_TMPDIR="$(mktemp -d)"
-SESSION_DIR="$SYNC_TMPDIR/session"
-WORK_DIR="$SYNC_TMPDIR/work"
-PROMPTS_DIR="$SYNC_TMPDIR/prompts"
-mkdir -p "$SESSION_DIR" "$WORK_DIR" "$PROMPTS_DIR"
-BASE_BRANCH="main"
-AUTO_MERGE="true"
-ALOOP_SKIP_BRANCH_SYNC=""
-export ALOOP_SKIP_BRANCH_SYNC
-
-# branchsync.config_refresh
-cat > "$SESSION_DIR/meta.json" << 'JSON'
-{"base_branch":"develop","auto_merge":false}
-JSON
-refresh_branch_sync_config
-if [ "$BASE_BRANCH" = "develop" ] && [ "$AUTO_MERGE" = "false" ]; then
-    cover_branch "branchsync.config_refresh"
-    pass_case "refresh_branch_sync_config applies base_branch and auto_merge"
-else
-    fail_case "refresh_branch_sync_config failed (base=$BASE_BRANCH auto=$AUTO_MERGE)"
-fi
-
-# Prepare git repo + remote for sync tests
-git init -q "$WORK_DIR"
-git -C "$WORK_DIR" config user.name "Test"
-git -C "$WORK_DIR" config user.email "test@example.com"
-echo "base" > "$WORK_DIR/base.txt"
-git -C "$WORK_DIR" add base.txt
-git -C "$WORK_DIR" commit -m "base" -q
-git init -q --bare "$SYNC_TMPDIR/remote.git"
-git -C "$WORK_DIR" remote add origin "$SYNC_TMPDIR/remote.git"
-git -C "$WORK_DIR" branch -M main
-git -C "$WORK_DIR" push -u origin main -q
-git --git-dir="$SYNC_TMPDIR/remote.git" symbolic-ref HEAD refs/heads/main >/dev/null 2>&1
-
-# branchsync.fetch_fail
-BASE_BRANCH="missing-branch"
-AUTO_MERGE="true"
-pre_iteration_base_sync
-if contains_log "base_sync_fetch_failed|base_branch=missing-branch"; then
-    cover_branch "branchsync.fetch_fail"
-    pass_case "pre_iteration_base_sync logs fetch failure"
-else
-    fail_case "pre_iteration_base_sync did not log fetch failure"
-fi
-
-# branchsync.up_to_date
-BASE_BRANCH="main"
-pre_iteration_base_sync
-if contains_log "base_sync_up_to_date|base_branch=main"; then
-    cover_branch "branchsync.up_to_date"
-    pass_case "pre_iteration_base_sync logs up-to-date state"
-else
-    fail_case "pre_iteration_base_sync did not log up-to-date state"
-fi
-
-# branchsync.merge_success
-CLONE_FOR_MAIN="$SYNC_TMPDIR/clone-main"
-git clone -q "$SYNC_TMPDIR/remote.git" "$CLONE_FOR_MAIN"
-git -C "$CLONE_FOR_MAIN" config user.name "Test"
-git -C "$CLONE_FOR_MAIN" config user.email "test@example.com"
-git -C "$CLONE_FOR_MAIN" checkout -q main
-echo "remote change" > "$CLONE_FOR_MAIN/remote.txt"
-git -C "$CLONE_FOR_MAIN" add remote.txt
-git -C "$CLONE_FOR_MAIN" commit -m "remote main change" -q
-git -C "$CLONE_FOR_MAIN" push -q origin main
-pre_iteration_base_sync
-if contains_log "base_sync_merged|base_branch=main"; then
-    cover_branch "branchsync.merge_success"
-    pass_case "pre_iteration_base_sync logs successful merge"
-else
-    fail_case "pre_iteration_base_sync did not log successful merge"
-fi
-
-# branchsync.merge_conflict
-echo "ours" > "$WORK_DIR/conflict.txt"
-git -C "$WORK_DIR" add conflict.txt
-git -C "$WORK_DIR" commit -m "local conflict change" -q
-echo "template merge prompt" > "$PROMPTS_DIR/PROMPT_merge.md"
-
-CLONE_FOR_CONFLICT="$SYNC_TMPDIR/clone-conflict"
-git clone -q "$SYNC_TMPDIR/remote.git" "$CLONE_FOR_CONFLICT"
-git -C "$CLONE_FOR_CONFLICT" config user.name "Test"
-git -C "$CLONE_FOR_CONFLICT" config user.email "test@example.com"
-git -C "$CLONE_FOR_CONFLICT" checkout -q main
-echo "theirs" > "$CLONE_FOR_CONFLICT/conflict.txt"
-git -C "$CLONE_FOR_CONFLICT" add conflict.txt
-git -C "$CLONE_FOR_CONFLICT" commit -m "remote conflict change" -q
-git -C "$CLONE_FOR_CONFLICT" push -q origin main
-
-pre_iteration_base_sync
-if contains_log "merge_conflict|base_branch=main" \
-    && [ -f "$SESSION_DIR/events/merge_conflict" ] \
-    && [ -f "$SESSION_DIR/queue/000-merge-conflict-PROMPT_merge.md" ]; then
-    cover_branch "branchsync.merge_conflict"
-    pass_case "pre_iteration_base_sync emits merge conflict event and queues prompt"
-else
-    fail_case "pre_iteration_base_sync merge conflict handling failed"
-fi
-# abort unresolved conflict for cleanup
-git -C "$WORK_DIR" merge --abort >/dev/null 2>&1 || true
-
-# branchsync.merge_prompt_missing
-rm -f "$PROMPTS_DIR/PROMPT_merge.md" "$SESSION_DIR/queue/000-merge-conflict-PROMPT_merge.md"
-echo "ours2" > "$WORK_DIR/conflict2.txt"
-git -C "$WORK_DIR" add conflict2.txt
-git -C "$WORK_DIR" commit -m "local conflict2 change" -q
-echo "theirs2" > "$CLONE_FOR_CONFLICT/conflict2.txt"
-git -C "$CLONE_FOR_CONFLICT" add conflict2.txt
-git -C "$CLONE_FOR_CONFLICT" commit -m "remote conflict2 change" -q
-git -C "$CLONE_FOR_CONFLICT" push -q origin main
-
-pre_iteration_base_sync
-if contains_log "merge_conflict_prompt_missing|prompt_file=$PROMPTS_DIR/PROMPT_merge.md"; then
-    cover_branch "branchsync.merge_prompt_missing"
-    pass_case "pre_iteration_base_sync logs missing merge prompt"
-else
-    fail_case "pre_iteration_base_sync missing prompt log not emitted"
-fi
-git -C "$WORK_DIR" merge --abort >/dev/null 2>&1 || true
-
-rm -rf "$SYNC_TMPDIR"
-
-# ---------------------------------------------------------------------------
-# loop health supervisor branches
-# ---------------------------------------------------------------------------
-
-LH_TMPDIR="$(mktemp -d)"
-SESSION_DIR="$LH_TMPDIR/session"
-mkdir -p "$SESSION_DIR"
-LOOP_HEALTH_ENABLED="true"
-LOOP_HEALTH_INTERVAL=5
-
-# loop_health.config_refresh
-cat > "$SESSION_DIR/meta.json" << 'JSON'
-{"loop_health_enabled":false,"loop_health_interval":3}
-JSON
-refresh_loop_health_config
-if [ "$LOOP_HEALTH_ENABLED" = "false" ] && [ "$LOOP_HEALTH_INTERVAL" -eq 3 ]; then
-    cover_branch "loop_health.config_refresh"
-    pass_case "refresh_loop_health_config applies enabled/interval from meta.json"
-else
-    fail_case "refresh_loop_health_config failed (enabled=$LOOP_HEALTH_ENABLED interval=$LOOP_HEALTH_INTERVAL)"
-fi
-
-# loop_health.schedule_enabled
-LOOP_HEALTH_ENABLED="true"
-LOOP_HEALTH_INTERVAL=3
-MODE="plan-build-review"
-FINALIZER_MODE=false
-if should_run_loop_health_supervisor 3 && ! should_run_loop_health_supervisor 4; then
-    cover_branch "loop_health.schedule_enabled"
-    pass_case "should_run_loop_health_supervisor honors interval schedule"
-else
-    fail_case "should_run_loop_health_supervisor interval scheduling failed"
-fi
-
-# loop_health.schedule_disabled
-LOOP_HEALTH_ENABLED="false"
-if ! should_run_loop_health_supervisor 6; then
-    LOOP_HEALTH_ENABLED="true"
-    FINALIZER_MODE=true
-    if ! should_run_loop_health_supervisor 6; then
-        FINALIZER_MODE=false
-        MODE="plan-build"
-        if ! should_run_loop_health_supervisor 6; then
-            cover_branch "loop_health.schedule_disabled"
-            pass_case "should_run_loop_health_supervisor skips disabled/finalizer/unsupported mode"
-        else
-            fail_case "should_run_loop_health_supervisor should skip in unsupported mode"
-        fi
-    else
-        fail_case "should_run_loop_health_supervisor should skip in finalizer mode"
-    fi
-else
-    fail_case "should_run_loop_health_supervisor should skip when disabled"
-fi
-
-# loop_health.circuit_load + blocked checks
-MODE="plan-build-review"
-FINALIZER_MODE=false
-cat > "$SESSION_DIR/circuit-breakers.json" << 'JSON'
-{"blocked_agents":["qa","spec-gap"],"reason":"thrash"}
-JSON
-load_circuit_breakers
-if is_agent_blocked "qa"; then
-    cover_branch "loop_health.circuit_blocked"
-    pass_case "is_agent_blocked returns true for blocked agents"
-else
-    fail_case "is_agent_blocked failed for blocked agent"
-fi
-if ! is_agent_blocked "build"; then
-    cover_branch "loop_health.circuit_not_blocked"
-    pass_case "is_agent_blocked returns false for unblocked agents"
-else
-    fail_case "is_agent_blocked incorrectly blocked build"
-fi
-if [ "${#CIRCUIT_BREAKER_BLOCKED_AGENTS[@]}" -eq 2 ] && [ "${CIRCUIT_BREAKER_BLOCKED_AGENTS[0]}" = "qa" ]; then
-    cover_branch "loop_health.circuit_load"
-    pass_case "load_circuit_breakers reads blocked agents from circuit-breakers.json"
-else
-    fail_case "load_circuit_breakers failed to parse blocked agents"
-fi
-
-rm -rf "$LH_TMPDIR"
 
 # ---------------------------------------------------------------------------
 # Final summary
