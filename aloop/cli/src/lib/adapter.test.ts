@@ -18,6 +18,25 @@ function mockGh(responses: Record<string, GhExecResult>): GhExecFn {
   };
 }
 
+function mockExecGh(responses: Array<{ stdout: string; stderr?: string }>): {
+  execGh: GhExecFn;
+  calls: string[][];
+} {
+  const calls: string[][] = [];
+  let callIndex = 0;
+  const execGh: GhExecFn = async (args: string[]) => {
+    calls.push(args);
+    const response = responses[callIndex++];
+    if (!response) throw new Error(`Unexpected call #${callIndex}: ${args.join(' ')}`);
+    return { stdout: response.stdout, stderr: response.stderr ?? '' };
+  };
+  return { execGh, calls };
+}
+
+function makeAdapter(execGh: GhExecFn): GitHubAdapter {
+  return new GitHubAdapter({ type: 'github', repo: 'owner/repo' }, execGh);
+}
+
 const config: AdapterConfig = { type: 'github', repo: 'owner/repo' };
 
 describe('createAdapter', () => {
@@ -30,6 +49,116 @@ describe('createAdapter', () => {
     assert.throws(
       () => createAdapter({ type: 'gitlab', repo: 'x/y' }, async () => ({ stdout: '', stderr: '' })),
       /Unknown adapter type: "gitlab"/,
+    );
+  });
+});
+
+// --- createReview tests ---
+
+describe('GitHubAdapter.createReview', () => {
+  it('POSTs to the correct endpoint with event and body', async () => {
+    const { execGh, calls } = mockExecGh([
+      { stdout: JSON.stringify({ id: 42 }) },
+    ]);
+    const adapter = makeAdapter(execGh);
+
+    const result = await adapter.createReview(7, {
+      body: 'Looks good overall',
+      event: 'COMMENT',
+      comments: [],
+    });
+
+    assert.equal(result.review_id, 42);
+    assert.equal(calls.length, 1);
+    const args = calls[0];
+    assert.ok(args.includes('api'));
+    assert.ok(args.includes('repos/owner/repo/pulls/7/reviews'));
+    assert.ok(args.includes('--method'));
+    assert.ok(args.includes('POST'));
+    // Check event and body fields
+    assert.ok(args.includes('event=COMMENT'));
+    assert.ok(args.includes('body=Looks good overall'));
+  });
+
+  it('formats inline comments without suggestions', async () => {
+    const { execGh, calls } = mockExecGh([
+      { stdout: JSON.stringify({ id: 100 }) },
+    ]);
+    const adapter = makeAdapter(execGh);
+
+    await adapter.createReview(3, {
+      body: 'Changes requested',
+      event: 'REQUEST_CHANGES',
+      comments: [
+        { path: 'src/index.ts', line: 10, body: 'This needs a null check' },
+      ],
+    });
+
+    const args = calls[0];
+    // Find the --raw-field argument for comments
+    const rawFieldIdx = args.indexOf('--raw-field');
+    assert.ok(rawFieldIdx >= 0, 'should use --raw-field for comments');
+    const commentsArg = args[rawFieldIdx + 1];
+    assert.ok(commentsArg.startsWith('comments='));
+    const commentsJson = JSON.parse(commentsArg.slice('comments='.length));
+    assert.equal(commentsJson.length, 1);
+    assert.equal(commentsJson[0].path, 'src/index.ts');
+    assert.equal(commentsJson[0].line, 10);
+    assert.equal(commentsJson[0].body, 'This needs a null check');
+  });
+
+  it('wraps suggestion in code fence syntax', async () => {
+    const { execGh, calls } = mockExecGh([
+      { stdout: JSON.stringify({ id: 101 }) },
+    ]);
+    const adapter = makeAdapter(execGh);
+
+    await adapter.createReview(5, {
+      body: 'Suggestion',
+      event: 'REQUEST_CHANGES',
+      comments: [
+        {
+          path: 'src/example.ts',
+          line: 20,
+          body: 'Consider this instead',
+          suggestion: 'const x = 42;',
+        },
+      ],
+    });
+
+    const args = calls[0];
+    const rawFieldIdx = args.indexOf('--raw-field');
+    const commentsJson = JSON.parse(args[rawFieldIdx + 1].slice('comments='.length));
+    const expectedBody = 'Consider this instead\n\n```suggestion\nconst x = 42;\n```';
+    assert.equal(commentsJson[0].body, expectedBody);
+  });
+
+  it('sends empty comments array when no inline comments', async () => {
+    const { execGh, calls } = mockExecGh([
+      { stdout: JSON.stringify({ id: 200 }) },
+    ]);
+    const adapter = makeAdapter(execGh);
+
+    await adapter.createReview(1, {
+      body: 'LGTM',
+      event: 'APPROVE',
+      comments: [],
+    });
+
+    const args = calls[0];
+    const rawFieldIdx = args.indexOf('--raw-field');
+    const commentsJson = JSON.parse(args[rawFieldIdx + 1].slice('comments='.length));
+    assert.deepEqual(commentsJson, []);
+  });
+
+  it('throws on malformed API response', async () => {
+    const { execGh } = mockExecGh([
+      { stdout: 'not json' },
+    ]);
+    const adapter = makeAdapter(execGh);
+
+    await assert.rejects(
+      () => adapter.createReview(1, { body: 'x', event: 'COMMENT', comments: [] }),
     );
   });
 });
@@ -365,5 +494,62 @@ describe('GitHubAdapter', () => {
       assert.equal(result.issues.length, 1);
       assert.equal(result.issues[0].number, 1);
     });
+  });
+});
+
+// --- resolveThread tests ---
+
+describe('GitHubAdapter.resolveThread', () => {
+  it('fetches node_id then calls GraphQL minimizeComment', async () => {
+    const { execGh, calls } = mockExecGh([
+      { stdout: 'MDI0OlB1bGxSZXF1ZXN0UmV2aWV3Q29tbWVudDE=' },
+      { stdout: JSON.stringify({ data: { minimizeComment: { minimizedComment: { isMinimized: true } } } }) },
+    ]);
+    const adapter = makeAdapter(execGh);
+
+    await adapter.resolveThread(7, 1234);
+
+    assert.equal(calls.length, 2);
+    // First call: fetch node_id
+    assert.ok(calls[0].includes('repos/owner/repo/pulls/comments/1234'));
+    assert.ok(calls[0].includes('--jq'));
+    assert.ok(calls[0].includes('.node_id'));
+    // Second call: GraphQL mutation
+    assert.ok(calls[1].includes('graphql'));
+    const queryArg = calls[1].find((a) => a.startsWith('query='));
+    assert.ok(queryArg);
+    assert.ok(queryArg.includes('minimizeComment'));
+    assert.ok(queryArg.includes('MDI0OlB1bGxSZXF1ZXN0UmV2aWV3Q29tbWVudDE='));
+    assert.ok(queryArg.includes('RESOLVED'));
+  });
+
+  it('throws when node_id is empty', async () => {
+    const { execGh } = mockExecGh([
+      { stdout: '  \n' },
+    ]);
+    const adapter = makeAdapter(execGh);
+
+    await assert.rejects(
+      () => adapter.resolveThread(7, 999),
+      (err: Error) => {
+        assert.ok(err.message.includes('Could not get node_id for comment 999'));
+        return true;
+      },
+    );
+  });
+
+  it('propagates API errors from node_id fetch', async () => {
+    const execGh: GhExecFn = async () => {
+      throw new Error('API rate limit exceeded');
+    };
+    const adapter = makeAdapter(execGh);
+
+    await assert.rejects(
+      () => adapter.resolveThread(7, 1234),
+      (err: Error) => {
+        assert.ok(err.message.includes('API rate limit exceeded'));
+        return true;
+      },
+    );
   });
 });
