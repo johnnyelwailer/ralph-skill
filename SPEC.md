@@ -154,9 +154,20 @@ Any successful call from ANY session resets `consecutive_failures` to 0 and stat
 
 ### Concurrency / File Locking
 
-- **Writes**: Exclusive file lock via `[System.IO.File]::Open()` with `FileShare.None`
+Platform-specific locking with identical semantics:
+
+**Bash (`loop.sh`) — POSIX `flock`**:
+- **Writes**: Exclusive lock via `flock -x` on a `.flock` sidecar file (FD 9)
+- **Reads**: Shared lock via `flock -s` (multiple loops can read simultaneously)
+- **Lock retry**: 5 attempts with progressive backoff (50ms, 100ms, 150ms, 200ms, 250ms) using non-blocking `flock -n`
+- **Stale lock cleanup**: `ensure_provider_health_dir()` removes leftover `.lock` directories from the old mkdir-based approach
+
+**PowerShell (`loop.ps1`) — .NET file locking**:
+- **Writes**: Exclusive lock via `[System.IO.File]::Open()` with `FileShare.None`
 - **Reads**: Shared lock via `FileShare.Read` (multiple loops can read simultaneously)
 - **Lock retry**: 5 attempts with progressive backoff (50ms, 100ms, 150ms, 200ms, 250ms)
+
+**Common behavior (both platforms)**:
 - **Graceful degradation**: If lock acquisition fails after all retries, skip health update and log `health_lock_failed` — loop continues normally, just without updating health that iteration
 - **One file per provider**: Two loops hitting different providers = zero contention
 
