@@ -8,7 +8,7 @@
 
 - [x] **P1: loop.ps1 — baselines directory creation** — Add `New-Item -ItemType Directory -Force` for `$artifactsDir/baselines` at session init, matching loop.sh line 1964
 
-- [ ] **P1: loop.ps1 — per-iteration artifacts directory creation** — Create `$artifactsDir/iter-$iteration` before provider invocation, matching loop.sh line 2246
+- [x] **P1: loop.ps1 — per-iteration artifacts directory creation** — Create `$artifactsDir/iter-$iteration` before provider invocation, matching loop.sh line 2246
 
 - [ ] **P1: loop.ps1 — proof phase post-invocation handling** — After provider returns successfully for proof mode: validate manifest, log `proof_manifest_validated` event, track `$lastProofIteration`, set error on validation failure. Mirror loop.sh lines 2260-2278
 

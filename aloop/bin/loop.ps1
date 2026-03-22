@@ -2298,6 +2298,10 @@ try {
         }
 
         try {
+            # Create per-iteration artifacts directory before provider invocation
+            # (proof agent writes artifacts here; output capture also uses it after)
+            New-Item -ItemType Directory -Path (Join-Path $artifactsDir "iter-$iteration") -Force | Out-Null
+
             $promptContent = Get-Content -Path $iterationPromptFile -Raw
 
             $promptContent = Resolve-PromptPlaceholders -PromptContent $promptContent -IterationNumber $iteration
