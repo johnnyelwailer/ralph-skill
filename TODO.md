@@ -10,7 +10,7 @@
 
 ### Up Next
 
-- [ ] **Add tests for CostDisplay component** (priority: high)
+- [x] **Add tests for CostDisplay component** (priority: high)
   New test file for `CostDisplay.tsx`. Cover: (a) renders progress bar with correct color at 50%/75%/95%; (b) no progress bar when budgetCap is null; (c) "Cost data unavailable" when error='opencode_unavailable' and no sessionCost; (d) shows sessionCost fallback when error='opencode_unavailable' and sessionCost > 0; (e) loading state; (f) warning and pause threshold display. Target >=90% branch coverage.
 
 - [ ] [review] Gate 1: **Sidebar session cards missing per-session cost from log events** — `AppView.tsx:694-728` fetches session costs via `/api/cost/session/:id` (opencode export), which returns null when opencode is unavailable. The per-session cost computed by `useCost` from log.jsonl `iteration_complete` events is never propagated to the sidebar. Fix: for the *current* session, display `sessionCost` from `useCost` in the sidebar card; for other sessions, fall back gracefully when API returns unavailable. (priority: high)
