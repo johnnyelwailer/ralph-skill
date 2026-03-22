@@ -3619,7 +3619,11 @@ export async function launchChildLoop(
   }
 
   if (deps.execGh && deps.repo) {
-    await linkIssueDevelopmentBranch(deps.repo, issue.number, branchName, deps.execGh);
+    try {
+      await linkIssueDevelopmentBranch(deps.repo, issue.number, branchName, deps.execGh);
+    } catch (e: unknown) {
+      console.error(`[orchestrate] Warning: failed to link development branch ${branchName} to issue #${issue.number}: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)

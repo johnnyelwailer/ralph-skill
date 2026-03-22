@@ -3238,7 +3238,7 @@ describe('launchChildLoop', () => {
     );
   });
 
-  it('throws when branch link cannot be created with API or fallback', async () => {
+  it('continues when branch link cannot be created with API or fallback', async () => {
     const deps = createMockDispatchDeps({
       repo: 'acme/widgets',
       execGh: async () => {
@@ -3246,10 +3246,9 @@ describe('launchChildLoop', () => {
       },
     });
 
-    await assert.rejects(
-      () => launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps),
-      /Failed to link development branch aloop\/issue-42 to issue #42/,
-    );
+    // Branch linking is non-critical — launchChildLoop should succeed even if all linking attempts fail
+    const result = await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    assert.ok(result.session_id, 'should still return a valid session');
   });
 
   it('seeds TODO.md in worktree', async () => {
