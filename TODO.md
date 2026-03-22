@@ -4,7 +4,7 @@
 
 ### In Progress
 
-- [x] Proof skip protocol: when proof-manifest.json has an empty `artifacts` array, log the skip reason from `skipped` entries but do NOT treat as iteration failure. Currently both loop.sh and loop.ps1 validate only file-exists + valid-JSON — they don't distinguish "empty artifacts = intentional skip" from "full proof." TASK_SPEC says "if manifest has empty artifacts array, log skip reason but don't treat as failure." Add post-validation logic after `validate_proof_manifest` in both scripts to check `artifacts` array length and log accordingly. (priority: high)
+- [x] Proof skip protocol: when proof-manifest.json has an empty `artifacts` array, log the skip reason from `skipped` entries but do NOT treat as iteration failure. Currently both loop.sh and loop.ps1 validate only file-exists + valid-JSON — they don't distinguish "empty artifacts = intentional skip" from "full proof." TASK_SPEC says "if manifest has empty artifacts array, log skip reason but don't treat as failure." Add post-validation logic after `validate_proof_manifest` in both scripts to check `artifacts` array length and log accordingly. (priority: high) [reviewed: gates 1-10 pass]
 
 - [ ] Expand `aloop/templates/subagent-hints-proof.md` with vision-model delegation examples. Currently only 4 lines listing two subagents. TASK_SPEC says "Expand with vision-model delegation examples (reference `aloop/agents/opencode/vision-reviewer.md`)." Add concrete examples showing how to delegate screenshot analysis to vision-reviewer (tool call syntax, when to use it, what to pass). (priority: medium)
 
