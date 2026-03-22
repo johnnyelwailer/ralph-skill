@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { App } from './App';
 import { 
@@ -622,5 +622,34 @@ describe('App mobile overlay accessibility', () => {
     fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
     const commandInput = await screen.findByPlaceholderText('Type a command...');
     await waitFor(() => expect(commandInput).toHaveFocus());
+  });
+
+  it('opens overflow tabs menu on click and switches docs without hover', async () => {
+    const stateWithOverflowDocs = {
+      ...baseState,
+      docs: {
+        'TODO.md': '# TODO',
+        'SPEC.md': '# SPEC',
+        'RESEARCH.md': '# RESEARCH',
+        'REVIEW_LOG.md': '# REVIEW LOG',
+        'STEERING.md': '# STEERING',
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.startsWith('/api/state')) return jsonResponse(stateWithOverflowDocs);
+      if (url.startsWith('/api/qa-coverage')) return jsonResponse({ available: false, features: [] });
+      if (url.startsWith('/api/cost/session/')) return jsonResponse({ total_usd: 0 });
+      return jsonResponse({});
+    }));
+
+    render(<App />);
+    const overflowTrigger = await screen.findByRole('button', { name: 'Open overflow tabs menu' });
+    fireEvent.pointerDown(overflowTrigger);
+
+    const menu = await screen.findByRole('menu');
+    fireEvent.click(within(menu).getByText('STEERING'));
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'STEERING' })).toBeVisible());
   });
 });
