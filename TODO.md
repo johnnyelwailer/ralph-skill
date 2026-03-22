@@ -10,7 +10,7 @@ _(none — ready for next task)_
 
 - [x] **Fix premature SHA storage in invokeAgentReview** — `process-requests.ts:477` stores `last_reviewed_sha` immediately when queuing a review (before the agent even runs). If the agent crashes or the queue file is lost, this SHA blocks future reviews. Fix: only store `last_reviewed_sha` after a non-pending verdict is returned (i.e., move it to the result-reading path or to the post-lifecycle code in the scan loop). (priority: critical)
 
-- [ ] **Enrich PR comment history with author/timestamp** — `process-requests.ts:493-502` fetches only `.comments[].body` via `--jq`. The review agent can't distinguish its own prior feedback from the child loop's responses, making conversation-aware reviews impossible. Fix: fetch `.comments[] | {author: .author.login, createdAt: .createdAt, body: .body}` and format as a threaded conversation with attribution. (priority: high)
+- [x] **Enrich PR comment history with author/timestamp** — `process-requests.ts` now fetches full `comments` JSON, formats threaded history with `@author` + `createdAt`, and includes only non-empty comment bodies so review prompts preserve attribution context. (priority: high)
 
 - [ ] **Update review prompt for conversation-aware verdicts** — `PROMPT_orch_review.md` has no instructions about comparing against prior feedback or acknowledging fixes. Add instructions: (1) compare current diff against previous review feedback, (2) note which previously-requested changes are now fixed, (3) only flag remaining/new issues, (4) produce a delta-style verdict like "X and Y fixed, Z still needs work". (priority: high)
 
