@@ -5282,6 +5282,7 @@ export async function runOrchestratorScanPass(
 
         // Write review feedback as steering prompt into the NEW child session
         const childQueueDir = path.join(deps.aloopRoot, 'sessions', launchResult.session_id, 'queue');
+        await mkdir(childQueueDir, { recursive: true });
         await deps.writeFile(
           path.join(childQueueDir, '000-review-fixes.md'),
           `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
