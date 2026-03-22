@@ -920,6 +920,26 @@ test('resolveBundledAgentsDir returns null when agent files are missing', async 
   assert.equal(resolved, null);
 });
 
+test('resolveBundledAgentsDir resolves dist/agents/opencode in package layout', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-agents-dist-'));
+  const distDir = path.join(tempRoot, 'dist');
+  const agentsDir = path.join(distDir, 'agents', 'opencode');
+  await mkdir(agentsDir, { recursive: true });
+
+  const agentFiles = ['vision-reviewer.md', 'error-analyst.md', 'code-critic.md'];
+  for (const fileName of agentFiles) {
+    await writeFile(path.join(agentsDir, fileName), `Agent ${fileName}`, 'utf8');
+  }
+
+  const resolved = resolveBundledAgentsDir({
+    moduleDir: distDir,
+    argv1: path.join(distDir, 'index.js'),
+    cwd: tempRoot,
+  });
+
+  assert.equal(resolved, agentsDir);
+});
+
 test('resolveBundledBinDir resolves loop scripts from parent levels in packaged dist layouts', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-bin-resolve-'));
   const fakeModuleDir = path.join(tempRoot, 'lib', 'node_modules', 'aloop-cli', 'dist');

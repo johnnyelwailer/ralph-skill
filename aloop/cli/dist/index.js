@@ -5407,6 +5407,7 @@ async function resolveDefaultAssetsDir() {
   const moduleFilePath = fileURLToPath2(import.meta.url);
   const moduleDir = path6.dirname(moduleFilePath);
   const runtimeScriptPath = process.argv[1] ? path6.resolve(process.argv[1]) : null;
+  const npmPackageJson = typeof process.env.npm_package_json === "string" ? path6.resolve(process.env.npm_package_json) : null;
   const candidates = /* @__PURE__ */ new Set();
   if (runtimeScriptPath) {
     candidates.add(path6.join(path6.dirname(runtimeScriptPath), "dashboard"));
@@ -5414,6 +5415,13 @@ async function resolveDefaultAssetsDir() {
   candidates.add(path6.join(moduleDir, "dashboard"));
   candidates.add(path6.resolve(moduleDir, "..", "dashboard"));
   candidates.add(path6.resolve(moduleDir, "..", "..", "dashboard", "dist"));
+  candidates.add(path6.resolve(moduleDir, "..", "..", "..", "dist", "dashboard"));
+  candidates.add(path6.resolve(moduleDir, "..", "..", "..", "dashboard", "dist"));
+  if (npmPackageJson) {
+    const packageDir = path6.dirname(npmPackageJson);
+    candidates.add(path6.join(packageDir, "dist", "dashboard"));
+    candidates.add(path6.join(packageDir, "dashboard", "dist"));
+  }
   candidates.add(devAssetsDir);
   for (const candidateDir of candidates) {
     if (await fileExists2(path6.join(candidateDir, "index.html"))) {
