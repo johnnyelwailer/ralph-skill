@@ -13,9 +13,17 @@
 
 - [x] [qa/P1] **README says "9 gates" but review template has 10** — README.md references "9 quality gates" in 4 places (lines 13, 73, 185, 213) and the gate table (line 75) only lists 9 gates. The review template (`instructions/review.md`) correctly says 10 gates (Gate 10: QA Coverage & Bug Fix Rate). Update README to say 10 gates and add Gate 10 to the table. Tested at iter 17. (priority: high)
 
-- [ ] **P1: loop.ps1 — proof phase post-invocation handling** — After provider returns successfully for proof mode: validate manifest at `$artifactsDir/iter-$iteration/proof-manifest.json`, log `proof_manifest_validated` event, track `$script:lastProofIteration`, call `Register-IterationFailure` on validation failure. Mirror loop.sh lines 2260-2278. (`loop.ps1` post-provider section ~line 2202+) Note: `Register-IterationFailure` at line 952 currently excludes 'proof' mode — must add 'proof' to the allowed modes list. (priority: high)
+- [x] **P1: loop.ps1 — proof phase post-invocation handling** — After provider returns successfully for proof mode: validate manifest at `$artifactsDir/iter-$iteration/proof-manifest.json`, log `proof_manifest_validated` event, track `$script:lastProofIteration`, call `Register-IterationFailure` on validation failure. Mirror loop.sh lines 2260-2278. (`loop.ps1` post-provider section ~line 2202+) Note: `Register-IterationFailure` at line 952 currently excludes 'proof' mode — must add 'proof' to the allowed modes list. (priority: high)
 
 - [ ] **P1: loop.ps1 — output capture to artifacts** — Record raw log offset before provider invocation, then extract delta to `$artifactsDir/iter-$iteration/output.txt` after. Mirror loop.sh lines 2351-2356 approach (offset-based extraction from raw log). (`loop.ps1` ~line 2188+) (priority: high)
+
+### Spec-Gap Findings
+
+- [ ] [spec-gap] **P2: SPEC.md stale "9 gates" references** — SPEC.md says "9 gates" in 3 places: line 443 ("Same 9 gates as the cycle's review"), line 3717 ("review.md # 9 gates"). README was already updated to 10 gates. Suggested fix: update SPEC.md to say 10 gates in all locations. Files: `SPEC.md:443`, `SPEC.md:3717`
+
+- [ ] [spec-gap] **P2: SPEC.md acceptance criteria pipeline description contradicts design** — Lines 717 and 775 say "plan → build × 5 → proof → qa → review (9-step)" but SPEC line 407 explicitly states "Proof does NOT run in the cycle — it's expensive and only meaningful as final evidence." The acceptance criteria text implies proof is in the continuous cycle, contradicting the actual design where proof is finalizer-only. Suggested fix: update acceptance criteria to say "Default continuous cycle: plan → build × 5 → qa → review (8-step); Finalizer includes proof as last step." Files: `SPEC.md:717`, `SPEC.md:775`
+
+- [ ] [spec-gap] **P2: loop.sh `register_iteration_failure` excludes 'proof' mode** — `loop.sh:719` checks `[ "$iteration_mode" = "plan" ] || ... "review" ]` — 'proof' is not listed. loop.ps1 was already fixed (line 956 now includes 'proof'). loop.sh calls `register_iteration_failure` at line 2283 on proof validation failure but the call is a no-op. Cross-script parity issue. Suggested fix: add 'proof' to the allowed modes list in `loop.sh:719`. Files: `aloop/bin/loop.sh:719`
 
 ### Up Next
 
