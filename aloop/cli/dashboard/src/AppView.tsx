@@ -236,10 +236,20 @@ interface ProviderHealth {
   cooldownUntil?: string;
 }
 
-interface QACoverageData {
+interface QACoverageFeature {
+  feature: string;
+  component: string;
+  last_tested: string;
+  commit: string;
+  status: 'PASS' | 'FAIL' | 'UNTESTED';
+  criteria_met: string;
+  notes: string;
+}
+
+interface QACoverageViewData {
   percentage: number | null;
-  raw: string;
   available: boolean;
+  features: QACoverageFeature[];
 }
 
 // ── Helpers ──
@@ -572,6 +582,33 @@ export function parseDurationSeconds(raw: string): number | null {
   return null;
 }
 
+function parseQACoveragePayload(payload: unknown): QACoverageViewData {
+  if (!isRecord(payload)) return { percentage: null, available: false, features: [] };
+  const available = typeof payload.available === 'boolean' ? payload.available : true;
+  const percentValue = typeof payload.coverage_percent === 'number'
+    ? payload.coverage_percent
+    : (typeof payload.percentage === 'number' ? payload.percentage : null);
+  const features = Array.isArray(payload.features)
+    ? payload.features
+      .filter((f): f is Record<string, unknown> => isRecord(f))
+      .map((f): QACoverageFeature => {
+        const rawStatus = typeof f.status === 'string' ? f.status.toUpperCase() : 'UNTESTED';
+        const status: QACoverageFeature['status'] = rawStatus === 'PASS' || rawStatus === 'FAIL' ? rawStatus : 'UNTESTED';
+        return {
+          feature: typeof f.feature === 'string' ? f.feature : '',
+          component: typeof f.component === 'string' ? f.component : '',
+          last_tested: typeof f.last_tested === 'string' ? f.last_tested : '',
+          commit: typeof f.commit === 'string' ? f.commit : '',
+          status,
+          criteria_met: typeof f.criteria_met === 'string' ? f.criteria_met : '',
+          notes: typeof f.notes === 'string' ? f.notes : '',
+        };
+      })
+    : [];
+
+  return { percentage: percentValue, available, features };
+}
+
 export function computeAvgDuration(log: string): string {
   if (!log) return '';
   let totalSec = 0;
@@ -594,6 +631,30 @@ export function computeAvgDuration(log: string): string {
   }
   if (count === 0) return '';
   return formatSecs(totalSec / count);
+}
+
+function latestQaCoverageRefreshSignal(log: string): string | null {
+  if (!log) return null;
+  const lines = log.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]?.trim();
+    if (!line) continue;
+    try {
+      const entry = JSON.parse(line);
+      if (!isRecord(entry)) continue;
+      const event = str(entry, ['event', 'type']);
+      const phase = str(entry, ['phase', 'mode']).toLowerCase();
+      if (event !== 'iteration_complete' || phase !== 'qa') continue;
+      const timestamp = str(entry, ['timestamp', 'ts', 'time', 'created_at']);
+      const iterationRaw = entry.iteration;
+      const iteration = typeof iterationRaw === 'number' ? String(iterationRaw)
+        : typeof iterationRaw === 'string' ? iterationRaw : '';
+      return `${timestamp}|${iteration}|${line}`;
+    } catch {
+      // Skip non-JSON lines in log stream.
+    }
+  }
+  return null;
 }
 
 // ── Provider health derived from log ──
@@ -906,7 +967,7 @@ function Header({
 }
 
 export function QACoverageBadge({ sessionId, refreshKey }: { sessionId: string | null; refreshKey: string }) {
-  const [coverage, setCoverage] = useState<QACoverageData | null>(null);
+  const [coverage, setCoverage] = useState<QACoverageViewData | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -918,10 +979,10 @@ export function QACoverageBadge({ sessionId, refreshKey }: { sessionId: string |
         const sp = sessionId ? `?session=${encodeURIComponent(sessionId)}` : '';
         const response = await fetch(`/api/qa-coverage${sp}`, { signal: controller.signal });
         if (!response.ok) return;
-        const payload = await response.json() as QACoverageData;
-        if (!cancelled) setCoverage(payload);
+        const payload = await response.json();
+        if (!cancelled) setCoverage(parseQACoveragePayload(payload));
       } catch {
-        if (!cancelled) setCoverage({ percentage: null, raw: '', available: false });
+        if (!cancelled) setCoverage({ percentage: null, available: false, features: [] });
       }
     }
 
@@ -932,19 +993,15 @@ export function QACoverageBadge({ sessionId, refreshKey }: { sessionId: string |
     };
   }, [sessionId, refreshKey]);
 
-  const rendered = useMemo(() => {
-    if (!coverage?.raw) return '';
-    return marked.parse(coverage.raw, { gfm: true, breaks: true }) as string;
-  }, [coverage?.raw]);
+  // Still loading — hide until first fetch completes
+  if (coverage === null) return null;
 
-  if (!coverage?.available) return null;
-
-  const percentage = coverage.percentage;
+  const percentage = coverage.available ? coverage.percentage : null;
   const tone = percentage === null
     ? 'border-border bg-muted/40 text-muted-foreground'
     : percentage >= 80
       ? 'border-green-500/40 bg-green-500/15 text-green-700 dark:text-green-400'
-      : percentage >= 60
+      : percentage >= 50
         ? 'border-yellow-500/40 bg-yellow-500/15 text-yellow-700 dark:text-yellow-400'
         : 'border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-400';
 
@@ -962,7 +1019,34 @@ export function QACoverageBadge({ sessionId, refreshKey }: { sessionId: string |
       {expanded && (
         <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-[min(560px,92vw)] rounded-md border border-border bg-popover shadow-lg">
           <ScrollArea className="max-h-80">
-            <div className="prose-dashboard p-3 text-xs" dangerouslySetInnerHTML={{ __html: rendered }} />
+            <div className="p-3 text-xs space-y-2">
+              {coverage.features.length === 0 ? (
+                <p className="text-muted-foreground">No feature rows found in QA coverage table.</p>
+              ) : (
+                coverage.features.map((feature, index) => {
+                  const statusTone = feature.status === 'PASS'
+                    ? 'border-green-500/40 bg-green-500/15 text-green-700 dark:text-green-400'
+                    : feature.status === 'FAIL'
+                      ? 'border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-400'
+                      : 'border-border bg-muted/40 text-muted-foreground';
+                  const StatusIcon = feature.status === 'PASS' ? CheckCircle2 : feature.status === 'FAIL' ? XCircle : Circle;
+                  return (
+                    <div key={`${feature.feature}-${feature.component}-${index}`} className="rounded-md border border-border/70 p-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground truncate">{feature.feature || 'Unnamed feature'}</p>
+                          {feature.component && <p className="text-[11px] text-muted-foreground truncate">{feature.component}</p>}
+                        </div>
+                        <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${statusTone}`}>
+                          <StatusIcon className="h-3 w-3" />
+                          {feature.status}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </ScrollArea>
         </div>
       )}
@@ -1899,7 +1983,9 @@ export function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<'docs' | 'activity'>('docs');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
+  const [qaCoverageRefreshKey, setQaCoverageRefreshKey] = useState('');
   const prevPhaseRef = useRef<string>('');
+  const latestQaSignalRef = useRef<string | null>(null);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1914,6 +2000,8 @@ export function App() {
     setSelectedSessionId(id);
     setLoading(true);
     setLoadError(null);
+    latestQaSignalRef.current = null;
+    setQaCoverageRefreshKey('');
     const url = new URL(window.location.href);
     if (id) url.searchParams.set('session', id); else url.searchParams.delete('session');
     window.history.replaceState(null, '', url.toString());
@@ -1936,7 +2024,11 @@ export function App() {
       try {
         const r = await fetch(`/api/state${sp}`, { signal: controller.signal });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        if (!cancelled) setState(await r.json() as DashboardState);
+        if (!cancelled) {
+          const payload = await r.json() as DashboardState;
+          setState(payload);
+          latestQaSignalRef.current = latestQaCoverageRefreshSignal(payload.log);
+        }
       } catch (e) { if (!cancelled) setLoadError((e as Error).message); }
       finally { if (!cancelled) setLoading(false); }
     }
@@ -1961,7 +2053,13 @@ export function App() {
       eventSource = new EventSource(`/events${sp}`);
       stateListener = (evt: Event) => {
         try {
-          setState(JSON.parse((evt as MessageEvent<string>).data) as DashboardState);
+          const payload = JSON.parse((evt as MessageEvent<string>).data) as DashboardState;
+          setState(payload);
+          const nextQaSignal = latestQaCoverageRefreshSignal(payload.log);
+          if (nextQaSignal && nextQaSignal !== latestQaSignalRef.current) {
+            latestQaSignalRef.current = nextQaSignal;
+            setQaCoverageRefreshKey(nextQaSignal);
+          }
           setLoadError(null); setConnectionStatus('connected'); reconnectDelay = 1000;
         } catch (e) { setLoadError((e as Error).message); }
       };
@@ -2130,7 +2228,7 @@ export function App() {
             </div>
           )}
           <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={state?.updatedAt ?? ''} />
+            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} />
             {/* Mobile panel toggle */}
             <div className="lg:hidden flex border-b border-border shrink-0">
               <button
