@@ -15,9 +15,9 @@ The endpoint (`GET /api/qa-coverage`) and widget (`QACoverageBadge`) already exi
 
 ### In Progress
 
-- [x] [review+qa/P1] Fix badge hidden when QA_COVERAGE.md missing: changed early return from `!coverage?.available` to `coverage === null` (loading-only). When `available` is false, badge now renders with grey/muted "QA: N/A" style instead of being hidden. (priority: high)
-- [x] [review] Fix refresh trigger: `AppView.tsx:2189` — `qaCoverageRefreshKey={state?.updatedAt ?? ''}` refreshes on every state change. Only bump `qaCoverageRefreshKey` on `iteration_complete` SSE events where phase is `qa`. (priority: high)
-- [x] [review] Fix TypeScript compilation error: `orchestrate.ts:3526` — `PrGateStatus` type union missing `"api_error"`. Added to type definition at `orchestrate.ts:3167`. (priority: high)
+- [x] [review+qa/P1] Fix badge hidden when QA_COVERAGE.md missing: changed early return from `!coverage?.available` to `coverage === null` (loading-only). When `available` is false, badge now renders with grey/muted "QA: N/A" style instead of being hidden. (priority: high) [reviewed: gates 1-9 pass]
+- [x] [review] Fix refresh trigger: `AppView.tsx:2189` — `qaCoverageRefreshKey={state?.updatedAt ?? ''}` refreshes on every state change. Only bump `qaCoverageRefreshKey` on `iteration_complete` SSE events where phase is `qa`. (priority: high) [reviewed: gates 1-9 pass]
+- [x] [review] Fix TypeScript compilation error: `orchestrate.ts:3526` — `PrGateStatus` type union missing `"api_error"`. Added to type definition at `orchestrate.ts:3167`. (priority: high) [reviewed: gates 1-9 pass]
 - [ ] Update `QACoverageData` TypeScript interface in `AppView.tsx` to match new response shape (currently uses `percentage` instead of `coverage_percent`, missing `total_features`, `tested_features`, `passed`, `failed`, `untested` fields). (priority: medium)
 
 ### Up Next
