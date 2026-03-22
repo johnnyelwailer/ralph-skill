@@ -453,9 +453,26 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
         if (statusFieldId && projectId) {
           let synced = 0;
+          let added = 0;
           for (const issue of state.issues) {
-            const item = itemMap.get(issue.number);
-            if (!item) continue;
+            if (!issue.number) continue;
+            let item = itemMap.get(issue.number);
+
+            // Add missing issues to the project (max 10 per pass to avoid API rate limits)
+            if (!item) {
+              if (added >= 10) continue;
+              const repoNodeResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ repository(owner: "${repo.split('/')[0]}", name: "${repo.split('/')[1]}") { issue(number: ${issue.number}) { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+              if (repoNodeResult.status !== 0) continue;
+              const issueNodeId = JSON.parse(repoNodeResult.stdout)?.data?.repository?.issue?.id;
+              if (!issueNodeId) continue;
+              const addResult = spawnSync('gh', ['api', 'graphql', '-f', `query=mutation { addProjectV2ItemById(input: { projectId: "${projectId}" contentId: "${issueNodeId}" }) { item { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+              if (addResult.status !== 0) continue;
+              const newItemId = JSON.parse(addResult.stdout)?.data?.addProjectV2ItemById?.item?.id;
+              if (!newItemId) continue;
+              item = { id: newItemId, status: '' };
+              added++;
+            }
+
             const targetStatus = (issue.status ?? '').toLowerCase();
             if (item.status.toLowerCase() === targetStatus) continue;
             const optionId = optionIds.get(targetStatus);
@@ -463,6 +480,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             spawnSync('gh', ['api', 'graphql', '-f', `query=mutation { updateProjectV2ItemFieldValue(input: { projectId: "${projectId}" itemId: "${item.id}" fieldId: "${statusFieldId}" value: { singleSelectOptionId: "${optionId}" } }) { projectV2Item { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
             synced++;
           }
+          if (added > 0) console.log(`[process-requests] Added ${added} issues to GH project`);
           if (synced > 0) console.log(`[process-requests] Synced ${synced} issue statuses to GH project`);
         }
       }

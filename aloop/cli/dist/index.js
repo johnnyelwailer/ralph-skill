@@ -12456,13 +12456,29 @@ async function launchChildLoop(issue, orchestratorSessionDir, projectRoot, proje
     await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
   }
   deps.spawnSync("git", ["-C", projectRoot, "fetch", "origin", "agent/trunk"], { encoding: "utf8" });
+  deps.spawnSync("git", ["-C", projectRoot, "worktree", "prune"], { encoding: "utf8" });
   let worktreeResult = deps.spawnSync("git", ["-C", projectRoot, "worktree", "add", worktreePath, "-b", branchName, "origin/agent/trunk"], { encoding: "utf8" });
   if (worktreeResult.status !== 0) {
+    const existingWt = deps.spawnSync("git", ["-C", projectRoot, "worktree", "list", "--porcelain"], { encoding: "utf8" });
+    const entries = (existingWt.stdout ?? "").split("\n\n");
+    for (const entry of entries) {
+      if (entry.includes(`refs/heads/${branchName}`)) {
+        const wtLine = entry.split("\n").find((l) => l.startsWith("worktree "));
+        if (wtLine) {
+          const stalePath = wtLine.replace("worktree ", "");
+          deps.spawnSync("git", ["-C", projectRoot, "worktree", "remove", "--force", stalePath], { encoding: "utf8" });
+        }
+      }
+    }
+    deps.spawnSync("git", ["-C", projectRoot, "worktree", "prune"], { encoding: "utf8" });
     worktreeResult = deps.spawnSync("git", ["-C", projectRoot, "worktree", "add", worktreePath, branchName], { encoding: "utf8" });
     if (worktreeResult.status !== 0) {
       throw new Error(`Failed to create worktree for issue #${issue.number}: ${worktreeResult.stderr || worktreeResult.stdout}`);
     }
   }
+  deps.spawnSync("git", ["-C", worktreePath, "branch", "--set-upstream-to", `origin/${branchName}`], { encoding: "utf8" });
+  deps.spawnSync("git", ["-C", worktreePath, "config", "--unset", `branch.${branchName}.merge`], { encoding: "utf8" });
+  deps.spawnSync("git", ["-C", worktreePath, "config", "--unset", `branch.${branchName}.remote`], { encoding: "utf8" });
   const todoContent = `# Issue #${issue.number}: ${issue.title}
 
 ## Tasks
@@ -12654,6 +12670,43 @@ ${issue.body}
     worktree_path: worktreePath,
     pid
   };
+}
+async function launchIssues(issues, state, stateFile, orchestratorSessionDir, projectRoot, projectName, promptsSourceDir, aloopRoot, deps, logDeps) {
+  const launched = [];
+  for (const issue of issues) {
+    try {
+      const result = await launchChildLoop(
+        issue,
+        orchestratorSessionDir,
+        projectRoot,
+        projectName,
+        promptsSourceDir,
+        aloopRoot,
+        deps
+      );
+      launched.push(result);
+      const stateIssue = state.issues.find((i) => i.number === issue.number);
+      if (stateIssue) {
+        stateIssue.state = "in_progress";
+        stateIssue.status = "In progress";
+        stateIssue.child_session = result.session_id;
+        stateIssue.child_pid = result.pid;
+      }
+    } catch (e) {
+      if (logDeps) {
+        logDeps.appendLog(orchestratorSessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "child_dispatch_failed",
+          issue_number: issue.number,
+          error: e instanceof Error ? e.message : String(e)
+        });
+      }
+    }
+  }
+  state.updated_at = deps.now().toISOString();
+  await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
+`, "utf8");
+  return launched;
 }
 var ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 async function hasGithubActionsWorkflows(repo, deps) {
@@ -14042,21 +14095,29 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
   }
   if (deps.dispatchDeps && deps.aloopRoot) {
     const needsRedispatch = state.issues.filter((i) => i.needs_redispatch);
-    for (const issue of needsRedispatch) {
-      try {
-        const launchResult = await launchChildLoop(
-          issue,
-          sessionDir,
-          projectRoot,
-          projectName,
-          promptsSourceDir,
-          deps.aloopRoot,
-          deps.dispatchDeps
-        );
-        const childQueueDir = path14.join(deps.aloopRoot, "sessions", launchResult.session_id, "queue");
-        await deps.writeFile(
-          path14.join(childQueueDir, "000-review-fixes.md"),
-          `---
+    if (needsRedispatch.length > 0) {
+      const redispatchResult = await launchIssues(
+        needsRedispatch.slice(0, availableSlots(state)),
+        state,
+        stateFile,
+        sessionDir,
+        projectRoot,
+        projectName,
+        promptsSourceDir,
+        deps.aloopRoot,
+        deps.dispatchDeps,
+        { appendLog: deps.appendLog }
+      );
+      for (const launch of redispatchResult) {
+        const issue = state.issues.find((i) => i.number === launch.issue_number);
+        if (issue) {
+          const feedback = issue.review_feedback ?? "";
+          if (feedback) {
+            const childQueueDir = path14.join(deps.aloopRoot, "sessions", launch.session_id, "queue");
+            await mkdir7(childQueueDir, { recursive: true });
+            await deps.writeFile(
+              path14.join(childQueueDir, "000-review-fixes.md"),
+              `---
 agent: build
 reasoning: high
 ---
@@ -14067,38 +14128,27 @@ The orchestrator review agent requested changes on PR #${issue.pr_number}.
 
 ## Feedback
 
-${issue.review_feedback}
+${feedback}
 
 ## Instructions
 
 Fix the issues described above, commit, and push.
 Do NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.
 `,
-          "utf8"
-        );
-        issue.state = "in_progress";
-        issue.status = "In progress";
-        issue.child_session = launchResult.session_id;
-        issue.child_pid = launchResult.pid;
-        issue.needs_redispatch = false;
-        issue.review_feedback = void 0;
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: "child_redispatched_for_review",
-          iteration,
-          issue_number: issue.number,
-          pr_number: issue.pr_number,
-          child_session: launchResult.session_id,
-          pid: launchResult.pid
-        });
-      } catch (e) {
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: "child_redispatch_failed",
-          iteration,
-          issue_number: issue.number,
-          error: e instanceof Error ? e.message : String(e)
-        });
+              "utf8"
+            );
+          }
+          issue.needs_redispatch = false;
+          issue.review_feedback = void 0;
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: "child_redispatched_for_review",
+            iteration,
+            issue_number: launch.issue_number,
+            child_session: launch.session_id,
+            pid: launch.pid
+          });
+        }
       }
     }
   }
@@ -14617,7 +14667,7 @@ Automated PR from child loop session \`${issue.child_session}\`.`,
         timeout: 1e4
       });
       if (findResult.status === 0) {
-        console.log("[process-requests] Cleaned stale V8 cache files from /tmp");
+        console.log("[process-requests] Cleaned stale V8 cache files from /tmp (HACK \u2014 see #164)");
       }
     } catch {
     }
@@ -14649,10 +14699,29 @@ Automated PR from child loop session \`${issue.child_session}\`.`,
         }
         if (statusFieldId && projectId) {
           let synced = 0;
+          let added = 0;
           for (const issue of state.issues) {
-            const item = itemMap.get(issue.number);
-            if (!item)
+            if (!issue.number)
               continue;
+            let item = itemMap.get(issue.number);
+            if (!item) {
+              if (added >= 10)
+                continue;
+              const repoNodeResult = spawnSync7("gh", ["api", "graphql", "-f", `query={ repository(owner: "${repo.split("/")[0]}", name: "${repo.split("/")[1]}") { issue(number: ${issue.number}) { id } } }`], { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+              if (repoNodeResult.status !== 0)
+                continue;
+              const issueNodeId = JSON.parse(repoNodeResult.stdout)?.data?.repository?.issue?.id;
+              if (!issueNodeId)
+                continue;
+              const addResult = spawnSync7("gh", ["api", "graphql", "-f", `query=mutation { addProjectV2ItemById(input: { projectId: "${projectId}" contentId: "${issueNodeId}" }) { item { id } } }`], { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+              if (addResult.status !== 0)
+                continue;
+              const newItemId = JSON.parse(addResult.stdout)?.data?.addProjectV2ItemById?.item?.id;
+              if (!newItemId)
+                continue;
+              item = { id: newItemId, status: "" };
+              added++;
+            }
             const targetStatus = (issue.status ?? "").toLowerCase();
             if (item.status.toLowerCase() === targetStatus)
               continue;
@@ -14662,6 +14731,8 @@ Automated PR from child loop session \`${issue.child_session}\`.`,
             spawnSync7("gh", ["api", "graphql", "-f", `query=mutation { updateProjectV2ItemFieldValue(input: { projectId: "${projectId}" itemId: "${item.id}" fieldId: "${statusFieldId}" value: { singleSelectOptionId: "${optionId}" } }) { projectV2Item { id } } }`], { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
             synced++;
           }
+          if (added > 0)
+            console.log(`[process-requests] Added ${added} issues to GH project`);
           if (synced > 0)
             console.log(`[process-requests] Synced ${synced} issue statuses to GH project`);
         }
