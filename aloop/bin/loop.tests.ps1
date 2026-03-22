@@ -894,6 +894,19 @@ exit 0
         $loopSource | Should -Not -Match "-State 'limit_reached'"
     }
 
+    It 'loop.ps1 source enforces finalizer QA gate before completion' {
+        $loopSource = Get-Content (Join-Path $PSScriptRoot 'loop.ps1') -Raw
+        $loopSource | Should -Match '\$qaCoveragePassed = Check-FinalizerQaCoverageGate'
+        $loopSource | Should -Match 'Write-LogEntry -Event "finalizer_qa_coverage_check"'
+        $loopSource | Should -Match 'Write-LogEntry -Event "finalizer_aborted"'
+
+        $gateIndex = $loopSource.IndexOf('$qaCoveragePassed = Check-FinalizerQaCoverageGate')
+        $completeIndex = $loopSource.IndexOf('Write-LogEntry -Event "finalizer_completed"')
+        $gateIndex | Should -BeGreaterThan -1
+        $completeIndex | Should -BeGreaterThan -1
+        $gateIndex | Should -BeLessThan $completeIndex
+    }
+
     It 'review rejection emits final_review_rejected, re-plans, then final_review_approved' {
         $e      = New-LoopEnv -Scenario 'reject-once'
         $result = Invoke-LoopScript -LoopEnv $e -MaxIter 12

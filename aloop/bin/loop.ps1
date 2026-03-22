@@ -2254,6 +2254,31 @@ try {
         # Finalizer mode: run finalizer prompts instead of normal cycle
         if ($script:finalizerMode) {
             if ($script:finalizerPosition -ge $script:finalizerLength) {
+                $qaCoveragePassed = Check-FinalizerQaCoverageGate
+                Write-LogEntry -Event "finalizer_qa_coverage_check" -Data @{
+                    iteration = $iteration
+                    passed = [bool]$qaCoveragePassed
+                    reason = [string]$script:finalizerQaGateReason
+                    message = [string]$script:finalizerQaGateMessage
+                    qa_total = [int]$script:finalizerQaTotal
+                    qa_untested = [int]$script:finalizerQaUntested
+                    qa_fail = [int]$script:finalizerQaFail
+                }
+                if (-not $qaCoveragePassed) {
+                    $script:finalizerMode = $false
+                    $script:finalizerPosition = 0
+                    $script:allTasksMarkedDone = $false
+                    Persist-LoopPlanState -Iteration $iteration
+                    Write-LogEntry -Event "finalizer_aborted" -Data @{
+                        iteration = $iteration
+                        reason = [string]$script:finalizerQaGateReason
+                        qa_total = [int]$script:finalizerQaTotal
+                        qa_untested = [int]$script:finalizerQaUntested
+                        qa_fail = [int]$script:finalizerQaFail
+                    }
+                    Write-Host "[Finalizer aborted — $($script:finalizerQaGateMessage)]" -ForegroundColor Yellow
+                    continue
+                }
                 Write-LogEntry -Event "finalizer_completed" -Data @{ iteration = $iteration }
                 Write-Host "[Finalizer sequence completed — all tasks done]" -ForegroundColor Green
                 Write-Status -Iteration $iteration -Phase "finalizer" -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
