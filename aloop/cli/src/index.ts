@@ -16,7 +16,7 @@ import { orchestrateCommand } from './commands/orchestrate.js';
 import { steerCommand } from './commands/steer.js';
 import { processRequestsCommand } from './commands/process-requests.js';
 
-import { withErrorHandling } from './lib/error-handling.js';
+import { resolveOutputModeFromArgv, withErrorHandling } from './lib/error-handling.js';
 
 const program = new Command();
 
@@ -194,10 +194,12 @@ program
   }));
 
 process.on('unhandledRejection', (reason) => {
-  if (reason instanceof Error) {
-    console.error(`Error: ${reason.message}`);
+  const outputMode = resolveOutputModeFromArgv(process.argv);
+  const errorMessage = reason instanceof Error ? reason.message : String(reason);
+  if (outputMode === 'json') {
+    console.error(JSON.stringify({ error: errorMessage }));
   } else {
-    console.error(`Error: ${String(reason)}`);
+    console.error(`Error: ${errorMessage}`);
   }
   process.exit(1);
 });

@@ -1846,7 +1846,12 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       workDir = worktreePath;
     } else {
       // Worktree failed — fall back to project root
-      console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
+      const warning = `Failed to create worktree: ${worktreeResult.stderr?.trim()}`;
+      if (outputMode === 'json') {
+        console.error(JSON.stringify({ warning }));
+      } else {
+        console.error(`Warning: ${warning}`);
+      }
     }
 
     const args = [
