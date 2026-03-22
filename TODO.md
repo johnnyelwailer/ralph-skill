@@ -8,7 +8,7 @@ Priority: Orchestrator core pipeline → Loop engine gaps → Dashboard refactor
 
 - [x] [review] Gate 2: `orchestrate.test.ts` — added tests verifying `--no-task-exit` / `-NoTaskExit` is passed to loop.sh/loop.ps1 spawn args in `launchChildLoop`. Also added the flag to the source code spawn args. (priority: high)
 - [x] [review] Gate 3: `reconcileResumedChildren` (orchestrate.ts:1009-1056) — only 1 happy-path test (all dead). Missing: mixed live/dead children, all-alive (no state change), NaN PID edge case, missing meta.json/status.json. Add ≥3 edge-case tests. (priority: high)
-- [ ] [review] Gate 3: `syncResumedStateFromGithub` (orchestrate.ts:1058-1133) — 0 dedicated tests. This 75-line function handles GitHub API calls, JSON parsing, and state merging with a silent catch-all. Add tests for: gh CLI failure (returns false), malformed JSON response, new issue discovered on GitHub added to state, existing issue title updated. (priority: high)
+- [x] [review] Gate 3: `syncResumedStateFromGithub` (orchestrate.ts:1058-1133) — added dedicated resume-path tests for gh CLI failure, malformed JSON response, new GitHub issue discovery + state persistence, and existing issue title/body refresh from GitHub. (priority: high)
 
 ### QA Bugs
 

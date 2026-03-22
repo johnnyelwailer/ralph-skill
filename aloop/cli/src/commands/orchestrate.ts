@@ -202,6 +202,7 @@ export interface OrchestrateDeps {
   unlink?: (path: string) => Promise<void>;
   readdirSync?: (path: string) => string[];
   isProcessAlive?: (pid: number) => boolean;
+  spawnSync?: (command: string, args: string[], options?: { encoding?: BufferEncoding }) => SpawnSyncResult;
   now: () => Date;
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
@@ -1424,14 +1425,14 @@ async function reconcileResumedChildren(
 
 async function syncResumedStateFromGithub(
   state: OrchestratorState,
-  deps: Pick<OrchestrateDeps, 'now'>,
+  deps: Pick<OrchestrateDeps, 'now' | 'spawnSync'>,
 ): Promise<boolean> {
   const repo = state.filter_repo;
   if (!repo) return false;
 
   try {
-    const { spawnSync: nodeSpawnSync } = await import('node:child_process');
-    const listResult = nodeSpawnSync(
+    const spawnSync = deps.spawnSync ?? ((await import('node:child_process')).spawnSync as OrchestrateDeps['spawnSync']);
+    const listResult = spawnSync(
       'gh',
       ['issue', 'list', '--repo', repo, '--label', 'aloop/auto', '--state', 'open', '--limit', '200', '--json', 'number,title,body,labels'],
       { encoding: 'utf8' },

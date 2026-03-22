@@ -870,6 +870,267 @@ describe('orchestrateCommandWithDeps', () => {
     assert.equal(result.state.issues[1].state, 'pending');
     assert.equal(result.state.issues[1].child_session, null);
   });
+
+  it('resume returns existing state when gh issue list exits non-zero', async () => {
+    const homeDir = '/tmp/aloop-home-resume-gh-fail';
+    const sessionId = 'orchestrator-20260321-060606';
+    const sessionDir = path.join(homeDir, '.aloop', 'sessions', sessionId);
+    const files: Record<string, string> = {};
+    const dirs = new Set<string>([
+      sessionDir,
+      path.join(sessionDir, 'prompts'),
+      path.join(sessionDir, 'queue'),
+      path.join(sessionDir, 'requests'),
+    ]);
+    const statePath = path.join(sessionDir, 'orchestrator.json');
+    const originalState = {
+      spec_file: 'SPEC.md',
+      trunk_branch: 'agent/trunk',
+      concurrency_cap: 2,
+      current_wave: 1,
+      plan_only: false,
+      issues: [
+        {
+          number: 51,
+          title: 'Existing issue',
+          body: 'Existing body',
+          wave: 1,
+          state: 'pending',
+          status: 'Ready',
+          child_session: null,
+          pr_number: null,
+          depends_on: [],
+        },
+      ],
+      completed_waves: [],
+      filter_issues: null,
+      filter_label: null,
+      filter_repo: 'owner/repo',
+      budget_cap: null,
+      created_at: '2026-03-21T06:06:06.000Z',
+      updated_at: '2026-03-21T06:06:06.000Z',
+    };
+    files[path.join(sessionDir, 'loop-plan.json')] = JSON.stringify({ cycle: ['PROMPT_orch_scan.md'], cyclePosition: 0, iteration: 11, version: 1 });
+    files[path.join(sessionDir, 'meta.json')] = JSON.stringify({ project_root: '/tmp/project' });
+    files[statePath] = `${JSON.stringify(originalState, null, 2)}\n`;
+    let writeCount = 0;
+
+    const result = await orchestrateCommandWithDeps({ homeDir, resume: sessionId }, {
+      ...createMockDeps(),
+      existsSync: (p: string) => dirs.has(p) || p in files,
+      readFile: async (p: string) => files[p] ?? '',
+      writeFile: async (p: string, data: string) => {
+        writeCount += 1;
+        files[p] = data;
+      },
+      mkdir: async (p: string) => {
+        dirs.add(p);
+        return undefined;
+      },
+      spawnSync: () => ({ status: 1, stdout: '', stderr: 'gh unavailable' }),
+    });
+
+    assert.equal(result.state.issues.length, 1);
+    assert.equal(result.state.issues[0].title, 'Existing issue');
+    assert.equal(writeCount, 0);
+    assert.equal(files[statePath], `${JSON.stringify(originalState, null, 2)}\n`);
+  });
+
+  it('resume ignores malformed gh issue list JSON', async () => {
+    const homeDir = '/tmp/aloop-home-resume-gh-malformed';
+    const sessionId = 'orchestrator-20260321-070707';
+    const sessionDir = path.join(homeDir, '.aloop', 'sessions', sessionId);
+    const files: Record<string, string> = {};
+    const dirs = new Set<string>([
+      sessionDir,
+      path.join(sessionDir, 'prompts'),
+      path.join(sessionDir, 'queue'),
+      path.join(sessionDir, 'requests'),
+    ]);
+    const statePath = path.join(sessionDir, 'orchestrator.json');
+    const originalState = {
+      spec_file: 'SPEC.md',
+      trunk_branch: 'agent/trunk',
+      concurrency_cap: 2,
+      current_wave: 1,
+      plan_only: false,
+      issues: [],
+      completed_waves: [],
+      filter_issues: null,
+      filter_label: null,
+      filter_repo: 'owner/repo',
+      budget_cap: null,
+      created_at: '2026-03-21T07:07:07.000Z',
+      updated_at: '2026-03-21T07:07:07.000Z',
+    };
+    files[path.join(sessionDir, 'loop-plan.json')] = JSON.stringify({ cycle: ['PROMPT_orch_scan.md'], cyclePosition: 0, iteration: 12, version: 1 });
+    files[path.join(sessionDir, 'meta.json')] = JSON.stringify({ project_root: '/tmp/project' });
+    files[statePath] = `${JSON.stringify(originalState, null, 2)}\n`;
+    let writeCount = 0;
+
+    const result = await orchestrateCommandWithDeps({ homeDir, resume: sessionId }, {
+      ...createMockDeps(),
+      existsSync: (p: string) => dirs.has(p) || p in files,
+      readFile: async (p: string) => files[p] ?? '',
+      writeFile: async (p: string, data: string) => {
+        writeCount += 1;
+        files[p] = data;
+      },
+      mkdir: async (p: string) => {
+        dirs.add(p);
+        return undefined;
+      },
+      spawnSync: () => ({ status: 0, stdout: '{not json', stderr: '' }),
+    });
+
+    assert.equal(result.state.issues.length, 0);
+    assert.equal(writeCount, 0);
+    assert.equal(files[statePath], `${JSON.stringify(originalState, null, 2)}\n`);
+  });
+
+  it('resume adds newly discovered gh issues to state', async () => {
+    const homeDir = '/tmp/aloop-home-resume-gh-add';
+    const sessionId = 'orchestrator-20260321-080808';
+    const sessionDir = path.join(homeDir, '.aloop', 'sessions', sessionId);
+    const files: Record<string, string> = {};
+    const dirs = new Set<string>([
+      sessionDir,
+      path.join(sessionDir, 'prompts'),
+      path.join(sessionDir, 'queue'),
+      path.join(sessionDir, 'requests'),
+    ]);
+    const statePath = path.join(sessionDir, 'orchestrator.json');
+    const originalState = {
+      spec_file: 'SPEC.md',
+      trunk_branch: 'agent/trunk',
+      concurrency_cap: 2,
+      current_wave: 1,
+      plan_only: false,
+      issues: [
+        {
+          number: 61,
+          title: 'Issue 61',
+          body: 'Existing body',
+          wave: 1,
+          state: 'pending',
+          status: 'Ready',
+          child_session: null,
+          pr_number: null,
+          depends_on: [],
+        },
+      ],
+      completed_waves: [],
+      filter_issues: null,
+      filter_label: null,
+      filter_repo: 'owner/repo',
+      budget_cap: null,
+      created_at: '2026-03-21T08:08:08.000Z',
+      updated_at: '2026-03-21T08:08:08.000Z',
+    };
+    files[path.join(sessionDir, 'loop-plan.json')] = JSON.stringify({ cycle: ['PROMPT_orch_scan.md'], cyclePosition: 0, iteration: 13, version: 1 });
+    files[path.join(sessionDir, 'meta.json')] = JSON.stringify({ project_root: '/tmp/project' });
+    files[statePath] = `${JSON.stringify(originalState, null, 2)}\n`;
+
+    const result = await orchestrateCommandWithDeps({ homeDir, resume: sessionId }, {
+      ...createMockDeps(),
+      existsSync: (p: string) => dirs.has(p) || p in files,
+      readFile: async (p: string) => files[p] ?? '',
+      writeFile: async (p: string, data: string) => { files[p] = data; },
+      mkdir: async (p: string) => {
+        dirs.add(p);
+        return undefined;
+      },
+      now: () => new Date('2026-03-21T08:30:00.000Z'),
+      spawnSync: () => ({
+        status: 0,
+        stdout: JSON.stringify([
+          { number: 61, title: 'Issue 61', body: 'Existing body' },
+          { number: 62, title: 'New GH issue', body: 'New body from gh' },
+        ]),
+        stderr: '',
+      }),
+    });
+
+    const newIssue = result.state.issues.find((issue) => issue.number === 62);
+    assert.ok(newIssue);
+    assert.equal(newIssue?.title, 'New GH issue');
+    assert.equal(newIssue?.body, 'New body from gh');
+    assert.equal(newIssue?.state, 'pending');
+    assert.equal(newIssue?.status, 'Needs refinement');
+
+    const persisted = JSON.parse(files[statePath]);
+    assert.equal(persisted.issues.some((issue: { number: number }) => issue.number === 62), true);
+  });
+
+  it('resume updates existing issue title/body from gh issue list', async () => {
+    const homeDir = '/tmp/aloop-home-resume-gh-update';
+    const sessionId = 'orchestrator-20260321-090909';
+    const sessionDir = path.join(homeDir, '.aloop', 'sessions', sessionId);
+    const files: Record<string, string> = {};
+    const dirs = new Set<string>([
+      sessionDir,
+      path.join(sessionDir, 'prompts'),
+      path.join(sessionDir, 'queue'),
+      path.join(sessionDir, 'requests'),
+    ]);
+    const statePath = path.join(sessionDir, 'orchestrator.json');
+    files[path.join(sessionDir, 'loop-plan.json')] = JSON.stringify({ cycle: ['PROMPT_orch_scan.md'], cyclePosition: 0, iteration: 14, version: 1 });
+    files[path.join(sessionDir, 'meta.json')] = JSON.stringify({ project_root: '/tmp/project' });
+    files[statePath] = `${JSON.stringify({
+      spec_file: 'SPEC.md',
+      trunk_branch: 'agent/trunk',
+      concurrency_cap: 2,
+      current_wave: 1,
+      plan_only: false,
+      issues: [
+        {
+          number: 71,
+          title: 'Old title',
+          body: 'Old body',
+          wave: 1,
+          state: 'pending',
+          status: 'Ready',
+          child_session: null,
+          pr_number: null,
+          depends_on: [],
+        },
+      ],
+      completed_waves: [],
+      filter_issues: null,
+      filter_label: null,
+      filter_repo: 'owner/repo',
+      budget_cap: null,
+      created_at: '2026-03-21T09:09:09.000Z',
+      updated_at: '2026-03-21T09:09:09.000Z',
+    }, null, 2)}\n`;
+
+    const result = await orchestrateCommandWithDeps({ homeDir, resume: sessionId }, {
+      ...createMockDeps(),
+      existsSync: (p: string) => dirs.has(p) || p in files,
+      readFile: async (p: string) => files[p] ?? '',
+      writeFile: async (p: string, data: string) => { files[p] = data; },
+      mkdir: async (p: string) => {
+        dirs.add(p);
+        return undefined;
+      },
+      now: () => new Date('2026-03-21T09:30:00.000Z'),
+      spawnSync: () => ({
+        status: 0,
+        stdout: JSON.stringify([
+          { number: 71, title: 'Updated title', body: 'Updated body from gh' },
+        ]),
+        stderr: '',
+      }),
+    });
+
+    assert.equal(result.state.issues[0].title, 'Updated title');
+    assert.equal(result.state.issues[0].body, 'Updated body from gh');
+    assert.equal(result.state.updated_at, '2026-03-21T09:30:00.000Z');
+
+    const persisted = JSON.parse(files[statePath]);
+    assert.equal(persisted.issues[0].title, 'Updated title');
+    assert.equal(persisted.issues[0].body, 'Updated body from gh');
+  });
 });
 
 describe('orchestrateCommand', () => {
