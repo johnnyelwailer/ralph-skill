@@ -3,12 +3,20 @@ export function withErrorHandling(action: (...args: any[]) => Promise<void> | vo
     try {
       await action(...args);
     } catch (error) {
+      let message: string;
       if (error && typeof error === 'object' && 'stderr' in error && typeof error.stderr === 'string' && error.stderr.trim()) {
-        console.error(`Error: ${error.stderr.trim()}`);
+        message = error.stderr.trim();
       } else if (error instanceof Error) {
-        console.error(`Error: ${error.message}`);
+        message = error.message;
       } else {
-        console.error(`Error: ${String(error)}`);
+        message = String(error);
+      }
+
+      const outputMode = args[0]?.output;
+      if (outputMode === 'json') {
+        console.log(JSON.stringify({ success: false, error: message }));
+      } else {
+        console.error(`Error: ${message}`);
       }
       process.exit(1);
     }
