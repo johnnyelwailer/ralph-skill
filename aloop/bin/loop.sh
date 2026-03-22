@@ -985,7 +985,7 @@ register_iteration_failure() {
     if ! { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; }; then
         return
     fi
-    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "qa" ] || [ "$iteration_mode" = "review" ]; }; then
+    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "qa" ] || [ "$iteration_mode" = "review" ] || [ "$iteration_mode" = "spec-gap" ] || [ "$iteration_mode" = "docs" ]; }; then
         return
     fi
 
@@ -1830,9 +1830,8 @@ check_finalizer_qa_coverage_gate() {
     local coverage_file="$WORK_DIR/QA_COVERAGE.md"
     if [ ! -f "$coverage_file" ]; then
         FINALIZER_QA_GATE_REASON="qa_coverage_missing"
-        FINALIZER_QA_GATE_MESSAGE="QA_COVERAGE.md is missing"
-        append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Create QA_COVERAGE.md baseline and run QA coverage pass before loop exit"
-        return 1
+        FINALIZER_QA_GATE_MESSAGE="QA_COVERAGE.md is missing — skipping enforcement"
+        return 0
     fi
 
     local parsed

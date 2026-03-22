@@ -1,42 +1,36 @@
-# Sub-Spec: Issue #144 — Autonomous daemon lifecycle: spawn, register, signal handling, shutdown
+# Sub-Spec: Issue #104 — QA coverage enforcement in finalizer and loop script phase support
 
 ## Objective
 
-Make `aloop orchestrate` spawn a background daemon that runs indefinitely, following the same lifecycle pattern as `aloop start`.
+Add QA coverage enforcement to the finalizer abort logic: the finalizer should abort if QA coverage < 70% or any FAIL features remain in QA_COVERAGE.md. Also ensure both loop scripts properly support all new agent phases.
 
 ## Scope
 
-- `aloop orchestrate` spawns a detached background process and returns immediately (like `start.ts` does)
-- Orchestrator registers in `~/.aloop/active.json` with PID, session_dir, work_dir, mode=orchestrator
-- Scan loop runs indefinitely with no iteration cap (per spec: orchestrate mode defaults to no max iterations)
-- Runtime coordinator (Node.js) watches `requests/` directory and processes side effects between scan iterations
-- Register SIGTERM and SIGINT handlers for graceful shutdown:
-  - Stop all running child loops
-  - Persist final `orchestrator.json` state
-  - Deregister from `active.json`
-  - Exit cleanly
-- `aloop stop <session-id>` sends SIGTERM to orchestrator process, triggering graceful shutdown
-- Write `status.json` with mode=orchestrator, update state transitions (starting → running → stopped/completed)
-- Support both Unix (bash) and note Windows (PS1) in daemon spawning
+The finalizer currently aborts only when new incomplete tasks appear in TODO.md (line ~2238 in loop.sh, line ~2175 in loop.ps1). It needs additional checks:
+1. Parse `QA_COVERAGE.md` for coverage percentage and FAIL entries
+2. If coverage < 70% or any FAIL features exist, abort finalizer and return to cycle
 
-## Inputs
-- `start.ts` daemon spawning pattern (detached process, stdio redirect)
-- `session.mjs` active session management functions
-- `stop.ts` existing stop command
+The loop scripts validate `iteration_mode` against `plan|build|qa|review` (line 696 in loop.sh, line 929 in loop.ps1). Finalizer agents bypass this (they use prompt filenames), but cycle-injected periodic agents (spec-gap, docs) may need validation updates.
 
-## Outputs
-- Updated `orchestrate.ts` with daemon lifecycle
-- Updated `stop.ts` to handle orchestrator sessions
-- Signal handler registration and graceful shutdown logic
+## Deliverables
+
+- [ ] Add QA coverage parsing function to `loop.sh`: reads QA_COVERAGE.md, counts PASS/FAIL/total, computes percentage
+- [ ] Add equivalent function to `loop.ps1`
+- [ ] Finalizer abort logic: before advancing finalizer position, check QA coverage — abort if < 70% or any FAIL
+- [ ] Log QA coverage check results (pass/fail with percentage) in session log
+- [ ] Ensure `iteration_mode` validation in both scripts accepts periodic agents (spec-gap, docs) when injected into cycle
+- [ ] Verify all finalizer prompts (PROMPT_spec-gap.md, PROMPT_docs.md, PROMPT_spec-review.md, PROMPT_final-review.md, PROMPT_final-qa.md, PROMPT_proof.md) load and execute correctly in both scripts
+
+## Files
+
+- `aloop/bin/loop.sh` (modify — finalizer abort section, mode validation)
+- `aloop/bin/loop.ps1` (modify — finalizer abort section, mode validation)
 
 ## Acceptance Criteria
-- [ ] `aloop orchestrate` spawns background daemon and returns immediately
-- [ ] Orchestrator registers in `active.json` with correct metadata
-- [ ] Scan loop runs indefinitely until all issues resolved or user stops
-- [ ] `aloop stop <id>` gracefully shuts down orchestrator
-- [ ] Orchestrator deregisters from `active.json` on exit
-- [ ] Child loops are stopped during shutdown
-- [ ] `status.json` reflects orchestrator state transitions
 
-## Labels
-`aloop/sub-issue`, `aloop/needs-refine`
+- Finalizer aborts if QA coverage < 70%
+- Finalizer aborts if any FAIL features remain in QA_COVERAGE.md
+- Coverage check logged in session log with percentage
+- All six finalizer prompts execute correctly in both loop.sh and loop.ps1
+- Periodic agents (spec-gap, docs) accepted when injected into cycle
+- Graceful handling when QA_COVERAGE.md doesn't exist (skip enforcement, don't block)

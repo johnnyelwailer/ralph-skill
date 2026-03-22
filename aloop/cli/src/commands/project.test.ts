@@ -40,6 +40,11 @@ test('scaffoldWorkspace writes config and prompt files with substitutions', asyn
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer {{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof {{SPEC_FILES}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA {{SPEC_FILES}}', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   const result = await scaffoldWorkspace({
     projectRoot: tempRoot,
@@ -116,7 +121,7 @@ test('scaffoldWorkspace in orchestrate mode writes orchestrator prompts and conf
   }
 
   // Verify NO loop prompt files leaked into orchestrate output
-  const loopPrompts = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  const loopPrompts = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md'];
   for (const tmpl of loopPrompts) {
     assert.ok(!existsSync(path.join(result.prompts_dir, tmpl)), `loop prompt ${tmpl} should NOT exist in orchestrate mode`);
   }
@@ -140,6 +145,11 @@ test('scaffoldWorkspace normalizes mode loop to plan-build-review', async () => 
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   const result = await scaffoldWorkspace({
     projectRoot: tempRoot,
@@ -170,6 +180,11 @@ test('scaffoldWorkspace expands nested template includes before variable substit
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
   await writeFile(path.join(instructionsDir, 'review.md'), 'Specs: {{SPEC_FILES}}\n{{include:instructions/common.md}}', 'utf8');
   await writeFile(path.join(instructionsDir, 'common.md'), 'Refs: {{REFERENCE_FILES}}\n{{VALIDATION_COMMANDS}}\n{{SAFETY_RULES}}', 'utf8');
 
@@ -204,6 +219,11 @@ test('scaffoldWorkspace allows explicit reference file overrides', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   const result = await scaffoldWorkspace({
     projectRoot: tempRoot,
@@ -236,6 +256,11 @@ test('scaffoldWorkspace writes data_privacy and privacy_policy to config', async
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   // Test private (default)
   const privateResult = await scaffoldWorkspace({
@@ -327,6 +352,11 @@ test('scaffoldWorkspace respects explicit enabledProviders and roundRobinOrder',
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   const result = await scaffoldWorkspace({
     projectRoot: tempRoot,
@@ -355,6 +385,11 @@ test('scaffoldWorkspace writes explicit autonomy level', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   const result = await scaffoldWorkspace({
     projectRoot: tempRoot,
@@ -410,6 +445,11 @@ test('scaffoldWorkspace errors when a required template is missing', async () =>
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   await assert.rejects(
     () =>
@@ -437,7 +477,7 @@ test('scaffoldWorkspace bootstraps templates from bundled source for fresh HOME'
   // Verify templates were bootstrapped to HOME with content matching bundled sources
   const homeTemplatesDir = path.join(homeRoot, '.aloop', 'templates');
   const bundledTemplatesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'templates');
-  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md'];
   for (const tmpl of requiredTemplates) {
     assert.ok(existsSync(path.join(homeTemplatesDir, tmpl)), `${tmpl} should be bootstrapped`);
     const bootstrapped = await readFile(path.join(homeTemplatesDir, tmpl), 'utf8');
@@ -456,7 +496,7 @@ test('resolveBundledTemplatesDir resolves templates from parent levels in packag
   await mkdir(fakeModuleDir, { recursive: true });
   await mkdir(templatesDir, { recursive: true });
 
-  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md'];
   for (const tmpl of requiredTemplates) {
     await writeFile(path.join(templatesDir, tmpl), `Template ${tmpl}`, 'utf8');
   }
@@ -476,7 +516,7 @@ test('resolveBundledTemplatesDir resolves templates bundled under dist/templates
   const distTemplatesDir = path.join(fakeDistDir, 'templates');
   await mkdir(distTemplatesDir, { recursive: true });
 
-  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md'];
   for (const tmpl of requiredTemplates) {
     await writeFile(path.join(distTemplatesDir, tmpl), `Bundled ${tmpl}`, 'utf8');
   }
@@ -498,7 +538,7 @@ test('scaffoldWorkspace skips bootstrap when explicit templatesDir is provided',
   await mkdir(templatesDir, { recursive: true });
   await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
   // Provide all required templates in explicit templatesDir
-  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md'];
   for (const tmpl of requiredTemplates) {
     await writeFile(path.join(templatesDir, tmpl), `Custom ${tmpl}`, 'utf8');
   }
@@ -522,7 +562,7 @@ test('scaffoldWorkspace does not bootstrap bundled templates when default HOME t
   await mkdir(homeTemplatesDir, { recursive: true });
   await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
 
-  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md'];
   for (const tmpl of requiredTemplates) {
     await writeFile(path.join(homeTemplatesDir, tmpl), `Existing ${tmpl}`, 'utf8');
   }
@@ -551,6 +591,11 @@ test('scaffoldWorkspace rejects unknown provider names', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   await assert.rejects(
     () => scaffoldWorkspace({
@@ -576,6 +621,11 @@ test('scaffoldWorkspace rejects unknown providers in enabledProviders', async ()
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   await assert.rejects(
     () => scaffoldWorkspace({
@@ -600,6 +650,11 @@ test('scaffoldWorkspace rejects nonexistent spec files', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   await assert.rejects(
     () => scaffoldWorkspace({
@@ -670,6 +725,11 @@ test('resolveProviderHints covers all branches', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), '{{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), '{{PROVIDER_HINTS}}', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), '{{PROVIDER_HINTS}}', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   const providers = ['claude', 'opencode', 'codex', 'gemini', 'copilot'];
   const expectedHintFragments: Record<string, string> = {
@@ -725,6 +785,11 @@ test('workspace functions handle default parameters', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   // Test discoverWorkspace with no options (uses process.cwd() and os.homedir())
   const result1 = await discoverWorkspace();
@@ -754,6 +819,11 @@ test('command wrappers support json and text output', async () => {
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   const logs: string[] = [];
   const originalLog = console.log;
@@ -846,6 +916,11 @@ test('scaffoldWorkspace includes opencode in generated config models', async () 
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   const result = await scaffoldWorkspace({
     projectRoot: tempRoot,
@@ -877,6 +952,11 @@ test('scaffoldWorkspace allows explicitly enabled providers even if missing loca
   await writeFile(path.join(templatesDir, 'PROMPT_steer.md'), 'Steer', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_proof.md'), 'Proof', 'utf8');
   await writeFile(path.join(templatesDir, 'PROMPT_qa.md'), 'QA', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-gap.md'), 'SpecGap', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_docs.md'), 'Docs', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_spec-review.md'), 'SpecReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-review.md'), 'FinalReview', 'utf8');
+  await writeFile(path.join(templatesDir, 'PROMPT_final-qa.md'), 'FinalQA', 'utf8');
 
   // Request a provider that is known but likely missing in the test environment (e.g., gemini or opencode if not in path)
   // We don't need to mock spawnSync because scaffoldWorkspace only uses discovery results, 
@@ -1043,7 +1123,7 @@ test('scaffoldWorkspace copies opencode agent files when opencode is enabled', a
   // Create bundled templates dir
   const bundledTemplatesDir = path.join(tempRoot, 'templates');
   await mkdir(bundledTemplatesDir, { recursive: true });
-  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md'];
   for (const tmpl of requiredTemplates) {
     await writeFile(path.join(bundledTemplatesDir, tmpl), `Template ${tmpl}`, 'utf8');
   }
@@ -1100,7 +1180,7 @@ test('scaffoldWorkspace does not copy opencode agent files when opencode is not 
   // Create bundled templates dir
   const bundledTemplatesDir = path.join(tempRoot, 'templates');
   await mkdir(bundledTemplatesDir, { recursive: true });
-  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
+  const requiredTemplates = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md'];
   for (const tmpl of requiredTemplates) {
     await writeFile(path.join(bundledTemplatesDir, tmpl), `Template ${tmpl}`, 'utf8');
   }
@@ -1115,6 +1195,59 @@ test('scaffoldWorkspace does not copy opencode agent files when opencode is not 
   // Verify .opencode/agents/ was NOT created
   const opencodeAgentsDir = path.join(tempRoot, '.opencode', 'agents');
   assert.ok(!existsSync(opencodeAgentsDir), '.opencode/agents/ should not exist when opencode is not enabled');
+});
+
+test('scaffoldWorkspace generates default pipeline.yml with finalizer chain', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-pipeline-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  for (const tmpl of ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md']) {
+    await writeFile(path.join(templatesDir, tmpl), `Template ${tmpl}`, 'utf8');
+  }
+
+  await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    specFiles: ['SPEC.md'],
+  });
+
+  const pipelinePath = path.join(tempRoot, '.aloop', 'pipeline.yml');
+  assert.ok(existsSync(pipelinePath), 'pipeline.yml should be created during scaffold');
+  const content = await readFile(pipelinePath, 'utf8');
+  assert.match(content, /finalizer:/, 'pipeline.yml should contain finalizer section');
+  assert.match(content, /PROMPT_spec-gap\.md/, 'finalizer should include spec-gap');
+  assert.match(content, /PROMPT_proof\.md/, 'finalizer should include proof');
+});
+
+test('scaffoldWorkspace does not overwrite existing pipeline.yml', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-scaffold-pipeline-existing-'));
+  const homeRoot = path.join(tempRoot, 'home');
+  const templatesDir = path.join(tempRoot, 'templates');
+  await mkdir(homeRoot, { recursive: true });
+  await mkdir(templatesDir, { recursive: true });
+  await writeFile(path.join(tempRoot, 'SPEC.md'), '# spec', 'utf8');
+  for (const tmpl of ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md']) {
+    await writeFile(path.join(templatesDir, tmpl), `Template ${tmpl}`, 'utf8');
+  }
+
+  // Pre-create a custom pipeline.yml
+  const aloopDir = path.join(tempRoot, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), 'custom: true\n', 'utf8');
+
+  await scaffoldWorkspace({
+    projectRoot: tempRoot,
+    homeDir: homeRoot,
+    templatesDir,
+    specFiles: ['SPEC.md'],
+  });
+
+  const content = await readFile(path.join(aloopDir, 'pipeline.yml'), 'utf8');
+  assert.equal(content, 'custom: true\n', 'existing pipeline.yml should not be overwritten');
 });
 
 test('discoverWorkspace includes spec complexity analysis', async () => {
