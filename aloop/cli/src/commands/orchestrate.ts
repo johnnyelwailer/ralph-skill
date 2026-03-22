@@ -4346,6 +4346,7 @@ export interface MonitorChildDeps {
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  adapter?: Pick<OrchestratorAdapter, 'resolveThread'>;
   now: () => Date;
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   aloopRoot: string;
@@ -4520,6 +4521,33 @@ export async function monitorChildSessions(
 
     // Check for terminal states
     if (childStatus.state === 'exited') {
+      const resolvingCommentIds = issue.resolving_comment_ids ?? [];
+      if (resolvingCommentIds.length > 0) {
+        const adapter = deps.adapter ?? new GitHubAdapter({ type: 'github', repo }, deps.execGh);
+        for (const commentId of resolvingCommentIds) {
+          try {
+            await adapter.resolveThread(issue.pr_number ?? 0, commentId);
+            deps.appendLog(sessionDir, {
+              timestamp: deps.now().toISOString(),
+              event: 'review_thread_resolved',
+              issue_number: issue.number,
+              pr_number: issue.pr_number,
+              comment_id: commentId,
+            });
+          } catch (e: unknown) {
+            deps.appendLog(sessionDir, {
+              timestamp: deps.now().toISOString(),
+              event: 'review_thread_resolve_failed',
+              issue_number: issue.number,
+              pr_number: issue.pr_number,
+              comment_id: commentId,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        }
+        issue.resolving_comment_ids = undefined;
+      }
+
       // Child completed successfully — create PR
       const prResult = await createPrForChild(issue, childSession, childDir, state, repo, deps);
 
@@ -4618,6 +4646,7 @@ export interface ScanLoopDeps {
   now: () => Date;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   execGit?: (args: string[], cwd?: string) => Promise<{ stdout: string; stderr: string }>;
+  adapter?: Pick<OrchestratorAdapter, 'resolveThread'>;
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   dispatchDeps?: DispatchDeps;
   prLifecycleDeps?: PrLifecycleDeps;
@@ -5574,6 +5603,7 @@ export async function runOrchestratorScanPass(
           readFile: deps.readFile,
           writeFile: deps.writeFile,
           execGh: deps.execGh,
+          adapter: deps.adapter,
           now: deps.now,
           appendLog: deps.appendLog,
           aloopRoot: deps.aloopRoot,

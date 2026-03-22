@@ -4589,6 +4589,122 @@ describe('runOrchestratorScanPass', () => {
     assert.deepStrictEqual(persisted.issues[0].resolving_comment_ids, [1234]);
   });
 
+  it('resolves each pending review thread when redispatched child exits', async () => {
+    const resolved: number[] = [];
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 10,
+          wave: 1,
+          state: 'in_progress',
+          status: 'In progress',
+          child_session: 'session-mon',
+          pr_number: 77,
+          resolving_comment_ids: [101, 202],
+        }),
+      ],
+    });
+
+    const deps = createMockScanDeps({
+      aloopRoot: '/home/.aloop',
+      adapter: {
+        resolveThread: async (_prNumber: number, commentId: number) => {
+          resolved.push(commentId);
+        },
+      },
+      execGh: async (args: string[]) => {
+        const key = args.join(' ');
+        if (key.includes('branches/agent/trunk')) return { stdout: 'agent/trunk', stderr: '' };
+        if (key.includes('pr create')) return { stdout: 'https://github.com/owner/repo/pull/50', stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/home/.aloop/sessions/session-mon/status.json'] = JSON.stringify({
+      iteration: 3,
+      phase: 'build',
+      provider: 'copilot',
+      stuck_count: 0,
+      state: 'exited',
+      updated_at: '2026-03-15T11:00:00.000Z',
+    });
+    deps.files['/home/.aloop/sessions/session-mon/meta.json'] = JSON.stringify({
+      branch: 'aloop/issue-10',
+      project_root: '/project',
+    });
+    deps.files['/project/.git'] = '';
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    assert.deepStrictEqual(resolved, [101, 202]);
+    const persisted = JSON.parse(deps.files['/state.json']) as OrchestratorState;
+    assert.equal(persisted.issues[0].resolving_comment_ids, undefined);
+  });
+
+  it('continues resolving remaining threads when one resolveThread call fails', async () => {
+    const resolved: number[] = [];
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 10,
+          wave: 1,
+          state: 'in_progress',
+          status: 'In progress',
+          child_session: 'session-mon',
+          pr_number: 88,
+          resolving_comment_ids: [101, 202, 303],
+        }),
+      ],
+    });
+
+    const deps = createMockScanDeps({
+      aloopRoot: '/home/.aloop',
+      adapter: {
+        resolveThread: async (_prNumber: number, commentId: number) => {
+          if (commentId === 202) throw new Error('resolver failed');
+          resolved.push(commentId);
+        },
+      },
+      execGh: async (args: string[]) => {
+        const key = args.join(' ');
+        if (key.includes('branches/agent/trunk')) return { stdout: 'agent/trunk', stderr: '' };
+        if (key.includes('pr create')) return { stdout: 'https://github.com/owner/repo/pull/51', stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+    deps.files['/home/.aloop/sessions/session-mon/status.json'] = JSON.stringify({
+      iteration: 4,
+      phase: 'build',
+      provider: 'copilot',
+      stuck_count: 0,
+      state: 'exited',
+      updated_at: '2026-03-15T11:05:00.000Z',
+    });
+    deps.files['/home/.aloop/sessions/session-mon/meta.json'] = JSON.stringify({
+      branch: 'aloop/issue-10',
+      project_root: '/project',
+    });
+    deps.files['/project/.git'] = '';
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 1, deps,
+    );
+
+    assert.deepStrictEqual(resolved, [101, 303]);
+    assert.ok(deps.logEntries.some((entry) =>
+      entry.event === 'review_thread_resolve_failed'
+      && entry.issue_number === 10
+      && entry.comment_id === 202
+    ));
+    const persisted = JSON.parse(deps.files['/state.json']) as OrchestratorState;
+    assert.equal(persisted.issues[0].resolving_comment_ids, undefined);
+  });
+
   it('persists state after scan pass', async () => {
     const state = makeScanState({
       issues: [makeIssue({ number: 1, wave: 1, state: 'merged' })],
