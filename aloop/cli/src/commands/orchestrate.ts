@@ -3548,11 +3548,11 @@ export async function reviewPrDiff(
     diff = diffResult.stdout;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    // API error — retry next pass, don't permanently fail
+    // API error — flag for human review rather than silently retrying
     return {
       pr_number: prNumber,
-      verdict: 'pending',
-      summary: `PR diff fetch failed (will retry): ${msg}`,
+      verdict: 'flag-for-human',
+      summary: `Failed to fetch PR diff: ${msg}`,
     };
   }
 
