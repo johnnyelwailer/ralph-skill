@@ -6,19 +6,24 @@ Priority: Orchestrator core pipeline → Loop engine gaps → Dashboard refactor
 
 ### In Progress
 
+- [x] [review] Gate 2: `orchestrate.test.ts` — added tests verifying `--no-task-exit` / `-NoTaskExit` is passed to loop.sh/loop.ps1 spawn args in `launchChildLoop`. Also added the flag to the source code spawn args. (priority: high)
+- [ ] [review] Gate 3: `reconcileResumedChildren` (orchestrate.ts:1009-1056) — only 1 happy-path test (all dead). Missing: mixed live/dead children, all-alive (no state change), NaN PID edge case, missing meta.json/status.json. Add ≥3 edge-case tests. (priority: high)
+- [ ] [review] Gate 3: `syncResumedStateFromGithub` (orchestrate.ts:1058-1133) — 0 dedicated tests. This 75-line function handles GitHub API calls, JSON parsing, and state merging with a silent catch-all. Add tests for: gh CLI failure (returns false), malformed JSON response, new issue discovered on GitHub added to state, existing issue title updated. (priority: high)
+
+### QA Bugs
+
+- [ ] [qa/P1] Auto-push missing from loop.ps1: loop.sh has `git push -u origin HEAD` after commits (line 2309), but loop.ps1 has no equivalent push logic. Child loops on Windows/PowerShell never push to remote. TASK_SPEC #111 requires auto-push after each commit in both scripts. Tested at iter 18. (priority: high)
+- [ ] [qa/P1] Branch linking to GH issue not implemented: TASK_SPEC #111 requirement #2 says "when child is dispatched and branch is created, the orchestrator should create a 'development branch' link on the GH issue via the API". Grep of orchestrate.ts shows no `link.*branch` or `development.*branch` logic. The GH issue sidebar won't show linked branches. Tested at iter 18. (priority: high)
+
 ### Up Next
 
 #### Orchestrator Core (Critical)
 
-- [x] `aloop start` must dispatch to orchestrate mode when config says `mode: orchestrate` — currently throws error at `start.ts:366`. Remove the error, add dispatch logic to forward to `orchestrateCommand` with translated flags. (SPEC-ADDENDUM: `aloop start` as Unified Entry Point)
-- [x] `aloop orchestrate --resume <session-id>` — no `--resume` flag or resume logic exists. Must reconstruct state from GitHub issues, detect live/dead children via PID check, avoid re-creating issues. (SPEC-ADDENDUM: Orchestrator Session Resumability)
-- [x] `--no-task-exit` flag missing from `loop.ps1` — implemented in `loop.sh` but `loop.ps1` has no parameter or handling for it. Add parameter parsing and skip `check_all_tasks_complete` when set. (SPEC-ADDENDUM: Loop Flag `--no-task-exit`)
 - [ ] CLI help shows 15 commands — spec says default `--help` shows only 6 user-facing (setup, start, status, steer, stop, dashboard). Hide internal commands (resolve, discover, scaffold, orchestrate, active, update, devcontainer, devcontainer-verify, process-requests) from default help. Add `--help --all` to show everything. (SPEC-ADDENDUM: CLI Simplification)
 
 #### Loop Engine Gaps (Critical)
 
 - [ ] Pre-iteration base merge — neither `loop.sh` nor `loop.ps1` runs `git fetch origin <base_branch>` / `git merge` before each iteration. Worktree branches drift from upstream. Must detect conflicts and queue `PROMPT_merge.md`. (SPEC: Branch Sync & Auto-Merge, Priority P1)
-- [ ] Provider health file locking missing from `loop.sh` — `loop.ps1` uses `FileShare.None` for exclusive writes, but `loop.sh` has no `flock` equivalent. Add `flock` with 5-attempt progressive backoff and graceful degradation. (SPEC: Global Provider Health > Concurrency / File Locking)
 - [ ] `{{SUBAGENT_HINTS}}` template expansion missing — neither script resolves this variable. Per spec: if provider is opencode and `.opencode/agents/` exists, populate from `subagent-hints-{phase}.md`. Otherwise empty string. (SPEC: Configurable Agent Pipeline > Subagent Integration)
 
 #### Dashboard Refactor (High — prerequisite for dashboard work)
@@ -99,3 +104,7 @@ Priority: Orchestrator core pipeline → Loop engine gaps → Dashboard refactor
 - [x] All orchestrator prompt templates (orch_scan, orch_decompose, orch_estimate, etc.)
 - [x] Shared instructions via `{{include:path}}` — templates exist with include directives
 - [x] Subagent hint files exist (subagent-hints-build.md, subagent-hints-proof.md, subagent-hints-review.md)
+- [x] `aloop start` dispatches to orchestrate mode when config says `mode: orchestrate` (SPEC-ADDENDUM: Unified Entry Point)
+- [x] `aloop orchestrate --resume <session-id>` — reconstructs state from GitHub, detects live/dead children, avoids re-creating issues (SPEC-ADDENDUM: Resumability)
+- [x] `--no-task-exit` flag in loop.ps1 — `$NoTaskExit` switch + `Check-AllTasksComplete` guard matching loop.sh semantics
+- [x] Provider health file locking in loop.sh — `acquire_provider_health_lock()` with mkdir-based atomic locking, 5-attempt progressive backoff, graceful degradation

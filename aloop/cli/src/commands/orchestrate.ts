@@ -3680,6 +3680,7 @@ export async function launchChildLoop(
       '-MaxIterations', '100',
       '-MaxStuck', '3',
       '-LaunchMode', 'start',
+      '-NoTaskExit',
     ];
   } else {
     const loopScript = path.join(loopBinDir, 'loop.sh');
@@ -3693,6 +3694,7 @@ export async function launchChildLoop(
       '--max-iterations', '100',
       '--max-stuck', '3',
       '--launch-mode', 'start',
+      '--no-task-exit',
     ];
   }
 

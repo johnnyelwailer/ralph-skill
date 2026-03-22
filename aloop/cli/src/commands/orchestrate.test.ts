@@ -2784,6 +2784,22 @@ describe('launchChildLoop', () => {
     assert.ok(deps._spawnCalls.some((c) => c.command.endsWith('loop.sh')));
   });
 
+  it('passes --no-task-exit to loop.sh spawn args', async () => {
+    const deps = createMockDispatchDeps({ platform: 'linux' });
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const spawnCall = deps._spawnCalls.find((c) => c.command.endsWith('loop.sh'));
+    assert.ok(spawnCall, 'loop.sh spawn call should exist');
+    assert.ok(spawnCall.args.includes('--no-task-exit'), '--no-task-exit should be in loop.sh args');
+  });
+
+  it('passes -NoTaskExit to powershell spawn args on win32', async () => {
+    const deps = createMockDispatchDeps({ platform: 'win32' });
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const spawnCall = deps._spawnCalls.find((c) => c.command === 'powershell');
+    assert.ok(spawnCall, 'powershell spawn call should exist');
+    assert.ok(spawnCall.args.includes('-NoTaskExit'), '-NoTaskExit should be in powershell args');
+  });
+
   it('seeds TASK_SPEC.md from issue body in worktree', async () => {
     const issueWithBody = makeIssue({ number: 42, title: 'Add feature X', body: '## Requirements\n\n- Support login\n- Handle errors' });
     const deps = createMockDispatchDeps();
