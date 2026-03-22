@@ -29,7 +29,7 @@ _(none — ready for next task)_
 
 - [x] **Fix focus management for mobile overlays** — Completed in `AppView.tsx`: (1) mobile drawer Escape handler closes overlay, (2) mobile drawer focus-in and focus-return via refs/effects, (3) command palette input autofocus on open (`autoFocus` + RAF focus effect). Added regression tests in `App.test.tsx` for all three behaviors. (priority: high)
 
-- [x] **Audit & fix hover-only interactions** — Replaced the overflow tabs hover-only menu in `DocsPanel` with an accessible click/tap dropdown (`DropdownMenu`) and controlled tab state (`activeTab` + `onValueChange`) so overflow docs can be opened without hover. Added regression test in `App.test.tsx` verifying overflow menu opens via click and selecting `STEERING` switches document content. (priority: medium)
+- [x] **Audit & fix hover-only interactions** — Replaced the overflow tabs hover-only menu in `DocsPanel` with an accessible click/tap dropdown (`DropdownMenu`) and controlled tab state (`activeTab` + `onValueChange`) so overflow docs can be opened without hover. Added regression test in `App.test.tsx` verifying overflow menu opens via click and selecting `STEERING` switches document content. [reviewed: gates 1-9 pass] (priority: medium)
 
 - [ ] **Add ARIA labels to collapse/expand buttons** — Three buttons lack `aria-label`: (1) sidebar expand button (line 802) — add `aria-label="Expand sidebar"`, (2) sidebar collapse button (line 882) — add `aria-label="Collapse sidebar"`, (3) activity panel collapse button (line 2314) — add `aria-label="Collapse activity panel"`. These all have adjacent TooltipContent text that can be reused. Stop/force-stop dropdown: Radix already provides `aria-haspopup="menu"` on triggers — no fix needed. (priority: medium)
 

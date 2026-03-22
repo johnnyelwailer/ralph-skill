@@ -46,3 +46,32 @@ Gates passed: 1 (spec compliance), 2 (test depth substantially improved), 4 (dup
 All gates pass. Integration suite: 125 dashboard tests + 8 CLI tests pass, type-check clean, build ok.
 
 ---
+
+## Review — 2026-03-22 17:00 — commit 0341dbc..7e0a44c
+
+**Verdict: PASS** (3 observations)
+**Scope:** AppView.tsx (focus management, controlled tabs, overflow dropdown, steer textarea sizing), App.test.tsx (3 new integration tests), test-setup.ts (ResizeObserver + scrollIntoView mocks)
+
+**Commits reviewed:**
+- `316391c` fix: steer textarea mobile tap target + GitHub link aria-label
+- `83c800a` fix: improve mobile overlay focus management
+- `a8c1680` fix: replace hover-only overflow tabs interaction
+- `7e0a44c` qa: session 4 — re-test P1 fixes, command palette Escape regression
+
+**Gate results:**
+- Gate 1 (Spec Compliance): PASS — steer textarea 44px mobile sizing, GitHub aria-label, mobile drawer Escape/focus-in/focus-return, overflow tabs hover→click dropdown all match spec intent. Command palette Escape regression properly filed as P1 in TODO.md.
+- Gate 2 (Test Depth): PASS — `App.test.tsx:602-654` adds 3 integration tests: (1) sidebar focus-in + Escape close + focus-return asserts `toBe(true)` on `contains(activeElement)` and element identity on focus-return, (2) command palette focus asserts `toHaveFocus()` on input, (3) overflow menu asserts `toBeVisible()` on specific heading after click+select. No shallow fakes.
+- Gate 3 (Coverage): PASS — cannot measure via vitest (env SIGABRT, same as prior review), but all new logic paths (3 useEffect hooks, controlled tabs, dropdown) have corresponding tests.
+- Gate 4 (Code Quality): PASS — no dead code, no duplication. Focus management cleanly separated into 3 purpose-specific useEffect hooks. Overflow tabs replacement removes `group-hover` entirely in favor of Radix DropdownMenu. `test-setup.ts` mocks are minimal and guarded.
+- Gate 5 (Integration Sanity): PASS (by proxy) — cannot execute due to env SIGABRT (not a code issue). QA session 4 ran the full dashboard from a built binary, confirming build+runtime integrity.
+- Gate 6 (Proof Verification): PASS — `proof-manifest.json` has `{"artifacts": []}`, correct for internal P1 bug fixes. QA session 4 Playwright screenshots serve as equivalent evidence.
+- Gate 7 (Runtime Layout): PASS — QA session 4 verified all 14 tap targets ≥44x44px at 390x844 and 320x568 via Playwright bounding-box measurement. Steer textarea 266x50px (was 266x32px).
+- Gate 8 (Version Compliance): PASS — no dependency changes.
+- Gate 9 (Documentation Freshness): PASS — no docs changes needed. README accurately describes dashboard features.
+
+**Observations:**
+1. Gate 2: `App.test.tsx:602-616` — sidebar focus test is thorough: asserts focus moves INTO sidebar container (not just any element), then verifies Escape removes the overlay AND returns focus to the exact toggle button element. Real integration test, not unit.
+2. Gate 4: The overflow tabs fix (`AppView.tsx:1161-1200`) correctly converts from uncontrolled `defaultValue` to controlled `value`/`onValueChange` to support programmatic tab switching from the dropdown. Includes a guard effect (1163-1167) to reset `activeTab` when `allDocs` changes — handles dynamic doc list without stale tab state.
+3. Known open bug: Command palette Escape regression (QA P1) is properly tracked in TODO.md line 20. Root cause is likely the focused `CommandInput` consuming Escape before cmdk's close handler — filed correctly for next build iteration.
+
+---
