@@ -21,7 +21,7 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 ### QA Bugs
 
-- [ ] [qa/P1] Steer textarea 32px height on mobile: Steer input renders at 32px on mobile. WCAG 2.5.8 requires 44px minimum. Fix: `min-h-[44px] md:min-h-[32px] h-auto md:h-8`. (priority: high)
+- [x] [qa/P1] Steer textarea 32px height on mobile: Steer input renders at 32px on mobile. WCAG 2.5.8 requires 44px minimum. Fix: `min-h-[44px] md:min-h-[32px] h-auto md:h-8`. (priority: high)
 
 - [ ] [qa/P1] GitHub repo link missing aria-label: SVG-only link at AppView.tsx:1190. Fix: add `aria-label="Open repo on GitHub"`. (priority: high)
 

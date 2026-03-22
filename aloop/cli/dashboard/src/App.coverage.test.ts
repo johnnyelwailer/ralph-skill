@@ -602,6 +602,12 @@ describe('App.tsx AppView integration coverage', () => {
     render(createElement(App));
     await screen.findByRole('button', { name: /stop/i });
 
+    const steerInput = screen.getByPlaceholderText('Steer...');
+    expect(steerInput).toHaveClass('min-h-[44px]');
+    expect(steerInput).toHaveClass('md:min-h-[32px]');
+    expect(steerInput).toHaveClass('h-auto');
+    expect(steerInput).toHaveClass('md:h-8');
+
     fireEvent.change(screen.getByPlaceholderText('Steer...'), { target: { value: 'Adjust scope' } });
     fireEvent.click(screen.getByRole('button', { name: /send/i }));
     await waitFor(() => {
