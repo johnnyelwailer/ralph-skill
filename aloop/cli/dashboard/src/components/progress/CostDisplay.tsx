@@ -9,6 +9,7 @@ export interface CostDisplayProps {
   isLoading?: boolean;
   budgetWarnings?: number[];
   budgetPauseThreshold?: number | null;
+  sessionCost?: number;
   className?: string;
 }
 
@@ -30,9 +31,24 @@ export function CostDisplay({
   isLoading = false,
   budgetWarnings,
   budgetPauseThreshold,
+  sessionCost = 0,
   className,
 }: CostDisplayProps) {
   if (error === 'opencode_unavailable') {
+    if (sessionCost > 0) {
+      const fallbackPercent = budgetCap && budgetCap > 0 ? Math.max(0, Math.min(100, (sessionCost / budgetCap) * 100)) : null;
+      return (
+        <div className={cn('rounded-md border border-border px-3 py-2', className)}>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Session Spend</div>
+          <div className="text-sm font-semibold tabular-nums">
+            {formatUsd(sessionCost)}{budgetCap ? ` / ${formatUsd(budgetCap)}` : ''}
+          </div>
+          {fallbackPercent !== null && (
+            <Progress value={fallbackPercent} className="mt-2 h-2" indicatorClassName={indicatorClass(fallbackPercent)} />
+          )}
+        </div>
+      );
+    }
     return (
       <div className={cn('rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground', className)}>
         Cost data unavailable

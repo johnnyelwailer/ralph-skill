@@ -1004,6 +1004,7 @@ function Header({
             isLoading={costLoading}
             budgetWarnings={budgetWarnings}
             budgetPauseThreshold={budgetPauseThreshold}
+            sessionCost={sessionCost}
             className="min-w-[220px]"
           />
         </div>

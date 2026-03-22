@@ -4,9 +4,21 @@
 
 ### In Progress
 
+- [x] **CostDisplay: show sessionCost fallback when aggregate unavailable** (priority: high)
+  `CostDisplay.tsx:35-41` returns "Cost data unavailable" when `error === 'opencode_unavailable'`, hiding all dollar amounts. Fix: add `sessionCost` prop to `CostDisplayProps`; when `opencode_unavailable` AND `sessionCost > 0`, display `$X.XX` (session spend) with the progress bar using session cost against budget cap as fallback. When sessionCost is also 0, keep current "Cost data unavailable" text. Update AppView.tsx to pass `sessionCost` to the component.
+  Consolidates: review finding #1, QA P1 #1 ("Per-session cost not displayed when opencode unavailable"), QA P1 #3 ("Cost progress bar never renders" — progress bar should render using sessionCost when aggregate unavailable).
+
+- [ ] **Sidebar: show current session's log-based cost** (priority: high)
+  `AppView.tsx:701` filters out `id === 'current'` from the `/api/cost/session/:id` fetch, so the current session never gets a cost value in the sidebar. Fix: for the current session card, use the `sessionCost` value from `useCost` (already available in AppView scope) instead of the API-fetched `sessionCosts` record. Pass `sessionCost` into the sidebar component or merge it into the `sessionCosts` state for the current session entry.
+  Consolidates: review finding #2, QA P1 #2 ("No per-session cost or duration in sidebar session cards/tooltips").
+
 ### Up Next
 
-- [ ] [review] Gate 1: **CostDisplay must show sessionCost when opencode unavailable** — `CostDisplay.tsx:35-41` exits early with "Cost data unavailable" when `error === 'opencode_unavailable'`, hiding `sessionCost` from log events. The component doesn't accept a `sessionCost` prop at all. Fix: add `sessionCost` prop to `CostDisplayProps`, display `$X.XX` (session spend) even when aggregate cost is unavailable, and show the progress bar against budget cap using session cost as fallback. Spec refs: TASK_SPEC.md acceptance criteria, SPEC-ADDENDUM.md lines 332-334, 372. (priority: high)
+- [ ] **Add tests for useCost hook** (priority: high)
+  New test file for `useCost.ts`. Cover: (a) sessionCost aggregation from log lines with `iteration_complete` events; (b) mock fetch for `/api/cost/aggregate` success response; (c) `opencode_unavailable` error sets totalCost=null and error correctly; (d) HTTP error handling; (e) budget cap and percent calculation from meta; (f) polling interval from meta. Target >=90% branch coverage.
+
+- [ ] **Add tests for CostDisplay component** (priority: high)
+  New test file for `CostDisplay.tsx`. Cover: (a) renders progress bar with correct color at 50%/75%/95%; (b) no progress bar when budgetCap is null; (c) "Cost data unavailable" when error='opencode_unavailable' and no sessionCost; (d) shows sessionCost fallback when error='opencode_unavailable' and sessionCost > 0 (after fix above); (e) loading state; (f) warning and pause threshold display. Target >=90% branch coverage.
 
 - [ ] [review] Gate 1: **Sidebar session cards missing per-session cost from log events** — `AppView.tsx:694-728` fetches session costs via `/api/cost/session/:id` (opencode export), which returns null when opencode is unavailable. The per-session cost computed by `useCost` from log.jsonl `iteration_complete` events is never propagated to the sidebar. Fix: for the *current* session, display `sessionCost` from `useCost` in the sidebar card; for other sessions, fall back gracefully when API returns unavailable. (priority: high)
 
@@ -19,10 +31,7 @@
 - [ ] [qa/P1] **Cost progress bar (green/yellow/red) never renders**: Dashboard header shows "Cost data unavailable" box with no progress bar → Spec requires "color-coded Radix Progress bar (green <70%, yellow 70-90%, red >90%)" and "$X.XX / $Y.YY" format → The cost progress bar is not visible even in degraded mode (where per-session cost should still populate it). The only progress bar visible (80%) is the task completion bar, not cost. Tested at commit b6260bb. (priority: high)
 
 - [ ] **Add tests for server-side cost API routes** (priority: high)
-  Unit tests in `dashboard.test.ts` for `/api/cost/aggregate` and `/api/cost/session/:id` — covering successful response, `opencode` unavailable graceful degradation, and caching behavior.
-
-- [ ] **Add tests for useCost hook and CostDisplay widget** (priority: high)
-  Test `useCost` hook with mock SSE events and fetch responses. Test `CostDisplay` renders correct color coding, handles missing budget cap, and shows unavailable state.
+  Tests in `dashboard.test.ts` for `/api/cost/aggregate` and `/api/cost/session/:id`. Cover: (a) successful response with mocked `spawnSync`; (b) `opencode_unavailable` graceful degradation; (c) caching behavior respects `cost_poll_interval_minutes`. Target >=90% branch coverage.
 
 ### Completed
 
