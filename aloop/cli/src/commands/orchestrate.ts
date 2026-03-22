@@ -3164,7 +3164,7 @@ export async function dispatchChildLoops(
 
 // --- PR lifecycle gates ---
 
-export type PrGateStatus = 'pass' | 'fail' | 'pending';
+export type PrGateStatus = 'pass' | 'fail' | 'pending' | 'api_error';
 
 export interface PrGateResult {
   gate: string;
