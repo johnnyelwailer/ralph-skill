@@ -5264,10 +5264,11 @@ export async function runOrchestratorScanPass(
     }
   }
 
-  // 3.5. Re-dispatch children that need review fixes
+  // 3.5. Re-dispatch children that need review fixes (respects concurrency cap)
   if (deps.dispatchDeps && deps.aloopRoot) {
     const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch);
     for (const issue of needsRedispatch) {
+      if (availableSlots(state) <= 0) break;
       try {
         // Re-use launchChildLoop — it handles worktree creation, prompts, branch reuse
         const launchResult = await launchChildLoop(
