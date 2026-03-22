@@ -72,3 +72,34 @@
 3. **Gate 2 (positive):** `SessionList.test.tsx:63-82` is thorough — uses fake timers pinned to a specific date, verifies the Older section is collapsed by default (`queryByText('Old Session')` returns null), then clicks to expand and asserts the session appears. Tests the real component behavior, not mocks.
 
 ---
+
+## Review — 2026-03-22 — commit cc9bc43..3cfe2dd
+
+**Verdict: PASS** (1 observation)
+**Scope:** dashboard.ts, dashboard.test.ts, QA_LOG.md, QA_COVERAGE.md, TASK_SPEC.md, TODO.md
+
+### Prior Finding Resolution
+
+| Prior Finding | Status | Evidence |
+|--------------|--------|----------|
+| Gate 4 (minor) — STATUS_DOT_CONFIG dead import in AppView.tsx:21 | OPEN (non-blocking) | Still present, noted as minor in prior review. Not part of this iteration's scope. |
+
+### Gate Results
+
+| Gate | Result | Notes |
+|------|--------|-------|
+| 1. Spec Compliance | PASS | `resolveSessionDirFromEntry` fixes branch data pipeline for entries without `session_dir`. All TASK_SPEC acceptance criteria met. |
+| 2. Test Depth | PASS | Fallback enrichment test asserts 3 exact values (`branch`, `state`, `iteration`). Asset-resolution test asserts exact HTML content. No shallow fakes. |
+| 3. Coverage | PASS | All 3 branches of `resolveSessionDirFromEntry` exercised (session_dir, work_dir/worktree, session_id fallback). |
+| 4. Code Quality | PASS | Clean function extraction. No dead code introduced. Both call sites updated. |
+| 5. Integration Sanity | PASS | tsc, 52/52 dashboard tests, npm build all pass. 22 failures pre-existing in orchestrate/gh/processPr. |
+| 6. Proof Verification | PASS (skip) | Internal plumbing fix — empty artifacts expected. |
+| 7. Runtime Layout | SKIP | No CSS/layout changes. |
+| 8. Version Compliance | PASS | No dependency changes. |
+| 9. Documentation Freshness | PASS | QA_LOG/QA_COVERAGE updated accurately. |
+
+### Observations
+
+1. **Gate 2 (positive):** `dashboard.test.ts:198-231` — fallback enrichment test creates session with `work_dir` (no `session_dir`), writes real fixture files, hits live API, asserts exact field values. A broken `resolveSessionDirFromEntry` would genuinely fail.
+
+---
