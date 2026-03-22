@@ -38,6 +38,6 @@ Valid verdicts:
 
 - If the only issue is working artifacts (TODO.md etc.), verdict is `request-changes` with clear summary
 - If code looks correct and no artifacts, verdict is `approve`
-- When in doubt about code quality, lean toward `approve`. But when in doubt about constitution violations, lean toward `request-changes`
+- When in doubt, `request-changes`. It's cheaper to re-iterate than to revert a bad merge.
 - Keep summary concise (1-3 sentences)
 - Do NOT just print the verdict as text — you MUST write the JSON file
