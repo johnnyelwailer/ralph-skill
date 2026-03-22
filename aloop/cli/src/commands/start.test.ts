@@ -249,6 +249,104 @@ test('startCommandWithDeps bootstraps in-place session and registers active map'
   assert.equal(active[result.session_id].work_dir, fixture.projectRoot);
 });
 
+test('startCommandWithDeps accepts opencode provider with OpenRouter model path', async () => {
+  const fixture = await setupWorkspace('aloop-start-opencode-openrouter-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'opencode'",
+      "mode: 'build'",
+      'enabled_providers:',
+      "  - 'opencode'",
+      'models:',
+      "  opencode: 'openrouter/anthropic/claude-sonnet-4.6'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const launchCalls: SpawnRecord[] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        await writeFile(path.join(dest, 'PROMPT_build.md'), await readFile(path.join(src, 'PROMPT_build.md'), 'utf8'), 'utf8');
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        launchCalls.push({ command, args: [...(args ?? [])] });
+        return { pid: 4245, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.provider, 'opencode');
+  assert.equal(launchCalls.length, 1);
+  assert.equal(launchCalls[0].args.includes('--provider'), true);
+  assert.equal(launchCalls[0].args.includes('opencode'), true);
+
+  const prompt = await readFile(path.join(result.prompts_dir, 'PROMPT_build.md'), 'utf8');
+  assert.match(prompt, /provider:\s+opencode/);
+  assert.match(prompt, /model:\s+openrouter\/anthropic\/claude-sonnet-4\.6/);
+});
+
+test('startCommandWithDeps rejects invalid OpenRouter model path', async () => {
+  const fixture = await setupWorkspace('aloop-start-opencode-openrouter-invalid-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'opencode'",
+      "mode: 'build'",
+      'enabled_providers:',
+      "  - 'opencode'",
+      'models:',
+      "  opencode: 'openrouter/anthropic/claude/sonnet'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync,
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date('2026-03-01T12:34:56.000Z'),
+        },
+      ),
+    /Invalid OpenRouter model path/i,
+  );
+});
+
 test('startCommandWithDeps accepts legacy config mode loop as plan-build-review', async () => {
   const fixture = await setupWorkspace('aloop-start-legacy-loop-mode-');
   await writeFile(

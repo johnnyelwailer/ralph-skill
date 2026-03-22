@@ -6797,14 +6797,15 @@ async function compileLoopPlan(options, deps = defaultCompileDeps) {
 
 // src/commands/start.ts
 var LAUNCH_MODE_SET = /* @__PURE__ */ new Set(["start", "restart", "resume"]);
-var PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot", "round-robin"]);
-var MODEL_PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot"]);
+var PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot", "opencode", "round-robin"]);
+var MODEL_PROVIDER_SET = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "copilot", "opencode"]);
 var LOOP_MODE_SET = /* @__PURE__ */ new Set(["plan", "build", "review", "plan-build", "plan-build-review", "single"]);
 var DEFAULT_MODELS = {
   claude: "opus",
   codex: "gpt-5.3-codex",
   gemini: "gemini-3.1-pro-preview",
-  copilot: "gpt-5.3-codex"
+  copilot: "gpt-5.3-codex",
+  opencode: "opencode-default"
 };
 var defaultDeps = {
   discoverWorkspace: discoverWorkspace2,
@@ -7017,6 +7018,13 @@ function normalizeProviderList(values) {
     }
   }
   return normalized;
+}
+function isValidOpenRouterModelPath(model) {
+  if (!model.startsWith("openrouter/")) {
+    return true;
+  }
+  const parts = model.split("/");
+  return parts.length === 3 && parts.every((part) => part.length > 0);
 }
 function sanitizeSessionToken(value) {
   const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -7352,6 +7360,13 @@ async function startCommandWithDeps(options = {}, deps = defaultDeps) {
       Object.entries(projectConfig.models).filter(([provider]) => MODEL_PROVIDER_SET.has(provider))
     )
   };
+  for (const [providerName, modelName] of Object.entries(mergedModels)) {
+    if (!isValidOpenRouterModelPath(modelName)) {
+      throw new Error(
+        `Invalid OpenRouter model path for ${providerName}: ${modelName}. Expected format openrouter/<provider>/<model>.`
+      );
+    }
+  }
   const copilotRetryModel = String(selectValue(projectConfig.retry_models.copilot, globalConfig.retry_models.copilot, "claude-sonnet-4.6") ?? "claude-sonnet-4.6");
   const startedAt = deps.now().toISOString();
   let sessionId;

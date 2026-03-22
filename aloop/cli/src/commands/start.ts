@@ -8,21 +8,22 @@ import { resolveHomeDir } from './session.js';
 import type { OutputMode } from './status.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
 
-type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot';
+type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode';
 type LoopProvider = ProviderName | 'round-robin';
 type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review' | 'single';
 type LaunchMode = 'start' | 'restart' | 'resume';
 type StartMonitorMode = 'dashboard' | 'terminal' | 'none';
 
 const LAUNCH_MODE_SET = new Set<LaunchMode>(['start', 'restart', 'resume']);
-const PROVIDER_SET = new Set<LoopProvider>(['claude', 'codex', 'gemini', 'copilot', 'round-robin']);
-const MODEL_PROVIDER_SET = new Set<ProviderName>(['claude', 'codex', 'gemini', 'copilot']);
+const PROVIDER_SET = new Set<LoopProvider>(['claude', 'codex', 'gemini', 'copilot', 'opencode', 'round-robin']);
+const MODEL_PROVIDER_SET = new Set<ProviderName>(['claude', 'codex', 'gemini', 'copilot', 'opencode']);
 const LOOP_MODE_SET = new Set<LoopMode>(['plan', 'build', 'review', 'plan-build', 'plan-build-review', 'single']);
 const DEFAULT_MODELS: Record<ProviderName, string> = {
   claude: 'opus',
   codex: 'gpt-5.3-codex',
   gemini: 'gemini-3.1-pro-preview',
   copilot: 'gpt-5.3-codex',
+  opencode: 'opencode-default',
 };
 
 interface ParsedAloopConfig {
@@ -320,6 +321,14 @@ function normalizeProviderList(values: string[]): ProviderName[] {
     }
   }
   return normalized;
+}
+
+function isValidOpenRouterModelPath(model: string): boolean {
+  if (!model.startsWith('openrouter/')) {
+    return true;
+  }
+  const parts = model.split('/');
+  return parts.length === 3 && parts.every((part) => part.length > 0);
 }
 
 function sanitizeSessionToken(value: string): string {
@@ -727,6 +736,13 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
       Object.entries(projectConfig.models).filter(([provider]) => MODEL_PROVIDER_SET.has(provider as ProviderName)),
     ) as Record<ProviderName, string>,
   };
+  for (const [providerName, modelName] of Object.entries(mergedModels)) {
+    if (!isValidOpenRouterModelPath(modelName)) {
+      throw new Error(
+        `Invalid OpenRouter model path for ${providerName}: ${modelName}. Expected format openrouter/<provider>/<model>.`,
+      );
+    }
+  }
   const copilotRetryModel = String(selectValue(projectConfig.retry_models.copilot, globalConfig.retry_models.copilot, 'claude-sonnet-4.6') ?? 'claude-sonnet-4.6');
 
   const startedAt = deps.now().toISOString();
