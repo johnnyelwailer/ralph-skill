@@ -94,3 +94,29 @@ All gates pass. Integration suite: 125 dashboard tests + 8 CLI tests pass, type-
 - Gate 9 (Documentation Freshness): PASS — No user-facing behavior changes.
 
 ---
+
+## Review — 2026-03-22 — commit eda19a53..6fb27999
+
+**Verdict: PASS** (3 observations)
+**Scope:** loop.sh (+160/-7), loop_branch_coverage.tests.sh (+131/-1), PROMPT_loop_health.md (new, 82 lines), useIsTouchLikePointer.ts (deleted), useIsTouchLikePointer.test.ts (deleted), QA_LOG.md (+172), QA_COVERAGE.md (+14)
+
+**Prior findings resolution:**
+- Review 5 Gate 4 (useIsTouchLikePointer dead code, flagged twice): **RESOLVED** — both files deleted in d34983a5. Zero remaining references in codebase confirmed via grep.
+
+**Gate-by-gate:**
+- Gate 1 (Spec Compliance): PASS — Spec-gap periodic scheduling matches spec: "runs before every 2nd plan phase". 17-step cycle (positions 0-7: plan→build×5→qa→review, positions 8-16: spec-gap→plan→build×5→qa→review) correctly inserts spec-gap at position 8. Loop health supervisor matches spec §Configurable Agent Pipeline: runs every N iterations (default 5, configurable), reads log.jsonl for pattern detection, writes circuit-breakers.json to suspend offending agents. Note: spec cycle 2 diagram also includes `docs` after qa — this is a pre-existing gap (docs periodic scheduling is a separate TODO item, not part of this build's scope).
+- Gate 2 (Test Depth): PASS — Branch coverage tests assert exact values: `should_run_loop_health_supervisor` tested at matching/non-matching iteration intervals, disabled state, finalizer mode, unsupported MODE. `is_agent_blocked` tested with exact agent name matches and non-matches. `load_circuit_breakers` tested with real JSON file containing specific agent names. `refresh_loop_health_config` tested with meta.json containing specific enabled/interval values. Spec-gap cycle position test asserts exact `RESOLVED_MODE="spec-gap"` at position 8.
+- Gate 3 (Coverage): PASS — 7 new branches registered (6 loop-health + 1 spec-gap), all tested. 65/65 total branches pass. PROMPT_loop_health.md is a prompt template — no code coverage applicable.
+- Gate 4 (Code Quality): PASS — Prior dead code (useIsTouchLikePointer) deleted. New code is clean: no TODO/FIXME comments, no dead imports, no duplication. `refresh_loop_health_config` uses python3 for JSON parsing consistent with existing loop.sh patterns. `LOOP_HEALTH_OVERRIDE` flag correctly prevents cycle position advancement for out-of-band health checks.
+- Gate 5 (Integration Sanity): PASS — npm test: 9/9 pass. tsc --noEmit: clean. npm run build: ok. Shell branch coverage: 65/65 (100%).
+- Gate 6 (Proof): PASS — Purely internal changes (shell runtime functions, prompt template, dead code deletion, QA logs). No observable output requiring proof.
+- Gate 7 (Runtime Layout): SKIP — No CSS/layout changes.
+- Gate 8 (Version Compliance): SKIP — No dependency changes.
+- Gate 9 (Documentation Freshness): PASS — No user-facing behavior changes requiring doc updates.
+
+**Observations:**
+1. Gate 2: `loop_branch_coverage.tests.sh:930-940` — spec-gap cycle test verifies exact position mapping (CYCLE_POSITION=8 → spec-gap, CYCLE_POSITION=9 → plan) proving the 17-step rotation works correctly.
+2. Gate 4: `PROMPT_loop_health.md` covers all 5 spec detection heuristics (repetitive cycling, queue thrashing, stuck cascades, wasted iterations, resource burn) and circuit-breaker JSON schema.
+3. Gate 1 (informational): The 17-step cycle omits `docs` from cycle 2 — spec shows `Cycle 2: spec-gap → plan → build×5 → qa → docs → review`. This is a separate unimplemented requirement (docs periodic scheduling), not a regression from this build.
+
+---

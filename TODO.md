@@ -4,7 +4,7 @@
 
 ### In Progress
 
-- [x] [review] Gate 4: `useIsTouchLikePointer.ts` + `useIsTouchLikePointer.test.ts` (103 lines) are dead code — zero components import `useIsTouchLikePointer`. Delete both files or consolidate with `useIsTouchDevice`. This is the SECOND review flagging this exact issue (first: Review 4, 2026-03-22 17:30). (priority: high)
+- [x] [review] Gate 4: `useIsTouchLikePointer.ts` + `useIsTouchLikePointer.test.ts` (103 lines) are dead code — zero components import `useIsTouchLikePointer`. Delete both files or consolidate with `useIsTouchDevice`. This is the SECOND review flagging this exact issue (first: Review 4, 2026-03-22 17:30). (priority: high) [reviewed: resolved — deleted in d34983a5]
 
 
 ### Up Next
@@ -18,8 +18,8 @@
 
 #### Loop Engine (priority: high)
 
-- [x] Spec-gap periodic scheduling (every 2nd cycle) not wired in loop.sh — spec-gap agent exists as finalizer element but the in-cycle periodic scheduling is missing (SPEC §Spec-Gap Analysis Agent: "runs before every 2nd plan phase")
-- [x] Loop health supervisor agent missing — no `PROMPT_loop_health.md` template; no circuit breaker or pattern detection for repetitive cycling/stuck cascades (SPEC §Configurable Agent Pipeline > Loop health supervisor)
+- [x] Spec-gap periodic scheduling (every 2nd cycle) not wired in loop.sh — spec-gap agent exists as finalizer element but the in-cycle periodic scheduling is missing (SPEC §Spec-Gap Analysis Agent: "runs before every 2nd plan phase") [reviewed: gates 1-9 pass]
+- [x] Loop health supervisor agent missing — no `PROMPT_loop_health.md` template; no circuit breaker or pattern detection for repetitive cycling/stuck cascades (SPEC §Configurable Agent Pipeline > Loop health supervisor) [reviewed: gates 1-9 pass]
 - [ ] `{{SUBAGENT_HINTS}}` template variable not resolved — loop.sh `substitute_prompt_placeholders()` (lines 285-294) only expands `SESSION_DIR`, `ITERATION`, `ARTIFACTS_DIR`; subagent hint files exist (`subagent-hints-build.md`, `subagent-hints-proof.md`, `subagent-hints-review.md`) but are never loaded or injected; need provider-conditional expansion (SPEC §Configurable Agent Pipeline > Subagent Integration)
 
 #### QA Bugs (priority: high)
