@@ -2816,9 +2816,7 @@ describe('checkPrGates', () => {
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.mergeable, false);
-    // API error is non-blocking — merge check is skipped (will retry next pass)
-    assert.equal(result.gates[0].status, 'pass');
-    assert.match(result.gates[0].detail, /API error/i);
+    assert.equal(result.gates[0].status, 'api_error');
   });
 
   it('treats SKIPPED and NEUTRAL checks as passing', async () => {
