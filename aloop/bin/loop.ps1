@@ -888,6 +888,10 @@ function Validate-ProofManifest {
     }
     try {
         $content = Get-Content -Path $ManifestPath -Raw
+        if ([string]::IsNullOrWhiteSpace($content)) {
+            $script:validateProofManifestError = "invalid_json"
+            return $false
+        }
         $null = $content | ConvertFrom-Json -ErrorAction Stop
         $script:validateProofManifestError = ""
         return $true

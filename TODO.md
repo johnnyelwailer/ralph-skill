@@ -9,7 +9,7 @@
 
 ### In Progress
 
-- [ ] [qa/P1] **Validate-ProofManifest accepts empty file** — `ConvertFrom-Json` on empty string returns `$null` without error, so empty files pass validation. Add an explicit empty/whitespace-only check before JSON parsing. Fix this BEFORE wiring up post-invocation handling. (`loop.ps1:881-898`) (priority: high) — still failing at iter 17 (empty + whitespace-only both accepted)
+- [x] [qa/P1] **Validate-ProofManifest accepts empty file** — Added explicit `IsNullOrWhiteSpace` guard before `ConvertFrom-Json` so empty and whitespace-only manifests fail validation with `invalid_json`. Added tagged Pester coverage in `loop.tests.ps1` (`loop.ps1:881-902`). (priority: high) [reviewed: regression tests pass]
 
 - [x] [qa/P1] **README says "9 gates" but review template has 10** — README.md references "9 quality gates" in 4 places (lines 13, 73, 185, 213) and the gate table (line 75) only lists 9 gates. The review template (`instructions/review.md`) correctly says 10 gates (Gate 10: QA Coverage & Bug Fix Rate). Update README to say 10 gates and add Gate 10 to the table. Tested at iter 17. (priority: high)
 
