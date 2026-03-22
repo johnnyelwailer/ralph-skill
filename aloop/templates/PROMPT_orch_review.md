@@ -8,7 +8,7 @@ The orchestrator review is NOT a line-by-line code review (the child's own revie
 
 1. **Spec correctness** — does the PR actually implement what the issue requires? Not just "looks right" — verify against the issue's acceptance criteria. Are requirements missing or misinterpreted?
 2. **Constitution compliance** — read `CONSTITUTION.md` and verify no invariant is violated. Pay special attention to:
-   - Layer boundaries (e.g., business logic in loop.sh, GH calls in agents)
+   - Layer boundaries (are components placed in the correct architectural layer?)
    - File ownership (modifying files outside the issue's stated scope)
    - Separation of concerns across architectural layers
 3. **Proof of correct work** — are there tests? Do they test real behavior or just assert existence? Is the test coverage proportional to the change size?
@@ -33,7 +33,7 @@ Use the Write tool to create the file. Example:
 {
   "pr_number": 123,
   "verdict": "request-changes",
-  "summary": "PR adds health monitoring functions directly to loop.sh (constitution rule #1 violation). This logic belongs in process-requests.ts. Also missing tests for the new retry path."
+  "summary": "PR violates constitution rule #1 — added business logic to a component that should stay minimal. Also missing tests for the new retry path."
 }
 ```
 
