@@ -1,3 +1,4 @@
+import { type ReactNode } from 'react';
 import { Activity } from 'lucide-react';
 import { PhaseBadge, StatusDot, statusColors } from '@/components/session/helpers';
 import { Progress } from '@/components/ui/progress';
@@ -15,11 +16,13 @@ interface SessionDetailProps {
   maxIterations: number | null;
   tasksTotal: number;
   onOpenSwitcher?: () => void;
+  /** Extra content rendered inside the hover card, after the default fields */
+  extraHoverContent?: ReactNode;
 }
 
 export function SessionDetail({
   sessionName, isRunning, currentState, currentPhase, currentIteration,
-  progressPercent, maxIterations, tasksTotal, onOpenSwitcher,
+  progressPercent, maxIterations, tasksTotal, onOpenSwitcher, extraHoverContent,
 }: SessionDetailProps) {
   const phaseBarColor = phaseBarColors[currentPhase.toLowerCase()] ?? 'bg-muted-foreground';
 
@@ -46,6 +49,7 @@ export function SessionDetail({
           <div className="space-y-1">
             <p><span className="text-muted-foreground">Phase:</span> {currentPhase || 'none'}</p>
             <p><span className="text-muted-foreground">Status:</span> {currentState}</p>
+            {extraHoverContent}
           </div>
         </HoverCardContent>
       </HoverCard>
