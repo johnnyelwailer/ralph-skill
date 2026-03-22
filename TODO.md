@@ -7,7 +7,7 @@
 
 ## Up Next
 
-- [ ] Cost routing preference stored and used per phase — no `cost_routing` config exists yet; needs schema in `config.yml`, per-phase routing logic in `compile-loop-plan.ts`
+- [x] Cost routing preference stored and used per phase — added `cost_routing` schema/defaults in config, parsed/merged in `start.ts`, and applied per-phase OpenRouter model selection in `compile-loop-plan.ts` with tests
 - [ ] `opencode run --agent <name>` documented for shipped agents — mentioned in SPEC but needs user-facing docs/help text
 
 ## Completed

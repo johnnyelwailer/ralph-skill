@@ -1821,6 +1821,71 @@ test('Branch Coverage: config parsing with null retry models and empty string ro
   assert.ok(result.provider === 'claude');
 });
 
+test('startCommandWithDeps parses cost_routing and openrouter_models for opencode', async () => {
+  const fixture = await setupWorkspace('aloop-start-cost-routing-opencode-');
+  fixture.discovery.providers.installed = ['opencode', 'claude'];
+  fixture.discovery.providers.default_provider = 'opencode';
+  await writeFile(path.join(fixture.homeDir, '.aloop', 'config.yml'), "openrouter_models:\n  - 'xiaomi/mimo-v2-pro'\n  - 'anthropic/claude-opus-4.6'\n", 'utf8');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'opencode'",
+      "mode: 'plan-build-review'",
+      'enabled_providers:',
+      "  - 'opencode'",
+      'models:',
+      "  opencode: 'opencode-default'",
+      'cost_routing:',
+      "  plan: 'prefer_cheap'",
+      "  build: 'prefer_capable'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const copyIfExists = async (name: string) => {
+          const srcPath = path.join(src, name);
+          if (existsSync(srcPath)) {
+            await writeFile(path.join(dest, name), await readFile(srcPath, 'utf8'), 'utf8');
+          }
+        };
+        await copyIfExists('PROMPT_plan.md');
+        await copyIfExists('PROMPT_build.md');
+        await copyIfExists('PROMPT_review.md');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 4242, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.provider, 'opencode');
+  const planPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_plan.md'), 'utf8');
+  const buildPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_build.md'), 'utf8');
+  const reviewPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_review.md'), 'utf8');
+  assert.match(planPrompt, /model:\s+openrouter\/xiaomi\/mimo-v2-pro/);
+  assert.match(buildPrompt, /model:\s+openrouter\/anthropic\/claude-opus-4\.6/);
+  // default review routing is prefer_capable
+  assert.match(reviewPrompt, /model:\s+openrouter\/anthropic\/claude-opus-4\.6/);
+});
+
 test('Branch Coverage: orchestrate mode throws', async () => {
   const fixture = await setupWorkspace('aloop-branch-orchestrate-');
   await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\nmode: 'plan'\n", 'utf8');

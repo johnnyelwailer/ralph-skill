@@ -848,6 +848,10 @@ test('scaffoldWorkspace includes opencode in generated config models', async () 
   const config = await readFile(result.config_path, 'utf8');
   assert.match(config, /opencode: 'opencode-default'/);
   assert.match(config, /- 'opencode'/);
+  assert.match(config, /cost_routing:/);
+  assert.match(config, /plan: 'prefer_capable'/);
+  assert.match(config, /build: 'prefer_cheap'/);
+  assert.match(config, /review: 'prefer_capable'/);
 });
 
 test('scaffoldWorkspace allows explicitly enabled providers even if missing locally', async () => {
