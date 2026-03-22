@@ -633,6 +633,30 @@ export function computeAvgDuration(log: string): string {
   return formatSecs(totalSec / count);
 }
 
+function latestQaCoverageRefreshSignal(log: string): string | null {
+  if (!log) return null;
+  const lines = log.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]?.trim();
+    if (!line) continue;
+    try {
+      const entry = JSON.parse(line);
+      if (!isRecord(entry)) continue;
+      const event = str(entry, ['event', 'type']);
+      const phase = str(entry, ['phase', 'mode']).toLowerCase();
+      if (event !== 'iteration_complete' || phase !== 'qa') continue;
+      const timestamp = str(entry, ['timestamp', 'ts', 'time', 'created_at']);
+      const iterationRaw = entry.iteration;
+      const iteration = typeof iterationRaw === 'number' ? String(iterationRaw)
+        : typeof iterationRaw === 'string' ? iterationRaw : '';
+      return `${timestamp}|${iteration}|${line}`;
+    } catch {
+      // Skip non-JSON lines in log stream.
+    }
+  }
+  return null;
+}
+
 // ── Provider health derived from log ──
 
 export function deriveProviderHealth(log: string, configuredProviders?: string[]): ProviderHealth[] {
@@ -1959,7 +1983,9 @@ export function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<'docs' | 'activity'>('docs');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
+  const [qaCoverageRefreshKey, setQaCoverageRefreshKey] = useState('');
   const prevPhaseRef = useRef<string>('');
+  const latestQaSignalRef = useRef<string | null>(null);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1974,6 +2000,8 @@ export function App() {
     setSelectedSessionId(id);
     setLoading(true);
     setLoadError(null);
+    latestQaSignalRef.current = null;
+    setQaCoverageRefreshKey('');
     const url = new URL(window.location.href);
     if (id) url.searchParams.set('session', id); else url.searchParams.delete('session');
     window.history.replaceState(null, '', url.toString());
@@ -1996,7 +2024,11 @@ export function App() {
       try {
         const r = await fetch(`/api/state${sp}`, { signal: controller.signal });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        if (!cancelled) setState(await r.json() as DashboardState);
+        if (!cancelled) {
+          const payload = await r.json() as DashboardState;
+          setState(payload);
+          latestQaSignalRef.current = latestQaCoverageRefreshSignal(payload.log);
+        }
       } catch (e) { if (!cancelled) setLoadError((e as Error).message); }
       finally { if (!cancelled) setLoading(false); }
     }
@@ -2021,7 +2053,13 @@ export function App() {
       eventSource = new EventSource(`/events${sp}`);
       stateListener = (evt: Event) => {
         try {
-          setState(JSON.parse((evt as MessageEvent<string>).data) as DashboardState);
+          const payload = JSON.parse((evt as MessageEvent<string>).data) as DashboardState;
+          setState(payload);
+          const nextQaSignal = latestQaCoverageRefreshSignal(payload.log);
+          if (nextQaSignal && nextQaSignal !== latestQaSignalRef.current) {
+            latestQaSignalRef.current = nextQaSignal;
+            setQaCoverageRefreshKey(nextQaSignal);
+          }
           setLoadError(null); setConnectionStatus('connected'); reconnectDelay = 1000;
         } catch (e) { setLoadError((e as Error).message); }
       };
@@ -2190,7 +2228,7 @@ export function App() {
             </div>
           )}
           <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={state?.updatedAt ?? ''} />
+            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} />
             {/* Mobile panel toggle */}
             <div className="lg:hidden flex border-b border-border shrink-0">
               <button

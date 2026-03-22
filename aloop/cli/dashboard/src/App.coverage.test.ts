@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   App,
   ArtifactComparisonDialog,
@@ -524,6 +524,64 @@ describe('App.tsx AppView integration coverage', () => {
     expect(screen.getAllByText('UNTESTED').length).toBeGreaterThan(0);
   });
 
+  it('refreshes QA coverage only for iteration_complete events in qa phase', async () => {
+    let qaCoverageCalls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/state')) {
+        return new Response(JSON.stringify(baseState), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.startsWith('/api/qa-coverage')) {
+        qaCoverageCalls += 1;
+        return new Response(JSON.stringify({
+          coverage_percent: 55,
+          total_features: 2,
+          tested_features: 1,
+          passed: 1,
+          failed: 0,
+          untested: 1,
+          available: true,
+          features: [],
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(createElement(App));
+    await screen.findByRole('button', { name: /qa 55%/i });
+    expect(qaCoverageCalls).toBe(1);
+
+    const sse = MockEventSource.instances[0];
+    expect(sse).toBeTruthy();
+
+    sse.emit('state', {
+      ...baseState,
+      updatedAt: '2026-03-19T12:00:10.000Z',
+      log: `${JSON.stringify({ event: 'iteration_complete', phase: 'build', provider: 'claude', timestamp: '2026-03-19T12:00:10.000Z' })}\n`,
+    });
+    await waitFor(() => expect(screen.getByText('Live')).toBeInTheDocument());
+    expect(qaCoverageCalls).toBe(1);
+
+    sse.emit('state', {
+      ...baseState,
+      updatedAt: '2026-03-19T12:00:20.000Z',
+      log: `${JSON.stringify({ event: 'iteration_complete', phase: 'qa', provider: 'claude', timestamp: '2026-03-19T12:00:20.000Z', iteration: 9 })}\n`,
+    });
+    await waitFor(() => expect(qaCoverageCalls).toBe(2));
+
+    sse.emit('state', {
+      ...baseState,
+      updatedAt: '2026-03-19T12:00:30.000Z',
+      log: `${JSON.stringify({ event: 'iteration_complete', phase: 'review', provider: 'claude', timestamp: '2026-03-19T12:00:30.000Z' })}\n`,
+    });
+    await waitFor(() => expect(screen.getByText('Live')).toBeInTheDocument());
+    expect(qaCoverageCalls).toBe(2);
+  });
+
   it('renders app and supports steer + stop + command stop', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -704,7 +762,7 @@ describe('App.tsx AppView integration coverage', () => {
     ];
     const onSelect = vi.fn();
     const onToggle = vi.fn();
-    const { container } = render(createElement(TooltipProvider, {}, createElement(Sidebar, {
+    const { container } = render(createElement(TooltipProvider as any, {}, createElement(Sidebar, {
       sessions: sessions as any[],
       selectedSessionId: 's1',
       onSelectSession: onSelect,
@@ -742,7 +800,7 @@ describe('App.tsx AppView integration coverage', () => {
       },
     }];
     vi.stubGlobal('fetch', vi.fn(async () => new Response('build output', { status: 200 })));
-    render(createElement(TooltipProvider, {}, createElement(ActivityPanel, {
+    render(createElement(TooltipProvider as any, {}, createElement(ActivityPanel, {
       log,
       artifacts: artifacts as any[],
       currentIteration: 2,
@@ -763,7 +821,7 @@ describe('App.tsx AppView integration coverage', () => {
     render(createElement(DocContent, { content: '', name: 'Empty.md' }));
     expect(screen.getByText(/No content/i)).toBeInTheDocument();
     const providers = [{ name: 'p1', status: 'cooldown', lastEvent: 't', cooldownUntil: new Date(Date.now() + 100000).toISOString() }];
-    render(createElement(TooltipProvider, {}, createElement(HealthPanel, { providers: providers as any[] })));
+    render(createElement(TooltipProvider as any, {}, createElement(HealthPanel, { providers: providers as any[] })));
     expect(screen.getByText('p1')).toBeInTheDocument();
   });
 });
