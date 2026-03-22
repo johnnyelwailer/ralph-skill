@@ -158,8 +158,6 @@ program
   .option('--budget <usd>', 'Session budget cap in USD (pauses dispatch at 80%)')
   .option('--interval <ms>', 'Scan loop interval in milliseconds (default: 30000)')
   .option('--max-iterations <n>', 'Max scan loop iterations (default: 100)')
-  .option('--run-scan-loop', 'Internal: run orchestrator daemon loop')
-  .option('--session-dir <path>', 'Internal: existing orchestrator session directory')
   .option('--auto-merge', 'Create a PR from trunk to main when all issues complete')
   .option('--resume <session-id>', 'Resume a previously stopped orchestrator session')
   .option('--home-dir <path>', 'Home directory override')

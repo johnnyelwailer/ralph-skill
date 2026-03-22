@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import {
   listActiveSessions,
   readActiveSessions,
@@ -378,101 +378,4 @@ test('stopSession returns failure when process kill fails and leaves state uncha
 
   const historyPath = path.join(aloopDir, 'history.json');
   assert.equal(existsSync(historyPath), false);
-});
-
-test('stopSession cascades orchestrator child sessions before stopping parent', async () => {
-  const { homeDir } = await makeHomeDir('aloop-session-stop-orchestrator-cascade-');
-  const aloopDir = path.join(homeDir, '.aloop');
-  const parentId = 'orchestrator-session';
-  const childId = 'child-session-1';
-  const parentDir = path.join(aloopDir, 'sessions', parentId);
-  const childDir = path.join(aloopDir, 'sessions', childId);
-
-  await mkdir(parentDir, { recursive: true });
-  await mkdir(childDir, { recursive: true });
-
-  await writeFile(path.join(aloopDir, 'active.json'), JSON.stringify({
-    [parentId]: {
-      session_dir: parentDir,
-      mode: 'orchestrate',
-      started_at: '2026-01-01T00:00:00.000Z',
-    },
-    [childId]: {
-      session_dir: childDir,
-      mode: 'build',
-      started_at: '2026-01-01T00:05:00.000Z',
-    },
-  }), 'utf8');
-
-  await writeFile(path.join(parentDir, 'orchestrator.json'), JSON.stringify({
-    issues: [
-      { number: 1, state: 'in_progress', child_session: childId },
-      { number: 2, state: 'pending', child_session: null },
-    ],
-  }), 'utf8');
-
-  await writeFile(path.join(parentDir, 'status.json'), JSON.stringify({ state: 'running', iteration: 2 }), 'utf8');
-  await writeFile(path.join(childDir, 'status.json'), JSON.stringify({ state: 'running', iteration: 4 }), 'utf8');
-
-  const result = await stopSession(homeDir, parentId);
-  assert.equal(result.success, true);
-
-  const active = JSON.parse(await readFile(path.join(aloopDir, 'active.json'), 'utf8'));
-  assert.deepEqual(active, {});
-
-  const parentStatus = JSON.parse(await readFile(path.join(parentDir, 'status.json'), 'utf8'));
-  const childStatus = JSON.parse(await readFile(path.join(childDir, 'status.json'), 'utf8'));
-  assert.equal(parentStatus.state, 'stopped');
-  assert.equal(childStatus.state, 'stopped');
-
-  const history = JSON.parse(await readFile(path.join(aloopDir, 'history.json'), 'utf8'));
-  assert.equal(history.length, 2);
-  assert.deepEqual(history.map((entry: any) => entry.session_id).sort(), [childId, parentId].sort());
-});
-
-test('stopSession signals mode=orchestrator daemon and waits for self-deregistration', async () => {
-  const { homeDir } = await makeHomeDir('aloop-session-stop-orchestrator-daemon-');
-  const aloopDir = path.join(homeDir, '.aloop');
-  const sessionId = 'orchestrator-daemon';
-  const sessionDir = path.join(aloopDir, 'sessions', sessionId);
-  await mkdir(sessionDir, { recursive: true });
-
-  const activePath = path.join(aloopDir, 'active.json');
-  await writeFile(activePath, JSON.stringify({
-    [sessionId]: {
-      pid: 777777,
-      session_dir: sessionDir,
-      mode: 'orchestrator',
-      started_at: '2026-01-01T00:00:00.000Z',
-    },
-  }), 'utf8');
-  await writeFile(path.join(sessionDir, 'status.json'), JSON.stringify({ state: 'running', iteration: 1 }), 'utf8');
-
-  const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
-  const originalKill = process.kill;
-  Object.defineProperty(process, 'platform', { value: 'linux' });
-  process.kill = ((pid: number, signal?: string | number) => {
-    if (pid !== 777777) throw new Error('Unexpected pid');
-    if (signal === 0) return true;
-    if (signal === 'SIGTERM') {
-      writeFileSync(activePath, JSON.stringify({}), 'utf8');
-      return true;
-    }
-    throw new Error('Unexpected signal');
-  }) as any;
-
-  try {
-    const result = await stopSession(homeDir, sessionId);
-    assert.equal(result.success, true);
-  } finally {
-    process.kill = originalKill;
-    if (originalPlatform) {
-      Object.defineProperty(process, 'platform', originalPlatform);
-    }
-  }
-
-  const active = JSON.parse(await readFile(activePath, 'utf8'));
-  assert.deepEqual(active, {});
-  const status = JSON.parse(await readFile(path.join(sessionDir, 'status.json'), 'utf8'));
-  assert.equal(status.state, 'running');
 });

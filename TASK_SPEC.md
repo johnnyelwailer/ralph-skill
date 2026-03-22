@@ -1,36 +1,44 @@
-# Sub-Spec: Issue #104 — QA coverage enforcement in finalizer and loop script phase support
+# Sub-Spec: Issue #174 — Add provider health integration tests for concurrent access and state transitions
+
+Part of #24: Epic: Provider Health & Rate-Limit Resilience
 
 ## Objective
 
-Add QA coverage enforcement to the finalizer abort logic: the finalizer should abort if QA coverage < 70% or any FAIL features remain in QA_COVERAGE.md. Also ensure both loop scripts properly support all new agent phases.
+Create automated integration tests validating the provider health system's state machine, concurrency safety, and CLI display.
 
-## Scope
+## Context
 
-The finalizer currently aborts only when new incomplete tasks appear in TODO.md (line ~2238 in loop.sh, line ~2175 in loop.ps1). It needs additional checks:
-1. Parse `QA_COVERAGE.md` for coverage percentage and FAIL entries
-2. If coverage < 70% or any FAIL features exist, abort finalizer and return to cycle
+The provider health system is critical infrastructure shared across all loop sessions. Bugs in state transitions or concurrent access could cause providers to be incorrectly skipped or health files to be corrupted. Integration tests ensure correctness under realistic conditions.
 
-The loop scripts validate `iteration_mode` against `plan|build|qa|review` (line 696 in loop.sh, line 929 in loop.ps1). Finalizer agents bypass this (they use prompt filenames), but cycle-injected periodic agents (spec-gap, docs) may need validation updates.
+## Inputs
+- Provider health functions in `loop.sh` and `loop.ps1`
+- `readProviderHealth()` in `aloop/cli/lib/session.mjs`
+- Health display formatting in `aloop/cli/src/commands/status.ts`
+- Existing test file: `aloop/bin/loop_provider_health.tests.sh`
 
 ## Deliverables
-
-- [ ] Add QA coverage parsing function to `loop.sh`: reads QA_COVERAGE.md, counts PASS/FAIL/total, computes percentage
-- [ ] Add equivalent function to `loop.ps1`
-- [ ] Finalizer abort logic: before advancing finalizer position, check QA coverage — abort if < 70% or any FAIL
-- [ ] Log QA coverage check results (pass/fail with percentage) in session log
-- [ ] Ensure `iteration_mode` validation in both scripts accepts periodic agents (spec-gap, docs) when injected into cycle
-- [ ] Verify all finalizer prompts (PROMPT_spec-gap.md, PROMPT_docs.md, PROMPT_spec-review.md, PROMPT_final-review.md, PROMPT_final-qa.md, PROMPT_proof.md) load and execute correctly in both scripts
-
-## Files
-
-- `aloop/bin/loop.sh` (modify — finalizer abort section, mode validation)
-- `aloop/bin/loop.ps1` (modify — finalizer abort section, mode validation)
+- **State transition tests**: healthy → cooldown → healthy, healthy → degraded (no auto-recover), cooldown escalation through all backoff tiers (2m → 5m → 15m → 30m → 60m cap)
+- **Concurrent write safety**: 2+ parallel processes writing to same health file, verify no corruption
+- **Lock failure graceful degradation**: simulate lock contention, verify skip-and-continue behavior
+- **TypeScript read tests**: `readProviderHealth()` correctly parses health files, handles missing/malformed files
+- **Status display tests**: `aloop status` formats health table correctly (healthy/cooldown/degraded with correct metadata)
+- **Cross-session reset**: verify that a success from session B resets cooldown set by session A
 
 ## Acceptance Criteria
+- [ ] State transition tests cover healthy→cooldown→healthy and healthy→degraded paths
+- [ ] Backoff escalation verified through all 5 tiers to 60-min cap
+- [ ] Concurrent write test with 2+ parallel writers produces valid JSON
+- [ ] Lock failure test verifies graceful degradation (no crash, warning logged)
+- [ ] TypeScript `readProviderHealth()` tests pass
+- [ ] Status formatting tests verify correct output for all 3 states
+- [ ] Cross-session health reset verified
 
-- Finalizer aborts if QA coverage < 70%
-- Finalizer aborts if any FAIL features remain in QA_COVERAGE.md
-- Coverage check logged in session log with percentage
-- All six finalizer prompts execute correctly in both loop.sh and loop.ps1
-- Periodic agents (spec-gap, docs) accepted when injected into cycle
-- Graceful handling when QA_COVERAGE.md doesn't exist (skip enforcement, don't block)
+## Files
+- New test files (e.g., `aloop/bin/loop_provider_health_integration.tests.sh`, `aloop/cli/src/__tests__/provider-health.test.ts`)
+- Read-only: `aloop/cli/lib/session.mjs`, `aloop/cli/src/commands/status.ts`
+
+## Existing Issue
+#43
+
+## Labels
+`aloop/sub-issue`, `aloop/needs-refine`

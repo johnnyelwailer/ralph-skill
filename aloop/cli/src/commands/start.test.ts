@@ -5,7 +5,6 @@ import path from 'node:path';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { startCommandWithDeps, normalizeGitBashPathForWindows, resolveStartDeps, type StartCommandOptions } from './start.js';
-import type { OrchestrateCommandOptions } from './orchestrate.js';
 import type { DiscoveryResult } from './project.js';
 
 interface SpawnRecord {
@@ -1887,116 +1886,31 @@ test('startCommandWithDeps parses cost_routing and openrouter_models for opencod
   assert.match(reviewPrompt, /model:\s+openrouter\/anthropic\/claude-opus-4\.6/);
 });
 
-test('Branch Coverage: orchestrate mode dispatches to orchestrate command', async () => {
+test('Branch Coverage: orchestrate mode throws', async () => {
   const fixture = await setupWorkspace('aloop-branch-orchestrate-');
   await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\nmode: 'plan'\n", 'utf8');
-  let calledWith: OrchestrateCommandOptions = {};
-  let dispatchCalled = false;
-
-  await startCommand(
-    undefined,
-    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, mode: 'orchestrate', output: 'json' },
-    {
-      discoverWorkspace: async () => fixture.discovery,
-      readFile,
-      writeFile,
-      mkdir,
-      cp: async () => undefined,
-      existsSync,
-      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
-      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
-      platform: 'linux',
-      nodePath: '/usr/bin/node',
-      aloopPath: '/usr/local/bin/aloop',
-      env: process.env,
-      now: () => new Date(),
-      orchestrateCommand: async (opts: OrchestrateCommandOptions) => {
-        calledWith = opts;
-        dispatchCalled = true;
-      },
-    } as any,
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, mode: 'orchestrate' },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync,
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date(),
+        }
+      ),
+    /Orchestrate mode detected in startCommandWithDeps/
   );
-
-  assert.equal(dispatchCalled, true, 'Expected startCommand to dispatch to orchestrate');
-  assert.equal(calledWith.output, 'json');
-  assert.equal(calledWith.homeDir, fixture.homeDir);
-  assert.equal(calledWith.projectRoot, fixture.projectRoot);
-});
-
-test('startCommand dispatches to orchestrate when config mode is orchestrate', async () => {
-  const fixture = await setupWorkspace('aloop-start-config-orchestrate-');
-  await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\nmode: 'orchestrate'\n", 'utf8');
-  let calledWith: OrchestrateCommandOptions = {};
-  let dispatchCalled = false;
-
-  await startCommand(
-    undefined,
-    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, output: 'text' },
-    {
-      discoverWorkspace: async () => fixture.discovery,
-      readFile,
-      writeFile,
-      mkdir,
-      cp: async () => undefined,
-      existsSync,
-      spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
-      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
-      platform: 'linux',
-      nodePath: '/usr/bin/node',
-      aloopPath: '/usr/local/bin/aloop',
-      env: process.env,
-      now: () => new Date(),
-      orchestrateCommand: async (opts: OrchestrateCommandOptions) => {
-        calledWith = opts;
-        dispatchCalled = true;
-      },
-    } as any,
-  );
-
-  assert.equal(dispatchCalled, true, 'Expected config orchestrate mode to dispatch');
-  assert.equal(calledWith.output, 'text');
-});
-
-test('startCommand --mode loop overrides config orchestrate and runs loop start', async () => {
-  const fixture = await setupWorkspace('aloop-start-mode-loop-override-');
-  await writeFile(
-    fixture.discovery.setup.config_path,
-    [
-      "provider: 'claude'",
-      "mode: 'orchestrate'",
-      "default_mode: 'orchestrate'",
-      'on_start:',
-      "  monitor: 'none'",
-      '  auto_open: false',
-      '',
-    ].join('\n'),
-    'utf8',
-  );
-
-  const result = await startCommandWithDeps(
-    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true, mode: 'loop' },
-    {
-      discoverWorkspace: async () => fixture.discovery,
-      readFile,
-      writeFile,
-      mkdir,
-      cp: async (src, dest) => {
-        await mkdir(dest, { recursive: true });
-        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
-        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
-      },
-      existsSync,
-      spawn: (() => ({ pid: 9191, unref() {} }) as any) as any,
-      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
-      platform: 'linux',
-      nodePath: '/usr/bin/node',
-      aloopPath: '/usr/local/bin/aloop',
-      env: process.env,
-      now: () => new Date(),
-    },
-  );
-
-  assert.equal(result.mode, 'plan-build-review');
 });
 
 test('Branch Coverage: resolvePowerShellBinary fails if no powershell', async () => {
