@@ -1505,7 +1505,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       '--mode', 'plan',
       '--provider', 'claude',
       '--round-robin', 'claude',
-      '--max-iterations', '999999',
+      '--max-iterations', '0',
       '--launch-mode', 'start',
       '--dangerously-skip-container',
       '--no-task-exit',
