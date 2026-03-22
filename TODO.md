@@ -41,9 +41,9 @@ _(none — ready for next task)_
 
 ### Completed
 
-- [x] [review] Gate 6: Create `proof-manifest.json`. QA session 2 provides equivalent Playwright evidence, so skip with `{"artifacts": []}`. Process gap, not a confidence gap.
+- [x] [review] Gate 6: Create `proof-manifest.json`. QA session 2 provides equivalent Playwright evidence, so skip with `{"artifacts": []}`. Process gap, not a confidence gap. [reviewed: gates 1-9 pass]
 
-- [x] [review] Gate 3: Add `useIsTouchDevice.test.ts` with full branch coverage. Added hook + tooltip + hover-card to vitest coverage include array. >=90% branch coverage achieved.
+- [x] [review] Gate 3: Add `useIsTouchDevice.test.ts` with full branch coverage. Added hook + tooltip + hover-card to vitest coverage include array. >=90% branch coverage achieved. [reviewed: gates 1-9 pass]
 
 - [x] **Extract `useIsTouchDevice` hook** — [review Gate 4] Extracted from tooltip.tsx and hover-card.tsx into `hooks/useIsTouchDevice.ts`. Both components now import from the shared hook.
 
