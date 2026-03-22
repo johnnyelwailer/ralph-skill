@@ -2020,12 +2020,18 @@ function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
   open: boolean; onClose: () => void; sessions: SessionSummary[];
   onSelectSession: (id: string | null) => void; onStop: (force: boolean) => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (open) {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [open]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 animate-fade-in" onClick={onClose}>
       <div className="w-full max-w-md rounded-lg border bg-popover shadow-lg" onClick={(e) => e.stopPropagation()}>
         <Command>
-          <CommandInput placeholder="Type a command..." />
+          <CommandInput ref={inputRef} placeholder="Type a command..." />
           <CommandList>
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup heading="Actions">
@@ -2074,14 +2080,35 @@ export function App() {
   const prevPhaseRef = useRef<string>('');
   const latestQaSignalRef = useRef<string | null>(null);
 
+  const mobileSidebarRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'b' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setSidebarCollapsed((p) => !p); }
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setCommandOpen((p) => !p); }
+      if (e.key === 'Escape' && mobileMenuOpen) { setMobileMenuOpen(false); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [mobileMenuOpen]);
+
+  // Focus management for mobile sidebar drawer
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      // Focus first focusable element inside sidebar
+      requestAnimationFrame(() => {
+        const container = mobileSidebarRef.current;
+        if (container) {
+          const focusable = container.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+          focusable?.focus();
+        }
+      });
+    } else {
+      // Return focus to hamburger button on close
+      const hamburger = document.querySelector<HTMLElement>('button[aria-label="Toggle sidebar"]');
+      hamburger?.focus();
+    }
+  }, [mobileMenuOpen]);
 
   const selectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
@@ -2337,7 +2364,7 @@ export function App() {
           {mobileMenuOpen && (
             <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
               <div className="absolute inset-0 bg-black/50" />
-              <div className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
+              <div ref={mobileSidebarRef} className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
                 <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} />
               </div>
             </div>
