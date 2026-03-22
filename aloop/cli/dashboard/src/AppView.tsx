@@ -799,7 +799,7 @@ export function Sidebar({
       <aside className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
+            <button type="button" aria-label="Expand sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
               <PanelLeftOpen className="h-4 w-4" />
             </button>
           </TooltipTrigger>
@@ -879,7 +879,7 @@ export function Sidebar({
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
+            <button type="button" aria-label="Collapse sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
               <PanelLeftClose className="h-4 w-4" />
             </button>
           </TooltipTrigger>
@@ -2374,7 +2374,7 @@ export function App() {
           <span className="flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" className="text-muted-foreground/50 hover:text-foreground transition-colors hidden lg:block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => setActivityCollapsed(true)}>
+              <button type="button" aria-label="Collapse activity panel" className="text-muted-foreground/50 hover:text-foreground transition-colors hidden lg:block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => setActivityCollapsed(true)}>
                 <PanelLeftClose className="h-3.5 w-3.5" />
               </button>
             </TooltipTrigger>

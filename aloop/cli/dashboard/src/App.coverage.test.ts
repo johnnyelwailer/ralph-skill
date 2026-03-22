@@ -680,8 +680,8 @@ describe('App.tsx AppView integration coverage', () => {
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
 
-    fireEvent.click(screen.getByRole('button', { name: /activity/i }));
-    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Activity$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Documents$/i }));
 
     const collapseBtn = container.querySelector('button .lucide-panel-left-close')?.closest('button') as HTMLButtonElement | null;
     expect(collapseBtn).not.toBeNull();
@@ -782,6 +782,7 @@ describe('App.tsx AppView integration coverage', () => {
       sessionCost: 0.1234,
     })));
     expect(screen.getByText('p1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument();
     fireEvent.click(screen.getByText('s1'));
     expect(onSelect).toHaveBeenCalled();
     const toggleBtn = container.querySelector('button .lucide-panel-left-close')?.closest('button');
@@ -789,6 +790,47 @@ describe('App.tsx AppView integration coverage', () => {
     expect(onToggle).toHaveBeenCalled();
     fireEvent.click(screen.getByText(/Older/i));
     expect(screen.getByText('s2')).toBeInTheDocument();
+
+    render(createElement(TooltipProvider as any, {}, createElement(Sidebar, {
+      sessions: sessions as any[],
+      selectedSessionId: 's1',
+      onSelectSession: onSelect,
+      collapsed: true,
+      onToggle: onToggle,
+      sessionCost: 0.1234,
+    })));
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
+  });
+
+  it('covers activity panel collapse aria label', async () => {
+    const response = {
+      sessionName: 'Demo Session',
+      isRunning: true,
+      state: {
+        currentState: 'build',
+        currentPhase: 'build',
+        currentIteration: '1',
+        providerName: 'codex',
+        modelName: 'gpt-5',
+        tasksDone: 1,
+        tasksTotal: 2,
+        updatedAt: new Date().toISOString(),
+      },
+      docs: {},
+      connection: { status: 'connected' },
+      sessions: [{ id: 'current', name: 'Demo Session', status: 'running', isActive: true }],
+      selectedSessionId: null,
+    };
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/api/state')) return new Response(JSON.stringify(response), { status: 200 });
+      if (url.includes('/api/docs/')) return new Response('', { status: 200 });
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(createElement(App));
+    expect(await screen.findByRole('button', { name: 'Collapse activity panel' })).toBeInTheDocument();
   });
 
   it('covers ActivityPanel and LogEntryRow exhaustive', async () => {

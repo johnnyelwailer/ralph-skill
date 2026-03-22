@@ -21,7 +21,7 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 ### Up Next
 
-- [ ] **Add ARIA labels to collapse/expand buttons** — Three buttons lack `aria-label`: (1) sidebar expand button (~line 802) — add `aria-label="Expand sidebar"`, (2) sidebar collapse button (~line 882) — add `aria-label="Collapse sidebar"`, (3) activity panel collapse button (~line 2377) — add `aria-label="Collapse activity panel"`. These all have adjacent TooltipContent text that can be reused. (priority: medium)
+- [x] **Add ARIA labels to collapse/expand buttons** — Added labels to all three targets in `AppView.tsx`: `Expand sidebar`, `Collapse sidebar`, and `Collapse activity panel`. Added regression coverage in `App.coverage.test.ts`. (priority: medium)
 
 - [ ] **Implement long-press context menu on session cards** — Create a `useLongPress` hook with 500ms threshold using `onTouchStart`/`onTouchEnd`/`onTouchMove` (cancel on move). On trigger, show a context menu (reuse DropdownMenu component) with: Stop session, Force-stop session, Copy session ID. Add haptic feedback via `navigator.vibrate(50)` if available. Apply to session card elements in the sidebar (~line 835-838 of AppView.tsx). (priority: medium)
 
