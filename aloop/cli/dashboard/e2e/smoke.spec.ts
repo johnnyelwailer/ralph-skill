@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,20 @@ const todoPath = path.join(workdir, 'TODO.md');
 const steeringPath = path.join(workdir, 'STEERING.md');
 const activePath = path.join(runtimeDir, 'active.json');
 const historyPath = path.join(runtimeDir, 'history.json');
+
+function expectMinTapTargetSize(width: number, height: number, name: string) {
+  expect(width, `${name} width should be at least 44px`).toBeGreaterThanOrEqual(44);
+  expect(height, `${name} height should be at least 44px`).toBeGreaterThanOrEqual(44);
+}
+
+async function assertMinTapTarget(locator: Locator, name: string) {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  expect(box, `${name} should have a measurable bounding box`).not.toBeNull();
+  if (box) {
+    expectMinTapTargetSize(box.width, box.height, name);
+  }
+}
 
 async function resetFixtures() {
   await mkdir(sessionDir, { recursive: true });
@@ -135,6 +149,21 @@ test('layout at 375x667 (mobile) shows only one panel and mobile menu', async ({
   await page.getByRole('button', { name: 'Activity' }).click();
   await expect(page.getByRole('heading', { name: 'Activity' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Documents' })).not.toBeVisible();
+});
+
+test('layout at 390x844 (mobile) keeps key controls at minimum 44x44 tap size', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  await assertMinTapTarget(page.getByRole('button', { name: 'Toggle sidebar' }), 'Toggle sidebar button');
+  await assertMinTapTarget(page.getByRole('button', { name: 'Documents' }), 'Documents panel toggle');
+  await assertMinTapTarget(page.getByRole('button', { name: 'Activity' }), 'Activity panel toggle');
+  await assertMinTapTarget(page.getByPlaceholder('Steer...'), 'Steer textarea');
+
+  const footerButtons = page.locator('footer button');
+  await expect(footerButtons).toHaveCount(2);
+  await assertMinTapTarget(footerButtons.nth(0), 'Send button');
+  await assertMinTapTarget(footerButtons.nth(1), 'Stop menu button');
 });
 
 test('writes steering instruction', async ({ page }) => {

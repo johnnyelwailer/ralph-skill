@@ -47,7 +47,7 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 - [ ] **Implement long-press context menu on session cards** — `useLongPress` hook with 500ms threshold, context menu with Stop/Force-stop/Copy ID, haptic feedback. (priority: medium)
 
-- [ ] **Runtime layout verification** — [review Gate 7] Run Playwright at 390x844 viewport and verify bounding boxes of key elements meet 44x44px minimum. (priority: medium)
+- [x] **Runtime layout verification** — [review Gate 7] Run Playwright at 390x844 viewport and verify bounding boxes of key elements meet 44x44px minimum. Added Playwright test in `aloop/cli/dashboard/e2e/smoke.spec.ts` validating 44x44 min bounding boxes for key mobile controls. (priority: medium)
 
 - [ ] **Run Lighthouse mobile accessibility audit** — Run Lighthouse in mobile mode targeting accessibility category. Target score >= 90. (priority: low)
 
