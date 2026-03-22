@@ -3100,33 +3100,71 @@ export async function dispatchChildLoops(
   }
   const skipped = [...skippedSet];
 
+  const launched = await launchIssues(
+    toDispatch, state, stateFile, orchestratorSessionDir,
+    projectRoot, projectName, promptsSourceDir, aloopRoot, deps, undefined,
+  );
+
+  return { launched, skipped, state };
+}
+
+/**
+ * Core dispatch loop — launches child loops for a list of issues.
+ * Shared by both fresh dispatch and redispatch paths.
+ * Updates issue state to in_progress and persists state after each launch.
+ */
+export async function launchIssues(
+  issues: OrchestratorIssue[],
+  state: OrchestratorState,
+  stateFile: string,
+  orchestratorSessionDir: string,
+  projectRoot: string,
+  projectName: string,
+  promptsSourceDir: string,
+  aloopRoot: string,
+  deps: DispatchDeps,
+  logDeps?: { appendLog: (dir: string, entry: any) => void },
+): Promise<ChildLaunchResult[]> {
   const launched: ChildLaunchResult[] = [];
 
-  for (const issue of toDispatch) {
-    const result = await launchChildLoop(
-      issue,
-      orchestratorSessionDir,
-      projectRoot,
-      projectName,
-      promptsSourceDir,
-      aloopRoot,
-      deps,
-    );
-    launched.push(result);
+  for (const issue of issues) {
+    try {
+      const result = await launchChildLoop(
+        issue,
+        orchestratorSessionDir,
+        projectRoot,
+        projectName,
+        promptsSourceDir,
+        aloopRoot,
+        deps,
+      );
+      launched.push(result);
 
-    // Update issue state in-place
-    const stateIssue = state.issues.find((i) => i.number === issue.number);
-    if (stateIssue) {
-      stateIssue.state = 'in_progress';
-      stateIssue.child_session = result.session_id;
+      // Update issue state in-place
+      const stateIssue = state.issues.find((i) => i.number === issue.number);
+      if (stateIssue) {
+        stateIssue.state = 'in_progress';
+        stateIssue.status = 'In progress';
+        stateIssue.child_session = result.session_id;
+        (stateIssue as any).child_pid = result.pid;
+      }
+    } catch (e) {
+      if (logDeps) {
+        logDeps.appendLog(orchestratorSessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_dispatch_failed',
+          issue_number: issue.number,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
   }
 
   // Persist updated state
-  state = { ...state, updated_at: deps.now().toISOString() };
+  state.updated_at = deps.now().toISOString();
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
-  return { launched, skipped, state };
+  return launched;
 }
 
 // --- PR lifecycle gates ---
@@ -5264,56 +5302,50 @@ export async function runOrchestratorScanPass(
     }
   }
 
-  // 3.5. Re-dispatch children that need review fixes (respects concurrency cap)
+  // 3.5. Re-dispatch children that need review fixes
+  // Uses launchIssues() — the shared dispatch path that respects concurrency,
+  // capability filters, and state updates.
   if (deps.dispatchDeps && deps.aloopRoot) {
     const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch);
-    for (const issue of needsRedispatch) {
-      if (availableSlots(state) <= 0) break;
-      try {
-        // Re-use launchChildLoop — it handles worktree creation, prompts, branch reuse
-        const launchResult = await launchChildLoop(
-          issue,
-          sessionDir,
-          projectRoot,
-          projectName,
-          promptsSourceDir,
-          deps.aloopRoot,
-          deps.dispatchDeps,
-        );
+    if (needsRedispatch.length > 0) {
+      const redispatchResult = await launchIssues(
+        needsRedispatch.slice(0, availableSlots(state)),
+        state,
+        stateFile,
+        sessionDir,
+        projectRoot,
+        projectName,
+        promptsSourceDir,
+        deps.aloopRoot,
+        deps.dispatchDeps,
+        { appendLog: deps.appendLog },
+      );
 
-        // Write review feedback as steering prompt into the NEW child session
-        const childQueueDir = path.join(deps.aloopRoot, 'sessions', launchResult.session_id, 'queue');
-        await mkdir(childQueueDir, { recursive: true });
-        await deps.writeFile(
-          path.join(childQueueDir, '000-review-fixes.md'),
-          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${(issue as any).review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
-          'utf8',
-        );
-
-        issue.state = 'in_progress';
-        issue.status = 'In progress';
-        issue.child_session = launchResult.session_id;
-        (issue as any).child_pid = launchResult.pid;
-        (issue as any).needs_redispatch = false;
-        (issue as any).review_feedback = undefined;
-
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: 'child_redispatched_for_review',
-          iteration,
-          issue_number: issue.number,
-          pr_number: issue.pr_number,
-          child_session: launchResult.session_id,
-          pid: launchResult.pid,
-        });
-      } catch (e) {
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: 'child_redispatch_failed',
-          iteration,
-          issue_number: issue.number,
-          error: e instanceof Error ? e.message : String(e),
-        });
+      for (const launch of redispatchResult) {
+        const issue = state.issues.find((i) => i.number === launch.issue_number);
+        if (issue) {
+          // Write review feedback as steering prompt
+          const feedback = (issue as any).review_feedback ?? '';
+          if (feedback) {
+            const childQueueDir = path.join(deps.aloopRoot, 'sessions', launch.session_id, 'queue');
+            await mkdir(childQueueDir, { recursive: true });
+            await deps.writeFile(
+              path.join(childQueueDir, '000-review-fixes.md'),
+              `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+              'utf8',
+            );
+          }
+          (issue as any).needs_redispatch = false;
+          (issue as any).review_feedback = undefined;
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'child_redispatched_for_review',
+            iteration,
+            issue_number: launch.issue_number,
+            child_session: launch.session_id,
+            pid: launch.pid,
+          });
+        }
       }
     }
   }
