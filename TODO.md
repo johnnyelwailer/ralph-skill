@@ -19,6 +19,9 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 ### In Progress
 
+- [ ] [review] Gate 4: `useIsTouchLikePointer.ts` is dead code — exported but never imported by any component (only its test file references it). It duplicates `useIsTouchDevice.ts` with a slightly different media query (`pointer: coarse` vs `(hover: none), (pointer: coarse)`). Either delete both files and replace with a single `useMatchMedia(query)` hook, or delete `useIsTouchLikePointer.ts` + its test if the existing `useIsTouchDevice` already covers the needed behavior. (priority: high)
+- [ ] [review] Gate 3: `useIsTouchLikePointer.ts` is not listed in `vitest.config.ts` coverage `include` — branch coverage is unmeasured. If the file is kept (see Gate 4 above), add it to the coverage include list. (priority: high)
+
 ### Up Next
 
 - [x] **Audit & fix hover-only interactions** — Fixed overflow tabs menu in `DocsPanel`: replaced `group-hover:block` with state-based click/tap toggle (`overflowMenuOpen`), added outside-click and Escape close behavior, and close-on-selection for overflow tab items. Added test coverage in `App.coverage.test.ts` for open, select-to-close, and outside-click close. No other `onMouseEnter`/`onMouseOver` content-reveal interactions found. (priority: medium)
