@@ -12,7 +12,7 @@ A single autonomous coding session. The agent cycles through three phases until 
 
 1. **Plan** — Gap analysis between spec and code, outputs prioritized `TODO.md`
 2. **Build** — Picks one task, implements, validates (types/tests/lint), commits
-3. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
+3. **Review** — Audits the build against 10 quality gates, writes fix tasks or approves
 
 Additional agents run between cycles:
 - **Proof** — Captures screenshots, API responses, test output as evidence
@@ -72,7 +72,7 @@ aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
 
 ## Quality Gates
 
-The review agent enforces 9 gates on every build iteration:
+The review agent enforces 10 gates on every build iteration:
 
 | Gate | What it checks |
 |------|---------------|
@@ -85,6 +85,7 @@ The review agent enforces 9 gates on every build iteration:
 | 7. Layout Verification | Playwright bounding-box checks for CSS/layout changes |
 | 8. Version Compliance | Installed versions match VERSIONS.md declarations |
 | 9. Documentation Freshness | README/docs reflect actual commands, flags, and behavior |
+| 10. QA Coverage & Bug Fix Rate | QA coverage trends, bug fix rate health checks |
 
 Failed gates produce `[review]` fix tasks that the next build iteration picks up before any new work.
 
@@ -207,7 +208,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
   templates/
     PROMPT_plan.md              # Plan agent template
     PROMPT_build.md             # Build agent template
-    PROMPT_review.md            # Review agent (9 gates)
+    PROMPT_review.md            # Review agent (10 gates)
     PROMPT_proof.md             # Proof agent template
     PROMPT_steer.md             # Steering agent template
     PROMPT_setup.md             # Setup/discovery agent
@@ -235,7 +236,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 
 - **Two modes**: Single-session loop for focused work, orchestrator for spec-to-ship parallelism
 - **5 providers**: Claude, Codex, Gemini, Copilot, OpenCode — single or round-robin
-- **9 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance, documentation freshness
+- **10 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance, documentation freshness, QA coverage & bug fix rate
 - **Live steering**: Change direction mid-flight without stopping the loop
 - **Real-time dashboard**: SSE-powered UI with activity log, docs, proof gallery, and steering controls
 - **GitHub integration**: Issue decomposition, PR lifecycle, squash-merge, conflict rebase, agent review
