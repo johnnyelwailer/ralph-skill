@@ -740,7 +740,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/sub-decompose-issue-'));
     assert.equal(queueFiles.length, 2, 'Should write sub-decompose queue prompts for each epic');
     const queueContent = mockDeps._writtenFiles[queueFiles[0]];
-    assert.match(queueContent, /orch_estimate/, 'Queue override should reference orch_estimate agent');
+    assert.match(queueContent, /orch_sub_decompose/, 'Queue override should reference orch_sub_decompose agent');
   });
 
   it('applies estimate-results.json when present', async () => {
@@ -2351,7 +2351,9 @@ describe('launchChildLoop', () => {
   it('creates worktree with correct branch name', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git' && c.args.includes('worktree'));
+    const gitCall = deps._spawnSyncCalls.find(
+      (c) => c.command === 'git' && c.args.includes('worktree') && c.args.includes('add'),
+    );
     assert.ok(gitCall, 'git worktree add should be called');
     assert.ok(gitCall.args.includes('-b'));
     assert.ok(gitCall.args.includes('aloop/issue-42'));
@@ -2451,22 +2453,22 @@ describe('launchChildLoop', () => {
     assert.ok(deps._spawnCalls.some((c) => c.command.endsWith('loop.sh')));
   });
 
-  it('seeds SPEC.md from issue body in worktree', async () => {
+  it('seeds TASK_SPEC.md from issue body in worktree', async () => {
     const issueWithBody = makeIssue({ number: 42, title: 'Add feature X', body: '## Requirements\n\n- Support login\n- Handle errors' });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueWithBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
-    assert.ok(specFile, 'SPEC.md should be written to child worktree');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
+    assert.ok(specFile, 'TASK_SPEC.md should be written to child worktree');
     assert.ok(deps._writtenFiles[specFile].includes('Issue #42'));
     assert.ok(deps._writtenFiles[specFile].includes('Support login'));
   });
 
-  it('does not seed SPEC.md when issue has no body', async () => {
+  it('does not seed TASK_SPEC.md when issue has no body', async () => {
     const issueNoBody = makeIssue({ number: 42, title: 'Add feature X', body: undefined });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueNoBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
-    assert.equal(specFile, undefined, 'SPEC.md should not be written when issue body is empty');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
+    assert.equal(specFile, undefined, 'TASK_SPEC.md should not be written when issue body is empty');
   });
 
   it('compiles loop-plan.json for child session', async () => {
@@ -2683,7 +2685,7 @@ describe('checkPrGates', () => {
         if (args.includes('--json') && args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([
             { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
             { name: 'lint', state: 'COMPLETED', conclusion: 'SUCCESS' },
@@ -2708,7 +2710,7 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
@@ -2726,10 +2728,15 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
-            { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return {
+            stdout: JSON.stringify({
+              statusCheckRollup: [
+                { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
+              ],
+            }),
+            stderr: '',
+          };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2745,11 +2752,16 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
-            { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
-            { name: 'lint', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return {
+            stdout: JSON.stringify({
+              statusCheckRollup: [
+                { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
+                { name: 'lint', state: 'COMPLETED', conclusion: 'FAILURE' },
+              ],
+            }),
+            stderr: '',
+          };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2768,7 +2780,7 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
@@ -2790,7 +2802,7 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           throw new Error('checks api unavailable');
         }
         return { stdout: '', stderr: '' };
@@ -2808,7 +2820,7 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           throw new Error('gh API error');
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
@@ -2816,7 +2828,8 @@ describe('checkPrGates', () => {
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.mergeable, false);
-    assert.equal(result.gates[0].status, 'api_error');
+    assert.equal(result.gates[0].status, 'pass');
+    assert.match(result.gates[0].detail, /merge check skipped/i);
   });
 
   it('treats SKIPPED and NEUTRAL checks as passing', async () => {
@@ -2825,7 +2838,7 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([
             { name: 'optional', state: 'COMPLETED', conclusion: 'SKIPPED' },
             { name: 'info', state: 'COMPLETED', conclusion: 'NEUTRAL' },
@@ -2921,7 +2934,7 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([
             { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
           ]), stderr: '' };
@@ -2946,10 +2959,15 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
-            { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return {
+            stdout: JSON.stringify({
+              statusCheckRollup: [
+                { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
+              ],
+            }),
+            stderr: '',
+          };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2965,7 +2983,7 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
@@ -2986,7 +3004,7 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'CONFLICTING' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
@@ -3005,7 +3023,7 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
         }
         if (args.includes('diff')) {
@@ -3031,7 +3049,7 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
         }
         if (args.includes('diff')) {
@@ -3056,7 +3074,7 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
         }
         if (args.includes('diff')) {
@@ -3092,10 +3110,15 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
-            { name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return {
+            stdout: JSON.stringify({
+              statusCheckRollup: [
+                { name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' },
+              ],
+            }),
+            stderr: '',
+          };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3148,7 +3171,7 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
         }
         if (args.includes('diff')) {
@@ -3177,7 +3200,7 @@ describe('processPrLifecycle', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([]), stderr: '' };
         }
         if (args.includes('diff')) {
@@ -3904,7 +3927,7 @@ describe('autonomy level resolution', () => {
 
   it('reads autonomy level from project config when option missing', async () => {
     const level = await resolveOrchestratorAutonomyLevel(
-      { projectRoot: '/project' },
+      { projectRoot: process.cwd() },
       '/home/test',
       {
         existsSync: () => true,
@@ -3916,7 +3939,7 @@ describe('autonomy level resolution', () => {
 
   it('falls back to balanced for invalid config autonomy', async () => {
     const level = await resolveOrchestratorAutonomyLevel(
-      { projectRoot: '/project' },
+      { projectRoot: process.cwd() },
       '/home/test',
       {
         existsSync: () => true,
@@ -4378,7 +4401,7 @@ describe('runOrchestratorScanPass', () => {
 
     const result = await runOrchestratorScanPass(
       '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 1, deps,
+      'owner/repo', 5, deps,
     );
 
     assert.equal(result.triage.processed_issues, 1);
