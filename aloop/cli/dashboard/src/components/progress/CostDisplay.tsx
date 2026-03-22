@@ -17,7 +17,7 @@ function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
-function indicatorClass(percent: number): string {
+export function indicatorClass(percent: number): string {
   if (percent >= 90) return 'bg-red-500';
   if (percent >= 70) return 'bg-yellow-500';
   return 'bg-emerald-500';

@@ -89,10 +89,10 @@ describe('useCost', () => {
     let intervalCallback: (() => void) | null = null;
     const setIntervalSpy = vi
       .spyOn(window, 'setInterval')
-      .mockImplementation((handler: TimerHandler, _timeout?: number) => {
-        intervalCallback = handler as () => void;
-        return 123 as unknown as number;
-      });
+      .mockImplementation((((handler: TimerHandler) => {
+        intervalCallback = typeof handler === 'function' ? (handler as () => void) : null;
+        return 123 as unknown as ReturnType<typeof setInterval>;
+      }) as unknown) as typeof window.setInterval);
 
     const { result } = renderHook(() =>
       useCost({
@@ -116,10 +116,10 @@ describe('useCost', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     let intervalCallback: (() => void) | null = null;
-    vi.spyOn(window, 'setInterval').mockImplementation((handler: TimerHandler, _timeout?: number) => {
-      intervalCallback = handler as () => void;
-      return 123 as unknown as number;
-    });
+    vi.spyOn(window, 'setInterval').mockImplementation((((handler: TimerHandler) => {
+      intervalCallback = typeof handler === 'function' ? (handler as () => void) : null;
+      return 123 as unknown as ReturnType<typeof setInterval>;
+    }) as unknown) as typeof window.setInterval);
 
     const { result } = renderHook(() => useCost({ log: '', meta: null }));
 

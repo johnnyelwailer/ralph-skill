@@ -10,7 +10,7 @@
   - Files: `aloop/cli/src/commands/dashboard.ts` (line 1133)
   - Tests: `aloop/cli/src/commands/dashboard.test.ts` — update mock expectations for new query format
 
-- [ ] [qa/P1] Fix progress bar showing yellow at 0% spend (priority: high)
+- [x] [qa/P1] Fix progress bar showing yellow at 0% spend (priority: high)
   - **Observed:** QA saw yellow `rgb(234, 179, 8)` indicator at 0% budget used. The `indicatorClass()` function in `CostDisplay.tsx` correctly returns `bg-emerald-500` for percent < 70, so the color logic itself is sound. The issue likely surfaces during the initial loading/transition state or is a CSS specificity problem where `bg-yellow-500` from another context leaks through Tailwind's `cn()` merge. Investigate: (1) does the Radix Progress indicator show a visible strip at value=0 due to subpixel rendering, (2) is `indicatorClassName` being overridden by base styles, (3) could this be the header task progress bar (`phaseBarColor`) being mistaken for the cost bar.
   - Files: `aloop/cli/dashboard/src/components/progress/CostDisplay.tsx`, `aloop/cli/dashboard/src/components/ui/progress.tsx`
   - Tests: Add a test verifying `indicatorClass(0)` returns green and that at 0% the progress bar either renders green or is hidden

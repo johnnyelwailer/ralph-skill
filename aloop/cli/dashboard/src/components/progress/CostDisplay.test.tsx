@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { CostDisplay } from './CostDisplay';
+import { CostDisplay, indicatorClass } from './CostDisplay';
 
 describe('CostDisplay', () => {
   it('renders progress bar with expected indicator color at 50% / 75% / 95%', () => {
@@ -14,6 +14,20 @@ describe('CostDisplay', () => {
 
     rerender(<CostDisplay totalCost={9.5} budgetCap={10} budgetUsedPercent={95} />);
     expect(container.querySelector('.bg-red-500')).toBeTruthy();
+  });
+
+  it('uses green indicator class at 0% budget used', () => {
+    expect(indicatorClass(0)).toBe('bg-emerald-500');
+  });
+
+  it('hides indicator strip at 0% budget used', () => {
+    const { container } = render(
+      <CostDisplay totalCost={0} budgetCap={10} budgetUsedPercent={0} />,
+    );
+
+    const indicator = container.querySelector('.bg-emerald-500');
+    expect(indicator).toBeTruthy();
+    expect(indicator?.classList.contains('opacity-0')).toBe(true);
   });
 
   it('does not render progress bar when budgetCap is null', () => {
