@@ -1,5 +1,177 @@
 # QA Log
 
+## QA Session — 2026-03-22 (iteration 36)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-9yteTr/bin/aloop
+- Version: 1.0.0
+- Temp test project: /tmp/qa-test-session2
+- Features tested: 5
+
+### Results
+- PASS: aloop steer, aloop stop, aloop dashboard, aloop scaffold, aloop discover (happy paths)
+- FAIL: aloop discover --project-root /nonexistent (bug filed)
+
+### Bugs Filed
+- [qa/P2] `aloop discover --project-root /nonexistent` returns exit 0 with empty results instead of error
+
+### Observations
+- `aloop steer` with empty string `""` is accepted as a valid instruction — should arguably be rejected
+- `aloop steer --affects-completed-work invalid` is not validated (invalid values accepted without error)
+- `aloop stop ""` gives "Session not found: " with trailing colon — minor cosmetic issue
+- `aloop scaffold --project-root /nonexistent/path` gives raw Node.js EACCES error instead of user-friendly message
+- `aloop dashboard` takes ~5s to start listening — slow but functional
+- `aloop dashboard` SSE `/events` endpoint streams full state including TODO.md, SPEC content — works well
+- `aloop discover` mode recommendation feature works well — recommends "loop" for small projects, shows reasoning
+
+### Command Transcript
+
+#### Feature 1: aloop steer
+
+```
+$ aloop steer
+error: missing required argument 'instruction'
+EXIT: 1
+```
+
+```
+$ aloop steer "test instruction" --session nonexistent-session
+Session not found: nonexistent-session
+EXIT: 1
+```
+
+```
+$ aloop steer "test instruction" --session nonexistent-session --output json
+{"success":false,"error":"Session not found: nonexistent-session"}
+EXIT: 1
+```
+
+```
+$ aloop steer "focus on tests"
+Multiple active sessions. Specify one with --session: orchestrator-20260321-172932, ...
+EXIT: 1
+```
+
+```
+$ aloop steer ""
+Multiple active sessions. Specify one with --session: ...
+EXIT: 1
+(empty string accepted as instruction — should arguably be rejected)
+```
+
+#### Feature 2: aloop stop
+
+```
+$ aloop stop
+error: missing required argument 'session-id'
+EXIT: 1
+```
+
+```
+$ aloop stop nonexistent-session-id
+Session not found: nonexistent-session-id
+EXIT: 1
+```
+
+```
+$ aloop stop nonexistent-session-id --output json
+{"success":false,"reason":"Session not found: nonexistent-session-id"}
+EXIT: 1
+```
+
+```
+$ aloop stop ""
+Session not found:
+EXIT: 1
+```
+
+#### Feature 3: aloop dashboard
+
+```
+$ aloop dashboard --port 4996
+Launching real-time progress dashboard on port 4996...
+Session dir: /home/pj/.aloop/sessions/.../worktree
+Workdir: /home/pj/.aloop/sessions/.../worktree
+Assets dir: /tmp/aloop-test-install-9yteTr/lib/node_modules/aloop-cli/dist/dashboard
+(listening on port 4996 after ~5s, HTTP 200)
+```
+
+```
+$ curl http://localhost:4996
+<!DOCTYPE html><html lang="en">...
+(serves dashboard frontend HTML)
+```
+
+```
+$ curl http://localhost:4996/events
+: connected
+event: state
+data: {"sessionDir":"...","status":null,"log":"","docs":{"TODO.md":"..."},...}
+(SSE endpoint works, streams full state)
+```
+
+```
+$ curl http://localhost:4996/api/status
+{"error":"Not found"}
+(API endpoints return 404 — dashboard uses SSE, not REST API)
+```
+
+#### Feature 4: aloop scaffold
+
+```
+$ cd /tmp/qa-test-session2 && aloop scaffold --provider claude --spec-files README.md --output json
+{"config_path":"/home/pj/.aloop/projects/920150a7/config.yml","prompts_dir":"...","project_dir":"...","project_hash":"920150a7"}
+EXIT: 0
+```
+
+```
+$ aloop scaffold --output text
+Wrote config: /home/pj/.aloop/projects/920150a7/config.yml
+Wrote prompts: /home/pj/.aloop/projects/920150a7/prompts
+EXIT: 0
+```
+
+```
+$ aloop scaffold --project-root /nonexistent/path --output json
+Error: EACCES: permission denied, mkdir '/nonexistent'
+EXIT: 1
+(raw Node.js error, not user-friendly)
+```
+
+```
+$ aloop scaffold --project-root /tmp/qa-test-session2 --language typescript --provider codex --output json
+{"config_path":"...","prompts_dir":"...","project_dir":"...","project_hash":"920150a7"}
+EXIT: 0
+(overrides applied correctly)
+```
+
+#### Feature 5: aloop discover
+
+```
+$ cd /tmp/qa-test-session2 && aloop discover
+{"project":{"root":"/tmp/qa-test-session2","name":"qa-test-session2","hash":"920150a7","is_git_repo":true,"git_branch":"master"},"setup":{...},"context":{"detected_language":"other","language_confidence":"low",...,"spec_candidates":["README.md"],...},"providers":{"installed":["claude","opencode","codex","gemini","copilot"],...},"mode_recommendation":{"recommended_mode":"loop","reasoning":[...]}}
+EXIT: 0
+```
+
+```
+$ aloop discover --output text
+Project: qa-test-session2 [920150a7]
+Root: /tmp/qa-test-session2
+Detected language: other (low)
+Providers installed: claude, opencode, codex, gemini, copilot
+Spec candidates: README.md
+EXIT: 0
+```
+
+```
+$ aloop discover --project-root /nonexistent
+{"project":{"root":"/nonexistent","name":"nonexistent","hash":"3969afb7","is_git_repo":false,"git_branch":null},...,"spec_candidates":[],...}
+EXIT: 0
+(BUG: returns exit 0 for nonexistent path, should error)
+```
+
+---
+
 ## QA Session — 2026-03-22 (iteration 35)
 
 ### Test Environment

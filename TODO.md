@@ -25,6 +25,7 @@
 #### QA Bugs (priority: high)
 
 - [ ] [qa/P2] `--output json` error path outputs plain text — `withErrorHandling` wrapper (`error-handling.ts`) always emits `console.error("Error: ...")` regardless of `--output` mode; also `console.error` warning on worktree failure (orchestrate.ts:1843) pollutes JSON output. The happy path JSON output works (lines 1929-1932), but any error/warning before that point bypasses JSON formatting. (priority: high)
+- [ ] [qa/P2] `aloop discover --project-root /nonexistent` returns exit 0 with empty results — `discover` succeeds against a nonexistent path instead of failing with an error; `is_git_repo: false` and empty arrays are returned, misleading the user into thinking the path is a valid project. Should validate path exists before proceeding. Tested at iter 36. (priority: high)
 
 #### QA & Coverage (priority: high)
 
