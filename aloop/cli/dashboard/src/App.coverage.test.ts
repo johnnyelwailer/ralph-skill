@@ -793,6 +793,63 @@ describe('App.tsx AppView integration coverage', () => {
     expect(screen.getByText('s2')).toBeInTheDocument();
   });
 
+  it('runs session context-menu actions', async () => {
+    Object.defineProperty(globalThis.navigator, 'vibrate', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
+
+    const sessions = [
+      {
+        id: 'sess-long-1',
+        name: 'sess-long-1',
+        projectName: 'proj',
+        status: 'running',
+        phase: 'build',
+        iteration: '1',
+        isActive: true,
+        branch: 'main',
+        startedAt: new Date().toISOString(),
+        endedAt: '',
+        pid: '11',
+        provider: 'codex',
+        workDir: '/tmp/work',
+        stuckCount: 0,
+      },
+    ];
+    const onSelect = vi.fn();
+    const onToggle = vi.fn();
+    const onStopSession = vi.fn();
+    const onCopySessionId = vi.fn();
+
+    render(createElement(TooltipProvider as any, {}, createElement(Sidebar, {
+      sessions: sessions as any[],
+      selectedSessionId: 'sess-long-1',
+      onSelectSession: onSelect,
+      collapsed: false,
+      onToggle: onToggle,
+      sessionCost: 0.25,
+      onStopSession: onStopSession,
+      onCopySessionId: onCopySessionId,
+    })));
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /sess-long-1/i }), { clientX: 50, clientY: 75 });
+    expect(await screen.findByText('Copy session ID')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Stop after iteration'));
+    expect(onSelect).toHaveBeenCalledWith('sess-long-1');
+    expect(onStopSession).toHaveBeenCalledWith('sess-long-1', false);
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /sess-long-1/i }), { clientX: 50, clientY: 75 });
+    fireEvent.click(await screen.findByText('Kill immediately'));
+    expect(onStopSession).toHaveBeenCalledWith('sess-long-1', true);
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /sess-long-1/i }), { clientX: 50, clientY: 75 });
+    fireEvent.click(await screen.findByText('Copy session ID'));
+    expect(onCopySessionId).toHaveBeenCalledWith('sess-long-1');
+  });
+
   it('covers ActivityPanel and LogEntryRow exhaustive', async () => {
     const log = JSON.stringify({
       event: 'iteration_complete',

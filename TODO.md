@@ -33,13 +33,17 @@ TASK_SPEC requires three things: (1) track reviewed commit SHA to prevent spam, 
 
 ### Up Next
 
-- [x] **Rebuild and commit dist files** — `aloop/cli/dist/index.js` and `aloop/cli/dist/dashboard/index.html` are out of date vs source. Run build and commit. (priority: high)
+- [x] **Add ARIA labels to stop/force-stop dropdown items** — Added `aria-label="Stop after current iteration (SIGTERM)"` and `aria-label="Kill immediately without cleanup (SIGKILL)"` to the two `DropdownMenuItem` entries in AppView.tsx. (priority: medium)
+
+- [x] **Implement long-press context menu on session cards** — Added reusable `useLongPress` hook (500ms threshold), wired session-card long-press + right-click context menu with Stop/Force-stop/Copy ID actions, and haptic feedback via `navigator.vibrate(10)` when available. Added coverage for long-press menu actions and hook behavior. (priority: medium)
+
+- [ ] **Rebuild dist files** — `aloop/cli/dist/dashboard/index.html` has a small uncommitted diff (2 lines changed). Rebuild and commit to sync dist with source. (priority: low)
+
+### Completed (upstream — dashboard polish)
+
+- [x] **Rebuild and commit dist files** — `aloop/cli/dist/index.js` and `aloop/cli/dist/dashboard/index.html` rebuilt and committed. (priority: high)
 
 - [x] **Audit & fix hover-only interactions** — Overflow tabs menu now uses a click/tap-accessible Radix dropdown menu with explicit trigger label and tab selection behavior for overflow docs. Covered by `App.coverage.test.ts` assertions for opening overflow menu and selecting STEERING/EXTRA docs. (priority: medium) [reviewed: gates 1-9 pass]
-
-- [ ] **Add ARIA labels and roles for missing elements** — Activity panel collapse button, stop/force-stop dropdown items. Sidebar expand/collapse buttons and GitHub repo link already done. (priority: medium)
-
-- [ ] **Implement long-press context menu on session cards** — `useLongPress` hook with 500ms threshold, context menu with Stop/Force-stop/Copy ID, haptic feedback. (priority: medium)
 
 - [x] **Capture proof artifacts** — [review Gate 6] Captured Playwright screenshot at mobile viewport (390x844) and updated `proof-manifest.json` with structured metadata. (priority: low)
 

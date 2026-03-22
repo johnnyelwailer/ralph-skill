@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CostDisplay } from '@/components/progress/CostDisplay';
 import { useCost } from '@/hooks/useCost';
+import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 
 // ── ANSI + Markdown rendering ──
@@ -717,7 +718,7 @@ export function deriveProviderHealth(log: string, configuredProviders?: string[]
 // ── Sidebar ──
 
 export function Sidebar({
-  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost,
+  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost, onStopSession, onCopySessionId,
 }: {
   sessions: SessionSummary[];
   selectedSessionId: string | null;
@@ -725,6 +726,8 @@ export function Sidebar({
   collapsed: boolean;
   onToggle: () => void;
   sessionCost: number;
+  onStopSession?: (id: string | null, force: boolean) => void;
+  onCopySessionId?: (id: string) => void;
 }) {
   // Group by project
   const { projectGroups, olderSessions } = useMemo(() => {
@@ -755,6 +758,9 @@ export function Sidebar({
   const [olderOpen, setOlderOpen] = useState(false);
   const [sessionCosts, setSessionCosts] = useState<Record<string, number | null>>({});
   const [costUnavailable, setCostUnavailable] = useState(false);
+  const [contextMenuSessionId, setContextMenuSessionId] = useState<string | null>(null);
+  const [suppressClickSessionId, setSuppressClickSessionId] = useState<string | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   useEffect(() => {
     let cancelled = false;
@@ -794,6 +800,20 @@ export function Sidebar({
     return () => { cancelled = true; };
   }, [sessions]);
 
+  useEffect(() => {
+    if (!contextMenuSessionId) return;
+    const close = () => setContextMenuSessionId(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close();
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextMenuSessionId]);
+
   if (collapsed) {
     return (
       <aside className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
@@ -827,50 +847,84 @@ export function Sidebar({
   const displaySessionCost = (s: SessionSummary): number | null =>
     s.isActive ? sessionCost : (sessionCosts[s.id] ?? null);
 
-  const renderCard = (s: SessionSummary) => {
-    const cardCost = displaySessionCost(s);
+  function SessionCard({ session, cardCost }: { session: SessionSummary; cardCost: number | null }) {
+    const selectId = session.id === 'current' ? null : session.id;
+    const openMenu = (x: number, y: number) => {
+      setSuppressClickSessionId(session.id);
+      setContextMenuPos({ x, y });
+      setContextMenuSessionId(session.id);
+    };
+    const longPressBind = useLongPress({
+      threshold: 500,
+      onLongPress: (event) => {
+        event.preventDefault();
+        const rect = event.currentTarget.getBoundingClientRect();
+        openMenu(rect.left + 24, rect.top + 24);
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+          navigator.vibrate(10);
+        }
+      },
+    });
+
     return (
-      <Tooltip key={s.id}>
+      <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
-            className={`w-full overflow-hidden rounded-md px-2 py-1.5 min-h-[44px] md:min-h-0 text-left text-xs transition-colors hover:bg-accent ${isSelected(s) ? 'bg-accent' : ''}`}
-            onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}
+            className={`w-full overflow-hidden rounded-md px-2 py-1.5 min-h-[44px] md:min-h-0 text-left text-xs transition-colors hover:bg-accent ${isSelected(session) ? 'bg-accent' : ''}`}
+            onClick={(event) => {
+              if (suppressClickSessionId === session.id) {
+                event.preventDefault();
+                setSuppressClickSessionId(null);
+                return;
+              }
+              onSelectSession(selectId);
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              openMenu(event.clientX, event.clientY);
+            }}
+            {...longPressBind}
           >
             <div className="flex items-center gap-1.5 overflow-hidden">
-              <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
-              <span className="truncate font-medium flex-1">{s.name}</span>
-              <span className="text-muted-foreground text-[10px] shrink-0">{relativeTime(s.endedAt || s.startedAt)}</span>
+              <StatusDot status={session.isActive && session.status === 'running' ? 'running' : session.status} />
+              <span className="truncate font-medium flex-1">{session.name}</span>
+              <span className="text-muted-foreground text-[10px] shrink-0">{relativeTime(session.endedAt || session.startedAt)}</span>
             </div>
             <div className="flex items-center gap-1 mt-0.5 ml-4 text-[10px] text-muted-foreground/60 overflow-hidden">
-              {s.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
-              {s.branch && <span className="truncate">{s.branch}</span>}
-              {s.phase && <span className="shrink-0">·</span>}
-              {s.phase && <PhaseBadge phase={s.phase} small />}
-              {s.iterations && s.iterations !== '--' && <span className="shrink-0">iter {s.iterations}</span>}
-              {s.elapsed && s.elapsed !== '--' && <span className="shrink-0">· {s.elapsed}</span>}
+              {session.branch && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
+              {session.branch && <span className="truncate">{session.branch}</span>}
+              {session.phase && <span className="shrink-0">·</span>}
+              {session.phase && <PhaseBadge phase={session.phase} small />}
+              {session.iterations && session.iterations !== '--' && <span className="shrink-0">iter {session.iterations}</span>}
+              {session.elapsed && session.elapsed !== '--' && <span className="shrink-0">· {session.elapsed}</span>}
               {typeof cardCost === 'number' && <span className="shrink-0">· ${cardCost.toFixed(4)}</span>}
             </div>
           </button>
         </TooltipTrigger>
         <TooltipContent side="right" className="max-w-lg">
           <div className="space-y-0.5 text-xs">
-            <p className="font-medium">{s.id}</p>
-            {s.pid && <p>PID: {s.pid}</p>}
-            <p>Status: {s.status}</p>
-            {s.stuckCount > 0 && <p className="text-red-500">Stuck: {s.stuckCount}</p>}
-            <p>Provider: {s.provider}</p>
-            <p>Iterations: {s.iterations}</p>
-            {s.elapsed && s.elapsed !== '--' && <p>Duration: {s.elapsed}</p>}
+            <p className="font-medium">{session.id}</p>
+            {session.pid && <p>PID: {session.pid}</p>}
+            <p>Status: {session.status}</p>
+            {session.stuckCount > 0 && <p className="text-red-500">Stuck: {session.stuckCount}</p>}
+            <p>Provider: {session.provider}</p>
+            <p>Iterations: {session.iterations}</p>
+            {session.elapsed && session.elapsed !== '--' && <p>Duration: {session.elapsed}</p>}
             {costUnavailable && typeof cardCost !== 'number' && <p>Cost: unavailable</p>}
             {typeof cardCost === 'number' && <p>Cost: ${cardCost.toFixed(4)}</p>}
-            {s.startedAt && <p>Started: {new Date(s.startedAt).toLocaleString()}</p>}
-            {s.endedAt && <p>Ended: {new Date(s.endedAt).toLocaleString()}</p>}
-            {s.workDir && <p className="break-all">Dir: {s.workDir}</p>}
+            {session.startedAt && <p>Started: {new Date(session.startedAt).toLocaleString()}</p>}
+            {session.endedAt && <p>Ended: {new Date(session.endedAt).toLocaleString()}</p>}
+            {session.workDir && <p className="break-all">Dir: {session.workDir}</p>}
           </div>
         </TooltipContent>
       </Tooltip>
     );
+  }
+
+  const renderCard = (s: SessionSummary) => {
+    const cardCost = displaySessionCost(s);
+    return <SessionCard key={s.id} session={s} cardCost={cardCost} />;
   };
 
   return (
@@ -917,6 +971,49 @@ export function Sidebar({
           {sessions.length === 0 && <p className="text-xs text-muted-foreground p-2">No sessions.</p>}
         </div>
       </ScrollArea>
+      {contextMenuSessionId && (
+        <div
+          role="menu"
+          className="fixed z-50 min-w-[170px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left hover:bg-accent"
+            onClick={() => {
+              const selectId = contextMenuSessionId === 'current' ? null : contextMenuSessionId;
+              onSelectSession(selectId);
+              onStopSession?.(selectId, false);
+              setContextMenuSessionId(null);
+            }}
+          >
+            <Square className="h-3.5 w-3.5" /> Stop after iteration
+          </button>
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left text-destructive hover:bg-accent"
+            onClick={() => {
+              const selectId = contextMenuSessionId === 'current' ? null : contextMenuSessionId;
+              onSelectSession(selectId);
+              onStopSession?.(selectId, true);
+              setContextMenuSessionId(null);
+            }}
+          >
+            <Zap className="h-3.5 w-3.5" /> Kill immediately
+          </button>
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left hover:bg-accent"
+            onClick={() => {
+              onCopySessionId?.(contextMenuSessionId);
+              setContextMenuSessionId(null);
+            }}
+          >
+            <GitCommit className="h-3.5 w-3.5" /> Copy session ID
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
@@ -2007,11 +2104,11 @@ function Footer({
               </Button>
             </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onStop(false)}>
+                <DropdownMenuItem onClick={() => onStop(false)} aria-label="Stop after current iteration (SIGTERM)">
                   <Square className="h-3.5 w-3.5 mr-2" /> Stop after iteration
                   <span className="ml-auto text-[10px] text-muted-foreground">SIGTERM</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onStop(true)}>
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onStop(true)} aria-label="Kill immediately without cleanup (SIGKILL)">
                   <Zap className="h-3.5 w-3.5 mr-2" /> Kill immediately
                   <span className="ml-auto text-[10px] text-muted-foreground">SIGKILL</span>
                 </DropdownMenuItem>
@@ -2305,6 +2402,21 @@ export function App() {
     finally { setStopSubmitting(false); }
   }, [stopSubmitting]);
 
+  const handleStopSession = useCallback((id: string | null, force: boolean) => {
+    selectSession(id);
+    void handleStop(force);
+  }, [handleStop, selectSession]);
+
+  const handleCopySessionId = useCallback(async (id: string) => {
+    try {
+      if (!navigator?.clipboard?.writeText) throw new Error('Clipboard is unavailable in this browser.');
+      await navigator.clipboard.writeText(id);
+      toast.success(`Copied session ID: ${id}`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }, []);
+
   const [resumeSubmitting, setResumeSubmitting] = useState(false);
   const handleResume = useCallback(async () => {
     if (resumeSubmitting) return;
@@ -2366,14 +2478,14 @@ export function App() {
         <div className="flex flex-1 min-h-0">
           {/* Desktop sidebar */}
           <div className="hidden md:flex">
-            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} />
+            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
           </div>
           {/* Mobile sidebar drawer */}
           {mobileMenuOpen && (
             <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
               <div className="absolute inset-0 bg-black/50" />
               <div ref={mobileSidebarRef} className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
-                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} />
+                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
               </div>
             </div>
           )}
