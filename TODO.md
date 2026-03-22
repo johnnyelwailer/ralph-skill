@@ -3,6 +3,8 @@
 ## Current Phase: Implementation
 
 ### In Progress
+- [ ] [review] Gate 1: `check_finalizer_qa_coverage_gate` in loop.sh:1831-1835 and `Check-FinalizerQaCoverageGate` in loop.ps1:872-876 return failure when QA_COVERAGE.md is missing, blocking the finalizer — TASK_SPEC.md acceptance criteria says "Graceful handling when QA_COVERAGE.md doesn't exist (skip enforcement, don't block)". Change both to return success (0/$true) when file is missing. Also fix the test in loop_finalizer_qa_coverage.tests.sh:128-144 which validates the wrong behavior (priority: high)
+- [ ] [review] Gate 2: `Check-FinalizerQaCoverageGate` in loop.ps1 has no behavioral test — loop.tests.ps1:897-908 only checks source code string patterns, not actual gate logic. Add PowerShell Pester tests that create test QA_COVERAGE.md files and validate gate pass/fail/block behavior with concrete assertions, matching the bash test coverage in loop_finalizer_qa_coverage.tests.sh (priority: high)
 
 ### Up Next
 - [ ] [qa/P0] Finalizer skipped when allTasksMarkedDone=true at session start: Started session with all TODO.md tasks checked and QA_COVERAGE.md containing FAIL entries → loop set state=completed after ~1 second without entering finalizer → SPEC says loop must enter finalizer[0..N] when allTasksMarkedDone=true at cycle boundary, not skip directly to completed. Tested at iter 5. (priority: critical)
