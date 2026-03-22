@@ -159,6 +159,10 @@ describe('GitHubAdapter.createReview', () => {
 
     await assert.rejects(
       () => adapter.createReview(1, { body: 'x', event: 'COMMENT', comments: [] }),
+      (err: unknown) => {
+        assert.ok(err instanceof SyntaxError || (err instanceof Error && /json/i.test(err.message)));
+        return true;
+      },
     );
   });
 });

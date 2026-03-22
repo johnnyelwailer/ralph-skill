@@ -18,7 +18,7 @@
 
 ### Deferred
 
-- [ ] [review] Gate 2: `adapter.test.ts:129-131` — bare `assert.rejects()` without predicate; any rejection passes (wrong error type, unrelated crash). Add predicate asserting `SyntaxError` or message containing `JSON` so a broken implementation that throws for a different reason would fail. (priority: low)
+- [x] [review] Gate 2: `adapter.test.ts:129-131` — bare `assert.rejects()` without predicate; any rejection passes (wrong error type, unrelated crash). Add predicate asserting `SyntaxError` or message containing `JSON` so a broken implementation that throws for a different reason would fail. (priority: low)
 - [ ] [review] Gate 4: Remove no-op spread at orchestrate.ts:~3619 — `(reviewResult.comments ?? []).map(c => ({...c}))` adds no value since objects are not mutated downstream. Direct assignment suffices. (priority: low)
 
 ### Completed
