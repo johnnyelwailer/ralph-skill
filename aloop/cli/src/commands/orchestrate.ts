@@ -8,6 +8,7 @@ import { writeQueueOverride } from '../lib/plan.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
 import { writeSpecBackfill } from '../lib/specBackfill.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
+import { GitHubAdapter } from '../lib/adapter.js';
 import {
   EtagCache,
   fetchBulkIssueState,
@@ -3859,62 +3860,20 @@ export async function processPrLifecycle(
     }));
     if (!alreadyCommented) {
       try {
-        const inlineComments = reviewComments.map((c) => {
-          let commentBody = c.body;
-          if (c.suggestion) {
-            commentBody += `\n\n\`\`\`suggestion\n${c.suggestion}\n\`\`\``;
-          }
-          const entry: Record<string, unknown> = { path: c.path, line: c.line, body: commentBody };
-          if (c.end_line && c.end_line !== c.line) {
-            entry.start_line = c.line;
-            entry.line = c.end_line;
-            entry.side = 'RIGHT';
-            entry.start_side = 'RIGHT';
-          }
-          return entry;
-        });
-        // Post a proper GH pull request review via gh api.
-        // Use -f for string fields and -F for the JSON-typed comments array.
+        const adapter = new GitHubAdapter({ type: 'github', repo }, deps.execGh);
+        const reviewEvent = reviewResult.verdict === 'request-changes' ? 'REQUEST_CHANGES' : 'COMMENT';
         const reviewBody = `Agent review requested changes:\n\n${reviewResult.summary}`;
-        const ghArgs = [
-          'api', `repos/${repo}/pulls/${prNumber}/reviews`,
-          '--method', 'POST',
-          '-f', `event=REQUEST_CHANGES`,
-          '-f', `body=${reviewBody}`,
-        ];
-        if (inlineComments.length > 0) {
-          ghArgs.push('-F', `comments=${JSON.stringify(inlineComments)}`);
-        }
-        const reviewResponse = await deps.execGh(ghArgs);
-        let postedReviewId: number | undefined;
-        try {
-          const parsed: unknown = JSON.parse(reviewResponse.stdout);
-          if (typeof parsed === 'object' && parsed !== null && typeof (parsed as { id?: unknown }).id === 'number') {
-            postedReviewId = (parsed as { id: number }).id;
-          }
-          const parsedComments = (
-            typeof parsed === 'object' &&
-            parsed !== null &&
-            Array.isArray((parsed as { comments?: unknown }).comments)
-          )
-            ? (parsed as { comments: Array<{ id?: unknown; path?: unknown; line?: unknown }> }).comments
-            : [];
-          if (parsedComments.length > 0) {
-            const commentsWithIds = parsedComments.filter((comment) => typeof comment.id === 'number');
-            for (let index = 0; index < reviewComments.length; index += 1) {
-              const match = commentsWithIds.find((comment) =>
-                comment.path === reviewComments[index].path &&
-                Number(comment.line) === reviewComments[index].line &&
-                typeof comment.id === 'number'
-              );
-              if (match && typeof match.id === 'number') {
-                reviewComments[index].id = match.id;
-              }
-            }
-          }
-        } catch {
-          // ignore malformed response from gh
-        }
+        const reviewResponse = await adapter.createReview(prNumber, {
+          body: reviewBody,
+          event: reviewEvent,
+          comments: reviewComments.map((comment) => ({
+            path: comment.path,
+            line: comment.line,
+            body: comment.body,
+            suggestion: comment.suggestion,
+          })),
+        });
+        const postedReviewId = reviewResponse.review_id;
 
         if (postedReviewId && reviewComments.some((comment) => comment.id === undefined)) {
           try {

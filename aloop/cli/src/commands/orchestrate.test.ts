@@ -3047,8 +3047,10 @@ describe('processPrLifecycle', () => {
 
   it('stores individual review comments with IDs for builder redispatch', async () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+    const ghCalls: string[][] = [];
     const deps = createMockPrDeps({
       execGh: async (args) => {
+        ghCalls.push(args);
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
@@ -3104,6 +3106,12 @@ describe('processPrLifecycle', () => {
         body: 'Use a guard clause',
       },
     ]);
+    const reviewCreateCall = ghCalls.find((call) => call[0] === 'api' && call[1] === 'repos/owner/repo/pulls/100/reviews');
+    assert.ok(reviewCreateCall, 'Should create a formal PR review');
+    assert.ok(reviewCreateCall?.includes('--method') && reviewCreateCall?.includes('POST'));
+    assert.ok(reviewCreateCall?.includes('-f') && reviewCreateCall?.includes('event=REQUEST_CHANGES'));
+    const legacyPrCommentCall = ghCalls.find((call) => call[0] === 'pr' && call[1] === 'comment');
+    assert.equal(legacyPrCommentCall, undefined, 'Should not use gh pr comment for review feedback');
   });
 
   it('flags for human when agent review flags', async () => {
