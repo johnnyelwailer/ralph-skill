@@ -3417,6 +3417,20 @@ export interface PrLifecycleDeps {
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 const ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT = 3;
 const ORCHESTRATOR_API_ERROR_PERSISTENCE_LIMIT = 10;
+const RATE_LIMIT_MINIMUM_REMAINING = 200;
+
+export async function checkGitHubRateLimit(
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>,
+): Promise<{ remaining: number; limit: number; reset: number } | null> {
+  try {
+    const { stdout } = await execGh([
+      'api', 'rate_limit', '--jq', '.rate | {remaining, limit, reset}',
+    ]);
+    return JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+}
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
@@ -5603,6 +5617,19 @@ export async function runOrchestratorScanPass(
 
   // 3. Process PR lifecycles every 5th scan pass to reduce GH API pressure.
   if (repo && deps.prLifecycleDeps && iteration % 5 === 0) {
+    // Check GitHub rate limit before making PR lifecycle API calls.
+    const execGhForRateLimit = deps.execGh ?? deps.prLifecycleDeps.execGh;
+    const rateLimit = await checkGitHubRateLimit(execGhForRateLimit);
+    if (rateLimit && rateLimit.remaining < RATE_LIMIT_MINIMUM_REMAINING) {
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'scan_pr_lifecycle_rate_limited',
+        iteration,
+        remaining: rateLimit.remaining,
+        limit: rateLimit.limit,
+        reset: rateLimit.reset,
+      });
+    } else {
     const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
     for (const issue of prIssues) {
       try {
@@ -5629,6 +5656,7 @@ export async function runOrchestratorScanPass(
         });
       }
     }
+    } // end else (rate limit OK)
   }
 
   // 3.4. Resume redispatch for issues where aloop/needs-human label has been removed

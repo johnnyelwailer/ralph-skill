@@ -69,6 +69,7 @@ import {
   createTrunkToMainPr,
   resolveAutoMerge,
   detectChangeRequestLabel,
+  checkGitHubRateLimit,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -4847,6 +4848,128 @@ describe('runOrchestratorScanPass', () => {
     const writtenState = JSON.parse(deps.files['/state.json']);
     assert.equal(writtenState.issues[0].state, 'merged');
   });
+  });
+});
+
+describe('checkGitHubRateLimit', () => {
+  it('returns parsed rate limit data on success', async () => {
+    const execGh = async (args: string[]) => {
+      assert.ok(args.includes('rate_limit'));
+      return { stdout: JSON.stringify({ remaining: 4500, limit: 5000, reset: 1700000000 }), stderr: '' };
+    };
+    const result = await checkGitHubRateLimit(execGh);
+    assert.deepEqual(result, { remaining: 4500, limit: 5000, reset: 1700000000 });
+  });
+
+  it('returns null when API call fails', async () => {
+    const execGh = async () => { throw new Error('network error'); };
+    const result = await checkGitHubRateLimit(execGh);
+    assert.equal(result, null);
+  });
+
+  it('returns null when response is not valid JSON', async () => {
+    const execGh = async () => ({ stdout: 'not json', stderr: '' });
+    const result = await checkGitHubRateLimit(execGh);
+    assert.equal(result, null);
+  });
+});
+
+describe('runOrchestratorScanPass rate limit', () => {
+  it('skips PR lifecycle when rate limit is below threshold', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const prDeps = createMockPrDeps();
+    const deps = createMockScanDeps({
+      prLifecycleDeps: prDeps,
+      execGh: async (args) => {
+        if (args.includes('rate_limit')) {
+          return { stdout: JSON.stringify({ remaining: 50, limit: 5000, reset: 1700000000 }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 5, deps,
+    );
+
+    assert.equal(result.prLifecycles.length, 0);
+    const logEntry = deps.logEntries.find((e) => e.event === 'scan_pr_lifecycle_rate_limited');
+    assert.ok(logEntry, 'should log rate limit event');
+    assert.equal(logEntry!.remaining, 50);
+  });
+
+  it('proceeds with PR lifecycle when rate limit is above threshold', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const prDeps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff content', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const deps = createMockScanDeps({
+      prLifecycleDeps: prDeps,
+      execGh: async (args) => {
+        if (args.includes('rate_limit')) {
+          return { stdout: JSON.stringify({ remaining: 4500, limit: 5000, reset: 1700000000 }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 5, deps,
+    );
+
+    assert.equal(result.prLifecycles.length, 1);
+  });
+
+  it('proceeds with PR lifecycle when rate limit check fails (null)', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 })],
+    });
+    const prDeps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        }
+        if (args.includes('diff')) {
+          return { stdout: 'diff content', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const deps = createMockScanDeps({
+      prLifecycleDeps: prDeps,
+      execGh: async () => { throw new Error('rate limit check failed'); },
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      'owner/repo', 5, deps,
+    );
+
+    // Should still process PRs since rate limit check returned null (fail-open)
+    assert.equal(result.prLifecycles.length, 1);
   });
 });
 
