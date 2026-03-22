@@ -11,11 +11,11 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 - [x] [qa/P1] GitHub repo link missing aria-label: Fixed — added `aria-label="Open repo on GitHub"` to the link. (priority: high)
 
-- [ ] [qa/P1] Escape key does not close mobile sidebar drawer: On mobile viewport (390x844), after opening the sidebar via hamburger button, pressing Escape does not close the sidebar. The sidebar overlay (`div.fixed.inset-0.z-40`) remains visible and the sidebar stays at width=256px. Clicking the overlay does close the sidebar correctly. Spec says "Escape key should close overlays and return focus." Fix: add keydown listener for Escape that closes the mobile sidebar drawer. Tested at iter 3. (priority: high)
+- [x] [qa/P1] Escape key does not close mobile sidebar drawer: Fixed — added mobile drawer-scoped Escape key handler (`useEffect` gated by `mobileMenuOpen`) to close the overlay via keyboard. Verified with new integration test. (priority: high)
 
-- [ ] [qa/P1] Focus not moved into sidebar on mobile open: After tapping the hamburger button to open the mobile sidebar drawer, focus remains on the hamburger button instead of moving into the sidebar content. Spec says "When mobile sidebar drawer opens, focus should move to the drawer appropriately." Fix: after sidebar opens on mobile, programmatically focus the first focusable element inside the sidebar. Tested at iter 3. (priority: high)
+- [x] [qa/P1] Focus not moved into sidebar on mobile open: Fixed — mobile drawer now focuses first focusable control on open and returns focus to hamburger button on close. Verified with new integration test. (priority: high)
 
-- [ ] [qa/P1] Command palette focus not trapped on open: After pressing Ctrl+K to open command palette on mobile, `document.activeElement` is `BODY` instead of the search input inside the dialog. The palette renders correctly and Escape closes it, but keyboard focus is not in the input field. Fix: auto-focus the command input on open. Tested at iter 3. (priority: high)
+- [x] [qa/P1] Command palette focus not trapped on open: Fixed — command palette input now uses `autoFocus` + mount-time focus effect to reliably focus the search input on open. Verified with new integration test. (priority: high)
 
 ### In Progress
 
@@ -25,7 +25,7 @@ _(none — ready for next task)_
 
 - [x] **Fix QA P1 bugs — steer textarea + GitHub aria-label** — (1) Steer textarea changed to `min-h-[44px] md:min-h-[32px] h-auto md:h-8` for mobile tap target compliance. (2) GitHub repo link gets `aria-label="Open repo on GitHub"`. (priority: high)
 
-- [ ] **Fix focus management for mobile overlays** — Addresses QA bugs #3, #4, #5. Three fixes in AppView.tsx: (1) Mobile sidebar drawer (line 2337-2344): add `useEffect` with keydown listener for Escape → `setMobileMenuOpen(false)`, scoped to `mobileMenuOpen === true`. (2) Mobile sidebar focus: add `useEffect` that runs when `mobileMenuOpen` becomes true, focusing the first focusable element inside the sidebar `div.relative` container (use `ref` + `querySelectorAll`). On close, return focus to the hamburger button. (3) Command palette (line 2027-2028): `CommandInput` from cmdk should auto-focus but doesn't in this custom overlay wrapper — add `autoFocus` prop to `CommandInput`, or add a `useEffect` in `CommandPalette` that focuses the input when `open` becomes true. (priority: high)
+- [x] **Fix focus management for mobile overlays** — Completed in `AppView.tsx`: (1) mobile drawer Escape handler closes overlay, (2) mobile drawer focus-in and focus-return via refs/effects, (3) command palette input autofocus on open (`autoFocus` + RAF focus effect). Added regression tests in `App.test.tsx` for all three behaviors. (priority: high)
 
 - [ ] **Audit & fix hover-only interactions** — Confirmed gap: overflow tabs menu (AppView.tsx:1174-1186) uses `group-hover:block` with no click/tap equivalent. The `<div>` is purely hover-revealed with no `onClick` handler on the button (line 1175). Fix: add `useState` toggle + `onClick` on the overflow button, change dropdown visibility from `group-hover:block` to conditional rendering or state-based class. No other `onMouseEnter`/`onMouseOver` interactions reveal content — all other hover effects are purely cosmetic (Tailwind `hover:` for color/bg). (priority: medium)
 

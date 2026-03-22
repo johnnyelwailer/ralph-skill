@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
+import { App } from './App';
 import { 
   findBaselineIterations, 
   isRecord, 
@@ -544,5 +545,82 @@ describe('findBaselineIterations', () => {
       mkManifest(7, ['dashboard.png']),
     ];
     expect(findBaselineIterations('dashboard.png', 7, manifests as any[])).toEqual([4, 2]);
+  });
+});
+
+describe('App mobile overlay accessibility', () => {
+  const baseState = {
+    sessionDir: '/tmp/session',
+    workdir: '/tmp/work',
+    runtimeDir: '/tmp/runtime',
+    updatedAt: '2026-03-22T10:00:00Z',
+    status: null,
+    log: '',
+    docs: { 'TODO.md': '' },
+    activeSessions: [],
+    recentSessions: [],
+    artifacts: [],
+    repoUrl: null,
+    meta: null,
+  };
+
+  class MockEventSource {
+    onopen: ((this: EventSource, ev: Event) => unknown) | null = null;
+    onerror: ((this: EventSource, ev: Event) => unknown) | null = null;
+    private listeners = new Map<string, Set<(event: Event) => void>>();
+
+    addEventListener(type: string, listener: (event: Event) => void) {
+      if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+      this.listeners.get(type)!.add(listener);
+    }
+
+    removeEventListener(type: string, listener: (event: Event) => void) {
+      this.listeners.get(type)?.delete(listener);
+    }
+
+    close() {}
+  }
+
+  const jsonResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+  beforeEach(() => {
+    vi.stubGlobal('EventSource', MockEventSource);
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.startsWith('/api/state')) return jsonResponse(baseState);
+      if (url.startsWith('/api/qa-coverage')) return jsonResponse({ available: false, features: [] });
+      if (url.startsWith('/api/cost/session/')) return jsonResponse({ total_usd: 0 });
+      return jsonResponse({});
+    }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('moves focus into mobile sidebar and returns focus to toggle on Escape', async () => {
+    render(<App />);
+    const toggle = await screen.findByRole('button', { name: 'Toggle sidebar' });
+    toggle.focus();
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(document.querySelector('.fixed.inset-0.z-40')).toBeInTheDocument();
+      const drawer = document.querySelector('.fixed.inset-0.z-40 .relative.h-full.w-64');
+      expect(drawer?.contains(document.activeElement)).toBe(true);
+    });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(document.querySelector('.fixed.inset-0.z-40')).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it('focuses command palette input when opened with keyboard shortcut', async () => {
+    render(<App />);
+    await screen.findByRole('button', { name: 'Toggle sidebar' });
+    fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+    const commandInput = await screen.findByPlaceholderText('Type a command...');
+    await waitFor(() => expect(commandInput).toHaveFocus());
   });
 });
