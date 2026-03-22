@@ -17,6 +17,8 @@ The dashboard (`aloop/cli/dashboard/src/AppView.tsx`, ~2378 lines) has partial r
 
 - [x] [qa/P1] Command palette focus not trapped on open: Fixed — command palette input now uses `autoFocus` + mount-time focus effect to reliably focus the search input on open. Verified with new integration test. (priority: high)
 
+- [ ] [qa/P1] Escape key does not close command palette: Ctrl+K opens the command palette and focus correctly lands on the search input (autoFocus fix works), but pressing Escape does NOT close the palette — the cmdk-root remains visible (388x341px) and focus stays on the INPUT. Likely regression from the autoFocus fix in commit 83c800a — the focused input may be consuming the Escape keydown before it reaches the cmdk close handler. Tested at iter 4 (session 4). (priority: high)
+
 ### In Progress
 
 _(none — ready for next task)_

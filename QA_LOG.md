@@ -481,3 +481,165 @@ node qa-session3.mjs
 node qa-session3d.mjs
 # Exit code: 0, results above
 ```
+
+## QA Session — 2026-03-22 (iteration 4)
+
+### Binary Under Test
+- Path: `/tmp/aloop-test-install-Bhx2BW/bin/aloop`
+- Version: 1.0.0
+
+### Test Environment
+- Dashboard URL: http://localhost:4346
+- Session dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-114-20260322-083233
+- Browser: Playwright Chromium (headless)
+- Mobile viewport: 390x844 (iPhone 12-like, hasTouch=true, isMobile=true)
+- Additional viewport: 320x568 (iPhone SE)
+- Features tested: 5 (P1 re-tests, focus management, overflow tabs/hover-only, ARIA labels, 320px layout)
+
+### Results
+- PASS: Tap target sizing — all 14 elements >= 44x44px at 390px (steer textarea now 266x50px, FIXED)
+- PASS: GitHub aria-label — "Open repo on GitHub" present, 44x44px
+- PASS: Sidebar focus management — Escape closes drawer, focus moves into sidebar on open, focus returns to hamburger on close
+- FAIL: Command palette Escape — palette opens and focus lands on input correctly, but Escape does NOT close it (P1 bug filed)
+- PASS: No hover-only interactions — zero group-hover elements without click parents
+- PASS: ARIA labels — all 12 visible buttons + 1 visible link have accessible names
+- PASS: 320px viewport — no horizontal scroll, all 14 tap targets pass 44x44px
+
+### Bugs Filed (1 new)
+- [qa/P1] Escape key does not close command palette — Ctrl+K opens palette and focus correctly lands on search input, but Escape does not dismiss. cmdk-root remains visible (388x341px). Likely regression from autoFocus fix in commit 83c800a.
+
+### Detailed Results
+
+#### Feature 1: P1 Bug Re-test (Steer Textarea + GitHub Aria-Label)
+
+**Mobile viewport (390x844, touch, isMobile):**
+
+```
+=== TEST 1: Re-test P1 Bug Fixes ===
+  Steer textarea: 266x50px
+    Computed min-height: 44px, height: 50px
+    PASS: height 50px >= 44px
+  GitHub link: 44x44px, aria-label="Open repo on GitHub"
+    PASS: accessible name
+
+=== All Tap Targets at 390x844 ===
+  PASS: 14 elements >= 44x44px
+  FAIL: 0 elements < 44x44px
+```
+
+**Previous P1 bugs verified FIXED:**
+1. Steer textarea 266x32px → NOW 266x50px (min-height: 44px) — **FIXED**
+2. GitHub link missing aria-label → NOW aria-label="Open repo on GitHub" — **FIXED**
+
+#### Feature 2: Focus Management (Mobile)
+
+**Mobile viewport (390x844, touch, isMobile):**
+
+```
+--- 2a: Focus moves into sidebar on open ---
+  Active element after open: <BUTTON> inside sidebar
+  Focus inside sidebar: true
+  PASS: focus moved into sidebar
+
+--- 2b: Escape closes mobile sidebar ---
+  Sidebar before Escape: visible=true, width=256
+  Sidebar after Escape: visible=false, width=0
+  PASS: Escape closes sidebar
+
+--- 2c: Focus returns to hamburger after close ---
+  Active element after close: <BUTTON> aria-label="Toggle sidebar"
+  PASS: focus returned to hamburger
+
+--- 2d: Command palette focus ---
+  Dialog found: true (cmdk-root 388x341px)
+  Active element: <INPUT> placeholder="Type a command..."
+  PASS: command palette focus on search input
+  After Escape: cmdk-root still visible (388px wide)
+  FAIL: Escape does NOT close command palette
+```
+
+#### Feature 3: Overflow Tabs / Hover-Only Audit
+
+**Desktop (1920x1080):**
+- 5 tabs visible (TODO, SPEC, RESEARCH, REVIEW LOG, Health)
+- No overflow triggered (all fit within tablist width)
+- 1 dropdown trigger: Stop button with aria-haspopup="menu" (PASS — click/tap accessible)
+
+**Mobile (390x844):**
+- Tablist width: 348px, scrollWidth: 348px, no overflow
+- Stop dropdown opens on tap showing "Stop after iteration" and "Kill immediately" menu items
+- Zero group-hover elements without click parents
+- PASS: No hover-only interactions
+
+#### Feature 4: ARIA Labels & Roles
+
+**Mobile viewport (390x844):**
+
+```
+Visible buttons: 12 total, 12 PASS, 0 FAIL
+Visible links: 1 total, 1 PASS, 0 FAIL
+  PASS: <a href="https://github.com/..."> 44x44 aria-label="Open repo on GitHub"
+```
+
+#### Feature 5: 320px Viewport Layout
+
+**320x568 viewport (iPhone SE, touch, isMobile):**
+
+```
+  Document width: 320px, viewport: 320px
+  Horizontal scroll: false
+  PASS: No horizontal scroll at 320px
+  Tap targets: 14 PASS, 0 FAIL
+```
+
+Screenshots:
+- `/tmp/qa-session4-mobile.png` — Mobile 390px layout
+- `/tmp/qa-session4-focus.png` — After focus management tests
+- `/tmp/qa-session4-tabs.png` — Tabs layout at mobile
+- `/tmp/qa-session4-320px.png` — 320px viewport layout
+- `/tmp/qa-session4-cmdpalette.png` — Command palette after Escape (still visible)
+
+### Command Transcript
+
+```bash
+# Install from source
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# Output: /tmp/aloop-test-install-Bhx2BW/bin/aloop
+
+$ALOOP_BIN --version
+# Output: 1.0.0
+
+# Start dashboard
+$ALOOP_BIN dashboard --port 4346 --session-dir $SESSION_DIR --workdir $WORKDIR &
+# Output: Launching real-time progress dashboard on port 4346...
+
+# Verify dashboard responds
+curl -s -o /dev/null -w "%{http_code}" http://localhost:4346
+# Output: 200
+
+# Install Playwright
+npx playwright install chromium
+cd /tmp && npm install playwright
+# Exit code: 0
+
+# Run P1 re-test (steer textarea + GitHub aria-label + all tap targets)
+node qa-session4-test1.mjs
+# Exit code: 0, all 14 elements PASS
+
+# Run focus management test (sidebar Escape, focus-in, focus-return, command palette)
+node qa-session4-test2.mjs
+# Exit code: 0, sidebar PASS, command palette Escape FAIL
+
+# Deep dive on command palette Escape
+node qa-session4-test2b.mjs  # cmdk-root detection
+node qa-session4-test2c.mjs  # confirmed: cmdk-root stays visible after Escape
+# Exit code: 0
+
+# Run overflow tabs / hover-only audit
+node qa-session4-test3.mjs
+# Exit code: 0, no hover-only elements
+
+# Run ARIA labels audit + 320px viewport
+node qa-session4-test4.mjs
+# Exit code: 0, all PASS
+```
