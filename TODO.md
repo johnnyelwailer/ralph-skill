@@ -14,6 +14,10 @@
 
 - [ ] **P1: loop.ps1 — output capture to artifacts** — Capture provider output to `$artifactsDir/iter-$iteration/output.txt` after each iteration, matching loop.sh lines 2352-2355
 
+### QA Bugs
+
+- [ ] [qa/P1] Validate-ProofManifest accepts empty file: `Set-Content -Value ""` to proof-manifest.json → `Validate-ProofManifest` returns `$true` → SPEC says manifest must be valid JSON (empty string is not valid JSON). Tested at iter 16. (priority: high)
+
 ### Up Next
 
 - [ ] **P2: loop.sh — baseline update after review approval** — After a successful review iteration, copy latest proof artifacts to `artifacts/baselines/`. SPEC line 601: "After review approval: Current screenshots replace baselines (harness copies them)." Need to find most recent proof iteration's artifacts and copy image files to baselines/
