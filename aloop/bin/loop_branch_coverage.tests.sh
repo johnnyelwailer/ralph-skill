@@ -124,6 +124,7 @@ register_branch "exec_controls.backoff_none" "resolve_execution_controls applies
 register_branch "exec_controls.backoff_linear" "resolve_execution_controls applies linear backoff"
 register_branch "exec_controls.backoff_exponential" "resolve_execution_controls applies exponential backoff"
 register_branch "exec_controls.backoff_default" "resolve_execution_controls defaults to none backoff"
+register_branch "mode.plan_build_review.periodic_spec_gap" "resolve_iteration_mode inserts spec-gap before every second plan phase in fallback schedule"
 register_branch "advance.with_cycle_length" "advance_cycle_position uses CYCLE_LENGTH for modulo when set"
 register_branch "advance.fallback_mode" "advance_cycle_position falls back to MODE-based modulo when CYCLE_LENGTH unset"
 register_branch "requests.wait.empty" "wait_for_requests returns immediately when no requests exist"
@@ -883,6 +884,32 @@ if [ "$EFFECTIVE_RETRY_BACKOFF" = "none" ]; then
     pass_case "resolve_execution_controls defaults to none backoff"
 else
     fail_case "exec_controls.backoff_default failed (got '$EFFECTIVE_RETRY_BACKOFF', expected 'none')"
+fi
+
+# ---------------------------------------------------------------------------
+# resolve_iteration_mode branches
+# ---------------------------------------------------------------------------
+
+# mode.plan_build_review.periodic_spec_gap — fallback schedule inserts spec-gap
+MODE="plan-build-review"
+ALOOP_SKIP_PHASE_GUARDS="true"
+LOOP_PLAN_FILE="$(mktemp)"
+rm -f "$LOOP_PLAN_FILE"
+RESOLVED_PROMPT_NAME=""
+
+CYCLE_POSITION=8
+resolve_iteration_mode 1 >/dev/null
+if [ "$RESOLVED_MODE" = "spec-gap" ]; then
+    CYCLE_POSITION=9
+    resolve_iteration_mode 1 >/dev/null
+    if [ "$RESOLVED_MODE" = "plan" ]; then
+        cover_branch "mode.plan_build_review.periodic_spec_gap"
+        pass_case "resolve_iteration_mode inserts spec-gap before second-cycle plan"
+    else
+        fail_case "resolve_iteration_mode expected plan at position 9, got '$RESOLVED_MODE'"
+    fi
+else
+    fail_case "resolve_iteration_mode expected spec-gap at position 8, got '$RESOLVED_MODE'"
 fi
 
 # ---------------------------------------------------------------------------

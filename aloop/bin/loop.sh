@@ -7,7 +7,7 @@
 #   build              - building only (implement tasks from TODO)
 #   review             - review only (audit last build against quality gates)
 #   plan-build         - alternating: plan -> build -> plan -> build -> ...
-#   plan-build-review  - full cycle: plan -> build x5 -> qa -> review -> ... (DEFAULT)
+#   plan-build-review  - plan/build/review loop with periodic spec-gap before every 2nd plan phase (DEFAULT)
 #
 # Providers:
 #   claude, codex, gemini, copilot, round-robin
@@ -495,13 +495,21 @@ resolve_iteration_mode() {
                     if (( CYCLE_POSITION % 2 == 0 )); then RESOLVED_MODE="plan"; else RESOLVED_MODE="build"; fi
                     ;;
                 plan-build-review)
-                    # 8-step cycle: plan -> build x5 -> qa -> review
-                    local phase=$(( CYCLE_POSITION % 8 ))
+                    # 17-step (2-cycle) pattern with periodic spec-gap:
+                    # cycle 1: plan -> build x5 -> qa -> review
+                    # cycle 2: spec-gap -> plan -> build x5 -> qa -> review
+                    # repeats so spec-gap runs before every 2nd plan phase
+                    local phase=$(( CYCLE_POSITION % 17 ))
                     case $phase in
                         0) RESOLVED_MODE="plan" ;;
                         1|2|3|4|5) RESOLVED_MODE="build" ;;
                         6) RESOLVED_MODE="qa" ;;
                         7) RESOLVED_MODE="review" ;;
+                        8) RESOLVED_MODE="spec-gap" ;;
+                        9) RESOLVED_MODE="plan" ;;
+                        10|11|12|13|14) RESOLVED_MODE="build" ;;
+                        15) RESOLVED_MODE="qa" ;;
+                        16) RESOLVED_MODE="review" ;;
                     esac
                     ;;
                 single)
@@ -783,7 +791,7 @@ advance_cycle_position() {
     fi
     case "$MODE" in
         plan-build) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 2 )) ;;
-        plan-build-review) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 8 )) ;;
+        plan-build-review) CYCLE_POSITION=$(( (CYCLE_POSITION + 1) % 17 )) ;;
     esac
 }
 

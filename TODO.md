@@ -18,7 +18,7 @@
 
 #### Loop Engine (priority: high)
 
-- [ ] Spec-gap periodic scheduling (every 2nd cycle) not wired in loop.sh — spec-gap agent exists as finalizer element but the in-cycle periodic scheduling is missing (SPEC §Spec-Gap Analysis Agent: "runs before every 2nd plan phase")
+- [x] Spec-gap periodic scheduling (every 2nd cycle) not wired in loop.sh — spec-gap agent exists as finalizer element but the in-cycle periodic scheduling is missing (SPEC §Spec-Gap Analysis Agent: "runs before every 2nd plan phase")
 - [ ] Loop health supervisor agent missing — no `PROMPT_loop_health.md` template; no circuit breaker or pattern detection for repetitive cycling/stuck cascades (SPEC §Configurable Agent Pipeline > Loop health supervisor)
 - [ ] `{{SUBAGENT_HINTS}}` template variable not resolved — loop.sh `substitute_prompt_placeholders()` (lines 285-294) only expands `SESSION_DIR`, `ITERATION`, `ARTIFACTS_DIR`; subagent hint files exist (`subagent-hints-build.md`, `subagent-hints-proof.md`, `subagent-hints-review.md`) but are never loaded or injected; need provider-conditional expansion (SPEC §Configurable Agent Pipeline > Subagent Integration)
 
