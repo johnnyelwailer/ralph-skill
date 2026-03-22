@@ -231,4 +231,85 @@ describe('processRequestsCommand error handling and concurrency', () => {
       await fixture.cleanup();
     }
   });
+
+  it('creates PR for completed child session even when issue status text is stale', async () => {
+    const fixture = await createFixture([
+      {
+        number: 42,
+        title: 'Ship feature',
+        state: 'in_progress',
+        status: 'Needs refinement',
+        child_session: 'child-42',
+      },
+    ]);
+    const originalPath = process.env.PATH;
+    try {
+      const statePath = path.join(fixture.sessionDir, 'orchestrator.json');
+      const state = JSON.parse(await readFile(statePath, 'utf8'));
+      state.filter_repo = 'acme/widgets';
+      await writeFile(statePath, JSON.stringify(state, null, 2), 'utf8');
+
+      const childDir = path.join(fixture.homeDir, '.aloop', 'sessions', 'child-42');
+      const childWorktree = path.join(childDir, 'worktree');
+      await mkdir(childWorktree, { recursive: true });
+      await writeFile(path.join(childDir, 'status.json'), JSON.stringify({ state: 'completed' }), 'utf8');
+
+      const fakeBinDir = path.join(fixture.rootDir, 'fake-bin');
+      await mkdir(fakeBinDir, { recursive: true });
+      const ghBodyLog = path.join(fixture.rootDir, 'gh-body.log');
+      const ghScript = `#!/usr/bin/env bash
+set -u
+if [ "$#" -ge 2 ] && [ "$1" = "pr" ] && [ "$2" = "create" ]; then
+  prev=""
+  for arg in "$@"; do
+    if [ "$prev" = "--body" ]; then
+      printf '%s\\n' "$arg" >> "${ghBodyLog}"
+      break
+    fi
+    prev="$arg"
+  done
+  echo "https://github.com/acme/widgets/pull/123"
+  exit 0
+fi
+if [ "$#" -ge 2 ] && [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  echo '{"comments":[],"mergeable":"MERGEABLE"}'
+  exit 0
+fi
+echo '{}'
+exit 0
+`;
+      const gitScript = `#!/usr/bin/env bash
+set -u
+if [ "$#" -ge 4 ] && [ "$1" = "-C" ] && [ "$3" = "status" ] && [ "$4" = "--porcelain" ]; then
+  exit 0
+fi
+if [ "$#" -ge 3 ] && [ "$1" = "-C" ] && [ "$3" = "status" ]; then
+  echo ""
+  exit 0
+fi
+exit 0
+`;
+      await writeFile(path.join(fakeBinDir, 'gh'), ghScript, 'utf8');
+      await writeFile(path.join(fakeBinDir, 'git'), gitScript, 'utf8');
+      await chmod(path.join(fakeBinDir, 'gh'), 0o755);
+      await chmod(path.join(fakeBinDir, 'git'), 0o755);
+      process.env.PATH = `${fakeBinDir}:${originalPath ?? ''}`;
+
+      await processRequestsCommand({
+        sessionDir: fixture.sessionDir,
+        homeDir: fixture.homeDir,
+      });
+
+      const updated = JSON.parse(await readFile(statePath, 'utf8'));
+      assert.equal(updated.issues[0].pr_number, 123);
+      assert.equal(updated.issues[0].state, 'pr_open');
+      assert.equal(updated.issues[0].status, 'In review');
+
+      const ghBody = await readFile(ghBodyLog, 'utf8');
+      assert.ok(ghBody.includes('Closes #42'));
+    } finally {
+      process.env.PATH = originalPath;
+      await fixture.cleanup();
+    }
+  });
 });
