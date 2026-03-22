@@ -4,22 +4,12 @@
 
 ### In Progress
 
-- [x] [review] Gate 4: `useIsTouchLikePointer.ts` + `useIsTouchLikePointer.test.ts` (103 lines) are dead code — zero components import `useIsTouchLikePointer`. Delete both files or consolidate with `useIsTouchDevice`. This is the SECOND review flagging this exact issue (first: Review 4, 2026-03-22 17:30). (priority: high) [reviewed: resolved — deleted in d34983a5]
-
+(none — pick from Up Next)
 
 ### Up Next
 
-#### Orchestrator Core (priority: critical)
-
-- [x] Integrate `OrchestratorAdapter` into `orchestrate.ts` — adapter interface and `GitHubAdapter` exist in `adapter.ts` but orchestrate.ts still uses raw `execGh`/`github-monitor` imports directly; spec requires all GH operations go through adapter (SPEC-ADDENDUM §Orchestrator Adapter Pattern)
-- [x] Branch sync before each iteration — `loop.sh` has no `git fetch`/`git merge` of base branch before iterations; worktree branches drift causing merge conflicts at PR time (SPEC §Branch Sync & Auto-Merge, SPEC-ADDENDUM §Known Gap #1)
-- [x] `PROMPT_merge.md` template — exists at `aloop/templates/PROMPT_merge.md` (53 lines); used by orchestrate.ts (template registration line 3413) and process-requests.ts (merge conflict queue injection lines 315-320)
-- [x] Orchestrator spawns background daemon — `orchestrateCommand` spawns `loop.sh` detached with `child.unref()`, registers in `active.json`, writes `meta.json` + `status.json` for dashboard visibility
-
 #### Loop Engine (priority: high)
 
-- [x] Spec-gap periodic scheduling (every 2nd cycle) not wired in loop.sh — spec-gap agent exists as finalizer element but the in-cycle periodic scheduling is missing (SPEC §Spec-Gap Analysis Agent: "runs before every 2nd plan phase") [reviewed: gates 1-9 pass]
-- [x] Loop health supervisor agent missing — no `PROMPT_loop_health.md` template; no circuit breaker or pattern detection for repetitive cycling/stuck cascades (SPEC §Configurable Agent Pipeline > Loop health supervisor) [reviewed: gates 1-9 pass]
 - [ ] `{{SUBAGENT_HINTS}}` template variable not resolved — loop.sh `substitute_prompt_placeholders()` (lines 285-294) only expands `SESSION_DIR`, `ITERATION`, `ARTIFACTS_DIR`; subagent hint files exist (`subagent-hints-build.md`, `subagent-hints-proof.md`, `subagent-hints-review.md`) but are never loaded or injected; need provider-conditional expansion (SPEC §Configurable Agent Pipeline > Subagent Integration)
 
 #### QA Bugs (priority: high)
@@ -66,6 +56,7 @@
 
 ### Completed
 
+- [x] TypeScript `readProviderHealth()` unit tests — all 4 required cases covered in `session.test.ts` (lines 60-109)
 - [x] OrchestratorAdapter interface defined in `src/lib/adapter.ts` with GitHubAdapter implementation and test suite
 - [x] All 15 orchestrator prompt templates exist (`PROMPT_orch_*.md`)
 - [x] `aloop gh` subcommands implemented (start, watch, status, stop, pr-create, pr-merge, issue-create, issue-close, issue-label, issue-comment, issue-comments, pr-comments, pr-comment)
@@ -95,3 +86,6 @@
 - [x] `aloop start` forwards `mode: orchestrate` to orchestrator instead of rejecting it — `startCommand` dispatches to `orchestrateCommand` when config or `--mode` resolves to orchestrate
 - [x] `PROMPT_merge.md` template exists at `aloop/templates/PROMPT_merge.md` — used by orchestrate.ts and process-requests.ts for merge conflict resolution
 - [x] Orchestrator spawns background daemon and returns immediately — detached `loop.sh` spawn, `active.json` registration, `meta.json` + `status.json` for dashboard
+- [x] [review] Gate 4: dead `useIsTouchLikePointer` hook deleted (d34983a5)
+- [x] Provider health integration tests (bash): state transitions, backoff escalation, concurrent writes, lock failure, cross-session reset — all 8 tests in `loop_provider_health_integration.tests.sh`
+- [x] Provider health status display tests (TS): `status.test.ts` covers formatHealthLine for healthy/cooldown/degraded + renderStatus + CLI integration
