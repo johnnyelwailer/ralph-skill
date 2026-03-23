@@ -381,7 +381,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   // ── Phase 2c: Sync child branches with base branch ──
   for (const issue of state.issues) {
     if (!issue.child_session) continue;
-    if (issue.state !== 'in_progress' && issue.state !== 'pr_open') continue;
+    if (issue.state !== 'in_progress' && issue.state !== 'pr_open' && issue.state !== 'review') continue;
     const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
     const childWorktree = path.join(childDir, 'worktree');
     if (!existsSync(childWorktree)) continue;
