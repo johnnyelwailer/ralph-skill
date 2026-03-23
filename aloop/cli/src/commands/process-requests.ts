@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { readFile, readdir, unlink, writeFile, mkdir, cp, rm, stat } from 'node:fs/promises';
+import { readFile, readdir, unlink, writeFile, mkdir, cp, stat, rm } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
@@ -1101,4 +1101,51 @@ async function updateParentTasklist(repo: string, parentNum: number, issues: any
     try { await unlink(bodyFile); } catch {}
     console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
   } catch { /* non-critical */ }
+}
+
+// ── V8 cache helpers ──
+
+export async function getDirectorySizeBytes(dir: string): Promise<number> {
+  let total = 0;
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      total += await getDirectorySizeBytes(fullPath);
+    } else if (entry.isFile()) {
+      const s = await stat(fullPath);
+      total += s.size;
+    }
+  }
+  return total;
+}
+
+export async function pruneLargeV8CacheDir(
+  dir: string,
+  thresholdBytes: number,
+): Promise<{ sizeBytes: number; pruned: boolean }> {
+  if (!existsSync(dir)) return { sizeBytes: 0, pruned: false };
+  const sizeBytes = await getDirectorySizeBytes(dir);
+  if (sizeBytes < thresholdBytes) return { sizeBytes, pruned: false };
+  await rm(dir, { recursive: true, force: true });
+  return { sizeBytes, pruned: true };
+}
+
+// ── Review comment formatting ──
+
+export interface ReviewCommentEntry {
+  author?: { login?: string | null } | null;
+  createdAt?: string | null;
+  body?: string | null;
+}
+
+export function formatReviewCommentHistory(comments: ReviewCommentEntry[]): string {
+  const parts = comments
+    .filter((c) => typeof c.body === 'string' && c.body.trim().length > 0)
+    .map((c) => {
+      const login = c.author?.login ?? 'unknown';
+      const header = c.createdAt ? `### @${login} at ${c.createdAt}` : `### @${login}`;
+      return `${header}\n\n${c.body}\n`;
+    });
+  return parts.join('\n---\n\n');
 }

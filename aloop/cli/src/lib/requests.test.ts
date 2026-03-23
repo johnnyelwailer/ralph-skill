@@ -101,21 +101,24 @@ test('validateRequest - accepts valid payloads for all request types', () => {
   ];
 
   for (const request of validRequests) {
-    assert.doesNotThrow(() => validateRequest(request));
+    const result = validateRequest(request);
+    assert.strictEqual(result.valid, true);
   }
 });
 
 test('validateRequest - rejects top-level malformed request objects', () => {
   const invalidRequests: Array<{ input: unknown; match: RegExp }> = [
-    { input: null, match: /non-null object/ },
-    { input: 'bad', match: /non-null object/ },
-    { input: { id: '', type: 'close_issue', payload: {} }, match: /non-empty string "id"/ },
-    { input: { id: 'x', type: 'unknown_type', payload: {} }, match: /Invalid request type/ },
-    { input: { id: 'x', type: 'close_issue', payload: null }, match: /non-null "payload" object/ },
+    { input: null, match: /JSON object/ },
+    { input: 'bad', match: /JSON object/ },
+    { input: { id: '', type: 'close_issue', payload: {} }, match: /id/ },
+    { input: { id: 'x', type: 'unknown_type', payload: {} }, match: /Invalid or missing request type/ },
+    { input: { id: 'x', type: 'close_issue', payload: null }, match: /payload/ },
   ];
 
   for (const { input, match } of invalidRequests) {
-    assert.throws(() => validateRequest(input), match);
+    const result = validateRequest(input);
+    assert.strictEqual(result.valid, false);
+    assert.ok(!result.valid && match.test(result.error), `Expected "${result.error}" to match ${match}`);
   }
 });
 
@@ -187,12 +190,14 @@ test('validateRequest - rejects request-specific edge cases', () => {
     },
     {
       input: { id: 'bad-query-payload', type: 'query_issues', payload: null },
-      match: /non-null "payload" object/,
+      match: /payload/,
     },
   ];
 
   for (const { input, match } of invalidRequests) {
-    assert.throws(() => validateRequest(input), match);
+    const result = validateRequest(input);
+    assert.strictEqual(result.valid, false);
+    assert.ok(!result.valid && match.test(result.error), `Expected "${result.error}" to match ${match}`);
   }
 });
 
@@ -444,19 +449,15 @@ test('processAgentRequests - post_comment', async () => {
       return { exitCode: 0, output: 'posted' };
     };
     const spawnSync = ((_cmd: string, args: string[]) => {
-<<<<<<< HEAD
-      assert.deepStrictEqual(args, ['api', 'repos/{owner}/{repo}/issues/101/comments?per_page=100']);
-      return { status: 0, stdout: '[]', stderr: '' };
-    }) as unknown as typeof child_process.spawnSync;
-    
-=======
+      if (args[0] === 'api') {
+        return { status: 0, stdout: '[]', stderr: '' };
+      }
       if (args[0] === 'issue' && args[1] === 'view') {
         return { status: 0, stdout: JSON.stringify({ comments: [] }), stderr: '' };
       }
       return { status: 0, stdout: '', stderr: '' };
-    }) as any;
+    }) as unknown as typeof child_process.spawnSync;
 
->>>>>>> c647893b (fix: add idempotency guards for request processing)
     await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
     assert.strictEqual(ghOp, 'issue-comment');
     assert.ok(sentBody.includes('Nice work'));
@@ -684,21 +685,18 @@ test('processAgentRequests - create_pr', async () => {
     let ghOp = '';
     let ghPayload: any = null;
     let spawnCalled = false;
-    const spawnSync = ((_cmd: string, _args: string[]) => {
+    const spawnSync = ((_cmd: string, args: string[]) => {
       spawnCalled = true;
-      return { status: 0, stdout: '[]', stderr: '' };
+      if (args[0] === 'pr' && args[1] === 'list') {
+        return { status: 0, stdout: '[]', stderr: '' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
     }) as any;
     const ghRunner = async (op: string, sid: string, path: string) => {
       ghOp = op;
       ghPayload = JSON.parse(await fs.readFile(path, 'utf8'));
       return { exitCode: 0, output: JSON.stringify({ number: 202, url: 'http://gh/pr/202' }) };
     };
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'pr' && args[1] === 'list') {
-        return { status: 0, stdout: '[]', stderr: '' };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
     
     await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
     

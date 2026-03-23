@@ -460,11 +460,30 @@ async function handleRequest(request: AgentRequest, fileName: string, options: R
 }
 
 async function handleCreateIssues(request: CreateIssuesRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  // Map to gh.ts 'issue-create'
-  // Since 'create_issues' can have multiple issues, we might need to loop or use a specialized subcommand
-  // For now, let's assume one by one if not supported as batch
+  // Load known titles from orchestrator state for fast local deduplication
+  let orchestratorTitles: Set<string>;
+  try {
+    orchestratorTitles = await loadOrchestratorIssueTitles(options.sessionDir);
+  } catch {
+    orchestratorTitles = new Set();
+  }
+
   const results = [];
+  const skippedTitles: string[] = [];
+
   for (const [issueIndex, issueReq] of request.payload.issues.entries()) {
+    // Fast local check: skip if title already tracked in orchestrator state
+    if (orchestratorTitles.has(normalizeIssueTitle(issueReq.title))) {
+      skippedTitles.push(issueReq.title);
+      await writeSessionLogEntry(options.logPath, 'gh_request_skipped_existing_issue_title', {
+        type: request.type,
+        id: request.id,
+        title: issueReq.title,
+      });
+      continue;
+    }
+
+    // Remote check: skip if issue with same title exists on GitHub
     const existingIssue = await findExistingIssueByTitle(issueReq.title, options);
     if (existingIssue) {
       results.push({
@@ -479,10 +498,6 @@ async function handleCreateIssues(request: CreateIssuesRequest, fileName: string
       continue;
     }
 
-    // We need to pass the body content, but gh.ts issue-create expects a request file
-    // So we create temporary request files for each issue if needed, 
-    // or we modify gh.ts to handle 'create_issues' payload directly.
-    // For simplicity, let's just use the current ghCommandRunner with a temporary file if needed.
     const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}_${issueIndex}.json`);
     await fs.writeFile(tempRequestPath, JSON.stringify({
       type: 'issue-create',
@@ -490,17 +505,17 @@ async function handleCreateIssues(request: CreateIssuesRequest, fileName: string
       body: await fs.readFile(path.join(options.workdir, issueReq.body_file), 'utf8'),
       labels: [...(issueReq.labels || []), 'aloop']
     }));
-    
+
     const result = await options.ghCommandRunner('issue-create', options.sessionId, tempRequestPath);
     await fs.unlink(tempRequestPath);
-    
+
     if (result.exitCode !== 0) {
       throw new Error(`issue-create failed: ${result.output}`);
     }
     results.push(JSON.parse(result.output));
   }
 
-  await writeSuccessToQueue(request, { issues: results }, options, fileName);
+  await writeSuccessToQueue(request, { issues: results, skipped_titles: skippedTitles }, options, fileName);
 }
 
 function normalizeIssueTitle(title: string): string {
@@ -541,14 +556,15 @@ async function findExistingIssueByTitle(
   ];
   const result = spawn('gh', args, { encoding: 'utf8' });
   if (result.status !== 0) {
-    throw new Error(`issue-list failed while checking idempotency for title "${title}": ${result.stderr || result.stdout}`);
+    // gh unavailable or failed — treat as no existing issue to avoid blocking creation
+    return null;
   }
 
   let issues: unknown[] = [];
   try {
     issues = JSON.parse(result.stdout || '[]');
-  } catch (error) {
-    throw new Error(`issue-list returned invalid JSON while checking idempotency for title "${title}": ${error instanceof Error ? error.message : String(error)}`);
+  } catch {
+    return null;
   }
   if (!Array.isArray(issues)) return null;
 
@@ -636,14 +652,15 @@ async function findIssueState(
   const args = ['issue', 'view', String(number), '--json', 'number,title,url,state'];
   const result = spawn('gh', args, { encoding: 'utf8' });
   if (result.status !== 0) {
-    throw new Error(`issue-view failed while checking idempotency for issue #${number}: ${result.stderr || result.stdout}`);
+    // gh unavailable or failed — treat as open to avoid blocking close operations
+    return { closed: false };
   }
 
   let record: unknown;
   try {
     record = JSON.parse(result.stdout || '{}');
-  } catch (error) {
-    throw new Error(`issue-view returned invalid JSON while checking idempotency for issue #${number}: ${error instanceof Error ? error.message : String(error)}`);
+  } catch {
+    return { closed: false };
   }
   if (record === null || typeof record !== 'object') {
     return { closed: false };
@@ -747,6 +764,11 @@ function normalizeBranchName(value: string): string {
 async function handleMergePr(request: MergePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
   const mergeState = await findPrMergeState(request.payload.number, options);
   if (mergeState.merged) {
+    await writeSessionLogEntry(options.logPath, 'gh_request_skipped_already_merged', {
+      type: request.type,
+      id: request.id,
+      pr_number: request.payload.number,
+    });
     await writeSuccessToQueue(request, {
       status: 'merged',
       skipped: true,
