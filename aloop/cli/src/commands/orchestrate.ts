@@ -3402,10 +3402,11 @@ export async function checkPrGates(
     const prData = JSON.parse(viewResult.stdout);
     mergeable = prData.mergeable === 'MERGEABLE';
     const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
+    const mergeUnknown = prData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
     gates.push({
       gate: 'merge_conflicts',
-      status: mergeable ? 'pass' : 'fail',
-      detail: mergeable ? 'No merge conflicts' : `Merge state: ${mergeState}`,
+      status: mergeable ? 'pass' : mergeUnknown ? 'pending' : 'fail',
+      detail: mergeable ? 'No merge conflicts' : mergeUnknown ? 'Mergeability not yet computed' : `Merge state: ${mergeState}`,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
