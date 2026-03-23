@@ -15,7 +15,7 @@
   - `pruneLargeV8CacheDir(dir, thresholdBytes)`: delete V8 code cache dir when it exceeds threshold; return `{sizeBytes, pruned}`
   - All 6 tests in `process-requests.test.ts` must pass after implementation
 
-- [ ] Add `dispatch_failure` detection to `detectCurrentBlockers` in `orchestrate.ts` (normal)
+- [x] Add `dispatch_failure` detection to `detectCurrentBlockers` in `orchestrate.ts` (normal)
   - Issues with `redispatch_paused: true` should be detected as `dispatch_failure` blockers
   - `BlockerType` already includes `dispatch_failure` and `BLOCKER_SUGGESTED_ACTIONS` has its suggested action; detection is the missing piece
   - Add corresponding test to `describe('detectCurrentBlockers')` block

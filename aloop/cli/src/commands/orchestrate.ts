@@ -5379,6 +5379,15 @@ export function detectCurrentBlockers(
         description: `Issue #${issue.number} has ${issue.rebase_attempts} rebase attempts — possible merge conflict`,
       });
     }
+
+    // dispatch_failure: redispatch has been paused after repeated failures
+    if (issue.redispatch_paused) {
+      detected.push({
+        type: 'dispatch_failure',
+        issue_number: issue.number,
+        description: `Issue #${issue.number} redispatch paused after ${issue.redispatch_failures ?? 0} failures`,
+      });
+    }
   }
 
   return detected;

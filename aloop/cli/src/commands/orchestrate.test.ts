@@ -6239,6 +6239,17 @@ describe('detectCurrentBlockers', () => {
     assert.equal(blockers.filter((b) => b.type === 'pr_conflict').length, 0);
   });
 
+  it('detects dispatch_failure for issues with redispatch_paused', () => {
+    const issue = makeIssue({ number: 9, state: 'pr_open', pr_number: 55 });
+    (issue as any).redispatch_paused = true;
+    (issue as any).redispatch_failures = 3;
+    const state = makeScanState({ issues: [issue] });
+    const blockers = detectCurrentBlockers(state);
+    assert.equal(blockers.filter((b) => b.type === 'dispatch_failure').length, 1);
+    assert.equal(blockers.find((b) => b.type === 'dispatch_failure')?.issue_number, 9);
+    assert.ok(blockers.find((b) => b.type === 'dispatch_failure')?.description.includes('3'));
+  });
+
   it('returns empty array when no blockers', () => {
     const state = makeScanState({
       issues: [makeIssue({ number: 1, state: 'pending' })],
