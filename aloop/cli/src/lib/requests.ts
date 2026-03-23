@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { writeQueueOverride } from './plan.js';
 import { writeSpecBackfill } from './specBackfill.js';
 
@@ -601,6 +602,20 @@ async function handleUpdateIssue(request: UpdateIssueRequest, fileName: string, 
 }
 
 async function handleCloseIssue(request: CloseIssueRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
+  const issueState = await findIssueState(request.payload.number, options);
+  if (issueState.closed) {
+    await writeSuccessToQueue(request, {
+      status: 'closed',
+      skipped: true,
+      idempotent: true,
+      reason: 'already_closed',
+      number: issueState.number,
+      url: issueState.url,
+      title: issueState.title,
+    }, options, fileName);
+    return;
+  }
+
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'issue-close',
@@ -611,6 +626,37 @@ async function handleCloseIssue(request: CloseIssueRequest, fileName: string, op
   await fs.unlink(tempRequestPath);
   if (result.exitCode !== 0) throw new Error(result.output);
   await writeSuccessToQueue(request, { status: 'closed' }, options, fileName);
+}
+
+async function findIssueState(
+  number: number,
+  options: RequestProcessorOptions
+): Promise<{ closed: boolean; number?: number; url?: string; title?: string }> {
+  const spawn = options.spawnSync || spawnSync;
+  const args = ['issue', 'view', String(number), '--json', 'number,title,url,state'];
+  const result = spawn('gh', args, { encoding: 'utf8' });
+  if (result.status !== 0) {
+    throw new Error(`issue-view failed while checking idempotency for issue #${number}: ${result.stderr || result.stdout}`);
+  }
+
+  let record: unknown;
+  try {
+    record = JSON.parse(result.stdout || '{}');
+  } catch (error) {
+    throw new Error(`issue-view returned invalid JSON while checking idempotency for issue #${number}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (record === null || typeof record !== 'object') {
+    return { closed: false };
+  }
+
+  const issue = record as Record<string, unknown>;
+  const state = typeof issue.state === 'string' ? issue.state.toUpperCase() : '';
+  return {
+    closed: state === 'CLOSED',
+    number: typeof issue.number === 'number' ? issue.number : undefined,
+    url: typeof issue.url === 'string' ? issue.url : undefined,
+    title: typeof issue.title === 'string' ? issue.title : undefined,
+  };
 }
 
 async function handleCreatePr(request: CreatePrRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -758,9 +804,19 @@ async function findPrMergeState(
 }
 
 async function handleDispatchChild(request: DispatchChildRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  // This requires calling orchestrate functions. 
-  // For now, we'll use a shell command to 'aloop gh start' which is equivalent to dispatching
-  // but we should ideally use the internal API.
+  const existingSessionId = await findActiveChildSessionByIssue(request.payload.issue_number, options.aloopDir);
+  if (existingSessionId) {
+    await writeSuccessToQueue(request, {
+      status: 'dispatched',
+      skipped: true,
+      idempotent: true,
+      reason: 'child_session_already_running',
+      issue_number: request.payload.issue_number,
+      session_id: existingSessionId,
+    }, options, fileName);
+    return;
+  }
+
   const args = [
     'gh', 'start',
     '--issue', String(request.payload.issue_number),
@@ -777,6 +833,40 @@ async function handleDispatchChild(request: DispatchChildRequest, fileName: stri
   
   const output = JSON.parse(result.stdout);
   await writeSuccessToQueue(request, output, options, fileName);
+}
+
+async function findActiveChildSessionByIssue(issueNumber: number, aloopDir: string): Promise<string | null> {
+  const activePath = path.join(aloopDir, 'active.json');
+  if (!existsSync(activePath)) return null;
+
+  let active: unknown;
+  try {
+    active = JSON.parse(await fs.readFile(activePath, 'utf8'));
+  } catch {
+    return null;
+  }
+  if (active === null || typeof active !== 'object' || Array.isArray(active)) {
+    return null;
+  }
+
+  for (const sessionId of Object.keys(active as Record<string, unknown>)) {
+    const sessionMetaPath = path.join(aloopDir, 'sessions', sessionId, 'meta.json');
+    if (!existsSync(sessionMetaPath)) continue;
+
+    try {
+      const metaRaw = JSON.parse(await fs.readFile(sessionMetaPath, 'utf8'));
+      if (metaRaw && typeof metaRaw === 'object') {
+        const meta = metaRaw as Record<string, unknown>;
+        if (meta.issue_number === issueNumber || meta.gh_issue_number === issueNumber) {
+          return sessionId;
+        }
+      }
+    } catch {
+      // Ignore bad session metadata for idempotency lookup and continue.
+    }
+  }
+
+  return null;
 }
 
 async function handleSteerChild(request: SteerChildRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
@@ -864,9 +954,22 @@ async function handlePostComment(request: PostCommentRequest, fileName: string, 
   }
 
   const body = await fs.readFile(path.join(options.workdir, request.payload.body_file), 'utf8');
+  const duplicateComment = await findMatchingIssueComment(request.payload.issue_number, body, options);
+  if (duplicateComment) {
+    await writeSuccessToQueue(request, {
+      status: 'posted',
+      skipped: true,
+      idempotent: true,
+      reason: 'duplicate_comment_body',
+      issue_number: request.payload.issue_number,
+    }, options, fileName);
+    return;
+  }
+
   const bodyWithRequestId = body.includes(requestIdMarker)
     ? body
     : `${body.replace(/\s*$/, '')}\n\n${requestIdMarker}`;
+
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'issue-comment',
@@ -910,6 +1013,42 @@ function getIssueCommentBodies(issueNumber: number, options: RequestProcessorOpt
   } catch {
     return [];
   }
+}
+
+async function findMatchingIssueComment(
+  issueNumber: number,
+  body: string,
+  options: RequestProcessorOptions
+): Promise<boolean> {
+  const spawn = options.spawnSync || spawnSync;
+  const args = ['issue', 'view', String(issueNumber), '--json', 'comments'];
+  const result = spawn('gh', args, { encoding: 'utf8' });
+  if (result.status !== 0) {
+    throw new Error(`issue-view failed while checking comment idempotency for issue #${issueNumber}: ${result.stderr || result.stdout}`);
+  }
+
+  let record: unknown;
+  try {
+    record = JSON.parse(result.stdout || '{}');
+  } catch (error) {
+    throw new Error(`issue-view returned invalid JSON while checking comment idempotency for issue #${issueNumber}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!record || typeof record !== 'object') return false;
+
+  const comments = (record as Record<string, unknown>).comments;
+  if (!Array.isArray(comments) || comments.length === 0) return false;
+
+  const requestedHash = hashCommentBody(body);
+  return comments.some((comment) => {
+    if (!comment || typeof comment !== 'object') return false;
+    const commentBody = (comment as Record<string, unknown>).body;
+    if (typeof commentBody !== 'string') return false;
+    return hashCommentBody(commentBody) === requestedHash;
+  });
+}
+
+function hashCommentBody(body: string): string {
+  return createHash('sha256').update(body).digest('hex');
 }
 
 async function handleQueryIssues(request: QueryIssuesRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {

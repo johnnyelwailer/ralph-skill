@@ -370,9 +370,55 @@ test('processAgentRequests - close_issue', async () => {
       ghOp = op;
       return { exitCode: 0, output: 'closed' };
     };
-    
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return { status: 0, stdout: JSON.stringify({ number: 101, state: 'OPEN' }), stderr: '' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
+
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
     assert.strictEqual(ghOp, 'issue-close');
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - close_issue idempotent skip when already closed', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = {
+      id: 'req-2-closed',
+      type: 'close_issue',
+      payload: { number: 101, reason: 'done' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-2-closed.json'), JSON.stringify(req));
+
+    let closeCalls = 0;
+    const ghRunner = async () => {
+      closeCalls += 1;
+      return { exitCode: 0, output: 'closed' };
+    };
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return {
+          status: 0,
+          stdout: JSON.stringify({ number: 101, state: 'CLOSED', title: 'Done', url: 'http://gh/101' }),
+          stderr: ''
+        };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
+
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+
+    assert.strictEqual(closeCalls, 0);
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    assert.strictEqual(queueFiles.length, 1);
+    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(content.includes('"skipped": true'));
+    assert.ok(content.includes('"idempotent": true'));
+    assert.ok(content.includes('"reason": "already_closed"'));
   } finally {
     await env.cleanup();
   }
@@ -398,10 +444,19 @@ test('processAgentRequests - post_comment', async () => {
       return { exitCode: 0, output: 'posted' };
     };
     const spawnSync = ((_cmd: string, args: string[]) => {
+<<<<<<< HEAD
       assert.deepStrictEqual(args, ['api', 'repos/{owner}/{repo}/issues/101/comments?per_page=100']);
       return { status: 0, stdout: '[]', stderr: '' };
     }) as unknown as typeof child_process.spawnSync;
     
+=======
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return { status: 0, stdout: JSON.stringify({ comments: [] }), stderr: '' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
+
+>>>>>>> c647893b (fix: add idempotency guards for request processing)
     await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
     assert.strictEqual(ghOp, 'issue-comment');
     assert.ok(sentBody.includes('Nice work'));
@@ -441,6 +496,47 @@ test('processAgentRequests - post_comment skips when request marker already exis
     const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
     assert.ok(queueContent.includes('"status": "skipped"'));
     assert.ok(queueContent.includes('"reason": "duplicate_comment_marker"'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - post_comment idempotent skip on duplicate body', async () => {
+  const env = await setupTestEnv();
+  try {
+    await fs.writeFile(path.join(env.workdir, 'comment-dup.md'), 'Nice work');
+    const req = {
+      id: 'req-3-dup',
+      type: 'post_comment',
+      payload: { issue_number: 101, body_file: 'comment-dup.md' }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-3-dup.json'), JSON.stringify(req));
+
+    let postCalls = 0;
+    const ghRunner = async () => {
+      postCalls += 1;
+      return { exitCode: 0, output: 'posted' };
+    };
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return {
+          status: 0,
+          stdout: JSON.stringify({ comments: [{ body: 'Nice work' }] }),
+          stderr: ''
+        };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
+
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+
+    assert.strictEqual(postCalls, 0);
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    assert.strictEqual(queueFiles.length, 1);
+    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(content.includes('"skipped": true'));
+    assert.ok(content.includes('"idempotent": true'));
+    assert.ok(content.includes('"reason": "duplicate_comment_body"'));
   } finally {
     await env.cleanup();
   }
@@ -821,6 +917,47 @@ test('processAgentRequests - dispatch_child', async () => {
     assert.ok(calledArgs.includes('start'));
     assert.ok(calledArgs.includes('--issue'));
     assert.ok(calledArgs.includes('101'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - dispatch_child idempotent skip when child already running', async () => {
+  const env = await setupTestEnv();
+  try {
+    const childSessionId = 'child-running-1';
+    const childDir = path.join(env.aloopDir, 'sessions', childSessionId);
+    await fs.mkdir(childDir, { recursive: true });
+    await fs.writeFile(path.join(childDir, 'meta.json'), JSON.stringify({ issue_number: 101 }));
+    await fs.writeFile(path.join(env.aloopDir, 'active.json'), JSON.stringify({ [childSessionId]: { session_id: childSessionId } }));
+
+    const req = {
+      id: 'req-dispatch-dup',
+      type: 'dispatch_child',
+      payload: {
+        issue_number: 101,
+        branch: 'feat/x',
+        pipeline: 'build',
+        sub_spec_file: 'sub.md'
+      }
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-dispatch-dup.json'), JSON.stringify(req));
+
+    let spawnCalls = 0;
+    const spawnSync = ((_cmd: string, _args: string[]) => {
+      spawnCalls += 1;
+      return { status: 0, stdout: JSON.stringify({ session_id: 'unexpected' }), stderr: '' };
+    }) as any;
+
+    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+
+    assert.strictEqual(spawnCalls, 0);
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    assert.strictEqual(queueFiles.length, 1);
+    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(content.includes('"skipped": true'));
+    assert.ok(content.includes('"idempotent": true'));
+    assert.ok(content.includes('"reason": "child_session_already_running"'));
   } finally {
     await env.cleanup();
   }
@@ -1257,11 +1394,17 @@ test('processAgentRequests - duplicate archive path collision', async () => {
     await fs.writeFile(path.join(env.requestsDir, 'dup.json'), JSON.stringify(req1));
 
     const ghRunner = async () => ({ exitCode: 0, output: 'closed' });
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return { status: 0, stdout: JSON.stringify({ state: 'OPEN' }), stderr: '' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
 
     // Now process another request — pre-seed processedDir with dup.json to force collision
     await fs.writeFile(path.join(env.requestsDir, 'dup.json'), JSON.stringify(req2));
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
 
     const processedFiles = await fs.readdir(path.join(env.requestsDir, 'processed'));
     assert.ok(processedFiles.includes('dup.json'));
@@ -1370,7 +1513,14 @@ test('processAgentRequests - handler failure', async () => {
       return { exitCode: 1, output: 'GH error' };
     };
     
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+    const spawnSync = ((_cmd: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return { status: 0, stdout: JSON.stringify({ state: 'OPEN' }), stderr: '' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    }) as any;
+
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
     
     const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
     assert.ok(failedFiles.includes('fail.json'));
