@@ -675,34 +675,29 @@ test('processAgentRequests - dispatch_child', async () => {
     const req = {
       id: 'req-dispatch-1',
       type: 'dispatch_child',
-      payload: { 
-        issue_number: 101, 
-        branch: 'feat/x', 
-        pipeline: 'build', 
-        sub_spec_file: 'sub.md' 
+      payload: {
+        issue_number: 101,
+        branch: 'feat/x',
+        pipeline: 'build',
+        sub_spec_file: 'sub.md'
       }
     };
     await fs.writeFile(path.join(env.requestsDir, 'req-dispatch-1.json'), JSON.stringify(req));
-    
-    let calledCmd = '';
-    let calledArgs: string[] = [];
-    const spawnSync = ((cmd: string, args: string[]) => {
-      calledCmd = cmd;
-      calledArgs = args;
-      return { 
-        status: 0, 
-        stdout: JSON.stringify({ session_id: 'child-1' }), 
-        stderr: '' 
-      };
-    }) as any;
-    
-    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
-    
-    assert.strictEqual(calledCmd, 'aloop');
-    assert.ok(calledArgs.includes('gh'));
-    assert.ok(calledArgs.includes('start'));
-    assert.ok(calledArgs.includes('--issue'));
-    assert.ok(calledArgs.includes('101'));
+
+    let calledOperation = '';
+    let calledRequestPath = '';
+    const ghCommandRunner = async (operation: string, _sessionId: string, requestPath: string) => {
+      calledOperation = operation;
+      calledRequestPath = requestPath;
+      return { exitCode: 0, output: JSON.stringify({ session_id: 'child-1' }) };
+    };
+
+    await processAgentRequests({ ...env, ghCommandRunner });
+
+    assert.strictEqual(calledOperation, 'dispatch-child');
+    const payload = JSON.parse(await fs.readFile(calledRequestPath, 'utf8').catch(() => '{"_missing":true}'));
+    // temp file is deleted after call; verify operation was called with correct operation type
+    assert.strictEqual(calledOperation, 'dispatch-child');
   } finally {
     await env.cleanup();
   }
@@ -899,7 +894,7 @@ test('processAgentRequests - steer_child matches gh_issue_number', async () => {
   }
 });
 
-test('processAgentRequests - dispatch_child spawn failure', async () => {
+test('processAgentRequests - dispatch_child failure', async () => {
   const env = await setupTestEnv();
   try {
     const req = {
@@ -909,13 +904,7 @@ test('processAgentRequests - dispatch_child spawn failure', async () => {
     };
     await fs.writeFile(path.join(env.requestsDir, 'req-dispatch-fail.json'), JSON.stringify(req));
 
-    const spawnSync = ((_cmd: string, _args: string[]) => ({
-      status: 1,
-      stdout: '',
-      stderr: 'dispatch error'
-    })) as any;
-
-    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+    await processAgentRequests({ ...env, ghCommandRunner: async () => ({ exitCode: 1, output: 'dispatch error' }) });
 
     const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
     assert.ok(failedFiles.includes('req-dispatch-fail.json'));
@@ -927,27 +916,30 @@ test('processAgentRequests - dispatch_child spawn failure', async () => {
   }
 });
 
-test('processAgentRequests - dispatch_child spawn failure stderr fallback to stdout', async () => {
+test('processAgentRequests - dispatch_child sends correct payload to ghCommandRunner', async () => {
   const env = await setupTestEnv();
   try {
     const req = {
-      id: 'req-dispatch-fail2',
+      id: 'req-dispatch-payload',
       type: 'dispatch_child',
-      payload: { issue_number: 101, branch: 'feat/x', pipeline: 'build', sub_spec_file: 'sub.md' }
+      payload: { issue_number: 42, branch: 'feat/42', pipeline: 'plan-build', sub_spec_file: 'SPEC.md' }
     };
-    await fs.writeFile(path.join(env.requestsDir, 'req-dispatch-fail2.json'), JSON.stringify(req));
+    await fs.writeFile(path.join(env.requestsDir, 'req-dispatch-payload.json'), JSON.stringify(req));
 
-    const spawnSync = ((_cmd: string, _args: string[]) => ({
-      status: 1,
-      stdout: 'stdout error info',
-      stderr: ''
-    })) as any;
+    let capturedPayload: unknown = null;
+    const ghCommandRunner = async (_operation: string, _sessionId: string, requestPath: string) => {
+      capturedPayload = JSON.parse(await fs.readFile(requestPath, 'utf8'));
+      return { exitCode: 0, output: JSON.stringify({ session_id: 'child-42' }) };
+    };
 
-    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
+    await processAgentRequests({ ...env, ghCommandRunner });
 
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('stdout error info'));
+    assert.ok(capturedPayload !== null, 'ghCommandRunner should have been called');
+    const p = capturedPayload as Record<string, unknown>;
+    assert.strictEqual(p.issue_number, 42);
+    assert.strictEqual(p.branch, 'feat/42');
+    assert.strictEqual(p.pipeline, 'plan-build');
+    assert.strictEqual(p.sub_spec_file, 'SPEC.md');
   } finally {
     await env.cleanup();
   }

@@ -651,24 +651,17 @@ async function handleMergePr(request: MergePrRequest, fileName: string, options:
 }
 
 async function handleDispatchChild(request: DispatchChildRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  // This requires calling orchestrate functions. 
-  // For now, we'll use a shell command to 'aloop gh start' which is equivalent to dispatching
-  // but we should ideally use the internal API.
-  const args = [
-    'gh', 'start',
-    '--issue', String(request.payload.issue_number),
-    '--home-dir', path.dirname(options.aloopDir),
-    '--project-root', options.workdir,
-    '--output', 'json'
-  ];
-  
-  const spawn = options.spawnSync || spawnSync;
-  const result = spawn('aloop', args, { encoding: 'utf8' });
-  if (result.status !== 0) {
-    throw new Error(`Failed to dispatch child: ${result.stderr || result.stdout}`);
-  }
-  
-  const output = JSON.parse(result.stdout);
+  const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
+  await fs.writeFile(tempRequestPath, JSON.stringify({
+    issue_number: request.payload.issue_number,
+    branch: request.payload.branch,
+    pipeline: request.payload.pipeline,
+    sub_spec_file: request.payload.sub_spec_file,
+  }));
+  const result = await options.ghCommandRunner('dispatch-child', options.sessionId, tempRequestPath);
+  await fs.unlink(tempRequestPath);
+  if (result.exitCode !== 0) throw new Error(`Failed to dispatch child: ${result.output}`);
+  const output = result.output ? JSON.parse(result.output) : { status: 'dispatched' };
   await writeSuccessToQueue(request, output, options, fileName);
 }
 
