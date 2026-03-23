@@ -45,6 +45,9 @@ cost_routing:
   build: prefer_cheap
   review: prefer_capable
 
+# Resource management
+memory_pressure_threshold_mb: 512   # pause dispatch when free RAM falls below this
+
 # Round-robin provider order (when provider=round-robin)
 round_robin_order:
   - claude
