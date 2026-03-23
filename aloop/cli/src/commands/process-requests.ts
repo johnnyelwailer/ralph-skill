@@ -743,7 +743,9 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       now: () => new Date(),
       appendLog: (dir: string, entry: Record<string, unknown>) => { appendLog(dir, entry); },
       invokeAgentReview: async (prNumber: number, _repo: string, diff: string) => {
-        // 1. Check for result files (agent wrote verdict)
+        // Check for result file — the ONLY source of truth for review verdicts.
+        // No fallback regex extraction. If the file doesn't exist, the review
+        // agent hasn't run yet — return pending and let the queue do its job.
         const resultFile = path.join(requestsDir, `review-result-${prNumber}.json`);
         const worktreeResultFile = path.join(sessionDir, 'worktree', 'requests', `review-result-${prNumber}.json`);
         const actualResultFile = existsSync(resultFile) ? resultFile : existsSync(worktreeResultFile) ? worktreeResultFile : null;
@@ -758,112 +760,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
           }
         }
 
-        // 2. Fallback: scan per-iteration output for verdict text
-        const artifactsDir = path.join(sessionDir, 'artifacts');
-        if (existsSync(artifactsDir)) {
-          try {
-            const iterDirs = await readdir(artifactsDir);
-            const sorted = iterDirs.filter(d => d.startsWith('iter-')).sort().reverse().slice(0, 3);
-            for (const iterDir of sorted) {
-              const outputFile = path.join(artifactsDir, iterDir, 'output.txt');
-              if (!existsSync(outputFile)) continue;
-              const output = await readFile(outputFile, 'utf8');
-              if (!output.includes(String(prNumber)) && !output.includes(`PR #${prNumber}`)) continue;
-              const verdictMatch = output.match(/\*\*(?:Review\s+)?[Vv]erdict[:\s]+(approve|request-changes|flag-for-human)\*\*/i)
-                ?? output.match(/(?:review\s+)?verdict[:\s]+"?(approve|request-changes|flag-for-human)"?/i)
-                ?? (output.match(new RegExp(`PR\\s*#?${prNumber}.*review\\s+approved`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null)
-                ?? (output.match(new RegExp(`merge-pr-${prNumber}`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null);
-              if (verdictMatch) {
-                const verdict = verdictMatch[1].toLowerCase();
-                const summaryMatch = output.match(/(?:summary|reason|feedback|issues?)[:\s]+([^\n]{10,300})/i);
-                const summary = summaryMatch ? summaryMatch[1].trim() : `Agent verdict: ${verdict}`;
-                return { pr_number: prNumber, verdict, summary };
-              }
-            }
-          } catch { /* ignore */ }
-        }
-
-        // 2b. Also check raw log (last 10KB) — scan agent may produce verdict inline
-        const rawLogFile = path.join(sessionDir, 'log.jsonl.raw');
-        if (existsSync(rawLogFile)) {
-          try {
-            const rawLog = await readFile(rawLogFile, 'utf8');
-            const recent = rawLog.slice(-10000);
-            if (recent.includes(String(prNumber)) || recent.includes(`PR #${prNumber}`)) {
-              const verdictMatch = recent.match(new RegExp(`PR\\s*#?${prNumber}[^\\n]*(?:review\\s+)?verdict[:\\s]+(approve|request-changes|flag-for-human)`, 'i'))
-                ?? recent.match(new RegExp(`\\*\\*(?:Review\\s+)?[Vv]erdict[:\\s]+(approve|request-changes|flag-for-human)\\*\\*[^\\n]*PR\\s*#?${prNumber}`, 'i'))
-                ?? recent.match(new RegExp(`\\*\\*(?:Review\\s+)?[Vv]erdict[:\\s]+(approve|request-changes|flag-for-human)\\*\\*.*?${prNumber}`, 'is'))
-                ?? (recent.match(new RegExp(`PR\\s*#?${prNumber}.*review\\s+approved`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null);
-              if (verdictMatch && verdictMatch[1]) {
-                const verdict = verdictMatch[1].toLowerCase();
-                return { pr_number: prNumber, verdict, summary: `Verdict from scan agent output` };
-              }
-            }
-          } catch { /* ignore */ }
-        }
-
-        // 2c. Last resort: queue a verdict extraction prompt for the agent
-        // The scan agent produced review text but we couldn't parse the verdict — ask an agent to extract it
-        const rawLogFile2 = path.join(sessionDir, 'log.jsonl.raw');
-        if (existsSync(rawLogFile2)) {
-          try {
-            const rawLog = await readFile(rawLogFile2, 'utf8');
-            const recent = rawLog.slice(-8000);
-            // Only if the raw log mentions this PR
-            if (recent.includes(String(prNumber)) || recent.includes(`PR #${prNumber}`)) {
-              const extractQueueFile = path.join(sessionDir, 'queue', `000-extract-verdict-${prNumber}.md`);
-              if (!existsSync(extractQueueFile)) {
-                const relResultPath = `requests/review-result-${prNumber}.json`;
-                await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
-                await writeFile(extractQueueFile, `---
-agent: verdict_extract
-reasoning: low
----
-
-# Extract Review Verdict for PR #${prNumber}
-
-## How the Aloop orchestrator works
-
-The orchestrator review agent produces a verdict for each PR. The verdict must be written as a JSON file so the orchestrator runtime can read it and proceed (merge on approve, redispatch on request-changes).
-
-**Without this file, the PR review is stuck and the pipeline cannot continue.**
-
-## Your task
-
-1. Read the agent output below
-2. Find the review verdict for PR #${prNumber} (look for "verdict", "approve", "request-changes", or similar)
-3. Write the JSON file using the Write tool to:
-
-**Path:** \`${relResultPath}\`
-
-(This is relative to your working directory. Create the \`requests/\` directory if needed.)
-
-File content must be valid JSON:
-\`\`\`json
-{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}
-\`\`\`
-
-Valid verdicts: "approve", "request-changes", "flag-for-human"
-
-4. If you cannot find a clear verdict for PR #${prNumber}, write:
-\`\`\`json
-{"pr_number": ${prNumber}, "verdict": "approve", "summary": "No explicit verdict found — auto-approving"}
-\`\`\`
-
-**You MUST use the Write tool to create the file. Do NOT just print the JSON as text.**
-
-## Recent Agent Output
-
-\`\`\`
-${recent.slice(-4000)}
-\`\`\`
-`, 'utf8');
-              }
-            }
-          } catch { /* ignore */ }
-        }
-
-        // 3. Queue review prompt with PR comments history
+        // Queue review prompt if not already queued
         const queueFile = path.join(sessionDir, 'queue', `000-review-${prNumber}.md`);
         const legacyQueueFile = path.join(sessionDir, 'queue', `review-${prNumber}.md`);
         if (!existsSync(queueFile) && !existsSync(legacyQueueFile)) {
