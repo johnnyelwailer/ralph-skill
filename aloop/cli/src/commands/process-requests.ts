@@ -136,6 +136,61 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     } catch { /* skip malformed */ }
   }
 
+  // 1d. Queue estimate prompts for "Needs refinement" issues that don't have one yet
+  {
+    const queueDir = path.join(sessionDir, 'queue');
+    const queueFiles = existsSync(queueDir) ? await readdir(queueDir) : [];
+    const pendingEstimates = new Set(
+      queueFiles
+        .filter(f => f.startsWith('estimate-issue-'))
+        .map(f => Number(f.replace('estimate-issue-', '').replace('.md', ''))),
+    );
+    const pendingResults = new Set(
+      allFiles
+        .filter(f => f.match(/^estimate-result-\d+\.json$/))
+        .map(f => Number(f.replace('estimate-result-', '').replace('.json', ''))),
+    );
+    const needsEstimate = state.issues.filter(
+      (i: any) => i.status === 'Needs refinement' && !i.dor_validated && !i.refinement_budget_exceeded
+        && !pendingEstimates.has(i.number) && !pendingResults.has(i.number),
+    );
+    if (needsEstimate.length > 0) {
+      const estimateTemplatePath = path.join(sessionDir, 'prompts', 'PROMPT_orch_estimate.md');
+      const estimatePrompt = existsSync(estimateTemplatePath)
+        ? await readFile(estimateTemplatePath, 'utf8')
+        : '';
+      if (estimatePrompt) {
+        const batch = needsEstimate.slice(0, 5); // max 5 per pass
+        for (const issue of batch) {
+          const outputPath = path.join(requestsDir, `estimate-result-${issue.number}.json`);
+          const content = [
+            '---',
+            JSON.stringify({ agent: 'orch_estimate', reasoning: 'high', type: 'estimate_override', issue_number: issue.number }, null, 2),
+            '---',
+            '',
+            estimatePrompt,
+            '',
+            `## Context`,
+            '',
+            `## Issue #${issue.number}: ${issue.title}`,
+            '',
+            issue.body ?? '(no body)',
+            '',
+            `**Wave:** ${issue.wave}`,
+            `**Dependencies:** ${issue.depends_on.length > 0 ? issue.depends_on.map((d: number) => `#${d}`).join(', ') : 'none'}`,
+            '',
+            `Read the project spec files (SPEC.md, SPEC-ADDENDUM.md) for full context.`,
+            '',
+            `Write your result as a JSON file to \`${outputPath}\` with fields:`,
+            '`{ "issue_number": <number>, "dor_passed": <boolean>, "complexity_tier": "S|M|L|XL", "iteration_estimate": <number>, "risk_flags": [...], "confidence": { "level": "low|medium|high", "rationale": "..." }, "gaps": [...] }`',
+          ].join('\n');
+          await writeFile(path.join(queueDir, `estimate-issue-${issue.number}.md`), content, 'utf8');
+        }
+        console.log(`[process-requests] Queued ${batch.length} estimate prompts (${needsEstimate.length} total pending)`);
+      }
+    }
+  }
+
   // ── Phase 2: Create GH issues for state entries with number=0 ──
   if (repo) {
     for (const issue of state.issues.filter((i: any) => i.number === 0)) {
