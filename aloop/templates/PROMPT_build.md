@@ -16,6 +16,7 @@ Select the most important task from the implementation plan, implement it correc
 
 0a. Study specification files: {{SPEC_FILES}}
 0b. Study @TODO.md to find the next task
+0c. When working with libraries/frameworks, check `.tessl/tiles/` for relevant API docs and patterns
 {{REFERENCE_FILES}}
 
 1. **Select Task**
