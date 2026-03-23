@@ -1,5 +1,9 @@
 # Issue #126: PR lifecycle fails silently from GH API rate limits — needs throttling and retry
 
+## QA Bugs
+
+- [ ] [qa/P1] checkPrGates tests have stale expectations: subtests 6 ("fails CI gate when workflows exist and check query errors") and 7 ("handles gh errors gracefully for mergeability") expect `'fail'` but the Issue #126 implementation correctly returns `'api_error'` for transient API errors. Test expectations must be updated to `'api_error'`. Tested at iter 7. (priority: high)
+
 ## Completed
 
 All tasks for Issue #126 are complete. This file contains the final spec-gap analysis results. [reviewed: gates 1-9 pass]
