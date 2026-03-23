@@ -82,10 +82,10 @@ function loadOrchestratorEvents(pipelineYmlPath: string): OrchestratorEvent[] {
 }
 
 function buildQueuePrompt(agent: string, issue: any, promptContent: string, outputPath: string): string {
-  const frontmatter = JSON.stringify({ agent, reasoning: 'high', type: `${agent}_override`, issue_number: issue.number }, null, 2);
   return [
     '---',
-    frontmatter,
+    `agent: ${agent}`,
+    `reasoning: high`,
     '---',
     '',
     promptContent,
