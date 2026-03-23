@@ -3048,6 +3048,15 @@ export async function launchChildLoop(
   deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.merge`], { encoding: 'utf8' });
   deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.remote`], { encoding: 'utf8' });
 
+  // Remove .mcp.json if present — prevents tessl MCP hangs in child loops
+  const mcpJsonPath = path.join(worktreePath, '.mcp.json');
+  if (deps.existsSync(mcpJsonPath)) {
+    try { const { unlink: unlinkFile } = await import('node:fs/promises'); await unlinkFile(mcpJsonPath); } catch { /* best-effort */ }
+  }
+
+  // Create .aloop/output/ for agent result file bridge
+  await deps.mkdir(path.join(worktreePath, '.aloop', 'output'), { recursive: true });
+
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
   await deps.writeFile(path.join(worktreePath, 'TODO.md'), todoContent, 'utf8');
