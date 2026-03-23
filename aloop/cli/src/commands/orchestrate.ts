@@ -89,6 +89,8 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
+  redispatch_failures?: number;
+  redispatch_paused?: boolean;
 }
 
 export interface OrchestratorState {
@@ -3362,6 +3364,7 @@ export interface PrLifecycleDeps {
 }
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
+const ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT = 3;
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
@@ -3804,10 +3807,36 @@ export async function processPrLifecycle(
       if (stateIssue) (stateIssue as any).last_review_comment = reviewResult.summary;
     }
 
-    // Mark for re-dispatch by the scan pass (which has dispatchDeps)
+    // Track failures and either re-dispatch or escalate to human
     if (stateIssue) {
-      (stateIssue as any).needs_redispatch = true;
-      (stateIssue as any).review_feedback = reviewResult.summary;
+      const failures = (stateIssue.redispatch_failures ?? 0) + 1;
+      stateIssue.redispatch_failures = failures;
+
+      if (failures >= ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT) {
+        // Escalate: comment on issue + add aloop/needs-human label, pause automated redispatch
+        try {
+          await deps.execGh([
+            'issue', 'comment', String(issue.number), '--repo', repo,
+            '--body', `Automated redispatch paused after ${failures} failed attempts.\n\nLast review feedback:\n\n${reviewResult.summary}\n\nA human review is required. Remove the \`aloop/needs-human\` label to resume automated redispatch.`,
+          ]);
+          await deps.execGh([
+            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/needs-human',
+          ]);
+        } catch {
+          // Best-effort
+        }
+        stateIssue.redispatch_paused = true;
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'redispatch_escalated',
+          pr_number: prNumber,
+          issue_number: issue.number,
+          redispatch_failures: failures,
+        });
+      } else {
+        (stateIssue as any).needs_redispatch = true;
+        (stateIssue as any).review_feedback = reviewResult.summary;
+      }
     }
 
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
@@ -5455,11 +5484,42 @@ export async function runOrchestratorScanPass(
     }
   }
 
+  // 3.4. Resume redispatch for issues where aloop/needs-human label has been removed
+  if (repo && deps.execGh) {
+    const pausedIssues = state.issues.filter((i) => (i as any).redispatch_paused);
+    for (const issue of pausedIssues) {
+      try {
+        const viewResult = await deps.execGh([
+          'issue', 'view', String(issue.number), '--repo', repo, '--json', 'labels',
+        ]);
+        const data = JSON.parse(viewResult.stdout);
+        const labelNames = new Set<string>(
+          (data.labels ?? [])
+            .filter((l: unknown) => typeof (l as any)?.name === 'string')
+            .map((l: unknown) => (l as any).name.toLowerCase()),
+        );
+        if (!labelNames.has('aloop/needs-human')) {
+          issue.redispatch_paused = false;
+          issue.redispatch_failures = 0;
+          (issue as any).needs_redispatch = true;
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'redispatch_resumed',
+            iteration,
+            issue_number: issue.number,
+          });
+        }
+      } catch {
+        // Best-effort
+      }
+    }
+  }
+
   // 3.5. Re-dispatch children that need review fixes
   // Uses launchIssues() — the shared dispatch path that respects concurrency,
   // capability filters, and state updates.
   if (deps.dispatchDeps && deps.aloopRoot) {
-    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch);
+    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch && !(i as any).redispatch_paused);
     if (needsRedispatch.length > 0) {
       const redispatchResult = await launchIssues(
         needsRedispatch.slice(0, availableSlots(state)),
