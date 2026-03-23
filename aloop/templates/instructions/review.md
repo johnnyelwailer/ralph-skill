@@ -9,7 +9,8 @@ Audit the last build iteration's changes against 9 quality gates. Write actionab
 ## Process
 
 0a. Study specification files: SPEC.md
-0b. Study @TODO.md to understand what was just built (look for recently completed tasks)
+0b. Study @CONSTITUTION.md — non-negotiable architectural rules. Verify the build doesn't violate any.
+0c. Study @TODO.md to understand what was just built (look for recently completed tasks)
 0c. Study @REVIEW_LOG.md to see your prior review history (if the file exists)
 RESEARCH.md
 
