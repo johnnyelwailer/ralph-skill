@@ -5314,6 +5314,134 @@ async function fetchAndApplyBulkIssueState(
  * Run a single scan pass: triage monitoring, dispatch, PR lifecycle, wave advancement.
  * Reads state from disk, performs all scan actions, writes state back.
  */
+// --- Blocker persistence tracking ---
+
+/** Default number of consecutive detections before a blocker is considered persistent. */
+export const BLOCKER_PERSISTENCE_THRESHOLD = 5;
+
+const BLOCKER_SUGGESTED_ACTIONS: Record<BlockerType, string> = {
+  ci_failure: 'Review CI logs, consider steering child to fix test',
+  dispatch_failure: 'Check worktree availability and disk space',
+  pr_conflict: 'Rebase child branch or steer to resolve conflicts',
+  dependency_cycle: 'Review dependency graph for circular references',
+  child_stuck: 'Check child session status, consider stop + redispatch',
+};
+
+/**
+ * Compute a deterministic hash string for a blocker based on type, issue number,
+ * and a normalized description prefix.
+ */
+export function computeBlockerHash(
+  type: BlockerType,
+  issueNumber: number,
+  description: string,
+): string {
+  const normalized = description.toLowerCase().trim().substring(0, 60).replace(/\s+/g, ' ');
+  return `${type}:${issueNumber}:${normalized}`;
+}
+
+/**
+ * Inspect OrchestratorState and return a list of currently-active blocker signals.
+ * Does not mutate state or carry occurrence history — that is handled by
+ * updateBlockerSignatures.
+ */
+export function detectCurrentBlockers(
+  state: OrchestratorState,
+): Array<{ type: BlockerType; issue_number: number; description: string }> {
+  const detected: Array<{ type: BlockerType; issue_number: number; description: string }> = [];
+
+  for (const issue of state.issues) {
+    // child_stuck: issue child loop has failed
+    if (issue.state === 'failed') {
+      detected.push({
+        type: 'child_stuck',
+        issue_number: issue.number,
+        description: `Issue #${issue.number} child loop failed`,
+      });
+    }
+
+    // ci_failure: PR is open but CI is persistently failing
+    if (issue.state === 'pr_open' && issue.ci_failure_signature) {
+      detected.push({
+        type: 'ci_failure',
+        issue_number: issue.number,
+        description:
+          issue.ci_failure_summary ??
+          `CI failure on PR #${issue.pr_number}: ${issue.ci_failure_signature}`,
+      });
+    }
+
+    // pr_conflict: too many rebase attempts — branch is stuck in conflict
+    if ((issue.rebase_attempts ?? 0) >= 3) {
+      detected.push({
+        type: 'pr_conflict',
+        issue_number: issue.number,
+        description: `Issue #${issue.number} has ${issue.rebase_attempts} rebase attempts — possible merge conflict`,
+      });
+    }
+  }
+
+  return detected;
+}
+
+/**
+ * Merge newly-detected blockers with existing signatures:
+ * - Increments occurrence_count for blockers seen this iteration.
+ * - Adds new blocker entries.
+ * - Removes entries for issues that have been merged (resolved).
+ */
+export function updateBlockerSignatures(
+  existing: BlockerSignature[],
+  detected: Array<{ type: BlockerType; issue_number: number; description: string }>,
+  state: OrchestratorState,
+  iteration: number,
+): BlockerSignature[] {
+  const resolvedIssues = new Set(
+    state.issues.filter((i) => i.state === 'merged').map((i) => i.number),
+  );
+
+  // Remove entries for resolved issues
+  const active = existing.filter((b) => !resolvedIssues.has(b.issue_number));
+
+  const byHash = new Map<string, BlockerSignature>(active.map((b) => [b.hash, b]));
+
+  for (const d of detected) {
+    const hash = computeBlockerHash(d.type, d.issue_number, d.description);
+    const prev = byHash.get(hash);
+    if (prev) {
+      byHash.set(hash, { ...prev, occurrence_count: prev.occurrence_count + 1 });
+    } else {
+      byHash.set(hash, {
+        hash,
+        type: d.type,
+        issue_number: d.issue_number,
+        description: d.description,
+        first_seen_iteration: iteration,
+        occurrence_count: 1,
+      });
+    }
+  }
+
+  return [...byHash.values()];
+}
+
+/**
+ * Derive overall health from the current set of blocker signatures.
+ *
+ * - critical : 3+ persistent blockers OR any single blocker at 10+ occurrences
+ * - degraded : at least one blocker at or above `threshold` occurrences
+ * - healthy  : no persistent blockers
+ */
+export function computeOverallHealth(
+  signatures: BlockerSignature[],
+  threshold: number,
+): 'healthy' | 'degraded' | 'critical' {
+  const persistent = signatures.filter((b) => b.occurrence_count >= threshold);
+  if (persistent.length === 0) return 'healthy';
+  if (persistent.length >= 3 || signatures.some((b) => b.occurrence_count >= 10)) return 'critical';
+  return 'degraded';
+}
+
 export async function runOrchestratorScanPass(
   stateFile: string,
   sessionDir: string,
