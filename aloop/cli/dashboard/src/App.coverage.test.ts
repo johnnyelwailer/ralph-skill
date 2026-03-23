@@ -760,12 +760,12 @@ describe('App.tsx AppView integration coverage', () => {
       expect(window.history.replaceState).toHaveBeenCalled();
     });
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: /open overflow document tabs/i }));
-    fireEvent.click(await screen.findByText('STEERING'));
+    fireEvent.keyDown(screen.getByRole('button', { name: /open overflow document tabs/i }), { key: 'Enter' });
+    fireEvent.click(screen.getByText('STEERING'));
     await screen.findByRole('heading', { name: 'STEER' });
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: /open overflow document tabs/i }));
-    fireEvent.click(await screen.findByText('EXTRA'));
+    fireEvent.keyDown(screen.getByRole('button', { name: /open overflow document tabs/i }), { key: 'Enter' });
+    fireEvent.click(screen.getByText('EXTRA'));
     await screen.findByRole('heading', { name: 'EXTRA DOC CONTENT' });
   });
 

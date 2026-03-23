@@ -520,6 +520,154 @@ export function computeAvgDuration(log: string): string {
   return formatSecs(totalSec / count);
 }
 
+// ── QA Coverage ──
+
+interface QACoverageFeature {
+  feature: string;
+  component: string;
+  last_tested: string;
+  commit: string;
+  status: 'PASS' | 'FAIL' | 'UNTESTED';
+  criteria_met: string;
+  notes: string;
+}
+
+interface QACoverageViewData {
+  percentage: number | null;
+  available: boolean;
+  features: QACoverageFeature[];
+}
+
+function parseQACoveragePayload(payload: unknown): QACoverageViewData {
+  if (!isRecord(payload)) return { percentage: null, available: false, features: [] };
+  const available = typeof payload.available === 'boolean' ? payload.available : true;
+  const percentValue = typeof payload.coverage_percent === 'number'
+    ? payload.coverage_percent
+    : (typeof payload.percentage === 'number' ? payload.percentage : null);
+  const features = Array.isArray(payload.features)
+    ? payload.features
+      .filter((f): f is Record<string, unknown> => isRecord(f))
+      .map((f): QACoverageFeature => {
+        const rawStatus = typeof f.status === 'string' ? f.status.toUpperCase() : 'UNTESTED';
+        const status: QACoverageFeature['status'] = rawStatus === 'PASS' || rawStatus === 'FAIL' ? rawStatus : 'UNTESTED';
+        return {
+          feature: typeof f.feature === 'string' ? f.feature : '',
+          component: typeof f.component === 'string' ? f.component : '',
+          last_tested: typeof f.last_tested === 'string' ? f.last_tested : '',
+          commit: typeof f.commit === 'string' ? f.commit : '',
+          status,
+          criteria_met: typeof f.criteria_met === 'string' ? f.criteria_met : '',
+          notes: typeof f.notes === 'string' ? f.notes : '',
+        };
+      })
+    : [];
+  return { percentage: percentValue, available, features };
+}
+
+function latestQaCoverageRefreshSignal(log: string): string | null {
+  if (!log) return null;
+  const lines = log.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]?.trim();
+    if (!line) continue;
+    try {
+      const entry = JSON.parse(line);
+      if (!isRecord(entry)) continue;
+      const event = str(entry, ['event', 'type']);
+      const phase = str(entry, ['phase', 'mode']).toLowerCase();
+      if (event !== 'iteration_complete' || phase !== 'qa') continue;
+      const timestamp = str(entry, ['timestamp', 'ts', 'time', 'created_at']);
+      const iterationRaw = entry.iteration;
+      const iteration = typeof iterationRaw === 'number' ? String(iterationRaw)
+        : typeof iterationRaw === 'string' ? iterationRaw : '';
+      return `${timestamp}|${iteration}|${line}`;
+    } catch { /* skip */ }
+  }
+  return null;
+}
+
+export function QACoverageBadge({ sessionId, refreshKey }: { sessionId: string | null; refreshKey: string }) {
+  const [coverage, setCoverage] = useState<QACoverageViewData | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    async function loadCoverage() {
+      try {
+        const sp = sessionId ? `?session=${encodeURIComponent(sessionId)}` : '';
+        const response = await fetch(`/api/qa-coverage${sp}`, { signal: controller.signal });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (!cancelled) setCoverage(parseQACoveragePayload(payload));
+      } catch {
+        if (!cancelled) setCoverage({ percentage: null, available: false, features: [] });
+      }
+    }
+    loadCoverage().catch(() => undefined);
+    return () => { cancelled = true; controller.abort(); };
+  }, [sessionId, refreshKey]);
+
+  if (coverage === null) return null;
+
+  const percentage = coverage.available ? coverage.percentage : null;
+  const tone = percentage === null
+    ? 'border-border bg-muted/40 text-muted-foreground'
+    : percentage >= 80
+      ? 'border-green-500/40 bg-green-500/15 text-green-700 dark:text-green-400'
+      : percentage >= 50
+        ? 'border-yellow-500/40 bg-yellow-500/15 text-yellow-700 dark:text-yellow-400'
+        : 'border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-400';
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors hover:opacity-90 ${tone}`}
+      >
+        <CheckCircle2 className="h-3 w-3" />
+        <span>QA {percentage === null ? 'N/A' : `${percentage}%`}</span>
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      </button>
+      {expanded && (
+        <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-[min(560px,92vw)] rounded-md border border-border bg-popover shadow-lg">
+          <ScrollArea className="max-h-80">
+            <div className="p-3 text-xs space-y-2">
+              {coverage.features.length === 0 ? (
+                <p className="text-muted-foreground">No feature rows found in QA coverage table.</p>
+              ) : (
+                coverage.features.map((feature, index) => {
+                  const statusTone = feature.status === 'PASS'
+                    ? 'border-green-500/40 bg-green-500/15 text-green-700 dark:text-green-400'
+                    : feature.status === 'FAIL'
+                      ? 'border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-400'
+                      : 'border-border bg-muted/40 text-muted-foreground';
+                  const StatusIcon = feature.status === 'PASS' ? CheckCircle2 : feature.status === 'FAIL' ? XCircle : Circle;
+                  return (
+                    <div key={`${feature.feature}-${feature.component}-${index}`} className="rounded-md border border-border/70 p-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground truncate">{feature.feature || 'Unnamed feature'}</p>
+                          {feature.component && <p className="text-[11px] text-muted-foreground truncate">{feature.component}</p>}
+                        </div>
+                        <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${statusTone}`}>
+                          <StatusIcon className="h-3 w-3" />
+                          {feature.status}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Provider health derived from log ──
 
 export function deriveProviderHealth(log: string, configuredProviders?: string[]): ProviderHealth[] {
@@ -577,6 +725,7 @@ function Header({
   providerName, modelName, tasksCompleted, tasksTotal, progressPercent,
   updatedAt, loading, loadError, connectionStatus, onOpenCommand, onOpenSwitcher,
   stuckCount, startedAt, avgDuration, maxIterations, onToggleMobileMenu,
+  selectedSessionId, qaCoverageRefreshKey,
 }: {
   sessionName: string; isRunning: boolean; currentState: string; currentPhase: string;
   currentIteration: string; providerName: string; modelName: string;
@@ -585,6 +734,8 @@ function Header({
   connectionStatus: ConnectionStatus; onOpenCommand: () => void; onOpenSwitcher: () => void;
   stuckCount: number; startedAt: string; avgDuration: string; maxIterations: number | null;
   onToggleMobileMenu: () => void;
+  selectedSessionId: string | null;
+  qaCoverageRefreshKey: string;
 }) {
   return (
     <header className="border-b border-border px-3 py-2 md:px-4 md:py-2.5 shrink-0">
@@ -632,6 +783,7 @@ function Header({
         )}
 
         <div className="flex-1" />
+        <QACoverageBadge sessionId={selectedSessionId} refreshKey={qaCoverageRefreshKey} />
         <ConnectionIndicator status={connectionStatus} />
         <Tooltip>
           <TooltipTrigger asChild>
@@ -687,11 +839,17 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
             <Heart className="h-3 w-3 mr-1" /> Health
           </TabsTrigger>
           {overflowTabs.length > 0 && (
-            <div className="relative group">
-              <button type="button" className="px-2 py-1 h-6 text-[11px] text-muted-foreground hover:text-foreground">
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-              <div className="absolute right-0 top-full z-20 hidden group-hover:block bg-popover border rounded-md shadow-md py-1 min-w-[120px]">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="px-2 py-1 h-6 text-[11px] text-muted-foreground hover:text-foreground"
+                  aria-label="Open overflow document tabs"
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[120px] p-1">
                 {overflowTabs.map((n) => (
                   <DropdownMenuItem
                     key={n}
@@ -701,8 +859,8 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
                     {tabLabels[n] ?? n.replace(/\.md$/i, '')}
                   </DropdownMenuItem>
                 ))}
-              </div>
-            </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {repoUrl && (
             <Tooltip>
@@ -1496,7 +1654,7 @@ function Footer({
     <footer className="border-t border-border px-3 py-2 md:px-4 shrink-0">
       <div className="flex items-center gap-1.5 sm:gap-3">
         <Textarea
-          className="min-h-[32px] h-8 resize-none text-xs flex-1 min-w-0"
+          className="min-h-[44px] md:min-h-[32px] h-auto md:h-8 resize-none text-xs flex-1 min-w-0"
           placeholder="Steer..."
           value={steerInstruction}
           onChange={(e) => setSteerInstruction(e.target.value)}
@@ -1595,6 +1753,8 @@ export function App() {
   const [stopSubmitting, setStopSubmitting] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('session'));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [qaCoverageRefreshKey, setQaCoverageRefreshKey] = useState('');
+  const latestQaSignalRef = useRef<string | null>(null);
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1632,6 +1792,8 @@ export function App() {
     setSelectedSessionId(id);
     setLoading(true);
     setLoadError(null);
+    latestQaSignalRef.current = null;
+    setQaCoverageRefreshKey('');
     const url = new URL(window.location.href);
     if (id) url.searchParams.set('session', id); else url.searchParams.delete('session');
     window.history.replaceState(null, '', url.toString());
@@ -1654,7 +1816,11 @@ export function App() {
       try {
         const r = await fetch(`/api/state${sp}`, { signal: controller.signal });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        if (!cancelled) setState(await r.json() as DashboardState);
+        if (!cancelled) {
+          const payload = await r.json() as DashboardState;
+          setState(payload);
+          latestQaSignalRef.current = latestQaCoverageRefreshSignal(payload.log);
+        }
       } catch (e) { if (!cancelled) setLoadError((e as Error).message); }
       finally { if (!cancelled) setLoading(false); }
     }
@@ -1679,7 +1845,13 @@ export function App() {
       eventSource = new EventSource(`/events${sp}`);
       stateListener = (evt: Event) => {
         try {
-          setState(JSON.parse((evt as MessageEvent<string>).data) as DashboardState);
+          const payload = JSON.parse((evt as MessageEvent<string>).data) as DashboardState;
+          setState(payload);
+          const nextQaSignal = latestQaCoverageRefreshSignal(payload.log);
+          if (nextQaSignal && nextQaSignal !== latestQaSignalRef.current) {
+            latestQaSignalRef.current = nextQaSignal;
+            setQaCoverageRefreshKey(nextQaSignal);
+          }
           setLoadError(null); setConnectionStatus('connected'); reconnectDelay = 1000;
         } catch (e) { setLoadError((e as Error).message); }
       };
@@ -1862,7 +2034,7 @@ export function App() {
             <ResizableHandle className={`hidden md:flex ${sidebarCollapsed ? 'pointer-events-none opacity-0' : ''}`} />
             <ResizablePanel defaultSize={78} minSize={40}>
               <div className="flex flex-col flex-1 min-w-0 h-full">
-                <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} />
+                <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} />
                 {/* Mobile panel toggle */}
                 <div className="lg:hidden flex border-b border-border shrink-0">
                   <button

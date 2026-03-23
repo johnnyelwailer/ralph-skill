@@ -22,9 +22,10 @@ interface SessionCardProps {
   session: SessionCardSession;
   selected: boolean;
   onSelectSession: (id: string | null) => void;
+  onContextMenu?: (x: number, y: number) => void;
 }
 
-export function SessionCard({ session, selected, onSelectSession }: SessionCardProps) {
+export function SessionCard({ session, selected, onSelectSession, onContextMenu }: SessionCardProps) {
   const status = session.isActive && session.status === 'running' ? 'running' : session.status;
 
   return (
@@ -34,6 +35,7 @@ export function SessionCard({ session, selected, onSelectSession }: SessionCardP
           type="button"
           className={`w-full overflow-hidden rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent ${selected ? 'bg-accent' : ''}`}
           onClick={() => onSelectSession(session.id === 'current' ? null : session.id)}
+          onContextMenu={onContextMenu ? (e) => { e.preventDefault(); onContextMenu(e.clientX, e.clientY); } : undefined}
         >
           <div className="flex items-center gap-1.5 overflow-hidden">
             <StatusDot status={status} />

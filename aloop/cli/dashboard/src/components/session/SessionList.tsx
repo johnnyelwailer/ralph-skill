@@ -12,6 +12,7 @@ interface SessionListProps {
   sessions: SessionListSession[];
   selectedSessionId: string | null;
   onSelectSession: (id: string | null) => void;
+  onSessionContextMenu?: (id: string, x: number, y: number) => void;
 }
 
 function matchesFilter(session: SessionListSession, query: string): boolean {
@@ -24,7 +25,7 @@ function matchesFilter(session: SessionListSession, query: string): boolean {
   );
 }
 
-export function SessionList({ sessions, selectedSessionId, onSelectSession }: SessionListProps) {
+export function SessionList({ sessions, selectedSessionId, onSelectSession, onSessionContextMenu }: SessionListProps) {
   const [filter, setFilter] = useState('');
 
   const filtered = useMemo(
@@ -82,7 +83,7 @@ export function SessionList({ sessions, selectedSessionId, onSelectSession }: Se
             <CollapsibleContent>
               <div className="space-y-0.5 mb-2">
                 {items.map((session) => (
-                  <SessionCard key={session.id} session={session} selected={isSelected(session)} onSelectSession={onSelectSession} />
+                  <SessionCard key={session.id} session={session} selected={isSelected(session)} onSelectSession={onSelectSession} onContextMenu={onSessionContextMenu ? (x, y) => onSessionContextMenu(session.id, x, y) : undefined} />
                 ))}
               </div>
             </CollapsibleContent>
@@ -99,7 +100,7 @@ export function SessionList({ sessions, selectedSessionId, onSelectSession }: Se
             <CollapsibleContent>
               <div className="space-y-0.5 mb-2">
                 {olderSessions.map((session) => (
-                  <SessionCard key={session.id} session={session} selected={isSelected(session)} onSelectSession={onSelectSession} />
+                  <SessionCard key={session.id} session={session} selected={isSelected(session)} onSelectSession={onSelectSession} onContextMenu={onSessionContextMenu ? (x, y) => onSessionContextMenu(session.id, x, y) : undefined} />
                 ))}
               </div>
             </CollapsibleContent>
