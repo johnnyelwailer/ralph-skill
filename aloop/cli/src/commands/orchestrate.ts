@@ -95,6 +95,17 @@ export interface OrchestratorIssue {
   cr_spec_updated?: boolean;
 }
 
+export type BlockerType = 'ci_failure' | 'dispatch_failure' | 'pr_conflict' | 'dependency_cycle' | 'child_stuck';
+
+export interface BlockerSignature {
+  hash: string;
+  type: BlockerType;
+  issue_number: number;
+  description: string;
+  first_seen_iteration: number;
+  occurrence_count: number;
+}
+
 export interface OrchestratorState {
   spec_file: string;
   spec_files?: string[];
@@ -114,6 +125,7 @@ export interface OrchestratorState {
   auto_merge_to_main?: boolean;
   trunk_pr_number?: number | null;
   gh_project_number?: number;
+  blocker_signatures?: BlockerSignature[];
   created_at: string;
   updated_at: string;
 }
