@@ -16,6 +16,7 @@ import {
 } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody } from '../lib/issue-metadata.js';
+import { createAdapter, type OrchestratorAdapter } from '../lib/adapter.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -193,6 +194,7 @@ export interface TriageDeps {
   now: () => Date;
   writeFile?: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   aloopRoot?: string;
+  adapter?: OrchestratorAdapter;
 }
 
 export interface OrchestrateDeps {
@@ -1575,6 +1577,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       work_dir: result.projectRoot,
       pid: loopPid,
       started_at: startedAt,
+      adapter: 'github',
     };
     await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
 
@@ -1873,22 +1876,33 @@ export async function applyTriageResultsToIssue(
     }
 
     if (result.classification === 'needs_clarification') {
-      await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatNeedsClarificationReply(comment),
-      ]);
-      if (!issue.blocked_on_human) {
+      if (deps.adapter) {
+        await deps.adapter.postComment(issue.number, formatNeedsClarificationReply(comment));
+        if (!issue.blocked_on_human) {
+          await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
+        }
+      } else {
         await deps.execGh([
-          'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+          'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatNeedsClarificationReply(comment),
         ]);
+        if (!issue.blocked_on_human) {
+          await deps.execGh([
+            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+          ]);
+        }
       }
       issue.blocked_on_human = true;
       actionTaken = 'post_reply_and_block';
     } else if (result.classification === 'actionable') {
       let unblocked = false;
       if (issue.blocked_on_human) {
-        await deps.execGh([
-          'issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', 'aloop/blocked-on-human',
-        ]);
+        if (deps.adapter) {
+          await deps.adapter.removeLabels(issue.number, ['aloop/blocked-on-human']);
+        } else {
+          await deps.execGh([
+            'issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', 'aloop/blocked-on-human',
+          ]);
+        }
         issue.blocked_on_human = false;
         unblocked = true;
       }
@@ -1909,9 +1923,13 @@ export async function applyTriageResultsToIssue(
         actionTaken = 'steering_deferred';
       }
     } else if (result.classification === 'question') {
-      await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatQuestionReply(comment),
-      ]);
+      if (deps.adapter) {
+        await deps.adapter.postComment(issue.number, formatQuestionReply(comment));
+      } else {
+        await deps.execGh([
+          'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatQuestionReply(comment),
+        ]);
+      }
       actionTaken = 'question_answered';
     } else {
       actionTaken = 'triaged_no_action';
@@ -2073,7 +2091,7 @@ export async function runTriageMonitorCycle(
       issue,
       [...normalizedIssueComments, ...normalizedPrComments],
       repo,
-      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, aloopRoot },
+      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, aloopRoot, adapter: deps.adapter },
     );
     triagedEntries += entries.length;
 
@@ -2173,7 +2191,7 @@ export async function resolveSpecQuestionIssues(
   state: OrchestratorState,
   repo: string,
   sessionDir: string,
-  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog' | 'now'>,
+  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog' | 'now' | 'adapter'>,
 ): Promise<SpecQuestionResolveStats> {
   if (!deps.execGh) {
     return { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
@@ -2201,9 +2219,13 @@ export async function resolveSpecQuestionIssues(
     const reopenedByUser = labelNames.has('aloop/auto-resolved');
     if (reopenedByUser) {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        await deps.execGh([
-          'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-        ]);
+        if (deps.adapter) {
+          await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
+        } else {
+          await deps.execGh([
+            'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+          ]);
+        }
       }
       result.userOverrides += 1;
       deps.appendLog(sessionDir, {
@@ -2217,9 +2239,13 @@ export async function resolveSpecQuestionIssues(
 
     if (action === 'wait_for_user') {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        await deps.execGh([
-          'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-        ]);
+        if (deps.adapter) {
+          await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
+        } else {
+          await deps.execGh([
+            'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+          ]);
+        }
       }
       result.waiting += 1;
       deps.appendLog(sessionDir, {
@@ -2232,27 +2258,22 @@ export async function resolveSpecQuestionIssues(
       continue;
     }
 
-    await deps.execGh([
-      'issue',
-      'comment',
-      issueNumber,
-      '--repo',
-      repo,
-      '--body',
-      formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
-    ]);
-    await deps.execGh([
-      'issue',
-      'edit',
-      issueNumber,
-      '--repo',
-      repo,
-      '--add-label',
-      'aloop/auto-resolved',
-      '--remove-label',
-      'aloop/blocked-on-human',
-    ]);
-    await deps.execGh(['issue', 'close', issueNumber, '--repo', repo]);
+    if (deps.adapter) {
+      await deps.adapter.postComment(issue.number, formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk));
+      await deps.adapter.addLabels(issue.number, ['aloop/auto-resolved']);
+      await deps.adapter.removeLabels(issue.number, ['aloop/blocked-on-human']);
+      await deps.adapter.closeIssue(issue.number);
+    } else {
+      await deps.execGh([
+        'issue', 'comment', issueNumber, '--repo', repo,
+        '--body', formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
+      ]);
+      await deps.execGh([
+        'issue', 'edit', issueNumber, '--repo', repo,
+        '--add-label', 'aloop/auto-resolved', '--remove-label', 'aloop/blocked-on-human',
+      ]);
+      await deps.execGh(['issue', 'close', issueNumber, '--repo', repo]);
+    }
     result.autoResolved += 1;
     deps.appendLog(sessionDir, {
       timestamp: deps.now().toISOString(),
@@ -3156,6 +3177,7 @@ export async function launchChildLoop(
     requires,
     orchestrator_session: path.basename(orchestratorSessionDir),
     created_at: startedAt,
+    adapter: 'github',
   };
   await deps.writeFile(path.join(sessionDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
 
@@ -4562,6 +4584,7 @@ export interface ScanLoopDeps {
   sleep?: (ms: number) => Promise<void>;
   signalStop?: () => boolean;
   etagCache?: EtagCache;
+  adapter?: OrchestratorAdapter;
 }
 
 export interface SpecChangeReplanResult {
