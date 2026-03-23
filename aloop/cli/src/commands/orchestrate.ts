@@ -5821,6 +5821,123 @@ export async function runOrchestratorScanPass(
     result.shouldStop = true;
   }
 
+  // 7.5. Blocker signature tracking and diagnostics
+  {
+    const detected = detectCurrentBlockers(state);
+    state.blocker_signatures = updateBlockerSignatures(
+      state.blocker_signatures ?? [],
+      detected,
+      state,
+      iteration,
+    );
+
+    const persistent = state.blocker_signatures.filter(
+      (b) => b.occurrence_count >= BLOCKER_PERSISTENCE_THRESHOLD,
+    );
+
+    if (persistent.length > 0) {
+      const health = computeOverallHealth(state.blocker_signatures, BLOCKER_PERSISTENCE_THRESHOLD);
+
+      const diagnostics = {
+        generated_at: deps.now().toISOString(),
+        iteration,
+        persistent_blockers: persistent.map((b) => ({
+          hash: b.hash,
+          type: b.type,
+          issue_number: b.issue_number,
+          description: b.description,
+          iterations_stuck: b.occurrence_count,
+          suggested_action: BLOCKER_SUGGESTED_ACTIONS[b.type],
+        })),
+        overall_health: health,
+      };
+
+      await deps.writeFile(
+        path.join(sessionDir, 'diagnostics.json'),
+        `${JSON.stringify(diagnostics, null, 2)}\n`,
+        'utf8',
+      );
+
+      deps.appendLog(sessionDir, {
+        timestamp: deps.now().toISOString(),
+        event: 'blocker_diagnostics_written',
+        iteration,
+        persistent_blocker_count: persistent.length,
+        overall_health: health,
+      });
+
+      if (health === 'critical') {
+        const alertLines = [
+          '# Orchestrator Alert — Critical Health Status',
+          '',
+          `**Generated:** ${deps.now().toISOString()}`,
+          `**Iteration:** ${iteration}`,
+          `**Health:** ${health}`,
+          '',
+          '## Persistent Blockers',
+          '',
+          ...persistent.flatMap((b) => [
+            `### Issue #${b.issue_number} — ${b.type}`,
+            '',
+            `**Description:** ${b.description}`,
+            `**Stuck for:** ${b.occurrence_count} iterations (first seen at iteration ${b.first_seen_iteration})`,
+            `**Suggested action:** ${BLOCKER_SUGGESTED_ACTIONS[b.type]}`,
+            '',
+          ]),
+          '## Manual Interventions',
+          '',
+          'The orchestrator has been unable to resolve these blockers automatically.',
+          'Please review the issues listed above and take manual action.',
+          '',
+        ];
+
+        await deps.writeFile(
+          path.join(sessionDir, 'ALERT.md'),
+          alertLines.join('\n'),
+          'utf8',
+        );
+
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'blocker_alert_written',
+          iteration,
+          health,
+          blocker_count: persistent.length,
+        });
+
+        // Queue alert prompt for self-recovery attempt
+        const alertQueueFile = path.join(sessionDir, 'queue', '000-critical-alert.md');
+        if (!deps.existsSync(alertQueueFile)) {
+          try {
+            await deps.writeFile(
+              alertQueueFile,
+              [
+                '---',
+                'agent: scan',
+                'reasoning: high',
+                '---',
+                '',
+                '# Critical Alert — Persistent Blockers Detected',
+                '',
+                `The orchestrator has detected ${persistent.length} persistent blocker(s) at iteration ${iteration}.`,
+                '',
+                ...persistent.map(
+                  (b) =>
+                    `- Issue #${b.issue_number} (${b.type}): ${b.description} — stuck for ${b.occurrence_count} iterations`,
+                ),
+                '',
+                'Please review ALERT.md and attempt self-recovery actions.',
+              ].join('\n'),
+              'utf8',
+            );
+          } catch {
+            // Best-effort — do not fail the scan pass if queue write fails
+          }
+        }
+      }
+    }
+  }
+
   // 8. Persist state
   state.updated_at = deps.now().toISOString();
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');

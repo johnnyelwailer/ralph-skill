@@ -346,11 +346,13 @@ export async function processAgentRequests(options: RequestProcessorOptions): Pr
       const archivePath = getArchivePath(failedDir, fileName, new Set());
       await fs.rename(requestPath, archivePath);
       await writeFailureToQueue(request, errorMsg, options, fileName);
+      const isUnsupported = errorMsg.startsWith('Unsupported request type:');
       await writeSessionLogEntry(options.logPath, 'gh_request_failed', {
         type: request.type,
         id: request.id,
         request_file: fileName,
-        error: errorMsg
+        error: errorMsg,
+        ...(isUnsupported ? { reason: 'unsupported_type' } : {}),
       });
     }
   }
@@ -426,8 +428,13 @@ async function handleRequest(request: AgentRequest, fileName: string, options: R
       return handleQueryIssues(request, fileName, options);
     case 'spec_backfill':
       return handleSpecBackfill(request, fileName, options);
-    default:
-      throw new Error(`Unsupported request type: ${(request as any).type}`);
+    default: {
+      const unknownType = (request as any).type;
+      const payloadSummary = JSON.stringify((request as any).payload ?? {}).substring(0, 120);
+      throw new Error(
+        `Unsupported request type: ${unknownType} (id: ${request.id}, payload: ${payloadSummary})`,
+      );
+    }
   }
 }
 

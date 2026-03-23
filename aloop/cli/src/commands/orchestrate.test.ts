@@ -69,6 +69,13 @@ import {
   createTrunkToMainPr,
   resolveAutoMerge,
   detectChangeRequestLabel,
+  computeBlockerHash,
+  detectCurrentBlockers,
+  updateBlockerSignatures,
+  computeOverallHealth,
+  BLOCKER_PERSISTENCE_THRESHOLD,
+  type BlockerSignature,
+  type BlockerType,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -6144,5 +6151,328 @@ describe('runOrchestratorScanPass with replan', () => {
     );
 
     assert.equal(result.replan, null);
+  });
+});
+
+// --- Blocker persistence tracking tests ---
+
+describe('computeBlockerHash', () => {
+  it('returns a deterministic string combining type, issue number, and description prefix', () => {
+    const hash1 = computeBlockerHash('ci_failure', 42, 'CI failed on step lint');
+    const hash2 = computeBlockerHash('ci_failure', 42, 'CI failed on step lint');
+    assert.equal(hash1, hash2);
+  });
+
+  it('produces distinct hashes for different types', () => {
+    const h1 = computeBlockerHash('ci_failure', 1, 'test failure');
+    const h2 = computeBlockerHash('child_stuck', 1, 'test failure');
+    assert.notEqual(h1, h2);
+  });
+
+  it('produces distinct hashes for different issue numbers', () => {
+    const h1 = computeBlockerHash('ci_failure', 1, 'test failure');
+    const h2 = computeBlockerHash('ci_failure', 2, 'test failure');
+    assert.notEqual(h1, h2);
+  });
+
+  it('normalises description to lowercase and trims whitespace', () => {
+    const h1 = computeBlockerHash('pr_conflict', 5, '  Conflict on Main  ');
+    const h2 = computeBlockerHash('pr_conflict', 5, 'conflict on main');
+    assert.equal(h1, h2);
+  });
+});
+
+describe('detectCurrentBlockers', () => {
+  it('detects child_stuck for failed issues', () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 7, state: 'failed' })],
+    });
+    const blockers = detectCurrentBlockers(state);
+    assert.equal(blockers.length, 1);
+    assert.equal(blockers[0].type, 'child_stuck');
+    assert.equal(blockers[0].issue_number, 7);
+  });
+
+  it('detects ci_failure for pr_open issues with ci_failure_signature', () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({
+          number: 3,
+          state: 'pr_open',
+          pr_number: 99,
+          ci_failure_signature: 'test-lint',
+          ci_failure_summary: 'Lint check failed',
+        }),
+      ],
+    });
+    const blockers = detectCurrentBlockers(state);
+    assert.equal(blockers.length, 1);
+    assert.equal(blockers[0].type, 'ci_failure');
+    assert.ok(blockers[0].description.includes('Lint check failed'));
+  });
+
+  it('uses ci_failure_signature in description when summary is absent', () => {
+    const state = makeScanState({
+      issues: [
+        makeIssue({ number: 4, state: 'pr_open', pr_number: 12, ci_failure_signature: 'build-fail' }),
+      ],
+    });
+    const blockers = detectCurrentBlockers(state);
+    assert.equal(blockers.length, 1);
+    assert.ok(blockers[0].description.includes('build-fail'));
+  });
+
+  it('detects pr_conflict for issues with rebase_attempts >= 3', () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 5, state: 'pr_open', pr_number: 10, rebase_attempts: 4 })],
+    });
+    const blockers = detectCurrentBlockers(state);
+    assert.equal(blockers.length, 1);
+    assert.equal(blockers[0].type, 'pr_conflict');
+  });
+
+  it('does not detect pr_conflict for rebase_attempts < 3', () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 5, state: 'pr_open', pr_number: 10, rebase_attempts: 2 })],
+    });
+    const blockers = detectCurrentBlockers(state);
+    assert.equal(blockers.filter((b) => b.type === 'pr_conflict').length, 0);
+  });
+
+  it('returns empty array when no blockers', () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, state: 'pending' })],
+    });
+    assert.deepEqual(detectCurrentBlockers(state), []);
+  });
+});
+
+describe('updateBlockerSignatures', () => {
+  it('adds new blocker with occurrence_count=1 on first detection', () => {
+    const state = makeScanState({ issues: [makeIssue({ number: 1, state: 'failed' })] });
+    const sigs = updateBlockerSignatures([], [{ type: 'child_stuck', issue_number: 1, description: 'loop failed' }], state, 5);
+    assert.equal(sigs.length, 1);
+    assert.equal(sigs[0].occurrence_count, 1);
+    assert.equal(sigs[0].first_seen_iteration, 5);
+  });
+
+  it('increments occurrence_count for known blocker on subsequent detection', () => {
+    const state = makeScanState({ issues: [makeIssue({ number: 1, state: 'failed' })] });
+    const desc = 'loop failed';
+    const hash = computeBlockerHash('child_stuck', 1, desc);
+    const existing: BlockerSignature[] = [
+      { hash, type: 'child_stuck', issue_number: 1, description: desc, first_seen_iteration: 3, occurrence_count: 2 },
+    ];
+    const sigs = updateBlockerSignatures(existing, [{ type: 'child_stuck', issue_number: 1, description: desc }], state, 4);
+    assert.equal(sigs.length, 1);
+    assert.equal(sigs[0].occurrence_count, 3);
+    assert.equal(sigs[0].first_seen_iteration, 3); // unchanged
+  });
+
+  it('removes blocker when issue is merged', () => {
+    const state = makeScanState({ issues: [makeIssue({ number: 1, state: 'merged' })] });
+    const desc = 'loop failed';
+    const hash = computeBlockerHash('child_stuck', 1, desc);
+    const existing: BlockerSignature[] = [
+      { hash, type: 'child_stuck', issue_number: 1, description: desc, first_seen_iteration: 1, occurrence_count: 7 },
+    ];
+    const sigs = updateBlockerSignatures(existing, [], state, 10);
+    assert.equal(sigs.length, 0);
+  });
+
+  it('retains blockers for issues not yet resolved', () => {
+    const state = makeScanState({ issues: [makeIssue({ number: 2, state: 'failed' })] });
+    const desc = 'loop failed';
+    const hash = computeBlockerHash('child_stuck', 2, desc);
+    const existing: BlockerSignature[] = [
+      { hash, type: 'child_stuck', issue_number: 2, description: desc, first_seen_iteration: 1, occurrence_count: 3 },
+    ];
+    // Not detected this pass but issue is still failed — keep it
+    const sigs = updateBlockerSignatures(existing, [], state, 5);
+    assert.equal(sigs.length, 1);
+    assert.equal(sigs[0].occurrence_count, 3); // unchanged — not re-detected
+  });
+});
+
+describe('computeOverallHealth', () => {
+  it('returns healthy when there are no persistent blockers', () => {
+    const sigs: BlockerSignature[] = [
+      { hash: 'a', type: 'ci_failure', issue_number: 1, description: 'x', first_seen_iteration: 1, occurrence_count: 2 },
+    ];
+    assert.equal(computeOverallHealth(sigs, 5), 'healthy');
+  });
+
+  it('returns degraded when one blocker reaches threshold', () => {
+    const sigs: BlockerSignature[] = [
+      { hash: 'a', type: 'ci_failure', issue_number: 1, description: 'x', first_seen_iteration: 1, occurrence_count: 5 },
+    ];
+    assert.equal(computeOverallHealth(sigs, 5), 'degraded');
+  });
+
+  it('returns critical when 3+ blockers are persistent', () => {
+    const make = (hash: string, issue_number: number): BlockerSignature => ({
+      hash, type: 'ci_failure', issue_number, description: 'x', first_seen_iteration: 1, occurrence_count: 5,
+    });
+    const sigs = [make('a', 1), make('b', 2), make('c', 3)];
+    assert.equal(computeOverallHealth(sigs, 5), 'critical');
+  });
+
+  it('returns critical when any blocker reaches 10+ occurrences', () => {
+    const sigs: BlockerSignature[] = [
+      { hash: 'a', type: 'child_stuck', issue_number: 1, description: 'x', first_seen_iteration: 1, occurrence_count: 10 },
+    ];
+    assert.equal(computeOverallHealth(sigs, 5), 'critical');
+  });
+});
+
+describe('runOrchestratorScanPass blocker tracking', () => {
+  it('writes blocker_signatures to state after detecting a failed issue', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, state: 'failed' })],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    const persisted: OrchestratorState = JSON.parse(deps.files['/state.json']);
+    assert.ok(Array.isArray(persisted.blocker_signatures));
+    assert.equal(persisted.blocker_signatures!.length, 1);
+    assert.equal(persisted.blocker_signatures![0].type, 'child_stuck');
+  });
+
+  it('writes diagnostics.json after blocker reaches persistence threshold', async () => {
+    const desc = 'Issue #1 child loop failed';
+    const hash = computeBlockerHash('child_stuck', 1, desc);
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, state: 'failed' })],
+      blocker_signatures: [
+        {
+          hash,
+          type: 'child_stuck',
+          issue_number: 1,
+          description: desc,
+          first_seen_iteration: 1,
+          occurrence_count: BLOCKER_PERSISTENCE_THRESHOLD - 1,
+        },
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, BLOCKER_PERSISTENCE_THRESHOLD, deps,
+    );
+
+    const diagnosticsRaw = deps.files['/session/diagnostics.json'];
+    assert.ok(diagnosticsRaw, 'diagnostics.json should be written');
+    const diagnostics = JSON.parse(diagnosticsRaw);
+    assert.equal(diagnostics.persistent_blockers.length, 1);
+    assert.equal(diagnostics.persistent_blockers[0].type, 'child_stuck');
+    assert.ok(diagnostics.persistent_blockers[0].iterations_stuck >= BLOCKER_PERSISTENCE_THRESHOLD);
+    assert.ok(['healthy', 'degraded', 'critical'].includes(diagnostics.overall_health));
+  });
+
+  it('writes ALERT.md when health is critical (3+ persistent blockers)', async () => {
+    // Pre-seed 3 persistent blockers at threshold
+    const makeBlocker = (type: BlockerType, issueNum: number): BlockerSignature => {
+      const description = `Issue #${issueNum} child loop failed`;
+      return {
+        hash: computeBlockerHash(type, issueNum, description),
+        type,
+        issue_number: issueNum,
+        description,
+        first_seen_iteration: 1,
+        occurrence_count: BLOCKER_PERSISTENCE_THRESHOLD - 1,
+      };
+    };
+    const state = makeScanState({
+      issues: [
+        makeIssue({ number: 1, state: 'failed' }),
+        makeIssue({ number: 2, state: 'failed' }),
+        makeIssue({ number: 3, state: 'failed' }),
+      ],
+      blocker_signatures: [
+        makeBlocker('child_stuck', 1),
+        makeBlocker('child_stuck', 2),
+        makeBlocker('child_stuck', 3),
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 10, deps,
+    );
+
+    const alert = deps.files['/session/ALERT.md'];
+    assert.ok(alert, 'ALERT.md should be written for critical health');
+    assert.ok(alert.includes('Critical Health Status'));
+
+    // Should also log blocker_alert_written
+    assert.ok(deps.logEntries.some((e) => e.event === 'blocker_alert_written'));
+  });
+
+  it('clears blocker signatures for merged issues', async () => {
+    const desc = 'Issue #1 child loop failed';
+    const hash = computeBlockerHash('child_stuck', 1, desc);
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, state: 'merged' })],
+      blocker_signatures: [
+        {
+          hash,
+          type: 'child_stuck',
+          issue_number: 1,
+          description: desc,
+          first_seen_iteration: 1,
+          occurrence_count: 8,
+        },
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 9, deps,
+    );
+
+    const persisted: OrchestratorState = JSON.parse(deps.files['/state.json']);
+    assert.equal(persisted.blocker_signatures!.length, 0, 'blocker for merged issue should be removed');
+  });
+
+  it('logs blocker_diagnostics_written event when diagnostics are written', async () => {
+    const desc = 'Issue #1 child loop failed';
+    const hash = computeBlockerHash('child_stuck', 1, desc);
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, state: 'failed' })],
+      blocker_signatures: [
+        {
+          hash,
+          type: 'child_stuck',
+          issue_number: 1,
+          description: desc,
+          first_seen_iteration: 1,
+          occurrence_count: BLOCKER_PERSISTENCE_THRESHOLD - 1,
+        },
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, BLOCKER_PERSISTENCE_THRESHOLD, deps,
+    );
+
+    assert.ok(
+      deps.logEntries.some((e) => e.event === 'blocker_diagnostics_written'),
+      'should log blocker_diagnostics_written event',
+    );
   });
 });
