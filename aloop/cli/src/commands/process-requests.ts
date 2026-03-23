@@ -15,6 +15,7 @@ import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 export type { CrResultDeps };
 export { processCrResultFiles };
 import { EtagCache } from '../lib/github-monitor.js';
+import { createAdapter, type OrchestratorAdapter } from '../lib/adapter.js';
 
 // --- Orchestrator event system (data-driven from pipeline.yml) ---
 
@@ -335,6 +336,8 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     } catch { /* best-effort */ }
   }
 
+  const adapter = repo ? createAdapter({ type: 'github', repo }, execGh) : undefined;
+
   // ── Phase 1: Apply agent-produced result files ──
 
   // 1a. Epic decomposition results → apply to state
@@ -351,11 +354,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         file_hints: issue.file_hints,
       }));
       if (normalizedIssues.length > 0) {
-        const ghIssueCreator = repo ? makeGhIssueCreator(requestsDir) : undefined;
         state = await applyDecompositionPlan(
           { issues: normalizedIssues } as DecompositionPlan,
           state, sessionDir, repo,
-          { existsSync, readFile: (p: string, e: BufferEncoding) => readFile(p, e), writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e), mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined), now: () => new Date(), execGhIssueCreate: ghIssueCreator },
+          { existsSync, readFile: (p: string, e: BufferEncoding) => readFile(p, e), writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e), mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined), now: () => new Date(), adapter },
         );
         stateChanged = true;
         console.log(`[process-requests] Applied epic decomposition: ${state.issues.length} issues`);
@@ -380,7 +382,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         for (const sub of subIssues) {
           const subTitle = sub.title;
           const subBody = `Part of #${parentNum}: ${parent.title}\n\n${sub.body ?? ''}`;
-          const ghNumber = repo ? await createGhIssue(repo, subTitle, subBody, ['aloop/auto'], requestsDir) : nextNum++;
+          const ghNumber = adapter ? await adapter.createIssue({ title: subTitle, body: subBody, labels: ['aloop/auto'] }) : nextNum++;
           state.issues.push({
             number: ghNumber || nextNum++,
             title: subTitle, body: subBody, file_hints: sub.file_hints ?? [],
@@ -395,8 +397,8 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         (parent as any).decomposed = true;
         stateChanged = true;
         // Update parent with tasklist on GH
-        if (repo && parentNum > 0) {
-          await updateParentTasklist(repo, parentNum, state.issues, requestsDir);
+        if (adapter && parentNum > 0) {
+          await updateParentTasklist(adapter, parentNum, state.issues);
         }
       }
       await archiveRequestFile(requestsDir, filePath);
@@ -411,13 +413,9 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     try {
       const result = JSON.parse(await readFile(filePath, 'utf8'));
       const issue = state.issues.find((i: any) => i.number === result.issue_number);
-      if (issue && result.updated_body && repo) {
-        // Update GH issue body via temp file (body can be large)
+      if (issue && result.updated_body && adapter) {
         try {
-          const bodyFile = path.join(requestsDir, `_body-${issue.number}.md`);
-          await writeFile(bodyFile, result.updated_body, 'utf8');
-          await execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--body-file', bodyFile]);
-          await unlink(bodyFile).catch(() => {});
+          await adapter.updateIssue(issue.number, { body: result.updated_body });
           issue.body = result.updated_body;
           (issue as any).refined = true;
           stateChanged = true;
@@ -514,15 +512,19 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   }
 
   // ── Phase 2: Create GH issues for state entries with number=0 ──
-  if (repo) {
+  if (adapter) {
     for (const issue of state.issues.filter((i: any) => i.number === 0)) {
       const labels = (issue as any).parent_issue ? ['aloop/auto'] : ['aloop/epic', 'aloop/auto'];
-      const ghNum = await createGhIssue(repo, issue.title, issue.body ?? '', labels, requestsDir);
-      if (ghNum > 0) {
-        issue.number = ghNum;
-        (issue as any).gh_number = ghNum;
-        stateChanged = true;
-        console.log(`[process-requests] Created GH issue #${ghNum}: ${issue.title.substring(0, 50)}`);
+      try {
+        const ghNum = await adapter.createIssue({ title: issue.title, body: issue.body ?? '', labels });
+        if (ghNum > 0) {
+          issue.number = ghNum;
+          (issue as any).gh_number = ghNum;
+          stateChanged = true;
+          console.log(`[process-requests] Created GH issue #${ghNum}: ${issue.title.substring(0, 50)}`);
+        }
+      } catch (e) {
+        console.error(`[process-requests] Failed to create GH issue: ${e}`);
       }
     }
   }
@@ -575,30 +577,27 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
               }
 
               // Create PR
-              const prResult = spawnSync('gh', [
-                'pr', 'create',
-                '--repo', repo,
-                '--title', `#${issue.number}: ${issue.title}`,
-                '--body', `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
-                '--head', branch,
-                '--base', trunkBranch,
-              ], { encoding: 'utf8' });
-
-              if (prResult.status === 0 && prResult.stdout) {
-                const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
-                const prNum = urlMatch ? parseInt(urlMatch[1], 10) : 0;
-                if (prNum > 0) {
-                  issue.pr_number = prNum;
-                  issue.state = 'pr_open';
-                  issue.status = 'In review';
-                  stateChanged = true;
-                  console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
-                }
-              } else {
-                const err = prResult.stderr?.trim() ?? '';
-                // Don't spam — only log if it's not "no commits" or "already exists"
-                if (!err.includes('already exists') && !err.includes('No commits')) {
-                  console.error(`[process-requests] PR create failed for #${issue.number}: ${err.substring(0, 100)}`);
+              if (adapter) {
+                try {
+                  const pr = await adapter.createPr({
+                    base: trunkBranch,
+                    head: branch,
+                    title: `#${issue.number}: ${issue.title}`,
+                    body: `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
+                  });
+                  if (pr.number > 0) {
+                    issue.pr_number = pr.number;
+                    issue.state = 'pr_open';
+                    issue.status = 'In review';
+                    stateChanged = true;
+                    console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
+                  }
+                } catch (e) {
+                  const err = String(e);
+                  // Don't spam — only log if it's not "no commits" or "already exists"
+                  if (!err.includes('already exists') && !err.includes('No commits')) {
+                    console.error(`[process-requests] PR create failed for #${issue.number}: ${err.substring(0, 100)}`);
+                  }
                 }
               }
             }
@@ -876,13 +875,13 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     readdir: (p: string) => readdir(p),
     unlink: (p: string) => unlink(p),
     now: () => new Date(),
-    execGh,
+    adapter,
     execGit,
     appendLog,
     etagCache,
     aloopRoot,
     prLifecycleDeps: {
-      execGh,
+      adapter: adapter!,
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
       writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
       now: () => new Date(),
@@ -1025,80 +1024,15 @@ async function archiveRequestFile(requestsDir: string, filePath: string): Promis
   await unlink(filePath);
 }
 
-async function createGhIssue(repo: string, title: string, body: string, labels: string[], requestsDir: string): Promise<number> {
-  const bodyFile = path.join(requestsDir, `gh-issue-body-${Date.now()}.md`);
-  await writeFile(bodyFile, body, 'utf8');
-  try {
-    const result = spawnSync('gh', ['issue', 'create', '--repo', repo, '--title', title, '--body-file', bodyFile, ...labels.flatMap(l => ['--label', l])], { encoding: 'utf8' });
-    if (result.status === 0 && result.stdout) {
-      const urlMatch = result.stdout.match(/\/issues\/(\d+)/);
-      if (urlMatch) return parseInt(urlMatch[1], 10);
-    }
-    console.error(`[process-requests] gh issue create failed: ${result.stderr?.trim()}`);
-    return 0;
-  } finally {
-    try { await unlink(bodyFile); } catch {}
-  }
-}
-
-function makeGhIssueCreator(requestsDir: string) {
-  return async (_repo: string, _sid: string, title: string, body: string, labels: string[]): Promise<number> => {
-    return createGhIssue(_repo, title, body, labels, requestsDir);
-  };
-}
-
-export async function getDirectorySizeBytes(dir: string): Promise<number> {
-  const { readdir: fsReaddir, stat } = await import('node:fs/promises');
-  let total = 0;
-  const entries = await fsReaddir(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      total += await getDirectorySizeBytes(fullPath);
-    } else {
-      const s = await stat(fullPath);
-      total += s.size;
-    }
-  }
-  return total;
-}
-
-export async function pruneLargeV8CacheDir(dir: string, thresholdBytes: number): Promise<{ sizeBytes: number; pruned: boolean }> {
-  const { existsSync: fsExistsSync } = await import('node:fs');
-  const { rm } = await import('node:fs/promises');
-  if (!fsExistsSync(dir)) return { sizeBytes: 0, pruned: false };
-  const sizeBytes = await getDirectorySizeBytes(dir);
-  if (sizeBytes >= thresholdBytes) {
-    await rm(dir, { recursive: true, force: true });
-    return { sizeBytes, pruned: true };
-  }
-  return { sizeBytes, pruned: false };
-}
-
-export function formatReviewCommentHistory(
-  comments: Array<{ author: { login: string | null } | null; createdAt?: string | null; body: string }>,
-): string {
-  const nonEmpty = comments.filter(c => c.body?.trim());
-  return nonEmpty.map(c => {
-    const login = c.author?.login ?? 'unknown';
-    const ts = c.createdAt ? ` at ${c.createdAt}` : '';
-    return `### @${login}${ts}\n\n${c.body}\n`;
-  }).join('\n---\n\n');
-}
-
-async function updateParentTasklist(repo: string, parentNum: number, issues: any[], requestsDir: string): Promise<void> {
+async function updateParentTasklist(adapter: OrchestratorAdapter, parentNum: number, issues: any[]): Promise<void> {
   const subNums = issues.filter((i: any) => i.parent_issue === parentNum && i.number > 0).map((i: any) => i.number);
   if (subNums.length === 0) return;
   try {
-    const viewResult = spawnSync('gh', ['issue', 'view', String(parentNum), '--repo', repo, '--json', 'body'], { encoding: 'utf8' });
-    if (viewResult.status !== 0) return;
-    const currentBody = JSON.parse(viewResult.stdout).body ?? '';
+    const parent = await adapter.getIssue(parentNum);
+    const currentBody = parent.body ?? '';
     if (currentBody.includes('[tasklist]')) return;
     const tasklist = `\n\`\`\`[tasklist]\n### Sub-issues\n${subNums.map((n: number) => `- [ ] #${n}`).join('\n')}\n\`\`\``;
-    const bodyFile = path.join(requestsDir, `gh-parent-body-${Date.now()}.md`);
-    await writeFile(bodyFile, currentBody + tasklist, 'utf8');
-    spawnSync('gh', ['issue', 'edit', String(parentNum), '--repo', repo, '--body-file', bodyFile], { encoding: 'utf8' });
-    try { await unlink(bodyFile); } catch {}
+    await adapter.updateIssue(parentNum, { body: currentBody + tasklist });
     console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
   } catch { /* non-critical */ }
 }
