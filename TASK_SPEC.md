@@ -1,17 +1,53 @@
-# Sub-Spec: Issue #166 — Review agent must read PR comment history and only re-review on new commits
+# Sub-Spec: Issue #148 — Dashboard and CLI status integration for orchestrator sessions
 
-## Problem
+## Objective
 
-The review agent re-reviews the same PR every scan pass, posting duplicate comments (11 comments on PR #149). It has no awareness of previous reviews or whether anything changed.
+Make orchestrator sessions fully visible in the dashboard UI and CLI status commands.
 
-## Required fixes
+## Scope
 
-1. **Track reviewed commit SHA** — store the HEAD commit SHA when a PR is reviewed. Only re-review if the head ref has new commits since last review. This is the spam prevention gate.
+### Dashboard Integration
+- Orchestrator sessions appear in dashboard session list with mode=orchestrator badge
+- Display orchestrator-specific data:
+  - Current wave / total waves
+  - Issue breakdown by state (pending, in_progress, pr_open, merged, failed)
+  - Active child loops with their status
+  - Autonomy level indicator
+  - Budget usage (for pay-per-use providers)
+- Child loop sessions linked to parent orchestrator
+- Real-time updates via existing polling mechanism
 
-2. **Include PR comment history in review prompt** — when building the review queue prompt, fetch existing PR comments and include them. The agent sees:
-   - Previous review feedback (what was requested)
-   - Child loop's responses (what was fixed/explained)
-   - Avoids repeating the same feedback
-   - Can acknowledge fixed issues and focus on remaining ones
+### CLI Status Integration
+- `aloop status` shows orchestrator sessions with:
+  - Session ID, PID, uptime
+  - Issue progress summary (e.g., "5/12 merged, 2 in-progress, 1 blocked")
+  - Active child count
+  - Current wave
+- `aloop status --watch` refreshes orchestrator data
 
-3. **Conversation-aware verdict** — if previous review said "fix X, Y, Z" and the child pushed commits fixing X and Y, the next review should say "X and Y are fixed, Z still needs work" — not repeat all three.
+### Stop Command
+- `aloop stop <id>` works for orchestrator sessions (sends SIGTERM)
+- Confirm prompt for stopping orchestrator (warns about active children)
+- `aloop stop --all` includes orchestrator sessions
+
+## Inputs
+- `orchestrator.json` state file
+- `status.json` per session
+- `active.json` session registry
+- Existing dashboard components
+- Existing `status.ts` and `stop.ts` commands
+
+## Outputs
+- Updated dashboard views for orchestrator sessions
+- Updated `status.ts` with orchestrator-aware display
+- Updated `stop.ts` with orchestrator shutdown support
+
+## Acceptance Criteria
+- [ ] Dashboard displays orchestrator session with child loop status
+- [ ] Issue state breakdown visible in dashboard
+- [ ] `aloop status` shows orchestrator progress summary
+- [ ] `aloop stop <id>` gracefully shuts down orchestrator
+- [ ] Active children shown in both dashboard and CLI
+
+## Labels
+`aloop/sub-issue`, `aloop/needs-refine`
