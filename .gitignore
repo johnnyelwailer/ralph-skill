@@ -39,3 +39,4 @@ aloop/cli/dashboard/test-results/
 *-proof.json
 *-verification.txt
 *.tgz
+.mcp.json
