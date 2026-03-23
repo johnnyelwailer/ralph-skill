@@ -871,10 +871,8 @@ ${recent.slice(-4000)}
           if (existsSync(reviewPath)) {
             const prompt = await readFile(reviewPath, 'utf8');
             await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
-            // Write to requests/ inside the worktree (agent's working dir) — process-requests checks both locations
-            const worktreeRequestsDir = path.join(sessionDir, 'worktree', 'requests');
-            const resultPath = path.join(worktreeRequestsDir, `review-result-${prNumber}.json`);
-            const outputInstr = `\n\n## Output — CRITICAL\n\nYou MUST use the Write tool to create this file:\n\n**Path:** \`requests/review-result-${prNumber}.json\`\n\n(This is relative to your working directory. Full path: \`${resultPath}\`)\n\n**Content (valid JSON):**\n\`\`\`json\n{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}\n\`\`\`\n\nValid verdicts: \`approve\`, \`request-changes\`, \`flag-for-human\`\n\n**Without this file, the pipeline is stuck. Do NOT just print the verdict — WRITE THE FILE.**\n`;
+            const resultPath = path.join(requestsDir, `review-result-${prNumber}.json`);
+            const outputInstr = `\n\n## Output — CRITICAL\n\nYou MUST use the Write tool to create this file:\n\n**Absolute path:** \`${resultPath}\`\n\n**Content (valid JSON):**\n\`\`\`json\n{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}\n\`\`\`\n\nValid verdicts: \`approve\`, \`request-changes\`, \`flag-for-human\`\n\n**Without this file, the pipeline is stuck. Do NOT just print the verdict — WRITE THE FILE.**\n`;
 
             // Fetch existing PR comments for context
             let commentHistory = '';
