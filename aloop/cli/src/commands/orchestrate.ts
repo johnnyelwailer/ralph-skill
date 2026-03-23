@@ -3479,7 +3479,7 @@ export async function checkPrGates(
 
 /**
  * Run agent review on PR diff.
- * If no invokeAgentReview dep is provided, auto-approves (for headless/test scenarios).
+ * If no invokeAgentReview dep is provided, flags for human review.
  */
 export async function reviewPrDiff(
   prNumber: number,
@@ -3505,11 +3505,11 @@ export async function reviewPrDiff(
     return deps.invokeAgentReview(prNumber, repo, diff);
   }
 
-  // Default: auto-approve when no agent reviewer is configured
+  // No reviewer configured — flag for human, never auto-approve
   return {
     pr_number: prNumber,
-    verdict: 'approve',
-    summary: 'Auto-approved (no agent reviewer configured)',
+    verdict: 'flag-for-human',
+    summary: 'No agent reviewer configured — requires human review',
   };
 }
 
