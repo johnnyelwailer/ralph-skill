@@ -1069,3 +1069,54 @@ async function updateParentTasklist(repo: string, parentNum: number, issues: any
     console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
   } catch { /* non-critical */ }
 }
+
+// --- V8 cache helpers ---
+
+export async function getDirectorySizeBytes(dir: string): Promise<number> {
+  let total = 0;
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      total += await getDirectorySizeBytes(fullPath);
+    } else {
+      const s = await stat(fullPath);
+      total += s.size;
+    }
+  }
+  return total;
+}
+
+export async function pruneLargeV8CacheDir(dir: string, thresholdBytes: number): Promise<{ sizeBytes: number; pruned: boolean }> {
+  try {
+    await stat(dir);
+  } catch {
+    return { sizeBytes: 0, pruned: false };
+  }
+  const sizeBytes = await getDirectorySizeBytes(dir);
+  if (sizeBytes < thresholdBytes) {
+    return { sizeBytes, pruned: false };
+  }
+  await rm(dir, { recursive: true, force: true });
+  return { sizeBytes, pruned: true };
+}
+
+// --- Review comment history formatter ---
+
+interface ReviewComment {
+  author?: { login?: string | null } | null;
+  createdAt?: string | null;
+  body?: string | null;
+}
+
+export function formatReviewCommentHistory(comments: ReviewComment[]): string {
+  const nonEmpty = comments.filter((c) => c.body?.trim());
+  return nonEmpty
+    .map((c, i) => {
+      const login = c.author?.login ?? 'unknown';
+      const header = c.createdAt ? `### @${login} at ${c.createdAt}` : `### @${login}`;
+      const entry = `${header}\n\n${c.body!.trim()}\n`;
+      return i < nonEmpty.length - 1 ? `${entry}\n---\n\n` : entry;
+    })
+    .join('');
+}
