@@ -3050,6 +3050,15 @@ export async function launchChildLoop(
   deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.merge`], { encoding: 'utf8' });
   deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.remote`], { encoding: 'utf8' });
 
+  // Remove .mcp.json if present — prevents tessl MCP hangs in child loops
+  const mcpJsonPath = path.join(worktreePath, '.mcp.json');
+  if (deps.existsSync(mcpJsonPath)) {
+    try { const { unlink: unlinkFile } = await import('node:fs/promises'); await unlinkFile(mcpJsonPath); } catch { /* best-effort */ }
+  }
+
+  // Create .aloop/output/ for agent result file bridge
+  await deps.mkdir(path.join(worktreePath, '.aloop', 'output'), { recursive: true });
+
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
   await deps.writeFile(path.join(worktreePath, 'TODO.md'), todoContent, 'utf8');
@@ -3405,10 +3414,11 @@ export async function checkPrGates(
     const prData = JSON.parse(viewResult.stdout);
     mergeable = prData.mergeable === 'MERGEABLE';
     const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
+    const mergeUnknown = prData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
     gates.push({
       gate: 'merge_conflicts',
-      status: mergeable ? 'pass' : 'fail',
-      detail: mergeable ? 'No merge conflicts' : `Merge state: ${mergeState}`,
+      status: mergeable ? 'pass' : mergeUnknown ? 'pending' : 'fail',
+      detail: mergeable ? 'No merge conflicts' : mergeUnknown ? 'Mergeability not yet computed' : `Merge state: ${mergeState}`,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
