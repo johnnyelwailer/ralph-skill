@@ -2,7 +2,7 @@
 
 ## Completed
 
-All tasks for Issue #126 are complete. This file contains the final spec-gap analysis results.
+All tasks for Issue #126 are complete. This file contains the final spec-gap analysis results. [reviewed: gates 1-9 pass]
 
 ### Spec-Gap Analysis
 
