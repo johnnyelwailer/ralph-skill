@@ -1381,8 +1381,11 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       }
     } else {
       workDir = worktreePath;
-      // Pull latest into existing worktree so it has fresh CONSTITUTION.md, SPEC.md, etc.
-      nodeSpawnSync('git', ['-C', worktreePath, 'pull', '--rebase', '--autostash'], { encoding: 'utf8' });
+      // Merge latest trunk into worktree so it has fresh CONSTITUTION.md, SPEC.md, etc.
+      // Use merge (not rebase) to avoid conflicts with untracked files.
+      const trunkBranch = state.trunk_branch ?? 'agent/trunk';
+      nodeSpawnSync('git', ['-C', worktreePath, 'fetch', 'origin', trunkBranch], { encoding: 'utf8' });
+      nodeSpawnSync('git', ['-C', worktreePath, 'merge', `origin/${trunkBranch}`, '--no-edit'], { encoding: 'utf8' });
     }
 
     // Reset loop-plan iteration counter to continue from current state
