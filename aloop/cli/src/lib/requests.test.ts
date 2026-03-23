@@ -98,6 +98,11 @@ test('validateRequest - accepts valid payloads for all request types', () => {
       type: 'spec_backfill',
       payload: { file: 'SPEC.md', section: '## Objective', content_file: 'content.md' },
     },
+    {
+      id: 'v-queue-investigation',
+      type: 'queue_investigation',
+      payload: { questions: [{ id: 'q1', question: 'Is X wired up?', spec_section: '## Objective', code_path: 'src/foo.ts' }] },
+    },
   ];
 
   for (const request of validRequests) {
@@ -188,6 +193,26 @@ test('validateRequest - rejects request-specific edge cases', () => {
     {
       input: { id: 'bad-query-payload', type: 'query_issues', payload: null },
       match: /non-null "payload" object/,
+    },
+    {
+      input: { id: 'bad-qi-empty', type: 'queue_investigation', payload: { questions: [] } },
+      match: /payload\.questions must be a non-empty array/,
+    },
+    {
+      input: { id: 'bad-qi-missing', type: 'queue_investigation', payload: {} },
+      match: /payload\.questions must be a non-empty array/,
+    },
+    {
+      input: { id: 'bad-qi-id', type: 'queue_investigation', payload: { questions: [{ id: '', question: 'Q?' }] } },
+      match: /questions\[0\]\.id must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-qi-question', type: 'queue_investigation', payload: { questions: [{ id: 'q1', question: '' }] } },
+      match: /questions\[0\]\.question must be a non-empty string/,
+    },
+    {
+      input: { id: 'bad-qi-wrong-type', type: 'queue_investigation', payload: { questions: 'not-an-array' } },
+      match: /payload\.questions must be a non-empty array/,
     },
   ];
 

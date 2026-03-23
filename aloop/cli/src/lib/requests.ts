@@ -135,7 +135,8 @@ export type AgentRequest =
   | StopChildRequest
   | PostCommentRequest
   | QueryIssuesRequest
-  | SpecBackfillRequest;
+  | SpecBackfillRequest
+  | QueueInvestigationRequest;
 
 export class ValidationError extends Error {
   constructor(message: string) {
@@ -147,6 +148,7 @@ export class ValidationError extends Error {
 const VALID_REQUEST_TYPES = new Set<string>([
   'create_issues', 'update_issue', 'close_issue', 'create_pr', 'merge_pr',
   'dispatch_child', 'steer_child', 'stop_child', 'post_comment', 'query_issues', 'spec_backfill',
+  'queue_investigation',
 ]);
 
 const VALID_MERGE_STRATEGIES = new Set(['squash', 'merge', 'rebase']);
@@ -258,6 +260,18 @@ export function validateRequest(raw: unknown): AgentRequest {
         throw new ValidationError('spec_backfill: payload.section must be a non-empty string');
       if (typeof p.content_file !== 'string' || p.content_file.length === 0)
         throw new ValidationError('spec_backfill: payload.content_file must be a non-empty string');
+      break;
+    }
+    case 'queue_investigation': {
+      if (!Array.isArray(p.questions) || p.questions.length === 0)
+        throw new ValidationError('queue_investigation: payload.questions must be a non-empty array');
+      for (let i = 0; i < p.questions.length; i++) {
+        const q = p.questions[i] as Record<string, unknown>;
+        if (typeof q.id !== 'string' || q.id.length === 0)
+          throw new ValidationError(`queue_investigation: questions[${i}].id must be a non-empty string`);
+        if (typeof q.question !== 'string' || q.question.length === 0)
+          throw new ValidationError(`queue_investigation: questions[${i}].question must be a non-empty string`);
+      }
       break;
     }
   }
