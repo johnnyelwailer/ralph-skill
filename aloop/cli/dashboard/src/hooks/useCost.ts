@@ -1,13 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+interface ByModelRow {
+  model: string;
+  cost_usd: number;
+}
+
 interface CostAggregateResponse {
   total_usd?: number | string;
+  by_model?: ByModelRow[];
   error?: string;
 }
 
 interface UseCostOptions {
   log: string;
   meta: Record<string, unknown> | null;
+  budgetWarnings?: number[];
 }
 
 export interface UseCostResult {
@@ -15,6 +22,8 @@ export interface UseCostResult {
   totalCost: number | null;
   budgetCap: number | null;
   budgetUsedPercent: number | null;
+  firedThresholds: number[];
+  byModel: { model: string; cost_usd: number }[];
   isLoading: boolean;
   error: string | null;
 }
@@ -49,11 +58,14 @@ function sumSessionCost(log: string): number {
   return total;
 }
 
-export function useCost({ log, meta }: UseCostOptions): UseCostResult {
+export function useCost({ log, meta, budgetWarnings }: UseCostOptions): UseCostResult {
   const [totalCost, setTotalCost] = useState<number | null>(null);
+  const [byModel, setByModel] = useState<{ model: string; cost_usd: number }[]>([]);
+  const [firedThresholds, setFiredThresholds] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const inFlightRef = useRef(false);
+  const firedRef = useRef<Set<number>>(new Set());
 
   const sessionCost = useMemo(() => sumSessionCost(log), [log]);
 
@@ -98,6 +110,7 @@ export function useCost({ log, meta }: UseCostOptions): UseCostResult {
 
         if (!cancelled) {
           setTotalCost(parsedTotal);
+          setByModel(Array.isArray(payload.by_model) ? payload.by_model : []);
           setError(null);
         }
       } catch (err) {
@@ -122,5 +135,19 @@ export function useCost({ log, meta }: UseCostOptions): UseCostResult {
     };
   }, [pollIntervalMinutes]);
 
-  return { sessionCost, totalCost, budgetCap, budgetUsedPercent, isLoading, error };
+  useEffect(() => {
+    if (budgetUsedPercent === null || !budgetWarnings?.length) return;
+    const newlyFired: number[] = [];
+    for (const threshold of budgetWarnings) {
+      if (budgetUsedPercent / 100 >= threshold && !firedRef.current.has(threshold)) {
+        firedRef.current.add(threshold);
+        newlyFired.push(threshold);
+      }
+    }
+    if (newlyFired.length > 0) {
+      setFiredThresholds(prev => [...prev, ...newlyFired]);
+    }
+  }, [budgetUsedPercent, budgetWarnings]);
+
+  return { sessionCost, totalCost, budgetCap, budgetUsedPercent, firedThresholds, byModel, isLoading, error };
 }

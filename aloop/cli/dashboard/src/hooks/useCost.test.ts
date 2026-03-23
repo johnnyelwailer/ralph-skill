@@ -172,6 +172,71 @@ describe('useCost', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('fires threshold once when budgetUsedPercent crosses it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ total_usd: 8.5 })));
+
+    const { result } = renderHook(() =>
+      useCost({
+        log: '',
+        meta: { budget_cap_usd: '10' },
+        budgetWarnings: [0.7, 0.85, 0.95],
+      }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    // 8.5 / 10 = 85% — crosses 0.7 and 0.85 but not 0.95
+    expect(result.current.firedThresholds).toContain(0.7);
+    expect(result.current.firedThresholds).toContain(0.85);
+    expect(result.current.firedThresholds).not.toContain(0.95);
+  });
+
+  it('does not re-fire threshold on re-render with same value', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ total_usd: 8 })));
+
+    const { result, rerender } = renderHook(() =>
+      useCost({
+        log: '',
+        meta: { budget_cap_usd: '10' },
+        budgetWarnings: [0.7],
+      }),
+    );
+
+    await waitFor(() => expect(result.current.firedThresholds).toContain(0.7));
+    const before = result.current.firedThresholds.length;
+    rerender();
+    expect(result.current.firedThresholds.length).toBe(before);
+  });
+
+  it('fires multiple thresholds each at most once', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ total_usd: 10 })));
+
+    const { result } = renderHook(() =>
+      useCost({
+        log: '',
+        meta: { budget_cap_usd: '10' },
+        budgetWarnings: [0.7, 0.85, 0.95],
+      }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    // 10/10 = 100%, all thresholds crossed
+    expect(result.current.firedThresholds).toHaveLength(3);
+    expect(new Set(result.current.firedThresholds).size).toBe(3);
+  });
+
+  it('populates byModel from API by_model field', async () => {
+    const byModelData = [
+      { model: 'gpt-4', cost_usd: 1.5 },
+      { model: 'claude-3', cost_usd: 0.8 },
+    ];
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ total_usd: 2.3, by_model: byModelData })));
+
+    const { result } = renderHook(() => useCost({ log: '', meta: null }));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.byModel).toEqual(byModelData);
+  });
+
   it('treats NaN-producing numeric strings as null via toNumber', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ total_usd: 2.5 })));
 
