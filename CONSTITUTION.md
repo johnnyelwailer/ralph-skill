@@ -12,7 +12,7 @@ it — do not implement the violation.
 2. **Inner loop / runtime separation.** The loop may run in a container where the aloop CLI is unavailable. All host-side operations (GH, steering, dashboard, request processing) belong in the runtime (`aloop` CLI / `process-requests.ts`), never in the loop scripts.
 3. **The loop never exits mid-cycle.** Cycles always run to completion. Only at the cycle boundary does the loop check `allTasksMarkedDone`.
 4. **Agents are untrusted.** The aloop runtime is the single trust boundary. Agents never call GH APIs, network endpoints, the `gh` CLI, or the `aloop` CLI directly. All external operations are mediated by the runtime — agents only express intent, the runtime decides what to execute.
-5. **All side effects flow through request files.** `requests/*.json` (agent → runtime) and `queue/*.md` (runtime → agent) are the only channel for external operations.
+5. **All side effects flow through the filesystem contract.** Agents write results to `.aloop/output/` in their working directory. The runtime bridges them to `requests/` for processing. `queue/*.md` (runtime → agent) delivers prompts. No provider-specific protocols — every feature must work with every provider (claude, gemini, opencode, codex, copilot).
 6. **100% data-driven pipeline.** No hardcoded paths, constants, prompt names, or phase sequences in code. The loop knows nothing about which prompts it runs — it reads `loop-plan.json`. The orchestrator runtime knows nothing about specific agents — it reacts to well-defined events. Prompts register triggers for events. Everything is configurable via `pipeline.yml` and `loop-plan.json`. Full decoupling, fully data-driven.
 
 ## Design Principles
