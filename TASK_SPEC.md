@@ -1,10 +1,10 @@
 # Sub-Spec: Issue #154 — Extract session and sidebar components from AppView.tsx
 
-## Current state
+## Objective
 
 Extract the session sidebar UI from `AppView.tsx` into dedicated components under `src/components/session/` and `src/components/layout/`.
 
-## Target
+## Scope
 
 ### Create `src/components/session/SessionCard.tsx`
 - Single session entry showing: session name, status dot, elapsed time, iteration count
