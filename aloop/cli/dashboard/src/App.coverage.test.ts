@@ -881,9 +881,10 @@ describe('App.tsx AppView integration coverage', () => {
     })));
     const row = screen.getByText('built something').closest('div');
     if (row) fireEvent.click(row);
-    expect(await screen.findByText('a.png')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('a.png'));
-    fireEvent.click(screen.getByText('b.txt'));
+    const imgArtifact = await screen.findByRole('img', { name: 'a.png' });
+    expect(imgArtifact).toBeInTheDocument();
+    fireEvent.click(imgArtifact.closest('button')!);
+    expect(await screen.findByText('b.txt')).toBeInTheDocument();
   });
 
   it('covers DocContent and HealthPanel', () => {

@@ -3,7 +3,7 @@ import { marked } from 'marked';
 import { toast } from 'sonner';
 import {
   Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock,
-  GitBranch, GitCommit, Image, FileText, Menu, MoreHorizontal, PanelLeftClose,
+  GitBranch, GitCommit, FileText, Menu, MoreHorizontal, PanelLeftClose,
   PanelLeftOpen, Play, Search, Send, Square, Terminal, Timer, XCircle, Zap, Loader2,
   Heart, AlertTriangle, Pause, ExternalLink,
 } from 'lucide-react';
@@ -20,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CostDisplay } from '@/components/progress/CostDisplay';
+import { ArtifactViewer } from '@/components/artifacts/ArtifactViewer';
 import { useCost } from '@/hooks/useCost';
 import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
@@ -188,7 +189,7 @@ interface SessionSummary {
   stuckCount: number;
 }
 
-interface LogEntry {
+export interface LogEntry {
   timestamp: string;
   phase: string;
   event: string;
@@ -215,14 +216,14 @@ interface FileChange {
   deletions: number;
 }
 
-interface ArtifactEntry {
+export interface ArtifactEntry {
   type: string;
   path: string;
   description: string;
   metadata?: { baseline?: string; diff_percentage?: number };
 }
 
-interface ManifestPayload {
+export interface ManifestPayload {
   iteration: number;
   phase: string;
   summary: string;
@@ -1536,7 +1537,7 @@ export function ActivityPanel({ log, artifacts, currentIteration, currentPhase, 
   );
 }
 
-function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { entry: LogEntry; artifacts: ManifestPayload | null; isCurrentIteration: boolean; allManifests: ManifestPayload[] }) {
+export function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { entry: LogEntry; artifacts: ManifestPayload | null; isCurrentIteration: boolean; allManifests: ManifestPayload[] }) {
   const [expanded, setExpanded] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [comparisonArtifact, setComparisonArtifact] = useState<{ artifact: ArtifactEntry; iteration: number } | null>(null);
@@ -1678,6 +1679,11 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
           </span>
         )}
 
+        {/* Collapsed artifact count indicator */}
+        {!expanded && artifacts && artifacts.artifacts.length > 0 && (
+          <span className="text-amber-600 dark:text-amber-400 text-[10px] shrink-0">{artifacts.artifacts.length}A</span>
+        )}
+
         {/* Expand chevron */}
         {hasExpandable && (
           expanded ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/40" /> : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
@@ -1718,48 +1724,13 @@ function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { e
           )}
 
           {/* Artifacts */}
-          {artifacts && artifacts.artifacts.length > 0 && (
-            <div className="border-l-2 border-amber-500/30 pl-2 py-1 space-y-0.5 mt-1">
-              <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
-                <Image className="h-3 w-3" /> {artifacts.artifacts.length} artifact{artifacts.artifacts.length !== 1 ? 's' : ''}
-              </span>
-              {artifacts.summary && <p className="text-muted-foreground italic text-[10px]">{artifacts.summary}</p>}
-              {artifacts.artifacts.map((a) => (
-                <div key={a.path} className="flex items-center gap-2">
-                  {isImageArtifact(a) ? <Image className="h-3 w-3 text-muted-foreground" /> : <FileText className="h-3 w-3 text-muted-foreground" />}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      {isImageArtifact(a) ? (
-                        <button type="button" className="text-blue-600 dark:text-blue-400 hover:underline truncate" onClick={(e) => {
-                          e.stopPropagation();
-                          if (a.metadata?.baseline || findBaselineIterations(a.path, artifacts.iteration, allManifests).length > 0) {
-                            setComparisonArtifact({ artifact: a, iteration: artifacts.iteration });
-                          } else {
-                            setLightboxSrc(artifactUrl(artifacts.iteration, a.path));
-                          }
-                        }}>
-                          {a.path}
-                        </button>
-                      ) : <span className="text-foreground/80 truncate">{a.path}</span>}
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-lg"><p className="break-all">{a.path}</p></TooltipContent>
-                  </Tooltip>
-                  {a.description && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="text-muted-foreground/60 truncate">{a.description}</span>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-lg"><p className="break-words">{a.description}</p></TooltipContent>
-                    </Tooltip>
-                  )}
-                  {a.metadata?.diff_percentage !== undefined && (
-                    <span className={`shrink-0 text-[9px] px-1 rounded ${a.metadata.diff_percentage < 5 ? 'bg-green-500/20 text-green-500' : a.metadata.diff_percentage < 20 ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'}`}>
-                      diff: {a.metadata.diff_percentage.toFixed(1)}%
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
+          {artifacts && (
+            <ArtifactViewer
+              manifest={artifacts}
+              allManifests={allManifests}
+              onLightbox={setLightboxSrc}
+              onComparison={(artifact, iteration) => setComparisonArtifact({ artifact, iteration })}
+            />
           )}
 
           {/* Token/cost usage row — shown only when usage data exists */}
