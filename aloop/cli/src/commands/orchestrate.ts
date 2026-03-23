@@ -2052,7 +2052,7 @@ export async function runTriageMonitorCycle(
   state: OrchestratorState,
   sessionId: string,
   repo: string,
-  deps: Pick<OrchestrateDeps, 'execGh' | 'now'> & { writeFile?: OrchestrateDeps['writeFile'] },
+  deps: Pick<OrchestrateDeps, 'execGh' | 'now'> & { writeFile?: OrchestrateDeps['writeFile']; adapter?: OrchestratorAdapter },
   aloopRoot?: string,
 ): Promise<TriageMonitorCycleResult> {
   if (!deps.execGh) {

@@ -320,6 +320,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
 
+  // Create adapter from meta.json config (defaults to github)
+  const adapterType = (meta.adapter as string | undefined) ?? 'github';
+  const adapter = repo ? createAdapter({ type: adapterType, repo }, execGh) : undefined;
+
   // ── Phase 0: Bridge agent output → requests ──
   // Agents write to worktree/.aloop/output/ (inside their sandbox).
   // Runtime moves files to session_dir/requests/ for processing.
@@ -931,6 +935,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     appendLog,
     etagCache,
     aloopRoot,
+    adapter,
     prLifecycleDeps: {
       execGh,
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
