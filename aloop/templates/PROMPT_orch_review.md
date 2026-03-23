@@ -23,25 +23,6 @@ The orchestrator review is NOT a line-by-line code review (the child's own revie
 4. Evaluate each of the 5 review dimensions above.
 5. Write your verdict.
 
-## Output — CRITICAL
-
-You MUST write a JSON file with your verdict. The exact path is provided in the "Output" section below.
-
-Use the Write tool to create the file. Example:
-
-```json
-{
-  "pr_number": 123,
-  "verdict": "request-changes",
-  "summary": "PR violates constitution rule #1 — added business logic to a component that should stay minimal. Also missing tests for the new retry path."
-}
-```
-
-Valid verdicts:
-- `approve` — all 5 dimensions pass, merge it
-- `request-changes` — issues found, describe what needs fixing in summary
-- `flag-for-human` — too complex or risky for automated review
-
 ## Rules
 
 - When in doubt, `request-changes`. It's cheaper to re-iterate than to revert a bad merge.
@@ -50,4 +31,3 @@ Valid verdicts:
 - A PR that implements something different from what the issue asked is rejected.
 - Provide actionable feedback — tell the child exactly what to fix, not just "this is wrong."
 - Keep summary concise but specific (2-5 sentences).
-- Do NOT just print the verdict as text — you MUST write the JSON file.

@@ -28,19 +28,6 @@ Every refined issue body must contain:
 - **Constraints** — applicable constitution rules, architectural boundaries
 - **Acceptance Criteria** — machine-verifiable checks
 
-## Output
-
-Write a JSON file to the output path provided below:
-
-```json
-{
-  "issue_number": <number>,
-  "updated_body": "<full updated issue body in markdown>"
-}
-```
-
-The `updated_body` must be the COMPLETE issue body (not just the new sections).
-
 ## Rules
 
 - If the issue's scope conflicts with a constitution rule, restructure the scope — don't ignore the rule.

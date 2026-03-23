@@ -97,7 +97,14 @@ function buildQueuePrompt(agent: string, issue: any, promptContent: string, outp
     `**Wave:** ${issue.wave}`,
     `**Dependencies:** ${issue.depends_on?.length > 0 ? issue.depends_on.map((d: number) => `#${d}`).join(', ') : 'none'}`,
     '',
-    `**Output path:** \`${outputPath}\``,
+    `## Output — REQUIRED`,
+    '',
+    `Write your result as a JSON file using the Write tool:`,
+    '',
+    `**Path:** \`${outputPath}\``,
+    '',
+    `Create the \`.aloop/output/\` directory if it does not exist.`,
+    `Without this file, the pipeline cannot continue.`,
   ].join('\n');
 }
 
