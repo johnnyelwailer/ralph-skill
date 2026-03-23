@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { readFile, readdir, unlink, writeFile, mkdir, cp } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -11,6 +11,95 @@ import {
   type DecompositionPlan,
 } from './orchestrate.js';
 import { EtagCache } from '../lib/github-monitor.js';
+
+// --- Orchestrator event system (data-driven from pipeline.yml) ---
+
+interface OrchestratorEvent {
+  agent: string;
+  prompt: string;
+  batch: number;
+  filter: Record<string, unknown>;
+  resultPattern: string;
+}
+
+function loadOrchestratorEvents(pipelineYmlPath: string): OrchestratorEvent[] {
+  if (!existsSync(pipelineYmlPath)) return [];
+  try {
+    const content = readFileSync(pipelineYmlPath, 'utf8');
+    // Minimal YAML parser for orchestrator_events section
+    const eventsMatch = content.match(/^orchestrator_events:\s*\n((?:[\s#].*\n?)*)/m);
+    if (!eventsMatch) return [];
+
+    const events: OrchestratorEvent[] = [];
+    const lines = eventsMatch[1].split('\n');
+    let current: Partial<OrchestratorEvent> | null = null;
+    let inFilter = false;
+    let filter: Record<string, unknown> = {};
+
+    for (const line of lines) {
+      const trimmed = line.replace(/#.*$/, '').trimEnd();
+      if (!trimmed || trimmed.match(/^\s*$/)) continue;
+
+      const indent = line.search(/\S/);
+      // Top-level event name (2-space indent)
+      const stripped = trimmed.trim();
+      if (indent === 2 && stripped.endsWith(':') && !stripped.slice(0, -1).includes(' ')) {
+        if (current?.agent && current?.prompt) {
+          events.push({ ...current, filter, resultPattern: current.resultPattern ?? '' } as OrchestratorEvent);
+        }
+        current = { agent: stripped.replace(':', '') };
+        filter = {};
+        inFilter = false;
+        continue;
+      }
+
+      const kvMatch = trimmed.match(/^\s+(\w+):\s*(.+)$/);
+      if (!kvMatch) {
+        if (trimmed.match(/^\s+filter:\s*$/)) { inFilter = true; continue; }
+        continue;
+      }
+      const [, key, rawVal] = kvMatch;
+      const val = rawVal.replace(/^["']|["']$/g, '').trim();
+
+      if (inFilter && indent >= 6) {
+        filter[key] = val === 'true' ? true : val === 'false' ? false : val;
+      } else {
+        inFilter = false;
+        if (current) {
+          if (key === 'prompt') current.prompt = val;
+          else if (key === 'batch') current.batch = Number(val);
+          else if (key === 'result_pattern') current.resultPattern = val;
+        }
+      }
+    }
+    if (current?.agent && current?.prompt) {
+      events.push({ ...current, filter, resultPattern: current.resultPattern ?? '' } as OrchestratorEvent);
+    }
+    return events;
+  } catch {
+    return [];
+  }
+}
+
+function buildQueuePrompt(agent: string, issue: any, promptContent: string, outputPath: string): string {
+  const frontmatter = JSON.stringify({ agent, reasoning: 'high', type: `${agent}_override`, issue_number: issue.number }, null, 2);
+  return [
+    '---',
+    frontmatter,
+    '---',
+    '',
+    promptContent,
+    '',
+    `## Issue #${issue.number}: ${issue.title}`,
+    '',
+    issue.body ?? '(no body)',
+    '',
+    `**Wave:** ${issue.wave}`,
+    `**Dependencies:** ${issue.depends_on?.length > 0 ? issue.depends_on.map((d: number) => `#${d}`).join(', ') : 'none'}`,
+    '',
+    `**Output path:** \`${outputPath}\``,
+  ].join('\n');
+}
 
 export interface ProcessRequestsOptions {
   sessionDir: string;
@@ -118,7 +207,29 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // 1c. Estimate results → apply to state (per-issue files)
+  // 1c. Refine results → update GH issue body and mark refined
+  for (const file of allFiles.filter(f => f.match(/^refine-result-\d+\.json$/))) {
+    const filePath = path.join(requestsDir, file);
+    try {
+      const result = JSON.parse(await readFile(filePath, 'utf8'));
+      const issue = state.issues.find((i: any) => i.number === result.issue_number);
+      if (issue && result.updated_body && repo) {
+        // Update GH issue body
+        try {
+          await execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--body', result.updated_body]);
+          issue.body = result.updated_body;
+          (issue as any).refined = true;
+          stateChanged = true;
+          console.log(`[process-requests] Refined #${issue.number} — updated body with constraints`);
+        } catch (e) {
+          console.warn(`[process-requests] Failed to update GH issue #${issue.number}: ${e}`);
+        }
+      }
+      await archiveRequestFile(requestsDir, filePath);
+    } catch { /* skip malformed */ }
+  }
+
+  // 1d. Estimate results → apply to state (per-issue files)
   for (const file of allFiles.filter(f => f.match(/^estimate-result-\d+\.json$/))) {
     const filePath = path.join(requestsDir, file);
     try {
@@ -136,58 +247,49 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     } catch { /* skip malformed */ }
   }
 
-  // 1d. Queue estimate prompts for "Needs refinement" issues that don't have one yet
+  // 1d. Queue refine prompts for "Needs refinement" issues that haven't been refined yet
+  //     Then queue estimate prompts for refined issues that need DoR validation
   {
     const queueDir = path.join(sessionDir, 'queue');
     const queueFiles = existsSync(queueDir) ? await readdir(queueDir) : [];
-    const pendingEstimates = new Set(
+    const pendingQueue = new Set(
       queueFiles
-        .filter(f => f.startsWith('estimate-issue-'))
-        .map(f => Number(f.replace('estimate-issue-', '').replace('.md', ''))),
+        .filter(f => f.startsWith('refine-issue-') || f.startsWith('estimate-issue-'))
+        .map(f => Number(f.replace(/^(refine|estimate)-issue-/, '').replace('.md', ''))),
     );
     const pendingResults = new Set(
       allFiles
-        .filter(f => f.match(/^estimate-result-\d+\.json$/))
-        .map(f => Number(f.replace('estimate-result-', '').replace('.json', ''))),
+        .filter(f => f.match(/^(refine|estimate)-result-\d+\.json$/))
+        .map(f => Number(f.replace(/^(refine|estimate)-result-/, '').replace('.json', ''))),
     );
-    const needsEstimate = state.issues.filter(
-      (i: any) => i.status === 'Needs refinement' && !i.dor_validated && !i.refinement_budget_exceeded
-        && !pendingEstimates.has(i.number) && !pendingResults.has(i.number),
-    );
-    if (needsEstimate.length > 0) {
-      const estimateTemplatePath = path.join(sessionDir, 'prompts', 'PROMPT_orch_estimate.md');
-      const estimatePrompt = existsSync(estimateTemplatePath)
-        ? await readFile(estimateTemplatePath, 'utf8')
-        : '';
-      if (estimatePrompt) {
-        const batch = needsEstimate.slice(0, 5); // max 5 per pass
-        for (const issue of batch) {
-          const outputPath = path.join(requestsDir, `estimate-result-${issue.number}.json`);
-          const content = [
-            '---',
-            JSON.stringify({ agent: 'orch_estimate', reasoning: 'high', type: 'estimate_override', issue_number: issue.number }, null, 2),
-            '---',
-            '',
-            estimatePrompt,
-            '',
-            `## Context`,
-            '',
-            `## Issue #${issue.number}: ${issue.title}`,
-            '',
-            issue.body ?? '(no body)',
-            '',
-            `**Wave:** ${issue.wave}`,
-            `**Dependencies:** ${issue.depends_on.length > 0 ? issue.depends_on.map((d: number) => `#${d}`).join(', ') : 'none'}`,
-            '',
-            `Read the project spec files (SPEC.md, SPEC-ADDENDUM.md) for full context.`,
-            '',
-            `Write your result as a JSON file to \`${outputPath}\` with fields:`,
-            '`{ "issue_number": <number>, "dor_passed": <boolean>, "complexity_tier": "S|M|L|XL", "iteration_estimate": <number>, "risk_flags": [...], "confidence": { "level": "low|medium|high", "rationale": "..." }, "gaps": [...] }`',
-          ].join('\n');
-          await writeFile(path.join(queueDir, `estimate-issue-${issue.number}.md`), content, 'utf8');
+
+    // Process orchestrator events from pipeline.yml
+    const pipelineYmlPath = path.join(sessionDir, 'worktree', '.aloop', 'pipeline.yml');
+    const orchEvents = loadOrchestratorEvents(pipelineYmlPath);
+    for (const event of orchEvents) {
+      const matching = state.issues.filter((i: any) => {
+        if (i.refinement_budget_exceeded) return false;
+        if (pendingQueue.has(i.number) || pendingResults.has(i.number)) return false;
+        for (const [key, val] of Object.entries(event.filter)) {
+          if ((i as any)[key] !== val && i[key] !== val) return false;
         }
-        console.log(`[process-requests] Queued ${batch.length} estimate prompts (${needsEstimate.length} total pending)`);
+        return true;
+      });
+      if (matching.length === 0) continue;
+
+      const promptPath = path.join(sessionDir, 'prompts', event.prompt);
+      if (!existsSync(promptPath)) continue;
+      const promptContent = await readFile(promptPath, 'utf8');
+
+      const batch = matching.slice(0, event.batch);
+      for (const issue of batch) {
+        const resultFile = event.resultPattern.replace('{issue_number}', String(issue.number));
+        const outputPath = path.join(requestsDir, resultFile);
+        const queueContent = buildQueuePrompt(event.agent, issue, promptContent, outputPath);
+        const queueFile = `${event.agent}-issue-${issue.number}.md`;
+        await writeFile(path.join(queueDir, queueFile), queueContent, 'utf8');
       }
+      console.log(`[process-requests] Queued ${batch.length} ${event.agent} prompts (${matching.length} total matching)`);
     }
   }
 
