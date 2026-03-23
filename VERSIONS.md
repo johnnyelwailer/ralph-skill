@@ -19,7 +19,6 @@ Major version mismatches are a gate failure; minor/patch differences are accepta
 
 | Package   | Version |
 |-----------|---------|
-| @modelcontextprotocol/sdk | 1.x     |
 | commander | 12.0.0  |
 
 ### Dev Dependencies
