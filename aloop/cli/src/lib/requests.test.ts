@@ -1247,21 +1247,55 @@ test('processAgentRequests - handler failure', async () => {
       payload: { number: 101, reason: 'fail' }
     };
     await fs.writeFile(path.join(env.requestsDir, 'fail.json'), JSON.stringify(req));
-    
+
     const ghRunner = async () => {
       return { exitCode: 1, output: 'GH error' };
     };
-    
+
     await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
-    
+
     const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
     assert.ok(failedFiles.includes('fail.json'));
-    
+
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     assert.strictEqual(queueFiles.length, 1);
     const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
     assert.ok(queueContent.includes('status": "error"'));
     assert.ok(queueContent.includes('GH error'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - unknown request type is archived to requests/failed with clear log', async () => {
+  const env = await setupTestEnv();
+  try {
+    // Write a JSON file with an unrecognised type — this fails validation before reaching the switch
+    await fs.writeFile(
+      path.join(env.requestsDir, 'unknown-type.json'),
+      JSON.stringify({ id: 'req-unknown', type: 'delete_everything', payload: { target: 'prod' } }),
+    );
+
+    await processAgentRequests({ ...env, ghCommandRunner: async () => ({ exitCode: 0, output: '{}' }) });
+
+    // File must end up in requests/failed/
+    const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
+    assert.ok(failedFiles.includes('unknown-type.json'), 'request file should be moved to failed/');
+
+    // Log must include gh_request_failed with the unrecognised type info
+    const logContent = await fs.readFile(env.logPath, 'utf8');
+    const logEntries = logContent
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    const failedEntry = logEntries.find((e) => e.event === 'gh_request_failed');
+    assert.ok(failedEntry, 'should log gh_request_failed');
+    assert.ok(
+      String(failedEntry.error ?? '').includes('delete_everything') ||
+        String(failedEntry.error ?? '').includes('Invalid request type'),
+      'error message should reference the unknown type',
+    );
   } finally {
     await env.cleanup();
   }
