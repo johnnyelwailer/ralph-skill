@@ -334,6 +334,24 @@ describe('GitHubAdapter', () => {
     });
   });
 
+  describe('repoSlug and baseUrl', () => {
+    it('exposes repoSlug from config', () => {
+      const adapter = new GitHubAdapter(config, async () => ({ stdout: '', stderr: '' }));
+      assert.equal(adapter.repoSlug, 'owner/repo');
+    });
+
+    it('defaults baseUrl to https://github.com', () => {
+      const adapter = new GitHubAdapter(config, async () => ({ stdout: '', stderr: '' }));
+      assert.equal(adapter.baseUrl, 'https://github.com');
+    });
+
+    it('uses ghHost from config for baseUrl', () => {
+      const gheConfig: AdapterConfig = { type: 'github', repo: 'owner/repo', ghHost: 'git.corp.example.com' };
+      const adapter = new GitHubAdapter(gheConfig, async () => ({ stdout: '', stderr: '' }));
+      assert.equal(adapter.baseUrl, 'https://git.corp.example.com');
+    });
+  });
+
   describe('fetchBulkIssueState', () => {
     it('delegates to fetchBulkIssueState from github-monitor', async () => {
       const graphqlResponse = {
