@@ -89,6 +89,8 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
+  redispatch_failures?: number;
+  redispatch_paused?: boolean;
 }
 
 export interface OrchestratorState {
