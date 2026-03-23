@@ -941,9 +941,15 @@ Run one lightweight monitoring pass:
 - Read \`CONSTITUTION.md\` from your working directory — these are non-negotiable invariants for all work.
 - Read \`${sessionDir}/orchestrator.json\` to understand current state (issues, waves, dependencies).
 - Check \`${sessionDir}/queue/\` for override prompts to prioritize.
-- Write any required side effects into \`${sessionDir}/requests/*.json\`.
+- Write dispatch/state requests into \`.aloop/output/\` in your working directory.
 - You can read project files (SPEC.md, source code) from your working directory.
 - Keep this step reactive and minimal; avoid large speculative planning.
+
+**You must NOT:**
+- Write \`review-result-*.json\` files. PR reviews are handled by the dedicated review agent.
+- Write \`refine-result-*.json\` files. Refinement is handled by the dedicated refine agent.
+- Write \`estimate-result-*.json\` files. Estimation is handled by the dedicated estimate agent.
+- Auto-approve or auto-merge any PR. You are a monitor, not a reviewer.
 `;
 }
 
