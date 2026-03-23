@@ -1,5 +1,5 @@
 import './sanitize.js';
-import { Command } from 'commander';
+import { Command, type HelpConfiguration } from 'commander';
 import { resolveCommand } from './commands/resolve.js';
 import { discoverCommand } from './commands/discover.js';
 import { scaffoldCommand } from './commands/scaffold.js';
@@ -26,14 +26,14 @@ program
   .version('1.0.0');
 
 program
-  .command('resolve')
+  .command('resolve', { hidden: true })
   .description('Resolve project workspace and configuration')
   .option('--project-root <path>', 'Project root override')
   .option('--output <mode>', 'Output format: json or text', 'json')
   .action(withErrorHandling(resolveCommand));
 
 program
-  .command('discover')
+  .command('discover', { hidden: true })
   .description('Discover workspace specs, files, and validation commands')
   .option('--project-root <path>', 'Project root override')
   .option('--output <mode>', 'Output format: json or text', 'json')
@@ -53,7 +53,7 @@ program
   .action(withErrorHandling(setupCommand));
 
 program
-  .command('scaffold')
+  .command('scaffold', { hidden: true })
   .description('Scaffold project workdir and prompts')
   .option('--project-root <path>', 'Project root override')
   .option('--language <language>', 'Language override')
@@ -84,6 +84,7 @@ program
   .option('--review', 'Shortcut for --mode review')
   .option('--in-place', 'Run in project root instead of creating a git worktree')
   .option('--max-iterations <number>', 'Max iteration override')
+  .option('--concurrency <number>', 'Max concurrent child loops (orchestrate mode)')
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(withErrorHandling(startCommand));
 
@@ -105,7 +106,7 @@ program
   .action(withErrorHandling(statusCommand));
 
 program
-  .command('active')
+  .command('active', { hidden: true })
   .description('List active sessions')
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
@@ -119,7 +120,7 @@ program
   .action(withErrorHandling(stopCommand));
 
 program
-  .command('update')
+  .command('update', { hidden: true })
   .description('Refresh ~/.aloop runtime assets from the current repo checkout')
   .option('--repo-root <path>', 'Path to aloop source repository root')
   .option('--home-dir <path>', 'Home directory override')
@@ -127,7 +128,7 @@ program
   .action(withErrorHandling(updateCommand));
 
 program
-  .command('devcontainer')
+  .command('devcontainer', { hidden: true })
   .description('Generate or augment .devcontainer/devcontainer.json for isolated agent execution')
   .option('--project-root <path>', 'Project root override')
   .option('--home-dir <path>', 'Home directory override')
@@ -135,7 +136,7 @@ program
   .action(withErrorHandling(devcontainerCommand));
 
 program
-  .command('devcontainer-verify')
+  .command('devcontainer-verify', { hidden: true })
   .description('Verify devcontainer builds, starts, and passes all checks')
   .option('--project-root <path>', 'Project root override')
   .option('--home-dir <path>', 'Home directory override')
@@ -143,7 +144,7 @@ program
   .action(withErrorHandling(verifyDevcontainerCommand));
 
 program
-  .command('orchestrate')
+  .command('orchestrate', { hidden: true })
   .description('Decompose spec into issues, dispatch child loops, and merge PRs')
   .option('--spec <paths>', 'Spec file(s) or glob pattern (e.g. "SPEC.md specs/*.md")', 'SPEC.md')
   .option('--concurrency <number>', 'Max concurrent child loops', '3')
@@ -175,7 +176,7 @@ program
   .action(withErrorHandling(steerCommand));
 
 program
-  .command('process-requests')
+  .command('process-requests', { hidden: true })
   .description('Process pending orchestrator requests (called by loop.sh between iterations)')
   .requiredOption('--session-dir <path>', 'Orchestrator session directory')
   .option('--home-dir <path>', 'Home directory override')
@@ -185,7 +186,25 @@ program
 // For subcommands like ghCommand that might have their own actions, we might need to be careful,
 // but since ghCommand is a Command object added via addCommand, we can't wrap it easily here.
 // However, the TODO specifically mentions "aloop setup --autonomy-level invalid, aloop start (no config), aloop orchestrate --autonomy-level foo, aloop resolve --project-root /nonexistent", which are all top level.
-program.addCommand(ghCommand);
+program.addCommand(ghCommand, { hidden: true });
+
+program
+  .command('help')
+  .description('Show help information')
+  .option('--all', 'Show all commands including hidden ones')
+  .action((opts: { all?: boolean }) => {
+    if (opts.all) {
+      const saved: HelpConfiguration = program.configureHelp();
+      program.configureHelp({
+        ...saved,
+        visibleCommands: (cmd: Command) => [...cmd.commands],
+      });
+      console.log(program.helpInformation());
+      program.configureHelp(saved);
+    } else {
+      console.log(program.helpInformation());
+    }
+  });
 
 program
   .command('debug-env', { hidden: true })

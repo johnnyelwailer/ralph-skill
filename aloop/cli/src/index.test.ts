@@ -36,14 +36,37 @@ function runCli(args: string[], cwd?: string): Promise<CliResult> {
   });
 }
 
-test('index CLI registers expected commands in help output', async () => {
+test('index CLI default help shows only 6 user-facing commands', async () => {
   const result = await runCli(['--help']);
   assert.equal(result.code, 0);
+  // Visible user-facing commands
+  assert.match(result.stdout, /\bsetup\b/);
+  assert.match(result.stdout, /\bstart\b/);
+  assert.match(result.stdout, /\bstatus\b/);
+  assert.match(result.stdout, /\bsteer\b/);
+  assert.match(result.stdout, /\bstop\b/);
+  assert.match(result.stdout, /\bdashboard\b/);
+  // Internal commands must not appear as command names (match start of command line)
+  assert.doesNotMatch(result.stdout, /^\s+resolve\b/m);
+  assert.doesNotMatch(result.stdout, /^\s+discover\b/m);
+  assert.doesNotMatch(result.stdout, /^\s+scaffold\b/m);
+  assert.doesNotMatch(result.stdout, /^\s+process-requests\b/m);
+  assert.doesNotMatch(result.stdout, /^\s+devcontainer-verify\b/m);
+  assert.doesNotMatch(result.stdout, /^\s+active\b/m);
+  assert.doesNotMatch(result.stdout, /^\s+update\b/m);
+});
+
+test('aloop help --all shows all commands including hidden ones', async () => {
+  const result = await runCli(['help', '--all']);
+  assert.equal(result.code, 0);
+  // Both visible and hidden commands should appear
+  assert.match(result.stdout, /\bstart\b/);
   assert.match(result.stdout, /\bresolve\b/);
   assert.match(result.stdout, /\bdiscover\b/);
   assert.match(result.stdout, /\bscaffold\b/);
-  assert.match(result.stdout, /\bstart\b/);
-  assert.match(result.stdout, /\bdashboard\b/);
+  assert.match(result.stdout, /\bprocess-requests\b/);
+  assert.match(result.stdout, /\bactive\b/);
+  assert.match(result.stdout, /\bupdate\b/);
 });
 
 test('index CLI parses discover command and runs action', async () => {
