@@ -29,7 +29,7 @@ aloop start --provider claude
 aloop start --provider round-robin
 
 # Resume a stopped session
-aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
+aloop start <session-id> --launch resume
 ```
 
 ### Orchestrator Mode (`aloop orchestrate`)
@@ -179,6 +179,10 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop discover` | Auto-detect project specs and validation |
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate .devcontainer config |
+| `aloop active` | List active sessions (JSON-friendly) |
+| `aloop scaffold` | Scaffold session prompts and workdir |
+| `aloop resolve` | Resolve project workspace and config |
+| `aloop process-requests` | Process pending loop requests (called by loop.sh) |
 
 ### Slash commands (Claude Code / Codex / Copilot)
 
