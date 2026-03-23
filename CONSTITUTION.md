@@ -35,5 +35,6 @@ it — do not implement the violation.
 ## Scope Control
 
 18. **Respect file ownership.** Issues should specify which files are in-scope. Don't modify files outside your scope without justification.
-19. **Don't gold-plate.** Implement what the issue asks for. Don't add extra features, configurability, or "improvements" beyond the scope.
-20. **Flag, don't fix, out-of-scope problems.** If you find an issue outside your scope, file it — don't fix it in your PR.
+19. **Don't gold-plate.** Implement what the issue asks for. Don't add extra features or configurability beyond the scope.
+20. **Incremental cleanup is encouraged.** When touching a file for your issue, you MAY also: extract functions to reduce file size toward the 150 LOC target, improve separation of concerns, remove dead code, and add missing types. Keep cleanup commits separate from feature commits. Don't refactor files you're not already modifying for your issue.
+21. **Flag large out-of-scope problems.** If you find a major issue outside your scope (e.g., a 5000-line file that needs splitting), file a new issue for it — don't attempt the full refactor in your PR.
