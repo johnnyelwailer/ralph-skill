@@ -2812,7 +2812,7 @@ export function getDispatchableIssues(state: OrchestratorState): OrchestratorIss
     issueByNumber.set(issue.number, issue);
   }
 
-  return state.issues.filter((issue) => {
+  const eligible = state.issues.filter((issue) => {
     if (issue.wave !== state.current_wave) return false;
 
     // Primary signal: Project status 'Ready'
@@ -2835,6 +2835,18 @@ export function getDispatchableIssues(state: OrchestratorState): OrchestratorIss
       if (!dep || dep.state !== 'merged') return false;
     }
     return true;
+  });
+
+  // Sort by priority (higher first), then complexity (S before XL), then issue number
+  const complexityOrder: Record<string, number> = { S: 0, M: 1, L: 2, XL: 3 };
+  return eligible.sort((a, b) => {
+    const priA = (a as any).priority ?? 0;
+    const priB = (b as any).priority ?? 0;
+    if (priA !== priB) return priB - priA; // higher priority first
+    const compA = complexityOrder[(a as any).complexity_tier ?? 'M'] ?? 1;
+    const compB = complexityOrder[(b as any).complexity_tier ?? 'M'] ?? 1;
+    if (compA !== compB) return compA - compB; // smaller first
+    return a.number - b.number; // stable tiebreaker
   });
 }
 
@@ -5348,21 +5360,37 @@ export async function runOrchestratorScanPass(
 
   // 2. Dispatch child loops for ready issues
   if (deps.dispatchDeps && !state.plan_only) {
-    const dispatchable = getDispatchableIssues(state);
-    const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
-    const eligible = filterByFileOwnership(capabilityResult.eligible, state);
+    // Focus mode: prefer redispatch over fresh work.
+    // Don't start new issues while there are pending redispatches waiting for slots.
+    const pendingRedispatches = state.issues.filter((i) => (i as any).needs_redispatch).length;
     const slots = availableSlots(state);
-    const toDispatch = eligible.slice(0, slots);
 
-    for (const blocked of capabilityResult.blocked) {
+    let toDispatch: OrchestratorIssue[] = [];
+    if (pendingRedispatches > 0 && slots <= pendingRedispatches) {
+      // All slots will be used for redispatch — skip fresh dispatch
       deps.appendLog(sessionDir, {
         timestamp: deps.now().toISOString(),
-        event: 'scan_dispatch_blocked_requirements',
+        event: 'dispatch_deferred_for_redispatch',
         iteration,
-        issue_number: blocked.issue.number,
-        requires: normalizeTaskRequires(blocked.issue.requires),
-        missing: blocked.missing,
+        pending_redispatches: pendingRedispatches,
+        available_slots: slots,
       });
+    } else {
+      const dispatchable = getDispatchableIssues(state);
+      const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
+      const eligible = filterByFileOwnership(capabilityResult.eligible, state);
+      toDispatch = eligible.slice(0, Math.max(0, slots - pendingRedispatches));
+
+      for (const blocked of capabilityResult.blocked) {
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'scan_dispatch_blocked_requirements',
+          iteration,
+          issue_number: blocked.issue.number,
+          requires: normalizeTaskRequires(blocked.issue.requires),
+          missing: blocked.missing,
+        });
+      }
     }
 
     for (const issue of toDispatch) {
