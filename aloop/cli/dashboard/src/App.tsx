@@ -1,10 +1,10 @@
 import * as view from './AppView';
+export { HealthPanel } from '@/components/health/ProviderHealth';
 
 export const App = view.App;
 export const Sidebar = view.Sidebar;
 export const ActivityPanel = view.ActivityPanel;
 export const DocContent = view.DocContent;
-export const HealthPanel = view.HealthPanel;
 export const SIGNIFICANT_EVENTS = view.SIGNIFICANT_EVENTS;
 export const IMAGE_EXT = view.IMAGE_EXT;
 

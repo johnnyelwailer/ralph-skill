@@ -5,7 +5,7 @@ import {
   Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock,
   GitBranch, GitCommit, FileText, Menu, MoreHorizontal, PanelLeftClose,
   PanelLeftOpen, Play, Search, Send, Square, Terminal, Timer, XCircle, Zap, Loader2,
-  Heart, AlertTriangle, Pause, ExternalLink,
+  Heart, AlertTriangle, ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +21,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CostDisplay } from '@/components/progress/CostDisplay';
 import { ArtifactViewer } from '@/components/artifacts/ArtifactViewer';
+import { HealthPanel } from '@/components/health/ProviderHealth';
+import type { ProviderHealth } from '@/components/health/ProviderHealth';
 import { useCost } from '@/hooks/useCost';
 import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
@@ -232,14 +234,6 @@ export interface ManifestPayload {
   outputHeader?: string;
 }
 
-interface ProviderHealth {
-  name: string;
-  status: 'healthy' | 'cooldown' | 'failed' | 'unknown';
-  lastEvent: string;
-  reason?: string;
-  consecutiveFailures?: number;
-  cooldownUntil?: string;
-}
 
 interface QACoverageFeature {
   feature: string;
@@ -1393,51 +1387,6 @@ export function DocContent({ content, name, wide }: { content: string; name: str
         </div>
       )}
       <div className="prose-dashboard p-3 pr-4" dangerouslySetInnerHTML={{ __html: rendered }} />
-    </ScrollArea>
-  );
-}
-
-export function HealthPanel({ providers }: { providers: ProviderHealth[] }) {
-  if (providers.length === 0) {
-    return <p className="text-xs text-muted-foreground p-3">No provider data yet.</p>;
-  }
-  return (
-    <ScrollArea className="h-full">
-      <div className="p-3 space-y-2">
-        {providers.map((p) => (
-          <Tooltip key={p.name}>
-            <TooltipTrigger asChild>
-              <div className="flex items-center gap-2 text-xs py-1 px-2 rounded hover:bg-accent/30 cursor-default">
-                {p.status === 'healthy' && <Circle className="h-3 w-3 text-green-500 fill-green-500" />}
-                {p.status === 'cooldown' && <Pause className="h-3 w-3 text-orange-500" />}
-                {p.status === 'failed' && <XCircle className="h-3 w-3 text-red-500" />}
-                {p.status === 'unknown' && <Circle className="h-3 w-3 text-muted-foreground" />}
-                <span className="font-medium">{p.name}</span>
-                <span className="text-muted-foreground ml-auto">
-                  {p.status === 'cooldown' && p.cooldownUntil ? (() => {
-                    const remaining = Math.max(0, Math.floor((new Date(p.cooldownUntil).getTime() - Date.now()) / 1000));
-                    if (remaining <= 0) return 'cooldown ending…';
-                    const h = Math.floor(remaining / 3600);
-                    const m = Math.floor((remaining % 3600) / 60);
-                    return `cooldown for ${h > 0 ? `${h}h ` : ''}${m}min`;
-                  })() : p.status === 'unknown' ? 'no activity' : p.status}
-                </span>
-                <span className="text-muted-foreground text-[10px]">{relativeTime(p.lastEvent)}</span>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <div className="text-xs space-y-0.5">
-                <p>Provider: {p.name}</p>
-                <p>Status: {p.status}</p>
-                {p.reason && <p>Reason: {p.reason}</p>}
-                {p.consecutiveFailures && <p>Failures: {p.consecutiveFailures}</p>}
-                {p.cooldownUntil && <p>Cooldown until: {new Date(p.cooldownUntil).toLocaleTimeString()} ({(() => { const r = Math.max(0, Math.floor((new Date(p.cooldownUntil).getTime() - Date.now()) / 1000)); const h = Math.floor(r / 3600); const m = Math.floor((r % 3600) / 60); return r <= 0 ? 'ending' : `${h > 0 ? `${h}h ` : ''}${m}min left`; })()})</p>}
-                {p.lastEvent && <p>Last event: {new Date(p.lastEvent).toLocaleString()}</p>}
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        ))}
-      </div>
     </ScrollArea>
   );
 }
