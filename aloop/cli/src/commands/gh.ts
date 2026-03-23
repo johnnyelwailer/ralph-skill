@@ -822,7 +822,7 @@ function buildFeedbackSteering(feedback: PrFeedback, prNumber: number): string {
       parts.push('');
       parts.push(comment.body.trim());
       parts.push('');
-      parts.push(`- Address this comment directly in your fix. After applying the fix, resolve the thread by issuing a \`resolve-review-thread\` request with the Thread Node ID above.`);
+      parts.push(`- Address this comment directly in your fix and resolve by referencing comment ID ${comment.id}.${comment.node_id ? ` Use the Thread Node ID above to issue a \`resolve-review-thread\` request after fixing.` : ''}`);
       parts.push('');
     }
     parts.push('Resolve each review comment individually after applying the fix, and reference its Comment ID when resolving.');
