@@ -361,26 +361,39 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     if (childPid && !existsSync(`/proc/${childPid}`)) {
       // PID dead — check child status.json for completion
       const childStatusFile = path.join(aloopRoot, 'sessions', issue.child_session, 'status.json');
+      let childState = 'unknown';
       if (existsSync(childStatusFile)) {
         try {
           const cs = JSON.parse(await readFile(childStatusFile, 'utf8'));
-          if (cs.state === 'completed') continue; // Will be handled by PR creation
-          if (cs.state === 'stopped') {
-            // Stopped — re-queue via needs_redispatch
-            (issue as any).needs_redispatch = true;
-            (issue as any).review_feedback = `Child stopped after ${cs.iteration ?? '?'} iterations. Resume and continue.`;
-            stateChanged = true;
-            continue;
-          }
+          childState = cs.state ?? 'unknown';
         } catch { /* fall through */ }
       }
-      // Dead with no clear status — reset to Ready for fresh dispatch
-      issue.state = 'pending';
-      issue.status = 'Ready';
-      issue.child_session = null;
-      (issue as any).child_pid = null;
-      stateChanged = true;
-      console.log(`[process-requests] Dead child detected for #${issue.number} — reset to Ready`);
+
+      if (issue.pr_number) {
+        // Has PR — transition to review regardless of child state
+        issue.state = 'pr_open';
+        issue.status = 'In review';
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+        stateChanged = true;
+        console.log(`[process-requests] Dead child for #${issue.number} (${childState}) — has PR #${issue.pr_number}, moved to pr_open`);
+      } else if (childState === 'completed' || childState === 'stopped') {
+        // No PR but child finished — reset for fresh dispatch
+        issue.state = 'pending';
+        issue.status = 'Ready';
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+        stateChanged = true;
+        console.log(`[process-requests] Dead child for #${issue.number} (${childState}) — no PR, reset to Ready`);
+      } else {
+        // Dead with unknown status — reset to Ready
+        issue.state = 'pending';
+        issue.status = 'Ready';
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+        stateChanged = true;
+        console.log(`[process-requests] Dead child for #${issue.number} (${childState}) — reset to Ready`);
+      }
     }
   }
 
