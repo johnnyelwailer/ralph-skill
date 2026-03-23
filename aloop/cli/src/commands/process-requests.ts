@@ -137,6 +137,13 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const repo = state.filter_repo ?? null;
   let stateChanged = false;
 
+  // execGh must be defined early — used by refine/estimate result handlers
+  const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
+    const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
+    if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
+    return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+  };
+
   // ── Phase 1: Apply agent-produced result files ──
 
   // 1a. Epic decomposition results → apply to state
@@ -214,9 +221,12 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       const result = JSON.parse(await readFile(filePath, 'utf8'));
       const issue = state.issues.find((i: any) => i.number === result.issue_number);
       if (issue && result.updated_body && repo) {
-        // Update GH issue body
+        // Update GH issue body via temp file (body can be large)
         try {
-          await execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--body', result.updated_body]);
+          const bodyFile = path.join(requestsDir, `_body-${issue.number}.md`);
+          await writeFile(bodyFile, result.updated_body, 'utf8');
+          await execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--body-file', bodyFile]);
+          await unlink(bodyFile).catch(() => {});
           issue.body = result.updated_body;
           (issue as any).refined = true;
           stateChanged = true;
@@ -705,12 +715,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const etagCache = new EtagCache(path.join(aloopRoot, '.cache'));
   await etagCache.load();
 
-  const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
-    // Call gh CLI directly with timeout (not aloop gh which is the request protocol handler)
-    const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
-    if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
-    return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-  };
+  // execGh already defined earlier (before result handlers)
 
   const execGit = async (args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> => {
     const r = spawnSync('git', args, { encoding: 'utf8', cwd: cwd ?? projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
