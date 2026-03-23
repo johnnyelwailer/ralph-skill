@@ -244,14 +244,16 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     const filePath = path.join(requestsDir, file);
     try {
       const result = JSON.parse(await readFile(filePath, 'utf8'));
-      const issue = state.issues.find((i: any) => i.number === result.issue_number);
+      const issueNum = result.issue_number ?? result.issue ?? Number(file.match(/\d+/)?.[0]);
+      const issue = state.issues.find((i: any) => i.number === issueNum);
       if (issue) {
-        issue.dor_validated = result.dor_passed ?? true;
+        const dorPassed = result.dor_passed ?? result.definition_of_ready?.passes ?? true;
+        issue.dor_validated = dorPassed;
         (issue as any).complexity_tier = result.complexity_tier;
-        (issue as any).iteration_estimate = result.iteration_estimate;
-        if (result.dor_passed) issue.status = 'Ready';
+        (issue as any).iteration_estimate = result.iteration_estimate ?? result.estimated_child_loop_iterations;
+        if (dorPassed) issue.status = 'Ready';
         stateChanged = true;
-        console.log(`[process-requests] Issue #${result.issue_number}: ${result.dor_passed ? 'Ready' : 'needs work'}`);
+        console.log(`[process-requests] Issue #${issueNum}: ${dorPassed ? 'Ready' : 'needs work'}`);
       }
       await archiveRequestFile(requestsDir, filePath);
     } catch { /* skip malformed */ }
