@@ -114,6 +114,7 @@ export interface OrchestratorState {
   gh_project_number?: number;
   created_at: string;
   updated_at: string;
+  diagnostics_blocker_threshold?: number;
 }
 
 // --- Replan types ---
