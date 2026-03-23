@@ -4556,6 +4556,8 @@ export interface ScanLoopDeps {
   sleep?: (ms: number) => Promise<void>;
   signalStop?: () => boolean;
   etagCache?: EtagCache;
+  freemem?: () => number;
+  processSend?: (pid: number, signal: number | string) => boolean;
 }
 
 export interface SpecChangeReplanResult {
