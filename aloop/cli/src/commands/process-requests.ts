@@ -439,7 +439,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         if (existsSync(childStatusFile)) {
           try {
             const childStatus = JSON.parse(await readFile(childStatusFile, 'utf8'));
-            if (childStatus.state === 'completed' || childStatus.state === 'stopped') {
+            if (childStatus.state === 'completed') {
               const branch = `aloop/issue-${issue.number}`;
               const trunkBranch = state.trunk_branch ?? 'agent/trunk';
               const childWorktree = path.join(childDir, 'worktree');
