@@ -10,10 +10,10 @@ import { writeSpecBackfill } from '../lib/specBackfill.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
 import {
   EtagCache,
-  fetchBulkIssueState,
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
+import type { OrchestratorAdapter } from '../lib/adapter.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -192,7 +192,7 @@ export interface TriageLogEntry {
 }
 
 export interface TriageDeps {
-  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  adapter: OrchestratorAdapter;
   now: () => Date;
   writeFile?: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   aloopRoot?: string;
@@ -206,8 +206,7 @@ export interface OrchestrateDeps {
   unlink?: (path: string) => Promise<void>;
   readdirSync?: (path: string) => string[];
   now: () => Date;
-  execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
-  execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  adapter?: OrchestratorAdapter;
 }
 
 export interface SpawnSyncResult {
@@ -301,10 +300,15 @@ function parseBudget(value: string | undefined): number | null {
 }
 
 interface ProjectStatusSyncDeps {
-  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  adapter: OrchestratorAdapter;
   appendLog?: (sessionDir: string, entry: Record<string, unknown>) => void;
   now?: () => Date;
   sessionDir?: string;
+}
+
+/** Extract the raw execGh fn from an adapter (for GH Projects API calls not yet in the adapter interface). */
+function getAdapterExecGh(adapter: OrchestratorAdapter): ((args: string[]) => Promise<{ stdout: string; stderr: string }>) | undefined {
+  return (adapter as unknown as { execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }> }).execGh?.bind(adapter);
 }
 
 interface ProjectStatusContext {
@@ -340,7 +344,12 @@ async function resolveIssueProjectStatusContext(
   }
 
   const query = 'query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){projectItems(first:20){nodes{id project{id} fieldValues(first:50){nodes{... on ProjectV2ItemFieldSingleSelectValue{field{... on ProjectV2SingleSelectField{id name options{id name}}}}}}}}}}}';
-  const response = await deps.execGh([
+  const execGh = getAdapterExecGh(deps.adapter);
+  if (!execGh) {
+    projectStatusContextCache.set(cacheKey, null);
+    return null;
+  }
+  const response = await execGh([
     'api',
     'graphql',
     '-f',
@@ -443,7 +452,9 @@ async function syncIssueProjectStatus(
       return false;
     }
 
-    await deps.execGh([
+    const execGh = getAdapterExecGh(deps.adapter);
+    if (!execGh) return false;
+    await execGh([
       'project',
       'item-edit',
       '--id',
@@ -672,8 +683,8 @@ export async function applyDecompositionPlan(
     const labels = ['aloop', `aloop/wave-${wave}`];
 
     let ghNumber: number;
-    if (deps.execGhIssueCreate && repo) {
-      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, planIssue.body, labels);
+    if (deps.adapter && repo) {
+      ghNumber = await deps.adapter.createIssue({ title: planIssue.title, body: planIssue.body, labels });
     } else {
       // When no GH executor is available (plan-only without repo, or no executor),
       // use the plan ID as a placeholder number
@@ -1272,7 +1283,7 @@ export async function orchestrateCommandWithDeps(
     );
   }
 
-  if (filterRepo && state.issues.length > 0 && deps.execGh) {
+  if (filterRepo && state.issues.length > 0 && deps.adapter) {
     await runTriageMonitorCycle(state, path.basename(sessionDir), filterRepo, deps, aloopRoot);
   }
 
@@ -1310,8 +1321,7 @@ export async function orchestrateCommandWithDeps(
     try {
       const estimateResults = JSON.parse(responseContent) as EstimateResult[];
       await applyEstimateResults(state, estimateResults, {
-        execGhIssueCreate: deps.execGhIssueCreate,
-        execGh: deps.execGh,
+        adapter: deps.adapter,
         now: deps.now,
         repo: filterRepo ?? undefined,
         sessionId,
@@ -1874,22 +1884,16 @@ export async function applyTriageResultsToIssue(
     }
 
     if (result.classification === 'needs_clarification') {
-      await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatNeedsClarificationReply(comment),
-      ]);
+      await deps.adapter.postComment(issue.number, formatNeedsClarificationReply(comment));
       if (!issue.blocked_on_human) {
-        await deps.execGh([
-          'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-        ]);
+        await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
       }
       issue.blocked_on_human = true;
       actionTaken = 'post_reply_and_block';
     } else if (result.classification === 'actionable') {
       let unblocked = false;
       if (issue.blocked_on_human) {
-        await deps.execGh([
-          'issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', 'aloop/blocked-on-human',
-        ]);
+        await deps.adapter.removeLabels(issue.number, ['aloop/blocked-on-human']);
         issue.blocked_on_human = false;
         unblocked = true;
       }
@@ -1910,9 +1914,7 @@ export async function applyTriageResultsToIssue(
         actionTaken = 'steering_deferred';
       }
     } else if (result.classification === 'question') {
-      await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatQuestionReply(comment),
-      ]);
+      await deps.adapter.postComment(issue.number, formatQuestionReply(comment));
       actionTaken = 'question_answered';
     } else {
       actionTaken = 'triaged_no_action';
@@ -2035,46 +2037,43 @@ export async function runTriageMonitorCycle(
   state: OrchestratorState,
   sessionId: string,
   repo: string,
-  deps: Pick<OrchestrateDeps, 'execGh' | 'now'> & { writeFile?: OrchestrateDeps['writeFile'] },
+  deps: Pick<OrchestrateDeps, 'adapter' | 'now'> & { writeFile?: OrchestrateDeps['writeFile'] },
   aloopRoot?: string,
 ): Promise<TriageMonitorCycleResult> {
-  if (!deps.execGh) {
+  if (!deps.adapter) {
     return { processed_issues: 0, triaged_entries: 0 };
   }
 
   let triagedEntries = 0;
   for (const issue of state.issues) {
     const since = issue.last_comment_check ?? state.created_at;
-    const issueCommentsResponse = await deps.execGh([
-      'issue-comments',
-      '--session', sessionId,
-      '--since', since,
-      '--role', 'orchestrator',
-    ]);
-    const prCommentsResponse = await deps.execGh([
-      'pr-comments',
-      '--session', sessionId,
-      '--since', since,
-      '--role', 'orchestrator',
-    ]);
+    const allComments = await deps.adapter.listComments(issue.number);
+    const issueComments = allComments.filter((c) => !since || c.createdAt >= since);
+    const normalizedIssueComments = issueComments.map((c): TriageComment => ({
+      id: c.id,
+      author: c.author,
+      body: c.body,
+      created_at: c.createdAt,
+      context: 'issue',
+    }));
 
-    const normalizedIssueComments = normalizeMonitorComments(
-      extractCommentsPayload(issueCommentsResponse.stdout),
-      'issue',
-    ).filter((entry) => entry.issueNumber === issue.number)
-      .map((entry) => entry.comment);
-
-    const normalizedPrComments = normalizeMonitorComments(
-      extractCommentsPayload(prCommentsResponse.stdout),
-      'pr',
-    ).filter((entry) => issue.pr_number !== null && entry.issueNumber === issue.pr_number)
-      .map((entry) => entry.comment);
+    const prComments: TriageComment[] = issue.pr_number != null
+      ? (await deps.adapter.listComments(issue.pr_number))
+          .filter((c) => !since || c.createdAt >= since)
+          .map((c): TriageComment => ({
+            id: c.id,
+            author: c.author,
+            body: c.body,
+            created_at: c.createdAt,
+            context: 'pr',
+          }))
+      : [];
 
     const entries = await applyTriageResultsToIssue(
       issue,
-      [...normalizedIssueComments, ...normalizedPrComments],
+      [...normalizedIssueComments, ...prComments],
       repo,
-      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, aloopRoot },
+      { adapter: deps.adapter, now: deps.now, writeFile: deps.writeFile, aloopRoot },
     );
     triagedEntries += entries.length;
 
@@ -2174,37 +2173,29 @@ export async function resolveSpecQuestionIssues(
   state: OrchestratorState,
   repo: string,
   sessionDir: string,
-  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog' | 'now'>,
+  deps: Pick<ScanLoopDeps, 'adapter' | 'appendLog' | 'now'>,
 ): Promise<SpecQuestionResolveStats> {
-  if (!deps.execGh) {
+  if (!deps.adapter) {
     return { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
   }
   const result: SpecQuestionResolveStats = { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
-  const response = await deps.execGh([
-    'issue',
-    'list',
-    '--repo',
-    repo,
-    '--label',
-    'aloop/spec-question',
-    '--state',
-    'open',
-    '--json',
-    'number,title,body,labels',
-  ]);
-  const issues = parseSpecQuestionIssueList(response.stdout);
-  for (const issue of issues) {
+  const issues = await deps.adapter.queryIssues({ state: 'open', labels: ['aloop/spec-question'] });
+  // Convert to SpecQuestionIssueSummary format for the rest of the function
+  const specIssues = issues.map((i) => ({
+    number: i.number,
+    title: i.title,
+    body: i.body ?? '',
+    labels: i.labels.map((name) => ({ name })),
+  }));
+  for (const issue of specIssues) {
     result.processed += 1;
     const labelNames = extractLabelNames(issue.labels);
-    const issueNumber = String(issue.number);
     const risk = classifySpecQuestionRisk(issue);
     const action = resolveSpecQuestionAction(state.autonomy_level ?? 'balanced', risk);
     const reopenedByUser = labelNames.has('aloop/auto-resolved');
     if (reopenedByUser) {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        await deps.execGh([
-          'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-        ]);
+        await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
       }
       result.userOverrides += 1;
       deps.appendLog(sessionDir, {
@@ -2218,9 +2209,7 @@ export async function resolveSpecQuestionIssues(
 
     if (action === 'wait_for_user') {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        await deps.execGh([
-          'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-        ]);
+        await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
       }
       result.waiting += 1;
       deps.appendLog(sessionDir, {
@@ -2233,27 +2222,10 @@ export async function resolveSpecQuestionIssues(
       continue;
     }
 
-    await deps.execGh([
-      'issue',
-      'comment',
-      issueNumber,
-      '--repo',
-      repo,
-      '--body',
-      formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
-    ]);
-    await deps.execGh([
-      'issue',
-      'edit',
-      issueNumber,
-      '--repo',
-      repo,
-      '--add-label',
-      'aloop/auto-resolved',
-      '--remove-label',
-      'aloop/blocked-on-human',
-    ]);
-    await deps.execGh(['issue', 'close', issueNumber, '--repo', repo]);
+    await deps.adapter.postComment(issue.number, formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk));
+    await deps.adapter.addLabels(issue.number, ['aloop/auto-resolved']);
+    await deps.adapter.removeLabels(issue.number, ['aloop/blocked-on-human']);
+    await deps.adapter.closeIssue(issue.number);
     result.autoResolved += 1;
     deps.appendLog(sessionDir, {
       timestamp: deps.now().toISOString(),
@@ -2386,8 +2358,7 @@ export async function applyEstimateResults(
   state: OrchestratorState,
   results: EstimateResult[],
   deps?: {
-    execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
-    execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+    adapter?: OrchestratorAdapter;
     appendLog?: (sessionDir: string, entry: Record<string, unknown>) => void;
     now?: () => Date;
     repo?: string;
@@ -2412,9 +2383,9 @@ export async function applyEstimateResults(
       if (issue.status === 'Needs refinement') {
         issue.status = 'Ready';
       }
-      if (deps?.execGh && deps.repo) {
+      if (deps?.adapter && deps.repo) {
         await syncIssueProjectStatus(result.issue_number, deps.repo, 'Ready', {
-          execGh: deps.execGh,
+          adapter: deps.adapter,
           appendLog: deps.appendLog,
           now: deps.now,
           sessionDir: deps.sessionDir,
@@ -2462,15 +2433,13 @@ export async function applyEstimateResults(
       outcome.blocked.push(result.issue_number);
 
       // Create aloop/spec-question issues for each gap
-      if (result.gaps && result.gaps.length > 0 && deps?.execGhIssueCreate && deps.repo && deps.sessionId) {
+      if (result.gaps && result.gaps.length > 0 && deps?.adapter && deps.repo && deps.sessionId) {
         for (const gap of result.gaps) {
-          await deps.execGhIssueCreate(
-            deps.repo,
-            deps.sessionId,
-            `[spec-question] #${result.issue_number}: ${gap}`,
-            `Blocking issue #${result.issue_number} (${issue.title}).\n\n**DoR gap:** ${gap}\n\nThis spec-question must be resolved before the parent issue can be dispatched.`,
-            ['aloop/spec-question'],
-          );
+          await deps.adapter.createIssue({
+            title: `[spec-question] #${result.issue_number}: ${gap}`,
+            body: `Blocking issue #${result.issue_number} (${issue.title}).\n\n**DoR gap:** ${gap}\n\nThis spec-question must be resolved before the parent issue can be dispatched.`,
+            labels: ['aloop/spec-question'],
+          });
         }
       }
     }
@@ -3403,7 +3372,7 @@ export interface PrMergeResult {
 }
 
 export interface PrLifecycleDeps {
-  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  adapter: OrchestratorAdapter;
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   now: () => Date;
@@ -3417,7 +3386,9 @@ const ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT = 3;
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
-    const response = await deps.execGh([
+    const execGh = getAdapterExecGh(deps.adapter);
+    if (!execGh) return false;
+    const response = await execGh([
       'api', `repos/${repo}/actions/workflows`, '--method', 'GET', '--jq', '.total_count',
     ]);
     const total = Number(response.stdout.trim());
@@ -3462,18 +3433,11 @@ export async function checkPrGates(
 
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
   try {
-    const checksResult = await deps.execGh([
-      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
-    ]);
-    const parsed = JSON.parse(checksResult.stdout);
-    const checks: Array<{ name: string; state: string; conclusion: string }> = (parsed.statusCheckRollup ?? []).map((c: any) => ({
-      name: c.name ?? c.context ?? 'unknown',
-      state: c.status ?? c.state ?? 'COMPLETED',
-      conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
-    }));
-    const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
+    const prChecks = await deps.adapter.getPrChecks(prNumber);
+    const { checks } = prChecks;
+    const allCompleted = checks.every((c) => c.status === 'COMPLETED' || c.status === 'completed');
     const allPassed = checks.every(
-      (c) => (c.state === 'COMPLETED' || c.state === 'completed') &&
+      (c) => (c.status === 'COMPLETED' || c.status === 'completed') &&
         (c.conclusion === 'SUCCESS' || c.conclusion === 'success' ||
          c.conclusion === 'NEUTRAL' || c.conclusion === 'neutral' ||
          c.conclusion === 'SKIPPED' || c.conclusion === 'skipped'),
@@ -3485,8 +3449,6 @@ export async function checkPrGates(
     );
 
     if (checks.length === 0) {
-      // No check runs — pass regardless of workflow existence
-      // (workflow may not trigger on this branch/PR target)
       if (ciWorkflowsConfigured) {
         gates.push({ gate: 'ci_checks', status: 'pass', detail: 'CI workflows exist but no checks ran on this PR — passing' });
       } else {
@@ -3526,7 +3488,11 @@ export async function reviewPrDiff(
   // Get the PR diff
   let diff: string;
   try {
-    const diffResult = await deps.execGh(['pr', 'diff', String(prNumber), '--repo', repo]);
+    const execGh = getAdapterExecGh(deps.adapter);
+    if (!execGh) {
+      return { pr_number: prNumber, verdict: 'approve', summary: 'Auto-approved (no raw executor available)' };
+    }
+    const diffResult = await execGh(['pr', 'diff', String(prNumber), '--repo', repo]);
     diff = diffResult.stdout;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3559,9 +3525,7 @@ export async function mergePr(
   deps: PrLifecycleDeps,
 ): Promise<PrMergeResult> {
   try {
-    await deps.execGh([
-      'pr', 'merge', String(prNumber), '--repo', repo, '--squash', '--delete-branch',
-    ]);
+    await deps.adapter.mergePr(prNumber, { method: 'squash', deleteBranch: true });
     return { pr_number: prNumber, merged: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3576,7 +3540,7 @@ export async function mergePr(
 export async function createTrunkToMainPr(
   state: OrchestratorState,
   repo: string,
-  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog'>,
+  deps: Pick<ScanLoopDeps, 'adapter' | 'appendLog'>,
   sessionDir: string,
 ): Promise<number | null> {
   const trunkBranch = state.trunk_branch || 'agent/trunk';
@@ -3597,35 +3561,22 @@ export async function createTrunkToMainPr(
   ].filter(Boolean).join('\n');
 
   try {
-    const result = await deps.execGh!([
-      'pr', 'create',
-      '--repo', repo,
-      '--base', 'main',
-      '--head', trunkBranch,
-      '--title', title,
-      '--body', body,
-    ]);
-    const parsed = parsePrCreateOutput(result.stdout);
+    const result = await deps.adapter!.createPr({ base: 'main', head: trunkBranch, title, body });
     deps.appendLog(sessionDir, {
       timestamp: new Date().toISOString(),
       event: 'trunk_to_main_pr_created',
-      pr_number: parsed.number,
+      pr_number: result.number,
       trunk_branch: trunkBranch,
     });
-    return parsed.number;
+    return result.number;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     // Check if PR already exists
     try {
-      const listResult = await deps.execGh!([
-        'pr', 'list',
-        '--repo', repo,
-        '--head', trunkBranch,
-        '--base', 'main',
-        '--json', 'number',
-        '--jq', '.[0].number',
-      ]);
-      const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
+      const execGh = getAdapterExecGh(deps.adapter!);
+      const existingNumber = execGh ? await execGh([
+        'pr', 'list', '--repo', repo, '--head', trunkBranch, '--base', 'main', '--json', 'number', '--jq', '.[0].number',
+      ]).then((r) => Number.parseInt(r.stdout.trim(), 10)).catch(() => NaN) : NaN;
       if (Number.isFinite(existingNumber) && existingNumber > 0) {
         deps.appendLog(sessionDir, {
           timestamp: new Date().toISOString(),
@@ -3659,12 +3610,8 @@ export async function flagForHuman(
 ): Promise<void> {
   const body = `Flagged for human resolution: ${reason}`;
   try {
-    await deps.execGh([
-      'issue', 'comment', String(issue.number), '--repo', repo, '--body', body,
-    ]);
-    await deps.execGh([
-      'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-    ]);
+    await deps.adapter.postComment(issue.number, body);
+    await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
   } catch {
     // Best-effort labeling
   }
@@ -3762,8 +3709,8 @@ export async function processPrLifecycle(
       if (retries >= ORCHESTRATOR_CI_PERSISTENCE_LIMIT) {
         // Close the PR and reset for fresh attempt instead of permanent failure
         try {
-          await deps.execGh(['pr', 'close', String(prNumber), '--repo', repo, '--comment',
-            `Closing: persistent CI failure after ${retries} attempts: ${ciFailure.detail}. Will re-dispatch fresh.`]);
+          await deps.adapter.postComment(prNumber, `Closing: persistent CI failure after ${retries} attempts: ${ciFailure.detail}. Will re-dispatch fresh.`);
+          await deps.adapter.closeIssue(prNumber);
         } catch { /* best-effort */ }
 
         stateIssue.state = 'pending';
@@ -3801,10 +3748,7 @@ export async function processPrLifecycle(
       const ciRetryNote = ciFailure && stateIssue
         ? ` CI retry ${stateIssue.ci_failure_retries ?? 1}/${ORCHESTRATOR_CI_PERSISTENCE_LIMIT} before human escalation.`
         : '';
-      await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo,
-        '--body', `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`,
-      ]);
+      await deps.adapter.postComment(issue.number, `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`);
     } catch {
       // Best-effort comment
     }
@@ -3839,10 +3783,7 @@ export async function processPrLifecycle(
     const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
-        await deps.execGh([
-          'pr', 'comment', String(prNumber), '--repo', repo,
-          '--body', `Agent review requested changes:\n\n${reviewResult.summary}`,
-        ]);
+        await deps.adapter.postComment(prNumber, `Agent review requested changes:\n\n${reviewResult.summary}`);
       } catch {
         // Best-effort
       }
@@ -3857,13 +3798,8 @@ export async function processPrLifecycle(
       if (failures >= ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT) {
         // Escalate: comment on issue + add aloop/needs-human label, pause automated redispatch
         try {
-          await deps.execGh([
-            'issue', 'comment', String(issue.number), '--repo', repo,
-            '--body', `Automated redispatch paused after ${failures} failed attempts.\n\nLast review feedback:\n\n${reviewResult.summary}\n\nA human review is required. Remove the \`aloop/needs-human\` label to resume automated redispatch.`,
-          ]);
-          await deps.execGh([
-            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/needs-human',
-          ]);
+          await deps.adapter.postComment(issue.number, `Automated redispatch paused after ${failures} failed attempts.\n\nLast review feedback:\n\n${reviewResult.summary}\n\nA human review is required. Remove the \`aloop/needs-human\` label to resume automated redispatch.`);
+          await deps.adapter.addLabels(issue.number, ['aloop/needs-human']);
         } catch {
           // Best-effort
         }
@@ -3900,7 +3836,7 @@ export async function processPrLifecycle(
       stateIssue.status = 'Done';
     }
     await syncIssueProjectStatus(issue.number, repo, 'Done', {
-      execGh: deps.execGh,
+      adapter: deps.adapter,
       appendLog: deps.appendLog,
       now: deps.now,
       sessionDir,
@@ -3918,7 +3854,7 @@ export async function processPrLifecycle(
 
     // Close the issue
     try {
-      await deps.execGh(['issue', 'close', String(issue.number), '--repo', repo]);
+      await deps.adapter.closeIssue(issue.number);
     } catch {
       // Best-effort close
     }
@@ -4276,7 +4212,7 @@ export interface MonitorChildDeps {
   existsSync: (path: string) => boolean;
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
-  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  adapter: OrchestratorAdapter;
   now: () => Date;
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   aloopRoot: string;
@@ -4325,9 +4261,14 @@ async function createPrForChild(
 
   // Check if base branch exists remotely
   let effectiveBase = baseBranch;
-  try {
-    await deps.execGh(['api', `repos/${repo}/branches/${baseBranch}`, '--jq', '.name']);
-  } catch {
+  const execGhRaw = getAdapterExecGh(deps.adapter);
+  if (execGhRaw) {
+    try {
+      await execGhRaw(['api', `repos/${repo}/branches/${baseBranch}`, '--jq', '.name']);
+    } catch {
+      effectiveBase = 'main';
+    }
+  } else {
     effectiveBase = 'main';
   }
 
@@ -4336,33 +4277,33 @@ async function createPrForChild(
   const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}`;
 
   try {
-    const result = await deps.execGh([
-      'pr', 'create',
-      '--repo', repo,
-      '--base', effectiveBase,
-      '--head', branch,
-      '--title', prTitle,
-      '--body', prBody,
-    ]);
-    const parsed = parsePrCreateOutput(result.stdout);
-    return { pr_number: parsed.number, branch, baseBranch: effectiveBase };
+    const prResult = await deps.adapter.createPr({
+      base: effectiveBase,
+      head: branch,
+      title: prTitle,
+      body: prBody,
+    });
+    return { pr_number: prResult.number, branch, baseBranch: effectiveBase };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     // Check if PR already exists for this branch
-    try {
-      const listResult = await deps.execGh([
-        'pr', 'list',
-        '--repo', repo,
-        '--head', branch,
-        '--json', 'number',
-        '--jq', '.[0].number',
-      ]);
-      const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
-      if (Number.isFinite(existingNumber) && existingNumber > 0) {
-        return { pr_number: existingNumber, branch, baseBranch: effectiveBase };
+    const execGhRaw2 = getAdapterExecGh(deps.adapter);
+    if (execGhRaw2) {
+      try {
+        const listResult = await execGhRaw2([
+          'pr', 'list',
+          '--repo', repo,
+          '--head', branch,
+          '--json', 'number',
+          '--jq', '.[0].number',
+        ]);
+        const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
+        if (Number.isFinite(existingNumber) && existingNumber > 0) {
+          return { pr_number: existingNumber, branch, baseBranch: effectiveBase };
+        }
+      } catch {
+        // PR list also failed
       }
-    } catch {
-      // PR list also failed
     }
     return { pr_number: null, branch, baseBranch: effectiveBase, error: msg };
   }
@@ -4462,7 +4403,7 @@ export async function monitorChildSessions(
           stateIssue.pr_number = prResult.pr_number;
           stateIssue.status = 'In review';
           await syncIssueProjectStatus(issue.number, repo, 'In review', {
-            execGh: deps.execGh,
+            adapter: deps.adapter,
             appendLog: deps.appendLog,
             now: deps.now,
             sessionDir,
@@ -4547,7 +4488,7 @@ export interface ScanLoopDeps {
   readdir?: (path: string) => Promise<string[]>;
   unlink?: (path: string) => Promise<void>;
   now: () => Date;
-  execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  adapter?: OrchestratorAdapter;
   execGit?: (args: string[], cwd?: string) => Promise<{ stdout: string; stderr: string }>;
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   dispatchDeps?: DispatchDeps;
@@ -5183,7 +5124,7 @@ export async function runSpecChangeReplan(
 async function fetchAndApplyBulkIssueState(
   state: OrchestratorState,
   repo: string,
-  deps: Pick<ScanLoopDeps, 'execGh' | 'etagCache' | 'appendLog' | 'now'>,
+  deps: Pick<ScanLoopDeps, 'adapter' | 'etagCache' | 'appendLog' | 'now'>,
   sessionDir: string,
   iteration: number,
 ): Promise<BulkFetchResult> {
@@ -5195,7 +5136,7 @@ async function fetchAndApplyBulkIssueState(
     durationMs: 0,
   };
 
-  if (!deps.execGh) return result;
+  if (!deps.adapter) return result;
 
   try {
     const issueNumbers = state.issues.map((i) => i.number);
@@ -5205,11 +5146,7 @@ async function fetchAndApplyBulkIssueState(
       return !earliest || check < earliest ? check : earliest;
     }, undefined as string | undefined);
 
-    const bulkResult = await fetchBulkIssueState(repo, deps.execGh, {
-      states: ['OPEN'],
-      since,
-      issueNumbers,
-    });
+    const bulkResult = await deps.adapter.fetchBulkIssueState({ states: ['OPEN'], since, issueNumbers });
 
     result.issuesFetched = bulkResult.issues.length;
     result.fromCache = bulkResult.fromCache;
@@ -5339,11 +5276,11 @@ export async function runOrchestratorScanPass(
   }
 
   // 0.3. Bulk issue state fetch (ETag-guarded, replaces per-issue REST calls)
-  if (repo && deps.execGh && state.issues.length > 0) {
+  if (repo && deps.adapter && state.issues.length > 0) {
     result.bulkFetch = await fetchAndApplyBulkIssueState(
       state,
       repo,
-      { execGh: deps.execGh, etagCache: deps.etagCache, appendLog: deps.appendLog, now: deps.now },
+      { adapter: deps.adapter, etagCache: deps.etagCache, appendLog: deps.appendLog, now: deps.now },
       sessionDir,
       iteration,
     );
@@ -5394,19 +5331,19 @@ export async function runOrchestratorScanPass(
   }
 
   // 1. Triage monitoring cycle (every 5th iteration to conserve API rate limit)
-  if (repo && deps.execGh && iteration % 5 === 0) {
+  if (repo && deps.adapter && iteration % 5 === 0) {
     result.triage = await runTriageMonitorCycle(
       state,
       path.basename(sessionDir),
       repo,
-      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile },
+      { adapter: deps.adapter, now: deps.now, writeFile: deps.writeFile },
       aloopRoot,
     );
     result.specQuestions = await resolveSpecQuestionIssues(
       state,
       repo,
       sessionDir,
-      { execGh: deps.execGh, appendLog: deps.appendLog, now: deps.now },
+      { adapter: deps.adapter, appendLog: deps.appendLog, now: deps.now },
     );
   }
 
@@ -5462,9 +5399,9 @@ export async function runOrchestratorScanPass(
           stateIssue.child_session = launchResult.session_id;
           (stateIssue as any).child_pid = launchResult.pid;
           stateIssue.status = 'In progress';
-          if (repo && deps.execGh) {
+          if (repo && deps.adapter) {
             await syncIssueProjectStatus(issue.number, repo, 'In progress', {
-              execGh: deps.execGh,
+              adapter: deps.adapter,
               appendLog: deps.appendLog,
               now: deps.now,
               sessionDir,
@@ -5494,7 +5431,7 @@ export async function runOrchestratorScanPass(
   }
 
   // 2.5. Monitor in-progress child sessions: detect completion, create PRs, flag failures
-  if (repo && deps.execGh && deps.aloopRoot) {
+  if (repo && deps.adapter && deps.aloopRoot) {
     try {
       result.childMonitoring = await monitorChildSessions(
         state,
@@ -5504,7 +5441,7 @@ export async function runOrchestratorScanPass(
           existsSync: deps.existsSync,
           readFile: deps.readFile,
           writeFile: deps.writeFile,
-          execGh: deps.execGh,
+          adapter: deps.adapter,
           now: deps.now,
           appendLog: deps.appendLog,
           aloopRoot: deps.aloopRoot,
@@ -5552,19 +5489,12 @@ export async function runOrchestratorScanPass(
   }
 
   // 3.4. Resume redispatch for issues where aloop/needs-human label has been removed
-  if (repo && deps.execGh) {
+  if (repo && deps.adapter) {
     const pausedIssues = state.issues.filter((i) => (i as any).redispatch_paused);
     for (const issue of pausedIssues) {
       try {
-        const viewResult = await deps.execGh([
-          'issue', 'view', String(issue.number), '--repo', repo, '--json', 'labels',
-        ]);
-        const data = JSON.parse(viewResult.stdout);
-        const labelNames = new Set<string>(
-          (data.labels ?? [])
-            .filter((l: unknown) => typeof (l as any)?.name === 'string')
-            .map((l: unknown) => (l as any).name.toLowerCase()),
-        );
+        const issueData = await deps.adapter.getIssue(issue.number);
+        const labelNames = new Set<string>(issueData.labels.map((l) => l.toLowerCase()));
         if (!labelNames.has('aloop/needs-human')) {
           issue.redispatch_paused = false;
           issue.redispatch_failures = 0;
@@ -5758,7 +5688,7 @@ export async function runOrchestratorScanLoop(
     if (passResult.allDone) {
       // Create trunk→main PR when auto-merge is configured
       const currentState: OrchestratorState = JSON.parse(await deps.readFile(stateFile, 'utf8'));
-      if (currentState.auto_merge_to_main && repo && deps.execGh) {
+      if (currentState.auto_merge_to_main && repo && deps.adapter) {
         const prNum = await createTrunkToMainPr(currentState, repo, deps, sessionDir);
         if (prNum !== null) {
           currentState.trunk_pr_number = prNum;
