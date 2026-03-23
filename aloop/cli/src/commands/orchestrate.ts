@@ -1169,6 +1169,13 @@ export async function orchestrateCommandWithDeps(
             if (projStatus === 'Done') issueState = 'merged';
           }
 
+          // Extract priority from labels
+          const labelNames = (gi.labels ?? []).map((l: any) => l.name ?? l);
+          let priority = 0;
+          if (labelNames.includes('aloop/priority-critical')) priority = 100;
+          else if (labelNames.includes('aloop/priority-high')) priority = 50;
+          else if (labelNames.includes('aloop/priority-low')) priority = -10;
+
           state.issues.push({
             number: gi.number,
             title: gi.title,
@@ -1183,6 +1190,7 @@ export async function orchestrateCommandWithDeps(
             blocked_on_human: false,
             processed_comment_ids: [],
             dor_validated: dorValidated,
+            priority,
           } as any);
         }
         if (state.current_wave === 0) state.current_wave = 1;
@@ -5207,6 +5215,15 @@ async function fetchAndApplyBulkIssueState(
         // Sync PR number from bulk fetch
         if (fetched.pr && !issue.pr_number) {
           issue.pr_number = fetched.pr.number;
+        }
+
+        // Sync priority from labels
+        if (fetched.labels) {
+          let pri = 0;
+          if (fetched.labels.includes('aloop/priority-critical')) pri = 100;
+          else if (fetched.labels.includes('aloop/priority-high')) pri = 50;
+          else if (fetched.labels.includes('aloop/priority-low')) pri = -10;
+          (issue as any).priority = pri;
         }
 
         deps.appendLog(sessionDir, {
