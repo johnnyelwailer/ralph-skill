@@ -1176,6 +1176,7 @@ resolve_healthy_provider() {
                 "providers" "$providers_csv" \
                 "reasons" "$all_degraded_reasons"
             echo "Warning: All providers are degraded. Fix auth/quota issues (for example, rerun provider login) and retry." >&2
+            exit 77
         fi
         if [ -n "$earliest_cooldown_epoch" ]; then
             local now_epoch remaining
