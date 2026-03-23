@@ -3490,6 +3490,10 @@ export async function reviewPrDiff(
   try {
     const execGh = getAdapterExecGh(deps.adapter);
     if (!execGh) {
+      // No raw executor — call reviewer with empty diff if configured, otherwise auto-approve
+      if (deps.invokeAgentReview) {
+        return deps.invokeAgentReview(prNumber, repo, '');
+      }
       return { pr_number: prNumber, verdict: 'approve', summary: 'Auto-approved (no raw executor available)' };
     }
     const diffResult = await execGh(['pr', 'diff', String(prNumber), '--repo', repo]);
