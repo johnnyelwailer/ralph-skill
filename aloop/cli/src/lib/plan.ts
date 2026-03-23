@@ -2,6 +2,46 @@ import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 
+/**
+ * Priority tiers for queue items. Lower number = higher priority.
+ * Each entry: [tier, label]
+ */
+export const QUEUE_PRIORITY_TIERS = {
+  STEERING: 0,
+  REVIEW: 1,
+  SUB_DECOMPOSE: 2,
+  PLAN: 3,
+  BUILD: 4,
+  DEFAULT: 5,
+} as const;
+
+export type QueuePriorityTier = (typeof QUEUE_PRIORITY_TIERS)[keyof typeof QUEUE_PRIORITY_TIERS];
+
+/**
+ * Resolves the priority tier for a queue item based on its frontmatter fields.
+ * Returns a tier number 0–5 (lower = higher priority).
+ */
+export function resolveQueuePriority(frontmatter: Record<string, string>): QueuePriorityTier {
+  const { type, agent, reason } = frontmatter;
+
+  if (type === 'steering_override' || type === 'triage_steering_override') {
+    return QUEUE_PRIORITY_TIERS.STEERING;
+  }
+  if (agent === 'review') {
+    return QUEUE_PRIORITY_TIERS.REVIEW;
+  }
+  if (agent === 'plan' && reason && reason.includes('decompose')) {
+    return QUEUE_PRIORITY_TIERS.SUB_DECOMPOSE;
+  }
+  if (agent === 'plan') {
+    return QUEUE_PRIORITY_TIERS.PLAN;
+  }
+  if (agent === 'build') {
+    return QUEUE_PRIORITY_TIERS.BUILD;
+  }
+  return QUEUE_PRIORITY_TIERS.DEFAULT;
+}
+
 export interface LoopPlan {
   cycle: string[];
   cyclePosition: number;
