@@ -214,9 +214,12 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       const result = JSON.parse(await readFile(filePath, 'utf8'));
       const issue = state.issues.find((i: any) => i.number === result.issue_number);
       if (issue && result.updated_body && repo) {
-        // Update GH issue body
+        // Update GH issue body via temp file (body can be large)
         try {
-          await execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--body', result.updated_body]);
+          const bodyFile = path.join(requestsDir, `_body-${issue.number}.md`);
+          await writeFile(bodyFile, result.updated_body, 'utf8');
+          await execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--body-file', bodyFile]);
+          await unlink(bodyFile).catch(() => {});
           issue.body = result.updated_body;
           (issue as any).refined = true;
           stateChanged = true;
