@@ -156,7 +156,7 @@ type SessionStatus = Record<string, unknown>;
 
 interface ArtifactManifest { iteration: number; manifest: unknown; outputHeader?: string }
 
-interface DashboardState {
+export interface DashboardState {
   sessionDir: string;
   workdir: string;
   runtimeDir: string;
@@ -473,7 +473,7 @@ function StatusDot({ status, className = '' }: { status: string; className?: str
   );
 }
 
-type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
+export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
 function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
   const Icon = status === 'connected' ? Zap : status === 'connecting' ? Loader2 : AlertTriangle;
