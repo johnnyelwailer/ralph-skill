@@ -8,6 +8,8 @@ import {
   ghExecutor,
   ghLoopRuntime,
   GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+  buildGhArgs,
+  evaluatePolicy,
   type GhWatchIssueEntry,
   type GhWatchIssueStatus,
 } from './gh.js';
@@ -146,4 +148,99 @@ test('gh watch --once marks completion_finalized=true if finalizeWatchEntry succ
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
+});
+
+const basePolicy = { repo: 'test/repo', childCreatedPrNumbers: [51] };
+
+// --- pr-review policy tests ---
+
+test('evaluatePolicy: pr-review allowed for orchestrator', () => {
+  const result = evaluatePolicy('pr-review', 'orchestrator', { pr_number: 51 }, basePolicy);
+  assert.equal(result.allowed, true);
+  assert.equal(result.enforced?.repo, 'test/repo');
+  assert.equal(result.enforced?.pr_number, 51);
+});
+
+test('evaluatePolicy: pr-review denied for child-loop', () => {
+  const result = evaluatePolicy('pr-review', 'child-loop', { pr_number: 51 }, basePolicy);
+  assert.equal(result.allowed, false);
+  assert.match(result.reason ?? '', /not allowed for child-loop/);
+});
+
+test('evaluatePolicy: pr-review denied for orchestrator when pr_number missing', () => {
+  const result = evaluatePolicy('pr-review', 'orchestrator', {}, basePolicy);
+  assert.equal(result.allowed, false);
+  assert.match(result.reason ?? '', /pr_number/);
+});
+
+// --- resolve-review-thread policy tests ---
+
+test('evaluatePolicy: resolve-review-thread allowed for child-loop on own PR', () => {
+  const result = evaluatePolicy('resolve-review-thread', 'child-loop', { pr_number: 51 }, basePolicy);
+  assert.equal(result.allowed, true);
+  assert.equal(result.enforced?.repo, 'test/repo');
+});
+
+test('evaluatePolicy: resolve-review-thread denied for child-loop on foreign PR', () => {
+  const result = evaluatePolicy('resolve-review-thread', 'child-loop', { pr_number: 99 }, basePolicy);
+  assert.equal(result.allowed, false);
+  assert.match(result.reason ?? '', /out of scope/);
+});
+
+test('evaluatePolicy: resolve-review-thread denied for child-loop when pr_number missing', () => {
+  const result = evaluatePolicy('resolve-review-thread', 'child-loop', {}, basePolicy);
+  assert.equal(result.allowed, false);
+  assert.match(result.reason ?? '', /pr_number/);
+});
+
+test('evaluatePolicy: resolve-review-thread allowed for orchestrator', () => {
+  const result = evaluatePolicy('resolve-review-thread', 'orchestrator', { pr_number: 51 }, basePolicy);
+  assert.equal(result.allowed, true);
+  assert.equal(result.enforced?.repo, 'test/repo');
+});
+
+// --- buildGhArgs shape tests ---
+
+test('buildGhArgs: pr-review produces correct args shape with comments array', () => {
+  const enforced = { repo: 'test/repo', pr_number: 51 };
+  const payload = {
+    pr_number: 51,
+    body: 'Review summary',
+    comments: [
+      { path: 'src/foo.ts', line: 10, body: 'Fix this', suggestion: 'const x = 1;' },
+      { path: 'src/bar.ts', line: 20, body: 'Another issue' },
+    ],
+  };
+  const args = buildGhArgs('pr-review', payload, enforced);
+  assert.equal(args[0], 'api');
+  assert.equal(args[1], 'repos/test/repo/pulls/51/reviews');
+  assert.equal(args[2], '--method');
+  assert.equal(args[3], 'POST');
+  assert.ok(args.includes('-f'));
+  assert.ok(args.includes('event=COMMENT'));
+  assert.ok(args.includes('body=Review summary'));
+  // comments array entries
+  assert.ok(args.includes('comments[][path]=src/foo.ts'));
+  assert.ok(args.includes('comments[][line]=10'));
+  // suggestion should be wrapped in fences
+  const bodyArg = args.find((a) => a.startsWith('comments[][body]=Fix this'));
+  assert.ok(bodyArg !== undefined, 'body arg with suggestion block should exist');
+  assert.ok(bodyArg?.includes('```suggestion'), 'suggestion fences should be included');
+  assert.ok(bodyArg?.includes('const x = 1;'), 'suggestion code should be included');
+  // second comment without suggestion
+  assert.ok(args.includes('comments[][path]=src/bar.ts'));
+  assert.ok(args.includes('comments[][line]=20'));
+  assert.ok(args.includes('comments[][body]=Another issue'));
+});
+
+test('buildGhArgs: resolve-review-thread produces graphql mutation args', () => {
+  const enforced = { repo: 'test/repo' };
+  const payload = { pr_number: 51, thread_id: 'PRRT_kwDOABC123' };
+  const args = buildGhArgs('resolve-review-thread', payload, enforced);
+  assert.equal(args[0], 'api');
+  assert.equal(args[1], 'graphql');
+  assert.equal(args[2], '-f');
+  assert.ok(args[3]?.startsWith('query=mutation'), 'query should be a mutation');
+  assert.ok(args[3]?.includes('resolveReviewThread'), 'should call resolveReviewThread');
+  assert.ok(args[3]?.includes('PRRT_kwDOABC123'), 'should include thread_id');
 });

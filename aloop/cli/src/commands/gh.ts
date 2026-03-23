@@ -589,6 +589,7 @@ interface PrReviewComment {
   path?: string;
   line?: number;
   state?: string;
+  node_id?: string;
 }
 
 interface PrIssueComment {
@@ -664,6 +665,7 @@ async function fetchPrReviewComments(repo: string, prNumber: number): Promise<Pr
       path: typeof entry.path === 'string' ? entry.path : undefined,
       line: typeof entry.line === 'number' ? entry.line : undefined,
       state: typeof entry.state === 'string' ? entry.state : undefined,
+      node_id: typeof entry.node_id === 'string' ? entry.node_id : undefined,
     }))
     .filter((comment) => comment.id > 0);
 }
@@ -814,10 +816,13 @@ function buildFeedbackSteering(feedback: PrFeedback, prNumber: number): string {
       parts.push(`### ${author}${location ? ` — \`${location}\`` : ''}`);
       parts.push('');
       parts.push(`Comment ID: ${comment.id}`);
+      if (comment.node_id) {
+        parts.push(`Thread Node ID: ${comment.node_id}`);
+      }
       parts.push('');
       parts.push(comment.body.trim());
       parts.push('');
-      parts.push(`- Address this comment directly in your fix and resolve by referencing comment ID ${comment.id}.`);
+      parts.push(`- Address this comment directly in your fix. After applying the fix, resolve the thread by issuing a \`resolve-review-thread\` request with the Thread Node ID above.`);
       parts.push('');
     }
     parts.push('Resolve each review comment individually after applying the fix, and reference its Comment ID when resolving.');
@@ -1476,6 +1481,8 @@ addGhRequestSubcommand('issue-close', 'Close an issue (orchestrator only)');
 addGhRequestSubcommand('issue-label', 'Add/remove issue labels (orchestrator only)');
 addGhRequestSubcommand('pr-merge', 'Merge a pull request (orchestrator only)');
 addGhRequestSubcommand('branch-delete', 'Delete a branch (always rejected)');
+addGhRequestSubcommand('pr-review', 'Post inline review comments on a pull request (orchestrator only)');
+addGhRequestSubcommand('resolve-review-thread', 'Resolve a PR review thread via GraphQL');
 addGhSinceSubcommand('issue-comments', 'List issue comments since a timestamp (orchestrator only)');
 addGhSinceSubcommand('pr-comments', 'List pull request review comments since a timestamp (orchestrator only)');
 
@@ -1933,6 +1940,32 @@ function buildGhArgs(operation: string, payload: any, enforced: any): string[] {
     case 'pr-comments': {
       return ['api', `repos/${repo}/pulls/comments`, '--method', 'GET', '-f', `since=${String(enforced.since)}`];
     }
+    case 'pr-review': {
+      const prNum = enforced.pr_number ?? payload.pr_number;
+      const body = typeof payload.body === 'string' ? payload.body : '';
+      const args = [
+        'api', `repos/${repo}/pulls/${prNum}/reviews`,
+        '--method', 'POST',
+        '-f', 'event=COMMENT',
+        '-f', `body=${body}`,
+      ];
+      if (Array.isArray(payload.comments)) {
+        for (const comment of payload.comments as Array<{ path?: unknown; line?: unknown; body?: unknown; suggestion?: unknown }>) {
+          if (comment.path !== undefined) args.push('-F', `comments[][path]=${String(comment.path)}`);
+          if (comment.line !== undefined) args.push('-F', `comments[][line]=${String(comment.line)}`);
+          const commentBody = typeof comment.suggestion === 'string' && comment.suggestion.trim()
+            ? `${String(comment.body ?? '')}\n\`\`\`suggestion\n${comment.suggestion}\n\`\`\``
+            : String(comment.body ?? '');
+          args.push('-F', `comments[][body]=${commentBody}`);
+        }
+      }
+      return args;
+    }
+    case 'resolve-review-thread': {
+      const threadId = String(payload.thread_id ?? '');
+      const query = `mutation { resolveReviewThread(input: { threadId: "${threadId}" }) { thread { id } } }`;
+      return ['api', 'graphql', '-f', `query=${query}`];
+    }
     default:
       throw new Error(`Cannot build gh args for operation: ${operation}`);
   }
@@ -2171,6 +2204,20 @@ function evaluatePolicy(
         }
         return { allowed: true, enforced: { pr_number: targetPrNumber, repo: sessionPolicy.repo } };
       }
+      case 'resolve-review-thread': {
+        const targetPrNumber = parsePositiveInteger(payload.pr_number);
+        if (targetPrNumber === undefined) {
+          return { allowed: false, reason: 'Child resolve-review-thread requires numeric pr_number' };
+        }
+        if (!sessionPolicy.childCreatedPrNumbers.includes(targetPrNumber)) {
+          return {
+            allowed: false,
+            reason: `Child resolve-review-thread must target a PR created by this session (${targetPrNumber} is out of scope)`,
+          };
+        }
+        return { allowed: true, enforced: { repo: sessionPolicy.repo } };
+      }
+      case 'pr-review':
       case 'pr-merge':
       case 'issue-create':
       case 'issue-close':
@@ -2238,6 +2285,15 @@ function evaluatePolicy(
         return { allowed: true, enforced: { repo: sessionPolicy.repo } };
       case 'branch-delete':
         return { allowed: false, reason: 'branch-delete rejected - cleanup is manual' };
+      case 'pr-review': {
+        const prNum = parsePositiveInteger(payload.pr_number);
+        if (prNum === undefined) {
+          return { allowed: false, reason: 'pr-review requires numeric pr_number' };
+        }
+        return { allowed: true, enforced: { repo: sessionPolicy.repo, pr_number: prNum } };
+      }
+      case 'resolve-review-thread':
+        return { allowed: true, enforced: { repo: sessionPolicy.repo } };
       default:
         return { allowed: false, reason: `Unknown operation: ${operation}` };
     }

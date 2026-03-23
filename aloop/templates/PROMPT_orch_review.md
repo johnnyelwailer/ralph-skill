@@ -28,18 +28,18 @@ The orchestrator review is NOT a line-by-line code review (the child's own revie
 
 ## Output Contract
 
-Write JSON to `requests/review-result-{pr_number}.json` with this shape:
+### Step 1 — Inline comments request (write first, if any)
+
+If you have inline findings, write `requests/pr-review-{pr_number}.json` **before** the verdict file:
 
 ```json
 {
   "pr_number": 123,
-  "verdict": "approve | request-changes | flag-for-human",
-  "summary": "Top-level review summary across all findings.",
+  "body": "Top-level review comment (optional).",
   "comments": [
     {
       "path": "src/file.ts",
       "line": 42,
-      "end_line": 44,
       "body": "What is wrong and why it matters. Include actionable guidance.",
       "suggestion": "optional replacement code only (no fences)"
     }
@@ -50,18 +50,22 @@ Write JSON to `requests/review-result-{pr_number}.json` with this shape:
 `comments` guidance:
 - Use one comment per distinct issue.
 - `path` must be a valid file path in the PR diff.
-- `line` and optional `end_line` must map to changed lines in the diff.
+- `line` must be a 1-based line number that maps to a changed line in the diff. Verify against the diff before writing — wrong line numbers cause the API call to fail.
 - `body` must be specific and actionable.
-- Use `suggestion` when a concrete code replacement is appropriate.
-- If no inline findings exist, omit `comments` or set it to an empty array.
+- Use `suggestion` when a concrete code replacement is appropriate. Write only the replacement code (no fences) — the system will wrap it in GitHub's ` ```suggestion\n...\n``` ` block.
+- If no inline findings exist, omit this file entirely. Its absence is not an error.
 
-When proposing direct code edits, use GitHub suggestion syntax in the comment body:
+### Step 2 — Verdict file (always write)
 
-```suggestion
-replacement code here
+Write `requests/review-result-{pr_number}.json`:
+
+```json
+{
+  "pr_number": 123,
+  "verdict": "approve | request-changes | flag-for-human",
+  "summary": "Top-level review summary across all findings."
+}
 ```
-
-If you set `suggestion`, ensure it matches the same replacement and can be transformed into the suggestion block above without modification.
 
 ## Rules
 
