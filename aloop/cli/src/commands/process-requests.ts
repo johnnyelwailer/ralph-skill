@@ -381,7 +381,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   // ── Phase 2c: Sync child branches with base branch ──
   for (const issue of state.issues) {
     if (!issue.child_session) continue;
-    if (issue.state !== 'in_progress' && issue.state !== 'pr_open') continue;
+    if (issue.state !== 'in_progress' && issue.state !== 'pr_open' && issue.state !== 'review') continue;
     const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
     const childWorktree = path.join(childDir, 'worktree');
     if (!existsSync(childWorktree)) continue;
@@ -439,7 +439,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         if (existsSync(childStatusFile)) {
           try {
             const childStatus = JSON.parse(await readFile(childStatusFile, 'utf8'));
-            if (childStatus.state === 'completed' || childStatus.state === 'stopped') {
+            if (childStatus.state === 'completed') {
               const branch = `aloop/issue-${issue.number}`;
               const trunkBranch = state.trunk_branch ?? 'agent/trunk';
               const childWorktree = path.join(childDir, 'worktree');
@@ -726,6 +726,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   // triage, dispatch, child monitoring, PR lifecycle, wave advancement, budget, etc.
 
   const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
+  const reviewPendingUpdates = new Map<number, number>();
   let iteration = 1;
   try {
     if (existsSync(loopPlanFile)) {
@@ -810,10 +811,12 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
           }
         }
         // Track pending cycles — retry → troubleshoot → escalate
-        const stateIssue2 = state.issues.find((i: any) => i.pr_number === prNumber);
-        if (stateIssue2) {
-          const pendingCount = ((stateIssue2 as any).review_pending_count ?? 0) + 1;
-          (stateIssue2 as any).review_pending_count = pendingCount;
+        // Note: we write to reviewPendingUpdates map (not state) because
+        // runOrchestratorScanPass has its own state copy that would overwrite ours
+        const prevCount = reviewPendingUpdates.get(prNumber) ?? 0;
+        const pendingCount = prevCount + 1;
+        reviewPendingUpdates.set(prNumber, pendingCount);
+        {
 
           // 1-3: retry (move to back of queue — other PRs get a chance)
           // 4-5: troubleshoot agent investigates
@@ -855,6 +858,25 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const result = await runOrchestratorScanPass(
     stateFile, sessionDir, projectRoot, sessionId, promptsDir, aloopRoot, repo, iteration, scanDeps,
   );
+
+  // Re-read state after scan pass (scan pass writes its own copy)
+  // and apply any pending review tracking from the invokeAgentReview closure
+  if (reviewPendingUpdates.size > 0) {
+    try {
+      const postScanState: OrchestratorState = JSON.parse(await readFile(stateFile, 'utf8'));
+      let changed = false;
+      for (const [prNum, count] of reviewPendingUpdates) {
+        const issue = postScanState.issues.find((i: any) => i.pr_number === prNum);
+        if (issue) {
+          (issue as any).review_pending_count = count;
+          changed = true;
+        }
+      }
+      if (changed) {
+        await writeFile(stateFile, `${JSON.stringify(postScanState, null, 2)}\n`, 'utf8');
+      }
+    } catch { /* best-effort */ }
+  }
 
   await etagCache.save();
 
