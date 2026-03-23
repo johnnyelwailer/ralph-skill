@@ -151,9 +151,10 @@ export function renderAnsiToHtml(text: string, opts: { gfm?: boolean; breaks?: b
 
 // ── Types ──
 
-type SessionStatus = Record<string, unknown>;
+export type { ArtifactManifest, LogEntry, FileChange, ArtifactEntry, ManifestPayload, IterationUsage } from './components/activity/types';
+import type { ArtifactManifest, LogEntry, FileChange, ArtifactEntry, ManifestPayload, IterationUsage } from './components/activity/types';
 
-interface ArtifactManifest { iteration: number; manifest: unknown; outputHeader?: string }
+type SessionStatus = Record<string, unknown>;
 
 interface DashboardState {
   sessionDir: string;
@@ -186,48 +187,6 @@ interface SessionSummary {
   provider: string;
   workDir: string;
   stuckCount: number;
-}
-
-interface LogEntry {
-  timestamp: string;
-  phase: string;
-  event: string;
-  provider: string;
-  model: string;
-  duration: string;
-  message: string;
-  raw: string;
-  rawObj: Record<string, unknown> | null;
-  iteration: number | null;
-  dateKey: string;
-  isSuccess: boolean;
-  isError: boolean;
-  commitHash: string;
-  resultDetail: string;
-  filesChanged: FileChange[];
-  isSignificant: boolean;
-}
-
-interface FileChange {
-  path: string;
-  type: 'M' | 'A' | 'D' | 'R';
-  additions: number;
-  deletions: number;
-}
-
-interface ArtifactEntry {
-  type: string;
-  path: string;
-  description: string;
-  metadata?: { baseline?: string; diff_percentage?: number };
-}
-
-interface ManifestPayload {
-  iteration: number;
-  phase: string;
-  summary: string;
-  artifacts: ArtifactEntry[];
-  outputHeader?: string;
 }
 
 interface ProviderHealth {
@@ -509,13 +468,6 @@ function ElapsedTimer({ since }: { since: string }) {
 }
 
 // ── Token/cost usage helpers ──
-
-export interface IterationUsage {
-  tokens_input: number;
-  tokens_output: number;
-  tokens_cache_read: number;
-  cost_usd: number;
-}
 
 /** Extract token/cost usage from a log entry's rawObj. Returns null if no usage data. */
 export function extractIterationUsage(rawObj: Record<string, unknown> | null): IterationUsage | null {
