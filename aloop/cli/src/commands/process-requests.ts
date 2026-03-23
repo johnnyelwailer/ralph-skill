@@ -271,7 +271,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         if (i.refinement_budget_exceeded) return false;
         if (pendingQueue.has(i.number) || pendingResults.has(i.number)) return false;
         for (const [key, val] of Object.entries(event.filter)) {
-          if ((i as any)[key] !== val && i[key] !== val) return false;
+          const actual = (i as any)[key];
+          // Treat undefined as false for boolean filters
+          const normalized = actual === undefined && typeof val === 'boolean' ? false : actual;
+          if (normalized !== val) return false;
         }
         return true;
       });
