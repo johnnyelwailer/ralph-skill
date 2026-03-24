@@ -18,7 +18,7 @@ Migration order per spec: utilities → leaf components → composite components
 
 - [x] Extract `shared/ElapsedTimer.tsx` with test and stories — move `ElapsedTimer` component (AppView.tsx:246) into `components/shared/ElapsedTimer.tsx`; add `ElapsedTimer.test.tsx` and `ElapsedTimer.stories.tsx` (priority: high, leaf component)
 
-- [ ] Extract `shared/PhaseBadge.tsx` with test and stories — move `PhaseBadge` (AppView.tsx:189) into `components/shared/PhaseBadge.tsx`; add test and stories (priority: high, leaf component)
+- [x] Extract `shared/PhaseBadge.tsx` with test and stories — move `PhaseBadge` (AppView.tsx:189) into `components/shared/PhaseBadge.tsx`; add test and stories (priority: high, leaf component)
 
 - [ ] Extract `shared/StatusDot.tsx` with test and stories — move `StatusDot` (AppView.tsx:206) and `ConnectionIndicator` (AppView.tsx:227) into `components/shared/StatusDot.tsx`; add test and stories (priority: high, leaf component)
 

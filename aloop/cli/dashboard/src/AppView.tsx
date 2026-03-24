@@ -24,6 +24,7 @@ import { ArtifactViewer } from '@/components/artifacts/ArtifactViewer';
 import { HealthPanel } from '@/components/health/ProviderHealth';
 import type { ProviderHealth } from '@/components/health/ProviderHealth';
 import { ElapsedTimer } from '@/components/shared/ElapsedTimer';
+import { PhaseBadge } from '@/components/shared/PhaseBadge';
 import { useCost } from '@/hooks/useCost';
 import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
@@ -165,13 +166,6 @@ export function parseLogLine(line: string): LogEntry | null {
 
 // ── Phase colors ──
 
-const phaseColors: Record<string, string> = {
-  plan: 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border-purple-500/30',
-  build: 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30',
-  proof: 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30',
-  review: 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border-cyan-500/30',
-};
-
 const phaseBarColors: Record<string, string> = {
   plan: 'bg-purple-500', build: 'bg-yellow-500', proof: 'bg-amber-500', review: 'bg-cyan-500',
 };
@@ -186,13 +180,6 @@ const statusColors: Record<string, string> = {
   stopped: 'text-red-600 dark:text-red-400',
   stopping: 'text-orange-600 dark:text-orange-400',
 };
-
-function PhaseBadge({ phase, small }: { phase: string; small?: boolean }) {
-  if (!phase) return null;
-  const colors = phaseColors[phase.toLowerCase()] ?? 'bg-muted text-muted-foreground border-border';
-  const size = small ? 'px-1 py-0 text-[10px]' : 'px-1.5 py-0.5 text-xs';
-  return <span className={`inline-block rounded border font-medium ${colors} ${size}`}>{phase}</span>;
-}
 
 const STATUS_DOT_CONFIG: Record<string, { color: string; label: string }> = {
   running: { color: 'bg-green-500', label: 'Running' },
