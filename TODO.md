@@ -10,14 +10,14 @@ Migration order per spec: utilities → leaf components → composite components
 
 ### In Progress
 
-- [x] [review] Gate 6: `ElapsedTimer.stories.tsx` adds 3 new Storybook stories (`Shared/ElapsedTimer--JustStarted`, `--NinetySeconds`, `--TwoMinutes`) but `proof-manifest.json` was not updated — still shows 8 entries from 2026-03-24T10:22:03Z (pre-ElapsedTimer). Run Playwright proof capture against HTTP-served Storybook for the 3 new ElapsedTimer stories and append entries to `proof-manifest.json` in session artifacts dir. (priority: high)
-- [ ] [review] Gate 6: `PhaseBadge.stories.tsx` adds 6 new Storybook stories (`Shared/PhaseBadge--Plan`, `--Build`, `--Proof`, `--Review`, `--Unknown`, `--Small`) but no Playwright screenshots were captured. `proof-manifest.json` has 11 entries — none for PhaseBadge. Run Playwright proof capture against HTTP-served Storybook for all 6 PhaseBadge stories and append entries to `proof-manifest.json`. (priority: high)
+- [x] [review] Gate 6: PhaseBadge proof captured — 6 PNG screenshots appended to `proof-manifest.json` (entries 12–17) via HTTP+Playwright. (priority: high)
 
 ### Up Next
 
 - [x] Extract `lib/types.ts` — move shared TypeScript interfaces (`SessionSummary`, `LogEntry`, `IterationUsage`, `DashboardState`, `ArtifactEntry`, `ArtifactManifest`, `ManifestPayload`, `ConnectionStatus`, `AnsiStyle`, `QACoverageViewData`) from `AppView.tsx` into `lib/types.ts`; update all imports (priority: high, foundational — blocks all component extractions)
 
 - [x] Extract `shared/ElapsedTimer.tsx` with test and stories — move `ElapsedTimer` component (AppView.tsx:246) into `components/shared/ElapsedTimer.tsx`; add `ElapsedTimer.test.tsx` and `ElapsedTimer.stories.tsx` (priority: high, leaf component)
+- [x] [review] Gate 6: ElapsedTimer proof captured — 3 PNG screenshots appended to `proof-manifest.json` (entries 9–11) via HTTP+Playwright. (priority: high)
 
 - [x] Extract `shared/PhaseBadge.tsx` with test and stories — move `PhaseBadge` (AppView.tsx:189) into `components/shared/PhaseBadge.tsx`; add test and stories (priority: high, leaf component)
 
