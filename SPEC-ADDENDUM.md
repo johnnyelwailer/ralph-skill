@@ -1464,16 +1464,20 @@ On `APPROVED` verdict: `gh pr merge <N> --repo <repo> --squash --delete-branch`.
 
 ## Review Re-Dispatch
 
-When a review verdict is `CHANGES_REQUESTED`, the orchestrator re-dispatches the child loop via `launchIssues` rather than creating a new session. Source: `aloop/cli/src/commands/orchestrate.ts` lines 5518–5563.
+The orchestrator re-dispatches the child loop via `launchIssues` rather than creating a new session when a review verdict is `CHANGES_REQUESTED` or when a PR has merge conflicts. The dispatch path branches on `issue.needs_rebase`. Source: `aloop/cli/src/commands/orchestrate.ts` lines 5518–5563.
 
 ### Mechanism
 
-1. `processPrLifecycle` sets `needs_redispatch = true` and `review_feedback = <summary>` on the state issue
+1. `processPrLifecycle` sets `needs_redispatch = true` on the state issue, plus either:
+   - `review_feedback = <summary>` (when verdict is `CHANGES_REQUESTED`), or
+   - `needs_rebase = true` (when PR has merge conflicts with trunk)
 2. On the next scan pass, `runOrchestratorScanPass` collects all issues with `needs_redispatch && !redispatch_paused`
 3. Calls `launchIssues` for up to `availableSlots(state)` of them — the same dispatch path as initial child dispatch (respects concurrency limits, capability filters, state updates)
-4. After launch, writes `queue/000-review-fixes.md` to the child's queue dir with the feedback content
+4. After launch, writes a queue file to the child's queue dir — the file chosen depends on the re-dispatch reason (see sub-sections below)
 
-### Queue File Content
+### Sub-path A: Review Feedback (`CHANGES_REQUESTED`)
+
+When `issue.needs_rebase` is not `true`, writes `queue/000-review-fixes.md` with `agent: build` frontmatter.
 
 `000-review-fixes.md` format:
 ```
@@ -1496,16 +1500,44 @@ Fix the issues described above, commit, and push.
 Do NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.
 ```
 
+### Sub-path B: Merge Conflict Re-Dispatch
+
+When `issue.needs_rebase === true`, writes `queue/000-rebase-conflict.md` with `agent: merge` frontmatter instead, and clears `needs_rebase = false` after launch.
+
+`000-rebase-conflict.md` format:
+```
+---
+agent: merge
+reasoning: high
+---
+
+# Rebase Required
+
+PR #<N> has merge conflicts with `<trunk_branch>`.
+
+Run:
+
+    git fetch origin <trunk_branch>
+    git rebase origin/<trunk_branch>
+
+Resolve all conflict markers, then:
+
+    git rebase --continue
+    git push origin HEAD --force-with-lease
+```
+
 ### State Cleanup
 
-After launch, `needs_redispatch` is set to `false` and `review_feedback` is cleared from the state issue.
+After launch, `needs_redispatch` is set to `false` and `review_feedback` is cleared from the state issue. When `needs_rebase === true`, `needs_rebase` is additionally set to `false`.
 
 ### Acceptance Criteria
 
 - [ ] `grep -n "000-review-fixes.md" aloop/cli/src/commands/orchestrate.ts` returns the queue file write
+- [ ] `grep -n "000-rebase-conflict" aloop/cli/src/commands/orchestrate.ts` returns the merge-conflict queue file write
 - [ ] `grep -n "needs_redispatch.*false\|needs_redispatch = false" aloop/cli/src/commands/orchestrate.ts` confirms state cleanup
+- [ ] `grep -n "needs_rebase.*false\|needs_rebase = false" aloop/cli/src/commands/orchestrate.ts` confirms `needs_rebase` cleared after merge dispatch
 - [ ] Re-dispatch uses `launchIssues` (not a new `orchestrate` session)
-- [ ] Queue file name is `000-review-fixes.md` (not `000-review-feedback.md`)
+- [ ] Queue file name is `000-review-fixes.md` for `CHANGES_REQUESTED`; `000-rebase-conflict.md` for merge conflicts
 
 ---
 
