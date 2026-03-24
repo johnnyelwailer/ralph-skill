@@ -2,7 +2,7 @@
 
 ## Current Phase: Dashboard Component Architecture Refactor (Issue #183)
 
-Goal: Decompose `AppView.tsx` (2445 lines) into focused components (~150 LOC each), each with tests and Storybook stories. Reduce `AppView.tsx` to <100 LOC layout shell.
+Goal: Decompose `AppView.tsx` (2160 lines) into focused components (~150 LOC each), each with tests and Storybook stories. Reduce `AppView.tsx` to <100 LOC layout shell.
 
 Migration order per spec: utilities → leaf components → composite components → layout → slim AppView.
 
@@ -10,9 +10,7 @@ Migration order per spec: utilities → leaf components → composite components
 
 ### In Progress
 
-- [x] [review] Gate 3: `lib/format.ts` has no dedicated test file — create `lib/format.test.ts` covering all 8 exported functions
-- [x] [review] Gate 2: `lib/format.test.ts` happy-path tests for `formatTime` (lines 27-30), `formatTimeShort` (lines 46-50) only assert `typeof result === 'string'` + `length > 0` — a broken implementation returning any non-empty string passes. Strengthen with regex: `expect(result).toMatch(/\d{1,2}:\d{2}/)`. Also `formatSecs(-5)` (line 81-85) only checks typeof — function deterministically returns `'-1m'`; change to `expect(formatSecs(-5)).toBe('-1m')`. (priority: high) (`formatTime`, `formatTimeShort`, `formatSecs`, `formatDuration`, `formatDateKey`, `relativeTime`, `formatTokenCount`, `parseDurationSeconds`). Current coverage via `formatHelpers.test.tsx` is ~25% (only `formatSecs` × 2 + `relativeTime` × 1). New module threshold is 90%. Pattern: mirror `lib/ansi.test.ts`. Each function needs exact-value assertions + edge cases (empty string, zero, negative, invalid input). (priority: high)
-- [ ] [review] Gate 6: `ElapsedTimer.stories.tsx` adds 3 new Storybook stories (`Shared/ElapsedTimer--JustStarted`, `--NinetySeconds`, `--TwoMinutes`) but `proof-manifest.json` was not updated — still shows 8 entries from 2026-03-24T10:22:03Z (pre-ElapsedTimer). Run Playwright proof capture against HTTP-served Storybook for the 3 new ElapsedTimer stories and append entries to `proof-manifest.json` in session artifacts dir. (priority: high)
+- [x] [review] Gate 6: `ElapsedTimer.stories.tsx` adds 3 new Storybook stories (`Shared/ElapsedTimer--JustStarted`, `--NinetySeconds`, `--TwoMinutes`) but `proof-manifest.json` was not updated — still shows 8 entries from 2026-03-24T10:22:03Z (pre-ElapsedTimer). Run Playwright proof capture against HTTP-served Storybook for the 3 new ElapsedTimer stories and append entries to `proof-manifest.json` in session artifacts dir. (priority: high)
 
 ### Up Next
 
@@ -20,33 +18,33 @@ Migration order per spec: utilities → leaf components → composite components
 
 - [x] Extract `shared/ElapsedTimer.tsx` with test and stories — move `ElapsedTimer` component (AppView.tsx:246) into `components/shared/ElapsedTimer.tsx`; add `ElapsedTimer.test.tsx` and `ElapsedTimer.stories.tsx` (priority: high, leaf component)
 
-- [ ] Extract `shared/PhaseBadge.tsx` with test and stories — move `PhaseBadge` (AppView.tsx:432) into `components/shared/PhaseBadge.tsx`; add test and stories (priority: high, leaf component)
+- [ ] Extract `shared/PhaseBadge.tsx` with test and stories — move `PhaseBadge` (AppView.tsx:189) into `components/shared/PhaseBadge.tsx`; add test and stories (priority: high, leaf component)
 
-- [ ] Extract `shared/StatusDot.tsx` with test and stories — move `StatusDot` (AppView.tsx:449) and `ConnectionIndicator` (AppView.tsx:472) into `components/shared/StatusDot.tsx`; add test and stories (priority: high, leaf component)
+- [ ] Extract `shared/StatusDot.tsx` with test and stories — move `StatusDot` (AppView.tsx:206) and `ConnectionIndicator` (AppView.tsx:227) into `components/shared/StatusDot.tsx`; add test and stories (priority: high, leaf component)
 
 - [ ] Extract `shared/AnsiRenderer.tsx` with test and stories — create `components/shared/AnsiRenderer.tsx` wrapping `renderAnsiToHtml` from `lib/ansi.ts`; add test and stories (priority: medium, leaf component — requires lib/ansi.ts)
 
-- [ ] Extract `activity/LogEntry.tsx` with test and stories — move `LogEntryRow` component (AppView.tsx:1489) into `components/activity/LogEntry.tsx`; add test and stories (priority: medium, leaf component)
+- [ ] Extract `activity/LogEntry.tsx` with test and stories — move `LogEntryRow` component (AppView.tsx:1204) into `components/activity/LogEntry.tsx`; add test and stories (priority: medium, leaf component)
 
-- [ ] Extract `activity/ActivityLog.tsx` with test and stories — move `ActivityPanel` (AppView.tsx:1392) into `components/activity/ActivityLog.tsx`; depends on `LogEntry.tsx` (priority: medium, composite)
+- [ ] Extract `activity/ActivityLog.tsx` with test and stories — move `ActivityPanel` (AppView.tsx:1107) into `components/activity/ActivityLog.tsx`; depends on `LogEntry.tsx` (priority: medium, composite)
 
-- [ ] Extract `session/SessionCard.tsx` with test and stories — extract single-session card UI from `Sidebar` (AppView.tsx:715) into `components/session/SessionCard.tsx`; add test and stories (priority: medium, leaf component)
+- [ ] Extract `session/SessionCard.tsx` with test and stories — extract single-session card UI from `Sidebar` (AppView.tsx:430) into `components/session/SessionCard.tsx`; add test and stories (priority: medium, leaf component)
 
 - [ ] Extract `session/SessionList.tsx` with test and stories — extract grouped session list from `Sidebar` into `components/session/SessionList.tsx`; depends on SessionCard (priority: medium, composite)
 
 - [ ] Extract `steering/SteerInput.tsx` with test and stories — extract steering textarea + send button from `App` into `components/steering/SteerInput.tsx`; add test and stories (priority: medium, leaf)
 
-- [ ] Extract `shared/CommandPalette.tsx` with test and stories — move `CommandPalette` (AppView.tsx:2054) into `components/shared/CommandPalette.tsx`; add test and stories (priority: medium)
+- [ ] Extract `shared/CommandPalette.tsx` with test and stories — move `CommandPalette` (AppView.tsx:1769) into `components/shared/CommandPalette.tsx`; add test and stories (priority: medium)
 
-- [ ] Extract `layout/Sidebar.tsx` with test and stories — move `Sidebar` function (AppView.tsx:715) into `components/layout/Sidebar.tsx` using extracted `SessionList`/`SessionCard`; add test and stories (priority: medium, composite layout)
+- [ ] Extract `layout/Sidebar.tsx` with test and stories — move `Sidebar` function (AppView.tsx:430) into `components/layout/Sidebar.tsx` using extracted `SessionList`/`SessionCard`; add test and stories (priority: medium, composite layout)
 
-- [ ] Extract `layout/DocsPanel.tsx` with test and stories — move `DocsPanel` (AppView.tsx:1238) into `components/layout/DocsPanel.tsx`; add test and stories (priority: medium)
+- [ ] Extract `layout/DocsPanel.tsx` with test and stories — move `DocsPanel` (AppView.tsx:953) into `components/layout/DocsPanel.tsx`; add test and stories (priority: medium)
 
-- [ ] Extract `layout/Header.tsx` with test and stories — move `Header` component (AppView.tsx:1018) into `components/layout/Header.tsx`; add test and stories (priority: medium)
+- [ ] Extract `layout/Header.tsx` with test and stories — move `Header` component (AppView.tsx:733) into `components/layout/Header.tsx`; add test and stories (priority: medium)
 
-- [ ] Extract `layout/Footer.tsx` with test and stories — move `Footer` (AppView.tsx:1991) into `components/layout/Footer.tsx`; add test and stories (priority: medium)
+- [ ] Extract `layout/Footer.tsx` with test and stories — move `Footer` (AppView.tsx:1706) into `components/layout/Footer.tsx`; add test and stories (priority: medium)
 
-- [ ] Extract `hooks/useSSE.ts` with test — extract SSE connection logic from `App.useEffect` (AppView.tsx:2150) into `hooks/useSSE.ts`; add `useSSE.test.ts` (priority: medium, enables slim App)
+- [ ] Extract `hooks/useSSE.ts` with test — extract SSE connection logic from `App.useEffect` (AppView.tsx:1809) into `hooks/useSSE.ts`; add `useSSE.test.ts` (priority: medium, enables slim App)
 
 - [ ] Extract `hooks/useSession.ts` with test — extract session selection/URL sync logic from `App` into `hooks/useSession.ts`; add `useSession.test.ts` (priority: medium, enables slim App)
 
@@ -90,3 +88,5 @@ Migration order per spec: utilities → leaf components → composite components
 - [x] Extract `lib/ansi.ts` — moved `stripAnsi`, `PALETTE_256`, `rgbStr`, `parseAnsiSegments`, `renderAnsiToHtml` out of `AppView.tsx` into `lib/ansi.ts`; unit tests in `lib/ansi.test.ts`
 - [x] [review] Gate 2: `lib/ansi.test.ts` already uses exact `.toBe()` string assertions for all ANSI color RGB values
 - [x] Extract `lib/format.ts` — moved `formatTime`, `formatTimeShort`, `formatSecs`, `formatDuration`, `formatDateKey`, `relativeTime`, `formatTokenCount`, `parseDurationSeconds` from `AppView.tsx` into `lib/format.ts`; updated imports in `formatHelpers.test.tsx`; re-exports from `AppView.tsx` for backward compatibility
+- [x] [review] Gate 3: `lib/format.ts` has no dedicated test file — created `lib/format.test.ts` covering all 8 exported functions
+- [x] [review] Gate 2: Strengthened `lib/format.test.ts` assertions — `formatTime`/`formatTimeShort` use `toMatch(/\d{1,2}:\d{2}/)`, `formatSecs(-5)` uses `toBe('-1m')`, all functions have exact-value assertions and edge cases (empty string, zero, negative, invalid input)
