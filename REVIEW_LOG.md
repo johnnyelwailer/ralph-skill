@@ -49,6 +49,25 @@ All changes are purely internal (type cast, regex whitelist entry, dead state ch
 
 ---
 
+## Review — 2026-03-24 — commit 0008eb39..86315a80
+
+**Verdict: PASS**
+**Scope:** `aloop/cli/src/commands/orchestrate.test.ts`, `TODO.md`
+
+**What was reviewed:** 2 commits since last review (`86315a80` build, `0c8892c7` QA) — adding test coverage for `severity=critical` branch.
+
+### Prior Finding (Gate 3) — RESOLVED ✓
+`orchestrate.ts:5859`: `severity: b.occurrence_count >= 10 ? 'critical' : 'warning'` — the `'critical'` branch was previously untested. New test at `orchestrate.test.ts:6499–6527` pre-seeds `occurrence_count: 9`, calls `runOrchestratorScanPass` (which increments to 10 via `updateBlockerSignatures`), then asserts `diagnostics.blockers[0].severity === 'critical'` with `assert.equal`. Exact-value assertion on the correct boundary (9→10). Prior finding fully resolved.
+
+### Passing notes
+- Gate 2: `assert.equal(diagnostics.blockers[0].severity, 'critical')` is a concrete assertion — not a shape check, not a truthy check. `assert.equal(diagnostics.blockers.length, 1)` verifies no spurious extra blockers. A broken severity ternary would fail this test.
+- Gate 3: Both branches of `severity: b.occurrence_count >= 10 ? 'critical' : 'warning'` now covered — `'warning'` by prior test fixtures using `occurrence_count: BLOCKER_PERSISTENCE_THRESHOLD - 1` (4 → 5), `'critical'` by new test (9 → 10).
+- Gate 4: Test is clean — uses existing helpers (`makeScanState`, `makeIssue`, `createMockScanDeps`), no dead code or leftover comments.
+- Gate 5: QA_COVERAGE confirms 340/365 pass (25 pre-existing failures unchanged); no regressions introduced.
+- Gates 6–9: N/A — test-only change with no observable output, no UI, no dependency changes, no doc updates needed.
+
+---
+
 ## Review — 2026-03-24 — commit e748c1e8..9e3fa438
 
 **Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
