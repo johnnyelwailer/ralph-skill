@@ -24,3 +24,27 @@ SPEC-ADDENDUM.md specifies: `{type, message, first_seen_iteration, current_itera
 - Test baseline: 26 pre-existing failures (master had 27); 41 new tests all pass. No regressions.
 
 ---
+
+## Review — 2026-03-24 — commit a420b394..b85f8ade
+
+**Verdict: FAIL** (1 prior finding still unresolved — tracked in TODO.md)
+**Scope:** `aloop/cli/src/lib/requests.ts`, `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/commands/process-requests.test.ts`
+
+**What was reviewed:** 3 commits since last review (`e0ee9e1e`, `c68cb2d7`, `b85f8ade`) — post-review fixes for the 2 higher-priority findings.
+
+### Prior Finding 1 (Gate 5) — RESOLVED ✓
+`lib/requests.ts:435`: `request.id` → `(request as any).id` in the `never`-typed default branch. `npm run type-check` now exits clean. Also resolved the pre-existing `'review'` state comparison TS2367 error in `process-requests.ts:415` — `'review'` is not a member of `OrchestratorIssueState` (`'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed'`), so the comparison was dead code. Both fixes are correct.
+
+### Prior Finding 2 (Gate 4) — RESOLVED ✓
+`KNOWN_REQUEST_PATTERNS` now includes `/^cr-analysis-result-\d+\.json$/` at `process-requests.ts:939`. New dedicated test `'ignores cr-analysis-result files'` (process-requests.test.ts) asserts `deepEqual(result, [])` with a concrete file — not a shallow check. The existing known-files test was also updated to include `cr-analysis-result-5.json`. Both the pattern and the test are correct.
+
+### Prior Finding 3 (Gate 1) — STILL OPEN ✗
+`diagnostics.json` schema remains non-compliant with SPEC-ADDENDUM.md:1053. `orchestrate.ts:5853–5860` still emits `description` (not `message`), `iterations_stuck` (not `first_seen_iteration` + `current_iteration`), `suggested_action` (not `suggested_fix`), wrapped in `persistent_blockers` object (not a top-level array). The `[review]` task is still present and unchecked in TODO.md — it was not picked up in this build cycle. No new task needed; existing task must be completed.
+
+### Gate 5 (Integration Sanity) — PASS
+`npm run type-check` exits cleanly. Test run: 1020 pass / 26 fail — the 26 failures are the same pre-existing failures from prior review; no regressions.
+
+### Gate 6 (Proof) — N/A
+All changes are purely internal (type cast, regex whitelist entry, dead state check removal). No observable output to capture; skipping proof is correct.
+
+---
