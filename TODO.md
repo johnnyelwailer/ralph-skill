@@ -33,6 +33,7 @@
 - [x] [review] Gate 2/3: `applyEstimateResults` in `orchestrate.ts` has untested new branch:
   - Line 2432: `if (issue.status === 'Needs refinement' || issue.status === 'Needs decomposition')` — the `Needs decomposition` arm was added in commit a03fb518 but no `applyEstimateResults` test uses `status: 'Needs decomposition'` as input
   - Add a test: issue starts at `status: 'Needs decomposition'`, `dor_passed: true` → verify `status` becomes `'Ready'` after `applyEstimateResults` (priority: high)
+  [reviewed: gates 1-9 pass]
 
 ### Up Next
 
