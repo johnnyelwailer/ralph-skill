@@ -10,11 +10,9 @@ Migration order per spec: utilities → leaf components → composite components
 
 ### In Progress
 
-- [ ] [review] Gate 3: `lib/format.ts` has no dedicated test file — create `lib/format.test.ts` covering all 8 exported functions (`formatTime`, `formatTimeShort`, `formatSecs`, `formatDuration`, `formatDateKey`, `relativeTime`, `formatTokenCount`, `parseDurationSeconds`). Current coverage via `formatHelpers.test.tsx` is ~25% (only `formatSecs` × 2 + `relativeTime` × 1). New module threshold is 90%. Pattern: mirror `lib/ansi.test.ts`. Each function needs exact-value assertions + edge cases (empty string, zero, negative, invalid input). (priority: high)
+- [x] [review] Gate 3: `lib/format.ts` has no dedicated test file — create `lib/format.test.ts` covering all 8 exported functions (`formatTime`, `formatTimeShort`, `formatSecs`, `formatDuration`, `formatDateKey`, `relativeTime`, `formatTokenCount`, `parseDurationSeconds`). Current coverage via `formatHelpers.test.tsx` is ~25% (only `formatSecs` × 2 + `relativeTime` × 1). New module threshold is 90%. Pattern: mirror `lib/ansi.test.ts`. Each function needs exact-value assertions + edge cases (empty string, zero, negative, invalid input). (priority: high)
 
 ### Up Next
-
-- [ ] Extract `lib/types.ts` — move shared TypeScript interfaces (`SessionSummary`, `LogEntry`, `IterationUsage`, `DashboardState`, `ArtifactEntry`, `ArtifactManifest`, `ManifestPayload`, `ConnectionStatus`, `AnsiStyle`, `QACoverageViewData`) from `AppView.tsx` into `lib/types.ts`; update all imports (priority: high, foundational — blocks all component extractions)
 
 - [ ] Extract `lib/types.ts` — move shared TypeScript interfaces (`SessionSummary`, `LogEntry`, `IterationUsage`, `DashboardState`, `ArtifactEntry`, `ArtifactManifest`, `ManifestPayload`, `ConnectionStatus`, `AnsiStyle`, `QACoverageViewData`) from `AppView.tsx` into `lib/types.ts`; update all imports (priority: high, foundational — blocks all component extractions)
 
