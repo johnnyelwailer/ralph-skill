@@ -1,15 +1,12 @@
 # Issue #112: Responsive layout: breakpoint hooks & mobile sidebar collapse
 
-## Current Phase: QA / Build
+## Current Phase: Fix / Proof
 
-### Bugs (Must Fix Before Done)
+### Bugs & Review Fixes (Must Fix Before Done)
 
-- [ ] [qa/P1] Ctrl+B sidebar toggle has no runtime effect: Pressed Ctrl+B at desktop (1280px) and tablet (768px) → sidebar wrapper class stays `hidden sm:flex`, sidebar offsetWidth stays 256px, no visual change. Clicking the "Collapse sidebar" button in the sidebar header also has no visible effect. Root cause likely: keyboard handler in AppView.tsx still calls old `setSidebarCollapsed` / `setMobileMenuOpen` state setters instead of `toggleSidebar` from ResponsiveLayout context (which now owns sidebar state). Spec AC says "Ctrl+B continues to toggle sidebar (no regression)". Tested at iter 12. (priority: high)
+- [x] [review/Gate 1 + qa/P1] Hide "Collapse sidebar" button at desktop breakpoint: `Sidebar` component (AppView.tsx:722) needs an `isDesktop` prop; the `<button aria-label="Collapse sidebar">` at line 938-940 should render only when `!isDesktop`. At desktop, sidebar is always-visible per spec, so the collapse affordance is misleading and `onToggle=toggleSidebar` is intentionally a no-op. Fix: add `isDesktop: boolean` to `Sidebar` props, pass `isDesktop` from the call site at AppView.tsx:2466, and guard the button with `{!isDesktop && <Tooltip>...</Tooltip>}`. This resolves both the review finding and the qa/P1 Ctrl+B "no effect" report. (priority: high)
 
-### Review Tasks (Fix Before Done)
-
-- [ ] [review] Gate 1: "Collapse sidebar" button (PanelLeftClose, AppView.tsx:938-939) is always rendered when sidebar is non-collapsed. At desktop (isDesktop=true), the sidebar is always collapsed=false, so this button always shows. But onToggle=toggleSidebar is a no-op at desktop (ResponsiveLayout.tsx:50-53 returns early if isDesktop). Root cause of QA P1 bug is NOT stale state setters (code does call toggleSidebar from context) — it IS that toggleSidebar is by design a no-op at desktop. Fix: either (a) hide the Collapse button at desktop breakpoint (sidebar always-visible per spec, button is misleading), or (b) make ResponsiveLayout allow desktop collapse. Option (a) is correct per spec. (priority: high)
-- [ ] [review] Gate 6: No proof-manifest.json files found for any build iteration (iter-2 useBreakpoint hook, iter-5 ResponsiveLayout wrapper, iter-11 TS fixes + swipe gesture). Artifacts contain only output.txt agent logs — not valid proof. All three iterations made observable UI changes (sidebar drawer animation, hamburger menu, swipe gesture, responsive breakpoint classes). Proof agent must run and generate structured proof-manifest.json with screenshots or Playwright recordings for each UI-touching build iteration. (priority: high)
+- [ ] [review/Gate 6] Generate proof screenshots for UI-touching build iterations: Run proof agent to capture Playwright screenshots at mobile (390×844), tablet (768×1024), and desktop (1280×800) viewports demonstrating (a) hamburger menu visible on mobile, (b) sidebar drawer open on mobile, (c) swipe gesture opens sidebar, (d) desktop layout unchanged. Produce `proof-manifest.json` at repo root with `artifacts` array referencing each screenshot. The existing proof-manifest.json covers only iteration 1 at mobile; iters 2 (useBreakpoint hook), 5 (ResponsiveLayout wrapper), and 11 (TS fixes + swipe) need coverage. (priority: high)
 
 ### Completed
 

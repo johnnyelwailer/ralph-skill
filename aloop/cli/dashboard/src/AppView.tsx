@@ -720,7 +720,7 @@ export function deriveProviderHealth(log: string, configuredProviders?: string[]
 // ── Sidebar ──
 
 export function Sidebar({
-  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost, onStopSession, onCopySessionId,
+  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost, onStopSession, onCopySessionId, isDesktop,
 }: {
   sessions: SessionSummary[];
   selectedSessionId: string | null;
@@ -730,6 +730,7 @@ export function Sidebar({
   sessionCost: number;
   onStopSession?: (id: string | null, force: boolean) => void;
   onCopySessionId?: (id: string) => void;
+  isDesktop?: boolean;
 }) {
   // Group by project
   const { projectGroups, olderSessions } = useMemo(() => {
@@ -933,14 +934,16 @@ export function Sidebar({
     <aside className="flex flex-col border-r border-border bg-sidebar w-64 shrink-0 animate-slide-in-left">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button type="button" aria-label="Collapse sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
-              <PanelLeftClose className="h-4 w-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent><p>Collapse (Ctrl+B)</p></TooltipContent>
-        </Tooltip>
+        {!isDesktop && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" aria-label="Collapse sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
+                <PanelLeftClose className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent><p>Collapse (Ctrl+B)</p></TooltipContent>
+          </Tooltip>
+        )}
       </div>
       <ScrollArea className="flex-1">
         <div className="p-2 overflow-hidden">
@@ -2469,6 +2472,7 @@ function AppInner() {
             collapsed={isDesktop ? false : !sidebarOpen}
             onToggle={toggleSidebar}
             sessionCost={sessionCost}
+            isDesktop={isDesktop}
           />
         </div>
         {/* Mobile/Tablet sidebar drawer */}
