@@ -25,8 +25,7 @@ describe('formatTime', () => {
 
   it('returns a time string for a valid ISO timestamp', () => {
     const result = formatTime('2024-01-15T10:30:45Z');
-    expect(typeof result).toBe('string');
-    expect(result.length).toBeGreaterThan(0);
+    expect(result).toMatch(/\d{1,2}:\d{2}/);
   });
 });
 
@@ -45,8 +44,7 @@ describe('formatTimeShort', () => {
 
   it('returns a time string for a valid ISO timestamp', () => {
     const result = formatTimeShort('2024-01-15T10:30:45Z');
-    expect(typeof result).toBe('string');
-    expect(result.length).toBeGreaterThan(0);
+    expect(result).toMatch(/\d{1,2}:\d{2}/);
   });
 });
 
@@ -79,9 +77,8 @@ describe('formatSecs', () => {
   });
 
   it('handles negative values', () => {
-    // negative total: Math.floor(-5/60)=−1, so m < 0 — still formats
-    const result = formatSecs(-5);
-    expect(typeof result).toBe('string');
+    // Math.floor(-5/60) = -1, s = Math.round(-5%60) = -5, s>0 is false → returns '-1m'
+    expect(formatSecs(-5)).toBe('-1m');
   });
 });
 
