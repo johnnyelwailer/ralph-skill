@@ -127,3 +127,25 @@
 - Gate 9 (Documentation Freshness): PASS — internal refactor; no user-facing behavior changed.
 
 ---
+
+## Review — 2026-03-24 — commit c58486ef..b370ec6b
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** lib/format.test.ts (fb37f88b); components/shared/ElapsedTimer.tsx + ElapsedTimer.test.tsx + ElapsedTimer.stories.tsx, AppView.tsx (94f217ae); QA_LOG.md, QA_COVERAGE.md (b370ec6b)
+
+- Gate 6: `ElapsedTimer.stories.tsx` adds 3 new Storybook stories (`Shared/ElapsedTimer--JustStarted`, `--NinetySeconds`, `--TwoMinutes`). The proof manifest (`artifacts/proof-manifest.json`) was last captured at 2026-03-24T10:22:03Z and contains only 8 entries (ProviderHealth × 3, CostDisplay × 3, ArtifactViewer × 2). QA iter 7 confirmed the Storybook build now has 63 stories (+3), but no Playwright screenshots were captured for the new stories. ElapsedTimer renders visible text — it has observable output. Proof agent must capture these 3 story screenshots via HTTP + Playwright and append to proof-manifest.json.
+
+**Prior findings resolved:**
+- Gate 2 (`lib/format.test.ts`): `formatTime` (line 28) and `formatTimeShort` (line 47) now use `toMatch(/\d{1,2}:\d{2}/)` regex assertions; `formatSecs(-5)` (line 81) now uses exact `.toBe('-1m')`. All 3 prior weak assertions replaced. Finding fully closed.
+
+**Observations:**
+- Gate 1 (Spec Compliance): PASS — TODO spec says "move `ElapsedTimer` component (AppView.tsx:246) into `components/shared/ElapsedTimer.tsx`; add `ElapsedTimer.test.tsx` and `ElapsedTimer.stories.tsx`". All three files created; AppView.tsx now imports from `@/components/shared/ElapsedTimer` with no inline definition remaining.
+- Gate 2 (Test Depth): PASS — ElapsedTimer.test.tsx uses 7 tests with exact `getByText()` assertions ('10s', '15s', '1m 30s', '3m', '0s'). Covers: initial render, 1-second ticking via fake timers, minutes+seconds, minutes-only, negative time clamped to 0, cleanup on unmount, prop change resets timer.
+- Gate 3 (Coverage): PASS — 7 tests for a 17-LOC component; all meaningful branches covered (under 60s, over 60s with remainder, over 60s without remainder, negative/clamped, cleanup).
+- Gate 4 (Code Quality): PASS — `ElapsedTimer.tsx` is 17 LOC, clean. AppView.tsx removes 18-line inline definition and adds a clean import. No dead code, no leftover TODOs.
+- Gate 5 (Integration Sanity): PASS — 237/237 dashboard tests pass (up from 230; +7 ElapsedTimer tests); 25 CLI failures are pre-existing (same set: validateDoR, launchChildLoop, etc.); build succeeds; TS clean in dashboard scope.
+- Gate 7 (Runtime Layout): SKIP — extraction refactor, no CSS or visual structure changes to AppView layout.
+- Gate 8 (Version Compliance): PASS — no dependency changes in this build.
+- Gate 9 (Documentation Freshness): PASS — internal refactor; no user-facing behavior changed.
+
+---

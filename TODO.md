@@ -12,6 +12,7 @@ Migration order per spec: utilities → leaf components → composite components
 
 - [x] [review] Gate 3: `lib/format.ts` has no dedicated test file — create `lib/format.test.ts` covering all 8 exported functions
 - [x] [review] Gate 2: `lib/format.test.ts` happy-path tests for `formatTime` (lines 27-30), `formatTimeShort` (lines 46-50) only assert `typeof result === 'string'` + `length > 0` — a broken implementation returning any non-empty string passes. Strengthen with regex: `expect(result).toMatch(/\d{1,2}:\d{2}/)`. Also `formatSecs(-5)` (line 81-85) only checks typeof — function deterministically returns `'-1m'`; change to `expect(formatSecs(-5)).toBe('-1m')`. (priority: high) (`formatTime`, `formatTimeShort`, `formatSecs`, `formatDuration`, `formatDateKey`, `relativeTime`, `formatTokenCount`, `parseDurationSeconds`). Current coverage via `formatHelpers.test.tsx` is ~25% (only `formatSecs` × 2 + `relativeTime` × 1). New module threshold is 90%. Pattern: mirror `lib/ansi.test.ts`. Each function needs exact-value assertions + edge cases (empty string, zero, negative, invalid input). (priority: high)
+- [ ] [review] Gate 6: `ElapsedTimer.stories.tsx` adds 3 new Storybook stories (`Shared/ElapsedTimer--JustStarted`, `--NinetySeconds`, `--TwoMinutes`) but `proof-manifest.json` was not updated — still shows 8 entries from 2026-03-24T10:22:03Z (pre-ElapsedTimer). Run Playwright proof capture against HTTP-served Storybook for the 3 new ElapsedTimer stories and append entries to `proof-manifest.json` in session artifacts dir. (priority: high)
 
 ### Up Next
 
