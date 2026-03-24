@@ -135,3 +135,35 @@ Tests at `orchestrate.test.ts:6385–6392` assert all 6 fields by name. `message
 - Gates 6–9: N/A — internal logic + test changes only.
 
 ---
+
+## Review — 2026-03-24 — commit be8f3c13..4a730407
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/cli/src/commands/process-requests.test.ts`, `aloop/cli/src/commands/dashboard.ts`, `aloop/cli/src/commands/dashboard.test.ts`, `aloop/cli/dashboard/src/AppView.tsx`, `aloop/cli/dashboard/src/App.coverage.diagnostics.test.ts`, `aloop/cli/dashboard/src/App.coverage.test-utils.ts`
+
+**What was reviewed:** 2 commits since last review (`9f3d45aa` wiring test, `4a730407` dashboard banner).
+
+### Prior Finding (Gate 2) — RESOLVED ✓
+`process-requests.test.ts` now includes `describe('process-requests Phase 1f wiring: processRequestsCommand routes agent requests')` (line 168+). The test calls `processRequestsCommand` directly — not `processAgentRequests` — with a real `post_comment` request file, asserts the file is absent from `requests/` and present in `processed/` or `failed/`. If the Phase 1f block in `processRequestsCommand` were deleted or mis-wired, the file would remain in `requests/` and the test would fail. Prior finding fully resolved.
+
+### Gate 3 FAIL — `DiagnosticsBanner` branch coverage ~77%, below 80% threshold
+
+`AppView.tsx:2162`: `if (!diagnostics || !health || health === 'healthy' || dismissed) return null` — the `!health` (undefined `overall_health`) path is never exercised. All test fixtures that trigger the banner provide `overall_health: 'degraded'` or `overall_health: 'critical'`.
+
+`AppView.tsx:2181`: `{blockers.length > 0 && <ul>…</ul>}` — the false branch (banner is visible but `blockers: []` is empty) is never exercised. No test provides `overall_health: 'degraded'` or `'critical'` with an empty `blockers` array.
+
+`AppView.tsx:2187`: `{b.suggested_fix && <span>…</span>}` — the falsy branch (blocker has no `suggested_fix`) is never exercised. All test fixtures supply a non-empty `suggested_fix` string.
+
+Fix: add 3 tests to `App.coverage.diagnostics.test.ts` (see TODO.md task for exact specs).
+
+### Passing notes
+
+- Gate 1: `DiagnosticsInfo` schema in `dashboard.ts` and `AppView.tsx` matches spec §1053 (all 6 fields present). Amber for `degraded`, red for `critical` is not contradicted by spec — "red banner" in §1054 describes critical alerting context; the banner renders for both health levels as required. `diagnostics.json` is added to `watchedFiles` in `startDashboardServer` — dashboard auto-reloads on file change. ✓
+- Gate 2: Banner tests assert concrete CSS classes (`toHaveClass('bg-amber-500')`, `toHaveClass('bg-red-600')`), specific text (`getByText(/Degraded/)`, `getByText(/CI failing for 10 iterations/)`), and DOM absence (`not.toBeInTheDocument()`). A wrong color or missing text would fail. ✓
+- Gate 2: Wiring test in `process-requests.test.ts:168–251` — prior finding fully resolved (see above). ✓
+- Gate 2: `dashboard.test.ts` asserts `overall_health === 'degraded'`, `blockers.length === 1`, `blockers[0].type === 'child_stuck'` with exact values. `null` case asserts `payload.diagnostics === null`. ✓
+- Gate 4: `AlertTriangle` and `XCircle` are already imported at `AppView.tsx:8` — no new imports needed, no dead code. ✓
+- Gate 5: `tsc --noEmit` exits clean. Test run: 1026/1053 pass — 26 pre-existing failures unchanged, 0 new regressions. Build succeeds. ✓
+- Gates 6–9: N/A — no proof phase in regular cycle; banner is a flex element (no grid layout risk); no dependency changes; README doesn't document individual dashboard panels.
+
+---
