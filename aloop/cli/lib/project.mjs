@@ -838,6 +838,7 @@ export async function scaffoldWorkspace(options = {}) {
   const mode = normalizeScaffoldMode(options.mode);
   const autonomyLevel = normalizeAutonomyLevel(options.autonomyLevel);
   const dataPrivacy = normalizeDataPrivacy(options.dataPrivacy);
+  const adapter = (options.adapter === 'local') ? 'local' : 'github';
   const devcontainerAuthStrategy = options.devcontainerAuthStrategy ?? 'mount-first';
   const templatesDir = path.resolve(options.templatesDir ?? discovery.setup.templates_dir);
   const promptsDir = path.join(discovery.setup.project_dir, 'prompts');
@@ -919,6 +920,7 @@ export async function scaffoldWorkspace(options = {}) {
     `autonomy_level: ${toYamlQuoted(autonomyLevel)}`,
     `data_privacy: ${toYamlQuoted(dataPrivacy)}`,
     `devcontainer_auth_strategy: ${toYamlQuoted(devcontainerAuthStrategy)}`,
+    `adapter: ${toYamlQuoted(adapter)}`,
     'spec_files:',
     ...resolvedSpecFiles.map((value) => `  - ${toYamlQuoted(value)}`),
     'reference_files:',

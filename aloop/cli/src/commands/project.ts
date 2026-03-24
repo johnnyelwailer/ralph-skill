@@ -31,6 +31,7 @@ export interface ScaffoldOptions extends BaseOptions {
   validationCommands?: string[];
   safetyRules?: string[];
   mode?: string;
+  adapter?: 'github' | 'local';
   templatesDir?: string;
   bundledBinDir?: string;
 }

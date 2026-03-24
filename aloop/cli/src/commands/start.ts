@@ -974,11 +974,15 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
 
   const metaPath = path.join(sessionDir, 'meta.json');
   const statusPath = path.join(sessionDir, 'status.json');
+  const adapterValue = String(selectValue(projectConfig.values.adapter, globalConfig.values.adapter) ?? 'github');
+  const resolvedAdapter = adapterValue === 'local' ? 'local' : 'github';
+
   const meta: Record<string, unknown> = {
     session_id: sessionId,
     project_name: discovery.project.name,
     project_root: discovery.project.root,
     project_hash: discovery.project.hash,
+    adapter: resolvedAdapter,
     provider: selectedProvider,
     mode: resolvedMode,
     launch_mode: launchMode,
