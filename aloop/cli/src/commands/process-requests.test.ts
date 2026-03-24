@@ -8,6 +8,7 @@ import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 import type { OrchestratorIssue } from './orchestrate.js';
 import { collectUnrecognizedRequestFiles } from './process-requests.js';
+import { processAgentRequests } from '../lib/requests.js';
 
 describe('process-requests V8 cache helpers', () => {
   it('getDirectorySizeBytes sums nested file sizes', async () => {
@@ -433,5 +434,60 @@ describe('collectUnrecognizedRequestFiles', () => {
     );
     assert.equal(written.reason, 'unsupported_type');
     assert.equal(written.original_filename, unknownFile);
+  });
+});
+
+describe('process-requests Phase 1f: agent request routing via processAgentRequests', () => {
+  it('routes post_comment agent request to processAgentRequests and moves it to processed/', async () => {
+    // Simulate the Phase 1f setup: aloopDir = sessionDir, requestsDir = sessionDir/requests
+    const sessionDir = await mkdtemp(path.join(os.tmpdir(), 'pr-agent-req-test-'));
+    const requestsDir = path.join(sessionDir, 'requests');
+    await mkdir(requestsDir, { recursive: true });
+    const logPath = path.join(sessionDir, 'log.jsonl');
+
+    // post_comment reads body_file from workdir — create it
+    const commentFile = 'comment.md';
+    await writeFile(path.join(sessionDir, commentFile), 'Test comment body', 'utf8');
+
+    // Write a valid post_comment request to the requests dir
+    const requestFile = 'post-comment-req-1.json';
+    const request = {
+      id: 'test-post-comment-1',
+      type: 'post_comment',
+      payload: { issue_number: 42, body_file: commentFile },
+    };
+    await writeFile(path.join(requestsDir, requestFile), JSON.stringify(request), 'utf8');
+
+    // Mock ghCommandRunner: simulate success (post_comment calls it via issue-comment op)
+    const ghCalls: Array<{ operation: string; sessionId: string; requestPath: string }> = [];
+    const mockGhRunner = async (operation: string, sid: string, requestPath: string) => {
+      ghCalls.push({ operation, sessionId: sid, requestPath });
+      return { exitCode: 0, output: '' };
+    };
+
+    // Call processAgentRequests with aloopDir = sessionDir (same as Phase 1f in processRequestsCommand)
+    await processAgentRequests({
+      workdir: sessionDir,
+      sessionId: 'test-session',
+      aloopDir: sessionDir,
+      sessionDir,
+      logPath,
+      ghCommandRunner: mockGhRunner,
+    });
+
+    // File should be moved to processed/
+    const processedDir = path.join(requestsDir, 'processed');
+    const processedFiles = existsSync(processedDir) ? await readdir(processedDir) : [];
+    const wasProcessed = processedFiles.some(f => f.startsWith('post-comment-req-1'));
+    assert.ok(wasProcessed, `Expected ${requestFile} to be moved to processed/`);
+
+    // Original file should be gone
+    assert.ok(!existsSync(path.join(requestsDir, requestFile)), 'Original request file should be removed');
+
+    // ghCommandRunner should have been called for issue-comment operation
+    assert.ok(ghCalls.length > 0, 'ghCommandRunner should have been called');
+    assert.ok(ghCalls.some(c => c.operation === 'issue-comment'), 'Expected issue-comment operation');
+
+    await rm(sessionDir, { recursive: true, force: true });
   });
 });

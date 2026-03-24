@@ -15,6 +15,7 @@ import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 export type { CrResultDeps };
 export { processCrResultFiles };
 import { EtagCache } from '../lib/github-monitor.js';
+import { processAgentRequests } from '../lib/requests.js';
 
 // --- Orchestrator event system (data-driven from pipeline.yml) ---
 
@@ -395,6 +396,25 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       }
       await archiveRequestFile(requestsDir, filePath);
     } catch { /* skip malformed */ }
+  }
+
+  // 1f. Agent requests (create_issues, update_issue, close_issue, dispatch_child, merge_pr, post_comment, steer_child)
+  //     Written by child agents to requests/; processed via lib/requests.ts processAgentRequests
+  {
+    const logPath = path.join(sessionDir, 'log.jsonl');
+    const ghRunner = async (operation: string, sid: string, requestPath: string): Promise<{ exitCode: number; output: string }> => {
+      const r = spawnSync('aloop', ['gh', operation, '--session', sid, '--request', requestPath], { encoding: 'utf8' });
+      return { exitCode: r.status ?? 1, output: [(r.stdout ?? '').trim(), (r.stderr ?? '').trim()].filter(Boolean).join('\n') };
+    };
+    await processAgentRequests({
+      workdir: projectRoot,
+      sessionId,
+      aloopDir: sessionDir,
+      sessionDir,
+      logPath,
+      ghCommandRunner: ghRunner,
+      spawnSync,
+    });
   }
 
   // 1e. Unhandled/unrecognized request files → log error + move to requests/failed/
