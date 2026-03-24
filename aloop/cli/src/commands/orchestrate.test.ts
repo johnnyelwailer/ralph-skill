@@ -2107,6 +2107,22 @@ describe('applyEstimateResults', () => {
     assert.equal(state.issues[0].status, 'Needs refinement');
     assert.deepStrictEqual(outcome.budgetExceeded, []);
   });
+
+  it('transitions status to Ready when DoR passes and issue is in Needs decomposition', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs decomposition', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: true, complexity_tier: 'M', iteration_estimate: 5, confidence: 'high' },
+    ];
+    const outcome = await applyEstimateResults(state, results);
+    assert.deepStrictEqual(outcome.updated, [1]);
+    assert.deepStrictEqual(outcome.blocked, []);
+    assert.equal(state.issues[0].dor_validated, true);
+    assert.equal(state.issues[0].status, 'Ready');
+  });
 });
 
 describe('classifyGapRisk', () => {
