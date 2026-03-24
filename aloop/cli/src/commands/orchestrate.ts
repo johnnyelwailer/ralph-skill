@@ -5850,15 +5850,15 @@ export async function runOrchestratorScanPass(
       const diagnostics = {
         generated_at: deps.now().toISOString(),
         iteration,
-        persistent_blockers: persistent.map((b) => ({
-          hash: b.hash,
-          type: b.type,
-          issue_number: b.issue_number,
-          description: b.description,
-          iterations_stuck: b.occurrence_count,
-          suggested_action: BLOCKER_SUGGESTED_ACTIONS[b.type],
-        })),
         overall_health: health,
+        blockers: persistent.map((b) => ({
+          type: b.type,
+          message: b.description,
+          first_seen_iteration: b.first_seen_iteration,
+          current_iteration: iteration,
+          severity: b.occurrence_count >= 10 ? 'critical' : 'warning',
+          suggested_fix: BLOCKER_SUGGESTED_ACTIONS[b.type],
+        })),
       };
 
       await deps.writeFile(

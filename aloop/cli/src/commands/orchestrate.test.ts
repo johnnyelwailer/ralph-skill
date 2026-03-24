@@ -6382,9 +6382,13 @@ describe('runOrchestratorScanPass blocker tracking', () => {
     const diagnosticsRaw = deps.files['/session/diagnostics.json'];
     assert.ok(diagnosticsRaw, 'diagnostics.json should be written');
     const diagnostics = JSON.parse(diagnosticsRaw);
-    assert.equal(diagnostics.persistent_blockers.length, 1);
-    assert.equal(diagnostics.persistent_blockers[0].type, 'child_stuck');
-    assert.ok(diagnostics.persistent_blockers[0].iterations_stuck >= BLOCKER_PERSISTENCE_THRESHOLD);
+    assert.equal(diagnostics.blockers.length, 1);
+    assert.equal(diagnostics.blockers[0].type, 'child_stuck');
+    assert.equal(diagnostics.blockers[0].message, desc);
+    assert.ok(diagnostics.blockers[0].first_seen_iteration >= 1);
+    assert.equal(diagnostics.blockers[0].current_iteration, BLOCKER_PERSISTENCE_THRESHOLD);
+    assert.ok(['warning', 'critical'].includes(diagnostics.blockers[0].severity));
+    assert.ok(typeof diagnostics.blockers[0].suggested_fix === 'string');
     assert.ok(['healthy', 'degraded', 'critical'].includes(diagnostics.overall_health));
   });
 
