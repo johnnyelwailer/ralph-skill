@@ -57,3 +57,39 @@
 - **Gate 10:** QA_COVERAGE.md covers 8 features, all documented. Coverage tracking current.
 
 ---
+
+## Review — 2026-03-24 — commit b3169cdc..7fdb9320
+
+**Verdict: PASS** (all prior findings resolved; 2 observations)
+**Scope:** `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/src/lib/adapter.ts`, `QA_LOG.md`, `QA_COVERAGE.md`, `TODO.md`
+
+### Prior Findings Resolution
+
+- **Prior Gate 2/3 (resolved):** `applyEstimateResults` `Needs decomposition → Ready` branch now tested in commit 6cc0e592. Test at `orchestrate.test.ts:2139-2153` asserts `outcome.updated = [1]`, `outcome.blocked = []`, `dor_validated = true`, `status = 'Ready'` — all concrete values. A broken transition would fail the test. Finding resolved.
+
+- **Prior Gate 4 (resolved):** Dead code fully removed in commit c37c7334:
+  - `import { existsSync } from 'node:fs'` — removed (was unused after guard removal)
+  - `parseRepoSlug` — removed from github-monitor import
+  - `if (!existsSync(this.issuesDir)) return 1` in `nextIssueNumber` — removed
+  - `if (!existsSync(this.prsDir)) return 1` in `nextPrNumber` — removed
+  Confirmed: `grep parseRepoSlug\|existsSync src/lib/adapter.ts` returns no output. Finding resolved.
+
+### Observations
+
+- **Gate 2 (concrete assertion):** `orchestrate.test.ts:2152` asserts `assert.equal(state.issues[0].status, 'Ready')` after a `dor_passed: true` result on a `Needs decomposition` issue — exactly the branch that was previously unexercised. Not shallow.
+
+- **Gate 5:** 341/341 orchestrate.test.ts pass, 56/56 adapter.test.ts pass. Full suite: 1069/1071 pass; 1 pre-existing failure (`index.test.ts: CLI catches errors`) documented as `[qa/P1]` in TODO.md. Pre-existing TS2367 type error (`process-requests.ts:407`) documented as `[qa/P1]`. Neither failure introduced by this iteration.
+
+### Gates that Pass
+
+- **Gate 1:** No change to spec compliance posture. 2 AC items remain open (partial adapter migration) — pre-existing, tracked.
+- **Gate 2:** New test uses concrete values; passes for correct implementation, would fail on regression.
+- **Gate 3:** Prior coverage gaps resolved. No new untested branches introduced.
+- **Gate 4:** Dead code fully removed. No new dead code introduced.
+- **Gate 5:** 1069/1071 tests pass. Both failures pre-exist this iteration.
+- **Gate 6:** Purely internal changes (test additions + dead code removal). No observable output required; skipping is correct.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** No user-facing behavior changes; README/docs not affected.
+
+---
