@@ -35,3 +35,9 @@
 | TypeScript compilation post-types-extraction | 2026-03-24 | f71b9968 | PASS | tsc --noEmit: no errors |
 | Production vite build post-types-extraction | 2026-03-24 | f71b9968 | PASS | vite build succeeds; 462KB JS bundle, no regressions |
 | Storybook build post-types-extraction | 2026-03-24 | f71b9968 | PASS | 60 stories build successfully; no regressions from types extraction |
+| lib/format.test.ts strengthened assertions (Gate 2 re-test) | 2026-03-24 | 94f217ae | PASS | formatTime/formatTimeShort use toMatch(/\d{1,2}:\d{2}/); formatSecs(-5) uses toBe('-1m'); 41 tests pass |
+| shared/ElapsedTimer.tsx extraction | 2026-03-24 | 94f217ae | PASS | ElapsedTimer.tsx + ElapsedTimer.test.tsx + ElapsedTimer.stories.tsx present; AppView imports from @/components/shared/ElapsedTimer; no inline definition remains; 7 unit tests pass |
+| Unit test suite (237 tests / 22 files) | 2026-03-24 | 94f217ae | PASS | 237 passed, 0 failures (+7 ElapsedTimer tests vs prior 230); vitest run --run |
+| TypeScript compilation post-ElapsedTimer-extraction | 2026-03-24 | 94f217ae | PASS | tsc --noEmit: no errors |
+| Production vite build post-ElapsedTimer-extraction | 2026-03-24 | 94f217ae | PASS | vite build succeeds; 462KB JS bundle, no regressions |
+| Storybook build post-ElapsedTimer-extraction | 2026-03-24 | 94f217ae | PASS | 63 stories build successfully (+3 ElapsedTimer: JustStarted, NinetySeconds, TwoMinutes) |

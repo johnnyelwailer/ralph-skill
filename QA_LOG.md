@@ -1,5 +1,84 @@
 # QA Log
 
+## QA Session — 2026-03-24 (iteration 7)
+
+### Test Environment
+- Dashboard source: aloop/cli/dashboard/
+- Commit under test: 94f217ae (refactor: extract ElapsedTimer component from AppView)
+- Prior commit: fb37f88b (test(format): strengthen weak assertions in lib/format.test.ts)
+- Features tested: 5
+
+### Results
+- PASS: lib/format.test.ts strengthened assertions (Gate 2 re-test)
+- PASS: shared/ElapsedTimer.tsx extraction (component + test + stories)
+- PASS: Unit test suite (237 tests / 22 files)
+- PASS: TypeScript compilation (tsc --noEmit: no errors)
+- PASS: Production vite build (462KB bundle)
+- PASS: Storybook build (63 stories, +3 ElapsedTimer stories)
+
+### Bugs Filed
+- None (0 new bugs)
+
+### Command Transcript
+
+```
+$ cd aloop/cli/dashboard && npm run test -- --run
+# 22 passed, 237 tests, 0 failures (+7 ElapsedTimer.test.tsx)
+# exit: 0
+
+$ npx tsc --noEmit
+# (no output — no errors)
+# exit: 0
+
+$ npm run build
+# vite build: dist/assets/index-*.js 462.21 kB, built in 1.37s
+# exit: 0
+
+$ ls src/components/shared/ElapsedTimer*
+# src/components/shared/ElapsedTimer.stories.tsx
+# src/components/shared/ElapsedTimer.test.tsx
+# src/components/shared/ElapsedTimer.tsx
+# exit: 0
+
+$ grep -n "ElapsedTimer" src/AppView.tsx
+# 26: import { ElapsedTimer } from '@/components/shared/ElapsedTimer';
+# 793: <ElapsedTimer since={startedAt} />
+# 803: <ElapsedTimer since={startedAt} />
+# 1342: <ElapsedTimer since={entry.timestamp} />
+# (no inline definition — PASS)
+
+$ grep -n "function ElapsedTimer|const ElapsedTimer" src/AppView.tsx
+# (no output — PASS: no inline definition remains)
+
+$ grep -n "toMatch|toBe.*-1m" src/lib/format.test.ts
+# 28: expect(result).toMatch(/\d{1,2}:\d{2}/);
+# 47: expect(result).toMatch(/\d{1,2}:\d{2}/);
+# 81: expect(formatSecs(-5)).toBe('-1m');
+# PASS: strengthened assertions present
+
+$ npx vitest run --run ElapsedTimer
+# 1 passed, 7 tests
+# exit: 0
+
+$ npx storybook build --output-dir /tmp/qa-storybook-iter7
+# Storybook build completed successfully
+# exit: 0
+
+$ python3 -c "... count entries in /tmp/qa-storybook-iter7/index.json ..."
+# Total stories: 63
+# ElapsedTimer stories: just-started, ninety-seconds, two-minutes
+# PASS
+
+$ rm -rf /tmp/qa-storybook-iter7
+```
+
+### Notes
+- Test count increased from 230 (iter 6) to 237 (+7 ElapsedTimer tests)
+- Story count increased from 60 (iter 6) to 63 (+3 ElapsedTimer stories)
+- All format.test.ts Gate 2 strengthened assertions confirmed present and passing
+
+---
+
 ## QA Session — 2026-03-24 (iteration 5)
 
 ### Binary Under Test
