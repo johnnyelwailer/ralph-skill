@@ -1,23 +1,29 @@
 /**
  * OrchestratorAdapter — pluggable interface for issue/PR backends.
  *
- * The first (and currently only) implementation is GitHubAdapter,
- * which wraps `gh` CLI calls. Future adapters (e.g. file-based local)
- * can implement this same interface.
+ * Implementations:
+ *   - GitHubAdapter: wraps `gh` CLI calls for GitHub/GHE repos
+ *   - LocalAdapter: file-based (.aloop/issues/) + git branches, no remote needed
  */
 
+import { existsSync } from 'node:fs';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
 import type { GhExecFn, GhExecResult, BulkIssueState, BulkFetchResult } from './github-monitor.js';
 import { parseRepoSlug, fetchBulkIssueState } from './github-monitor.js';
 
 // ----- Supporting types -----
 
 export interface AdapterConfig {
-  /** Adapter type — currently only "github" is supported. */
+  /** Adapter type — "github" or "local". */
   type: string;
-  /** Repository in "owner/name" format. */
+  /** Repository in "owner/name" format (github) or a display name (local). */
   repo: string;
-  /** GitHub host for GHE support (e.g. "git.corp.example.com"). Defaults to GH_HOST env var or "github.com". */
+  /** GitHub host for GHE support (e.g. "git.corp.example.com"). Defaults to GH_HOST env var or "github.com". Only used by GitHubAdapter. */
   ghHost?: string;
+  /** Base directory for local adapter file storage (e.g. "/path/to/project"). Only used by LocalAdapter. Defaults to process.cwd(). */
+  dir?: string;
 }
 
 export interface AdapterIssue {
@@ -292,11 +298,341 @@ export class GitHubAdapter implements OrchestratorAdapter {
   }
 }
 
+// ----- LocalAdapter -----
+
+interface LocalIssueFile {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  labels: string[];
+  assignees: string[];
+  comments: AdapterComment[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface LocalPrFile {
+  number: number;
+  head: string;
+  base: string;
+  title: string;
+  body: string;
+  state: string;
+  createdAt: string;
+}
+
+type GitExecFn = (args: string[], cwd?: string) => Promise<{ stdout: string; stderr: string }>;
+
+function defaultGitExec(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('git', args, { cwd: cwd ?? process.cwd() });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+    proc.on('close', (code) => {
+      if (code !== 0) reject(new Error(`git ${args.join(' ')} failed (exit ${code}): ${stderr}`));
+      else resolve({ stdout, stderr });
+    });
+    proc.on('error', reject);
+  });
+}
+
+export class LocalAdapter implements OrchestratorAdapter {
+  readonly repoSlug: string;
+  readonly baseUrl: string;
+  private readonly issuesDir: string;
+  private readonly prsDir: string;
+  private readonly repoDir: string;
+  private readonly execGit: GitExecFn;
+
+  constructor(config: AdapterConfig, execGit?: GitExecFn) {
+    this.repoSlug = config.repo;
+    this.repoDir = config.dir ?? process.cwd();
+    this.issuesDir = path.join(this.repoDir, '.aloop', 'issues');
+    this.prsDir = path.join(this.repoDir, '.aloop', 'prs');
+    this.baseUrl = `file://${this.issuesDir}`;
+    this.execGit = execGit ?? defaultGitExec;
+  }
+
+  private async ensureDirs(): Promise<void> {
+    await mkdir(this.issuesDir, { recursive: true });
+    await mkdir(this.prsDir, { recursive: true });
+  }
+
+  private issuePath(number: number): string {
+    return path.join(this.issuesDir, `${number}.json`);
+  }
+
+  private prPath(number: number): string {
+    return path.join(this.prsDir, `${number}.json`);
+  }
+
+  private async readIssue(number: number): Promise<LocalIssueFile> {
+    const raw = await readFile(this.issuePath(number), 'utf8');
+    return JSON.parse(raw) as LocalIssueFile;
+  }
+
+  private async writeIssue(issue: LocalIssueFile): Promise<void> {
+    await mkdir(this.issuesDir, { recursive: true });
+    await writeFile(this.issuePath(issue.number), JSON.stringify(issue, null, 2), 'utf8');
+  }
+
+  private async readPr(number: number): Promise<LocalPrFile> {
+    const raw = await readFile(this.prPath(number), 'utf8');
+    return JSON.parse(raw) as LocalPrFile;
+  }
+
+  private async writePr(pr: LocalPrFile): Promise<void> {
+    await mkdir(this.prsDir, { recursive: true });
+    await writeFile(this.prPath(pr.number), JSON.stringify(pr, null, 2), 'utf8');
+  }
+
+  private async nextIssueNumber(): Promise<number> {
+    await this.ensureDirs();
+    if (!existsSync(this.issuesDir)) return 1;
+    const files = await readdir(this.issuesDir);
+    const numbers = files
+      .filter((f) => /^\d+\.json$/.test(f))
+      .map((f) => parseInt(f, 10));
+    return numbers.length === 0 ? 1 : Math.max(...numbers) + 1;
+  }
+
+  private async nextPrNumber(): Promise<number> {
+    await this.ensureDirs();
+    if (!existsSync(this.prsDir)) return 1;
+    const files = await readdir(this.prsDir);
+    const numbers = files
+      .filter((f) => /^\d+\.json$/.test(f))
+      .map((f) => parseInt(f, 10));
+    return numbers.length === 0 ? 1 : Math.max(...numbers) + 1;
+  }
+
+  async createIssue(opts: { title: string; body: string; labels?: string[] }): Promise<number> {
+    const number = await this.nextIssueNumber();
+    const now = new Date().toISOString();
+    const issue: LocalIssueFile = {
+      number,
+      title: opts.title,
+      body: opts.body,
+      state: 'OPEN',
+      labels: opts.labels ?? [],
+      assignees: [],
+      comments: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.writeIssue(issue);
+    return number;
+  }
+
+  async updateIssue(issueNumber: number, opts: { title?: string; body?: string; state?: string }): Promise<void> {
+    const issue = await this.readIssue(issueNumber);
+    if (opts.title !== undefined) issue.title = opts.title;
+    if (opts.body !== undefined) issue.body = opts.body;
+    if (opts.state !== undefined) issue.state = opts.state === 'closed' ? 'CLOSED' : opts.state === 'open' ? 'OPEN' : opts.state;
+    issue.updatedAt = new Date().toISOString();
+    await this.writeIssue(issue);
+  }
+
+  async closeIssue(issueNumber: number): Promise<void> {
+    const issue = await this.readIssue(issueNumber);
+    issue.state = 'CLOSED';
+    issue.updatedAt = new Date().toISOString();
+    await this.writeIssue(issue);
+  }
+
+  async getIssue(issueNumber: number): Promise<AdapterIssue> {
+    const issue = await this.readIssue(issueNumber);
+    return {
+      number: issue.number,
+      title: issue.title,
+      state: issue.state,
+      body: issue.body,
+      labels: issue.labels,
+      assignees: issue.assignees,
+      url: `file://${this.issuePath(issueNumber)}`,
+    };
+  }
+
+  async queryIssues(opts?: { state?: string; labels?: string[]; limit?: number }): Promise<AdapterIssue[]> {
+    await this.ensureDirs();
+    const files = await readdir(this.issuesDir);
+    const issueFiles = files.filter((f) => /^\d+\.json$/.test(f));
+    const issues: AdapterIssue[] = [];
+    for (const file of issueFiles) {
+      const raw = await readFile(path.join(this.issuesDir, file), 'utf8');
+      const issue = JSON.parse(raw) as LocalIssueFile;
+
+      const stateFilter = opts?.state ?? 'open';
+      const issueStateNorm = issue.state.toLowerCase();
+      if (stateFilter !== 'all') {
+        if (stateFilter === 'open' && issueStateNorm !== 'open') continue;
+        if (stateFilter === 'closed' && issueStateNorm !== 'closed') continue;
+      }
+
+      if (opts?.labels && opts.labels.length > 0) {
+        const hasAll = opts.labels.every((l) => issue.labels.includes(l));
+        if (!hasAll) continue;
+      }
+
+      issues.push({
+        number: issue.number,
+        title: issue.title,
+        state: issue.state,
+        body: issue.body,
+        labels: issue.labels,
+        assignees: issue.assignees,
+        url: `file://${this.issuePath(issue.number)}`,
+      });
+    }
+
+    issues.sort((a, b) => a.number - b.number);
+    const limit = opts?.limit ?? 100;
+    return issues.slice(0, limit);
+  }
+
+  async createPr(opts: { base: string; head: string; title: string; body: string }): Promise<AdapterPr> {
+    const number = await this.nextPrNumber();
+    const now = new Date().toISOString();
+    const pr: LocalPrFile = {
+      number,
+      head: opts.head,
+      base: opts.base,
+      title: opts.title,
+      body: opts.body,
+      state: 'open',
+      createdAt: now,
+    };
+    await this.writePr(pr);
+    return { number, url: `file://${this.prPath(number)}` };
+  }
+
+  async mergePr(prNumber: number, opts?: { method?: 'squash' | 'merge' | 'rebase'; deleteBranch?: boolean }): Promise<void> {
+    const pr = await this.readPr(prNumber);
+    const method = opts?.method ?? 'squash';
+
+    await this.execGit(['checkout', pr.base], this.repoDir);
+
+    if (method === 'squash') {
+      await this.execGit(['merge', '--squash', pr.head], this.repoDir);
+      await this.execGit(['commit', '-m', `${pr.title} (#${prNumber})`], this.repoDir);
+    } else if (method === 'rebase') {
+      await this.execGit(['rebase', pr.head], this.repoDir);
+    } else {
+      await this.execGit(['merge', '--no-ff', pr.head, '-m', `Merge branch '${pr.head}' (#${prNumber})`], this.repoDir);
+    }
+
+    if (opts?.deleteBranch !== false) {
+      await this.execGit(['branch', '-d', pr.head], this.repoDir);
+    }
+
+    pr.state = 'merged';
+    await this.writePr(pr);
+  }
+
+  async getPrStatus(prNumber: number): Promise<PrStatus> {
+    const pr = await this.readPr(prNumber);
+    try {
+      await this.execGit(['rev-parse', '--verify', pr.head], this.repoDir);
+      return { mergeable: true, mergeStateStatus: 'CLEAN' };
+    } catch {
+      return { mergeable: false, mergeStateStatus: 'UNKNOWN' };
+    }
+  }
+
+  async getPrChecks(_prNumber: number): Promise<PrChecksResult> {
+    // Local adapter has no CI — no checks to run
+    return { passed: true, pending: false, checks: [] };
+  }
+
+  async postComment(issueOrPrNumber: number, body: string): Promise<void> {
+    const issue = await this.readIssue(issueOrPrNumber);
+    const maxId = issue.comments.reduce((m, c) => Math.max(m, c.id), 0);
+    issue.comments.push({
+      id: maxId + 1,
+      author: 'local',
+      body,
+      createdAt: new Date().toISOString(),
+    });
+    issue.updatedAt = new Date().toISOString();
+    await this.writeIssue(issue);
+  }
+
+  async listComments(issueNumber: number): Promise<AdapterComment[]> {
+    const issue = await this.readIssue(issueNumber);
+    return issue.comments;
+  }
+
+  async addLabels(issueNumber: number, labels: string[]): Promise<void> {
+    const issue = await this.readIssue(issueNumber);
+    for (const label of labels) {
+      if (!issue.labels.includes(label)) {
+        issue.labels.push(label);
+      }
+    }
+    issue.updatedAt = new Date().toISOString();
+    await this.writeIssue(issue);
+  }
+
+  async removeLabels(issueNumber: number, labels: string[]): Promise<void> {
+    const issue = await this.readIssue(issueNumber);
+    issue.labels = issue.labels.filter((l) => !labels.includes(l));
+    issue.updatedAt = new Date().toISOString();
+    await this.writeIssue(issue);
+  }
+
+  async ensureLabelExists(_label: string, _opts?: { color?: string; description?: string }): Promise<void> {
+    // Local adapter has no label registry — labels are free-form strings
+  }
+
+  async fetchBulkIssueState(opts?: { states?: string[]; since?: string; issueNumbers?: number[] }): Promise<BulkFetchResult> {
+    await this.ensureDirs();
+    const files = await readdir(this.issuesDir);
+    const issueFiles = files.filter((f) => /^\d+\.json$/.test(f));
+    const issues: BulkIssueState[] = [];
+
+    for (const file of issueFiles) {
+      const raw = await readFile(path.join(this.issuesDir, file), 'utf8');
+      const issue = JSON.parse(raw) as LocalIssueFile;
+
+      if (opts?.issueNumbers && !opts.issueNumbers.includes(issue.number)) continue;
+
+      const states = opts?.states?.map((s) => s.toUpperCase()) ?? ['OPEN'];
+      if (!states.includes(issue.state.toUpperCase())) continue;
+
+      if (opts?.since) {
+        const sinceDate = new Date(opts.since);
+        if (new Date(issue.updatedAt) < sinceDate) continue;
+      }
+
+      issues.push({
+        number: issue.number,
+        title: issue.title,
+        state: issue.state,
+        updatedAt: issue.updatedAt,
+        labels: issue.labels,
+        assignees: issue.assignees,
+        pr: null,
+        comments: issue.comments.map((c) => ({ id: c.id, author: c.author, body: c.body, createdAt: c.createdAt })),
+        projectStatus: null,
+      });
+    }
+
+    issues.sort((a, b) => a.number - b.number);
+    return { issues, fetchedAt: new Date().toISOString(), fromCache: false };
+  }
+}
+
 // ----- Factory -----
 
 export function createAdapter(config: AdapterConfig, execGh: GhExecFn): OrchestratorAdapter {
   if (config.type === 'github') {
     return new GitHubAdapter(config, execGh);
   }
-  throw new Error(`Unknown adapter type: "${config.type}". Supported types: github`);
+  if (config.type === 'local') {
+    return new LocalAdapter(config);
+  }
+  throw new Error(`Unknown adapter type: "${config.type}". Supported types: github, local`);
 }
