@@ -25,6 +25,7 @@ import { HealthPanel } from '@/components/health/ProviderHealth';
 import type { ProviderHealth } from '@/components/health/ProviderHealth';
 import { ElapsedTimer } from '@/components/shared/ElapsedTimer';
 import { PhaseBadge } from '@/components/shared/PhaseBadge';
+import { StatusDot, ConnectionIndicator } from '@/components/shared/StatusDot';
 import { useCost } from '@/hooks/useCost';
 import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
@@ -180,54 +181,6 @@ const statusColors: Record<string, string> = {
   stopped: 'text-red-600 dark:text-red-400',
   stopping: 'text-orange-600 dark:text-orange-400',
 };
-
-const STATUS_DOT_CONFIG: Record<string, { color: string; label: string }> = {
-  running: { color: 'bg-green-500', label: 'Running' },
-  stopped: { color: 'bg-muted-foreground/50', label: 'Stopped' },
-  exited: { color: 'bg-muted-foreground/50', label: 'Exited' },
-  unhealthy: { color: 'bg-red-500', label: 'Unhealthy' },
-  error: { color: 'bg-red-500', label: 'Error' },
-  stuck: { color: 'bg-orange-500', label: 'Stuck' },
-  unknown: { color: 'bg-muted-foreground/30', label: 'Unknown' },
-};
-
-function StatusDot({ status, className = '' }: { status: string; className?: string }) {
-  const config = STATUS_DOT_CONFIG[status] ?? STATUS_DOT_CONFIG.unknown;
-  const label = config.label;
-
-  const dot = status === 'running' ? (
-    <span className={`relative flex h-2.5 w-2.5 shrink-0 ${className}`}>
-      <span className={`absolute inline-flex h-full w-full animate-pulse-dot rounded-full ${config.color}/70`} />
-      <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${config.color}`} />
-    </span>
-  ) : (
-    <span className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${config.color} ${className}`} />
-  );
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild><span className="inline-flex">{dot}</span></TooltipTrigger>
-      <TooltipContent><p>{label}</p></TooltipContent>
-    </Tooltip>
-  );
-}
-
-function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
-  const Icon = status === 'connected' ? Zap : status === 'connecting' ? Loader2 : AlertTriangle;
-  const color = status === 'connected' ? 'text-green-500' : status === 'connecting' ? 'text-yellow-500 animate-spin' : 'text-red-500';
-  const label = status === 'connected' ? 'Live' : status === 'connecting' ? 'Connecting...' : 'Disconnected';
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="flex items-center gap-1">
-          <Icon className={`h-3 w-3 ${color}`} />
-          <span className="text-[10px] text-muted-foreground">{label}</span>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent><p>SSE connection: {label}</p></TooltipContent>
-    </Tooltip>
-  );
-}
 
 // ── Token/cost usage helpers ──
 
