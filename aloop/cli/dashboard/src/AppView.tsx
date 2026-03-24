@@ -1054,7 +1054,7 @@ function Header({
     <header className="border-b border-border px-3 py-2 md:px-4 md:py-2.5 shrink-0">
       <h1 className="sr-only">Aloop Dashboard</h1>
       <div className="flex items-center gap-2 sm:gap-4" data-testid="session-header-grid">
-        <button type="button" aria-label="Toggle sidebar" className="inline-flex items-center justify-center md:hidden p-1 min-h-[44px] min-w-[44px] rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
+        <button type="button" aria-label="Toggle sidebar" className="inline-flex items-center justify-center sm:hidden p-1 min-h-[44px] min-w-[44px] rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
           <Menu className="h-5 w-5" />
         </button>
         <Tooltip>
@@ -2446,7 +2446,7 @@ function AppInner() {
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
       <div className="flex flex-1 min-h-0">
         {/* Desktop sidebar */}
-        <div className="hidden md:flex">
+        <div className="hidden sm:flex">
           <Sidebar
             sessions={sessions}
             selectedSessionId={selectedSessionId}
