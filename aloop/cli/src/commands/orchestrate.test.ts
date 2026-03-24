@@ -6392,6 +6392,34 @@ describe('runOrchestratorScanPass blocker tracking', () => {
     assert.ok(['healthy', 'degraded', 'critical'].includes(diagnostics.overall_health));
   });
 
+  it('sets stuck: true in orchestrator.json when persistent blockers detected', async () => {
+    const desc = 'Issue #1 child loop failed';
+    const hash = computeBlockerHash('child_stuck', 1, desc);
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, state: 'failed' })],
+      blocker_signatures: [
+        {
+          hash,
+          type: 'child_stuck',
+          issue_number: 1,
+          description: desc,
+          first_seen_iteration: 1,
+          occurrence_count: BLOCKER_PERSISTENCE_THRESHOLD - 1,
+        },
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, BLOCKER_PERSISTENCE_THRESHOLD, deps,
+    );
+
+    const persisted: OrchestratorState = JSON.parse(deps.files['/state.json']);
+    assert.equal(persisted.stuck, true, 'stuck flag should be true when persistent blockers are escalated');
+  });
+
   it('writes ALERT.md when health is critical (3+ persistent blockers)', async () => {
     // Pre-seed 3 persistent blockers at threshold
     const makeBlocker = (type: BlockerType, issueNum: number): BlockerSignature => {

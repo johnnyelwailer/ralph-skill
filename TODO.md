@@ -7,7 +7,7 @@ _(none)_
 
 ### Up Next
 - [x] Wire `process-requests` to call `processAgentRequests` from `lib/requests.ts` for standard agent request types (`create_issues`, `update_issue`, `close_issue`, `dispatch_child`, `merge_pr`, `post_comment`, `steer_child`) — spec §1092. Added Phase 1f in `processRequestsCommand` that calls `processAgentRequests` with `aloopDir=sessionDir` before the unrecognized file handler. Added test for `post_comment` routing. (priority: high)
-- [ ] Set `stuck: true` flag in `orchestrator.json` when escalating persistent blockers — spec §1049. After writing `diagnostics.json`, also patch `orchestrator.json` to include `stuck: true`. Add unit test asserting the flag is written on escalation. (priority: high)
+- [x] Set `stuck: true` flag in `orchestrator.json` when escalating persistent blockers — spec §1049. After writing `diagnostics.json`, also patch `orchestrator.json` to include `stuck: true`. Added `stuck?: boolean` to `OrchestratorState`, set in section 7.5 of `runOrchestratorScanPass`, and unit test asserting the flag is written on escalation. (priority: high)
 - [ ] Dashboard alert banner: read `diagnostics.json` and display as a red alert panel/banner when `overall_health` is `degraded` or `critical` — spec §1090, §1054, §1065. Implement in `dashboard.ts` and add a test asserting the banner appears when `diagnostics.json` is present. (priority: medium)
 - [ ] Self-healing for known blockers — spec §1057–1061: (a) missing GitHub labels → call `gh label create` automatically, (b) missing `config.json` → derive from `meta.json`+`orchestrator.json`, (c) permission errors → log specific permission needed. Implement in `runOrchestratorScanPass` or a dedicated `selfHeal` helper, add unit tests. (priority: medium)
 

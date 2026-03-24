@@ -126,6 +126,7 @@ export interface OrchestratorState {
   trunk_pr_number?: number | null;
   gh_project_number?: number;
   blocker_signatures?: BlockerSignature[];
+  stuck?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -5874,6 +5875,8 @@ export async function runOrchestratorScanPass(
         persistent_blocker_count: persistent.length,
         overall_health: health,
       });
+
+      state.stuck = true;
 
       if (health === 'critical') {
         const alertLines = [
