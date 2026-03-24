@@ -10,6 +10,10 @@ Migration order per spec: utilities → leaf components → composite components
 
 ### In Progress
 
+- [ ] [review] Gate 6: No visual proof for this build cycle — build added ProviderHealth component and Storybook stories for ArtifactViewer/ProviderHealth/CostDisplay (all observable visual output); proof agent must run `npx storybook build`, capture screenshots of at least the new stories (ProviderHealth/AllHealthy, Mixed, AllFailed; CostDisplay/NoBudgetCap, WithBudgetWarning, WithBudgetCritical; ArtifactViewer/SingleImage, WithDiffBadgeCritical), and write a proof-manifest.json to the session artifacts dir (priority: high)
+- [ ] [review] Gate 8: VERSIONS.md declares `@storybook/* | 8.x` (line 71) but package.json has all `@storybook/*` packages at `^10.3.1` — major version mismatch must be corrected; update VERSIONS.md to `@storybook/* | 10.x` (priority: high)
+- [ ] [review] Gate 9: SPEC-ADDENDUM.md line 139 says "Storybook 8" and acceptance criteria line 176 says "Storybook 8 is configured" — both are outdated; update SPEC-ADDENDUM.md to reference Storybook 10.x (priority: medium)
+
 ### Up Next
 
 - [x] Add `ArtifactViewer.stories.tsx` — all components in `components/` require a `.stories.tsx` file per spec; `ArtifactViewer` has tests but is missing stories (priority: high)
