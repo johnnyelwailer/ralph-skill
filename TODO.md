@@ -6,12 +6,22 @@
 - [x] `LocalAdapter` stores issues as JSON files in `.aloop/issues/`, PRs as branches
 - [ ] `GitHubAdapter` wraps all existing `gh` CLI calls (adapter exists but orchestrate.ts still bypasses it)
 - [ ] `orchestrate.ts` uses adapter interface, not raw `execGh`
-- [ ] Adapter selection configurable in `meta.json` (`adapter: "github" | "local"`)
-- [ ] All GitHub URL construction derives from adapter, never hardcoded
+- [x] Adapter selection configurable in `meta.json` (`adapter: "github" | "local"`)
+- [x] All GitHub URL construction derives from adapter, never hardcoded
 
 ## Tasks
 
 ### In Progress
+
+- [ ] [review] Gate 2/3: `adapter.test.ts` missing tests for three methods with non-trivial logic:
+  1. `GitHubAdapter.updateIssue` — has state-branching logic (close vs reopen) but zero tests; add tests verifying close path calls `closeIssue`, reopen path calls `issue reopen`, and title/body args are passed
+  2. `LocalAdapter.mergePr` — 3 code paths (squash/rebase/merge) + deleteBranch option, all untested; mock `execGit` and verify each method calls the correct git args
+  3. `LocalAdapter.getPrStatus` — git success vs. failure paths untested; verify CLEAN returned on success, UNKNOWN on error
+  New module threshold is 90% branch coverage — these omissions push adapter.ts below that. (priority: high)
+
+- [ ] [review] Gate 4: Dead code in `adapter.ts`:
+  1. `parseRepoSlug` is imported at line 14 but never called anywhere in the file — remove the unused import
+  2. Lines 394 and 403-404: `if (!existsSync(this.issuesDir)) return 1` is unreachable — `ensureDirs()` on the line above creates the directory, making `existsSync` always true — remove the dead checks (priority: medium)
 
 ### Up Next
 
