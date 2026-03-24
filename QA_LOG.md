@@ -1,5 +1,78 @@
 # QA Log
 
+## QA Session — 2026-03-24 (iteration 8 / final-review-pass)
+
+### Binary Under Test
+- Installed path: `/tmp/aloop-test-install-YDyQns/bin/aloop` (cleaned up after session)
+- Version: `1.0.0`
+- Built from: commit `d05d35aa` (branch `aloop/issue-180`)
+- Install method: `npm run build:server && ... && node scripts/test-install.mjs --keep`
+
+### Target Selection
+- Final regression pass at head commit after review PASS (`d05d35aa`); last two commits are review/QA meta only (no code changes since `86315a80`)
+
+### Test Environment
+- Temp dir: `/tmp/qa-test-180-final-XXXXXX` (cleaned up)
+- Features tested: 3 (TS check, unit suite, CLI smoke)
+
+### Results
+- PASS: TypeScript type check (`tsc --noEmit`) — zero errors
+- PASS: Issue #180 unit tests (orchestrate.test.ts 61–65) — all green; 340/365 total (25 pre-existing, unchanged)
+- PASS: process-requests unit tests — 8/8 pass
+- PASS: CLI smoke test — `mystery-file.json` → `failed/` with `reason: unsupported_type`
+
+### Bugs Filed
+- None
+
+### Notes
+1. Commits `0c8892c7` and `d05d35aa` changed only QA/review meta files (REVIEW_LOG.md, TODO.md); code is identical to `86315a80`.
+2. 25 pre-existing failures in orchestrate.test.ts remain unchanged (same count as master baseline).
+
+### Command Transcript
+
+```
+# Build and install
+cd aloop/cli
+npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin && npm run build:agents
+node scripts/test-install.mjs --keep
+# → /tmp/aloop-test-install-YDyQns/bin/aloop  (version 1.0.0)
+
+# TypeScript type check
+npx tsc --noEmit
+# → (no output) exit 0 — PASS
+
+# Issue #180 unit tests (61–65)
+npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep -E "^(ok|not ok) [0-9]+ " | grep -E " 6[0-9] "
+# → ok 61 - computeBlockerHash
+# → ok 62 - detectCurrentBlockers
+# → ok 63 - updateBlockerSignatures
+# → ok 64 - computeOverallHealth
+# → ok 65 - runOrchestratorScanPass blocker tracking
+
+# Full suite summary
+npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# → # tests 365
+# → # pass 340
+# → # fail 25  (pre-existing; same as master)
+
+# process-requests unit tests
+npx tsx --test src/commands/process-requests.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# → # tests 8
+# → # pass 8
+# → # fail 0
+
+# CLI smoke test: unrecognized file quarantine
+SESSION_DIR=/tmp/qa-test-180-final-XXXXXX
+echo '{"type":"mystery"}' > $SESSION_DIR/requests/mystery-file.json
+aloop process-requests --session-dir $SESSION_DIR
+# → [process-requests] Unrecognized request file "mystery-file.json" — payload: {"type":"mystery"}
+# exit: 0; failed/mystery-file.json with reason: unsupported_type — PASS
+
+# Cleanup
+rm -rf /tmp/qa-test-180-final-* /tmp/aloop-test-install-YDyQns
+```
+
+
 ## QA Session — 2026-03-24 (iteration 5 / post-review-fixes)
 
 ### Binary Under Test
