@@ -62,3 +62,24 @@
 - Gate 9 (Documentation Freshness): PASS — `SPEC-ADDENDUM.md:139` and `:176` both reference Storybook 10; QA iter 3 re-confirmed.
 
 ---
+
+## Review — 2026-03-24 — commit 3319c1a7..1a8595f0
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** proof-artifacts/*.png, proof-manifest.json (bf6a7427); lib/ansi.ts, lib/ansi.test.ts, AppView.tsx (24974eb2); QA_LOG.md, QA_COVERAGE.md (1a8595f0)
+
+- Gate 2: `lib/ansi.test.ts` lines 76, 115, 119, 145, 146, 172, 173 — 7 `.toBeTruthy()` checks on ANSI color RGB string values. A broken color mapping (e.g. wrong PALETTE_256 index) would still pass these. Each should assert the exact computed string (e.g. `'187,0,0'` for ANSI 31, `'85,85,85'` for ANSI 90/100).
+
+**Prior findings resolved:**
+- Gate 6 / [qa/P1]: proof-artifacts/ now contains 9 unique PNGs (6–17KB), proof-manifest.json has 8 HTTP-Playwright entries — all story screenshots valid (bf6a7427). P1 finding from earlier reviews is closed.
+
+**Observations:**
+- Gate 1 (Spec Compliance): PASS — lib/ansi.ts exports all 5 required functions + AnsiStyle type; AppView.tsx:30-31 correctly imports + re-exports (re-export consumed by App.tsx via `import * as view`); formatHelpers.test.tsx:13 updated to import stripAnsi from `./lib/ansi` directly.
+- Gate 3 (Coverage): PASS — 39 tests cover all major SGR codes, palette edge cases, style resets, and combined codes; minor gap: unknown mode in 38/48 fallthrough untested but not high risk.
+- Gate 4 (Code Quality): PASS — AppView.tsx:31 re-export is not dead code; consumed by App.tsx wildcard import chain.
+- Gate 5 (Integration Sanity): PASS — dashboard 189/189 tests pass; 25 CLI failures pre-existing; TS error in process-requests.ts pre-existing.
+- Gate 6 (Proof Verification): PASS — see above.
+- Gate 8 (Version Compliance): PASS — VERSIONS.md `@storybook/* | 10.x` confirmed.
+- Gate 9 (Documentation Freshness): PASS — internal refactor, no user-facing behavior changed.
+
+---
