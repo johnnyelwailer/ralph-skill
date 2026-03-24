@@ -3649,12 +3649,6 @@ export async function createTrunkToMainPr(
 }
 
 /**
- * Request a child loop to rebase its branch against agent/trunk.
- * Posts a comment on the issue instructing the child to rebase.
- */
-// requestRebase is no longer used — conflicts are handled by dispatching a child agent via needs_redispatch
-
-/**
  * Flag an issue for human resolution after rebase attempts exhausted.
  */
 export async function flagForHuman(

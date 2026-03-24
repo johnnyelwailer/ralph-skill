@@ -30,7 +30,7 @@
 
   **Why:** The `else` branch of the `needs_rebase` conditional in the redispatch path is also untested. This is a regression guard — without it, a refactor that accidentally broke the non-rebase path (changing `agent: build` back to `agent: merge`) would go undetected.
 
-- [ ] [review] Gate 4: Remove dead JSDoc + dangling comment at orchestrate.ts:3651-3655 referencing the removed `requestRebase` function (priority: low)
+- [x] [review] Gate 4: Remove dead JSDoc + dangling comment at orchestrate.ts:3651-3655 referencing the removed `requestRebase` function (priority: low)
 
   **Why:** Lines 3651-3655 contain a JSDoc block ("Request a child loop to rebase its branch...") followed by a `// requestRebase is no longer used` comment. The function this documented was removed; the orphaned documentation is misleading.
 
