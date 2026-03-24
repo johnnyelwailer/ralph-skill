@@ -1431,7 +1431,7 @@ If any gate is `pending`, lifecycle returns `gates_pending` and waits for the ne
 
 ### Step 3: Merge Conflicts
 
-If `mergeable` is false (and not an API error), the orchestrator sets `needs_redispatch = true` and `review_feedback` with rebase instructions. A child agent is dispatched to resolve the conflict. `rebase_attempts` is incremented for diagnostics.
+If `mergeable` is false (and not an API error), the orchestrator sets `needs_rebase = true` and `needs_redispatch = true`. A child agent (with `agent: merge` frontmatter) is dispatched to resolve the conflict. `rebase_attempts` is incremented for diagnostics.
 
 ### Step 4: CI Failures
 

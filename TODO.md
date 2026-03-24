@@ -34,7 +34,7 @@
 
   **Why:** Lines 3651-3655 contain a JSDoc block ("Request a child loop to rebase its branch...") followed by a `// requestRebase is no longer used` comment. The function this documented was removed; the orphaned documentation is misleading.
 
-- [ ] [review] Gate 9: Update SPEC-ADDENDUM.md line 1434 to document `needs_rebase = true` instead of `review_feedback` for merge conflict dispatch (priority: medium)
+- [x] [review] Gate 9: Update SPEC-ADDENDUM.md line 1434 to document `needs_rebase = true` instead of `review_feedback` for merge conflict dispatch (priority: medium)
 
   **Why:** SPEC-ADDENDUM.md §PR Lifecycle line 1434 still says "sets `needs_redispatch = true` and `review_feedback` with rebase instructions" — but the implementation now sets `needs_rebase = true` and no longer uses `review_feedback` for conflict cases. The spec is stale and will mislead future developers.
 
