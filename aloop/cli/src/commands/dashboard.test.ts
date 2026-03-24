@@ -2058,6 +2058,54 @@ test('GET /api/qa-coverage returns 0% when file has no parseable table', async (
   }
 });
 
+test('GET /api/state includes diagnostics from session diagnostics.json', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const diagnostics = {
+      generated_at: new Date().toISOString(),
+      iteration: 5,
+      overall_health: 'degraded',
+      blockers: [
+        {
+          type: 'child_stuck',
+          message: 'Child session stuck',
+          first_seen_iteration: 1,
+          current_iteration: 5,
+          severity: 'warning',
+          suggested_fix: 'Check logs',
+        },
+      ],
+    };
+    await writeFile(path.join(fixture.sessionDir, 'diagnostics.json'), JSON.stringify(diagnostics), 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as { diagnostics: typeof diagnostics | null };
+
+    assert.notEqual(payload.diagnostics, null);
+    assert.equal(payload.diagnostics!.overall_health, 'degraded');
+    assert.equal(payload.diagnostics!.blockers!.length, 1);
+    assert.equal(payload.diagnostics!.blockers![0].type, 'child_stuck');
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/state returns null diagnostics when diagnostics.json is absent', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as { diagnostics: unknown };
+
+    assert.equal(payload.diagnostics, null);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test.after(() => {
   const getActiveHandles = (process as unknown as { _getActiveHandles?: () => unknown[] })._getActiveHandles;
   if (!getActiveHandles) return;

@@ -23,6 +23,20 @@ interface ArtifactManifest {
   outputHeader?: string;
 }
 
+interface DiagnosticsInfo {
+  generated_at?: string;
+  iteration?: number;
+  overall_health?: 'healthy' | 'degraded' | 'critical';
+  blockers?: Array<{
+    type: string;
+    message: string;
+    first_seen_iteration: number;
+    current_iteration: number;
+    severity: 'warning' | 'critical';
+    suggested_fix: string;
+  }>;
+}
+
 interface DashboardState {
   sessionDir: string;
   workdir: string;
@@ -36,6 +50,7 @@ interface DashboardState {
   artifacts: ArtifactManifest[];
   meta: unknown | null;
   repoUrl: string | null;
+  diagnostics: DiagnosticsInfo | null;
 }
 
 interface SessionContext {
@@ -280,13 +295,15 @@ async function loadStateForContext(
   const statusPath = path.join(ctx.sessionDir, 'status.json');
   const metaPath = path.join(ctx.sessionDir, 'meta.json');
   const logPath = path.join(ctx.sessionDir, 'log.jsonl');
+  const diagnosticsPath = path.join(ctx.sessionDir, 'diagnostics.json');
   const activeSessionsPath = path.join(runtimeDir, 'active.json');
   const recentSessionsPath = path.join(runtimeDir, 'history.json');
 
-  const [status, meta, log, activeSessions, recentSessions, docsEntries, artifacts] = await Promise.all([
+  const [status, meta, log, diagnostics, activeSessions, recentSessions, docsEntries, artifacts] = await Promise.all([
     readJsonFile(statusPath),
     readJsonFile(metaPath),
     readLogTail(logPath),
+    readJsonFile(diagnosticsPath),
     readJsonArrayFile(activeSessionsPath),
     readJsonArrayFile(recentSessionsPath),
     Promise.all(
@@ -346,6 +363,7 @@ async function loadStateForContext(
     artifacts,
     meta,
     repoUrl: getRepoUrl(ctx.workdir),
+    diagnostics: diagnostics as DiagnosticsInfo | null,
   };
 }
 
@@ -637,6 +655,7 @@ export async function startDashboardServer(
   const statusPath = path.join(sessionDir, 'status.json');
   const logPath = path.join(sessionDir, 'log.jsonl');
   const metaPath = path.join(sessionDir, 'meta.json');
+  const diagnosticsPath = path.join(sessionDir, 'diagnostics.json');
   const activeSessionsPath = path.join(runtimeDir, 'active.json');
   const recentSessionsPath = path.join(runtimeDir, 'history.json');
   const steeringPath = path.join(workdir, 'STEERING.md');
@@ -644,7 +663,7 @@ export async function startDashboardServer(
   const normalizedRequestsDir = path.normalize(requestsDir).toLowerCase();
   const docPaths = DOC_FILES.map((name) => path.join(workdir, name));
   const watchedFiles = new Set(
-    [statusPath, logPath, activeSessionsPath, recentSessionsPath, ...docPaths].map((value) =>
+    [statusPath, logPath, diagnosticsPath, activeSessionsPath, recentSessionsPath, ...docPaths].map((value) =>
       path.normalize(value).toLowerCase(),
     ),
   );

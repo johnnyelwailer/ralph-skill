@@ -156,6 +156,20 @@ type SessionStatus = Record<string, unknown>;
 
 interface ArtifactManifest { iteration: number; manifest: unknown; outputHeader?: string }
 
+interface DiagnosticsInfo {
+  generated_at?: string;
+  iteration?: number;
+  overall_health?: 'healthy' | 'degraded' | 'critical';
+  blockers?: Array<{
+    type: string;
+    message: string;
+    first_seen_iteration: number;
+    current_iteration: number;
+    severity: 'warning' | 'critical';
+    suggested_fix: string;
+  }>;
+}
+
 interface DashboardState {
   sessionDir: string;
   workdir: string;
@@ -169,6 +183,7 @@ interface DashboardState {
   artifacts: ArtifactManifest[];
   repoUrl: string | null;
   meta: Record<string, unknown> | null;
+  diagnostics: DiagnosticsInfo | null;
 }
 
 interface SessionSummary {
@@ -2140,6 +2155,54 @@ function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
   );
 }
 
+// ── Diagnostics Banner ──
+
+function DiagnosticsBanner({ diagnostics }: { diagnostics: DiagnosticsInfo | null }) {
+  const [dismissed, setDismissed] = useState(false);
+  const health = diagnostics?.overall_health;
+
+  useEffect(() => {
+    setDismissed(false);
+  }, [diagnostics?.generated_at]);
+
+  if (!diagnostics || !health || health === 'healthy' || dismissed) return null;
+
+  const isCritical = health === 'critical';
+  const bgColor = isCritical ? 'bg-red-600' : 'bg-amber-500';
+  const textColor = 'text-white';
+  const blockers = diagnostics.blockers ?? [];
+
+  return (
+    <div className={`${bgColor} ${textColor} px-3 py-2 flex items-start gap-2 text-sm shrink-0`} role="alert" data-testid="diagnostics-banner">
+      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <span className="font-semibold">
+          {isCritical ? 'Critical' : 'Degraded'}: Session health is {health}
+        </span>
+        {blockers.length > 0 && (
+          <ul className="mt-1 space-y-0.5 text-xs opacity-90">
+            {blockers.slice(0, 3).map((b, i) => (
+              <li key={i} className="truncate">
+                {b.message}
+                {b.suggested_fix && <span className="opacity-75 ml-1">— {b.suggested_fix}</span>}
+              </li>
+            ))}
+            {blockers.length > 3 && <li className="opacity-75">+{blockers.length - 3} more</li>}
+          </ul>
+        )}
+      </div>
+      <button
+        type="button"
+        aria-label="Dismiss alert"
+        className="shrink-0 p-0.5 rounded hover:bg-white/20 transition-colors min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center"
+        onClick={() => setDismissed(true)}
+      >
+        <XCircle className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 // ── Main App ──
 
 export function App() {
@@ -2462,6 +2525,7 @@ export function App() {
           )}
           <div className="flex flex-col flex-1 min-w-0">
             <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
+            <DiagnosticsBanner diagnostics={state?.diagnostics ?? null} />
             {/* Mobile panel toggle */}
             <div className="lg:hidden flex border-b border-border shrink-0">
               <button

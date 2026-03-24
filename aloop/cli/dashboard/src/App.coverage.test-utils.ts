@@ -47,4 +47,5 @@ export const baseState = {
   recentSessions: [],
   artifacts: [],
   repoUrl: null,
+  diagnostics: null,
 };
