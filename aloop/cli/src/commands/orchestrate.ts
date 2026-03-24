@@ -2336,7 +2336,7 @@ export function validateDoR(issue: OrchestratorIssue): DoRValidationResult {
   const hasAcceptanceCriteria =
     /acceptance\s*criteria/i.test(body) ||
     /\[ \]/.test(body) ||
-    /accepts?/i.test(body);
+    /\baccepts?\b/i.test(body);
   if (!hasAcceptanceCriteria) {
     gaps.push('Missing acceptance criteria');
   }
@@ -2446,7 +2446,7 @@ export async function applyEstimateResults(
 
     if (result.dor_passed) {
       issue.dor_validated = true;
-      if (issue.status === 'Needs refinement') {
+      if (issue.status === 'Needs refinement' || issue.status === 'Needs decomposition') {
         issue.status = 'Ready';
       }
       // Apply complexity and priority labels via GH

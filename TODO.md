@@ -13,7 +13,7 @@
 
 ### In Progress
 
-- [ ] [qa/P1] Fix 25 orchestrate.test.ts failures after adapter migration: tests for `checkPrGates`, `reviewPrDiff`, `launchChildLoop`, and `validateDoR` return unexpected values (e.g., `reviewPrDiff` returns `'flagged_for_human'` instead of `'merged'`; `checkPrGates` returns wrong pending status; `launchChildLoop` worktree branch creation fails). Tests were mocking `execGh` directly but code now calls through the adapter interface — update test mocks to mock the adapter instead of `execGh`. Tested at 2026-03-24 @ 28f0d0f9. (priority: high)
+- [x] [qa/P1] Fix 25 orchestrate.test.ts failures after adapter migration: tests for `checkPrGates`, `reviewPrDiff`, `launchChildLoop`, and `validateDoR` return unexpected values (e.g., `reviewPrDiff` returns `'flagged_for_human'` instead of `'merged'`; `checkPrGates` returns wrong pending status; `launchChildLoop` worktree branch creation fails). Tests were mocking `execGh` directly but code now calls through the adapter interface — update test mocks to mock the adapter instead of `execGh`. Fixed at 2026-03-24. (priority: high)
 
 - [x] [review] Gate 2/3: `adapter.test.ts` missing tests for three methods with non-trivial logic:
   1. `GitHubAdapter.updateIssue` — has state-branching logic (close vs reopen) but zero tests; add tests verifying close path calls `closeIssue`, reopen path calls `issue reopen`, and title/body args are passed
