@@ -26,3 +26,34 @@
 - **Acceptance criteria update:** Marked AC items 5 and 6 as complete in TODO.md (`adapter` in meta.json is written via `start.ts`; no hardcoded GitHub URLs in code).
 
 ---
+
+## Review — 2026-03-24 — commit aae3501b..03f10536
+
+**Verdict: FAIL** (2 findings → 2 [review] tasks written/updated in TODO.md)
+**Scope:** `aloop/cli/src/lib/adapter.test.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `QA_COVERAGE.md`, `QA_LOG.md`, `TODO.md`
+
+### Prior Findings Resolution
+
+- **Prior Gate 2/3 (resolved):** 9 new tests added in `1c3ca1b8` covering `GitHubAdapter.updateIssue` (3 tests: title/body args, close path, reopen path), `LocalAdapter.mergePr` (4 tests: squash default, rebase, merge --no-ff, deleteBranch=false), `LocalAdapter.getPrStatus` (2 tests: CLEAN on success, UNKNOWN on error). All use `assert.equal` / `assert.ok(...includes(...))` on concrete values — not shallow. Finding resolved.
+
+- **Prior Gate 4 (NOT resolved):** `parseRepoSlug` unused import (line 14) and unreachable `existsSync` checks (lines 394, 404) still present in `adapter.ts`. TODO.md note updated to record "still present at iter 3". Task remains open.
+
+- **Prior Gate 5 / QA P1 (resolved):** All 25 orchestrate.test.ts failures fixed in `a03fb518`. Current test count: 1054 pass, 0 fail across all test files. Pre-existing type error at `process-requests.ts:407` unchanged (pre-exists all issue-176 work).
+
+### New Findings
+
+- **Gate 2/3 (FAIL — new):** `applyEstimateResults` in `orchestrate.ts:2432` gained a new branch in `a03fb518`: `if (issue.status === 'Needs refinement' || issue.status === 'Needs decomposition')`. The `Needs decomposition` arm is untested — all `applyEstimateResults` tests use `status: 'Needs refinement'` as input. A broken `Needs decomposition` → `Ready` transition would not be caught. Written as new `[review]` task in TODO.md.
+
+- **Gate 4 (carry-over — still open):** See above. Updated TODO.md note.
+
+### Gates that Pass
+
+- **Gate 1:** Spec compliance unchanged from prior review — same 2 open AC items (partial migration), not addressed in this iteration.
+- **Gate 5:** All tests pass (1054/1054). Type-check pre-existing error unchanged, not introduced by these changes.
+- **Gate 6:** Work is internal (test fixes, QA updates). No observable output required.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** No user-facing behavior changes; README/docs not affected.
+- **Gate 10:** QA_COVERAGE.md covers 8 features, all documented. Coverage tracking current.
+
+---
