@@ -2158,7 +2158,28 @@ function AppInner() {
   const [qaCoverageRefreshKey, setQaCoverageRefreshKey] = useState('');
   const prevPhaseRef = useRef<string>('');
   const latestQaSignalRef = useRef<string | null>(null);
-  const { isDesktop, sidebarOpen, toggleSidebar, openSidebar, closeSidebar } = useResponsiveLayout();
+  const { isDesktop, isMobile, sidebarOpen, toggleSidebar, openSidebar, closeSidebar } = useResponsiveLayout();
+
+  // Swipe-right gesture: open sidebar when swiping from left edge on mobile
+  const SWIPE_EDGE_THRESHOLD_PX = 20;
+  const SWIPE_MIN_DISTANCE_PX = 50;
+  const touchStartXRef = useRef<number | null>(null);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!isMobile) return;
+    touchStartXRef.current = e.touches[0]?.clientX ?? null;
+  }, [isMobile]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!isMobile || touchStartXRef.current === null) return;
+    const startX = touchStartXRef.current;
+    touchStartXRef.current = null;
+    if (startX > SWIPE_EDGE_THRESHOLD_PX) return;
+    const endX = e.changedTouches[0]?.clientX ?? 0;
+    if (endX - startX >= SWIPE_MIN_DISTANCE_PX) {
+      openSidebar();
+    }
+  }, [isMobile, openSidebar]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -2169,21 +2190,15 @@ function AppInner() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [toggleSidebar]);
 
-  // Mobile sidebar: Escape key closes drawer, focus moves into sidebar on open
+  // Mobile sidebar: Escape key closes drawer
   useEffect(() => {
-    if (!mobileMenuOpen) return;
-    // Focus first focusable element inside sidebar
-    const container = mobileSidebarRef.current;
-    if (container) {
-      const focusable = container.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-      focusable?.focus();
-    }
+    if (!sidebarOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); setMobileMenuOpen(false); }
+      if (e.key === 'Escape') { e.preventDefault(); closeSidebar(); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [mobileMenuOpen]);
+  }, [sidebarOpen, closeSidebar]);
 
   const selectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
@@ -2443,7 +2458,7 @@ function AppInner() {
   );
 
   return (
-    <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
+    <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <div className="flex flex-1 min-h-0">
         {/* Desktop sidebar */}
         <div className="hidden sm:flex">
@@ -2453,6 +2468,7 @@ function AppInner() {
             onSelectSession={selectSession}
             collapsed={isDesktop ? false : !sidebarOpen}
             onToggle={toggleSidebar}
+            sessionCost={sessionCost}
           />
         </div>
         {/* Mobile/Tablet sidebar drawer */}
@@ -2466,12 +2482,13 @@ function AppInner() {
                 onSelectSession={(id) => { selectSession(id); closeSidebar(); }}
                 collapsed={false}
                 onToggle={closeSidebar}
+                sessionCost={sessionCost}
               />
             </div>
           </div>
         )}
         <div className="flex flex-col flex-1 min-w-0">
-          <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={openSidebar} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={toggleSidebar} />
+          <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={openSidebar} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={toggleSidebar} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
           {/* Mobile panel toggle */}
           <div className="lg:hidden flex border-b border-border shrink-0">
             <button
