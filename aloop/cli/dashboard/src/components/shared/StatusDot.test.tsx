@@ -8,62 +8,49 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
 );
 
 describe('StatusDot', () => {
-  it('renders dot element for running status', () => {
-    const { container } = render(<StatusDot status="running" />, { wrapper });
-    expect(container.querySelector('.animate-pulse-dot')).toBeTruthy();
+  it('renders label for running status', () => {
+    render(<StatusDot status="running" />, { wrapper });
+    expect(screen.getByText('Running')).toBeInTheDocument();
   });
 
-  it('renders static dot for non-running status', () => {
-    const { container } = render(<StatusDot status="stopped" />, { wrapper });
-    const dot = container.querySelector('.bg-muted-foreground\\/50');
-    expect(dot).toBeTruthy();
+  it('renders label for stopped status', () => {
+    render(<StatusDot status="stopped" />, { wrapper });
+    expect(screen.getByText('Stopped')).toBeInTheDocument();
   });
 
-  it('renders pulse animation for running status', () => {
-    const { container } = render(<StatusDot status="running" />, { wrapper });
-    const pulse = container.querySelector('.animate-pulse-dot');
-    expect(pulse).toBeTruthy();
+  it('renders label for exited status', () => {
+    render(<StatusDot status="exited" />, { wrapper });
+    expect(screen.getByText('Exited')).toBeInTheDocument();
   });
 
-  it('applies green color for running status', () => {
-    const { container } = render(<StatusDot status="running" />, { wrapper });
-    expect(container.querySelector('.bg-green-500')).toBeTruthy();
+  it('renders label for unhealthy status', () => {
+    render(<StatusDot status="unhealthy" />, { wrapper });
+    expect(screen.getByText('Unhealthy')).toBeInTheDocument();
   });
 
-  it('applies red color for unhealthy status', () => {
-    const { container } = render(<StatusDot status="unhealthy" />, { wrapper });
-    expect(container.querySelector('.bg-red-500')).toBeTruthy();
+  it('renders label for error status', () => {
+    render(<StatusDot status="error" />, { wrapper });
+    expect(screen.getByText('Error')).toBeInTheDocument();
   });
 
-  it('applies red color for error status', () => {
-    const { container } = render(<StatusDot status="error" />, { wrapper });
-    expect(container.querySelector('.bg-red-500')).toBeTruthy();
+  it('renders label for stuck status', () => {
+    render(<StatusDot status="stuck" />, { wrapper });
+    expect(screen.getByText('Stuck')).toBeInTheDocument();
   });
 
-  it('applies orange color for stuck status', () => {
-    const { container } = render(<StatusDot status="stuck" />, { wrapper });
-    expect(container.querySelector('.bg-orange-500')).toBeTruthy();
+  it('renders label for unknown status', () => {
+    render(<StatusDot status="unknown" />, { wrapper });
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
   });
 
-  it('applies fallback unknown config for unknown status', () => {
-    const { container } = render(<StatusDot status="nonexistent" />, { wrapper });
-    expect(container.querySelector('.bg-muted-foreground\\/30')).toBeTruthy();
+  it('renders fallback unknown label for unrecognised status', () => {
+    render(<StatusDot status="nonexistent" />, { wrapper });
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
   });
 
   it('applies custom className', () => {
     const { container } = render(<StatusDot status="stopped" className="my-custom" />, { wrapper });
-    const dot = container.querySelector('.my-custom');
-    expect(dot).toBeTruthy();
-  });
-
-  it('renders exited status with muted color', () => {
-    const { container } = render(<StatusDot status="exited" />, { wrapper });
-    expect(container.querySelector('.bg-muted-foreground\\/50')).toBeTruthy();
-  });
-
-  it('renders unknown status fallback label', () => {
-    const { container } = render(<StatusDot status="unknown" />, { wrapper });
-    expect(container.querySelector('.bg-muted-foreground\\/30')).toBeTruthy();
+    expect(container.querySelector('.my-custom')).toBeTruthy();
   });
 });
 

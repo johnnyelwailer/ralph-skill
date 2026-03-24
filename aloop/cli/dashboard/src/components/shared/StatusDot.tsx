@@ -27,7 +27,12 @@ export function StatusDot({ status, className = '' }: { status: string; classNam
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild><span className="inline-flex">{dot}</span></TooltipTrigger>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          {dot}
+          <span className="sr-only">{label}</span>
+        </span>
+      </TooltipTrigger>
       <TooltipContent><p>{label}</p></TooltipContent>
     </Tooltip>
   );
