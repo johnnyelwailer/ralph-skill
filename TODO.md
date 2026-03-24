@@ -4,7 +4,7 @@
 
 ### Up Next
 
-- [x] [review/high] Hide `help` command and fix test: `index.ts` line 191 — `.command('help')` is registered without `{ hidden: true }`, so `aloop --help` shows 7 commands (including `help`) instead of the spec-required 6 (setup, start, status, steer, stop, dashboard). Fix: add `{ hidden: true }` to the `help` command registration. Also add `assert.doesNotMatch(result.stdout, /^\s+help\b/m)` to `index.test.ts:39-57` — the test title claims "only 6" but the assertion does not enforce it.
+- [x] [review/high] Hide `help` command and fix test: `index.ts` line 191 — `.command('help')` is registered without `{ hidden: true }`, so `aloop --help` shows 7 commands (including `help`) instead of the spec-required 6 (setup, start, status, steer, stop, dashboard). Fix: add `{ hidden: true }` to the `help` command registration. Also add `assert.doesNotMatch(result.stdout, /^\s+help\b/m)` to `index.test.ts:39-57` — the test title claims "only 6" but the assertion does not enforce it. [reviewed: gates 1-9 pass]
 
 - [ ] [qa/P2] Add `engine: 'orchestrate'` to meta.json in `orchestrate-launch.ts`: the `meta` object written at line 106–110 of `orchestrate-launch.ts` omits the `engine` field. TASK_SPEC §Resume requires `engine?: 'loop' | 'orchestrate'` and says to write it when creating an orchestrator session. The `SessionMeta` interface in `start.ts` already has the field and `isOrchestratorSession()` checks `meta.engine === 'orchestrate'` — but new orchestrator sessions created via `launchOrchestrator()` never set it, so resume detection falls back to `mode === 'orchestrate'` (which works, but the field is missing from the written file). Still failing at iter 2.
 

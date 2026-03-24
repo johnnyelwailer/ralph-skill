@@ -36,3 +36,26 @@ Gates 1,2,5,6,7,8,9: PASS. Type-check clean. No test regressions (10 failures al
 - Gate 7: N/A — no UI changes.
 - Gate 8: N/A — no dependency changes.
 - Gate 9: `claude/commands/aloop/start.md` updated: documents `--mode loop`, `--mode orchestrate`, `--max <n>` → `--max-iterations <n>`, `--launch resume` for both modes. Skill correctly reflects dual-mode behavior. PASS.
+
+---
+
+## Review — 2026-03-24 — commit 82236f0c..0c99feea
+
+**Verdict: PASS** (prior finding resolved, all gates pass)
+**Scope:** `aloop/cli/src/index.ts`, `aloop/cli/src/index.test.ts` (commit 177a847b), `aloop/cli/src/commands/orchestrate.ts` (revert commit 472e3dfb)
+
+**Prior finding resolved:**
+- Gate 1/Gate 2: `help` command hidden via `{ hidden: true }` option at `index.ts:192`. RESOLVED. `index.test.ts:57` now asserts `doesNotMatch(/^\s+help\b/m)` — concrete enforcement.
+
+**Observation (Gate 2):** `index.test.ts:57` — `assert.doesNotMatch(result.stdout, /^\s+help\b/m)` is a precise, negated concrete assertion. A regression where `help` re-appears would immediately fail. Thorough.
+
+**Gate 5:** 27 test failures vs 28 on master — one fewer failure (the help test now passes). No regressions. Pre-existing `process-requests.ts/test.ts` type errors unchanged.
+
+**Gate 6:** QA_LOG.md contains CLI transcript showing `aloop --help` outputs exactly 6 commands with `help` absent — human-verifiable evidence.
+
+**Open items (pre-existing, not new findings, tracked as [qa/P2]):**
+- `aloop --help --all` does not show hidden commands (only `aloop help --all` works)
+- `engine` field missing from meta.json for orchestrator sessions
+- Resume worktree warning on branch already exists
+
+All gates 1-9 pass.
