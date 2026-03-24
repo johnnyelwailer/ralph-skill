@@ -15,6 +15,14 @@ import {
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
+import {
+  launchOrchestrator as _launchOrchestrator,
+  type LaunchOrchestratorOptions,
+  type LaunchOrchestratorResult,
+  type LaunchOrchestratorDeps,
+  type SpawnSyncResult,
+  type ChildProcess,
+} from '../lib/orchestrate-launch.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
