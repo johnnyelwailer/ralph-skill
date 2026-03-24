@@ -8,6 +8,11 @@ _(none)_
 ### Up Next
 _(none)_
 
+### Review Findings (must fix before merge)
+- [ ] [review] Gate 5: `lib/requests.ts:435` — new TypeScript error introduced by this PR: `Property 'id' does not exist on type 'never'` in the `default:` case of `processAgentRequests`. TypeScript exhausts all union members in the switch, making `request` type `never` in the default branch. Fix: cast to `(request as AgentRequest).id` or `(request as any).id` — consistent with line 432 which already uses `(request as any).type`. Run `npm run type-check` to verify. (priority: high)
+- [ ] [review] Gate 4: `process-requests.ts:933` — `KNOWN_REQUEST_PATTERNS` is missing the `cr-analysis-result-\d+\.json` pattern. This file type IS handled (line 272) and archived on success, but if the CR handler fails before archiving, the file survives to the `readdir` scan at line 307 and gets quarantined as `unsupported_type`. Add `/^cr-analysis-result-\d+\.json$/` to `KNOWN_REQUEST_PATTERNS`. Add a test: unrecognized handler ignores `cr-analysis-result-5.json`. (priority: high)
+- [ ] [review] Gate 1: `diagnostics.json` field names deviate from SPEC-ADDENDUM.md schema. Spec says: `{type, message, first_seen_iteration, current_iteration, severity, suggested_fix}` per blocker, in an array. Implementation uses `description` (→ `message`), `iterations_stuck` (→ should be count but spec wants `first_seen_iteration` + `current_iteration`), `suggested_action` (→ `suggested_fix`), and wraps in an object with `persistent_blockers` key rather than a top-level array. Dashboard integration (future AC) depends on this schema. Fix: either align field names to spec OR update SPEC-ADDENDUM.md to document the chosen schema as canonical. (priority: medium)
+
 ### Completed
 - [x] Define `BlockerSignature` type with `hash`, `type`, `issue_number`, `description`, `first_seen_iteration`, `occurrence_count` fields — `orchestrate.ts:98`
 - [x] Add `blocker_signatures: BlockerSignature[]` field to `OrchestratorState` — `orchestrate.ts:126`
