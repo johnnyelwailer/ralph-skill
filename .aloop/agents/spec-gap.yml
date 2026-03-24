@@ -1,4 +1,0 @@
-agent: spec-gap
-prompt: PROMPT_spec-gap.md
-reasoning:
-  effort: high

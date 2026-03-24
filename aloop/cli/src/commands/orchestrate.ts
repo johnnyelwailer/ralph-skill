@@ -3450,59 +3450,6 @@ export interface PrLifecycleDeps {
 }
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
-const ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT = 3;
-const ORCHESTRATOR_REDISPATCH_LIMIT = 3;
-const WORKING_ARTIFACT_FILES = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'] as const;
-
-function parseArtifactRemovalTargets(feedback: string | undefined): string[] | null {
-  if (!feedback) return null;
-
-  const normalized = feedback.toLowerCase();
-  const mentionsGenericArtifacts = normalized.includes('working artifact');
-  const mentionedFiles = WORKING_ARTIFACT_FILES.filter((file) => normalized.includes(file.toLowerCase()));
-  const hasRemovalIntent =
-    /\b(remove|delete|drop|exclude|clean(?:\s*up)?|rm)\b/i.test(normalized)
-    || /do\s+not\s+(add|include|commit)/i.test(normalized)
-    || /should\s+not\s+(add|include|commit)/i.test(normalized);
-
-  if (!hasRemovalIntent || (mentionedFiles.length === 0 && !mentionsGenericArtifacts)) {
-    return null;
-  }
-
-  let stripped = normalized;
-  for (const file of WORKING_ARTIFACT_FILES) {
-    stripped = stripped.replaceAll(file.toLowerCase(), ' ');
-  }
-  stripped = stripped
-    .replaceAll('working artifacts', ' ')
-    .replaceAll('working artifact', ' ')
-    .replaceAll('artifact files', ' ')
-    .replaceAll('artifact', ' ')
-    .replaceAll('pull request', ' ')
-    .replaceAll('pr', ' ')
-    .replaceAll('commit', ' ')
-    .replaceAll('branch', ' ')
-    .replaceAll('please', ' ');
-
-  const allowedTokens = new Set([
-    'remove', 'delete', 'drop', 'exclude', 'clean', 'cleanup', 'rm', 'cache', 'cached',
-    'do', 'not', 'should', 'add', 'include', 'from', 'in', 'on', 'to', 'the', 'a', 'an',
-    'and', 'or', 'these', 'this', 'files', 'file', 'only', 'just', 'all', 'any', 'no',
-  ]);
-  const residualTokens = stripped
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((token) => token.length > 0)
-    .filter((token) => !allowedTokens.has(token));
-  if (residualTokens.length > 0) {
-    return null;
-  }
-
-  if (mentionedFiles.length > 0) {
-    return [...mentionedFiles];
-  }
-  return [...WORKING_ARTIFACT_FILES];
-}
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
@@ -3925,7 +3872,7 @@ export async function processPrLifecycle(
   if (reviewResult.verdict === 'request-changes') {
     // Post review feedback on the PR (only if not already posted)
     const stateIssue = state.issues.find((i) => i.number === issue.number);
-    const alreadyCommented = stateIssue?.last_review_comment === reviewResult.summary;
+    const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
         await deps.execGh([
@@ -3935,39 +3882,13 @@ export async function processPrLifecycle(
       } catch {
         // Best-effort
       }
-      if (stateIssue) stateIssue.last_review_comment = reviewResult.summary;
+      if (stateIssue) (stateIssue as any).last_review_comment = reviewResult.summary;
     }
 
-    // Track failures and either re-dispatch or escalate to human
+    // Mark for re-dispatch by the scan pass (which has dispatchDeps)
     if (stateIssue) {
-      const failures = (stateIssue.redispatch_failures ?? 0) + 1;
-      stateIssue.redispatch_failures = failures;
-
-      if (failures >= ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT) {
-        // Escalate: comment on issue + add aloop/needs-human label, pause automated redispatch
-        try {
-          await deps.execGh([
-            'issue', 'comment', String(issue.number), '--repo', repo,
-            '--body', `Automated redispatch paused after ${failures} failed attempts.\n\nLast review feedback:\n\n${reviewResult.summary}\n\nA human review is required. Remove the \`aloop/needs-human\` label to resume automated redispatch.`,
-          ]);
-          await deps.execGh([
-            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/needs-human',
-          ]);
-        } catch {
-          // Best-effort
-        }
-        stateIssue.redispatch_paused = true;
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: 'redispatch_escalated',
-          pr_number: prNumber,
-          issue_number: issue.number,
-          redispatch_failures: failures,
-        });
-      } else {
-        stateIssue.needs_redispatch = true;
-        stateIssue.review_feedback = reviewResult.summary;
-      }
+      (stateIssue as any).needs_redispatch = true;
+      (stateIssue as any).review_feedback = reviewResult.summary;
     }
 
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
@@ -5558,7 +5479,7 @@ export async function runOrchestratorScanPass(
         if (stateIssue) {
           stateIssue.state = 'in_progress';
           stateIssue.child_session = launchResult.session_id;
-          stateIssue.child_pid = launchResult.pid;
+          (stateIssue as any).child_pid = launchResult.pid;
           stateIssue.status = 'In progress';
           if (repo && deps.execGh) {
             await syncIssueProjectStatus(issue.number, repo, 'In progress', {
@@ -5645,37 +5566,6 @@ export async function runOrchestratorScanPass(
           pr_number: issue.pr_number,
           error: msg,
         });
-      }
-    }
-  }
-
-  // 3.4. Resume redispatch for issues where aloop/needs-human label has been removed
-  if (repo && deps.execGh) {
-    const pausedIssues = state.issues.filter((i) => (i as any).redispatch_paused);
-    for (const issue of pausedIssues) {
-      try {
-        const viewResult = await deps.execGh([
-          'issue', 'view', String(issue.number), '--repo', repo, '--json', 'labels',
-        ]);
-        const data = JSON.parse(viewResult.stdout);
-        const labelNames = new Set<string>(
-          (data.labels ?? [])
-            .filter((l: unknown) => typeof (l as any)?.name === 'string')
-            .map((l: unknown) => (l as any).name.toLowerCase()),
-        );
-        if (!labelNames.has('aloop/needs-human')) {
-          issue.redispatch_paused = false;
-          issue.redispatch_failures = 0;
-          issue.needs_redispatch = true;
-          deps.appendLog(sessionDir, {
-            timestamp: deps.now().toISOString(),
-            event: 'redispatch_resumed',
-            iteration,
-            issue_number: issue.number,
-          });
-        }
-      } catch {
-        // Best-effort
       }
     }
   }

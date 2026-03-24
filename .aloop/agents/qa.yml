@@ -1,4 +1,0 @@
-agent: qa
-prompt: PROMPT_qa.md
-reasoning:
-  effort: medium

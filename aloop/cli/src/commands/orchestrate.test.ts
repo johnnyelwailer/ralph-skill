@@ -3019,7 +3019,7 @@ describe('processPrLifecycle', () => {
     assert.ok((state.issues[0] as any).needs_redispatch === true);
   });
 
-  it('sets needs_redispatch when agent review requests changes', async () => {
+  it('rejects PR when agent review requests changes', async () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
     const deps = createMockPrDeps({
       execGh: async (args) => {
@@ -3043,8 +3043,6 @@ describe('processPrLifecycle', () => {
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'rejected');
     assert.equal(result.review?.verdict, 'request-changes');
-    assert.equal(state.issues[0].needs_redispatch, true);
-    assert.equal(state.issues[0].review_feedback, 'Missing test coverage');
   });
 
   it('flags for human when agent review flags', async () => {
@@ -3212,140 +3210,6 @@ describe('processPrLifecycle', () => {
     await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     const closeCall = ghCalls.find((c) => c.includes('close') && c.includes('42'));
     assert.ok(closeCall, 'Should have closed the issue');
-  });
-
-  it('increments redispatch_failures when review requests changes', async () => {
-    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
-    const deps = createMockPrDeps({
-      execGh: async (args) => {
-        if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
-        }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
-        }
-        if (args.includes('diff')) return { stdout: 'diff', stderr: '' };
-        return { stdout: '', stderr: '' };
-      },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'request-changes' as const,
-        summary: 'Needs more tests',
-      }),
-    });
-    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'rejected');
-    assert.equal(state.issues[0].redispatch_failures, 1);
-    assert.equal(state.issues[0].needs_redispatch, true);
-    assert.equal(state.issues[0].redispatch_paused, undefined);
-  });
-
-  it('escalates with comment and aloop/needs-human label after 3 failed redispatches', async () => {
-    const state = makeOrchestratorState([{
-      number: 42, pr_number: 100, state: 'pr_open', redispatch_failures: 2,
-    }]);
-    const ghCalls: string[][] = [];
-    const deps = createMockPrDeps({
-      execGh: async (args) => {
-        ghCalls.push(args);
-        if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
-        }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
-        }
-        if (args.includes('diff')) return { stdout: 'diff', stderr: '' };
-        return { stdout: '', stderr: '' };
-      },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'request-changes' as const,
-        summary: 'Still missing tests',
-      }),
-    });
-    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'rejected');
-    assert.equal(state.issues[0].redispatch_failures, 3);
-    assert.equal(state.issues[0].redispatch_paused, true);
-    assert.equal(state.issues[0].needs_redispatch, undefined);
-    // Should have posted a comment on the issue
-    const issueComment = ghCalls.find((c) => c.includes('issue') && c.includes('comment') && c.includes('42'));
-    assert.ok(issueComment, 'Should post comment on issue');
-    // Should have added aloop/needs-human label
-    const labelCall = ghCalls.find((c) => c.includes('edit') && c.includes('aloop/needs-human'));
-    assert.ok(labelCall, 'Should add aloop/needs-human label');
-    // Should log redispatch_escalated event
-    assert.ok(deps.logs.some((l) => l.event === 'redispatch_escalated'));
-  });
-
-  it('skips duplicate review comment when last_review_comment matches summary', async () => {
-    const state = makeOrchestratorState([{
-      number: 42, pr_number: 100, state: 'pr_open',
-      last_review_comment: 'Missing test coverage',
-    }]);
-    const ghCalls: string[][] = [];
-    const deps = createMockPrDeps({
-      execGh: async (args) => {
-        ghCalls.push(args);
-        if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
-        }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
-        }
-        if (args.includes('diff')) {
-          return { stdout: 'diff', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
-      },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'request-changes' as const,
-        summary: 'Missing test coverage',
-      }),
-    });
-    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'rejected');
-    // Should NOT have posted a duplicate comment
-    const commentCalls = ghCalls.filter((c) => c.includes('comment') && c.includes('100'));
-    assert.equal(commentCalls.length, 0, 'Should not post duplicate review comment');
-    // Should still set redispatch
-    assert.equal(state.issues[0].needs_redispatch, true);
-  });
-
-  it('posts review comment when last_review_comment differs from summary', async () => {
-    const state = makeOrchestratorState([{
-      number: 42, pr_number: 100, state: 'pr_open',
-      last_review_comment: 'Old feedback',
-    }]);
-    const ghCalls: string[][] = [];
-    const deps = createMockPrDeps({
-      execGh: async (args) => {
-        ghCalls.push(args);
-        if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
-        }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
-        }
-        if (args.includes('diff')) {
-          return { stdout: 'diff', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
-      },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'request-changes' as const,
-        summary: 'New feedback',
-      }),
-    });
-    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'rejected');
-    // Should have posted a comment since summary differs
-    const commentCalls = ghCalls.filter((c) => c.includes('comment') && c.includes('100'));
-    assert.equal(commentCalls.length, 1, 'Should post comment when feedback differs');
-    // Should update last_review_comment
-    assert.equal(state.issues[0].last_review_comment, 'New feedback');
   });
 });
 
