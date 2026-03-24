@@ -26,7 +26,7 @@
   2. Lines 394 and 403-404: `if (!existsSync(this.issuesDir)) return 1` is unreachable — `ensureDirs()` on the line above creates the directory, making `existsSync` always true — remove the dead checks (priority: medium)
   Still present at iter 2 (2026-03-24, commit a03fb518). Still present at iter 3 (2026-03-24, commit 03f10536).
 
-- [ ] [review] Gate 2/3: `applyEstimateResults` in `orchestrate.ts` has untested new branch:
+- [x] [review] Gate 2/3: `applyEstimateResults` in `orchestrate.ts` has untested new branch:
   - Line 2432: `if (issue.status === 'Needs refinement' || issue.status === 'Needs decomposition')` — the `Needs decomposition` arm was added in commit a03fb518 but no `applyEstimateResults` test uses `status: 'Needs decomposition'` as input
   - Add a test: issue starts at `status: 'Needs decomposition'`, `dor_passed: true` → verify `status` becomes `'Ready'` after `applyEstimateResults` (priority: high)
 
