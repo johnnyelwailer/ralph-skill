@@ -136,7 +136,7 @@ Storybook provides an isolated environment for developing, testing, and iteratin
 
 ### Configuration
 
-- **Storybook 8** with `@storybook/react-vite` as the framework adapter
+- **Storybook 10** with `@storybook/react-vite` as the framework adapter
 - Lives in `aloop/dashboard/.storybook/` alongside the existing Vite + React dashboard
 - Uses the same Tailwind CSS config, Radix UI primitives, and shadcn-style component library already specified in `SPEC.md` (see **UX: Dashboard, Start Flow, Auto-Monitoring**)
 
@@ -173,7 +173,7 @@ Storybook must render components with the same theme context as the dashboard:
 
 ### Acceptance Criteria
 
-- [ ] Storybook 8 is configured with `@storybook/react-vite` in `aloop/dashboard/.storybook/`
+- [ ] Storybook 10 is configured with `@storybook/react-vite` in `aloop/dashboard/.storybook/`
 - [ ] `npm run storybook` (or `bun run storybook`) launches Storybook from the dashboard directory
 - [ ] Stories are colocated with components as `*.stories.tsx` files
 - [ ] At least one story exists for each core dashboard component (SessionCard, ProviderHealth, SteerInput, ActivityLog, ProgressBar)

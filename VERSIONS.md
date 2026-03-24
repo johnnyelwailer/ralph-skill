@@ -68,7 +68,7 @@ Major version mismatches are a gate failure; minor/patch differences are accepta
 | jsdom                       | 29.x    |
 | autoprefixer                | 10.x    |
 | postcss                     | 8.x     |
-| @storybook/*                | 8.x     |
+| @storybook/*                | 10.x    |
 
 ## Version Policy
 
