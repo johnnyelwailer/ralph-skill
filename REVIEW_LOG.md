@@ -105,3 +105,25 @@
 - Gate 9 (Documentation Freshness): PASS — no user-facing behavior changed.
 
 ---
+
+## Review — 2026-03-24 — commit ee566c1f..c58486ef
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** lib/format.test.ts (e0b19b91); lib/types.ts, AppView.tsx (f71b9968); QA_LOG.md, QA_COVERAGE.md (c58486ef)
+
+- Gate 2: `lib/format.test.ts` lines 27-30 and 46-50 — `formatTime` and `formatTimeShort` happy-path tests only assert `typeof result === 'string'` and `result.length > 0`. A broken implementation returning any non-empty string would pass. Replace with regex assertions (e.g. `expect(result).toMatch(/\d{1,2}:\d{2}/)`) to verify format structure. Also `formatSecs(-5)` at line 81-85 only checks `typeof result === 'string'` — the function deterministically returns `'-1m'` (m = Math.floor(-5/60) = -1, s > 0 is false → `${m}m`) so assert exactly `expect(formatSecs(-5)).toBe('-1m')`.
+
+**Prior findings resolved:**
+- Gate 3 (`lib/format.ts` test coverage): `lib/format.test.ts` now covers all 8 exported functions with 41 tests; suite grew from 189 → 230. Finding fully closed.
+
+**Observations:**
+- Gate 1 (Spec Compliance): PASS — `lib/types.ts` extracts 13 types; `AnsiStyle` correctly remains in `lib/ansi.ts` (already extracted prior iteration). `FileChange`, `QACoverageFeature`, `CostSessionResponse` included as auxiliary types. AppView.tsx imports and re-exports all 13 for backward compat.
+- Gate 3 (Coverage): PASS — 41 tests across all 8 functions; parseDurationSeconds/formatSecs/relativeTime/formatTokenCount/formatDuration have exact-value assertions; well above 90% threshold.
+- Gate 4 (Code Quality): PASS — `lib/types.ts` is clean (113 LOC); AppView.tsx import/re-export block is concise; no dead code.
+- Gate 5 (Integration Sanity): PASS — 230/230 dashboard tests pass (verified live); 25 CLI failures pre-existing; TS clean.
+- Gate 6 (Proof Verification): PASS — purely internal changes (test file + type extraction); skipping proof is correct.
+- Gate 7 (Runtime Layout): SKIP — no UI changes.
+- Gate 8 (Version Compliance): PASS — no dependency changes.
+- Gate 9 (Documentation Freshness): PASS — internal refactor; no user-facing behavior changed.
+
+---
