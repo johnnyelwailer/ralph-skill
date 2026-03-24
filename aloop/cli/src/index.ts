@@ -189,7 +189,7 @@ program
 program.addCommand(ghCommand, { hidden: true });
 
 program
-  .command('help')
+  .command('help', { hidden: true })
   .description('Show help information')
   .option('--all', 'Show all commands including hidden ones')
   .action((opts: { all?: boolean }) => {

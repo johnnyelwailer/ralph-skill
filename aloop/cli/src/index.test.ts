@@ -54,6 +54,7 @@ test('index CLI default help shows only 6 user-facing commands', async () => {
   assert.doesNotMatch(result.stdout, /^\s+devcontainer-verify\b/m);
   assert.doesNotMatch(result.stdout, /^\s+active\b/m);
   assert.doesNotMatch(result.stdout, /^\s+update\b/m);
+  assert.doesNotMatch(result.stdout, /^\s+help\b/m);
 });
 
 test('aloop help --all shows all commands including hidden ones', async () => {
