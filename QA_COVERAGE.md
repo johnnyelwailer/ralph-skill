@@ -13,6 +13,6 @@
 | updateBlockerSignatures unit tests | 2026-03-24 | c68cb2d7 | PASS | 4 subtests pass — add, increment, remove on merge, retain |
 | computeOverallHealth unit tests | 2026-03-24 | c68cb2d7 | PASS | 4 subtests pass — healthy/degraded/critical thresholds |
 | runOrchestratorScanPass blocker tracking unit tests | 2026-03-24 | c68cb2d7 | PASS | blocker_signatures written; diagnostics.json at threshold; queue/000-critical-alert.md asserted |
-| diagnostics.json field names (spec compliance) | 2026-03-24 | c68cb2d7 | OPEN | Fix pending in TODO.md — spec requires type/message/first_seen_iteration/current_iteration/severity/suggested_fix; not yet applied |
+| diagnostics.json field names (spec compliance) | 2026-03-24 | 6fd3c99f | PASS | Fix applied in 6fd3c99f; unit test "writes diagnostics.json after blocker reaches persistence threshold" passes; tsc --noEmit exit 0 |
 | diagnostics.json CLI-level write | never | — | — | No CLI path to trigger scan pass without GitHub; covered by unit tests |
 | ALERT.md CLI-level write | never | — | — | No CLI path to trigger scan pass without GitHub; covered by unit tests |

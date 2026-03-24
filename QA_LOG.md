@@ -264,3 +264,75 @@ aloop process-requests --session-dir $SESSION_DIR5
 rm -rf /tmp/qa-test-tWDap4 /tmp/qa-test-jrL32Q /tmp/qa-session-*
 rm -rf /tmp/aloop-test-install-kjNr48
 ```
+
+## QA Session — 2026-03-24 (iteration 6 / diagnostics-schema-fix)
+
+### Binary Under Test
+- Installed path: `/tmp/aloop-test-install-KIzniC/bin/aloop` (cleaned up after session)
+- Version: `1.0.0`
+- Built from: commit `6fd3c99f` (branch `aloop/issue-180`)
+- Install method: `npm run build:server && ... && node scripts/test-install.mjs --keep`
+
+### Target Selection
+- **diagnostics.json field names (spec compliance)**: selected because status was OPEN in QA_COVERAGE.md from prior session; fix applied in commit `6fd3c99f`
+
+### Test Environment
+- No temp project dirs needed (diagnostics.json CLI path unavailable without GitHub; covered by unit tests)
+- Features tested: 1 (with full regression check)
+
+### Results
+- PASS: diagnostics.json field names — unit test "writes diagnostics.json after blocker reaches persistence threshold" passes (test 65, subtest 2); fix aligned to SPEC-ADDENDUM.md:1053 schema `{type, message, first_seen_iteration, current_iteration, severity, suggested_fix}`
+- PASS: TypeScript type check (`tsc --noEmit`) — zero errors
+- PASS: process-requests unit tests — 8/8 pass, 0 fail
+- PASS: Issue #180 unit tests (orchestrate.test.ts 61–65) — all green
+- NOTE: 25 pre-existing failures in orchestrate.test.ts full suite (confirmed same count on master; not related to issue #180)
+
+### Bugs Filed
+- None — diagnostics.json fix verified PASS; no new issues found
+
+### Notes
+1. The 25 failures in orchestrate.test.ts full run (tests 7, 14, 21, 23, 24, 27, 37, 38, 42, 48, 52, and their subtests) are pre-existing and also fail on master. Not regressions from issue #180.
+2. No CLI path exists to trigger `runOrchestratorScanPass` without live GitHub; unit tests remain the authoritative verification for diagnostics.json schema.
+
+### Command Transcript
+
+```
+# Build and install
+cd aloop/cli
+npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin && npm run build:agents
+node scripts/test-install.mjs --keep
+# → /tmp/aloop-test-install-KIzniC/bin/aloop  (version 1.0.0)
+
+# TypeScript type check
+npx tsc --noEmit
+# → (no output) exit 0 — PASS
+
+# Unit tests — issue #180 specific (tests 61–65)
+npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep -E "^(ok|not ok)" | grep -E " 6[0-9] "
+# → ok 61 - computeBlockerHash
+# → ok 62 - detectCurrentBlockers
+# → ok 63 - updateBlockerSignatures
+# → ok 64 - computeOverallHealth
+# → ok 65 - runOrchestratorScanPass blocker tracking
+
+# diagnostics.json subtest focused run
+npx tsx --test --test-name-pattern "writes diagnostics.json" src/commands/orchestrate.test.ts 2>&1 | grep -E "^(ok|not ok|# pass|# fail)"
+# → ok 1 - runOrchestratorScanPass blocker tracking
+# → # pass 1
+# → # fail 0
+
+# Full suite regression check
+npx tsx --test src/commands/orchestrate.test.ts 2>&1 | tail -5
+# → # tests 364
+# → # pass 339
+# → # fail 25  (same as master baseline — pre-existing)
+
+# process-requests unit tests
+npx tsx --test src/commands/process-requests.test.ts 2>&1 | grep -E "^(ok|not ok|# pass|# fail)"
+# → ok 1 - collectUnrecognizedRequestFiles
+# → # pass 8
+# → # fail 0
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-KIzniC
+```
