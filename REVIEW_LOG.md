@@ -113,3 +113,25 @@ Tests at `orchestrate.test.ts:6385–6392` assert all 6 fields by name. `message
 - Gate 6: N/A — purely internal field-name change; no CLI trigger path without live GitHub; no proof manifest correct.
 
 ---
+
+## Review — 2026-03-24 — commit 9f2f3ef3..be8f3c13
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/commands/process-requests.test.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`
+
+**What was reviewed:** 2 build commits since last review (`7b536adc`, `2cd60165`) + 1 QA commit (`be8f3c13`).
+
+### Gate 2 FAIL — Phase 1f wiring untested at the `processRequestsCommand` level
+
+`process-requests.test.ts:116–165` (describe "process-requests Phase 1f") calls `processAgentRequests` directly from `lib/requests.ts`, not `processRequestsCommand`. The Phase 1f block that was added to `processRequestsCommand` (lines ~305–321 of `process-requests.ts`) is not exercised by any test. `processRequestsCommand` is never called in the test suite. If the Phase 1f block was deleted or its `aloopDir` argument was wrong, the test would still pass. Fix: call `processRequestsCommand` in a test with a `post_comment` request file in `sessionDir/requests/` and assert it is moved to `processed/`.
+
+### Passing notes
+
+- Gate 1: `stuck: true` set correctly inside `if (persistent.length > 0)` block, after `diagnostics.json` is written — matches spec §1049. Test at `orchestrate.test.ts` verifies the persisted state file contains `stuck: true` with `assert.equal`.
+- Gate 1: Phase 1f wiring uses `aloopDir: sessionDir` so `requestsDir = sessionDir/requests/` — consistent with all other phases in `processRequestsCommand`. Spec §1092 requirement is architecturally met.
+- Gate 2: `stuck: true` test uses `assert.equal(persisted.stuck, true)` — exact-value, not truthy check. Would catch `stuck: false` or `stuck: undefined`.
+- Gate 4: No dead code, no unused imports in either commit. Phase 1f block is clean.
+- Gate 5: `tsc --noEmit` clean. 1023 pass / 26 fail — 26 are same pre-existing failures; no regressions.
+- Gates 6–9: N/A — internal logic + test changes only.
+
+---
