@@ -5452,6 +5452,139 @@ export function computeOverallHealth(
   return 'degraded';
 }
 
+// --- Self-healing for known blockers ---
+
+/** Result of a single self-heal attempt. */
+export interface SelfHealResult {
+  blocker_hash: string;
+  blocker_type: BlockerType;
+  action: string;
+  success: boolean;
+  detail: string;
+}
+
+/**
+ * Attempt to self-heal known blocker types:
+ *  - missing GitHub labels  → create via `gh label create`
+ *  - missing config.json    → derive from meta.json + orchestrator.json
+ *  - permission errors      → extract and log the specific permission needed
+ *
+ * All actions are best-effort; failures are logged but never throw.
+ */
+export async function selfHealKnownBlockers(
+  persistent: BlockerSignature[],
+  sessionDir: string,
+  state: OrchestratorState,
+  deps: ScanLoopDeps,
+): Promise<SelfHealResult[]> {
+  const results: SelfHealResult[] = [];
+
+  for (const blocker of persistent) {
+    // (a) Missing GitHub labels — detected via dispatch_failure or ci_failure
+    //     that mention label-related errors
+    if (
+      (blocker.type === 'dispatch_failure' || blocker.type === 'ci_failure') &&
+      /label/i.test(blocker.description) &&
+      deps.execGh
+    ) {
+      const labelMatch = blocker.description.match(/label[:\s]+"?([^",\s]+)"?/i)
+        ?? blocker.description.match(/label[:\s]+(\S+)/i);
+      if (labelMatch) {
+        const label = labelMatch[1].replace(/["']/g, '');
+        const repo = state.filter_repo;
+        if (repo) {
+          try {
+            await deps.execGh(['label', 'create', label, '--repo', repo, '--force']);
+            results.push({
+              blocker_hash: blocker.hash,
+              blocker_type: blocker.type,
+              action: 'create_github_label',
+              success: true,
+              detail: `Created label "${label}" on ${repo}`,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            results.push({
+              blocker_hash: blocker.hash,
+              blocker_type: blocker.type,
+              action: 'create_github_label',
+              success: false,
+              detail: `Failed to create label "${label}": ${msg}`,
+            });
+
+            // (c) Permission errors — log the specific permission needed
+            if (/permission|403|forbidden|unauthorized/i.test(msg)) {
+              results.push({
+                blocker_hash: blocker.hash,
+                blocker_type: blocker.type,
+                action: 'log_permission_error',
+                success: false,
+                detail: `Permission denied: ensure the GitHub token has "repo" (or "Issues: write") scope to create labels.`,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // (b) Missing config.json — derive from meta.json + orchestrator.json
+    if (blocker.type === 'dispatch_failure' || blocker.type === 'child_stuck') {
+      const configPath = path.join(sessionDir, 'config.json');
+      if (!deps.existsSync(configPath)) {
+        try {
+          let repoValue: string | null = state.filter_repo ?? null;
+          // Try to read repo from meta.json if state doesn't have it
+          const metaPath = path.join(sessionDir, 'meta.json');
+          if (!repoValue && deps.existsSync(metaPath)) {
+            try {
+              const metaRaw = await deps.readFile(metaPath, 'utf8');
+              const meta = JSON.parse(metaRaw);
+              repoValue = meta.repo ?? meta.project_name ?? null;
+            } catch {
+              // meta.json may be missing or malformed — non-fatal
+            }
+          }
+
+          const configJson = {
+            repo: repoValue,
+            role: 'orchestrator',
+          };
+          await deps.writeFile(configPath, `${JSON.stringify(configJson, null, 2)}\n`, 'utf8');
+          results.push({
+            blocker_hash: blocker.hash,
+            blocker_type: blocker.type,
+            action: 'derive_config_json',
+            success: true,
+            detail: `Derived config.json from state (repo: ${repoValue ?? 'unknown'})`,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          results.push({
+            blocker_hash: blocker.hash,
+            blocker_type: blocker.type,
+            action: 'derive_config_json',
+            success: false,
+            detail: `Failed to derive config.json: ${msg}`,
+          });
+        }
+      }
+    }
+
+    // (c) Permission errors — standalone detection on any blocker type
+    if (/permission denied|403|forbidden|unauthorized|EACCES/i.test(blocker.description)) {
+      results.push({
+        blocker_hash: blocker.hash,
+        blocker_type: blocker.type,
+        action: 'log_permission_error',
+        success: false,
+        detail: `Permission issue detected for issue #${blocker.issue_number}: verify GitHub token scopes (needs "repo" or "Issues: write" scope).`,
+      });
+    }
+  }
+
+  return results;
+}
+
 export async function runOrchestratorScanPass(
   stateFile: string,
   sessionDir: string,
@@ -5847,6 +5980,25 @@ export async function runOrchestratorScanPass(
 
     if (persistent.length > 0) {
       const health = computeOverallHealth(state.blocker_signatures, BLOCKER_PERSISTENCE_THRESHOLD);
+
+      // 7.6. Self-heal known blockers before writing diagnostics
+      try {
+        const healResults = await selfHealKnownBlockers(persistent, sessionDir, state, deps);
+        for (const hr of healResults) {
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'self_heal_attempt',
+            iteration,
+            blocker_hash: hr.blocker_hash,
+            blocker_type: hr.blocker_type,
+            action: hr.action,
+            success: hr.success,
+            detail: hr.detail,
+          });
+        }
+      } catch {
+        // Self-heal is best-effort — never fail the scan pass
+      }
 
       const diagnostics = {
         generated_at: deps.now().toISOString(),

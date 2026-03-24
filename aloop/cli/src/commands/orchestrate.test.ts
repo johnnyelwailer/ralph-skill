@@ -73,9 +73,11 @@ import {
   detectCurrentBlockers,
   updateBlockerSignatures,
   computeOverallHealth,
+  selfHealKnownBlockers,
   BLOCKER_PERSISTENCE_THRESHOLD,
   type BlockerSignature,
   type BlockerType,
+  type SelfHealResult,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -6553,5 +6555,159 @@ describe('runOrchestratorScanPass blocker tracking', () => {
     const diagnostics = JSON.parse(diagnosticsRaw);
     assert.equal(diagnostics.blockers.length, 1);
     assert.equal(diagnostics.blockers[0].severity, 'critical');
+  });
+});
+
+describe('selfHealKnownBlockers', () => {
+  it('creates GitHub label when blocker description mentions a label', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeScanState({ filter_repo: 'org/repo' });
+    const deps = createMockScanDeps({
+      execGh: async (args: string[]) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
+    });
+
+    const blockers: BlockerSignature[] = [{
+      hash: 'ci_failure:42:label "ci-pass" not found',
+      type: 'ci_failure',
+      issue_number: 42,
+      description: 'Failed to apply label "ci-pass" — label not found',
+      first_seen_iteration: 1,
+      occurrence_count: 5,
+    }];
+
+    const results = await selfHealKnownBlockers(blockers, '/session', state, deps);
+    const labelAction = results.find((r) => r.action === 'create_github_label');
+    assert.ok(labelAction, 'should attempt to create label');
+    assert.equal(labelAction!.success, true);
+    assert.ok(ghCalls.some((args) => args.includes('label') && args.includes('create') && args.includes('ci-pass')));
+  });
+
+  it('logs permission error when gh label create fails with 403', async () => {
+    const state = makeScanState({ filter_repo: 'org/repo' });
+    const deps = createMockScanDeps({
+      execGh: async () => {
+        throw new Error('HTTP 403: Forbidden — token lacks scope');
+      },
+    });
+
+    const blockers: BlockerSignature[] = [{
+      hash: 'ci_failure:42:label "ci-pass" not found',
+      type: 'ci_failure',
+      issue_number: 42,
+      description: 'Failed to apply label "ci-pass" — label not found',
+      first_seen_iteration: 1,
+      occurrence_count: 5,
+    }];
+
+    const results = await selfHealKnownBlockers(blockers, '/session', state, deps);
+    assert.ok(results.some((r) => r.action === 'create_github_label' && r.success === false));
+    assert.ok(results.some((r) => r.action === 'log_permission_error' && r.detail.includes('repo')));
+  });
+
+  it('derives config.json from meta.json when missing', async () => {
+    const state = makeScanState({ filter_repo: null });
+    const deps = createMockScanDeps();
+    deps.files['/session/meta.json'] = JSON.stringify({ repo: 'org/repo', project_name: 'myapp' });
+
+    const blockers: BlockerSignature[] = [{
+      hash: 'child_stuck:1:child loop failed',
+      type: 'child_stuck',
+      issue_number: 1,
+      description: 'Issue #1 child loop failed',
+      first_seen_iteration: 1,
+      occurrence_count: 5,
+    }];
+
+    const results = await selfHealKnownBlockers(blockers, '/session', state, deps);
+    const configAction = results.find((r) => r.action === 'derive_config_json');
+    assert.ok(configAction, 'should derive config.json');
+    assert.equal(configAction!.success, true);
+    const config = JSON.parse(deps.files['/session/config.json']);
+    assert.equal(config.repo, 'org/repo');
+    assert.equal(config.role, 'orchestrator');
+  });
+
+  it('does not overwrite existing config.json', async () => {
+    const state = makeScanState({ filter_repo: 'org/repo' });
+    const deps = createMockScanDeps();
+    deps.files['/session/config.json'] = JSON.stringify({ repo: 'existing/repo', role: 'orchestrator' });
+
+    const blockers: BlockerSignature[] = [{
+      hash: 'child_stuck:1:child loop failed',
+      type: 'child_stuck',
+      issue_number: 1,
+      description: 'Issue #1 child loop failed',
+      first_seen_iteration: 1,
+      occurrence_count: 5,
+    }];
+
+    const results = await selfHealKnownBlockers(blockers, '/session', state, deps);
+    assert.ok(!results.some((r) => r.action === 'derive_config_json'), 'should not derive config if it already exists');
+    assert.equal(deps.files['/session/config.json'], JSON.stringify({ repo: 'existing/repo', role: 'orchestrator' }));
+  });
+
+  it('logs permission error for standalone permission-denied blocker', async () => {
+    const state = makeScanState();
+    const deps = createMockScanDeps();
+
+    const blockers: BlockerSignature[] = [{
+      hash: 'dispatch_failure:3:permission denied',
+      type: 'dispatch_failure',
+      issue_number: 3,
+      description: 'Dispatch failed: EACCES permission denied writing to worktree',
+      first_seen_iteration: 1,
+      occurrence_count: 5,
+    }];
+
+    const results = await selfHealKnownBlockers(blockers, '/session', state, deps);
+    const permLog = results.find((r) => r.action === 'log_permission_error');
+    assert.ok(permLog, 'should log permission error');
+    assert.ok(permLog!.detail.includes('repo') || permLog!.detail.includes('Issues'));
+  });
+
+  it('returns empty array when no blockers match healable patterns', async () => {
+    const state = makeScanState();
+    const deps = createMockScanDeps();
+
+    const blockers: BlockerSignature[] = [{
+      hash: 'pr_conflict:5:3 rebase attempts',
+      type: 'pr_conflict',
+      issue_number: 5,
+      description: 'Issue #5 has 3 rebase attempts — possible merge conflict',
+      first_seen_iteration: 1,
+      occurrence_count: 5,
+    }];
+
+    const results = await selfHealKnownBlockers(blockers, '/session', state, deps);
+    assert.equal(results.length, 0, 'pr_conflict with no label/config issues should produce no heal actions');
+  });
+
+  it('logs self_heal_attempt events when called from scan pass', async () => {
+    const desc = 'Issue #1 child loop failed';
+    const hash = computeBlockerHash('child_stuck', 1, desc);
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, state: 'failed' })],
+      blocker_signatures: [{
+        hash,
+        type: 'child_stuck',
+        issue_number: 1,
+        description: desc,
+        first_seen_iteration: 1,
+        occurrence_count: BLOCKER_PERSISTENCE_THRESHOLD - 1,
+      }],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, BLOCKER_PERSISTENCE_THRESHOLD, deps,
+    );
+
+    const healLogs = deps.logEntries.filter((e) => e.event === 'self_heal_attempt');
+    assert.ok(healLogs.length > 0, 'should log self_heal_attempt events');
   });
 });
