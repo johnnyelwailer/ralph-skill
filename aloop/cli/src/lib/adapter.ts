@@ -6,12 +6,11 @@
  *   - LocalAdapter: file-based (.aloop/issues/) + git branches, no remote needed
  */
 
-import { existsSync } from 'node:fs';
 import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { GhExecFn, GhExecResult, BulkIssueState, BulkFetchResult } from './github-monitor.js';
-import { parseRepoSlug, fetchBulkIssueState } from './github-monitor.js';
+import { fetchBulkIssueState } from './github-monitor.js';
 
 // ----- Supporting types -----
 
@@ -391,7 +390,6 @@ export class LocalAdapter implements OrchestratorAdapter {
 
   private async nextIssueNumber(): Promise<number> {
     await this.ensureDirs();
-    if (!existsSync(this.issuesDir)) return 1;
     const files = await readdir(this.issuesDir);
     const numbers = files
       .filter((f) => /^\d+\.json$/.test(f))
@@ -401,7 +399,6 @@ export class LocalAdapter implements OrchestratorAdapter {
 
   private async nextPrNumber(): Promise<number> {
     await this.ensureDirs();
-    if (!existsSync(this.prsDir)) return 1;
     const files = await readdir(this.prsDir);
     const numbers = files
       .filter((f) => /^\d+\.json$/.test(f))
