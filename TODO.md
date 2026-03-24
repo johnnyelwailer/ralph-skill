@@ -6,7 +6,7 @@
 
 - [x] [review/Gate 1 + qa/P1] Hide "Collapse sidebar" button at desktop breakpoint: `Sidebar` component (AppView.tsx:722) needs an `isDesktop` prop; the `<button aria-label="Collapse sidebar">` at line 938-940 should render only when `!isDesktop`. At desktop, sidebar is always-visible per spec, so the collapse affordance is misleading and `onToggle=toggleSidebar` is intentionally a no-op. Fix: add `isDesktop: boolean` to `Sidebar` props, pass `isDesktop` from the call site at AppView.tsx:2466, and guard the button with `{!isDesktop && <Tooltip>...</Tooltip>}`. This resolves both the review finding and the qa/P1 Ctrl+B "no effect" report. (priority: high)
 
-- [ ] [review/Gate 6] Generate proof screenshots for UI-touching build iterations: Run proof agent to capture Playwright screenshots at mobile (390×844), tablet (768×1024), and desktop (1280×800) viewports demonstrating (a) hamburger menu visible on mobile, (b) sidebar drawer open on mobile, (c) swipe gesture opens sidebar, (d) desktop layout unchanged. Produce `proof-manifest.json` at repo root with `artifacts` array referencing each screenshot. The existing proof-manifest.json covers only iteration 1 at mobile; iters 2 (useBreakpoint hook), 5 (ResponsiveLayout wrapper), and 11 (TS fixes + swipe) need coverage. (priority: high)
+- [x] [review/Gate 6] Generate proof screenshots for UI-touching build iterations: Playwright screenshots captured at mobile (390×844), tablet (768×1024), and desktop (1280×800) viewports demonstrating hamburger visibility, sidebar drawer open, swipe gesture, and desktop layout. `proof-manifest.json` updated with artifacts referencing iterations 1, 2, 5, 11, and 15.
 
 ### Completed
 
@@ -22,3 +22,5 @@
 - [x] Mobile sidebar overlay (hamburger tap opens drawer + backdrop)
 - [x] TypeScript clean (tsc --noEmit)
 - [x] All 147 unit tests pass
+- [x] Playwright proof tests — 5 tests covering mobile hamburger, sidebar drawer, swipe gesture, tablet layout, desktop layout
+- [x] proof-manifest.json updated with 6 artifacts across iterations 1–15
