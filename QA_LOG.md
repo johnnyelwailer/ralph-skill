@@ -195,3 +195,84 @@ $ node qa-storybook-http.cjs  # Playwright screenshots via HTTP
 ### Cleanup
 - Removed Storybook build: `rm -rf /tmp/storybook-qa-build`
 - Removed test install prefix (auto-cleaned by test-install)
+
+---
+
+## QA Session — 2026-03-24 (iteration 3)
+
+### Binary Under Test
+- Not applicable (testing dashboard component stories and docs, not aloop CLI binary)
+- Dashboard dir: `aloop/cli/dashboard/`
+- Commit under test: `6227a03c`
+
+### Test Environment
+- Worktree: `/home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-183-20260324-085402/worktree`
+- Storybook served via: `python3 -m http.server 8787 --directory /tmp/qa-storybook-iter3`
+- Playwright version: 1.58.2
+- Features tested: 5 (Gate 4, Gate 8, Gate 9 docs; unit tests; Storybook visual stories; Gate 6 re-test)
+
+### Results
+- PASS: REVIEW_LOG.md Gate 4 (b0cf335a PASS entry prepended)
+- PASS: VERSIONS.md Gate 8 (`@storybook/* | 10.x`)
+- PASS: SPEC-ADDENDUM.md Gate 9 (Storybook 10 references)
+- PASS: Unit test suite (151/151 tests)
+- PASS: Storybook build (60 stories, all key component stories render correctly via HTTP)
+  - ProviderHealth/AllHealthy: green dots, "healthy" for claude/gemini/opencode
+  - ProviderHealth/AllFailed: red X icons, "failed" for claude/gemini
+  - CostDisplay/NoBudgetCap: "SPEND $1.23" card, no budget bar
+  - CostDisplay/WithBudgetCritical: "$9.50 / $10.00", red bar at 95%, warnings shown
+  - ArtifactViewer/SingleImage: "1 artifact", screenshot.png, description shown
+  - ArtifactViewer/WithDiffBadgeCritical: "1 artifact" with critical red badge
+- FAIL: Proof screenshots (Gate 6 re-test) — still unfixed (P1 bug still open in TODO.md)
+
+### Bugs Filed
+- None new — proof screenshots P1 already tracked in TODO.md from iter 2 (still failing at iter 3)
+
+### Command Transcript
+
+```
+$ grep -n "b0cf335a" REVIEW_LOG.md
+# exit: 1 (hash not mentioned by name, but PASS entry is first entry in file — verified by diff of 6227a03c)
+
+$ git diff 6227a03c~1 6227a03c -- REVIEW_LOG.md
+# Shows b0cf335a PASS entry prepended (2026-03-21 PASS, commit 3492a61..a182934)
+# exit: 0
+
+$ grep -n "storybook" VERSIONS.md -i
+# 71: | @storybook/*  | 10.x |
+# exit: 0
+
+$ grep -n -i "storybook" SPEC-ADDENDUM.md | grep -i "10\|storybook 1"
+# 139: Storybook 10 with @storybook/react-vite
+# 176: Storybook 10 is configured
+# exit: 0
+
+$ cd aloop/cli/dashboard && npm run test -- --run
+# Test Files: 19 passed (19), Tests: 151 passed (151), Duration: 2.09s
+# exit: 0
+
+$ cd aloop/cli/dashboard && npx storybook build --output-dir /tmp/qa-storybook-iter3
+# Storybook build completed successfully
+# exit: 0
+
+$ curl -s http://localhost:8787/index.json | python3 -c "..."
+# Total stories: 60 (ArtifactViewer x9, ProviderHealth x5, CostDisplay x7, UI stories x39)
+
+# Playwright visual screenshots via HTTP:
+# health-providerhealth--all-healthy: "claude healthy just now / gemini healthy 5m ago / opencode healthy 2h ago"
+# health-providerhealth--all-failed: "claude failed 5m ago / gemini failed 2h ago" (red X icons)
+# progress-costdisplay--no-budget-cap: "SPEND $1.23" card
+# progress-costdisplay--with-budget-critical: "$9.50 / $10.00", red progress bar 95%, "Warnings: 70%/90% · Pause: 95%"
+# artifacts-artifactviewer--single-image: "1 artifact / screenshot.png / Main page screenshot"
+# artifacts-artifactviewer--with-diff-badge-critical: "1 artifact / screenshot.png (red badge) / Main page screenshot"
+
+$ md5sum proof-artifacts/*.png
+# 8 of 9 still 99b13def98aa849306b4f00e23948c59 (Not found pages)
+# dashboard-mobile-390x844.png: f5f57469cddc37df36e82a40382084a2 (unique)
+# FAIL: proof-artifacts/ not fixed since iter 2
+```
+
+### Cleanup
+- Storybook build: `rm -rf /tmp/qa-storybook-iter3`
+- HTTP server killed
+- Playwright test script removed
