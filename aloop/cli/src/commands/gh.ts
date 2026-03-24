@@ -1273,10 +1273,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 const ANSI_RESET = '\x1B[0m';
 
-function colorizeStatus(status: string, useTTY: boolean): string {
-  if (!useTTY) return status;
+function colorizeStatus(status: string, useTTY: boolean, padLen?: number): string {
+  const padded = padLen ? status.padEnd(padLen) : status;
+  if (!useTTY) return padded;
   const color = STATUS_COLORS[status];
-  return color ? `${color}${status}${ANSI_RESET}` : status;
+  return color ? `${color}${padded}${ANSI_RESET}` : padded;
 }
 
 function truncateTitle(title: string | null | undefined, maxLen: number): string {
@@ -1304,9 +1305,7 @@ function formatGhStatusRows(state: GhWatchState, sessionsById: Map<string, Sessi
     const feedbackCell = entry.feedback_iteration > 0
       ? `${entry.feedback_iteration}/${entry.max_feedback_iterations}`
       : '—';
-    const statusDisplay = isTTY
-      ? `${STATUS_COLORS[entry.status] ?? ''}${entry.status.padEnd(11)}${STATUS_COLORS[entry.status] ? ANSI_RESET : ''}`
-      : entry.status.padEnd(11);
+    const statusDisplay = colorizeStatus(entry.status, isTTY, 11);
     lines.push(`${issueCell} ${titleCell} ${branch.padEnd(20)} ${prRef.padEnd(5)} ${statusDisplay} ${iteration.padEnd(9)} ${feedbackCell}`);
   }
   return lines.join('\n');
