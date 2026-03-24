@@ -21,10 +21,10 @@
   3. `LocalAdapter.getPrStatus` — git success vs. failure paths untested; verify CLEAN returned on success, UNKNOWN on error
   New module threshold is 90% branch coverage — these omissions push adapter.ts below that. (priority: high)
 
-- [ ] [review] Gate 4: Dead code in `adapter.ts`:
+- [x] [review] Gate 4: Dead code in `adapter.ts`:
   1. `parseRepoSlug` is imported at line 14 but never called anywhere in the file — remove the unused import
   2. Lines 394 and 403-404: `if (!existsSync(this.issuesDir)) return 1` is unreachable — `ensureDirs()` on the line above creates the directory, making `existsSync` always true — remove the dead checks (priority: medium)
-  Still present at iter 2 (2026-03-24, commit a03fb518). Still present at iter 3 (2026-03-24, commit 03f10536).
+  Fixed at 2026-03-24.
 
 - [x] [review] Gate 2/3: `applyEstimateResults` in `orchestrate.ts` has untested new branch:
   - Line 2432: `if (issue.status === 'Needs refinement' || issue.status === 'Needs decomposition')` — the `Needs decomposition` arm was added in commit a03fb518 but no `applyEstimateResults` test uses `status: 'Needs decomposition'` as input
