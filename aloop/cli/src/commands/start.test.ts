@@ -2409,3 +2409,280 @@ test('resolveStartDeps falls back to defaultDeps for non-object', () => {
   const result = resolveStartDeps('not-an-object');
   assert.ok(typeof result.discoverWorkspace === 'function');
 });
+
+test('startCommandWithDeps writes engine field in meta.json for loop sessions', async () => {
+  const fixture = await setupWorkspace('aloop-start-engine-loop-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\nmode: 'plan-build-review'\non_start:\n  monitor: 'none'\n",
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 1001, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  const meta = JSON.parse(await readFile(path.join(result.session_dir, 'meta.json'), 'utf8')) as Record<string, unknown>;
+  assert.equal(meta.engine, 'loop');
+  assert.equal(meta.mode, 'plan-build-review');
+});
+
+test('startCommandWithDeps resume detects orchestrator session via mode field and delegates to orchestrator launch', async () => {
+  const fixture = await setupWorkspace('aloop-start-resume-orch-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'none'\n",
+    'utf8',
+  );
+
+  const existingSessionId = 'orchestrator-20260301-100000';
+  const sessionsRoot = path.join(fixture.homeDir, '.aloop', 'sessions');
+  const existingSessionDir = path.join(sessionsRoot, existingSessionId);
+  const existingPromptsDir = path.join(existingSessionDir, 'prompts');
+
+  await mkdir(existingSessionDir, { recursive: true });
+  await mkdir(existingPromptsDir, { recursive: true });
+
+  // Write orchestrator state file (required for orchestrator resume)
+  await writeFile(path.join(existingSessionDir, 'orchestrator.json'), JSON.stringify({
+    spec_file: 'SPEC.md',
+    trunk_branch: 'agent/trunk',
+    concurrency_cap: 3,
+    current_wave: 1,
+    plan_only: false,
+    issues: [],
+    completed_waves: [],
+    filter_issues: null,
+    filter_label: null,
+    filter_repo: null,
+    budget_cap: null,
+    created_at: '2026-03-01T10:00:00.000Z',
+    updated_at: '2026-03-01T10:00:00.000Z',
+  }), 'utf8');
+
+  // Write meta with mode: 'orchestrate' (no engine field — legacy session)
+  const meta = {
+    session_id: existingSessionId,
+    session_dir: existingSessionDir,
+    project_root: fixture.projectRoot,
+    worktree: false,
+    worktree_path: null,
+    work_dir: fixture.projectRoot,
+    branch: null,
+    prompts_dir: existingPromptsDir,
+    provider: 'claude',
+    mode: 'orchestrate',
+    enabled_providers: ['claude'],
+    round_robin_order: ['claude'],
+    max_iterations: 999999,
+    max_stuck: 3,
+  };
+  await writeFile(path.join(existingSessionDir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
+
+  let orchestratorLaunchCalled = false;
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, launch: 'resume', sessionId: existingSessionId },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync,
+      spawn: (() => ({ pid: 7777, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+      launchOrchestrator: async (options) => {
+        orchestratorLaunchCalled = true;
+        assert.equal(options.sessionDir, existingSessionDir);
+        assert.equal(options.launchMode, 'resume');
+        return {
+          pid: 7777,
+          work_dir: fixture.projectRoot,
+          worktree: false,
+          worktree_path: null,
+          started_at: '2026-03-01T12:34:56.000Z',
+          warnings: [],
+        };
+      },
+    },
+  );
+
+  assert.equal(orchestratorLaunchCalled, true, 'orchestrator launch should be called for orchestrator session resume');
+  assert.equal(result.mode, 'orchestrate');
+  assert.equal(result.session_id, existingSessionId);
+  assert.equal(result.pid, 7777);
+  assert.equal(result.launch_mode, 'resume');
+});
+
+test('startCommandWithDeps resume detects orchestrator session via engine field', async () => {
+  const fixture = await setupWorkspace('aloop-start-resume-orch-engine-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'none'\n",
+    'utf8',
+  );
+
+  const existingSessionId = 'orchestrator-20260301-110000';
+  const sessionsRoot = path.join(fixture.homeDir, '.aloop', 'sessions');
+  const existingSessionDir = path.join(sessionsRoot, existingSessionId);
+  const existingPromptsDir = path.join(existingSessionDir, 'prompts');
+
+  await mkdir(existingSessionDir, { recursive: true });
+  await mkdir(existingPromptsDir, { recursive: true });
+
+  await writeFile(path.join(existingSessionDir, 'orchestrator.json'), JSON.stringify({
+    spec_file: 'SPEC.md',
+    trunk_branch: 'agent/trunk',
+    concurrency_cap: 3,
+    current_wave: 1,
+    plan_only: false,
+    issues: [],
+    completed_waves: [],
+    filter_issues: null,
+    filter_label: null,
+    filter_repo: null,
+    budget_cap: null,
+    created_at: '2026-03-01T10:00:00.000Z',
+    updated_at: '2026-03-01T10:00:00.000Z',
+  }), 'utf8');
+
+  // Write meta with engine: 'orchestrate' (new-style session)
+  const meta = {
+    session_id: existingSessionId,
+    session_dir: existingSessionDir,
+    project_root: fixture.projectRoot,
+    worktree: false,
+    worktree_path: null,
+    work_dir: fixture.projectRoot,
+    branch: null,
+    prompts_dir: existingPromptsDir,
+    provider: 'claude',
+    mode: 'plan-build-review',
+    engine: 'orchestrate',
+    enabled_providers: ['claude'],
+    round_robin_order: ['claude'],
+    max_iterations: 50,
+    max_stuck: 3,
+  };
+  await writeFile(path.join(existingSessionDir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
+
+  let orchestratorLaunchCalled = false;
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, launch: 'resume', sessionId: existingSessionId },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async () => undefined,
+      existsSync,
+      spawn: (() => ({ pid: 8888, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+      launchOrchestrator: async (options) => {
+        orchestratorLaunchCalled = true;
+        assert.equal(options.sessionDir, existingSessionDir);
+        assert.equal(options.launchMode, 'resume');
+        return {
+          pid: 8888,
+          work_dir: fixture.projectRoot,
+          worktree: false,
+          worktree_path: null,
+          started_at: '2026-03-01T12:34:56.000Z',
+          warnings: [],
+        };
+      },
+    },
+  );
+
+  assert.equal(orchestratorLaunchCalled, true, 'orchestrator launch should be called when engine field says orchestrate');
+  assert.equal(result.mode, 'orchestrate');
+  assert.equal(result.pid, 8888);
+});
+
+test('startCommandWithDeps resume errors for orchestrator session without state file', async () => {
+  const fixture = await setupWorkspace('aloop-start-resume-orch-nostate-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    "provider: 'claude'\non_start:\n  monitor: 'none'\n",
+    'utf8',
+  );
+
+  const existingSessionId = 'orchestrator-20260301-120000';
+  const sessionsRoot = path.join(fixture.homeDir, '.aloop', 'sessions');
+  const existingSessionDir = path.join(sessionsRoot, existingSessionId);
+  const existingPromptsDir = path.join(existingSessionDir, 'prompts');
+
+  await mkdir(existingSessionDir, { recursive: true });
+  await mkdir(existingPromptsDir, { recursive: true });
+
+  // Write meta with mode: 'orchestrate' but NO orchestrator.json state file
+  const meta = {
+    session_id: existingSessionId,
+    session_dir: existingSessionDir,
+    project_root: fixture.projectRoot,
+    worktree: false,
+    worktree_path: null,
+    work_dir: fixture.projectRoot,
+    branch: null,
+    prompts_dir: existingPromptsDir,
+    provider: 'claude',
+    mode: 'orchestrate',
+    enabled_providers: ['claude'],
+    round_robin_order: ['claude'],
+    max_iterations: 50,
+    max_stuck: 3,
+  };
+  await writeFile(path.join(existingSessionDir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, launch: 'resume', sessionId: existingSessionId },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync,
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date('2026-03-01T12:34:56.000Z'),
+        },
+      ),
+    /Orchestrator session state not found/,
+  );
+});

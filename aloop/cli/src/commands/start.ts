@@ -463,6 +463,7 @@ interface SessionMeta {
   prompts_dir: string;
   provider: string;
   mode: string;
+  engine?: 'loop' | 'orchestrate';
   enabled_providers: string[];
   round_robin_order: string[];
   max_iterations: number;
@@ -481,6 +482,10 @@ async function readSessionMeta(sessionDir: string, deps: StartDeps): Promise<Ses
   } catch {
     return null;
   }
+}
+
+function isOrchestratorSession(meta: SessionMeta): boolean {
+  return meta.engine === 'orchestrate' || meta.mode === 'orchestrate';
 }
 
 async function readActiveMap(activePath: string, deps: StartDeps): Promise<Record<string, unknown>> {
@@ -849,6 +854,49 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
       throw new Error(`Session meta.json not found or invalid for session: ${sessionId}.`);
     }
 
+    // Orchestrator session resume: delegate to orchestrator launch
+    if (isOrchestratorSession(existingMeta)) {
+      const orchStateFile = path.join(sessionDir, 'orchestrator.json');
+      if (!deps.existsSync(orchStateFile)) {
+        throw new Error(`Orchestrator session state not found: ${orchStateFile}. Cannot resume.`);
+      }
+
+      const orchPromptsDir = existingMeta.prompts_dir ?? path.join(sessionDir, 'prompts');
+      const runLaunchOrchestrator = deps.launchOrchestrator ?? ((launchOptions: LaunchOrchestratorOptions) => launchOrchestrator(launchOptions));
+      const launch = await runLaunchOrchestrator({
+        sessionDir,
+        promptsDir: orchPromptsDir,
+        projectRoot: existingMeta.project_root ?? discovery.project.root,
+        aloopRoot,
+        provider: existingMeta.provider ?? selectedProvider,
+        maxScans: existingMeta.max_iterations ?? maxIterations,
+        launchMode: 'resume',
+      });
+
+      return {
+        session_id: sessionId,
+        session_dir: sessionDir,
+        prompts_dir: orchPromptsDir,
+        work_dir: launch.work_dir,
+        worktree: launch.worktree,
+        worktree_path: launch.worktree_path,
+        branch: null,
+        provider: selectedProvider,
+        mode: 'orchestrate',
+        launch_mode: 'resume',
+        max_iterations: maxIterations,
+        max_stuck: maxStuck,
+        pid: launch.pid,
+        started_at: launch.started_at,
+        monitor_mode: 'none',
+        monitor_auto_open: false,
+        monitor_pid: null,
+        dashboard_url: null,
+        warnings: launch.warnings,
+      };
+    }
+
+    // Loop session resume
     promptsDir = existingMeta.prompts_dir ?? path.join(sessionDir, 'prompts');
     branchName = existingMeta.branch ?? null;
 
@@ -1034,6 +1082,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     project_hash: discovery.project.hash,
     provider: selectedProvider,
     mode: resolvedMode,
+    engine: 'loop',
     launch_mode: launchMode,
     max_iterations: maxIterations,
     max_stuck: maxStuck,
