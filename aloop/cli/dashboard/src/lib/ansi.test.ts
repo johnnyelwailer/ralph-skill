@@ -73,7 +73,7 @@ describe('parseAnsiSegments', () => {
     expect(segments[0]).toEqual({ text: 'a', style: {} });
     expect(segments[1].text).toBe('B');
     expect(segments[1].style.bold).toBe(true);
-    expect(segments[1].style.fg).toBeTruthy();
+    expect(segments[1].style.fg).toBe('187,0,0');
     expect(segments[2]).toEqual({ text: 'C', style: {} });
   });
 
@@ -112,12 +112,12 @@ describe('parseAnsiSegments', () => {
 
   it('handles 256-color foreground (38;5;N)', () => {
     const segments = parseAnsiSegments('\x1b[38;5;200mX\x1b[0m');
-    expect(segments[0].style.fg).toBeTruthy();
+    expect(segments[0].style.fg).toBe('255,0,215');
   });
 
   it('handles 256-color background (48;5;N)', () => {
     const segments = parseAnsiSegments('\x1b[48;5;100mX\x1b[0m');
-    expect(segments[0].style.bg).toBeTruthy();
+    expect(segments[0].style.bg).toBe('135,135,0');
   });
 
   it('ignores out-of-range 256-color index', () => {
@@ -142,8 +142,8 @@ describe('parseAnsiSegments', () => {
 
   it('handles unset fg (39) and bg (49)', () => {
     const segments = parseAnsiSegments('A\x1b[31;41mB\x1b[39;49mC\x1b[0m');
-    expect(segments[1].style.fg).toBeTruthy();
-    expect(segments[1].style.bg).toBeTruthy();
+    expect(segments[1].style.fg).toBe('187,0,0');
+    expect(segments[1].style.bg).toBe('187,0,0');
     expect(segments[2].style.fg).toBeUndefined();
     expect(segments[2].style.bg).toBeUndefined();
   });
@@ -169,8 +169,8 @@ describe('parseAnsiSegments', () => {
     expect(segments[1].style.faint).toBe(true);
     expect(segments[1].style.italic).toBe(true);
     expect(segments[1].style.underline).toBe(true);
-    expect(segments[1].style.fg).toBeTruthy();
-    expect(segments[1].style.bg).toBeTruthy();
+    expect(segments[1].style.fg).toBe('85,85,85');
+    expect(segments[1].style.bg).toBe('85,85,85');
   });
 });
 
