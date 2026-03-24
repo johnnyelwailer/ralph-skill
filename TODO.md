@@ -14,7 +14,7 @@ Migration order per spec: utilities → leaf components → composite components
 
 ### Up Next
 
-- [ ] Extract `lib/types.ts` — move shared TypeScript interfaces (`SessionSummary`, `LogEntry`, `IterationUsage`, `DashboardState`, `ArtifactEntry`, `ArtifactManifest`, `ManifestPayload`, `ConnectionStatus`, `AnsiStyle`, `QACoverageViewData`) from `AppView.tsx` into `lib/types.ts`; update all imports (priority: high, foundational — blocks all component extractions)
+- [x] Extract `lib/types.ts` — move shared TypeScript interfaces (`SessionSummary`, `LogEntry`, `IterationUsage`, `DashboardState`, `ArtifactEntry`, `ArtifactManifest`, `ManifestPayload`, `ConnectionStatus`, `AnsiStyle`, `QACoverageViewData`) from `AppView.tsx` into `lib/types.ts`; update all imports (priority: high, foundational — blocks all component extractions)
 
 - [ ] Extract `shared/ElapsedTimer.tsx` with test and stories — move `ElapsedTimer` component (AppView.tsx:491) into `components/shared/ElapsedTimer.tsx`; add `ElapsedTimer.test.tsx` and `ElapsedTimer.stories.tsx` (priority: high, leaf component)
 

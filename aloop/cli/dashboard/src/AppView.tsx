@@ -42,106 +42,18 @@ export {
 
 // ── Types ──
 
-type SessionStatus = Record<string, unknown>;
-
-interface ArtifactManifest { iteration: number; manifest: unknown; outputHeader?: string }
-
-interface DashboardState {
-  sessionDir: string;
-  workdir: string;
-  runtimeDir: string;
-  updatedAt: string;
-  status: SessionStatus | null;
-  log: string;
-  docs: Record<string, string>;
-  activeSessions: unknown[];
-  recentSessions: unknown[];
-  artifacts: ArtifactManifest[];
-  repoUrl: string | null;
-  meta: Record<string, unknown> | null;
-}
-
-interface SessionSummary {
-  id: string;
-  name: string;
-  projectName: string;
-  status: string;
-  phase: string;
-  elapsed: string;
-  iterations: string;
-  isActive: boolean;
-  branch: string;
-  startedAt: string;
-  endedAt: string;
-  pid: string;
-  provider: string;
-  workDir: string;
-  stuckCount: number;
-}
-
-export interface LogEntry {
-  timestamp: string;
-  phase: string;
-  event: string;
-  provider: string;
-  model: string;
-  duration: string;
-  message: string;
-  raw: string;
-  rawObj: Record<string, unknown> | null;
-  iteration: number | null;
-  dateKey: string;
-  isSuccess: boolean;
-  isError: boolean;
-  commitHash: string;
-  resultDetail: string;
-  filesChanged: FileChange[];
-  isSignificant: boolean;
-}
-
-interface FileChange {
-  path: string;
-  type: 'M' | 'A' | 'D' | 'R';
-  additions: number;
-  deletions: number;
-}
-
-export interface ArtifactEntry {
-  type: string;
-  path: string;
-  description: string;
-  metadata?: { baseline?: string; diff_percentage?: number };
-}
-
-export interface ManifestPayload {
-  iteration: number;
-  phase: string;
-  summary: string;
-  artifacts: ArtifactEntry[];
-  outputHeader?: string;
-}
-
-
-interface QACoverageFeature {
-  feature: string;
-  component: string;
-  last_tested: string;
-  commit: string;
-  status: 'PASS' | 'FAIL' | 'UNTESTED';
-  criteria_met: string;
-  notes: string;
-}
-
-interface QACoverageViewData {
-  percentage: number | null;
-  available: boolean;
-  features: QACoverageFeature[];
-}
-
-interface CostSessionResponse {
-  total_usd?: number | string;
-  error?: string;
-}
+import type {
+  SessionStatus, ArtifactManifest, DashboardState, SessionSummary,
+  FileChange, LogEntry, ArtifactEntry, ManifestPayload,
+  QACoverageFeature, QACoverageViewData, CostSessionResponse,
+  ConnectionStatus, IterationUsage,
+} from './lib/types';
+export type {
+  SessionStatus, ArtifactManifest, DashboardState, SessionSummary,
+  FileChange, LogEntry, ArtifactEntry, ManifestPayload,
+  QACoverageFeature, QACoverageViewData, CostSessionResponse,
+  ConnectionStatus, IterationUsage,
+} from './lib/types';
 
 // ── Helpers ──
 
@@ -312,8 +224,6 @@ function StatusDot({ status, className = '' }: { status: string; className?: str
   );
 }
 
-type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
-
 function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
   const Icon = status === 'connected' ? Zap : status === 'connecting' ? Loader2 : AlertTriangle;
   const color = status === 'connected' ? 'text-green-500' : status === 'connecting' ? 'text-yellow-500 animate-spin' : 'text-red-500';
@@ -349,13 +259,6 @@ function ElapsedTimer({ since }: { since: string }) {
 }
 
 // ── Token/cost usage helpers ──
-
-export interface IterationUsage {
-  tokens_input: number;
-  tokens_output: number;
-  tokens_cache_read: number;
-  cost_usd: number;
-}
 
 /** Extract token/cost usage from a log entry's rawObj. Returns null if no usage data. */
 export function extractIterationUsage(rawObj: Record<string, unknown> | null): IterationUsage | null {
