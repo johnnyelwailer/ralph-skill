@@ -276,3 +276,70 @@ $ md5sum proof-artifacts/*.png
 - Storybook build: `rm -rf /tmp/qa-storybook-iter3`
 - HTTP server killed
 - Playwright test script removed
+
+---
+
+## QA Session — 2026-03-24 (iteration 4)
+
+### Binary Under Test
+- Not applicable (testing dashboard component refactor, not aloop CLI binary)
+- Dashboard dir: `aloop/cli/dashboard/`
+- Commit under test: `24974eb2` (refactor: extract lib/ansi.ts from AppView.tsx)
+
+### Test Environment
+- Worktree: `/home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-183-20260324-085402/worktree`
+- Storybook served via: `python3 -m http.server 8891 --directory /tmp/qa-storybook-iter4`
+- Playwright: available via npx (1.58.2)
+- Features tested: 5
+
+### Results
+- PASS: lib/ansi.ts extraction — correct exports, correct imports in AppView.tsx
+- PASS: Unit test suite — 189/189 (38 new ansi tests in lib/ansi.test.ts)
+- PASS: Production vite build — succeeds, no TypeScript errors
+- PASS: Storybook build — 60 stories, build succeeds post-extraction
+- PASS: Gate 6 proof screenshots (re-test) — fixed in bf6a7427; all 9 screenshots unique (6–17KB), proof-manifest.json present
+
+### Bugs Filed
+- None — all tested features pass
+
+### Command Transcript
+
+```
+$ cd aloop/cli/dashboard && npm run test -- --run
+# Test Files: 20 passed (20), Tests: 189 passed (189), Duration: 2.10s
+# exit: 0
+
+$ npm run build
+# vite build → dist/index.html 0.72kB, dist/assets/index-*.js 462kB
+# exit: 0
+
+$ npx storybook build --output-dir /tmp/qa-storybook-iter4
+# "Storybook build completed successfully"
+# exit: 0
+
+$ curl -s http://localhost:8891/index.json | python3 -c "..."
+# Stories: 60
+
+$ grep -n "from.*lib/ansi" src/AppView.tsx
+# 30: import { stripAnsi, rgbStr, parseAnsiSegments, renderAnsiToHtml } from './lib/ansi';
+# 31: export { stripAnsi, rgbStr, parseAnsiSegments, renderAnsiToHtml } from './lib/ansi';
+
+$ grep -n "export" src/lib/ansi.ts
+# 3:  export interface AnsiStyle
+# 14: export function stripAnsi
+# 19: export const PALETTE_256
+# 42: export function rgbStr
+# 46: export function parseAnsiSegments
+# 105: export function renderAnsiToHtml
+
+$ md5sum proof-artifacts/*.png
+# All 9 unique: 6575–17356 bytes (old "Not found" was 5199 bytes each)
+# exit: 0
+
+$ cat ~/.aloop/sessions/orchestrator-20260321-172932-issue-183-20260324-085402/artifacts/proof-manifest.json
+# 8 entries, all status: "ok", captured via playwright+http-server
+```
+
+### Cleanup
+- Storybook build: `rm -rf /tmp/qa-storybook-iter4`
+- HTTP server killed

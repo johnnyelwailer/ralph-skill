@@ -18,4 +18,8 @@
 | CostDisplay component visual render (WithBudgetCritical) | 2026-03-24 | 6227a03c | PASS | Renders correctly: "$9.50 / $10.00" with red progress bar at 95%, warnings shown |
 | ArtifactViewer component visual render (SingleImage) | 2026-03-24 | 6227a03c | PASS | Renders correctly: "1 artifact" with filename and description |
 | ArtifactViewer component visual render (WithDiffBadgeCritical) | 2026-03-24 | 6227a03c | PASS | Renders correctly: "1 artifact" with critical (red) badge on filename |
-| Proof screenshots validity (Gate 6) | 2026-03-24 | 6227a03c | FAIL | Still unfixed: all 8 story screenshots in proof-artifacts/ are identical "Not found" pages (MD5: 99b13def98aa849306b4f00e23948c59). P1 bug open in TODO.md. Re-tested at iter 3. |
+| Proof screenshots validity (Gate 6) | 2026-03-24 | 24974eb2 | PASS | Fixed in bf6a7427: all 9 screenshots now unique (6-17KB each), proof-manifest.json present in session artifacts dir. Re-tested at iter 4. |
+| lib/ansi.ts extraction | 2026-03-24 | 24974eb2 | PASS | lib/ansi.ts exports stripAnsi, PALETTE_256, rgbStr, parseAnsiSegments, renderAnsiToHtml, AnsiStyle; AppView.tsx imports correctly; 38 unit tests pass |
+| Unit test suite (189 tests / 20 files) | 2026-03-24 | 24974eb2 | PASS | 189 passed, 0 failures (38 new ansi.test.ts tests included); vitest run --run |
+| Production vite build post-ansi-extraction | 2026-03-24 | 24974eb2 | PASS | vite build succeeds; 462KB JS bundle, no TypeScript errors |
+| Storybook build post-ansi-extraction | 2026-03-24 | 24974eb2 | PASS | 60 stories build successfully; no regressions from ansi extraction |
