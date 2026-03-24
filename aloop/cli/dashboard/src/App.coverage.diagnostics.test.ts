@@ -177,6 +177,86 @@ describe('App.tsx DiagnosticsBanner', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('does not render banner when overall_health is undefined', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/state')) {
+        return new Response(JSON.stringify({
+          ...baseState,
+          diagnostics: {
+            overall_health: undefined,
+            blockers: [],
+          },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(createElement(App));
+    await screen.findByRole('button', { name: /stop/i });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders banner heading but no list when health is degraded and blockers is empty', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/state')) {
+        return new Response(JSON.stringify({
+          ...baseState,
+          diagnostics: {
+            overall_health: 'degraded',
+            blockers: [],
+          },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(createElement(App));
+    await screen.findByRole('button', { name: /stop/i });
+
+    const banner = screen.getByRole('alert');
+    expect(banner).toBeInTheDocument();
+    expect(screen.getByText(/Degraded/)).toBeInTheDocument();
+    expect(banner.querySelector('ul')).not.toBeInTheDocument();
+  });
+
+  it('omits suggested fix span when suggested_fix is empty string', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/state')) {
+        return new Response(JSON.stringify({
+          ...baseState,
+          diagnostics: {
+            overall_health: 'degraded',
+            blockers: [
+              {
+                type: 'child_stuck',
+                message: 'Child session stuck',
+                first_seen_iteration: 1,
+                current_iteration: 5,
+                severity: 'warning' as const,
+                suggested_fix: '',
+              },
+            ],
+          },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(createElement(App));
+    await screen.findByRole('button', { name: /stop/i });
+
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByText('Child session stuck')).toBeInTheDocument();
+    expect(screen.queryByText(/— /)).not.toBeInTheDocument();
+  });
+
   it('shows +N more when more than 3 blockers', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
