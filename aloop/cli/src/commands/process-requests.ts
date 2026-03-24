@@ -8,6 +8,7 @@ import {
   applyDecompositionPlan,
   type ScanLoopDeps,
   type OrchestratorState,
+  type OrchestratorIssue,
   type DecompositionPlan,
 } from './orchestrate.js';
 import { EtagCache } from '../lib/github-monitor.js';
@@ -265,80 +266,17 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   }
 
   // 1d. CR analysis results → apply spec changes (autonomous) or block (non-autonomous)
-  for (const file of allFiles.filter(f => f.match(/^cr-analysis-result-\d+\.json$/))) {
-    const filePath = path.join(requestsDir, file);
-    try {
-      const result = JSON.parse(await readFile(filePath, 'utf8'));
-      const issue = state.issues.find((i: any) => i.number === result.issue_number);
-      if (issue && Array.isArray(result.spec_changes) && result.spec_changes.length > 0) {
-        const autonomyLevel = state.autonomy_level ?? 'balanced';
-        if (autonomyLevel === 'autonomous') {
-          // Apply spec changes to files and commit
-          for (const change of result.spec_changes) {
-            const specFilePath = path.join(projectRoot, change.file);
-            try {
-              const existing = existsSync(specFilePath) ? await readFile(specFilePath, 'utf8') : '';
-              let updated: string;
-              if (change.action === 'add') {
-                updated = existing + (existing.endsWith('\n') ? '' : '\n') + change.content + '\n';
-              } else if (change.action === 'modify' && change.section) {
-                // Replace the named section: find heading line and replace until next heading or EOF
-                const sectionPattern = new RegExp(`(##[#]* ${change.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\n]*\n)([\s\S]*?)(?=\n##[#]* |$)`, 'm');
-                if (sectionPattern.test(existing)) {
-                  updated = existing.replace(sectionPattern, `$1${change.content}\n`);
-                } else {
-                  console.warn(`[process-requests] CR section not found for modify: ${change.section} in ${change.file}`);
-                  updated = existing;
-                }
-              } else if (change.action === 'remove' && change.section) {
-                const removePattern = new RegExp(`##[#]* ${change.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\n]*\n[\s\S]*?(?=\n##[#]* |$)`, 'm');
-                if (removePattern.test(existing)) {
-                  updated = existing.replace(removePattern, '');
-                } else {
-                  console.warn(`[process-requests] CR section not found for remove: ${change.section} in ${change.file}`);
-                  updated = existing;
-                }
-              } else {
-                updated = existing;
-              }
-              if (updated !== existing) {
-                await writeFile(specFilePath, updated, 'utf8');
-                console.log(`[process-requests] CR #${issue.number}: applied ${change.action} to ${change.file} section "${change.section ?? 'end'}"`);
-              }
-            } catch (e) {
-              console.warn(`[process-requests] CR #${issue.number}: failed to apply change to ${change.file}: ${e}`);
-            }
-          }
-          // Commit spec changes to agent/trunk
-          const trunkBr = state.trunk_branch ?? 'agent/trunk';
-          spawnSync('git', ['-C', projectRoot, 'add', '-A'], { encoding: 'utf8' });
-          spawnSync('git', ['-C', projectRoot, 'commit', '-m', `feat: apply CR spec changes for issue #${issue.number} — ${result.summary ?? 'spec update'}`], { encoding: 'utf8' });
-          spawnSync('git', ['-C', projectRoot, 'push', 'origin', `HEAD:${trunkBr}`], { encoding: 'utf8' });
-          (issue as any).cr_spec_updated = true;
-          stateChanged = true;
-          console.log(`[process-requests] CR #${issue.number}: spec updated and committed`);
-        } else {
-          // Non-autonomous: post proposed diff as GH comment and block
-          if (repo) {
-            const diffLines = result.spec_changes.map((c: any) =>
-              `### ${c.action.toUpperCase()} in \`${c.file}\` — section "${c.section ?? 'n/a'}"\n\n${c.content}\n\n**Rationale:** ${c.rationale ?? '(none)'}`,
-            ).join('\n\n---\n\n');
-            const commentBody = `**CR Spec Analysis for #${issue.number}**\n\nProposed spec changes requiring human approval:\n\n${diffLines}\n\nApprove these changes to unblock the issue. Once applied, remove the \`aloop/blocked-on-human\` label.`;
-            const commentFile = path.join(requestsDir, `_cr-comment-${issue.number}.md`);
-            await writeFile(commentFile, commentBody, 'utf8');
-            await execGh(['issue', 'comment', String(issue.number), '--repo', repo, '--body-file', commentFile]);
-            await unlink(commentFile).catch(() => {});
-            await execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human']);
-          }
-          (issue as any).blocked_on_human = true;
-          stateChanged = true;
-          console.log(`[process-requests] CR #${issue.number}: blocked on human — spec changes posted as comment`);
-        }
-      }
-      await archiveRequestFile(requestsDir, filePath);
-    } catch (e) {
-      console.error(`[process-requests] Failed to apply CR analysis result: ${e}`);
-    }
+  const crFiles = allFiles.filter(f => f.match(/^cr-analysis-result-\d+\.json$/))
+    .map(f => path.join(requestsDir, f));
+  if (crFiles.length > 0) {
+    const crChanged = await processCrResultFiles(crFiles, state.issues, state.autonomy_level ?? 'balanced', projectRoot, repo, state.trunk_branch ?? 'agent/trunk', requestsDir, {
+      existsSync, readFile: (p, e) => readFile(p, e), writeFile: (p, d, e) => writeFile(p, d, e),
+      unlink: (p) => unlink(p).catch(() => {}),
+      execGh,
+      execGit: (args) => { spawnSync('git', args, { encoding: 'utf8' }); },
+      archiveFile: (rDir, fp) => archiveRequestFile(rDir, fp),
+    });
+    if (crChanged) stateChanged = true;
   }
 
   // 1e. Estimate results → apply to state (per-issue files)
@@ -1003,6 +941,87 @@ function makeGhIssueCreator(requestsDir: string) {
   return async (_repo: string, _sid: string, title: string, body: string, labels: string[]): Promise<number> => {
     return createGhIssue(_repo, title, body, labels, requestsDir);
   };
+}
+
+export interface CrResultDeps {
+  existsSync: (p: string) => boolean;
+  readFile: (p: string, enc: BufferEncoding) => Promise<string>;
+  writeFile: (p: string, data: string, enc: BufferEncoding) => Promise<void>;
+  unlink: (p: string) => Promise<void>;
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  execGit: (args: string[]) => void;
+  archiveFile: (requestsDir: string, filePath: string) => Promise<void>;
+}
+
+export async function processCrResultFiles(
+  crFiles: string[],
+  issues: OrchestratorIssue[],
+  autonomyLevel: string,
+  projectRoot: string,
+  repo: string | null,
+  trunkBranch: string,
+  requestsDir: string,
+  deps: CrResultDeps,
+): Promise<boolean> {
+  let stateChanged = false;
+  for (const filePath of crFiles) {
+    try {
+      const result = JSON.parse(await deps.readFile(filePath, 'utf8'));
+      const issue = issues.find((i) => i.number === result.issue_number);
+      if (issue && Array.isArray(result.spec_changes) && result.spec_changes.length > 0) {
+        if (autonomyLevel === 'autonomous') {
+          for (const change of result.spec_changes) {
+            const specFilePath = path.join(projectRoot, change.file);
+            try {
+              const existing = deps.existsSync(specFilePath) ? await deps.readFile(specFilePath, 'utf8') : '';
+              let updated: string;
+              if (change.action === 'add') {
+                updated = existing + (existing.endsWith('\n') ? '' : '\n') + change.content + '\n';
+              } else if (change.action === 'modify' && change.section) {
+                const sectionPattern = new RegExp(`(##[#]* ${change.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\n]*\n)([\s\S]*?)(?=\n##[#]* |$)`, 'm');
+                updated = sectionPattern.test(existing) ? existing.replace(sectionPattern, `$1${change.content}\n`) : existing;
+              } else if (change.action === 'remove' && change.section) {
+                const removePattern = new RegExp(`##[#]* ${change.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\n]*\n[\s\S]*?(?=\n##[#]* |$)`, 'm');
+                updated = removePattern.test(existing) ? existing.replace(removePattern, '') : existing;
+              } else {
+                updated = existing;
+              }
+              if (updated !== existing) {
+                await deps.writeFile(specFilePath, updated, 'utf8');
+              }
+            } catch (e) {
+              console.warn(`[process-requests] CR #${issue.number}: failed to apply change to ${change.file}: ${e}`);
+            }
+          }
+          deps.execGit(['-C', projectRoot, 'add', '-A']);
+          deps.execGit(['-C', projectRoot, 'commit', '-m', `feat: apply CR spec changes for issue #${issue.number} — ${result.summary ?? 'spec update'}`]);
+          deps.execGit(['-C', projectRoot, 'push', 'origin', `HEAD:${trunkBranch}`]);
+          (issue as any).cr_spec_updated = true;
+          stateChanged = true;
+          console.log(`[process-requests] CR #${issue.number}: spec updated and committed`);
+        } else {
+          if (repo) {
+            const diffLines = result.spec_changes.map((c: any) =>
+              `### ${c.action.toUpperCase()} in \`${c.file}\` — section "${c.section ?? 'n/a'}"\n\n${c.content}\n\n**Rationale:** ${c.rationale ?? '(none)'}`,
+            ).join('\n\n---\n\n');
+            const commentBody = `**CR Spec Analysis for #${issue.number}**\n\nProposed spec changes requiring human approval:\n\n${diffLines}\n\nApprove these changes to unblock the issue. Once applied, remove the \`aloop/blocked-on-human\` label.`;
+            const commentFile = path.join(requestsDir, `_cr-comment-${issue.number}.md`);
+            await deps.writeFile(commentFile, commentBody, 'utf8');
+            await deps.execGh(['issue', 'comment', String(issue.number), '--repo', repo, '--body-file', commentFile]);
+            await deps.unlink(commentFile);
+            await deps.execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human']);
+          }
+          (issue as any).blocked_on_human = true;
+          stateChanged = true;
+          console.log(`[process-requests] CR #${issue.number}: blocked on human — spec changes posted as comment`);
+        }
+      }
+      await deps.archiveFile(requestsDir, filePath);
+    } catch (e) {
+      console.error(`[process-requests] Failed to apply CR analysis result: ${e}`);
+    }
+  }
+  return stateChanged;
 }
 
 export async function getDirectorySizeBytes(dir: string): Promise<number> {
