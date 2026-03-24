@@ -93,6 +93,7 @@ export interface OrchestratorIssue {
   redispatch_paused?: boolean;
   is_change_request?: boolean;
   cr_spec_updated?: boolean;
+  needs_rebase?: boolean;
 }
 
 export interface OrchestratorState {
@@ -3648,12 +3649,6 @@ export async function createTrunkToMainPr(
 }
 
 /**
- * Request a child loop to rebase its branch against agent/trunk.
- * Posts a comment on the issue instructing the child to rebase.
- */
-// requestRebase is no longer used — conflicts are handled by dispatching a child agent via needs_redispatch
-
-/**
  * Flag an issue for human resolution after rebase attempts exhausted.
  */
 export async function flagForHuman(
@@ -3733,9 +3728,7 @@ export async function processPrLifecycle(
     if (stateIssue) {
       stateIssue.rebase_attempts = attempt;
       (stateIssue as any).needs_redispatch = true;
-      (stateIssue as any).review_feedback = `PR #${prNumber} has merge conflicts with \`${state.trunk_branch}\`. ` +
-        `Rebase your branch onto \`origin/${state.trunk_branch}\`, resolve all conflicts, and force-push. ` +
-        `This is rebase attempt ${attempt}. Do NOT create new commits for the rebase — use \`git rebase\` and \`git push --force-with-lease\`.`;
+      stateIssue.needs_rebase = true;
     }
     state.updated_at = deps.now().toISOString();
     await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
@@ -5611,16 +5604,26 @@ export async function runOrchestratorScanPass(
       for (const launch of redispatchResult) {
         const issue = state.issues.find((i) => i.number === launch.issue_number);
         if (issue) {
-          // Write review feedback as steering prompt
-          const feedback = (issue as any).review_feedback ?? '';
-          if (feedback) {
-            const childQueueDir = path.join(deps.aloopRoot, 'sessions', launch.session_id, 'queue');
-            await mkdir(childQueueDir, { recursive: true });
+          const childQueueDir = path.join(deps.aloopRoot, 'sessions', launch.session_id, 'queue');
+          await mkdir(childQueueDir, { recursive: true });
+          if (issue.needs_rebase === true) {
+            // Write merge-agent queue file for conflict resolution
             await deps.writeFile(
-              path.join(childQueueDir, '000-review-fixes.md'),
-              `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+              path.join(childQueueDir, '000-rebase-conflict.md'),
+              `---\nagent: merge\nreasoning: high\n---\n\n# Rebase Required\n\nPR #${issue.pr_number} has merge conflicts with \`${state.trunk_branch}\`.\n\nRun:\n\`\`\`\ngit fetch origin ${state.trunk_branch}\ngit rebase origin/${state.trunk_branch}\n\`\`\`\nResolve all conflict markers, then:\n\`\`\`\ngit rebase --continue\ngit push origin HEAD --force-with-lease\n\`\`\`\n`,
               'utf8',
             );
+            issue.needs_rebase = false;
+          } else {
+            // Write review feedback as steering prompt
+            const feedback = (issue as any).review_feedback ?? '';
+            if (feedback) {
+              await deps.writeFile(
+                path.join(childQueueDir, '000-review-fixes.md'),
+                `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+                'utf8',
+              );
+            }
           }
           (issue as any).needs_redispatch = false;
           (issue as any).review_feedback = undefined;

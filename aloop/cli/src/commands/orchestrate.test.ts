@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdtemp, mkdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import {
   orchestrateCommand,
   orchestrateCommandWithDeps,
@@ -2996,6 +2996,7 @@ describe('processPrLifecycle', () => {
     assert.ok(result.detail.includes('attempt 1'));
     assert.equal(state.issues[0].rebase_attempts, 1);
     assert.ok((state.issues[0] as any).needs_redispatch === true);
+    assert.ok((state.issues[0] as any).needs_rebase === true);
     assert.ok(deps.logs.some((l) => l.event === 'pr_rebase_dispatched'));
   });
 
@@ -4592,6 +4593,67 @@ describe('runOrchestratorScanPass', () => {
     const resumedLog = deps.logEntries.find((e) => e.event === 'redispatch_resumed');
     assert.ok(resumedLog, 'Should log redispatch_resumed event');
     assert.equal(resumedLog.issue_number, 7);
+  });
+
+  it('writes 000-rebase-conflict.md with agent:merge and clears needs_rebase on redispatch when needs_rebase is true', async () => {
+    const tmpAloopRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-test-'));
+    try {
+      const issue = makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 });
+      (issue as any).needs_redispatch = true;
+      (issue as any).needs_rebase = true;
+      const state = makeScanState({ trunk_branch: 'agent/trunk', issues: [issue] });
+      const deps = createMockScanDeps({ aloopRoot: tmpAloopRoot });
+      deps.files['/state.json'] = JSON.stringify(state);
+      const dispatchDeps = createMockDispatchDeps();
+      deps.dispatchDeps = dispatchDeps;
+
+      await runOrchestratorScanPass(
+        '/state.json', '/session', '/project', 'myapp', '/prompts', tmpAloopRoot,
+        null, 1, deps,
+      );
+
+      // Find the queue file written by the scan pass
+      const queueKey = Object.keys(deps.files).find((k) => k.endsWith('000-rebase-conflict.md'));
+      assert.ok(queueKey, '000-rebase-conflict.md should be written');
+      assert.match(deps.files[queueKey!], /agent: merge/, 'frontmatter should specify merge agent');
+      assert.match(deps.files[queueKey!], /PR #100/, 'should reference the PR number');
+
+      const writtenState = JSON.parse(deps.files['/state.json']);
+      assert.equal(writtenState.issues[0].needs_rebase, false, 'needs_rebase should be cleared to false');
+      assert.equal(writtenState.issues[0].needs_redispatch, false, 'needs_redispatch should be cleared');
+    } finally {
+      await rm(tmpAloopRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('writes 000-review-fixes.md with agent:build on redispatch when needs_rebase is false (regression guard)', async () => {
+    const tmpAloopRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-test-'));
+    try {
+      const issue = makeIssue({ number: 43, wave: 1, state: 'pr_open', pr_number: 200 });
+      (issue as any).needs_redispatch = true;
+      (issue as any).review_feedback = 'Fix the type errors in src/foo.ts';
+      const state = makeScanState({ issues: [issue] });
+      const deps = createMockScanDeps({ aloopRoot: tmpAloopRoot });
+      deps.files['/state.json'] = JSON.stringify(state);
+      const dispatchDeps = createMockDispatchDeps();
+      deps.dispatchDeps = dispatchDeps;
+
+      await runOrchestratorScanPass(
+        '/state.json', '/session', '/project', 'myapp', '/prompts', tmpAloopRoot,
+        null, 1, deps,
+      );
+
+      const queueKey = Object.keys(deps.files).find((k) => k.endsWith('000-review-fixes.md'));
+      assert.ok(queueKey, '000-review-fixes.md should be written');
+      assert.match(deps.files[queueKey!], /agent: build/, 'frontmatter should specify build agent');
+      assert.match(deps.files[queueKey!], /Fix the type errors/, 'should contain review feedback');
+
+      const writtenState = JSON.parse(deps.files['/state.json']);
+      assert.equal(writtenState.issues[0].needs_redispatch, false, 'needs_redispatch should be cleared');
+      assert.equal(writtenState.issues[0].review_feedback, undefined, 'review_feedback should be cleared');
+    } finally {
+      await rm(tmpAloopRoot, { recursive: true, force: true });
+    }
   });
 });
 
