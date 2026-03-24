@@ -1699,3 +1699,37 @@ const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string 
 - [ ] `grep -n "spawnSync.*'gh'" aloop/cli/src/commands/process-requests.ts` returns the `execGh` definition
 - [ ] `grep -n "aloop gh\|execAloop.*gh" aloop/cli/src/commands/process-requests.ts` returns no matches
 - [ ] Same pattern holds in `aloop/cli/src/commands/orchestrate.ts`
+
+## master ↔ agent/trunk Sync Strategy
+
+### Two-Branch Model
+
+The orchestrator operates with two long-lived branches:
+
+- **`master`** — the human development branch; humans commit directly here
+- **`agent/trunk`** — the agent integration branch; child PRs target this branch; the orchestrator merges into it
+
+These two branches diverge independently and must be kept in sync.
+
+### Four Sync Operations
+
+| # | Operation | Direction | Where | Trigger |
+|---|-----------|-----------|-------|---------|
+| 1 | Child branch-from-trunk | `agent/trunk` → child branch | `orchestrate.ts` `launchChildLoop` | New child session dispatched |
+| 2 | PR merge into trunk | child branch → `agent/trunk` | `orchestrate.ts` `mergePr` | PR approved and gates pass |
+| 3 | Forward-merge master into trunk | `master` → `agent/trunk` | `process-requests.ts` `syncMasterToTrunk` (Phase 2b) | Each `process-requests` run |
+| 4 | Trunk-to-master PR | `agent/trunk` → `master` | `orchestrate.ts` `createTrunkToMainPr` | All issues resolved, `auto_merge_to_main` enabled |
+
+### Phase 2b: `syncMasterToTrunk` Logic
+
+Runs every `process-requests` cycle. Three cases:
+
+1. **Fast-forward** (`merge-base ≠ master HEAD`, FF push succeeds): `origin/master` is a linear descendant of `origin/<trunk>`. Runs `git push origin origin/master:refs/heads/<trunk>` — a standard (non-force) push that fails if non-FF.
+
+2. **Diverged** (`merge-base ≠ master HEAD`, FF push fails): Both branches have independent commits. Creates a temporary worktree checked out at `<trunk>`, runs `git merge origin/master --no-edit`, then pushes. Removes the worktree regardless of outcome.
+
+3. **No-op** (`merge-base == master HEAD`): Trunk already contains all of master's commits. Nothing to do.
+
+### No-Force-Push Invariant
+
+**`git push --force` and `git push --force-with-lease` are never used on `agent/trunk`.** The fast-forward push is a plain refspec push that naturally rejects non-FF updates; the diverged path creates a real merge commit and pushes it conventionally. This invariant must be preserved in all future modifications to `syncMasterToTrunk`.

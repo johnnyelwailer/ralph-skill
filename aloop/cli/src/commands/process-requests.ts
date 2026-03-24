@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { readFile, readdir, unlink, writeFile, mkdir, cp } from 'node:fs/promises';
+import { readFile, readdir, unlink, writeFile, mkdir, cp, rm, stat } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
@@ -116,6 +116,101 @@ export interface ProcessRequestsOptions {
   sessionDir: string;
   homeDir?: string;
   output?: string;
+}
+
+interface ReviewCommentLike {
+  author?: { login?: string | null } | null;
+  createdAt?: string | null;
+  body?: string | null;
+}
+
+export function formatReviewCommentHistory(comments: ReviewCommentLike[]): string {
+  const blocks: string[] = [];
+  for (const comment of comments) {
+    const body = (comment.body ?? '').trim();
+    if (!body) continue;
+    const author = comment.author?.login ?? 'unknown';
+    const createdAt = comment.createdAt ?? '';
+    const heading = createdAt ? `### @${author} at ${createdAt}` : `### @${author}`;
+    blocks.push(`${heading}\n\n${body}`);
+  }
+  if (blocks.length === 0) return '';
+  return `${blocks.join('\n\n---\n\n')}\n`;
+}
+
+export async function getDirectorySizeBytes(dir: string): Promise<number> {
+  if (!existsSync(dir)) return 0;
+  let total = 0;
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      total += await getDirectorySizeBytes(fullPath);
+      continue;
+    }
+    if (entry.isFile()) {
+      total += (await stat(fullPath)).size;
+    }
+  }
+  return total;
+}
+
+export async function pruneLargeV8CacheDir(dir: string, maxBytes: number): Promise<{ sizeBytes: number; pruned: boolean }> {
+  if (!existsSync(dir)) return { sizeBytes: 0, pruned: false };
+  const sizeBytes = await getDirectorySizeBytes(dir);
+  if (sizeBytes <= maxBytes) return { sizeBytes, pruned: false };
+  await rm(dir, { recursive: true, force: true });
+  return { sizeBytes, pruned: true };
+}
+
+export interface SyncMasterToTrunkDeps {
+  spawnSync: typeof import('node:child_process').spawnSync;
+}
+
+/**
+ * Phase 2b: Forward-merge master → agent/trunk (pick up human changes).
+ *
+ * Three cases:
+ * 1. Fast-forward: origin/master is a linear descendant of origin/<trunk> →
+ *    git push origin origin/master:refs/heads/<trunk> (no --force)
+ * 2. Diverged: branches have each moved forward → tmp worktree merge + push
+ * 3. Trunk ahead or equal: merge-base == master HEAD → no-op
+ */
+export function syncMasterToTrunk(
+  projectRoot: string,
+  aloopRoot: string,
+  trunkBranch: string,
+  deps: SyncMasterToTrunkDeps,
+): void {
+  const { spawnSync } = deps;
+  try {
+    const fetchR = spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'master', trunkBranch], { encoding: 'utf8', timeout: 30000 });
+    if (fetchR.status !== 0) throw new Error('fetch failed');
+    const mergeBase = spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const masterHead = spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8', timeout: 10000 });
+    const mbSha = mergeBase.stdout?.trim();
+    const mhSha = masterHead.stdout?.trim();
+    if (mbSha && mhSha && mbSha.length >= 7 && mhSha.length >= 7 && mbSha !== mhSha) {
+      // master has commits that trunk doesn't — forward merge
+      const mergeResult = spawnSync('git', ['-C', projectRoot, 'push', 'origin', `origin/master:refs/heads/${trunkBranch}`], { encoding: 'utf8' });
+      if (mergeResult.status !== 0) {
+        // Can't fast-forward — need a real merge via worktree
+        const tmpMerge = path.join(aloopRoot, 'tmp-trunk-merge');
+        spawnSync('git', ['-C', projectRoot, 'worktree', 'add', tmpMerge, trunkBranch], { encoding: 'utf8' });
+        const result = spawnSync('git', ['-C', tmpMerge, 'merge', 'origin/master', '--no-edit', '-m', 'Merge master into agent/trunk'], { encoding: 'utf8' });
+        if (result.status === 0) {
+          spawnSync('git', ['-C', tmpMerge, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
+          console.log(`[process-requests] Forward-merged master → ${trunkBranch}`);
+        } else {
+          spawnSync('git', ['-C', tmpMerge, 'merge', '--abort'], { encoding: 'utf8' });
+        }
+        spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', tmpMerge], { encoding: 'utf8' });
+        spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+      } else {
+        console.log(`[process-requests] Fast-forwarded ${trunkBranch} to master`);
+      }
+    }
+  } catch { /* best effort */ }
 }
 
 /**
@@ -367,34 +462,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
   // ── Phase 2b: Forward-merge master → agent/trunk (pick up human changes) ──
   const trunkBranch = state.trunk_branch ?? 'agent/trunk';
-  try {
-    const fetchR = spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'master', trunkBranch], { encoding: 'utf8', timeout: 30000 });
-    if (fetchR.status !== 0) throw new Error('fetch failed');
-    const mergeBase = spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
-    const masterHead = spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8', timeout: 10000 });
-    const mbSha = mergeBase.stdout?.trim();
-    const mhSha = masterHead.stdout?.trim();
-    if (mbSha && mhSha && mbSha.length >= 7 && mhSha.length >= 7 && mbSha !== mhSha) {
-      // master has commits that trunk doesn't — forward merge
-      const mergeResult = spawnSync('git', ['-C', projectRoot, 'push', 'origin', `origin/master:refs/heads/${trunkBranch}`], { encoding: 'utf8' });
-      if (mergeResult.status !== 0) {
-        // Can't fast-forward — need a real merge via worktree
-        const tmpMerge = path.join(aloopRoot, 'tmp-trunk-merge');
-        spawnSync('git', ['-C', projectRoot, 'worktree', 'add', tmpMerge, trunkBranch], { encoding: 'utf8' });
-        const result = spawnSync('git', ['-C', tmpMerge, 'merge', 'origin/master', '--no-edit', '-m', 'Merge master into agent/trunk'], { encoding: 'utf8' });
-        if (result.status === 0) {
-          spawnSync('git', ['-C', tmpMerge, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
-          console.log(`[process-requests] Forward-merged master → ${trunkBranch}`);
-        } else {
-          spawnSync('git', ['-C', tmpMerge, 'merge', '--abort'], { encoding: 'utf8' });
-        }
-        spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', tmpMerge], { encoding: 'utf8' });
-        spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
-      } else {
-        console.log(`[process-requests] Fast-forwarded ${trunkBranch} to master`);
-      }
-    }
-  } catch { /* best effort */ }
+  syncMasterToTrunk(projectRoot, aloopRoot, trunkBranch, { spawnSync });
 
   // ── Phase 2c: Sync child branches with base branch ──
   for (const issue of state.issues) {

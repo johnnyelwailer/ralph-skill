@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
-import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir } from './process-requests.js';
+import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk } from './process-requests.js';
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 import type { OrchestratorIssue } from './orchestrate.js';
 
@@ -245,5 +245,87 @@ describe('processCrResultFiles — non-autonomous path', () => {
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('syncMasterToTrunk', () => {
+  const projectRoot = '/repo';
+  const aloopRoot = '/repo/.aloop';
+  const trunkBranch = 'agent/trunk';
+
+  it('fast-forward case: pushes origin/master to trunk without a worktree', () => {
+    const calls: Array<{ cmd: string; args: string[] }> = [];
+
+    // git args pattern: ['-C', '<dir>', '<subcommand>', ...]  → subcommand at index 2
+    // merge-base != master HEAD → master has new commits; FF push succeeds
+    const spawnSync = (cmd: string, args: string[], _opts?: unknown) => {
+      calls.push({ cmd, args });
+      if (args[2] === 'merge-base') return { status: 0, stdout: 'aaa1111\n' };
+      if (args[2] === 'rev-parse') return { status: 0, stdout: 'bbb2222\n' };
+      return { status: 0, stdout: '' };
+    };
+
+    syncMasterToTrunk(projectRoot, aloopRoot, trunkBranch, { spawnSync: spawnSync as any });
+
+    const pushCall = calls.find(c => c.args[2] === 'push' && c.args.some(a => a.includes('refs/heads')));
+    assert.ok(pushCall, 'expected a push to refs/heads/<trunk>');
+    assert.ok(pushCall!.args.includes(`origin/master:refs/heads/${trunkBranch}`), 'push refspec should be origin/master:refs/heads/<trunk>');
+    assert.ok(!pushCall!.args.includes('--force'), 'push must not use --force');
+    assert.ok(!pushCall!.args.includes('--force-with-lease'), 'push must not use --force-with-lease');
+
+    const worktreeAdd = calls.find(c => c.args[2] === 'worktree' && c.args[3] === 'add');
+    assert.equal(worktreeAdd, undefined, 'should not create a worktree on fast-forward');
+  });
+
+  it('diverged case: creates worktree, merges, pushes, removes worktree', () => {
+    const calls: Array<{ cmd: string; args: string[] }> = [];
+
+    // merge-base != master HEAD → master has new commits; FF push fails → diverged path
+    const spawnSync = (cmd: string, args: string[], _opts?: unknown) => {
+      calls.push({ cmd, args });
+      if (args[2] === 'merge-base') return { status: 0, stdout: 'aaa1111\n' };
+      if (args[2] === 'rev-parse') return { status: 0, stdout: 'bbb2222\n' };
+      // FF push fails (non-fast-forward)
+      if (args[2] === 'push' && args.some((a: string) => a.includes('refs/heads'))) return { status: 1, stdout: '' };
+      // merge succeeds
+      if (args[2] === 'merge') return { status: 0, stdout: '' };
+      return { status: 0, stdout: '' };
+    };
+
+    syncMasterToTrunk(projectRoot, aloopRoot, trunkBranch, { spawnSync: spawnSync as any });
+
+    const worktreeAdd = calls.find(c => c.args[2] === 'worktree' && c.args[3] === 'add');
+    assert.ok(worktreeAdd, 'should create a worktree');
+
+    const mergeCall = calls.find(c => c.args[2] === 'merge' && c.args[3] === 'origin/master');
+    assert.ok(mergeCall, 'should run git merge origin/master');
+
+    const pushHead = calls.find(c => c.args[2] === 'push' && c.args[3] === 'origin' && c.args[4] === 'HEAD');
+    assert.ok(pushHead, 'should push HEAD after merge');
+    assert.ok(!pushHead!.args.includes('--force'), 'push must not use --force');
+
+    const worktreeRemove = calls.find(c => c.args[2] === 'worktree' && c.args[3] === 'remove');
+    assert.ok(worktreeRemove, 'should remove the worktree');
+  });
+
+  it('no-op case: trunk already at or ahead of master (merge-base == master HEAD)', () => {
+    const calls: Array<{ cmd: string; args: string[] }> = [];
+    const sha = 'ccc3333';
+
+    // merge-base === master HEAD → trunk already contains master → nothing to do
+    const spawnSync = (cmd: string, args: string[], _opts?: unknown) => {
+      calls.push({ cmd, args });
+      if (args[2] === 'merge-base') return { status: 0, stdout: `${sha}\n` };
+      if (args[2] === 'rev-parse') return { status: 0, stdout: `${sha}\n` };
+      return { status: 0, stdout: '' };
+    };
+
+    syncMasterToTrunk(projectRoot, aloopRoot, trunkBranch, { spawnSync: spawnSync as any });
+
+    const pushCall = calls.find(c => c.args[2] === 'push');
+    assert.equal(pushCall, undefined, 'should not push when trunk is already up to date');
+
+    const worktreeAdd = calls.find(c => c.args[2] === 'worktree' && c.args[3] === 'add');
+    assert.equal(worktreeAdd, undefined, 'should not create a worktree');
   });
 });
