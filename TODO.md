@@ -13,9 +13,9 @@ _(none)_
 - [x] Verify the workflow file is valid YAML and the test step references the correct working directory (`aloop/cli/dashboard`)
 
 ### Spec-Gap Analysis
-- spec-gap analysis: no discrepancies found — spec fully fulfilled
-- All acceptance criteria verified: CI workflow runs `vitest run` via `npm test`, triggers on PRs to master, uses jsdom (no browser needed), excludes Playwright e2e tests
-- Tests pass locally: 87 tests, 2 test files
+- [ ] [spec-gap] **P2** — `PROMPT_proof.md` missing `provider:` field in frontmatter. All other finalizer templates (spec-gap, docs, spec-review, final-review, final-qa) declare `provider: claude`; proof.md omits it entirely. SPEC.md L41-42 states "Parse frontmatter from prompt files (provider, model, agent, reasoning, trigger)". File: `aloop/templates/PROMPT_proof.md` lines 1-4. Fix: add `provider: claude` to frontmatter.
+- [ ] [spec-gap] **P2** — `loop.sh` help text (L64) lists `claude|codex|gemini|copilot|round-robin` but omits `opencode`, even though opencode is implemented in the switch (L1367), listed in ROUND_ROBIN_PROVIDERS default (L31: `claude,gemini,opencode`), and promised in SPEC.md L4-5. Help text L65 also shows wrong default (`claude,codex,gemini,copilot` vs actual `claude,gemini,opencode`). Fix: update help text to include opencode and fix default display.
+- Previous analysis (issue #38 CI work): all acceptance criteria verified — CI workflow runs `vitest run` via `npm test`, triggers on PRs to master, uses jsdom, excludes Playwright e2e tests; 87 tests pass.
 
 ### Notes
 - No `.github/workflows/` directory or `ci.yml` exists on master or this branch
