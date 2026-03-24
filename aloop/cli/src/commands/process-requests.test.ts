@@ -1,10 +1,11 @@
-import { describe, it, mock } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
-import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir } from './process-requests.js';
+import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, processCrResultFiles, type CrResultDeps } from './process-requests.js';
+import type { OrchestratorIssue } from './orchestrate.js';
 
 describe('process-requests V8 cache helpers', () => {
   it('getDirectorySizeBytes sums nested file sizes', async () => {
@@ -81,5 +82,167 @@ describe('formatReviewCommentHistory', () => {
     ]);
 
     assert.equal(formatted, '### @unknown\n\nLooks good now.\n');
+  });
+});
+
+// ── Helpers for CR tests ──
+
+function makeIssue(overrides: Partial<OrchestratorIssue> & { number: number }): OrchestratorIssue {
+  return {
+    title: `Issue ${overrides.number}`,
+    wave: 1,
+    state: 'pending',
+    child_session: null,
+    pr_number: null,
+    depends_on: [],
+    blocked_on_human: false,
+    processed_comment_ids: [],
+    dor_validated: false,
+    is_change_request: true,
+    cr_spec_updated: false,
+    ...overrides,
+  } as OrchestratorIssue;
+}
+
+function makeCrResultFile(issueNumber: number, tmpDir: string): { filePath: string; result: object } {
+  const result = {
+    issue_number: issueNumber,
+    summary: 'Add queue priority section',
+    spec_changes: [
+      { file: 'SPEC.md', section: 'Queue Priority', action: 'add', content: '## Queue Priority\n\nHigher priority items run first.', rationale: 'New feature' },
+    ],
+  };
+  const filePath = path.join(tmpDir, `cr-analysis-result-${issueNumber}.json`);
+  return { filePath, result };
+}
+
+function makeMockDeps(overrides: Partial<CrResultDeps> = {}): CrResultDeps & {
+  writtenFiles: Record<string, string>;
+  ghCalls: string[][];
+  gitCalls: string[][];
+  archivedFiles: string[];
+} {
+  const writtenFiles: Record<string, string> = {};
+  const ghCalls: string[][] = [];
+  const gitCalls: string[][] = [];
+  const archivedFiles: string[] = [];
+
+  const deps: CrResultDeps & { writtenFiles: Record<string, string>; ghCalls: string[][]; gitCalls: string[][]; archivedFiles: string[] } = {
+    existsSync: (p) => p in writtenFiles,
+    readFile: async (p) => writtenFiles[p] ?? '',
+    writeFile: async (p, data) => { writtenFiles[p] = data; },
+    unlink: async (p) => { delete writtenFiles[p]; },
+    execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+    execGit: (args) => { gitCalls.push(args); },
+    archiveFile: async (_rDir, fp) => { archivedFiles.push(fp); },
+    writtenFiles,
+    ghCalls,
+    gitCalls,
+    archivedFiles,
+    ...overrides,
+  };
+  return deps;
+}
+
+describe('processCrResultFiles — autonomous path', () => {
+  it('applies spec changes, commits, and sets cr_spec_updated', async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-cr-auto-'));
+    try {
+      const issue = makeIssue({ number: 42 });
+      const { filePath, result } = makeCrResultFile(42, tmpDir);
+      const deps = makeMockDeps();
+      deps.writtenFiles[filePath] = JSON.stringify(result);
+
+      const changed = await processCrResultFiles(
+        [filePath], [issue], 'autonomous', '/project', 'owner/repo', 'agent/trunk', tmpDir, deps,
+      );
+
+      assert.equal(changed, true);
+      assert.equal((issue as any).cr_spec_updated, true);
+      // Spec file should be updated
+      assert.ok(deps.writtenFiles['/project/SPEC.md']?.includes('Queue Priority'), 'SPEC.md should contain the new section');
+      // Git add, commit, push should be called
+      assert.ok(deps.gitCalls.some(c => c.includes('add')), 'git add expected');
+      assert.ok(deps.gitCalls.some(c => c.includes('commit')), 'git commit expected');
+      assert.ok(deps.gitCalls.some(c => c.includes('push')), 'git push expected');
+      // No GH calls in autonomous mode
+      assert.equal(deps.ghCalls.length, 0);
+      // File should be archived
+      assert.ok(deps.archivedFiles.includes(filePath));
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not set cr_spec_updated when issue not found', async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-cr-notfound-'));
+    try {
+      const issue = makeIssue({ number: 99 });
+      const { filePath, result } = makeCrResultFile(42, tmpDir); // wrong issue number
+      const deps = makeMockDeps();
+      deps.writtenFiles[filePath] = JSON.stringify(result);
+
+      const changed = await processCrResultFiles(
+        [filePath], [issue], 'autonomous', '/project', 'owner/repo', 'agent/trunk', tmpDir, deps,
+      );
+
+      assert.equal(changed, false);
+      assert.equal((issue as any).cr_spec_updated, false);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('processCrResultFiles — non-autonomous path', () => {
+  it('posts GH comment, adds blocked-on-human label, sets blocked_on_human', async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-cr-nonauto-'));
+    try {
+      const issue = makeIssue({ number: 42 });
+      const { filePath, result } = makeCrResultFile(42, tmpDir);
+      const deps = makeMockDeps();
+      deps.writtenFiles[filePath] = JSON.stringify(result);
+
+      const changed = await processCrResultFiles(
+        [filePath], [issue], 'balanced', '/project', 'owner/repo', 'agent/trunk', tmpDir, deps,
+      );
+
+      assert.equal(changed, true);
+      assert.equal((issue as any).blocked_on_human, true);
+      // cr_spec_updated must remain false
+      assert.equal((issue as any).cr_spec_updated, false);
+      // Should post comment on GH issue
+      const commentCall = deps.ghCalls.find(c => c.includes('comment') && c.includes('42'));
+      assert.ok(commentCall, 'Expected issue comment gh call');
+      // Should add blocked-on-human label
+      const labelCall = deps.ghCalls.find(c => c.includes('edit') && c.includes('aloop/blocked-on-human'));
+      assert.ok(labelCall, 'Expected label add gh call');
+      // No git calls
+      assert.equal(deps.gitCalls.length, 0);
+      // File archived
+      assert.ok(deps.archivedFiles.includes(filePath));
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not make GH calls when repo is null', async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-cr-norepo-'));
+    try {
+      const issue = makeIssue({ number: 42 });
+      const { filePath, result } = makeCrResultFile(42, tmpDir);
+      const deps = makeMockDeps();
+      deps.writtenFiles[filePath] = JSON.stringify(result);
+
+      const changed = await processCrResultFiles(
+        [filePath], [issue], 'cautious', '/project', null, 'agent/trunk', tmpDir, deps,
+      );
+
+      assert.equal(changed, true);
+      assert.equal((issue as any).blocked_on_human, true);
+      assert.equal(deps.ghCalls.length, 0, 'No GH calls when repo is null');
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });

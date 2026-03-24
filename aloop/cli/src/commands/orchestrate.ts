@@ -494,6 +494,14 @@ function parseConfigScalar(content: string, key: string): string | null {
   return raw;
 }
 
+/**
+ * Returns true if the given labels array contains the 'aloop/change-request' label.
+ * Labels may be objects with a `name` property or plain strings.
+ */
+export function detectChangeRequestLabel(labels: Array<{ name?: string | null } | string> | undefined | null): boolean {
+  return labels?.some((l) => (typeof l === 'string' ? l : (l.name ?? '')) === 'aloop/change-request') ?? false;
+}
+
 export async function resolveOrchestratorAutonomyLevel(
   options: OrchestrateCommandOptions,
   homeDir: string,
@@ -1155,7 +1163,7 @@ export async function orchestrateCommandWithDeps(
 
         for (const gi of ghIssues) {
           const isEpic = gi.labels?.some((l: any) => (l.name ?? l) === 'aloop/epic');
-          const isChangeRequest = gi.labels?.some((l: any) => (l.name ?? l) === 'aloop/change-request') ?? false;
+          const isChangeRequest = detectChangeRequestLabel(gi.labels);
           const projStatus = projectStatusMap.get(gi.number);
           // Use project status if available, otherwise infer from labels
           // Epics with tasklists (sub-issues) are tracking epics — not dispatchable
