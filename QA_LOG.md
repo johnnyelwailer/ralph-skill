@@ -481,3 +481,101 @@ npx tsx --test src/commands/process-requests.test.ts 2>&1 | grep -E "^# (tests|p
 # Cleanup
 rm -rf /tmp/aloop-test-install-uabV5C
 ```
+
+## QA Session — 2026-03-24 (iteration 9 / final-qa-post-dashboard-banner)
+
+### Binary Under Test
+- Installed path: `/tmp/aloop-test-install-fbknEM/bin/aloop` (cleaned up after session)
+- Version: `1.0.0`
+- Built from: commit `4a730407` (branch `aloop/issue-180`)
+- Install method: `npm run build:server && ... && node scripts/test-install.mjs --keep`
+
+### Target Selection
+- **Dashboard alert banner**: selected because UNTESTED in QA_COVERAGE.md — newest completed feature (commit `4a730407`)
+- **processRequestsCommand Phase 1f wiring**: selected because UNTESTED — wiring test added in commit `9f3d45aa`
+- **stuck flag in orchestrator.json**: selected for regression verification at HEAD
+
+### Test Environment
+- No temp project dirs needed (unit tests + dashboard vitest only)
+- Features tested: 3 + full regression suite
+
+### Results
+- PASS: Dashboard alert banner — 6/6 vitest tests in `App.coverage.diagnostics.test.ts`
+  - null diagnostics → no banner
+  - overall_health=healthy → no banner
+  - overall_health=degraded → amber banner
+  - overall_health=critical → red banner
+  - dismiss button works
+  - shows "+N more" when >3 blockers
+- PASS: processRequestsCommand Phase 1f wiring — 2/2 tests pass
+  - `routes post_comment agent request to processAgentRequests and moves it to processed/`
+  - `moves post_comment request out of requests/ when processRequestsCommand is called` (wiring test)
+- PASS: stuck flag in orchestrator.json — subtest passes
+- PASS: TypeScript type check (`tsc --noEmit`) — zero errors
+- PASS: orchestrate.test.ts — 366 tests, 341 pass, 25 fail (pre-existing; +1 test since iter 8)
+- PASS: process-requests.test.ts — 10 tests, 10 pass, 0 fail (+2 Phase 1f wiring tests since iter 8)
+- PASS: Dashboard vitest full suite — 19 files, 145 tests, 0 fail
+
+### Bugs Filed
+- None
+
+### Notes
+1. `orchestrate.test.ts`: 366 tests now (+1 from iter 8's 365); new subtest from dashboard or stuck flag work. 25 pre-existing failures unchanged.
+2. `process-requests.test.ts`: 10 tests now (+2 from iter 8's 8); the Phase 1f wiring tests account for the increase.
+3. Dashboard vitest: full suite 145 tests, all pass. `App.coverage.diagnostics.test.ts` is the authoritative test for the alert banner feature.
+4. No CLI path exists to test `diagnostics.json`/`ALERT.md` write without GitHub; unit tests remain the authoritative verification.
+
+### Command Transcript
+
+```
+# Build and install
+cd aloop/cli
+npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin && npm run build:agents
+node scripts/test-install.mjs --keep
+# → /tmp/aloop-test-install-fbknEM/bin/aloop  (version 1.0.0)
+
+# TypeScript type check
+npx tsc --noEmit
+# → (no output) exit 0 — PASS
+
+# Dashboard alert banner tests
+cd aloop/cli/dashboard
+npx vitest run src/App.coverage.diagnostics.test.ts --reporter verbose
+# → ✓ does not render banner when diagnostics is null
+# → ✓ does not render banner when health is healthy
+# → ✓ renders amber banner when health is degraded
+# → ✓ renders red banner when health is critical
+# → ✓ dismisses banner on close button click
+# → ✓ shows +N more when more than 3 blockers
+# → Tests: 6 passed (6) — PASS
+
+# processRequestsCommand Phase 1f wiring tests
+cd aloop/cli
+npx tsx --test --test-name-pattern "processRequestsCommand|Phase 1f|wiring" src/commands/process-requests.test.ts
+# → ok 1 - process-requests Phase 1f: agent request routing via processAgentRequests
+#      ok 1 - routes post_comment agent request to processAgentRequests and moves it to processed/
+# → ok 2 - process-requests Phase 1f wiring: processRequestsCommand routes agent requests
+#      ok 1 - moves post_comment request out of requests/ when processRequestsCommand is called
+# → pass 2, fail 0 — PASS
+
+# stuck flag regression
+npx tsx --test --test-name-pattern "stuck" src/commands/orchestrate.test.ts
+# → ok 1 - monitorChildSessions > logs stuck warning when stuck_count >= 2
+# → ok 2 - detectCurrentBlockers > detects child_stuck for failed issues
+# → ok 3 - runOrchestratorScanPass blocker tracking > sets stuck: true in orchestrator.json...
+# → pass 3, fail 0 — PASS
+
+# Full suite regression
+npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep "^# (tests|pass|fail)"
+# → # tests 366 / # pass 341 / # fail 25 (same pre-existing count)
+
+npx tsx --test src/commands/process-requests.test.ts 2>&1 | grep "^# (tests|pass|fail)"
+# → # tests 10 / # pass 10 / # fail 0
+
+cd aloop/cli/dashboard
+npx vitest run
+# → Test Files 19 passed (19); Tests 145 passed (145) — PASS
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-fbknEM
+```

@@ -17,3 +17,6 @@
 | diagnostics.json severity=critical branch | 2026-03-24 | 86315a80 | PASS | pre-seed occurrence_count=9, scan pass → 10, assert severity===critical; subtest 6 passes |
 | diagnostics.json CLI-level write | never | — | — | No CLI path to trigger scan pass without GitHub; covered by unit tests |
 | ALERT.md CLI-level write | never | — | — | No CLI path to trigger scan pass without GitHub; covered by unit tests |
+| dashboard alert banner (degraded/critical) | 2026-03-24 | 4a730407 | PASS | 6/6 vitest tests pass: null→no banner, healthy→no banner, degraded→amber, critical→red, dismiss, +N more |
+| processRequestsCommand Phase 1f wiring | 2026-03-24 | 4a730407 | PASS | 2/2 wiring tests pass: post_comment routed + moved to processed/ via processRequestsCommand |
+| stuck flag in orchestrator.json | 2026-03-24 | 4a730407 | PASS | Unit test "sets stuck: true in orchestrator.json when persistent blockers detected" passes |
