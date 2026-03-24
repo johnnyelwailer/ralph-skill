@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile, readFile, readdir, chmod } from 'node:fs/promises';
 import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk } from './process-requests.js';
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 import type { OrchestratorIssue } from './orchestrate.js';
-import { collectUnrecognizedRequestFiles } from './process-requests.js';
+import { collectUnrecognizedRequestFiles, processRequestsCommand } from './process-requests.js';
 import { processAgentRequests } from '../lib/requests.js';
 
 describe('process-requests V8 cache helpers', () => {
@@ -489,5 +489,88 @@ describe('process-requests Phase 1f: agent request routing via processAgentReque
     assert.ok(ghCalls.some(c => c.operation === 'issue-comment'), 'Expected issue-comment operation');
 
     await rm(sessionDir, { recursive: true, force: true });
+  });
+});
+
+describe('process-requests Phase 1f wiring: processRequestsCommand routes agent requests', () => {
+  it('moves post_comment request out of requests/ when processRequestsCommand is called', async () => {
+    const sessionDir = await mkdtemp(path.join(os.tmpdir(), 'pr-cmd-wiring-test-'));
+    const homeDir = await mkdtemp(path.join(os.tmpdir(), 'pr-cmd-home-'));
+    const requestsDir = path.join(sessionDir, 'requests');
+    await mkdir(requestsDir, { recursive: true });
+
+    // Provide a no-op loop.sh so the scan pass can spawn it without ENOENT
+    const binDir = path.join(homeDir, '.aloop', 'bin');
+    await mkdir(binDir, { recursive: true });
+    const loopSh = path.join(binDir, 'loop.sh');
+    await writeFile(loopSh, '#!/bin/sh\nexit 0\n', 'utf8');
+    await chmod(loopSh, 0o755);
+
+    // Set project_root = sessionDir so body_file resolves inside the temp dir
+    await writeFile(
+      path.join(sessionDir, 'meta.json'),
+      JSON.stringify({ project_root: sessionDir }),
+      'utf8',
+    );
+
+    // Minimal orchestrator.json (no issues, no repo → most phases are no-ops)
+    const minimalState = {
+      spec_file: '',
+      trunk_branch: 'main',
+      concurrency_cap: 1,
+      current_wave: 0,
+      plan_only: false,
+      issues: [],
+      completed_waves: [],
+      filter_issues: null,
+      filter_label: null,
+      filter_repo: null,
+      budget_cap: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    await writeFile(
+      path.join(sessionDir, 'orchestrator.json'),
+      JSON.stringify(minimalState),
+      'utf8',
+    );
+
+    // Body file for the post_comment request
+    const commentFile = 'comment.md';
+    await writeFile(path.join(sessionDir, commentFile), 'Test wiring comment body', 'utf8');
+
+    // Write a valid post_comment request into requests/
+    const requestFileName = 'post-comment-wiring-1.json';
+    await writeFile(
+      path.join(requestsDir, requestFileName),
+      JSON.stringify({
+        id: 'wiring-test-post-comment-1',
+        type: 'post_comment',
+        payload: { issue_number: 42, body_file: commentFile },
+      }),
+      'utf8',
+    );
+
+    // Call processRequestsCommand — this exercises the full Phase 1f wiring
+    await processRequestsCommand({ sessionDir, homeDir });
+
+    // The file must have been moved out of requests/ by processAgentRequests.
+    // It lands in processed/ (gh succeeded) or failed/ (gh unavailable in test env).
+    assert.ok(
+      !existsSync(path.join(requestsDir, requestFileName)),
+      'processRequestsCommand must move the request file out of requests/ via processAgentRequests',
+    );
+
+    const processedDir = path.join(requestsDir, 'processed');
+    const failedDir = path.join(requestsDir, 'failed');
+    const processedFiles = existsSync(processedDir) ? await readdir(processedDir) : [];
+    const failedFiles = existsSync(failedDir) ? await readdir(failedDir) : [];
+    const wasHandled =
+      processedFiles.some(f => f.startsWith('post-comment-wiring-1')) ||
+      failedFiles.some(f => f.startsWith('post-comment-wiring-1'));
+    assert.ok(wasHandled, 'Request file must appear in processed/ or failed/ after processRequestsCommand');
+
+    await rm(sessionDir, { recursive: true, force: true });
+    await rm(homeDir, { recursive: true, force: true });
   });
 });
