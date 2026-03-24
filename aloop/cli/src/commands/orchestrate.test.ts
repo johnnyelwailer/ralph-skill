@@ -2996,6 +2996,7 @@ describe('processPrLifecycle', () => {
     assert.ok(result.detail.includes('attempt 1'));
     assert.equal(state.issues[0].rebase_attempts, 1);
     assert.ok((state.issues[0] as any).needs_redispatch === true);
+    assert.ok((state.issues[0] as any).needs_rebase === true);
     assert.ok(deps.logs.some((l) => l.event === 'pr_rebase_dispatched'));
   });
 

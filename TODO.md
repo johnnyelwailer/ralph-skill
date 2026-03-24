@@ -18,7 +18,7 @@
 
   **Why:** Acceptance criterion from TASK_SPEC.md: "Phase 2c test: when git rebase succeeds, no queue file is written and `needs_redispatch` is not set"
 
-- [ ] [review] Gate 2: Update existing `processPrLifecycle` test "requests rebase on first merge conflict" to also assert `issue.needs_rebase === true` (priority: high)
+- [x] [review] Gate 2: Update existing `processPrLifecycle` test "requests rebase on first merge conflict" to also assert `issue.needs_rebase === true` (priority: high)
 
   **Why:** Acceptance criterion: "`issue.needs_rebase === true` (not `review_feedback` with rebase text)". Current test asserts `needs_redispatch === true` but not `needs_rebase === true`.
 
