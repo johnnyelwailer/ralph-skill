@@ -230,7 +230,7 @@ export async function syncChildBranches(
   let stateChanged = false;
   for (const issue of issues) {
     if (!issue.child_session) continue;
-    if (issue.state !== 'in_progress' && issue.state !== 'pr_open' && issue.state !== 'review') continue;
+    if (issue.state !== 'in_progress' && issue.state !== 'pr_open') continue;
     const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
     const childWorktree = path.join(childDir, 'worktree');
     if (!deps.existsSync(childWorktree)) continue;
