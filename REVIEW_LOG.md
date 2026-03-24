@@ -149,3 +149,25 @@
 - Gate 9 (Documentation Freshness): PASS — internal refactor; no user-facing behavior changed.
 
 ---
+
+## Review — 2026-03-24 — commit b370ec6b..8c6e0881
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** proof-artifacts/elapsedtimer-*.png, proof-manifest.json (59042ea5); PhaseBadge.tsx, PhaseBadge.test.tsx, PhaseBadge.stories.tsx, AppView.tsx (1a32d9b8); QA_LOG.md, QA_COVERAGE.md (8c6e0881)
+
+- Gate 6: `PhaseBadge.stories.tsx` adds 6 new Storybook stories (Plan, Build, Proof, Review, Unknown, Small). `proof-manifest.json` currently has 11 entries — none for PhaseBadge. PhaseBadge renders visible colored span badges with phase-specific Tailwind classes; it has observable visual output. Proof agent must capture all 6 story screenshots via HTTP-served Storybook + Playwright and append to `proof-manifest.json`.
+
+**Prior findings resolved:**
+- Gate 6 (ElapsedTimer): commit `59042ea5` adds 3 distinct PNG files (`elapsedtimer-juststarted.png` 4882B, `elapsedtimer-ninetyseconds.png` 5274B, `elapsedtimer-twominutes.png` 5261B) with unique MD5 hashes — confirmed not "Not Found" pages. Appended to proof-manifest.json as entries 9–11. Prior finding fully closed.
+
+**Observations:**
+- Gate 1 (Spec Compliance): PASS — TODO spec says "move `PhaseBadge` (AppView.tsx:189) into `components/shared/PhaseBadge.tsx`; add test and stories". `PhaseBadge.tsx` (13 LOC) contains both `phaseColors` map and `PhaseBadge` function. AppView.tsx:27 imports from `@/components/shared/PhaseBadge`; 3 usage sites preserved (lines 595, 819, 1782). `phaseColors` was unexported so no re-export needed.
+- Gate 2 (Test Depth): PASS — `PhaseBadge.test.tsx` has 7 tests. Color tests use `container.querySelector('.bg-purple-500\\/20')` selector (class-specific, would fail if wrong class applied). Size tests use `.toBe(true)` exact assertions. Text/null tests use `getByText()` and `toBeNull()` exact checks. Case-insensitive test verifies `.toLowerCase()` path.
+- Gate 3 (Coverage): PASS — 7 tests for a 13-LOC component. All branches covered: `!phase` early-return, all 4 `phaseColors` keys, fallback `??`, `small` ternary both arms, case-insensitive lookup. New module threshold (90%) clearly met.
+- Gate 4 (Code Quality): PASS — `PhaseBadge.tsx` is 13 LOC; clean; no dead code. AppView.tsx inline `phaseColors` and `PhaseBadge` removed; import added. No leftover TODOs.
+- Gate 5 (Integration Sanity): PASS — dashboard 244/244 tests pass (up from 237; +7 PhaseBadge tests); TypeCheck: clean; CLI 25 failures are pre-existing (same set).
+- Gate 7 (Runtime Layout): SKIP — leaf component extraction; no layout/CSS structure changes.
+- Gate 8 (Version Compliance): PASS — no dependency changes.
+- Gate 9 (Documentation Freshness): PASS — internal refactor; no user-facing behavior changed.
+
+---

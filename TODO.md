@@ -11,6 +11,7 @@ Migration order per spec: utilities → leaf components → composite components
 ### In Progress
 
 - [x] [review] Gate 6: `ElapsedTimer.stories.tsx` adds 3 new Storybook stories (`Shared/ElapsedTimer--JustStarted`, `--NinetySeconds`, `--TwoMinutes`) but `proof-manifest.json` was not updated — still shows 8 entries from 2026-03-24T10:22:03Z (pre-ElapsedTimer). Run Playwright proof capture against HTTP-served Storybook for the 3 new ElapsedTimer stories and append entries to `proof-manifest.json` in session artifacts dir. (priority: high)
+- [ ] [review] Gate 6: `PhaseBadge.stories.tsx` adds 6 new Storybook stories (`Shared/PhaseBadge--Plan`, `--Build`, `--Proof`, `--Review`, `--Unknown`, `--Small`) but no Playwright screenshots were captured. `proof-manifest.json` has 11 entries — none for PhaseBadge. Run Playwright proof capture against HTTP-served Storybook for all 6 PhaseBadge stories and append entries to `proof-manifest.json`. (priority: high)
 
 ### Up Next
 
