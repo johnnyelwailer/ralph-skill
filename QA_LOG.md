@@ -1,5 +1,81 @@
 # QA Log
 
+## QA Session — 2026-03-24 (iteration 9 / self-healing-feature)
+
+### Binary Under Test
+- Installed path: `/tmp/aloop-test-install-Uk8NwZ/bin/aloop` (cleaned up after session)
+- Version: `1.0.0`
+- Built from: commit `46f8fb20` (branch `aloop/issue-180`)
+- Install method: `npm run test-install -- --keep`
+
+### Target Selection
+- New feature since last QA pass: self-healing for known blockers (`selfHealKnownBlockers`) added at `46f8fb20`
+- Process-requests test count grew 8→10 (2 new tests at HEAD); verified all pass
+
+### Test Environment
+- Temp dir: `/tmp/aloop-test-install-Uk8NwZ` (cleaned up after session)
+- Features tested: 3 (TS check, unit suite, dashboard vitest)
+
+### Results
+- PASS: TypeScript type check (`tsc --noEmit`) — zero errors
+- PASS: orchestrate.test.ts — 348/373 pass (25 pre-existing fails, unchanged; 8 new tests for self-healing all pass)
+- PASS: process-requests.test.ts — 10/10 pass (was 8/8; 2 new tests added)
+- PASS: dashboard vitest — 148/148 pass across 19 test files; DiagnosticsBanner 9/9 pass
+
+### Bugs Filed
+- None
+
+### Notes
+1. `selfHealKnownBlockers` (7 subtests): covers gh label create (happy path + 403), config.json derivation from meta.json (write + no-overwrite), standalone permission error logging, no-op when no healable blockers, and integration with scan pass log events — all pass.
+2. Total orchestrate test count: 365 → 373 (+8 self-heal tests). Pass: 340 → 348. Pre-existing fails: 25 (unchanged).
+3. DiagnosticsBanner coverage increased to 9 tests (3 new branch tests added at `eb8a3acb`): undefined health, empty blockers list, empty suggested_fix — all pass.
+
+### Command Transcript
+
+```
+# Install
+cd aloop/cli
+ALOOP_BIN=$(npm run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-Uk8NwZ/bin/aloop  (version 1.0.0)
+
+# TypeScript type check
+npx tsc --noEmit
+# → (no output) exit 0 — PASS
+
+# orchestrate unit tests
+npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# → # tests 373
+# → # pass 348
+# → # fail 25
+
+# selfHealKnownBlockers subtests
+npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep -A 60 "Subtest: selfHealKnownBlockers"
+# → ok 1 - creates GitHub label when blocker description mentions a label
+# → ok 2 - logs permission error when gh label create fails with 403
+# → ok 3 - derives config.json from meta.json when missing
+# → ok 4 - does not overwrite existing config.json
+# → ok 5 - logs permission error for standalone permission-denied blocker
+# → ok 6 - returns empty array when no blockers match healable patterns
+# → ok 7 - logs self_heal_attempt events when called from scan pass
+# → 1..7
+# → ok 66 - selfHealKnownBlockers  — PASS
+
+# process-requests unit tests
+npx tsx --test src/commands/process-requests.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# → # tests 10
+# → # pass 10
+# → # fail 0  — PASS
+
+# Dashboard vitest
+cd aloop/cli/dashboard
+npx vitest run 2>&1 | tail -5
+# → Test Files  19 passed (19)
+# →       Tests  148 passed (148)  — PASS
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-Uk8NwZ
+```
+
 ## QA Session — 2026-03-24 (iteration 8 / final-review-pass)
 
 ### Binary Under Test
