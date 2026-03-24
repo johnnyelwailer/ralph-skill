@@ -29,3 +29,9 @@
 | TypeScript compilation post-format-extraction | 2026-03-24 | acb8fb08 | PASS | tsc --noEmit: no errors |
 | Production vite build post-format-extraction | 2026-03-24 | acb8fb08 | PASS | vite build succeeds; 462KB JS bundle |
 | Storybook build post-format-extraction | 2026-03-24 | acb8fb08 | PASS | 60 stories build successfully; no regressions from format extraction |
+| lib/format.test.ts coverage (Gate 3) | 2026-03-24 | e0b19b91 | PASS | 41 tests covering all 8 exported functions; all tests pass (230 total); each function has happy path + edge cases |
+| lib/types.ts extraction | 2026-03-24 | f71b9968 | PASS | 13 types extracted (SessionStatus, ArtifactManifest, DashboardState, SessionSummary, FileChange, LogEntry, ArtifactEntry, ManifestPayload, QACoverageFeature, QACoverageViewData, CostSessionResponse, ConnectionStatus, IterationUsage); AppView.tsx imports and re-exports all; AnsiStyle stays in lib/ansi.ts (extracted previously) |
+| Unit test suite (230 tests / 21 files) | 2026-03-24 | f71b9968 | PASS | 230 passed, 0 failures (+41 format.test.ts tests vs prior 189); vitest run --run |
+| TypeScript compilation post-types-extraction | 2026-03-24 | f71b9968 | PASS | tsc --noEmit: no errors |
+| Production vite build post-types-extraction | 2026-03-24 | f71b9968 | PASS | vite build succeeds; 462KB JS bundle, no regressions |
+| Storybook build post-types-extraction | 2026-03-24 | f71b9968 | PASS | 60 stories build successfully; no regressions from types extraction |

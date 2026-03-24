@@ -410,3 +410,62 @@ $ cat ~/.aloop/sessions/orchestrator-20260321-172932-issue-183-20260324-085402/a
 ### Cleanup
 - Storybook build: `rm -rf /tmp/qa-storybook-iter4`
 - HTTP server killed
+
+## QA Session — 2026-03-24 (iteration 6)
+
+### Test Environment
+- Dashboard source: aloop/cli/dashboard/
+- Commit under test: f71b9968 (refactor: extract lib/types.ts from AppView.tsx)
+- Prior commit: e0b19b91 (test(format): add lib/format.test.ts)
+- Features tested: 5
+
+### Results
+- PASS: lib/format.test.ts coverage (41 tests, all 8 functions)
+- PASS: lib/types.ts extraction (13 types, AppView imports/re-exports)
+- PASS: Unit test suite (230 tests / 21 files)
+- PASS: TypeScript compilation (tsc --noEmit: no errors)
+- PASS: Production vite build (462KB bundle)
+- PASS: Storybook build (60 stories, no regressions)
+
+### Bugs Filed
+- None (0 new bugs)
+
+### Command Transcript
+
+```
+$ cd aloop/cli/dashboard && npm run test -- --run
+# 21 passed, 230 tests, 0 failures
+# exit: 0
+
+$ npx tsc --noEmit
+# (no output — no errors)
+# exit: 0
+
+$ npm run build
+# vite build: 462KB JS bundle, no errors
+# exit: 0
+
+$ npx storybook build
+# 60 stories built successfully
+# exit: 0
+
+$ grep "^export" src/lib/types.ts
+# 13 exports: SessionStatus, ArtifactManifest, DashboardState, SessionSummary,
+# FileChange, LogEntry, ArtifactEntry, ManifestPayload, QACoverageFeature,
+# QACoverageViewData, CostSessionResponse, ConnectionStatus, IterationUsage
+
+$ grep "from.*lib/types" src/AppView.tsx
+# line 49: imports from './lib/types'
+# line 55: re-exports from './lib/types'
+
+$ grep "describe\|it(" src/lib/format.test.ts | wc -l
+# 48 (8 describe blocks + 41 it() tests)
+# All 8 exported functions have dedicated test suites with happy path + edge cases
+# exit: 0
+```
+
+### Notes
+- Test count increased from 189 (prev QA iter 5) to 230 (+41 format.test.ts tests) — matches exactly
+- AnsiStyle type correctly lives in lib/ansi.ts (extracted in prior iteration); not duplicated into lib/types.ts
+- ComparisonMode type remains in AppView.tsx — not in scope for lib/types.ts extraction per TODO spec
+- No regressions in Storybook (60 stories stable across last 4 iterations)
