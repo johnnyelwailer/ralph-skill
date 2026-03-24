@@ -83,3 +83,25 @@
 - Gate 9 (Documentation Freshness): PASS — internal refactor, no user-facing behavior changed.
 
 ---
+
+## Review — 2026-03-24 — commit ccc5d5e9..ee566c1f
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** lib/ansi.test.ts (c5d8321c); lib/format.ts, AppView.tsx, formatHelpers.test.tsx (acb8fb08); QA_LOG.md, QA_COVERAGE.md (ee566c1f)
+
+- Gate 3: `lib/format.ts` exports 8 functions but has no dedicated test file. `formatHelpers.test.tsx` covers only `formatSecs` (2 tests) and `relativeTime` (1 test). Zero coverage for `formatTime`, `formatTimeShort`, `formatDuration`, `formatDateKey`, `formatTokenCount`, `parseDurationSeconds`. New module threshold is 90%; actual is ~25%. Pattern established by `lib/ansi.ts` → `lib/ansi.test.ts` must be followed.
+
+**Prior findings resolved:**
+- Gate 2 (`lib/ansi.test.ts`): all 7 former `.toBeTruthy()` checks replaced with exact `.toBe()` RGB string assertions (e.g. `expect(segments[1].style.fg).toBe('187,0,0')`) — confirmed at c5d8321c. Finding fully closed.
+
+**Observations:**
+- Gate 1 (Spec Compliance): PASS — lib/format.ts exports all 8 functions per spec; AppView.tsx imports and re-exports all 8; formatHelpers.test.tsx imports from `./lib/format` directly. Refactor shape is correct.
+- Gate 2 (Test Depth): PASS for the tests that exist — `formatSecs` and `relativeTime` use exact `.toBe()` assertions; the problem is missing tests for 6 functions, not shallow assertions on existing tests.
+- Gate 4 (Code Quality): PASS — no dead code; 3 consecutive blank lines at AppView.tsx:191-193 are cosmetic artifacts of deletion, not a blocker. No leftover TODOs/FIXMEs.
+- Gate 5 (Integration Sanity): PASS — 189/189 dashboard unit tests pass; 25 CLI failures are pre-existing (same set: validateDoR, launchChildLoop, checkPrGates, etc.); TS error in process-requests.ts:402 pre-existing.
+- Gate 6 (Proof Verification): PASS — both build commits are purely internal (test assertion fix + lib extraction/refactor); skipping proof is the correct outcome for plumbing work with no observable UI output.
+- Gate 7 (Runtime Layout): SKIP — no CSS or visual changes.
+- Gate 8 (Version Compliance): PASS — no dependency changes.
+- Gate 9 (Documentation Freshness): PASS — no user-facing behavior changed.
+
+---
