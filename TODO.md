@@ -12,6 +12,10 @@ Migration order per spec: utilities → leaf components → composite components
 
 - [x] [review] Gate 6: PhaseBadge proof captured — 6 PNG screenshots appended to `proof-manifest.json` (entries 12–17) via HTTP+Playwright. (priority: high)
 
+- [ ] [review] Gate 2: `StatusDot.test.tsx` lines 11-67 never verify tooltip label content — the `STATUS_DOT_CONFIG` label values ("Running", "Stopped", "Exited", etc.) are completely unverified. Rewrite StatusDot tests to assert tooltip labels via `screen.getByText('Running')` etc. (mirroring the pattern already in ConnectionIndicator tests at lines 88-101). Also remove duplicate test: "renders dot element for running status" (lines 11-13) and "renders pulse animation for running status" (lines 22-26) both assert `container.querySelector('.animate-pulse-dot').toBeTruthy()` with no distinction — delete one. (priority: high)
+
+- [ ] [review] Gate 6: `StatusDot.stories.tsx` exports 7 stories but proof manifest (entries 18-23) only captures 3 StatusDot variants (Running, Stopped, Error). Missing proof screenshots for: Exited (`.bg-muted-foreground/50`), Unhealthy (`.bg-red-500`), Stuck (`.bg-orange-500` — unique color not yet proven), Unknown (`.bg-muted-foreground/30`). Capture the 4 missing story screenshots via HTTP+Playwright and append to `proof-manifest.json`. (priority: high)
+
 ### Up Next
 
 - [x] Extract `lib/types.ts` — move shared TypeScript interfaces (`SessionSummary`, `LogEntry`, `IterationUsage`, `DashboardState`, `ArtifactEntry`, `ArtifactManifest`, `ManifestPayload`, `ConnectionStatus`, `AnsiStyle`, `QACoverageViewData`) from `AppView.tsx` into `lib/types.ts`; update all imports (priority: high, foundational — blocks all component extractions)

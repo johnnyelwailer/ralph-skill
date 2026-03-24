@@ -150,6 +150,29 @@
 
 ---
 
+## Review — 2026-03-24 — commit 86ee06ec..b6b100cd
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** proof-artifacts/phasebadge-*.png, proof-manifest.json (a73baf3a); components/shared/StatusDot.tsx + StatusDot.test.tsx + StatusDot.stories.tsx, AppView.tsx (804d4a72); QA_LOG.md, QA_COVERAGE.md, TODO.md (b6b100cd)
+
+- Gate 2: `StatusDot.test.tsx` lines 11-67 — all 11 StatusDot tests use `.toBeTruthy()` class existence checks; none verify the tooltip label values from `STATUS_DOT_CONFIG` ("Running", "Stopped", "Exited", etc.). `ConnectionIndicator` tests (lines 88-101) correctly use `screen.getByText('Live')` / `'Connecting...'` / `'Disconnected'` — this label-testing pattern is entirely absent for StatusDot. A `STATUS_DOT_CONFIG` with any wrong label strings would pass all 11 tests. Additionally, tests at lines 11-13 ("renders dot element for running status") and 22-26 ("renders pulse animation for running status") are exact duplicates — both assert `container.querySelector('.animate-pulse-dot').toBeTruthy()` for `status="running"` with no behavioral distinction.
+- Gate 6: `StatusDot.stories.tsx` exports 7 StatusDot stories (Running, Stopped, Exited, Unhealthy, Error, Stuck, Unknown). Proof manifest entries 18-23 capture only 3 StatusDot variants (Running, Stopped, Error) plus 3 misregistered ConnectionIndicator entries. Missing proof for: `Exited`, `Unhealthy`, `Stuck` (orange — unique visual state not yet proven anywhere), `Unknown` — 4 of 7 StatusDot story variants have no screenshot.
+
+**Prior findings resolved:**
+- Gate 6 (PhaseBadge): commit `a73baf3a` adds 6 distinct PNG files (phasebadge-plan/build/proof/review/unknown/small) appended to proof-manifest.json as entries 12-17. Prior finding fully closed.
+
+**Observations:**
+- Gate 1 (Spec Compliance): PASS — TODO spec says "move `StatusDot` (AppView.tsx:206) and `ConnectionIndicator` (AppView.tsx:227) into `components/shared/StatusDot.tsx`; add test and stories". Both components moved; import added at AppView.tsx:28; no inline definitions remain in AppView.tsx.
+- Gate 3 (Coverage): PASS — 17 tests for a 51-LOC file with 2 components; all STATUS_DOT_CONFIG keys tested (running, stopped, exited, unhealthy, error, stuck, unknown); all ConnectionIndicator branches tested (connected, connecting, disconnected); fallback (`??`) path tested via "nonexistent" status.
+- Gate 4 (Code Quality): NOTE — `connectionMeta` (StatusDot.stories.tsx:43-49) is defined but never exported as `default`, making it dead code. The [qa/P2] task already tracks the fix (create separate `ConnectionIndicator.stories.tsx`). No new [review] task created since it's already tracked.
+- Gate 5 (Integration Sanity): PASS — 261/261 dashboard tests pass (up from 244; +17 StatusDot/ConnectionIndicator tests); TypeCheck: 1 pre-existing error in process-requests.ts:402; build succeeds; 25 CLI failures pre-existing.
+- Gate 7 (Runtime Layout): SKIP — leaf component extraction; no layout/CSS structure changes.
+- Gate 8 (Version Compliance): PASS — no dependency changes.
+- Gate 9 (Documentation Freshness): PASS — internal refactor; no user-facing behavior changed.
+- Gate 10 (QA Coverage): PASS — QA_COVERAGE.md has 57 features tracked; 56 PASS, 1 FAIL (ConnectionIndicator story grouping [qa/P2]); no P1 bugs outstanding; coverage well above 30% threshold.
+
+---
+
 ## Review — 2026-03-24 — commit b370ec6b..8c6e0881
 
 **Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
