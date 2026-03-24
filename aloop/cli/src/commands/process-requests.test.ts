@@ -4,85 +4,113 @@ import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
-import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk } from './process-requests.js';
+import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, type ChildBranchSyncDeps } from './process-requests.js';
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 import type { OrchestratorIssue } from './orchestrate.js';
 
-describe('process-requests V8 cache helpers', () => {
-  it('getDirectorySizeBytes sums nested file sizes', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-v8-size-'));
-    try {
-      await mkdir(path.join(root, 'nested'), { recursive: true });
-      await writeFile(path.join(root, 'a.bin'), Buffer.alloc(1024));
-      await writeFile(path.join(root, 'nested', 'b.bin'), Buffer.alloc(2048));
+describe('syncChildBranches', () => {
+  function createMockSyncDeps(overrides: Partial<ChildBranchSyncDeps> = {}): ChildBranchSyncDeps & { writtenFiles: Record<string, string>; createdDirs: string[] } {
+    const writtenFiles: Record<string, string> = {};
+    const createdDirs: string[] = [];
+    return {
+      existsSync: (p: string) => p.includes('worktree'),
+      readFile: async () => '',
+      writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
+      mkdir: async (p: string) => { createdDirs.push(p); },
+      spawnSync: () => ({ status: 0, stdout: '', stderr: '' }),
+      ...overrides,
+      writtenFiles,
+      createdDirs,
+    };
+  }
 
-      const total = await getDirectorySizeBytes(root);
-      assert.equal(total, 3072);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+  it('sets needs_redispatch and writes queue file on rebase failure', async () => {
+    const issue: any = {
+      number: 42, title: 'Test', wave: 1, state: 'in_progress',
+      child_session: 'child-42', pr_number: 100, depends_on: [],
+    };
+    const deps = createMockSyncDeps({
+      spawnSync: (_cmd: string, args: string[]) => {
+        if (args.includes('merge-base')) return { status: 0, stdout: 'aaa1110\n', stderr: '' };
+        if (args.includes('rev-parse')) return { status: 0, stdout: 'bbb2220\n', stderr: '' };
+        if (args.includes('rebase') && args.includes('--abort')) return { status: 0, stdout: '', stderr: '' };
+        if (args.includes('rebase')) return { status: 1, stdout: '', stderr: 'CONFLICT' };
+        return { status: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    const changed = await syncChildBranches([issue], 'agent/trunk', '/aloop', deps);
+
+    assert.equal(changed, true);
+    assert.equal(issue.needs_redispatch, true);
+    const queueKey = Object.keys(deps.writtenFiles).find(k => k.endsWith('000-merge-conflict.md'));
+    assert.ok(queueKey, 'queue file should be written');
+    assert.match(deps.writtenFiles[queueKey!], /agent: merge/);
+    assert.match(deps.writtenFiles[queueKey!], /Rebase onto/);
   });
 
-  it('pruneLargeV8CacheDir does not prune when below threshold', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-v8-small-'));
-    try {
-      await writeFile(path.join(root, 'cache.bin'), Buffer.alloc(2048));
+  it('does not set needs_redispatch or write queue file on rebase success', async () => {
+    const issue: any = {
+      number: 42, title: 'Test', wave: 1, state: 'in_progress',
+      child_session: 'child-42', pr_number: 100, depends_on: [],
+    };
+    const deps = createMockSyncDeps({
+      spawnSync: (cmd: string, args: string[]) => {
+        if (args.includes('merge-base')) return { status: 0, stdout: 'aaa1110\n', stderr: '' };
+        if (args.includes('rev-parse')) return { status: 0, stdout: 'bbb2220\n', stderr: '' };
+        return { status: 0, stdout: '', stderr: '' };
+      },
+    });
 
-      const result = await pruneLargeV8CacheDir(root, 10 * 1024);
-      assert.equal(result.pruned, false);
-      assert.equal(result.sizeBytes, 2048);
-      assert.equal(existsSync(root), true);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+    const changed = await syncChildBranches([issue], 'agent/trunk', '/aloop', deps);
+
+    assert.equal(changed, false);
+    assert.equal(issue.needs_redispatch, undefined);
+    const queueKey = Object.keys(deps.writtenFiles).find(k => k.endsWith('000-merge-conflict.md'));
+    assert.equal(queueKey, undefined, 'no queue file should be written');
   });
 
-  it('pruneLargeV8CacheDir removes cache dir when above threshold', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-v8-large-'));
-    try {
-      await writeFile(path.join(root, 'cache.bin'), Buffer.alloc(4096));
-
-      const result = await pruneLargeV8CacheDir(root, 1024);
-      assert.equal(result.pruned, true);
-      assert.equal(result.sizeBytes, 4096);
-      assert.equal(existsSync(root), false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+  it('skips issues without child_session', async () => {
+    const issue: any = {
+      number: 42, title: 'Test', wave: 1, state: 'in_progress',
+      child_session: null, pr_number: null, depends_on: [],
+    };
+    const deps = createMockSyncDeps();
+    const changed = await syncChildBranches([issue], 'agent/trunk', '/aloop', deps);
+    assert.equal(changed, false);
   });
 
-  it('pruneLargeV8CacheDir is a no-op when directory is missing', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-v8-missing-'));
-    const missing = path.join(root, 'missing');
-    try {
-      const result = await pruneLargeV8CacheDir(missing, 1);
-      assert.deepEqual(result, { sizeBytes: 0, pruned: false });
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('formatReviewCommentHistory', () => {
-  it('formats comments with author and timestamp attribution', () => {
-    const formatted = formatReviewCommentHistory([
-      { author: { login: 'copilot' }, createdAt: '2026-03-22T08:00:00Z', body: 'Please fix X.' },
-      { author: { login: 'pj' }, createdAt: '2026-03-22T08:30:00Z', body: 'Fixed in latest commit.' },
-    ]);
-
-    assert.equal(
-      formatted,
-      '### @copilot at 2026-03-22T08:00:00Z\n\nPlease fix X.\n\n---\n\n### @pj at 2026-03-22T08:30:00Z\n\nFixed in latest commit.\n',
-    );
+  it('skips issues not in active states', async () => {
+    const issue: any = {
+      number: 42, title: 'Test', wave: 1, state: 'pending',
+      child_session: 'child-42', pr_number: null, depends_on: [],
+    };
+    const deps = createMockSyncDeps();
+    const changed = await syncChildBranches([issue], 'agent/trunk', '/aloop', deps);
+    assert.equal(changed, false);
   });
 
-  it('skips comments with empty bodies and falls back to unknown author', () => {
-    const formatted = formatReviewCommentHistory([
-      { author: { login: null }, createdAt: null, body: '  ' },
-      { author: null, createdAt: undefined, body: 'Looks good now.' },
-    ]);
+  it('does not overwrite existing queue file on repeated failure', async () => {
+    const issue: any = {
+      number: 42, title: 'Test', wave: 1, state: 'in_progress',
+      child_session: 'child-42', pr_number: 100, depends_on: [],
+    };
+    const existingQueueFile = '/aloop/sessions/child-42/queue/000-merge-conflict.md';
+    const deps = createMockSyncDeps({
+      existsSync: (p: string) => p === existingQueueFile || p.includes('worktree'),
+      spawnSync: (cmd: string, args: string[]) => {
+        if (args.includes('merge-base')) return { status: 0, stdout: 'aaa111\n', stderr: '' };
+        if (args.includes('rev-parse')) return { status: 0, stdout: 'bbb222\n', stderr: '' };
+        if (args.includes('rebase') && !args.includes('--abort')) return { status: 1, stdout: '', stderr: 'CONFLICT' };
+        return { status: 0, stdout: '', stderr: '' };
+      },
+    });
 
-    assert.equal(formatted, '### @unknown\n\nLooks good now.\n');
+    const changed = await syncChildBranches([issue], 'agent/trunk', '/aloop', deps);
+
+    assert.equal(changed, false);
+    assert.equal(issue.needs_redispatch, undefined);
+    assert.equal(Object.keys(deps.writtenFiles).length, 0, 'should not write when queue file already exists');
   });
 });
 

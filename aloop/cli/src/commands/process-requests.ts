@@ -213,6 +213,73 @@ export function syncMasterToTrunk(
   } catch { /* best effort */ }
 }
 
+export interface ChildBranchSyncDeps {
+  existsSync: (p: string) => boolean;
+  readFile: (p: string, enc: BufferEncoding) => Promise<string>;
+  writeFile: (p: string, data: string, enc: BufferEncoding) => Promise<void>;
+  mkdir: (p: string, o?: { recursive?: boolean }) => Promise<void>;
+  spawnSync: (cmd: string, args: string[], opts?: Record<string, unknown>) => { status: number | null; stdout: string; stderr: string };
+}
+
+export async function syncChildBranches(
+  issues: OrchestratorIssue[],
+  trunkBranch: string,
+  aloopRoot: string,
+  deps: ChildBranchSyncDeps,
+): Promise<boolean> {
+  let stateChanged = false;
+  for (const issue of issues) {
+    if (!issue.child_session) continue;
+    if (issue.state !== 'in_progress' && issue.state !== 'pr_open' && issue.state !== 'review') continue;
+    const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+    const childWorktree = path.join(childDir, 'worktree');
+    if (!deps.existsSync(childWorktree)) continue;
+
+    // Fetch and check if diverged
+    const fetchResult = deps.spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8', timeout: 30000 });
+    if (fetchResult.status !== 0) continue;
+
+    const mergeBase = deps.spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const remoteHead = deps.spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const mbSha = mergeBase.stdout?.trim();
+    const rhSha = remoteHead.stdout?.trim();
+    if (!mbSha || !rhSha || mbSha.length < 7 || rhSha.length < 7) continue;
+    if (mbSha === rhSha) continue; // Up to date
+
+    // Commit any dirty files and remove working artifacts before rebase
+    const statusResult = deps.spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
+    if (statusResult.stdout?.trim()) {
+      for (const art of ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md']) {
+        deps.spawnSync('git', ['-C', childWorktree, 'rm', '-f', '--cached', art], { encoding: 'utf8' });
+      }
+      deps.spawnSync('git', ['-C', childWorktree, 'add', '-A'], { encoding: 'utf8' });
+      deps.spawnSync('git', ['-C', childWorktree, 'commit', '--allow-empty', '-m', 'chore: save work-in-progress before rebase'], { encoding: 'utf8' });
+    }
+
+    // Try rebase
+    const rebaseResult = deps.spawnSync('git', ['-C', childWorktree, 'rebase', `origin/${trunkBranch}`], { encoding: 'utf8' });
+    if (rebaseResult.status === 0) {
+      deps.spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD', '--force-with-lease'], { encoding: 'utf8' });
+      console.log(`[process-requests] Synced #${issue.number} with ${trunkBranch}`);
+    } else {
+      // Conflict — abort rebase, queue merge agent
+      deps.spawnSync('git', ['-C', childWorktree, 'rebase', '--abort'], { encoding: 'utf8' });
+      const mergeQueueFile = path.join(childDir, 'queue', '000-merge-conflict.md');
+      if (!deps.existsSync(mergeQueueFile)) {
+        const mergePromptPath = path.join(childDir, 'prompts', 'PROMPT_merge.md');
+        const mergePrompt = deps.existsSync(mergePromptPath) ? await deps.readFile(mergePromptPath, 'utf8') : '# Merge Conflict Resolution';
+        await deps.mkdir(path.join(childDir, 'queue'), { recursive: true });
+        await deps.writeFile(mergeQueueFile, `---\nagent: merge\nreasoning: high\n---\n\n${mergePrompt}\n\n## Conflict\n\nRebase onto \`origin/${trunkBranch}\` failed.\nRun \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, resolve conflicts, then \`git rebase --continue && git push origin HEAD --force-with-lease\`.\n`, 'utf8');
+        console.log(`[process-requests] Merge conflict on #${issue.number} — queued merge agent`);
+        // Trigger child restart so it processes the queued merge agent
+        (issue as any).needs_redispatch = true;
+        stateChanged = true;
+      }
+    }
+  }
+  return stateChanged;
+}
+
 /**
  * One-shot command called by loop.sh between iterations for orchestrator sessions.
  *
@@ -465,55 +532,18 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   syncMasterToTrunk(projectRoot, aloopRoot, trunkBranch, { spawnSync });
 
   // ── Phase 2c: Sync child branches with base branch ──
-  for (const issue of state.issues) {
-    if (!issue.child_session) continue;
-    if (issue.state !== 'in_progress' && issue.state !== 'pr_open' && issue.state !== 'review') continue;
-    const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
-    const childWorktree = path.join(childDir, 'worktree');
-    if (!existsSync(childWorktree)) continue;
-
-    // Fetch and check if diverged
-    const fetchResult = spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8', timeout: 30000 });
-    if (fetchResult.status !== 0) continue;
-
-    const mergeBase = spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
-    const remoteHead = spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
-    const mbSha = mergeBase.stdout?.trim();
-    const rhSha = remoteHead.stdout?.trim();
-    if (!mbSha || !rhSha || mbSha.length < 7 || rhSha.length < 7) continue; // Invalid output, skip
-    if (mbSha === rhSha) continue; // Up to date
-
-    // Commit any dirty files and remove working artifacts before rebase
-    const statusResult = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
-    if (statusResult.stdout?.trim()) {
-      // Untrack working artifacts from git (keep on disk — child still needs them)
-      for (const art of ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md']) {
-        spawnSync('git', ['-C', childWorktree, 'rm', '-f', '--cached', art], { encoding: 'utf8' });
-      }
-      spawnSync('git', ['-C', childWorktree, 'add', '-A'], { encoding: 'utf8' });
-      spawnSync('git', ['-C', childWorktree, 'commit', '--allow-empty', '-m', 'chore: save work-in-progress before rebase'], { encoding: 'utf8' });
-    }
-
-    // Try rebase
-    const rebaseResult = spawnSync('git', ['-C', childWorktree, 'rebase', `origin/${trunkBranch}`], { encoding: 'utf8' });
-    if (rebaseResult.status === 0) {
-      spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD', '--force-with-lease'], { encoding: 'utf8' });
-      console.log(`[process-requests] Synced #${issue.number} with ${trunkBranch}`);
-    } else {
-      // Conflict — abort rebase, queue merge agent
-      spawnSync('git', ['-C', childWorktree, 'rebase', '--abort'], { encoding: 'utf8' });
-      const mergeQueueFile = path.join(childDir, 'queue', '000-merge-conflict.md');
-      if (!existsSync(mergeQueueFile)) {
-        const mergePromptPath = path.join(childDir, 'prompts', 'PROMPT_merge.md');
-        const mergePrompt = existsSync(mergePromptPath) ? await readFile(mergePromptPath, 'utf8') : '# Merge Conflict Resolution';
-        await mkdir(path.join(childDir, 'queue'), { recursive: true });
-        await writeFile(mergeQueueFile, `---\nagent: merge\nreasoning: high\n---\n\n${mergePrompt}\n\n## Conflict\n\nRebase onto \`origin/${trunkBranch}\` failed.\nRun \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, resolve conflicts, then \`git rebase --continue && git push origin HEAD --force-with-lease\`.\n`, 'utf8');
-        console.log(`[process-requests] Merge conflict on #${issue.number} — queued merge agent`);
-        // Trigger child restart so it processes the queued merge agent
-        (issue as any).needs_redispatch = true;
-        stateChanged = true;
-      }
-    }
+  {
+    const childSyncChanged = await syncChildBranches(state.issues, trunkBranch, aloopRoot, {
+      existsSync: (p: string) => existsSync(p),
+      readFile: (p: string, e: BufferEncoding) => readFile(p, e),
+      writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e),
+      mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined),
+      spawnSync: (cmd: string, a: string[], o?: Record<string, unknown>) => {
+        const r = spawnSync(cmd, a, o as any);
+        return { status: r.status, stdout: r.stdout?.toString() ?? '', stderr: r.stderr?.toString() ?? '' };
+      },
+    });
+    if (childSyncChanged) stateChanged = true;
   }
 
   // ── Phase 2c: Create PRs for completed children ──
