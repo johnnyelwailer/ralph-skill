@@ -23,6 +23,7 @@ import { CostDisplay } from '@/components/progress/CostDisplay';
 import { ArtifactViewer } from '@/components/artifacts/ArtifactViewer';
 import { HealthPanel } from '@/components/health/ProviderHealth';
 import type { ProviderHealth } from '@/components/health/ProviderHealth';
+import { ElapsedTimer } from '@/components/shared/ElapsedTimer';
 import { useCost } from '@/hooks/useCost';
 import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
@@ -239,23 +240,6 @@ function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
       <TooltipContent><p>SSE connection: {label}</p></TooltipContent>
     </Tooltip>
   );
-}
-
-// ── Elapsed timer ──
-
-function ElapsedTimer({ since }: { since: string }) {
-  const [elapsed, setElapsed] = useState('');
-  useEffect(() => {
-    const start = new Date(since).getTime();
-    const tick = () => {
-      const diff = Math.max(0, Math.floor((Date.now() - start) / 1000));
-      setElapsed(formatSecs(diff));
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [since]);
-  return <>{elapsed}</>;
 }
 
 // ── Token/cost usage helpers ──
