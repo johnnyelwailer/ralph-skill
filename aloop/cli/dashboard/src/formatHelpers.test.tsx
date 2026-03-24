@@ -4,13 +4,13 @@ import {
   toSession,
   formatSecs,
   relativeTime,
-  stripAnsi,
   isImageArtifact,
   artifactUrl,
   slugify,
   parseManifest,
   findBaselineIterations,
 } from './AppView';
+import { stripAnsi } from './lib/ansi';
 
 describe('numStr', () => {
   it('returns number as string', () => {

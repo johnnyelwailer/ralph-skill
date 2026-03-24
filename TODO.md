@@ -17,7 +17,7 @@ Migration order per spec: utilities → leaf components → composite components
 
 ### Up Next
 
-- [ ] Extract `lib/ansi.ts` — move `stripAnsi`, `PALETTE_256`, `rgbStr`, `parseAnsiSegments`, `renderAnsiToHtml` out of `AppView.tsx` into `lib/ansi.ts`; update all imports; add unit tests in `lib/ansi.test.ts` (priority: high, foundational — blocks AnsiRenderer)
+- [x] Extract `lib/ansi.ts` — move `stripAnsi`, `PALETTE_256`, `rgbStr`, `parseAnsiSegments`, `renderAnsiToHtml` out of `AppView.tsx` into `lib/ansi.ts`; update all imports; add unit tests in `lib/ansi.test.ts` (priority: high, foundational — blocks AnsiRenderer)
 
 - [ ] Extract `lib/format.ts` — move `formatTime`, `formatTimeShort`, `formatSecs`, `formatDuration`, `formatDateKey`, `relativeTime`, `formatTokenCount`, `parseDurationSeconds`, `computeAvgDuration` from `AppView.tsx` into `lib/format.ts`; update imports; existing `formatHelpers.test.tsx` should import from new location (priority: high, foundational)
 
