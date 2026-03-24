@@ -186,6 +186,7 @@ test('setupCommandWithDeps - interactive mode', async () => {
     if (question.includes('Language')) return 'python';
     if (question.includes('Primary Provider')) return 'gemini';
     if (question.includes('Mode')) return 'custom-mode';
+    if (question.includes('Issue/PR backend')) return 'local';
     if (question.includes('Autonomy Level')) return 'autonomous';
     if (question.includes('Data Privacy')) return 'public';
     if (question.includes('Validation')) return 'pytest, ruff check .';
@@ -202,7 +203,7 @@ test('setupCommandWithDeps - interactive mode', async () => {
   await setupCommandWithDeps({}, deps);
 
   assert.equal(discoverCalled, true);
-  assert.equal(promptCallCount, 10, 'Should ask 10 questions including confirmation');
+  assert.equal(promptCallCount, 11, 'Should ask 11 questions including confirmation');
   assert.ok(scaffoldCalledOpts);
   assert.deepEqual(scaffoldCalledOpts.specFiles, ['CUSTOM_SPEC.md']);
   assert.deepEqual(scaffoldCalledOpts.enabledProviders, ['gemini']);
@@ -211,6 +212,7 @@ test('setupCommandWithDeps - interactive mode', async () => {
   assert.equal(scaffoldCalledOpts.mode, 'custom-mode');
   assert.equal(scaffoldCalledOpts.autonomyLevel, 'autonomous');
   assert.equal(scaffoldCalledOpts.dataPrivacy, 'public');
+  assert.equal(scaffoldCalledOpts.adapter, 'local');
   assert.deepEqual(scaffoldCalledOpts.validationCommands, ['pytest', 'ruff check .']);
   assert.deepEqual(scaffoldCalledOpts.safetyRules, ['No rm -rf', 'No dropping tables']);
 });
