@@ -3448,6 +3448,8 @@ export interface PrLifecycleDeps {
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   /** Run an agent review against a PR diff. Returns the verdict and summary. */
   invokeAgentReview?: (prNumber: number, repo: string, diff: string) => Promise<AgentReviewResult>;
+  /** Adapter for issue/PR operations. When present, preferred over raw execGh calls. */
+  adapter?: OrchestratorAdapter;
 }
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
@@ -3474,23 +3476,34 @@ export async function checkPrGates(
   deps: PrLifecycleDeps,
 ): Promise<PrGatesResult> {
   const gates: PrGateResult[] = [];
-  const ciWorkflowsConfigured = await hasGithubActionsWorkflows(repo, deps);
+  const ciWorkflowsConfigured = deps.adapter ? false : await hasGithubActionsWorkflows(repo, deps);
 
   // Gate 1: Mergeability (conflict check)
   let mergeable = false;
   try {
-    const viewResult = await deps.execGh([
-      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus',
-    ]);
-    const prData = JSON.parse(viewResult.stdout);
-    mergeable = prData.mergeable === 'MERGEABLE';
-    const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
-    const mergeUnknown = prData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
-    gates.push({
-      gate: 'merge_conflicts',
-      status: mergeable ? 'pass' : mergeUnknown ? 'pending' : 'fail',
-      detail: mergeable ? 'No merge conflicts' : mergeUnknown ? 'Mergeability not yet computed' : `Merge state: ${mergeState}`,
-    });
+    if (deps.adapter) {
+      const prStatus = await deps.adapter.getPrStatus(prNumber);
+      mergeable = prStatus.mergeable;
+      const mergeState = prStatus.mergeStateStatus ?? 'UNKNOWN';
+      gates.push({
+        gate: 'merge_conflicts',
+        status: mergeable ? 'pass' : mergeState === 'UNKNOWN' ? 'pending' : 'fail',
+        detail: mergeable ? 'No merge conflicts' : mergeState === 'UNKNOWN' ? 'Mergeability not yet computed' : `Merge state: ${mergeState}`,
+      });
+    } else {
+      const viewResult = await deps.execGh([
+        'pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus',
+      ]);
+      const prData = JSON.parse(viewResult.stdout);
+      mergeable = prData.mergeable === 'MERGEABLE';
+      const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
+      const mergeUnknown = prData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
+      gates.push({
+        gate: 'merge_conflicts',
+        status: mergeable ? 'pass' : mergeUnknown ? 'pending' : 'fail',
+        detail: mergeable ? 'No merge conflicts' : mergeUnknown ? 'Mergeability not yet computed' : `Merge state: ${mergeState}`,
+      });
+    }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     // API error — don't block the PR, just skip this gate (will retry next pass)
@@ -3499,43 +3512,69 @@ export async function checkPrGates(
 
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
   try {
-    const checksResult = await deps.execGh([
-      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
-    ]);
-    const parsed = JSON.parse(checksResult.stdout);
-    const checks: Array<{ name: string; state: string; conclusion: string }> = (parsed.statusCheckRollup ?? []).map((c: any) => ({
-      name: c.name ?? c.context ?? 'unknown',
-      state: c.status ?? c.state ?? 'COMPLETED',
-      conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
-    }));
-    const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
-    const allPassed = checks.every(
-      (c) => (c.state === 'COMPLETED' || c.state === 'completed') &&
-        (c.conclusion === 'SUCCESS' || c.conclusion === 'success' ||
-         c.conclusion === 'NEUTRAL' || c.conclusion === 'neutral' ||
-         c.conclusion === 'SKIPPED' || c.conclusion === 'skipped'),
-    );
-    const failedChecks = checks.filter(
-      (c) => c.conclusion === 'FAILURE' || c.conclusion === 'failure' ||
-        c.conclusion === 'CANCELLED' || c.conclusion === 'cancelled' ||
-        c.conclusion === 'TIMED_OUT' || c.conclusion === 'timed_out',
-    );
+    if (deps.adapter) {
+      const checksResult = await deps.adapter.getPrChecks(prNumber);
+      const checks = checksResult.checks.map((c) => ({
+        name: c.name,
+        state: c.status,
+        conclusion: c.conclusion ?? 'PENDING',
+      }));
+      const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
+      const allPassed = checksResult.passed;
+      const failedChecks = checks.filter(
+        (c) => c.conclusion === 'FAILURE' || c.conclusion === 'failure' ||
+          c.conclusion === 'CANCELLED' || c.conclusion === 'cancelled' ||
+          c.conclusion === 'TIMED_OUT' || c.conclusion === 'timed_out',
+      );
 
-    if (checks.length === 0) {
-      // No check runs — pass regardless of workflow existence
-      // (workflow may not trigger on this branch/PR target)
-      if (ciWorkflowsConfigured) {
-        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'CI workflows exist but no checks ran on this PR — passing' });
+      if (checks.length === 0) {
+        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No CI checks configured' });
+      } else if (!allCompleted) {
+        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'Some CI checks still running' });
+      } else if (allPassed) {
+        gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${checks.length} checks passed` });
       } else {
-        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
+        const failNames = failedChecks.map((c) => c.name).join(', ');
+        gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed checks: ${failNames}` });
       }
-    } else if (!allCompleted) {
-      gates.push({ gate: 'ci_checks', status: 'pending', detail: 'Some CI checks still running' });
-    } else if (allPassed) {
-      gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${checks.length} checks passed` });
     } else {
-      const failNames = failedChecks.map((c) => c.name).join(', ');
-      gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed checks: ${failNames}` });
+      const checksResult = await deps.execGh([
+        'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
+      ]);
+      const parsed = JSON.parse(checksResult.stdout);
+      const checks: Array<{ name: string; state: string; conclusion: string }> = (parsed.statusCheckRollup ?? []).map((c: any) => ({
+        name: c.name ?? c.context ?? 'unknown',
+        state: c.status ?? c.state ?? 'COMPLETED',
+        conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
+      }));
+      const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
+      const allPassed = checks.every(
+        (c) => (c.state === 'COMPLETED' || c.state === 'completed') &&
+          (c.conclusion === 'SUCCESS' || c.conclusion === 'success' ||
+           c.conclusion === 'NEUTRAL' || c.conclusion === 'neutral' ||
+           c.conclusion === 'SKIPPED' || c.conclusion === 'skipped'),
+      );
+      const failedChecks = checks.filter(
+        (c) => c.conclusion === 'FAILURE' || c.conclusion === 'failure' ||
+          c.conclusion === 'CANCELLED' || c.conclusion === 'cancelled' ||
+          c.conclusion === 'TIMED_OUT' || c.conclusion === 'timed_out',
+      );
+
+      if (checks.length === 0) {
+        // No check runs — pass regardless of workflow existence
+        if (ciWorkflowsConfigured) {
+          gates.push({ gate: 'ci_checks', status: 'pass', detail: 'CI workflows exist but no checks ran on this PR — passing' });
+        } else {
+          gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
+        }
+      } else if (!allCompleted) {
+        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'Some CI checks still running' });
+      } else if (allPassed) {
+        gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${checks.length} checks passed` });
+      } else {
+        const failNames = failedChecks.map((c) => c.name).join(', ');
+        gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed checks: ${failNames}` });
+      }
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3596,9 +3635,13 @@ export async function mergePr(
   deps: PrLifecycleDeps,
 ): Promise<PrMergeResult> {
   try {
-    await deps.execGh([
-      'pr', 'merge', String(prNumber), '--repo', repo, '--squash', '--delete-branch',
-    ]);
+    if (deps.adapter) {
+      await deps.adapter.mergePr(prNumber, { method: 'squash', deleteBranch: true });
+    } else {
+      await deps.execGh([
+        'pr', 'merge', String(prNumber), '--repo', repo, '--squash', '--delete-branch',
+      ]);
+    }
     return { pr_number: prNumber, merged: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3702,12 +3745,17 @@ export async function flagForHuman(
 ): Promise<void> {
   const body = `Flagged for human resolution: ${reason}`;
   try {
-    await deps.execGh([
-      'issue', 'comment', String(issue.number), '--repo', repo, '--body', body,
-    ]);
-    await deps.execGh([
-      'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-    ]);
+    if (deps.adapter) {
+      await deps.adapter.postComment(issue.number, body);
+      await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
+    } else {
+      await deps.execGh([
+        'issue', 'comment', String(issue.number), '--repo', repo, '--body', body,
+      ]);
+      await deps.execGh([
+        'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+      ]);
+    }
   } catch {
     // Best-effort labeling
   }
@@ -3846,10 +3894,14 @@ export async function processPrLifecycle(
       const ciRetryNote = ciFailure && stateIssue
         ? ` CI retry ${stateIssue.ci_failure_retries ?? 1}/${ORCHESTRATOR_CI_PERSISTENCE_LIMIT} before human escalation.`
         : '';
-      await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo,
-        '--body', `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`,
-      ]);
+      const commentBody = `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`;
+      if (deps.adapter) {
+        await deps.adapter.postComment(issue.number, commentBody);
+      } else {
+        await deps.execGh([
+          'issue', 'comment', String(issue.number), '--repo', repo, '--body', commentBody,
+        ]);
+      }
     } catch {
       // Best-effort comment
     }
@@ -3884,10 +3936,14 @@ export async function processPrLifecycle(
     const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
-        await deps.execGh([
-          'pr', 'comment', String(prNumber), '--repo', repo,
-          '--body', `Agent review requested changes:\n\n${reviewResult.summary}`,
-        ]);
+        const reviewCommentBody = `Agent review requested changes:\n\n${reviewResult.summary}`;
+        if (deps.adapter) {
+          await deps.adapter.postComment(prNumber, reviewCommentBody);
+        } else {
+          await deps.execGh([
+            'pr', 'comment', String(prNumber), '--repo', repo, '--body', reviewCommentBody,
+          ]);
+        }
       } catch {
         // Best-effort
       }
@@ -3896,8 +3952,39 @@ export async function processPrLifecycle(
 
     // Mark for re-dispatch by the scan pass (which has dispatchDeps)
     if (stateIssue) {
-      (stateIssue as any).needs_redispatch = true;
-      (stateIssue as any).review_feedback = reviewResult.summary;
+      const failures = (stateIssue.redispatch_failures ?? 0) + 1;
+      stateIssue.redispatch_failures = failures;
+
+      if (failures >= ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT) {
+        // Escalate: comment on issue + add aloop/needs-human label, pause automated redispatch
+        try {
+          const escalationBody = `Automated redispatch paused after ${failures} failed attempts.\n\nLast review feedback:\n\n${reviewResult.summary}\n\nA human review is required. Remove the \`aloop/needs-human\` label to resume automated redispatch.`;
+          if (deps.adapter) {
+            await deps.adapter.postComment(issue.number, escalationBody);
+            await deps.adapter.addLabels(issue.number, ['aloop/needs-human']);
+          } else {
+            await deps.execGh([
+              'issue', 'comment', String(issue.number), '--repo', repo, '--body', escalationBody,
+            ]);
+            await deps.execGh([
+              'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/needs-human',
+            ]);
+          }
+        } catch {
+          // Best-effort
+        }
+        stateIssue.redispatch_paused = true;
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'redispatch_escalated',
+          pr_number: prNumber,
+          issue_number: issue.number,
+          redispatch_failures: failures,
+        });
+      } else {
+        (stateIssue as any).needs_redispatch = true;
+        (stateIssue as any).review_feedback = reviewResult.summary;
+      }
     }
 
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
@@ -3937,7 +4024,11 @@ export async function processPrLifecycle(
 
     // Close the issue
     try {
-      await deps.execGh(['issue', 'close', String(issue.number), '--repo', repo]);
+      if (deps.adapter) {
+        await deps.adapter.closeIssue(issue.number);
+      } else {
+        await deps.execGh(['issue', 'close', String(issue.number), '--repo', repo]);
+      }
     } catch {
       // Best-effort close
     }
@@ -4299,6 +4390,8 @@ export interface MonitorChildDeps {
   now: () => Date;
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   aloopRoot: string;
+  /** Adapter for issue/PR operations. When present, preferred over raw execGh calls. */
+  adapter?: OrchestratorAdapter;
 }
 
 /**
@@ -4364,16 +4457,21 @@ async function createPrForChild(
   });
 
   try {
-    const result = await deps.execGh([
-      'pr', 'create',
-      '--repo', repo,
-      '--base', effectiveBase,
-      '--head', branch,
-      '--title', prTitle,
-      '--body', prBody,
-    ]);
-    const parsed = parsePrCreateOutput(result.stdout);
-    return { pr_number: parsed.number, branch, baseBranch: effectiveBase };
+    if (deps.adapter) {
+      const pr = await deps.adapter.createPr({ base: effectiveBase, head: branch, title: prTitle, body: prBody });
+      return { pr_number: pr.number > 0 ? pr.number : null, branch, baseBranch: effectiveBase };
+    } else {
+      const result = await deps.execGh([
+        'pr', 'create',
+        '--repo', repo,
+        '--base', effectiveBase,
+        '--head', branch,
+        '--title', prTitle,
+        '--body', prBody,
+      ]);
+      const parsed = parsePrCreateOutput(result.stdout);
+      return { pr_number: parsed.number, branch, baseBranch: effectiveBase };
+    }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     // Check if PR already exists for this branch
@@ -5428,14 +5526,14 @@ export async function runOrchestratorScanPass(
       state,
       path.basename(sessionDir),
       repo,
-      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile },
+      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, adapter: deps.adapter },
       aloopRoot,
     );
     result.specQuestions = await resolveSpecQuestionIssues(
       state,
       repo,
       sessionDir,
-      { execGh: deps.execGh, appendLog: deps.appendLog, now: deps.now },
+      { execGh: deps.execGh, appendLog: deps.appendLog, now: deps.now, adapter: deps.adapter },
     );
   }
 
@@ -5537,6 +5635,7 @@ export async function runOrchestratorScanPass(
           now: deps.now,
           appendLog: deps.appendLog,
           aloopRoot: deps.aloopRoot,
+          adapter: deps.adapter,
         },
       );
     } catch (e: unknown) {
@@ -5576,6 +5675,43 @@ export async function runOrchestratorScanPass(
           pr_number: issue.pr_number,
           error: msg,
         });
+      }
+    }
+  }
+
+  // 3.4. Resume redispatch for issues where aloop/needs-human label has been removed
+  if (repo && deps.execGh) {
+    const pausedIssues = state.issues.filter((i) => (i as any).redispatch_paused);
+    for (const issue of pausedIssues) {
+      try {
+        let labelNames: Set<string>;
+        if (deps.adapter) {
+          const issueData = await deps.adapter.getIssue(issue.number);
+          labelNames = new Set<string>(issueData.labels.map((l) => l.toLowerCase()));
+        } else {
+          const viewResult = await deps.execGh([
+            'issue', 'view', String(issue.number), '--repo', repo, '--json', 'labels',
+          ]);
+          const data = JSON.parse(viewResult.stdout);
+          labelNames = new Set<string>(
+            (data.labels ?? [])
+              .filter((l: unknown) => typeof (l as any)?.name === 'string')
+              .map((l: unknown) => (l as any).name.toLowerCase()),
+          );
+        }
+        if (!labelNames.has('aloop/needs-human')) {
+          issue.redispatch_paused = false;
+          issue.redispatch_failures = 0;
+          (issue as any).needs_redispatch = true;
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'redispatch_resumed',
+            iteration,
+            issue_number: issue.number,
+          });
+        }
+      } catch {
+        // Best-effort
       }
     }
   }

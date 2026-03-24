@@ -942,6 +942,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
       now: () => new Date(),
       appendLog: (dir: string, entry: Record<string, unknown>) => { appendLog(dir, entry); },
+      adapter,
       invokeAgentReview: async (prNumber: number, _repo: string, diff: string) => {
         // Check for result file — the ONLY source of truth for review verdicts.
         // No fallback regex extraction. If the file doesn't exist, the review
