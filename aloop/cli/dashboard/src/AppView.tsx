@@ -2186,12 +2186,12 @@ function AppInner() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'b' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); toggleSidebar(); }
+      if (e.key === 'b' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (!isMobile) toggleSidebar(); }
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setCommandOpen((p) => !p); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [toggleSidebar]);
+  }, [toggleSidebar, isMobile]);
 
   // Mobile sidebar: Escape key closes drawer
   useEffect(() => {
