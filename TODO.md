@@ -22,6 +22,9 @@ Migration order per spec: utilities → leaf components → composite components
 - [x] Extract `shared/PhaseBadge.tsx` with test and stories — move `PhaseBadge` (AppView.tsx:189) into `components/shared/PhaseBadge.tsx`; add test and stories (priority: high, leaf component)
 
 - [x] Extract `shared/StatusDot.tsx` with test and stories — move `StatusDot` (AppView.tsx:206) and `ConnectionIndicator` (AppView.tsx:227) into `components/shared/StatusDot.tsx`; add test and stories (priority: high, leaf component)
+- [x] [review] Gate 6: StatusDot proof captured — 6 PNG screenshots appended to `proof-manifest.json` (entries 18–23) via HTTP+Playwright. (priority: high)
+
+- [ ] [qa/P2] ConnectionIndicator stories mis-grouped under StatusDot in Storybook: `StatusDot.stories.tsx` has a second meta (`connectionMeta` with `title: 'Shared/ConnectionIndicator'`) but no second `export default`, so all 10 stories register as `shared-statusdot--*`. ConnectionIndicator stories (Connected, Connecting, Disconnected) should appear under `shared-connectionindicator--*`. Fix: create a separate `ConnectionIndicator.stories.tsx` with its own default export. Tested at iter 9. (priority: medium)
 
 - [ ] Extract `shared/AnsiRenderer.tsx` with test and stories — create `components/shared/AnsiRenderer.tsx` wrapping `renderAnsiToHtml` from `lib/ansi.ts`; add test and stories (priority: medium, leaf component — requires lib/ansi.ts)
 

@@ -47,3 +47,10 @@
 | TypeScript compilation post-PhaseBadge-extraction | 2026-03-24 | 1a32d9b8 | PASS | tsc --noEmit: no errors |
 | Production vite build post-PhaseBadge-extraction | 2026-03-24 | 1a32d9b8 | PASS | vite build succeeds; 462KB JS bundle, no regressions |
 | Storybook build post-PhaseBadge-extraction | 2026-03-24 | 1a32d9b8 | PASS | 69 stories build successfully (+6 PhaseBadge: Plan, Build, Proof, Review, Unknown, Small) |
+| shared/StatusDot.tsx extraction | 2026-03-24 | 804d4a72 | PASS | StatusDot.tsx + StatusDot.test.tsx + StatusDot.stories.tsx present; AppView imports from @/components/shared/StatusDot; no inline definitions remain; 17 unit tests pass (11 StatusDot + 6 ConnectionIndicator) |
+| Unit test suite (261 tests / 24 files) | 2026-03-24 | 804d4a72 | PASS | 261 passed, 0 failures (+17 StatusDot tests vs prior 244); vitest run --run |
+| TypeScript compilation post-StatusDot-extraction | 2026-03-24 | 804d4a72 | PASS | tsc --noEmit: no errors |
+| Production vite build post-StatusDot-extraction | 2026-03-24 | 804d4a72 | PASS | vite build succeeds; 462KB JS bundle, no regressions |
+| Storybook build post-StatusDot-extraction | 2026-03-24 | 804d4a72 | PASS | 78 stories build successfully (+10 StatusDot/ConnectionIndicator: Running, Stopped, Exited, Unhealthy, Error, Stuck, Unknown, Connected, Connecting, Disconnected) — note: ConnectionIndicator stories grouped under shared-statusdot--* IDs (bug filed [qa/P2]) |
+| StatusDot proof screenshots (Gate 6) | 2026-03-24 | 804d4a72 | PASS | 6 screenshots captured: statusdot-running/stopped/error (4987-5029 bytes), connectionindicator-connected/connecting/disconnected; proof-manifest.json updated (entries 18–23); components render correctly: green dot (running), red dot (error), green "Live" icon (connected) |
+| ConnectionIndicator Storybook story grouping | 2026-03-24 | 804d4a72 | FAIL | ConnectionIndicator stories register under shared-statusdot--* instead of shared-connectionindicator--* because StatusDot.stories.tsx has one default export; bug filed as [qa/P2] |

@@ -630,3 +630,63 @@ $ grep "describe\|it(" src/lib/format.test.ts | wc -l
 - AnsiStyle type correctly lives in lib/ansi.ts (extracted in prior iteration); not duplicated into lib/types.ts
 - ComparisonMode type remains in AppView.tsx — not in scope for lib/types.ts extraction per TODO spec
 - No regressions in Storybook (60 stories stable across last 4 iterations)
+
+---
+
+## QA Session — 2026-03-24 (iteration 9)
+
+### Test Environment
+- Dashboard dir: aloop/cli/dashboard
+- Storybook static served via http-server on port 7891
+- Features tested: 5
+
+### Binary Under Test
+- Not applicable (dashboard component extraction, not CLI)
+- Commit under test: 804d4a72 (feat: extract StatusDot and ConnectionIndicator to shared component with tests and stories)
+
+### Results
+- PASS: shared/StatusDot.tsx extraction (17 tests, no inline defs in AppView)
+- PASS: Unit test suite (261 tests / 24 files)
+- PASS: TypeScript compilation (tsc --noEmit: no errors)
+- PASS: Production vite build (462KB, no regressions)
+- PASS: Storybook build (78 stories, StatusDot.stories.js present)
+- PASS: StatusDot visual render — green dot (running), red dot (error), muted dot (stopped)
+- PASS: ConnectionIndicator visual render — green "Live" icon (connected)
+- FAIL: ConnectionIndicator story grouping — stories appear under shared-statusdot--* instead of shared-connectionindicator--*
+
+### Bugs Filed
+- [qa/P2] ConnectionIndicator stories mis-grouped under StatusDot in Storybook
+
+### Command Transcript
+```
+# Unit tests
+$ npx vitest run --run
+  24 test files, 261 passed, 0 failures
+
+# TypeScript check
+$ npx tsc --noEmit
+  (no output — clean)
+
+# Vite build
+$ npx vite build
+  ✓ built in 1.21s; 462.22 kB JS
+
+# Storybook build
+$ npx storybook build
+  ✓ built in 4.06s; StatusDot.stories present in assets
+
+# Story ID enumeration (detecting bug)
+$ curl -s http://localhost:7891/index.json | python3 -c "..."
+  shared-statusdot--connected    # ConnectionIndicator story under wrong ID
+  shared-statusdot--connecting   # ConnectionIndicator story under wrong ID
+  shared-statusdot--disconnected # ConnectionIndicator story under wrong ID
+  (should be shared-connectionindicator--* per component title in stories file)
+
+# Playwright screenshots (6 captured)
+  statusdot-running.png        5029 bytes  — green dot ✓
+  statusdot-stopped.png        4987 bytes  — muted dot ✓
+  statusdot-error.png          5003 bytes  — red dot ✓
+  connectionindicator-connected.png    55375 bytes  — green "Live" icon ✓
+  connectionindicator-connecting.png   55398 bytes  — yellow spinning icon ✓
+  connectionindicator-disconnected.png (captured via correct ID)
+```
