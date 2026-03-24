@@ -1,5 +1,79 @@
 # QA Log
 
+## QA Session — 2026-03-24 (iteration 5 / post-review-fixes)
+
+### Binary Under Test
+- Installed path: `/tmp/aloop-test-install-4QTa5A/bin/aloop` (cleaned up after session)
+- Version: `1.0.0`
+- Built from: commit `c68cb2d7` (branch `aloop/issue-180`)
+- Install method: `npm run build:server && ... && node scripts/test-install.mjs --keep`
+
+### Test Environment
+- Temp dirs: `/tmp/qa-test-180-cr-*`, `/tmp/qa-test-180-cr2-*`, `/tmp/qa-test-180-unrec-*`
+- Features tested: 4
+- Purpose: verify post-review fixes (TS error in requests.ts + cr-analysis-result pattern)
+
+### Results
+- PASS: TypeScript type check (`tsc --noEmit`) — zero errors after requests.ts:435 fix
+- PASS: `cr-analysis-result-5.json` routed to `requests/processed/` (not quarantined)
+- PASS: Unrecognized file quarantine regression — `mystery-unknown.json` still goes to `failed/`
+- PASS: Issue #180 unit tests (orchestrate.test.ts tests 61–65) — all green
+- PASS: process-requests unit tests — 8 pass (1 new test added since iter 4), 0 fail
+- OPEN: diagnostics.json field names — fix not yet applied (TODO.md item still open); no new bug filed (already tracked)
+
+### Bugs Filed
+- None (all fixed; open finding tracked in TODO.md)
+
+### Notes
+1. **cr-analysis-result handler**: With a valid orchestrator.json (has `issues` array), `cr-analysis-result-5.json` exits 0 and lands in `processed/`. With incomplete orchestrator.json (missing `issues`), handler throws TypeError and exits 1 — expected failure mode, not quarantine behavior.
+2. **process-requests test count**: Now 8 (was 7 in iter 4); new test added in commit `c68cb2d7`.
+3. **Open finding**: diagnostics.json field names (`description`/`suggested_action`/`iterations_stuck`) still diverge from spec (`message`/`suggested_fix`/`first_seen_iteration`+`current_iteration`). Fix tracked in TODO.md.
+
+### Command Transcript
+
+```
+# Build and install
+cd aloop/cli
+npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin && npm run build:agents
+node scripts/test-install.mjs --keep
+# → /tmp/aloop-test-install-4QTa5A/bin/aloop  (version 1.0.0)
+
+# TypeScript type check
+npx tsc --noEmit
+# → (no output) exit 0 — PASS
+
+# Unit tests — issue #180
+npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep -E "^(ok|not ok)" | grep -E " (6[0-9]|7[0-9]) "
+# → ok 61 - computeBlockerHash
+# → ok 62 - detectCurrentBlockers
+# → ok 63 - updateBlockerSignatures
+# → ok 64 - computeOverallHealth
+# → ok 65 - runOrchestratorScanPass blocker tracking
+
+npx tsx --test src/commands/process-requests.test.ts 2>&1 | grep -E "^(ok|not ok|# pass|# fail)"
+# → ok 1 - collectUnrecognizedRequestFiles
+# → # pass 8
+# → # fail 0
+
+# Test: cr-analysis-result-5.json NOT quarantined (with proper orchestrator.json)
+SESSION_DIR=/tmp/qa-test-180-cr2-XXXXXX
+mkdir -p $SESSION_DIR/requests $SESSION_DIR/requests/failed
+echo '{"issues":[...],"config":{}}' > $SESSION_DIR/orchestrator.json
+echo '{"analysis":"result","issue_number":5,"status":"complete"}' > $SESSION_DIR/requests/cr-analysis-result-5.json
+aloop process-requests --session-dir $SESSION_DIR
+# exit 0; requests/failed/ empty; requests/processed/cr-analysis-result-5.json exists — PASS
+
+# Regression: unrecognized file still quarantined
+SESSION_DIR=/tmp/qa-test-180-unrec-XXXXXX
+echo '{"type":"mystery"}' > $SESSION_DIR/requests/mystery-unknown.json
+aloop process-requests --session-dir $SESSION_DIR
+# → [process-requests] Unrecognized request file "mystery-unknown.json" — payload: {"type":"mystery"}
+# → exit 0; failed/mystery-unknown.json with reason: unsupported_type — PASS
+
+# Cleanup
+rm -rf /tmp/qa-test-180-cr-* /tmp/qa-test-180-cr2-* /tmp/qa-test-180-unrec-* /tmp/aloop-test-install-4QTa5A
+```
+
 ## QA Session — 2026-03-24 (iteration 4 / final-qa)
 
 ### Binary Under Test
