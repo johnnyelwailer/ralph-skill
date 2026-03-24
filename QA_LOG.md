@@ -336,3 +336,75 @@ npx tsx --test src/commands/process-requests.test.ts 2>&1 | grep -E "^(ok|not ok
 # Cleanup
 rm -rf /tmp/aloop-test-install-KIzniC
 ```
+
+## QA Session — 2026-03-24 (iteration 7 / severity-critical-branch)
+
+### Binary Under Test
+- Installed path: `/tmp/aloop-test-install-uabV5C/bin/aloop` (cleaned up after session)
+- Version: `1.0.0`
+- Built from: commit `86315a80` (branch `aloop/issue-180`)
+- Install method: `npm run build:server && ... && node scripts/test-install.mjs --keep`
+
+### Target Selection
+- **diagnostics.json severity=critical branch**: selected because review (commit `0008eb39`) flagged `severity=critical` path as untested; fix applied in `86315a80`
+
+### Test Environment
+- No temp project dirs needed (no CLI path to trigger scan pass without GitHub)
+- Features tested: 3 (new severity=critical test + regression suite)
+
+### Results
+- PASS: TypeScript type check (`tsc --noEmit`) — zero errors
+- PASS: `runOrchestratorScanPass blocker tracking` — all 6 subtests pass, including new subtest 6 "sets severity to critical when occurrence_count reaches 10"
+- PASS: All issue #180 tests (tests 61–65 in orchestrate.test.ts)
+- PASS: process-requests unit tests — 8/8
+- NOTE: 25 pre-existing failures in orchestrate.test.ts full suite (same as master baseline; 365 total, 340 pass, 25 fail — was 364/339/25 before new test was added)
+
+### Bugs Filed
+- None — severity=critical branch test verified PASS; no regressions
+
+### Command Transcript
+
+```
+# Build and install
+cd aloop/cli
+npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin && npm run build:agents
+node scripts/test-install.mjs --keep
+# → /tmp/aloop-test-install-uabV5C/bin/aloop  (version 1.0.0)
+
+# TypeScript type check
+npx tsc --noEmit
+# → (no output) exit 0 — PASS
+
+# Severity=critical branch test (new subtest #6 in test 65)
+npx tsx --test --test-name-pattern "runOrchestratorScanPass blocker tracking" src/commands/orchestrate.test.ts 2>&1
+# → ok 1 - writes blocker_signatures to state after detecting a failed issue
+# → ok 2 - writes diagnostics.json after blocker reaches persistence threshold
+# → ok 3 - writes ALERT.md when health is critical (3+ persistent blockers)
+# → ok 4 - clears blocker signatures for merged issues
+# → ok 5 - logs blocker_diagnostics_written event when diagnostics are written
+# → ok 6 - sets severity to critical when occurrence_count reaches 10   ← NEW
+# → # pass 6 / # fail 0
+
+# Full issue #180 suite (tests 61–65)
+npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep -E "^(ok|not ok) [0-9]+ " | grep -E " 6[0-9] "
+# → ok 61 - computeBlockerHash
+# → ok 62 - detectCurrentBlockers
+# → ok 63 - updateBlockerSignatures
+# → ok 64 - computeOverallHealth
+# → ok 65 - runOrchestratorScanPass blocker tracking
+
+# Full suite regression check
+npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# → # tests 365
+# → # pass 340
+# → # fail 25  (same pre-existing count; +1 test, +1 pass from new severity=critical subtest)
+
+# process-requests unit tests
+npx tsx --test src/commands/process-requests.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# → # tests 8
+# → # pass 8
+# → # fail 0
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-uabV5C
+```
