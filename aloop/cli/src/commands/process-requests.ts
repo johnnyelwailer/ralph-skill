@@ -264,7 +264,84 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     } catch { /* skip malformed */ }
   }
 
-  // 1d. Estimate results → apply to state (per-issue files)
+  // 1d. CR analysis results → apply spec changes (autonomous) or block (non-autonomous)
+  for (const file of allFiles.filter(f => f.match(/^cr-analysis-result-\d+\.json$/))) {
+    const filePath = path.join(requestsDir, file);
+    try {
+      const result = JSON.parse(await readFile(filePath, 'utf8'));
+      const issue = state.issues.find((i: any) => i.number === result.issue_number);
+      if (issue && Array.isArray(result.spec_changes) && result.spec_changes.length > 0) {
+        const autonomyLevel = state.autonomy_level ?? 'balanced';
+        if (autonomyLevel === 'autonomous') {
+          // Apply spec changes to files and commit
+          for (const change of result.spec_changes) {
+            const specFilePath = path.join(projectRoot, change.file);
+            try {
+              const existing = existsSync(specFilePath) ? await readFile(specFilePath, 'utf8') : '';
+              let updated: string;
+              if (change.action === 'add') {
+                updated = existing + (existing.endsWith('\n') ? '' : '\n') + change.content + '\n';
+              } else if (change.action === 'modify' && change.section) {
+                // Replace the named section: find heading line and replace until next heading or EOF
+                const sectionPattern = new RegExp(`(##[#]* ${change.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\n]*\n)([\s\S]*?)(?=\n##[#]* |$)`, 'm');
+                if (sectionPattern.test(existing)) {
+                  updated = existing.replace(sectionPattern, `$1${change.content}\n`);
+                } else {
+                  console.warn(`[process-requests] CR section not found for modify: ${change.section} in ${change.file}`);
+                  updated = existing;
+                }
+              } else if (change.action === 'remove' && change.section) {
+                const removePattern = new RegExp(`##[#]* ${change.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\n]*\n[\s\S]*?(?=\n##[#]* |$)`, 'm');
+                if (removePattern.test(existing)) {
+                  updated = existing.replace(removePattern, '');
+                } else {
+                  console.warn(`[process-requests] CR section not found for remove: ${change.section} in ${change.file}`);
+                  updated = existing;
+                }
+              } else {
+                updated = existing;
+              }
+              if (updated !== existing) {
+                await writeFile(specFilePath, updated, 'utf8');
+                console.log(`[process-requests] CR #${issue.number}: applied ${change.action} to ${change.file} section "${change.section ?? 'end'}"`);
+              }
+            } catch (e) {
+              console.warn(`[process-requests] CR #${issue.number}: failed to apply change to ${change.file}: ${e}`);
+            }
+          }
+          // Commit spec changes to agent/trunk
+          const trunkBr = state.trunk_branch ?? 'agent/trunk';
+          spawnSync('git', ['-C', projectRoot, 'add', '-A'], { encoding: 'utf8' });
+          spawnSync('git', ['-C', projectRoot, 'commit', '-m', `feat: apply CR spec changes for issue #${issue.number} — ${result.summary ?? 'spec update'}`], { encoding: 'utf8' });
+          spawnSync('git', ['-C', projectRoot, 'push', 'origin', `HEAD:${trunkBr}`], { encoding: 'utf8' });
+          (issue as any).cr_spec_updated = true;
+          stateChanged = true;
+          console.log(`[process-requests] CR #${issue.number}: spec updated and committed`);
+        } else {
+          // Non-autonomous: post proposed diff as GH comment and block
+          if (repo) {
+            const diffLines = result.spec_changes.map((c: any) =>
+              `### ${c.action.toUpperCase()} in \`${c.file}\` — section "${c.section ?? 'n/a'}"\n\n${c.content}\n\n**Rationale:** ${c.rationale ?? '(none)'}`,
+            ).join('\n\n---\n\n');
+            const commentBody = `**CR Spec Analysis for #${issue.number}**\n\nProposed spec changes requiring human approval:\n\n${diffLines}\n\nApprove these changes to unblock the issue. Once applied, remove the \`aloop/blocked-on-human\` label.`;
+            const commentFile = path.join(requestsDir, `_cr-comment-${issue.number}.md`);
+            await writeFile(commentFile, commentBody, 'utf8');
+            await execGh(['issue', 'comment', String(issue.number), '--repo', repo, '--body-file', commentFile]);
+            await unlink(commentFile).catch(() => {});
+            await execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human']);
+          }
+          (issue as any).blocked_on_human = true;
+          stateChanged = true;
+          console.log(`[process-requests] CR #${issue.number}: blocked on human — spec changes posted as comment`);
+        }
+      }
+      await archiveRequestFile(requestsDir, filePath);
+    } catch (e) {
+      console.error(`[process-requests] Failed to apply CR analysis result: ${e}`);
+    }
+  }
+
+  // 1e. Estimate results → apply to state (per-issue files)
   for (const file of allFiles.filter(f => f.match(/^estimate-result-\d+\.json$/))) {
     const filePath = path.join(requestsDir, file);
     try {
@@ -926,6 +1003,45 @@ function makeGhIssueCreator(requestsDir: string) {
   return async (_repo: string, _sid: string, title: string, body: string, labels: string[]): Promise<number> => {
     return createGhIssue(_repo, title, body, labels, requestsDir);
   };
+}
+
+export async function getDirectorySizeBytes(dir: string): Promise<number> {
+  const { readdir: fsReaddir, stat } = await import('node:fs/promises');
+  let total = 0;
+  const entries = await fsReaddir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      total += await getDirectorySizeBytes(fullPath);
+    } else {
+      const s = await stat(fullPath);
+      total += s.size;
+    }
+  }
+  return total;
+}
+
+export async function pruneLargeV8CacheDir(dir: string, thresholdBytes: number): Promise<{ sizeBytes: number; pruned: boolean }> {
+  const { existsSync: fsExistsSync } = await import('node:fs');
+  const { rm } = await import('node:fs/promises');
+  if (!fsExistsSync(dir)) return { sizeBytes: 0, pruned: false };
+  const sizeBytes = await getDirectorySizeBytes(dir);
+  if (sizeBytes >= thresholdBytes) {
+    await rm(dir, { recursive: true, force: true });
+    return { sizeBytes, pruned: true };
+  }
+  return { sizeBytes, pruned: false };
+}
+
+export function formatReviewCommentHistory(
+  comments: Array<{ author: { login: string | null } | null; createdAt?: string | null; body: string }>,
+): string {
+  const nonEmpty = comments.filter(c => c.body?.trim());
+  return nonEmpty.map(c => {
+    const login = c.author?.login ?? 'unknown';
+    const ts = c.createdAt ? ` at ${c.createdAt}` : '';
+    return `### @${login}${ts}\n\n${c.body}\n`;
+  }).join('\n---\n\n');
 }
 
 async function updateParentTasklist(repo: string, parentNum: number, issues: any[], requestsDir: string): Promise<void> {

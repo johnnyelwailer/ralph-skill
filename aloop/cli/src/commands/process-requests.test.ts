@@ -1,9 +1,9 @@
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir } from './process-requests.js';
 
 describe('process-requests V8 cache helpers', () => {
