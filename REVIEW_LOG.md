@@ -48,3 +48,34 @@ SPEC-ADDENDUM.md specifies: `{type, message, first_seen_iteration, current_itera
 All changes are purely internal (type cast, regex whitelist entry, dead state check removal). No observable output to capture; skipping proof is correct.
 
 ---
+
+## Review — 2026-03-24 — commit e748c1e8..9e3fa438
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`
+
+**What was reviewed:** 2 commits since last review (`6fd3c99f`, `9e3fa438`) — diagnostics.json schema fix.
+
+### Prior Finding (Gate 1) — RESOLVED ✓
+All 6 spec-required fields now correctly implemented in `orchestrate.ts:5854–5861`:
+- `type` ✓ (was `type`)
+- `message` ✓ (was `description`)
+- `first_seen_iteration` ✓ (was absent)
+- `current_iteration` ✓ (was `iterations_stuck`)
+- `severity` ✓ (was absent — now derived: `>= 10 → 'critical'`, else `'warning'`)
+- `suggested_fix` ✓ (was `suggested_action`)
+- Wrapper renamed from `persistent_blockers` to `blockers` ✓
+
+Tests at `orchestrate.test.ts:6385–6392` assert all 6 fields by name. `message` and `current_iteration` use exact-value assertions. Gate 1 prior finding fully resolved.
+
+### Gate 3 FAIL — `severity: 'critical'` branch untested in integration context
+`orchestrate.ts:5859`: `severity: b.occurrence_count >= 10 ? 'critical' : 'warning'` — new ternary with 2 branches. All `runOrchestratorScanPass` test fixtures that trigger diagnostics use `occurrence_count: BLOCKER_PERSISTENCE_THRESHOLD - 1` (= 4), which increments to 5 in `updateBlockerSignatures` — always < 10 — always produces `'warning'`. The `'critical'` branch is never triggered. (The `computeOverallHealth` unit tests at line 6331 do use `occurrence_count: 10`, but that tests a different function, not the diagnostics object construction.) Fix: add a `runOrchestratorScanPass` test with `occurrence_count: 9` so it increments to 10 and asserts `severity === 'critical'`.
+
+### Passing notes
+- Gate 1: All 6 spec-required diagnostics fields now aligned — the primary finding from the prior two reviews is fully resolved.
+- Gate 2: `message` asserted with exact value (`desc`); `current_iteration` exact; `severity` and `suggested_fix` assertions catch missing/wrong-typed values.
+- Gate 4: `hash` and `issue_number` correctly removed from diagnostics output (internal fields not in spec). Clean diff.
+- Gate 5: `npm run type-check` clean. 1020 pass / 26 fail — pre-existing failures unchanged.
+- Gate 6: N/A — purely internal field-name change; no CLI trigger path without live GitHub; no proof manifest correct.
+
+---

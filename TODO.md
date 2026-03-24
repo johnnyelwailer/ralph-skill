@@ -6,6 +6,9 @@
 _(none)_
 
 ### Up Next
+- [ ] [review] Gate 3: `severity: 'critical'` branch at `orchestrate.ts:5859` is never exercised — all `runOrchestratorScanPass` test fixtures use `occurrence_count: BLOCKER_PERSISTENCE_THRESHOLD - 1` (= 4 → 5 after increment, always < 10 → always `'warning'`). Add a test that pre-seeds a blocker with `occurrence_count: 9` (so it increments to 10 in the pass) and asserts `diagnostics.blockers[0].severity === 'critical'`. (priority: medium)
+
+### Completed
 - [x] [review] Fix TypeScript error in `lib/requests.ts:435` — cast `request.id` to `(request as any).id` in the `default:` branch where `request` is type `never` (consistent with line 432). Run `npm run type-check` to verify. (priority: high)
 - [x] [review] Add `cr-analysis-result-\d+\.json` to `KNOWN_REQUEST_PATTERNS` in `process-requests.ts:933`. Add a test: unrecognized handler ignores `cr-analysis-result-5.json`. (priority: high)
 - [x] [review] Align `diagnostics.json` field names to SPEC-ADDENDUM.md:1053 schema. Spec requires top-level array of blockers with per-blocker fields `{type, message, first_seen_iteration, current_iteration, severity, suggested_fix}`. Implementation wraps in `persistent_blockers` object, uses `description`→`message`, `iterations_stuck`→needs both `first_seen_iteration` + `current_iteration`, `suggested_action`→`suggested_fix`. Also missing `severity` field — derive from `occurrence_count`: `>= 10` → `'critical'`, `>= 5` (threshold) → `'warning'`. Fix: update the map in `orchestrate.ts:5853` to output spec-compliant field names, emit top-level array (drop `persistent_blockers` wrapper, keep `generated_at`/`iteration`/`overall_health` at top level), and update tests at `orchestrate.test.ts:6385`. (priority: medium)
