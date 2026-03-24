@@ -8,8 +8,12 @@ import {
   applyDecompositionPlan,
   type ScanLoopDeps,
   type OrchestratorState,
+  type OrchestratorIssue,
   type DecompositionPlan,
 } from './orchestrate.js';
+import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
+export type { CrResultDeps };
+export { processCrResultFiles };
 import { EtagCache } from '../lib/github-monitor.js';
 
 // --- Orchestrator event system (data-driven from pipeline.yml) ---
@@ -264,7 +268,21 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     } catch { /* skip malformed */ }
   }
 
-  // 1d. Estimate results → apply to state (per-issue files)
+  // 1d. CR analysis results → apply spec changes (autonomous) or block (non-autonomous)
+  const crFiles = allFiles.filter(f => f.match(/^cr-analysis-result-\d+\.json$/))
+    .map(f => path.join(requestsDir, f));
+  if (crFiles.length > 0) {
+    const crChanged = await processCrResultFiles(crFiles, state.issues, state.autonomy_level ?? 'balanced', projectRoot, repo, state.trunk_branch ?? 'agent/trunk', requestsDir, {
+      existsSync, readFile: (p, e) => readFile(p, e), writeFile: (p, d, e) => writeFile(p, d, e),
+      unlink: (p) => unlink(p).catch(() => {}),
+      execGh,
+      execGit: (args) => { spawnSync('git', args, { encoding: 'utf8' }); },
+      archiveFile: (rDir, fp) => archiveRequestFile(rDir, fp),
+    });
+    if (crChanged) stateChanged = true;
+  }
+
+  // 1e. Estimate results → apply to state (per-issue files)
   for (const file of allFiles.filter(f => f.match(/^estimate-result-\d+\.json$/))) {
     const filePath = path.join(requestsDir, file);
     try {
@@ -926,6 +944,45 @@ function makeGhIssueCreator(requestsDir: string) {
   return async (_repo: string, _sid: string, title: string, body: string, labels: string[]): Promise<number> => {
     return createGhIssue(_repo, title, body, labels, requestsDir);
   };
+}
+
+export async function getDirectorySizeBytes(dir: string): Promise<number> {
+  const { readdir: fsReaddir, stat } = await import('node:fs/promises');
+  let total = 0;
+  const entries = await fsReaddir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      total += await getDirectorySizeBytes(fullPath);
+    } else {
+      const s = await stat(fullPath);
+      total += s.size;
+    }
+  }
+  return total;
+}
+
+export async function pruneLargeV8CacheDir(dir: string, thresholdBytes: number): Promise<{ sizeBytes: number; pruned: boolean }> {
+  const { existsSync: fsExistsSync } = await import('node:fs');
+  const { rm } = await import('node:fs/promises');
+  if (!fsExistsSync(dir)) return { sizeBytes: 0, pruned: false };
+  const sizeBytes = await getDirectorySizeBytes(dir);
+  if (sizeBytes >= thresholdBytes) {
+    await rm(dir, { recursive: true, force: true });
+    return { sizeBytes, pruned: true };
+  }
+  return { sizeBytes, pruned: false };
+}
+
+export function formatReviewCommentHistory(
+  comments: Array<{ author: { login: string | null } | null; createdAt?: string | null; body: string }>,
+): string {
+  const nonEmpty = comments.filter(c => c.body?.trim());
+  return nonEmpty.map(c => {
+    const login = c.author?.login ?? 'unknown';
+    const ts = c.createdAt ? ` at ${c.createdAt}` : '';
+    return `### @${login}${ts}\n\n${c.body}\n`;
+  }).join('\n---\n\n');
 }
 
 async function updateParentTasklist(repo: string, parentNum: number, issues: any[], requestsDir: string): Promise<void> {

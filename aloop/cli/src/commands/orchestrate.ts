@@ -91,6 +91,8 @@ export interface OrchestratorIssue {
   ci_failure_summary?: string;
   redispatch_failures?: number;
   redispatch_paused?: boolean;
+  is_change_request?: boolean;
+  cr_spec_updated?: boolean;
 }
 
 export interface OrchestratorState {
@@ -490,6 +492,14 @@ function parseConfigScalar(content: string, key: string): string | null {
     return raw.slice(1, -1).replace(/\\"/g, '"');
   }
   return raw;
+}
+
+/**
+ * Returns true if the given labels array contains the 'aloop/change-request' label.
+ * Labels may be objects with a `name` property or plain strings.
+ */
+export function detectChangeRequestLabel(labels: Array<{ name?: string | null } | string> | undefined | null): boolean {
+  return labels?.some((l) => (typeof l === 'string' ? l : (l.name ?? '')) === 'aloop/change-request') ?? false;
 }
 
 export async function resolveOrchestratorAutonomyLevel(
@@ -1153,6 +1163,7 @@ export async function orchestrateCommandWithDeps(
 
         for (const gi of ghIssues) {
           const isEpic = gi.labels?.some((l: any) => (l.name ?? l) === 'aloop/epic');
+          const isChangeRequest = detectChangeRequestLabel(gi.labels);
           const projStatus = projectStatusMap.get(gi.number);
           // Use project status if available, otherwise infer from labels
           // Epics with tasklists (sub-issues) are tracking epics — not dispatchable
@@ -1193,6 +1204,8 @@ export async function orchestrateCommandWithDeps(
             processed_comment_ids: [],
             dor_validated: dorValidated,
             priority,
+            is_change_request: isChangeRequest,
+            cr_spec_updated: false,
           } as any);
         }
         if (state.current_wave === 0) state.current_wave = 1;

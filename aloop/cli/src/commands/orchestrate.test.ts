@@ -68,6 +68,7 @@ import {
   processQueuedPrompts,
   createTrunkToMainPr,
   resolveAutoMerge,
+  detectChangeRequestLabel,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -501,6 +502,33 @@ describe('validateDependencyGraph', () => {
       planIssue(3, 'C', [2]),
     ];
     assert.throws(() => validateDependencyGraph(issues), /cycle/);
+  });
+});
+
+describe('detectChangeRequestLabel', () => {
+  it('returns true for aloop/change-request label as object', () => {
+    assert.equal(detectChangeRequestLabel([{ name: 'aloop/change-request' }]), true);
+  });
+
+  it('returns true for aloop/change-request label as string', () => {
+    assert.equal(detectChangeRequestLabel(['aloop/auto', 'aloop/change-request']), true);
+  });
+
+  it('returns false when label is absent', () => {
+    assert.equal(detectChangeRequestLabel([{ name: 'aloop/auto' }, { name: 'aloop/epic' }]), false);
+  });
+
+  it('returns false for empty array', () => {
+    assert.equal(detectChangeRequestLabel([]), false);
+  });
+
+  it('returns false for null/undefined', () => {
+    assert.equal(detectChangeRequestLabel(null), false);
+    assert.equal(detectChangeRequestLabel(undefined), false);
+  });
+
+  it('returns false when label name is null', () => {
+    assert.equal(detectChangeRequestLabel([{ name: null }]), false);
   });
 });
 
