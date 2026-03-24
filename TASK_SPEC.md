@@ -4,7 +4,11 @@
 
 Some issues (especially human-created ones) intentionally diverge from the current spec. These are Change Requests — they define NEW desired behavior that the spec doesn't yet describe.
 
+## Objective
+
 Implement the Change Request (CR) pipeline so that issues labelled `aloop/change-request` cause SPEC.md/SPEC-ADDENDUM.md to be updated **before** normal decomposition/refinement begins. The spec is then the source of truth for all downstream child loops, and the spec-gap agent never sees a divergence.
+
+## Architectural Context
 
 The orchestrator runtime is a data-driven event dispatch system:
 
@@ -110,3 +114,4 @@ The filter uses the existing data-driven matching in `loadOrchestratorEvents` / 
 - [ ] Unit tests cover: CR label detection in preload, autonomous apply path, non-autonomous block path.
 - [ ] `process-requests.ts` stays ≤ 150 LOC after changes (or a helper module is extracted per Constitution Rule 7).
 - [ ] No changes to `loop.sh`, `loop.ps1`, `PROMPT_spec-gap.md`.
+
