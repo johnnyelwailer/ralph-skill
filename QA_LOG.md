@@ -176,3 +176,95 @@ EXIT: n/a — static analysis  ← FAIL (Gate 4 still open)
 ```
 $ rm -rf /tmp/aloop-test-install-YCpzdT
 ```
+
+## QA Session — 2026-03-24 (iteration 3 — Gate 4 re-test + new findings)
+
+### Target Selection
+- Dead code in adapter.ts: selected because FAIL in prior QA_COVERAGE.md — re-test Gate 4 fix (c37c7334)
+- applyEstimateResults Needs decomposition → Ready: selected because new test added (6cc0e592), UNTESTED in coverage
+- Full test suite: selected to verify no regressions after all fixes
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-tnP9mq/bin/aloop`
+- Version: `1.0.0`
+- Branch: `aloop/issue-176` @ `c37c7334` (Gate 4 fix)
+- Features tested: 3
+
+### Results
+- PASS: Dead code in adapter.ts — parseRepoSlug and existsSync no longer present; Gate 4 closed
+- PASS: adapter.test.ts — 56/56 pass
+- PASS: orchestrate.test.ts — 341/341 pass (includes new Needs decomposition test)
+- FAIL: TypeScript type-check — TS2367 in process-requests.ts:407 — bug filed
+- FAIL: index.test.ts — 4/5 pass; "CLI catches errors without stack traces" fails with ERR_MODULE_NOT_FOUND — pre-existing at a03fb518, bug filed
+
+### Bugs Filed
+- [qa/P1] TypeScript type error: process-requests.ts:407 `issue.state !== 'review'` — 'review' not in OrchestratorIssueState
+- [qa/P1] index.test.ts: "CLI catches errors and prints clean messages without stack traces" fails with ERR_MODULE_NOT_FOUND (pre-existing)
+
+### Command Transcript
+
+#### Install
+```
+$ npm run test-install -- --keep
+/tmp/aloop-test-install-tnP9mq/bin/aloop
+$ aloop --version
+1.0.0
+EXIT: 0
+```
+
+#### Test 1: Dead code re-test (Gate 4)
+```
+$ grep -rn "parseRepoSlug\|existsSync" src/lib/adapter.ts
+(no output)   ← PASS: both removed by c37c7334
+```
+
+#### Test 2: adapter.test.ts
+```
+$ npx tsx --test src/lib/adapter.test.ts
+# tests 56
+# pass 56
+# fail 0
+EXIT: 0  ← PASS
+```
+
+#### Test 3: orchestrate.test.ts (341 tests — includes new Needs decomposition test)
+```
+$ npx tsx --test src/commands/orchestrate.test.ts
+# tests 341
+# pass 341
+# fail 0
+EXIT: 0  ← PASS (341 vs prior 340 — confirms new test at 6cc0e592 is included)
+```
+
+#### Test 4: TypeScript type-check
+```
+$ npx tsc --noEmit
+src/commands/process-requests.ts(407,71): error TS2367: This comparison appears to be
+  unintentional because the types '"failed" | "merged" | "pending"' and '"review"'
+  have no overlap.
+EXIT: 2  ← FAIL — bug filed
+
+Root cause: OrchestratorIssueState = 'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed'
+  does not include 'review'. Line 407 Phase 2c guard:
+    if (issue.state !== 'in_progress' && issue.state !== 'pr_open' && issue.state !== 'review') continue;
+  The 'review' state was removed from the type during adapter migration (dc569f05) but
+  the guard in process-requests.ts was not updated.
+```
+
+#### Test 5: Full test suite
+```
+$ npx tsx --test "src/**/*.test.ts"
+# tests 1071
+# suites 102
+# pass 1069
+# fail 1
+not ok 592 - index CLI catches errors and prints clean messages without stack traces
+  error: The input did not match the regular expression /^Error: Invalid autonomy level: invalid/.
+  Input: 'node:internal/modules/package_json_reader:314\n  throw new ERR_MODULE_NOT_FOUND...'
+EXIT: 1  ← FAIL (pre-existing at a03fb518, unrelated to this issue's changes)
+```
+
+#### Cleanup
+```
+$ rm -rf /tmp/aloop-test-install-tnP9mq
+```

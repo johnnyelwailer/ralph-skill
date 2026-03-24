@@ -13,6 +13,10 @@
 
 ### In Progress
 
+- [ ] [qa/P1] TypeScript type error in process-requests.ts: `issue.state !== 'review'` at line 407 compares against `'review'` which is not in `OrchestratorIssueState = 'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed'` — `npx tsc --noEmit` reports TS2367 "types 'failed|merged|pending' and 'review' have no overlap". The 'review' state was removed from the type during adapter migration but the guard in `runTriageMonitorCycle` Phase 2c wasn't updated. Tested at iter 6. (priority: high)
+
+- [ ] [qa/P1] index.test.ts "index CLI catches errors and prints clean messages without stack traces" fails consistently: test runs `aloop orchestrate --autonomy-level invalid` expecting `^Error: Invalid autonomy level: invalid` on stderr, but receives `ERR_MODULE_NOT_FOUND` from `node:internal/modules/package_json_reader:314`. Pre-existing at a03fb518 (before Gate 4 fix). 1/5 index tests fail. Tested at iter 6. (priority: high)
+
 - [x] [qa/P1] Fix 25 orchestrate.test.ts failures after adapter migration: tests for `checkPrGates`, `reviewPrDiff`, `launchChildLoop`, and `validateDoR` return unexpected values (e.g., `reviewPrDiff` returns `'flagged_for_human'` instead of `'merged'`; `checkPrGates` returns wrong pending status; `launchChildLoop` worktree branch creation fails). Tests were mocking `execGh` directly but code now calls through the adapter interface — update test mocks to mock the adapter instead of `execGh`. Fixed at 2026-03-24. (priority: high)
 
 - [x] [review] Gate 2/3: `adapter.test.ts` missing tests for three methods with non-trivial logic:
