@@ -551,6 +551,7 @@ describe('launchOrchestrator', () => {
     const meta = JSON.parse(writes['/sessions/orchestrator-20260310-111213/meta.json']);
     assert.equal(meta.session_id, 'orchestrator-20260310-111213');
     assert.equal(meta.mode, 'orchestrate');
+    assert.equal(meta.engine, 'orchestrate');
     assert.equal(meta.pid, 4242);
 
     const active = JSON.parse(writes['/home/.aloop/active.json']);

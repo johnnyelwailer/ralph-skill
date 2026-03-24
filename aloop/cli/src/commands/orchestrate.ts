@@ -1671,6 +1671,7 @@ export async function launchOrchestrator(
     project_root: options.projectRoot,
     provider: options.provider ?? 'claude',
     mode: 'orchestrate',
+    engine: 'orchestrate' as const,
     work_dir: metaWorkDir,
     pid,
     started_at: startedAt,
