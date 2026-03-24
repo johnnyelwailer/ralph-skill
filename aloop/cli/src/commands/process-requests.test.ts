@@ -7,6 +7,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk } from './process-requests.js';
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 import type { OrchestratorIssue } from './orchestrate.js';
+import { collectUnrecognizedRequestFiles } from './process-requests.js';
 
 describe('process-requests V8 cache helpers', () => {
   it('getDirectorySizeBytes sums nested file sizes', async () => {
@@ -327,5 +328,101 @@ describe('syncMasterToTrunk', () => {
 
     const worktreeAdd = calls.find(c => c.args[2] === 'worktree' && c.args[3] === 'add');
     assert.equal(worktreeAdd, undefined, 'should not create a worktree');
+  });
+});
+
+describe('collectUnrecognizedRequestFiles', () => {
+  it('returns empty array when no files are present', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'process-requests-test-'));
+    const result = await collectUnrecognizedRequestFiles(dir, []);
+    assert.deepEqual(result, []);
+  });
+
+  it('ignores known request file patterns', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'process-requests-test-'));
+    const knownFiles = [
+      'epic-decomposition-results.json',
+      'sub-decomposition-result-1.json',
+      'sub-decomposition-result-42.json',
+      'refine-result-3.json',
+      'estimate-result-7.json',
+      'review-result-12.json',
+    ];
+    for (const f of knownFiles) {
+      await writeFile(path.join(dir, f), JSON.stringify({ type: 'known' }), 'utf8');
+    }
+    const result = await collectUnrecognizedRequestFiles(dir, knownFiles);
+    assert.deepEqual(result, []);
+  });
+
+  it('ignores non-JSON files', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'process-requests-test-'));
+    const files = ['unknown-thing.md', 'some-data.txt', 'script.sh'];
+    const result = await collectUnrecognizedRequestFiles(dir, files);
+    assert.deepEqual(result, []);
+  });
+
+  it('returns annotation for unrecognized JSON files', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'process-requests-test-'));
+    const unknownFile = 'mystery-result-99.json';
+    const payload = { custom_type: 'foo', data: 'bar' };
+    await writeFile(path.join(dir, unknownFile), JSON.stringify(payload), 'utf8');
+
+    const result = await collectUnrecognizedRequestFiles(dir, [unknownFile]);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].file, unknownFile);
+    assert.equal(result[0].annotation.original_filename, unknownFile);
+    assert.equal(result[0].annotation.reason, 'unsupported_type');
+    assert.ok(result[0].annotation.payload_summary.length > 0);
+    assert.ok(result[0].annotation.failed_at.length > 0);
+    assert.deepEqual(result[0].annotation.original_content, payload);
+  });
+
+  it('truncates payload_summary to 200 chars for large payloads', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'process-requests-test-'));
+    const bigPayload = { data: 'x'.repeat(500) };
+    await writeFile(path.join(dir, 'big-unknown.json'), JSON.stringify(bigPayload), 'utf8');
+
+    const result = await collectUnrecognizedRequestFiles(dir, ['big-unknown.json']);
+    assert.equal(result.length, 1);
+    assert.ok(result[0].annotation.payload_summary.length <= 200);
+  });
+
+  it('handles malformed JSON gracefully', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'process-requests-test-'));
+    await writeFile(path.join(dir, 'bad-json.json'), 'not valid { json', 'utf8');
+
+    const result = await collectUnrecognizedRequestFiles(dir, ['bad-json.json']);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].annotation.reason, 'unsupported_type');
+    assert.equal(result[0].annotation.original_content, 'not valid { json');
+  });
+
+  it('moves unrecognized files to failed/ directory when integrated', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'process-requests-test-'));
+    const { mkdir: mkdirNode, unlink, writeFile: wf } = await import('node:fs/promises');
+    const unknownFile = 'weird-request-5.json';
+    const payload = { action: 'unknown' };
+    await wf(path.join(dir, unknownFile), JSON.stringify(payload), 'utf8');
+
+    const unhandled = await collectUnrecognizedRequestFiles(dir, [unknownFile]);
+    assert.equal(unhandled.length, 1);
+
+    // Simulate the caller moving to failed/
+    const failedDir = path.join(dir, 'failed');
+    await mkdirNode(failedDir, { recursive: true });
+    const { annotation, file } = unhandled[0];
+    await wf(path.join(failedDir, file), JSON.stringify(annotation, null, 2), 'utf8');
+    await unlink(path.join(dir, file));
+
+    // Original file removed
+    assert.ok(!existsSync(path.join(dir, unknownFile)));
+    // Failed file exists with annotation
+    assert.ok(existsSync(path.join(failedDir, unknownFile)));
+    const written = JSON.parse(
+      await (await import('node:fs/promises')).readFile(path.join(failedDir, unknownFile), 'utf8'),
+    );
+    assert.equal(written.reason, 'unsupported_type');
+    assert.equal(written.original_filename, unknownFile);
   });
 });

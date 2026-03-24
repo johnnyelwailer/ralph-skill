@@ -397,6 +397,19 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     } catch { /* skip malformed */ }
   }
 
+  // 1e. Unhandled/unrecognized request files → log error + move to requests/failed/
+  {
+    const currentFiles = existsSync(requestsDir) ? await readdir(requestsDir) : [];
+    const unhandled = await collectUnrecognizedRequestFiles(requestsDir, currentFiles);
+    for (const { file, annotation } of unhandled) {
+      console.error(`[process-requests] Unrecognized request file "${file}" — payload: ${annotation.payload_summary}`);
+      const failedDir = path.join(requestsDir, 'failed');
+      await mkdir(failedDir, { recursive: true });
+      await writeFile(path.join(failedDir, file), JSON.stringify(annotation, null, 2), 'utf8');
+      await unlink(path.join(requestsDir, file));
+    }
+  }
+
   // 1d. Queue refine prompts for "Needs refinement" issues that haven't been refined yet
   //     Then queue estimate prompts for refined issues that need DoR validation
   {
@@ -981,6 +994,56 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       console.log(`[process-requests] ${parts.join(', ')}`);
     }
   }
+}
+
+// ── Exported helpers (for testing) ──
+
+const KNOWN_REQUEST_PATTERNS = [
+  /^epic-decomposition-results\.json$/,
+  /^sub-decomposition-result-\d+\.json$/,
+  /^refine-result-\d+\.json$/,
+  /^estimate-result-\d+\.json$/,
+  /^review-result-\d+\.json$/,
+];
+
+export interface UnrecognizedFileAnnotation {
+  original_filename: string;
+  reason: 'unsupported_type';
+  payload_summary: string;
+  failed_at: string;
+  original_content: unknown;
+}
+
+export async function collectUnrecognizedRequestFiles(
+  requestsDir: string,
+  files: string[],
+): Promise<Array<{ file: string; annotation: UnrecognizedFileAnnotation }>> {
+  const result: Array<{ file: string; annotation: UnrecognizedFileAnnotation }> = [];
+  for (const file of files) {
+    if (!file.endsWith('.json')) continue;
+    if (KNOWN_REQUEST_PATTERNS.some((p) => p.test(file))) continue;
+    const filePath = path.join(requestsDir, file);
+    let payload: unknown;
+    let rawContent = '';
+    try {
+      rawContent = await readFile(filePath, 'utf8');
+      payload = JSON.parse(rawContent);
+    } catch {
+      payload = rawContent;
+    }
+    const payloadSummary = JSON.stringify(payload).substring(0, 200);
+    result.push({
+      file,
+      annotation: {
+        original_filename: file,
+        reason: 'unsupported_type',
+        payload_summary: payloadSummary,
+        failed_at: new Date().toISOString(),
+        original_content: payload,
+      },
+    });
+  }
+  return result;
 }
 
 // ── Helpers ──
