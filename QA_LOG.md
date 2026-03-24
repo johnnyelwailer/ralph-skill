@@ -59,3 +59,48 @@ npx tsx --test --test-name-pattern "requests rebase on first|still dispatches re
 # Verified pre-existing: checked out b03e1d64 (before Issue #163), same 25 failures
 # Restored to HEAD: 35b6bd2c
 ```
+
+---
+
+## QA Session — 2026-03-24 (Issue #163, iteration 2)
+
+### Test Environment
+- Tests run from: `/home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-163-20260324-085120/worktree/aloop/cli`
+- Commit under test: `da275c42`
+- Features tested: 5
+
+### Results
+- PASS: Phase 2c rebase failure → queue file + needs_redispatch=true
+- PASS: Phase 2c rebase success → no queue file, needs_redispatch not set
+- PASS: processPrLifecycle needs_rebase=true on first merge conflict (includes needs_rebase===true assertion)
+- PASS: Redispatch path needs_rebase=true → 000-rebase-conflict.md with agent:merge (ok 20)
+- PASS: Redispatch path needs_rebase=false → 000-review-fixes.md with agent:build (ok 21)
+- FAIL (pre-existing): "still dispatches rebase agent after multiple attempts"
+- FAIL (pre-existing): checkPrGates CI pending/fail/pass (4 tests)
+- FAIL (pre-existing): processPrLifecycle merges PR when all gates pass
+
+### Outstanding TODO Items (not new bugs — tracked in TODO.md)
+- Gate 4: Dead JSDoc at orchestrate.ts:3651-3655 still present
+- Gate 9: SPEC-ADDENDUM.md line 1434 still says `review_feedback`; should say `needs_rebase=true`
+
+### Bugs Filed
+None — all findings are pre-existing failures or pending TODO cleanup items already tracked.
+
+### Command Transcript
+
+```
+# Run all orchestrate + process-requests tests
+cd aloop/cli && npm test -- --testPathPattern="orchestrate|process-requests" --no-coverage
+# tests 1025, pass 998, fail 26, duration ~100s
+
+# Rebase-specific test results
+# ok 3 - requests rebase on first merge conflict
+# not ok 4 - still dispatches rebase agent after multiple attempts (pre-existing)
+# ok 20 - writes 000-rebase-conflict.md with agent:merge and clears needs_rebase
+# ok 21 - writes 000-review-fixes.md with agent:build on redispatch
+# ok 1 - sets needs_redispatch and writes queue file on rebase failure
+# ok 2 - does not set needs_redispatch or write queue file on rebase success
+
+# Verified outstanding Gate 4 (dead JSDoc still at orchestrate.ts:3652,3655)
+# Verified outstanding Gate 9 (SPEC-ADDENDUM.md line 1434 still stale)
+```
