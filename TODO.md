@@ -13,7 +13,9 @@
 
 ### In Progress
 
-- [ ] [review] Gate 2/3: `adapter.test.ts` missing tests for three methods with non-trivial logic:
+- [ ] [qa/P1] Fix 25 orchestrate.test.ts failures after adapter migration: tests for `checkPrGates`, `reviewPrDiff`, `launchChildLoop`, and `validateDoR` return unexpected values (e.g., `reviewPrDiff` returns `'flagged_for_human'` instead of `'merged'`; `checkPrGates` returns wrong pending status; `launchChildLoop` worktree branch creation fails). Tests were mocking `execGh` directly but code now calls through the adapter interface — update test mocks to mock the adapter instead of `execGh`. Tested at 2026-03-24 @ 28f0d0f9. (priority: high)
+
+- [x] [review] Gate 2/3: `adapter.test.ts` missing tests for three methods with non-trivial logic:
   1. `GitHubAdapter.updateIssue` — has state-branching logic (close vs reopen) but zero tests; add tests verifying close path calls `closeIssue`, reopen path calls `issue reopen`, and title/body args are passed
   2. `LocalAdapter.mergePr` — 3 code paths (squash/rebase/merge) + deleteBranch option, all untested; mock `execGit` and verify each method calls the correct git args
   3. `LocalAdapter.getPrStatus` — git success vs. failure paths untested; verify CLEAN returned on success, UNKNOWN on error
@@ -39,10 +41,6 @@
 
 - [x] Verify no hardcoded GitHub URLs remain in orchestrate.ts after migration
   - Only a comment on line 4385 mentions https://github.com — no code uses hardcoded URLs
-
-### QA Bugs
-
-- [ ] [qa/P1] 25 orchestrate.test.ts failures after adapter migration: tests for `checkPrGates`, `reviewPrDiff`, `launchChildLoop`, and `validateDoR` return unexpected values after the adapter migration (e.g., `reviewPrDiff` returns `'flagged_for_human'` instead of `'merged'` when all gates pass; `checkPrGates` returns wrong pending status; `launchChildLoop` worktree branch creation fails). Tests were mocking `execGh` directly but code now calls through the adapter interface — test mocks need to be updated to mock the adapter instead. Tested at 2026-03-24 @ 28f0d0f9. (priority: high)
 
 ### Completed
 

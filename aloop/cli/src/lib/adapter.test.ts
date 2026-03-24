@@ -80,6 +80,41 @@ describe('GitHubAdapter', () => {
     });
   });
 
+  describe('updateIssue', () => {
+    it('passes title and body via issue edit', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { title: 'New Title', body: 'New body' });
+      const editCall = calls.find((a) => a.includes('edit'));
+      assert.ok(editCall, 'expected an issue edit call');
+      assert.ok(editCall.includes('--title'));
+      assert.ok(editCall.includes('New Title'));
+      assert.ok(editCall.includes('--body'));
+      assert.ok(editCall.includes('New body'));
+    });
+
+    it('calls closeIssue when state is "closed"', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { state: 'closed' });
+      const closeCall = calls.find((a) => a.includes('close'));
+      assert.ok(closeCall, 'expected a close call');
+      assert.ok(closeCall.includes('7'));
+    });
+
+    it('calls issue reopen when state is "open"', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { state: 'open' });
+      const reopenCall = calls.find((a) => a.includes('reopen'));
+      assert.ok(reopenCall, 'expected a reopen call');
+      assert.ok(reopenCall.includes('7'));
+    });
+  });
+
   describe('closeIssue', () => {
     it('calls gh issue close', async () => {
       let calledArgs: string[] = [];
@@ -545,6 +580,72 @@ describe('LocalAdapter', () => {
       const pr = await adapter.createPr({ base: 'main', head: 'feat/x', title: 'My PR', body: 'desc' });
       assert.equal(pr.number, 1);
       assert.ok(pr.url.includes('1.json'));
+      await cleanup();
+    });
+  });
+
+  describe('mergePr', () => {
+    it('uses squash merge and deletes branch by default', async () => {
+      const calls: string[][] = [];
+      const execGit = async (args: string[]) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new LocalAdapter({ type: 'local', repo: 'test', dir: tmpDir }, execGit);
+      await adapter.createPr({ base: 'main', head: 'feat/x', title: 'My PR', body: '' });
+      await adapter.mergePr(1);
+      assert.ok(calls.some((a) => a.includes('--squash')), 'expected --squash call');
+      assert.ok(calls.some((a) => a[0] === 'commit'), 'expected commit after squash');
+      assert.ok(calls.some((a) => a.includes('-d') && a.includes('feat/x')), 'expected branch delete');
+      await cleanup();
+    });
+
+    it('uses rebase when method is "rebase"', async () => {
+      const calls: string[][] = [];
+      const execGit = async (args: string[]) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new LocalAdapter({ type: 'local', repo: 'test', dir: tmpDir }, execGit);
+      await adapter.createPr({ base: 'main', head: 'feat/x', title: 'My PR', body: '' });
+      await adapter.mergePr(1, { method: 'rebase' });
+      assert.ok(calls.some((a) => a[0] === 'rebase' && a.includes('feat/x')), 'expected rebase call');
+      await cleanup();
+    });
+
+    it('uses --no-ff merge when method is "merge"', async () => {
+      const calls: string[][] = [];
+      const execGit = async (args: string[]) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new LocalAdapter({ type: 'local', repo: 'test', dir: tmpDir }, execGit);
+      await adapter.createPr({ base: 'main', head: 'feat/x', title: 'My PR', body: '' });
+      await adapter.mergePr(1, { method: 'merge' });
+      assert.ok(calls.some((a) => a.includes('--no-ff')), 'expected --no-ff merge call');
+      await cleanup();
+    });
+
+    it('skips branch delete when deleteBranch is false', async () => {
+      const calls: string[][] = [];
+      const execGit = async (args: string[]) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new LocalAdapter({ type: 'local', repo: 'test', dir: tmpDir }, execGit);
+      await adapter.createPr({ base: 'main', head: 'feat/x', title: 'My PR', body: '' });
+      await adapter.mergePr(1, { deleteBranch: false });
+      assert.ok(!calls.some((a) => a.includes('-d')), 'expected no branch delete call');
+      await cleanup();
+    });
+  });
+
+  describe('getPrStatus', () => {
+    it('returns mergeable=true and CLEAN when branch exists', async () => {
+      const execGit = async (_args: string[]) => ({ stdout: 'abc123', stderr: '' });
+      const adapter = new LocalAdapter({ type: 'local', repo: 'test', dir: tmpDir }, execGit);
+      await adapter.createPr({ base: 'main', head: 'feat/x', title: 'PR', body: '' });
+      const status = await adapter.getPrStatus(1);
+      assert.equal(status.mergeable, true);
+      assert.equal(status.mergeStateStatus, 'CLEAN');
+      await cleanup();
+    });
+
+    it('returns mergeable=false and UNKNOWN when rev-parse fails', async () => {
+      const execGit = async (_args: string[]) => { throw new Error('branch not found'); };
+      const adapter = new LocalAdapter({ type: 'local', repo: 'test', dir: tmpDir }, execGit);
+      await adapter.createPr({ base: 'main', head: 'feat/x', title: 'PR', body: '' });
+      const status = await adapter.getPrStatus(1);
+      assert.equal(status.mergeable, false);
+      assert.equal(status.mergeStateStatus, 'UNKNOWN');
       await cleanup();
     });
   });
