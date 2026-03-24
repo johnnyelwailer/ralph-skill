@@ -10,12 +10,10 @@ Migration order per spec: utilities → leaf components → composite components
 
 ### In Progress
 
-- [x] [review] Gate 2: `lib/ansi.test.ts` has 7 `.toBeTruthy()` shallow checks on ANSI color RGB values — these pass even if the color computation is wrong; rewrite each to assert the exact string value: line 76 `segments[1].style.fg` should be `'187,0,0'` (ANSI 31); line 115 `segments[0].style.fg` for `38;5;200` should be `'255,0,215'`; line 119 `segments[0].style.bg` for `48;5;100` should be `'135,135,0'`; line 145 `segments[1].style.fg` should be `'187,0,0'` (ANSI 31); line 146 `segments[1].style.bg` should be `'187,0,0'` (ANSI 41); line 172 `segments[1].style.fg` should be `'85,85,85'` (ANSI 90); line 173 `segments[1].style.bg` should be `'85,85,85'` (ANSI 100) (priority: high)
 
 ### Up Next
 
-
-- [ ] Extract `lib/format.ts` — move `formatTime`, `formatTimeShort`, `formatSecs`, `formatDuration`, `formatDateKey`, `relativeTime`, `formatTokenCount`, `parseDurationSeconds`, `computeAvgDuration` from `AppView.tsx` into `lib/format.ts`; update imports; existing `formatHelpers.test.tsx` should import from new location (priority: high, foundational)
+- [ ] Extract `lib/types.ts` — move shared TypeScript interfaces (`SessionSummary`, `LogEntry`, `IterationUsage`, `DashboardState`, `ArtifactEntry`, `ArtifactManifest`, `ManifestPayload`, `ConnectionStatus`, `AnsiStyle`, `QACoverageViewData`) from `AppView.tsx` into `lib/types.ts`; update all imports (priority: high, foundational — blocks all component extractions)
 
 - [ ] Extract `lib/types.ts` — move shared TypeScript interfaces (`SessionSummary`, `LogEntry`, `IterationUsage`, `DashboardState`, `ArtifactEntry`, `ArtifactManifest`, `ManifestPayload`, `ConnectionStatus`, `AnsiStyle`, `QACoverageViewData`) from `AppView.tsx` into `lib/types.ts`; update all imports (priority: high, foundational — blocks all component extractions)
 
@@ -89,3 +87,5 @@ Migration order per spec: utilities → leaf components → composite components
 - [x] [review] Gate 8: VERSIONS.md updated to `@storybook/* | 10.x` to match package.json
 - [x] [review] Gate 9: SPEC-ADDENDUM.md updated to reference Storybook 10.x
 - [x] Extract `lib/ansi.ts` — moved `stripAnsi`, `PALETTE_256`, `rgbStr`, `parseAnsiSegments`, `renderAnsiToHtml` out of `AppView.tsx` into `lib/ansi.ts`; unit tests in `lib/ansi.test.ts`
+- [x] [review] Gate 2: `lib/ansi.test.ts` already uses exact `.toBe()` string assertions for all ANSI color RGB values
+- [x] Extract `lib/format.ts` — moved `formatTime`, `formatTimeShort`, `formatSecs`, `formatDuration`, `formatDateKey`, `relativeTime`, `formatTokenCount`, `parseDurationSeconds` from `AppView.tsx` into `lib/format.ts`; updated imports in `formatHelpers.test.tsx`; re-exports from `AppView.tsx` for backward compatibility

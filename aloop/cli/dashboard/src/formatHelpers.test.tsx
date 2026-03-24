@@ -2,14 +2,13 @@ import { describe, it, expect } from 'vitest';
 import {
   numStr,
   toSession,
-  formatSecs,
-  relativeTime,
   isImageArtifact,
   artifactUrl,
   slugify,
   parseManifest,
   findBaselineIterations,
 } from './AppView';
+import { formatSecs, relativeTime } from './lib/format';
 import { stripAnsi } from './lib/ansi';
 
 describe('numStr', () => {
