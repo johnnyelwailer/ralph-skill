@@ -23,3 +23,9 @@
 | Unit test suite (189 tests / 20 files) | 2026-03-24 | 24974eb2 | PASS | 189 passed, 0 failures (38 new ansi.test.ts tests included); vitest run --run |
 | Production vite build post-ansi-extraction | 2026-03-24 | 24974eb2 | PASS | vite build succeeds; 462KB JS bundle, no TypeScript errors |
 | Storybook build post-ansi-extraction | 2026-03-24 | 24974eb2 | PASS | 60 stories build successfully; no regressions from ansi extraction |
+| lib/format.ts extraction | 2026-03-24 | acb8fb08 | PASS | All 8 functions extracted (formatTime, formatTimeShort, formatSecs, formatDuration, formatDateKey, relativeTime, formatTokenCount, parseDurationSeconds); no inline definitions remain in AppView.tsx; backward-compat re-exports present |
+| formatHelpers.test.tsx (lib/format import) | 2026-03-24 | acb8fb08 | PASS | 14 tests pass importing from lib/format; no regressions |
+| Unit test suite (189 tests / 20 files) post-format-extraction | 2026-03-24 | acb8fb08 | PASS | 189 passed, 0 failures; vitest run --run |
+| TypeScript compilation post-format-extraction | 2026-03-24 | acb8fb08 | PASS | tsc --noEmit: no errors |
+| Production vite build post-format-extraction | 2026-03-24 | acb8fb08 | PASS | vite build succeeds; 462KB JS bundle |
+| Storybook build post-format-extraction | 2026-03-24 | acb8fb08 | PASS | 60 stories build successfully; no regressions from format extraction |

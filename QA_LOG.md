@@ -1,5 +1,72 @@
 # QA Log
 
+## QA Session — 2026-03-24 (iteration 5)
+
+### Binary Under Test
+- Not applicable (testing dashboard React app, not CLI binary)
+- Dashboard dir: `aloop/cli/dashboard/`
+- Commit under test: acb8fb08
+
+### Test Environment
+- Worktree: `/home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-183-20260324-085402/worktree`
+- Features tested: 5
+
+### Results
+- PASS: lib/format.ts extraction, formatHelpers unit tests (14), full unit suite (189), TypeScript compilation, vite build, Storybook build (60 stories)
+- FAIL: none
+
+### Bugs Filed
+- none
+
+### Command Transcript
+
+```
+# 1. Verify lib/format.ts exports all 8 functions
+cat aloop/cli/dashboard/src/lib/format.ts
+# → exports: formatTime, formatTimeShort, formatSecs, formatDuration, formatDateKey,
+#            relativeTime, formatTokenCount, parseDurationSeconds
+# exit 0
+
+# 2. Verify AppView.tsx has no inline definitions, only import+re-export
+grep -n "^function format" aloop/cli/dashboard/src/AppView.tsx
+# exit 1 (no matches — correct)
+
+grep -n "lib/format" aloop/cli/dashboard/src/AppView.tsx
+# 36:} from './lib/format';
+# 40:} from './lib/format';
+
+# 3. Run formatHelpers tests
+cd aloop/cli/dashboard && npx vitest run --run formatHelpers
+# Test Files  1 passed (1)
+#       Tests 14 passed (14)
+# exit 0
+
+# 4. Full unit test suite
+cd aloop/cli/dashboard && npx vitest run --run
+# Test Files  20 passed (20)
+#       Tests 189 passed (189)
+# exit 0
+
+# 5. TypeScript compilation
+cd aloop/cli/dashboard && npx tsc --noEmit
+# (no output — no errors)
+# exit 0
+
+# 6. Production vite build
+cd aloop/cli/dashboard && npx vite build
+# dist/assets/index-C4l-dbbf.js   462.21 kB
+# ✓ built in 1.36s
+# exit 0
+
+# 7. Storybook build
+cd aloop/cli/dashboard && npx storybook build
+# Storybook build completed successfully
+# 60 stories in index.json
+# exit 0
+```
+
+---
+
 ## QA Session — 2026-03-21 (iteration 1)
 
 ### Binary Under Test
