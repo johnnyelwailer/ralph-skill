@@ -24,6 +24,7 @@
 - [ ] [review] Gate 4: Dead code in `adapter.ts`:
   1. `parseRepoSlug` is imported at line 14 but never called anywhere in the file — remove the unused import
   2. Lines 394 and 403-404: `if (!existsSync(this.issuesDir)) return 1` is unreachable — `ensureDirs()` on the line above creates the directory, making `existsSync` always true — remove the dead checks (priority: medium)
+  Still present at iter 2 (2026-03-24, commit a03fb518).
 
 ### Up Next
 

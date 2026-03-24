@@ -96,3 +96,83 @@ Warning: Detected unsettled top-level await ...   ← crashes when stdin is pipe
 EXIT: 13
 ```
 Note: Interactive setup crashes when stdin is piped (pre-existing issue, unrelated to adapter changes — setup.test.ts interactive tests pass).
+
+## QA Session — 2026-03-24 (iteration 2 — re-test after fixes)
+
+### Test Environment
+- Binary: /tmp/aloop-test-install-YCpzdT/bin/aloop (cleaned up)
+- Version: 1.0.0
+- Commits tested: a03fb518, 1c3ca1b8
+- Features tested: 4
+
+### Results
+- PASS: orchestrate.test.ts — all 340 tests pass (was 25 failing)
+- PASS: adapter.test.ts — all 56 tests pass (was 47; 9 new branch-coverage tests added)
+- PASS: setup.test.ts — all 28 tests pass
+- PASS: process-requests.test.ts — all 6 tests pass
+- FAIL: Dead code in adapter.ts — Gate 4 still open (filed as new qa task)
+
+### Bugs Filed
+- [qa/P2] Dead code in adapter.ts: unused import + unreachable existsSync checks (Gate 4, pre-existing open task)
+
+### Command Transcript
+
+#### Install
+```
+$ npm run test-install -- --keep
+/tmp/aloop-test-install-YCpzdT/bin/aloop
+$ aloop --version
+1.0.0
+EXIT: 0
+```
+
+#### Test 1: orchestrate.test.ts re-test (was 25 FAIL)
+```
+$ npx tsx --test src/commands/orchestrate.test.ts
+# tests 340
+# pass 340
+# fail 0
+EXIT: 0  ← PASS (all 25 failures fixed by a03fb518)
+```
+
+#### Test 2: adapter.test.ts branch coverage (Gate 2/3 fix)
+```
+$ npx tsx --test src/lib/adapter.test.ts
+# tests 56
+# pass 56
+# fail 0
+EXIT: 0  ← PASS (9 new tests added by 1c3ca1b8)
+```
+
+#### Test 3: setup.test.ts + process-requests.test.ts
+```
+$ npx tsx --test src/commands/setup.test.ts src/commands/process-requests.test.ts
+# tests 34
+# pass 34
+# fail 0
+EXIT: 0  ← PASS
+```
+
+#### Test 4: Dead code inspection in adapter.ts (Gate 4)
+```
+$ grep -n "parseRepoSlug" src/lib/adapter.ts
+14: import { parseRepoSlug, fetchBulkIssueState } from './github-monitor.js';
+← parseRepoSlug imported but never used anywhere in the file
+
+$ sed -n '359,365p' src/lib/adapter.ts
+private async ensureDirs(): Promise<void> {
+  await mkdir(this.issuesDir, { recursive: true });
+  await mkdir(this.prsDir, { recursive: true });
+}
+
+$ sed -n '393,396p' src/lib/adapter.ts
+await this.ensureDirs();
+if (!existsSync(this.issuesDir)) return 1;  ← UNREACHABLE: ensureDirs() creates the dir
+← Same pattern at line 404 for prsDir
+EXIT: n/a — static analysis  ← FAIL (Gate 4 still open)
+```
+
+#### Cleanup
+```
+$ rm -rf /tmp/aloop-test-install-YCpzdT
+```
