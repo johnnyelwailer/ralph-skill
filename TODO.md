@@ -22,11 +22,11 @@
 
   **Why:** Acceptance criterion: "`issue.needs_rebase === true` (not `review_feedback` with rebase text)". Current test asserts `needs_redispatch === true` but not `needs_rebase === true`.
 
-- [ ] [review] Gate 2/3: Add test for redispatch path when `needs_rebase === true` → writes `000-rebase-conflict.md` with `agent: merge` frontmatter and clears `needs_rebase` to `false` (priority: high)
+- [x] [review] Gate 2/3: Add test for redispatch path when `needs_rebase === true` → writes `000-rebase-conflict.md` with `agent: merge` frontmatter and clears `needs_rebase` to `false` (priority: high)
 
   **Why:** The entire `if (issue.needs_rebase === true)` branch in `runOrchestratorScanPass` (orchestrate.ts ~line 5615) is untested. This is the core behavior of Fix #1 — choosing the merge agent over the build agent. A broken implementation writing the wrong file would not be caught.
 
-- [ ] [review] Gate 2/3: Add test for redispatch path when `needs_rebase === false` (normal review rejection) → writes `000-review-fixes.md` with `agent: build` frontmatter (regression guard) (priority: high)
+- [x] [review] Gate 2/3: Add test for redispatch path when `needs_rebase === false` (normal review rejection) → writes `000-review-fixes.md` with `agent: build` frontmatter (regression guard) (priority: high)
 
   **Why:** The `else` branch of the `needs_rebase` conditional in the redispatch path is also untested. This is a regression guard — without it, a refactor that accidentally broke the non-rebase path (changing `agent: build` back to `agent: merge`) would go undetected.
 
