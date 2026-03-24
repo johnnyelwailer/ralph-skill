@@ -41,3 +41,9 @@
 | TypeScript compilation post-ElapsedTimer-extraction | 2026-03-24 | 94f217ae | PASS | tsc --noEmit: no errors |
 | Production vite build post-ElapsedTimer-extraction | 2026-03-24 | 94f217ae | PASS | vite build succeeds; 462KB JS bundle, no regressions |
 | Storybook build post-ElapsedTimer-extraction | 2026-03-24 | 94f217ae | PASS | 63 stories build successfully (+3 ElapsedTimer: JustStarted, NinetySeconds, TwoMinutes) |
+| ElapsedTimer proof screenshots (Gate 6 fix) | 2026-03-24 | 59042ea5 | PASS | 3 ElapsedTimer screenshots present in proof-artifacts/ (4882-5274 bytes each); proof-manifest.json in worktree has 11 entries (+3 ElapsedTimer); screenshots committed to git |
+| shared/PhaseBadge.tsx extraction | 2026-03-24 | 1a32d9b8 | PASS | PhaseBadge.tsx + PhaseBadge.test.tsx + PhaseBadge.stories.tsx present; AppView imports from @/components/shared/PhaseBadge; no inline definition remains; 7 unit tests pass |
+| Unit test suite (244 tests / 23 files) | 2026-03-24 | 1a32d9b8 | PASS | 244 passed, 0 failures (+7 PhaseBadge tests vs prior 237); vitest run --run |
+| TypeScript compilation post-PhaseBadge-extraction | 2026-03-24 | 1a32d9b8 | PASS | tsc --noEmit: no errors |
+| Production vite build post-PhaseBadge-extraction | 2026-03-24 | 1a32d9b8 | PASS | vite build succeeds; 462KB JS bundle, no regressions |
+| Storybook build post-PhaseBadge-extraction | 2026-03-24 | 1a32d9b8 | PASS | 69 stories build successfully (+6 PhaseBadge: Plan, Build, Proof, Review, Unknown, Small) |

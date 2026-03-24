@@ -1,5 +1,87 @@
 # QA Log
 
+## QA Session — 2026-03-24 (iteration 8)
+
+### Test Environment
+- Dashboard source: aloop/cli/dashboard/
+- Commit under test: 1a32d9b8 (feat: extract PhaseBadge to shared component with tests and stories)
+- Prior commit: 59042ea5 (chore(proof): capture Playwright screenshots for ElapsedTimer stories)
+- Features tested: 5
+
+### Results
+- PASS: ElapsedTimer proof screenshots fix (Gate 6 re-test) — 3 PNG files in proof-artifacts/, proof-manifest.json has 11 entries
+- PASS: shared/PhaseBadge.tsx extraction (component + test + stories)
+- PASS: Unit test suite (244 tests / 23 files)
+- PASS: TypeScript compilation (tsc --noEmit: no errors)
+- PASS: Production vite build (462KB bundle)
+- PASS: Storybook build (69 stories, +6 PhaseBadge stories)
+
+### Bugs Filed
+- None (0 new bugs)
+
+### Command Transcript
+
+```
+$ ls src/components/shared/PhaseBadge*
+# src/components/shared/PhaseBadge.stories.tsx
+# src/components/shared/PhaseBadge.test.tsx
+# src/components/shared/PhaseBadge.tsx
+# exit: 0
+
+$ grep -n "PhaseBadge" src/AppView.tsx | head -20
+# 27: import { PhaseBadge } from '@/components/shared/PhaseBadge';
+# 595: {session.phase && <PhaseBadge phase={session.phase} small />}
+# 819: <PhaseBadge phase={currentPhase} />
+# 1782: {s.phase && <PhaseBadge phase={s.phase} small />}
+# exit: 0
+
+$ grep -n "function PhaseBadge|const PhaseBadge" src/AppView.tsx
+# (no output — PASS: no inline definition remains)
+# exit: 1
+
+$ ls -la proof-artifacts/elapsedtimer-*.png
+# elapsedtimer-juststarted.png   4882 bytes (Mar 24 13:18)
+# elapsedtimer-ninetyseconds.png 5274 bytes (Mar 24 13:18)
+# elapsedtimer-twominutes.png    5261 bytes (Mar 24 13:18)
+# exit: 0
+
+$ python3 -c "import json; data=json.load(open('proof-manifest.json')); print(len(data))"
+# 11 entries (8 original + 3 ElapsedTimer)
+# exit: 0
+
+$ npm run test -- --run
+# 23 files passed, 244 tests, 0 failures (+7 PhaseBadge.test.tsx)
+# exit: 0
+
+$ npx tsc --noEmit
+# (no output — no errors)
+# exit: 0
+
+$ npm run build
+# vite build: dist/assets/index-*.js 462.21 kB, built in 1.29s
+# exit: 0
+
+$ npx storybook build --output-dir /tmp/qa-storybook-iter8
+# Storybook build completed successfully
+# exit: 0
+
+$ python3 -c "... count PhaseBadge + ElapsedTimer stories in /tmp/qa-storybook-iter8/index.json ..."
+# Total stories: 69
+# PhaseBadge stories: plan, build, proof, review, unknown, small (6 stories)
+# ElapsedTimer stories: just-started, ninety-seconds, two-minutes (3 stories)
+# exit: 0
+
+$ rm -rf /tmp/qa-storybook-iter8
+```
+
+### Notes
+- Test count increased from 237 (iter 7) to 244 (+7 PhaseBadge tests)
+- Story count increased from 63 (iter 7) to 69 (+6 PhaseBadge stories)
+- ElapsedTimer proof screenshots confirmed committed to git worktree (not session artifacts dir); proof-manifest.json in worktree has 11 entries
+- No regressions from either PhaseBadge extraction or ElapsedTimer proof fix
+
+---
+
 ## QA Session — 2026-03-24 (iteration 7)
 
 ### Test Environment
