@@ -509,6 +509,9 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         await mkdir(path.join(childDir, 'queue'), { recursive: true });
         await writeFile(mergeQueueFile, `---\nagent: merge\nreasoning: high\n---\n\n${mergePrompt}\n\n## Conflict\n\nRebase onto \`origin/${trunkBranch}\` failed.\nRun \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, resolve conflicts, then \`git rebase --continue && git push origin HEAD --force-with-lease\`.\n`, 'utf8');
         console.log(`[process-requests] Merge conflict on #${issue.number} — queued merge agent`);
+        // Trigger child restart so it processes the queued merge agent
+        (issue as any).needs_redispatch = true;
+        stateChanged = true;
       }
     }
   }
