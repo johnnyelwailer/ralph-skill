@@ -1,0 +1,28 @@
+# Review Log
+
+## Review — 2026-03-24 — commit 4a136add..5561e29f
+
+**Verdict: FAIL** (4 findings → 2 [review] tasks written to TODO.md; 1 QA bug pre-exists)
+**Scope:** `aloop/cli/src/lib/adapter.ts`, `aloop/cli/src/lib/adapter.test.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/setup.ts`, `aloop/cli/src/commands/setup.test.ts`, `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/commands/project.ts`, `aloop/cli/src/commands/start.ts`, `aloop/cli/lib/project.mjs`
+
+### Findings
+
+- **Gate 1 (partial):** 2 spec acceptance criteria remain open: "GitHubAdapter wraps all existing `gh` CLI calls" and "`orchestrate.ts` uses adapter interface, not raw `execGh`". The builder migrated 6 specific functions (checkPrGates, mergePr, flagForHuman, createPrForChild, processPrLifecycle, runOrchestratorScanPass) but left ~31 execGh calls for GraphQL, custom commands, and API calls. The spec says "all" — the migration is partial. This is the intended incremental approach per the builder's TODO notes, but it doesn't satisfy the spec criteria. Noted as context; the pre-existing [qa/P1] test failure task covers the actionable remediation path.
+
+- **Gate 2/3 (FAIL):** `adapter.ts` is a new module (90% branch coverage required). Three methods have zero tests: `GitHubAdapter.updateIssue` (has close/reopen branching logic), `LocalAdapter.mergePr` (3 merge methods + deleteBranch), `LocalAdapter.getPrStatus` (success vs. git error paths). Written as `[review]` task in TODO.md.
+
+- **Gate 4 (FAIL):** Dead code in `adapter.ts`: `parseRepoSlug` imported at line 14 but never called. `existsSync` checks at lines 394 and 403–404 are unreachable after `ensureDirs()` creates the directory on the preceding line. Written as `[review]` task in TODO.md.
+
+- **Gate 5 (FAIL):** 25 orchestrate.test.ts failures confirmed (documented as [qa/P1] in TODO.md before this review). Tests for `checkPrGates`, `reviewPrDiff`, `launchChildLoop`, `validateDoR`, and others fail because they mock `execGh` directly but the migrated code now calls through the adapter interface. Type-check reports 1 error (`process-requests.ts:407` compares `issue.state` to `'review'` which is not in `OrchestratorIssueState`) — confirmed pre-existing since the same line existed before these commits.
+
+### Gates that Pass
+
+- **Gate 6:** Work is purely internal (interface definition + migration plumbing). No observable output. Skipping proof is the correct outcome.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** No user-facing behavior changes; README/docs not affected.
+- **setup.ts/setup.test.ts:** Adapter prompt added correctly. Test updated with prompt count (10→11) and `scaffoldCalledOpts.adapter === 'local'` assertion — specific and correct.
+- **adapter.test.ts (covered paths):** Existing tests use concrete values (exact issue numbers, exact label arrays, specific error messages). Gate 3 failure is scoped to the three missing methods only.
+- **Acceptance criteria update:** Marked AC items 5 and 6 as complete in TODO.md (`adapter` in meta.json is written via `start.ts`; no hardcoded GitHub URLs in code).
+
+---
