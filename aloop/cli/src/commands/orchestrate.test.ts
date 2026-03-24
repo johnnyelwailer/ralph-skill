@@ -6495,4 +6495,35 @@ describe('runOrchestratorScanPass blocker tracking', () => {
       'should log blocker_diagnostics_written event',
     );
   });
+
+  it('sets severity to critical when occurrence_count reaches 10', async () => {
+    const desc = 'Issue #1 child loop failed';
+    const hash = computeBlockerHash('child_stuck', 1, desc);
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, state: 'failed' })],
+      blocker_signatures: [
+        {
+          hash,
+          type: 'child_stuck',
+          issue_number: 1,
+          description: desc,
+          first_seen_iteration: 1,
+          occurrence_count: 9,
+        },
+      ],
+    });
+    const deps = createMockScanDeps();
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, BLOCKER_PERSISTENCE_THRESHOLD, deps,
+    );
+
+    const diagnosticsRaw = deps.files['/session/diagnostics.json'];
+    assert.ok(diagnosticsRaw, 'diagnostics.json should be written');
+    const diagnostics = JSON.parse(diagnosticsRaw);
+    assert.equal(diagnostics.blockers.length, 1);
+    assert.equal(diagnostics.blockers[0].severity, 'critical');
+  });
 });
