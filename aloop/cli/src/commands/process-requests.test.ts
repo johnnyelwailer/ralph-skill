@@ -347,11 +347,20 @@ describe('collectUnrecognizedRequestFiles', () => {
       'refine-result-3.json',
       'estimate-result-7.json',
       'review-result-12.json',
+      'cr-analysis-result-5.json',
     ];
     for (const f of knownFiles) {
       await writeFile(path.join(dir, f), JSON.stringify({ type: 'known' }), 'utf8');
     }
     const result = await collectUnrecognizedRequestFiles(dir, knownFiles);
+    assert.deepEqual(result, []);
+  });
+
+  it('ignores cr-analysis-result files', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'process-requests-test-'));
+    const files = ['cr-analysis-result-5.json'];
+    await writeFile(path.join(dir, files[0]), JSON.stringify({ type: 'cr_analysis' }), 'utf8');
+    const result = await collectUnrecognizedRequestFiles(dir, files);
     assert.deepEqual(result, []);
   });
 

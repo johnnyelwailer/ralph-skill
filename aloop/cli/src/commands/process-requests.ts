@@ -1004,6 +1004,7 @@ const KNOWN_REQUEST_PATTERNS = [
   /^refine-result-\d+\.json$/,
   /^estimate-result-\d+\.json$/,
   /^review-result-\d+\.json$/,
+  /^cr-analysis-result-\d+\.json$/,
 ];
 
 export interface UnrecognizedFileAnnotation {

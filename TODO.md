@@ -7,7 +7,7 @@ _(none)_
 
 ### Up Next
 - [x] [review] Fix TypeScript error in `lib/requests.ts:435` — cast `request.id` to `(request as any).id` in the `default:` branch where `request` is type `never` (consistent with line 432). Run `npm run type-check` to verify. (priority: high)
-- [ ] [review] Add `cr-analysis-result-\d+\.json` to `KNOWN_REQUEST_PATTERNS` in `process-requests.ts:933`. Add a test: unrecognized handler ignores `cr-analysis-result-5.json`. (priority: high)
+- [x] [review] Add `cr-analysis-result-\d+\.json` to `KNOWN_REQUEST_PATTERNS` in `process-requests.ts:933`. Add a test: unrecognized handler ignores `cr-analysis-result-5.json`. (priority: high)
 - [ ] [review] Align `diagnostics.json` field names to SPEC-ADDENDUM.md:1053 schema. Spec requires per-blocker fields `{type, message, first_seen_iteration, current_iteration, severity, suggested_fix}`. Implementation uses `description`→`message`, `iterations_stuck`→needs both `first_seen_iteration` + `current_iteration`, `suggested_action`→`suggested_fix`, and wraps in `persistent_blockers` object rather than top-level array. Fix: update the map in `orchestrate.ts:5853` to output spec-compliant field names and update corresponding tests. (priority: medium)
 
 ### Completed
