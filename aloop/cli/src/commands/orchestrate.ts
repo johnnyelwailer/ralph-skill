@@ -1628,12 +1628,29 @@ export async function launchOrchestrator(
   // while requests/, queue/, orchestrator.json are siblings at ../
   const candidateWorktreePath = path.join(options.sessionDir, 'worktree');
   const worktreeBranch = `aloop/${path.basename(options.sessionDir)}`;
-  const worktreeResult = deps.spawnSync('git', ['-C', options.projectRoot, 'worktree', 'add', candidateWorktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
-  if (worktreeResult.status === 0) {
+
+  if (options.launchMode === 'resume' && deps.existsSync(path.join(candidateWorktreePath, '.git'))) {
+    // Resume: worktree already exists from initial start — reuse it
     worktreePath = candidateWorktreePath;
     workDir = candidateWorktreePath;
   } else {
-    warnings.push(`Failed to create worktree: ${(worktreeResult.stderr || worktreeResult.stdout || '').trim()}`);
+    const worktreeResult = deps.spawnSync('git', ['-C', options.projectRoot, 'worktree', 'add', candidateWorktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
+    if (worktreeResult.status === 0) {
+      worktreePath = candidateWorktreePath;
+      workDir = candidateWorktreePath;
+    } else if (options.launchMode === 'resume') {
+      // Branch already exists from initial start — attach worktree to it
+      deps.spawnSync('git', ['-C', options.projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+      const resumeResult = deps.spawnSync('git', ['-C', options.projectRoot, 'worktree', 'add', candidateWorktreePath, worktreeBranch], { encoding: 'utf8' });
+      if (resumeResult.status === 0) {
+        worktreePath = candidateWorktreePath;
+        workDir = candidateWorktreePath;
+      } else {
+        warnings.push(`Failed to create worktree: ${(resumeResult.stderr || resumeResult.stdout || '').trim()}`);
+      }
+    } else {
+      warnings.push(`Failed to create worktree: ${(worktreeResult.stderr || worktreeResult.stdout || '').trim()}`);
+    }
   }
 
   const child = deps.spawn(loopScript, [

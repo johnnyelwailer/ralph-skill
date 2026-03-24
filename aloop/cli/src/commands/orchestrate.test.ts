@@ -596,6 +596,80 @@ describe('launchOrchestrator', () => {
     ]);
     assert.equal(spawnCalls[0].options?.cwd, '/project');
   });
+
+  it('reuses existing worktree on resume without creating new one', async () => {
+    const spawnSyncCalls: Array<{ command: string; args: string[] }> = [];
+    const deps: LaunchOrchestratorDeps = {
+      existsSync: (p: string) => {
+        if (p === '/home/.aloop/bin/loop.sh') return true;
+        if (p === '/sessions/orchestrator-20260310-111213/worktree/.git') return true;
+        return false;
+      },
+      readFile: async () => '',
+      writeFile: async () => {},
+      now: () => new Date('2026-03-10T11:12:13.000Z'),
+      spawnSync: (command: string, args: string[]) => {
+        spawnSyncCalls.push({ command, args });
+        return { status: 0, stdout: '', stderr: '' };
+      },
+      spawn: () => ({ pid: 4242, unref: () => {} }),
+      env: {},
+    };
+
+    const result = await launchOrchestrator({
+      sessionDir: '/sessions/orchestrator-20260310-111213',
+      promptsDir: '/sessions/orchestrator-20260310-111213/prompts',
+      projectRoot: '/project',
+      aloopRoot: '/home/.aloop',
+      launchMode: 'resume',
+    }, deps);
+
+    assert.equal(result.worktree, true);
+    assert.equal(result.work_dir, '/sessions/orchestrator-20260310-111213/worktree');
+    assert.equal(result.warnings.length, 0);
+    // Should not call git worktree add at all
+    const worktreeAddCalls = spawnSyncCalls.filter(c => c.args.includes('worktree') && c.args.includes('add'));
+    assert.equal(worktreeAddCalls.length, 0);
+  });
+
+  it('recreates worktree on resume when branch exists but worktree is missing', async () => {
+    const spawnSyncCalls: Array<{ command: string; args: string[] }> = [];
+    const deps: LaunchOrchestratorDeps = {
+      existsSync: (p: string) => p === '/home/.aloop/bin/loop.sh',
+      readFile: async () => '',
+      writeFile: async () => {},
+      now: () => new Date('2026-03-10T11:12:13.000Z'),
+      spawnSync: (command: string, args: string[]) => {
+        spawnSyncCalls.push({ command, args });
+        // First call fails (branch exists), prune and retry succeed
+        if (args.includes('worktree') && args.includes('add') && args.includes('-b')) {
+          return { status: 1, stdout: '', stderr: 'fatal: a branch named \'aloop/orchestrator-20260310-111213\' already exists' };
+        }
+        return { status: 0, stdout: '', stderr: '' };
+      },
+      spawn: () => ({ pid: 4242, unref: () => {} }),
+      env: {},
+    };
+
+    const result = await launchOrchestrator({
+      sessionDir: '/sessions/orchestrator-20260310-111213',
+      promptsDir: '/sessions/orchestrator-20260310-111213/prompts',
+      projectRoot: '/project',
+      aloopRoot: '/home/.aloop',
+      launchMode: 'resume',
+    }, deps);
+
+    assert.equal(result.worktree, true);
+    assert.equal(result.work_dir, '/sessions/orchestrator-20260310-111213/worktree');
+    assert.equal(result.warnings.length, 0);
+    // Should call prune then worktree add without -b
+    const pruneCalls = spawnSyncCalls.filter(c => c.args.includes('prune'));
+    assert.equal(pruneCalls.length, 1);
+    const addCalls = spawnSyncCalls.filter(c => c.args.includes('worktree') && c.args.includes('add'));
+    assert.equal(addCalls.length, 2);
+    // Second add call should not have -b flag
+    assert.ok(!addCalls[1].args.includes('-b'));
+  });
 });
 
 // Helper to create plan issues
