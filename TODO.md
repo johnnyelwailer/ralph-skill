@@ -6,12 +6,9 @@
 _(none)_
 
 ### Up Next
-_(none)_
-
-### Review Findings (must fix before merge)
-- [ ] [review] Gate 5: `lib/requests.ts:435` — new TypeScript error introduced by this PR: `Property 'id' does not exist on type 'never'` in the `default:` case of `processAgentRequests`. TypeScript exhausts all union members in the switch, making `request` type `never` in the default branch. Fix: cast to `(request as AgentRequest).id` or `(request as any).id` — consistent with line 432 which already uses `(request as any).type`. Run `npm run type-check` to verify. (priority: high)
-- [ ] [review] Gate 4: `process-requests.ts:933` — `KNOWN_REQUEST_PATTERNS` is missing the `cr-analysis-result-\d+\.json` pattern. This file type IS handled (line 272) and archived on success, but if the CR handler fails before archiving, the file survives to the `readdir` scan at line 307 and gets quarantined as `unsupported_type`. Add `/^cr-analysis-result-\d+\.json$/` to `KNOWN_REQUEST_PATTERNS`. Add a test: unrecognized handler ignores `cr-analysis-result-5.json`. (priority: high)
-- [ ] [review] Gate 1: `diagnostics.json` field names deviate from SPEC-ADDENDUM.md schema. Spec says: `{type, message, first_seen_iteration, current_iteration, severity, suggested_fix}` per blocker, in an array. Implementation uses `description` (→ `message`), `iterations_stuck` (→ should be count but spec wants `first_seen_iteration` + `current_iteration`), `suggested_action` (→ `suggested_fix`), and wraps in an object with `persistent_blockers` key rather than a top-level array. Dashboard integration (future AC) depends on this schema. Fix: either align field names to spec OR update SPEC-ADDENDUM.md to document the chosen schema as canonical. (priority: medium)
+- [x] [review] Fix TypeScript error in `lib/requests.ts:435` — cast `request.id` to `(request as any).id` in the `default:` branch where `request` is type `never` (consistent with line 432). Run `npm run type-check` to verify. (priority: high)
+- [ ] [review] Add `cr-analysis-result-\d+\.json` to `KNOWN_REQUEST_PATTERNS` in `process-requests.ts:933`. Add a test: unrecognized handler ignores `cr-analysis-result-5.json`. (priority: high)
+- [ ] [review] Align `diagnostics.json` field names to SPEC-ADDENDUM.md:1053 schema. Spec requires per-blocker fields `{type, message, first_seen_iteration, current_iteration, severity, suggested_fix}`. Implementation uses `description`→`message`, `iterations_stuck`→needs both `first_seen_iteration` + `current_iteration`, `suggested_action`→`suggested_fix`, and wraps in `persistent_blockers` object rather than top-level array. Fix: update the map in `orchestrate.ts:5853` to output spec-compliant field names and update corresponding tests. (priority: medium)
 
 ### Completed
 - [x] Define `BlockerSignature` type with `hash`, `type`, `issue_number`, `description`, `first_seen_iteration`, `occurrence_count` fields — `orchestrate.ts:98`
@@ -25,8 +22,8 @@ _(none)_
 - [x] Unit tests: detectCurrentBlockers, updateBlockerSignatures, diagnostics.json, ALERT.md, queue/000-critical-alert.md — `orchestrate.test.ts:6157`
 - [x] Implement unhandled request type logging in `process-requests.ts`: scan for unrecognized `.json` files, log error with filename + payload summary, move to `requests/failed/` with `reason: 'unsupported_type'` annotation — `process-requests.ts:287`, `process-requests.test.ts`
 
-### Spec-Gap Analysis
-- [ ] [spec-gap][P2] `dependency_cycle` blocker detection never triggers — `BlockerType` includes `'dependency_cycle'` (orchestrate.ts:96) and `BLOCKER_SUGGESTED_ACTIONS` has its entry (orchestrate.ts:5313), but `detectCurrentBlockers` (orchestrate.ts:5335) never detects it. Spec says "detect and track dependency cycles." Fix: add topological cycle detection in `detectCurrentBlockers`, or update spec to document it as a future type. This is out of scope for issue #180 (not in its AC) — file as a separate issue.
+### Deferred
+- [ ] [spec-gap][P2] `dependency_cycle` blocker detection never triggers — `BlockerType` includes `'dependency_cycle'` (orchestrate.ts:96) and `BLOCKER_SUGGESTED_ACTIONS` has its entry (orchestrate.ts:5313), but `detectCurrentBlockers` (orchestrate.ts:5335) never detects it. Spec says "detect and track dependency cycles." Fix: add topological cycle detection in `detectCurrentBlockers`, or update spec to document it as a future type. Out of scope for issue #180 — file as a separate issue.
 
 ### Notes
 - `process-requests.ts` handles specific known file patterns: `epic-decomposition-results.json`, `sub-decomposition-result-*.json`, `refine-result-*.json`, `review-result-*.json`. No catch-all for unknown files.

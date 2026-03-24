@@ -432,7 +432,7 @@ async function handleRequest(request: AgentRequest, fileName: string, options: R
       const unknownType = (request as any).type;
       const payloadSummary = JSON.stringify((request as any).payload ?? {}).substring(0, 120);
       throw new Error(
-        `Unsupported request type: ${unknownType} (id: ${request.id}, payload: ${payloadSummary})`,
+        `Unsupported request type: ${unknownType} (id: ${(request as any).id}, payload: ${payloadSummary})`,
       );
     }
   }
