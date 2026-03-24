@@ -740,7 +740,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/sub-decompose-issue-'));
     assert.equal(queueFiles.length, 2, 'Should write sub-decompose queue prompts for each epic');
     const queueContent = mockDeps._writtenFiles[queueFiles[0]];
-    assert.match(queueContent, /orch_estimate/, 'Queue override should reference orch_estimate agent');
+    assert.match(queueContent, /orch_sub_decompose/, 'Queue override should reference orch_sub_decompose agent');
   });
 
   it('applies estimate-results.json when present', async () => {
@@ -1817,6 +1817,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form with zod validation. Implement form state management and integrate with the auth API endpoint for authentication flow.',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1827,6 +1828,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form. Blocked by aloop/spec-question regarding auth method.\n\n## Acceptance Criteria\n- [ ] Form renders with email field',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1837,6 +1839,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Acceptance Criteria\n- [ ] Form renders with email field',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1856,6 +1859,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Todo',
       body: 'Something',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -2344,7 +2348,7 @@ describe('launchChildLoop', () => {
   it('creates worktree with correct branch name', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git');
+    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git' && c.args.includes('worktree') && c.args.includes('add'));
     assert.ok(gitCall, 'git worktree add should be called');
     assert.ok(gitCall.args.includes('-b'));
     assert.ok(gitCall.args.includes('aloop/issue-42'));
@@ -2448,8 +2452,8 @@ describe('launchChildLoop', () => {
     const issueWithBody = makeIssue({ number: 42, title: 'Add feature X', body: '## Requirements\n\n- Support login\n- Handle errors' });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueWithBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
-    assert.ok(specFile, 'SPEC.md should be written to child worktree');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
+    assert.ok(specFile, 'TASK_SPEC.md should be written to child worktree');
     assert.ok(deps._writtenFiles[specFile].includes('Issue #42'));
     assert.ok(deps._writtenFiles[specFile].includes('Support login'));
   });
@@ -2458,8 +2462,8 @@ describe('launchChildLoop', () => {
     const issueNoBody = makeIssue({ number: 42, title: 'Add feature X', body: undefined });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueNoBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
-    assert.equal(specFile, undefined, 'SPEC.md should not be written when issue body is empty');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
+    assert.equal(specFile, undefined, 'TASK_SPEC.md should not be written when issue body is empty');
   });
 
   it('compiles loop-plan.json for child session', async () => {
@@ -2716,13 +2720,16 @@ describe('checkPrGates', () => {
   it('returns pending when CI checks are still running', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
             { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ]), stderr: '' };
+          ] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2735,14 +2742,17 @@ describe('checkPrGates', () => {
   it('returns fail when CI checks have failures', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
             { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
             { name: 'lint', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ]), stderr: '' };
+          ] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2761,16 +2771,16 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
+        if (args.includes('statusCheckRollup')) {
           return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
-    assert.equal(result.all_passed, false);
-    assert.equal(result.gates[1].status, 'pending');
-    assert.match(result.gates[1].detail, /no check runs/i);
+    assert.equal(result.all_passed, true);
+    assert.equal(result.gates[1].status, 'pass');
+    assert.match(result.gates[1].detail, /no checks ran/i);
   });
 
   it('fails CI gate when workflows exist and check query errors', async () => {
@@ -2808,7 +2818,7 @@ describe('checkPrGates', () => {
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.mergeable, false);
-    assert.equal(result.gates[0].status, 'fail');
+    assert.equal(result.gates[0].status, 'pass');
   });
 
   it('treats SKIPPED and NEUTRAL checks as passing', async () => {
@@ -2833,13 +2843,13 @@ describe('checkPrGates', () => {
 });
 
 describe('reviewPrDiff', () => {
-  it('auto-approves when no agent reviewer configured', async () => {
+  it('flags for human when no agent reviewer configured', async () => {
     const deps = createMockPrDeps({
       execGh: async () => ({ stdout: 'diff --git a/file.ts b/file.ts\n+hello', stderr: '' }),
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'approve');
-    assert.ok(result.summary.includes('Auto-approved'));
+    assert.equal(result.verdict, 'flag-for-human');
+    assert.ok(result.summary.includes('No agent reviewer configured'));
   });
 
   it('delegates to agent reviewer when configured', async () => {
@@ -2856,13 +2866,13 @@ describe('reviewPrDiff', () => {
     assert.ok(result.summary.includes('needs fixes'));
   });
 
-  it('flags for human when diff fetch fails', async () => {
+  it('returns pending when diff fetch fails', async () => {
     const deps = createMockPrDeps({
       execGh: async () => { throw new Error('Not found'); },
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'flag-for-human');
-    assert.ok(result.summary.includes('Failed to fetch PR diff'));
+    assert.equal(result.verdict, 'pending');
+    assert.ok(result.summary.includes('PR diff fetch failed'));
   });
 });
 
@@ -2923,6 +2933,11 @@ describe('processPrLifecycle', () => {
         }
         return { stdout: '', stderr: '' };
       },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'approve' as const,
+        summary: 'Looks good',
+      }),
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'merged');
@@ -2935,13 +2950,16 @@ describe('processPrLifecycle', () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
     const deps = createMockPrDeps({
       execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
             { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ]), stderr: '' };
+          ] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2975,11 +2993,14 @@ describe('processPrLifecycle', () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open', rebase_attempts: 2 }]);
     const deps = createMockPrDeps({
       execGh: async (args) => {
-        if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'CONFLICTING' }), stderr: '' };
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3081,13 +3102,16 @@ describe('processPrLifecycle', () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         ghCalls.push(args);
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
             { name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ]), stderr: '' };
+          ] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3137,11 +3161,16 @@ describe('processPrLifecycle', () => {
     let mergeAttempted = false;
     const deps = createMockPrDeps({
       execGh: async (args) => {
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
+            { name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' },
+          ] }), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3152,6 +3181,11 @@ describe('processPrLifecycle', () => {
         }
         return { stdout: '', stderr: '' };
       },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'approve' as const,
+        summary: 'Looks good',
+      }),
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(mergeAttempted, true);
@@ -3166,17 +3200,25 @@ describe('processPrLifecycle', () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         ghCalls.push(args);
+        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
+          return { stdout: '1', stderr: '' };
+        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'approve' as const,
+        summary: 'Looks good',
+      }),
     });
     await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     const closeCall = ghCalls.find((c) => c.includes('close') && c.includes('42'));
@@ -3691,14 +3733,14 @@ describe('queueGapAnalysisForIssues', () => {
     const productContent = writtenFiles['/queue/gap-analysis-product.md'];
     assert.match(productContent, /orch_product_analyst/);
     assert.match(productContent, /# Product Prompt/);
-    assert.match(productContent, /# Spec content here/);
+    assert.match(productContent, /Read SPEC.md and SPEC-ADDENDUM.md/);
     assert.match(productContent, /Issue #10: Auth/);
     assert.match(productContent, /Implement auth/);
 
     const archContent = writtenFiles['/queue/gap-analysis-architecture.md'];
     assert.match(archContent, /orch_arch_analyst/);
     assert.match(archContent, /# Arch Prompt/);
-    assert.match(archContent, /# Spec content here/);
+    assert.match(archContent, /Read SPEC.md and SPEC-ADDENDUM.md/);
   });
 
   it('returns 0 when no issues need analysis', async () => {
@@ -3758,7 +3800,7 @@ describe('epic and sub-issue decomposition helpers', () => {
     assert.ok(content);
     assert.match(content, /orch_decompose/);
     assert.match(content, /# Decompose prompt/);
-    assert.match(content, /# Spec body/);
+    assert.match(content, /Read the spec files listed above/);
   });
 
   it('writes sub-issue decomposition request for Needs decomposition targets only', async () => {
@@ -4121,13 +4163,13 @@ describe('runOrchestratorScanPass', () => {
 
     const result = await runOrchestratorScanPass(
       '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      null, 2, deps,
+      'owner/repo', 5, deps,
     );
 
     assert.equal(result.specConsistencyProcessed, false);
     const parseErrorLog = deps.logEntries.find((e) => e.event === 'spec_consistency_parse_error');
     assert.ok(parseErrorLog, 'should log spec_consistency_parse_error event');
-    assert.equal(parseErrorLog.iteration, 2);
+    assert.equal(parseErrorLog.iteration, 5);
     assert.ok(unlinkedPath.includes('spec-consistency-results.json'), 'should attempt to clean up invalid file');
     assert.equal(deps.files['/session/requests/spec-consistency-results.json'], undefined, 'invalid file should be removed');
   });
@@ -4370,7 +4412,7 @@ describe('runOrchestratorScanPass', () => {
 
     const result = await runOrchestratorScanPass(
       '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 1, deps,
+      'owner/repo', 5, deps,
     );
 
     assert.equal(result.triage.processed_issues, 1);
@@ -4955,8 +4997,8 @@ describe('monitorChildSessions', () => {
 
     assert.equal(result.monitored, 1);
     assert.equal(result.failed, 1);
-    assert.equal(state.issues[0].state, 'failed');
-    assert.equal(state.issues[0].status, 'Blocked');
+    assert.equal(state.issues[0].state, 'in_progress');
+    assert.ok((state.issues[0] as any).needs_redispatch);
     assert.ok(logEntries.some((e) => e.event === 'child_failed'));
   });
 
@@ -5331,10 +5373,9 @@ describe('orchestrateCommandWithDeps multi-file spec', () => {
     const decomposeFile = Object.keys(writtenFiles).find((k) => k.includes('decompose-epics.md'));
     assert.ok(decomposeFile, 'decompose-epics.md should be queued');
     const content = writtenFiles[decomposeFile];
-    assert.ok(content.includes('Master Spec'), 'should include master spec content');
-    assert.ok(content.includes('Auth Slice'), 'should include auth slice content');
-    assert.ok(content.includes('<!-- spec: SPEC.md -->'), 'should include spec file header for master');
-    assert.ok(content.includes('<!-- spec: auth.md -->'), 'should include spec file header for auth');
+    assert.ok(content.includes('SPEC.md'), 'should reference SPEC.md');
+    assert.ok(content.includes('specs/auth.md'), 'should reference auth.md');
+    assert.ok(content.includes('Read the spec files listed above'), 'should instruct agent to read spec files');
   });
 });
 
