@@ -17,7 +17,7 @@ _(none)_
 - [x] Write `diagnostics.json` after a blocker persists for N iterations (default threshold: 5) — integrated in `runOrchestratorScanPass` section 7.5 — `orchestrate.ts:5820`
 - [x] Write `ALERT.md` when health is `critical` (3+ persistent or any at 10+) — `orchestrate.ts:5865`
 - [x] Queue `000-critical-alert.md` prompt for self-recovery when critical — `orchestrate.ts:5904`
-- [x] Unit tests: detectCurrentBlockers, updateBlockerSignatures, diagnostics.json, ALERT.md — `orchestrate.test.ts:6157`
+- [x] Unit tests: detectCurrentBlockers, updateBlockerSignatures, diagnostics.json, ALERT.md, queue/000-critical-alert.md — `orchestrate.test.ts:6157`
 - [x] Implement unhandled request type logging in `process-requests.ts`: scan for unrecognized `.json` files, log error with filename + payload summary, move to `requests/failed/` with `reason: 'unsupported_type'` annotation — `process-requests.ts:287`, `process-requests.test.ts`
 
 ### Spec-Gap Analysis

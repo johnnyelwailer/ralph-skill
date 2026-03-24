@@ -6427,6 +6427,11 @@ describe('runOrchestratorScanPass blocker tracking', () => {
 
     // Should also log blocker_alert_written
     assert.ok(deps.logEntries.some((e) => e.event === 'blocker_alert_written'));
+
+    // Should also write the queue prompt for self-recovery
+    const queuePrompt = deps.files['/session/queue/000-critical-alert.md'];
+    assert.ok(queuePrompt, 'queue/000-critical-alert.md should be written when health is critical');
+    assert.ok(queuePrompt.includes('Critical Alert'), 'queue prompt should include critical alert heading');
   });
 
   it('clears blocker signatures for merged issues', async () => {
