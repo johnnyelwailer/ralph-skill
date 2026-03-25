@@ -191,11 +191,10 @@ export interface TriageLogEntry {
 }
 
 export interface TriageDeps {
-  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  adapter: OrchestratorAdapter;
   now: () => Date;
   writeFile?: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   aloopRoot?: string;
-  adapter?: OrchestratorAdapter;
 }
 
 export interface OrchestrateDeps {
@@ -1877,33 +1876,16 @@ export async function applyTriageResultsToIssue(
     }
 
     if (result.classification === 'needs_clarification') {
-      if (deps.adapter) {
-        await deps.adapter.postComment(issue.number, formatNeedsClarificationReply(comment));
-        if (!issue.blocked_on_human) {
-          await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
-        }
-      } else {
-        await deps.execGh([
-          'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatNeedsClarificationReply(comment),
-        ]);
-        if (!issue.blocked_on_human) {
-          await deps.execGh([
-            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-          ]);
-        }
+      await deps.adapter.postComment(issue.number, formatNeedsClarificationReply(comment));
+      if (!issue.blocked_on_human) {
+        await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
       }
       issue.blocked_on_human = true;
       actionTaken = 'post_reply_and_block';
     } else if (result.classification === 'actionable') {
       let unblocked = false;
       if (issue.blocked_on_human) {
-        if (deps.adapter) {
-          await deps.adapter.removeLabels(issue.number, ['aloop/blocked-on-human']);
-        } else {
-          await deps.execGh([
-            'issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', 'aloop/blocked-on-human',
-          ]);
-        }
+        await deps.adapter.removeLabels(issue.number, ['aloop/blocked-on-human']);
         issue.blocked_on_human = false;
         unblocked = true;
       }
@@ -1924,13 +1906,7 @@ export async function applyTriageResultsToIssue(
         actionTaken = 'steering_deferred';
       }
     } else if (result.classification === 'question') {
-      if (deps.adapter) {
-        await deps.adapter.postComment(issue.number, formatQuestionReply(comment));
-      } else {
-        await deps.execGh([
-          'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatQuestionReply(comment),
-        ]);
-      }
+      await deps.adapter.postComment(issue.number, formatQuestionReply(comment));
       actionTaken = 'question_answered';
     } else {
       actionTaken = 'triaged_no_action';
@@ -2092,7 +2068,7 @@ export async function runTriageMonitorCycle(
       issue,
       [...normalizedIssueComments, ...normalizedPrComments],
       repo,
-      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, aloopRoot, adapter: deps.adapter },
+      { adapter: deps.adapter!, now: deps.now, writeFile: deps.writeFile, aloopRoot },
     );
     triagedEntries += entries.length;
 
@@ -2190,30 +2166,14 @@ interface SpecQuestionResolveStats {
 
 export async function resolveSpecQuestionIssues(
   state: OrchestratorState,
-  repo: string,
+  _repo: string,
   sessionDir: string,
-  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog' | 'now' | 'adapter'>,
+  deps: Pick<ScanLoopDeps, 'appendLog' | 'now'> & { adapter: OrchestratorAdapter },
 ): Promise<SpecQuestionResolveStats> {
   const result: SpecQuestionResolveStats = { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
 
-  let specQuestionIssues: Array<{ number: number; title: string; body: string; labels: string[] }>;
-  if (deps.adapter) {
-    const adapterIssues = await deps.adapter.queryIssues({ state: 'open', labels: ['aloop/spec-question'] });
-    specQuestionIssues = adapterIssues.map((i) => ({ number: i.number, title: i.title, body: i.body ?? '', labels: i.labels }));
-  } else if (deps.execGh) {
-    const response = await deps.execGh([
-      'issue', 'list', '--repo', repo, '--label', 'aloop/spec-question', '--state', 'open',
-      '--json', 'number,title,body,labels',
-    ]);
-    specQuestionIssues = parseSpecQuestionIssueList(response.stdout).map((i) => ({
-      number: i.number,
-      title: i.title,
-      body: i.body,
-      labels: Array.from(extractLabelNames(i.labels)),
-    }));
-  } else {
-    return result;
-  }
+  const adapterIssues = await deps.adapter.queryIssues({ state: 'open', labels: ['aloop/spec-question'] });
+  const specQuestionIssues = adapterIssues.map((i) => ({ number: i.number, title: i.title, body: i.body ?? '', labels: i.labels }));
 
   for (const issue of specQuestionIssues) {
     result.processed += 1;
@@ -2223,13 +2183,7 @@ export async function resolveSpecQuestionIssues(
     const reopenedByUser = labelNames.has('aloop/auto-resolved');
     if (reopenedByUser) {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        if (deps.adapter) {
-          await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
-        } else {
-          await deps.execGh!([
-            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-          ]);
-        }
+        await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
       }
       result.userOverrides += 1;
       deps.appendLog(sessionDir, {
@@ -2243,13 +2197,7 @@ export async function resolveSpecQuestionIssues(
 
     if (action === 'wait_for_user') {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        if (deps.adapter) {
-          await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
-        } else {
-          await deps.execGh!([
-            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-          ]);
-        }
+        await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
       }
       result.waiting += 1;
       deps.appendLog(sessionDir, {
@@ -2262,22 +2210,10 @@ export async function resolveSpecQuestionIssues(
       continue;
     }
 
-    if (deps.adapter) {
-      await deps.adapter.postComment(issue.number, formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk));
-      await deps.adapter.addLabels(issue.number, ['aloop/auto-resolved']);
-      await deps.adapter.removeLabels(issue.number, ['aloop/blocked-on-human']);
-      await deps.adapter.closeIssue(issue.number);
-    } else {
-      await deps.execGh!([
-        'issue', 'comment', String(issue.number), '--repo', repo,
-        '--body', formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
-      ]);
-      await deps.execGh!([
-        'issue', 'edit', String(issue.number), '--repo', repo,
-        '--add-label', 'aloop/auto-resolved', '--remove-label', 'aloop/blocked-on-human',
-      ]);
-      await deps.execGh!(['issue', 'close', String(issue.number), '--repo', repo]);
-    }
+    await deps.adapter.postComment(issue.number, formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk));
+    await deps.adapter.addLabels(issue.number, ['aloop/auto-resolved']);
+    await deps.adapter.removeLabels(issue.number, ['aloop/blocked-on-human']);
+    await deps.adapter.closeIssue(issue.number);
     result.autoResolved += 1;
     deps.appendLog(sessionDir, {
       timestamp: deps.now().toISOString(),
@@ -5589,12 +5525,14 @@ export async function runOrchestratorScanPass(
       { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, adapter: deps.adapter },
       aloopRoot,
     );
-    result.specQuestions = await resolveSpecQuestionIssues(
-      state,
-      repo,
-      sessionDir,
-      { execGh: deps.execGh, appendLog: deps.appendLog, now: deps.now, adapter: deps.adapter },
-    );
+    result.specQuestions = deps.adapter
+      ? await resolveSpecQuestionIssues(
+          state,
+          repo,
+          sessionDir,
+          { appendLog: deps.appendLog, now: deps.now, adapter: deps.adapter },
+        )
+      : { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
   }
 
   // 2. Dispatch child loops for ready issues
