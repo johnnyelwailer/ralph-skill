@@ -744,6 +744,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   }
   const maxIterations = parsedMaxIterations ?? 50;
   const maxStuck = toPositiveInt(selectValue(projectConfig.values.max_stuck, globalConfig.values.max_stuck)) ?? 3;
+  const providerTimeout = toPositiveInt(selectValue(projectConfig.values.provider_timeout, globalConfig.values.provider_timeout)) ?? 10800;
   const backupEnabled = toBoolean(selectValue(projectConfig.values.backup_enabled, globalConfig.values.backup_enabled), false);
   const worktreeDefault = toBoolean(selectValue(projectConfig.values.worktree_default, globalConfig.values.worktree_default), true);
   const onStartBehavior = resolveOnStartBehavior(projectConfig, globalConfig);
@@ -914,6 +915,8 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
       String(maxIterations),
       '-MaxStuck',
       String(maxStuck),
+      '-ProviderTimeoutSec',
+      String(providerTimeout),
       '-LaunchMode',
       launchMode,
     ];
@@ -956,6 +959,8 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
       String(maxIterations),
       '--max-stuck',
       String(maxStuck),
+      '--provider-timeout',
+      String(providerTimeout),
       '--launch-mode',
       launchMode,
     ];
@@ -984,6 +989,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     launch_mode: launchMode,
     max_iterations: maxIterations,
     max_stuck: maxStuck,
+    provider_timeout: providerTimeout,
     worktree: useWorktree,
     worktree_path: worktreePath,
     work_dir: workDir,

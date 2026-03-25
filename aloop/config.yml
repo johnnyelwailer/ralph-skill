@@ -52,3 +52,7 @@ round_robin_order:
   - codex
   - gemini
   - copilot
+
+# Provider timeout in seconds (default: 10800 = 3 hours)
+# Can be overridden via ALOOP_PROVIDER_TIMEOUT env var
+provider_timeout: 10800

@@ -65,6 +65,7 @@ usage() {
     echo "  --round-robin <list>    Comma-separated provider list (default: claude,opencode,codex,gemini,copilot)"
     echo "  --max-iterations <n>    Maximum iterations (default: 50)"
     echo "  --max-stuck <n>         Skip task after N failures (default: 3)"
+    echo "  --provider-timeout <s>  Provider timeout in seconds (default: 10800)"
     echo "  --launch-mode <mode>    start|restart|resume (default: start)"
     echo "  --backup                Enable remote git backup"
     echo "  --dry-run               Print commands without executing"
@@ -82,6 +83,7 @@ while [[ $# -gt 0 ]]; do
         --round-robin)  ROUND_ROBIN_PROVIDERS="$2"; shift 2 ;;
         --max-iterations) MAX_ITERATIONS="$2"; shift 2 ;;
         --max-stuck)    MAX_STUCK="$2"; shift 2 ;;
+        --provider-timeout) PROVIDER_TIMEOUT="$2"; shift 2 ;;
         --backup)       BACKUP_ENABLED="true"; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --dangerously-skip-container) DANGEROUSLY_SKIP_CONTAINER=true; shift ;;
