@@ -424,6 +424,9 @@ test('processAgentRequests - close_issue idempotent skip when already closed', a
     assert.ok(content.includes('"skipped": true'));
     assert.ok(content.includes('"idempotent": true'));
     assert.ok(content.includes('"reason": "already_closed"'));
+
+    const logContent = await fs.readFile(env.logPath, 'utf8');
+    assert.ok(logContent.includes('gh_request_skipped_already_closed'));
   } finally {
     await env.cleanup();
   }
@@ -956,6 +959,10 @@ test('processAgentRequests - dispatch_child idempotent skip when child already r
     assert.ok(content.includes('"skipped": true'));
     assert.ok(content.includes('"idempotent": true'));
     assert.ok(content.includes('"reason": "child_session_already_running"'));
+
+    const logContent = await fs.readFile(env.logPath, 'utf8');
+    assert.ok(logContent.includes('gh_request_skipped_child_already_running'));
+    assert.ok(logContent.includes('"existing_session_id":'));
   } finally {
     await env.cleanup();
   }
