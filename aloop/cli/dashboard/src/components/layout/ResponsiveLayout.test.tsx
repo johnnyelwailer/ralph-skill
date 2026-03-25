@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { ResponsiveLayout, useResponsiveLayout } from './ResponsiveLayout';
+import { ResponsiveLayout, useResponsiveLayout, useBreakpointContext } from './ResponsiveLayout';
 import type { Breakpoint } from '@/hooks/useBreakpoint';
 
 let mockedBreakpoint: Breakpoint = 'desktop';
@@ -71,5 +71,22 @@ describe('ResponsiveLayout', () => {
 
     expect(result.current.isDesktop).toBe(true);
     expect(result.current.sidebarOpen).toBe(true);
+  });
+
+  it('useBreakpointContext returns the current breakpoint', () => {
+    mockedBreakpoint = 'mobile';
+    const { result, rerender } = renderHook(() => useBreakpointContext(), {
+      wrapper: ({ children }) => withResponsiveLayout(children),
+    });
+
+    expect(result.current).toBe('mobile');
+
+    mockedBreakpoint = 'tablet';
+    rerender();
+    expect(result.current).toBe('tablet');
+
+    mockedBreakpoint = 'desktop';
+    rerender();
+    expect(result.current).toBe('desktop');
   });
 });

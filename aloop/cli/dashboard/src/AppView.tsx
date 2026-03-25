@@ -2463,8 +2463,8 @@ function AppInner() {
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <div className="flex flex-1 min-h-0">
-        {/* Desktop sidebar — only render at lg+ (1024px); tablet uses the overlay drawer */}
-        <div className="hidden lg:flex">
+        {/* Desktop sidebar — visible at sm+ (640px); mobile uses the overlay drawer */}
+        <div className="hidden sm:flex">
           <Sidebar
             sessions={sessions}
             selectedSessionId={selectedSessionId}

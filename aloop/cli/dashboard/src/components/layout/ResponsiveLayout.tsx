@@ -93,3 +93,8 @@ export function useResponsiveLayout() {
   }
   return context;
 }
+
+export function useBreakpointContext(): Breakpoint {
+  const { breakpoint } = useResponsiveLayout();
+  return breakpoint;
+}
