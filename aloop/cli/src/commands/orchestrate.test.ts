@@ -6685,6 +6685,89 @@ describe('selfHealKnownBlockers', () => {
     assert.equal(results.length, 0, 'pr_conflict with no label/config issues should produce no heal actions');
   });
 
+
+  it('skips label creation silently when filter_repo is null', async () => {
+    const state = makeScanState({ filter_repo: null });
+    const deps = createMockScanDeps({
+      execGh: async () => { throw new Error('should not be called'); },
+    });
+
+    const blockers: BlockerSignature[] = [{
+      hash: 'ci_failure:42:label "ci-pass" not found',
+      type: 'ci_failure',
+      issue_number: 42,
+      description: 'Failed to apply label "ci-pass" — label not found',
+      first_seen_iteration: 1,
+      occurrence_count: 5,
+    }];
+
+    const results = await selfHealKnownBlockers(blockers, '/session', state, deps);
+    assert.equal(results.length, 0, 'no results when filter_repo is null');
+  });
+
+  it('does not attempt label creation when description has "label" but regex extracts nothing', async () => {
+    const state = makeScanState({ filter_repo: 'org/repo' });
+    const deps = createMockScanDeps({
+      execGh: async () => { throw new Error('should not be called'); },
+    });
+
+    const blockers: BlockerSignature[] = [{
+      hash: 'ci_failure:42:some label issue',
+      type: 'ci_failure',
+      issue_number: 42,
+      description: 'label detected but no extractable name here',
+      first_seen_iteration: 1,
+      occurrence_count: 5,
+    }];
+
+    const results = await selfHealKnownBlockers(blockers, '/session', state, deps);
+    assert.ok(!results.some((r) => r.action === 'create_github_label'), 'no create_github_label when labelMatch is null');
+  });
+
+  it('reports failure without permission log when execGh fails with non-403 error', async () => {
+    const state = makeScanState({ filter_repo: 'org/repo' });
+    const deps = createMockScanDeps({
+      execGh: async () => { throw new Error('network timeout'); },
+    });
+
+    const blockers: BlockerSignature[] = [{
+      hash: 'ci_failure:42:label "ci-pass" not found',
+      type: 'ci_failure',
+      issue_number: 42,
+      description: 'Failed to apply label "ci-pass" — label not found',
+      first_seen_iteration: 1,
+      occurrence_count: 5,
+    }];
+
+    const results = await selfHealKnownBlockers(blockers, '/session', state, deps);
+    const labelResults = results.filter((r) => r.action === 'create_github_label');
+    assert.equal(labelResults.length, 1, 'exactly one create_github_label result');
+    assert.equal(labelResults[0].success, false);
+    assert.ok(!results.some((r) => r.action === 'log_permission_error'), 'no permission log for non-403 error');
+  });
+
+  it('reports derive_config_json failure when writeFile throws', async () => {
+    const state = makeScanState({ filter_repo: null });
+    const deps = createMockScanDeps({
+      writeFile: async () => { throw new Error('ENOSPC: no space left on device'); },
+    });
+
+    const blockers: BlockerSignature[] = [{
+      hash: 'child_stuck:1:child loop failed',
+      type: 'child_stuck',
+      issue_number: 1,
+      description: 'Issue #1 child loop failed',
+      first_seen_iteration: 1,
+      occurrence_count: 5,
+    }];
+
+    const results = await selfHealKnownBlockers(blockers, '/session', state, deps);
+    const configResult = results.find((r) => r.action === 'derive_config_json');
+    assert.ok(configResult, 'should have derive_config_json result');
+    assert.equal(configResult!.success, false);
+    assert.ok(configResult!.detail.includes('ENOSPC'), 'detail should contain the error message');
+  });
+
   it('logs self_heal_attempt events when called from scan pass', async () => {
     const desc = 'Issue #1 child loop failed';
     const hash = computeBlockerHash('child_stuck', 1, desc);
