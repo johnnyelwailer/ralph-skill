@@ -1445,6 +1445,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       throw new Error(`Loop script not found: ${loopScript}`);
     }
 
+    const childMaxIter = state.max_iterations != null ? String(state.max_iterations) : '999999';
     const args = [
       '--prompts-dir', promptsDir,
       '--session-dir', sessionDir,
@@ -1452,7 +1453,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       '--mode', 'plan',
       '--provider', 'claude',
       '--round-robin', 'claude',
-      '--max-iterations', '999999',
+      '--max-iterations', childMaxIter,
       '--launch-mode', 'start',
       '--dangerously-skip-container',
       '--no-task-exit',
@@ -1553,6 +1554,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
     }
 
+    const childMaxIter = result.state.max_iterations != null ? String(result.state.max_iterations) : '999999';
     const args = [
       '--prompts-dir', result.prompts_dir,
       '--session-dir', result.session_dir,
@@ -1560,7 +1562,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       '--mode', 'plan',
       '--provider', 'claude',
       '--round-robin', 'claude',
-      '--max-iterations', '999999',
+      '--max-iterations', childMaxIter,
       '--launch-mode', 'start',
       '--dangerously-skip-container',
       '--no-task-exit',
@@ -4594,6 +4596,7 @@ export interface ScanPassResult {
   budgetExceeded: boolean;
   allDone: boolean;
   shouldStop: boolean;
+  rateLimited: boolean;
   replan: SpecChangeReplanResult | null;
   bulkFetch: BulkFetchResult | null;
 }
@@ -5337,6 +5340,7 @@ export async function runOrchestratorScanPass(
     budgetExceeded: false,
     allDone: false,
     shouldStop: false,
+    rateLimited: false,
     replan: null,
     bulkFetch: null,
   };
@@ -5408,8 +5412,9 @@ export async function runOrchestratorScanPass(
     }
   }
 
-  // 1. Triage monitoring cycle (every 5th iteration to conserve API rate limit)
-  if (repo && deps.execGh && iteration % 5 === 0) {
+  // 1. Triage monitoring cycle (configurable interval via state.triage_interval)
+  const triageInterval = state.triage_interval ?? 5;
+  if (repo && deps.execGh && iteration % triageInterval === 0) {
     result.triage = await runTriageMonitorCycle(
       state,
       path.basename(sessionDir),
@@ -5757,6 +5762,8 @@ export async function runOrchestratorScanLoop(
     };
   }
 
+  let consecutiveRateLimits = 0;
+
   for (let iter = 1; iter <= maxIterations; iter++) {
     const passResult = await runOrchestratorScanPass(
       stateFile,
@@ -5769,6 +5776,13 @@ export async function runOrchestratorScanLoop(
       iter,
       deps,
     );
+
+    // Track consecutive rate limit hits for backoff calculation
+    if (passResult.rateLimited) {
+      consecutiveRateLimits++;
+    } else {
+      consecutiveRateLimits = 0;
+    }
 
     if (passResult.allDone) {
       // Create trunk→main PR when auto-merge is configured
@@ -5817,7 +5831,35 @@ export async function runOrchestratorScanLoop(
 
     // Sleep before next iteration (unless this is the last iteration)
     if (iter < maxIterations && deps.sleep) {
-      await deps.sleep(intervalMs);
+      // Read current state for configurable throttle and backoff settings
+      const currentState: OrchestratorState = JSON.parse(await deps.readFile(stateFile, 'utf8'));
+      const baseInterval = currentState.scan_pass_throttle_ms ?? intervalMs;
+      const backoffStrategy = currentState.rate_limit_backoff ?? 'fixed';
+
+      let sleepMs = baseInterval;
+      if (consecutiveRateLimits > 0) {
+        switch (backoffStrategy) {
+          case 'exponential':
+            sleepMs = baseInterval * Math.pow(2, consecutiveRateLimits - 1);
+            break;
+          case 'linear':
+            sleepMs = baseInterval * consecutiveRateLimits;
+            break;
+          case 'fixed':
+          default:
+            sleepMs = baseInterval;
+            break;
+        }
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'rate_limit_backoff',
+          strategy: backoffStrategy,
+          consecutive_hits: consecutiveRateLimits,
+          sleep_ms: sleepMs,
+        });
+      }
+
+      await deps.sleep(sleepMs);
     }
   }
 
