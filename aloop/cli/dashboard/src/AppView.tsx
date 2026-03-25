@@ -950,21 +950,21 @@ export function ArtifactComparisonDialog({
                   type="button"
                   role="tab"
                   aria-selected={mode === 'side-by-side'}
-                  className={`px-2 py-1 rounded-l-md transition-colors ${mode === 'side-by-side' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`px-2 py-1 min-h-[44px] md:min-h-0 rounded-l-md transition-colors ${mode === 'side-by-side' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                   onClick={() => setMode('side-by-side')}
                 >Side by Side</button>
                 <button
                   type="button"
                   role="tab"
                   aria-selected={mode === 'slider'}
-                  className={`px-2 py-1 border-l border-border transition-colors ${mode === 'slider' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`px-2 py-1 min-h-[44px] md:min-h-0 border-l border-border transition-colors ${mode === 'slider' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                   onClick={() => setMode('slider')}
                 >Slider</button>
                 <button
                   type="button"
                   role="tab"
                   aria-selected={mode === 'diff-overlay'}
-                  className={`px-2 py-1 rounded-r-md border-l border-border transition-colors ${mode === 'diff-overlay' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`px-2 py-1 min-h-[44px] md:min-h-0 rounded-r-md border-l border-border transition-colors ${mode === 'diff-overlay' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                   onClick={() => setMode('diff-overlay')}
                 >Diff Overlay</button>
               </div>

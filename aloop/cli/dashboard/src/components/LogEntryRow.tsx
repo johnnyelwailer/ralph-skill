@@ -178,6 +178,13 @@ export function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests
           </span>
         )}
 
+        {/* Artifact count badge */}
+        {artifacts && artifacts.artifacts.length > 0 && (
+          <span className="shrink-0 text-[9px] px-1 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-medium">
+            {artifacts.artifacts.length}A
+          </span>
+        )}
+
         {/* Expand chevron */}
         {hasExpandable && (
           expanded ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/40" /> : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />

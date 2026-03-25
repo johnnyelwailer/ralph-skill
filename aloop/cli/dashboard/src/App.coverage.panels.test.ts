@@ -39,7 +39,7 @@ describe('App.tsx ActivityPanel, DocContent and HealthPanel coverage', () => {
       currentProvider: 'c',
       isRunning: true,
     })));
-    const row = screen.getByText('built something').closest('div');
+    const row = screen.getByText('built something').closest('button');
     if (row) fireEvent.click(row);
     const imgArtifact = await screen.findByRole('img', { name: 'a.png' });
     expect(imgArtifact).toBeInTheDocument();
