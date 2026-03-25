@@ -2300,14 +2300,6 @@ export function App() {
   const metaRecord = isRecord(state?.meta) ? state.meta : null;
   const maxIterations = metaRecord && typeof metaRecord.max_iterations === 'number' ? metaRecord.max_iterations : null;
   const avgDuration = useMemo(() => computeAvgDuration(state?.log ?? ''), [state?.log]);
-  const {
-    sessionCost,
-    totalCost,
-    budgetCap,
-    budgetUsedPercent,
-    isLoading: costLoading,
-    error: costError,
-  } = useCost({ log: state?.log ?? '', meta: metaRecord });
 
   const budgetWarnings = useMemo(() => {
     if (!metaRecord) return [] as number[];
@@ -2328,6 +2320,26 @@ export function App() {
     }
     return null;
   }, [metaRecord]);
+
+  const {
+    sessionCost,
+    totalCost,
+    budgetCap,
+    budgetUsedPercent,
+    firedThresholds,
+    isLoading: costLoading,
+    error: costError,
+  } = useCost({ log: state?.log ?? '', meta: metaRecord, budgetWarnings });
+
+  useEffect(() => {
+    if (firedThresholds.length === 0) return;
+    for (const threshold of firedThresholds) {
+      const pct = Math.round(threshold * 100);
+      toast.warning(`Budget warning: ${pct}% of budget used`, {
+        description: budgetCap ? `Total spend approaching $${(budgetCap * threshold).toFixed(2)} cap` : undefined,
+      });
+    }
+  }, [firedThresholds, budgetCap]);
 
   useEffect(() => {
     if (currentPhase && prevPhaseRef.current && currentPhase !== prevPhaseRef.current) {
