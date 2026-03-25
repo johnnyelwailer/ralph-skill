@@ -1235,6 +1235,42 @@ function Extract-OpenCodeUsage {
     }
 }
 
+# Query opencode db for total cumulative cost across all sessions.
+# Returns the total cost as a [decimal], or $null on failure.
+function Get-OpenCodeTotalCost {
+    try {
+        $raw = & opencode db --query "SELECT SUM(CAST(json_extract(data,'$.cost') AS REAL)) FROM message WHERE json_extract(data,'$.role')='assistant'" 2>$null
+        if (-not $raw) { return $null }
+        $rows = $raw | ConvertFrom-Json
+        if ($rows -and $rows.Count -gt 0) {
+            $val = $rows[0].PSObject.Properties.Value | Select-Object -First 1
+            if ($null -ne $val) { return [decimal]$val }
+        }
+        return $null
+    }
+    catch {
+        return $null
+    }
+}
+
+# Write a session_cost event with the cost delta since session start.
+# Safe to call at any time — degrades gracefully if opencode is unavailable.
+function Write-SessionCost {
+    $currentCost = Get-OpenCodeTotalCost
+    $delta = [decimal]0
+    if ($null -ne $script:sessionStartCost -and $null -ne $currentCost) {
+        $delta = [math]::Max(0, $currentCost - $script:sessionStartCost)
+    }
+    elseif ($null -ne $currentCost) {
+        $delta = $currentCost
+    }
+    Write-LogEntry -Event "session_cost" -Data @{
+        cost_delta_usd = $delta
+        session_start_cost_usd = if ($null -ne $script:sessionStartCost) { $script:sessionStartCost } else { 0 }
+        current_total_cost_usd = if ($null -ne $currentCost) { $currentCost } else { 0 }
+    }
+}
+
 # ============================================================================
 # PROVIDER HEALTH PRIMITIVES
 # ============================================================================
@@ -1906,6 +1942,9 @@ Write-LogEntry -Event "session_start" -Data @{
     devcontainer = $script:useDevcontainer
 }
 
+# Capture cost snapshot at session start for delta computation at session end
+$script:sessionStartCost = Get-OpenCodeTotalCost
+
 # Log container bypass if devcontainer exists but was skipped
 if ($DangerouslySkipContainer -and (Test-Path $devcontainerJsonPath)) {
     Write-LogEntry -Event "container_bypass" -Data @{
@@ -2159,6 +2198,7 @@ try {
                     Write-Host "[Finalizer aborted — $($script:finalizerQaGateMessage)]" -ForegroundColor Yellow
                     continue
                 }
+                Write-SessionCost
                 Write-LogEntry -Event "finalizer_completed" -Data @{ iteration = $iteration }
                 Write-Host "[Finalizer sequence completed — all tasks done]" -ForegroundColor Green
                 Write-Status -Iteration $iteration -Phase "finalizer" -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
@@ -2363,6 +2403,7 @@ try {
     if ($cancelled) {
         Write-Host "`nInterrupted" -ForegroundColor Yellow
         Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
+        Write-SessionCost
         Write-LogEntry -Event "interrupted" -Data @{ iteration = $iteration }
         Generate-Report -ExitReason "Manually interrupted (Ctrl+C)." -Iteration $iteration
         exit 130
@@ -2372,6 +2413,7 @@ try {
 if ($iteration -ge $MaxIterations) {
     Write-Host "`nReached iteration limit ($MaxIterations)" -ForegroundColor Yellow
     Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
+    Write-SessionCost
     Write-LogEntry -Event "limit_reached" -Data @{ iteration = $iteration; limit = $MaxIterations }
     Generate-Report -ExitReason "Reached iteration limit ($MaxIterations)." -Iteration $iteration
 }

@@ -793,6 +793,7 @@ _OC_TOKENS_INPUT=""
 _OC_TOKENS_OUTPUT=""
 _OC_TOKENS_CACHE_READ=""
 _OC_COST_USD=""
+_SESSION_START_COST=""
 
 extract_opencode_usage() {
     _OC_TOKENS_INPUT=""
@@ -861,6 +862,48 @@ except Exception:
 
     IFS=$'\t' read -r _OC_TOKENS_INPUT _OC_TOKENS_OUTPUT _OC_TOKENS_CACHE_READ _OC_COST_USD <<< "$usage"
     return 0
+}
+
+# Query opencode db for total cumulative cost across all sessions.
+# Outputs the total cost as a plain number, or empty string on failure.
+get_opencode_total_cost() {
+    if ! command -v python3 >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local raw
+    raw=$("${DC_EXEC[@]}" opencode db --query "SELECT SUM(CAST(json_extract(data,'$.cost') AS REAL)) FROM message WHERE json_extract(data,'$.role')='assistant'" 2>/dev/null) || return 1
+    [ -z "$raw" ] && return 1
+
+    python3 -c "
+import json, sys
+try:
+    rows = json.loads(sys.stdin.read().strip())
+    if isinstance(rows, list) and len(rows) > 0:
+        val = list(rows[0].values())[0]
+        if val is not None:
+            print(f'{float(val):.6f}')
+            sys.exit(0)
+    sys.exit(1)
+except Exception:
+    sys.exit(1)
+" <<< "$raw" 2>/dev/null
+}
+
+# Write a session_cost event with the cost delta since session start.
+# Safe to call at any time — degrades gracefully if opencode is unavailable.
+write_session_cost() {
+    local current_cost
+    current_cost=$(get_opencode_total_cost 2>/dev/null) || return 0
+
+    local delta="0"
+    if [ -n "$_SESSION_START_COST" ] && [ -n "$current_cost" ]; then
+        delta=$(python3 -c "print(f'{max(0, float(\"$current_cost\") - float(\"$_SESSION_START_COST\")):.6f}')" 2>/dev/null) || delta="0"
+    elif [ -n "$current_cost" ]; then
+        delta="$current_cost"
+    fi
+
+    write_log_entry_mixed "session_cost" "\"cost_delta_usd\":${delta},\"session_start_cost_usd\":${_SESSION_START_COST:-0},\"current_total_cost_usd\":${current_cost:-0}"
 }
 
 # ============================================================================
@@ -1942,6 +1985,9 @@ setup_provenance_hook
 # Initialize session
 write_log_entry "session_start" "mode" "$MODE" "provider" "$PROVIDER" "work_dir" "$WORK_DIR" "launch_mode" "$LAUNCH_MODE" "runtime_commit" "$RUNTIME_COMMIT" "runtime_installed_at" "$RUNTIME_INSTALLED_AT" "devcontainer" "$DEVCONTAINER_ACTIVE"
 
+# Capture cost snapshot at session start for delta computation at session end
+_SESSION_START_COST=$(get_opencode_total_cost 2>/dev/null) || true
+
 # Log container bypass if devcontainer exists but was skipped
 if [ "$DANGEROUSLY_SKIP_CONTAINER" = "true" ] && [ -f "$DEVCONTAINER_JSON_PATH" ]; then
     write_log_entry "container_bypass" "reason" "dangerously_skip_container_flag"
@@ -2103,6 +2149,7 @@ cleanup() {
     stop_dashboard
     cleanup_gh_block
     echo ""
+    write_session_cost || true
     write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" 0 "$state"
     write_log_entry "$reason" "iteration" "$ITERATION"
     generate_report "$reason"
@@ -2131,6 +2178,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     # Finalizer mode: run finalizer prompts instead of normal cycle
     if [ "$FINALIZER_MODE" = "true" ]; then
         if [ "$FINALIZER_POSITION" -ge "$FINALIZER_LENGTH" ]; then
+            write_session_cost || true
             write_log_entry "finalizer_completed" "iteration" "$ITERATION"
             echo "[Finalizer sequence completed — all tasks done]"
             write_status "$ITERATION" "finalizer" "$(resolve_iteration_provider $ITERATION)" 0 "completed"
@@ -2321,6 +2369,7 @@ done
 echo ""
 echo "Reached iteration limit ($MAX_ITERATIONS)"
 write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" 0 "stopped"
+write_session_cost || true
 write_log_entry "limit_reached" "iteration" "$ITERATION" "limit" "$MAX_ITERATIONS"
 generate_report "Reached iteration limit ($MAX_ITERATIONS)."
 stop_dashboard
