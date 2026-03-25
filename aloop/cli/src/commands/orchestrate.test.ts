@@ -6715,7 +6715,7 @@ describe('selfHealKnownBlockers', () => {
       hash: 'ci_failure:42:some label issue',
       type: 'ci_failure',
       issue_number: 42,
-      description: 'label detected but no extractable name here',
+      description: 'label-fix needed before merge',
       first_seen_iteration: 1,
       occurrence_count: 5,
     }];
