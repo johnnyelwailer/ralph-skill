@@ -86,4 +86,24 @@ describe('App.tsx ArtifactComparisonDialog coverage', () => {
     fireEvent.mouseUp(document);
     expect(Number(slider.getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(0);
   });
+
+  it('comparison-mode tab buttons have mobile tap target min-h-[44px]', () => {
+    const artifact = { type: 'screenshot', path: 'dash.png', description: 'Dashboard' };
+    const allManifests = [
+      { iteration: 2, phase: 'proof', summary: '', artifacts: [{ type: 'screenshot', path: 'dash.png', description: '' }] },
+      { iteration: 3, phase: 'proof', summary: '', artifacts: [{ type: 'screenshot', path: 'dash.png', description: '' }] },
+    ];
+    render(createElement(ArtifactComparisonDialog, {
+      artifact,
+      currentIteration: 3,
+      allManifests,
+      onClose: () => {},
+    }));
+
+    const tabs = screen.getAllByRole('tab');
+    for (const tab of tabs) {
+      expect(tab.className).toContain('min-h-[44px]');
+      expect(tab.className).toContain('md:min-h-0');
+    }
+  });
 });

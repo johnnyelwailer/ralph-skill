@@ -982,7 +982,7 @@ export function ArtifactComparisonDialog({
                 ))}
               </select>
             )}
-            <button type="button" className="text-muted-foreground hover:text-foreground text-lg font-bold px-1" onClick={onClose}>&times;</button>
+            <button type="button" aria-label="Close" className="text-muted-foreground hover:text-foreground text-lg font-bold px-1" onClick={onClose}>&times;</button>
           </div>
         </div>
 
