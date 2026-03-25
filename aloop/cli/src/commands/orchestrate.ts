@@ -112,6 +112,7 @@ export interface OrchestratorState {
   auto_merge_to_main?: boolean;
   trunk_pr_number?: number | null;
   gh_project_number?: number;
+  max_iterations?: number;
   created_at: string;
   updated_at: string;
 }
@@ -3026,6 +3027,7 @@ export async function launchChildLoop(
   promptsSourceDir: string,
   aloopRoot: string,
   deps: DispatchDeps,
+  maxIterations?: number,
 ): Promise<ChildLaunchResult> {
   const sandbox = normalizeTaskSandbox(issue.sandbox);
   const requires = normalizeTaskRequires(issue.requires);
@@ -3215,7 +3217,7 @@ export async function launchChildLoop(
       '-WorkDir', worktreePath,
       '-Mode', 'plan-build-review',
       '-Provider', 'round-robin',
-      '-MaxIterations', '100',
+      '-MaxIterations', String(maxIterations ?? 0),
       '-MaxStuck', '3',
       '-LaunchMode', 'start',
     ];
@@ -3228,7 +3230,7 @@ export async function launchChildLoop(
       '--work-dir', worktreePath,
       '--mode', 'plan-build-review',
       '--provider', 'round-robin',
-      '--max-iterations', '100',
+      '--max-iterations', String(maxIterations ?? 0),
       '--max-stuck', '3',
       '--launch-mode', 'start',
     ];
@@ -3357,6 +3359,7 @@ export async function launchIssues(
         promptsSourceDir,
         aloopRoot,
         deps,
+        state.max_iterations,
       );
       launched.push(result);
 
@@ -5461,6 +5464,7 @@ export async function runOrchestratorScanPass(
           promptsSourceDir,
           aloopRoot,
           deps.dispatchDeps,
+          state.max_iterations,
         );
         const stateIssue = state.issues.find((i) => i.number === issue.number);
         if (stateIssue) {

@@ -2126,7 +2126,7 @@ function Run-QueueIfPresent {
 }
 
 try {
-    while (-not $cancelled -and $iteration -lt $MaxIterations) {
+    while (-not $cancelled -and ($MaxIterations -eq 0 -or $iteration -lt $MaxIterations)) {
         $iteration++
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $iterationStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
@@ -2378,7 +2378,7 @@ try {
     }
 }
 
-if ($iteration -ge $MaxIterations) {
+if ($MaxIterations -gt 0 -and $iteration -ge $MaxIterations) {
     Write-Host "`nReached iteration limit ($MaxIterations)" -ForegroundColor Yellow
     Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
     Write-LogEntry -Event "limit_reached" -Data @{ iteration = $iteration; limit = $MaxIterations }

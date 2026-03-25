@@ -2114,7 +2114,7 @@ trap 'cleanup "interrupted" "stopped"; exit 130' INT
 trap 'kill_active_provider; remove_session_lock' EXIT
 
 ITERATION=0
-while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
+while [ "$MAX_ITERATIONS" -eq 0 ] || [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
     ITERATION_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -2318,12 +2318,14 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     sleep 3
 done
 
-echo ""
-echo "Reached iteration limit ($MAX_ITERATIONS)"
-write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" 0 "stopped"
-write_log_entry "limit_reached" "iteration" "$ITERATION" "limit" "$MAX_ITERATIONS"
-generate_report "Reached iteration limit ($MAX_ITERATIONS)."
-stop_dashboard
+if [ "$MAX_ITERATIONS" -gt 0 ]; then
+    echo ""
+    echo "Reached iteration limit ($MAX_ITERATIONS)"
+    write_status "$ITERATION" "$LAST_ITER_MODE" "$(resolve_iteration_provider $ITERATION)" 0 "stopped"
+    write_log_entry "limit_reached" "iteration" "$ITERATION" "limit" "$MAX_ITERATIONS"
+    generate_report "Reached iteration limit ($MAX_ITERATIONS)."
+    stop_dashboard
+fi
 
 echo ""
 echo "=== Aloop Loop Complete ($ITERATION iterations) ==="
