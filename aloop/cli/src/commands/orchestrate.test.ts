@@ -2819,7 +2819,7 @@ describe('checkPrGates', () => {
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.all_passed, false);
-    assert.equal(result.gates[1].status, 'fail');
+    assert.equal(result.gates[1].status, 'api_error');
     assert.match(result.gates[1].detail, /failed to query ci checks/i);
   });
 
@@ -2837,7 +2837,7 @@ describe('checkPrGates', () => {
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.mergeable, false);
-    assert.equal(result.gates[0].status, 'fail');
+    assert.equal(result.gates[0].status, 'api_error');
   });
 
   it('treats SKIPPED and NEUTRAL checks as passing', async () => {
@@ -2897,13 +2897,13 @@ describe('checkPrGates', () => {
 });
 
 describe('reviewPrDiff', () => {
-  it('auto-approves when no agent reviewer configured', async () => {
+  it('flags for human when no agent reviewer configured', async () => {
     const deps = createMockPrDeps({
       execGh: async () => ({ stdout: 'diff --git a/file.ts b/file.ts\n+hello', stderr: '' }),
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'approve');
-    assert.ok(result.summary.includes('Auto-approved'));
+    assert.equal(result.verdict, 'flag-for-human');
+    assert.ok(result.summary.includes('requires human review'));
   });
 
   it('delegates to agent reviewer when configured', async () => {
@@ -2987,6 +2987,11 @@ describe('processPrLifecycle', () => {
         }
         return { stdout: '', stderr: '' };
       },
+      invokeAgentReview: async (prNum, _repo, diff) => ({
+        pr_number: prNum,
+        verdict: 'approve',
+        summary: `Review passed (${diff.length} chars)`,
+      }),
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'merged');
@@ -3326,6 +3331,11 @@ describe('processPrLifecycle', () => {
         }
         return { stdout: '', stderr: '' };
       },
+      invokeAgentReview: async (prNum, _repo, diff) => ({
+        pr_number: prNum,
+        verdict: 'approve',
+        summary: `Review passed (${diff.length} chars)`,
+      }),
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'merged');
@@ -3353,6 +3363,11 @@ describe('processPrLifecycle', () => {
         }
         return { stdout: '', stderr: '' };
       },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'approve',
+        summary: 'Review passed',
+      }),
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(mergeAttempted, true);
@@ -3378,6 +3393,11 @@ describe('processPrLifecycle', () => {
         }
         return { stdout: '', stderr: '' };
       },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'approve',
+        summary: 'Review passed',
+      }),
     });
     await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     const closeCall = ghCalls.find((c) => c.includes('close') && c.includes('42'));
@@ -4867,6 +4887,11 @@ describe('runOrchestratorScanPass', () => {
         }
         return { stdout: '', stderr: '' };
       },
+      invokeAgentReview: async (prNum) => ({
+        pr_number: prNum,
+        verdict: 'approve',
+        summary: 'Review passed',
+      }),
     });
     const deps = createMockScanDeps({
       prLifecycleDeps: prDeps,
@@ -4901,6 +4926,11 @@ describe('runOrchestratorScanPass', () => {
         }
         return { stdout: '', stderr: '' };
       },
+      invokeAgentReview: async (prNum, _repo, diff) => ({
+        pr_number: prNum,
+        verdict: 'approve',
+        summary: `Review passed (${diff.length} chars)`,
+      }),
     });
     const deps = createMockScanDeps({
       prLifecycleDeps: prDeps,
