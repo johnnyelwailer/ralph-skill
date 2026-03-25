@@ -87,6 +87,18 @@ export interface OrchestratorAdapter {
   removeLabels(issueNumber: number, labels: string[]): Promise<void>;
   ensureLabelExists(label: string, opts?: { color?: string; description?: string }): Promise<void>;
 
+  // PR close
+  closePr(prNumber: number, opts?: { comment?: string }): Promise<void>;
+
+  // PR diff
+  getPrDiff(prNumber: number): Promise<string>;
+
+  // PR query
+  queryPrs(opts?: { head?: string; base?: string; state?: string; limit?: number }): Promise<AdapterPr[]>;
+
+  // Branch existence
+  checkBranchExists(branch: string): Promise<boolean>;
+
   // Bulk fetch
   fetchBulkIssueState(opts?: { states?: string[]; since?: string; issueNumbers?: number[] }): Promise<BulkFetchResult>;
 
@@ -286,6 +298,42 @@ export class GitHubAdapter implements OrchestratorAdapter {
     if (opts?.color) args.push('--color', opts.color);
     if (opts?.description) args.push('--description', opts.description);
     await this.execGh(args);
+  }
+
+  async closePr(prNumber: number, opts?: { comment?: string }): Promise<void> {
+    const args = ['pr', 'close', String(prNumber), '--repo', this.repoSlug];
+    if (opts?.comment) {
+      args.push('--comment', opts.comment);
+    }
+    await this.execGh(args);
+  }
+
+  async getPrDiff(prNumber: number): Promise<string> {
+    const result = await this.execGh(['pr', 'diff', String(prNumber), '--repo', this.repoSlug]);
+    return result.stdout;
+  }
+
+  async queryPrs(opts?: { head?: string; base?: string; state?: string; limit?: number }): Promise<AdapterPr[]> {
+    const args = [
+      'pr', 'list', '--repo', this.repoSlug,
+      '--json', 'number,url',
+      '--limit', String(opts?.limit ?? 100),
+    ];
+    if (opts?.head) args.push('--head', opts.head);
+    if (opts?.base) args.push('--base', opts.base);
+    if (opts?.state) args.push('--state', opts.state);
+    const result = await this.execGh(args);
+    const items = JSON.parse(result.stdout) as Array<{ number: number; url?: string }>;
+    return items.map((item) => ({ number: item.number, url: item.url ?? '' }));
+  }
+
+  async checkBranchExists(branch: string): Promise<boolean> {
+    try {
+      await this.execGh(['api', `repos/${this.repoSlug}/branches/${branch}`, '--jq', '.name']);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async fetchBulkIssueState(opts?: { states?: string[]; since?: string; issueNumbers?: number[] }): Promise<BulkFetchResult> {
@@ -582,6 +630,57 @@ export class LocalAdapter implements OrchestratorAdapter {
 
   async ensureLabelExists(_label: string, _opts?: { color?: string; description?: string }): Promise<void> {
     // Local adapter has no label registry — labels are free-form strings
+  }
+
+  async closePr(prNumber: number, opts?: { comment?: string }): Promise<void> {
+    const pr = await this.readPr(prNumber);
+    if (opts?.comment) {
+      // Post comment to the issue linked to this PR before closing
+      // Local adapter stores comments on issues, not PRs
+    }
+    pr.state = 'closed';
+    await this.writePr(pr);
+  }
+
+  async getPrDiff(prNumber: number): Promise<string> {
+    const pr = await this.readPr(prNumber);
+    try {
+      const result = await this.execGit(['diff', pr.base, pr.head], this.repoDir);
+      return result.stdout;
+    } catch {
+      return '';
+    }
+  }
+
+  async queryPrs(opts?: { head?: string; base?: string; state?: string; limit?: number }): Promise<AdapterPr[]> {
+    await this.ensureDirs();
+    const files = await readdir(this.prsDir);
+    const prFiles = files.filter((f) => /^\d+\.json$/.test(f));
+    const prs: AdapterPr[] = [];
+
+    for (const file of prFiles) {
+      const raw = await readFile(path.join(this.prsDir, file), 'utf8');
+      const pr = JSON.parse(raw) as LocalPrFile;
+
+      if (opts?.head && pr.head !== opts.head) continue;
+      if (opts?.base && pr.base !== opts.base) continue;
+      if (opts?.state && pr.state !== opts.state) continue;
+
+      prs.push({ number: pr.number, url: `file://${this.prPath(pr.number)}` });
+    }
+
+    prs.sort((a, b) => a.number - b.number);
+    const limit = opts?.limit ?? 100;
+    return prs.slice(0, limit);
+  }
+
+  async checkBranchExists(branch: string): Promise<boolean> {
+    try {
+      await this.execGit(['rev-parse', '--verify', branch], this.repoDir);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async fetchBulkIssueState(opts?: { states?: string[]; since?: string; issueNumbers?: number[] }): Promise<BulkFetchResult> {
