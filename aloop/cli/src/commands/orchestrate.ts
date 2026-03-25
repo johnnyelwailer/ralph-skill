@@ -13,6 +13,7 @@ import {
   fetchBulkIssueState,
   detectIssueChanges,
   type BulkIssueState,
+  type BulkFetchResult as GhBulkFetchResult,
 } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody } from '../lib/issue-metadata.js';
@@ -2209,27 +2210,30 @@ export async function resolveSpecQuestionIssues(
   sessionDir: string,
   deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog' | 'now' | 'adapter'>,
 ): Promise<SpecQuestionResolveStats> {
-  if (!deps.execGh) {
-    return { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
-  }
   const result: SpecQuestionResolveStats = { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
-  const response = await deps.execGh([
-    'issue',
-    'list',
-    '--repo',
-    repo,
-    '--label',
-    'aloop/spec-question',
-    '--state',
-    'open',
-    '--json',
-    'number,title,body,labels',
-  ]);
-  const issues = parseSpecQuestionIssueList(response.stdout);
-  for (const issue of issues) {
+
+  let specQuestionIssues: Array<{ number: number; title: string; body: string; labels: string[] }>;
+  if (deps.adapter) {
+    const adapterIssues = await deps.adapter.queryIssues({ state: 'open', labels: ['aloop/spec-question'] });
+    specQuestionIssues = adapterIssues.map((i) => ({ number: i.number, title: i.title, body: i.body ?? '', labels: i.labels }));
+  } else if (deps.execGh) {
+    const response = await deps.execGh([
+      'issue', 'list', '--repo', repo, '--label', 'aloop/spec-question', '--state', 'open',
+      '--json', 'number,title,body,labels',
+    ]);
+    specQuestionIssues = parseSpecQuestionIssueList(response.stdout).map((i) => ({
+      number: i.number,
+      title: i.title,
+      body: i.body,
+      labels: Array.from(extractLabelNames(i.labels)),
+    }));
+  } else {
+    return result;
+  }
+
+  for (const issue of specQuestionIssues) {
     result.processed += 1;
-    const labelNames = extractLabelNames(issue.labels);
-    const issueNumber = String(issue.number);
+    const labelNames = new Set(issue.labels.map((l) => l.toLowerCase()));
     const risk = classifySpecQuestionRisk(issue);
     const action = resolveSpecQuestionAction(state.autonomy_level ?? 'balanced', risk);
     const reopenedByUser = labelNames.has('aloop/auto-resolved');
@@ -2238,8 +2242,8 @@ export async function resolveSpecQuestionIssues(
         if (deps.adapter) {
           await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
         } else {
-          await deps.execGh([
-            'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+          await deps.execGh!([
+            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
           ]);
         }
       }
@@ -2258,8 +2262,8 @@ export async function resolveSpecQuestionIssues(
         if (deps.adapter) {
           await deps.adapter.addLabels(issue.number, ['aloop/blocked-on-human']);
         } else {
-          await deps.execGh([
-            'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+          await deps.execGh!([
+            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
           ]);
         }
       }
@@ -2280,15 +2284,15 @@ export async function resolveSpecQuestionIssues(
       await deps.adapter.removeLabels(issue.number, ['aloop/blocked-on-human']);
       await deps.adapter.closeIssue(issue.number);
     } else {
-      await deps.execGh([
-        'issue', 'comment', issueNumber, '--repo', repo,
+      await deps.execGh!([
+        'issue', 'comment', String(issue.number), '--repo', repo,
         '--body', formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
       ]);
-      await deps.execGh([
-        'issue', 'edit', issueNumber, '--repo', repo,
+      await deps.execGh!([
+        'issue', 'edit', String(issue.number), '--repo', repo,
         '--add-label', 'aloop/auto-resolved', '--remove-label', 'aloop/blocked-on-human',
       ]);
-      await deps.execGh(['issue', 'close', issueNumber, '--repo', repo]);
+      await deps.execGh!(['issue', 'close', String(issue.number), '--repo', repo]);
     }
     result.autoResolved += 1;
     deps.appendLog(sessionDir, {
@@ -3619,8 +3623,12 @@ export async function reviewPrDiff(
   // Get the PR diff
   let diff: string;
   try {
-    const diffResult = await deps.execGh(['pr', 'diff', String(prNumber), '--repo', repo]);
-    diff = diffResult.stdout;
+    if (deps.adapter) {
+      diff = await deps.adapter.getPrDiff(prNumber);
+    } else {
+      const diffResult = await deps.execGh(['pr', 'diff', String(prNumber), '--repo', repo]);
+      diff = diffResult.stdout;
+    }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     // API error — retry next pass, don't permanently fail
@@ -3673,7 +3681,7 @@ export async function mergePr(
 export async function createTrunkToMainPr(
   state: OrchestratorState,
   repo: string,
-  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog'>,
+  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog' | 'adapter'>,
   sessionDir: string,
 ): Promise<number | null> {
   const trunkBranch = state.trunk_branch || 'agent/trunk';
@@ -3694,43 +3702,67 @@ export async function createTrunkToMainPr(
   ].filter(Boolean).join('\n');
 
   try {
-    const result = await deps.execGh!([
-      'pr', 'create',
-      '--repo', repo,
-      '--base', 'main',
-      '--head', trunkBranch,
-      '--title', title,
-      '--body', body,
-    ]);
-    const parsed = parsePrCreateOutput(result.stdout);
-    deps.appendLog(sessionDir, {
-      timestamp: new Date().toISOString(),
-      event: 'trunk_to_main_pr_created',
-      pr_number: parsed.number,
-      trunk_branch: trunkBranch,
-    });
-    return parsed.number;
+    if (deps.adapter) {
+      const pr = await deps.adapter.createPr({ base: 'main', head: trunkBranch, title, body });
+      deps.appendLog(sessionDir, {
+        timestamp: new Date().toISOString(),
+        event: 'trunk_to_main_pr_created',
+        pr_number: pr.number,
+        trunk_branch: trunkBranch,
+      });
+      return pr.number > 0 ? pr.number : null;
+    } else {
+      const result = await deps.execGh!([
+        'pr', 'create',
+        '--repo', repo,
+        '--base', 'main',
+        '--head', trunkBranch,
+        '--title', title,
+        '--body', body,
+      ]);
+      const parsed = parsePrCreateOutput(result.stdout);
+      deps.appendLog(sessionDir, {
+        timestamp: new Date().toISOString(),
+        event: 'trunk_to_main_pr_created',
+        pr_number: parsed.number,
+        trunk_branch: trunkBranch,
+      });
+      return parsed.number;
+    }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     // Check if PR already exists
     try {
-      const listResult = await deps.execGh!([
-        'pr', 'list',
-        '--repo', repo,
-        '--head', trunkBranch,
-        '--base', 'main',
-        '--json', 'number',
-        '--jq', '.[0].number',
-      ]);
-      const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
-      if (Number.isFinite(existingNumber) && existingNumber > 0) {
-        deps.appendLog(sessionDir, {
-          timestamp: new Date().toISOString(),
-          event: 'trunk_to_main_pr_exists',
-          pr_number: existingNumber,
-          trunk_branch: trunkBranch,
-        });
-        return existingNumber;
+      if (deps.adapter) {
+        const existing = await deps.adapter.queryPrs({ head: trunkBranch, base: 'main', state: 'open', limit: 1 });
+        if (existing.length > 0) {
+          deps.appendLog(sessionDir, {
+            timestamp: new Date().toISOString(),
+            event: 'trunk_to_main_pr_exists',
+            pr_number: existing[0].number,
+            trunk_branch: trunkBranch,
+          });
+          return existing[0].number;
+        }
+      } else {
+        const listResult = await deps.execGh!([
+          'pr', 'list',
+          '--repo', repo,
+          '--head', trunkBranch,
+          '--base', 'main',
+          '--json', 'number',
+          '--jq', '.[0].number',
+        ]);
+        const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
+        if (Number.isFinite(existingNumber) && existingNumber > 0) {
+          deps.appendLog(sessionDir, {
+            timestamp: new Date().toISOString(),
+            event: 'trunk_to_main_pr_exists',
+            pr_number: existingNumber,
+            trunk_branch: trunkBranch,
+          });
+          return existingNumber;
+        }
       }
     } catch {
       // Listing also failed
@@ -3864,8 +3896,12 @@ export async function processPrLifecycle(
       if (retries >= ORCHESTRATOR_CI_PERSISTENCE_LIMIT) {
         // Close the PR and reset for fresh attempt instead of permanent failure
         try {
-          await deps.execGh(['pr', 'close', String(prNumber), '--repo', repo, '--comment',
-            `Closing: persistent CI failure after ${retries} attempts: ${ciFailure.detail}. Will re-dispatch fresh.`]);
+          const closeComment = `Closing: persistent CI failure after ${retries} attempts: ${ciFailure.detail}. Will re-dispatch fresh.`;
+          if (deps.adapter) {
+            await deps.adapter.closePr(prNumber, { comment: closeComment });
+          } else {
+            await deps.execGh(['pr', 'close', String(prNumber), '--repo', repo, '--comment', closeComment]);
+          }
         } catch { /* best-effort */ }
 
         stateIssue.state = 'pending';
@@ -4447,7 +4483,13 @@ async function createPrForChild(
   // Check if base branch exists remotely
   let effectiveBase = baseBranch;
   try {
-    await deps.execGh(['api', `repos/${repo}/branches/${baseBranch}`, '--jq', '.name']);
+    if (deps.adapter) {
+      if (!await deps.adapter.checkBranchExists(baseBranch)) {
+        effectiveBase = 'main';
+      }
+    } else {
+      await deps.execGh(['api', `repos/${repo}/branches/${baseBranch}`, '--jq', '.name']);
+    }
   } catch {
     effectiveBase = 'main';
   }
@@ -4485,16 +4527,23 @@ async function createPrForChild(
     const msg = e instanceof Error ? e.message : String(e);
     // Check if PR already exists for this branch
     try {
-      const listResult = await deps.execGh([
-        'pr', 'list',
-        '--repo', repo,
-        '--head', branch,
-        '--json', 'number',
-        '--jq', '.[0].number',
-      ]);
-      const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
-      if (Number.isFinite(existingNumber) && existingNumber > 0) {
-        return { pr_number: existingNumber, branch, baseBranch: effectiveBase };
+      if (deps.adapter) {
+        const existing = await deps.adapter.queryPrs({ head: branch, state: 'open', limit: 1 });
+        if (existing.length > 0) {
+          return { pr_number: existing[0].number, branch, baseBranch: effectiveBase };
+        }
+      } else {
+        const listResult = await deps.execGh([
+          'pr', 'list',
+          '--repo', repo,
+          '--head', branch,
+          '--json', 'number',
+          '--jq', '.[0].number',
+        ]);
+        const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
+        if (Number.isFinite(existingNumber) && existingNumber > 0) {
+          return { pr_number: existingNumber, branch, baseBranch: effectiveBase };
+        }
       }
     } catch {
       // PR list also failed
@@ -5319,7 +5368,7 @@ export async function runSpecChangeReplan(
 async function fetchAndApplyBulkIssueState(
   state: OrchestratorState,
   repo: string,
-  deps: Pick<ScanLoopDeps, 'execGh' | 'etagCache' | 'appendLog' | 'now'>,
+  deps: Pick<ScanLoopDeps, 'execGh' | 'etagCache' | 'appendLog' | 'now' | 'adapter'>,
   sessionDir: string,
   iteration: number,
 ): Promise<BulkFetchResult> {
@@ -5331,7 +5380,7 @@ async function fetchAndApplyBulkIssueState(
     durationMs: 0,
   };
 
-  if (!deps.execGh) return result;
+  if (!deps.execGh && !deps.adapter) return result;
 
   try {
     const issueNumbers = state.issues.map((i) => i.number);
@@ -5341,11 +5390,22 @@ async function fetchAndApplyBulkIssueState(
       return !earliest || check < earliest ? check : earliest;
     }, undefined as string | undefined);
 
-    const bulkResult = await fetchBulkIssueState(repo, deps.execGh, {
-      states: ['OPEN'],
-      since,
-      issueNumbers,
-    });
+    let bulkResult: GhBulkFetchResult;
+    if (deps.adapter) {
+      bulkResult = await deps.adapter.fetchBulkIssueState({
+        states: ['OPEN'],
+        since,
+        issueNumbers,
+      });
+    } else if (deps.execGh) {
+      bulkResult = await fetchBulkIssueState(repo, deps.execGh, {
+        states: ['OPEN'],
+        since,
+        issueNumbers,
+      });
+    } else {
+      return result;
+    }
 
     result.issuesFetched = bulkResult.issues.length;
     result.fromCache = bulkResult.fromCache;
@@ -5475,11 +5535,11 @@ export async function runOrchestratorScanPass(
   }
 
   // 0.3. Bulk issue state fetch (ETag-guarded, replaces per-issue REST calls)
-  if (repo && deps.execGh && state.issues.length > 0) {
+  if (repo && (deps.execGh || deps.adapter) && state.issues.length > 0) {
     result.bulkFetch = await fetchAndApplyBulkIssueState(
       state,
       repo,
-      { execGh: deps.execGh, etagCache: deps.etagCache, appendLog: deps.appendLog, now: deps.now },
+      { execGh: deps.execGh, etagCache: deps.etagCache, appendLog: deps.appendLog, now: deps.now, adapter: deps.adapter },
       sessionDir,
       iteration,
     );
@@ -5901,7 +5961,7 @@ export async function runOrchestratorScanLoop(
     if (passResult.allDone) {
       // Create trunk→main PR when auto-merge is configured
       const currentState: OrchestratorState = JSON.parse(await deps.readFile(stateFile, 'utf8'));
-      if (currentState.auto_merge_to_main && repo && deps.execGh) {
+      if (currentState.auto_merge_to_main && repo && (deps.execGh || deps.adapter)) {
         const prNum = await createTrunkToMainPr(currentState, repo, deps, sessionDir);
         if (prNum !== null) {
           currentState.trunk_pr_number = prNum;
