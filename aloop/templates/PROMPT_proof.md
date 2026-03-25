@@ -1,6 +1,7 @@
 ---
 agent: proof
 trigger: final-qa
+provider: claude
 ---
 
 # Proof Mode
