@@ -620,6 +620,11 @@ async function handleUpdateIssue(request: UpdateIssueRequest, fileName: string, 
 async function handleCloseIssue(request: CloseIssueRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
   const issueState = await findIssueState(request.payload.number, options);
   if (issueState.closed) {
+    await writeSessionLogEntry(options.logPath, 'gh_request_skipped_already_closed', {
+      type: request.type,
+      id: request.id,
+      issue_number: request.payload.number,
+    });
     await writeSuccessToQueue(request, {
       status: 'closed',
       skipped: true,
@@ -828,6 +833,12 @@ async function findPrMergeState(
 async function handleDispatchChild(request: DispatchChildRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
   const existingSessionId = await findActiveChildSessionByIssue(request.payload.issue_number, options.aloopDir);
   if (existingSessionId) {
+    await writeSessionLogEntry(options.logPath, 'gh_request_skipped_child_already_running', {
+      type: request.type,
+      id: request.id,
+      issue_number: request.payload.issue_number,
+      existing_session_id: existingSessionId,
+    });
     await writeSuccessToQueue(request, {
       status: 'dispatched',
       skipped: true,
