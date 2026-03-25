@@ -1056,7 +1056,7 @@ on_start:
 Add the missing command files:
 
 **`claude/commands/aloop/dashboard.md`:**
-- Invokes `aloop dashboard --session <active-session-id>`
+- Invokes `aloop dashboard --session-dir <path> --workdir <path>`
 - If multiple sessions, asks which one
 - Opens browser to dashboard URL
 
@@ -2296,11 +2296,11 @@ aloop gh status
 ```
 
 ```
-Issue  Branch                PR    Status      Iteration  Feedback
-#42    agent/issue-42-auth   #51   building    12/50      —
-#43    agent/issue-43-api    #52   pr-review   done       2 comments (unresolved)
-#44    agent/issue-44-ui     —     planning    3/50       —
-#45    (queued)              —     waiting     —          —
+Issue  Title                            Branch                PR    Status      Iteration  Feedback
+#42    Implement auth flow              agent/issue-42-auth   #51   building    12/50      —
+#43    Add REST API endpoints           agent/issue-43-api    #52   pr-review   done       2 comments (unresolved)
+#44    Build UI components              agent/issue-44-ui     —     planning    3/50       —
+#45    —                                (queued)              —     waiting     —          —
 ```
 
 #### `aloop gh stop [--issue <number> | --all]`
