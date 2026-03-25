@@ -1047,44 +1047,7 @@ function makeGhIssueCreator(requestsDir: string) {
   };
 }
 
-export async function getDirectorySizeBytes(dir: string): Promise<number> {
-  const { readdir: fsReaddir, stat } = await import('node:fs/promises');
-  let total = 0;
-  const entries = await fsReaddir(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      total += await getDirectorySizeBytes(fullPath);
-    } else {
-      const s = await stat(fullPath);
-      total += s.size;
-    }
-  }
-  return total;
-}
 
-export async function pruneLargeV8CacheDir(dir: string, thresholdBytes: number): Promise<{ sizeBytes: number; pruned: boolean }> {
-  const { existsSync: fsExistsSync } = await import('node:fs');
-  const { rm } = await import('node:fs/promises');
-  if (!fsExistsSync(dir)) return { sizeBytes: 0, pruned: false };
-  const sizeBytes = await getDirectorySizeBytes(dir);
-  if (sizeBytes >= thresholdBytes) {
-    await rm(dir, { recursive: true, force: true });
-    return { sizeBytes, pruned: true };
-  }
-  return { sizeBytes, pruned: false };
-}
-
-export function formatReviewCommentHistory(
-  comments: Array<{ author: { login: string | null } | null; createdAt?: string | null; body: string }>,
-): string {
-  const nonEmpty = comments.filter(c => c.body?.trim());
-  return nonEmpty.map(c => {
-    const login = c.author?.login ?? 'unknown';
-    const ts = c.createdAt ? ` at ${c.createdAt}` : '';
-    return `### @${login}${ts}\n\n${c.body}\n`;
-  }).join('\n---\n\n');
-}
 
 async function updateParentTasklist(repo: string, parentNum: number, issues: any[], requestsDir: string): Promise<void> {
   const subNums = issues.filter((i: any) => i.parent_issue === parentNum && i.number > 0).map((i: any) => i.number);
