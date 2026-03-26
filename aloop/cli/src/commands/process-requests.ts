@@ -805,14 +805,46 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
             let commentHistory = '';
             if (repo) {
               try {
-                const commentsResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'comments', '--jq', '.comments[].body'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-                if (commentsResult.status === 0 && commentsResult.stdout?.trim()) {
-                  commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${commentsResult.stdout.trim()}\n`;
+                const commentsJson = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'comments'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+                if (commentsJson.status === 0 && commentsJson.stdout?.trim()) {
+                  const prData = JSON.parse(commentsJson.stdout);
+                  const comments: ReviewComment[] = prData.comments ?? [];
+                  const formatted = formatReviewCommentHistory(comments);
+                  if (formatted) {
+                    commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${formatted}`;
+                  }
                 }
               } catch { /* ignore */ }
             }
 
-            await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${prompt}\n${outputInstr}${commentHistory}\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
+            // Inject proof artifact context from child session manifest
+            let proofSection = '';
+            try {
+              const issue = state.issues.find((i: any) => i.pr_number === prNumber);
+              if (issue?.child_session) {
+                const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+                const proofDeps: ProofArtifactsDeps = {
+                  existsSync,
+                  readFile: (p: string, e: BufferEncoding) => readFile(p, e),
+                  readdir: (p: string) => readdir(p),
+                };
+                if (repo) {
+                  proofSection = await buildAndPostProofComment(prNumber, repo, childDir, {
+                    execGh: async (args: string[]) => {
+                      const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+                      return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+                    },
+                    proofDeps,
+                  });
+                } else {
+                  const result = await readLatestProofManifest(childDir, proofDeps);
+                  proofSection = buildProofArtifactsSection(result);
+                }
+                if (proofSection) proofSection = `\n${proofSection}`;
+              }
+            } catch { /* best-effort — proof context is advisory */ }
+
+            await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${prompt}\n${outputInstr}${commentHistory}${proofSection}\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
           }
         }
         // Track pending cycles — retry → troubleshoot → escalate
