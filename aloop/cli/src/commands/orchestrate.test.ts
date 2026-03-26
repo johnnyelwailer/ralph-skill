@@ -607,7 +607,11 @@ describe('applyDecompositionPlan', () => {
     return {
       existsSync: () => true,
       readFile: async () => '',
-      writeFile: async () => {},
+      readdir: async (p: string) => {
+      const entries = Object.keys(files).filter(f => f.startsWith(p + "/")).map(f => f.slice(p.length + 1).split("/")[0]);
+      return [...new Set(entries)];
+    },
+    writeFile: async () => {},
       mkdir: async () => undefined,
       now: () => new Date('2026-03-09T11:00:00Z'),
     };
@@ -2196,7 +2200,11 @@ describe('queueEstimateForIssues', () => {
 
   it('returns 0 when no issues need estimation', async () => {
     const mockDeps = {
-      writeFile: async () => {},
+      readdir: async (p: string) => {
+      const entries = Object.keys(files).filter(f => f.startsWith(p + "/")).map(f => f.slice(p.length + 1).split("/")[0]);
+      return [...new Set(entries)];
+    },
+    writeFile: async () => {},
     };
     const issues = [
       makeIssue({ number: 1, status: 'Ready', dor_validated: true }),
@@ -3753,7 +3761,11 @@ describe('createGapAnalysisRequests', () => {
 
   it('returns false flags when no issues need analysis', async () => {
     const mockDeps = {
-      writeFile: async () => {},
+      readdir: async (p: string) => {
+      const entries = Object.keys(files).filter(f => f.startsWith(p + "/")).map(f => f.slice(p.length + 1).split("/")[0]);
+      return [...new Set(entries)];
+    },
+    writeFile: async () => {},
       now: () => new Date('2026-03-15T12:00:00Z'),
     };
     const issues = [
@@ -3796,7 +3808,11 @@ describe('queueGapAnalysisForIssues', () => {
 
   it('returns 0 when no issues need analysis', async () => {
     const mockDeps = {
-      writeFile: async () => {},
+      readdir: async (p: string) => {
+      const entries = Object.keys(files).filter(f => f.startsWith(p + "/")).map(f => f.slice(p.length + 1).split("/")[0]);
+      return [...new Set(entries)];
+    },
+    writeFile: async () => {},
     };
     const issues = [
       makeIssue({ number: 1, status: 'Needs decomposition' }),
@@ -5032,6 +5048,10 @@ function createMockMonitorDeps(overrides: {
       if (p in files) return files[p];
       throw new Error(`ENOENT: ${p}`);
     },
+    readdir: async (p: string) => {
+      const entries = Object.keys(files).filter(f => f.startsWith(p + "/")).map(f => f.slice(p.length + 1).split("/")[0]);
+      return [...new Set(entries)];
+    },
     writeFile: async () => {},
     execGh: async (args: string[]) => {
       ghCalls.push(args);
@@ -5933,7 +5953,11 @@ describe('processQueuedPrompts', () => {
     deps.dispatchDeps = {
       existsSync: () => false,
       readFile: async () => '',
-      writeFile: async () => {},
+      readdir: async (p: string) => {
+      const entries = Object.keys(files).filter(f => f.startsWith(p + "/")).map(f => f.slice(p.length + 1).split("/")[0]);
+      return [...new Set(entries)];
+    },
+    writeFile: async () => {},
       mkdir: async () => undefined,
       cp: async () => {},
       now: () => new Date('2026-03-15T12:00:00Z'),
@@ -5964,7 +5988,11 @@ describe('processQueuedPrompts', () => {
     deps.dispatchDeps = {
       existsSync: () => false,
       readFile: async () => '',
-      writeFile: async () => {},
+      readdir: async (p: string) => {
+      const entries = Object.keys(files).filter(f => f.startsWith(p + "/")).map(f => f.slice(p.length + 1).split("/")[0]);
+      return [...new Set(entries)];
+    },
+    writeFile: async () => {},
       mkdir: async () => undefined,
       cp: async () => {},
       now: () => new Date('2026-03-15T12:00:00Z'),
@@ -6039,7 +6067,11 @@ describe('applySpecBackfill', () => {
       'orch-session-1', 1, '/project',
       {
         readFile: async () => { throw new Error('not found'); },
-        writeFile: async () => {},
+        readdir: async (p: string) => {
+      const entries = Object.keys(files).filter(f => f.startsWith(p + "/")).map(f => f.slice(p.length + 1).split("/")[0]);
+      return [...new Set(entries)];
+    },
+    writeFile: async () => {},
       },
     );
 
