@@ -69,6 +69,7 @@ import {
   createTrunkToMainPr,
   resolveAutoMerge,
   detectChangeRequestLabel,
+  checkMemoryPressure,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
