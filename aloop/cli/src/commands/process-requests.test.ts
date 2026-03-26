@@ -370,3 +370,205 @@ describe('syncMasterToTrunk', () => {
     assert.equal(worktreeAdd, undefined, 'should not create a worktree');
   });
 });
+
+function makeProofDeps(overrides: Partial<ProofArtifactsDeps> = {}): ProofArtifactsDeps {
+  return {
+    existsSync: () => false,
+    readFile: async () => { throw new Error('not found'); },
+    readdir: async () => { throw new Error('not found'); },
+    ...overrides,
+  };
+}
+
+describe('readLatestProofManifest', () => {
+  it('returns manifest with artifacts from most recent iteration', async () => {
+    const childDir = '/sessions/child-1';
+    const manifest = {
+      iteration: 2,
+      summary: 'All tests pass',
+      artifacts: [
+        { type: 'screenshot', path: 'screenshot-1.png', description: 'Home page' },
+      ],
+    };
+    const files = new Map<string, string>([
+      [`${childDir}/artifacts/iter-2/proof-manifest.json`, JSON.stringify(manifest)],
+    ]);
+    const dirs = new Map<string, string[]>([
+      [`${childDir}/artifacts`, ['iter-1', 'iter-2']],
+      [`${childDir}/artifacts/iter-2`, ['proof-manifest.json', 'screenshot-1.png']],
+    ]);
+    const testDeps = makeProofDeps({
+      existsSync: (p: string) => files.has(p) || dirs.has(p),
+      readFile: async (p: string) => {
+        const c = files.get(p);
+        if (c === undefined) throw new Error(`ENOENT: ${p}`);
+        return c;
+      },
+      readdir: async (p: string) => {
+        const d = dirs.get(p);
+        if (d === undefined) throw new Error(`ENOENT: ${p}`);
+        return d;
+      },
+    });
+
+    const result = await readLatestProofManifest(childDir, testDeps);
+    assert.ok(result);
+    assert.equal(result!.manifest.artifacts.length, 1);
+    assert.equal(result!.manifest.artifacts[0].type, 'screenshot');
+    assert.equal(result!.manifest.summary, 'All tests pass');
+  });
+
+  it('returns null when no artifacts directory exists', async () => {
+    const deps = makeProofDeps();
+    const result = await readLatestProofManifest('/missing', deps);
+    assert.equal(result, null);
+  });
+
+  it('returns null when artifacts directory has no iter-N subdirs', async () => {
+    const childDir = '/sessions/child-2';
+    const dirs = new Map<string, string[]>([
+      [`${childDir}/artifacts`, ['some-file.txt']],
+    ]);
+    const testDeps = makeProofDeps({
+      existsSync: (p: string) => dirs.has(p),
+      readdir: async (p: string) => {
+        const d = dirs.get(p);
+        if (d === undefined) throw new Error(`ENOENT: ${p}`);
+        return d;
+      },
+    });
+
+    const result = await readLatestProofManifest(childDir, testDeps);
+    assert.equal(result, null);
+  });
+});
+
+describe('buildProofArtifactsSection', () => {
+  it('returns empty string when result is null', () => {
+    assert.equal(buildProofArtifactsSection(null), '');
+  });
+
+  it('builds section with artifacts from manifest', () => {
+    const result = {
+      manifest: {
+        iteration: 1,
+        summary: 'QA passed',
+        artifacts: [
+          { type: 'screenshot', path: 'screen.png', description: 'Login page' },
+          { type: 'cli_output', path: 'output.txt', description: 'Build output' },
+        ],
+      },
+      iterDir: '/sessions/child/artifacts/iter-1',
+      childDir: '/sessions/child',
+    };
+    const section = buildProofArtifactsSection(result);
+    assert.ok(section.includes('## Proof Artifacts'));
+    assert.ok(section.includes('QA passed'));
+    assert.ok(section.includes('**screenshot**'));
+    assert.ok(section.includes('Login page'));
+    assert.ok(section.includes('**cli_output**'));
+  });
+
+  it('shows skip reason when artifacts array is empty', () => {
+    const result = {
+      manifest: {
+        iteration: 1,
+        skipped: [{ task: 'screenshots', reason: 'No UI changes' }],
+        artifacts: [],
+      },
+      iterDir: '/sessions/child/artifacts/iter-1',
+      childDir: '/sessions/child',
+    };
+    const section = buildProofArtifactsSection(result);
+    assert.ok(section.includes('Proof skipped'));
+    assert.ok(section.includes('No UI changes'));
+  });
+});
+
+describe('buildAndPostProofComment', () => {
+  it('returns empty string when no manifest exists', async () => {
+    const deps = {
+      execGh: async () => ({ stdout: '', stderr: '' }),
+      proofDeps: makeProofDeps(),
+    };
+    const result = await buildAndPostProofComment(42, 'owner/repo', '/child', deps);
+    assert.equal(result, '');
+  });
+
+  it('returns section without posting comment when no screenshots', async () => {
+    const childDir = '/child-3';
+    const manifest = {
+      iteration: 1,
+      summary: 'Tests pass',
+      artifacts: [{ type: 'cli_output', path: 'out.txt', description: 'CLI output' }],
+    };
+    const files = new Map<string, string>([
+      [`${childDir}/artifacts/iter-1/proof-manifest.json`, JSON.stringify(manifest)],
+    ]);
+    const dirs = new Map<string, string[]>([
+      [`${childDir}/artifacts`, ['iter-1']],
+      [`${childDir}/artifacts/iter-1`, ['proof-manifest.json', 'out.txt']],
+    ]);
+    let commentCalled = false;
+    const deps = {
+      execGh: async () => { commentCalled = true; return { stdout: '', stderr: '' }; },
+      proofDeps: makeProofDeps({
+        existsSync: (p: string) => files.has(p) || dirs.has(p),
+        readFile: async (p: string) => {
+          const c = files.get(p);
+          if (c === undefined) throw new Error(`ENOENT: ${p}`);
+          return c;
+        },
+        readdir: async (p: string) => {
+          const d = dirs.get(p);
+          if (d === undefined) throw new Error(`ENOENT: ${p}`);
+          return d;
+        },
+      }),
+    };
+
+    const section = await buildAndPostProofComment(42, 'owner/repo', childDir, deps);
+    assert.ok(section.includes('## Proof Artifacts'));
+    assert.equal(commentCalled, false);
+  });
+
+  it('posts PR comment when manifest has screenshot artifacts', async () => {
+    const childDir = '/child-4';
+    const manifest = {
+      iteration: 1,
+      summary: 'UI verified',
+      artifacts: [
+        { type: 'screenshot', path: 'screen.png', description: 'Dashboard' },
+      ],
+    };
+    const files = new Map<string, string>([
+      [`${childDir}/artifacts/iter-1/proof-manifest.json`, JSON.stringify(manifest)],
+    ]);
+    const dirs = new Map<string, string[]>([
+      [`${childDir}/artifacts`, ['iter-1']],
+      [`${childDir}/artifacts/iter-1`, ['proof-manifest.json', 'screen.png']],
+    ]);
+    let commentArgs: string[] = [];
+    const deps = {
+      execGh: async (args: string[]) => { commentArgs = args; return { stdout: 'ok', stderr: '' }; },
+      proofDeps: makeProofDeps({
+        existsSync: (p: string) => files.has(p) || dirs.has(p),
+        readFile: async (p: string) => {
+          const c = files.get(p);
+          if (c === undefined) throw new Error(`ENOENT: ${p}`);
+          return c;
+        },
+        readdir: async (p: string) => {
+          const d = dirs.get(p);
+          if (d === undefined) throw new Error(`ENOENT: ${p}`);
+          return d;
+        },
+      }),
+    };
+
+    const section = await buildAndPostProofComment(99, 'owner/repo', childDir, deps);
+    assert.ok(section.includes('## Proof Artifacts'));
+    assert.ok(section.includes('Dashboard'));
+    assert.deepEqual(commentArgs, ['pr', 'comment', '99', '--repo', 'owner/repo', '--body']);
+  });
+});
