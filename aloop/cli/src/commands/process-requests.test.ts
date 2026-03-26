@@ -573,3 +573,61 @@ describe('buildAndPostProofComment', () => {
     assert.deepEqual(commentArgs, ['pr', 'comment', '99', '--repo', 'owner/repo', '--body']);
   });
 });
+
+describe('buildPrProofBody', () => {
+  it('returns empty string when result is null', () => {
+    assert.equal(buildPrProofBody(null), '');
+  });
+
+  it('embeds screenshots as images using .proof/ relative paths', () => {
+    const result = {
+      manifest: {
+        iteration: 1,
+        summary: 'UI verified',
+        artifacts: [
+          { type: 'screenshot', path: 'screen.png', description: 'Dashboard' },
+        ],
+      },
+      iterDir: '/sessions/child/artifacts/iter-1',
+      childDir: '/sessions/child',
+    };
+    const body = buildPrProofBody(result);
+    assert.ok(body.includes('## Proof Artifacts'));
+    assert.ok(body.includes('![](.proof/screen.png)'));
+    assert.ok(body.includes('**screenshot**'));
+  });
+
+  it('lists non-screenshot artifacts without image syntax', () => {
+    const result = {
+      manifest: {
+        iteration: 1,
+        summary: 'Mixed proof',
+        artifacts: [
+          { type: 'screenshot', path: 'screen.png', description: 'UI' },
+          { type: 'cli_output', path: 'output.txt', description: 'Build output' },
+        ],
+      },
+      iterDir: '/sessions/child/artifacts/iter-1',
+      childDir: '/sessions/child',
+    };
+    const body = buildPrProofBody(result);
+    assert.ok(body.includes('![](.proof/screen.png)'), 'screenshot should have image');
+    assert.ok(body.includes('**cli_output**'), 'cli_output type should be listed');
+    assert.ok(!body.includes('![](.proof/output.txt)'), 'non-screenshot should not have image');
+  });
+
+  it('shows skip reason when artifacts array is empty', () => {
+    const result = {
+      manifest: {
+        iteration: 1,
+        skipped: [{ task: 'screenshots', reason: 'No UI changes' }],
+        artifacts: [],
+      },
+      iterDir: '/sessions/child/artifacts/iter-1',
+      childDir: '/sessions/child',
+    };
+    const body = buildPrProofBody(result);
+    assert.ok(body.includes('Proof skipped'));
+    assert.ok(body.includes('No UI changes'));
+  });
+});
