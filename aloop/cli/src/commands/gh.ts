@@ -8,6 +8,7 @@ import { startCommandWithDeps, type StartCommandOptions, type StartCommandResult
 import { listActiveSessions, resolveHomeDir, stopSession, type SessionInfo } from './session.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
 import { withErrorHandling } from '../lib/error-handling.js';
+import { wrapGhWithRetry } from '../lib/gh-retry.js';
 
 const execFileAsync = promisify(execFile);
 const GH_PATH_HARDENING_BLOCK_MESSAGE = 'blocked by aloop PATH hardening';
