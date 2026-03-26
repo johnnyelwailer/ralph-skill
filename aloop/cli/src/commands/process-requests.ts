@@ -949,3 +949,90 @@ async function updateParentTasklist(repo: string, parentNum: number, issues: any
     console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
   } catch { /* non-critical */ }
 }
+
+export interface ReviewComment {
+  author?: { login?: string | null } | null;
+  createdAt?: string | null;
+  body?: string | null;
+}
+
+export function formatReviewCommentHistory(comments: ReviewComment[]): string {
+  const parts: string[] = [];
+  for (const c of comments) {
+    const body = (c.body ?? '').trim();
+    if (!body) continue;
+    const author = c.author?.login ?? 'unknown';
+    const ts = c.createdAt ?? null;
+    const header = ts ? `### @${author} at ${ts}` : `### @${author}`;
+    parts.push(`${header}\n\n${body}`);
+  }
+  return parts.join('\n\n---\n\n') + (parts.length > 0 ? '\n' : '');
+}
+
+export async function getDirectorySizeBytes(dirPath: string): Promise<number> {
+  let total = 0;
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        total += await getDirectorySizeBytes(fullPath);
+      } else if (entry.isFile()) {
+        try {
+          const s = await stat(fullPath);
+          total += s.size;
+        } catch { /* skip */ }
+      }
+    }
+  } catch { /* skip unreadable dirs */ }
+  return total;
+}
+
+export async function pruneLargeV8CacheDir(
+  dirPath: string,
+  thresholdBytes: number,
+): Promise<{ sizeBytes: number; pruned: boolean }> {
+  if (!existsSync(dirPath)) return { sizeBytes: 0, pruned: false };
+  const sizeBytes = await getDirectorySizeBytes(dirPath);
+  if (sizeBytes > thresholdBytes) {
+    spawnSync('rm', ['-rf', dirPath], { encoding: 'utf8' });
+    return { sizeBytes, pruned: true };
+  }
+  return { sizeBytes, pruned: false };
+}
+
+export interface BuildProofCommentDeps {
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  proofDeps: ProofArtifactsDeps;
+}
+
+export async function buildAndPostProofComment(
+  prNumber: number,
+  repo: string,
+  childDir: string,
+  deps: BuildProofCommentDeps,
+): Promise<string> {
+  const result = await readLatestProofManifest(childDir, deps.proofDeps);
+  if (!result) return '';
+  const { manifest } = result;
+  if (!manifest.artifacts || manifest.artifacts.length === 0) return '';
+
+  const hasScreenshots = manifest.artifacts.some(a => a.type === 'screenshot');
+  if (!hasScreenshots) return buildProofArtifactsSection(result);
+
+  const lines: string[] = ['## Proof Artifacts'];
+  if (manifest.summary) lines.push('', manifest.summary);
+  for (const artifact of manifest.artifacts) {
+    const relPath = path.relative(childDir, path.join(result.iterDir, artifact.path));
+    lines.push(`- **${artifact.type}**: ${artifact.description}`);
+    lines.push(`  - Path: \`${relPath}\``);
+  }
+  const commentBody = lines.join('\n');
+
+  try {
+    await deps.execGh(['pr', 'comment', String(prNumber), '--repo', repo, '--body', commentBody]);
+    console.log(`[process-requests] Posted proof artifact comment on PR #${prNumber}`);
+  } catch { /* best-effort */ }
+
+  return buildProofArtifactsSection(result);
+}
