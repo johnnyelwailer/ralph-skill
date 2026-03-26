@@ -6399,7 +6399,7 @@ describe('applyDecompositionPlan label enrichment', () => {
   it('stores enriched body in state when dependencies exist', async () => {
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async (_repo, _sid, _title, _body, _labels) => 42,
+      execGhIssueCreate: async (_repo, _sid, _title, _body, _labels) => { let n = callCount++; return n; },
     };
     const plan: DecompositionPlan = {
       issues: [
