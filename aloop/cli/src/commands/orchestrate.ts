@@ -2416,6 +2416,22 @@ export async function applyEstimateResults(
       if (issue.status === 'Needs refinement') {
         issue.status = 'Ready';
       }
+      // Apply complexity and priority labels via GH
+      if (deps?.execGh && deps.repo) {
+        const labelsToAdd: string[] = [];
+        if (result.complexity_tier) {
+          labelsToAdd.push(`complexity/${result.complexity_tier}`);
+        }
+        if (result.priority) {
+          labelsToAdd.push(result.priority);
+        }
+        if (labelsToAdd.length > 0) {
+          await deps.execGh([
+            'issue', 'edit', String(result.issue_number), '--repo', deps.repo,
+            ...labelsToAdd.flatMap(l => ['--add-label', l]),
+          ]);
+        }
+      }
       if (deps?.execGh && deps.repo) {
         await syncIssueProjectStatus(result.issue_number, deps.repo, 'Ready', {
           execGh: deps.execGh,
