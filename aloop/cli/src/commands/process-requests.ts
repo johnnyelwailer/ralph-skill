@@ -882,6 +882,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     appendLog,
     etagCache,
     aloopRoot,
+    freemem: () => os.freemem(),
     prLifecycleDeps: {
       execGh,
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
