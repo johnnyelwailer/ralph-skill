@@ -6333,6 +6333,87 @@ describe('applyDecompositionPlan label enrichment', () => {
   });
 });
 
+  it('includes "Depends on #X, #Y" in issue body when dependencies exist (AC 6)', async () => {
+    const calls: { body: string }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, body, _labels) => {
+        calls.push({ body });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        planIssue(1, 'First task', []),
+        planIssue(2, 'Second task', [1]),
+      ],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.equal(calls.length, 2);
+    assert.ok(!calls[0].body.includes('Depends on'), 'First issue should not have Depends on');
+    assert.ok(calls[1].body.includes('Depends on #1'), 'Second issue should reference Depends on #1');
+  });
+
+  it('includes multiple dependency references in issue body', async () => {
+    const calls: { body: string }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, body, _labels) => {
+        calls.push({ body });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        planIssue(1, 'A', []),
+        planIssue(2, 'B', []),
+        planIssue(3, 'C', [1, 2]),
+      ],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.ok(calls[2].body.includes('Depends on #1, #2'), 'Third issue should reference both dependencies');
+  });
+
+  it('does not duplicate Depends on if body already contains it', async () => {
+    const calls: { body: string }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, body, _labels) => {
+        calls.push({ body });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        { id: 1, title: 'A', body: 'Body A', depends_on: [], file_hints: [] },
+        { id: 2, title: 'B', body: 'Body B\n\nDepends on #1', depends_on: [1], file_hints: [] },
+      ],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    const count = (calls[1].body.match(/Depends on/g) || []).length;
+    assert.equal(count, 1, 'Should not duplicate Depends on text');
+  });
+
+  it('stores enriched body in state when dependencies exist', async () => {
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, _body, _labels) => 42,
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        planIssue(1, 'A', []),
+        planIssue(2, 'B', [1]),
+      ],
+    };
+    const result = await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.ok(!result.issues[0].body.includes('Depends on'));
+    assert.ok(result.issues[1].body.includes('Depends on #1'));
+  });
+
 describe('applyEstimateResults label enrichment', () => {
   it('applies complexity label via execGh when DoR passes', async () => {
     const ghCalls: string[][] = [];
