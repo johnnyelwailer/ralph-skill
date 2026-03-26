@@ -570,7 +570,9 @@ describe('buildAndPostProofComment', () => {
     const section = await buildAndPostProofComment(99, 'owner/repo', childDir, deps);
     assert.ok(section.includes('## Proof Artifacts'));
     assert.ok(section.includes('Dashboard'));
-    assert.deepEqual(commentArgs, ['pr', 'comment', '99', '--repo', 'owner/repo', '--body']);
+    const commentBody = commentArgs[commentArgs.indexOf('--body') + 1];
+    assert.ok(commentBody.includes('![](.proof/screen.png)'), 'comment should embed screenshot image');
+    assert.deepEqual(commentArgs.slice(0, 6), ['pr', 'comment', '99', '--repo', 'owner/repo', '--body']);
   });
 });
 
