@@ -7,6 +7,7 @@ import { discoverWorkspace, type DiscoveryResult } from './project.js';
 import { resolveHomeDir } from './session.js';
 import type { OutputMode } from './status.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
+import { DEFAULT_LOOP_SETTINGS } from '../lib/defaults.js';
 
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode';
 type LoopProvider = ProviderName | 'round-robin';
@@ -742,9 +743,9 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   if (hasConfiguredValue(maxIterationsValue) && parsedMaxIterations === null) {
     throw new Error(`Invalid --max-iterations value: ${String(maxIterationsValue)} (must be a positive integer)`);
   }
-  const maxIterations = parsedMaxIterations ?? 50;
-  const maxStuck = toPositiveInt(selectValue(projectConfig.values.max_stuck, globalConfig.values.max_stuck)) ?? 3;
-  const providerTimeout = toPositiveInt(selectValue(projectConfig.values.provider_timeout, globalConfig.values.provider_timeout)) ?? 10800;
+  const maxIterations = parsedMaxIterations ?? DEFAULT_LOOP_SETTINGS.max_iterations;
+  const maxStuck = toPositiveInt(selectValue(projectConfig.values.max_stuck, globalConfig.values.max_stuck)) ?? DEFAULT_LOOP_SETTINGS.max_stuck;
+  const providerTimeout = toPositiveInt(selectValue(projectConfig.values.provider_timeout, globalConfig.values.provider_timeout)) ?? DEFAULT_LOOP_SETTINGS.provider_timeout;
   const backupEnabled = toBoolean(selectValue(projectConfig.values.backup_enabled, globalConfig.values.backup_enabled), false);
   const worktreeDefault = toBoolean(selectValue(projectConfig.values.worktree_default, globalConfig.values.worktree_default), true);
   const onStartBehavior = resolveOnStartBehavior(projectConfig, globalConfig);

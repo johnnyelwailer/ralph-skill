@@ -1989,8 +1989,63 @@ if ($LaunchMode -eq 'resume') {
     Write-LogEntry -Event "session_restart" -Data @{}
 }
 
+# Load loop settings from loop-plan.json (config-driven pipeline).
+# Defaults are defined here; values in loop-plan.json override them.
+$script:InterIterationSleep = 3
+$script:RequestTimeout = 300
+$script:RequestPollInterval = 2
+$script:UnavailableSleep = 60
+$script:ConcurrentCapCooldown = 120
+$script:PhaseRetriesMultiplier = 2
+$script:TriageInterval = 5
+$script:ScanPassThrottleMs = 30000
+$script:RateLimitBackoff = 'fixed'
+
+function Load-LoopSettings {
+    $loopPlanFile = Join-Path $SessionDir "loop-plan.json"
+    if (-not (Test-Path $loopPlanFile)) { return }
+    try {
+        $plan = Get-Content -Path $loopPlanFile -Raw | ConvertFrom-Json
+        $s = $plan.loopSettings
+        if (-not $s) { return }
+        $numMappings = @{
+            'inter_iteration_sleep' = { param($v) $script:InterIterationSleep = [int]$v }
+            'request_timeout'       = { param($v) $script:RequestTimeout = [int]$v }
+            'request_poll_interval' = { param($v) $script:RequestPollInterval = [int]$v }
+            'unavailable_sleep'     = { param($v) $script:UnavailableSleep = [int]$v }
+            'concurrent_cap_cooldown' = { param($v) $script:ConcurrentCapCooldown = [int]$v }
+            'phase_retries_multiplier' = { param($v) $script:PhaseRetriesMultiplier = [int]$v }
+            'triage_interval'       = { param($v) $script:TriageInterval = [int]$v }
+            'scan_pass_throttle_ms' = { param($v) $script:ScanPassThrottleMs = [int]$v }
+        }
+        foreach ($key in $numMappings.Keys) {
+            $val = $s.$key
+            if ($null -ne $val) {
+                & $numMappings[$key] $val
+            }
+        }
+        $rlb = $s.rate_limit_backoff
+        if ($rlb -in @('exponential', 'linear', 'fixed')) {
+            $script:RateLimitBackoff = $rlb
+        }
+        # Cooldown ladder
+        $cl = $s.cooldown_ladder
+        if ($cl -is [System.Collections.IEnumerable] -and $cl -isnot [string] -and $cl.Count -ge 2) {
+            $script:CooldownLadder = @($cl | ForEach-Object { [int]$_ })
+        }
+        # Health lock retry delays
+        $hl = $s.health_lock_retry_delays_ms
+        if ($hl -is [System.Collections.IEnumerable] -and $hl -isnot [string] -and $hl.Count -ge 2) {
+            $script:HealthLockRetryDelays = @($hl | ForEach-Object { [int]$_ / 1000 })
+        }
+    } catch {
+        Write-Warning "Failed to load loop settings from loop-plan.json: $_"
+    }
+}
+
 # Prime cycle position from loop-plan.json if present.
 [void](Resolve-CyclePromptFromPlan)
+Load-LoopSettings
 
 Write-Host "`nStarting loop..." -ForegroundColor Green
 Write-Host "---`n"
@@ -2011,10 +2066,10 @@ function Wait-ForRequests {
             Write-LogEntry -Event "waiting_for_requests" -Data @{ count = $pendingRequests.Count }
             Write-Host "Waiting for $($pendingRequests.Count) pending requests to be processed..." -ForegroundColor Yellow
             $waitStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
-            $timeout = if ($env:REQUEST_TIMEOUT) { [int]$env:REQUEST_TIMEOUT } else { 300 }
+            $timeout = $script:RequestTimeout
 
             while (Get-ChildItem -Path $requestsDir -Filter '*.json' -File -ErrorAction SilentlyContinue) {
-                Start-Sleep -Seconds 2
+                Start-Sleep -Seconds $script:RequestPollInterval
                 $elapsed = [int][DateTimeOffset]::Now.ToUnixTimeSeconds() - $waitStart
                 if ($elapsed -gt $timeout) {
                     Write-LogEntry -Event "request_timeout" -Data @{ elapsed = $elapsed }
@@ -2110,7 +2165,7 @@ function Run-QueueIfPresent {
         }
 
         Wait-ForRequests
-        Start-Sleep -Seconds 3
+        Start-Sleep -Seconds $script:InterIterationSleep
         return $true
     }
     return $false
@@ -2353,7 +2408,7 @@ try {
         }
 
         Wait-ForRequests
-        Start-Sleep -Seconds 3
+        Start-Sleep -Seconds $script:InterIterationSleep
     }
 } finally {
     Stop-ActiveProvider
