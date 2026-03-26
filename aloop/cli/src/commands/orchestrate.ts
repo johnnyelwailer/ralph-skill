@@ -14,6 +14,7 @@ import {
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
+import { deriveComponentLabels } from '../lib/labels.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -2337,6 +2338,7 @@ export interface EstimateResult {
   risk_flags?: string[];
   confidence?: 'high' | 'medium' | 'low';
   gaps?: string[];
+  priority?: 'P0' | 'P1' | 'P2';
 }
 
 export const REFINEMENT_BUDGET_CAP = 5;
