@@ -20,8 +20,17 @@ The orchestrator review is NOT a line-by-line code review (the child's own revie
 1. Read `CONSTITUTION.md`.
 2. Read the issue description to understand what was requested.
 3. Read the PR diff.
-4. Evaluate each of the 5 review dimensions above.
-5. Write your verdict.
+4. Check for a `## Proof Artifacts` section in your queue file. If present, read it.
+5. Evaluate each of the 5 review dimensions above. For dimension 3 (Proof of correct work), cross-reference any proof artifacts — screenshots, CLI captures, or API responses — against the claimed behavior.
+6. Write your verdict.
+
+## Proof Artifacts
+
+Your queue file may contain a `## Proof Artifacts` section with behavioral evidence produced by the child loop's proof agent. Use this evidence when evaluating dimension 3 (Proof of correct work):
+
+- **Artifacts present:** Reference specific artifacts in your review. If a screenshot shows expected UI behavior, note that. If a CLI capture demonstrates correct output, cite it. Evidence-backed reviews are stronger than code-only reviews.
+- **Proof skipped (empty manifest):** This is acceptable for internal-only changes (refactors, config, infra) where behavioral evidence is not applicable. Do not penalize the PR for skipping proof in these cases.
+- **No manifest section:** The child may not have produced proof artifacts. Evaluate dimension 3 based on tests and code quality alone — do not reject solely for missing artifacts.
 
 ## Rules
 
