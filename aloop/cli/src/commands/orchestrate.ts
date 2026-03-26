@@ -14,6 +14,11 @@ import {
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
+import {
+  readLatestProofManifest,
+  buildPrProofBody,
+  type ProofArtifactsDeps,
+} from './proof-artifacts.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
