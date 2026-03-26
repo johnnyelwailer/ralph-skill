@@ -15,6 +15,7 @@ import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 export type { CrResultDeps };
 export { processCrResultFiles };
 import { EtagCache } from '../lib/github-monitor.js';
+import { deriveComponentLabels } from '../lib/labels.js';
 
 // --- Orchestrator event system (data-driven from pipeline.yml) ---
 
