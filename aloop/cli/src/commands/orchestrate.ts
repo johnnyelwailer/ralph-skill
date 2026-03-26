@@ -4339,7 +4339,20 @@ async function createPrForChild(
 
   const issueTitle = issue.title || `Issue ${issue.number}`;
   const prTitle = `[aloop] ${issueTitle}`;
-  const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}`;
+
+  // Include proof artifact info in PR body
+  let proofBody = '';
+  try {
+    const proofDeps: ProofArtifactsDeps = {
+      existsSync: deps.existsSync,
+      readFile: deps.readFile,
+      readdir: deps.readdir,
+    };
+    const proofResult = await readLatestProofManifest(childDir, proofDeps);
+    proofBody = buildPrProofBody(proofResult);
+  } catch { /* best-effort */ }
+
+  const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}${proofBody ? '\n\n' + proofBody : ''}`;
 
   try {
     const result = await deps.execGh([
