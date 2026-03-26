@@ -463,12 +463,35 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
                 spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
               }
 
+              // Commit proof artifacts to the branch for inline PR viewing
+              let proofBody = '';
+              try {
+                const attachDeps: ProofAttachDeps = {
+                  existsSync,
+                  readFile: (p: string, e: BufferEncoding) => readFile(p, e),
+                  readdir: (p: string) => readdir(p),
+                  spawnSync: (cmd: string, a: string[], o?: Record<string, unknown>) => {
+                    const r = spawnSync(cmd, a, o as any);
+                    return { status: r.status, stdout: r.stdout?.toString() ?? '', stderr: r.stderr?.toString() ?? '' };
+                  },
+                  mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined),
+                  cp: (src: string, dest: string, o?: Record<string, unknown>) => cp(src, dest, o as any),
+                };
+                proofBody = await commitProofArtifacts(childDir, childWorktree, attachDeps);
+                if (proofBody) {
+                  spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
+                }
+              } catch { /* best-effort — proof attachment is advisory */ }
+
+              // Build PR body with proof artifacts
+              const prBody = `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.${proofBody ? '\n\n' + proofBody : ''}`;
+
               // Create PR
               const prResult = spawnSync('gh', [
                 'pr', 'create',
                 '--repo', repo,
                 '--title', `#${issue.number}: ${issue.title}`,
-                '--body', `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
+                '--body', prBody,
                 '--head', branch,
                 '--base', trunkBranch,
               ], { encoding: 'utf8' });
