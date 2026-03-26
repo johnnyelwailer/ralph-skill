@@ -870,6 +870,16 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
 
+  const configPath = path.join(aloopRoot, 'config.yml');
+  let memoryPressureThresholdMB: number | undefined;
+  try {
+    if (existsSync(configPath)) {
+      const configContent = await readFile(configPath, 'utf8');
+      const match = configContent.match(/^memory_pressure_threshold_mb:\s*(\d+)/m);
+      if (match) memoryPressureThresholdMB = Number(match[1]);
+    }
+  } catch { /* non-fatal */ }
+
   const scanDeps: ScanLoopDeps = {
     existsSync,
     readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
