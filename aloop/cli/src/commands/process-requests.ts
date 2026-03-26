@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { readFile, readdir, unlink, writeFile, mkdir, cp, rm, stat } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
 import {
