@@ -3324,3 +3324,284 @@ test('extractRepoFromIssueUrl returns null for non-issue URLs', () => {
   assert.equal(extractRepoFromIssueUrl('not-a-url'), null);
   assert.equal(extractRepoFromIssueUrl(''), null);
 });
+
+// --- --max-ci-retries tests ---
+
+test('gh watch --max-ci-retries 2 halts after 2 consecutive CI failures', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-max-ci-ret-'));
+  const failingCheck: PrCheckRun = {
+    id: 700,
+    name: 'build',
+    status: 'completed',
+    conclusion: 'failure',
+    log: 'Build error at line 10',
+  };
+  const signature = buildCiFailureSignature([failingCheck]);
+  assert.ok(signature);
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': buildWatchEntry({
+        pr_number: 51,
+        last_ci_failure_signature: signature,
+        same_ci_failure_count: 1,
+      }),
+    },
+    queue: [],
+  });
+
+  const sessionDir = path.join(tmpHome, '.aloop', 'sessions', 'sess-42');
+  fs.mkdirSync(path.join(sessionDir, 'worktree'), { recursive: true });
+
+  const ghCalls: string[][] = [];
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    ghCalls.push(args);
+    if (args[0] === 'issue' && args[1] === 'list') return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/pulls/51/comments')) return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/issues/51/comments')) return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/pulls/51') && args.includes('.head.sha')) return { stdout: 'sha123', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/check-runs')) {
+      return { stdout: JSON.stringify({ check_runs: [{ id: 701, name: 'build', status: 'completed', conclusion: 'failure' }] }), stderr: '' };
+    }
+    if (args[0] === 'run' && args[1] === 'list') return { stdout: JSON.stringify([{ databaseId: 77 }]), stderr: '' };
+    if (args[0] === 'run' && args[1] === 'view') return { stdout: 'Build error at line 10', stderr: '' };
+    if (args[0] === 'issue' && args[1] === 'comment') return { stdout: '', stderr: '' };
+    if (args[0] === 'issue' && args[1] === 'edit') return { stdout: '', stderr: '' };
+    return { stdout: '{}', stderr: '' };
+  });
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+  const startCalls: unknown[] = [];
+  t.mock.method(ghLoopRuntime, 'startIssue', async (...args: unknown[]) => {
+    startCalls.push(args);
+    return buildStartResult(42, 'sess-42-rerun', 'running');
+  });
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => output.push(String(line ?? '')));
+
+  try {
+    await ghCommand.parseAsync([
+      'watch', '--once',
+      '--home-dir', tmpHome,
+      '--max-ci-retries', '2',
+      '--output', 'json',
+    ], { from: 'user' });
+
+    assert.equal(startCalls.length, 0, 'should not spawn another loop when max-ci-retries=2 is reached');
+    const state = readWatchState(tmpHome) as {
+      issues: Record<string, { status: string; completion_state: string; same_ci_failure_count: number }>;
+    };
+    assert.equal(state.issues['42'].status, 'stopped');
+    assert.equal(state.issues['42'].completion_state, 'persistent_ci_failure');
+    assert.equal(state.issues['42'].same_ci_failure_count, 2);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+// --- aloop/needs-human label tests ---
+
+test('gh watch applies aloop/needs-human label on CI failure exhaustion', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-needs-human-'));
+  const failingCheck: PrCheckRun = {
+    id: 800,
+    name: 'lint',
+    status: 'completed',
+    conclusion: 'failure',
+    log: 'Lint error: unused variable',
+  };
+  const signature = buildCiFailureSignature([failingCheck]);
+  assert.ok(signature);
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': buildWatchEntry({
+        pr_number: 51,
+        last_ci_failure_signature: signature,
+        same_ci_failure_count: 2,
+      }),
+    },
+    queue: [],
+  });
+
+  const sessionDir = path.join(tmpHome, '.aloop', 'sessions', 'sess-42');
+  fs.mkdirSync(path.join(sessionDir, 'worktree'), { recursive: true });
+
+  const ghCalls: string[][] = [];
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    ghCalls.push(args);
+    if (args[0] === 'issue' && args[1] === 'list') return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/pulls/51/comments')) return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/issues/51/comments')) return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/pulls/51') && args.includes('.head.sha')) return { stdout: 'sha456', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/check-runs')) {
+      return { stdout: JSON.stringify({ check_runs: [{ id: 801, name: 'lint', status: 'completed', conclusion: 'failure' }] }), stderr: '' };
+    }
+    if (args[0] === 'run' && args[1] === 'list') return { stdout: JSON.stringify([{ databaseId: 88 }]), stderr: '' };
+    if (args[0] === 'run' && args[1] === 'view') return { stdout: 'Lint error: unused variable', stderr: '' };
+    if (args[0] === 'issue' && args[1] === 'comment') return { stdout: '', stderr: '' };
+    if (args[0] === 'issue' && args[1] === 'edit') return { stdout: '', stderr: '' };
+    return { stdout: '{}', stderr: '' };
+  });
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => output.push(String(line ?? '')));
+
+  try {
+    await ghCommand.parseAsync([
+      'watch', '--once',
+      '--home-dir', tmpHome,
+      '--output', 'json',
+    ], { from: 'user' });
+
+    // Verify that issue edit was called with --add-label aloop/needs-human
+    const labelCall = ghCalls.find(
+      (args) => args[0] === 'issue' && args[1] === 'edit' && args.includes('--add-label') && args.includes('aloop/needs-human'),
+    );
+    assert.ok(labelCall, 'should call gh issue edit --add-label aloop/needs-human');
+    assert.equal(labelCall[2], '42', 'should target the correct issue number');
+    assert.ok(labelCall.includes('--repo'), 'should include --repo flag');
+    assert.ok(labelCall.includes('test/repo'), 'should target correct repo');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('gh watch applies aloop/needs-human label when max-ci-retries is reached with custom limit', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-needs-human-custom-'));
+  const failingCheck: PrCheckRun = {
+    id: 900,
+    name: 'test',
+    status: 'completed',
+    conclusion: 'failure',
+    log: 'Test failure: assertion error',
+  };
+  const signature = buildCiFailureSignature([failingCheck]);
+  assert.ok(signature);
+
+  writeWatchState(tmpHome, {
+    version: 1,
+    issues: {
+      '42': buildWatchEntry({
+        pr_number: 51,
+        last_ci_failure_signature: signature,
+        same_ci_failure_count: 1,
+      }),
+    },
+    queue: [],
+  });
+
+  const sessionDir = path.join(tmpHome, '.aloop', 'sessions', 'sess-42');
+  fs.mkdirSync(path.join(sessionDir, 'worktree'), { recursive: true });
+
+  const ghCalls: string[][] = [];
+  t.mock.method(ghExecutor, 'exec', async (args: string[]) => {
+    ghCalls.push(args);
+    if (args[0] === 'issue' && args[1] === 'list') return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/pulls/51/comments')) return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/issues/51/comments')) return { stdout: '[]', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/pulls/51') && args.includes('.head.sha')) return { stdout: 'sha789', stderr: '' };
+    if (args[0] === 'api' && args[1]?.includes('/check-runs')) {
+      return { stdout: JSON.stringify({ check_runs: [{ id: 901, name: 'test', status: 'completed', conclusion: 'failure' }] }), stderr: '' };
+    }
+    if (args[0] === 'run' && args[1] === 'list') return { stdout: JSON.stringify([{ databaseId: 99 }]), stderr: '' };
+    if (args[0] === 'run' && args[1] === 'view') return { stdout: 'Test failure: assertion error', stderr: '' };
+    if (args[0] === 'issue' && args[1] === 'comment') return { stdout: '', stderr: '' };
+    if (args[0] === 'issue' && args[1] === 'edit') return { stdout: '', stderr: '' };
+    return { stdout: '{}', stderr: '' };
+  });
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+
+  try {
+    await ghCommand.parseAsync([
+      'watch', '--once',
+      '--home-dir', tmpHome,
+      '--max-ci-retries', '2',
+      '--output', 'json',
+    ], { from: 'user' });
+
+    const labelCall = ghCalls.find(
+      (args) => args[0] === 'issue' && args[1] === 'edit' && args.includes('--add-label') && args.includes('aloop/needs-human'),
+    );
+    assert.ok(labelCall, 'should apply aloop/needs-human label when custom max-ci-retries is reached');
+
+    const state = readWatchState(tmpHome) as {
+      issues: Record<string, { status: string; same_ci_failure_count: number }>;
+    };
+    assert.equal(state.issues['42'].status, 'stopped');
+    assert.equal(state.issues['42'].same_ci_failure_count, 2);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+// --- --dry-run tests ---
+
+test('gh watch --dry-run lists matching issues without launching sessions', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-dry-run-'));
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => {
+    output.push(String(line ?? ''));
+  });
+  t.mock.method(ghExecutor, 'exec', async () => ({
+    stdout: JSON.stringify([
+      { number: 10, title: 'Issue 10', url: 'https://github.com/test/repo/issues/10' },
+      { number: 11, title: 'Issue 11', url: 'https://github.com/test/repo/issues/11' },
+    ]),
+    stderr: '',
+  }));
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+
+  try {
+    await ghCommand.parseAsync([
+      'watch',
+      '--dry-run',
+      '--home-dir', tmpHome,
+      '--output', 'text',
+    ], { from: 'user' });
+
+    const combined = output.join('\n');
+    assert.match(combined, /10/);
+    assert.match(combined, /11/);
+    assert.match(combined, /sessions_started=0/);
+
+    // watch.json should not exist — no state written
+    const watchPath = path.join(tmpHome, '.aloop', 'watch.json');
+    assert.equal(fs.existsSync(watchPath), false, 'dry-run should not write watch.json');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('gh watch --dry-run outputs JSON when --output json', async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-dry-run-json-'));
+  const output: string[] = [];
+  t.mock.method(console, 'log', (line?: unknown) => {
+    output.push(String(line ?? ''));
+  });
+  t.mock.method(ghExecutor, 'exec', async () => ({
+    stdout: JSON.stringify([
+      { number: 20, title: 'Issue 20', url: 'https://github.com/test/repo/issues/20' },
+    ]),
+    stderr: '',
+  }));
+  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
+
+  try {
+    await ghCommand.parseAsync([
+      'watch',
+      '--dry-run',
+      '--home-dir', tmpHome,
+      '--output', 'json',
+    ], { from: 'user' });
+
+    assert.equal(output.length, 1);
+    const parsed = JSON.parse(output[0]) as { dry_run: boolean; would_queue: number[]; sessions_started: number };
+    assert.equal(parsed.dry_run, true);
+    assert.deepStrictEqual(parsed.would_queue, [20]);
+    assert.equal(parsed.sessions_started, 0);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
