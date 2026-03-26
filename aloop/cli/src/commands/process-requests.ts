@@ -161,7 +161,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       throw Object.assign(new Error(`gh timed out (${r.signal})`), { stderr: '', stdout: '' });
     }
     if (r.status !== 0) {
-      const err = new Error(`gh exited with code ${r.status}`) as Error & { stderr: string; stdout: string; status: number };
+      const err = new Error(`gh exited with code ${r.status}`) as Error & { stderr: string; stdout: string; status: number | null };
       err.stderr = r.stderr ?? '';
       err.stdout = r.stdout ?? '';
       err.status = r.status;
