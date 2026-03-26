@@ -1081,9 +1081,13 @@ export async function buildAndPostProofComment(
   const lines: string[] = ['## Proof Artifacts'];
   if (manifest.summary) lines.push('', manifest.summary);
   for (const artifact of manifest.artifacts) {
-    const relPath = path.relative(childDir, path.join(result.iterDir, artifact.path));
-    lines.push(`- **${artifact.type}**: ${artifact.description}`);
-    lines.push(`  - Path: \`${relPath}\``);
+    if (artifact.type === 'screenshot') {
+      const basename = path.basename(artifact.path);
+      lines.push(`- **${artifact.type}**: ${artifact.description}`);
+      lines.push(`  ![](.proof/${basename})`);
+    } else {
+      lines.push(`- **${artifact.type}**: ${artifact.description}`);
+    }
   }
   const commentBody = lines.join('\n');
 
@@ -1092,5 +1096,5 @@ export async function buildAndPostProofComment(
     console.log(`[process-requests] Posted proof artifact comment on PR #${prNumber}`);
   } catch { /* best-effort */ }
 
-  return buildProofArtifactsSection(result);
+  return buildPrProofBody(result);
 }
