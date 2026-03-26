@@ -574,12 +574,20 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
                 spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
               }
 
-              // Create PR
+              // Create PR — use PR_DESCRIPTION.md from child worktree if present
+              const prDescriptionFile = path.join(childWorktree, 'PR_DESCRIPTION.md');
+              const fallbackBody = `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`;
+              let prBody = fallbackBody;
+              if (existsSync(prDescriptionFile)) {
+                try {
+                  prBody = await readFile(prDescriptionFile, 'utf8');
+                } catch { /* use fallback */ }
+              }
               const prResult = spawnSync('gh', [
                 'pr', 'create',
                 '--repo', repo,
                 '--title', `#${issue.number}: ${issue.title}`,
-                '--body', `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
+                '--body', prBody,
                 '--head', branch,
                 '--base', trunkBranch,
               ], { encoding: 'utf8' });
