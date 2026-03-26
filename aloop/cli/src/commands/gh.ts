@@ -8,6 +8,7 @@ import { startCommandWithDeps, type StartCommandOptions, type StartCommandResult
 import { listActiveSessions, resolveHomeDir, stopSession, type SessionInfo } from './session.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
 import { withErrorHandling } from '../lib/error-handling.js';
+import { buildPrBody } from '../lib/issue-metadata.js';
 
 const execFileAsync = promisify(execFile);
 const GH_PATH_HARDENING_BLOCK_MESSAGE = 'blocked by aloop PATH hardening';
@@ -1077,8 +1078,12 @@ async function finalizeWatchEntry(
     }
   }
 
-  const prTitle = `[aloop] ${issueTitle}`;
-  const prBody = `Automated implementation for issue #${entry.issue_number}.\n\nCloses #${entry.issue_number}`;
+  const prTitle = `#${entry.issue_number}: ${issueTitle}`;
+  const prBody = buildPrBody({
+    issue_number: entry.issue_number,
+    issue_title: issueTitle,
+    child_session: entry.session_id,
+  });
 
   try {
     const prCreate = await ghExecutor.exec([
@@ -1744,8 +1749,14 @@ export async function ghStartCommandWithDeps(options: GhStartCommandOptions, dep
   let pendingCompletion = true;
 
   if (isTerminalState(completionState) && issueRepo) {
-    const prTitle = `[aloop] ${issue.title}`;
-    const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}`;
+    const issueLabels = (issue.labels ?? []).map(l => l.name ?? '').filter(Boolean);
+    const prTitle = `#${issue.number}: ${issue.title}`;
+    const prBody = buildPrBody({
+      issue_number: issue.number,
+      issue_title: issue.title,
+      labels: issueLabels,
+      scope_summary: (issue.body ?? '').split('\n').slice(0, 3).join(' ').substring(0, 200),
+    });
     const prCreate = await deps.execGh([
       'pr', 'create',
       '--repo', issueRepo,

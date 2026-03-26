@@ -15,6 +15,7 @@ import {
   type BulkIssueState,
 } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
+import { buildPrBody } from '../lib/issue-metadata.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -4363,8 +4364,17 @@ async function createPrForChild(
   }
 
   const issueTitle = issue.title || `Issue ${issue.number}`;
-  const prTitle = `[aloop] ${issueTitle}`;
-  const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}`;
+  const prTitle = `#${issue.number}: ${issueTitle}`;
+  const componentLabels = deriveComponentLabels(issue.file_hints ?? []);
+  const prBody = buildPrBody({
+    issue_number: issue.number,
+    issue_title: issueTitle,
+    wave: issue.wave,
+    labels: ['aloop', `aloop/wave-${issue.wave}`, ...componentLabels],
+    child_session: childSession,
+    file_hints: issue.file_hints ?? [],
+    scope_summary: (issue.body ?? '').split('\n').slice(0, 3).join(' ').substring(0, 200),
+  });
 
   try {
     const result = await deps.execGh([

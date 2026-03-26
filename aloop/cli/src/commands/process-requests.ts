@@ -16,6 +16,7 @@ export type { CrResultDeps };
 export { processCrResultFiles };
 import { EtagCache } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
+import { buildPrBody, ensureMetadataSection, buildIssueLabels } from '../lib/issue-metadata.js';
 
 // --- Orchestrator event system (data-driven from pipeline.yml) ---
 
@@ -380,8 +381,19 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         let nextNum = Math.max(0, ...state.issues.map((i: any) => i.number ?? 0)) + 1;
         for (const sub of subIssues) {
           const subTitle = sub.title;
-          const subBody = `Part of #${parentNum}: ${parent.title}\n\n${sub.body ?? ''}`;
-          const ghNumber = repo ? await createGhIssue(repo, subTitle, subBody, ['aloop/auto'], requestsDir) : nextNum++;
+          const subBodyBase = `Part of #${parentNum}: ${parent.title}\n\n${sub.body ?? ''}`;
+          const subBody = ensureMetadataSection(subBodyBase, {
+            wave: parent.wave,
+            type: 'sub-issue',
+            files: sub.file_hints ?? [],
+            depends_on: sub.depends_on ?? [],
+          });
+          const subLabels = buildIssueLabels({
+            wave: parent.wave,
+            is_sub_issue: true,
+            component_labels: deriveComponentLabels(sub.file_hints ?? []),
+          });
+          const ghNumber = repo ? await createGhIssue(repo, subTitle, subBody, subLabels, requestsDir) : nextNum++;
           state.issues.push({
             number: ghNumber || nextNum++,
             title: subTitle, body: subBody, file_hints: sub.file_hints ?? [],
@@ -517,8 +529,19 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   // ── Phase 2: Create GH issues for state entries with number=0 ──
   if (repo) {
     for (const issue of state.issues.filter((i: any) => i.number === 0)) {
-      const labels = (issue as any).parent_issue ? ['aloop/auto'] : ['aloop/epic', 'aloop/auto'];
-      const ghNum = await createGhIssue(repo, issue.title, issue.body ?? '', labels, requestsDir);
+      const isEpic = !(issue as any).parent_issue;
+      const labels = buildIssueLabels({
+        wave: issue.wave,
+        is_epic: isEpic,
+        is_sub_issue: !isEpic,
+        component_labels: deriveComponentLabels(issue.file_hints ?? []),
+      });
+      const bodyWithMeta = ensureMetadataSection(issue.body ?? '', {
+        wave: issue.wave,
+        type: isEpic ? 'epic' : 'sub-issue',
+        files: issue.file_hints ?? [],
+      });
+      const ghNum = await createGhIssue(repo, issue.title, bodyWithMeta, labels, requestsDir);
       if (ghNum > 0) {
         issue.number = ghNum;
         (issue as any).gh_number = ghNum;
@@ -575,17 +598,28 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
                 spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
               }
 
-              // Create PR — use PR_DESCRIPTION.md from child worktree if present
+              // Create PR — use PR_DESCRIPTION.md from child worktree if present, else build rich body
               const prDescriptionFile = path.join(childWorktree, 'PR_DESCRIPTION.md');
-              const fallbackBody = `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`;
-              let prBody = fallbackBody;
+              const wave = issue.wave ?? 1;
+              const componentLabels = deriveComponentLabels(issue.file_hints ?? []);
+              const prLabels = buildIssueLabels({ wave, component_labels: componentLabels });
+              const richPrBody = buildPrBody({
+                issue_number: issue.number,
+                issue_title: issue.title,
+                wave,
+                labels: prLabels,
+                child_session: issue.child_session,
+                file_hints: issue.file_hints ?? [],
+                scope_summary: (issue.body ?? '').split('\n').slice(0, 3).join(' ').substring(0, 200),
+              });
+              let prBody = richPrBody;
               if (existsSync(prDescriptionFile)) {
                 try {
-                  prBody = await readFile(prDescriptionFile, 'utf8');
-                } catch { /* use fallback */ }
+                  const agentBody = await readFile(prDescriptionFile, 'utf8');
+                  // If agent provided a PR description, use it but ensure it has Closes reference
+                  prBody = agentBody.includes(`Closes #${issue.number}`) ? agentBody : `${agentBody}\n\nCloses #${issue.number}`;
+                } catch { /* use rich body */ }
               }
-              const wave = issue.wave ?? 1;
-              const labels = ['aloop', `aloop/wave-${wave}`, `wave/${wave}`, ...deriveComponentLabels(issue.file_hints ?? [])];
               const prArgs = [
                 'pr', 'create',
                 '--repo', repo,
@@ -594,7 +628,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
                 '--head', branch,
                 '--base', trunkBranch,
               ];
-              for (const label of labels) {
+              for (const label of prLabels) {
                 prArgs.push('--label', label);
               }
               const prResult = spawnSync('gh', prArgs, { encoding: 'utf8' });
