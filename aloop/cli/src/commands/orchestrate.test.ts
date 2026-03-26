@@ -6410,8 +6410,8 @@ describe('applyDecompositionPlan label enrichment', () => {
     };
     const result = await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
-    assert.ok(!result.issues[0].body.includes('Depends on'));
-    assert.ok(result.issues[1].body.includes('Depends on #1'));
+    assert.ok(!result.issues[0].body!.includes('Depends on'));
+    assert.ok(result.issues[1].body!.includes('Depends on #1'));
   });
 
 });
