@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import os from 'node:os';
-import { readLoopPlan, writeLoopPlan, mutateLoopPlan, writeQueueOverride, resolveQueuePriority, QUEUE_PRIORITY_TIERS } from './plan.js';
+import { readLoopPlan, writeLoopPlan, mutateLoopPlan, writeQueueOverride, resolveQueuePriority, QUEUE_PRIORITY_TIERS, readQueueManifest, writeQueueManifest } from './plan.js';
 
 test('plan mutation and queue overrides', async (t) => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-plan-test-'));
@@ -188,6 +188,105 @@ test('writeQueueOverride — filename includes priority prefix', async () => {
   assert.equal(basenames[0], path.basename(steerPath));
   assert.equal(basenames[1], path.basename(buildPath));
   assert.equal(basenames[2], path.basename(defaultPath));
+
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+test('readQueueManifest returns null for missing manifest', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-manifest-missing-'));
+  const manifest = await readQueueManifest(tmpDir);
+  assert.equal(manifest, null);
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+test('readQueueManifest returns null for invalid JSON', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-manifest-invalid-'));
+  await fs.mkdir(path.join(tmpDir, 'queue'), { recursive: true });
+  await fs.writeFile(path.join(tmpDir, 'queue', 'queue-order.json'), '{bad json', 'utf8');
+  const manifest = await readQueueManifest(tmpDir);
+  assert.equal(manifest, null);
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+test('readQueueManifest returns null for missing order array', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-manifest-bad-schema-'));
+  await fs.mkdir(path.join(tmpDir, 'queue'), { recursive: true });
+  await fs.writeFile(path.join(tmpDir, 'queue', 'queue-order.json'), '{"wrong": true}', 'utf8');
+  const manifest = await readQueueManifest(tmpDir);
+  assert.equal(manifest, null);
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+test('writeQueueManifest and readQueueManifest round-trip', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-manifest-roundtrip-'));
+  const expected = { order: ['0-1-steer.md', '3-2-plan.md', '5-3-build.md'] };
+  await writeQueueManifest(tmpDir, expected);
+  const read = await readQueueManifest(tmpDir);
+  assert.deepEqual(read, expected);
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+test('writeQueueOverride creates and updates queue-order.json', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-manifest-override-'));
+
+  // First write — steering (tier 0)
+  await writeQueueOverride(tmpDir, 'steer', 'steer content', { agent: 'steer', type: 'steering_override' });
+  let manifest = await readQueueManifest(tmpDir);
+  assert.ok(manifest, 'manifest should exist after first write');
+  assert.equal(manifest!.order.length, 1);
+  assert.ok(manifest!.order[0].startsWith('0-'), 'steering item should have tier 0 prefix');
+
+  // Second write — build (tier 4) — should go after steer
+  await writeQueueOverride(tmpDir, 'build', 'build content', { agent: 'build' });
+  manifest = await readQueueManifest(tmpDir);
+  assert.equal(manifest!.order.length, 2);
+  assert.ok(manifest!.order[0].startsWith('0-'), 'steer should still be first');
+  assert.ok(manifest!.order[1].startsWith('4-'), 'build should be second');
+
+  // Third write — review (tier 1) — should go between steer and build
+  await writeQueueOverride(tmpDir, 'review', 'review content', { agent: 'review' });
+  manifest = await readQueueManifest(tmpDir);
+  assert.equal(manifest!.order.length, 3);
+  assert.ok(manifest!.order[0].startsWith('0-'), 'steer first');
+  assert.ok(manifest!.order[1].startsWith('1-'), 'review second');
+  assert.ok(manifest!.order[2].startsWith('4-'), 'build third');
+
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+test('writeQueueOverride FIFO within same tier', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-manifest-fifo-'));
+
+  // Write two items with the same tier (plan = 3)
+  await writeQueueOverride(tmpDir, 'plan-a', 'first plan', { agent: 'plan' });
+  await writeQueueOverride(tmpDir, 'plan-b', 'second plan', { agent: 'plan' });
+  // Write a build item (tier 4)
+  await writeQueueOverride(tmpDir, 'build', 'build content', { agent: 'build' });
+
+  const manifest = await readQueueManifest(tmpDir);
+  assert.equal(manifest!.order.length, 3);
+  // Both plan items should be before build
+  assert.ok(manifest!.order[0].includes('plan-a'), 'first plan should come first');
+  assert.ok(manifest!.order[1].includes('plan-b'), 'second plan should come second');
+  assert.ok(manifest!.order[2].startsWith('4-'), 'build should be last');
+
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+test('writeQueueOverride skips stale manifest entries', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-manifest-stale-'));
+  await fs.mkdir(path.join(tmpDir, 'queue'), { recursive: true });
+
+  // Write a manifest with a stale entry (file doesn't exist)
+  await writeQueueManifest(tmpDir, { order: ['0-999-stale.md', '5-888-also-stale.md'] });
+
+  // Write a real item
+  await writeQueueOverride(tmpDir, 'build', 'build content', { agent: 'build' });
+
+  const manifest = await readQueueManifest(tmpDir);
+  // Stale entries remain in manifest (loop.sh skips them on read)
+  // New item should be inserted correctly
+  assert.ok(manifest!.order.some(f => f.startsWith('4-')), 'new build item should be in manifest');
 
   await fs.rm(tmpDir, { recursive: true, force: true });
 });

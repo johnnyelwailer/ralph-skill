@@ -68,6 +68,37 @@ export function resolveQueuePriority(frontmatter: Record<string, string>): Queue
   return QUEUE_PRIORITY_TIERS.DEFAULT;
 }
 
+export interface QueueManifest {
+  order: string[];
+}
+
+/**
+ * Reads the queue/queue-order.json manifest.
+ * Returns null if missing or invalid.
+ */
+export async function readQueueManifest(sessionDir: string): Promise<QueueManifest | null> {
+  const manifestPath = path.join(sessionDir, 'queue', 'queue-order.json');
+  if (!existsSync(manifestPath)) return null;
+  try {
+    const content = await fs.readFile(manifestPath, 'utf8');
+    const parsed = JSON.parse(content);
+    if (!parsed || !Array.isArray(parsed.order)) return null;
+    return parsed as QueueManifest;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Writes the queue/queue-order.json manifest.
+ */
+export async function writeQueueManifest(sessionDir: string, manifest: QueueManifest): Promise<void> {
+  const queueDir = path.join(sessionDir, 'queue');
+  await fs.mkdir(queueDir, { recursive: true });
+  const manifestPath = path.join(queueDir, 'queue-order.json');
+  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+}
+
 export interface LoopPlan {
   cycle: string[];
   cyclePosition: number;
@@ -163,6 +194,26 @@ export async function writeQueueOverride(
   }
 
   await fs.writeFile(queuePath, finalContent, 'utf8');
+
+  // Update queue-order.json manifest — insert at correct priority position
+  const manifest = await readQueueManifest(sessionDir);
+  const existing = manifest ? manifest.order.filter(f => f !== fileName) : [];
+
+  // Find correct insertion point: items ordered by tier then timestamp.
+  // Same-tier items are FIFO — new item goes after the last item of the same tier,
+  // but before any item with a higher tier number (lower priority).
+  // Parse tier from filename prefix (format: "{tier}-{timestamp}-{name}.md").
+  let insertIdx = existing.length;
+  for (let i = 0; i < existing.length; i++) {
+    const existingTier = parseInt(existing[i], 10);
+    if (!isNaN(existingTier) && existingTier > priority) {
+      insertIdx = i;
+      break;
+    }
+  }
+  existing.splice(insertIdx, 0, fileName);
+
+  await writeQueueManifest(sessionDir, { order: existing });
   return queuePath;
 }
 

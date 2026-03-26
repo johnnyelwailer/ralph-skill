@@ -165,7 +165,7 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
           options.sessionDir,
           options.promptsDir,
           steeringInstruction,
-          '001-PROMPT_steer',
+          'PROMPT_steer',
           {
             agent: 'steer',
             reason: 'steering_detected',
@@ -176,7 +176,7 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
 
         if (!planAlreadyQueued && existsSync(planTemplatePath)) {
           const planContent = await fs.readFile(planTemplatePath, 'utf8');
-          await writeQueueOverride(options.sessionDir, '002-PROMPT_plan', planContent, {
+          await writeQueueOverride(options.sessionDir, 'PROMPT_plan', planContent, {
             agent: 'plan',
             reason: 'post_steer_replan',
             type: 'steering_override'

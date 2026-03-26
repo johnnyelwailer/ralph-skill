@@ -2039,9 +2039,28 @@ run_queue_if_present() {
     local QUEUE_DIR="$SESSION_DIR/queue"
     local QUEUE_ITEM=""
     if [ -d "$QUEUE_DIR" ]; then
-        # Sort lexicographically — priority-prefixed files (e.g. 0-..., 1-...) sort first.
-        # Legacy files without prefix sort after numeric-prefixed ones.
-        QUEUE_ITEM=$(find "$QUEUE_DIR" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort | head -n1)
+        local MANIFEST="$QUEUE_DIR/queue-order.json"
+        if [ -f "$MANIFEST" ]; then
+            # Read manifest order — pick first entry whose file still exists
+            QUEUE_ITEM=$(python3 -c "
+import json, sys, os
+try:
+    with open('$MANIFEST') as f:
+        m = json.load(f)
+    for name in m.get('order', []):
+        p = os.path.join('$QUEUE_DIR', name)
+        if os.path.isfile(p):
+            print(p)
+            sys.exit(0)
+    sys.exit(1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null)
+        fi
+        if [ -z "$QUEUE_ITEM" ]; then
+            # Fallback: sort lexicographically — priority-prefixed files (e.g. 0-..., 1-...) sort first.
+            QUEUE_ITEM=$(find "$QUEUE_DIR" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort | head -n1)
+        fi
     fi
 
     if [ -n "$QUEUE_ITEM" ] && [ -f "$QUEUE_ITEM" ]; then
