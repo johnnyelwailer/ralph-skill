@@ -18,6 +18,7 @@ import type { OrchestratorIssue } from './orchestrate.js';
 import {
   readLatestProofManifest,
   buildProofArtifactsSection,
+  buildPrProofBody,
   type ProofArtifactsDeps,
 } from './proof-artifacts.js';
 
