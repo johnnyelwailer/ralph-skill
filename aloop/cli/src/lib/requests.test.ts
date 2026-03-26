@@ -1291,3 +1291,110 @@ test('processAgentRequests - handler failure', async () => {
     await env.cleanup();
   }
 });
+
+test('processAgentRequests - queue_investigation creates spec-question issue', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = {
+      id: 'req-investigate-1',
+      type: 'queue_investigation',
+      payload: {
+        questions: [
+          {
+            id: 'q-auth-flow',
+            question: 'What auth provider should be used?',
+            spec_section: '## Authentication',
+            code_path: 'src/auth.ts',
+            risk: 'high',
+          },
+        ],
+      },
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-investigate-1.json'), JSON.stringify(req));
+
+    let ghOp = '';
+    let ghPayload: any = null;
+    const ghRunner = async (op: string, _sid: string, reqPath: string) => {
+      ghOp = op;
+      ghPayload = JSON.parse(await fs.readFile(reqPath, 'utf8'));
+      return { exitCode: 0, output: JSON.stringify({ number: 50, url: 'http://gh/50' }) };
+    };
+
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+
+    assert.strictEqual(ghOp, 'issue-create');
+    assert.ok(ghPayload.title.includes('[spec-question]'));
+    assert.ok(ghPayload.title.includes('What auth provider should be used?'));
+    assert.ok(ghPayload.labels.includes('aloop/spec-question'));
+    assert.ok(ghPayload.body.includes('## Spec Question'));
+    assert.ok(ghPayload.body.includes('**Spec Section:** ## Authentication'));
+    assert.ok(ghPayload.body.includes('**Code Path:** `src/auth.ts`'));
+    assert.ok(ghPayload.body.includes('**Risk Level:** high'));
+
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    assert.strictEqual(queueFiles.length, 1);
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('"status": "success"'));
+    assert.ok(queueContent.includes('"issue_number": 50'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - queue_investigation with multiple questions', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = {
+      id: 'req-investigate-multi',
+      type: 'queue_investigation',
+      payload: {
+        questions: [
+          { id: 'q-1', question: 'Question one?' },
+          { id: 'q-2', question: 'Question two?', spec_section: '## Scope' },
+        ],
+      },
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-investigate-multi.json'), JSON.stringify(req));
+
+    let callCount = 0;
+    const ghRunner = async () => {
+      callCount++;
+      return { exitCode: 0, output: JSON.stringify({ number: 50 + callCount }) };
+    };
+
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+
+    assert.strictEqual(callCount, 2, 'should create two issues for two questions');
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    assert.strictEqual(queueFiles.length, 1);
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('"status": "success"'));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('processAgentRequests - queue_investigation failure', async () => {
+  const env = await setupTestEnv();
+  try {
+    const req = {
+      id: 'req-investigate-fail',
+      type: 'queue_investigation',
+      payload: {
+        questions: [{ id: 'q-fail', question: 'Will this fail?' }],
+      },
+    };
+    await fs.writeFile(path.join(env.requestsDir, 'req-investigate-fail.json'), JSON.stringify(req));
+
+    const ghRunner = async () => {
+      return { exitCode: 1, output: 'create failed' };
+    };
+
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
+
+    const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
+    assert.ok(failedFiles.includes('req-investigate-fail.json'));
+  } finally {
+    await env.cleanup();
+  }
+});
