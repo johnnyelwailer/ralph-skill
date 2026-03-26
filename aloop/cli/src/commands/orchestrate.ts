@@ -674,9 +674,20 @@ export async function applyDecompositionPlan(
     const componentLabels = deriveComponentLabels(planIssue.file_hints ?? []);
     labels.push(...componentLabels);
 
+    // Enrich body with dependency references (AC #6)
+    let enrichedBody = planIssue.body;
+    if (planIssue.depends_on.length > 0) {
+      const depRefs = planIssue.depends_on
+        .map((depId) => `#${idToGhNumber.get(depId) ?? depId}`)
+        .join(', ');
+      if (!enrichedBody.includes('Depends on')) {
+        enrichedBody = `${enrichedBody}\n\nDepends on ${depRefs}`;
+      }
+    }
+
     let ghNumber: number;
     if (deps.execGhIssueCreate && repo) {
-      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, planIssue.body, labels);
+      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, enrichedBody, labels);
     } else {
       // When no GH executor is available (plan-only without repo, or no executor),
       // use the plan ID as a placeholder number
@@ -688,7 +699,7 @@ export async function applyDecompositionPlan(
     updatedIssues.push({
       number: ghNumber,
       title: planIssue.title,
-      body: planIssue.body,
+      body: enrichedBody,
       file_hints: planIssue.file_hints ?? [],
       sandbox: normalizeTaskSandbox(planIssue.sandbox),
       requires: normalizeTaskRequires(planIssue.requires),
