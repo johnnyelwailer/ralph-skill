@@ -122,3 +122,81 @@ export function buildProofArtifactsSection(result: ProofArtifactsResult | null):
 
   return lines.join('\n') + '\n';
 }
+
+/**
+ * Copies screenshot proof artifacts from the child session into the git worktree
+ * under a .proof/ directory and commits them. This makes artifacts viewable inline
+ * on GitHub PRs via relative image paths.
+ *
+ * Returns an empty string if no manifest/artifacts exist, or the proof markdown
+ * section with embedded images referencing committed .proof/ paths.
+ */
+export async function commitProofArtifacts(
+  childDir: string,
+  worktree: string,
+  deps: ProofAttachDeps,
+): Promise<string> {
+  const result = await readLatestProofManifest(childDir, deps);
+  if (!result) return '';
+  const { manifest, iterDir } = result;
+  if (!manifest.artifacts || manifest.artifacts.length === 0) return '';
+
+  const screenshots = manifest.artifacts.filter(a => a.type === 'screenshot');
+  if (screenshots.length === 0) return buildPrProofBody(result);
+
+  // Copy screenshots into the worktree under .proof/
+  const proofDir = path.join(worktree, '.proof');
+  await deps.mkdir(proofDir, { recursive: true });
+  for (const artifact of screenshots) {
+    const src = path.join(iterDir, artifact.path);
+    const basename = path.basename(artifact.path);
+    if (deps.existsSync(src)) {
+      await deps.cp(src, path.join(proofDir, basename), {});
+    }
+  }
+
+  // Commit proof artifacts to the branch
+  deps.spawnSync('git', ['-C', worktree, 'add', '.proof'], { encoding: 'utf8' });
+  const statusResult = deps.spawnSync('git', ['-C', worktree, 'status', '--porcelain', '--', '.proof'], { encoding: 'utf8' });
+  if (statusResult.stdout?.trim()) {
+    deps.spawnSync('git', ['-C', worktree, 'commit', '-m', 'chore: add proof artifacts'], { encoding: 'utf8' });
+  }
+
+  // Build proof section with embedded images
+  return buildPrProofBody(result);
+}
+
+/**
+ * Builds the PR body markdown section for proof artifacts with inline images.
+ * Screenshots use relative paths (.proof/<basename>) that GitHub renders from the branch.
+ * Non-screenshot artifacts are listed by description only (no local paths).
+ */
+export function buildPrProofBody(result: ProofArtifactsResult | null): string {
+  if (!result) return '';
+
+  const { manifest } = result;
+  const lines: string[] = ['## Proof Artifacts'];
+
+  if (manifest.summary) {
+    lines.push('', manifest.summary);
+  }
+
+  if (!manifest.artifacts || manifest.artifacts.length === 0) {
+    const skipReasons = manifest.skipped?.map(s => s.reason).join('; ') ?? 'no reason given';
+    lines.push('', `Proof skipped: ${skipReasons}`);
+    return lines.join('\n') + '\n';
+  }
+
+  lines.push('');
+  for (const artifact of manifest.artifacts) {
+    if (artifact.type === 'screenshot') {
+      const basename = path.basename(artifact.path);
+      lines.push(`- **${artifact.type}**: ${artifact.description}`);
+      lines.push(`  ![](.proof/${basename})`);
+    } else {
+      lines.push(`- **${artifact.type}**: ${artifact.description}`);
+    }
+  }
+
+  return lines.join('\n') + '\n';
+}
