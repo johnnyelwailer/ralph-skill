@@ -8,6 +8,7 @@ import { writeQueueOverride } from '../lib/plan.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
 import { writeSpecBackfill } from '../lib/specBackfill.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
+import { DEFAULT_LOOP_SETTINGS } from '../lib/defaults.js';
 import {
   EtagCache,
   fetchBulkIssueState,
@@ -1444,7 +1445,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       throw new Error(`Loop script not found: ${loopScript}`);
     }
 
-    const childMaxIter = state.max_iterations != null ? String(state.max_iterations) : '999999';
+    const childMaxIter = state.max_iterations != null ? String(state.max_iterations) : String(DEFAULT_LOOP_SETTINGS.max_iterations);
     const args = [
       '--prompts-dir', promptsDir,
       '--session-dir', sessionDir,
@@ -1553,7 +1554,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
     }
 
-    const childMaxIter = result.state.max_iterations != null ? String(result.state.max_iterations) : '999999';
+    const childMaxIter = result.state.max_iterations != null ? String(result.state.max_iterations) : String(DEFAULT_LOOP_SETTINGS.max_iterations);
     const args = [
       '--prompts-dir', result.prompts_dir,
       '--session-dir', result.session_dir,
@@ -5419,7 +5420,7 @@ export async function runOrchestratorScanPass(
   }
 
   // 1. Triage monitoring cycle (configurable interval via state.triage_interval)
-  const triageInterval = state.triage_interval ?? 5;
+  const triageInterval = state.triage_interval ?? DEFAULT_LOOP_SETTINGS.triage_interval;
   if (repo && deps.execGh && iteration % triageInterval === 0) {
     result.triage = await runTriageMonitorCycle(
       state,
@@ -5799,7 +5800,7 @@ export async function runOrchestratorScanLoop(
       // Read current state for configurable throttle and backoff settings
       const currentState: OrchestratorState = JSON.parse(await deps.readFile(stateFile, 'utf8'));
       const baseInterval = currentState.scan_pass_throttle_ms ?? intervalMs;
-      const backoffStrategy = currentState.rate_limit_backoff ?? 'fixed';
+      const backoffStrategy = currentState.rate_limit_backoff ?? DEFAULT_LOOP_SETTINGS.rate_limit_backoff;
 
       let sleepMs = baseInterval;
       if (consecutiveRateLimits > 0) {
@@ -5844,7 +5845,7 @@ export async function runOrchestratorScanLoop(
 }
 
 function parseInterval(value: string | undefined): number {
-  if (!value) return 30000; // 30 seconds default
+  if (!value) return DEFAULT_LOOP_SETTINGS.scan_pass_throttle_ms;
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed < 1000) {
     throw new Error(`Invalid interval value: ${value} (must be >= 1000ms)`);
@@ -5853,7 +5854,7 @@ function parseInterval(value: string | undefined): number {
 }
 
 function parseTriageInterval(value: string | undefined): number {
-  if (!value) return 5; // default: run triage every 5 iterations
+  if (!value) return DEFAULT_LOOP_SETTINGS.triage_interval;
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed < 1) {
     throw new Error(`Invalid triage-interval value: ${value} (must be a positive integer)`);
@@ -5862,7 +5863,7 @@ function parseTriageInterval(value: string | undefined): number {
 }
 
 function parseRateLimitBackoff(value: string | undefined): 'exponential' | 'linear' | 'fixed' {
-  if (!value) return 'fixed';
+  if (!value) return DEFAULT_LOOP_SETTINGS.rate_limit_backoff;
   if (value === 'exponential' || value === 'linear' || value === 'fixed') return value;
   throw new Error(`Invalid rate-limit-backoff value: ${value} (must be exponential, linear, or fixed)`);
 }
@@ -5877,7 +5878,7 @@ function parseChildMaxIterations(value: string | undefined): number | undefined 
 }
 
 function parseMaxIterations(value: string | undefined): number {
-  if (!value) return 100; // default
+  if (!value) return DEFAULT_LOOP_SETTINGS.max_iterations;
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed < 1) {
     throw new Error(`Invalid max-iterations value: ${value} (must be a positive integer)`);

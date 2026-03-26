@@ -6,6 +6,23 @@ import { parseYaml } from '../lib/yaml.js';
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode';
 type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review' | 'single';
 
+interface LoopSettings {
+  max_iterations?: number;
+  max_stuck?: number;
+  inter_iteration_sleep?: number;
+  phase_retries_multiplier?: number;
+  cooldown_ladder?: number[];
+  concurrent_cap_cooldown?: number;
+  request_timeout?: number;
+  request_poll_interval?: number;
+  unavailable_sleep?: number;
+  provider_timeout?: number;
+  health_lock_retry_delays_ms?: number[];
+  triage_interval?: number;
+  scan_pass_throttle_ms?: number;
+  rate_limit_backoff?: 'exponential' | 'linear' | 'fixed';
+}
+
 interface LoopPlan {
   cycle: string[];
   cyclePosition: number;
@@ -13,6 +30,7 @@ interface LoopPlan {
   version: number;
   finalizer: string[];
   finalizerPosition: number;
+  loopSettings?: LoopSettings;
 }
 
 interface CompileLoopPlanOptions {
@@ -265,6 +283,53 @@ async function buildRoundRobinCycle(
   return cycle;
 }
 
+async function readLoopSettingsFromPipeline(
+  projectRoot: string | undefined,
+  deps: CompileLoopPlanDeps,
+): Promise<LoopSettings | undefined> {
+  if (!projectRoot) return undefined;
+  const pipelineYamlPath = path.join(projectRoot, '.aloop', 'pipeline.yml');
+  if (!deps.existsSync(pipelineYamlPath)) return undefined;
+
+  try {
+    const content = await deps.readFile(pipelineYamlPath, 'utf8');
+    const parsed = parseYaml(content);
+    const loop = parsed.loop;
+    if (!loop || typeof loop !== 'object' || Array.isArray(loop)) return undefined;
+
+    const settings: LoopSettings = {};
+    const numFields: Array<{key: keyof LoopSettings; set: (s: LoopSettings, v: number) => void}> = [
+      { key: 'max_iterations', set: (s, v) => { s.max_iterations = v; } },
+      { key: 'max_stuck', set: (s, v) => { s.max_stuck = v; } },
+      { key: 'inter_iteration_sleep', set: (s, v) => { s.inter_iteration_sleep = v; } },
+      { key: 'phase_retries_multiplier', set: (s, v) => { s.phase_retries_multiplier = v; } },
+      { key: 'concurrent_cap_cooldown', set: (s, v) => { s.concurrent_cap_cooldown = v; } },
+      { key: 'request_timeout', set: (s, v) => { s.request_timeout = v; } },
+      { key: 'request_poll_interval', set: (s, v) => { s.request_poll_interval = v; } },
+      { key: 'unavailable_sleep', set: (s, v) => { s.unavailable_sleep = v; } },
+      { key: 'triage_interval', set: (s, v) => { s.triage_interval = v; } },
+      { key: 'scan_pass_throttle_ms', set: (s, v) => { s.scan_pass_throttle_ms = v; } },
+    ];
+    for (const { key, set } of numFields) {
+      if (typeof loop[key] === 'number') {
+        set(settings, loop[key]);
+      }
+    }
+    if (Array.isArray(loop.cooldown_ladder) && loop.cooldown_ladder.every((v: unknown) => typeof v === 'number')) {
+      settings.cooldown_ladder = loop.cooldown_ladder;
+    }
+    if (Array.isArray(loop.health_lock_retry_delays_ms) && loop.health_lock_retry_delays_ms.every((v: unknown) => typeof v === 'number')) {
+      settings.health_lock_retry_delays_ms = loop.health_lock_retry_delays_ms;
+    }
+    if (typeof loop.rate_limit_backoff === 'string' && ['exponential', 'linear', 'fixed'].includes(loop.rate_limit_backoff)) {
+      settings.rate_limit_backoff = loop.rate_limit_backoff;
+    }
+    return Object.keys(settings).length > 0 ? settings : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function readFinalizerFromPipeline(
   projectRoot: string | undefined,
   deps: CompileLoopPlanDeps,
@@ -443,6 +508,7 @@ export async function compileLoopPlan(
   }
 
   const finalizer = await readFinalizerFromPipeline(projectRoot, deps);
+  const loopSettings = await readLoopSettingsFromPipeline(projectRoot, deps);
 
   const plan: LoopPlan = {
     cycle,
@@ -452,6 +518,9 @@ export async function compileLoopPlan(
     finalizer,
     finalizerPosition: 0,
   };
+  if (loopSettings) {
+    plan.loopSettings = loopSettings;
+  }
 
   const planPath = path.join(sessionDir, 'loop-plan.json');
   await deps.writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, 'utf8');

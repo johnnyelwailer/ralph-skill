@@ -277,21 +277,71 @@ if [ -f "$RUNTIME_VERSION_FILE" ]; then
 fi
 
 DASHBOARD_PID=""
-DASHBOARD_URL=""
 
-# Parse round-robin providers into array
-IFS=',' read -ra RR_PROVIDERS <<< "$ROUND_ROBIN_PROVIDERS"
+# ============================================================================
+# LOOP SETTINGS — configurable from loop-plan.json loopSettings
+# ============================================================================
 
-substitute_prompt_placeholders() {
-    local prompt_text="$1"
-    prompt_text="${prompt_text//\{\{SESSION_DIR\}\}/$SESSION_DIR}"
-    prompt_text="${prompt_text//\{\{ITERATION\}\}/$ITERATION}"
-    prompt_text="${prompt_text//\{\{ARTIFACTS_DIR\}\}/$ARTIFACTS_DIR}"
-    # Backward compatibility for existing custom prompts.
-    prompt_text="${prompt_text//<session-dir>/$SESSION_DIR}"
-    prompt_text="${prompt_text//iter-<N>/iter-$ITERATION}"
-    printf '%s' "$prompt_text"
+load_loop_settings() {
+    if [ ! -f "$LOOP_PLAN_FILE" ] || ! command -v python3 >/dev/null 2>&1; then
+        return
+    fi
+    python3 - "$LOOP_PLAN_FILE" <<'PY' | while IFS= read -r line; do eval "$line"; done
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    plan = json.load(f)
+s = plan.get("loopSettings") or plan.get("loop_settings")
+if not s or not isinstance(s, dict):
+    sys.exit(0)
+mappings = [
+    ("max_iterations", "MAX_ITERATIONS", int),
+    ("max_stuck", "MAX_STUCK", int),
+    ("inter_iteration_sleep", "INTER_ITERATION_SLEEP", int),
+    ("phase_retries_multiplier", "PHASE_RETRIES_MULTIPLIER", int),
+    ("concurrent_cap_cooldown", "CONCURRENT_CAP_COOLDOWN", int),
+    ("request_timeout", "REQUEST_TIMEOUT", int),
+    ("request_poll_interval", "REQUEST_POLL_INTERVAL", int),
+    ("unavailable_sleep", "UNAVAILABLE_SLEEP", int),
+    ("triage_interval", "TRIAGE_INTERVAL", int),
+    ("scan_pass_throttle_ms", "SCAN_PASS_THROTTLE_MS", int),
+]
+for key, var, cast in mappings:
+    if key in s and s[key] is not None:
+        print(f'{var}="{cast(s[key])}"')
+# Rate limit backoff strategy
+rlb = s.get("rate_limit_backoff")
+if isinstance(rlb, str) and rlb in ("exponential", "linear", "fixed"):
+    print(f'RATE_LIMIT_BACKOFF="{rlb}"')
+# Cooldown ladder
+cl = s.get("cooldown_ladder")
+if isinstance(cl, list) and len(cl) >= 2:
+    vals = ",".join(str(int(v)) for v in cl if isinstance(v, (int, float)))
+    if vals:
+        print(f'COOLDOWN_LADDER="{vals}"')
+# Health lock retry delays
+hl = s.get("health_lock_retry_delays_ms")
+if isinstance(hl, list) and len(hl) >= 2:
+    vals = " ".join(str(int(v) / 1000) for v in hl if isinstance(v, (int, float)))
+    if vals:
+        print(f'HEALTH_LOCK_RETRY_DELAYS="{vals}"')
+PY
 }
+
+# Initialize configurable settings with defaults
+INTER_ITERATION_SLEEP=3
+REQUEST_TIMEOUT=300
+REQUEST_POLL_INTERVAL=2
+UNAVAILABLE_SLEEP=60
+CONCURRENT_CAP_COOLDOWN=120
+PHASE_RETRIES_MULTIPLIER=2
+COOLDOWN_LADDER="0,120,300,900,1800,3600"
+TRIAGE_INTERVAL=5
+SCAN_PASS_THROTTLE_MS=30000
+RATE_LIMIT_BACKOFF="fixed"
+
+# Load settings from loop-plan.json at startup
+load_loop_settings
 
 # Re-read provider list from meta.json each iteration (supports hot-reload)
 refresh_providers_from_meta() {
@@ -1019,14 +1069,13 @@ EOF
 
 get_provider_cooldown_seconds() {
     local failures="$1"
-    case "$failures" in
-        1) echo 0 ;;
-        2) echo 120 ;;
-        3) echo 300 ;;
-        4) echo 900 ;;
-        5) echo 1800 ;;
-        *) echo 3600 ;;
-    esac
+    IFS=',' read -ra _cooldown_ladder <<< "$COOLDOWN_LADDER"
+    local idx=$((failures - 1))
+    if [ "$idx" -lt 0 ]; then idx=0; fi
+    if [ "$idx" -ge ${#_cooldown_ladder[@]} ]; then
+        idx=$(( ${#_cooldown_ladder[@]} - 1 ))
+    fi
+    echo "${_cooldown_ladder[$idx]}"
 }
 
 classify_provider_failure() {
@@ -1076,7 +1125,7 @@ update_provider_health_on_failure() {
         new_status="degraded"
     else
         if [ "$reason" = "concurrent_cap" ]; then
-            cooldown_secs=120
+            cooldown_secs="$CONCURRENT_CAP_COOLDOWN"
         else
             cooldown_secs=$(get_provider_cooldown_seconds "$failures")
         fi
@@ -1170,7 +1219,7 @@ resolve_healthy_provider() {
             return
         fi
 
-        local sleep_secs=60
+        local sleep_secs="${UNAVAILABLE_SLEEP:-60}"
         local providers_csv
         providers_csv="$(IFS=,; echo "${RR_PROVIDERS[*]}")"
         if [ "$degraded_count" -eq "$count" ]; then
@@ -1925,7 +1974,7 @@ if [ "$PROVIDER" = "round-robin" ]; then
     if [ "$provider_count" -lt 1 ]; then
         provider_count=1
     fi
-    calculated_retries=$((provider_count * 2))
+    calculated_retries=$((provider_count * PHASE_RETRIES_MULTIPLIER))
     if [ "$calculated_retries" -lt 2 ]; then
         MAX_PHASE_RETRIES=2
     else
@@ -2020,7 +2069,7 @@ wait_for_requests() {
         wait_start=$(date +%s)
         local timeout=${REQUEST_TIMEOUT:-300}
         while ls "$requests_dir"/*.json 2>/dev/null | grep -q .; do
-            sleep 2
+            sleep "$REQUEST_POLL_INTERVAL"
             local elapsed
             elapsed=$(( $(date +%s) - wait_start ))
             if [ "$elapsed" -gt "$timeout" ]; then
@@ -2090,7 +2139,7 @@ run_queue_if_present() {
         fi
 
         wait_for_requests
-        sleep 3
+        sleep "$INTER_ITERATION_SLEEP"
         return 0
     fi
     return 1
@@ -2317,7 +2366,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     fi
 
     wait_for_requests
-    sleep 3
+    sleep "$INTER_ITERATION_SLEEP"
 done
 
 echo ""

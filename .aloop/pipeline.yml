@@ -23,6 +23,37 @@ finalizer:
 # Orchestrator event→prompt mapping.
 # process-requests scans issue state, matches filters, queues the prompt.
 # No hardcoded agent knowledge in the runtime.
+# Loop timing/tuning settings — all values are defaults, hot-reloadable at runtime.
+# The loop reads this section from loop-plan.json at startup and hot-reloads from
+# meta.json each iteration. Edit the file and the running loop picks it up.
+loop:
+  # Iteration control
+  max_iterations: 50            # Max iterations before auto-stopping (set 0 for unlimited)
+  max_stuck: 3                  # Skip task after N consecutive failures
+  inter_iteration_sleep: 3      # Seconds between iterations
+  phase_retries_multiplier: 2   # MAX_PHASE_RETRIES = provider_count * this
+
+  # Provider cooldown ladder (seconds per consecutive failure count)
+  # Index 0 = failure #1, index 1 = failure #2, ..., index 5+ = failure #6+
+  cooldown_ladder: [0, 120, 300, 900, 1800, 3600]
+  concurrent_cap_cooldown: 120  # Cooldown for "cannot launch inside another session" errors
+
+  # Request processing
+  request_timeout: 300          # Seconds to wait for pending requests
+  request_poll_interval: 2      # Seconds between request polls
+
+  # Provider availability
+  unavailable_sleep: 60         # Seconds to sleep when all providers are unavailable
+  provider_timeout: 10800       # Max seconds to wait for a single provider invocation
+
+  # Health file locking
+  health_lock_retry_delays_ms: [50, 100, 150, 200, 250]
+
+  # Orchestrator-specific
+  triage_interval: 5                # Run triage monitor every N iterations
+  scan_pass_throttle_ms: 30000      # Minimum milliseconds between scan passes
+  rate_limit_backoff: fixed         # Backoff strategy: exponential, linear, or fixed
+
 orchestrator_events:
   refine:
     prompt: PROMPT_orch_refine.md

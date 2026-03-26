@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { processAgentRequests } from '../lib/requests.js';
 import { readLoopPlan, mutateLoopPlan, writeQueueOverride, queueSteeringPrompt } from '../lib/plan.js';
 import { monitorSessionState } from '../lib/monitor.js';
+import { DEFAULT_LOOP_SETTINGS } from '../lib/defaults.js';
 
 interface DashboardOptions {
   port: string;
@@ -1053,7 +1054,7 @@ export async function startDashboardServer(
         // Build loop.sh args from meta.json
         const loopScript = path.join(workdir, 'aloop', 'bin', 'loop.sh');
         const promptsDir = typeof meta.prompts_dir === 'string' ? meta.prompts_dir : path.join(sessionDir, 'prompts');
-        const maxIter = typeof meta.max_iterations === 'number' ? String(meta.max_iterations) : '500';
+        const maxIter = typeof meta.max_iterations === 'number' ? String(meta.max_iterations) : String(DEFAULT_LOOP_SETTINGS.max_iterations);
         const provider = typeof meta.provider === 'string' ? meta.provider : 'round-robin';
         const mode = typeof meta.mode === 'string' ? meta.mode : 'plan-build-review';
 
