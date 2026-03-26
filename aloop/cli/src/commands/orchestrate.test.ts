@@ -6209,3 +6209,136 @@ describe('runOrchestratorScanPass with replan', () => {
     assert.equal(result.replan, null);
   });
 });
+
+describe('checkMemoryPressure', () => {
+  it('returns null when freemem is not provided', () => {
+    const result = checkMemoryPressure(undefined, 512);
+    assert.equal(result, null);
+  });
+
+  it('returns pressured=false when free memory is above threshold', () => {
+    // 2 GB free = ~2048 MB
+    const freemem = () => 2048 * 1024 * 1024;
+    const result = checkMemoryPressure(freemem, 512);
+    assert.ok(result);
+    assert.equal(result!.pressured, false);
+    assert.equal(result!.freeMB, 2048);
+    assert.equal(result!.thresholdMB, 512);
+  });
+
+  it('returns pressured=true when free memory is below threshold', () => {
+    // 256 MB free
+    const freemem = () => 256 * 1024 * 1024;
+    const result = checkMemoryPressure(freemem, 512);
+    assert.ok(result);
+    assert.equal(result!.pressured, true);
+    assert.equal(result!.freeMB, 256);
+    assert.equal(result!.thresholdMB, 512);
+  });
+
+  it('uses default threshold of 512MB when threshold is undefined', () => {
+    const freemem = () => 256 * 1024 * 1024;
+    const result = checkMemoryPressure(freemem, undefined);
+    assert.ok(result);
+    assert.equal(result!.pressured, true);
+    assert.equal(result!.thresholdMB, 512);
+  });
+
+  it('returns pressured=false when free memory equals threshold', () => {
+    const freemem = () => 512 * 1024 * 1024;
+    const result = checkMemoryPressure(freemem, 512);
+    assert.ok(result);
+    assert.equal(result!.pressured, false);
+  });
+
+  it('rounds freeMB to nearest integer', () => {
+    // 512.7 MB worth of bytes
+    const freemem = () => Math.round(512.7 * 1024 * 1024);
+    const result = checkMemoryPressure(freemem, 512);
+    assert.ok(result);
+    assert.equal(result!.freeMB, 513);
+    assert.equal(result!.pressured, false);
+  });
+});
+
+describe('runOrchestratorScanPass memory pressure', () => {
+  it('skips dispatch and logs when memory is under pressure', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'pending', dor_validated: true, status: 'Ready' })],
+    });
+    const deps = createMockScanDeps({
+      freemem: () => 256 * 1024 * 1024, // 256 MB - below 512 default
+      memoryPressureThresholdMB: 512,
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.memoryPressureSkipped, true);
+    assert.equal(result.dispatched, 0);
+    const logEvent = deps.logEntries.find((e) => e.event === 'dispatch_skipped_memory_pressure');
+    assert.ok(logEvent);
+    assert.equal(logEvent.free_mb, 256);
+    assert.equal(logEvent.threshold_mb, 512);
+  });
+
+  it('dispatches normally when memory is sufficient', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'pending', dor_validated: true, status: 'Ready' })],
+    });
+    const deps = createMockScanDeps({
+      freemem: () => 2048 * 1024 * 1024, // 2 GB - well above threshold
+      memoryPressureThresholdMB: 512,
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.memoryPressureSkipped, false);
+    const logEvent = deps.logEntries.find((e) => e.event === 'dispatch_skipped_memory_pressure');
+    assert.equal(logEvent, undefined);
+  });
+
+  it('does not skip dispatch when freemem is not available', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'pending', dor_validated: true, status: 'Ready' })],
+    });
+    const deps = createMockScanDeps({
+      // no freemem
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    assert.equal(result.memoryPressureSkipped, false);
+  });
+
+  it('still processes other scan pass steps when memory is under pressure', async () => {
+    const state = makeScanState({
+      issues: [makeIssue({ number: 1, wave: 1, state: 'merged' })],
+    });
+    const deps = createMockScanDeps({
+      freemem: () => 100 * 1024 * 1024, // 100 MB - very low
+      memoryPressureThresholdMB: 512,
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    const result = await runOrchestratorScanPass(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1, deps,
+    );
+
+    // Memory pressure should skip dispatch but not stop other steps
+    assert.equal(result.memoryPressureSkipped, true);
+    assert.equal(result.allDone, true); // still detects all merged
+  });
+});
