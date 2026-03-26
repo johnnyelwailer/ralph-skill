@@ -6452,3 +6452,43 @@ describe('applyEstimateResults label enrichment', () => {
     assert.deepStrictEqual(outcome.updated, [6]);
   });
 });
+
+// --- Prompt content verification tests (ACs 9-10) ---
+
+describe('prompt content verification', () => {
+  it('orchestrator review prompt rejects unverified acceptance criteria (AC 9)', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const reviewPrompt = await readFile(
+      new URL('../../../../templates/PROMPT_orch_review.md', import.meta.url),
+      'utf8',
+    );
+    assert.ok(
+      reviewPrompt.includes('NOT verified'),
+      'Review prompt must mention NOT verified criteria',
+    );
+    assert.ok(
+      reviewPrompt.includes('request-changes'),
+      'Review prompt must request-changes on unverified criteria',
+    );
+  });
+
+  it('child review instructions include PR_DESCRIPTION.md generation (AC 10)', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const reviewInstructions = await readFile(
+      new URL('../../../../templates/instructions/review.md', import.meta.url),
+      'utf8',
+    );
+    assert.ok(
+      reviewInstructions.includes('PR_DESCRIPTION.md'),
+      'Review instructions must mention PR_DESCRIPTION.md',
+    );
+    assert.ok(
+      reviewInstructions.includes('## Summary'),
+      'PR_DESCRIPTION.md format must include Summary section',
+    );
+    assert.ok(
+      reviewInstructions.includes('## Verification'),
+      'PR_DESCRIPTION.md format must include Verification section',
+    );
+  });
+});
