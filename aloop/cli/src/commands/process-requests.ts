@@ -14,7 +14,10 @@ import { EtagCache } from '../lib/github-monitor.js';
 import {
   readLatestProofManifest,
   buildProofArtifactsSection,
+  commitProofArtifacts,
+  buildPrProofBody,
   type ProofArtifactsDeps,
+  type ProofAttachDeps,
 } from './proof-artifacts.js';
 
 // --- Orchestrator event system (data-driven from pipeline.yml) ---
