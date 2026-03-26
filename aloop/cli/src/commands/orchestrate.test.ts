@@ -677,8 +677,8 @@ describe('applyDecompositionPlan', () => {
     await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
     assert.equal(calls.length, 2);
-    assert.deepStrictEqual(calls[0].labels, ['aloop', 'aloop/wave-1']);
-    assert.deepStrictEqual(calls[1].labels, ['aloop', 'aloop/wave-2']);
+    assert.deepStrictEqual(calls[0].labels, ['aloop', 'aloop/wave-1', 'wave/1']);
+    assert.deepStrictEqual(calls[1].labels, ['aloop', 'aloop/wave-2', 'wave/2']);
     assert.equal(calls[0].title, 'Wave1');
     assert.equal(calls[1].title, 'Wave2');
   });
