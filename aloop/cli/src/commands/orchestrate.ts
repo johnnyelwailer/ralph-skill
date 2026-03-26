@@ -5522,6 +5522,7 @@ export async function runOrchestratorScanPass(
         {
           existsSync: deps.existsSync,
           readFile: deps.readFile,
+          readdir: deps.readdir ?? (async (p: string) => { throw new Error('readdir not available'); }),
           writeFile: deps.writeFile,
           execGh: deps.execGh,
           now: deps.now,
