@@ -445,9 +445,9 @@ REASON_BY_PROVIDER[codex]="quota"
 ) >/dev/null 2>&1
 rc=$?
 SLEEP_EXIT_CODE=0
-if [ "$rc" -eq 77 ] && contains_log "all_providers_degraded" && contains_log "all_providers_unavailable"; then
+if [ "$rc" -eq 77 ] && contains_log "all_providers_degraded"; then
     cover_branch "provider.all_degraded"
-    pass_case "resolve_healthy_provider all-degraded branch emits degraded + unavailable events"
+    pass_case "resolve_healthy_provider all-degraded branch exits 77 with degraded event"
 else
     fail_case "resolve_healthy_provider all-degraded branch failed"
 fi

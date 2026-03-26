@@ -1527,6 +1527,7 @@ function Resolve-HealthyProvider {
                 reasons   = ($allDegradedReasons -join ',')
             }
             Write-Warning "All providers are degraded. Fix auth/quota issues (for example, rerun provider login) and retry."
+            exit 77
         }
         if ($null -ne $earliestCooldown) {
             $remaining = ($earliestCooldown - [DateTimeOffset]::UtcNow).TotalSeconds
