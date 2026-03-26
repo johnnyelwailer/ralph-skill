@@ -30,6 +30,12 @@ export interface ProofArtifactsResult {
   childDir: string; // full path to the child session directory
 }
 
+export interface ProofAttachDeps extends ProofArtifactsDeps {
+  spawnSync: (cmd: string, args: string[], opts?: Record<string, unknown>) => { status: number | null; stdout: string; stderr: string };
+  mkdir: (p: string, opts?: { recursive?: boolean }) => Promise<void>;
+  cp: (src: string, dest: string, opts?: Record<string, unknown>) => Promise<void>;
+}
+
 /**
  * Scans childDir/artifacts/iter-* for proof-manifest.json files.
  * Returns the most recent iteration with a non-empty artifacts array.
