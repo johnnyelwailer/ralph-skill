@@ -575,6 +575,7 @@ parse_frontmatter() {
     FRONTMATTER_TIMEOUT=$(sed -n '/^---$/,/^---$/{ /^timeout:/s/timeout: *//p }' "$file" | head -n1)
     FRONTMATTER_MAX_RETRIES=$(sed -n '/^---$/,/^---$/{ /^max_retries:/s/max_retries: *//p }' "$file" | head -n1)
     FRONTMATTER_RETRY_BACKOFF=$(sed -n '/^---$/,/^---$/{ /^retry_backoff:/s/retry_backoff: *//p }' "$file" | head -n1)
+    FRONTMATTER_PRIORITY=$(sed -n '/^---$/,/^---$/{ /^priority:/s/priority: *//p }' "$file" | head -n1)
     FRONTMATTER_PROVIDER="${FRONTMATTER_PROVIDER:-}"
     FRONTMATTER_MODEL="${FRONTMATTER_MODEL:-}"
     FRONTMATTER_AGENT="${FRONTMATTER_AGENT:-}"
@@ -584,6 +585,7 @@ parse_frontmatter() {
     FRONTMATTER_TIMEOUT="${FRONTMATTER_TIMEOUT:-}"
     FRONTMATTER_MAX_RETRIES="${FRONTMATTER_MAX_RETRIES:-}"
     FRONTMATTER_RETRY_BACKOFF="${FRONTMATTER_RETRY_BACKOFF:-}"
+    FRONTMATTER_PRIORITY="${FRONTMATTER_PRIORITY:-}"
 }
 
 # Convert a duration string (e.g. 30m, 2h, 90s, 3600) to seconds.
@@ -2037,11 +2039,9 @@ run_queue_if_present() {
     local QUEUE_DIR="$SESSION_DIR/queue"
     local QUEUE_ITEM=""
     if [ -d "$QUEUE_DIR" ]; then
-        # Prioritize steering prompts (*-PROMPT_steer.md or *-steering.md)
-        QUEUE_ITEM=$(find "$QUEUE_DIR" -maxdepth 1 \( -name '*-PROMPT_steer.md' -o -name '*-steering.md' \) -type f 2>/dev/null | sort | head -n1)
-        if [ -z "$QUEUE_ITEM" ]; then
-            QUEUE_ITEM=$(find "$QUEUE_DIR" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort | head -n1)
-        fi
+        # Sort lexicographically — priority-prefixed files (e.g. 0-..., 1-...) sort first.
+        # Legacy files without prefix sort after numeric-prefixed ones.
+        QUEUE_ITEM=$(find "$QUEUE_DIR" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort | head -n1)
     fi
 
     if [ -n "$QUEUE_ITEM" ] && [ -f "$QUEUE_ITEM" ]; then

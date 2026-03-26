@@ -414,6 +414,7 @@ function Parse-Frontmatter {
         timeout = ''
         max_retries = ''
         retry_backoff = ''
+        priority = ''
     }
     if (-not (Test-Path $PromptFile)) { return }
     $content = Get-Content -Path $PromptFile -Raw
@@ -422,7 +423,7 @@ function Parse-Frontmatter {
     if ($parts.Count -lt 3) { return }
     $header = $parts[1] -split "`r?`n"
     foreach ($line in $header) {
-        if ($line -match '^\s*(provider|model|agent|reasoning|color|trigger|timeout|max_retries|retry_backoff)\s*:\s*(.+?)\s*$') {
+        if ($line -match '^\s*(provider|model|agent|reasoning|color|trigger|timeout|max_retries|retry_backoff|priority)\s*:\s*(.+?)\s*$') {
             $script:frontmatter[$Matches[1].ToLowerInvariant()] = $Matches[2].Trim()
         }
     }
@@ -2033,14 +2034,10 @@ function Run-QueueIfPresent {
     $queueDir = Join-Path $SessionDir "queue"
     $queueItem = $null
     if (Test-Path $queueDir) {
-        # Prioritize steering prompts (*-PROMPT_steer.md or *-steering.md)
-        $queueItem = Get-ChildItem -Path $queueDir -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -like "*-PROMPT_steer.md" -or $_.Name -like "*-steering.md" } |
+        # Sort lexicographically — priority-prefixed files (e.g. 0-..., 1-...) sort first.
+        # Legacy files without prefix sort after numeric-prefixed ones.
+        $queueItem = Get-ChildItem -Path $queueDir -Filter '*.md' -File -ErrorAction SilentlyContinue |
             Sort-Object Name | Select-Object -First 1
-        if (-not $queueItem) {
-            $queueItem = Get-ChildItem -Path $queueDir -Filter '*.md' -File -ErrorAction SilentlyContinue |
-                Sort-Object Name | Select-Object -First 1
-        }
     }
 
     if ($queueItem) {

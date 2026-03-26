@@ -4906,14 +4906,8 @@ export async function processQueuedPrompts(
   const mdFiles = entries.filter((f) => f.endsWith('.md'));
   if (mdFiles.length === 0) return result;
 
-  // Prioritize steering prompts (*-PROMPT_steer.md or *-steering.md)
-  let nextFile = mdFiles
-    .filter((f) => f.includes('-PROMPT_steer.md') || f.includes('-steering.md'))
-    .sort()[0];
-
-  if (!nextFile) {
-    nextFile = mdFiles.sort()[0];
-  }
+  // Sort lexicographically — priority-prefixed files (e.g. 0-..., 1-...) sort first
+  const nextFile = mdFiles.sort()[0];
 
   // Process one file per pass (oldest first by filename sort), like loop.sh
   const fileName = nextFile;

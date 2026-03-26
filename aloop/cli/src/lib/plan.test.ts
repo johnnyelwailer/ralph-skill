@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import os from 'node:os';
-import { readLoopPlan, writeLoopPlan, mutateLoopPlan, writeQueueOverride } from './plan.js';
+import { readLoopPlan, writeLoopPlan, mutateLoopPlan, writeQueueOverride, resolveQueuePriority, QUEUE_PRIORITY_TIERS } from './plan.js';
 
 test('plan mutation and queue overrides', async (t) => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-plan-test-'));
@@ -129,5 +129,65 @@ test('writeQueueOverride handles empty content with frontmatter', async () => {
   const queuePath = await writeQueueOverride(tmpDir, 'empty', '', { agent: 'test' });
   const written = await fs.readFile(queuePath, 'utf8');
   assert.equal(written, '---\nagent: test\n---\n\n');
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+test('resolveQueuePriority — explicit priority field overrides inference', () => {
+  // Named tiers
+  assert.equal(resolveQueuePriority({ priority: 'steering' }), 0);
+  assert.equal(resolveQueuePriority({ priority: 'review' }), 1);
+  assert.equal(resolveQueuePriority({ priority: 'sub_decompose' }), 2);
+  assert.equal(resolveQueuePriority({ priority: 'plan' }), 3);
+  assert.equal(resolveQueuePriority({ priority: 'build' }), 4);
+  assert.equal(resolveQueuePriority({ priority: 'default' }), 5);
+
+  // Numeric values
+  assert.equal(resolveQueuePriority({ priority: '0' }), 0);
+  assert.equal(resolveQueuePriority({ priority: '3' }), 3);
+  assert.equal(resolveQueuePriority({ priority: '5' }), 5);
+
+  // Numeric clamping
+  assert.equal(resolveQueuePriority({ priority: '99' }), 5);
+  assert.equal(resolveQueuePriority({ priority: '-1' }), 0);
+});
+
+test('resolveQueuePriority — falls back to inference when no priority field', () => {
+  assert.equal(resolveQueuePriority({ type: 'steering_override' }), QUEUE_PRIORITY_TIERS.STEERING);
+  assert.equal(resolveQueuePriority({ agent: 'review' }), QUEUE_PRIORITY_TIERS.REVIEW);
+  assert.equal(resolveQueuePriority({ agent: 'plan', reason: 'epic_decompose' }), QUEUE_PRIORITY_TIERS.SUB_DECOMPOSE);
+  assert.equal(resolveQueuePriority({ agent: 'plan' }), QUEUE_PRIORITY_TIERS.PLAN);
+  assert.equal(resolveQueuePriority({ agent: 'build' }), QUEUE_PRIORITY_TIERS.BUILD);
+  assert.equal(resolveQueuePriority({ agent: 'qa' }), QUEUE_PRIORITY_TIERS.DEFAULT);
+  assert.equal(resolveQueuePriority({}), QUEUE_PRIORITY_TIERS.DEFAULT);
+});
+
+test('resolveQueuePriority — explicit field takes precedence over inference', () => {
+  // Steering override type but explicit plan priority
+  assert.equal(resolveQueuePriority({ type: 'steering_override', priority: 'plan' }), QUEUE_PRIORITY_TIERS.PLAN);
+  // Build agent but explicit review priority
+  assert.equal(resolveQueuePriority({ agent: 'build', priority: 'review' }), QUEUE_PRIORITY_TIERS.REVIEW);
+});
+
+test('writeQueueOverride — filename includes priority prefix', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aloop-queue-priority-'));
+
+  // Steering priority → prefix 0
+  const steerPath = await writeQueueOverride(tmpDir, 'steer', 'steer content', { agent: 'steer', type: 'steering_override' });
+  assert.ok(path.basename(steerPath).startsWith('0-'), `Expected filename to start with '0-', got: ${path.basename(steerPath)}`);
+
+  // Build priority → prefix 4
+  const buildPath = await writeQueueOverride(tmpDir, 'build', 'build content', { agent: 'build' });
+  assert.ok(path.basename(buildPath).startsWith('4-'), `Expected filename to start with '4-', got: ${path.basename(buildPath)}`);
+
+  // Default (no frontmatter) → prefix 5
+  const defaultPath = await writeQueueOverride(tmpDir, 'plain', 'plain content');
+  assert.ok(path.basename(defaultPath).startsWith('5-'), `Expected filename to start with '5-', got: ${path.basename(defaultPath)}`);
+
+  // Files sort in priority order
+  const basenames = [steerPath, buildPath, defaultPath].map((p) => path.basename(p)).sort();
+  assert.equal(basenames[0], path.basename(steerPath));
+  assert.equal(basenames[1], path.basename(buildPath));
+  assert.equal(basenames[2], path.basename(defaultPath));
+
   await fs.rm(tmpDir, { recursive: true, force: true });
 });

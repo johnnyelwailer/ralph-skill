@@ -17,11 +17,37 @@ export const QUEUE_PRIORITY_TIERS = {
 
 export type QueuePriorityTier = (typeof QUEUE_PRIORITY_TIERS)[keyof typeof QUEUE_PRIORITY_TIERS];
 
+const NAMED_PRIORITY_TIERS: Record<string, QueuePriorityTier> = {
+  steering: 0,
+  review: 1,
+  sub_decompose: 2,
+  plan: 3,
+  build: 4,
+  default: 5,
+};
+
 /**
- * Resolves the priority tier for a queue item based on its frontmatter fields.
+ * Resolves the priority tier for a queue item.
+ * Accepts either an explicit `priority` field (numeric or named tier) or
+ * falls back to inferring from `type`, `agent`, and `reason`.
  * Returns a tier number 0–5 (lower = higher priority).
  */
 export function resolveQueuePriority(frontmatter: Record<string, string>): QueuePriorityTier {
+  // Explicit priority field — agent-driven or runtime-overridable
+  if (frontmatter.priority) {
+    const raw = frontmatter.priority.trim();
+    // Named tier lookup
+    if (raw in NAMED_PRIORITY_TIERS) {
+      return NAMED_PRIORITY_TIERS[raw];
+    }
+    // Numeric value — clamp to 0–5
+    const num = parseInt(raw, 10);
+    if (!isNaN(num)) {
+      return (Math.max(0, Math.min(5, num)) as QueuePriorityTier);
+    }
+  }
+
+  // Fallback: infer from frontmatter fields
   const { type, agent, reason } = frontmatter;
 
   if (type === 'steering_override' || type === 'triage_steering_override') {
@@ -108,6 +134,9 @@ export async function mutateLoopPlan(sessionDir: string, options: MutateLoopPlan
 
 /**
  * Writes a one-shot override prompt to the queue/ directory.
+ * If frontmatter contains a `priority` field (or can be inferred from agent/type),
+ * the filename is prefixed with `{priority}-{timestamp}-{name}.md` so that
+ * lexicographic sort in the loop scripts naturally consumes higher-priority items first.
  */
 export async function writeQueueOverride(
   sessionDir: string,
@@ -119,7 +148,8 @@ export async function writeQueueOverride(
   await fs.mkdir(queueDir, { recursive: true });
 
   const timestamp = new Date().getTime();
-  const fileName = `${timestamp}-${name}.md`;
+  const priority = frontmatter ? resolveQueuePriority(frontmatter) : QUEUE_PRIORITY_TIERS.DEFAULT;
+  const fileName = `${priority}-${timestamp}-${name}.md`;
   const queuePath = path.join(queueDir, fileName);
 
   let finalContent = content;
