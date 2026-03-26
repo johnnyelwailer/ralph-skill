@@ -154,11 +154,23 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   let stateChanged = false;
 
   // execGh must be defined early — used by refine/estimate result handlers
-  const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
+  // Raw executor: throws on non-zero exit or timeout so the retry wrapper can catch and retry
+  const execGhRaw = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
     const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
-    if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
+    if (r.status === null && r.signal) {
+      throw Object.assign(new Error(`gh timed out (${r.signal})`), { stderr: '', stdout: '' });
+    }
+    if (r.status !== 0) {
+      const err = new Error(`gh exited with code ${r.status}`) as Error & { stderr: string; stdout: string; status: number };
+      err.stderr = r.stderr ?? '';
+      err.stdout = r.stdout ?? '';
+      err.status = r.status;
+      throw err;
+    }
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
+  // Wrap with automatic retry on rate-limit and transient errors
+  const execGh = (args: string[]) => execGhWithRetry(execGhRaw, args);
 
   // ── Phase 0: Bridge agent output → requests ──
   // Agents write to worktree/.aloop/output/ (inside their sandbox).
