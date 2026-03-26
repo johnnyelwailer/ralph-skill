@@ -8,6 +8,7 @@ import { startCommandWithDeps, type StartCommandOptions, type StartCommandResult
 import { listActiveSessions, resolveHomeDir, stopSession, type SessionInfo } from './session.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
 import { withErrorHandling } from '../lib/error-handling.js';
+import { withGhRetry } from '../lib/gh-retry.js';
 
 const execFileAsync = promisify(execFile);
 const GH_PATH_HARDENING_BLOCK_MESSAGE = 'blocked by aloop PATH hardening';
@@ -100,6 +101,16 @@ export const ghExecutor = {
       return execFileAsync(fallbackBinary, args);
     }
   }
+};
+
+/** ghExecutor wrapped with retry + exponential backoff for transient errors.
+ *  Uses a lazy binding to ghExecutor.exec so test mocks are respected. */
+export const ghExecutorWithRetry = {
+  exec: withGhRetry((args: string[]) => ghExecutor.exec(args), {
+    maxRetries: 3,
+    baseDelayMs: 2000,
+    maxDelayMs: 30000,
+  }),
 };
 
 // Define the gh command

@@ -14,6 +14,7 @@ import {
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
+import { withGhRetry } from '../lib/gh-retry.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -3423,6 +3424,7 @@ const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 const ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT = 3;
 const ORCHESTRATOR_API_ERROR_PERSISTENCE_LIMIT = 10;
 const RATE_LIMIT_MINIMUM_REMAINING = 200;
+const RATE_LIMIT_BACKOFF_THRESHOLD = 500;
 
 export async function checkGitHubRateLimit(
   execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>,
@@ -5662,8 +5664,31 @@ export async function runOrchestratorScanPass(
         reset: rateLimit.reset,
       });
     } else {
+    // Wrap execGh with retry + exponential backoff for transient errors.
+    const sleepFn = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    const retryableExecGh = withGhRetry(deps.prLifecycleDeps.execGh, {
+      maxRetries: 3,
+      baseDelayMs: 2000,
+      maxDelayMs: 30000,
+      sleep: sleepFn,
+      onRetry: (attempt, delayMs, error) => {
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'gh_retry',
+          iteration,
+          attempt,
+          delayMs,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    });
+    const retryablePrDeps: PrLifecycleDeps = {
+      ...deps.prLifecycleDeps,
+      execGh: retryableExecGh,
+    };
+
     const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
-    const ciWorkflowsConfigured = await hasGithubActionsWorkflows(repo, deps.prLifecycleDeps);
+    const ciWorkflowsConfigured = await hasGithubActionsWorkflows(repo, retryablePrDeps);
     for (const issue of prIssues) {
       try {
         const bulkPrData = result.bulkFetch?.prByIssueNumber?.[issue.number] ?? null;
@@ -5673,12 +5698,27 @@ export async function runOrchestratorScanPass(
           stateFile,
           sessionDir,
           repo,
-          deps.prLifecycleDeps,
+          retryablePrDeps,
           { bulkPrData, ciWorkflowsConfigured },
         );
         result.prLifecycles.push(lifecycleResult);
         // No SHA tracking needed — state transitions (needs_redispatch, Blocked, merged)
         // already prevent re-processing. SHA was causing stuck-on-reviewed states.
+
+        // Gradual rate limit backoff: pause between PRs when remaining drops below threshold.
+        if (rateLimit && rateLimit.remaining < RATE_LIMIT_BACKOFF_THRESHOLD && prIssues.length > 1) {
+          const backoffMs = Math.max(500, Math.round(
+            (1 - rateLimit.remaining / RATE_LIMIT_BACKOFF_THRESHOLD) * 5000,
+          ));
+          deps.appendLog(sessionDir, {
+            timestamp: deps.now().toISOString(),
+            event: 'pr_lifecycle_rate_backoff',
+            iteration,
+            remaining: rateLimit.remaining,
+            backoffMs,
+          });
+          await sleepFn(backoffMs);
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         deps.appendLog(sessionDir, {
