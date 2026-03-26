@@ -11,6 +11,7 @@ import {
   type DecompositionPlan,
 } from './orchestrate.js';
 import { EtagCache } from '../lib/github-monitor.js';
+import { execGhWithRetry } from '../lib/gh-retry.js';
 import {
   readLatestProofManifest,
   buildProofArtifactsSection,
