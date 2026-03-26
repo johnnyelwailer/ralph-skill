@@ -752,65 +752,62 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   }
 
   // ── Phase 2f: Sync issue statuses to GH project ──
-  if (repo && stateChanged && ghProjectNumber) {
+  if (repo && stateChanged && ghProjectNumber && adapter) {
     try {
       // Get project items and their current statuses
-      const projResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: ${ghProjectNumber}) { id items(first: 100) { nodes { id content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-      if (projResult.status === 0) {
-        const projData = JSON.parse(projResult.stdout);
-        const projV2 = projData?.data?.user?.projectV2 ?? {};
-        const items = projV2?.items?.nodes ?? [];
-        const itemMap = new Map<number, { id: string; status: string }>();
-        for (const item of items) {
-          const num = item?.content?.number;
-          const status = item?.fieldValueByName?.name ?? '';
-          if (num) itemMap.set(num, { id: item.id, status });
-        }
+      const projResult = await adapter.execGhRaw(['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: ${ghProjectNumber}) { id items(first: 100) { nodes { id content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`]);
+      const projData = JSON.parse(projResult.stdout);
+      const projV2 = projData?.data?.user?.projectV2 ?? {};
+      const items = projV2?.items?.nodes ?? [];
+      const itemMap = new Map<number, { id: string; status: string }>();
+      for (const item of items) {
+        const num = item?.content?.number;
+        const status = item?.fieldValueByName?.name ?? '';
+        if (num) itemMap.set(num, { id: item.id, status });
+      }
 
-        // Fetch status field options dynamically (never hardcode IDs)
-        const fieldResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: ${ghProjectNumber}) { field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } } } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-        if (fieldResult.status !== 0) throw new Error('field query failed');
-        const fieldData = JSON.parse(fieldResult.stdout);
-        const statusField = fieldData?.data?.user?.projectV2?.field ?? {};
-        const statusFieldId = statusField.id;
-        const projectId = projV2.id ?? projData?.data?.user?.projectV2?.id;
-        const optionIds = new Map<string, string>();
-        for (const opt of statusField.options ?? []) {
-          optionIds.set(opt.name.toLowerCase(), opt.id);
-        }
+      // Fetch status field options dynamically (never hardcode IDs)
+      const fieldResult = await adapter.execGhRaw(['api', 'graphql', '-f', `query={ user(login: "${repo.split('/')[0]}") { projectV2(number: ${ghProjectNumber}) { field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } } } } }`]);
+      const fieldData = JSON.parse(fieldResult.stdout);
+      const statusField = fieldData?.data?.user?.projectV2?.field ?? {};
+      const statusFieldId = statusField.id;
+      const projectId = projV2.id ?? projData?.data?.user?.projectV2?.id;
+      const optionIds = new Map<string, string>();
+      for (const opt of statusField.options ?? []) {
+        optionIds.set(opt.name.toLowerCase(), opt.id);
+      }
 
-        if (statusFieldId && projectId) {
-          let synced = 0;
-          let added = 0;
-          for (const issue of state.issues) {
-            if (!issue.number) continue;
-            let item = itemMap.get(issue.number);
+      if (statusFieldId && projectId) {
+        let synced = 0;
+        let added = 0;
+        for (const issue of state.issues) {
+          if (!issue.number) continue;
+          let item = itemMap.get(issue.number);
 
-            // Add missing issues to the project (max 10 per pass to avoid API rate limits)
-            if (!item) {
-              if (added >= 10) continue;
-              const repoNodeResult = spawnSync('gh', ['api', 'graphql', '-f', `query={ repository(owner: "${repo.split('/')[0]}", name: "${repo.split('/')[1]}") { issue(number: ${issue.number}) { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-              if (repoNodeResult.status !== 0) continue;
+          // Add missing issues to the project (max 10 per pass to avoid API rate limits)
+          if (!item) {
+            if (added >= 10) continue;
+            try {
+              const repoNodeResult = await adapter.execGhRaw(['api', 'graphql', '-f', `query={ repository(owner: "${repo.split('/')[0]}", name: "${repo.split('/')[1]}") { issue(number: ${issue.number}) { id } } }`]);
               const issueNodeId = JSON.parse(repoNodeResult.stdout)?.data?.repository?.issue?.id;
               if (!issueNodeId) continue;
-              const addResult = spawnSync('gh', ['api', 'graphql', '-f', `query=mutation { addProjectV2ItemById(input: { projectId: "${projectId}" contentId: "${issueNodeId}" }) { item { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-              if (addResult.status !== 0) continue;
+              const addResult = await adapter.execGhRaw(['api', 'graphql', '-f', `query=mutation { addProjectV2ItemById(input: { projectId: "${projectId}" contentId: "${issueNodeId}" }) { item { id } } }`]);
               const newItemId = JSON.parse(addResult.stdout)?.data?.addProjectV2ItemById?.item?.id;
               if (!newItemId) continue;
               item = { id: newItemId, status: '' };
               added++;
-            }
-
-            const targetStatus = (issue.status ?? '').toLowerCase();
-            if (item.status.toLowerCase() === targetStatus) continue;
-            const optionId = optionIds.get(targetStatus);
-            if (!optionId) continue;
-            spawnSync('gh', ['api', 'graphql', '-f', `query=mutation { updateProjectV2ItemFieldValue(input: { projectId: "${projectId}" itemId: "${item.id}" fieldId: "${statusFieldId}" value: { singleSelectOptionId: "${optionId}" } }) { projectV2Item { id } } }`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-            synced++;
+            } catch { continue; }
           }
-          if (added > 0) console.log(`[process-requests] Added ${added} issues to GH project`);
-          if (synced > 0) console.log(`[process-requests] Synced ${synced} issue statuses to GH project`);
+
+          const targetStatus = (issue.status ?? '').toLowerCase();
+          if (item.status.toLowerCase() === targetStatus) continue;
+          const optionId = optionIds.get(targetStatus);
+          if (!optionId) continue;
+          await adapter.execGhRaw(['api', 'graphql', '-f', `query=mutation { updateProjectV2ItemFieldValue(input: { projectId: "${projectId}" itemId: "${item.id}" fieldId: "${statusFieldId}" value: { singleSelectOptionId: "${optionId}" } }) { projectV2Item { id } } }`]);
+          synced++;
         }
+        if (added > 0) console.log(`[process-requests] Added ${added} issues to GH project`);
+        if (synced > 0) console.log(`[process-requests] Synced ${synced} issue statuses to GH project`);
       }
     } catch { /* best-effort */ }
   }
@@ -916,10 +913,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
             // Fetch existing PR comments for context
             let commentHistory = '';
-            if (repo) {
+            if (repo && adapter) {
               try {
-                const commentsResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'comments', '--jq', '.comments[].body'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-                if (commentsResult.status === 0 && commentsResult.stdout?.trim()) {
+                const commentsResult = await adapter.execGhRaw(['pr', 'view', String(prNumber), '--repo', repo, '--json', 'comments', '--jq', '.comments[].body']);
+                if (commentsResult.stdout?.trim()) {
                   commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${commentsResult.stdout.trim()}\n`;
                 }
               } catch { /* ignore */ }

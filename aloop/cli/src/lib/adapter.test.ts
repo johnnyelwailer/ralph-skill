@@ -334,6 +334,17 @@ describe('GitHubAdapter', () => {
     });
   });
 
+  describe('execGhRaw', () => {
+    it('passes args through to the underlying execGh', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: 'result', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      const result = await adapter.execGhRaw(['api', 'graphql', '-f', 'query=test']);
+      assert.deepEqual(calledArgs, ['api', 'graphql', '-f', 'query=test']);
+      assert.equal(result.stdout, 'result');
+    });
+  });
+
   describe('fetchBulkIssueState', () => {
     it('delegates to fetchBulkIssueState from github-monitor', async () => {
       const graphqlResponse = {

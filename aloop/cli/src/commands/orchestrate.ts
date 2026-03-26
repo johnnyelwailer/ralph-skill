@@ -306,11 +306,6 @@ interface ProjectStatusSyncDeps {
   sessionDir?: string;
 }
 
-/** Extract the raw execGh fn from an adapter (for GH Projects API calls not yet in the adapter interface). */
-function getAdapterExecGh(adapter: OrchestratorAdapter): ((args: string[]) => Promise<{ stdout: string; stderr: string }>) | undefined {
-  return (adapter as unknown as { execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }> }).execGh?.bind(adapter);
-}
-
 interface ProjectStatusContext {
   itemId: string;
   projectId: string;
@@ -344,12 +339,7 @@ async function resolveIssueProjectStatusContext(
   }
 
   const query = 'query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){projectItems(first:20){nodes{id project{id} fieldValues(first:50){nodes{... on ProjectV2ItemFieldSingleSelectValue{field{... on ProjectV2SingleSelectField{id name options{id name}}}}}}}}}}}';
-  const execGh = getAdapterExecGh(deps.adapter);
-  if (!execGh) {
-    projectStatusContextCache.set(cacheKey, null);
-    return null;
-  }
-  const response = await execGh([
+  const response = await deps.adapter.execGhRaw([
     'api',
     'graphql',
     '-f',
@@ -452,9 +442,8 @@ async function syncIssueProjectStatus(
       return false;
     }
 
-    const execGh = getAdapterExecGh(deps.adapter);
-    if (!execGh) return false;
-    await execGh([
+    const execGhRaw = deps.adapter.execGhRaw.bind(deps.adapter);
+    await execGhRaw([
       'project',
       'item-edit',
       '--id',
@@ -1133,11 +1122,9 @@ export async function orchestrateCommandWithDeps(
   }
 
   // Preload existing GitHub issues into state (dedup on restart/resume)
-  if (filterRepo && state.issues.length === 0) {
+  if (filterRepo && state.issues.length === 0 && deps.adapter) {
     try {
-      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
-      const listResult = nodeSpawnSync('gh', ['issue', 'list', '--repo', filterRepo, '--label', 'aloop/auto', '--state', 'open', '--limit', '200', '--json', 'number,title,body,labels'], { encoding: 'utf8' });
-      if (listResult.status !== 0) throw new Error(listResult.stderr ?? 'gh failed');
+      const listResult = await deps.adapter.execGhRaw(['issue', 'list', '--repo', filterRepo, '--label', 'aloop/auto', '--state', 'open', '--limit', '200', '--json', 'number,title,body,labels']);
       const ghIssues = JSON.parse(listResult.stdout ?? '[]');
       if (Array.isArray(ghIssues) && ghIssues.length > 0) {
         // Fetch project status for each issue to avoid re-estimating
@@ -1146,30 +1133,27 @@ export async function orchestrateCommandWithDeps(
           const owner = filterRepo.split('/')[0];
           // Find aloop project number dynamically
           let projNumber = 0;
-          const projListResult = nodeSpawnSync('gh', ['project', 'list', '--owner', owner, '--format', 'json'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-          if (projListResult.status === 0) {
-            try {
-              const projects = JSON.parse(projListResult.stdout ?? '{}').projects ?? [];
-              const aloopProj = projects.find((p: any) => p.title?.toLowerCase().includes('aloop'));
-              if (aloopProj) projNumber = aloopProj.number;
-            } catch { /* ignore */ }
-          }
+          const projListResult = await deps.adapter.execGhRaw(['project', 'list', '--owner', owner, '--format', 'json']);
+          try {
+            const projects = JSON.parse(projListResult.stdout ?? '{}').projects ?? [];
+            const aloopProj = projects.find((p: any) => p.title?.toLowerCase().includes('aloop'));
+            if (aloopProj) projNumber = aloopProj.number;
+          } catch { /* ignore */ }
           if (projNumber === 0) throw new Error('No aloop project found');
           state.gh_project_number = projNumber;
           const gqlQuery = `{ user(login: "${owner}") { projectV2(number: ${projNumber}) { items(first: 100) { nodes { content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`;
-          const projResult = nodeSpawnSync('gh', ['api', 'graphql', '-f', `query=${gqlQuery}`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-          if (projResult.status !== 0) {
-            console.error(`[orchestrate] Project status query failed (exit ${projResult.status}): ${projResult.stderr?.substring(0, 200)}`);
-          }
-          if (projResult.status === 0 && projResult.stdout) {
-            const projData = JSON.parse(projResult.stdout);
+          try {
+            const projResult = await deps.adapter.execGhRaw(['api', 'graphql', '-f', `query=${gqlQuery}`]);
             console.log(`[orchestrate] Project status query returned ${projResult.stdout.length} bytes`);
+            const projData = JSON.parse(projResult.stdout);
             const items = projData?.data?.user?.projectV2?.items?.nodes ?? [];
             for (const item of items) {
               const num = item?.content?.number;
               const status = item?.fieldValueByName?.name;
               if (num && status) projectStatusMap.set(num, status);
             }
+          } catch (projErr) {
+            console.error(`[orchestrate] Project status query failed: ${projErr}`);
           }
         } catch (e) { console.error(`[orchestrate] Project status fetch failed: ${e}`); }
 
@@ -3386,9 +3370,7 @@ const ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT = 3;
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
-    const execGh = getAdapterExecGh(deps.adapter);
-    if (!execGh) return false;
-    const response = await execGh([
+    const response = await deps.adapter.execGhRaw([
       'api', `repos/${repo}/actions/workflows`, '--method', 'GET', '--jq', '.total_count',
     ]);
     const total = Number(response.stdout.trim());
@@ -3413,13 +3395,10 @@ export async function checkPrGates(
   // Gate 1: Mergeability (conflict check)
   let mergeable = false;
   try {
-    const viewResult = await deps.execGh([
-      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus',
-    ]);
-    const prData = JSON.parse(viewResult.stdout);
-    mergeable = prData.mergeable === 'MERGEABLE';
-    const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
-    const mergeUnknown = prData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
+    const prStatus = await deps.adapter.getPrStatus(prNumber);
+    mergeable = prStatus.mergeable;
+    const mergeState = prStatus.mergeStateStatus ?? 'UNKNOWN';
+    const mergeUnknown = mergeState === 'UNKNOWN';
     gates.push({
       gate: 'merge_conflicts',
       status: mergeable ? 'pass' : mergeUnknown ? 'pending' : 'fail',
@@ -3488,15 +3467,7 @@ export async function reviewPrDiff(
   // Get the PR diff
   let diff: string;
   try {
-    const execGh = getAdapterExecGh(deps.adapter);
-    if (!execGh) {
-      // No raw executor — call reviewer with empty diff if configured, otherwise auto-approve
-      if (deps.invokeAgentReview) {
-        return deps.invokeAgentReview(prNumber, repo, '');
-      }
-      return { pr_number: prNumber, verdict: 'approve', summary: 'Auto-approved (no raw executor available)' };
-    }
-    const diffResult = await execGh(['pr', 'diff', String(prNumber), '--repo', repo]);
+    const diffResult = await deps.adapter.execGhRaw(['pr', 'diff', String(prNumber), '--repo', repo]);
     diff = diffResult.stdout;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3577,10 +3548,9 @@ export async function createTrunkToMainPr(
     const msg = e instanceof Error ? e.message : String(e);
     // Check if PR already exists
     try {
-      const execGh = getAdapterExecGh(deps.adapter!);
-      const existingNumber = execGh ? await execGh([
+      const existingNumber = await deps.adapter!.execGhRaw([
         'pr', 'list', '--repo', repo, '--head', trunkBranch, '--base', 'main', '--json', 'number', '--jq', '.[0].number',
-      ]).then((r) => Number.parseInt(r.stdout.trim(), 10)).catch(() => NaN) : NaN;
+      ]).then((r) => Number.parseInt(r.stdout.trim(), 10)).catch(() => NaN);
       if (Number.isFinite(existingNumber) && existingNumber > 0) {
         deps.appendLog(sessionDir, {
           timestamp: new Date().toISOString(),
@@ -4265,14 +4235,9 @@ async function createPrForChild(
 
   // Check if base branch exists remotely
   let effectiveBase = baseBranch;
-  const execGhRaw = getAdapterExecGh(deps.adapter);
-  if (execGhRaw) {
-    try {
-      await execGhRaw(['api', `repos/${repo}/branches/${baseBranch}`, '--jq', '.name']);
-    } catch {
-      effectiveBase = 'main';
-    }
-  } else {
+  try {
+    await deps.adapter.execGhRaw(['api', `repos/${repo}/branches/${baseBranch}`, '--jq', '.name']);
+  } catch {
     effectiveBase = 'main';
   }
 
@@ -4291,23 +4256,20 @@ async function createPrForChild(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     // Check if PR already exists for this branch
-    const execGhRaw2 = getAdapterExecGh(deps.adapter);
-    if (execGhRaw2) {
-      try {
-        const listResult = await execGhRaw2([
-          'pr', 'list',
-          '--repo', repo,
-          '--head', branch,
-          '--json', 'number',
-          '--jq', '.[0].number',
-        ]);
-        const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
-        if (Number.isFinite(existingNumber) && existingNumber > 0) {
-          return { pr_number: existingNumber, branch, baseBranch: effectiveBase };
-        }
-      } catch {
-        // PR list also failed
+    try {
+      const listResult = await deps.adapter.execGhRaw([
+        'pr', 'list',
+        '--repo', repo,
+        '--head', branch,
+        '--json', 'number',
+        '--jq', '.[0].number',
+      ]);
+      const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
+      if (Number.isFinite(existingNumber) && existingNumber > 0) {
+        return { pr_number: existingNumber, branch, baseBranch: effectiveBase };
       }
+    } catch {
+      // PR list also failed
     }
     return { pr_number: null, branch, baseBranch: effectiveBase, error: msg };
   }

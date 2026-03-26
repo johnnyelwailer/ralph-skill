@@ -131,7 +131,8 @@ function createMockAdapter(overrides: Partial<OrchestratorAdapter> = {}): Orches
     addLabels: async () => {},
     removeLabels: async () => {},
     ensureLabelExists: async () => {},
-    fetchBulkIssueState: async () => ({ issues: [], fromCache: false }),
+    fetchBulkIssueState: async () => ({ issues: [], fromCache: false, fetchedAt: '' }),
+    execGhRaw: async () => ({ stdout: '', stderr: '' }),
     ...overrides,
   };
 }
@@ -2803,16 +2804,16 @@ describe('checkPrGates', () => {
 });
 
 describe('reviewPrDiff', () => {
-  it('auto-approves when no agent reviewer configured and no raw executor available', async () => {
-    // With mock adapter (no internal execGh), auto-approves immediately
+  it('flags for human when no agent reviewer configured', async () => {
+    // With mock adapter, no reviewer configured → flags for human
     const deps = createMockPrDeps();
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'approve');
-    assert.ok(result.summary.includes('Auto-approved'));
+    assert.equal(result.verdict, 'flag-for-human');
+    assert.ok(result.summary.includes('No agent reviewer configured'));
   });
 
-  it('delegates to agent reviewer when configured (no raw executor — auto-approves)', async () => {
-    // When invokeAgentReview is configured and no raw execGh is available, call reviewer with empty diff
+  it('delegates to agent reviewer when configured (empty diff from mock)', async () => {
+    // When invokeAgentReview is configured, calls reviewer with the diff from adapter
     const deps = createMockPrDeps({
       invokeAgentReview: async (prNum, _repo, diff) => ({
         pr_number: prNum,
@@ -2821,16 +2822,15 @@ describe('reviewPrDiff', () => {
       }),
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    // Reviewer is called with empty diff when no raw executor is available
+    // Reviewer is called with empty diff from mock adapter
     assert.equal(result.verdict, 'request-changes');
   });
 
-  it('returns approve when no raw executor available', async () => {
-    // Mock adapter has no internal execGh so getAdapterExecGh returns undefined
+  it('flags for human when no reviewer configured', async () => {
     const deps = createMockPrDeps();
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'approve');
-    assert.ok(result.summary.includes('Auto-approved'));
+    assert.equal(result.verdict, 'flag-for-human');
+    assert.ok(result.summary.includes('No agent reviewer configured'));
   });
 });
 

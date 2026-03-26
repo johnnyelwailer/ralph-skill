@@ -82,6 +82,9 @@ export interface OrchestratorAdapter {
 
   // Bulk fetch
   fetchBulkIssueState(opts?: { states?: string[]; since?: string; issueNumbers?: number[] }): Promise<BulkFetchResult>;
+
+  // Raw gh CLI passthrough (for operations not covered by specific methods, e.g. GH Projects GraphQL)
+  execGhRaw(args: string[]): Promise<{ stdout: string; stderr: string }>;
 }
 
 // ----- GitHubAdapter -----
@@ -280,6 +283,10 @@ export class GitHubAdapter implements OrchestratorAdapter {
       since: opts?.since,
       issueNumbers: opts?.issueNumbers,
     });
+  }
+
+  async execGhRaw(args: string[]): Promise<{ stdout: string; stderr: string }> {
+    return this.execGh(args);
   }
 }
 
