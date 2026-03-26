@@ -893,6 +893,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     etagCache,
     aloopRoot,
     freemem: () => os.freemem(),
+    memoryPressureThresholdMB,
     prLifecycleDeps: {
       execGh,
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
