@@ -5437,7 +5437,18 @@ export async function runOrchestratorScanPass(
   }
 
   // 2. Dispatch child loops for ready issues
-  if (deps.dispatchDeps && !state.plan_only) {
+  // Check memory pressure before dispatching new children
+  const memCheck = checkMemoryPressure(deps.freemem, deps.memoryPressureThresholdMB);
+  if (memCheck?.pressured) {
+    result.memoryPressureSkipped = true;
+    deps.appendLog(sessionDir, {
+      timestamp: deps.now().toISOString(),
+      event: 'dispatch_skipped_memory_pressure',
+      iteration,
+      free_mb: memCheck.freeMB,
+      threshold_mb: memCheck.thresholdMB,
+    });
+  } else if (deps.dispatchDeps && !state.plan_only) {
     // Focus mode: prefer redispatch over fresh work.
     // Don't start new issues while there are pending redispatches waiting for slots.
     const pendingRedispatches = state.issues.filter((i) => (i as any).needs_redispatch).length;
