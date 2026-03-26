@@ -5345,6 +5345,7 @@ export async function runOrchestratorScanPass(
     prLifecycles: [],
     waveAdvanced: false,
     budgetExceeded: false,
+    memoryPressureSkipped: false,
     allDone: false,
     shouldStop: false,
     replan: null,
