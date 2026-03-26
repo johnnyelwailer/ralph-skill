@@ -81,8 +81,8 @@ export function selectUsableGhBinary(pathValue: string, platform: NodeJS.Platfor
   return null;
 }
 
-// Exported for test mocking — all gh CLI execution goes through this object
-export const ghExecutor = {
+// Raw executor without retry — used internally to avoid double-retry wrapping
+const ghExecutorRaw = {
   async exec(args: string[]): Promise<{ stdout: string; stderr: string }> {
     try {
       return await execFileAsync('gh', args);
@@ -101,6 +101,12 @@ export const ghExecutor = {
       return execFileAsync(fallbackBinary, args);
     }
   }
+};
+
+// Exported for test mocking — all gh CLI execution goes through this object.
+// Wraps the raw executor with automatic retry on rate-limit and transient errors.
+export const ghExecutor = {
+  exec: wrapGhWithRetry(ghExecutorRaw.exec.bind(ghExecutorRaw)),
 };
 
 // Define the gh command
