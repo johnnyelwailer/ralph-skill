@@ -6208,3 +6208,247 @@ describe('runOrchestratorScanPass with replan', () => {
     assert.equal(result.replan, null);
   });
 });
+
+// --- Label enrichment tests (Issue #131) ---
+
+describe('applyDecompositionPlan label enrichment', () => {
+  function baseState(): OrchestratorState {
+    return {
+      spec_file: 'SPEC.md',
+      trunk_branch: 'agent/trunk',
+      concurrency_cap: 3,
+      current_wave: 0,
+      plan_only: false,
+      issues: [],
+      completed_waves: [],
+      filter_issues: null,
+      filter_label: null,
+      filter_repo: null,
+      budget_cap: null,
+      created_at: '2026-03-09T10:30:00.000Z',
+      updated_at: '2026-03-09T10:30:00.000Z',
+    };
+  }
+
+  function baseDeps(): OrchestrateDeps {
+    return {
+      existsSync: () => true,
+      readFile: async () => '',
+      writeFile: async () => {},
+      mkdir: async () => undefined,
+      now: () => new Date('2026-03-09T11:00:00Z'),
+    };
+  }
+
+  it('includes wave/N label alongside aloop/wave-N at creation', async () => {
+    const calls: { labels: string[] }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
+        calls.push({ labels });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        planIssue(1, 'Wave1 Task', [], ['aloop/cli/src/commands/start.ts']),
+        planIssue(2, 'Wave2 Task', [1], ['aloop/bin/loop.sh']),
+      ],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.equal(calls.length, 2);
+    // Wave 1 issue: has aloop, aloop/wave-1, wave/1
+    assert.ok(calls[0].labels.includes('aloop'));
+    assert.ok(calls[0].labels.includes('aloop/wave-1'));
+    assert.ok(calls[0].labels.includes('wave/1'));
+    // Wave 2 issue: has aloop, aloop/wave-2, wave/2
+    assert.ok(calls[1].labels.includes('aloop'));
+    assert.ok(calls[1].labels.includes('aloop/wave-2'));
+    assert.ok(calls[1].labels.includes('wave/2'));
+  });
+
+  it('includes component labels derived from file_hints', async () => {
+    const calls: { labels: string[] }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
+        calls.push({ labels });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        planIssue(1, 'Dashboard task', [], ['aloop/cli/dashboard/src/App.tsx']),
+        planIssue(2, 'Loop task', [], ['aloop/bin/loop.sh']),
+        planIssue(3, 'Orchestrator task', [], ['aloop/cli/src/commands/orchestrate.ts']),
+      ],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.ok(calls[0].labels.includes('component/dashboard'));
+    assert.ok(calls[1].labels.includes('component/loop'));
+    assert.ok(calls[2].labels.includes('component/orchestrator'));
+  });
+
+  it('preserves aloop/epic and aloop/auto alongside new labels', async () => {
+    const calls: { labels: string[] }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
+        calls.push({ labels });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [planIssue(1, 'Task', [], ['aloop/cli/src/lib/plan.ts'])],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    // aloop label is always present
+    assert.ok(calls[0].labels.includes('aloop'));
+    // wave labels are present
+    assert.ok(calls[0].labels.includes('aloop/wave-1'));
+    assert.ok(calls[0].labels.includes('wave/1'));
+    // component label is present
+    assert.ok(calls[0].labels.includes('component/cli'));
+  });
+
+  it('does not add component labels when file_hints is empty', async () => {
+    const calls: { labels: string[] }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
+        calls.push({ labels });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [planIssue(1, 'Task no hints', [])],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.ok(calls[0].labels.includes('wave/1'));
+    assert.ok(!calls[0].labels.some(l => l.startsWith('component/')));
+  });
+});
+
+describe('applyEstimateResults label enrichment', () => {
+  it('applies complexity label via execGh when DoR passes', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: true, complexity_tier: 'M' },
+    ];
+    await applyEstimateResults(state, results, {
+      execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+      repo: 'owner/repo',
+    });
+
+    const labelCall = ghCalls.find(c => c.includes('--add-label') && c.includes('complexity/M'));
+    assert.ok(labelCall, 'Should call execGh to add complexity/M label');
+    assert.ok(labelCall.includes('issue'));
+    assert.ok(labelCall.includes('edit'));
+    assert.ok(labelCall.includes('1'));
+    assert.ok(labelCall.includes('--repo'));
+    assert.ok(labelCall.includes('owner/repo'));
+  });
+
+  it('applies priority label via execGh when present in result', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 2, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 2, dor_passed: true, priority: 'P1' },
+    ];
+    await applyEstimateResults(state, results, {
+      execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+      repo: 'owner/repo',
+    });
+
+    const labelCall = ghCalls.find(c => c.includes('--add-label') && c.includes('P1'));
+    assert.ok(labelCall, 'Should call execGh to add P1 label');
+  });
+
+  it('applies both complexity and priority labels together', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 3, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 3, dor_passed: true, complexity_tier: 'L', priority: 'P0' },
+    ];
+    await applyEstimateResults(state, results, {
+      execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+      repo: 'owner/repo',
+    });
+
+    const labelCall = ghCalls.find(c => c.includes('--add-label') && c.includes('complexity/L'));
+    assert.ok(labelCall, 'Should add complexity/L label');
+    assert.ok(labelCall.includes('P0'), 'Should also add P0 label');
+  });
+
+  it('does not add priority label when absent from result', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 4, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 4, dor_passed: true, complexity_tier: 'S' },
+    ];
+    await applyEstimateResults(state, results, {
+      execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+      repo: 'owner/repo',
+    });
+
+    const labelCall = ghCalls.find(c => c.includes('--add-label'));
+    assert.ok(labelCall, 'Should add complexity/S label');
+    assert.ok(!labelCall.includes('P0'));
+    assert.ok(!labelCall.includes('P1'));
+    assert.ok(!labelCall.includes('P2'));
+  });
+
+  it('does not add labels when complexity_tier and priority are both absent', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 5, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 5, dor_passed: true },
+    ];
+    await applyEstimateResults(state, results, {
+      execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+      repo: 'owner/repo',
+    });
+
+    const labelCall = ghCalls.find(c => c.includes('--add-label'));
+    assert.equal(labelCall, undefined, 'Should not call execGh for labels when no labels to add');
+  });
+
+  it('does not add labels when execGh is not provided', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 6, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 6, dor_passed: true, complexity_tier: 'XL', priority: 'P2' },
+    ];
+    // Should not throw
+    const outcome = await applyEstimateResults(state, results);
+    assert.deepStrictEqual(outcome.updated, [6]);
+  });
+});
