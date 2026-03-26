@@ -6397,9 +6397,10 @@ describe('applyDecompositionPlan label enrichment', () => {
   });
 
   it('stores enriched body in state when dependencies exist', async () => {
+    const calls: unknown[] = [];
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async (_repo, _sid, _title, _body, _labels) => { let n = callCount++; return n; },
+      execGhIssueCreate: async (_repo, _sid, _title, _body, _labels) => { calls.push(1); return calls.length; },
     };
     const plan: DecompositionPlan = {
       issues: [
@@ -6409,8 +6410,6 @@ describe('applyDecompositionPlan label enrichment', () => {
     };
     const result = await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
-    console.log("DEBUG issue 0 body:", JSON.stringify(result.issues[0].body));
-    console.log("DEBUG issue 1 body:", JSON.stringify(result.issues[1].body));
     assert.ok(!result.issues[0].body.includes('Depends on'));
     assert.ok(result.issues[1].body.includes('Depends on #1'));
   });
