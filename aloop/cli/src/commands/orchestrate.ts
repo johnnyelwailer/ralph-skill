@@ -670,7 +670,9 @@ export async function applyDecompositionPlan(
 
   for (const planIssue of plan.issues) {
     const wave = waveMap.get(planIssue.id)!;
-    const labels = ['aloop', `aloop/wave-${wave}`];
+    const labels = ['aloop', `aloop/wave-${wave}`, `wave/${wave}`];
+    const componentLabels = deriveComponentLabels(planIssue.file_hints ?? []);
+    labels.push(...componentLabels);
 
     let ghNumber: number;
     if (deps.execGhIssueCreate && repo) {
