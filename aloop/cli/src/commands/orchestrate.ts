@@ -4557,10 +4557,13 @@ export interface ScanLoopDeps {
   signalStop?: () => boolean;
   etagCache?: EtagCache;
   freemem?: () => number;
+  totalmem?: () => number;
   processSend?: (pid: number, signal: number | string) => boolean;
   spawnSync?: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
   processSignal?: (pid: number, signal: number | string) => boolean;
   memoryPressureThresholdMB?: number;
+  memoryPerChildEstimateMB?: number;
+  criticalMemoryThresholdMB?: number;
 }
 
 export interface MemoryPressureResult {
@@ -4580,6 +4583,119 @@ export function checkMemoryPressure(
   const freeBytes = freemem();
   const freeMB = Math.round(freeBytes / (1024 * 1024));
   return { pressured: freeMB < threshold, freeMB, thresholdMB: threshold };
+}
+
+// --- Resource limit management ---
+
+const DEFAULT_MEMORY_PER_CHILD_MB = 768;
+const DEFAULT_CRITICAL_MEMORY_THRESHOLD_MB = 256;
+const MEMORY_HEADROOM_MB = 512;
+
+export interface ResourceLimitResult {
+  effectiveCap: number;
+  memoryBasedCap: number;
+  userCap: number;
+  freeMB: number;
+}
+
+/**
+ * Calculate the maximum number of child loops the system can safely support
+ * based on available memory. Each child loop + provider CLI typically consumes
+ * ~768MB (configurable via memoryPerChildEstimateMB).
+ *
+ * Formula: (freeMemory - headroom) / memoryPerChild
+ * Headroom is reserved for the orchestrator process, OS, and other services.
+ */
+export function calculateMaxChildren(
+  freemem: (() => number) | undefined,
+  totalmem: (() => number) | undefined,
+  memoryPerChildMB: number | undefined,
+): number | null {
+  if (!freemem) return null;
+  const perChild = memoryPerChildMB ?? DEFAULT_MEMORY_PER_CHILD_MB;
+  if (perChild <= 0) return null;
+  const freeBytes = freemem();
+  const freeMB = Math.round(freeBytes / (1024 * 1024));
+  const available = Math.max(0, freeMB - MEMORY_HEADROOM_MB);
+  return Math.max(1, Math.floor(available / perChild));
+}
+
+/**
+ * Returns the effective concurrency cap: the minimum of the user-configured cap
+ * and the memory-based cap. This prevents the orchestrator from spawning more
+ * children than the system can handle, even if the user set a high concurrency.
+ */
+export function getEffectiveConcurrencyCap(
+  state: OrchestratorState,
+  freemem: (() => number) | undefined,
+  totalmem: (() => number) | undefined,
+  memoryPerChildMB: number | undefined,
+): ResourceLimitResult {
+  const userCap = state.concurrency_cap;
+  const memoryBasedCap = calculateMaxChildren(freemem, totalmem, memoryPerChildMB) ?? userCap;
+  const freeMB = freemem ? Math.round(freemem() / (1024 * 1024)) : -1;
+  return {
+    effectiveCap: Math.max(1, Math.min(userCap, memoryBasedCap)),
+    memoryBasedCap,
+    userCap,
+    freeMB,
+  };
+}
+
+export interface EvictionCandidate {
+  issue: OrchestratorIssue;
+  priority: number;
+}
+
+/**
+ * Select child loops to evict when memory pressure is critical.
+ * Candidates are ranked by priority (lower = evicted first):
+ *   - Completed/failed children (state !== 'in_progress') are never evicted
+ *   - Children with higher wave numbers are evicted first (less foundational)
+ *   - Within the same wave, children with fewer dependencies are evicted first
+ *   - Children that have been running longer are preferred for eviction
+ *      (they've had more time to save progress)
+ */
+export function selectVictimsForEviction(
+  state: OrchestratorState,
+  freemem: (() => number) | undefined,
+  criticalThresholdMB: number | undefined,
+): EvictionCandidate[] {
+  if (!freemem) return [];
+  const threshold = criticalThresholdMB ?? DEFAULT_CRITICAL_MEMORY_THRESHOLD_MB;
+  const freeBytes = freemem();
+  const freeMB = Math.round(freeBytes / (1024 * 1024));
+
+  if (freeMB >= threshold) return [];
+
+  const activeChildren = state.issues.filter(
+    (i) => i.state === 'in_progress' && i.child_session !== null && i.child_pid != null,
+  );
+
+  if (activeChildren.length <= 1) return [];
+
+  // Score each candidate: higher score = more evictable
+  const candidates: EvictionCandidate[] = activeChildren.map((issue) => {
+    let priority = 0;
+    // Higher wave = more evictable
+    priority += (issue.wave ?? 0) * 100;
+    // Fewer deps = more evictable (less foundational)
+    priority -= (issue.depends_on?.length ?? 0) * 10;
+    return { issue, priority };
+  });
+
+  candidates.sort((a, b) => b.priority - a.priority);
+
+  // Evict enough to bring free memory above threshold
+  // Estimate: each eviction frees ~memoryPerChildMB
+  const deficit = threshold - freeMB;
+  const perChild = DEFAULT_MEMORY_PER_CHILD_MB;
+  const evictCount = Math.min(
+    Math.ceil(deficit / perChild),
+    candidates.length - 1, // always keep at least 1 child
+  );
+
+  return candidates.slice(0, evictCount);
 }
 
 export interface SpecChangeReplanResult {
@@ -4602,6 +4718,8 @@ export interface ScanPassResult {
   waveAdvanced: boolean;
   budgetExceeded: boolean;
   memoryPressureSkipped: boolean;
+  resourceLimits: ResourceLimitResult | null;
+  evicted: number;
   allDone: boolean;
   shouldStop: boolean;
   replan: SpecChangeReplanResult | null;
@@ -5346,6 +5464,8 @@ export async function runOrchestratorScanPass(
     waveAdvanced: false,
     budgetExceeded: false,
     memoryPressureSkipped: false,
+    resourceLimits: null,
+    evicted: 0,
     allDone: false,
     shouldStop: false,
     replan: null,
@@ -5436,6 +5556,43 @@ export async function runOrchestratorScanPass(
     );
   }
 
+  // 1.5. Resource limit management — check memory and evict if critical
+  const resourceLimits = getEffectiveConcurrencyCap(
+    state, deps.freemem, deps.totalmem, deps.memoryPerChildEstimateMB,
+  );
+  result.resourceLimits = resourceLimits;
+
+  const evictionCandidates = selectVictimsForEviction(
+    state, deps.freemem, deps.criticalMemoryThresholdMB,
+  );
+  for (const victim of evictionCandidates) {
+    const pid = (victim.issue as any).child_pid as number | undefined;
+    if (pid && deps.processSignal) {
+      try {
+        deps.processSignal(pid, 'SIGTERM');
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_evicted_memory_pressure',
+          iteration,
+          issue_number: victim.issue.number,
+          child_pid: pid,
+          child_session: victim.issue.child_session,
+          free_mb: resourceLimits.freeMB,
+        });
+      } catch {
+        // Best-effort kill
+      }
+    }
+    const stateIssue = state.issues.find((i) => i.number === victim.issue.number);
+    if (stateIssue) {
+      stateIssue.state = 'pending';
+      stateIssue.child_session = null;
+      (stateIssue as any).child_pid = null;
+      stateIssue.status = 'Ready';
+    }
+    result.evicted++;
+  }
+
   // 2. Dispatch child loops for ready issues
   // Check memory pressure before dispatching new children
   const memCheck = checkMemoryPressure(deps.freemem, deps.memoryPressureThresholdMB);
@@ -5452,7 +5609,9 @@ export async function runOrchestratorScanPass(
     // Focus mode: prefer redispatch over fresh work.
     // Don't start new issues while there are pending redispatches waiting for slots.
     const pendingRedispatches = state.issues.filter((i) => (i as any).needs_redispatch).length;
-    const slots = availableSlots(state);
+    // Use effective cap (min of user cap and memory-based cap) instead of raw concurrency_cap
+    const activeChildren = countActiveChildren(state);
+    const slots = Math.max(0, resourceLimits.effectiveCap - activeChildren);
 
     let toDispatch: OrchestratorIssue[] = [];
     if (pendingRedispatches > 0 && slots <= pendingRedispatches) {
@@ -5740,6 +5899,11 @@ export async function runOrchestratorScanPass(
     spec_questions_waiting: result.specQuestions.waiting,
     spec_questions_auto_resolved: result.specQuestions.autoResolved,
     spec_questions_user_overrides: result.specQuestions.userOverrides,
+    memory_pressure_skipped: result.memoryPressureSkipped,
+    evicted: result.evicted,
+    effective_concurrency_cap: result.resourceLimits?.effectiveCap ?? null,
+    memory_based_cap: result.resourceLimits?.memoryBasedCap ?? null,
+    free_memory_mb: result.resourceLimits?.freeMB ?? null,
     all_done: result.allDone,
     replan_spec_changed: result.replan?.spec_changed ?? false,
     replan_actions_applied: result.replan?.actions_applied ?? 0,

@@ -2209,6 +2209,18 @@ All GitHub operations MUST support GitHub Enterprise instances, not just `github
 - [ ] Wave scheduling: sub-issues dispatch when specific dependencies merge
 - [ ] File ownership hints prevent parallel edits to same files
 
+**Resource management (OOM prevention):**
+- [ ] Effective concurrency cap is the minimum of user-configured cap and memory-based cap
+- [ ] Memory-based cap calculated as `(freeMemory - 512MB headroom) / 768MB per child`
+- [ ] Dispatch is skipped when free memory falls below `memory_pressure_threshold_mb` (default 512MB)
+- [ ] When free memory drops below critical threshold (256MB), highest-wave children are evicted via SIGTERM
+- [ ] Evicted children are reset to `pending` state and re-dispatched when memory recovers
+- [ ] `scan_pass_complete` log includes `memory_pressure_skipped`, `evicted`, `effective_concurrency_cap`, `memory_based_cap`, `free_memory_mb`
+- [ ] `child_evicted_memory_pressure` event is logged for each eviction with issue number, PID, and free memory
+- [ ] `dispatch_skipped_memory_pressure` event is logged when dispatch is skipped due to pressure
+- [ ] Configurable via `memory_pressure_threshold_mb` in `config.yml`
+- [ ] Resource limit functions are pure (injectable `freemem`/`totalmem`) for testability
+
 **Integration:**
 - [ ] Child loops create PRs targeting `agent/trunk` on completion
 - [ ] Automated gates: CI, coverage, conflicts, lint, spec regression, screenshot diff
