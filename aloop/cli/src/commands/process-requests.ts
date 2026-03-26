@@ -584,14 +584,20 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
                   prBody = await readFile(prDescriptionFile, 'utf8');
                 } catch { /* use fallback */ }
               }
-              const prResult = spawnSync('gh', [
+              const wave = issue.wave ?? 1;
+              const labels = ['aloop', `aloop/wave-${wave}`, `wave/${wave}`, ...deriveComponentLabels(issue.file_hints ?? [])];
+              const prArgs = [
                 'pr', 'create',
                 '--repo', repo,
                 '--title', `#${issue.number}: ${issue.title}`,
                 '--body', prBody,
                 '--head', branch,
                 '--base', trunkBranch,
-              ], { encoding: 'utf8' });
+              ];
+              for (const label of labels) {
+                prArgs.push('--label', label);
+              }
+              const prResult = spawnSync('gh', prArgs, { encoding: 'utf8' });
 
               if (prResult.status === 0 && prResult.stdout) {
                 const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
