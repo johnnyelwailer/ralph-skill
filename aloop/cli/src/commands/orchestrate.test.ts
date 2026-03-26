@@ -6331,7 +6331,6 @@ describe('applyDecompositionPlan label enrichment', () => {
     assert.ok(calls[0].labels.includes('wave/1'));
     assert.ok(!calls[0].labels.some(l => l.startsWith('component/')));
   });
-});
 
   it('includes "Depends on #X, #Y" in issue body when dependencies exist (AC 6)', async () => {
     const calls: { body: string }[] = [];
@@ -6414,6 +6413,7 @@ describe('applyDecompositionPlan label enrichment', () => {
     assert.ok(result.issues[1].body.includes('Depends on #1'));
   });
 
+});
 describe('applyEstimateResults label enrichment', () => {
   it('applies complexity label via execGh when DoR passes', async () => {
     const ghCalls: string[][] = [];
