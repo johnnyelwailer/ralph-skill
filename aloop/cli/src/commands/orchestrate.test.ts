@@ -6459,7 +6459,7 @@ describe('prompt content verification', () => {
   it('orchestrator review prompt rejects unverified acceptance criteria (AC 9)', async () => {
     const { readFile } = await import('node:fs/promises');
     const reviewPrompt = await readFile(
-      new URL('../../../../templates/PROMPT_orch_review.md', import.meta.url),
+      new URL('../../../templates/PROMPT_orch_review.md', import.meta.url),
       'utf8',
     );
     assert.ok(
@@ -6475,7 +6475,7 @@ describe('prompt content verification', () => {
   it('child review instructions include PR_DESCRIPTION.md generation (AC 10)', async () => {
     const { readFile } = await import('node:fs/promises');
     const reviewInstructions = await readFile(
-      new URL('../../../../templates/instructions/review.md', import.meta.url),
+      new URL('../../../templates/instructions/review.md', import.meta.url),
       'utf8',
     );
     assert.ok(
