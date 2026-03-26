@@ -4560,6 +4560,26 @@ export interface ScanLoopDeps {
   processSend?: (pid: number, signal: number | string) => boolean;
   spawnSync?: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
   processSignal?: (pid: number, signal: number | string) => boolean;
+  memoryPressureThresholdMB?: number;
+}
+
+export interface MemoryPressureResult {
+  pressured: boolean;
+  freeMB: number;
+  thresholdMB: number;
+}
+
+const DEFAULT_MEMORY_PRESSURE_THRESHOLD_MB = 512;
+
+export function checkMemoryPressure(
+  freemem: (() => number) | undefined,
+  thresholdMB: number | undefined,
+): MemoryPressureResult | null {
+  if (!freemem) return null;
+  const threshold = thresholdMB ?? DEFAULT_MEMORY_PRESSURE_THRESHOLD_MB;
+  const freeBytes = freemem();
+  const freeMB = Math.round(freeBytes / (1024 * 1024));
+  return { pressured: freeMB < threshold, freeMB, thresholdMB: threshold };
 }
 
 export interface SpecChangeReplanResult {
@@ -4581,6 +4601,7 @@ export interface ScanPassResult {
   prLifecycles: PrLifecycleResult[];
   waveAdvanced: boolean;
   budgetExceeded: boolean;
+  memoryPressureSkipped: boolean;
   allDone: boolean;
   shouldStop: boolean;
   replan: SpecChangeReplanResult | null;
