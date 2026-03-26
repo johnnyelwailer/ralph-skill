@@ -4280,6 +4280,7 @@ export interface MonitorChildResult {
 export interface MonitorChildDeps {
   existsSync: (path: string) => boolean;
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
+  readdir: (path: string) => Promise<string[]>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   now: () => Date;
