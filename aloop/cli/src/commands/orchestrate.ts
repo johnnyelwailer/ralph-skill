@@ -4558,6 +4558,8 @@ export interface ScanLoopDeps {
   etagCache?: EtagCache;
   freemem?: () => number;
   processSend?: (pid: number, signal: number | string) => boolean;
+  spawnSync?: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
+  processSignal?: (pid: number, signal: number | string) => boolean;
 }
 
 export interface SpecChangeReplanResult {
