@@ -7,6 +7,14 @@ pipeline:
   - agent: qa
   - agent: review
     onFailure: goto build
+  - agent: spec-gap
+    periodic:
+      every: 2
+      inject_before: plan
+  - agent: docs
+    periodic:
+      every: 2
+      inject_after: qa
 
 # Completion finalizer — runs once when all tasks done at cycle boundary.
 # Processed sequentially. If any agent adds TODOs, finalizer aborts
