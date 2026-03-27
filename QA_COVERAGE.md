@@ -8,4 +8,6 @@
 | No hardcoded github.com in adapter (issue #176) | 2026-03-27 | ae9830e8c | PASS | Built artifact has no github.com API URLs; only doc strings |
 | index CLI catches errors without stack traces (qa/P1 fix) | 2026-03-27 | ae9830e8c | PASS | All 5/5 index tests pass; previously failing test now fixed |
 | Dead import removal in orchestrate.ts | 2026-03-27 | ae9830e8c | PASS | No createAdapter/OrchestratorAdapter in orchestrate.ts source or built artifact |
-| adapter.ts LOC threshold | 2026-03-27 | ae9830e8c | FAIL | 350 LOC — above 300 LOC threshold; open review task still not addressed |
+| adapter.ts LOC threshold | 2026-03-27 | 426dbd5ed | PASS | Split into adapter.ts (115 LOC) + adapter-github.ts (252 LOC) — both under 300 LOC threshold |
+| Dead import removal in process-requests.ts | 2026-03-27 | 426dbd5ed | PASS | No createAdapter in process-requests.ts; grep returns no matches |
+| All 38 adapter tests pass after file split | 2026-03-27 | 426dbd5ed | PASS | 38/38 pass; all suites intact after GitHubAdapter extracted to adapter-github.ts |
