@@ -16,11 +16,13 @@ type CliResult = {
 
 function runCli(args: string[], cwd?: string): Promise<CliResult> {
   const entrypoint = path.resolve(process.cwd(), 'src/index.ts');
+  const projectDir = process.cwd();
+  const nodePath = `${projectDir}/node_modules/.bin:${process.env.PATH || ''}`;
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--import', 'tsx', entrypoint, ...args], {
+    const child = spawn('npx', ['-y', 'tsx', entrypoint, ...args], {
       cwd: cwd ?? process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
+      env: { ...process.env, PATH: nodePath },
     });
 
     let stdout = '';
