@@ -3,10 +3,24 @@
 RESOLVE_FUNC=$(sed -n '/^resolve_healthy_provider() {/,/^}/p' aloop/bin/loop.sh)
 eval "$RESOLVE_FUNC"
 
+ACQUIRE_FUNC=$(sed -n '/^acquire_provider_health_lock() {/,/^}/p' aloop/bin/loop.sh)
+eval "$ACQUIRE_FUNC"
+RELEASE_FUNC=$(sed -n '/^release_provider_health_lock() {/,/^}/p' aloop/bin/loop.sh)
+eval "$RELEASE_FUNC"
+
 declare -A STATUS_BY_PROVIDER
 declare -A COOLDOWN_BY_PROVIDER
 declare -A REASON_BY_PROVIDER
 LOG_FILE="$(mktemp)"
+HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
+HEALTH_LOCK_FD=""
+FLOCK_LAST_ARGS=""
+FLOCK_RETURN=0
+
+flock() {
+    FLOCK_LAST_ARGS="$*"
+    return $FLOCK_RETURN
+}
 
 write_log_entry() {
     local event="$1"
@@ -86,6 +100,52 @@ else
     failed=1
 fi
 rm -f "$stderr_file"
+# ---- flock locking tests ----
+lock_base="$(mktemp)"
+rm -f "$lock_base"  # acquire appends .lock; we just need a unique base path
+
+# Test: read operation uses shared lock (-s)
+FLOCK_LAST_ARGS=""
+FLOCK_RETURN=0
+acquire_provider_health_lock "$lock_base" "claude" "read"
+release_provider_health_lock
+if echo "$FLOCK_LAST_ARGS" | grep -q -- "-s"; then
+    echo "PASS: read operation acquires shared lock (-s)"
+else
+    echo "FAIL: read operation should use -s flag, got: $FLOCK_LAST_ARGS"
+    failed=1
+fi
+rm -f "${lock_base}.lock"
+
+# Test: write operation uses exclusive lock (-x)
+FLOCK_LAST_ARGS=""
+FLOCK_RETURN=0
+acquire_provider_health_lock "$lock_base" "claude" "write"
+release_provider_health_lock
+if echo "$FLOCK_LAST_ARGS" | grep -q -- "-x"; then
+    echo "PASS: write operation acquires exclusive lock (-x)"
+else
+    echo "FAIL: write operation should use -x flag, got: $FLOCK_LAST_ARGS"
+    failed=1
+fi
+rm -f "${lock_base}.lock"
+
+# Test: health_lock_failed logged when flock always returns non-zero
+: > "$LOG_FILE"
+FLOCK_RETURN=1
+set +e
+acquire_provider_health_lock "$lock_base" "claude" "write"
+lock_rc=$?
+set -e
+if [ $lock_rc -ne 0 ] && contains_log "health_lock_failed"; then
+    echo "PASS: health_lock_failed logged when flock always fails"
+else
+    echo "FAIL: expected non-zero return and health_lock_failed in log (rc=$lock_rc)"
+    failed=1
+fi
+FLOCK_RETURN=0
+rm -f "${lock_base}.lock"
+
 rm -f "$LOG_FILE"
 
 if [ $failed -eq 0 ]; then
