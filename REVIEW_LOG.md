@@ -63,3 +63,28 @@ Both fixes are correct. All 5 `proof.spec.ts` E2E tests pass. All 148 dashboard 
 - Gate 4/5 finding: `proof.spec.ts:103` / swipe handlers — RESOLVED ✓ (handlers attached, state fixed)
 
 ### Findings written to TODO.md: 0 new — 2 prior [review] tasks remain open in TODO.md
+
+---
+
+## Review — 2026-03-27 — commits f7cf582e1..706c36dfa
+
+**Verdict: PASS** (0 findings)
+**Scope:** `aloop/cli/dashboard/e2e/smoke.spec.ts`, `aloop/cli/dashboard/src/AppView.tsx`
+
+### Prior findings resolved
+
+- Gate 4 finding: `mobileSidebarRef` dead code — RESOLVED ✓ (commit 64b5223cc: ref declaration removed from AppView.tsx:2199, `ref=` prop removed from mobile drawer div at line 2512)
+- Gate 5 finding: `smoke.spec.ts:135` and `smoke.spec.ts:154` stale toggle-button assertions — RESOLVED ✓ (commit 35ef8ced7: test now asserts both panels visible simultaneously on mobile, tap-target test checks steer/send/stop controls instead of removed toggles)
+
+### Gate observations
+
+- Gate 2: `smoke.spec.ts:135` (line 143-144) asserts exact heading elements visible — two concrete `toBeVisible()` checks, not existence-only. `smoke.spec.ts:147` uses `boundingBox()` to assert width ≥44 and height ≥44 — behavioral bounding-box checks, not shallow. Thorough.
+- Gate 5: QA iteration 27 confirms 11/11 E2E tests pass (6 smoke + 5 proof) and 148/148 unit tests pass. CLI build succeeds at 612.4kb. No regressions.
+- Gate 6: Changes are test-only and dead-code removal — no new observable UI behavior. Empty new proof artifacts are the correct outcome. Prior screenshots in `proof-artifacts/` remain valid.
+- Gates 1, 3, 4, 7, 8, 9: Unchanged from prior PASS assessments. No CSS, dependencies, or docs touched.
+
+### Note on open TODO item
+
+`[ ] Provider health: expandable section in main view on mobile` remains unchecked in TODO.md. This spec-described behavior (not in the formal acceptance criteria) was pre-existing and not addressed in this build. Tracked separately.
+
+---

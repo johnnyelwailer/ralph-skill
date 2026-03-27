@@ -8,6 +8,8 @@
 
 - [x] [review] Gate 4: `mobileSidebarRef` (AppView.tsx:2199) is declared with `useRef<HTMLDivElement>(null)` and attached to the mobile drawer div, but the ref value is never read anywhere — dead code. Remove the ref declaration and the `ref={mobileSidebarRef}` prop from AppView.tsx:2515. (priority: low)
 
+[reviewed: gates 1-9 pass — all prior findings resolved; 11 E2E + 148 unit tests green]
+
 ### Up Next
 
 - [x] Fix steer input: `position: fixed` at viewport bottom on mobile with safe-area inset (priority: high)
