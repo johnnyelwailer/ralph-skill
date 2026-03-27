@@ -2472,6 +2472,36 @@ describe('launchChildLoop', () => {
     assert.equal(plan.cyclePosition, 0);
     assert.equal(plan.iteration, 1);
   });
+
+  it('passes 0 (unlimited) to --max-iterations when maxIterations is undefined', async () => {
+    const deps = createMockDispatchDeps({ platform: 'linux' });
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
+    const spawnCall = deps._spawnCalls.find((c) => c.command.endsWith('loop.sh'));
+    assert.ok(spawnCall, 'loop.sh should be spawned');
+    const idx = spawnCall.args.indexOf('--max-iterations');
+    assert.ok(idx !== -1, '--max-iterations flag should be present');
+    assert.equal(spawnCall.args[idx + 1], '0', '--max-iterations should be 0 (unlimited) when not specified');
+  });
+
+  it('passes explicit maxIterations value to --max-iterations when provided', async () => {
+    const deps = createMockDispatchDeps({ platform: 'linux' });
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps, 50);
+    const spawnCall = deps._spawnCalls.find((c) => c.command.endsWith('loop.sh'));
+    assert.ok(spawnCall, 'loop.sh should be spawned');
+    const idx = spawnCall.args.indexOf('--max-iterations');
+    assert.ok(idx !== -1, '--max-iterations flag should be present');
+    assert.equal(spawnCall.args[idx + 1], '50', '--max-iterations should reflect the provided cap');
+  });
+
+  it('passes explicit maxIterations value to -MaxIterations on win32', async () => {
+    const deps = createMockDispatchDeps({ platform: 'win32' });
+    await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps, 25);
+    const spawnCall = deps._spawnCalls.find((c) => c.command === 'powershell');
+    assert.ok(spawnCall, 'powershell should be spawned');
+    const idx = spawnCall.args.indexOf('-MaxIterations');
+    assert.ok(idx !== -1, '-MaxIterations flag should be present');
+    assert.equal(spawnCall.args[idx + 1], '25', '-MaxIterations should reflect the provided cap');
+  });
 });
 
 describe('dispatchChildLoops', () => {
