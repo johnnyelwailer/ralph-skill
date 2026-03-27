@@ -162,10 +162,14 @@ async function buildCycleFromPipeline(
       if (!agentName) continue;
 
       const agentConfig = await getAgentConfig(agentName, projectRoot, deps);
-      if (step.periodic && typeof step.periodic.every === 'number') {
+      if (typeof step.every === 'number') {
         periodicSteps.push({
           entry: { filename: agentConfig.prompt, agent: agentName },
-          periodic: step.periodic as PeriodicConfig,
+          periodic: {
+            every: step.every,
+            inject_before: step.inject_before || undefined,
+            inject_after: step.inject_after || undefined,
+          },
         });
       } else {
         const repeat = typeof step.repeat === 'number' ? step.repeat : 1;
@@ -299,6 +303,7 @@ async function buildRoundRobinCycle(
         for (const step of parsed.pipeline) {
           const agentName = step.agent;
           if (!agentName) continue;
+          if (typeof step.every === 'number') continue;
 
           const agentConfig = await getAgentConfig(agentName, projectRoot, deps);
           const promptBase = agentConfig.prompt;

@@ -843,3 +843,44 @@ test('compileLoopPlan — opencode respects explicit cost_routing overrides', as
   // Review remains default prefer_capable because override only touched plan/build
   assert.ok(reviewPrompt.includes('model: openrouter/anthropic/claude-opus-4.6'));
 });
+
+test('compileLoopPlan — round-robin filters periodic entries from pipeline', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-rr-periodic-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline:
+  - agent: plan
+  - agent: build
+  - agent: qa
+  - agent: review
+  - agent: spec-gap
+    periodic:
+      every: 2
+      inject_before: plan
+  - agent: docs
+    periodic:
+      every: 2
+      inject_after: qa
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'round-robin',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude', 'codex'],
+    roundRobinOrder: ['claude', 'codex'],
+    models: { claude: 'opus', codex: 'gpt-5' },
+    projectRoot: root,
+  });
+
+  // Periodic entries (spec-gap, docs) should be excluded from round-robin cycle
+  assert.deepStrictEqual(plan.cycle, [
+    'PROMPT_plan.md',
+    'PROMPT_build_claude.md',
+    'PROMPT_build_codex.md',
+    'PROMPT_qa.md',
+    'PROMPT_review.md',
+  ]);
+});
