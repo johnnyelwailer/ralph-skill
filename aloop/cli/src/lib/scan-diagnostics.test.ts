@@ -289,6 +289,50 @@ test('runSelfHealingAndDiagnostics: stale session → removed from active.json, 
   assert.equal(issue.state, 'failed');
 });
 
+test('runSelfHealingAndDiagnostics: stale session with no matching child_session does not rewrite orchestrator.json', async () => {
+  const files: Record<string, string> = {
+    '/root/active.json': JSON.stringify({
+      'sess-stale': { pid: 99999, session_dir: '/ses' },
+    }),
+    '/ses/orchestrator.json': JSON.stringify(makeState({
+      issues: [
+        {
+          number: 1, title: 'Test', wave: 1, state: 'in_progress', child_session: 'sess-other',
+          pr_number: null, depends_on: [],
+        },
+        {
+          number: 2, title: 'Test2', wave: 1, state: 'in_progress', child_session: null,
+          pr_number: null, depends_on: [],
+        },
+      ],
+    })),
+  };
+  const written: Record<string, string> = {};
+
+  const deps = {
+    readFile: async (p: string) => {
+      if (files[p] !== undefined) return files[p]!;
+      throw new Error(`not found: ${p}`);
+    },
+    writeFile: async (p: string, d: string) => { written[p] = d; },
+    existsSync: (p: string) => files[p] !== undefined,
+    now: () => new Date('2024-01-01T00:00:00Z'),
+    isProcessAlive: (_pid: number) => false,
+  };
+
+  const state = makeState({ diagnostics_blocker_threshold: 3 });
+  const pass = makePassResult({ iteration: 1, allDone: true });
+
+  await runSelfHealingAndDiagnostics(pass, '/ses', [], state, null, deps, '/root');
+
+  // active.json should be rewritten with stale entry removed
+  const active = JSON.parse(written['/root/active.json']!) as Record<string, unknown>;
+  assert.ok(!('sess-stale' in active), 'stale session should be removed from active.json');
+
+  // orchestrator.json should NOT be rewritten because no issue matched the stale session
+  assert.ok(!written['/ses/orchestrator.json'], 'orchestrator.json should NOT be rewritten when no issue matches stale session');
+});
+
 test('runSelfHealingAndDiagnostics: alive session not cleaned up', async () => {
   const files: Record<string, string> = {
     '/root/active.json': JSON.stringify({
