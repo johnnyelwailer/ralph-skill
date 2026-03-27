@@ -1036,7 +1036,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   let blockerRecords: BlockerRecord[] = [];
   try {
     if (existsSync(blockersFile)) {
-      blockerRecords = JSON.parse(await readFile(blockersFile, 'utf8'));
+      const parsed = JSON.parse(await readFile(blockersFile, 'utf8'));
+      if (Array.isArray(parsed)) {
+        blockerRecords = parsed;
+      }
     }
   } catch { /* start fresh */ }
 

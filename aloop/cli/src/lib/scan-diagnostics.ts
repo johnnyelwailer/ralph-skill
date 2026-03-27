@@ -46,7 +46,8 @@ export function trackBlockers(
       passResult.dispatched === 0 && passResult.triage.triaged_entries === 0 && !passResult.waveAdvanced) {
     detected.push({ type: 'no_progress', affectedIssue: null, errorSnippet: 'No issues dispatched or triaged' });
   }
-  const updated = new Map<string, BlockerRecord>(existingRecords.map((r) => [r.hash, { ...r }]));
+  const safe = Array.isArray(existingRecords) ? existingRecords : [];
+  const updated = new Map<string, BlockerRecord>(safe.map((r) => [r.hash, { ...r }]));
   for (const d of detected) {
     const hash = hashBlocker(d.type, d.affectedIssue, d.errorSnippet);
     const existing = updated.get(hash);

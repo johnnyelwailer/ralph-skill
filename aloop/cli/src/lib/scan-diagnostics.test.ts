@@ -165,6 +165,26 @@ test('trackBlockers: no no_progress blocker when allDone', () => {
   assert.equal(result.length, 0);
 });
 
+test('trackBlockers: non-array existingRecords falls back to empty array', () => {
+  const pass = makePassResult({
+    iteration: 1,
+    dispatched: 1,
+    childMonitoring: {
+      monitored: 1,
+      prs_created: 0,
+      failed: 1,
+      still_running: 0,
+      errors: 0,
+      entries: [
+        { issue_number: 42, child_session: 'sess-1', child_state: 'failed', stuck_count: 0, action: 'failed', error: 'OOM' },
+      ],
+    },
+  });
+  const result = trackBlockers(pass, {} as unknown as BlockerRecord[], 1);
+  assert.equal(result.length, 1);
+  assert.equal(result[0]!.type, 'child_failed');
+});
+
 test('trackBlockers: no no_progress blocker when something was dispatched', () => {
   const pass = makePassResult({ iteration: 1, dispatched: 1 });
   const result = trackBlockers(pass, [], 1);
