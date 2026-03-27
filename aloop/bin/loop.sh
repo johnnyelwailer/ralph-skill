@@ -890,26 +890,28 @@ acquire_provider_health_lock() {
     local path="$1"
     local provider_name="$2"
     local operation_name="$3"
-    local lock_file="${path}.flock"
+    local lock_file="${path}.lock"
     local flock_mode
     if [ "$operation_name" = "read" ]; then
         flock_mode="-s"
     else
         flock_mode="-x"
     fi
+    # Clean up stale .lock directory from old mkdir-based locking approach
+    [ -d "$lock_file" ] && rmdir "$lock_file" 2>/dev/null
     local retries=${#HEALTH_LOCK_RETRY_DELAYS[@]}
     local i
-    # Open lock file on FD 9
-    exec 9>"$lock_file"
+    local fd
+    exec {fd}>"$lock_file"
     for ((i=0; i<retries; i++)); do
-        if flock -n $flock_mode 9 2>/dev/null; then
-            HEALTH_LOCK_FD="9"
+        if flock -n $flock_mode $fd 2>/dev/null; then
+            HEALTH_LOCK_FD="$fd:$lock_file"
             return 0
         fi
         sleep "${HEALTH_LOCK_RETRY_DELAYS[$i]}"
     done
     # Failed to acquire lock after all retries — close FD and report
-    exec 9>&-
+    exec {fd}>&-
     HEALTH_LOCK_FD=""
     write_log_entry "health_lock_failed" \
         "provider" "$provider_name" \
@@ -921,7 +923,8 @@ acquire_provider_health_lock() {
 
 release_provider_health_lock() {
     if [ -n "$HEALTH_LOCK_FD" ]; then
-        exec 9>&-
+        local fd="${HEALTH_LOCK_FD%%:*}"
+        exec {fd}>&-
         HEALTH_LOCK_FD=""
     fi
 }
