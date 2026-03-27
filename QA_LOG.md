@@ -1,5 +1,52 @@
 # QA Log
 
+## QA Session — 2026-03-27 iter 5 (issue #176)
+
+### Test Environment
+- Binary under test: N/A — dashboard deps not installed; tested via `tsx` directly
+- Commit under test: dad206220 (docs: clarify dead import status in TODO acceptance criteria)
+- Features tested: 5 (final regression pass at HEAD)
+
+### Results
+- PASS: adapter.test.ts — 38/38 tests pass
+- PASS: index.test.ts — 5/5 tests pass
+- PASS: adapter.ts LOC — 115 LOC (under 300 threshold)
+- PASS: adapter-github.ts LOC — 252 LOC (under 300 threshold)
+- PASS: No dead imports in orchestrate.ts or process-requests.ts
+- PASS: No hardcoded github.com API URLs in built artifact (0 matches)
+
+### Bugs Filed
+None — all acceptance criteria verified at HEAD. Only change since last QA is a docs commit (clarify dead import status in TODO.md).
+
+### Command Transcript
+```
+# Adapter unit tests
+$ node_modules/.bin/tsx --test src/lib/adapter.test.ts
+# tests 38 | pass 38 | fail 0 ✓
+
+# Index CLI tests
+$ node_modules/.bin/tsx --test src/index.test.ts
+# tests 5 | pass 5 | fail 0 ✓
+
+# LOC check
+$ wc -l src/lib/adapter.ts src/lib/adapter-github.ts
+  115 src/lib/adapter.ts
+  252 src/lib/adapter-github.ts  ✓ both under 300
+
+# Dead import check
+$ grep -n 'createAdapter|OrchestratorAdapter' src/commands/orchestrate.ts src/commands/process-requests.ts
+# (no output) ✓
+
+# Build artifact checks
+$ node_modules/.bin/esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=/tmp/aloop-qa-final-iter5.js
+# 482.8kb built
+$ grep -c 'https://github.com/api|https://api.github.com|createAdapter|OrchestratorAdapter' /tmp/aloop-qa-final-iter5.js
+# 0 ✓
+```
+
+---
+
+
 ## QA Session — 2026-03-27 iter 2 (issue #176)
 
 ### Test Environment
