@@ -30,11 +30,35 @@ async function reservePort(): Promise<number> {
   });
 }
 
+function makeDefaultRequestSpawnSync(): typeof spawnSync {
+  return (cmd: string, args?: readonly string[], opts?: object) => {
+    const ghArgs = (args ?? []) as string[];
+    // Idempotency checks: gh pr list → empty array, gh pr view → empty obj, gh issue view → empty obj
+    if (cmd === 'gh') {
+      const sub = ghArgs[0];
+      if (sub === 'pr' && ghArgs[1] === 'list') {
+        return { status: 0, stdout: '[]', stderr: '', pid: 0, output: [null, '[]', ''], signal: null, error: undefined } as ReturnType<typeof spawnSync>;
+      }
+      if (sub === 'pr' && ghArgs[1] === 'view') {
+        return { status: 0, stdout: '{}', stderr: '', pid: 0, output: [null, '{}', ''], signal: null, error: undefined } as ReturnType<typeof spawnSync>;
+      }
+      if (sub === 'issue' && ghArgs[1] === 'view') {
+        return { status: 0, stdout: JSON.stringify({ body: '' }), stderr: '', pid: 0, output: [null, JSON.stringify({ body: '' }), ''], signal: null, error: undefined } as ReturnType<typeof spawnSync>;
+      }
+      if (sub === 'issue' && ghArgs[1] === 'list') {
+        return { status: 0, stdout: '[]', stderr: '', pid: 0, output: [null, '[]', ''], signal: null, error: undefined } as ReturnType<typeof spawnSync>;
+      }
+    }
+    return spawnSync(cmd, args as string[], opts as Parameters<typeof spawnSync>[2]);
+  };
+}
+
 async function createServerFixture(
   runtimeOptions: {
     heartbeatIntervalMs?: number;
     requestPollIntervalMs?: number;
     ghCommandRunner?: (operation: string, sessionId: string, requestPath: string) => Promise<{ exitCode: number; output: string }>;
+    requestSpawnSync?: typeof spawnSync;
   } = {},
 ) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-dashboard-'));
@@ -52,7 +76,7 @@ async function createServerFixture(
   const port = await reservePort();
   const handle = await startDashboardServer(
     { port: String(port), sessionDir, workdir, assetsDir, runtimeDir },
-    { registerSignalHandlers: false, ...runtimeOptions },
+    { registerSignalHandlers: false, requestSpawnSync: makeDefaultRequestSpawnSync(), ...runtimeOptions },
   );
 
   return { root, sessionDir, workdir, assetsDir, runtimeDir, handle };
@@ -374,7 +398,7 @@ test('GH request processor writes error response for unsupported request type', 
       .filter(Boolean)
       .map((line) => JSON.parse(line) as { event?: string; error?: string });
     assert.equal(logs.filter((entry) => entry.event === 'gh_request_failed').length, 1);
-    assert.match((logs.find((entry) => entry.event === 'gh_request_failed')?.error ?? ''), /Validation failed: Invalid request type/);
+    assert.match((logs.find((entry) => entry.event === 'gh_request_failed')?.error ?? ''), /Validation failed: Invalid or missing request type/);
   } finally {
     await fixture.handle.close();
   }
@@ -858,19 +882,28 @@ test('POST /api/stop handles ESRCH and EPERM errors', async (t) => {
 });
 
 test('dashboard resolves packaged assets when cwd has no dashboard/dist', async () => {
+  // Simulate a packaged installation: argv[1] is in a package dir that HAS dashboard assets
+  // next to the script, but cwd is an empty project dir with no dashboard/dist.
   const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-assets-fallback-'));
   const emptyProjectDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-dashboard-cwd-'));
+  const packageDir = path.join(root, 'pkg');
+  const packageDashboardDir = path.join(packageDir, 'dashboard');
   const sessionDir = path.join(root, 'session');
   const workdir = path.join(root, 'workdir');
   await mkdir(sessionDir, { recursive: true });
   await mkdir(workdir, { recursive: true });
+  // Create fake packaged dashboard assets next to the "installed" script
+  await mkdir(packageDashboardDir, { recursive: true });
+  await writeFile(path.join(packageDashboardDir, 'index.html'), '<!doctype html><title>Aloop Dashboard</title>', 'utf8');
 
   const originalCwd = process.cwd();
   const originalArgv1 = process.argv[1];
   let handle: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
   try {
+    // cwd has no dashboard/dist — resolveDefaultAssetsDir should fall back to package-relative assets
     process.chdir(emptyProjectDir);
-    process.argv[1] = path.join(emptyProjectDir, 'aloop.mjs');
+    // argv[1] is the installed script, which has dashboard/ as a sibling dir
+    process.argv[1] = path.join(packageDir, 'aloop.mjs');
 
     const port = await reservePort();
     handle = await startDashboardServer(
