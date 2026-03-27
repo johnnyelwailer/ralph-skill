@@ -249,7 +249,7 @@ exit 0
         $events | Should -Not -Contain 'final_review_rejected'
     }
 
-    It 'proof manifest validation logs valid manifest details' {
+    It 'proof manifest found logs event details' {
         if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
         $e = New-ShLoopEnv -Scenario 'approve'
         @"
@@ -262,17 +262,17 @@ Collect proof iter-<N>.
         $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 8
         $entries = Get-ShLogEntries -LogFile $e.LogFile
         $result.ExitCode | Should -Be 0
-        $validation = $entries |
-            Where-Object { $_.event -eq 'proof_manifest_validated' -and $_.status -eq 'valid' } |
+        $found = $entries |
+            Where-Object { $_.event -eq 'proof_manifest_found' } |
             Select-Object -Last 1
-        $validation | Should -Not -BeNullOrEmpty
-        [int]$validation.iteration | Should -BeGreaterThan 0
-        [int]$validation.last_proof_iteration | Should -Be ([int]$validation.iteration)
+        $found | Should -Not -BeNullOrEmpty
+        [int]$found.iteration | Should -BeGreaterThan 0
+        [int]$found.last_proof_iteration | Should -Be ([int]$found.iteration)
     }
 
-    It 'proof manifest validation fails proof iteration when JSON is invalid' {
+    It 'proof_manifest_missing does not cause iteration_error' {
         if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
-        $e = New-ShLoopEnv -Scenario 'proof-invalid-manifest'
+        $e = New-ShLoopEnv -Scenario 'proof-missing-manifest'
         @"
 ---
 agent: proof
@@ -284,14 +284,8 @@ Collect proof iter-<N>.
         $entries = Get-ShLogEntries -LogFile $e.LogFile
         $events = Get-ShLogEvents -LogFile $e.LogFile
         $result.ExitCode | Should -Be 0
-        $events | Should -Contain 'proof_manifest_validated'
-        $invalidValidation = $entries |
-            Where-Object { $_.event -eq 'proof_manifest_validated' -and $_.status -eq 'invalid' -and $_.error -eq 'invalid_json' } |
-            Select-Object -First 1
-        $invalidValidation | Should -Not -BeNullOrEmpty
-        $proofIteration = [int]$invalidValidation.iteration
-        ($entries | Where-Object { $_.event -eq 'iteration_error' -and $_.mode -eq 'proof' -and $_.error -eq 'proof_manifest_invalid_json' }).Count | Should -BeGreaterThan 0
-        ($entries | Where-Object { $_.event -eq 'iteration_complete' -and $_.mode -eq 'proof' -and [int]$_.iteration -eq $proofIteration }).Count | Should -Be 0
+        $events | Should -Contain 'proof_manifest_missing'
+        ($entries | Where-Object { $_.event -eq 'iteration_error' -and $_.mode -eq 'proof' }).Count | Should -Be 0
     }
 
     It 'iteration limit writes stopped session state' {
@@ -431,50 +425,6 @@ Collect proof iter-<N>.
     }
 }
 
-Describe 'loop.ps1 — Validate-ProofManifest' -Tag 'proof-manifest-validation' {
-
-    BeforeAll {
-        $loopSource = Get-Content (Join-Path $PSScriptRoot 'loop.ps1') -Raw
-        $validateMatch = [regex]::Match($loopSource, '(?ms)function Validate-ProofManifest \{.*?^\}')
-        if (-not $validateMatch.Success) {
-            throw 'Failed to locate Validate-ProofManifest in loop.ps1'
-        }
-
-        . ([scriptblock]::Create($validateMatch.Value))
-    }
-
-    It 'returns false with invalid_json when manifest file is empty' {
-        $testDir = Join-Path ([IO.Path]::GetTempPath()) ("aloop-proof-manifest-" + [guid]::NewGuid().ToString('N'))
-        New-Item -ItemType Directory -Path $testDir -Force | Out-Null
-        $manifestPath = Join-Path $testDir 'proof-manifest.json'
-
-        try {
-            Set-Content -Path $manifestPath -NoNewline -Value ''
-            $script:validateProofManifestError = ''
-
-            (Validate-ProofManifest -ManifestPath $manifestPath) | Should -Be $false
-            $script:validateProofManifestError | Should -Be 'invalid_json'
-        } finally {
-            if (Test-Path $testDir) { Remove-Item -Path $testDir -Recurse -Force }
-        }
-    }
-
-    It 'returns false with invalid_json when manifest file is whitespace only' {
-        $testDir = Join-Path ([IO.Path]::GetTempPath()) ("aloop-proof-manifest-" + [guid]::NewGuid().ToString('N'))
-        New-Item -ItemType Directory -Path $testDir -Force | Out-Null
-        $manifestPath = Join-Path $testDir 'proof-manifest.json'
-
-        try {
-            Set-Content -Path $manifestPath -NoNewline -Value " `t`r`n "
-            $script:validateProofManifestError = ''
-
-            (Validate-ProofManifest -ManifestPath $manifestPath) | Should -Be $false
-            $script:validateProofManifestError | Should -Be 'invalid_json'
-        } finally {
-            if (Test-Path $testDir) { Remove-Item -Path $testDir -Recurse -Force }
-        }
-    }
-}
 
 Describe 'loop.ps1 — Register-IterationFailure proof mode' -Tag 'proof-manifest-validation' {
 
@@ -1050,7 +1000,7 @@ exit 0
         $captured | Should -Match 'Fake provider: call=1'
     }
 
-    It 'proof manifest validation logs valid event details in proof mode' {
+    It 'proof manifest found logs event details in proof mode' {
         $e = New-LoopEnv -Scenario 'approve'
 @"
 ---
@@ -1063,16 +1013,16 @@ Collect proof iter-<N>.
         $entries = Get-LogEntries -LogFile $e.LogFile
 
         $result.ExitCode | Should -Be 0
-        $validation = $entries |
-            Where-Object { $_.event -eq 'proof_manifest_validated' -and $_.status -eq 'valid' } |
+        $found = $entries |
+            Where-Object { $_.event -eq 'proof_manifest_found' } |
             Select-Object -Last 1
-        $validation | Should -Not -BeNullOrEmpty
-        [int]$validation.iteration | Should -BeGreaterThan 0
-        [int]$validation.last_proof_iteration | Should -Be ([int]$validation.iteration)
+        $found | Should -Not -BeNullOrEmpty
+        [int]$found.iteration | Should -BeGreaterThan 0
+        [int]$found.last_proof_iteration | Should -Be ([int]$found.iteration)
     }
 
-    It 'invalid proof manifest logs invalid event and marks proof iteration as error' {
-        $e = New-LoopEnv -Scenario 'proof-invalid-manifest'
+    It 'proof_manifest_missing does not cause iteration_error' {
+        $e = New-LoopEnv -Scenario 'proof-missing-manifest'
 @"
 ---
 agent: proof
@@ -1084,13 +1034,8 @@ Collect proof iter-<N>.
         $entries = Get-LogEntries -LogFile $e.LogFile
 
         $result.ExitCode | Should -Be 0
-        $invalidValidation = $entries |
-            Where-Object { $_.event -eq 'proof_manifest_validated' -and $_.status -eq 'invalid' -and $_.error -eq 'invalid_json' } |
-            Select-Object -First 1
-        $invalidValidation | Should -Not -BeNullOrEmpty
-        $proofIteration = [int]$invalidValidation.iteration
-        ($entries | Where-Object { $_.event -eq 'iteration_error' -and $_.mode -eq 'proof' -and $_.error -eq 'proof_manifest_invalid_json' }).Count | Should -BeGreaterThan 0
-        ($entries | Where-Object { $_.event -eq 'iteration_complete' -and $_.mode -eq 'proof' -and [int]$_.iteration -eq $proofIteration }).Count | Should -Be 0
+        ($entries | Where-Object { $_.event -eq 'proof_manifest_missing' }).Count | Should -BeGreaterThan 0
+        ($entries | Where-Object { $_.event -eq 'iteration_error' -and $_.mode -eq 'proof' }).Count | Should -Be 0
     }
 
     It 'iteration limit writes stopped session state' {

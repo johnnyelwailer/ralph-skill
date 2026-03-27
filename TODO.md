@@ -4,7 +4,7 @@
 
 ### In Progress
 
-- [ ] [review] Gate 2/3/4: `loop.tests.ps1` not updated after refactor in `0ca241668`. Three categories of stale tests:
+- [x] [review] Gate 2/3/4: `loop.tests.ps1` not updated after refactor in `0ca241668`. Three categories of stale tests:
   (a) `Describe 'loop.ps1 — Validate-ProofManifest'` (loop.tests.ps1:434-490): tests a function that was deleted from loop.ps1 — BeforeAll will throw "Failed to locate Validate-ProofManifest in loop.ps1"
   (b) Integration tests at lines 250-297 and 1067-1092: assert `proof_manifest_validated` event (no longer emitted) and `iteration_error` with `proof_manifest_invalid_json` (no longer happens, missing manifest now only logs a warning)
   (c) Zero tests for the new `proof_manifest_found` and `proof_manifest_missing` events.
