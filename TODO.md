@@ -14,7 +14,7 @@
   without reading source code. (priority: high)
   **QA iter-22 status**: Clean behavioral re-test attempted (QA_LOG.md iter-22). Behavioral tests PASS for artifacts/iter-N/, aloop update, pipeline.yml finalizer compilation. proof_manifest events BLOCKED — /tmp disk full (SIGABRT) prevented proof-phase execution. A new bug was found: allTasksMarkedDone=true at startup bypasses the finalizer (see [qa/P2] below). Gate 6 remains open until proof_manifest events verified in a session that reaches the finalizer.
 
-- [ ] [qa/P2] Loop exits as "completed" without running finalizer when all TODOs are done at session start: When `aloop start` is run on a project where `TODO.md` has all tasks marked `[x]`, the compiled `loop-plan.json` has `allTasksMarkedDone: true` and the loop immediately exits as "completed" without entering the finalizer or running the proof agent. Reproduced in qa-proof-final-1774617658-20260327-132110 and qa-proof-pipeline-1774617540-20260327-131927. Spec says "completion can only happen via finalizer." Filed at iter 22. (priority: medium)
+- [x] [qa/P2] Loop exits as "completed" without running finalizer when all TODOs are done at session start: Fixed in `monitor.ts` — chain-completion check now verifies all finalizer steps have completed (`finalizerPosition >= finalizer.length`) before marking session as done. Previously, the monitor would SIGTERM the loop after the first finalizer step (spec-gap) completed via queue override, skipping the remaining 5 finalizer steps (docs, spec-review, final-review, final-qa, proof). Reproduced in qa-proof-final-1774617658-20260327-132110 and qa-proof-pipeline-1774617540-20260327-131927. (priority: medium)
 
 ### Completed
 

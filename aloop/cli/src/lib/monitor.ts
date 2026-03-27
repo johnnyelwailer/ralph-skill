@@ -226,7 +226,11 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
     } else {
       const queued = await queueTemplatesForEvent(options, status.phase);
       // Chain completion: no next phase queued while in rattail → session completed.
-      if (queued === 0 && plan.allTasksMarkedDone) {
+      // But only if the finalizer has no remaining steps (all done or no finalizer defined).
+      const finalizerLen = Array.isArray(plan.finalizer) ? plan.finalizer.length : 0;
+      const finalizerPos = plan.finalizerPosition ?? 0;
+      const finalizerComplete = finalizerLen === 0 || finalizerPos >= finalizerLen;
+      if (queued === 0 && plan.allTasksMarkedDone && finalizerComplete) {
         console.log(`[monitor] Rattail chain complete (phase: ${status.phase}). Session completed.`);
         const nextStatus = { ...status, state: 'completed', updated_at: new Date().toISOString() };
         await fs.writeFile(statusPath, JSON.stringify(nextStatus, null, 2));

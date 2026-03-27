@@ -299,6 +299,45 @@ test('monitorSessionState transitions', async (t) => {
     assert.equal(statusContent.state, 'running');
   });
 
+  await t.test('chain completion does not fire when finalizer has remaining steps', async () => {
+    // spec-gap phase, all tasks done, but finalizer still has 5 more steps
+    await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'spec-gap', iteration: 19 }));
+    await fs.writeFile(todoPath, '- [x] task 1');
+    await writeLoopPlan(sessionDir, {
+      cycle: [], cyclePosition: 0, iteration: 19, version: 1,
+      allTasksMarkedDone: true,
+      finalizer: ['PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md', 'PROMPT_proof.md'],
+      finalizerPosition: 0,
+    });
+    const queueDir = path.join(sessionDir, 'queue');
+    await fs.rm(queueDir, { recursive: true, force: true });
+
+    await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+    // State should remain running — finalizer has remaining steps
+    const statusContent = JSON.parse(await fs.readFile(statusPath, 'utf8'));
+    assert.equal(statusContent.state, 'running');
+  });
+
+  await t.test('chain completion fires when finalizer position reached end', async () => {
+    await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'proof', iteration: 20 }));
+    await fs.writeFile(todoPath, '- [x] task 1');
+    await writeLoopPlan(sessionDir, {
+      cycle: [], cyclePosition: 0, iteration: 20, version: 1,
+      allTasksMarkedDone: true,
+      finalizer: ['PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md', 'PROMPT_proof.md'],
+      finalizerPosition: 6,
+    });
+    const queueDir = path.join(sessionDir, 'queue');
+    await fs.rm(queueDir, { recursive: true, force: true });
+
+    await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+    // State should be completed — finalizer position reached end
+    const statusContent = JSON.parse(await fs.readFile(statusPath, 'utf8'));
+    assert.equal(statusContent.state, 'completed');
+  });
+
   await t.test('allTasksMarkedDone not set when no templates match all_tasks_done', async () => {
     // Remove spec-review template to simulate no matches
     const backupPath = specReviewTemplatePath + '.bak';
