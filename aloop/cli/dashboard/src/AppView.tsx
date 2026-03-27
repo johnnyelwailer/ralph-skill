@@ -2506,7 +2506,7 @@ function AppInner() {
         <div className="flex flex-1 min-h-0">
           {/* Desktop sidebar */}
           <div className="hidden md:flex">
-            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
+            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={!sidebarOpen} onToggle={() => toggleSidebar()} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
           </div>
           {/* Mobile sidebar drawer */}
           {mobileMenuOpen && (
@@ -2518,9 +2518,9 @@ function AppInner() {
             </div>
           )}
           <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
+            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => openSidebar()} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
             <main className="flex-1 min-h-0 p-2 pb-[calc(60px+env(safe-area-inset-bottom))] sm:pb-2 md:p-3">
-              <div className={`flex gap-3 h-full flex-col ${sidebarCollapsed ? 'sm:flex-row' : ''} lg:flex-row`}>
+              <div className={`flex gap-3 h-full flex-col ${!sidebarOpen ? 'sm:flex-row' : ''} lg:flex-row`}>
                 {docsPanel}
                 {activityPanel}
               </div>
