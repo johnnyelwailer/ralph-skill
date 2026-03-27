@@ -10,7 +10,7 @@
   - Add `pb-[footer-height]` padding to `<main>` on mobile so content isn't hidden behind fixed footer
   - Use `env(safe-area-inset-bottom)` via `pb-[calc(...+env(safe-area-inset-bottom))]` for notch support
 
-- [ ] Docs panel tabs: collapse to dropdown selector on mobile instead of horizontal scroll (priority: high)
+- [x] Docs panel tabs: collapse to dropdown selector on mobile instead of horizontal scroll (priority: high)
   - Currently `TabsList` uses `overflow-x-auto` + `flex-nowrap` which scrolls horizontally on mobile
   - On mobile (`< sm`) render a `<select>` or `DropdownMenu` showing active tab name + chevron
   - At `sm:` and above keep the existing horizontal tab row

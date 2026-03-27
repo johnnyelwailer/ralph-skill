@@ -23,6 +23,7 @@ import { CostDisplay } from '@/components/progress/CostDisplay';
 import { ArtifactViewer } from '@/components/artifacts/ArtifactViewer';
 import { useCost } from '@/hooks/useCost';
 import { useLongPress } from '@/hooks/useLongPress';
+import { cn } from '@/lib/utils';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 import { ResponsiveLayout, useResponsiveLayout } from '@/components/layout/ResponsiveLayout';
 
@@ -1268,10 +1269,48 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
     }
   }, [activeTab, allDocs, defaultTab]);
 
+  const activeTabLabel = activeTab === '_health'
+    ? 'Health'
+    : (tabLabels[activeTab] ?? activeTab.replace(/\.md$/i, ''));
+
+  const allTabEntries = [
+    ...allDocs.map((n) => ({ value: n, label: tabLabels[n] ?? n.replace(/\.md$/i, '') })),
+    { value: '_health', label: 'Health' },
+  ];
+
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
       <div className="flex items-center shrink-0">
-        <TabsList className="h-auto md:h-8 bg-muted/50 flex-nowrap sm:flex-wrap justify-start flex-1 overflow-x-auto whitespace-nowrap">
+        {/* Mobile: dropdown selector */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="sm:hidden flex items-center gap-1 px-3 py-2 min-h-[44px] text-xs font-medium text-foreground bg-muted/50 rounded-sm flex-1"
+            >
+              <Heart className="h-3 w-3 shrink-0" />
+              <span className="truncate">{activeTabLabel}</span>
+              <ChevronDown className="h-3 w-3 shrink-0 ml-auto" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[160px] p-1">
+            {allTabEntries.map(({ value, label }) => (
+              <DropdownMenuItem
+                key={value}
+                onSelect={() => setActiveTab(value)}
+                className={cn(
+                  'w-full cursor-pointer text-left text-xs px-3 py-2',
+                  value === activeTab && 'bg-accent text-accent-foreground',
+                )}
+              >
+                {value === '_health' && <Heart className="h-3 w-3 mr-1.5" />}
+                {label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {/* Desktop: horizontal tab row */}
+        <TabsList className="hidden sm:flex h-auto md:h-8 bg-muted/50 flex-nowrap sm:flex-wrap justify-start flex-1 overflow-x-auto whitespace-nowrap">
           {visibleTabs.map((n) => (
             <TabsTrigger key={n} value={n} className="text-[10px] sm:text-[11px] px-2 py-1 md:h-6 data-[state=active]:bg-background">
               {tabLabels[n] ?? n.replace(/\.md$/i, '')}
