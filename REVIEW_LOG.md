@@ -219,3 +219,57 @@
 2. Gate 3: Add branch coverage for `ArtifactComparisonDialog.tsx` after split (target ≥ 90%)
 
 ---
+
+## Review — 2026-03-27 — commit 603893c86..a0349c355
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/cli/dashboard/src/components/session/ArtifactComparisonDialog.tsx`, `ArtifactComparisonHeader.tsx`, `SideBySideView.tsx`, `SliderView.tsx`, `DiffOverlayView.tsx`, `ArtifactComparisonDialog.test.tsx`
+
+**Commits reviewed:**
+- `480a73132` refactor: split ArtifactComparisonDialog into focused sub-components
+- `11dc2bfec` test: add ArtifactComparisonDialog split component tests (Gate 3)
+- `a0349c355` chore(qa): session iter 69 — ArtifactComparisonDialog split verified
+
+**Prior findings resolution:**
+- Gate 4 (ArtifactComparisonDialog.tsx 219 lines): RESOLVED ✓ — split into 5 files: ArtifactComparisonDialog.tsx (90 LOC), ArtifactComparisonHeader.tsx (71 LOC), SideBySideView.tsx (25 LOC), SliderView.tsx (67 LOC), DiffOverlayView.tsx (48 LOC) — all under 150 LOC limit.
+- Gate 3 (0% branch coverage): RESOLVED ✓ — 26 tests added in `ArtifactComparisonDialog.test.tsx` covering all 5 specified branches.
+
+### Gate-by-gate summary
+
+**Gate 1 — Spec Compliance: PASS**
+- Prior [review] Gate 4 task fully addressed: all 4 sub-components extracted per the TODO specification (ArtifactComparisonHeader, SideBySideView, SliderView, DiffOverlayView). ArtifactComparisonDialog.tsx is now 90 LOC.
+- Prior [review] Gate 3 task fully addressed: all 5 branch categories covered (badge colors ×4 cases, mode tabs ×4 tests, keyboard ArrowLeft/ArrowRight ×4 tests including clamping, baseline dropdown ×2 tests, no-baseline path).
+
+**Gate 2 — Test Depth: PASS**
+- Badge color tests (lines 59-97): `expect(badge.className).toContain('green'/'yellow'/'red')` — adequate; a wrong color branch would fail these checks. `toFixed(1)` value assertion (e.g. `diff: 2.3%`) confirms the specific artifact is found.
+- Mode tab tests (lines 118-185): `toHaveBeenCalledWith('slider')` and `toHaveCalledWith('diff-overlay')` are exact call assertions ✓. `aria-selected="true/false"` attribute check confirms active state ✓.
+- Slider keyboard (lines 292-364): functional updater pattern correctly tested — `updater(50) → 48` (ArrowLeft) and `updater(50) → 52` (ArrowRight); clamping at 0 and 100 tested ✓. A broken Math.max/min would fail these.
+- ArtifactComparisonDialog integration (lines 395-481): no-baseline text check, mode switching verified by distinct rendered elements (slider role vs. overlay opacity input) ✓. Escape keydown, baseline dropdown change to specific iter value ✓.
+- DiffOverlayView (lines 367-392): initial opacity value asserted as '50'; opacity onChange not tested — minor gap, noted but not failing.
+
+**Gate 3 — Coverage: PASS**
+- ArtifactComparisonHeader.tsx: all branches exercised — diff_percentage undefined, <5, 5-20, ≥20; hasBaseline false (no tabs, no dropdown); setMode spy assertions; setSelectedBaseline spy with Number() coercion; onClose ✓.
+- SideBySideView.tsx: stateless display — render test sufficient ✓.
+- SliderView.tsx: ArrowLeft/ArrowRight with bounds clamping; initial aria attributes ✓. Mouse drag paths (getBoundingClientRect) not testable in jsdom — keyboard proxy is the correct approach ✓.
+- DiffOverlayView.tsx: initial render ✓; overlayOpacity onChange path not covered. Minor coverage gap.
+- ArtifactComparisonDialog.tsx: no-baseline branch, mode routing (side-by-side/slider/diff-overlay), Escape handler, baseline dropdown with Number() conversion ✓.
+
+**Gate 4 — Code Quality: FAIL**
+- `ComparisonMode` type (`'side-by-side' | 'slider' | 'diff-overlay'`) is defined identically in `ArtifactComparisonDialog.tsx:9` AND `ArtifactComparisonHeader.tsx:3` — exact copy-paste duplication. Constitution Rule 10: "Don't duplicate — factor out the common part." If a fourth mode is added, both files must be updated. The type should be exported from one file and imported in the other.
+- All 5 files are under 150 LOC ✓. No unused imports or dead code ✓.
+
+**Gate 5 — Integration Sanity: PASS**
+- `npm test` (dashboard): 333/333 tests pass ✓.
+- `tsc --noEmit`: clean ✓.
+- `npm test` (aloop/cli): 1094 pass, 32 fail — all pre-existing (confirmed by baseline in prior reviews).
+
+**Gate 6 — Proof: PASS**
+- Pure code reorganization (refactor) + test addition. No new observable UI output. No new Storybook stories. Skipping proof is the expected correct outcome.
+
+**Gate 7 — Layout: SKIP** (no CSS/layout changes — file splitting only)
+
+**Gate 8 — Versions: SKIP** (no dependency changes)
+
+**Gate 9 — Documentation: PASS** (no user-facing behavior changes)
+
+---
