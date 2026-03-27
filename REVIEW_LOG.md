@@ -186,3 +186,36 @@
 **Gate 9 — Documentation: PASS** (no user-facing behavior changes)
 
 ---
+
+## Review — 2026-03-27 — commit 9cf6237f4..e6f245282
+
+**Verdict: FAIL** (0 new findings — 2 prior findings from previous review still unresolved)
+**Scope:** `aloop/cli/dashboard/src/components/session/ActivityLog.test.tsx` (tautological assertion fix), `CONSTITUTION.md` (revert)
+
+**Commits reviewed:**
+- `11fb0dbed` test: fix tautological assertion in ActivityLog hasResult test (iter 60)
+- `ef72ead5e` test: fix tautological assertion in ActivityLog hasResult test (iter 67, also reverts CONSTITUTION.md)
+- `e6f245282` chore(qa): session iter 68 — hasResult fix verified
+
+**Prior findings resolution:**
+- Gate 2 (tautological assertion, `ActivityLog.test.tsx`): RESOLVED ✓ — test "does NOT suppress synthetic entry when result timestamp < iterationStartedAt" sets `iterationStartedAt=ts3` (200s) with result at `ts2` (100s): `ts2 < ts3` → `hasResult=false` → spinner IS added → `toBeInTheDocument()` asserted. If the `iterationStartedAt` guard were removed, hasResult would be true (iteration_complete for iter 2 exists) → no spinner → `toBeInTheDocument()` would FAIL. Test correctly falsifies a broken `iterationStartedAt` comparison.
+- Gate 3 (ArtifactComparisonDialog.tsx 0% branch coverage): **STILL OPEN** — no tests added, [review] task remains in TODO.md unchecked.
+- Gate 4 (ArtifactComparisonDialog.tsx 219 lines > 150 LOC limit): **STILL OPEN** — file unchanged at 219 LOC, [review] task remains in TODO.md unchecked.
+
+### Gate-by-gate summary (changed code only)
+
+**Gate 1: PASS** — fix directly addresses [review] task from prior review.
+**Gate 2: PASS** — tautological assertion resolved; test now genuinely falsifiable.
+**Gate 3: PASS** (changed code) — test code has no coverage threshold.
+**Gate 4: PASS** (changed code) — no dead code or quality issues in the fix.
+**Gate 5: PASS** — 307/307 tests pass (QA iter 68).
+**Gate 6: PASS** — pure test fix, no new observable output.
+**Gate 7: SKIP** (no layout changes)
+**Gate 8: SKIP** (no dependency changes)
+**Gate 9: PASS** (no doc changes needed)
+
+**Action required:** Next build iteration MUST address the two still-open [review] tasks:
+1. Gate 4: Split `ArtifactComparisonDialog.tsx` (219 lines) into sub-components to reach < 150 LOC
+2. Gate 3: Add branch coverage for `ArtifactComparisonDialog.tsx` after split (target ≥ 90%)
+
+---
