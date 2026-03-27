@@ -3982,6 +3982,7 @@ import * as fs2 from "node:fs/promises";
 import { existsSync as existsSync3 } from "node:fs";
 import * as path4 from "node:path";
 import { spawnSync as spawnSync2 } from "node:child_process";
+import { createHash as createHash2 } from "node:crypto";
 
 // src/lib/plan.ts
 import * as fs from "node:fs/promises";
@@ -4097,6 +4098,135 @@ async function writeSpecBackfill(opts) {
 }
 
 // src/lib/requests.ts
+var VALID_REQUEST_TYPES = /* @__PURE__ */ new Set([
+  "create_issues",
+  "update_issue",
+  "close_issue",
+  "create_pr",
+  "merge_pr",
+  "dispatch_child",
+  "steer_child",
+  "stop_child",
+  "post_comment",
+  "query_issues",
+  "spec_backfill"
+]);
+function validateRequest(raw) {
+  if (raw === null || typeof raw !== "object") {
+    return { valid: false, error: "Request must be a JSON object" };
+  }
+  const obj = raw;
+  if (typeof obj.id !== "string" || obj.id.length === 0) {
+    return { valid: false, error: "Missing or empty required field: id (string)" };
+  }
+  if (typeof obj.type !== "string" || !VALID_REQUEST_TYPES.has(obj.type)) {
+    return { valid: false, error: `Invalid or missing request type: ${JSON.stringify(obj.type)}. Must be one of: ${[...VALID_REQUEST_TYPES].join(", ")}` };
+  }
+  if (obj.payload === null || typeof obj.payload !== "object") {
+    return { valid: false, error: "Missing or invalid required field: payload (object)" };
+  }
+  const payload = obj.payload;
+  const type = obj.type;
+  const err = validatePayload(type, payload);
+  if (err)
+    return { valid: false, error: err };
+  return { valid: true, request: raw };
+}
+function requireString(payload, field) {
+  if (typeof payload[field] !== "string" || payload[field].length === 0) {
+    return `payload.${field} must be a non-empty string`;
+  }
+  return null;
+}
+function requirePositiveInt(payload, field) {
+  if (typeof payload[field] !== "number" || !Number.isInteger(payload[field]) || payload[field] <= 0) {
+    return `payload.${field} must be a positive integer`;
+  }
+  return null;
+}
+function requireOneOf(payload, field, values) {
+  if (typeof payload[field] !== "string" || !values.includes(payload[field])) {
+    return `payload.${field} must be one of: ${values.join(", ")}`;
+  }
+  return null;
+}
+function optionalStringArray(payload, field) {
+  if (payload[field] === void 0)
+    return null;
+  if (!Array.isArray(payload[field]))
+    return `payload.${field} must be an array of strings`;
+  if (!payload[field].every((v) => typeof v === "string"))
+    return `payload.${field} must contain only strings`;
+  return null;
+}
+function validatePayload(type, payload) {
+  switch (type) {
+    case "create_issues": {
+      if (!Array.isArray(payload.issues) || payload.issues.length === 0) {
+        return "payload.issues must be a non-empty array";
+      }
+      for (let i = 0; i < payload.issues.length; i++) {
+        const issue = payload.issues[i];
+        if (issue === null || typeof issue !== "object")
+          return `payload.issues[${i}] must be an object`;
+        const iss = issue;
+        const titleErr = requireString(iss, "title");
+        if (titleErr)
+          return `payload.issues[${i}].title must be a non-empty string`;
+        const bodyErr = requireString(iss, "body_file");
+        if (bodyErr)
+          return `payload.issues[${i}].body_file must be a non-empty string`;
+        const labelsErr = optionalStringArray(iss, "labels");
+        if (labelsErr)
+          return `payload.issues[${i}].${labelsErr.replace("payload.", "")}`;
+        if (iss.parent !== void 0) {
+          if (typeof iss.parent !== "number" || !Number.isInteger(iss.parent) || iss.parent <= 0) {
+            return `payload.issues[${i}].parent must be a positive integer`;
+          }
+        }
+      }
+      return null;
+    }
+    case "update_issue": {
+      return requirePositiveInt(payload, "number");
+    }
+    case "close_issue": {
+      return requirePositiveInt(payload, "number") || requireString(payload, "reason");
+    }
+    case "create_pr": {
+      return requireString(payload, "head") || requireString(payload, "base") || requireString(payload, "title") || requireString(payload, "body_file") || requirePositiveInt(payload, "issue_number");
+    }
+    case "merge_pr": {
+      return requirePositiveInt(payload, "number") || requireOneOf(payload, "strategy", ["squash", "merge", "rebase"]);
+    }
+    case "dispatch_child": {
+      return requirePositiveInt(payload, "issue_number") || requireString(payload, "branch") || requireString(payload, "pipeline") || requireString(payload, "sub_spec_file");
+    }
+    case "steer_child": {
+      return requirePositiveInt(payload, "issue_number") || requireString(payload, "prompt_file");
+    }
+    case "stop_child": {
+      return requirePositiveInt(payload, "issue_number") || requireString(payload, "reason");
+    }
+    case "post_comment": {
+      return requirePositiveInt(payload, "issue_number") || requireString(payload, "body_file");
+    }
+    case "query_issues": {
+      const labelsErr = optionalStringArray(payload, "labels");
+      if (labelsErr)
+        return labelsErr;
+      if (payload.state !== void 0) {
+        return requireOneOf(payload, "state", ["open", "closed", "all"]);
+      }
+      return null;
+    }
+    case "spec_backfill": {
+      return requireString(payload, "file") || requireString(payload, "section") || requireString(payload, "content_file");
+    }
+    default:
+      return `Unknown request type: ${type}`;
+  }
+}
 async function processAgentRequests(options) {
   const requestsDir = path4.join(options.aloopDir, "requests");
   if (!existsSync3(requestsDir))
@@ -4116,7 +4246,20 @@ async function processAgentRequests(options) {
     let request;
     try {
       const content = await fs2.readFile(requestPath, "utf8");
-      request = JSON.parse(content);
+      const parsed = JSON.parse(content);
+      const validation = validateRequest(parsed);
+      if (!validation.valid) {
+        const archivePath = getArchivePath(failedDir, fileName, /* @__PURE__ */ new Set());
+        await fs2.rename(requestPath, archivePath);
+        await writeSessionLogEntry(options.logPath, "gh_request_failed", {
+          type: parsed?.type ?? "unknown",
+          id: parsed?.id ?? "unknown",
+          request_file: fileName,
+          error: `Validation failed: ${validation.error}`
+        });
+        continue;
+      }
+      request = validation.request;
     } catch (e) {
       const archivePath = getArchivePath(failedDir, fileName, /* @__PURE__ */ new Set());
       await fs2.rename(requestPath, archivePath);
@@ -4207,9 +4350,38 @@ async function handleRequest(request, fileName, options) {
   }
 }
 async function handleCreateIssues(request, fileName, options) {
+  let orchestratorTitles;
+  try {
+    orchestratorTitles = await loadOrchestratorIssueTitles(options.sessionDir);
+  } catch {
+    orchestratorTitles = /* @__PURE__ */ new Set();
+  }
   const results = [];
-  for (const issueReq of request.payload.issues) {
-    const tempRequestPath = path4.join(options.aloopDir, "requests", `_tmp_${request.id}_${results.length}.json`);
+  const skippedTitles = [];
+  for (const [issueIndex, issueReq] of request.payload.issues.entries()) {
+    if (orchestratorTitles.has(normalizeIssueTitle(issueReq.title))) {
+      skippedTitles.push(issueReq.title);
+      await writeSessionLogEntry(options.logPath, "gh_request_skipped_existing_issue_title", {
+        type: request.type,
+        id: request.id,
+        title: issueReq.title
+      });
+      continue;
+    }
+    const existingIssue = await findExistingIssueByTitle(issueReq.title, options);
+    if (existingIssue) {
+      results.push({
+        number: existingIssue.number,
+        url: existingIssue.url,
+        title: existingIssue.title,
+        state: existingIssue.state,
+        skipped: true,
+        idempotent: true,
+        reason: "existing_issue_title_match"
+      });
+      continue;
+    }
+    const tempRequestPath = path4.join(options.aloopDir, "requests", `_tmp_${request.id}_${issueIndex}.json`);
     await fs2.writeFile(tempRequestPath, JSON.stringify({
       type: "issue-create",
       title: issueReq.title,
@@ -4224,6 +4396,50 @@ async function handleCreateIssues(request, fileName, options) {
     results.push(JSON.parse(result.output));
   }
   await writeSuccessToQueue(request, { issues: results }, options, fileName);
+}
+async function findExistingIssueByTitle(title, options) {
+  const spawn4 = options.spawnSync || spawnSync2;
+  const args = [
+    "issue",
+    "list",
+    "--state",
+    "all",
+    "--json",
+    "number,title,url,state",
+    "--limit",
+    "100",
+    "--search",
+    `${title} in:title`
+  ];
+  const result = spawn4("gh", args, { encoding: "utf8" });
+  if (result.status !== 0) {
+    return null;
+  }
+  let issues = [];
+  try {
+    issues = JSON.parse(result.stdout || "[]");
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(issues))
+    return null;
+  const normalized = title.trim();
+  const existing = issues.find((issue) => {
+    if (issue === null || typeof issue !== "object")
+      return false;
+    const issueTitle = issue.title;
+    return typeof issueTitle === "string" && issueTitle.trim() === normalized;
+  });
+  if (!existing || existing === null || typeof existing !== "object") {
+    return null;
+  }
+  const record = existing;
+  return {
+    number: typeof record.number === "number" ? record.number : void 0,
+    title: typeof record.title === "string" ? record.title : void 0,
+    url: typeof record.url === "string" ? record.url : void 0,
+    state: typeof record.state === "string" ? record.state : void 0
+  };
 }
 async function handleUpdateIssue(request, fileName, options) {
   const args = ["issue", "edit", String(request.payload.number)];
@@ -4259,6 +4475,24 @@ async function handleUpdateIssue(request, fileName, options) {
   await writeSuccessToQueue(request, { status: "updated" }, options, fileName);
 }
 async function handleCloseIssue(request, fileName, options) {
+  const issueState = await findIssueState(request.payload.number, options);
+  if (issueState.closed) {
+    await writeSessionLogEntry(options.logPath, "gh_request_skipped_already_closed", {
+      type: request.type,
+      id: request.id,
+      issue_number: request.payload.number
+    });
+    await writeSuccessToQueue(request, {
+      status: "closed",
+      skipped: true,
+      idempotent: true,
+      reason: "already_closed",
+      number: issueState.number,
+      url: issueState.url,
+      title: issueState.title
+    }, options, fileName);
+    return;
+  }
   const tempRequestPath = path4.join(options.aloopDir, "requests", `_tmp_${request.id}.json`);
   await fs2.writeFile(tempRequestPath, JSON.stringify({
     type: "issue-close",
@@ -4272,7 +4506,47 @@ async function handleCloseIssue(request, fileName, options) {
     throw new Error(result.output);
   await writeSuccessToQueue(request, { status: "closed" }, options, fileName);
 }
+async function findIssueState(number, options) {
+  const spawn4 = options.spawnSync || spawnSync2;
+  const args = ["issue", "view", String(number), "--json", "number,title,url,state"];
+  const result = spawn4("gh", args, { encoding: "utf8" });
+  if (result.status !== 0) {
+    return { closed: false };
+  }
+  let record;
+  try {
+    record = JSON.parse(result.stdout || "{}");
+  } catch {
+    return { closed: false };
+  }
+  if (record === null || typeof record !== "object") {
+    return { closed: false };
+  }
+  const issue = record;
+  const state = typeof issue.state === "string" ? issue.state.toUpperCase() : "";
+  return {
+    closed: state === "CLOSED",
+    number: typeof issue.number === "number" ? issue.number : void 0,
+    url: typeof issue.url === "string" ? issue.url : void 0,
+    title: typeof issue.title === "string" ? issue.title : void 0
+  };
+}
 async function handleCreatePr(request, fileName, options) {
+  const existingPr = await findExistingPrByHead(request.payload.head, options);
+  if (existingPr) {
+    await writeSuccessToQueue(request, {
+      number: existingPr.number,
+      url: existingPr.url,
+      title: existingPr.title,
+      state: existingPr.state,
+      head: existingPr.headRefName,
+      base: existingPr.baseRefName,
+      skipped: true,
+      idempotent: true,
+      reason: "existing_pr_head_match"
+    }, options, fileName);
+    return;
+  }
   const tempRequestPath = path4.join(options.aloopDir, "requests", `_tmp_${request.id}.json`);
   await fs2.writeFile(tempRequestPath, JSON.stringify({
     type: "pr-create",
@@ -4287,7 +4561,78 @@ async function handleCreatePr(request, fileName, options) {
     throw new Error(result.output);
   await writeSuccessToQueue(request, JSON.parse(result.output), options, fileName);
 }
+async function findExistingPrByHead(head, options) {
+  const normalizedHead = normalizeBranchName(head);
+  const spawn4 = options.spawnSync || spawnSync2;
+  const args = [
+    "pr",
+    "list",
+    "--state",
+    "all",
+    "--head",
+    normalizedHead,
+    "--json",
+    "number,url,title,state,headRefName,baseRefName",
+    "--limit",
+    "100"
+  ];
+  const result = spawn4("gh", args, { encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(`pr-list failed while checking idempotency for head "${head}": ${result.stderr || result.stdout}`);
+  }
+  let prs = [];
+  try {
+    prs = JSON.parse(result.stdout || "[]");
+  } catch (error) {
+    throw new Error(`pr-list returned invalid JSON while checking idempotency for head "${head}": ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!Array.isArray(prs))
+    return null;
+  const existing = prs.find((pr) => {
+    if (pr === null || typeof pr !== "object")
+      return false;
+    const prHead = pr.headRefName;
+    return typeof prHead === "string" && normalizeBranchName(prHead) === normalizedHead;
+  });
+  if (!existing || existing === null || typeof existing !== "object") {
+    return null;
+  }
+  const record = existing;
+  return {
+    number: typeof record.number === "number" ? record.number : void 0,
+    url: typeof record.url === "string" ? record.url : void 0,
+    title: typeof record.title === "string" ? record.title : void 0,
+    state: typeof record.state === "string" ? record.state : void 0,
+    headRefName: typeof record.headRefName === "string" ? record.headRefName : void 0,
+    baseRefName: typeof record.baseRefName === "string" ? record.baseRefName : void 0
+  };
+}
+function normalizeBranchName(value) {
+  const trimmed = value.trim();
+  const colonIndex = trimmed.lastIndexOf(":");
+  if (colonIndex === -1)
+    return trimmed;
+  return trimmed.slice(colonIndex + 1);
+}
 async function handleMergePr(request, fileName, options) {
+  const mergeState = await findPrMergeState(request.payload.number, options);
+  if (mergeState.merged) {
+    await writeSessionLogEntry(options.logPath, "gh_request_skipped_already_merged", {
+      type: request.type,
+      id: request.id,
+      pr_number: request.payload.number
+    });
+    await writeSuccessToQueue(request, {
+      status: "merged",
+      skipped: true,
+      idempotent: true,
+      reason: "already_merged",
+      number: mergeState.number,
+      url: mergeState.url,
+      title: mergeState.title
+    }, options, fileName);
+    return;
+  }
   const tempRequestPath = path4.join(options.aloopDir, "requests", `_tmp_${request.id}.json`);
   await fs2.writeFile(tempRequestPath, JSON.stringify({
     type: "pr-merge",
@@ -4299,7 +4644,51 @@ async function handleMergePr(request, fileName, options) {
     throw new Error(result.output);
   await writeSuccessToQueue(request, { status: "merged" }, options, fileName);
 }
+async function findPrMergeState(number, options) {
+  const spawn4 = options.spawnSync || spawnSync2;
+  const args = ["pr", "view", String(number), "--json", "number,url,title,state,mergedAt"];
+  const result = spawn4("gh", args, { encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(`pr-view failed while checking idempotency for PR #${number}: ${result.stderr || result.stdout}`);
+  }
+  let record;
+  try {
+    record = JSON.parse(result.stdout || "{}");
+  } catch (error) {
+    throw new Error(`pr-view returned invalid JSON while checking idempotency for PR #${number}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (record === null || typeof record !== "object") {
+    return { merged: false };
+  }
+  const pr = record;
+  const state = typeof pr.state === "string" ? pr.state.toUpperCase() : "";
+  const mergedAt = typeof pr.mergedAt === "string" ? pr.mergedAt.trim() : "";
+  return {
+    merged: state === "MERGED" || mergedAt.length > 0,
+    number: typeof pr.number === "number" ? pr.number : void 0,
+    url: typeof pr.url === "string" ? pr.url : void 0,
+    title: typeof pr.title === "string" ? pr.title : void 0
+  };
+}
 async function handleDispatchChild(request, fileName, options) {
+  const existingSessionId = await findActiveChildSessionByIssue(request.payload.issue_number, options.aloopDir);
+  if (existingSessionId) {
+    await writeSessionLogEntry(options.logPath, "gh_request_skipped_child_already_running", {
+      type: request.type,
+      id: request.id,
+      issue_number: request.payload.issue_number,
+      existing_session_id: existingSessionId
+    });
+    await writeSuccessToQueue(request, {
+      status: "dispatched",
+      skipped: true,
+      idempotent: true,
+      reason: "child_session_already_running",
+      issue_number: request.payload.issue_number,
+      session_id: existingSessionId
+    }, options, fileName);
+    return;
+  }
   const args = [
     "gh",
     "start",
@@ -4319,6 +4708,36 @@ async function handleDispatchChild(request, fileName, options) {
   }
   const output = JSON.parse(result.stdout);
   await writeSuccessToQueue(request, output, options, fileName);
+}
+async function findActiveChildSessionByIssue(issueNumber, aloopDir) {
+  const activePath = path4.join(aloopDir, "active.json");
+  if (!existsSync3(activePath))
+    return null;
+  let active;
+  try {
+    active = JSON.parse(await fs2.readFile(activePath, "utf8"));
+  } catch {
+    return null;
+  }
+  if (active === null || typeof active !== "object" || Array.isArray(active)) {
+    return null;
+  }
+  for (const sessionId of Object.keys(active)) {
+    const sessionMetaPath = path4.join(aloopDir, "sessions", sessionId, "meta.json");
+    if (!existsSync3(sessionMetaPath))
+      continue;
+    try {
+      const metaRaw = JSON.parse(await fs2.readFile(sessionMetaPath, "utf8"));
+      if (metaRaw && typeof metaRaw === "object") {
+        const meta = metaRaw;
+        if (meta.issue_number === issueNumber || meta.gh_issue_number === issueNumber) {
+          return sessionId;
+        }
+      }
+    } catch {
+    }
+  }
+  return null;
 }
 async function handleSteerChild(request, fileName, options) {
   const activePath = path4.join(options.aloopDir, "active.json");
@@ -4383,6 +4802,20 @@ async function handleStopChild(request, fileName, options) {
 }
 async function handlePostComment(request, fileName, options) {
   const body = await fs2.readFile(path4.join(options.workdir, request.payload.body_file), "utf8");
+  const duplicateComment = await findMatchingIssueComment(request.payload.issue_number, body, options);
+  if (duplicateComment) {
+    await writeSuccessToQueue(request, {
+      status: "posted",
+      skipped: true,
+      idempotent: true,
+      reason: "duplicate_comment_body",
+      issue_number: request.payload.issue_number
+    }, options, fileName);
+    return;
+  }
+  const bodyWithRequestId = body.includes(requestIdMarker) ? body : `${body.replace(/\s*$/, "")}
+
+${requestIdMarker}`;
   const tempRequestPath = path4.join(options.aloopDir, "requests", `_tmp_${request.id}.json`);
   await fs2.writeFile(tempRequestPath, JSON.stringify({
     type: "issue-comment",
@@ -4394,6 +4827,37 @@ async function handlePostComment(request, fileName, options) {
   if (result.exitCode !== 0)
     throw new Error(result.output);
   await writeSuccessToQueue(request, { status: "posted" }, options, fileName);
+}
+async function findMatchingIssueComment(issueNumber, body, options) {
+  const spawn4 = options.spawnSync || spawnSync2;
+  const args = ["issue", "view", String(issueNumber), "--json", "comments"];
+  const result = spawn4("gh", args, { encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(`issue-view failed while checking comment idempotency for issue #${issueNumber}: ${result.stderr || result.stdout}`);
+  }
+  let record;
+  try {
+    record = JSON.parse(result.stdout || "{}");
+  } catch (error) {
+    throw new Error(`issue-view returned invalid JSON while checking comment idempotency for issue #${issueNumber}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!record || typeof record !== "object")
+    return false;
+  const comments = record.comments;
+  if (!Array.isArray(comments) || comments.length === 0)
+    return false;
+  const requestedHash = hashCommentBody(body);
+  return comments.some((comment) => {
+    if (!comment || typeof comment !== "object")
+      return false;
+    const commentBody = comment.body;
+    if (typeof commentBody !== "string")
+      return false;
+    return hashCommentBody(commentBody) === requestedHash;
+  });
+}
+function hashCommentBody(body) {
+  return createHash2("sha256").update(body).digest("hex");
 }
 async function handleQueryIssues(request, fileName, options) {
   const args = ["issue", "list", "--json", "number,title,state,labels", "--limit", "100"];
@@ -5073,7 +5537,7 @@ async function defaultGhCommandRunner(operation, sessionId, requestPath) {
     };
   }
 }
-async function processGhConventionRequests(workdir, sessionId, logPath, ghCommandRunner) {
+async function processGhConventionRequests(workdir, sessionId, logPath, ghCommandRunner, requestSpawnSync) {
   const aloopDir = path6.join(workdir, ".aloop");
   const sessionDir = path6.dirname(logPath);
   await processAgentRequests({
@@ -5082,7 +5546,8 @@ async function processGhConventionRequests(workdir, sessionId, logPath, ghComman
     aloopDir,
     sessionDir,
     logPath,
-    ghCommandRunner
+    ghCommandRunner,
+    spawnSync: requestSpawnSync
   });
 }
 async function resolveDefaultAssetsDir() {
@@ -5221,6 +5686,7 @@ async function startDashboardServer(options, runtimeOptions = {}) {
   const assetsDir = path6.resolve(options.assetsDir ?? await resolveDefaultAssetsDir());
   const runtimeDir = path6.resolve(options.runtimeDir ?? path6.join(os2.homedir(), ".aloop"));
   const ghCommandRunner = runtimeOptions.ghCommandRunner ?? defaultGhCommandRunner;
+  const requestSpawnSync = runtimeOptions.requestSpawnSync;
   const sessionId = path6.basename(sessionDir);
   const statusPath = path6.join(sessionDir, "status.json");
   const logPath = path6.join(sessionDir, "log.jsonl");
@@ -5302,7 +5768,7 @@ async function startDashboardServer(options, runtimeOptions = {}) {
     requestProcessingActive = true;
     const promptsDir = path6.join(sessionDir, "prompts");
     Promise.all([
-      processGhConventionRequests(workdir, sessionId, logPath, ghCommandRunner),
+      processGhConventionRequests(workdir, sessionId, logPath, ghCommandRunner, requestSpawnSync),
       monitorSessionState({ sessionDir, workdir, promptsDir }).catch((error) => {
         console.warn(`dashboard: session monitor failed: ${error.message}`);
       })
@@ -7281,6 +7747,109 @@ function withErrorHandling(action) {
   };
 }
 
+// src/lib/issue-metadata.ts
+function buildAloopMetadataSection(meta) {
+  const lines = [];
+  if (meta.wave !== void 0)
+    lines.push(`- Wave: ${meta.wave}`);
+  if (meta.type)
+    lines.push(`- Type: ${meta.type}`);
+  if (meta.files && meta.files.length > 0) {
+    const fileStr = meta.files.map((f) => `\`${f}\``).join(", ");
+    lines.push(`- Files: ${fileStr}`);
+  }
+  if (meta.complexity)
+    lines.push(`- Complexity: ${meta.complexity}`);
+  if (meta.depends_on && meta.depends_on.length > 0) {
+    const depStr = meta.depends_on.map((d) => `#${d}`).join(", ");
+    lines.push(`- Dependencies: ${depStr}`);
+  }
+  if (meta.child_session)
+    lines.push(`- Session: \`${meta.child_session}\``);
+  if (meta.labels && meta.labels.length > 0) {
+    lines.push(`- Labels: ${meta.labels.join(", ")}`);
+  }
+  if (lines.length === 0)
+    return "";
+  return `## Aloop Metadata
+${lines.join("\n")}`;
+}
+function ensureMetadataSection(body, meta) {
+  const section = buildAloopMetadataSection(meta);
+  if (!section)
+    return body;
+  const marker = "## Aloop Metadata";
+  const idx = body.indexOf(marker);
+  if (idx !== -1) {
+    const afterMarker = idx + marker.length;
+    const nextHeading = body.indexOf("\n## ", afterMarker);
+    if (nextHeading !== -1) {
+      return `${body.substring(0, idx)}${section}
+
+${body.substring(nextHeading + 1)}`;
+    }
+    return `${body.substring(0, idx)}${section}`;
+  }
+  const trimmed = body.trimEnd();
+  return `${trimmed}
+
+${section}`;
+}
+function buildPrBody(ctx) {
+  const parts = [];
+  parts.push(`Closes #${ctx.issue_number}`);
+  if (ctx.scope_summary) {
+    parts.push("");
+    parts.push("## Scope");
+    parts.push(ctx.scope_summary);
+  }
+  const meta = {};
+  if (ctx.wave !== void 0)
+    meta.wave = ctx.wave;
+  if (ctx.complexity)
+    meta.complexity = ctx.complexity;
+  if (ctx.labels && ctx.labels.length > 0)
+    meta.labels = ctx.labels;
+  if (ctx.file_hints && ctx.file_hints.length > 0)
+    meta.files = ctx.file_hints;
+  const metaSection = buildAloopMetadataSection(meta);
+  if (metaSection) {
+    parts.push("");
+    parts.push(metaSection);
+  }
+  parts.push("");
+  parts.push("## Verification");
+  if (ctx.verification_notes) {
+    parts.push(ctx.verification_notes);
+  } else {
+    parts.push("Automated implementation by aloop child loop. Review the diff and tests for correctness.");
+  }
+  if (ctx.child_session) {
+    parts.push("");
+    parts.push(`Session: \`${ctx.child_session}\``);
+  }
+  return parts.join("\n");
+}
+function buildIssueLabels(opts) {
+  const labels = ["aloop"];
+  if (opts.wave !== void 0) {
+    labels.push(`aloop/wave-${opts.wave}`, `wave/${opts.wave}`);
+  }
+  if (opts.is_epic)
+    labels.push("aloop/epic");
+  if (opts.is_sub_issue)
+    labels.push("aloop/sub-issue");
+  if (opts.is_spec_question)
+    labels.push("aloop/spec-question");
+  if (opts.is_blocked)
+    labels.push("aloop/blocked-on-human");
+  if (opts.is_auto_resolved)
+    labels.push("aloop/auto-resolved");
+  if (opts.component_labels)
+    labels.push(...opts.component_labels);
+  return [...new Set(labels)];
+}
+
 // src/commands/gh.ts
 var execFileAsync = promisify(execFile);
 var GH_PATH_HARDENING_BLOCK_MESSAGE = "blocked by aloop PATH hardening";
@@ -7405,6 +7974,7 @@ function normalizeWatchIssueEntry(value) {
   const status = rawStatus === "running" || rawStatus === "queued" || rawStatus === "completed" || rawStatus === "stopped" ? rawStatus : "queued";
   return {
     issue_number: issueNumber,
+    title: typeof candidate.title === "string" && candidate.title.trim() ? candidate.title : null,
     session_id: typeof candidate.session_id === "string" && candidate.session_id.trim() ? candidate.session_id : null,
     branch: typeof candidate.branch === "string" && candidate.branch.trim() ? candidate.branch : null,
     repo: typeof candidate.repo === "string" && candidate.repo.trim() ? candidate.repo : null,
@@ -7487,6 +8057,7 @@ function watchEntryFromStartResult(result) {
   const now = ghLoopRuntime.now();
   return {
     issue_number: result.issue.number,
+    title: result.issue.title || null,
     session_id: result.session.id,
     branch: result.session.branch,
     repo: result.issue.repo,
@@ -7522,6 +8093,7 @@ function enqueueIssue(state, issue) {
   }
   state.issues[String(issue.number)] = {
     issue_number: issue.number,
+    title: issue.title || existing?.title || null,
     session_id: existing?.session_id ?? null,
     branch: existing?.branch ?? null,
     repo: existing?.repo ?? extractRepoFromIssueUrl(issue.url),
@@ -8023,10 +8595,12 @@ async function finalizeWatchEntry(entry, options) {
       baseBranch = "main";
     }
   }
-  const prTitle = `[aloop] ${issueTitle}`;
-  const prBody = `Automated implementation for issue #${entry.issue_number}.
-
-Closes #${entry.issue_number}`;
+  const prTitle = `#${entry.issue_number}: ${issueTitle}`;
+  const prBody = buildPrBody({
+    issue_number: entry.issue_number,
+    issue_title: issueTitle,
+    child_session: entry.session_id
+  });
   try {
     const prCreate = await ghExecutor.exec([
       "pr",
@@ -8196,13 +8770,32 @@ function failGhWatch(outputMode, error) {
   }
   return process.exit(1);
 }
-function formatGhStatusRows(state, sessionsById) {
+var STATUS_COLORS = {
+  running: "\x1B[33m",
+  completed: "\x1B[32m",
+  stopped: "\x1B[31m"
+};
+var ANSI_RESET = "\x1B[0m";
+function colorizeStatus(status, useTTY, padLen) {
+  const padded = padLen ? status.padEnd(padLen) : status;
+  if (!useTTY)
+    return padded;
+  const color = STATUS_COLORS[status];
+  return color ? `${color}${padded}${ANSI_RESET}` : padded;
+}
+function truncateTitle(title, maxLen) {
+  if (!title)
+    return "\u2014";
+  return title.length > maxLen ? title.slice(0, maxLen - 1) + "\u2026" : title;
+}
+function formatGhStatusRows(state, sessionsById, useTTY) {
   const entries = Object.values(state.issues).sort((a, b) => a.issue_number - b.issue_number);
   if (entries.length === 0) {
     return "No GH-linked sessions.";
   }
+  const isTTY = useTTY ?? process.stdout.isTTY === true;
   const lines = [
-    "Issue  Branch                PR    Status      Iteration  Feedback"
+    "Issue  Title                          Branch                PR    Status      Iteration  Feedback"
   ];
   for (const entry of entries) {
     const branch = entry.status === "queued" ? "(queued)" : entry.branch ?? "\u2014";
@@ -8210,10 +8803,21 @@ function formatGhStatusRows(state, sessionsById) {
     const session = entry.session_id ? sessionsById.get(entry.session_id) : void 0;
     const iteration = session?.iteration !== null && session?.iteration !== void 0 ? String(session.iteration) : "\u2014";
     const issueCell = `#${entry.issue_number}`.padEnd(6);
+    const titleCell = truncateTitle(entry.title, 30).padEnd(30);
     const feedbackCell = entry.feedback_iteration > 0 ? `${entry.feedback_iteration}/${entry.max_feedback_iterations}` : "\u2014";
-    lines.push(`${issueCell} ${branch.padEnd(20)} ${prRef.padEnd(5)} ${entry.status.padEnd(11)} ${iteration.padEnd(9)} ${feedbackCell}`);
+    const statusDisplay = colorizeStatus(entry.status, isTTY, 11);
+    lines.push(`${issueCell} ${titleCell} ${branch.padEnd(20)} ${prRef.padEnd(5)} ${statusDisplay} ${iteration.padEnd(9)} ${feedbackCell}`);
   }
   return lines.join("\n");
+}
+function computeGhStats(state) {
+  const entries = Object.values(state.issues);
+  return {
+    total: entries.length,
+    active: entries.filter((e) => e.status === "running").length,
+    completed: entries.filter((e) => e.status === "completed").length,
+    prsPending: entries.filter((e) => e.pr_number !== null && e.status !== "completed").length
+  };
 }
 async function ghStatusCommand(options) {
   const outputMode = options.output ?? "text";
@@ -8221,11 +8825,14 @@ async function ghStatusCommand(options) {
   const sessionsById = await refreshWatchState(options.homeDir, state);
   saveWatchState(options.homeDir, state);
   const entries = Object.values(state.issues).sort((a, b) => a.issue_number - b.issue_number);
+  const stats = computeGhStats(state);
   if (outputMode === "json") {
-    console.log(JSON.stringify({ issues: entries }, null, 2));
+    console.log(JSON.stringify({ issues: entries, stats }, null, 2));
     return;
   }
   console.log(formatGhStatusRows(state, sessionsById));
+  console.log(`
+Total: ${stats.total}  Active: ${stats.active}  Completed: ${stats.completed}  PRs pending: ${stats.prsPending}`);
 }
 async function ghStopCommand(options) {
   const outputMode = options.output ?? "text";
@@ -8543,10 +9150,14 @@ async function ghStartCommandWithDeps(options, deps = defaultGhStartDeps) {
   let issueCommentPosted = false;
   let pendingCompletion = true;
   if (isTerminalState(completionState) && issueRepo) {
-    const prTitle = `[aloop] ${issue.title}`;
-    const prBody = `Automated implementation for issue #${issue.number}.
-
-Closes #${issue.number}`;
+    const issueLabels = (issue.labels ?? []).map((l) => l.name ?? "").filter(Boolean);
+    const prTitle = `#${issue.number}: ${issue.title}`;
+    const prBody = buildPrBody({
+      issue_number: issue.number,
+      issue_title: issue.title,
+      labels: issueLabels,
+      scope_summary: (issue.body ?? "").split("\n").slice(0, 3).join(" ").substring(0, 200)
+    });
     const prCreate = await deps.execGh([
       "pr",
       "create",
@@ -9896,8 +10507,8 @@ async function copyTree(src, dest, deps) {
   const written = [];
   if (!deps.existsSync(src))
     return written;
-  const stat2 = fs6.statSync(src);
-  if (!stat2.isDirectory()) {
+  const stat3 = fs6.statSync(src);
+  if (!stat3.isDirectory()) {
     await deps.mkdir(path12.dirname(dest), { recursive: true });
     await deps.copyFile(src, dest);
     written.push(dest);
@@ -10119,7 +10730,7 @@ var EtagCache = class {
   cacheFile;
   dirty;
   constructor(cacheDir) {
-    this.cacheFile = path13.join(cacheDir, "github-etag-cache.json");
+    this.cacheFile = path13.join(cacheDir, "etag-cache.json");
     this.state = { version: CACHE_VERSION, entries: {} };
     this.dirty = false;
   }
@@ -10391,6 +11002,26 @@ function detectIssueChanges(current, lastKnown) {
     return { changed: true, reason: "pr_merged" };
   }
   return { changed: false, reason: "unchanged" };
+}
+
+// src/lib/labels.ts
+var COMPONENT_MAPPINGS = [
+  { test: (p) => p.includes("dashboard"), label: "component/dashboard" },
+  { test: (p) => /(?:^|\/)loop\.(sh|ps1)$/.test(p), label: "component/loop" },
+  { test: (p) => p.includes("orchestrate"), label: "component/orchestrator" },
+  { test: (p) => p.includes("cli/"), label: "component/cli" }
+];
+function deriveComponentLabels(file_hints) {
+  const labels = /* @__PURE__ */ new Set();
+  for (const filePath of file_hints) {
+    for (const mapping of COMPONENT_MAPPINGS) {
+      if (mapping.test(filePath)) {
+        labels.add(mapping.label);
+        break;
+      }
+    }
+  }
+  return Array.from(labels);
 }
 
 // src/commands/orchestrate.ts
@@ -10717,10 +11348,21 @@ async function applyDecompositionPlan(plan, state, sessionDir, repo, deps) {
   const updatedIssues = [];
   for (const planIssue of plan.issues) {
     const wave = waveMap.get(planIssue.id);
-    const labels = ["aloop", `aloop/wave-${wave}`];
+    const labels = ["aloop", `aloop/wave-${wave}`, `wave/${wave}`];
+    const componentLabels = deriveComponentLabels(planIssue.file_hints ?? []);
+    labels.push(...componentLabels);
+    let enrichedBody = planIssue.body;
+    if (planIssue.depends_on.length > 0) {
+      const depRefs = planIssue.depends_on.map((depId) => `#${idToGhNumber.get(depId) ?? depId}`).join(", ");
+      if (!enrichedBody.includes("Depends on")) {
+        enrichedBody = `${enrichedBody}
+
+Depends on ${depRefs}`;
+      }
+    }
     let ghNumber;
     if (deps.execGhIssueCreate && repo) {
-      ghNumber = await deps.execGhIssueCreate(repo, path14.basename(sessionDir), planIssue.title, planIssue.body, labels);
+      ghNumber = await deps.execGhIssueCreate(repo, path14.basename(sessionDir), planIssue.title, enrichedBody, labels);
     } else {
       ghNumber = planIssue.id;
     }
@@ -10728,7 +11370,7 @@ async function applyDecompositionPlan(plan, state, sessionDir, repo, deps) {
     updatedIssues.push({
       number: ghNumber,
       title: planIssue.title,
-      body: planIssue.body,
+      body: enrichedBody,
       file_hints: planIssue.file_hints ?? [],
       sandbox: normalizeTaskSandbox(planIssue.sandbox),
       requires: normalizeTaskRequires(planIssue.requires),
@@ -10942,11 +11584,18 @@ The session directory contains \`orchestrator.json\`, \`requests/\`, \`queue/\`,
 Your working directory is \`${sessionDir}/worktree\` \u2014 a git worktree with full project access.
 
 Run one lightweight monitoring pass:
+- Read \`CONSTITUTION.md\` from your working directory \u2014 these are non-negotiable invariants for all work.
 - Read \`${sessionDir}/orchestrator.json\` to understand current state (issues, waves, dependencies).
 - Check \`${sessionDir}/queue/\` for override prompts to prioritize.
-- Write any required side effects into \`${sessionDir}/requests/*.json\`.
+- Write dispatch/state requests into \`.aloop/output/\` in your working directory.
 - You can read project files (SPEC.md, source code) from your working directory.
 - Keep this step reactive and minimal; avoid large speculative planning.
+
+**You must NOT:**
+- Write \`review-result-*.json\` files. PR reviews are handled by the dedicated review agent.
+- Write \`refine-result-*.json\` files. Refinement is handled by the dedicated refine agent.
+- Write \`estimate-result-*.json\` files. Estimation is handled by the dedicated estimate agent.
+- Auto-approve or auto-merge any PR. You are a monitor, not a reviewer.
 `;
 }
 async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
@@ -11132,6 +11781,14 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
             if (projStatus === "Done")
               issueState = "merged";
           }
+          const labelNames = (gi.labels ?? []).map((l) => l.name ?? l);
+          let priority = 0;
+          if (labelNames.includes("aloop/priority-critical"))
+            priority = 100;
+          else if (labelNames.includes("aloop/priority-high"))
+            priority = 50;
+          else if (labelNames.includes("aloop/priority-low"))
+            priority = -10;
           state.issues.push({
             number: gi.number,
             title: gi.title,
@@ -11145,7 +11802,8 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
             depends_on: [],
             blocked_on_human: false,
             processed_comment_ids: [],
-            dor_validated: dorValidated
+            dor_validated: dorValidated,
+            priority
           });
         }
         if (state.current_wave === 0)
@@ -11267,6 +11925,141 @@ async function orchestrateCommandWithDeps(options = {}, deps = defaultDeps4) {
 async function orchestrateCommand(options = {}, depsOrCommand) {
   const outputMode = options.output ?? "text";
   const deps = depsOrCommand && typeof depsOrCommand === "object" && "existsSync" in depsOrCommand ? depsOrCommand : void 0;
+  if (options.resume) {
+    const homeDir = options.homeDir ?? resolveHomeDir2();
+    const aloopRoot = path14.join(homeDir, ".aloop");
+    const sessionsRoot = path14.join(aloopRoot, "sessions");
+    const sessionDir = path14.join(sessionsRoot, options.resume);
+    const stateFile = path14.join(sessionDir, "orchestrator.json");
+    if (!existsSync11(stateFile)) {
+      throw new Error(`Session not found or missing orchestrator.json: ${sessionDir}`);
+    }
+    const state = JSON.parse(await readFile10(stateFile, "utf8"));
+    const projectRoot = options.projectRoot ?? process.cwd();
+    const promptsDir = path14.join(sessionDir, "prompts");
+    const loopPlanFile = path14.join(sessionDir, "loop-plan.json");
+    const { spawn: nodeSpawn, spawnSync: nodeSpawnSync } = await import("node:child_process");
+    nodeSpawnSync("git", ["-C", projectRoot, "fetch", "origin"], { encoding: "utf8" });
+    const orchScanPromptFile = path14.join(promptsDir, ORCH_SCAN_PROMPT_FILENAME);
+    await writeFile10(orchScanPromptFile, buildOrchestratorScanPrompt(sessionDir), "utf8");
+    const worktreePath = path14.join(sessionDir, "worktree");
+    const worktreeBranch = `aloop/${path14.basename(sessionDir)}`;
+    let workDir = projectRoot;
+    if (!existsSync11(path14.join(worktreePath, ".git"))) {
+      nodeSpawnSync("git", ["-C", projectRoot, "worktree", "prune"], { encoding: "utf8" });
+      const hasRemote = nodeSpawnSync("git", ["-C", projectRoot, "ls-remote", "--heads", "origin", worktreeBranch], { encoding: "utf8" });
+      let wtResult;
+      if (hasRemote.stdout?.includes(worktreeBranch)) {
+        nodeSpawnSync("git", ["-C", projectRoot, "branch", "-D", worktreeBranch], { encoding: "utf8" });
+        wtResult = nodeSpawnSync("git", ["-C", projectRoot, "worktree", "add", worktreePath, "-b", worktreeBranch, `origin/${worktreeBranch}`], { encoding: "utf8" });
+      } else {
+        wtResult = nodeSpawnSync("git", ["-C", projectRoot, "worktree", "add", worktreePath, "-b", worktreeBranch], { encoding: "utf8" });
+      }
+      if (wtResult.status === 0) {
+        workDir = worktreePath;
+      } else {
+        console.error(`Warning: Failed to recreate worktree: ${wtResult.stderr?.trim()}`);
+      }
+    } else {
+      workDir = worktreePath;
+      const trunkBranch = state.trunk_branch ?? "agent/trunk";
+      nodeSpawnSync("git", ["-C", worktreePath, "fetch", "origin", trunkBranch], { encoding: "utf8" });
+      nodeSpawnSync("git", ["-C", worktreePath, "merge", `origin/${trunkBranch}`, "--no-edit"], { encoding: "utf8" });
+    }
+    const loopPlan = JSON.parse(await readFile10(loopPlanFile, "utf8"));
+    loopPlan.cyclePosition = 0;
+    await writeFile10(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}
+`, "utf8");
+    const loopBinDir = path14.join(aloopRoot, "bin");
+    const loopScript = path14.join(loopBinDir, "loop.sh");
+    if (!existsSync11(loopScript)) {
+      throw new Error(`Loop script not found: ${loopScript}`);
+    }
+    const args = [
+      "--prompts-dir",
+      promptsDir,
+      "--session-dir",
+      sessionDir,
+      "--work-dir",
+      workDir,
+      "--mode",
+      "plan",
+      "--provider",
+      "claude",
+      "--round-robin",
+      "claude",
+      "--max-iterations",
+      "999999",
+      "--launch-mode",
+      "start",
+      "--dangerously-skip-container",
+      "--no-task-exit"
+    ];
+    const child = nodeSpawn(loopScript, args, {
+      cwd: workDir,
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env },
+      windowsHide: true
+    });
+    child.unref();
+    const loopPid2 = child.pid ?? null;
+    if (!loopPid2) {
+      throw new Error("Failed to launch orchestrator loop process.");
+    }
+    const metaPath = path14.join(sessionDir, "meta.json");
+    const startedAt = (/* @__PURE__ */ new Date()).toISOString();
+    let meta = {};
+    try {
+      meta = JSON.parse(await readFile10(metaPath, "utf8"));
+    } catch {
+    }
+    meta.pid = loopPid2;
+    meta.resumed_at = startedAt;
+    await writeFile10(metaPath, `${JSON.stringify(meta, null, 2)}
+`, "utf8");
+    const activePath = path14.join(aloopRoot, "active.json");
+    let active = {};
+    try {
+      if (existsSync11(activePath)) {
+        const content = await readFile10(activePath, "utf8");
+        const parsed = JSON.parse(content);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          active = parsed;
+        }
+      }
+    } catch {
+    }
+    const sessionId = path14.basename(sessionDir);
+    active[sessionId] = {
+      session_id: sessionId,
+      session_dir: sessionDir,
+      project_root: projectRoot,
+      pid: loopPid2,
+      work_dir: workDir,
+      started_at: startedAt,
+      provider: "claude",
+      mode: "orchestrate"
+    };
+    await writeFile10(activePath, `${JSON.stringify(active, null, 2)}
+`, "utf8");
+    const issuesByState = {};
+    for (const i of state.issues) {
+      issuesByState[i.state] = (issuesByState[i.state] ?? 0) + 1;
+    }
+    if (outputMode === "json") {
+      console.log(JSON.stringify({ session_dir: sessionDir, pid: loopPid2, issues: issuesByState }, null, 2));
+      return;
+    }
+    console.log(`Resumed orchestrator session: ${sessionId}`);
+    console.log("");
+    console.log(`  Session dir:  ${sessionDir}`);
+    console.log(`  Work dir:     ${workDir}`);
+    console.log(`  Loop PID:     ${loopPid2}`);
+    console.log(`  Issues:       ${state.issues.length} (${Object.entries(issuesByState).map(([s, n]) => `${n} ${s}`).join(", ")})`);
+    console.log(`  Iteration:    ${loopPlan.iteration}`);
+    return;
+  }
   const result = await orchestrateCommandWithDeps(options, deps);
   const planOnly = options.planOnly ?? false;
   let loopPid = null;
@@ -11988,6 +12781,25 @@ async function applyEstimateResults(state, results, deps) {
         issue.status = "Ready";
       }
       if (deps?.execGh && deps.repo) {
+        const labelsToAdd = [];
+        if (result.complexity_tier) {
+          labelsToAdd.push(`complexity/${result.complexity_tier}`);
+        }
+        if (result.priority) {
+          labelsToAdd.push(result.priority);
+        }
+        if (labelsToAdd.length > 0) {
+          await deps.execGh([
+            "issue",
+            "edit",
+            String(result.issue_number),
+            "--repo",
+            deps.repo,
+            ...labelsToAdd.flatMap((l) => ["--add-label", l])
+          ]);
+        }
+      }
+      if (deps?.execGh && deps.repo) {
         await syncIssueProjectStatus(result.issue_number, deps.repo, "Ready", {
           execGh: deps.execGh,
           appendLog: deps.appendLog,
@@ -12317,7 +13129,7 @@ function getDispatchableIssues(state) {
   for (const issue of state.issues) {
     issueByNumber.set(issue.number, issue);
   }
-  return state.issues.filter((issue) => {
+  const eligible = state.issues.filter((issue) => {
     if (issue.wave !== state.current_wave)
       return false;
     if (issue.status && issue.status !== "Ready")
@@ -12336,6 +13148,18 @@ function getDispatchableIssues(state) {
         return false;
     }
     return true;
+  });
+  const complexityOrder = { S: 0, M: 1, L: 2, XL: 3 };
+  return eligible.sort((a, b) => {
+    const priA = a.priority ?? 0;
+    const priB = b.priority ?? 0;
+    if (priA !== priB)
+      return priB - priA;
+    const compA = complexityOrder[a.complexity_tier ?? "M"] ?? 1;
+    const compB = complexityOrder[b.complexity_tier ?? "M"] ?? 1;
+    if (compA !== compB)
+      return compA - compB;
+    return a.number - b.number;
   });
 }
 function countActiveChildren(state) {
@@ -12479,6 +13303,15 @@ async function launchChildLoop(issue, orchestratorSessionDir, projectRoot, proje
   deps.spawnSync("git", ["-C", worktreePath, "branch", "--set-upstream-to", `origin/${branchName}`], { encoding: "utf8" });
   deps.spawnSync("git", ["-C", worktreePath, "config", "--unset", `branch.${branchName}.merge`], { encoding: "utf8" });
   deps.spawnSync("git", ["-C", worktreePath, "config", "--unset", `branch.${branchName}.remote`], { encoding: "utf8" });
+  const mcpJsonPath = path14.join(worktreePath, ".mcp.json");
+  if (deps.existsSync(mcpJsonPath)) {
+    try {
+      const { unlink: unlinkFile } = await import("node:fs/promises");
+      await unlinkFile(mcpJsonPath);
+    } catch {
+    }
+  }
+  await deps.mkdir(path14.join(worktreePath, ".aloop", "output"), { recursive: true });
   const todoContent = `# Issue #${issue.number}: ${issue.title}
 
 ## Tasks
@@ -12558,8 +13391,8 @@ ${issue.body}
       provider: "round-robin",
       promptsDir,
       sessionDir,
-      enabledProviders: ["claude", "codex", "gemini", "copilot", "opencode"],
-      roundRobinOrder: ["claude", "codex", "gemini", "copilot", "opencode"],
+      enabledProviders: ["claude", "gemini", "opencode"],
+      roundRobinOrder: ["claude", "gemini", "opencode"],
       models: {},
       projectRoot: worktreePath
     },
@@ -12742,10 +13575,11 @@ async function checkPrGates(prNumber, repo, deps) {
     const prData = JSON.parse(viewResult.stdout);
     mergeable = prData.mergeable === "MERGEABLE";
     const mergeState = prData.mergeStateStatus ?? "UNKNOWN";
+    const mergeUnknown = prData.mergeable === "UNKNOWN" || mergeState === "UNKNOWN";
     gates.push({
       gate: "merge_conflicts",
-      status: mergeable ? "pass" : "fail",
-      detail: mergeable ? "No merge conflicts" : `Merge state: ${mergeState}`
+      status: mergeable ? "pass" : mergeUnknown ? "pending" : "fail",
+      detail: mergeable ? "No merge conflicts" : mergeUnknown ? "Mergeability not yet computed" : `Merge state: ${mergeState}`
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -12817,8 +13651,8 @@ async function reviewPrDiff(prNumber, repo, deps) {
   }
   return {
     pr_number: prNumber,
-    verdict: "approve",
-    summary: "Auto-approved (no agent reviewer configured)"
+    verdict: "flag-for-human",
+    summary: "No agent reviewer configured \u2014 requires human review"
   };
 }
 async function mergePr(prNumber, repo, deps) {
@@ -13184,10 +14018,17 @@ async function createPrForChild(issue, childSession, childDir, state, repo, deps
     effectiveBase = "main";
   }
   const issueTitle = issue.title || `Issue ${issue.number}`;
-  const prTitle = `[aloop] ${issueTitle}`;
-  const prBody = `Automated implementation for issue #${issue.number}.
-
-Closes #${issue.number}`;
+  const prTitle = `#${issue.number}: ${issueTitle}`;
+  const componentLabels = deriveComponentLabels(issue.file_hints ?? []);
+  const prBody = buildPrBody({
+    issue_number: issue.number,
+    issue_title: issueTitle,
+    wave: issue.wave,
+    labels: ["aloop", `aloop/wave-${issue.wave}`, ...componentLabels],
+    child_session: childSession,
+    file_hints: issue.file_hints ?? [],
+    scope_summary: (issue.body ?? "").split("\n").slice(0, 3).join(" ").substring(0, 200)
+  });
   try {
     const result = await deps.execGh([
       "pr",
@@ -13861,6 +14702,16 @@ async function fetchAndApplyBulkIssueState(state, repo, deps, sessionDir, iterat
         if (fetched.pr && !issue.pr_number) {
           issue.pr_number = fetched.pr.number;
         }
+        if (fetched.labels) {
+          let pri = 0;
+          if (fetched.labels.includes("aloop/priority-critical"))
+            pri = 100;
+          else if (fetched.labels.includes("aloop/priority-high"))
+            pri = 50;
+          else if (fetched.labels.includes("aloop/priority-low"))
+            pri = -10;
+          issue.priority = pri;
+        }
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
           event: "bulk_fetch_issue_changed",
@@ -13980,20 +14831,32 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
     );
   }
   if (deps.dispatchDeps && !state.plan_only) {
-    const dispatchable = getDispatchableIssues(state);
-    const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
-    const eligible = filterByFileOwnership(capabilityResult.eligible, state);
+    const pendingRedispatches = state.issues.filter((i) => i.needs_redispatch).length;
     const slots = availableSlots(state);
-    const toDispatch = eligible.slice(0, slots);
-    for (const blocked of capabilityResult.blocked) {
+    let toDispatch = [];
+    if (pendingRedispatches > 0 && slots <= pendingRedispatches) {
       deps.appendLog(sessionDir, {
         timestamp: deps.now().toISOString(),
-        event: "scan_dispatch_blocked_requirements",
+        event: "dispatch_deferred_for_redispatch",
         iteration,
-        issue_number: blocked.issue.number,
-        requires: normalizeTaskRequires(blocked.issue.requires),
-        missing: blocked.missing
+        pending_redispatches: pendingRedispatches,
+        available_slots: slots
       });
+    } else {
+      const dispatchable = getDispatchableIssues(state);
+      const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
+      const eligible = filterByFileOwnership(capabilityResult.eligible, state);
+      toDispatch = eligible.slice(0, Math.max(0, slots - pendingRedispatches));
+      for (const blocked of capabilityResult.blocked) {
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "scan_dispatch_blocked_requirements",
+          iteration,
+          issue_number: blocked.issue.number,
+          requires: normalizeTaskRequires(blocked.issue.requires),
+          missing: blocked.missing
+        });
+      }
     }
     for (const issue of toDispatch) {
       try {
@@ -14285,10 +15148,96 @@ async function steerCommand(instruction, options = {}) {
 }
 
 // src/commands/process-requests.ts
-import { existsSync as existsSync13 } from "node:fs";
-import { readFile as readFile12, readdir as readdir6, unlink as unlink3, writeFile as writeFile12, mkdir as mkdir8, cp as cp2 } from "node:fs/promises";
+import { existsSync as existsSync13, readFileSync as readFileSync3 } from "node:fs";
+import { readFile as readFile12, readdir as readdir6, unlink as unlink3, writeFile as writeFile12, mkdir as mkdir8, cp as cp2, stat as stat2, rm } from "node:fs/promises";
 import { spawn as spawn3, spawnSync as spawnSync7 } from "node:child_process";
 import path16 from "node:path";
+function loadOrchestratorEvents(pipelineYmlPath) {
+  if (!existsSync13(pipelineYmlPath))
+    return [];
+  try {
+    const content = readFileSync3(pipelineYmlPath, "utf8");
+    const eventsMatch = content.match(/^orchestrator_events:\s*\n((?:[\s#].*\n?)*)/m);
+    if (!eventsMatch)
+      return [];
+    const events = [];
+    const lines = eventsMatch[1].split("\n");
+    let current = null;
+    let inFilter = false;
+    let filter = {};
+    for (const line of lines) {
+      const trimmed = line.replace(/#.*$/, "").trimEnd();
+      if (!trimmed || trimmed.match(/^\s*$/))
+        continue;
+      const indent = line.search(/\S/);
+      const stripped = trimmed.trim();
+      if (indent === 2 && stripped.endsWith(":") && !stripped.slice(0, -1).includes(" ")) {
+        if (current?.agent && current?.prompt) {
+          events.push({ ...current, filter, resultPattern: current.resultPattern ?? "" });
+        }
+        current = { agent: stripped.replace(":", "") };
+        filter = {};
+        inFilter = false;
+        continue;
+      }
+      const kvMatch = trimmed.match(/^\s+(\w+):\s*(.+)$/);
+      if (!kvMatch) {
+        if (trimmed.match(/^\s+filter:\s*$/)) {
+          inFilter = true;
+          continue;
+        }
+        continue;
+      }
+      const [, key, rawVal] = kvMatch;
+      const val = rawVal.replace(/^["']|["']$/g, "").trim();
+      if (inFilter && indent >= 6) {
+        filter[key] = val === "true" ? true : val === "false" ? false : val;
+      } else {
+        inFilter = false;
+        if (current) {
+          if (key === "prompt")
+            current.prompt = val;
+          else if (key === "batch")
+            current.batch = Number(val);
+          else if (key === "result_pattern")
+            current.resultPattern = val;
+        }
+      }
+    }
+    if (current?.agent && current?.prompt) {
+      events.push({ ...current, filter, resultPattern: current.resultPattern ?? "" });
+    }
+    return events;
+  } catch {
+    return [];
+  }
+}
+function buildQueuePrompt(agent, issue, promptContent, outputPath) {
+  return [
+    "---",
+    `agent: ${agent}`,
+    `reasoning: high`,
+    "---",
+    "",
+    promptContent,
+    "",
+    `## Issue #${issue.number}: ${issue.title}`,
+    "",
+    issue.body ?? "(no body)",
+    "",
+    `**Wave:** ${issue.wave}`,
+    `**Dependencies:** ${issue.depends_on?.length > 0 ? issue.depends_on.map((d) => `#${d}`).join(", ") : "none"}`,
+    "",
+    `## Output \u2014 REQUIRED`,
+    "",
+    `Write your result as a JSON file using the Write tool:`,
+    "",
+    `**Path:** \`${outputPath}\``,
+    "",
+    `Create the \`.aloop/output/\` directory if it does not exist.`,
+    `Without this file, the pipeline cannot continue.`
+  ].join("\n");
+}
 async function processRequestsCommand(options) {
   const sessionDir = path16.resolve(options.sessionDir);
   const homeDir = resolveHomeDir2(options.homeDir);
@@ -14306,6 +15255,27 @@ async function processRequestsCommand(options) {
   const requestsDir = path16.join(sessionDir, "requests");
   const repo = state.filter_repo ?? null;
   let stateChanged = false;
+  const execGh = async (args) => {
+    const r = spawnSync7("gh", args, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true, timeout: 3e4 });
+    if (r.status === null && r.signal)
+      throw new Error(`gh timed out (${r.signal})`);
+    return { stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  };
+  const agentOutputDir = path16.join(sessionDir, "worktree", ".aloop", "output");
+  if (existsSync13(agentOutputDir)) {
+    try {
+      const outputFiles = await readdir6(agentOutputDir);
+      for (const file of outputFiles.filter((f) => f.endsWith(".json"))) {
+        const src = path16.join(agentOutputDir, file);
+        const dest = path16.join(requestsDir, file);
+        const content = await readFile12(src, "utf8");
+        await writeFile12(dest, content, "utf8");
+        await unlink3(src);
+        console.log(`[process-requests] Bridged agent output: ${file}`);
+      }
+    } catch {
+    }
+  }
   const epicResultsFile = path16.join(requestsDir, "epic-decomposition-results.json");
   if (existsSync13(epicResultsFile) && state.issues.length === 0) {
     try {
@@ -14347,10 +15317,21 @@ async function processRequestsCommand(options) {
         let nextNum = Math.max(0, ...state.issues.map((i) => i.number ?? 0)) + 1;
         for (const sub of subIssues) {
           const subTitle = sub.title;
-          const subBody = `Part of #${parentNum}: ${parent.title}
+          const subBodyBase = `Part of #${parentNum}: ${parent.title}
 
 ${sub.body ?? ""}`;
-          const ghNumber = repo ? await createGhIssue(repo, subTitle, subBody, ["aloop/auto"], requestsDir) : nextNum++;
+          const subBody = ensureMetadataSection(subBodyBase, {
+            wave: parent.wave,
+            type: "sub-issue",
+            files: sub.file_hints ?? [],
+            depends_on: sub.depends_on ?? []
+          });
+          const subLabels = buildIssueLabels({
+            wave: parent.wave,
+            is_sub_issue: true,
+            component_labels: deriveComponentLabels(sub.file_hints ?? [])
+          });
+          const ghNumber = repo ? await createGhIssue(repo, subTitle, subBody, subLabels, requestsDir) : nextNum++;
           state.issues.push({
             number: ghNumber || nextNum++,
             title: subTitle,
@@ -14380,28 +15361,107 @@ ${sub.body ?? ""}`;
       console.error(`[process-requests] Failed to apply sub-decomposition: ${e}`);
     }
   }
-  for (const file of allFiles.filter((f) => f.match(/^estimate-result-\d+\.json$/))) {
+  for (const file of allFiles.filter((f) => f.match(/^refine-result-\d+\.json$/))) {
     const filePath = path16.join(requestsDir, file);
     try {
       const result2 = JSON.parse(await readFile12(filePath, "utf8"));
       const issue = state.issues.find((i) => i.number === result2.issue_number);
-      if (issue) {
-        issue.dor_validated = result2.dor_passed ?? true;
-        issue.complexity_tier = result2.complexity_tier;
-        issue.iteration_estimate = result2.iteration_estimate;
-        if (result2.dor_passed)
-          issue.status = "Ready";
-        stateChanged = true;
-        console.log(`[process-requests] Issue #${result2.issue_number}: ${result2.dor_passed ? "Ready" : "needs work"}`);
+      if (issue && result2.updated_body && repo) {
+        try {
+          const bodyFile = path16.join(requestsDir, `_body-${issue.number}.md`);
+          await writeFile12(bodyFile, result2.updated_body, "utf8");
+          await execGh(["issue", "edit", String(issue.number), "--repo", repo, "--body-file", bodyFile]);
+          await unlink3(bodyFile).catch(() => {
+          });
+          issue.body = result2.updated_body;
+          issue.refined = true;
+          stateChanged = true;
+          console.log(`[process-requests] Refined #${issue.number} \u2014 updated body with constraints`);
+        } catch (e) {
+          console.warn(`[process-requests] Failed to update GH issue #${issue.number}: ${e}`);
+        }
       }
       await archiveRequestFile(requestsDir, filePath);
     } catch {
     }
   }
+  for (const file of allFiles.filter((f) => f.match(/^estimate-result-\d+\.json$/))) {
+    const filePath = path16.join(requestsDir, file);
+    try {
+      const result2 = JSON.parse(await readFile12(filePath, "utf8"));
+      const issueNum = result2.issue_number ?? result2.issue ?? Number(file.match(/\d+/)?.[0]);
+      const issue = state.issues.find((i) => i.number === issueNum);
+      if (issue) {
+        const dorPassed = result2.dor_passed ?? result2.definition_of_ready?.passes ?? true;
+        issue.dor_validated = dorPassed;
+        issue.complexity_tier = result2.complexity_tier;
+        issue.iteration_estimate = result2.iteration_estimate ?? result2.estimated_child_loop_iterations;
+        if (dorPassed)
+          issue.status = "Ready";
+        stateChanged = true;
+        console.log(`[process-requests] Issue #${issueNum}: ${dorPassed ? "Ready" : "needs work"}`);
+      }
+      await archiveRequestFile(requestsDir, filePath);
+    } catch {
+    }
+  }
+  {
+    const queueDir = path16.join(sessionDir, "queue");
+    const queueFiles = existsSync13(queueDir) ? await readdir6(queueDir) : [];
+    const pendingQueue = new Set(
+      queueFiles.filter((f) => f.startsWith("refine-issue-") || f.startsWith("estimate-issue-")).map((f) => Number(f.replace(/^(refine|estimate)-issue-/, "").replace(".md", "")))
+    );
+    const pendingResults = new Set(
+      allFiles.filter((f) => f.match(/^(refine|estimate)-result-\d+\.json$/)).map((f) => Number(f.replace(/^(refine|estimate)-result-/, "").replace(".json", "")))
+    );
+    const pipelineYmlPath = path16.join(sessionDir, "worktree", ".aloop", "pipeline.yml");
+    const orchEvents = loadOrchestratorEvents(pipelineYmlPath);
+    for (const event of orchEvents) {
+      const matching = state.issues.filter((i) => {
+        if (i.refinement_budget_exceeded)
+          return false;
+        if (pendingQueue.has(i.number) || pendingResults.has(i.number))
+          return false;
+        for (const [key, val] of Object.entries(event.filter)) {
+          const actual = i[key];
+          const normalized = actual === void 0 && typeof val === "boolean" ? false : actual;
+          if (normalized !== val)
+            return false;
+        }
+        return true;
+      });
+      if (matching.length === 0)
+        continue;
+      const promptPath = path16.join(sessionDir, "prompts", event.prompt);
+      if (!existsSync13(promptPath))
+        continue;
+      const promptContent = await readFile12(promptPath, "utf8");
+      const batch = matching.slice(0, event.batch);
+      for (const issue of batch) {
+        const resultFile = event.resultPattern.replace("{issue_number}", String(issue.number));
+        const outputPath = `.aloop/output/${resultFile}`;
+        const queueContent = buildQueuePrompt(event.agent, issue, promptContent, outputPath);
+        const queueFile = `${event.agent}-issue-${issue.number}.md`;
+        await writeFile12(path16.join(queueDir, queueFile), queueContent, "utf8");
+      }
+      console.log(`[process-requests] Queued ${batch.length} ${event.agent} prompts (${matching.length} total matching)`);
+    }
+  }
   if (repo) {
     for (const issue of state.issues.filter((i) => i.number === 0)) {
-      const labels = issue.parent_issue ? ["aloop/auto"] : ["aloop/epic", "aloop/auto"];
-      const ghNum = await createGhIssue(repo, issue.title, issue.body ?? "", labels, requestsDir);
+      const isEpic = !issue.parent_issue;
+      const labels = buildIssueLabels({
+        wave: issue.wave,
+        is_epic: isEpic,
+        is_sub_issue: !isEpic,
+        component_labels: deriveComponentLabels(issue.file_hints ?? [])
+      });
+      const bodyWithMeta = ensureMetadataSection(issue.body ?? "", {
+        wave: issue.wave,
+        type: isEpic ? "epic" : "sub-issue",
+        files: issue.file_hints ?? []
+      });
+      const ghNum = await createGhIssue(repo, issue.title, bodyWithMeta, labels, requestsDir);
       if (ghNum > 0) {
         issue.number = ghNum;
         issue.gh_number = ghNum;
@@ -14442,7 +15502,7 @@ ${sub.body ?? ""}`;
   for (const issue of state.issues) {
     if (!issue.child_session)
       continue;
-    if (issue.state !== "in_progress" && issue.state !== "pr_open")
+    if (issue.state !== "in_progress" && issue.state !== "pr_open" && issue.state !== "review")
       continue;
     const childDir = path16.join(aloopRoot, "sessions", issue.child_session);
     const childWorktree = path16.join(childDir, "worktree");
@@ -14506,7 +15566,7 @@ Run \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, res
         if (existsSync13(childStatusFile)) {
           try {
             const childStatus = JSON.parse(await readFile12(childStatusFile, "utf8"));
-            if (childStatus.state === "completed" || childStatus.state === "stopped") {
+            if (childStatus.state === "completed") {
               const branch = `aloop/issue-${issue.number}`;
               const trunkBranch2 = state.trunk_branch ?? "agent/trunk";
               const childWorktree = path16.join(childDir, "worktree");
@@ -14519,7 +15579,30 @@ Run \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, res
                 spawnSync7("git", ["-C", childWorktree, "commit", "-m", "chore: remove working artifacts from PR"], { encoding: "utf8" });
                 spawnSync7("git", ["-C", childWorktree, "push", "origin", "HEAD"], { encoding: "utf8" });
               }
-              const prResult = spawnSync7("gh", [
+              const prDescriptionFile = path16.join(childWorktree, "PR_DESCRIPTION.md");
+              const wave = issue.wave ?? 1;
+              const componentLabels = deriveComponentLabels(issue.file_hints ?? []);
+              const prLabels = buildIssueLabels({ wave, component_labels: componentLabels });
+              const richPrBody = buildPrBody({
+                issue_number: issue.number,
+                issue_title: issue.title,
+                wave,
+                labels: prLabels,
+                child_session: issue.child_session,
+                file_hints: issue.file_hints ?? [],
+                scope_summary: (issue.body ?? "").split("\n").slice(0, 3).join(" ").substring(0, 200)
+              });
+              let prBody = richPrBody;
+              if (existsSync13(prDescriptionFile)) {
+                try {
+                  const agentBody = await readFile12(prDescriptionFile, "utf8");
+                  prBody = agentBody.includes(`Closes #${issue.number}`) ? agentBody : `${agentBody}
+
+Closes #${issue.number}`;
+                } catch {
+                }
+              }
+              const prArgs = [
                 "pr",
                 "create",
                 "--repo",
@@ -14527,14 +15610,16 @@ Run \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, res
                 "--title",
                 `#${issue.number}: ${issue.title}`,
                 "--body",
-                `Closes #${issue.number}
-
-Automated PR from child loop session \`${issue.child_session}\`.`,
+                prBody,
                 "--head",
                 branch,
                 "--base",
                 trunkBranch2
-              ], { encoding: "utf8" });
+              ];
+              for (const label of prLabels) {
+                prArgs.push("--label", label);
+              }
+              const prResult = spawnSync7("gh", prArgs, { encoding: "utf8" });
               if (prResult.status === 0 && prResult.stdout) {
                 const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
                 const prNum = urlMatch ? parseInt(urlMatch[1], 10) : 0;
@@ -14570,26 +15655,36 @@ Automated PR from child loop session \`${issue.child_session}\`.`,
     const childPid = issue.child_pid;
     if (childPid && !existsSync13(`/proc/${childPid}`)) {
       const childStatusFile = path16.join(aloopRoot, "sessions", issue.child_session, "status.json");
+      let childState = "unknown";
       if (existsSync13(childStatusFile)) {
         try {
           const cs = JSON.parse(await readFile12(childStatusFile, "utf8"));
-          if (cs.state === "completed")
-            continue;
-          if (cs.state === "stopped") {
-            issue.needs_redispatch = true;
-            issue.review_feedback = `Child stopped after ${cs.iteration ?? "?"} iterations. Resume and continue.`;
-            stateChanged = true;
-            continue;
-          }
+          childState = cs.state ?? "unknown";
         } catch {
         }
       }
-      issue.state = "pending";
-      issue.status = "Ready";
-      issue.child_session = null;
-      issue.child_pid = null;
-      stateChanged = true;
-      console.log(`[process-requests] Dead child detected for #${issue.number} \u2014 reset to Ready`);
+      if (issue.pr_number) {
+        issue.state = "pr_open";
+        issue.status = "In review";
+        issue.child_session = null;
+        issue.child_pid = null;
+        stateChanged = true;
+        console.log(`[process-requests] Dead child for #${issue.number} (${childState}) \u2014 has PR #${issue.pr_number}, moved to pr_open`);
+      } else if (childState === "completed" || childState === "stopped") {
+        issue.state = "pending";
+        issue.status = "Ready";
+        issue.child_session = null;
+        issue.child_pid = null;
+        stateChanged = true;
+        console.log(`[process-requests] Dead child for #${issue.number} (${childState}) \u2014 no PR, reset to Ready`);
+      } else {
+        issue.state = "pending";
+        issue.status = "Ready";
+        issue.child_session = null;
+        issue.child_pid = null;
+        stateChanged = true;
+        console.log(`[process-requests] Dead child for #${issue.number} (${childState}) \u2014 reset to Ready`);
+      }
     }
   }
   for (const issue of state.issues) {
@@ -14764,6 +15859,7 @@ Automated PR from child loop session \`${issue.child_session}\`.`,
     }
   }
   const loopPlanFile = path16.join(sessionDir, "loop-plan.json");
+  const reviewPendingUpdates = /* @__PURE__ */ new Map();
   let iteration = 1;
   try {
     if (existsSync13(loopPlanFile)) {
@@ -14779,12 +15875,6 @@ Automated PR from child loop session \`${issue.child_session}\`.`,
   };
   const etagCache = new EtagCache(path16.join(aloopRoot, ".cache"));
   await etagCache.load();
-  const execGh = async (args) => {
-    const r = spawnSync7("gh", args, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true, timeout: 3e4 });
-    if (r.status === null && r.signal)
-      throw new Error(`gh timed out (${r.signal})`);
-    return { stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
-  };
   const execGit = async (args, cwd) => {
     const r = spawnSync7("git", args, { encoding: "utf8", cwd: cwd ?? projectRoot, stdio: ["pipe", "pipe", "pipe"] });
     return { stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
@@ -14811,8 +15901,8 @@ Automated PR from child loop session \`${issue.child_session}\`.`,
       },
       invokeAgentReview: async (prNumber, _repo, diff) => {
         const resultFile = path16.join(requestsDir, `review-result-${prNumber}.json`);
-        const worktreeResultFile = path16.join(sessionDir, "worktree", "requests", `review-result-${prNumber}.json`);
-        const actualResultFile = existsSync13(resultFile) ? resultFile : existsSync13(worktreeResultFile) ? worktreeResultFile : null;
+        const agentOutputFile = path16.join(sessionDir, "worktree", ".aloop", "output", `review-result-${prNumber}.json`);
+        const actualResultFile = existsSync13(resultFile) ? resultFile : existsSync13(agentOutputFile) ? agentOutputFile : null;
         if (actualResultFile) {
           try {
             const content = await readFile12(actualResultFile, "utf8");
@@ -14823,102 +15913,6 @@ Automated PR from child loop session \`${issue.child_session}\`.`,
             return { pr_number: prNumber, verdict: "flag-for-human", summary: `Parse error: ${e}` };
           }
         }
-        const artifactsDir = path16.join(sessionDir, "artifacts");
-        if (existsSync13(artifactsDir)) {
-          try {
-            const iterDirs = await readdir6(artifactsDir);
-            const sorted = iterDirs.filter((d) => d.startsWith("iter-")).sort().reverse().slice(0, 3);
-            for (const iterDir of sorted) {
-              const outputFile = path16.join(artifactsDir, iterDir, "output.txt");
-              if (!existsSync13(outputFile))
-                continue;
-              const output = await readFile12(outputFile, "utf8");
-              if (!output.includes(String(prNumber)) && !output.includes(`PR #${prNumber}`))
-                continue;
-              const verdictMatch = output.match(/\*\*(?:Review\s+)?[Vv]erdict[:\s]+(approve|request-changes|flag-for-human)\*\*/i) ?? output.match(/(?:review\s+)?verdict[:\s]+"?(approve|request-changes|flag-for-human)"?/i) ?? (output.match(new RegExp(`PR\\s*#?${prNumber}.*review\\s+approved`, "i")) ? [null, "approve"] : null) ?? (output.match(new RegExp(`merge-pr-${prNumber}`, "i")) ? [null, "approve"] : null);
-              if (verdictMatch) {
-                const verdict = verdictMatch[1].toLowerCase();
-                const summaryMatch = output.match(/(?:summary|reason|feedback|issues?)[:\s]+([^\n]{10,300})/i);
-                const summary = summaryMatch ? summaryMatch[1].trim() : `Agent verdict: ${verdict}`;
-                return { pr_number: prNumber, verdict, summary };
-              }
-            }
-          } catch {
-          }
-        }
-        const rawLogFile = path16.join(sessionDir, "log.jsonl.raw");
-        if (existsSync13(rawLogFile)) {
-          try {
-            const rawLog = await readFile12(rawLogFile, "utf8");
-            const recent = rawLog.slice(-1e4);
-            if (recent.includes(String(prNumber)) || recent.includes(`PR #${prNumber}`)) {
-              const verdictMatch = recent.match(new RegExp(`PR\\s*#?${prNumber}[^\\n]*(?:review\\s+)?verdict[:\\s]+(approve|request-changes|flag-for-human)`, "i")) ?? recent.match(new RegExp(`\\*\\*(?:Review\\s+)?[Vv]erdict[:\\s]+(approve|request-changes|flag-for-human)\\*\\*[^\\n]*PR\\s*#?${prNumber}`, "i")) ?? recent.match(new RegExp(`\\*\\*(?:Review\\s+)?[Vv]erdict[:\\s]+(approve|request-changes|flag-for-human)\\*\\*.*?${prNumber}`, "is")) ?? (recent.match(new RegExp(`PR\\s*#?${prNumber}.*review\\s+approved`, "i")) ? [null, "approve"] : null);
-              if (verdictMatch && verdictMatch[1]) {
-                const verdict = verdictMatch[1].toLowerCase();
-                return { pr_number: prNumber, verdict, summary: `Verdict from scan agent output` };
-              }
-            }
-          } catch {
-          }
-        }
-        const rawLogFile2 = path16.join(sessionDir, "log.jsonl.raw");
-        if (existsSync13(rawLogFile2)) {
-          try {
-            const rawLog = await readFile12(rawLogFile2, "utf8");
-            const recent = rawLog.slice(-8e3);
-            if (recent.includes(String(prNumber)) || recent.includes(`PR #${prNumber}`)) {
-              const extractQueueFile = path16.join(sessionDir, "queue", `000-extract-verdict-${prNumber}.md`);
-              if (!existsSync13(extractQueueFile)) {
-                const relResultPath = `requests/review-result-${prNumber}.json`;
-                await mkdir8(path16.join(sessionDir, "queue"), { recursive: true });
-                await writeFile12(extractQueueFile, `---
-agent: verdict_extract
-reasoning: low
----
-
-# Extract Review Verdict for PR #${prNumber}
-
-## How the Aloop orchestrator works
-
-The orchestrator review agent produces a verdict for each PR. The verdict must be written as a JSON file so the orchestrator runtime can read it and proceed (merge on approve, redispatch on request-changes).
-
-**Without this file, the PR review is stuck and the pipeline cannot continue.**
-
-## Your task
-
-1. Read the agent output below
-2. Find the review verdict for PR #${prNumber} (look for "verdict", "approve", "request-changes", or similar)
-3. Write the JSON file using the Write tool to:
-
-**Path:** \`${relResultPath}\`
-
-(This is relative to your working directory. Create the \`requests/\` directory if needed.)
-
-File content must be valid JSON:
-\`\`\`json
-{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}
-\`\`\`
-
-Valid verdicts: "approve", "request-changes", "flag-for-human"
-
-4. If you cannot find a clear verdict for PR #${prNumber}, write:
-\`\`\`json
-{"pr_number": ${prNumber}, "verdict": "approve", "summary": "No explicit verdict found \u2014 auto-approving"}
-\`\`\`
-
-**You MUST use the Write tool to create the file. Do NOT just print the JSON as text.**
-
-## Recent Agent Output
-
-\`\`\`
-${recent.slice(-4e3)}
-\`\`\`
-`, "utf8");
-              }
-            }
-          } catch {
-          }
-        }
         const queueFile = path16.join(sessionDir, "queue", `000-review-${prNumber}.md`);
         const legacyQueueFile = path16.join(sessionDir, "queue", `review-${prNumber}.md`);
         if (!existsSync13(queueFile) && !existsSync13(legacyQueueFile)) {
@@ -14926,17 +15920,15 @@ ${recent.slice(-4e3)}
           if (existsSync13(reviewPath)) {
             const prompt = await readFile12(reviewPath, "utf8");
             await mkdir8(path16.join(sessionDir, "queue"), { recursive: true });
-            const worktreeRequestsDir = path16.join(sessionDir, "worktree", "requests");
-            const resultPath = path16.join(worktreeRequestsDir, `review-result-${prNumber}.json`);
             const outputInstr = `
 
 ## Output \u2014 CRITICAL
 
 You MUST use the Write tool to create this file:
 
-**Path:** \`requests/review-result-${prNumber}.json\`
+**Path:** \`.aloop/output/review-result-${prNumber}.json\`
 
-(This is relative to your working directory. Full path: \`${resultPath}\`)
+(This is relative to your working directory. Create the \`.aloop/output/\` directory if needed.)
 
 **Content (valid JSON):**
 \`\`\`json
@@ -14979,10 +15971,10 @@ ${diff}
 `, "utf8");
           }
         }
-        const stateIssue2 = state.issues.find((i) => i.pr_number === prNumber);
-        if (stateIssue2) {
-          const pendingCount = (stateIssue2.review_pending_count ?? 0) + 1;
-          stateIssue2.review_pending_count = pendingCount;
+        const prevCount = reviewPendingUpdates.get(prNumber) ?? 0;
+        const pendingCount = prevCount + 1;
+        reviewPendingUpdates.set(prNumber, pendingCount);
+        {
           if (pendingCount === 4) {
             const troubleshootFile = path16.join(sessionDir, "queue", `000-troubleshoot-review-${prNumber}.md`);
             if (!existsSync13(troubleshootFile)) {
@@ -15041,6 +16033,24 @@ The review for PR #${prNumber} has returned "pending" ${pendingCount} times. The
     iteration,
     scanDeps
   );
+  if (reviewPendingUpdates.size > 0) {
+    try {
+      const postScanState = JSON.parse(await readFile12(stateFile, "utf8"));
+      let changed = false;
+      for (const [prNum, count] of reviewPendingUpdates) {
+        const issue = postScanState.issues.find((i) => i.pr_number === prNum);
+        if (issue) {
+          issue.review_pending_count = count;
+          changed = true;
+        }
+      }
+      if (changed) {
+        await writeFile12(stateFile, `${JSON.stringify(postScanState, null, 2)}
+`, "utf8");
+      }
+    } catch {
+    }
+  }
   await etagCache.save();
   const outputMode = options.output ?? "text";
   if (outputMode === "json") {
@@ -15135,7 +16145,7 @@ program2.command("stop <session-id>").description("Stop a session by session-id"
 program2.command("update").description("Refresh ~/.aloop runtime assets from the current repo checkout").option("--repo-root <path>", "Path to aloop source repository root").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(updateCommand));
 program2.command("devcontainer").description("Generate or augment .devcontainer/devcontainer.json for isolated agent execution").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(devcontainerCommand));
 program2.command("devcontainer-verify").description("Verify devcontainer builds, starts, and passes all checks").option("--project-root <path>", "Project root override").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(verifyDevcontainerCommand));
-program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <paths>", 'Spec file(s) or glob pattern (e.g. "SPEC.md specs/*.md")', "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--interval <ms>", "Scan loop interval in milliseconds (default: 30000)").option("--max-iterations <n>", "Max scan loop iterations (default: 100)").option("--auto-merge", "Create a PR from trunk to main when all issues complete").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(orchestrateCommand));
+program2.command("orchestrate").description("Decompose spec into issues, dispatch child loops, and merge PRs").option("--spec <paths>", 'Spec file(s) or glob pattern (e.g. "SPEC.md specs/*.md")', "SPEC.md").option("--concurrency <number>", "Max concurrent child loops", "3").option("--trunk <branch>", "Target branch for merged PRs", "agent/trunk").option("--issues <numbers>", "Comma-separated issue numbers to process").option("--label <label>", "GitHub label to filter issues").option("--repo <owner/repo>", "GitHub repository").option("--autonomy-level <level>", "Autonomy level: cautious, balanced, or autonomous").option("--plan <file>", "Decomposition plan JSON file with issues and dependencies").option("--plan-only", "Create issues without launching loops").option("--budget <usd>", "Session budget cap in USD (pauses dispatch at 80%)").option("--interval <ms>", "Scan loop interval in milliseconds (default: 30000)").option("--max-iterations <n>", "Max scan loop iterations (default: 100)").option("--auto-merge", "Create a PR from trunk to main when all issues complete").option("--resume <session-id>", "Resume a previously stopped orchestrator session").option("--home-dir <path>", "Home directory override").option("--project-root <path>", "Project root override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(orchestrateCommand));
 program2.command("steer <instruction>").description("Send a steering instruction to an active session").option("--session <id>", "Target session ID (auto-detected if only one active)").option("--affects-completed-work <value>", "Whether instruction affects completed work: yes, no, or unknown", "unknown").option("--overwrite", "Overwrite an existing queued steering instruction").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(steerCommand));
 program2.command("process-requests").description("Process pending orchestrator requests (called by loop.sh between iterations)").requiredOption("--session-dir <path>", "Orchestrator session directory").option("--home-dir <path>", "Home directory override").option("--output <mode>", "Output format: json or text", "text").action(withErrorHandling(processRequestsCommand));
 program2.addCommand(ghCommand);
