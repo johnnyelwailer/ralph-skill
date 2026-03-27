@@ -24,6 +24,7 @@ import { ArtifactViewer } from '@/components/artifacts/ArtifactViewer';
 import { useCost } from '@/hooks/useCost';
 import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
+import { ResponsiveLayout, useResponsiveLayout } from '@/components/layout/ResponsiveLayout';
 
 // ── ANSI + Markdown rendering ──
 // Strip ANSI escape codes from text (for compact log entries)
@@ -719,7 +720,7 @@ export function deriveProviderHealth(log: string, configuredProviders?: string[]
 // ── Sidebar ──
 
 export function Sidebar({
-  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost, onStopSession, onCopySessionId,
+  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost, onStopSession, onCopySessionId, isDesktop,
 }: {
   sessions: SessionSummary[];
   selectedSessionId: string | null;
@@ -729,6 +730,7 @@ export function Sidebar({
   sessionCost: number;
   onStopSession?: (id: string | null, force: boolean) => void;
   onCopySessionId?: (id: string) => void;
+  isDesktop?: boolean;
 }) {
   // Group by project
   const { projectGroups, olderSessions } = useMemo(() => {
@@ -932,14 +934,16 @@ export function Sidebar({
     <aside className="flex flex-col border-r border-border bg-sidebar w-64 shrink-0 animate-slide-in-left">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button type="button" aria-label="Collapse sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
-              <PanelLeftClose className="h-4 w-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent><p>Collapse (Ctrl+B)</p></TooltipContent>
-        </Tooltip>
+        {!isDesktop && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" aria-label="Collapse sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
+                <PanelLeftClose className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent><p>Collapse (Ctrl+B)</p></TooltipContent>
+          </Tooltip>
+        )}
       </div>
       <ScrollArea className="flex-1">
         <div className="p-2 overflow-hidden">
@@ -1053,7 +1057,7 @@ function Header({
     <header className="border-b border-border px-3 py-2 md:px-4 md:py-2.5 shrink-0">
       <h1 className="sr-only">Aloop Dashboard</h1>
       <div className="flex items-center gap-2 sm:gap-4" data-testid="session-header-grid">
-        <button type="button" aria-label="Toggle sidebar" className="inline-flex items-center justify-center md:hidden p-1 min-h-[44px] min-w-[44px] rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
+        <button type="button" aria-label="Toggle sidebar" className="inline-flex items-center justify-center sm:hidden p-1 min-h-[44px] min-w-[44px] rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
           <Menu className="h-5 w-5" />
         </button>
         <Tooltip>
@@ -2142,7 +2146,7 @@ function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
 
 // ── Main App ──
 
-export function App() {
+function AppInner() {
   const [state, setState] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -2150,41 +2154,54 @@ export function App() {
   const [steerSubmitting, setSteerSubmitting] = useState(false);
   const [stopSubmitting, setStopSubmitting] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('session'));
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const mobileSidebarRef = useRef<HTMLDivElement>(null);
   const [activePanel, setActivePanel] = useState<'docs' | 'activity'>('docs');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [qaCoverageRefreshKey, setQaCoverageRefreshKey] = useState('');
   const prevPhaseRef = useRef<string>('');
   const latestQaSignalRef = useRef<string | null>(null);
+  const { isDesktop, isMobile, sidebarOpen, toggleSidebar, openSidebar, closeSidebar } = useResponsiveLayout();
+
+  // Swipe-right gesture: open sidebar when swiping from left edge on mobile
+  const SWIPE_EDGE_THRESHOLD_PX = 20;
+  const SWIPE_MIN_DISTANCE_PX = 50;
+  const touchStartXRef = useRef<number | null>(null);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!isMobile) return;
+    touchStartXRef.current = e.touches[0]?.clientX ?? null;
+  }, [isMobile]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!isMobile || touchStartXRef.current === null) return;
+    const startX = touchStartXRef.current;
+    touchStartXRef.current = null;
+    if (startX > SWIPE_EDGE_THRESHOLD_PX) return;
+    const endX = e.changedTouches[0]?.clientX ?? 0;
+    if (endX - startX >= SWIPE_MIN_DISTANCE_PX) {
+      openSidebar();
+    }
+  }, [isMobile, openSidebar]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'b' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setSidebarCollapsed((p) => !p); }
+      if (e.key === 'b' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (!isMobile) toggleSidebar(); }
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setCommandOpen((p) => !p); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [toggleSidebar, isMobile]);
 
-  // Mobile sidebar: Escape key closes drawer, focus moves into sidebar on open
+  // Mobile sidebar: Escape key closes drawer
   useEffect(() => {
-    if (!mobileMenuOpen) return;
-    // Focus first focusable element inside sidebar
-    const container = mobileSidebarRef.current;
-    if (container) {
-      const focusable = container.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-      focusable?.focus();
-    }
+    if (!sidebarOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); setMobileMenuOpen(false); }
+      if (e.key === 'Escape') { e.preventDefault(); closeSidebar(); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [mobileMenuOpen]);
+  }, [sidebarOpen, closeSidebar]);
 
   const selectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
@@ -2444,53 +2461,76 @@ export function App() {
   );
 
   return (
-    <TooltipProvider delayDuration={300}>
-      <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
-        <div className="flex flex-1 min-h-0">
-          {/* Desktop sidebar */}
-          <div className="hidden md:flex">
-            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
-          </div>
-          {/* Mobile sidebar drawer */}
-          {mobileMenuOpen && (
-            <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
-              <div className="absolute inset-0 bg-black/50" />
-              <div ref={mobileSidebarRef} className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
-                <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
-              </div>
-            </div>
-          )}
-          <div className="flex flex-col flex-1 min-w-0">
-            <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
-            {/* Mobile panel toggle */}
-            <div className="lg:hidden flex border-b border-border shrink-0">
-              <button
-                type="button"
-                className={`flex-1 py-1.5 min-h-[44px] text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setActivePanel('docs')}
-              >
-                <FileText className="h-3.5 w-3.5 inline mr-1" />Documents
-              </button>
-              <button
-                type="button"
-                className={`flex-1 py-1.5 min-h-[44px] text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setActivePanel('activity')}
-              >
-                <Activity className="h-3.5 w-3.5 inline mr-1" />Activity
-              </button>
-            </div>
-            <main className="flex-1 min-h-0 p-2 md:p-3">
-              <div className="flex gap-3 h-full">
-                {docsPanel}
-                {activityPanel}
-              </div>
-            </main>
-            <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} onResume={() => void handleResume()} resumeSubmitting={resumeSubmitting} isRunning={isRunning} />
-          </div>
+    <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      <div className="flex flex-1 min-h-0">
+        {/* Desktop sidebar — visible at sm+ (640px); mobile uses the overlay drawer */}
+        <div className="hidden sm:flex">
+          <Sidebar
+            sessions={sessions}
+            selectedSessionId={selectedSessionId}
+            onSelectSession={selectSession}
+            collapsed={isDesktop ? false : !sidebarOpen}
+            onToggle={toggleSidebar}
+            sessionCost={sessionCost}
+            isDesktop={isDesktop}
+          />
         </div>
-        <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} sessions={sessions} onSelectSession={selectSession} onStop={(f) => void handleStop(f)} />
-        <Toaster />
+        {/* Mobile/Tablet sidebar drawer */}
+        {!isDesktop && sidebarOpen && (
+          <div className="fixed inset-0 z-40 animate-fade-in" onClick={closeSidebar}>
+            <div className="absolute inset-0 bg-black/50" />
+            <div className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
+              <Sidebar
+                sessions={sessions}
+                selectedSessionId={selectedSessionId}
+                onSelectSession={(id) => { selectSession(id); closeSidebar(); }}
+                collapsed={false}
+                onToggle={closeSidebar}
+                sessionCost={sessionCost}
+              />
+            </div>
+          </div>
+        )}
+        <div className="flex flex-col flex-1 min-w-0">
+          <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={openSidebar} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={toggleSidebar} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
+          {/* Mobile panel toggle */}
+          <div className="lg:hidden flex border-b border-border shrink-0">
+            <button
+              type="button"
+              className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setActivePanel('docs')}
+            >
+              <FileText className="h-3.5 w-3.5 inline mr-1" />Documents
+            </button>
+            <button
+              type="button"
+              className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setActivePanel('activity')}
+            >
+              <Activity className="h-3.5 w-3.5 inline mr-1" />Activity
+            </button>
+          </div>
+          <main className="flex-1 min-h-0 p-2 md:p-3">
+            <div className="flex gap-3 h-full">
+              {docsPanel}
+              {activityPanel}
+            </div>
+          </main>
+          <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} onResume={() => void handleResume()} resumeSubmitting={resumeSubmitting} isRunning={isRunning} />
+        </div>
       </div>
+      <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} sessions={sessions} onSelectSession={selectSession} onStop={(f) => void handleStop(f)} />
+      <Toaster />
+    </div>
+  );
+}
+
+export function App() {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <ResponsiveLayout>
+        <AppInner />
+      </ResponsiveLayout>
     </TooltipProvider>
   );
 }

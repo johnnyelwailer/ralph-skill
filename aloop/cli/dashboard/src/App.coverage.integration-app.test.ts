@@ -7,6 +7,9 @@ import { MockEventSource, baseState } from './App.coverage.test-utils';
 
 describe('App.tsx AppView integration coverage - app controls', () => {
   beforeEach(() => {
+    // Simulate tablet viewport so sidebar toggle/overlay behavior is active.
+    // Desktop (>=1024px) disables toggleSidebar and hides the close button.
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 800 });
     MockEventSource.instances = [];
     vi.stubGlobal('EventSource', MockEventSource as unknown as typeof EventSource);
     vi.stubGlobal('ResizeObserver', class {
@@ -125,26 +128,31 @@ describe('App.tsx AppView integration coverage - app controls', () => {
     const { container } = render(createElement(App));
     await screen.findByRole('button', { name: /stop/i });
 
-    fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
+    // On tablet viewport, sidebar starts closed. Ctrl+B opens it.
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
 
     fireEvent.click(screen.getByRole('button', { name: /^activity$/i }));
     fireEvent.click(screen.getByRole('button', { name: /^documents$/i }));
 
+    // Sidebar is now open → close button visible (only on non-desktop)
     const collapseBtn = container.querySelector('button .lucide-panel-left-close')?.closest('button') as HTMLButtonElement | null;
     expect(collapseBtn).not.toBeNull();
-    fireEvent.click(collapseBtn!);
+    fireEvent.click(collapseBtn!);  // closes sidebar → sidebarOpen = false
     const expandBtn = container.querySelector('button .lucide-panel-left-open')?.closest('button') as HTMLButtonElement | null;
     expect(expandBtn).not.toBeNull();
-    fireEvent.click(expandBtn!);
+    // Keep sidebar closed so hamburger can open the overlay below
 
+    // Hamburger is always in the DOM (CSS sm:hidden applies in browser, not jsdom)
     const mobileMenuBtn = container.querySelector('button .lucide-menu')?.closest('button') as HTMLButtonElement | null;
     expect(mobileMenuBtn).not.toBeNull();
-    fireEvent.click(mobileMenuBtn!);
+    fireEvent.click(mobileMenuBtn!);  // toggleSidebar → sidebarOpen = true → overlay appears
     const mobileOverlay = container.querySelector('.fixed.inset-0.z-40') as HTMLDivElement | null;
     expect(mobileOverlay).not.toBeNull();
-    fireEvent.click(mobileOverlay!);
+    // Verify overlay closes when backdrop is clicked
+    fireEvent.click(mobileOverlay!);  // sidebarOpen = false → overlay gone
 
+    // Re-open sidebar to switch sessions (overlay has full session list)
+    fireEvent.click(mobileMenuBtn!);  // sidebarOpen = true → overlay reappears
     fireEvent.click(screen.getAllByText('sess-1')[0]);
     await waitFor(() => {
       expect(window.history.replaceState).toHaveBeenCalled();

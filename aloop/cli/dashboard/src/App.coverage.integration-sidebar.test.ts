@@ -8,6 +8,9 @@ import { MockEventSource, baseState } from './App.coverage.test-utils';
 
 describe('App.tsx AppView integration coverage - sidebar', () => {
   beforeEach(() => {
+    // Simulate tablet viewport so sidebar toggle/overlay behavior is active.
+    // Desktop (>=1024px) disables toggleSidebar and hides the close button.
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 800 });
     MockEventSource.instances = [];
     vi.stubGlobal('EventSource', MockEventSource as unknown as typeof EventSource);
     vi.stubGlobal('ResizeObserver', class {
@@ -61,13 +64,18 @@ describe('App.tsx AppView integration coverage - sidebar', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const { container } = render(createElement(App));
-    await screen.findByText('Older');
-    fireEvent.click(screen.getByText('Older'));
+    // On tablet viewport, sidebar starts collapsed — open it to see session names.
+    fireEvent.keyDown(document, { key: 'b', ctrlKey: true }); // open sidebar
+    await screen.findAllByText('Older');
+    fireEvent.click(screen.getAllByText('Older')[0]);
 
     const repoLink = screen.getByRole('link', { name: /open repo on github/i });
     expect(repoLink).not.toBeNull();
 
-    fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
+    // Toggle open→close to verify Ctrl+B works, ending with sidebar collapsed.
+    fireEvent.keyDown(document, { key: 'b', ctrlKey: true }); // close → collapsed
+    fireEvent.keyDown(document, { key: 'b', ctrlKey: true }); // open again
+    fireEvent.keyDown(document, { key: 'b', ctrlKey: true }); // close → collapsed
     const collapsedSessionBtn = container.querySelector('aside .mt-3 button');
     expect(collapsedSessionBtn).not.toBeNull();
     fireEvent.click(collapsedSessionBtn!);

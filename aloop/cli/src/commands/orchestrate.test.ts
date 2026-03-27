@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir } from 'node:fs/promises';
 import {
   orchestrateCommand,
   orchestrateCommandWithDeps,
@@ -68,7 +68,6 @@ import {
   processQueuedPrompts,
   createTrunkToMainPr,
   resolveAutoMerge,
-  detectChangeRequestLabel,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -502,33 +501,6 @@ describe('validateDependencyGraph', () => {
       planIssue(3, 'C', [2]),
     ];
     assert.throws(() => validateDependencyGraph(issues), /cycle/);
-  });
-});
-
-describe('detectChangeRequestLabel', () => {
-  it('returns true for aloop/change-request label as object', () => {
-    assert.equal(detectChangeRequestLabel([{ name: 'aloop/change-request' }]), true);
-  });
-
-  it('returns true for aloop/change-request label as string', () => {
-    assert.equal(detectChangeRequestLabel(['aloop/auto', 'aloop/change-request']), true);
-  });
-
-  it('returns false when label is absent', () => {
-    assert.equal(detectChangeRequestLabel([{ name: 'aloop/auto' }, { name: 'aloop/epic' }]), false);
-  });
-
-  it('returns false for empty array', () => {
-    assert.equal(detectChangeRequestLabel([]), false);
-  });
-
-  it('returns false for null/undefined', () => {
-    assert.equal(detectChangeRequestLabel(null), false);
-    assert.equal(detectChangeRequestLabel(undefined), false);
-  });
-
-  it('returns false when label name is null', () => {
-    assert.equal(detectChangeRequestLabel([{ name: null }]), false);
   });
 });
 
@@ -2996,7 +2968,6 @@ describe('processPrLifecycle', () => {
     assert.ok(result.detail.includes('attempt 1'));
     assert.equal(state.issues[0].rebase_attempts, 1);
     assert.ok((state.issues[0] as any).needs_redispatch === true);
-    assert.ok((state.issues[0] as any).needs_rebase === true);
     assert.ok(deps.logs.some((l) => l.event === 'pr_rebase_dispatched'));
   });
 
@@ -3210,70 +3181,6 @@ describe('processPrLifecycle', () => {
     await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     const closeCall = ghCalls.find((c) => c.includes('close') && c.includes('42'));
     assert.ok(closeCall, 'Should have closed the issue');
-  });
-
-  it('increments redispatch_failures when review requests changes', async () => {
-    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
-    const deps = createMockPrDeps({
-      execGh: async (args) => {
-        if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
-        }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
-        }
-        if (args.includes('diff')) return { stdout: 'diff', stderr: '' };
-        return { stdout: '', stderr: '' };
-      },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'request-changes' as const,
-        summary: 'Needs more tests',
-      }),
-    });
-    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'rejected');
-    assert.equal(state.issues[0].redispatch_failures, 1);
-    assert.equal((state.issues[0] as any).needs_redispatch, true);
-    assert.equal(state.issues[0].redispatch_paused, undefined);
-  });
-
-  it('escalates with comment and aloop/needs-human label after 3 failed redispatches', async () => {
-    const state = makeOrchestratorState([{
-      number: 42, pr_number: 100, state: 'pr_open', redispatch_failures: 2,
-    }]);
-    const ghCalls: string[][] = [];
-    const deps = createMockPrDeps({
-      execGh: async (args) => {
-        ghCalls.push(args);
-        if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
-        }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
-        }
-        if (args.includes('diff')) return { stdout: 'diff', stderr: '' };
-        return { stdout: '', stderr: '' };
-      },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'request-changes' as const,
-        summary: 'Still missing tests',
-      }),
-    });
-    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'rejected');
-    assert.equal(state.issues[0].redispatch_failures, 3);
-    assert.equal(state.issues[0].redispatch_paused, true);
-    assert.equal((state.issues[0] as any).needs_redispatch, undefined);
-    // Should have posted a comment on the issue
-    const issueComment = ghCalls.find((c) => c.includes('issue') && c.includes('comment') && c.includes('42'));
-    assert.ok(issueComment, 'Should post comment on issue');
-    // Should have added aloop/needs-human label
-    const labelCall = ghCalls.find((c) => c.includes('edit') && c.includes('aloop/needs-human'));
-    assert.ok(labelCall, 'Should add aloop/needs-human label');
-    // Should log redispatch_escalated event
-    assert.ok(deps.logs.some((l) => l.event === 'redispatch_escalated'));
   });
 });
 
@@ -4539,121 +4446,6 @@ describe('runOrchestratorScanPass', () => {
     );
 
     assert.equal(result.childMonitoring, null);
-  });
-
-  it('does not redispatch issues with redispatch_paused set', async () => {
-    const issue = makeIssue({ number: 5, wave: 1, state: 'pr_open', pr_number: 99 });
-    (issue as any).needs_redispatch = true;
-    (issue as any).redispatch_paused = true;
-    (issue as any).review_feedback = 'Still needs work';
-    const state = makeScanState({ issues: [issue] });
-    const deps = createMockScanDeps({ aloopRoot: '/home/.aloop' });
-    deps.files['/state.json'] = JSON.stringify(state);
-    const dispatchDeps = createMockDispatchDeps();
-    deps.dispatchDeps = dispatchDeps;
-    deps.execGh = async (args) => {
-      if (args.includes('labels')) return { stdout: JSON.stringify({ labels: [{ name: 'aloop/needs-human' }] }), stderr: '' };
-      return { stdout: '', stderr: '' };
-    };
-
-    await runOrchestratorScanPass(
-      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 1, deps,
-    );
-
-    // Should not have spawned any child process
-    assert.equal(dispatchDeps._spawnCalls.length, 0, 'Paused issue should not be redispatched');
-    const writtenState = JSON.parse(deps.files['/state.json']);
-    assert.equal(writtenState.issues[0].redispatch_paused, true, 'redispatch_paused should remain true');
-  });
-
-  it('resumes redispatch when aloop/needs-human label is removed', async () => {
-    const issue = makeIssue({ number: 7, wave: 1, state: 'pr_open', pr_number: 88 });
-    (issue as any).redispatch_paused = true;
-    (issue as any).redispatch_failures = 3;
-    const state = makeScanState({ issues: [issue] });
-    const deps = createMockScanDeps({ aloopRoot: '/home/.aloop' });
-    deps.files['/state.json'] = JSON.stringify(state);
-    deps.execGh = async (args) => {
-      // Label has been removed — return empty labels
-      if (args.includes('labels')) return { stdout: JSON.stringify({ labels: [] }), stderr: '' };
-      return { stdout: '', stderr: '' };
-    };
-
-    await runOrchestratorScanPass(
-      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 1, deps,
-    );
-
-    const writtenState = JSON.parse(deps.files['/state.json']);
-    assert.equal(writtenState.issues[0].redispatch_paused, false, 'redispatch_paused should be reset');
-    assert.equal(writtenState.issues[0].redispatch_failures, 0, 'redispatch_failures should be reset');
-    assert.equal(writtenState.issues[0].needs_redispatch, true, 'needs_redispatch should be set for next pass');
-    // Should log redispatch_resumed event
-    const resumedLog = deps.logEntries.find((e) => e.event === 'redispatch_resumed');
-    assert.ok(resumedLog, 'Should log redispatch_resumed event');
-    assert.equal(resumedLog.issue_number, 7);
-  });
-
-  it('writes 000-rebase-conflict.md with agent:merge and clears needs_rebase on redispatch when needs_rebase is true', async () => {
-    const tmpAloopRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-test-'));
-    try {
-      const issue = makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 });
-      (issue as any).needs_redispatch = true;
-      (issue as any).needs_rebase = true;
-      const state = makeScanState({ trunk_branch: 'agent/trunk', issues: [issue] });
-      const deps = createMockScanDeps({ aloopRoot: tmpAloopRoot });
-      deps.files['/state.json'] = JSON.stringify(state);
-      const dispatchDeps = createMockDispatchDeps();
-      deps.dispatchDeps = dispatchDeps;
-
-      await runOrchestratorScanPass(
-        '/state.json', '/session', '/project', 'myapp', '/prompts', tmpAloopRoot,
-        null, 1, deps,
-      );
-
-      // Find the queue file written by the scan pass
-      const queueKey = Object.keys(deps.files).find((k) => k.endsWith('000-rebase-conflict.md'));
-      assert.ok(queueKey, '000-rebase-conflict.md should be written');
-      assert.match(deps.files[queueKey!], /agent: merge/, 'frontmatter should specify merge agent');
-      assert.match(deps.files[queueKey!], /PR #100/, 'should reference the PR number');
-
-      const writtenState = JSON.parse(deps.files['/state.json']);
-      assert.equal(writtenState.issues[0].needs_rebase, false, 'needs_rebase should be cleared to false');
-      assert.equal(writtenState.issues[0].needs_redispatch, false, 'needs_redispatch should be cleared');
-    } finally {
-      await rm(tmpAloopRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('writes 000-review-fixes.md with agent:build on redispatch when needs_rebase is false (regression guard)', async () => {
-    const tmpAloopRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-test-'));
-    try {
-      const issue = makeIssue({ number: 43, wave: 1, state: 'pr_open', pr_number: 200 });
-      (issue as any).needs_redispatch = true;
-      (issue as any).review_feedback = 'Fix the type errors in src/foo.ts';
-      const state = makeScanState({ issues: [issue] });
-      const deps = createMockScanDeps({ aloopRoot: tmpAloopRoot });
-      deps.files['/state.json'] = JSON.stringify(state);
-      const dispatchDeps = createMockDispatchDeps();
-      deps.dispatchDeps = dispatchDeps;
-
-      await runOrchestratorScanPass(
-        '/state.json', '/session', '/project', 'myapp', '/prompts', tmpAloopRoot,
-        null, 1, deps,
-      );
-
-      const queueKey = Object.keys(deps.files).find((k) => k.endsWith('000-review-fixes.md'));
-      assert.ok(queueKey, '000-review-fixes.md should be written');
-      assert.match(deps.files[queueKey!], /agent: build/, 'frontmatter should specify build agent');
-      assert.match(deps.files[queueKey!], /Fix the type errors/, 'should contain review feedback');
-
-      const writtenState = JSON.parse(deps.files['/state.json']);
-      assert.equal(writtenState.issues[0].needs_redispatch, false, 'needs_redispatch should be cleared');
-      assert.equal(writtenState.issues[0].review_feedback, undefined, 'review_feedback should be cleared');
-    } finally {
-      await rm(tmpAloopRoot, { recursive: true, force: true });
-    }
   });
 });
 

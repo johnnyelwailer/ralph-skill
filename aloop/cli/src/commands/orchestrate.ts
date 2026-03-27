@@ -91,11 +91,6 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
-  redispatch_failures?: number;
-  redispatch_paused?: boolean;
-  is_change_request?: boolean;
-  cr_spec_updated?: boolean;
-  needs_rebase?: boolean;
 }
 
 export interface OrchestratorState {
@@ -495,14 +490,6 @@ function parseConfigScalar(content: string, key: string): string | null {
     return raw.slice(1, -1).replace(/\\"/g, '"');
   }
   return raw;
-}
-
-/**
- * Returns true if the given labels array contains the 'aloop/change-request' label.
- * Labels may be objects with a `name` property or plain strings.
- */
-export function detectChangeRequestLabel(labels: Array<{ name?: string | null } | string> | undefined | null): boolean {
-  return labels?.some((l) => (typeof l === 'string' ? l : (l.name ?? '')) === 'aloop/change-request') ?? false;
 }
 
 export async function resolveOrchestratorAutonomyLevel(
@@ -1179,7 +1166,6 @@ export async function orchestrateCommandWithDeps(
 
         for (const gi of ghIssues) {
           const isEpic = gi.labels?.some((l: any) => (l.name ?? l) === 'aloop/epic');
-          const isChangeRequest = detectChangeRequestLabel(gi.labels);
           const projStatus = projectStatusMap.get(gi.number);
           // Use project status if available, otherwise infer from labels
           // Epics with tasklists (sub-issues) are tracking epics — not dispatchable
@@ -1220,8 +1206,6 @@ export async function orchestrateCommandWithDeps(
             processed_comment_ids: [],
             dor_validated: dorValidated,
             priority,
-            is_change_request: isChangeRequest,
-            cr_spec_updated: false,
           } as any);
         }
         if (state.current_wave === 0) state.current_wave = 1;
@@ -3445,7 +3429,6 @@ export interface PrLifecycleDeps {
 }
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
-const ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT = 3;
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
@@ -3681,6 +3664,12 @@ export async function createTrunkToMainPr(
 }
 
 /**
+ * Request a child loop to rebase its branch against agent/trunk.
+ * Posts a comment on the issue instructing the child to rebase.
+ */
+// requestRebase is no longer used — conflicts are handled by dispatching a child agent via needs_redispatch
+
+/**
  * Flag an issue for human resolution after rebase attempts exhausted.
  */
 export async function flagForHuman(
@@ -3760,7 +3749,9 @@ export async function processPrLifecycle(
     if (stateIssue) {
       stateIssue.rebase_attempts = attempt;
       (stateIssue as any).needs_redispatch = true;
-      stateIssue.needs_rebase = true;
+      (stateIssue as any).review_feedback = `PR #${prNumber} has merge conflicts with \`${state.trunk_branch}\`. ` +
+        `Rebase your branch onto \`origin/${state.trunk_branch}\`, resolve all conflicts, and force-push. ` +
+        `This is rebase attempt ${attempt}. Do NOT create new commits for the rebase — use \`git rebase\` and \`git push --force-with-lease\`.`;
     }
     state.updated_at = deps.now().toISOString();
     await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
@@ -3881,36 +3872,10 @@ export async function processPrLifecycle(
       if (stateIssue) (stateIssue as any).last_review_comment = reviewResult.summary;
     }
 
-    // Track failures and either re-dispatch or escalate to human
+    // Mark for re-dispatch by the scan pass (which has dispatchDeps)
     if (stateIssue) {
-      const failures = (stateIssue.redispatch_failures ?? 0) + 1;
-      stateIssue.redispatch_failures = failures;
-
-      if (failures >= ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT) {
-        // Escalate: comment on issue + add aloop/needs-human label, pause automated redispatch
-        try {
-          await deps.execGh([
-            'issue', 'comment', String(issue.number), '--repo', repo,
-            '--body', `Automated redispatch paused after ${failures} failed attempts.\n\nLast review feedback:\n\n${reviewResult.summary}\n\nA human review is required. Remove the \`aloop/needs-human\` label to resume automated redispatch.`,
-          ]);
-          await deps.execGh([
-            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/needs-human',
-          ]);
-        } catch {
-          // Best-effort
-        }
-        stateIssue.redispatch_paused = true;
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: 'redispatch_escalated',
-          pr_number: prNumber,
-          issue_number: issue.number,
-          redispatch_failures: failures,
-        });
-      } else {
-        (stateIssue as any).needs_redispatch = true;
-        (stateIssue as any).review_feedback = reviewResult.summary;
-      }
+      (stateIssue as any).needs_redispatch = true;
+      (stateIssue as any).review_feedback = reviewResult.summary;
     }
 
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
@@ -5592,42 +5557,11 @@ export async function runOrchestratorScanPass(
     }
   }
 
-  // 3.4. Resume redispatch for issues where aloop/needs-human label has been removed
-  if (repo && deps.execGh) {
-    const pausedIssues = state.issues.filter((i) => (i as any).redispatch_paused);
-    for (const issue of pausedIssues) {
-      try {
-        const viewResult = await deps.execGh([
-          'issue', 'view', String(issue.number), '--repo', repo, '--json', 'labels',
-        ]);
-        const data = JSON.parse(viewResult.stdout);
-        const labelNames = new Set<string>(
-          (data.labels ?? [])
-            .filter((l: unknown) => typeof (l as any)?.name === 'string')
-            .map((l: unknown) => (l as any).name.toLowerCase()),
-        );
-        if (!labelNames.has('aloop/needs-human')) {
-          issue.redispatch_paused = false;
-          issue.redispatch_failures = 0;
-          (issue as any).needs_redispatch = true;
-          deps.appendLog(sessionDir, {
-            timestamp: deps.now().toISOString(),
-            event: 'redispatch_resumed',
-            iteration,
-            issue_number: issue.number,
-          });
-        }
-      } catch {
-        // Best-effort
-      }
-    }
-  }
-
   // 3.5. Re-dispatch children that need review fixes
   // Uses launchIssues() — the shared dispatch path that respects concurrency,
   // capability filters, and state updates.
   if (deps.dispatchDeps && deps.aloopRoot) {
-    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch && !(i as any).redispatch_paused);
+    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch);
     if (needsRedispatch.length > 0) {
       const redispatchResult = await launchIssues(
         needsRedispatch.slice(0, availableSlots(state)),
@@ -5645,26 +5579,16 @@ export async function runOrchestratorScanPass(
       for (const launch of redispatchResult) {
         const issue = state.issues.find((i) => i.number === launch.issue_number);
         if (issue) {
-          const childQueueDir = path.join(deps.aloopRoot, 'sessions', launch.session_id, 'queue');
-          await mkdir(childQueueDir, { recursive: true });
-          if (issue.needs_rebase === true) {
-            // Write merge-agent queue file for conflict resolution
+          // Write review feedback as steering prompt
+          const feedback = (issue as any).review_feedback ?? '';
+          if (feedback) {
+            const childQueueDir = path.join(deps.aloopRoot, 'sessions', launch.session_id, 'queue');
+            await mkdir(childQueueDir, { recursive: true });
             await deps.writeFile(
-              path.join(childQueueDir, '000-rebase-conflict.md'),
-              `---\nagent: merge\nreasoning: high\n---\n\n# Rebase Required\n\nPR #${issue.pr_number} has merge conflicts with \`${state.trunk_branch}\`.\n\nRun:\n\`\`\`\ngit fetch origin ${state.trunk_branch}\ngit rebase origin/${state.trunk_branch}\n\`\`\`\nResolve all conflict markers, then:\n\`\`\`\ngit rebase --continue\ngit push origin HEAD --force-with-lease\n\`\`\`\n`,
+              path.join(childQueueDir, '000-review-fixes.md'),
+              `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
               'utf8',
             );
-            issue.needs_rebase = false;
-          } else {
-            // Write review feedback as steering prompt
-            const feedback = (issue as any).review_feedback ?? '';
-            if (feedback) {
-              await deps.writeFile(
-                path.join(childQueueDir, '000-review-fixes.md'),
-                `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
-                'utf8',
-              );
-            }
           }
           (issue as any).needs_redispatch = false;
           (issue as any).review_feedback = undefined;
