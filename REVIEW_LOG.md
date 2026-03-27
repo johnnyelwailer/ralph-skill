@@ -225,3 +225,37 @@ None — no functional code changes in this commit.
 - **Gate 9:** No user-facing behavior or docs changed.
 
 ---
+
+## Review — 2026-03-27 — commit c1c178848..2a17f66d4
+
+**Verdict: PASS** (docs/tracking commits only; all prior findings remain resolved)
+**Scope:** `TODO.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+### What Changed Since Last PASS
+
+- `dad206220`: Updated TODO.md AC text only — corrected "dead import remains" → "dead imports already removed" in the `orchestrate.ts` acceptance criterion. Accurate: grep returns no output for createAdapter/OrchestratorAdapter in orchestrate.ts and process-requests.ts (exit 1).
+- `2a17f66d4`: QA tracking — updated `QA_COVERAGE.md` commit references from `5218a6cd5` → `dad206220`; appended iter-5 session to `QA_LOG.md` with complete command transcript (38/38 adapter tests, 5/5 index tests, LOC checks, dead-import checks, built-artifact URL scan — all PASS).
+
+### Findings
+
+None — no functional code changes in either commit.
+
+### Observations
+
+- **Gate 4 (clean):** Dead imports confirmed absent in orchestrate.ts and process-requests.ts (grep returns no output at HEAD). No new dead code.
+- **Gate 5:** 38/38 adapter tests pass, 5/5 index tests pass at HEAD. TypeScript errors all pre-existing in requests.ts/requests.test.ts (not touched by this branch).
+- **Gate 9 (accurate):** TODO.md AC text correction is factually accurate — dead import removal confirmed live by grep (exit 1).
+
+### Gates that Pass
+
+- **Gate 1:** No change to spec compliance posture. 2 ACs remain open (orchestrate.ts migration, LocalAdapter) — pre-existing, explicitly scoped out of this PR.
+- **Gate 2:** No code changes; N/A.
+- **Gate 3:** No code changes; N/A.
+- **Gate 4:** Doc-only changes; no dead code introduced.
+- **Gate 5:** 38/38 adapter tests + 5/5 index tests confirmed passing live at HEAD. All TypeScript errors pre-existing on master.
+- **Gate 6:** Both commits are docs/tracking. No observable output required; skipping is correct.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** TODO.md clarification is accurate. QA_COVERAGE.md commit references updated correctly.
+
+---
