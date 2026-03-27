@@ -88,8 +88,6 @@ elif echo "$PROMPT_TEXT" | grep -q "Proof Mode"; then
         echo 'dummy artifact' > "../session/artifacts/iter-$ITER_NUM/dummy.txt"
         if [ "$SCENARIO" = "proof-missing-manifest" ]; then
             :
-        elif [ "$SCENARIO" = "proof-invalid-manifest" ]; then
-            echo '{"artifacts": [' > "../session/artifacts/iter-$ITER_NUM/proof-manifest.json"
         else
             echo '[]' > "../session/artifacts/iter-$ITER_NUM/proof-manifest.json"
         fi
@@ -748,8 +746,6 @@ if (($promptText -match 'Building Mode') -and ($content -match '- \[ \]')) {
         "dummy artifact" | Set-Content (Join-Path $artifactDir 'dummy.txt')
         if ($state.scenario -eq 'proof-missing-manifest') {
             # intentionally omit manifest file
-        } elseif ($state.scenario -eq 'proof-invalid-manifest') {
-            '{"artifacts": [' | Set-Content (Join-Path $artifactDir 'proof-manifest.json')
         } else {
             "[]" | Set-Content (Join-Path $artifactDir 'proof-manifest.json')
         }

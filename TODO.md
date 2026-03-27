@@ -4,13 +4,7 @@
 
 ### In Progress
 
-- [ ] [review] Gate 4: `loop.tests.ps1` — dead code in fake providers after test deletion. The `proof-invalid-manifest` scenario branch is now unreachable: line 91 (bash fake provider, `elif [ "$SCENARIO" = "proof-invalid-manifest" ]`) and line 751 (ps1 fake provider, `} elseif ($state.scenario -eq 'proof-invalid-manifest') {`). The only test that exercised this scenario (`'proof manifest validation fails proof iteration when JSON is invalid'`) was deleted in `fd4a70cfd`. Remove both branches from the fake providers. (priority: medium)
-
-- [x] [review] Gate 2/3/4: `loop.tests.ps1` not updated after refactor in `0ca241668`. Three categories of stale tests:
-  (a) `Describe 'loop.ps1 — Validate-ProofManifest'` (loop.tests.ps1:434-490): tests a function that was deleted from loop.ps1 — BeforeAll will throw "Failed to locate Validate-ProofManifest in loop.ps1"
-  (b) Integration tests at lines 250-297 and 1067-1092: assert `proof_manifest_validated` event (no longer emitted) and `iteration_error` with `proof_manifest_invalid_json` (no longer happens, missing manifest now only logs a warning)
-  (c) Zero tests for the new `proof_manifest_found` and `proof_manifest_missing` events.
-  Fix: (1) delete the Validate-ProofManifest describe block, (2) update integration test at line 266 to assert `proof_manifest_found` event instead of `proof_manifest_validated`, (3) update/remove assertions at lines 287-293 and 1088-1092 that expect JSON-invalid failure behavior, (4) add a test verifying proof_manifest_missing does NOT cause iteration_error. (priority: high)
+- [x] [review] Gate 4: `loop.tests.ps1` — dead code in fake providers after test deletion. The `proof-invalid-manifest` scenario branch is now unreachable: line 91 (bash fake provider, `elif [ "$SCENARIO" = "proof-invalid-manifest" ]`) and line 751 (ps1 fake provider, `} elseif ($state.scenario -eq 'proof-invalid-manifest') {`). The only test that exercised this scenario (`'proof manifest validation fails proof iteration when JSON is invalid'`) was deleted in `fd4a70cfd`. Remove both branches from the fake providers. (priority: medium)
 
 ### Up Next
 
@@ -23,6 +17,8 @@
 - [ ] [qa/P2] Loop exits as "completed" without running finalizer when all TODOs are done at session start: When `aloop start` is run on a project where `TODO.md` has all tasks marked `[x]`, the compiled `loop-plan.json` has `allTasksMarkedDone: true` and the loop immediately exits as "completed" without entering the finalizer or running the proof agent. Reproduced in qa-proof-final-1774617658-20260327-132110 and qa-proof-pipeline-1774617540-20260327-131927. Spec says "completion can only happen via finalizer." Filed at iter 22. (priority: medium)
 
 ### Completed
+
+- [x] [review] Gate 2/3/4: `loop.tests.ps1` updated after refactor in `0ca241668`. Verified: (a) `Describe 'loop.ps1 — Validate-ProofManifest'` block deleted (replaced by `Register-IterationFailure proof mode` test at line 429); (b) integration tests at lines 252-288 and 1014-1038 now assert `proof_manifest_found` and `proof_manifest_missing` events with correct no-`iteration_error` assertions; (c) tests for `proof_manifest_missing` not causing `iteration_error` added at lines 273-289 and 1024-1039.
 
 - [x] [spec-gap/P2] Fixed SPEC.md internal inconsistency: updated 9 stale references that incorrectly placed proof in the continuous 9-step cycle. Corrected to reflect authoritative design: 8-step continuous cycle (`plan → build × 5 → qa → review`) with proof running only in the completion finalizer. Affected lines: 5, 717, 733, 775, 1299, 1321, 1868, 2124, 3426.
 
