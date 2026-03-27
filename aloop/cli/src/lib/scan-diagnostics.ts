@@ -172,5 +172,17 @@ export async function runSelfHealingAndDiagnostics(
       await deps.writeFile(stateFile, `${JSON.stringify(orchState, null, 2)}\n`, 'utf8');
     }
   }
+  const hasNoProgressBlocker = updated.some((r) => r.type === 'no_progress' && r.count >= threshold);
+  if (hasNoProgressBlocker) {
+    const statusFile = `${sessionDir}/status.json`;
+    let currentStatus: Record<string, unknown>;
+    try { currentStatus = JSON.parse(await deps.readFile(statusFile, 'utf8')) as Record<string, unknown>; }
+    catch { currentStatus = {}; }
+    if (currentStatus.state !== 'paused') {
+      currentStatus.state = 'paused';
+      currentStatus.updated_at = deps.now().toISOString();
+      await deps.writeFile(statusFile, `${JSON.stringify(currentStatus, null, 2)}\n`, 'utf8');
+    }
+  }
   return updated;
 }

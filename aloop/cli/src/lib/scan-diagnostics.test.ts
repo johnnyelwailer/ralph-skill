@@ -515,3 +515,116 @@ test('runSelfHealingAndDiagnostics: does NOT write stuck when no blocker reaches
 
   assert.ok(!written['/ses/orchestrator.json'], 'orchestrator.json should NOT be written when count < threshold');
 });
+
+// --- no_progress escalation: pause loop ---
+
+test('runSelfHealingAndDiagnostics: no_progress blocker at threshold writes state:paused to status.json', async () => {
+  const files: Record<string, string> = {
+    '/ses/status.json': JSON.stringify({ state: 'running', phase: 'build', iteration: 5 }),
+  };
+  const written: Record<string, string> = {};
+  const deps = {
+    readFile: async (p: string) => {
+      if (files[p] !== undefined) return files[p]!;
+      throw new Error(`not found: ${p}`);
+    },
+    writeFile: async (p: string, d: string) => { written[p] = d; },
+    existsSync: () => false,
+    now: () => new Date('2024-01-01T00:00:00Z'),
+    isProcessAlive: (_pid: number) => true,
+  };
+
+  const state = makeState({ diagnostics_blocker_threshold: 5 });
+  const existing: BlockerRecord[] = [
+    { hash: 'no_progress:null:No issues dispatched or triaged', type: 'no_progress', affectedIssue: null, errorSnippet: 'No issues dispatched or triaged', firstSeenIteration: 1, lastSeenIteration: 5, count: 5 },
+  ];
+  const pass = makePassResult({ iteration: 6, dispatched: 0, waveAdvanced: false, allDone: false, budgetExceeded: false, shouldStop: false });
+
+  await runSelfHealingAndDiagnostics(pass, '/ses', existing, state, null, deps);
+
+  assert.ok(written['/ses/status.json'], 'status.json should be written');
+  const status = JSON.parse(written['/ses/status.json']!) as { state: string };
+  assert.equal(status.state, 'paused');
+});
+
+test('runSelfHealingAndDiagnostics: no_progress blocker below threshold does NOT pause', async () => {
+  const files: Record<string, string> = {
+    '/ses/status.json': JSON.stringify({ state: 'running', phase: 'build', iteration: 4 }),
+  };
+  const written: Record<string, string> = {};
+  const deps = {
+    readFile: async (p: string) => {
+      if (files[p] !== undefined) return files[p]!;
+      throw new Error(`not found: ${p}`);
+    },
+    writeFile: async (p: string, d: string) => { written[p] = d; },
+    existsSync: () => false,
+    now: () => new Date('2024-01-01T00:00:00Z'),
+    isProcessAlive: (_pid: number) => true,
+  };
+
+  const state = makeState({ diagnostics_blocker_threshold: 5 });
+  const existing: BlockerRecord[] = [
+    { hash: 'no_progress:null:No issues dispatched or triaged', type: 'no_progress', affectedIssue: null, errorSnippet: 'No issues dispatched or triaged', firstSeenIteration: 1, lastSeenIteration: 4, count: 3 },
+  ];
+  // dispatched=0, no wave advancement → no_progress detected → count increments 3→4 (still below threshold=5)
+  const pass = makePassResult({ iteration: 5, dispatched: 0, waveAdvanced: false, allDone: false, budgetExceeded: false, shouldStop: false });
+
+  await runSelfHealingAndDiagnostics(pass, '/ses', existing, state, null, deps);
+
+  assert.ok(!written['/ses/status.json'], 'status.json should NOT be written when no_progress count < threshold');
+});
+
+test('runSelfHealingAndDiagnostics: child_failed blocker at threshold does NOT pause loop', async () => {
+  const files: Record<string, string> = {
+    '/ses/status.json': JSON.stringify({ state: 'running', phase: 'build', iteration: 5 }),
+  };
+  const written: Record<string, string> = {};
+  const deps = {
+    readFile: async (p: string) => {
+      if (files[p] !== undefined) return files[p]!;
+      throw new Error(`not found: ${p}`);
+    },
+    writeFile: async (p: string, d: string) => { written[p] = d; },
+    existsSync: () => false,
+    now: () => new Date('2024-01-01T00:00:00Z'),
+    isProcessAlive: (_pid: number) => true,
+  };
+
+  const state = makeState({ diagnostics_blocker_threshold: 5 });
+  const existing: BlockerRecord[] = [
+    { hash: 'h1', type: 'child_failed', affectedIssue: 3, errorSnippet: 'OOM', firstSeenIteration: 1, lastSeenIteration: 5, count: 5 },
+  ];
+  const pass = makePassResult({ iteration: 6, allDone: true });
+
+  await runSelfHealingAndDiagnostics(pass, '/ses', existing, state, null, deps);
+
+  assert.ok(!written['/ses/status.json'], 'status.json should NOT be written for non-no_progress blockers');
+});
+
+test('runSelfHealingAndDiagnostics: already paused status.json is not overwritten', async () => {
+  const files: Record<string, string> = {
+    '/ses/status.json': JSON.stringify({ state: 'paused', updated_at: '2024-01-01T00:00:00.000Z' }),
+  };
+  const written: Record<string, string> = {};
+  const deps = {
+    readFile: async (p: string) => {
+      if (files[p] !== undefined) return files[p]!;
+      throw new Error(`not found: ${p}`);
+    },
+    writeFile: async (p: string, d: string) => { written[p] = d; },
+    existsSync: () => false,
+    now: () => new Date('2024-01-02T00:00:00Z'),
+    isProcessAlive: (_pid: number) => true,
+  };
+
+  const state = makeState({ diagnostics_blocker_threshold: 5 });
+  const existing: BlockerRecord[] = [
+    { hash: 'no_progress:null:No issues dispatched or triaged', type: 'no_progress', affectedIssue: null, errorSnippet: 'No issues dispatched or triaged', firstSeenIteration: 1, lastSeenIteration: 6, count: 6 },
+  ];
+  const pass = makePassResult({ iteration: 7, dispatched: 0, waveAdvanced: false, allDone: false, budgetExceeded: false, shouldStop: false });
+
+  await runSelfHealingAndDiagnostics(pass, '/ses', existing, state, null, deps);
+
+  assert.ok(!written['/ses/status.json'], 'status.json should NOT be rewritten when already paused');
+});
