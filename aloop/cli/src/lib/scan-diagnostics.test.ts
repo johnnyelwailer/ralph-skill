@@ -205,7 +205,7 @@ test('writeDiagnosticsJson: does NOT write when count < threshold', async () => 
 
 // --- writeAlertMd ---
 
-test('writeAlertMd: writes when count >= threshold * 2', async () => {
+test('writeAlertMd: writes when count >= threshold', async () => {
   const written: { path: string; data: string }[] = [];
   const writeFile = async (p: string, d: string) => { written.push({ path: p, data: d }); };
   const records: BlockerRecord[] = [
@@ -218,11 +218,11 @@ test('writeAlertMd: writes when count >= threshold * 2', async () => {
   assert.ok(written[0]!.data.includes('7'));
 });
 
-test('writeAlertMd: does NOT write when count < threshold * 2', async () => {
+test('writeAlertMd: does NOT write when count < threshold', async () => {
   const written: unknown[] = [];
   const writeFile = async () => { written.push(true); };
   const records: BlockerRecord[] = [
-    { hash: 'h1', type: 'child_failed', affectedIssue: 7, errorSnippet: 'bad', firstSeenIteration: 1, lastSeenIteration: 4, count: 4 },
+    { hash: 'h1', type: 'child_failed', affectedIssue: 7, errorSnippet: 'bad', firstSeenIteration: 1, lastSeenIteration: 2, count: 2 },
   ];
   await writeAlertMd('/ses', records, 3, writeFile as never);
   assert.equal(written.length, 0);

@@ -96,7 +96,7 @@ export async function writeAlertMd(
   threshold: number,
   writeFile: (path: string, data: string, enc: BufferEncoding) => Promise<void>,
 ): Promise<void> {
-  const alertRecords = records.filter((r) => r.count >= threshold * 2);
+  const alertRecords = records.filter((r) => r.count >= threshold);
   if (alertRecords.length === 0) return;
   const lines = ['# ALERT: Persistent Blockers Detected\n'];
   for (const r of alertRecords) {
