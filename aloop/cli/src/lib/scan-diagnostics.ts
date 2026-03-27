@@ -71,14 +71,22 @@ export async function writeDiagnosticsJson(
   now: () => Date,
   writeFile: (path: string, data: string, enc: BufferEncoding) => Promise<void>,
 ): Promise<void> {
-  if (!records.some((r) => r.count >= threshold)) return;
   const over = records.filter((r) => r.count >= threshold);
-  const payload = {
-    updated_at: now().toISOString(),
-    blockers: records,
-    affected_issues: [...new Set(over.flatMap((r) => (r.affectedIssue !== null ? [r.affectedIssue] : [])))],
-    suggested_actions: over.map((r) => `Investigate ${r.type} for issue ${r.affectedIssue ?? 'n/a'}: ${r.errorSnippet}`),
-  };
+  if (over.length === 0) return;
+  const payload = over.map((r) => {
+    const severity = r.count >= threshold * 2 ? 'critical' : 'warning';
+    const suggestedFix = r.affectedIssue !== null
+      ? `Investigate ${r.type} for issue #${r.affectedIssue}: ${r.errorSnippet}`
+      : `Investigate ${r.type}: ${r.errorSnippet}`;
+    return {
+      type: r.type,
+      message: r.errorSnippet,
+      first_seen_iteration: r.firstSeenIteration,
+      current_iteration: r.lastSeenIteration,
+      severity,
+      suggested_fix: suggestedFix,
+    };
+  });
   await writeFile(`${sessionDir}/diagnostics.json`, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 

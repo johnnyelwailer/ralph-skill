@@ -177,14 +177,20 @@ test('writeDiagnosticsJson: writes file when count >= threshold', async () => {
   const written: { path: string; data: string }[] = [];
   const writeFile = async (p: string, d: string) => { written.push({ path: p, data: d }); };
   const records: BlockerRecord[] = [
-    { hash: 'h1', type: 'child_failed', affectedIssue: 5, errorSnippet: 'err', firstSeenIteration: 1, lastSeenIteration: 3, count: 3 },
+    { hash: 'h1', type: 'child_failed', affectedIssue: 5, errorSnippet: 'OOM error occurred', firstSeenIteration: 1, lastSeenIteration: 3, count: 3 },
   ];
   await writeDiagnosticsJson('/ses', records, 3, () => new Date('2024-01-01T00:00:00Z'), writeFile as never);
   assert.equal(written.length, 1);
   assert.equal(written[0]!.path, '/ses/diagnostics.json');
-  const parsed = JSON.parse(written[0]!.data) as { affected_issues: number[]; suggested_actions: string[] };
-  assert.deepEqual(parsed.affected_issues, [5]);
-  assert.ok(parsed.suggested_actions.length > 0);
+  const parsed = JSON.parse(written[0]!.data) as Array<{ type: string; message: string; first_seen_iteration: number; current_iteration: number; severity: string; suggested_fix: string }>;
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0]!.type, 'child_failed');
+  assert.equal(parsed[0]!.message, 'OOM error occurred');
+  assert.equal(parsed[0]!.first_seen_iteration, 1);
+  assert.equal(parsed[0]!.current_iteration, 3);
+  assert.equal(parsed[0]!.severity, 'warning');
+  assert.ok(parsed[0]!.suggested_fix.includes('child_failed'));
+  assert.ok(parsed[0]!.suggested_fix.includes('5'));
 });
 
 test('writeDiagnosticsJson: does NOT write when count < threshold', async () => {
