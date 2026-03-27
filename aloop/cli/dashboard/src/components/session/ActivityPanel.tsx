@@ -90,7 +90,6 @@ export function ActivityPanel({ log, artifacts, currentIteration, currentPhase, 
                   key={`${entry.timestamp}-${entry.event}-${entry.iteration ?? 'x'}`}
                   entry={entry}
                   artifacts={entry.iteration !== null ? iterArtifacts.get(entry.iteration) ?? null : null}
-                  isCurrentIteration={entry.iteration !== null && entry.iteration === currentIteration}
                   allManifests={manifests}
                 />
               ))}

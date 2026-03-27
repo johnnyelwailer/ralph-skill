@@ -11,7 +11,7 @@ import { formatTimeShort, formatDuration } from '@/lib/format';
 import { ImageLightbox } from './ImageLightbox';
 import { LogEntryExpandedDetails } from './LogEntryExpandedDetails';
 
-export function LogEntryRow({ entry, artifacts, isCurrentIteration, allManifests }: { entry: LogEntry; artifacts: ManifestPayload | null; isCurrentIteration: boolean; allManifests: ManifestPayload[] }) {
+export function LogEntryRow({ entry, artifacts, allManifests }: { entry: LogEntry; artifacts: ManifestPayload | null; allManifests: ManifestPayload[] }) {
   const [expanded, setExpanded] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [comparisonArtifact, setComparisonArtifact] = useState<{ artifact: ArtifactEntry; iteration: number } | null>(null);

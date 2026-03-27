@@ -178,7 +178,6 @@ describe('LogEntryRow collapsed artifact count indicator', () => {
       <LogEntryRow
         entry={makeEntry()}
         artifacts={manifest}
-        isCurrentIteration={false}
         allManifests={[manifest]}
       />,
     );
@@ -191,7 +190,6 @@ describe('LogEntryRow collapsed artifact count indicator', () => {
       <LogEntryRow
         entry={makeEntry()}
         artifacts={manifest}
-        isCurrentIteration={false}
         allManifests={[manifest]}
       />,
     );

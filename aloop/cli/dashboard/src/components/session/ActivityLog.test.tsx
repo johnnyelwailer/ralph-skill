@@ -40,7 +40,6 @@ function renderLogEntryRow(
   entry: LogEntry,
   overrides: {
     artifacts?: ManifestPayload | null;
-    isCurrentIteration?: boolean;
     allManifests?: ManifestPayload[];
   } = {},
 ) {
@@ -49,7 +48,6 @@ function renderLogEntryRow(
       <LogEntryRow
         entry={entry}
         artifacts={overrides.artifacts ?? null}
-        isCurrentIteration={overrides.isCurrentIteration ?? false}
         allManifests={overrides.allManifests ?? []}
       />
     </TooltipProvider>,
