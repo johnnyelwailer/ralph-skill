@@ -155,7 +155,7 @@ describe('ActivityPanel', () => {
       expect(document.querySelector('.animate-spin')).not.toBeInTheDocument();
     });
 
-    it('suppresses synthetic entry when result timestamp >= iterationStartedAt', () => {
+    it('does NOT suppress synthetic entry when result timestamp < iterationStartedAt', () => {
       const ts1 = generateTimestamp(0);
       const ts2 = generateTimestamp(100);
       const ts3 = generateTimestamp(200);
@@ -171,10 +171,10 @@ describe('ActivityPanel', () => {
         currentIteration: 2,
         currentPhase: 'build',
         currentProvider: 'claude',
-        iterationStartedAt: ts1,
+        iterationStartedAt: ts3,
       });
       expect(screen.getByText(/2 events/)).toBeInTheDocument();
-      expect(document.querySelector('.animate-spin')).not.toBeInTheDocument();
+      expect(document.querySelector('.animate-spin')).toBeInTheDocument();
     });
   });
 });
