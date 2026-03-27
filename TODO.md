@@ -4,7 +4,7 @@
 
 - [x] `OrchestratorAdapter` interface defined in `src/lib/adapter.ts`
 - [x] `GitHubAdapter` wraps `gh` CLI calls (adapter.ts + GitHubAdapter complete)
-- [ ] `orchestrate.ts` uses adapter interface, not raw `execGh` (scoped out of this PR; dead import remains)
+- [ ] `orchestrate.ts` uses adapter interface, not raw `execGh` (scoped out of this PR; dead imports already removed)
 - [x] All GitHub URL construction derives from adapter, never hardcoded
 
 ## Tasks
