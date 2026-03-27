@@ -2220,9 +2220,9 @@ function AppInner() {
     if (startX > SWIPE_EDGE_THRESHOLD_PX) return;
     const endX = e.changedTouches[0]?.clientX ?? 0;
     if (endX - startX >= SWIPE_MIN_DISTANCE_PX) {
-      openSidebar();
+      setMobileMenuOpen(true);
     }
-  }, [isMobile, openSidebar]);
+  }, [isMobile]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -2235,13 +2235,13 @@ function AppInner() {
 
   // Mobile sidebar: Escape key closes drawer
   useEffect(() => {
-    if (!sidebarOpen) return;
+    if (!mobileMenuOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); closeSidebar(); }
+      if (e.key === 'Escape') { e.preventDefault(); setMobileMenuOpen(false); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [sidebarOpen, closeSidebar]);
+  }, [mobileMenuOpen]);
 
   const selectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
@@ -2502,7 +2502,7 @@ function AppInner() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
+      <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div className="flex flex-1 min-h-0">
           {/* Desktop sidebar */}
           <div className="hidden md:flex">
