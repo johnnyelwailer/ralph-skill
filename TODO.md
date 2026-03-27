@@ -6,7 +6,8 @@
 - [ ] [review] Gate 3: `LogEntryExpandedDetails.tsx` — 4 uncovered branches in new module (≥90% required): (1) `hasOutput=true, outputLoading=true` → loading spinner never tested; (2) `hasOutput=true, outputLoading=false, outputText` non-empty → output text display never tested; (3) `hasOutput=true, outputLoading=false, outputText=''` → "No output available" message never tested; (4) `tokens_cache_read > 0` → cache line display branch never tested. Add test cases for these 4 branches in `LogEntryExpandedDetails.test.tsx` (priority: high)
 
 ### Up Next
-_(none)_
+- [ ] [qa/P1] ImageLightbox.tsx branch coverage 50% (line 5): measured `npx vitest run --coverage --coverage.include='**/ImageLightbox.tsx'` → branch coverage 50% (line 5 uncovered). Spec requires ≥90% branch coverage per component. Add test case covering the untested branch on line 5 of ImageLightbox.tsx. Tested at current iter.
+- [ ] [qa/P2] vitest.config.ts coverage.include missing new components: `vitest.config.ts` coverage.include only lists App.tsx, AppView.tsx, useIsTouchDevice.ts, tooltip.tsx, hover-card.tsx — newly extracted components (ImageLightbox, LogEntryExpandedDetails, ActivityPanel, ArtifactComparisonHeader, etc.) are excluded. Branch coverage thresholds cannot be enforced for these files. Add all components/session/*.tsx and other new files to coverage.include. Tested at current iter.
 
 ### Completed
 - [x] Split ActivityLog.tsx into ActivityPanel, LogEntryRow, ArtifactComparisonDialog
