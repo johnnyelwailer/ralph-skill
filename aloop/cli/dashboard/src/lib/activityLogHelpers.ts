@@ -147,3 +147,11 @@ export function extractModelFromOutput(header?: string): string {
   const match = header.match(/^>\s*\w+\s*·\s*(.+)$/m);
   return match ? match[1].trim() : '';
 }
+
+/** Find iterations (older than current) that have the same artifact path — for history scrubbing */
+export function findBaselineIterations(artifactPath: string, currentIteration: number, allManifests: ManifestPayload[]): number[] {
+  return allManifests
+    .filter((m) => m.iteration < currentIteration && m.artifacts.some((a) => a.path === artifactPath))
+    .map((m) => m.iteration)
+    .sort((a, b) => b - a); // newest first
+}
