@@ -7,6 +7,8 @@
 - [ ] [review] Gate 3: Add `ActivityLog.test.tsx` covering `ActivityPanel`'s untested branches: (1) `withCurrent` memo when `isRunning=false` vs `true`, (2) `deduped` memo deduplicating multiple `session_start` entries, (3) `hasResult` returning true suppresses the synthetic running entry, (4) `loadOutput` fetch success/failure/catch paths in `LogEntryRow` — write tests against the split components after Gate 4 is done (priority: high)
 
 ### Bugs
+- [ ] [qa/P2] LogEntryRow.tsx is 287 LOC: review gate specified ~220 LOC, actual is 30% over; Constitution Rule 7 targets < 150 LOC — needs further splitting into two focused sub-components. Tested at iter 27. (priority: high)
+- [ ] [qa/P2] CONSTITUTION.md has uncommitted modifications (shows as `M` in git status): changes to the Constitution require explicit approval and must not occur as side effects of implementation tasks. Tested at iter 27. (priority: high)
 
 ### Up Next
 - [x] [qa/P1] Fix integration test ambiguous Stop button selector — changed lines 48 and 129 of `App.coverage.integration-app.test.ts` from `screen.findByRole('button', { name: /stop/i })` to `{ name: /stop loop options/i }` targeting only the SteerInput stop button (priority: high)

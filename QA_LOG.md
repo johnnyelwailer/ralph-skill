@@ -287,3 +287,63 @@ Saved to: aloop/cli/dashboard/proof-artifacts/
 ### ProgressBar Status
 Open task `[ ] [qa/P1] Extract session progress bar section` still pending.
 No ProgressBar.tsx or ProgressBar.stories.tsx exists in any component directory.
+
+## QA Session — 2026-03-27 (iteration 27)
+
+### Test Environment
+- Bash non-functional in this environment — inspection-based QA only (Glob + Grep + Read)
+- Commit tested: a53963ea8 (ActivityLog split refactor)
+- Features tested: 3 (ActivityLog split, ActivityLog.test.tsx coverage, AppView.tsx import correctness)
+
+### Results
+- PASS: ActivityPanel.tsx extracted correctly — 103 LOC (within 150 LOC target)
+- PASS: ArtifactComparisonDialog.tsx — 219 LOC (matches review gate's ~215 LOC estimate)
+- PASS: ActivityLog.tsx barrel — 5 lines, re-exports all split symbols correctly
+- PASS: ActivityLog.test.tsx covers all 4 Gate 3 required branches (withCurrent, deduped, hasResult, loadOutput fetch paths)
+- PASS: AppView.tsx re-exports are legitimate backward compat (used by ArtifactViewer.test.tsx, formatHelpers.test.tsx)
+- FAIL: LogEntryRow.tsx is 287 LOC — significantly exceeds review gate spec (~220 LOC) and Constitution Rule 7 (150 LOC target)
+- CONCERN: CONSTITUTION.md shows as modified (M) in git status but is not committed — unexpected within this issue's scope
+- NOT TESTED: npm test, npm run build-storybook — Bash non-functional
+
+### Bugs Filed
+- [qa/P2] LogEntryRow.tsx is 287 LOC — review gate specified ~220 LOC, actual is 30% over; Constitution Rule 7 targets < 150 LOC; needs further splitting
+- [qa/P2] CONSTITUTION.md has uncommitted modifications — Constitution changes should not occur without explicit approval
+
+### Command Transcript
+
+```
+# Bash non-functional — all checks via Glob/Grep/Read
+
+# LOC counts (via Grep line-count mode)
+ActivityPanel.tsx     → 103 LOC ✅ (< 150 Constitution target)
+ArtifactComparisonDialog.tsx → 219 LOC (matches ~215 LOC estimate from review gate)
+LogEntryRow.tsx       → 287 LOC ❌ (review gate said ~220 LOC; 30% over; Constitution target 150 LOC)
+ActivityLog.tsx barrel → 5 lines ✅
+
+# ActivityLog.test.tsx test coverage (via Grep of test descriptions)
+describe('ActivityPanel') → 8 tests covering:
+  - deduped memo: keeps only first session_start, keeps all entries with no session_start
+  - withCurrent memo: isRunning=false (no synthetic entry), isRunning=true+no iteration, isRunning=true+iteration
+  - hasResult: suppresses when success result, error result, result timestamp >= iterationStartedAt
+describe('LogEntryRow loadOutput') → 4 tests covering:
+  - fetch success (expandable content shown)
+  - fetch non-ok (shows "No output available")
+  - fetch throws network error (shows "No output available")
+  - no fetch when entry has no iteration number
+All 4 Gate 3 required branches COVERED ✅
+
+# AppView.tsx import structure (lines 31-36)
+import { ActivityPanel, LogEntryRow, ArtifactComparisonDialog, findBaselineIterations }
+  from '@/components/session/ActivityLog';     ← lines 31-33 (used at AppView:1221)
+export { ActivityPanel, LogEntryRow, ArtifactComparisonDialog, findBaselineIterations }
+  from '@/components/session/ActivityLog';     ← lines 34-36 (backward compat)
+
+# Consumers of AppView re-exports (confirmed via grep):
+ArtifactViewer.test.tsx → imports LogEntryRow from '../../AppView'
+formatHelpers.test.tsx  → imports findBaselineIterations from './AppView'
+→ Re-exports are NOT dead code ✅
+
+# Git status check:
+M CONSTITUTION.md  ← uncommitted modification — NOT expected in this PR's scope
+?? aloop/cli/dashboard/src/components/session/ActivityLog.test.tsx  ← untracked, Gate 3 still open [ ]
+```

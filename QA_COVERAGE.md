@@ -18,3 +18,9 @@
 | ActivityLog component + stories | 2026-03-27 | 8c71ef05d | PASS | ActivityLog.tsx extracted to src/components/session/ActivityLog.tsx; 9 stories (Empty, SessionStart, IterationComplete, WithArtifacts, ErrorIteration, MultipleIterations, RunningIteration, ProviderCooldown, ReviewVerdict); AppView.tsx imports correctly; sidebar shows ActivityLog under SESSION |
 | Storybook build after ActivityLog extraction | 2026-03-27 | 8c71ef05d | PASS | npm run build-storybook exits 0, 2062 modules transformed, 105 total stories registered; 9 ActivityLog screenshots saved to proof-artifacts/ |
 | ProgressBar component + stories | never | — | FAIL | Component not yet extracted; open task in TODO.md |
+| ActivityLog split — ActivityPanel.tsx | 2026-03-27 | a53963ea8 | PASS | 103 LOC, within 150 LOC Constitution target |
+| ActivityLog split — ArtifactComparisonDialog.tsx | 2026-03-27 | a53963ea8 | PASS | 219 LOC, matches review gate ~215 LOC estimate |
+| ActivityLog split — LogEntryRow.tsx | 2026-03-27 | a53963ea8 | FAIL | 287 LOC — 30% over review gate's ~220 LOC; needs further splitting per Constitution Rule 7 |
+| ActivityLog split — ActivityLog.tsx barrel | 2026-03-27 | a53963ea8 | PASS | 5-line barrel re-exporting all split symbols correctly |
+| ActivityLog.test.tsx branch coverage (Gate 3) | 2026-03-27 | a53963ea8 | PASS | All 4 Gate 3 branches covered: withCurrent, deduped session_start, hasResult suppression, loadOutput fetch paths |
+| AppView.tsx ActivityLog re-exports | 2026-03-27 | a53963ea8 | PASS | Backward compat re-exports — ArtifactViewer.test.tsx and formatHelpers.test.tsx import from AppView |
