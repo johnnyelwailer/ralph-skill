@@ -13,7 +13,7 @@
 
 ### Completed
 
-- [x] [review] Gate 4: Split `GitHubAdapter` into `adapter-github.ts` (252 LOC) — `adapter.ts` now 115 LOC, both under 300 LOC threshold. (priority: medium)
+- [x] [review] Gate 4: Split `GitHubAdapter` into `adapter-github.ts` (252 LOC) — `adapter.ts` now 115 LOC, both under 300 LOC threshold. (priority: medium) [reviewed: gates 1-10 pass]
 - [x] `OrchestratorAdapter` interface defined in `src/lib/adapter.ts` (lines 61–102)
 - [x] `GitHubAdapter` class implements full interface with GHE support
 - [x] `closePr`, `getPrDiff`, `queryPrs`, `checkBranchExists` added to interface and GitHubAdapter
