@@ -29,7 +29,7 @@ aloop start --provider claude
 aloop start --provider round-robin
 
 # Resume a stopped session
-aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
+aloop start --launch resume <session-id>
 ```
 
 ### Orchestrator Mode (`aloop orchestrate`)
@@ -53,6 +53,8 @@ aloop orchestrate --issues 42,43,44 --concurrency 2
 ```
 
 The orchestrator enforces role-based GitHub policies — child loops can create PRs and comment, but only the orchestrator can merge PRs and close issues.
+
+**GitHub Enterprise** is supported — set the `GH_HOST` environment variable or pass `--repo` with your GHE hostname. The adapter resolves the host via `GH_HOST` env var, falling back to `github.com`.
 
 ## Dashboard
 
@@ -149,6 +151,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop orchestrate` | Multi-issue decomposition and parallel dispatch |
 | `aloop dashboard` | Real-time monitoring UI |
 | `aloop status` | List active sessions and provider health |
+| `aloop active` | List active sessions (machine-readable) |
 | `aloop stop <id>` | Stop a running session |
 | `aloop setup` | Interactive project configuration |
 | `aloop steer` | Send live instruction to a running loop |
@@ -156,6 +159,8 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop discover` | Auto-detect project specs and validation |
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate .devcontainer config |
+| `aloop devcontainer-verify` | Verify devcontainer builds and passes all checks |
+| `aloop process-requests` | Process pending orchestrator requests (called by loop.sh between iterations) |
 
 ### Slash commands (Claude Code / Codex / Copilot)
 
@@ -215,13 +220,25 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 - **9 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance, documentation freshness
 - **Live steering**: Change direction mid-flight without stopping the loop
 - **Real-time dashboard**: SSE-powered UI with activity log, docs, proof gallery, and steering controls
-- **GitHub integration**: Issue decomposition, PR lifecycle, squash-merge, conflict rebase, agent review
+- **GitHub integration**: Issue decomposition, PR lifecycle, squash-merge, conflict rebase, agent review (GitHub.com and GitHub Enterprise)
+- **Pluggable adapter**: `OrchestratorAdapter` interface isolates GitHub operations — `GitHubAdapter` implemented
 - **Budget tracking**: Cost aggregation across child sessions with configurable caps
 - **Provider health**: Automatic cooldown and failover on provider errors
 - **Worktree isolation**: Each session runs on its own git branch
 - **Backpressure validation**: Types, tests, and lint gate every commit
 - **Stuck detection**: Auto-skip tasks after N consecutive failures
 - **Persistent logs**: RESEARCH.md and REVIEW_LOG.md survive TODO regenerations
+
+## Adapter Architecture
+
+The orchestrator uses a pluggable `OrchestratorAdapter` interface (`aloop/cli/src/lib/adapter.ts`) to abstract all issue and PR operations. This makes it possible to swap backends without changing orchestration logic.
+
+**Implemented adapters:**
+- **`GitHubAdapter`** — wraps `gh` CLI calls; supports GitHub.com and GitHub Enterprise via `GH_HOST`
+
+**Interface methods (18 total):** issue CRUD (`createIssue`, `updateIssue`, `closeIssue`, `getIssue`, `queryIssues`), PR operations (`createPr`, `mergePr`, `getPrStatus`, `getPrChecks`, `closePr`, `getPrDiff`, `queryPrs`), comments (`postComment`, `listComments`), labels (`addLabels`, `removeLabels`, `ensureLabelExists`), branches (`checkBranchExists`), and bulk state fetching (`fetchBulkIssueState`).
+
+The `createAdapter(config, execGh)` factory function instantiates the correct adapter from a config with `{ type: "github", repo: "owner/name", ghHost?: "..." }`.
 
 ## Development
 
