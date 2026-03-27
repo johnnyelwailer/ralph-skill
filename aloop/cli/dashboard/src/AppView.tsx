@@ -2196,6 +2196,7 @@ function AppInner() {
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [healthOpen, setHealthOpen] = useState(false);
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [qaCoverageRefreshKey, setQaCoverageRefreshKey] = useState('');
@@ -2519,12 +2520,24 @@ function AppInner() {
           )}
           <div className="flex flex-col flex-1 min-w-0">
             <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => openSidebar()} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
-            <main className="flex-1 min-h-0 p-2 pb-[calc(60px+env(safe-area-inset-bottom))] sm:pb-2 md:p-3">
+            <main className="flex-1 min-h-0 p-2 pb-[calc(104px+env(safe-area-inset-bottom))] sm:pb-2 md:p-3">
               <div className={`flex gap-3 h-full flex-col ${!sidebarOpen ? 'sm:flex-row' : ''} lg:flex-row`}>
                 {docsPanel}
                 {activityPanel}
               </div>
             </main>
+            <Collapsible className="sm:hidden border-t border-border/50" open={healthOpen} onOpenChange={setHealthOpen}>
+              <CollapsibleTrigger asChild>
+                <button className="flex items-center gap-2 w-full px-3 min-h-[44px] text-sm font-medium hover:bg-accent/30">
+                  <Heart className="h-4 w-4 text-muted-foreground" />
+                  <span>Provider Health</span>
+                  <ChevronDown className={cn('h-4 w-4 text-muted-foreground ml-auto transition-transform', healthOpen && 'rotate-180')} />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <HealthPanel providers={providerHealth} />
+              </CollapsibleContent>
+            </Collapsible>
             <Footer steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} onResume={() => void handleResume()} resumeSubmitting={resumeSubmitting} isRunning={isRunning} />
           </div>
         </div>
