@@ -18,7 +18,7 @@
 
 - [x] [qa/P1] `sidebarCollapsed` ReferenceError crashes AppInner: `AppView.tsx` was refactored to use `useResponsiveLayout()` (provides `sidebarOpen`, `toggleSidebar`, `openSidebar`) but lines 2509 and 2523 still reference undefined `sidebarCollapsed`/`setSidebarCollapsed` → `ReferenceError` at runtime, 7 integration tests fail. Fix: replace `sidebarCollapsed` with `!sidebarOpen` and `setSidebarCollapsed(false)` with `openSidebar()`, `setSidebarCollapsed(!sidebarCollapsed)` with `toggleSidebar()`. Tested at iter 5. (priority: high)
 
-- [ ] Command palette: full-screen overlay on mobile (priority: medium)
+- [x] Command palette: full-screen overlay on mobile (priority: medium)
   - Currently `pt-[20vh]` + `max-w-md` inner div is not full-screen on small viewports
   - On mobile: remove top offset and `max-w-md`, fill full viewport (`inset-0`, no padding, `rounded-none`)
   - At `sm:` keep existing centered dialog style

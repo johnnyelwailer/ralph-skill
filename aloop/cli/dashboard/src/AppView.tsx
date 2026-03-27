@@ -2151,8 +2151,8 @@ function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 animate-fade-in" onClick={onClose} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } }}>
-      <div className="w-full max-w-md rounded-lg border bg-popover shadow-lg" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start sm:items-start sm:justify-center sm:pt-[20vh] bg-black/50 animate-fade-in" onClick={onClose} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } }}>
+      <div className="w-full sm:max-w-md sm:rounded-lg border-0 sm:border bg-popover sm:shadow-lg min-h-full sm:min-h-0" onClick={(e) => e.stopPropagation()}>
         <Command>
           <CommandInput autoFocus placeholder="Type a command..." />
           <CommandList>
