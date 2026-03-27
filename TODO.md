@@ -20,6 +20,12 @@ Acceptance criteria:
 
 ### In Progress
 
+- [ ] [review] Gate 1: `OrchestratorAdapter` interface in `adapter.ts` deviates from spec's method names and return types — `queryIssues` must be renamed to `listIssues` (spec line ~988); `createPr`/`mergePr`/`getPrStatus` must be `createPR`/`mergePR`/`getPRStatus` (spec convention); `createIssue` must return `{ number: number; url: string }` not bare `number` (spec line ~983); `getPRStatus` must return `{ mergeable, ci_status: 'success'|'failure'|'pending', reviews: Array<{ verdict: string }> }` not `{ mergeable, mergeStateStatus }` (spec line ~997); `updateIssue` must accept `labels_add` and `labels_remove` fields (spec line ~985) — fix the interface and implementation in `src/lib/adapter.ts` and update all call sites and tests accordingly (priority: high)
+
+- [ ] [review] Gate 2: No tests added for adapter instantiation branches in `orchestrateCommandWithDeps` — the `if (filterRepo && !deps.adapter)` block at ~line 1004 has two branches (adapter created vs skipped) with no test verifying adapter presence on deps after the call; and `process-requests.ts` line 323 `const adapter = repo ? createAdapter(...) : undefined` ternary is completely untested — add tests for: (a) `orchestrateCommandWithDeps` with `repo` option creates adapter and passes to child deps, (b) without `repo` adapter remains undefined (priority: high)
+
+- [ ] [review] Gate 4: `orchestrateCommandWithDeps` adapter instantiation (~line 1004) uses `await import('node:child_process')` inside a conditional — this should be a static top-level import since `node:child_process` is always available; additionally, the `deps.execGh ?? spawnSync(...)` fallback silently breaks dependency injection: when `deps.execGh` is absent (as in all existing tests using `createMockDeps()`), the adapter gets a real process-spawning execGh instead of a mock — if any adapter method is called in a test context it will attempt real `gh` CLI calls; fix by either requiring `execGh` when creating the adapter, or using `deps.execGh` without a fallback and failing clearly when it's missing (priority: high)
+
 ### Up Next
 
 - [x] Thread adapter through child deps in orchestrate.ts — in `orchestrateCommandWithDeps`, pass `deps.adapter` into all constructed child deps objects: the `DispatchDeps`, `PrLifecycleDeps`, and the `ScanLoopDeps` object used when calling `runOrchestratorScanLoop`; also pass adapter into the `applyEstimateResults` call at line 1327
