@@ -192,3 +192,36 @@
 - **Gate 10:** QA_COVERAGE.md current — 9 features tracked, all 9 PASS. Coverage up from 7 to 9 features since last FAIL review.
 
 ---
+
+## Review — 2026-03-27 — commit 5218a6cd5..a379d35f1
+
+**Verdict: PASS** (QA tracking commit only; all findings from prior PASS carry over resolved)
+**Scope:** `QA_COVERAGE.md`, `QA_LOG.md`
+
+### What Changed Since Last PASS
+
+- `a379d35f1`: Final regression QA pass — updated `QA_COVERAGE.md` commit references to `5218a6cd5`; appended QA session iter-4 to `QA_LOG.md` with command transcript showing 38/38 adapter tests, 5/5 index tests, LOC checks, dead-import checks, and built-artifact URL scan all PASS.
+
+### Findings
+
+None — no functional code changes in this commit.
+
+### Observations
+
+- **Gate 5 (verified):** `npx tsx --test src/lib/adapter.test.ts` → 38 pass, 0 fail. `npx tsx --test src/index.test.ts` → 5 pass, 0 fail. Confirmed live.
+- **Gate 4 (clean):** `grep createAdapter|OrchestratorAdapter src/commands/orchestrate.ts src/commands/process-requests.ts` returns no output. LOC: adapter.ts=115, adapter-github.ts=252 — both under 300 LOC threshold. Confirmed live.
+- **Gate 6:** QA_LOG.md iter-4 contains a complete command transcript with concrete counts (not just "tests pass"). Valid QA evidence.
+
+### Gates that Pass
+
+- **Gate 1:** No change to spec compliance posture. 2 AC items remain open (orchestrate.ts migration, LocalAdapter) — pre-existing, explicitly scoped out of this PR.
+- **Gate 2:** No test changes.
+- **Gate 3:** No new code; no new branches.
+- **Gate 4:** QA tracking files only; no dead code introduced.
+- **Gate 5:** 38/38 adapter tests + 5/5 index tests confirmed passing live at HEAD.
+- **Gate 6:** QA_LOG.md contains command transcript with specific counts — valid evidence for QA iteration.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** No user-facing behavior or docs changed.
+
+---
