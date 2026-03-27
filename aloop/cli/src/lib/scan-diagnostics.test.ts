@@ -199,7 +199,7 @@ test('writeDiagnosticsJson: writes file when count >= threshold', async () => {
   const records: BlockerRecord[] = [
     { hash: 'h1', type: 'child_failed', affectedIssue: 5, errorSnippet: 'OOM error occurred', firstSeenIteration: 1, lastSeenIteration: 3, count: 3 },
   ];
-  await writeDiagnosticsJson('/ses', records, 3, () => new Date('2024-01-01T00:00:00Z'), writeFile as never);
+  await writeDiagnosticsJson('/ses', records, 3, writeFile as never);
   assert.equal(written.length, 1);
   assert.equal(written[0]!.path, '/ses/diagnostics.json');
   const parsed = JSON.parse(written[0]!.data) as Array<{ type: string; message: string; first_seen_iteration: number; current_iteration: number; severity: string; suggested_fix: string }>;
@@ -219,7 +219,7 @@ test('writeDiagnosticsJson: does NOT write when count < threshold', async () => 
   const records: BlockerRecord[] = [
     { hash: 'h1', type: 'child_failed', affectedIssue: 5, errorSnippet: 'err', firstSeenIteration: 1, lastSeenIteration: 2, count: 2 },
   ];
-  await writeDiagnosticsJson('/ses', records, 3, () => new Date(), writeFile as never);
+  await writeDiagnosticsJson('/ses', records, 3, writeFile as never);
   assert.equal(written.length, 0);
 });
 

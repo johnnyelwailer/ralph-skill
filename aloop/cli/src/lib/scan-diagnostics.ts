@@ -69,7 +69,6 @@ export async function writeDiagnosticsJson(
   sessionDir: string,
   records: BlockerRecord[],
   threshold: number,
-  now: () => Date,
   writeFile: (path: string, data: string, enc: BufferEncoding) => Promise<void>,
 ): Promise<void> {
   const over = records.filter((r) => r.count >= threshold);
@@ -159,7 +158,7 @@ export async function runSelfHealingAndDiagnostics(
     }
   }
   if (aloopRoot) await cleanStaleSessions(aloopRoot, sessionDir, state, deps);
-  await writeDiagnosticsJson(sessionDir, updated, threshold, deps.now, deps.writeFile);
+  await writeDiagnosticsJson(sessionDir, updated, threshold, deps.writeFile);
   await writeAlertMd(sessionDir, updated, threshold, deps.writeFile);
   const hasStuckBlocker = updated.some((r) => r.count >= threshold);
   if (hasStuckBlocker) {
