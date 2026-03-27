@@ -92,17 +92,19 @@ Failed gates produce `[review]` fix tasks that the next build iteration picks up
 
 ## Providers
 
-Five AI coding agents supported — use one, or round-robin across multiple:
+Five AI coding agents supported — use one directly or rotate across multiple via round-robin:
 
-| Provider | CLI | Autonomous flag |
-|----------|-----|-----------------|
-| Claude Code | `claude` | `--dangerously-skip-permissions --print` |
-| OpenAI Codex | `codex` | `--dangerously-bypass-approvals-and-sandbox` |
-| GitHub Copilot | `copilot` | `--yolo` |
-| Gemini CLI | `gemini` | `--yolo` |
-| OpenCode | `opencode` | `run --dir <workdir>` |
+| Provider | CLI | Autonomous flag | Direct `--provider` |
+|----------|-----|-----------------|---------------------|
+| Claude Code | `claude` | `--dangerously-skip-permissions --print` | Yes |
+| OpenAI Codex | `codex` | `--dangerously-bypass-approvals-and-sandbox` | Yes |
+| GitHub Copilot | `copilot` | `--yolo` | Yes |
+| Gemini CLI | `gemini` | `--yolo` | Yes |
+| OpenCode | `opencode` | `run --dir <workdir>` | Via round-robin config only |
 
 **Round-robin mode** cycles providers each iteration — e.g., Claude plans, Codex builds, Gemini reviews, OpenCode builds.
+
+> **Note:** `opencode` cannot be specified with `--provider opencode` directly. To use it, add it to `round_robin_order` in your `.aloop/config.yml` and run `aloop start --provider round-robin`.
 
 Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry.
 
@@ -216,7 +218,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 ## Key Features
 
 - **Two modes**: Single-session loop for focused work, orchestrator for spec-to-ship parallelism
-- **5 providers**: Claude, Codex, Gemini, Copilot, OpenCode — single or round-robin
+- **5 providers**: Claude, Codex, Gemini, Copilot (direct `--provider`), OpenCode (round-robin config only)
 - **9 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance, documentation freshness
 - **Live steering**: Change direction mid-flight without stopping the loop
 - **Real-time dashboard**: SSE-powered UI with activity log, docs, proof gallery, and steering controls
@@ -236,7 +238,7 @@ The orchestrator uses a pluggable `OrchestratorAdapter` interface (`aloop/cli/sr
 **Implemented adapters:**
 - **`GitHubAdapter`** — wraps `gh` CLI calls; supports GitHub.com and GitHub Enterprise via `GH_HOST`
 
-**Interface methods (18 total):** issue CRUD (`createIssue`, `updateIssue`, `closeIssue`, `getIssue`, `queryIssues`), PR operations (`createPr`, `mergePr`, `getPrStatus`, `getPrChecks`, `closePr`, `getPrDiff`, `queryPrs`), comments (`postComment`, `listComments`), labels (`addLabels`, `removeLabels`, `ensureLabelExists`), branches (`checkBranchExists`), and bulk state fetching (`fetchBulkIssueState`).
+**Interface methods (19 total):** issue CRUD (`createIssue`, `updateIssue`, `closeIssue`, `getIssue`, `queryIssues`), PR operations (`createPr`, `mergePr`, `getPrStatus`, `getPrChecks`, `closePr`, `getPrDiff`, `queryPrs`), comments (`postComment`, `listComments`), labels (`addLabels`, `removeLabels`, `ensureLabelExists`), branches (`checkBranchExists`), and bulk state fetching (`fetchBulkIssueState`).
 
 The `createAdapter(config, execGh)` factory function instantiates the correct adapter from a config with `{ type: "github", repo: "owner/name", ghHost?: "..." }`.
 
