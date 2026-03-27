@@ -129,3 +129,34 @@
 - **Gate 9:** No user-facing behavior changed; README/docs not affected.
 
 ---
+
+## Review — 2026-03-27 — commit 38b54a865..23073f48a
+
+**Verdict: FAIL** (1 finding — carry-over; 0 new findings)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/index.test.ts`, `aloop/cli/QA_COVERAGE.md`, `aloop/cli/QA_LOG.md`
+
+### Prior Findings Resolution
+
+- **Prior Gate 4 (dead import — RESOLVED):** `import { createAdapter, type OrchestratorAdapter }` removed from `orchestrate.ts` in `44cd350f8`. Confirmed: `grep createAdapter src/commands/orchestrate.ts` returns no output. Finding resolved.
+
+- **Prior qa/P1 (index test — RESOLVED):** `index.test.ts` changed from `spawn(process.execPath, ['--import', 'tsx', ...])` to `spawn('npx', ['-y', 'tsx', ...])` with `node_modules/.bin` prepended to PATH. All 5/5 index tests now pass (confirmed: `node --test src/index.test.ts` → 5 pass, 0 fail). Test 5 ("CLI catches errors and prints clean messages without stack traces") — previously failing with `ERR_MODULE_NOT_FOUND` — now passes. Finding resolved.
+
+- **Prior Gate 4 (adapter.ts LOC — NOT RESOLVED):** `adapter.ts` remains at 350 lines; the 300 LOC threshold from SPEC-ADDENDUM.md is still violated. `[review]` task remains open in TODO.md — no iteration addressed it.
+
+### Findings
+
+- **Gate 4 (FAIL — carry-over):** `adapter.ts` is 350 lines. SPEC-ADDENDUM.md: "Files above 300 LOC are a code smell and must be decomposed before adding new features." The `[review]` task in TODO.md is the only outstanding blocker.
+
+### Gates that Pass
+
+- **Gate 1:** No spec compliance regression. Accepted carry-over (`orchestrate.ts` partial migration) unchanged.
+- **Gate 2:** `index.test.ts` fix uses `spawn('npx', ['-y', 'tsx', ...])`. Test 5 asserts stderr matches exact pattern `^Error: Invalid autonomy level: invalid`. Not shallow.
+- **Gate 3:** No new modules. Import removal reduces code surface; no new branches requiring coverage.
+- **Gate 5:** 82 pre-existing failures unchanged (verified at both 38b54a865 and HEAD: 1103 tests, 82 fail). 71 TypeScript errors all pre-existing. 5/5 index tests now pass.
+- **Gate 6:** Import removal + test infra fix — purely internal. No observable output required.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** No user-facing behavior changed.
+- **Gate 10:** QA_COVERAGE.md current — 7 features tracked, 6 PASS / 1 FAIL (adapter LOC). Tracking reflects actual state.
+
+---
