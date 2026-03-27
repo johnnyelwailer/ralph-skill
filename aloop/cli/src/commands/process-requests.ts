@@ -1029,6 +1029,36 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     stateFile, sessionDir, projectRoot, sessionId, promptsDir, aloopRoot, repo, iteration, scanDeps,
   );
 
+  // ── Self-healing & diagnostics ──
+  // Track blockers across iterations, write diagnostics.json / ALERT.md,
+  // auto-create missing labels, and clean stale sessions.
+  const blockersFile = path.join(sessionDir, 'blockers.json');
+  let blockerRecords: BlockerRecord[] = [];
+  try {
+    if (existsSync(blockersFile)) {
+      blockerRecords = JSON.parse(await readFile(blockersFile, 'utf8'));
+    }
+  } catch { /* start fresh */ }
+
+  const diagDeps = {
+    readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
+    writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
+    existsSync: (p: string) => existsSync(p),
+    now: () => new Date(),
+  };
+
+  const diagAdapter = repo ? createAdapter({ type: 'github', repo }, execGh) : null;
+  const diagState: OrchestratorState = JSON.parse(await readFile(stateFile, 'utf8'));
+
+  try {
+    const updatedRecords = await runSelfHealingAndDiagnostics(
+      result, sessionDir, blockerRecords, diagState, diagAdapter, diagDeps, aloopRoot,
+    );
+    await writeFile(blockersFile, `${JSON.stringify(updatedRecords, null, 2)}\n`, 'utf8');
+  } catch (err) {
+    console.error(`[process-requests] diagnostics error: ${err}`);
+  }
+
   // Re-read state after scan pass (scan pass writes its own copy)
   // and apply any pending review tracking from the invokeAgentReview closure
   if (reviewPendingUpdates.size > 0) {
