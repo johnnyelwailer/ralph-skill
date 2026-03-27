@@ -32,3 +32,34 @@ Ran `npx playwright test` from `aloop/cli/dashboard/`. 4 of 11 tests fail:
 - Gate 9: No README/docs changes needed for internal responsive CSS work.
 
 ### Findings written to TODO.md: 4 [review] tasks (3 high priority, 1 low)
+
+---
+
+## Review — 2026-03-27 — commits df3bffdb6..5c1bbfb58
+
+**Verdict: FAIL** (2 prior [review] tasks still open — not addressed in this build)
+**Scope:** `aloop/cli/dashboard/src/AppView.tsx` (2 targeted bug fixes)
+
+### What was fixed
+
+- `94dfde9` — Added `isDesktop={isDesktop}` to Sidebar at AppView.tsx:2509. Correct fix: `{!isDesktop && <button "Collapse sidebar">}` at line 938 now correctly hides the button at desktop. Verified by `proof.spec.ts:149` passing via Playwright E2E.
+- `abfe37d` — Attached `onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}` to root div at AppView.tsx:2505. Fixed `handleTouchEnd` to call `setMobileMenuOpen(true)` (not `openSidebar()`). Fixed Escape key handler to close `mobileMenuOpen`. Verified by `proof.spec.ts:103` passing via Playwright E2E.
+
+Both fixes are correct. All 5 `proof.spec.ts` E2E tests pass. All 148 dashboard unit tests pass. 5 real Playwright screenshots in `proof-artifacts/`. Gate 2: `proof:103` dispatches real touch events and asserts overlay visibility — behavioral, not structural. Gate 6: valid real-run proof.
+
+### Gate 4: Dead Code — still open
+
+- `AppView.tsx:2199` — `mobileSidebarRef = useRef<HTMLDivElement>(null)` still declared and still attached to the mobile drawer div at line 2515 via `ref={mobileSidebarRef}`, but the ref value is never read anywhere. Constitution rule 13 violation. Prior `[review]` task in TODO.md (low priority) not addressed.
+
+### Gate 5: Regressions — 2 smoke tests still fail
+
+- `smoke.spec.ts:135` — still asserts Activity panel is hidden on mobile (now always-visible stacked layout); test is stale.
+- `smoke.spec.ts:154` — still looks for removed 'Documents'/'Activity' toggle buttons; buttons were removed.
+- CLI-wide `npm test` shows 32 failures — confirmed pre-existing (identical count at prior review commit `df3bffdb6`); unrelated to this issue's scope.
+
+### Prior findings resolved
+
+- Gate 5 finding: `proof.spec.ts:149` — RESOLVED ✓ (isDesktop prop added)
+- Gate 4/5 finding: `proof.spec.ts:103` / swipe handlers — RESOLVED ✓ (handlers attached, state fixed)
+
+### Findings written to TODO.md: 0 new — 2 prior [review] tasks remain open in TODO.md
