@@ -2506,7 +2506,7 @@ function AppInner() {
         <div className="flex flex-1 min-h-0">
           {/* Desktop sidebar */}
           <div className="hidden md:flex">
-            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={!sidebarOpen} onToggle={() => toggleSidebar()} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
+            <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={selectSession} collapsed={!sidebarOpen} onToggle={() => toggleSidebar()} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} isDesktop={isDesktop} />
           </div>
           {/* Mobile sidebar drawer */}
           {mobileMenuOpen && (

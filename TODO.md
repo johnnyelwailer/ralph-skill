@@ -4,9 +4,9 @@
 
 ### In Progress
 
-- [ ] [review] Gate 5: `proof.spec.ts:149` FAIL — desktop Sidebar missing `isDesktop={isDesktop}` prop at AppView.tsx:2509; "Collapse sidebar" button is visible at desktop viewport when it must be hidden. Add `isDesktop={isDesktop}` to the Sidebar at line 2509. (priority: high)
+- [x] [review] Gate 5: `proof.spec.ts:149` FAIL — desktop Sidebar missing `isDesktop={isDesktop}` prop at AppView.tsx:2509; "Collapse sidebar" button is visible at desktop viewport when it must be hidden. Add `isDesktop={isDesktop}` to the Sidebar at line 2509. (priority: high)
 
-- [ ] [review] Gate 4/5: `handleTouchStart`/`handleTouchEnd` (AppView.tsx:2211-2225) are defined but never attached to any JSX element — swipe-right-to-open gesture is completely broken (`proof.spec.ts:103` fails). Attach `onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}` to the root `<div>` at AppView.tsx:2505, OR explicitly remove the dead handlers if swipe is descoped. (priority: high)
+- [ ] [review] Gate 4/5: `handleTouchStart`/`handleTouchEnd` (AppView.tsx:2211-2225) are defined but never attached to any JSX element — swipe-right-to-open gesture is completely broken (`proof.spec.ts:103` fails). Two fixes required: (1) attach `onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}` to the root `<div>` at AppView.tsx:2505; (2) fix `handleTouchEnd` to call `setMobileMenuOpen(true)` instead of `openSidebar()` — the mobile drawer renders on `mobileMenuOpen` state, not `sidebarOpen`, so `openSidebar()` never shows the drawer. (priority: high)
 
 - [ ] [review] Gate 5: `smoke.spec.ts:135` and `smoke.spec.ts:154` reference removed panel toggle buttons ('Documents', 'Activity') that no longer exist — both tests fail. Update these tests to match the new always-visible stacked-panel layout: remove assertions on toggle buttons, assert that both panels are visible simultaneously on mobile, and remove the 44px tap-target assertions for the removed toggles. (priority: high)
 
