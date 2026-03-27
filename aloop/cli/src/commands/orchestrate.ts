@@ -16,6 +16,7 @@ import {
 } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody } from '../lib/issue-metadata.js';
+import type { OrchestratorAdapter } from '../lib/adapter.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -193,6 +194,7 @@ export interface TriageDeps {
   now: () => Date;
   writeFile?: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   aloopRoot?: string;
+  adapter?: OrchestratorAdapter;
 }
 
 export interface OrchestrateDeps {
@@ -205,6 +207,7 @@ export interface OrchestrateDeps {
   now: () => Date;
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  adapter?: OrchestratorAdapter;
 }
 
 export interface SpawnSyncResult {
@@ -229,6 +232,7 @@ export interface DispatchDeps {
   spawn: (command: string, args: string[], options?: Record<string, unknown>) => ChildProcess;
   platform: string;
   env: Record<string, string | undefined>;
+  adapter?: OrchestratorAdapter;
 }
 
 export interface ChildLaunchResult {
@@ -3426,6 +3430,7 @@ export interface PrLifecycleDeps {
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   /** Run an agent review against a PR diff. Returns the verdict and summary. */
   invokeAgentReview?: (prNumber: number, repo: string, diff: string) => Promise<AgentReviewResult>;
+  adapter?: OrchestratorAdapter;
 }
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
@@ -4562,6 +4567,7 @@ export interface ScanLoopDeps {
   sleep?: (ms: number) => Promise<void>;
   signalStop?: () => boolean;
   etagCache?: EtagCache;
+  adapter?: OrchestratorAdapter;
 }
 
 export interface SpecChangeReplanResult {
