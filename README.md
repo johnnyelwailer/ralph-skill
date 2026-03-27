@@ -70,6 +70,18 @@ aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
 - **Live steering** — send instructions to the running loop from the dashboard
 - **Stop controls** — graceful (SIGTERM) or force (SIGKILL)
 
+## Storybook (Partial)
+
+The dashboard includes a Storybook 10 setup for component development and visual testing.
+
+```bash
+cd aloop/cli/dashboard
+npm run storybook        # Start on port 6006
+npm run build-storybook  # Build static Storybook
+```
+
+**Status**: Storybook is configured with Tailwind CSS decorators, dark-mode toggle, and TooltipProvider globals. Most UI primitive components (`ui/`) have stories. Several higher-level components (`ActivityPanel`, `ArtifactComparisonHeader`, `DiffOverlayView`, `LogEntryRow`, `SideBySideView`, `SliderView`, `ResponsiveLayout`) are missing stories — tracked in TODO.md.
+
 ## Quality Gates
 
 The review agent enforces 9 gates on every build iteration:
@@ -172,11 +184,15 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop orchestrate` | Multi-issue decomposition and parallel dispatch |
 | `aloop dashboard` | Real-time monitoring UI |
 | `aloop status` | List active sessions and provider health |
+| `aloop active` | Show only currently running sessions |
 | `aloop stop <id>` | Stop a running session |
 | `aloop setup` | Interactive project configuration |
+| `aloop scaffold` | Scaffold workspace config files |
 | `aloop steer` | Send live instruction to a running loop |
 | `aloop gh <op>` | Policy-enforced GitHub operations |
 | `aloop discover` | Auto-detect project specs and validation |
+| `aloop resolve` | Print resolved project config for current directory |
+| `aloop process-requests` | Process pending orchestrator request files |
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate .devcontainer config |
 
